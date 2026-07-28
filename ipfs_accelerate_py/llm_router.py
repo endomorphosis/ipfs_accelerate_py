@@ -54,14 +54,22 @@ Additional optional providers (opt-in by selecting provider):
       `META_AI_API_KEY`, or `ipfs_accelerate_py_META_AI_API_KEY`
     - `ipfs_accelerate_py_META_AI_MODEL` (default: muse-spark-1.1)
     - `ipfs_accelerate_py_META_AI_BASE_URL` (default: https://api.meta.ai/v1)
-- `goose_cli`: Block/AAIF Goose CLI via `goose run`
+- `goose_cli`: Block/AAIF Goose CLI via `goose run` (canonical adapter in
+  `cli_runtime.providers.goose`)
     - chat-only by default (`GOOSE_MODE=chat`, no tools/extensions/session)
     - default backend is Meta Muse Spark through OpenAI-compatible env
       (`OPENAI_HOST=https://api.meta.ai`, package Meta API key)
     - `ipfs_accelerate_py_GOOSE_CLI_MODEL` / `GOOSE_MODEL` (default: muse-spark-1.1)
-    - `ipfs_accelerate_py_GOOSE_BIN` or `goose` on PATH
+      maps to Goose's model; pass `goose_provider=` (or `GOOSE_PROVIDER`) for
+      Goose's underlying provider — never collapsed into one field
+    - `ipfs_accelerate_py_GOOSE_BIN` / `IPFS_ACCELERATE_GOOSE_PATH` or `goose` on PATH
+    - Explicit provider selection (preferred/forced) may invoke `ensure_goose`
+      unless `IPFS_ACCELERATE_GOOSE_AUTO_INSTALL=0`
+    - Implicit discovery is detect-only and requires opt-in
+      `IPFS_ACCELERATE_GOOSE_DISCOVERY=1` (or aliases)
     - pass `agent=True` / `side_effecting=True` only for explicitly authorized
-      tool-using agent runs (developer extension, auto mode)
+      tool-using agent runs; agent requests bypass response caches, default-model
+      retry, automatic provider fallback, and concurrent batch workers
 - `llama_cpp`: local llama.cpp OpenAI-compatible server
     - `IPFS_ACCELERATE_LLAMA_CPP_BASE_URL` (default from host/port: http://127.0.0.1:8080/v1)
     - `IPFS_ACCELERATE_LLAMA_CPP_MODEL` (chat-completions model id; defaults to Leanstral NVFP4 ref)
@@ -141,6 +149,9 @@ from .utils.mistral_vibe import (
     ensure_mistral_vibe,
     mistral_vibe_auth_available,
 )
+
+# Goose installer / adapter are imported lazily inside resolution helpers so
+# import of this module never probes PATH, starts a process, or installs.
 
 
 class LLMRouterError(RuntimeError):
@@ -3789,9 +3800,15 @@ def _get_codex_cli_provider() -> Optional[LLMProvider]:
 
 
 def find_goose_cli() -> Optional[str]:
-    """Locate the goose CLI binary without starting a process."""
+    """Locate the goose CLI binary without starting a process.
+
+    Search order matches the installer (explicit path env, PATH) but never
+    probes ``--version`` and never installs.
+    """
 
     configured = _coalesce_env(
+        "IPFS_ACCELERATE_GOOSE_PATH",
+        "IPFS_ACCELERATE_PY_GOOSE_PATH",
         "ipfs_accelerate_py_GOOSE_BIN",
         "IPFS_ACCELERATE_PY_GOOSE_BIN",
         "IPFS_ACCELERATE_AGENT_GOOSE_BIN",
@@ -3815,6 +3832,66 @@ def _goose_default_model() -> str:
         )
         or META_MODEL_API_DEFAULT_MODEL
     )
+
+
+def _goose_default_underlying_provider() -> str:
+    """Return Goose's underlying provider id (``GOOSE_PROVIDER`` / ``--provider``)."""
+
+    return (
+        _coalesce_env(
+            "GOOSE_PROVIDER",
+            "ipfs_accelerate_py_GOOSE_PROVIDER",
+            "IPFS_ACCELERATE_PY_GOOSE_PROVIDER",
+            "IPFS_ACCELERATE_GOOSE_PROVIDER",
+        )
+        or "openai"
+    )
+
+
+def _goose_discovery_enabled() -> bool:
+    """Whether Goose may appear during automatic/implicit provider discovery.
+
+    Default is off: rollout requires an opt-in discovery flag. Explicit
+    preferred/forced Goose selection is unaffected.
+    """
+
+    for name in (
+        "IPFS_ACCELERATE_GOOSE_DISCOVERY",
+        "IPFS_ACCELERATE_PY_GOOSE_DISCOVERY",
+        "ipfs_accelerate_py_GOOSE_DISCOVERY",
+    ):
+        raw = os.environ.get(name)
+        if raw is not None:
+            return _truthy(raw)
+    return False
+
+
+def _is_goose_provider_name(name: Optional[str]) -> bool:
+    key = _canonicalize_provider(name or "")
+    return bool(key) and key in _GOOSE_CLI_PROVIDER_ALIASES
+
+
+def _kwargs_are_side_effecting(kwargs: Mapping[str, object]) -> bool:
+    """True when request kwargs authorize side-effecting / agent execution."""
+
+    if bool(kwargs.get("side_effecting")) or bool(kwargs.get("agent")) or bool(
+        kwargs.get("with_tools")
+    ):
+        return True
+    if kwargs.get("agent_policy") is not None or kwargs.get("policy") is not None:
+        return True
+    if bool(kwargs.get("allow_side_effects")):
+        return True
+    return False
+
+
+def _normalize_goose_model_name(model_name: Optional[str]) -> Optional[str]:
+    model = str(model_name or "").strip()
+    if not model:
+        return None
+    if "spark" in model.lower() or model.startswith("muse-"):
+        return normalize_meta_model_name(model)
+    return model
 
 
 def _goose_openai_compatible_backend_env(
@@ -3850,7 +3927,7 @@ def _goose_openai_compatible_backend_env(
     )
     env.setdefault("OPENAI_HOST", host)
     env.setdefault("OPENAI_BASE_PATH", base_path)
-    env.setdefault("GOOSE_PROVIDER", env.get("GOOSE_PROVIDER") or "openai")
+    env.setdefault("GOOSE_PROVIDER", env.get("GOOSE_PROVIDER") or _goose_default_underlying_provider())
     env.setdefault("GOOSE_DISABLE_KEYRING", env.get("GOOSE_DISABLE_KEYRING") or "1")
     local_bin = str(Path.home() / ".local" / "bin")
     path = env.get("PATH", "")
@@ -3873,6 +3950,9 @@ def build_goose_cli_command(
     ``mode="chat"`` is the safe llm_router default: no tools, no session, no
     default profile extensions. ``mode="agent"`` is for explicitly authorized
     side-effecting runs (e.g. the agent supervisor implementation daemon).
+
+    Prefer the canonical adapter in ``cli_runtime.providers.goose`` for new
+    call sites; this helper remains for the Meta Spark agent entrypoint.
     """
 
     binary = (goose_bin or find_goose_cli() or "").strip()
@@ -3934,7 +4014,11 @@ def build_goose_cli_env(
     normalized = str(mode or "chat").strip().lower()
     env["GOOSE_MODE"] = "chat" if normalized == "chat" else (env.get("GOOSE_MODE") or "auto")
     model = (model_name or "").strip() or _goose_default_model()
-    env["GOOSE_MODEL"] = normalize_meta_model_name(model) if "spark" in model.lower() or model.startswith("muse-") else model
+    env["GOOSE_MODEL"] = (
+        normalize_meta_model_name(model)
+        if "spark" in model.lower() or model.startswith("muse-")
+        else model
+    )
     if max_tokens is None:
         max_tokens = int(
             _coalesce_env(
@@ -3953,88 +4037,134 @@ def build_goose_cli_env(
     return env
 
 
-def _get_goose_cli_provider() -> Optional[LLMProvider]:
-    """Return the Goose CLI provider when the binary is present.
+def _get_goose_cli_provider(*, auto_install: bool = False) -> Optional[LLMProvider]:
+    """Return the Goose CLI provider via the canonical GOOSE-004 adapter.
 
-    Ordinary ``generate`` is chat-only and never enables tools/extensions.
-    Pass ``agent=True`` (or ``side_effecting=True``) plus an explicit
-    ``workspace`` only for authorized agent runs.
+    * ``auto_install=True`` (explicit preferred/forced selection) may invoke
+      :func:`ensure_goose` subject to installer policy.
+    * ``auto_install=False`` (implicit discovery) is detect-only and never
+      installs. Callers must also gate discovery with
+      :func:`_goose_discovery_enabled` for automatic provider order.
+
+    Ordinary ``generate`` is chat-only. Pass ``agent=True`` /
+    ``side_effecting=True`` with an explicit :class:`GooseAgentPolicy` (or
+    workspace + path_root) only for authorized agent runs.
+
+    ``model_name`` maps to Goose's model; ``goose_provider`` maps to Goose's
+    underlying provider (``--provider`` / ``GOOSE_PROVIDER``).
     """
 
-    if not find_goose_cli():
+    try:
+        from .cli_runtime.installers.goose import (
+            discover_goose,
+            ensure_goose,
+        )
+        from .cli_runtime.providers.goose import (
+            GooseProviderError,
+            create_goose_provider,
+        )
+    except Exception:
+        # cli_runtime may be partially unavailable in constrained environments.
+        if not auto_install and not find_goose_cli():
+            return None
+        if not find_goose_cli():
+            return None
+        # Fall through is not possible without adapter; report unavailable.
         return None
 
-    class _GooseCLIProvider:
-        def generate(self, prompt: str, *, model_name: Optional[str] = None, **kwargs: object) -> str:
-            agent = bool(
-                kwargs.pop("agent", False)
-                or kwargs.pop("side_effecting", False)
-                or kwargs.pop("with_tools", False)
-            )
-            workspace = kwargs.pop("workspace", None) or kwargs.pop("cwd", None)
-            with_developer = bool(kwargs.pop("with_developer", agent))
-            max_turns = kwargs.pop("max_turns", None)
-            max_tokens = kwargs.pop("max_tokens", None) or kwargs.pop(
-                "max_completion_tokens", None
-            )
-            timeout = float(kwargs.pop("timeout", 300 if agent else 180))
-            mode = "agent" if agent else "chat"
-            if agent and not workspace:
-                raise LLMRouterError(
-                    "goose_cli agent mode requires an explicit workspace/cwd"
-                )
+    executable: Optional[str] = None
+    version = ""
 
+    if auto_install:
+        try:
+            install_result = ensure_goose(auto_install=True)
+        except Exception as exc:
+            raise LLMRouterError(f"Goose provider unavailable: {exc}") from exc
+        if not install_result.available or not install_result.executable:
+            detail = install_result.reason or "installation did not produce a goose executable"
+            raise LLMRouterError(f"Goose provider unavailable: {detail}")
+        executable = str(install_result.executable)
+        version = str(install_result.version or "")
+    else:
+        # Detect-only: never install, never probe --version (no process start).
+        try:
+            found = discover_goose(probe_version=False)
+        except Exception:
+            found = None
+        if found is not None and found.available and found.executable:
+            executable = str(found.executable)
+            version = str(found.version or "")
+        else:
+            executable = find_goose_cli()
+        if not executable:
+            return None
+
+    default_model = _goose_default_model()
+    default_provider = _goose_default_underlying_provider()
+    try:
+        backend_env = _goose_openai_compatible_backend_env()
+    except Exception:
+        backend_env = dict(os.environ)
+
+    adapter = create_goose_provider(
+        executable=executable,
+        allow_install=False,
+        base_env=backend_env,
+        default_goose_provider=default_provider,
+        default_model=default_model,
+    )
+    if version:
+        adapter.version = version
+
+    class _GooseCLIRouterProvider:
+        """Thin LLMProvider façade over :class:`GooseCLIProvider`.
+
+        Converts typed Goose errors into :class:`LLMRouterError` while
+        preserving string output for ordinary chat compatibility.
+        """
+
+        _adapter = adapter
+
+        def generate(
+            self,
+            prompt: str,
+            *,
+            model_name: Optional[str] = None,
+            **kwargs: object,
+        ) -> str:
+            # model_name → Goose model; goose_provider stays separate.
+            effective_model = _normalize_goose_model_name(model_name) or default_model
+            call_kwargs = dict(kwargs)
+            if "goose_provider" not in call_kwargs and "provider_override" not in call_kwargs:
+                # Prefer explicit kwargs; otherwise leave ambient GOOSE_PROVIDER
+                # / adapter default in place so discovery does not override an
+                # operator-configured backend provider.
+                pass
             try:
-                cmd = build_goose_cli_command(
-                    mode=mode,
-                    workspace=workspace if workspace is not None else None,
-                    model_name=model_name,
-                    max_turns=int(max_turns) if max_turns is not None else None,
-                    with_developer=with_developer and agent,
+                text = self._adapter.generate(
+                    str(prompt),
+                    model_name=effective_model,
+                    **call_kwargs,
                 )
-                env = build_goose_cli_env(
-                    mode=mode,
-                    model_name=model_name,
-                    max_tokens=int(max_tokens) if max_tokens is not None else None,
-                )
+            except GooseProviderError as exc:
+                message = str(exc) or "goose_cli failed"
+                error = LLMRouterError(message)
+                # Preserve side-effect signal so the router never retries after
+                # output or tool activity has begun.
+                setattr(error, "side_effects_started", bool(getattr(exc, "side_effects_started", False)))
+                setattr(error, "goose_error_kind", getattr(exc, "kind", None))
+                raise error from exc
             except LLMRouterError:
                 raise
             except Exception as exc:
-                raise LLMRouterError(f"goose_cli configuration failed: {exc}") from exc
+                # Policy / contract failures from the adapter surface as router errors.
+                message = str(exc) or "goose_cli failed"
+                error = LLMRouterError(message)
+                setattr(error, "side_effects_started", bool(getattr(exc, "side_effects_started", False)))
+                raise error from exc
+            return str(text)
 
-            cwd = str(Path(workspace).expanduser().resolve()) if workspace else None
-            try:
-                proc = subprocess.run(
-                    cmd,
-                    input=str(prompt),
-                    text=True,
-                    capture_output=True,
-                    check=False,
-                    timeout=timeout,
-                    env=env,
-                    cwd=cwd,
-                )
-            except FileNotFoundError as exc:
-                raise LLMRouterError("goose CLI not found on PATH") from exc
-            except subprocess.TimeoutExpired as exc:
-                raise LLMRouterError(
-                    f"goose_cli timed out after {timeout}s"
-                ) from exc
-
-            text_out = (proc.stdout or "").strip()
-            if proc.returncode == 0 and text_out:
-                return text_out
-            err = (proc.stderr or "").strip() or (proc.stdout or "").strip()
-            lowered = err.lower()
-            if "usage limit" in lowered or "rate limit" in lowered or "quota" in lowered:
-                raise LLMRouterError(f"goose_cli capacity/quota error: {err[:500]}")
-            if "api key" in lowered or "authentication" in lowered or "unauthorized" in lowered:
-                raise LLMRouterError(f"goose_cli authentication failed: {err[:500]}")
-            if proc.returncode != 0:
-                raise LLMRouterError(err or f"goose run failed with exit {proc.returncode}")
-            return text_out
-
-    return _GooseCLIProvider()
+    return _GooseCLIRouterProvider()
 
 
 def _get_copilot_cli_provider() -> Optional[LLMProvider]:
@@ -6136,6 +6266,43 @@ def _provider_cache_key() -> tuple:
         os.getenv("IPFS_ACCELERATE_LLAMA_CPP_NATIVE_GPU_LAYERS", "").strip(),
         os.getenv("IPFS_ACCELERATE_LLAMA_CPP_NATIVE_AUTO_INSTALL", "").strip(),
         os.getenv("IPFS_ACCELERATE_LLAMA_CPP_NATIVE_PACKAGE", "").strip(),
+        # Goose: every behavior-changing setting, never secret material.
+        os.getenv("IPFS_ACCELERATE_GOOSE_PATH", "").strip(),
+        os.getenv("IPFS_ACCELERATE_PY_GOOSE_PATH", "").strip(),
+        os.getenv("ipfs_accelerate_py_GOOSE_BIN", "").strip(),
+        os.getenv("IPFS_ACCELERATE_PY_GOOSE_BIN", "").strip(),
+        os.getenv("IPFS_ACCELERATE_AGENT_GOOSE_BIN", "").strip(),
+        os.getenv("GOOSE_BIN", "").strip(),
+        os.getenv("ipfs_accelerate_py_GOOSE_CLI_MODEL", "").strip(),
+        os.getenv("IPFS_ACCELERATE_PY_GOOSE_CLI_MODEL", "").strip(),
+        os.getenv("GOOSE_MODEL", "").strip(),
+        os.getenv("GOOSE_PROVIDER", "").strip(),
+        os.getenv("ipfs_accelerate_py_GOOSE_PROVIDER", "").strip(),
+        os.getenv("IPFS_ACCELERATE_PY_GOOSE_PROVIDER", "").strip(),
+        os.getenv("IPFS_ACCELERATE_GOOSE_PROVIDER", "").strip(),
+        os.getenv("ipfs_accelerate_py_GOOSE_OPENAI_HOST", "").strip(),
+        os.getenv("IPFS_ACCELERATE_AGENT_META_SPARK_HOST", "").strip(),
+        os.getenv("OPENAI_HOST", "").strip(),
+        os.getenv("ipfs_accelerate_py_GOOSE_OPENAI_BASE_PATH", "").strip(),
+        os.getenv("IPFS_ACCELERATE_AGENT_META_SPARK_BASE_PATH", "").strip(),
+        os.getenv("OPENAI_BASE_PATH", "").strip(),
+        os.getenv("IPFS_ACCELERATE_GOOSE_AUTO_INSTALL", "").strip(),
+        os.getenv("IPFS_ACCELERATE_PY_GOOSE_AUTO_INSTALL", "").strip(),
+        os.getenv("IPFS_ACCELERATE_GOOSE_DISCOVERY", "").strip(),
+        os.getenv("IPFS_ACCELERATE_PY_GOOSE_DISCOVERY", "").strip(),
+        os.getenv("ipfs_accelerate_py_GOOSE_DISCOVERY", "").strip(),
+        os.getenv("IPFS_ACCELERATE_GOOSE_MANAGED_ROOT", "").strip(),
+        os.getenv("IPFS_ACCELERATE_PY_GOOSE_MANAGED_ROOT", "").strip(),
+        os.getenv("IPFS_ACCELERATE_GOOSE_VARIANT", "").strip(),
+        os.getenv("IPFS_ACCELERATE_PY_GOOSE_VARIANT", "").strip(),
+        os.getenv("ipfs_accelerate_py_GOOSE_CLI_MAX_TURNS", "").strip(),
+        os.getenv("ipfs_accelerate_py_GOOSE_AGENT_MAX_TURNS", "").strip(),
+        os.getenv("IPFS_ACCELERATE_AGENT_GOOSE_MAX_TURNS", "").strip(),
+        os.getenv("ipfs_accelerate_py_GOOSE_MAX_TOKENS", "").strip(),
+        os.getenv("IPFS_ACCELERATE_AGENT_GOOSE_MAX_TOKENS", "").strip(),
+        # Presence-only credential markers (never values).
+        bool(str(os.getenv("OPENAI_API_KEY") or "").strip()),
+        bool(find_goose_cli()),
     )
 
 
@@ -6412,7 +6579,7 @@ def _builtin_provider_by_name(name: str, *, auto_install: bool = False) -> Optio
     if key in {"codex", "codex_cli"}:
         return _get_codex_cli_provider()
     if key in _GOOSE_CLI_PROVIDER_ALIASES:
-        return _get_goose_cli_provider()
+        return _get_goose_cli_provider(auto_install=auto_install)
     if key in {"copilot_cli"}:
         return _get_copilot_cli_provider()
     if key in {"copilot_sdk"}:
@@ -7484,6 +7651,9 @@ def _resolve_provider_uncached(preferred: Optional[str], *, deps: RouterDeps) ->
 
         if name in {"mistral_vibe", "mistral-vibe", "vibe"}:
             builtin = _get_mistral_vibe_provider(auto_install=True)
+        elif name in _GOOSE_CLI_PROVIDER_ALIASES:
+            # Forced/preferred Goose is explicit: may invoke ensure_goose.
+            builtin = _get_goose_cli_provider(auto_install=True)
         elif name in _LLAMA_CPP_SERVER_PROVIDER_ALIASES:
             builtin = _get_llama_cpp_provider(auto_install=True)
         elif name in _LLAMA_CPP_NATIVE_PROVIDER_ALIASES:
@@ -7523,6 +7693,9 @@ def _resolve_provider_uncached(preferred: Optional[str], *, deps: RouterDeps) ->
 
         if forced_name in {"mistral_vibe", "mistral-vibe", "vibe"}:
             builtin = _get_mistral_vibe_provider(auto_install=True)
+        elif forced_name in _GOOSE_CLI_PROVIDER_ALIASES:
+            # Forced Goose via env counts as explicit selection.
+            builtin = _get_goose_cli_provider(auto_install=True)
         elif forced_name in _LLAMA_CPP_SERVER_PROVIDER_ALIASES:
             builtin = _get_llama_cpp_provider(auto_install=True)
         elif forced_name in _LLAMA_CPP_NATIVE_PROVIDER_ALIASES:
@@ -7542,6 +7715,8 @@ def _resolve_provider_uncached(preferred: Optional[str], *, deps: RouterDeps) ->
     # auto-discovered when an API key, external auth provider, or OAuth token
     # is present; explicit ``provider="grok_cli"`` still returns an actionable
     # authentication error when the binary is installed but logged out.
+    # Goose is omitted from automatic order unless opt-in discovery is enabled;
+    # when present it is detect-only (never installs).
     optional_provider_names = [
         "openrouter",
         "openai",
@@ -7550,7 +7725,6 @@ def _resolve_provider_uncached(preferred: Optional[str], *, deps: RouterDeps) ->
         "meta_ai",
         "codex_cli",
         "copilot_cli",
-        "goose_cli",
         "gemini_cli",
         "claude_code",
         "mistral_vibe",
@@ -7558,6 +7732,10 @@ def _resolve_provider_uncached(preferred: Optional[str], *, deps: RouterDeps) ->
         "gemini_py",
         "copilot_sdk",
     ]
+    if _goose_discovery_enabled():
+        # Insert after other primary CLIs so discovery remains opt-in and ordered.
+        insert_at = optional_provider_names.index("copilot_cli") + 1
+        optional_provider_names.insert(insert_at, "goose_cli")
     if _grok_cli_auth_available():
         optional_provider_names.insert(1, "grok_cli")
     for name in optional_provider_names:
@@ -7634,6 +7812,11 @@ def _effective_llm_provider_name(explicit_provider: Optional[str]) -> str:
         "meta-ai": "meta_ai",
         "meta": "meta_ai",
         "spark": "meta_ai",
+        "goose": "goose_cli",
+        "goose-cli": "goose_cli",
+        "block_goose": "goose_cli",
+        "block-goose": "goose_cli",
+        "aaif_goose": "goose_cli",
     }
     return _canonicalize_provider(aliases.get(key, key))
 
@@ -7676,6 +7859,10 @@ def _iter_unpinned_optional_providers() -> list[tuple[str, LLMProvider]]:
     if _grok_cli_auth_available():
         names.insert(1, "grok_cli")
     for name in names:
+        # Goose is only part of automatic cross-provider fallback when the
+        # operator has opted into discovery (detect-only, never installs).
+        if name == "goose_cli" and not _goose_discovery_enabled():
+            continue
         candidate = _builtin_provider_by_name(name)
         if candidate is not None:
             providers.append((name, candidate))
@@ -7692,9 +7879,18 @@ def _generate_with_provider_fallbacks(
 ) -> str:
     effective_provider_name = _canonicalize_provider(provider_name)
     disable_model_retry = bool(kwargs.pop("disable_model_retry", False))
+    side_effecting = _kwargs_are_side_effecting(kwargs)
+    # Side-effecting / agent requests never retry against a different model.
+    if side_effecting:
+        disable_model_retry = True
     try:
         return backend.generate(prompt, model_name=model_name, **kwargs)
     except Exception as initial_error:
+        # Never retry after output or side-effect activity has begun.
+        if bool(getattr(initial_error, "side_effects_started", False)):
+            raise initial_error
+        if side_effecting:
+            raise initial_error
         if model_name is not None and not disable_model_retry:
             try:
                 return backend.generate(prompt, model_name=None, **kwargs)
@@ -7741,11 +7937,14 @@ def generate_text(
     resolved_deps = deps or get_default_router_deps()
     effective_provider_name = _effective_llm_provider_name(provider)
     _clear_last_generation_trace()
+    side_effecting_request = _kwargs_are_side_effecting(kwargs)
     # The pinned SyMAI engine owns its cache together with the four inner-route
     # receipt fields. A text-only router cache cannot reproduce those fields.
+    # Side-effecting / agent requests are never response-cached.
     response_cache_ok = (
         _response_cache_enabled()
         and kwargs.get(_SYMAI_ROUTE_BINDING_KWARG) is None
+        and not side_effecting_request
     )
     if response_cache_ok:
         try:
@@ -7781,13 +7980,17 @@ def generate_text(
         except Exception:
             pass
 
+    call_kwargs = dict(kwargs)
+    if side_effecting_request:
+        call_kwargs["disable_model_retry"] = True
+
     try:
         result = _generate_with_provider_fallbacks(
             effective_provider_name,
             backend,
             prompt,
             model_name=model_name,
-            kwargs=dict(kwargs),
+            kwargs=call_kwargs,
         )
         route_trace: dict[str, object] = {}
         route_trace_getter = getattr(
@@ -7807,7 +8010,12 @@ def generate_text(
         )
         _cache_result(str(result), used_model_name=model_name)
         return result
-    except Exception:
+    except Exception as primary_error:
+        # Agent / side-effecting requests never switch providers or fall back.
+        if side_effecting_request or bool(
+            getattr(primary_error, "side_effects_started", False)
+        ):
+            raise
         pinned_provider = _canonicalize_provider(provider)
         pinned_optional = bool(
             provider is not None
@@ -7817,6 +8025,9 @@ def generate_text(
             for fallback_name, fallback_provider in _iter_unpinned_optional_providers():
                 if fallback_provider is backend:
                     continue
+                # Never silently cross-provider-fallback from/to Goose agent work;
+                # chat Goose remains eligible only when discovery is enabled
+                # (enforced inside _iter_unpinned_optional_providers).
                 try:
                     result = _generate_with_provider_fallbacks(
                         fallback_name,
@@ -7883,8 +8094,12 @@ def _batch_worker_count(
     max_workers: Optional[int],
     provider: Optional[str],
     default_cap: int = 4,
+    side_effecting: bool = False,
 ) -> int:
     if size <= 1:
+        return 1
+    # Side-effecting / agent batches must never fan out concurrently.
+    if side_effecting:
         return 1
     if max_workers is not None:
         try:
@@ -7904,9 +8119,12 @@ def _batch_worker_count(
         except (TypeError, ValueError):
             pass
 
-    provider_key = str(provider or "").strip().lower()
+    provider_key = _canonicalize_provider(provider) if provider else str(provider or "").strip().lower()
     if provider_key in _LLAMA_CPP_NATIVE_PROVIDER_ALIASES:
         return 1
+    # Goose chat is safe to parallelize modestly; agent path forces serial above.
+    if provider_key in _GOOSE_CLI_PROVIDER_ALIASES:
+        return max(1, min(2, size, int(default_cap)))
     return max(1, min(int(default_cap), size))
 
 
@@ -8009,6 +8227,7 @@ def generate_text_batch(
         max_workers=max_workers,
         provider=provider,
         default_cap=4,
+        side_effecting=_kwargs_are_side_effecting(kwargs),
     )
     if workers <= 1:
         return [_generate_one(prompt) for prompt in prompt_list]
@@ -8063,6 +8282,7 @@ def generate_text_mesh_batch(
         max_workers=max_workers,
         provider=provider_norm,
         default_cap=16,
+        side_effecting=_kwargs_are_side_effecting(kwargs),
     )
     if workers <= 1:
         return [_generate_one(prompt) for prompt in prompt_list]
@@ -8112,6 +8332,7 @@ def chat_completions_batch_create(
         max_workers=max_workers,
         provider=provider,
         default_cap=4,
+        side_effecting=_kwargs_are_side_effecting(kwargs),
     )
     if workers <= 1:
         return [_create_one(messages) for messages in batches]
