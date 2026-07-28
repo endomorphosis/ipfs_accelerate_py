@@ -344,6 +344,14 @@ For embeddings, the router can resolve configured OpenRouter, xAI, Meta AI,
 Gemini CLI, HuggingFace, backend-manager, or registered custom providers. See
 the [embeddings router guide](docs/EMBEDDINGS_ROUTER.md) and [LLM router guide](docs/LLM_ROUTER.md).
 
+**Goose CLI** (`goose_cli` / `goose`) is a peer of Codex and Copilot for text
+generation. Ordinary router chat is tool-free and discovery of Goose is opt-in;
+lazy install is explicit and pinned; agent execution and P2P remote use require
+separate authorization gates. Operator environment variables, managed install
+paths, readiness versus liveness, P2P no-replay policy, offline tests, and the
+`IPFS_ACCELERATE_GOOSE_LIVE` smoke gate are documented under
+[Goose CLI in the LLM router guide](docs/LLM_ROUTER.md#goose-cli).
+
 ## IPFS and P2P
 
 IPFS and P2P are optional. Local inference does not require a Kubo daemon or a
@@ -431,6 +439,18 @@ python -m pytest test/api/test_agent_supervisor_objective_graph.py -q
 python -m pytest test/api/test_agent_supervisor_todo_daemon_port.py -q
 ```
 
+Goose CLI contracts stay offline by default (fakes only):
+
+```bash
+python -m pytest \
+  test/test_llm_router_goose.py \
+  test/test_goose_cli_endpoint.py \
+  test/test_goose_p2p_policy.py -q
+```
+
+Opt-in live Goose smoke requires `IPFS_ACCELERATE_GOOSE_LIVE=1` and a
+configured binary/provider; see [Goose CLI](docs/LLM_ROUTER.md#goose-cli).
+
 For Docker, router, or auto-healing changes, use the focused tests named in
 their guides. Full repository coverage may require optional dependencies,
 external services, credentials, browser runtimes, or a Docker daemon. A test
@@ -457,7 +477,7 @@ optional boundaries, hardware checks, and supervisor smoke procedure.
 
 ### Specialized references
 
-- [LLM Router](docs/LLM_ROUTER.md) and [Embeddings Router](docs/EMBEDDINGS_ROUTER.md)
+- [LLM Router](docs/LLM_ROUTER.md) (providers including Codex, Copilot, Grok, and **Goose CLI** operator rollout) and [Embeddings Router](docs/EMBEDDINGS_ROUTER.md)
 - [MCP setup](docs/guides/MCP_SETUP_GUIDE.md) and [MCP dashboard](docs/MCP_DASHBOARD_GUIDE.md)
 - [HF model server](docs/features/hf-model-server/README.md)
 - [IPFS integration](docs/features/ipfs/IPFS.md) and [P2P workflows](docs/guides/p2p/README.md)

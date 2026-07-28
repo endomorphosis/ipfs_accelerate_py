@@ -25,6 +25,18 @@ AI_CATALOG_READ_AUTHORITY = "ai.catalog/read"
 AI_CATALOG_REFRESH_AUTHORITY = "ai.catalog/refresh"
 AI_CATALOG_INVOKE_AUTHORITY = "ai.catalog/invoke"
 
+# Usage control authorities / schema revision (Python/MCP/MCP++ parity).
+# Kept as additive exports so the frozen ``ai.catalog.v1`` method CID stays
+# stable while usage tools share the same reason codes and authorities.
+AI_USAGE_READ_AUTHORITY = "ai.usage/read"
+AI_USAGE_READ_DETAIL_AUTHORITY = "ai.usage/read_detail"
+AI_USAGE_ADMIN_AUTHORITY = "ai.usage/admin"
+AI_USAGE_SCHEMA_REVISION = "ai.usage.idl.v1"
+AI_USAGE_INTERFACE_NAME = "ai.usage.v1"
+AI_USAGE_NAMESPACE = "ipfs_accelerate_py.ai.usage"
+AI_USAGE_VERSION = "1.0.0"
+MAX_USAGE_PAGE_SIZE = 100
+
 MAX_CATALOG_PAGE_SIZE = 1_000
 MAX_CATALOG_SOURCES = 64
 MAX_CATALOG_CURSOR_BYTES = 4_096
@@ -1844,6 +1856,350 @@ def register_ai_catalog_v1(registry: InterfaceDescriptorRegistry) -> str:
     )
 
 
+def usage_control_reason_codes() -> List[str]:
+    """Stable reason codes shared with Python usage controls."""
+    try:
+        from ipfs_accelerate_py.endpoint_usage.controls import (
+            usage_control_reason_codes as _codes,
+        )
+
+        return list(_codes())
+    except Exception:
+        return [
+            "ok",
+            "unauthorized",
+            "read_denied",
+            "detail_denied",
+            "admin_denied",
+            "invalid_request",
+            "stale_snapshot",
+            "stale_fence",
+            "revision_mismatch",
+            "idempotency_conflict",
+            "idempotency_replay",
+            "lease_required",
+            "fence_required",
+            "mutation_denied_model_output",
+            "mutation_denied_remote_peer",
+            "usage_unavailable",
+        ]
+
+
+def usage_control_authorities() -> Dict[str, str]:
+    return {
+        "read": AI_USAGE_READ_AUTHORITY,
+        "read_detail": AI_USAGE_READ_DETAIL_AUTHORITY,
+        "admin": AI_USAGE_ADMIN_AUTHORITY,
+    }
+
+
+def _usage_control_input_schema() -> Dict[str, Any]:
+    """Mirror the local ``model_catalog_usage`` MCP input schema."""
+    return _object_schema(
+        {
+            "operation": {
+                "type": "string",
+                "enum": [
+                    "status",
+                    "health",
+                    "limits",
+                    "headroom",
+                    "reservations",
+                    "receipts",
+                    "adapter_capabilities",
+                    "import",
+                    "correct",
+                    "override",
+                    "reset",
+                ],
+            },
+            "scope_id": _bounded_string(256, min_length=1),
+            "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": MAX_USAGE_PAGE_SIZE,
+                "default": 50,
+            },
+            "cursor": _bounded_string(4_096, min_length=1),
+            "dimension": _bounded_string(64, min_length=1),
+            "state": _bounded_string(64, min_length=1),
+            "expected_usage_revision": _bounded_string(256, min_length=1),
+            "authorities": {
+                "type": "array",
+                "maxItems": 16,
+                "items": _bounded_string(128, min_length=1),
+            },
+            "read_detail": {"type": "boolean", "default": False},
+            "admin": {"type": "boolean", "default": False},
+            "idempotency_key": _bounded_string(128, min_length=1),
+            "lease_id": _bounded_string(128, min_length=1),
+            "fence": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9223372036854775807,
+            },
+            "expected_effects": {
+                "type": "array",
+                "maxItems": 32,
+                "items": _bounded_string(64, min_length=1),
+            },
+            "actor": _bounded_string(128, min_length=1),
+            "source": _bounded_string(64, min_length=1),
+            "kind": _bounded_string(64, min_length=1),
+            "units": {
+                "type": "object",
+                "maxProperties": 32,
+                "additionalProperties": True,
+            },
+            "limits": {
+                "type": "array",
+                "maxItems": 32,
+                "items": {
+                    "type": "object",
+                    "maxProperties": 32,
+                    "additionalProperties": True,
+                },
+            },
+            "limits_update": {
+                "type": "array",
+                "maxItems": 32,
+                "items": {
+                    "type": "object",
+                    "maxProperties": 32,
+                    "additionalProperties": True,
+                },
+            },
+            "supersedes_event_id": _bounded_string(128, min_length=1),
+            "reservation_id": _bounded_string(128, min_length=1),
+            "reason": _bounded_string(128, min_length=1),
+            "cooldown_until": _bounded_string(64, min_length=1),
+            "observation_id": _bounded_string(128, min_length=1),
+            "adapter_id": _bounded_string(128, min_length=1),
+            "reason_codes": {
+                "type": "array",
+                "maxItems": 32,
+                "items": _bounded_string(64, min_length=1),
+            },
+        },
+        ["operation"],
+    )
+
+
+def _route_preview_input_schema() -> Dict[str, Any]:
+    """Mirror the local ``route_preview`` MCP input schema."""
+    return _object_schema(
+        {
+            "candidates": {
+                "type": "array",
+                "maxItems": 256,
+                "items": {
+                    "type": "object",
+                    "maxProperties": 32,
+                    "additionalProperties": True,
+                },
+            },
+            "scope_by_binding": {
+                "type": "object",
+                "maxProperties": 256,
+                "additionalProperties": _bounded_string(256, min_length=1),
+            },
+            "routing_policy": {
+                "type": "object",
+                "maxProperties": 64,
+                "additionalProperties": True,
+            },
+            "usage_request": {
+                "type": "object",
+                "maxProperties": 64,
+                "additionalProperties": True,
+            },
+            "catalog_revision": _bounded_string(256, min_length=1),
+            "expected_usage_revision": _bounded_string(256, min_length=1),
+            "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": MAX_USAGE_PAGE_SIZE,
+                "default": 50,
+            },
+            "authorities": {
+                "type": "array",
+                "maxItems": 16,
+                "items": _bounded_string(128, min_length=1),
+            },
+            "read_detail": {"type": "boolean", "default": False},
+        },
+        [],
+    )
+
+
+def ai_usage_v1_input_schemas() -> Dict[str, Dict[str, Any]]:
+    """MCP++ input schemas for usage control operations."""
+    return {
+        "model_catalog_usage": _usage_control_input_schema(),
+        "model_catalog_usage_metrics": _object_schema(
+            {
+                "authorities": {
+                    "type": "array",
+                    "maxItems": 16,
+                    "items": _bounded_string(128, min_length=1),
+                },
+            },
+            [],
+        ),
+        "route_preview": _route_preview_input_schema(),
+    }
+
+
+def ai_usage_v1_authorities() -> Dict[str, str]:
+    return {
+        "model_catalog_usage": AI_USAGE_READ_AUTHORITY,
+        "model_catalog_usage_metrics": AI_USAGE_READ_AUTHORITY,
+        "route_preview": AI_USAGE_READ_AUTHORITY,
+    }
+
+
+def build_ai_usage_v1_descriptor() -> Dict[str, Any]:
+    """Build the additive ``ai.usage.v1`` MCP++ interface descriptor.
+
+    Separate from the frozen ``ai.catalog.v1`` surface so existing interface
+    CIDs remain stable while usage controls share schemas and reason codes.
+    """
+    inputs = ai_usage_v1_input_schemas()
+    authorities = ai_usage_v1_authorities()
+    methods: List[Dict[str, Any]] = []
+    for operation, authority in authorities.items():
+        is_paginated = operation == "model_catalog_usage"
+        methods.append(
+            {
+                "name": f"{AI_USAGE_INTERFACE_NAME}/{operation}",
+                "operation": operation,
+                "mcp_tool": operation,
+                "input_schema": inputs[operation],
+                "output_schema": _output_envelope(
+                    {
+                        "usage_revision": _nullable(
+                            _bounded_string(256, min_length=1)
+                        ),
+                        "operation": _bounded_string(
+                            MAX_OPERATION_BYTES, min_length=1
+                        ),
+                        "reason_codes": {
+                            "type": "array",
+                            "maxItems": 32,
+                            "items": _bounded_string(64, min_length=1),
+                        },
+                    },
+                    success_required=["operation"],
+                    max_serialized_bytes=1_048_576,
+                ),
+                "required_authority": authority,
+                "pagination": {
+                    "mode": (
+                        "revision-bound-cursor" if is_paginated else "none"
+                    ),
+                    "request_cursor_field": "cursor" if is_paginated else None,
+                    "response_cursor_field": (
+                        "next_cursor" if is_paginated else None
+                    ),
+                    "limit_field": "limit" if is_paginated else None,
+                    "max_page_items": MAX_USAGE_PAGE_SIZE if is_paginated else 1,
+                    "catalog_revision_field": "catalog_revision",
+                    "usage_revision_field": "usage_revision",
+                    "cursor_invalidated_on_revision_change": is_paginated,
+                },
+                "streaming": {
+                    "supported": False,
+                    "mode": "buffered",
+                    "request_field": None,
+                    "max_chunks_field": None,
+                    "max_chunks": 0,
+                },
+            }
+        )
+    descriptor = build_descriptor(
+        name=AI_USAGE_INTERFACE_NAME,
+        namespace=AI_USAGE_NAMESPACE,
+        version=AI_USAGE_VERSION,
+        methods=methods,
+        errors=[
+            {"name": "Unauthorized", "code": "unauthorized"},
+            {"name": "InvalidRequest", "code": "invalid_request"},
+            {"name": "StaleSnapshot", "code": "stale_snapshot"},
+            {"name": "StaleFence", "code": "stale_fence"},
+            {"name": "AdminDenied", "code": "admin_denied"},
+            {"name": "DetailDenied", "code": "detail_denied"},
+            {
+                "name": "MutationDeniedModelOutput",
+                "code": "mutation_denied_model_output",
+            },
+            {
+                "name": "MutationDeniedRemotePeer",
+                "code": "mutation_denied_remote_peer",
+            },
+        ],
+        requires=["mcp++/profile-a-idl"],
+        semantic_tags=[
+            "ai-usage",
+            "endpoint-usage",
+            "bounded",
+            "revisioned",
+            "side-effect-free-reads",
+        ],
+        observability={
+            "trace": True,
+            "provenance": True,
+            "metrics": {
+                "event_derived": True,
+                "forbidden_label_keys": [
+                    "request",
+                    "credential",
+                    "tenant",
+                    "alias",
+                    "model",
+                    "endpoint_url",
+                ],
+            },
+        },
+        interaction_patterns={
+            "request_response": True,
+            "event_streams": False,
+            "streaming": "buffered-only",
+            "pagination": "revision-bound-cursor",
+        },
+        resource_cost_hints={
+            "max_page_items": MAX_USAGE_PAGE_SIZE,
+        },
+    )
+    descriptor.update(
+        {
+            "protocol_version": "v1",
+            "schema_revision": AI_USAGE_SCHEMA_REVISION,
+            "authorities": usage_control_authorities(),
+            "reason_codes": usage_control_reason_codes(),
+            "catalog_revision": {
+                "location": "response.catalog_revision",
+                "required": True,
+                "maxLength": 256,
+            },
+            "usage_revision": {
+                "location": "response.usage_revision",
+                "required": False,
+                "maxLength": 256,
+            },
+        }
+    )
+    return descriptor
+
+
+def register_ai_usage_v1(registry: InterfaceDescriptorRegistry) -> str:
+    """Register ``ai.usage.v1`` and return its deterministic interface CID."""
+    if not isinstance(registry, InterfaceDescriptorRegistry):
+        raise TypeError(
+            "registry must be an InterfaceDescriptorRegistry"
+        )
+    return registry.register_descriptor(build_ai_usage_v1_descriptor())
+
+
 __all__ = [
     "AI_CATALOG_INTERFACE_NAME",
     "AI_CATALOG_INVOKE_AUTHORITY",
@@ -1851,18 +2207,31 @@ __all__ = [
     "AI_CATALOG_REFRESH_AUTHORITY",
     "AI_CATALOG_SCHEMA_REVISION",
     "AI_CATALOG_VERSION",
+    "AI_USAGE_ADMIN_AUTHORITY",
+    "AI_USAGE_INTERFACE_NAME",
+    "AI_USAGE_NAMESPACE",
+    "AI_USAGE_READ_AUTHORITY",
+    "AI_USAGE_READ_DETAIL_AUTHORITY",
+    "AI_USAGE_SCHEMA_REVISION",
+    "AI_USAGE_VERSION",
     "CompatibilityVerdict",
     "IDLValidationError",
     "InterfaceUpgradeRequired",
     "InterfaceDescriptorRegistry",
     "ai_catalog_v1_input_schemas",
     "ai_catalog_v1_output_schemas",
+    "ai_usage_v1_authorities",
+    "ai_usage_v1_input_schemas",
     "authorize_ai_catalog_operation",
     "build_ai_catalog_v1_descriptor",
+    "build_ai_usage_v1_descriptor",
     "build_descriptor",
     "canonicalize_descriptor",
     "compute_interface_cid",
     "register_ai_catalog_v1",
+    "register_ai_usage_v1",
     "resolve_ai_catalog_operation",
+    "usage_control_authorities",
+    "usage_control_reason_codes",
     "validate_ai_catalog_payload",
 ]

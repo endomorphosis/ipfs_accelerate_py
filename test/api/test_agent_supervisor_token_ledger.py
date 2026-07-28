@@ -8,6 +8,10 @@ import pytest
 from ipfs_accelerate_py.agent_supervisor.self_improvement.supervisor_token_ledger import (
     ACCEPTED_CRITERION_TOKEN_GOAL_ID,
     ACCEPTED_CRITERION_TOKEN_REQUIREMENT_ID,
+    TOKEN_LEDGER_AUTHORIZES_USAGE,
+    TOKEN_LEDGER_IS_COMPLETION_EVIDENCE,
+    TOKEN_LEDGER_IS_CORRECTNESS_EVIDENCE,
+    TOKEN_LEDGER_REWRITES_PROVIDER_SETTLEMENT,
     CacheDecision,
     FallbackTokenizerCalibration,
     ProviderModelEnvelope,
@@ -20,8 +24,12 @@ from ipfs_accelerate_py.agent_supervisor.self_improvement.supervisor_token_ledge
     TokenizerCalibrationSample,
     UsageSource,
     ValidationResult,
+    adapt_efficiency_metrics_from_reconciled_events,
     adapt_efficiency_receipt,
     calibrate_fallback_tokenizer,
+    consume_reconciled_endpoint_events_exactly_once,
+    provider_usage_from_reconciled_endpoint_event,
+    token_ledger_authority_bounds,
 )
 from ipfs_accelerate_py.agent_supervisor.self_improvement.supervisor_efficiency_metrics import (
     build_efficiency_baseline_fixtures,
@@ -32,6 +40,15 @@ from ipfs_accelerate_py.agent_supervisor.self_improvement.supervisor_v2_contract
     SemanticDependencyIdentity,
     StageEvent,
     StageEventKind,
+)
+from ipfs_accelerate_py.endpoint_usage import (
+    EndpointUsageScope,
+    ProtocolKind,
+    UsageEvent,
+    UsageEventKind,
+    UsageVector,
+    credential_configuration_pseudonym,
+    stable_id,
 )
 
 
@@ -512,3 +529,185 @@ def test_v1_adapter_preserves_retry_and_failed_attempt_charges() -> None:
     assert report.accepted_criterion_count == 1
     assert report.total_cost_microunits == receipt.total_cost_microunits
     assert len(ledger.lifecycle_events) == receipt.attempt
+
+
+def _endpoint_scope() -> EndpointUsageScope:
+    provider_id = stable_id("provider", "example-ai")
+    return EndpointUsageScope(
+        provider_id=provider_id,
+        protocol=ProtocolKind.HTTPS,
+        operation="text.chat",
+        deployment_id=stable_id("deployment", provider_id, "chat"),
+        credential_pseudonym=credential_configuration_pseudonym(
+            "env:EXAMPLE_API_KEY", key_id="ledger-default"
+        ),
+    )
+
+
+def _endpoint_event(
+    *,
+    sequence: int,
+    input_tokens: int,
+    output_tokens: int,
+    cost_micros: int,
+    request_id: str = "request:endpoint",
+) -> UsageEvent:
+    return UsageEvent(
+        kind=UsageEventKind.COMMIT,
+        scope_id=_endpoint_scope().scope_id,
+        request_id=request_id,
+        sequence=sequence,
+        occurred_at=f"2026-07-28T12:00:{sequence:02d}Z",
+        units=UsageVector.of(
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cost_micros=cost_micros,
+            currency="USD",
+        ),
+    )
+
+
+def test_ledger_consumes_reconciled_endpoint_events_exactly_once() -> None:
+    binding = _binding()
+    envelope = _envelope()
+    failed = _event(
+        binding, stage="inference", attempt=1, kind=StageEventKind.FAILED
+    )
+    accepted = _event(
+        binding, stage="inference", attempt=2, kind=StageEventKind.COMPLETED
+    )
+    rejected_terminal = TerminalCriterionAttribution(
+        binding=binding,
+        terminal_event_id=failed.event_id,
+        criterion_id="criterion:endpoint-bridge",
+        disposition=TerminalDisposition.REJECTED,
+        validation_result=ValidationResult.FAILED,
+        reason_code="provider-error",
+    )
+    accepted_terminal = TerminalCriterionAttribution(
+        binding=binding,
+        terminal_event_id=accepted.event_id,
+        criterion_id="criterion:endpoint-bridge",
+        disposition=TerminalDisposition.ACCEPTED,
+        validation_result=ValidationResult.PASSED,
+        evidence_gain=2,
+    )
+    endpoint_failed = _endpoint_event(
+        sequence=1, input_tokens=100, output_tokens=20, cost_micros=1_000
+    )
+    endpoint_accepted = _endpoint_event(
+        sequence=2, input_tokens=60, output_tokens=20, cost_micros=500
+    )
+    ledger = adapt_efficiency_metrics_from_reconciled_events(
+        binding=binding,
+        lifecycle_events=(failed, accepted),
+        terminal_attributions=(rejected_terminal, accepted_terminal),
+        endpoint_events=(endpoint_failed, endpoint_accepted),
+        envelope=envelope,
+        context_ids=("context:failed", "context:accepted"),
+        cache_decisions=(CacheDecision.MISS, CacheDecision.MISS),
+    )
+    report = ledger.report
+
+    assert all(
+        item.usage.source is UsageSource.RECONCILED_ENDPOINT
+        for item in ledger.attributions
+    )
+    assert report.input_tokens == 160
+    assert report.output_tokens == 40
+    assert report.total_cost_microunits == 1_500
+    assert report.failed_attempt_tokens == 120
+    assert report.rejected_tokens == 120
+    assert report.accepted_criterion_count == 1
+    assert report.accepted_evidence_gain == 2
+    assert report.retry_tokens == 80
+    event_ids = [item.usage.endpoint_event_id for item in ledger.attributions]
+    assert len(event_ids) == len(set(event_ids)) == 2
+
+    with pytest.raises(
+        TokenLedgerValidationError, match="exactly once"
+    ):
+        consume_reconciled_endpoint_events_exactly_once(
+            (endpoint_failed, endpoint_failed)
+        )
+
+    # Duplicate endpoint binding inside a constructed ledger fails closed.
+    dup_usage = provider_usage_from_reconciled_endpoint_event(
+        endpoint_failed,
+        envelope=envelope,
+        measurement_id="dup",
+        failed_attempt_tokens=120,
+    )
+    with pytest.raises(TokenLedgerValidationError, match="exactly once"):
+        SupervisorTokenLedger(
+            binding=binding,
+            lifecycle_events=(failed, accepted),
+            terminal_attributions=(rejected_terminal, accepted_terminal),
+            attributions=(
+                TokenAttribution(
+                    binding=binding,
+                    event_id=failed.event_id,
+                    stage=failed.stage,
+                    attempt=1,
+                    context_id="context:failed",
+                    cache_decision=CacheDecision.MISS,
+                    validation_result=ValidationResult.FAILED,
+                    terminal_attribution_id=(
+                        rejected_terminal.terminal_attribution_id
+                    ),
+                    usage=dup_usage,
+                ),
+                TokenAttribution(
+                    binding=binding,
+                    event_id=accepted.event_id,
+                    stage=accepted.stage,
+                    attempt=2,
+                    context_id="context:accepted",
+                    cache_decision=CacheDecision.MISS,
+                    validation_result=ValidationResult.PASSED,
+                    terminal_attribution_id=(
+                        accepted_terminal.terminal_attribution_id
+                    ),
+                    usage=ProviderTokenUsage(
+                        measurement_id="accepted",
+                        envelope=envelope,
+                        source=UsageSource.RECONCILED_ENDPOINT,
+                        input_tokens=60,
+                        output_tokens=20,
+                        retry_tokens=80,
+                        cost_microunits=500,
+                        endpoint_event_id=dup_usage.endpoint_event_id,
+                    ),
+                ),
+            ),
+        )
+
+
+def test_token_ledger_cannot_authorize_usage_or_claim_completion() -> None:
+    bounds = token_ledger_authority_bounds()
+    assert bounds == {
+        "authorizes_usage": False,
+        "rewrites_provider_settlement": False,
+        "is_completion_evidence": False,
+        "is_correctness_evidence": False,
+    }
+    assert not TOKEN_LEDGER_AUTHORIZES_USAGE
+    assert not TOKEN_LEDGER_REWRITES_PROVIDER_SETTLEMENT
+    assert not TOKEN_LEDGER_IS_COMPLETION_EVIDENCE
+    assert not TOKEN_LEDGER_IS_CORRECTNESS_EVIDENCE
+
+    usage = provider_usage_from_reconciled_endpoint_event(
+        _endpoint_event(
+            sequence=1, input_tokens=10, output_tokens=5, cost_micros=25
+        ),
+        envelope=_envelope(),
+    )
+    assert usage.source is UsageSource.RECONCILED_ENDPOINT
+    assert usage.input_tokens == 10
+    assert usage.output_tokens == 5
+    assert usage.cost_microunits == 25
+    # Projection never invents settlement authority flags on the measurement.
+    payload = usage.to_dict()
+    assert "authorizes_usage" not in payload
+    assert payload["endpoint_event_id"]
+

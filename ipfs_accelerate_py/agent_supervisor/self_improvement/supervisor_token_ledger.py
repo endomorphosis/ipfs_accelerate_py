@@ -17,6 +17,13 @@ tokens.  Retry and failed-attempt tokens are explicit, checked classifications
 of that same total rather than additional tokens.  This prevents either
 double charging or making failed work disappear from efficiency reports.
 
+When endpoint usage coordination is present, the ledger consumes reconciled
+endpoint settlement events exactly once and projects them into the same
+attribution model.  It does not independently authorize usage, rewrite
+provider settlement, or treat usage totals as correctness or completion
+evidence.  Efficiency metrics adapt through the same bridge so accepted-
+criterion accounting and failed/rejected/abandoned work remain charged.
+
 No prompts, model output, or source bodies cross this contract.  Fallback
 calibrations contain only byte/token observations and are scoped to an exact
 provider/model envelope.
@@ -28,7 +35,15 @@ import json
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, ClassVar, Final
+from typing import Any, ClassVar, Final, Optional
+
+from ipfs_accelerate_py.endpoint_usage.schema import (
+    QuantityKind,
+    UsageDimension,
+    UsageEvent,
+    UsageEventKind,
+    UsageVector,
+)
 
 from ..proof.formal_verification_contracts import CanonicalContract
 from .supervisor_v2_contracts import (
@@ -44,6 +59,24 @@ ACCEPTED_CRITERION_TOKEN_REQUIREMENT_ID: Final[str] = (
     "121282056926752432472380808295780602698"
 )
 ACCEPTED_CRITERION_TOKEN_GOAL_ID: Final[str] = "ASI-G210"
+
+# Authority bounds: attribution only.  Never flip these to true.
+TOKEN_LEDGER_AUTHORIZES_USAGE: Final[bool] = False
+TOKEN_LEDGER_REWRITES_PROVIDER_SETTLEMENT: Final[bool] = False
+TOKEN_LEDGER_IS_COMPLETION_EVIDENCE: Final[bool] = False
+TOKEN_LEDGER_IS_CORRECTNESS_EVIDENCE: Final[bool] = False
+
+_RECONCILED_SETTLEMENT_KINDS: Final[frozenset[UsageEventKind]] = frozenset(
+    {
+        UsageEventKind.COMMIT,
+        UsageEventKind.STREAM_SETTLEMENT,
+        UsageEventKind.OBSERVATION_SUCCESS,
+        UsageEventKind.OBSERVATION_FAILURE,
+        UsageEventKind.CORRECTION,
+        UsageEventKind.RELEASE,
+        UsageEventKind.REFUND,
+    }
+)
 
 PROVIDER_MODEL_ENVELOPE_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/provider-model-envelope@1"
@@ -93,6 +126,7 @@ class TokenLedgerValidationError(ValueError):
 class UsageSource(str, Enum):
     PROVIDER_NATIVE = "provider_native"
     CALIBRATED_FALLBACK = "calibrated_fallback"
+    RECONCILED_ENDPOINT = "reconciled_endpoint"
 
 
 class CacheDecision(str, Enum):
@@ -585,6 +619,7 @@ class ProviderTokenUsage(_LedgerContract):
     failed_attempt_tokens: int = 0
     cost_microunits: int = 0
     calibration_id: str = ""
+    endpoint_event_id: str = ""
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -631,6 +666,15 @@ class ProviderTokenUsage(_LedgerContract):
                 required=False,
             ),
         )
+        object.__setattr__(
+            self,
+            "endpoint_event_id",
+            _text(
+                self.endpoint_event_id,
+                "endpoint_event_id",
+                required=False,
+            ),
+        )
         if self.reused_tokens > self.input_tokens:
             raise TokenLedgerValidationError(
                 "reused_tokens cannot exceed input_tokens"
@@ -655,12 +699,30 @@ class ProviderTokenUsage(_LedgerContract):
             raise TokenLedgerValidationError(
                 "provider-native usage cannot cite a fallback calibration"
             )
+        if self.source is UsageSource.RECONCILED_ENDPOINT and self.calibration_id:
+            raise TokenLedgerValidationError(
+                "reconciled endpoint usage cannot cite a fallback calibration"
+            )
         if (
             self.source is UsageSource.CALIBRATED_FALLBACK
             and not self.calibration_id
         ):
             raise TokenLedgerValidationError(
                 "fallback usage requires a calibration_id"
+            )
+        if (
+            self.source is UsageSource.RECONCILED_ENDPOINT
+            and not self.endpoint_event_id
+        ):
+            raise TokenLedgerValidationError(
+                "reconciled endpoint usage requires endpoint_event_id"
+            )
+        if (
+            self.source is not UsageSource.RECONCILED_ENDPOINT
+            and self.endpoint_event_id
+        ):
+            raise TokenLedgerValidationError(
+                "only reconciled endpoint usage may bind endpoint_event_id"
             )
 
     @property
@@ -686,6 +748,7 @@ class ProviderTokenUsage(_LedgerContract):
             "failed_attempt_tokens": self.failed_attempt_tokens,
             "cost_microunits": self.cost_microunits,
             "calibration_id": self.calibration_id,
+            "endpoint_event_id": self.endpoint_event_id,
             "total_tokens": self.total_tokens,
             "fresh_input_tokens": self.fresh_input_tokens,
         }
@@ -708,6 +771,7 @@ class ProviderTokenUsage(_LedgerContract):
             "failed_attempt_tokens",
             "cost_microunits",
             "calibration_id",
+            "endpoint_event_id",
             "total_tokens",
             "fresh_input_tokens",
             "content_id",
@@ -731,6 +795,7 @@ class ProviderTokenUsage(_LedgerContract):
             failed_attempt_tokens=payload.get("failed_attempt_tokens", 0),
             cost_microunits=payload.get("cost_microunits", 0),
             calibration_id=payload.get("calibration_id", ""),
+            endpoint_event_id=payload.get("endpoint_event_id", ""),
         )
         for name in ("total_tokens", "fresh_input_tokens"):
             if payload.get(name, getattr(result, name)) != getattr(result, name):
@@ -1551,6 +1616,15 @@ class SupervisorTokenLedger(_LedgerContract):
             raise TokenLedgerValidationError(
                 "provider usage population contains duplicated measurements"
             )
+        endpoint_event_ids = [
+            item.usage.endpoint_event_id
+            for item in attributions
+            if item.usage.endpoint_event_id
+        ]
+        if len(endpoint_event_ids) != len(set(endpoint_event_ids)):
+            raise TokenLedgerValidationError(
+                "reconciled endpoint events must be consumed exactly once"
+            )
         accepted_pairs: set[tuple[str, str]] = set()
         terminal_attempt_pairs: set[tuple[str, int]] = set()
         used_terminal_ids: set[str] = set()
@@ -1756,7 +1830,11 @@ class SupervisorTokenLedger(_LedgerContract):
             provider_native_tokens=sum(
                 item.total_tokens
                 for item in usages
-                if item.source is UsageSource.PROVIDER_NATIVE
+                if item.source
+                in (
+                    UsageSource.PROVIDER_NATIVE,
+                    UsageSource.RECONCILED_ENDPOINT,
+                )
             ),
             fallback_tokens=sum(
                 item.total_tokens
@@ -2070,6 +2148,316 @@ def adapt_efficiency_receipt(
 adapt_v1_efficiency_receipt = adapt_efficiency_receipt
 
 
+def token_ledger_authority_bounds() -> dict[str, bool]:
+    """Explicit non-authority bounds for ledger and efficiency consumers."""
+
+    return {
+        "authorizes_usage": TOKEN_LEDGER_AUTHORIZES_USAGE,
+        "rewrites_provider_settlement": TOKEN_LEDGER_REWRITES_PROVIDER_SETTLEMENT,
+        "is_completion_evidence": TOKEN_LEDGER_IS_COMPLETION_EVIDENCE,
+        "is_correctness_evidence": TOKEN_LEDGER_IS_CORRECTNESS_EVIDENCE,
+    }
+
+
+def _finite_dimension(
+    vector: UsageVector,
+    dimension: UsageDimension,
+    *,
+    currency: Optional[str] = None,
+) -> int:
+    if dimension is UsageDimension.COST_MICROS and currency is None:
+        # Cost entries are currency-tagged; accept the sole cost currency when
+        # the caller does not pin one.
+        matches = [
+            entry
+            for entry in vector.entries
+            if entry.dimension is UsageDimension.COST_MICROS
+        ]
+        if not matches:
+            return 0
+        if len(matches) > 1:
+            currencies = {entry.currency for entry in matches}
+            if len(currencies) > 1:
+                raise TokenLedgerValidationError(
+                    "endpoint cost_micros mixes currencies"
+                )
+        entry = matches[0]
+    else:
+        entry = vector.get(dimension, currency=currency)
+    if entry is None or entry.amount.kind is not QuantityKind.FINITE:
+        return 0
+    value = entry.amount.value
+    if value is None or value < 0:
+        raise TokenLedgerValidationError(
+            f"endpoint {dimension.value} unit is negative or missing"
+        )
+    return int(value)
+
+
+def consume_reconciled_endpoint_events_exactly_once(
+    events: Sequence[UsageEvent | Mapping[str, Any]],
+) -> tuple[UsageEvent, ...]:
+    """Normalize settlement events; each event_id may appear only once."""
+
+    if events is None or isinstance(events, (str, bytes, Mapping)):
+        raise TokenLedgerValidationError("endpoint events must be a sequence")
+    if not isinstance(events, Sequence):
+        raise TokenLedgerValidationError("endpoint events must be a sequence")
+    if len(events) > MAX_EVENTS:
+        raise TokenLedgerValidationError(
+            "endpoint event population exceeds its bound"
+        )
+    parsed: list[UsageEvent] = []
+    seen: set[str] = set()
+    for item in events:
+        if isinstance(item, UsageEvent):
+            event = item
+        elif isinstance(item, Mapping):
+            try:
+                event = UsageEvent.from_dict(item)
+            except Exception as exc:
+                raise TokenLedgerValidationError(
+                    "endpoint event is malformed"
+                ) from exc
+        else:
+            raise TokenLedgerValidationError(
+                "endpoint events must contain UsageEvent records"
+            )
+        event_id = event.event_id or ""
+        if not event_id:
+            raise TokenLedgerValidationError(
+                "endpoint event is missing event_id"
+            )
+        if event_id in seen:
+            raise TokenLedgerValidationError(
+                "reconciled endpoint events must be consumed exactly once"
+            )
+        seen.add(event_id)
+        if event.kind not in _RECONCILED_SETTLEMENT_KINDS:
+            raise TokenLedgerValidationError(
+                f"endpoint event kind {event.kind.value} is not reconciled settlement"
+            )
+        for entry in event.units.entries:
+            if entry.amount.kind is QuantityKind.UNLIMITED:
+                raise TokenLedgerValidationError(
+                    "settled endpoint units cannot be unlimited"
+                )
+            if (
+                entry.amount.kind is QuantityKind.FINITE
+                and (entry.amount.value is None or entry.amount.value < 0)
+            ):
+                raise TokenLedgerValidationError(
+                    "endpoint event contains negative or overflowing units"
+                )
+        parsed.append(event)
+    return tuple(
+        sorted(parsed, key=lambda item: (item.sequence or 0, item.event_id or ""))
+    )
+
+
+def provider_usage_from_reconciled_endpoint_event(
+    event: UsageEvent | Mapping[str, Any],
+    *,
+    envelope: ProviderModelEnvelope,
+    measurement_id: Optional[str] = None,
+    failed_attempt_tokens: Optional[int] = None,
+    retry_tokens: int = 0,
+    reused_tokens: int = 0,
+    speculative_tokens: int = 0,
+    tool_tokens: int = 0,
+) -> ProviderTokenUsage:
+    """Project a reconciled endpoint event into ledger counters without rewriting it.
+
+    Settlement units remain the provider authority; this only maps finite token
+    and cost dimensions into the stage/task attribution model.
+    """
+
+    consumed = consume_reconciled_endpoint_events_exactly_once((event,))
+    event = consumed[0]
+    input_tokens = _finite_dimension(event.units, UsageDimension.INPUT_TOKENS)
+    output_tokens = _finite_dimension(event.units, UsageDimension.OUTPUT_TOKENS)
+    total_tokens = _finite_dimension(event.units, UsageDimension.TOTAL_TOKENS)
+    if total_tokens and total_tokens < input_tokens + output_tokens:
+        raise TokenLedgerValidationError(
+            "endpoint total_tokens is less than input plus output"
+        )
+    # Prefer explicit total when present; otherwise compose from parts.
+    if not total_tokens:
+        total_tokens = input_tokens + output_tokens + tool_tokens
+    residual = total_tokens - input_tokens - output_tokens
+    if residual < 0:
+        raise TokenLedgerValidationError(
+            "endpoint token dimensions do not reconcile"
+        )
+    if tool_tokens and residual and tool_tokens != residual:
+        raise TokenLedgerValidationError(
+            "tool_tokens do not reconcile with endpoint total_tokens"
+        )
+    if not tool_tokens and residual:
+        tool_tokens = residual
+    cost = _finite_dimension(event.units, UsageDimension.COST_MICROS)
+    total = input_tokens + output_tokens + tool_tokens
+    if failed_attempt_tokens is None:
+        failed_attempt = 0
+    else:
+        failed_attempt = _integer(
+            failed_attempt_tokens, "failed_attempt_tokens"
+        )
+    return ProviderTokenUsage(
+        measurement_id=measurement_id
+        or f"endpoint:{event.event_id}",
+        envelope=envelope,
+        source=UsageSource.RECONCILED_ENDPOINT,
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        reused_tokens=reused_tokens,
+        speculative_tokens=speculative_tokens,
+        tool_tokens=tool_tokens,
+        retry_tokens=retry_tokens,
+        failed_attempt_tokens=failed_attempt,
+        cost_microunits=cost,
+        endpoint_event_id=event.event_id or "",
+    )
+
+
+def adapt_efficiency_metrics_from_reconciled_events(
+    *,
+    binding: ResultBinding,
+    lifecycle_events: Sequence[StageEvent | Mapping[str, Any]],
+    terminal_attributions: Sequence[
+        TerminalCriterionAttribution | Mapping[str, Any]
+    ],
+    endpoint_events: Sequence[UsageEvent | Mapping[str, Any]],
+    envelope: ProviderModelEnvelope,
+    context_ids: Sequence[str],
+    cache_decisions: Sequence[CacheDecision | str] | None = None,
+    calibrations: Sequence[
+        FallbackTokenizerCalibration | Mapping[str, Any]
+    ] = (),
+) -> SupervisorTokenLedger:
+    """Build a ledger by consuming reconciled endpoint events exactly once.
+
+    Efficiency metrics and accepted-criterion accounting read this ledger; they
+    never authorize usage or treat the resulting totals as completion evidence.
+    Failed, rejected, and abandoned terminal dispositions remain fully charged.
+    """
+
+    bounds = token_ledger_authority_bounds()
+    if any(bounds.values()):
+        raise TokenLedgerValidationError(
+            "token ledger cannot claim usage authority or completion evidence"
+        )
+    events = _records(
+        lifecycle_events,
+        StageEvent,
+        field_name="lifecycle_events",
+        maximum=MAX_EVENTS,
+    )
+    terminals = _records(
+        terminal_attributions,
+        TerminalCriterionAttribution,
+        field_name="terminal_attributions",
+        maximum=MAX_EVENTS,
+    )
+    consumed = consume_reconciled_endpoint_events_exactly_once(endpoint_events)
+    if len(consumed) != len(events):
+        raise TokenLedgerValidationError(
+            "every lifecycle event must be attributed from exactly one endpoint event"
+        )
+    if len(context_ids) != len(events):
+        raise TokenLedgerValidationError(
+            "context_ids must match the lifecycle event population"
+        )
+    decisions: list[CacheDecision]
+    if cache_decisions is None:
+        decisions = [CacheDecision.NOT_APPLICABLE] * len(events)
+    else:
+        if len(cache_decisions) != len(events):
+            raise TokenLedgerValidationError(
+                "cache_decisions must match the lifecycle event population"
+            )
+        decisions = [
+            _enum(item, CacheDecision, "cache_decision")
+            for item in cache_decisions
+        ]
+    terminals_by_event = {
+        item.terminal_event_id: item for item in terminals
+    }
+    attributions: list[TokenAttribution] = []
+    for index, (event, endpoint_event, context_id, decision) in enumerate(
+        zip(events, consumed, context_ids, decisions)
+    ):
+        terminal = terminals_by_event.get(event.event_id)
+        if terminal is None:
+            raise TokenLedgerValidationError(
+                "lifecycle event is terminally unattributed"
+            )
+        usage = provider_usage_from_reconciled_endpoint_event(
+            endpoint_event,
+            envelope=envelope,
+            measurement_id=f"{binding.binding_id}:endpoint:{index + 1}",
+            failed_attempt_tokens=(
+                None
+                if terminal.accepted
+                else None  # filled below after construction of base units
+            ),
+            retry_tokens=0,
+        )
+        total = usage.total_tokens
+        if event.attempt > 1:
+            usage = ProviderTokenUsage(
+                measurement_id=usage.measurement_id,
+                envelope=usage.envelope,
+                source=usage.source,
+                input_tokens=usage.input_tokens,
+                output_tokens=usage.output_tokens,
+                reused_tokens=usage.reused_tokens,
+                speculative_tokens=usage.speculative_tokens,
+                tool_tokens=usage.tool_tokens,
+                retry_tokens=total,
+                failed_attempt_tokens=0 if terminal.accepted else total,
+                cost_microunits=usage.cost_microunits,
+                endpoint_event_id=usage.endpoint_event_id,
+            )
+        else:
+            usage = ProviderTokenUsage(
+                measurement_id=usage.measurement_id,
+                envelope=usage.envelope,
+                source=usage.source,
+                input_tokens=usage.input_tokens,
+                output_tokens=usage.output_tokens,
+                reused_tokens=usage.reused_tokens,
+                speculative_tokens=usage.speculative_tokens,
+                tool_tokens=usage.tool_tokens,
+                retry_tokens=0,
+                failed_attempt_tokens=0 if terminal.accepted else total,
+                cost_microunits=usage.cost_microunits,
+                endpoint_event_id=usage.endpoint_event_id,
+            )
+        if usage.reused_tokens and decision is not CacheDecision.HIT:
+            decision = CacheDecision.HIT
+        attributions.append(
+            TokenAttribution(
+                binding=binding,
+                event_id=event.event_id,
+                stage=event.stage,
+                attempt=event.attempt,
+                context_id=_text(context_id, "context_id"),
+                cache_decision=decision,
+                validation_result=terminal.validation_result,
+                terminal_attribution_id=terminal.terminal_attribution_id,
+                usage=usage,
+            )
+        )
+    return SupervisorTokenLedger(
+        binding=binding,
+        lifecycle_events=events,
+        terminal_attributions=terminals,
+        attributions=tuple(attributions),
+        calibrations=tuple(calibrations),  # type: ignore[arg-type]
+    )
+
+
 __all__ = [
     "ACCEPTED_CRITERION_TOKEN_GOAL_ID",
     "ACCEPTED_CRITERION_TOKEN_REQUIREMENT_ID",
@@ -2085,6 +2473,10 @@ __all__ = [
     "ProviderTokenizerEnvelope",
     "SCHEMA_VERSION",
     "SupervisorTokenLedger",
+    "TOKEN_LEDGER_AUTHORIZES_USAGE",
+    "TOKEN_LEDGER_IS_COMPLETION_EVIDENCE",
+    "TOKEN_LEDGER_IS_CORRECTNESS_EVIDENCE",
+    "TOKEN_LEDGER_REWRITES_PROVIDER_SETTLEMENT",
     "TerminalAttribution",
     "TerminalCriterionAttribution",
     "TerminalDisposition",
@@ -2096,8 +2488,13 @@ __all__ = [
     "TokenizerCalibrationSample",
     "UsageSource",
     "ValidationResult",
+    "adapt_efficiency_metrics_from_reconciled_events",
     "adapt_efficiency_receipt",
     "adapt_v1_efficiency_receipt",
     "build_token_ledger",
     "calibrate_fallback_tokenizer",
+    "consume_reconciled_endpoint_events_exactly_once",
+    "provider_usage_from_reconciled_endpoint_event",
+    "token_ledger_authority_bounds",
 ]
+

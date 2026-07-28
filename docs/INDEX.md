@@ -26,8 +26,9 @@ context of earlier implementations and are not normative API references.
   canonical service identities, resolution, source precedence, security,
   migration, and rollout.
 - [Endpoint usage-aware routing plan](architecture/ENDPOINT_USAGE_AWARE_ROUTING_PLAN.md):
-  planned endpoint/account limit accounting, atomic reservations,
-  ModelManager planning, router fallback, and supervisor capacity governance.
+  endpoint/account limit accounting, atomic reservations, ModelManager
+  planning, router fallback, supervisor capacity governance, offline
+  conformance/fault matrix, and staged rollout modes.
 - [Codebase-aware plan creation and steering plan](architecture/AGENT_SUPERVISOR_PLAN_CREATE_AND_STEER_PLAN.md):
   planned create/steer tools, registry-backed code and logic queries,
   revision-safe taskboard deltas, and parallel schedulability contracts.
@@ -50,7 +51,7 @@ context of earlier implementations and are not normative API references.
 - [Contributing](../CONTRIBUTING.md)
 - [AI Service Catalog](architecture/AI_SERVICE_CATALOG.md)
 - [Endpoint usage-aware routing plan](architecture/ENDPOINT_USAGE_AWARE_ROUTING_PLAN.md)
-- [LLM router](LLM_ROUTER.md)
+- [LLM router](LLM_ROUTER.md) (includes [Goose CLI](LLM_ROUTER.md#goose-cli) operator rollout)
 - [MCP server AI catalog and router tools](MCP_SERVER.md)
 - [IPFS backend router](IPFS_BACKEND_ROUTER.md)
 - [Canonical MCP server README](../ipfs_accelerate_py/mcp_server/README.md)
@@ -107,9 +108,10 @@ planned work. Use the current guides and source code for present behavior.
 | --- | --- |
 | Install or verify the package | [Installation](guides/getting-started/installation.md) |
 | Run inference | [Quick start](guides/QUICKSTART.md) |
+| Configure Goose CLI (chat, agent, install, P2P gates) | [LLM router — Goose CLI](LLM_ROUTER.md#goose-cli) |
 | Start MCP | [MCP setup](guides/MCP_SETUP_GUIDE.md) |
 | Discover or resolve AI services | [AI Service Catalog](architecture/AI_SERVICE_CATALOG.md) |
-| Plan endpoint usage limits and intelligent fallback | [Endpoint usage-aware routing](architecture/ENDPOINT_USAGE_AWARE_ROUTING_PLAN.md) |
+| Plan or verify endpoint usage limits and intelligent fallback | [Endpoint usage-aware routing](architecture/ENDPOINT_USAGE_AWARE_ROUTING_PLAN.md) |
 | Use catalog or router tools over MCP | [MCP server AI tools](MCP_SERVER.md) |
 | Migrate legacy model or MCP APIs | [Catalog migration and compatibility](architecture/AI_SERVICE_CATALOG.md#migration-and-compatibility) |
 | Operate or migrate agent-supervisor workflows | [Agent Supervisor Guide](guides/AGENT_SUPERVISOR_GUIDE.md) |
