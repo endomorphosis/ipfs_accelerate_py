@@ -4672,7 +4672,7 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-169 Add usage-governance controls and event-derived metrics
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
