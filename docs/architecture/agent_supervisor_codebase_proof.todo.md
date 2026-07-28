@@ -146,7 +146,7 @@ Normative:
 
 ## CBP-025 Typed claim/evidence semantics and lifecycle
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Priority: P0
 - Track: evidence-contract
