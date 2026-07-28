@@ -591,7 +591,7 @@ do not delete protected headers or rewrite completed history.
 - Operator note: Removed protected plan/todo/objectives from Outputs/Predicted files so the implementation fence can select this gap task. Dual-layout cutover for first 36 packaged modules already applied on branch.
 ## ASREF-014 Close objective gap: Public API package README root hygiene and cutover
 
-- Status: pending
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
