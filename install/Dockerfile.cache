@@ -1,8 +1,8 @@
 # Multi-architecture Dockerfile for ipfs_accelerate_py cache infrastructure
-# Supports: linux/amd64, linux/arm64, linux/arm/v7
+# Supports: linux/amd64, linux/arm64 (arm/v7 dropped — no wheels for modern deps)
 
 # Build stage
-FROM python:3.11-slim as builder
+FROM python:3.11-slim AS builder
 
 # Set build arguments for multi-arch
 ARG TARGETPLATFORM
@@ -19,6 +19,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Copy source
 COPY . /build/
+
+# Avoid stale host egg-info blocking editable installs under BuildKit.
+RUN rm -rf /build/*.egg-info /build/ipfs_accelerate_py.egg-info 2>/dev/null || true
 
 # Install Python dependencies based on platform
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \

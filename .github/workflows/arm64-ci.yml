@@ -152,9 +152,11 @@ jobs:
       run: |
         IMAGE_TAG="ipfs-accelerate-py:test-arm64"
         
-        # Build wheel in isolated container
+        # Build wheel in isolated container. Remove egg-info first so setuptools
+        # can recreate timestamps under the non-root image user.
         docker run --rm --platform linux/arm64 $IMAGE_TAG bash -c "
         pip install build
+        rm -rf *.egg-info ipfs_accelerate_py.egg-info build dist
         python -m build --wheel
         ls -la dist/
         "
@@ -296,6 +298,9 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
+
+    - name: Set up QEMU for ARM64 emulation
+      uses: docker/setup-qemu-action@v3
       
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
@@ -317,8 +322,9 @@ jobs:
       run: |
         IMAGE_TAG="ipfs-accelerate-py:security-audit-arm64"
         
-        # Run security checks in isolated container
-        docker run --rm --platform linux/arm64 $IMAGE_TAG bash -c "
+        # Override entrypoint so a host-arch entrypoint mismatch cannot cause
+        # "exec format error" under QEMU; invoke bash explicitly on arm64.
+        docker run --rm --platform linux/arm64 --entrypoint bash $IMAGE_TAG -c "
         pip install safety bandit
         
         # Check for known vulnerabilities

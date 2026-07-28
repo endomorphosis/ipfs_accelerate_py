@@ -270,7 +270,7 @@ Program invariants:
 
 ## GOOSE-011 Run the cross-surface security and regression matrix
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
