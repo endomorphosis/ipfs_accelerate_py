@@ -261,7 +261,33 @@ python -m pytest \
   test/test_ai_catalog_conformance.py -q
 ```
 
-Default conformance uses fake providers and blocks process, network,
+Usage-aware routing (optional overlay; modes `off`/`observe`/`shadow`/`assist`/
+`enforce`) has a separate offline gate that must stay green before promotion:
+
+```bash
+python -m pytest \
+  test/test_endpoint_usage_schema.py \
+  test/test_endpoint_usage_adapters.py \
+  test/test_endpoint_usage_ledger.py \
+  test/test_endpoint_usage_routing.py \
+  test/test_model_manager_usage_routing.py \
+  test/test_llm_router_usage_routing.py \
+  test/test_embeddings_router_usage_routing.py \
+  test/test_multimodal_router_usage_routing.py \
+  test/test_voice_router_usage_routing.py \
+  test/test_ai_router_usage_contract.py \
+  test/test_endpoint_usage_controls.py \
+  test/test_endpoint_usage_conformance.py \
+  test/test_endpoint_usage_faults.py \
+  test/test_endpoint_usage_rollout.py -q
+```
+
+See [Endpoint usage-aware routing plan](ENDPOINT_USAGE_AWARE_ROUTING_PLAN.md)
+for window coverage, fault matrix, and staged rollout exit gates. Default
+usage tests never open the network; live usage smokes require
+`IPFS_ACCELERATE_PY_ENDPOINT_USAGE_LIVE` and a micro-budget cap.
+
+Default catalog conformance uses fake providers and blocks process, network,
 credential-file, and model-load side effects during cold listing. Live smokes
 are selected per modality, so an operator does not need every modality:
 

@@ -298,6 +298,20 @@ python -m pytest \
   test/test_ai_catalog_conformance.py -q
 ```
 
+Usage-aware admission for `llm_router` is opt-in via `RoutingPolicy.mode`.
+Default `off` preserves legacy selection byte-for-byte. Observe/shadow never
+change selection; enforce/assist reserve before dispatch. Cross-router contract
+and staged rollout proofs:
+
+```bash
+python -m pytest \
+  test/test_llm_router_usage_routing.py \
+  test/test_ai_router_usage_contract.py \
+  test/test_endpoint_usage_conformance.py \
+  test/test_endpoint_usage_faults.py \
+  test/test_endpoint_usage_rollout.py -q
+```
+
 An operator may select only the live modalities available in an environment:
 
 ```bash
