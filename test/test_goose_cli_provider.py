@@ -1134,3 +1134,40 @@ def test_agent_allowed_cwd_roots_enforced(tmp_path: Path):
         allowed_cwd_roots=(str(allowed),),
     )
     assert policy.cwd.endswith("allowed")
+
+
+# ---------------------------------------------------------------------------
+# GOOSE-011 security matrix anchors (provider surface)
+# ---------------------------------------------------------------------------
+
+
+def test_matrix_quota_and_prompt_not_in_error_payload(fake_bin: Path) -> None:
+    """Provider quota failures classify cleanly and never echo prompts."""
+    secret = "MATRIX_PROMPT_SECRET_VALUE_xyz"
+    exe = _write_fake_goose(
+        fake_bin,
+        script=_error_script(stderr="Error: rate limit / quota exceeded", exit_code=1),
+    )
+    provider = GooseCLIProvider(
+        executable=str(exe),
+        version=PINNED_GOOSE_VERSION,
+        capabilities=capabilities_for_version(PINNED_GOOSE_VERSION),
+    )
+    result = provider.generate_result(CLIRequest(prompt=secret))
+    assert result.ok is False
+    assert result.metadata["goose_error_kind"] == GooseErrorKind.QUOTA_RATE_LIMIT.value
+    blob = json.dumps(result.to_dict())
+    assert secret not in blob
+
+
+def test_matrix_chat_plan_forbids_profile_and_extensions() -> None:
+    plan = build_goose_command(
+        executable="/opt/fake-goose",
+        mode=ExecutionMode.CHAT,
+        capabilities=capabilities_for_version(PINNED_GOOSE_VERSION),
+    )
+    assert "--no-profile" in plan.argv
+    assert "--no-session" in plan.argv
+    assert "--with-builtin" not in plan.argv
+    assert "--with-extension" not in plan.argv
+    assert plan.side_effecting is False

@@ -731,3 +731,69 @@ def test_llm_generate_task_type_advertised_when_goose_enabled(monkeypatch):
     assert "llm.generate" in types_on or "llm_generate" in types_on
     # Sanity: enabling goose should not remove baseline types.
     assert isinstance(types_off, list)
+
+
+# ---------------------------------------------------------------------------
+# GOOSE-011 security matrix anchors (worker surface)
+# ---------------------------------------------------------------------------
+
+
+def test_matrix_worker_agent_denial_and_no_fallback_after_side_effects(
+    monkeypatch, tmp_path
+):
+    """Worker chat enablement, agent denial, and no cross-provider fallback."""
+    from ipfs_accelerate_py.p2p_tasks import worker as p2p_worker
+    import ipfs_accelerate_py.llm_router as llm_router
+
+    # Agent denied when only chat gate is on.
+    monkeypatch.setenv("IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_GOOSE_CLI", "1")
+    monkeypatch.setenv("IPFS_ACCELERATE_PY_TASK_WORKER_GOOSE_PATH_ROOT", str(tmp_path))
+    monkeypatch.setattr(llm_router, "generate_text", lambda *a, **k: "should-not-run")
+    with pytest.raises(p2p_worker.GooseWorkerPolicyError) as ei:
+        p2p_worker._run_llm_generate(
+            {
+                "assigned_worker": "w1",
+                "payload": {
+                    "prompt": "agent",
+                    "provider": "goose_cli",
+                    "agent": True,
+                    "allow_side_effects": True,
+                    "cwd": str(tmp_path),
+                    "path_root": str(tmp_path),
+                },
+            }
+        )
+    assert ei.value.error_kind == "policy_denial"
+
+    # After goose agent side effects, no fallback to other providers.
+    monkeypatch.setenv("IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_GOOSE_AGENT", "1")
+    monkeypatch.setenv(
+        "IPFS_ACCELERATE_PY_TASK_WORKER_ALLOWED_LLM_PROVIDERS",
+        "goose_cli,goose_agent,openai",
+    )
+    monkeypatch.setenv("IPFS_ACCELERATE_PY_TASK_WORKER_LLM_GENERATE_LOCAL_FALLBACK", "1")
+    seen: list[str] = []
+
+    def fail_with_side_effects(prompt, *, model_name=None, provider=None, **kwargs):
+        seen.append(str(provider))
+        err = RuntimeError("mid-tool crash")
+        setattr(err, "side_effects_started", True)
+        raise err
+
+    monkeypatch.setattr(llm_router, "generate_text", fail_with_side_effects)
+    with pytest.raises(Exception):
+        p2p_worker._run_llm_generate(
+            {
+                "assigned_worker": "w1",
+                "payload": {
+                    "prompt": "x",
+                    "provider": "goose_cli",
+                    "agent": True,
+                    "allow_side_effects": True,
+                    "cwd": str(tmp_path),
+                    "path_root": str(tmp_path),
+                },
+            }
+        )
+    assert "openai" not in seen
+    assert all("goose" in p for p in seen)
