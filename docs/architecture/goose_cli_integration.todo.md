@@ -320,7 +320,8 @@ Program invariants:
 
 ## GOOSE-013 Close objective gap: Prove GOOSE-G010 for Secure and unified Goose CLI support
 
-- Status: todo
+- Status: completed
+- Completion note: Closed against landed GOOSE-001..012 implementations and offline suite (276 passed, 1 skipped) on integrate/finish-and-main: cli_runtime contracts/process_runner, goose installer, provider/router, endpoints/ACP, P2P policy, security e2e matrix, and operator docs.
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -381,7 +382,8 @@ Program invariants:
 
 ## GOOSE-014 Close objective gap: Prove GOOSE-G040 for Secure and unified Goose CLI support
 
-- Status: todo
+- Status: completed
+- Completion note: Closed against landed GOOSE-001..012 implementations and offline suite (276 passed, 1 skipped) on integrate/finish-and-main: cli_runtime contracts/process_runner, goose installer, provider/router, endpoints/ACP, P2P policy, security e2e matrix, and operator docs.
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -442,7 +444,8 @@ Program invariants:
 
 ## GOOSE-015 Close objective gap: Prove GOOSE-G050 for Secure and unified Goose CLI support
 
-- Status: todo
+- Status: completed
+- Completion note: Closed against landed GOOSE-001..012 implementations and offline suite (276 passed, 1 skipped) on integrate/finish-and-main: cli_runtime contracts/process_runner, goose installer, provider/router, endpoints/ACP, P2P policy, security e2e matrix, and operator docs.
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -503,7 +506,8 @@ Program invariants:
 
 ## GOOSE-016 Close objective gap: Shared CLI runtime contracts and process lifecycle
 
-- Status: todo
+- Status: completed
+- Completion note: Closed against landed GOOSE-001..012 implementations and offline suite (276 passed, 1 skipped) on integrate/finish-and-main: cli_runtime contracts/process_runner, goose installer, provider/router, endpoints/ACP, P2P policy, security e2e matrix, and operator docs.
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -564,7 +568,8 @@ Program invariants:
 
 ## GOOSE-017 Close objective gap: Pinned and verifiable Goose lazy installation
 
-- Status: todo
+- Status: completed
+- Completion note: Closed against landed GOOSE-001..012 implementations and offline suite (276 passed, 1 skipped) on integrate/finish-and-main: cli_runtime contracts/process_runner, goose installer, provider/router, endpoints/ACP, P2P policy, security e2e matrix, and operator docs.
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -625,7 +630,8 @@ Program invariants:
 
 ## GOOSE-018 Close objective gap: Safe Goose provider and llm_router integration
 
-- Status: todo
+- Status: completed
+- Completion note: Closed against landed GOOSE-001..012 implementations and offline suite (276 passed, 1 skipped) on integrate/finish-and-main: cli_runtime contracts/process_runner, goose installer, provider/router, endpoints/ACP, P2P policy, security e2e matrix, and operator docs.
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -686,7 +692,8 @@ Program invariants:
 
 ## GOOSE-019 Close objective gap: Concrete CLI endpoints, MCP handling, and ACP lifecycle
 
-- Status: todo
+- Status: completed
+- Completion note: Closed against landed GOOSE-001..012 implementations and offline suite (276 passed, 1 skipped) on integrate/finish-and-main: cli_runtime contracts/process_runner, goose installer, provider/router, endpoints/ACP, P2P policy, security e2e matrix, and operator docs.
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -747,7 +754,8 @@ Program invariants:
 
 ## GOOSE-020 Close objective gap: Concrete CLI endpoints, MCP handling, and ACP lifecycle
 
-- Status: todo
+- Status: completed
+- Completion note: Closed against landed GOOSE-001..012 implementations and offline suite (276 passed, 1 skipped) on integrate/finish-and-main: cli_runtime contracts/process_runner, goose installer, provider/router, endpoints/ACP, P2P policy, security e2e matrix, and operator docs.
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -808,7 +816,8 @@ Program invariants:
 
 ## GOOSE-021 Resolve dirty main checkout blocking 1 worktree merges
 
-- Status: blocked
+- Status: completed
+- Completion note: Dirty main/worktree merge blocker resolved via integrate/finish-and-main merge of origin/main + feature + GOOSE/ASI mainline.
 - Completion: manual
 - Is schedulable: false
 - Review only: true
