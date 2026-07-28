@@ -46,7 +46,7 @@ from ipfs_accelerate_py.endpoint_usage.schema import (
     UsageVectorEntry,
 )
 
-from .formal_verification_contracts import CanonicalContract
+from .proof.formal_verification_contracts import CanonicalContract
 from .provider_usage import (
     BRIDGE_AUTHORIZES_USAGE,
     BRIDGE_IS_COMPLETION_EVIDENCE,

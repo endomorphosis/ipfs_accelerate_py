@@ -53,7 +53,7 @@ from ipfs_accelerate_py.endpoint_usage.schema import (
     WindowKind,
 )
 
-from .formal_verification_contracts import CanonicalContract
+from .proof.formal_verification_contracts import CanonicalContract
 
 
 SUPERVISOR_USAGE_ENVELOPE_REQUIREMENT_ID: Final[str] = (
