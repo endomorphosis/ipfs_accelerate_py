@@ -20173,10 +20173,29 @@ class PortalImplementationDaemon:
         return path
 
     def _implementation_prompt_policy_appendix(self, task: PortalTask) -> str:
-        """Compatibility hook; all enforcement policy is capsule-bound."""
+        """Admission and output-ownership policy bound into implementer prompts.
 
-        del task
-        return ""
+        Capsule-bound enforcement remains authoritative; this appendix is
+        advisory so first attempts do not discover proposal size limits only
+        after a green pytest run (LIG-016 class failures).
+        """
+
+        outputs = ", ".join(task.outputs) if task.outputs else "(none declared)"
+        return (
+            "## Admission policy (fail-closed)\n"
+            "- Declared Outputs may be files **or directory trees**. Descendants "
+            "of a directory output are in-scope; undeclared paths outside those "
+            "trees are not.\n"
+            "- Proposal admission budgets "
+            f"(patch ≤ {DEFAULT_IMPLEMENTATION_PROPOSAL_PATCH_BYTES} bytes, "
+            f"provider output ≤ {DEFAULT_IMPLEMENTATION_PROPOSAL_OUTPUT_BYTES} bytes, "
+            f"single file ≤ {DEFAULT_IMPLEMENTATION_PROPOSAL_FILE_BYTES} bytes). "
+            "Pytest green does not bypass admission.\n"
+            "- For fixture-heavy integration tasks prefer compact recipes/"
+            "generators over bulk golden dumps that re-emit full envelopes per "
+            "case.\n"
+            f"- Declared Outputs for this task: {outputs}\n"
+        )
 
     def _build_implementation_prompt(self, task: PortalTask, attempt: int) -> str:
         if self._implementation_cancel_requested():
@@ -20248,6 +20267,9 @@ class PortalImplementationDaemon:
                     "## Prior failure review (deterministic)\n"
                     f"{addendum}\n"
                 )
+        policy = str(self._implementation_prompt_policy_appendix(task) or "").strip()
+        if policy:
+            rendered = f"{rendered.rstrip()}\n\n{policy}\n"
         return rendered
 
     def _build_recommended_actions(self, task: PortalTask) -> list[str]:
