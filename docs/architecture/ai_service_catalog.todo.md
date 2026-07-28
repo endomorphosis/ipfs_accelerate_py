@@ -638,7 +638,7 @@ Program invariants:
 
 ## AICAT-027 Build an atomic durable usage ledger and reservation coordinator
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -663,7 +663,7 @@ Program invariants:
 
 ## AICAT-028 Add usage snapshots and usage-aware resolution to ModelManager
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
