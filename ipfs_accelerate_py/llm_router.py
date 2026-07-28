@@ -3999,6 +3999,8 @@ def build_grok_cli_command(
     grok_bin: Optional[str] = None,
     prompt_file: Optional[str | Path] = None,
     always_approve: Optional[bool] = None,
+    permission_mode: Optional[str] = None,
+    tools: Optional[str] = None,
 ) -> list[str]:
     """Return argv for a Grok CLI invocation.
 
@@ -4053,6 +4055,28 @@ def build_grok_cli_command(
     if approve:
         cmd.append("--always-approve")
 
+    if permission_mode is None:
+        if normalized == "agent":
+            permission_mode = (
+                _coalesce_env(
+                    "IPFS_ACCELERATE_AGENT_GROK_PERMISSION_MODE",
+                    "ipfs_accelerate_py_GROK_AGENT_PERMISSION_MODE",
+                    "IPFS_ACCELERATE_PY_GROK_AGENT_PERMISSION_MODE",
+                )
+                or "bypassPermissions"
+            )
+        else:
+            permission_mode = (
+                _coalesce_env(
+                    "ipfs_accelerate_py_GROK_CLI_PERMISSION_MODE",
+                    "IPFS_ACCELERATE_PY_GROK_CLI_PERMISSION_MODE",
+                )
+                or "dontAsk"
+            )
+    normalized_permission_mode = str(permission_mode or "").strip()
+    if normalized_permission_mode:
+        cmd.extend(["--permission-mode", normalized_permission_mode])
+
     if normalized == "chat":
         # Match the generate() provider defaults for headless JSON text.
         cmd.extend(
@@ -4066,6 +4090,14 @@ def build_grok_cli_command(
                 "--verbatim",
             ]
         )
+        if tools is None:
+            tools = os.getenv(
+                "ipfs_accelerate_py_GROK_CLI_TOOLS",
+                os.getenv("IPFS_ACCELERATE_PY_GROK_CLI_TOOLS", ""),
+            )
+        cmd.extend(["--tools", str(tools or "")])
+    else:
+        cmd.extend(["--output-format", "plain"])
 
     if prompt_file is not None:
         cmd.extend(["--prompt-file", str(Path(prompt_file).expanduser())])
