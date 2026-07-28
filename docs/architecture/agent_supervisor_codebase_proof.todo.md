@@ -362,7 +362,7 @@ Normative:
 
 ## CBP-110 Semantic-roundtrip residual/structural bridge
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Priority: P1
 - Track: srt-vertical
