@@ -278,7 +278,7 @@ Program invariants:
 - Track: goose-worker-security
 - Depends on: GOOSE-008, GOOSE-009, GOOSE-010
 - Goal id: GOOSE-G050
-- Outputs: test/test_goose_cli_security_e2e.py
+- Outputs: test/test_goose_cli_security_e2e.py, test/test_cli_runtime_contracts.py
 - Validation: python -m pytest test/test_cli_runtime_contracts.py test/test_cli_runtime_process_runner.py test/test_goose_installer.py test/test_goose_cli_provider.py test/test_llm_router_goose.py test/test_cli_endpoint_factory.py test/test_goose_cli_endpoint.py test/test_goose_acp_client.py test/test_goose_p2p_policy.py test/test_goose_cli_security_e2e.py test/test_llm_router_integration.py test/test_unified_cli_integration.py -q
 - Board namespace: goose-cli-integration-v1
 - Bundle: llm-cli/goose/security
