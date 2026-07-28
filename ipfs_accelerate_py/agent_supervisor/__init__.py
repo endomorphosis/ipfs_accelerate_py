@@ -5,9 +5,11 @@ The package root re-exports a reviewed public API only; prefer domain package
 imports for new code (see README.md). Retired flat module paths must not be
 reintroduced as long-lived shims.
 
-Cutover goal ASREF-G090 (task ASREF-012) publishes this intentional public
-surface and package map. Parent evidence terms are package goals ASREF-G020
-through ASREF-G080 (see AGENT_SUPERVISOR_PACKAGE_GOAL_EVIDENCE).
+Cutover goal ASREF-G090 (packet tasks ASREF-012 / ASREF-013 / ASREF-014)
+publishes this intentional public surface and package map. Parent evidence
+terms are package goals ASREF-G020 through ASREF-G080 (see
+AGENT_SUPERVISOR_PACKAGE_GOAL_EVIDENCE). Task ASREF-014 closes the evidence
+cluster for ASREF-G060, ASREF-G070, and ASREF-G080.
 """
 
 from types import MappingProxyType as _MappingProxyType
@@ -19,9 +21,22 @@ import sys as _sys
 # ASREF-G090 cutover identity. Objective scanners and discovery manifests may
 # bind this constant to the package-root public API without scraping markdown.
 AGENT_SUPERVISOR_CUTOVER_GOAL_ID = "ASREF-G090"
-AGENT_SUPERVISOR_CUTOVER_TASK_ID = "ASREF-012"
+AGENT_SUPERVISOR_CUTOVER_TASK_ID = "ASREF-014"
 AGENT_SUPERVISOR_CUTOVER_GOAL_PACKET = (
     "goal_packet/cutover/ipfs_accelerate_py/090ea2138c6f"
+)
+# Full goal-packet task set for cutover (shared evidence under ASREF-G090).
+AGENT_SUPERVISOR_CUTOVER_PACKET_TASK_IDS = (
+    "ASREF-012",  # G020–G080 public API / hygiene / cutover
+    "ASREF-013",  # G020–G050 evidence cluster
+    "ASREF-014",  # G060–G080 evidence cluster (this task)
+)
+# ASREF-014 evidence cluster: exact parent package goals still nominated for
+# cutover proof after G020–G050 coverage. Keep literal ASREF-G0xx tokens.
+AGENT_SUPERVISOR_EVIDENCE_CLUSTER_G060_G080 = (
+    "ASREF-G060",  # analysis and proof package submodules
+    "ASREF-G070",  # objectives planning validation merge rescue runtime packages
+    "ASREF-G080",  # todo_daemon re-packaging and integrations package
 )
 
 # Package goals that form ASREF-G090 evidence (exact goal-id terms). Keep the
@@ -56,6 +71,36 @@ AGENT_SUPERVISOR_DOMAIN_PACKAGES = (
     "self_improvement",  # ASREF-G070
     "integrations",  # ASREF-G080
     "todo_daemon",  # ASREF-G080
+)
+
+# Package sets per parent evidence goal (ASREF-G090 / ASREF-014 cluster).
+AGENT_SUPERVISOR_G060_PACKAGES = (
+    "analysis",
+    "proof",
+)
+AGENT_SUPERVISOR_G070_PACKAGES = (
+    "objectives",
+    "planning",
+    "validation",
+    "merge",
+    "rescue",
+    "runtime",
+    "self_improvement",
+)
+AGENT_SUPERVISOR_G080_PACKAGES = (
+    "todo_daemon",
+    "integrations",
+)
+AGENT_SUPERVISOR_PACKAGE_GOAL_TO_PACKAGES = _MappingProxyType(
+    {
+        "ASREF-G020": ("core",),
+        "ASREF-G030": ("control",),
+        "ASREF-G040": ("task_sources",),
+        "ASREF-G050": ("context", "prompt"),
+        "ASREF-G060": AGENT_SUPERVISOR_G060_PACKAGES,
+        "ASREF-G070": AGENT_SUPERVISOR_G070_PACKAGES,
+        "ASREF-G080": AGENT_SUPERVISOR_G080_PACKAGES,
+    }
 )
 
 # Dual-copied stems that already live under a domain package. Public and lazy
@@ -101,6 +146,138 @@ AGENT_SUPERVISOR_LANDED_MODULE_OWNERS = {
     "multi_supervisor_runner": "runtime",
     "self_improvement_completion": "self_improvement",
 }
+
+# Flat package-root modules still awaiting domain-package moves. Sourced from
+# docs/architecture/asref/move_map.json. This map is cutover *evidence* for
+# ASREF-G060 / ASREF-G070 / ASREF-G080 — it does **not** register import aliases
+# (packages may not exist yet). Child move tasks land modules under the owner
+# package; cutover owns the final no-old-import gate after each land.
+AGENT_SUPERVISOR_PLANNED_MODULE_OWNERS = {
+    # --- ASREF-G060 analysis ---
+    "analysis_ast_index": "analysis",
+    "analysis_cache": "analysis",
+    "analysis_consensus": "analysis",
+    "analysis_contracts": "analysis",
+    "analysis_operation_registry": "analysis",
+    "analysis_pipeline": "analysis",
+    "analysis_retrieval": "analysis",
+    "analysis_transport": "analysis",
+    "analyzer_health": "analysis",
+    "audit_scanner": "analysis",
+    "cache_coordinator": "analysis",
+    "code_evidence_graph": "analysis",
+    "semantic_dependency_graph": "analysis",
+    # --- ASREF-G060 proof ---
+    "code_proof_obligations": "proof",
+    "formal_counterexamples": "proof",
+    "formal_logic_vocabulary": "proof",
+    "formal_verification_cache": "proof",
+    "formal_verification_capabilities": "proof",
+    "formal_verification_contracts": "proof",
+    "formal_verification_policy": "proof",
+    "formal_verification_provider": "proof",
+    "hyperproperty_verification": "proof",
+    "intent_constraint_adapter": "proof",
+    "interface_contract_codegen": "proof",
+    "ir_adapters": "proof",
+    "ir_constraint_compiler": "proof",
+    "ir_registry": "proof",
+    "kernel_verification": "proof",
+    "leanstral_goal_benchmark": "proof",
+    "leanstral_goal_development": "proof",
+    "leanstral_goal_lifecycle": "proof",
+    "leanstral_proof_provider": "proof",
+    "legal_constraint_adapter": "proof",
+    "logic_translation_validation": "proof",
+    "multi_prover_resources": "proof",
+    "multi_prover_router": "proof",
+    "proof_attestation": "proof",
+    "proof_context": "proof",
+    "proof_directed_retrieval": "proof",
+    "proof_fallbacks": "proof",
+    "proof_metrics": "proof",
+    "proof_obligation_templates": "proof",
+    "proof_scheduler": "proof",
+    "proof_scope_index": "proof",
+    "protocol_verification": "proof",
+    "prover_conformance": "proof",
+    "prover_evidence_store": "proof",
+    "prover_matrix_registry": "proof",
+    "security_constraint_adapter": "proof",
+    # --- ASREF-G070 remaining flat under package goals ---
+    "adaptive_goal_refiner": "objectives",
+    "bundle_optimizer": "objectives",
+    "bundle_supervisor": "objectives",
+    "goal_completion": "objectives",
+    "goal_coverage": "objectives",
+    "goal_development_contracts": "objectives",
+    "goal_quality": "objectives",
+    "goal_refinement_verification": "objectives",
+    "objective_task_janitor": "objectives",
+    "objective_tracker": "objectives",
+    "scan_receipts": "objectives",
+    "adaptive_planner": "planning",
+    "formal_plan_compiler": "planning",
+    "formal_plan_conformance": "planning",
+    "formal_plan_context": "planning",
+    "formal_plan_validator": "planning",
+    "formal_planning_adversarial": "planning",
+    "formal_planning_contracts": "planning",
+    "formal_replanner": "planning",
+    "plan_evaluator": "planning",
+    "proof_carrying_planner": "planning",
+    "task_proposal_router": "planning",
+    "task_quality": "planning",
+    "scope_adjudication": "validation",
+    "validation_commands": "validation",
+    "validation_runtime": "validation",
+    "validation_scheduler": "validation",
+    "lease_coordination": "merge",
+    "leased_lane": "merge",
+    "merge_queue": "merge",
+    "merge_train": "merge",
+    "recovery_diagnostics": "rescue",
+    "rescue_planner": "rescue",
+    "supervisor_recovery": "rescue",
+    "supervisor_watchdog": "rescue",
+    "artifact_store": "runtime",
+    "event_log": "runtime",
+    "provider_batch_scheduler": "runtime",
+    "resource_scheduler": "runtime",
+    "runtime_cas": "runtime",
+    "runtime_temporal_monitor": "runtime",
+    "scheduler_metrics": "runtime",
+    "self_improvement": "self_improvement",
+    "self_improvement_rollout": "self_improvement",
+    "self_improvement_v2": "self_improvement",
+    "self_improvement_v2_rollout": "self_improvement",
+    "supervisor_efficiency_metrics": "self_improvement",
+    "supervisor_state_model": "self_improvement",
+    "supervisor_token_ledger": "self_improvement",
+    "supervisor_v2_benchmark": "self_improvement",
+    "supervisor_v2_contracts": "self_improvement",
+    # --- ASREF-G080 integrations + remaining daemon runners ---
+    "ipfs_datasets_analysis_provider": "integrations",
+    "ipfs_datasets_logic_provider": "integrations",
+    "llm_merge_resolver_fallback": "integrations",
+    "meta_spark_goose_runner": "integrations",
+    "implementation_daemon_runner": "todo_daemon",
+    "implementation_supervisor_runner": "todo_daemon",
+}
+
+# Landed stems under ASREF-G070 packages (subset of LANDED_MODULE_OWNERS).
+AGENT_SUPERVISOR_G070_LANDED_STEMS = tuple(
+    sorted(
+        stem
+        for stem, owner in AGENT_SUPERVISOR_LANDED_MODULE_OWNERS.items()
+        if owner in AGENT_SUPERVISOR_G070_PACKAGES
+    )
+)
+# Canonical G080 daemon modules already package-native under todo_daemon/.
+AGENT_SUPERVISOR_G080_TODO_DAEMON_STEMS = (
+    "implementation_daemon",
+    "implementation_supervisor",
+)
 
 _ORIGINAL_IMPORTLIB_RELOAD = _importlib.reload
 
@@ -3075,10 +3252,19 @@ __all__.extend(
     for name in (
         "AGENT_SUPERVISOR_CUTOVER_GOAL_ID",
         "AGENT_SUPERVISOR_CUTOVER_GOAL_PACKET",
+        "AGENT_SUPERVISOR_CUTOVER_PACKET_TASK_IDS",
         "AGENT_SUPERVISOR_CUTOVER_TASK_ID",
         "AGENT_SUPERVISOR_DOMAIN_PACKAGES",
+        "AGENT_SUPERVISOR_EVIDENCE_CLUSTER_G060_G080",
+        "AGENT_SUPERVISOR_G060_PACKAGES",
+        "AGENT_SUPERVISOR_G070_LANDED_STEMS",
+        "AGENT_SUPERVISOR_G070_PACKAGES",
+        "AGENT_SUPERVISOR_G080_PACKAGES",
+        "AGENT_SUPERVISOR_G080_TODO_DAEMON_STEMS",
         "AGENT_SUPERVISOR_LANDED_MODULE_OWNERS",
         "AGENT_SUPERVISOR_PACKAGE_GOAL_EVIDENCE",
+        "AGENT_SUPERVISOR_PACKAGE_GOAL_TO_PACKAGES",
+        "AGENT_SUPERVISOR_PLANNED_MODULE_OWNERS",
         "AGENT_SUPERVISOR_V2_EXPORT_MODULES",
         "AGENT_SUPERVISOR_V2_PUBLIC_API_VERSION",
         "AGENT_SUPERVISOR_V2_STABLE_EXPORTS",

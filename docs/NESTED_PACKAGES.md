@@ -11,10 +11,17 @@ move `agent_supervisor` packages into nested product trees or rewrite submodule
 history as part of package-layout moves.
 
 Cutover packet: `goal_packet/cutover/ipfs_accelerate_py/090ea2138c6f`
-(task **ASREF-012**, goal **ASREF-G090**). Package layout evidence for parent
-cutover remains **ASREF-G020**, **ASREF-G030**, **ASREF-G040**, **ASREF-G050**,
-**ASREF-G060**, **ASREF-G070**, and **ASREF-G080** under
-`ipfs_accelerate_py/agent_supervisor/` — not under nested product trees.
+(tasks **ASREF-012**, **ASREF-013**, **ASREF-014**; goal **ASREF-G090**).
+Package layout evidence for parent cutover remains **ASREF-G020**,
+**ASREF-G030**, **ASREF-G040**, **ASREF-G050**, **ASREF-G060**, **ASREF-G070**,
+and **ASREF-G080** under `ipfs_accelerate_py/agent_supervisor/` — not under
+nested product trees.
+
+**ASREF-014** closes the evidence cluster for **ASREF-G060** (analysis/proof),
+**ASREF-G070** (objectives/planning/validation/merge/rescue/runtime/
+self_improvement), and **ASREF-G080** (todo_daemon/integrations) in the
+package README and root `__init__.py` layout constants. Those packages never
+relocate into nested product trees.
 
 | Document role | Path |
 | --- | --- |
@@ -165,10 +172,15 @@ It must **not**:
 | **ASREF-G030** | `control/` | none |
 | **ASREF-G040** | `task_sources/` | none |
 | **ASREF-G050** | `context/`, `prompt/` | none |
-| **ASREF-G060** | `analysis/`, `proof/` | none |
-| **ASREF-G070** | `objectives/`, `planning/`, `validation/`, `merge/`, `rescue/`, `runtime/`, `self_improvement/` | none |
-| **ASREF-G080** | `todo_daemon/`, `integrations/` | none |
+| **ASREF-G060** | `analysis/`, `proof/` (planned dirs; flat modules until move) | none — analysis/proof modules stay in primary package |
+| **ASREF-G070** | `objectives/`, `planning/`, `validation/`, `merge/`, `rescue/`, `runtime/`, `self_improvement/` (landed scaffolds) | none |
+| **ASREF-G080** | `todo_daemon/` (package-native), `integrations/` (planned) | none — external tool bridges stay in primary package |
 | **ASREF-G090** | public API, root hygiene, cutover | documents nested trees; does not absorb them |
+
+ASREF-014 cutover witness for **ASREF-G060** / **ASREF-G070** / **ASREF-G080**
+lives in `ipfs_accelerate_py/agent_supervisor/README.md` and
+`AGENT_SUPERVISOR_EVIDENCE_CLUSTER_G060_G080` /
+`AGENT_SUPERVISOR_PLANNED_MODULE_OWNERS` in the package `__init__.py`.
 
 ## See also
 
