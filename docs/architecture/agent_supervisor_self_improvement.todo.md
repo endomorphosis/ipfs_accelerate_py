@@ -4582,11 +4582,10 @@ planner, and refill behavior defaults to shadow mode.
 
 ## ASI-165 Define hierarchical supervisor usage envelopes and accounting bridge
 
-- Status: blocked
+- Status: todo
 - Completion: manual
 - Is schedulable: true
 - Review only: false
-- Blocked reason: awaiting_external_usage_contracts_AICAT-027_AICAT-029
 - Priority: P0
 - Track: supervisor-usage-accounting
 - Depends on: ASI-094, ASI-112, ASI-114
