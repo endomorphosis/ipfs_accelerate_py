@@ -17,10 +17,16 @@ Parent evidence for this goal is the set of package goals **ASREF-G020**,
 and **ASREF-G080**. This README is the durable map that binds those goals to
 on-disk packages, public imports, root hygiene, and the no-old-import gate.
 
-**ASREF-014 evidence cluster:** this cutover pass closes the missing parent
-terms **ASREF-G060**, **ASREF-G070**, and **ASREF-G080** by naming package
-contracts, landed vs planned module owners, preferred imports, and validation
-hooks in the package root (see `AGENT_SUPERVISOR_EVIDENCE_CLUSTER_G060_G080`).
+**Evidence cluster (ASREF-013):** **ASREF-G020**, **ASREF-G030**,
+**ASREF-G040**, **ASREF-G050** — mirrored by
+`AGENT_SUPERVISOR_EVIDENCE_CLUSTER_G020_G050`, stem inventories
+(`AGENT_SUPERVISOR_G020_CORE_STEMS`, `AGENT_SUPERVISOR_G030_CONTROL_STEMS`,
+`AGENT_SUPERVISOR_G040_TASK_SOURCES_STEMS`,
+`AGENT_SUPERVISOR_G050_PLANNED_FLAT_MODULES`), and the sections below.
+
+**Evidence cluster (ASREF-014):** **ASREF-G060**, **ASREF-G070**, and
+**ASREF-G080** — mirrored by `AGENT_SUPERVISOR_EVIDENCE_CLUSTER_G060_G080`
+and the analysis/ops/daemon sections.
 
 ## Public API (package root)
 
@@ -39,7 +45,16 @@ from ipfs_accelerate_py.agent_supervisor import (
     AGENT_SUPERVISOR_PLANNED_MODULE_OWNERS,
     AGENT_SUPERVISOR_PACKAGE_GOAL_EVIDENCE,
     AGENT_SUPERVISOR_PACKAGE_GOAL_TO_PACKAGES,
+    AGENT_SUPERVISOR_EVIDENCE_CLUSTER_G020_G050,
     AGENT_SUPERVISOR_EVIDENCE_CLUSTER_G060_G080,
+    AGENT_SUPERVISOR_G020_PACKAGES,
+    AGENT_SUPERVISOR_G030_PACKAGES,
+    AGENT_SUPERVISOR_G040_PACKAGES,
+    AGENT_SUPERVISOR_G050_PACKAGES,
+    AGENT_SUPERVISOR_G020_CORE_STEMS,
+    AGENT_SUPERVISOR_G030_CONTROL_STEMS,
+    AGENT_SUPERVISOR_G040_TASK_SOURCES_STEMS,
+    AGENT_SUPERVISOR_G050_PLANNED_FLAT_MODULES,
     AGENT_SUPERVISOR_G060_PACKAGES,
     AGENT_SUPERVISOR_G070_PACKAGES,
     AGENT_SUPERVISOR_G080_PACKAGES,
@@ -64,6 +79,7 @@ Root `__init__.py` rules:
    `AGENT_SUPERVISOR_PLANNED_MODULE_OWNERS`,
    `AGENT_SUPERVISOR_PACKAGE_GOAL_EVIDENCE`,
    `AGENT_SUPERVISOR_PACKAGE_GOAL_TO_PACKAGES`,
+   `AGENT_SUPERVISOR_EVIDENCE_CLUSTER_G020_G050`,
    `AGENT_SUPERVISOR_EVIDENCE_CLUSTER_G060_G080`) are intentional public
    symbols for discovery, cutover gates, and objective evidence scans.
 6. `AGENT_SUPERVISOR_PLANNED_MODULE_OWNERS` is **documentation and scan
@@ -106,16 +122,23 @@ Still largely flat at package root until their move batches finish: `context`,
 
 `ASREF-G090` lists package goals as its evidence terms. The cutover packet
 covers them in one cohesive pass by mapping each term to a package contract
-and import style. Runtime mirror:
-`AGENT_SUPERVISOR_PACKAGE_GOAL_EVIDENCE` and
-`AGENT_SUPERVISOR_PACKAGE_GOAL_TO_PACKAGES` in `__init__.py`.
+and import style. Runtime mirrors in `__init__.py`:
+
+- `AGENT_SUPERVISOR_PACKAGE_GOAL_EVIDENCE` — full parent evidence set
+- `AGENT_SUPERVISOR_PACKAGE_GOAL_TO_PACKAGES` — goal id → package names
+- `AGENT_SUPERVISOR_EVIDENCE_CLUSTER_G020_G050` — **ASREF-013** subset
+- `AGENT_SUPERVISOR_EVIDENCE_CLUSTER_G060_G080` — **ASREF-014** subset
+- `AGENT_SUPERVISOR_G020_CORE_STEMS` /
+  `AGENT_SUPERVISOR_G030_CONTROL_STEMS` /
+  `AGENT_SUPERVISOR_G040_TASK_SOURCES_STEMS` /
+  `AGENT_SUPERVISOR_G050_PLANNED_FLAT_MODULES` — G020–G050 inventories
 
 | Evidence term | Bundle | Landed package path(s) | Cutover witness |
 |---|---|---|---|
-| **ASREF-G020** | `asref/core` | `core/` | README + `AGENT_SUPERVISOR_LANDED_MODULE_OWNERS` core stems; no flat `conflict_graph` / `external_completion` dual copies |
-| **ASREF-G030** | `asref/control` | `control/` | Control contracts/plane re-exported from package path; conformance suite |
-| **ASREF-G040** | `asref/task-sources` | `task_sources/` | Markdown/DuckDB/taskboard modules under package; protocol may stay conceptual in core |
-| **ASREF-G050** | `asref/context` (+ prompt) | `context/`, `prompt/` (planned) | Named in domain map; flat `context_*` / `decision_*` / `prompt_*` remain until move tasks land |
+| **ASREF-G020** | `asref/core` | `core/` | Package + README landed; `AGENT_SUPERVISOR_G020_CORE_STEMS`; no flat dual-copy files for those stems |
+| **ASREF-G030** | `asref/control` | `control/` | Package + README landed; control contracts/plane from package path; conformance suite |
+| **ASREF-G040** | `asref/task-sources` | `task_sources/` | Package + README landed; `AGENT_SUPERVISOR_G040_TASK_SOURCES_STEMS`; markdown/DuckDB under package |
+| **ASREF-G050** | `asref/context` (+ prompt) | `context/`, `prompt/` (planned) | Named in domain map + `AGENT_SUPERVISOR_G050_PLANNED_FLAT_MODULES`; flat until move tasks land |
 | **ASREF-G060** | `asref/analysis` (+ proof) | `analysis/`, `proof/` (planned) | Named in domain map + `AGENT_SUPERVISOR_PLANNED_MODULE_OWNERS` analysis/proof stems; flat modules remain until move tasks land |
 | **ASREF-G070** | `asref/objectives` (+ siblings) | `objectives/`, `planning/`, `validation/`, `merge/`, `rescue/`, `runtime/`, `self_improvement/` | Package READMEs + landed module owners; objective graph / proposal validation import package paths |
 | **ASREF-G080** | `asref/todo-daemon` (+ integrations) | `todo_daemon/`, `integrations/` (planned) | Daemon imports already package-native; integrations flat until move (planned owners listed) |
@@ -124,6 +147,232 @@ Child package lanes still own the physical moves for partial rows
 (**ASREF-G050**, remaining **ASREF-G060** / **ASREF-G070** flats /
 **ASREF-G080** integrations split). Cutover owns the **final no-old-import
 gate**, public API map, and root hygiene for merge readiness.
+
+## ASREF-G020 evidence (core)
+
+**Goal:** Create `agent_supervisor/core` with shared contracts, identity,
+events, and task-source protocol modules, README, and updated imports.
+
+**Package constants:** `AGENT_SUPERVISOR_G020_PACKAGES` → `core`.
+
+**Landed stems** (`AGENT_SUPERVISOR_G020_CORE_STEMS`; no flat dual-copy
+files):
+
+| Stem | Path | Role |
+|---|---|---|
+| `conflict_graph` | `core/conflict_graph.py` | Conflict / dependency graph |
+| `external_completion` | `core/external_completion.py` | External completion receipts |
+| `program_behavior` | `core/program_behavior.py` | Program behavior helpers |
+| `submodule_degradation` | `core/submodule_degradation.py` | Submodule degradation policy |
+| `wrapper_utils` | `core/wrapper_utils.py` | Shared wrappers |
+
+**Preferred imports (landed — use these, not retired flat paths):**
+
+```python
+from ipfs_accelerate_py.agent_supervisor.core.conflict_graph import ConflictGraph
+from ipfs_accelerate_py.agent_supervisor.core.external_completion import (
+    ExternalCompletion,  # illustrative — use real symbols
+)
+from ipfs_accelerate_py.agent_supervisor.core.wrapper_utils import ...
+```
+
+**DAG:** `core` is the bottom package. It must **not** import `todo_daemon`,
+`runtime`, `merge`, `rescue`, or `self_improvement`. Package README:
+[core/README.md](./core/README.md).
+
+**No-old-import check for landed G020 stems:**
+
+```bash
+rg -n 'agent_supervisor\.(conflict_graph|external_completion|program_behavior|submodule_degradation|wrapper_utils)\b' \
+  --glob '!**/__pycache__/**' \
+  --glob '!docs/architecture/**' \
+  --glob '!**/core/**'
+```
+
+**Cutover witness for ASREF-G020:** package on disk with README, stem
+inventory, preferred imports, no flat dual-copy files for those stems.
+
+## ASREF-G030 evidence (control)
+
+**Goal:** Create `agent_supervisor/control` for control plane, CLI, contracts,
+lifecycle orchestration, and execution permits with README and hard import
+updates.
+
+**Package constants:** `AGENT_SUPERVISOR_G030_PACKAGES` → `control`.
+
+**Landed stems** (`AGENT_SUPERVISOR_G030_CONTROL_STEMS`):
+
+| Stem | Path | Role |
+|---|---|---|
+| `authorization_logic` | `control/authorization_logic.py` | Authz / delegation policy |
+| `control_cli` | `control/control_cli.py` | Unified agent CLI adapter |
+| `control_contracts` | `control/control_contracts.py` | Operation / request / result types |
+| `control_plane` | `control/control_plane.py` | `SupervisorControlService` |
+| `execution_permit` | `control/execution_permit.py` | Short-lived mutation permits |
+| `lifecycle_orchestrator` | `control/lifecycle_orchestrator.py` | Process lifecycle mutations |
+
+**Preferred imports (landed):**
+
+```python
+from ipfs_accelerate_py.agent_supervisor.control.control_contracts import (
+    Operation,
+    OperationRequest,
+    OperationResult,
+)
+from ipfs_accelerate_py.agent_supervisor.control.control_plane import (
+    SupervisorControlService,
+)
+from ipfs_accelerate_py.agent_supervisor.control.control_cli import (
+    register_agent_cli,
+    run_agent_cli,
+)
+```
+
+**DAG:** `control` may depend on `core` only among domain packages. Package
+README: [control/README.md](./control/README.md).
+
+**Validation (owning goal + cutover suite):**
+
+```bash
+python -m pytest test/api/test_agent_supervisor_control_conformance_v2.py \
+  test/api/test_agent_supervisor_lifecycle_orchestrator.py -q
+```
+
+**No-old-import check for landed G030 stems:**
+
+```bash
+rg -n 'agent_supervisor\.(control_contracts|control_plane|control_cli|authorization_logic|execution_permit|lifecycle_orchestrator)\b' \
+  --glob '!**/__pycache__/**' \
+  --glob '!docs/architecture/**' \
+  --glob '!**/control/**'
+```
+
+**Cutover witness for ASREF-G030:** package + README, stem inventory, root
+eager re-exports of control surface, conformance suite in cutover gate.
+
+## ASREF-G040 evidence (task_sources)
+
+**Goal:** Create `agent_supervisor/task_sources` for Markdown and DuckDB
+projections, taskboard store, persistent queues, and todo vector index with
+README and caller updates.
+
+**Package constants:** `AGENT_SUPERVISOR_G040_PACKAGES` → `task_sources`.
+
+**Landed stems** (`AGENT_SUPERVISOR_G040_TASK_SOURCES_STEMS`):
+
+| Stem | Path | Role |
+|---|---|---|
+| `markdown_task_source` | `task_sources/markdown_task_source.py` | Markdown board projection |
+| `duckdb_task_source` | `task_sources/duckdb_task_source.py` | DuckDB board projection |
+| `task_source` | `task_sources/task_source.py` | Backend-neutral protocol (design home: core) |
+| `taskboard_store` | `task_sources/taskboard_store.py` | Taskboard store |
+| `persistent_task_queue` | `task_sources/persistent_task_queue.py` | Persistent queue |
+| `task_identity` | `task_sources/task_identity.py` | Task identity helpers |
+| `duckdb_state` | `task_sources/duckdb_state.py` | DuckDB state locking |
+| `dataset_store` | `task_sources/dataset_store.py` | Dataset store |
+| `todo_vector_index` | `task_sources/todo_vector_index.py` | Todo vector index |
+
+**Protocol refinement:** keep the backend-neutral protocol design in `core`;
+implementations live in `task_sources`. Until `task_source` relocates under
+`core/`, the protocol module co-resides in `task_sources/` so dual-projection
+code stays coherent.
+
+**Preferred imports (landed):**
+
+```python
+from ipfs_accelerate_py.agent_supervisor.task_sources.markdown_task_source import (
+    MarkdownTaskSource,
+)
+from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_task_source import (
+    DuckDBTaskSource,
+)
+from ipfs_accelerate_py.agent_supervisor.task_sources.task_source import (
+    CanonicalTaskSource,
+)
+from ipfs_accelerate_py.agent_supervisor.task_sources.taskboard_store import (
+    TaskboardStore,
+)
+```
+
+**DAG:** sits above `core`. Package README:
+[task_sources/README.md](./task_sources/README.md).
+
+**Validation (owning goal):**
+
+```bash
+python -m pytest test/api/test_agent_supervisor_markdown_task_source.py \
+  test/api/test_agent_supervisor_duckdb_task_source.py -q
+```
+
+**No-old-import check for landed G040 stems:**
+
+```bash
+rg -n 'agent_supervisor\.(markdown_task_source|duckdb_task_source|task_identity|taskboard_store|persistent_task_queue|todo_vector_index)\b' \
+  --glob '!**/__pycache__/**' \
+  --glob '!docs/architecture/**' \
+  --glob '!**/task_sources/**'
+```
+
+**Cutover witness for ASREF-G040:** package + README, stem inventory,
+preferred imports, no flat dual-copy files for owner-map stems.
+
+## ASREF-G050 evidence (context + prompt)
+
+**Goal:** Create `agent_supervisor/context` and `agent_supervisor/prompt` for
+context compilation, decision runtime, and prompt workflow/scanner/admission
+surfaces with READMEs and import updates.
+
+**Package constants:** `AGENT_SUPERVISOR_G050_PACKAGES` → `context`, `prompt`.
+
+**Planned modules** (still flat at package root until move tasks land;
+`AGENT_SUPERVISOR_G050_PLANNED_FLAT_MODULES` /
+`AGENT_SUPERVISOR_PLANNED_MODULE_OWNERS`):
+
+| Stem | Planned owner | Role |
+|---|---|---|
+| `context_compiler`, `context_contracts` | `context` | Context compilation / contracts |
+| `decision_context`, `decision_contracts` | `context` | Decision context surfaces |
+| `decision_runtime`, `decision_runtime_benchmark`, `decision_runtime_rollout` | `context` | Decision runtime + rollout |
+| `prompt_workflow` | `prompt` | Prompt workflow service |
+| `prompt_directory_scanner` | `prompt` | Prompt directory scanner |
+| `prompt_plan_admission` | `prompt` | Plan admission |
+| `prompt_goal_planner` | `prompt` | Goal planner surface |
+
+**Preferred future imports (after package land):**
+
+```python
+from ipfs_accelerate_py.agent_supervisor.context.context_compiler import (
+    ContextCompiler,  # illustrative — use real symbols after move
+)
+from ipfs_accelerate_py.agent_supervisor.context.decision_runtime import (
+    DecisionRuntime,  # illustrative
+)
+from ipfs_accelerate_py.agent_supervisor.prompt.prompt_workflow import (
+    PromptWorkflowService,  # illustrative
+)
+from ipfs_accelerate_py.agent_supervisor.prompt.prompt_directory_scanner import (
+    PromptDirectoryScanner,  # illustrative
+)
+```
+
+**Until moves land**, callers may still import flat modules at package root
+(e.g. `from ipfs_accelerate_py.agent_supervisor.context_compiler import ...`).
+Those flat paths are **not** the long-term public API. Do not add package
+re-export stubs early.
+
+**DAG:** `prompt` may depend on `context`; not vice versa. Physical package
+creation remains `asref/context` / `asref/prompt` move tasks.
+
+**Validation (owning goal, when packages land):**
+
+```bash
+python -m pytest test/api/test_agent_supervisor_context_compiler.py \
+  test/api/test_agent_supervisor_prompt_workflow_service.py -q
+```
+
+**Cutover witness for ASREF-G050:** package map row + planned owners + this
+section + exact goal id in `AGENT_SUPERVISOR_PACKAGE_GOAL_EVIDENCE` and
+`AGENT_SUPERVISOR_EVIDENCE_CLUSTER_G020_G050`. Child lanes own physical moves.
 
 ## ASREF-G060 evidence (analysis + proof)
 
@@ -408,7 +657,7 @@ During dual-copy windows, `pyproject.toml` / `setup.py` may still point at a
 flat module until the owning move task rewrites entry points in the same
 change as the final flat-file removal.
 
-## Root hygiene (ASREF-G090 / ASREF-006 / ASREF-014)
+## Root hygiene (ASREF-G090 / ASREF-006 / ASREF-013 / ASREF-014)
 
 Monorepo root hygiene is part of cutover readiness. Durable docs:
 
@@ -427,7 +676,7 @@ artifacts**):
   `test_mcp_jsonrpc_conformance.py`) — prefer `test/`; relocation may land in
   a hygiene task with broader edit scope than cutover outputs alone
 
-**ASREF-G060 / G070 / G080 packages never live at monorepo root** — they stay
+**ASREF-G020 … ASREF-G080 packages never live at monorepo root** — they stay
 under `ipfs_accelerate_py/agent_supervisor/` only (see
 `docs/NESTED_PACKAGES.md`).
 
@@ -458,6 +707,9 @@ python -m pytest \
 These cover **ASREF-G080** daemon ports, **ASREF-G030** control conformance,
 **ASREF-G070** objective graph, and **ASREF-G070** proposal validation —
 the shared cutover packet validation surface for `ASREF-G090`.
+**ASREF-G030** is exercised by the conformance suite; **ASREF-G020** /
+**ASREF-G040** are covered by package-path imports used across the same suite;
+**ASREF-G050** is named and inventoried (flat until move lanes land).
 
 Layout evidence CLI:
 
@@ -467,9 +719,20 @@ python scripts/ops/agent_supervisor/asref_multi_lane_launch.py recipe
 ```
 
 Optional focused checks for child package goals (not required by cutover
-packet validation, but useful for G060/G070/G080 lanes):
+packet validation, but useful for G020–G080 lanes):
 
 ```bash
+# ASREF-G020 / event runtime (collect-only smoke)
+python -m pytest test/api/test_agent_supervisor_event_driven_runtime.py -q --collect-only
+
+# ASREF-G040 task sources
+python -m pytest test/api/test_agent_supervisor_markdown_task_source.py \
+  test/api/test_agent_supervisor_duckdb_task_source.py -q
+
+# ASREF-G050 (when context/prompt tests are exercised)
+python -m pytest test/api/test_agent_supervisor_context_compiler.py \
+  test/api/test_agent_supervisor_prompt_workflow_service.py -q
+
 # ASREF-G060 (when analysis/proof tests are exercised)
 python -m pytest test/api/test_agent_supervisor_analysis_pipeline.py \
   test/api/test_agent_supervisor_multi_prover_router.py -q
@@ -481,14 +744,19 @@ python -m pytest test/api/test_agent_supervisor_programmatic_recovery.py -q
 python -m pytest test/api/test_agent_supervisor_implementation_protected_paths.py -q
 ```
 
-## Status (ASREF-014 / ASREF-G090 cutover — G060/G070/G080 cluster + ASREF-008 evidence)
+## Status (ASREF-013 / ASREF-G090 cutover — G020–G050 evidence cluster)
 
 | Acceptance item | Status |
 |---|---|
 | Root `README.md` maps all domain packages | present (this file) |
 | Root `__init__.py` intentional public symbols + package-path resolution | present |
-| Evidence terms **ASREF-G020** … **ASREF-G080** named for parent goal | present (package map + evidence table + constants) |
-| **ASREF-G060** analysis/proof map + planned owners | present (this section + `AGENT_SUPERVISOR_PLANNED_MODULE_OWNERS`) |
+| Evidence terms **ASREF-G020**, **ASREF-G030**, **ASREF-G040**, **ASREF-G050** | present (cluster constants, owners map, package map, stem inventories) |
+| Evidence terms **ASREF-G060** … **ASREF-G080** named for parent goal | present (ASREF-014 cluster + package map) |
+| **ASREF-G020** core package + `AGENT_SUPERVISOR_G020_CORE_STEMS` | present (package on disk; no flat dual-copy files) |
+| **ASREF-G030** control package + conformance suite | present (package path re-exports; cutover gate) |
+| **ASREF-G040** task_sources package + stem inventory | present (package on disk; dual-projection modules under package) |
+| **ASREF-G050** context/prompt planned inventory | present (`AGENT_SUPERVISOR_G050_PLANNED_FLAT_MODULES`; flat until move) |
+| **ASREF-G060** analysis/proof map + planned owners | present (`AGENT_SUPERVISOR_PLANNED_MODULE_OWNERS`) |
 | **ASREF-G070** seven packages + landed stems + preferred imports | present (packages on disk; landed owners wired) |
 | **ASREF-G080** todo_daemon package-native + integrations planned | present (daemon imports; integrations planned owners) |
 | Domain package READMEs for landed packages | present for core/control/task_sources/objectives/planning/validation/merge/rescue/runtime/self_improvement |
@@ -497,7 +765,8 @@ python -m pytest test/api/test_agent_supervisor_implementation_protected_paths.p
 | Multi-lane Grok launch recipe + protected-path wiring (**ASREF-G100**) | present under `scripts/ops/agent_supervisor/` |
 | Nested product trees documented | `docs/NESTED_PACKAGES.md` |
 | Process junk ignored | `.gitignore` (`dashboard.out`, `dashboard.pid`, `err.txt`, …) |
-| No-old-import gate owned by cutover | rg recipes above; landed flat dual-copy **files** removed for owner map stems |
-| Remaining flat modules (context/analysis/proof/prompt/integrations + G070 remainder) | still under child goals **ASREF-G050**, **ASREF-G060**, **ASREF-G070**, **ASREF-G080** |
+| No-old-import gate owned by cutover | rg recipes above; landed flat dual-copy **files** removed for G020/G030/G040 owner map stems |
+| Remaining flat modules for **ASREF-G050** | inventoried; move owned by context/prompt lanes |
+| Remaining flat modules (analysis/proof/integrations + G070 remainder) | still under child goals **ASREF-G060**, **ASREF-G070**, **ASREF-G080** |
 | Entry-point rewrites for remaining flat modules | complete when each owning move task lands |
 | Historical tracked process files / root tests | ignore rules present; untrack/move needs broader path scope than cutover-only outputs |

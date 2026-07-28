@@ -17,6 +17,15 @@ Package layout evidence for parent cutover remains **ASREF-G020**,
 and **ASREF-G080** under `ipfs_accelerate_py/agent_supervisor/` — not under
 nested product trees.
 
+**ASREF-013** closes the evidence cluster for **ASREF-G020** (core),
+**ASREF-G030** (control), **ASREF-G040** (task_sources), and **ASREF-G050**
+(context/prompt) in the package README and root `__init__.py` layout
+constants (`AGENT_SUPERVISOR_EVIDENCE_CLUSTER_G020_G050`,
+`AGENT_SUPERVISOR_G020_CORE_STEMS`, `AGENT_SUPERVISOR_G030_CONTROL_STEMS`,
+`AGENT_SUPERVISOR_G040_TASK_SOURCES_STEMS`,
+`AGENT_SUPERVISOR_G050_PLANNED_FLAT_MODULES`). Those packages never relocate
+into nested product trees.
+
 **ASREF-014** closes the evidence cluster for **ASREF-G060** (analysis/proof),
 **ASREF-G070** (objectives/planning/validation/merge/rescue/runtime/
 self_improvement), and **ASREF-G080** (todo_daemon/integrations) in the
@@ -168,14 +177,22 @@ It must **not**:
 
 | Goal | Packages (under `agent_supervisor/`) | Nested-product interaction |
 | --- | --- | --- |
-| **ASREF-G020** | `core/` | none — stay in primary package |
-| **ASREF-G030** | `control/` | none |
-| **ASREF-G040** | `task_sources/` | none |
-| **ASREF-G050** | `context/`, `prompt/` | none |
+| **ASREF-G020** | `core/` (landed) | none — stay in primary package |
+| **ASREF-G030** | `control/` (landed) | none |
+| **ASREF-G040** | `task_sources/` (landed) | none |
+| **ASREF-G050** | `context/`, `prompt/` (planned; flat modules until move) | none |
 | **ASREF-G060** | `analysis/`, `proof/` (planned dirs; flat modules until move) | none — analysis/proof modules stay in primary package |
 | **ASREF-G070** | `objectives/`, `planning/`, `validation/`, `merge/`, `rescue/`, `runtime/`, `self_improvement/` (landed scaffolds) | none |
 | **ASREF-G080** | `todo_daemon/` (package-native), `integrations/` (planned) | none — external tool bridges stay in primary package |
 | **ASREF-G090** | public API, root hygiene, cutover | documents nested trees; does not absorb them |
+
+ASREF-013 cutover witness for **ASREF-G020** / **ASREF-G030** / **ASREF-G040** /
+**ASREF-G050** lives in `ipfs_accelerate_py/agent_supervisor/README.md` and
+`AGENT_SUPERVISOR_EVIDENCE_CLUSTER_G020_G050` /
+`AGENT_SUPERVISOR_G020_CORE_STEMS` /
+`AGENT_SUPERVISOR_G030_CONTROL_STEMS` /
+`AGENT_SUPERVISOR_G040_TASK_SOURCES_STEMS` /
+`AGENT_SUPERVISOR_G050_PLANNED_FLAT_MODULES` in the package `__init__.py`.
 
 ASREF-014 cutover witness for **ASREF-G060** / **ASREF-G070** / **ASREF-G080**
 lives in `ipfs_accelerate_py/agent_supervisor/README.md` and

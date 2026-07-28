@@ -128,16 +128,18 @@ coverage.xml
 # ---------------------------------------------------------------------------
 # Ephemeral process / runtime junk
 # ASREF-006 monorepo root hygiene + ASREF-G090 cutover readiness
-# (packet tasks ASREF-012 / ASREF-013 / ASREF-014; G060–G080 cluster on ASREF-014)
+# (packet tasks ASREF-012 / ASREF-013 / ASREF-014)
+# ASREF-013 evidence cluster: ASREF-G020 core, ASREF-G030 control,
+# ASREF-G040 task_sources, ASREF-G050 context/prompt — under agent_supervisor/
+# ASREF-014 evidence cluster: ASREF-G060 analysis/proof, ASREF-G070 ops
+# packages, ASREF-G080 todo_daemon/integrations — under agent_supervisor/
 # Keep packaging and human surfaces at the root; do not version process state.
 # Files already tracked before these rules landed may still appear in history
 # until a follow-up `git rm --cached` (outside narrow cutover path scope):
 #   git rm --cached --ignore-unmatch dashboard.out dashboard.pid err.txt
 # Nested product trees are documented in docs/NESTED_PACKAGES.md — never treat
-# them as process junk. Package goals ASREF-G020..ASREF-G080 (including
-# ASREF-G060 analysis/proof, ASREF-G070 ops packages, ASREF-G080 todo_daemon/
-# integrations) live under ipfs_accelerate_py/agent_supervisor/, not as root
-# ephemera.
+# them as process junk. Package goals ASREF-G020..ASREF-G080 live under
+# ipfs_accelerate_py/agent_supervisor/, not as root ephemera.
 # ---------------------------------------------------------------------------
 /dashboard.out
 /dashboard.pid
@@ -171,7 +173,7 @@ state/**/*.wal
 state/**/*.out
 
 # ---------------------------------------------------------------------------
-# Misplaced root one-off tests (prefer test/ — ASREF-G090 / ASREF-014 hygiene)
+# Misplaced root one-off tests (prefer test/ — ASREF-G090 / ASREF-013 / ASREF-014)
 # Do not add new root-level test_*.py. Historical tracked files may remain until
 # an operator moves them under test/ and untracks the root copies:
 #   git mv test_dashboard_sdk.py test/  # when path scope allows
