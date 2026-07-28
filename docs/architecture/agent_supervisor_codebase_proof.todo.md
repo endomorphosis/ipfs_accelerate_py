@@ -338,7 +338,7 @@ Normative:
 
 ## CBP-100 Bundle optimizer locality for obligations and cache
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Priority: P2
 - Track: bundles
