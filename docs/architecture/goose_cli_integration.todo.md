@@ -45,7 +45,7 @@ Program invariants:
 
 ## GOOSE-002 Implement the bounded shared CLI process runner
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
