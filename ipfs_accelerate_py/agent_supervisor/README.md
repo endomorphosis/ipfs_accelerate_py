@@ -17,16 +17,18 @@ Parent evidence for this goal is the set of package goals **ASREF-G020**,
 and **ASREF-G080**. This README is the durable map that binds those goals to
 on-disk packages, public imports, root hygiene, and the no-old-import gate.
 
-**Evidence cluster (ASREF-013):** **ASREF-G020**, **ASREF-G030**,
-**ASREF-G040**, **ASREF-G050** — mirrored by
-`AGENT_SUPERVISOR_EVIDENCE_CLUSTER_G020_G050`, stem inventories
-(`AGENT_SUPERVISOR_G020_CORE_STEMS`, `AGENT_SUPERVISOR_G030_CONTROL_STEMS`,
-`AGENT_SUPERVISOR_G040_TASK_SOURCES_STEMS`,
-`AGENT_SUPERVISOR_G050_PLANNED_FLAT_MODULES`), and the sections below.
+**Foundation layout cluster** (board task **ASREF-013**): domain packages
+**core**, **control**, **task_sources**, **context**+**prompt** — mirrored by
+`AGENT_SUPERVISOR_FOUNDATION_LAYOUT_GOAL_IDS`, stem inventories
+(`AGENT_SUPERVISOR_CORE_STEMS`, `AGENT_SUPERVISOR_CONTROL_STEMS`,
+`AGENT_SUPERVISOR_TASK_SOURCES_STEMS`,
+`AGENT_SUPERVISOR_CONTEXT_PROMPT_PLANNED_MODULES`), and the sections below.
+Board-prefix aliases (`AGENT_SUPERVISOR_G020_*`, …) remain for compatibility.
 
-**Evidence cluster (ASREF-014):** **ASREF-G060**, **ASREF-G070**, and
-**ASREF-G080** — mirrored by `AGENT_SUPERVISOR_EVIDENCE_CLUSTER_G060_G080`
-and the analysis/ops/daemon sections.
+**Operations layout cluster** (board task **ASREF-014**): **analysis**+**proof**,
+operations packages, and **todo_daemon**+**integrations** — mirrored by
+`AGENT_SUPERVISOR_OPERATIONS_LAYOUT_GOAL_IDS` and the analysis/ops/daemon
+sections.
 
 ## Documentation (product vocabulary)
 
@@ -59,28 +61,30 @@ from ipfs_accelerate_py.agent_supervisor import (
     OperationRequest,
     OperationResult,
     SupervisorControlService,
+    # Generation-2 stable control surface
     AGENT_SUPERVISOR_V2_STABLE_EXPORTS,
+    # Domain layout (semantic names — prefer these)
     AGENT_SUPERVISOR_DOMAIN_PACKAGES,
     AGENT_SUPERVISOR_LANDED_MODULE_OWNERS,
     AGENT_SUPERVISOR_PLANNED_MODULE_OWNERS,
-    AGENT_SUPERVISOR_PACKAGE_GOAL_EVIDENCE,
-    AGENT_SUPERVISOR_PACKAGE_GOAL_TO_PACKAGES,
-    AGENT_SUPERVISOR_EVIDENCE_CLUSTER_G020_G050,
-    AGENT_SUPERVISOR_EVIDENCE_CLUSTER_G060_G080,
-    AGENT_SUPERVISOR_G020_PACKAGES,
-    AGENT_SUPERVISOR_G030_PACKAGES,
-    AGENT_SUPERVISOR_G040_PACKAGES,
-    AGENT_SUPERVISOR_G050_PACKAGES,
-    AGENT_SUPERVISOR_G020_CORE_STEMS,
-    AGENT_SUPERVISOR_G030_CONTROL_STEMS,
-    AGENT_SUPERVISOR_G040_TASK_SOURCES_STEMS,
-    AGENT_SUPERVISOR_G050_PLANNED_FLAT_MODULES,
-    AGENT_SUPERVISOR_G060_PACKAGES,
-    AGENT_SUPERVISOR_G070_PACKAGES,
-    AGENT_SUPERVISOR_G080_PACKAGES,
-    AGENT_SUPERVISOR_CUTOVER_GOAL_ID,
-    AGENT_SUPERVISOR_CUTOVER_TASK_ID,
-    AGENT_SUPERVISOR_CUTOVER_PACKET_TASK_IDS,
+    AGENT_SUPERVISOR_DOMAIN_LAYOUT_GOAL_IDS,
+    AGENT_SUPERVISOR_FOUNDATION_LAYOUT_GOAL_IDS,
+    AGENT_SUPERVISOR_OPERATIONS_LAYOUT_GOAL_IDS,
+    AGENT_SUPERVISOR_LAYOUT_GOAL_TO_PACKAGES,
+    AGENT_SUPERVISOR_CORE_PACKAGES,
+    AGENT_SUPERVISOR_CONTROL_PACKAGES,
+    AGENT_SUPERVISOR_TASK_SOURCES_PACKAGES,
+    AGENT_SUPERVISOR_CONTEXT_PROMPT_PACKAGES,
+    AGENT_SUPERVISOR_ANALYSIS_PROOF_PACKAGES,
+    AGENT_SUPERVISOR_OPERATIONS_PACKAGES,
+    AGENT_SUPERVISOR_INTEGRATIONS_DAEMON_PACKAGES,
+    AGENT_SUPERVISOR_CORE_STEMS,
+    AGENT_SUPERVISOR_CONTROL_STEMS,
+    AGENT_SUPERVISOR_TASK_SOURCES_STEMS,
+    AGENT_SUPERVISOR_CONTEXT_PROMPT_PLANNED_MODULES,
+    AGENT_SUPERVISOR_DOMAIN_LAYOUT_CUTOVER_GOAL_ID,
+    AGENT_SUPERVISOR_DOMAIN_LAYOUT_CUTOVER_TASK_ID,
+    AGENT_SUPERVISOR_DOMAIN_LAYOUT_CUTOVER_PACKET_TASK_IDS,
 )
 ```
 
@@ -97,10 +101,10 @@ Root `__init__.py` rules:
 5. Layout constants (`AGENT_SUPERVISOR_DOMAIN_PACKAGES`,
    `AGENT_SUPERVISOR_LANDED_MODULE_OWNERS`,
    `AGENT_SUPERVISOR_PLANNED_MODULE_OWNERS`,
-   `AGENT_SUPERVISOR_PACKAGE_GOAL_EVIDENCE`,
-   `AGENT_SUPERVISOR_PACKAGE_GOAL_TO_PACKAGES`,
-   `AGENT_SUPERVISOR_EVIDENCE_CLUSTER_G020_G050`,
-   `AGENT_SUPERVISOR_EVIDENCE_CLUSTER_G060_G080`) are intentional public
+   `AGENT_SUPERVISOR_DOMAIN_LAYOUT_GOAL_IDS`,
+   `AGENT_SUPERVISOR_LAYOUT_GOAL_TO_PACKAGES`,
+   `AGENT_SUPERVISOR_FOUNDATION_LAYOUT_GOAL_IDS`,
+   `AGENT_SUPERVISOR_OPERATIONS_LAYOUT_GOAL_IDS`) are intentional public
    symbols for discovery, cutover gates, and objective evidence scans.
 6. `AGENT_SUPERVISOR_PLANNED_MODULE_OWNERS` is **documentation and scan
    evidence only** — it does not install import aliases until packages exist.
@@ -144,21 +148,21 @@ Still largely flat at package root until their move batches finish: `context`,
 covers them in one cohesive pass by mapping each term to a package contract
 and import style. Runtime mirrors in `__init__.py`:
 
-- `AGENT_SUPERVISOR_PACKAGE_GOAL_EVIDENCE` — full parent evidence set
-- `AGENT_SUPERVISOR_PACKAGE_GOAL_TO_PACKAGES` — goal id → package names
-- `AGENT_SUPERVISOR_EVIDENCE_CLUSTER_G020_G050` — **ASREF-013** subset
-- `AGENT_SUPERVISOR_EVIDENCE_CLUSTER_G060_G080` — **ASREF-014** subset
-- `AGENT_SUPERVISOR_G020_CORE_STEMS` /
-  `AGENT_SUPERVISOR_G030_CONTROL_STEMS` /
-  `AGENT_SUPERVISOR_G040_TASK_SOURCES_STEMS` /
-  `AGENT_SUPERVISOR_G050_PLANNED_FLAT_MODULES` — G020–G050 inventories
+- `AGENT_SUPERVISOR_DOMAIN_LAYOUT_GOAL_IDS` — full parent evidence set
+- `AGENT_SUPERVISOR_LAYOUT_GOAL_TO_PACKAGES` — goal id → package names
+- `AGENT_SUPERVISOR_FOUNDATION_LAYOUT_GOAL_IDS` — **ASREF-013** subset
+- `AGENT_SUPERVISOR_OPERATIONS_LAYOUT_GOAL_IDS` — **ASREF-014** subset
+- `AGENT_SUPERVISOR_CORE_STEMS` /
+  `AGENT_SUPERVISOR_CONTROL_STEMS` /
+  `AGENT_SUPERVISOR_TASK_SOURCES_STEMS` /
+  `AGENT_SUPERVISOR_CONTEXT_PROMPT_PLANNED_MODULES` — G020–G050 inventories
 
 | Evidence term | Bundle | Landed package path(s) | Cutover witness |
 |---|---|---|---|
-| **ASREF-G020** | `asref/core` | `core/` | Package + README landed; `AGENT_SUPERVISOR_G020_CORE_STEMS`; no flat dual-copy files for those stems |
+| **ASREF-G020** | `asref/core` | `core/` | Package + README landed; `AGENT_SUPERVISOR_CORE_STEMS`; no flat dual-copy files for those stems |
 | **ASREF-G030** | `asref/control` | `control/` | Package + README landed; control contracts/plane from package path; conformance suite |
-| **ASREF-G040** | `asref/task-sources` | `task_sources/` | Package + README landed; `AGENT_SUPERVISOR_G040_TASK_SOURCES_STEMS`; markdown/DuckDB under package |
-| **ASREF-G050** | `asref/context` (+ prompt) | `context/`, `prompt/` (planned) | Named in domain map + `AGENT_SUPERVISOR_G050_PLANNED_FLAT_MODULES`; flat until move tasks land |
+| **ASREF-G040** | `asref/task-sources` | `task_sources/` | Package + README landed; `AGENT_SUPERVISOR_TASK_SOURCES_STEMS`; markdown/DuckDB under package |
+| **ASREF-G050** | `asref/context` (+ prompt) | `context/`, `prompt/` (planned) | Named in domain map + `AGENT_SUPERVISOR_CONTEXT_PROMPT_PLANNED_MODULES`; flat until move tasks land |
 | **ASREF-G060** | `asref/analysis` (+ proof) | `analysis/`, `proof/` (planned) | Named in domain map + `AGENT_SUPERVISOR_PLANNED_MODULE_OWNERS` analysis/proof stems; flat modules remain until move tasks land |
 | **ASREF-G070** | `asref/objectives` (+ siblings) | `objectives/`, `planning/`, `validation/`, `merge/`, `rescue/`, `runtime/`, `self_improvement/` | Package READMEs + landed module owners; objective graph / proposal validation import package paths |
 | **ASREF-G080** | `asref/todo-daemon` (+ integrations) | `todo_daemon/`, `integrations/` (planned) | Daemon imports already package-native; integrations flat until move (planned owners listed) |
@@ -173,9 +177,9 @@ gate**, public API map, and root hygiene for merge readiness.
 **Goal:** Create `agent_supervisor/core` with shared contracts, identity,
 events, and task-source protocol modules, README, and updated imports.
 
-**Package constants:** `AGENT_SUPERVISOR_G020_PACKAGES` → `core`.
+**Package constants:** `AGENT_SUPERVISOR_CORE_PACKAGES` → `core`.
 
-**Landed stems** (`AGENT_SUPERVISOR_G020_CORE_STEMS`; no flat dual-copy
+**Landed stems** (`AGENT_SUPERVISOR_CORE_STEMS`; no flat dual-copy
 files):
 
 | Stem | Path | Role |
@@ -218,9 +222,9 @@ inventory, preferred imports, no flat dual-copy files for those stems.
 lifecycle orchestration, and execution permits with README and hard import
 updates.
 
-**Package constants:** `AGENT_SUPERVISOR_G030_PACKAGES` → `control`.
+**Package constants:** `AGENT_SUPERVISOR_CONTROL_PACKAGES` → `control`.
 
-**Landed stems** (`AGENT_SUPERVISOR_G030_CONTROL_STEMS`):
+**Landed stems** (`AGENT_SUPERVISOR_CONTROL_STEMS`):
 
 | Stem | Path | Role |
 |---|---|---|
@@ -276,9 +280,9 @@ eager re-exports of control surface, conformance suite in cutover gate.
 projections, taskboard store, persistent queues, and todo vector index with
 README and caller updates.
 
-**Package constants:** `AGENT_SUPERVISOR_G040_PACKAGES` → `task_sources`.
+**Package constants:** `AGENT_SUPERVISOR_TASK_SOURCES_PACKAGES` → `task_sources`.
 
-**Landed stems** (`AGENT_SUPERVISOR_G040_TASK_SOURCES_STEMS`):
+**Landed stems** (`AGENT_SUPERVISOR_TASK_SOURCES_STEMS`):
 
 | Stem | Path | Role |
 |---|---|---|
@@ -342,10 +346,10 @@ preferred imports, no flat dual-copy files for owner-map stems.
 context compilation, decision runtime, and prompt workflow/scanner/admission
 surfaces with READMEs and import updates.
 
-**Package constants:** `AGENT_SUPERVISOR_G050_PACKAGES` → `context`, `prompt`.
+**Package constants:** `AGENT_SUPERVISOR_CONTEXT_PROMPT_PACKAGES` → `context`, `prompt`.
 
 **Planned modules** (still flat at package root until move tasks land;
-`AGENT_SUPERVISOR_G050_PLANNED_FLAT_MODULES` /
+`AGENT_SUPERVISOR_CONTEXT_PROMPT_PLANNED_MODULES` /
 `AGENT_SUPERVISOR_PLANNED_MODULE_OWNERS`):
 
 | Stem | Planned owner | Role |
@@ -391,15 +395,15 @@ python -m pytest test/api/test_agent_supervisor_context_compiler.py \
 ```
 
 **Cutover witness for ASREF-G050:** package map row + planned owners + this
-section + exact goal id in `AGENT_SUPERVISOR_PACKAGE_GOAL_EVIDENCE` and
-`AGENT_SUPERVISOR_EVIDENCE_CLUSTER_G020_G050`. Child lanes own physical moves.
+section + exact goal id in `AGENT_SUPERVISOR_DOMAIN_LAYOUT_GOAL_IDS` and
+`AGENT_SUPERVISOR_FOUNDATION_LAYOUT_GOAL_IDS`. Child lanes own physical moves.
 
 ## ASREF-G060 evidence (analysis + proof)
 
 **Goal:** Create `analysis/` and `proof/` packages grouping analysis
 pipeline/cache/AST/retrieval and formal verification/prover modules.
 
-**Package constants:** `AGENT_SUPERVISOR_G060_PACKAGES` → `analysis`, `proof`.
+**Package constants:** `AGENT_SUPERVISOR_ANALYSIS_PROOF_PACKAGES` → `analysis`, `proof`.
 
 **Objective evidence modules (still flat until move tasks land):**
 
@@ -437,8 +441,8 @@ Those flat paths are **not** the long-term public API. Forbidden after land:
 `core` / `analysis` / `proof` must not import `todo_daemon` (DAG).
 
 **Cutover witness for ASREF-G060:** package map row + planned owners + this
-section + exact goal id in `AGENT_SUPERVISOR_PACKAGE_GOAL_EVIDENCE` and
-`AGENT_SUPERVISOR_EVIDENCE_CLUSTER_G060_G080`. Physical package creation remains
+section + exact goal id in `AGENT_SUPERVISOR_DOMAIN_LAYOUT_GOAL_IDS` and
+`AGENT_SUPERVISOR_OPERATIONS_LAYOUT_GOAL_IDS`. Physical package creation remains
 `asref/analysis` / `asref/proof` move tasks.
 
 ## ASREF-G070 evidence (objectives, planning, validation, merge, rescue, runtime, self_improvement)
@@ -446,7 +450,7 @@ section + exact goal id in `AGENT_SUPERVISOR_PACKAGE_GOAL_EVIDENCE` and
 **Goal:** Domain packages for objectives/ops/runtime with READMEs and hard
 import/entry-point updates.
 
-**Package constants:** `AGENT_SUPERVISOR_G070_PACKAGES`.
+**Package constants:** `AGENT_SUPERVISOR_OPERATIONS_PACKAGES`.
 
 **Landed package scaffolds (on disk with README):**
 
@@ -460,7 +464,7 @@ import/entry-point updates.
 | `runtime/` | `multi_supervisor_runner` | [README](./runtime/README.md) |
 | `self_improvement/` | `self_improvement_completion` | [README](./self_improvement/README.md) |
 
-Runtime list: `AGENT_SUPERVISOR_G070_LANDED_STEMS`.
+Runtime list: `AGENT_SUPERVISOR_OPERATIONS_LANDED_STEMS`.
 
 **Preferred imports (landed — use these, not retired flat paths):**
 
@@ -509,7 +513,7 @@ proposal validation tests.
 integration runners into `integrations/`; update console and ops scripts
 without long-lived shims.
 
-**Package constants:** `AGENT_SUPERVISOR_G080_PACKAGES` → `todo_daemon`,
+**Package constants:** `AGENT_SUPERVISOR_INTEGRATIONS_DAEMON_PACKAGES` → `todo_daemon`,
 `integrations`.
 
 ### todo_daemon (package-native today)
@@ -525,7 +529,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor i
 )
 ```
 
-`AGENT_SUPERVISOR_G080_TODO_DAEMON_STEMS` lists the primary entry modules.
+`AGENT_SUPERVISOR_TODO_DAEMON_STEMS` lists the primary entry modules.
 Planned internal subpackages (from the program plan; land via
 `asref/todo-daemon`):
 
@@ -772,10 +776,10 @@ python -m pytest test/api/test_agent_supervisor_implementation_protected_paths.p
 | Root `__init__.py` intentional public symbols + package-path resolution | present |
 | Evidence terms **ASREF-G020**, **ASREF-G030**, **ASREF-G040**, **ASREF-G050** | present (cluster constants, owners map, package map, stem inventories) |
 | Evidence terms **ASREF-G060** … **ASREF-G080** named for parent goal | present (ASREF-014 cluster + package map) |
-| **ASREF-G020** core package + `AGENT_SUPERVISOR_G020_CORE_STEMS` | present (package on disk; no flat dual-copy files) |
+| **ASREF-G020** core package + `AGENT_SUPERVISOR_CORE_STEMS` | present (package on disk; no flat dual-copy files) |
 | **ASREF-G030** control package + conformance suite | present (package path re-exports; cutover gate) |
 | **ASREF-G040** task_sources package + stem inventory | present (package on disk; dual-projection modules under package) |
-| **ASREF-G050** context/prompt planned inventory | present (`AGENT_SUPERVISOR_G050_PLANNED_FLAT_MODULES`; flat until move) |
+| **ASREF-G050** context/prompt planned inventory | present (`AGENT_SUPERVISOR_CONTEXT_PROMPT_PLANNED_MODULES`; flat until move) |
 | **ASREF-G060** analysis/proof map + planned owners | present (`AGENT_SUPERVISOR_PLANNED_MODULE_OWNERS`) |
 | **ASREF-G070** seven packages + landed stems + preferred imports | present (packages on disk; landed owners wired) |
 | **ASREF-G080** todo_daemon package-native + integrations planned | present (daemon imports; integrations planned owners) |

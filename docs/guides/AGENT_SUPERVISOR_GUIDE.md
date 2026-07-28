@@ -181,6 +181,25 @@ alias, `AGENT_SUPERVISOR_V2_EXPORT_MODULES` maps every name to its owner module,
 and `AGENT_SUPERVISOR_V2_PUBLIC_API_VERSION` is `2`. Do not discover v2 by
 walking package modules or treating a private implementation symbol as stable.
 
+### Domain layout constants (semantic names)
+
+Package-root layout inventories use **product package names**, not board
+prefixes. Prefer:
+
+| Prefer | Role |
+| --- | --- |
+| `AGENT_SUPERVISOR_DOMAIN_PACKAGES` | Full domain package list |
+| `AGENT_SUPERVISOR_CORE_PACKAGES` / `_CONTROL_` / `_TASK_SOURCES_` / … | Packages by product role |
+| `AGENT_SUPERVISOR_FOUNDATION_LAYOUT_GOAL_IDS` | Foundation layout evidence cluster |
+| `AGENT_SUPERVISOR_OPERATIONS_LAYOUT_GOAL_IDS` | Operations layout evidence cluster |
+| `AGENT_SUPERVISOR_LAYOUT_GOAL_TO_PACKAGES` | Board goal-id string → packages map |
+| `AGENT_SUPERVISOR_DOMAIN_LAYOUT_CUTOVER_*` | Domain-layout cutover identity |
+
+Deprecated aliases (`AGENT_SUPERVISOR_G020_PACKAGES`,
+`AGENT_SUPERVISOR_EVIDENCE_CLUSTER_G020_G050`, `AGENT_SUPERVISOR_CUTOVER_*`, …)
+still resolve to the same objects. Board identifiers remain string *values*
+(for example `"ASREF-G020"`) for objective scanners.
+
 ```python
 from ipfs_accelerate_py.agent_supervisor import (
     AGENT_SUPERVISOR_V2_EXPORT_MODULES,

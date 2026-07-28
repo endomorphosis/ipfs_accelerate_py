@@ -72,6 +72,12 @@ from ipfs_accelerate_py.agent_supervisor.control.control_plane import (
 
 - **v1 compatibility surface:** existing operation names, request/result records, CLI/MCP tool names.
 - **v2 stable exports:** package-root manifests (`AGENT_SUPERVISOR_V2_STABLE_EXPORTS` and related) for generation-2 contracts.
+- **Domain layout constants (semantic):** package-root names prefer product roles, not board prefixes:
+  - `AGENT_SUPERVISOR_DOMAIN_PACKAGES`, `AGENT_SUPERVISOR_CORE_PACKAGES`, `AGENT_SUPERVISOR_CONTROL_PACKAGES`, …
+  - `AGENT_SUPERVISOR_FOUNDATION_LAYOUT_GOAL_IDS` / `AGENT_SUPERVISOR_OPERATIONS_LAYOUT_GOAL_IDS`
+  - `AGENT_SUPERVISOR_LAYOUT_GOAL_TO_PACKAGES`, `AGENT_SUPERVISOR_DOMAIN_LAYOUT_CUTOVER_*`
+  - Board-prefix spellings (`AGENT_SUPERVISOR_G020_*`, `AGENT_SUPERVISOR_EVIDENCE_CLUSTER_*`) remain as **deprecated aliases**.
+  - Board IDs (`ASREF-G0xx`, `ASREF-0xx`) stay as **string values** for scanners and receipts.
 - Import success is **not** a capability signal; run discovery then capability probes.
 
 Per-package semantic READMEs (purpose, modules, dependency rules):
