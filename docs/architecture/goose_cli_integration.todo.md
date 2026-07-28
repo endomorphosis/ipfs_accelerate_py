@@ -170,7 +170,7 @@ Program invariants:
 
 ## GOOSE-007 Add Goose one-shot endpoint and MCP operations
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
