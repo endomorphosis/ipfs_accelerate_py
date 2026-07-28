@@ -15,6 +15,7 @@ not participate in plan or graph identity.
 from __future__ import annotations
 
 import json
+import re
 from collections import defaultdict
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -520,7 +521,8 @@ _KNOWN_FIELDS: Final = {
             "required_resources", "changed_ast_scopes", "ast_scope_ids",
             "symbol_cids", "tree_cid", "repository_tree_id",
             "acceptance_criteria", "validation_commands", "effects",
-            "preconditions", "events", "evidence_cids", "evidence_ids",
+            "preconditions", "requires_proof", "require_proof", "events",
+            "evidence_cids", "evidence_ids",
             "status", "title", "description", "terminal_states", "deadline",
             "metadata", "schema", "content_id",
         }
@@ -569,12 +571,24 @@ _ABSTRACTED_FIELDS: Final = frozenset(
 
 _UNSUPPORTED_SEMANTIC_FIELDS: Final = {
     "objectives": frozenset(),
-    "tasks": frozenset({"preconditions", "events"}),
+    # Task ``preconditions`` / ``requires_proof`` are compiled when they declare
+    # reviewed ``requires_proof(property_id, assurance)`` forms (CBP-090).
+    # Arbitrary nested event vocabulary remains unsupported.
+    "tasks": frozenset({"events"}),
     "ast": frozenset(),
     "policies": frozenset({"obligations", "permissions", "prohibitions"}),
     "leases": frozenset(),
     "evidence": frozenset(),
 }
+
+_REQUIRES_PROOF_KINDS: Final = frozenset(
+    {"requires_proof", "require_proof", "proof_required", "proof"}
+)
+_REQUIRES_PROOF_STRING_RE: Final = re.compile(
+    r"^requires?_proof\s*\(\s*([^,)]+?)\s*(?:,\s*([^)]+?))?\s*\)$",
+    re.IGNORECASE,
+)
+REQUIRES_PROOF_PRECONDITION_KIND: Final = "requires_proof"
 
 _KNOWN_SUBGOAL_FIELDS: Final = frozenset(
     {
@@ -2486,6 +2500,50 @@ class FormalPlanCompiler:
                         upper_bound=trace_bound,
                     )
                 )
+            # CBP-090: compile requires_proof(property_id, assurance) preconditions.
+            for proof_req in _collect_requires_proof_declarations(
+                record,
+                task_id=task_id,
+                source_id=_source_id(record, "tasks"),
+                issues=issues,
+            ):
+                property_id = proof_req["property_id"]
+                assurance = proof_req["assurance"]
+                evidence_token = content_identity(
+                    {
+                        "kind": REQUIRES_PROOF_PRECONDITION_KIND,
+                        "property_id": property_id,
+                        "assurance": assurance,
+                        "task_id": task_id,
+                    }
+                )
+                proof_formula = atom(
+                    ReviewedPredicate.EVIDENCE_AVAILABLE,
+                    constant(TermSort.EVIDENCE, f"proof:{evidence_token}"),
+                )
+                formulae[proof_formula.formula_id] = proof_formula
+                proof_precondition = Precondition(
+                    precondition_id=content_identity(
+                        {
+                            "kind": REQUIRES_PROOF_PRECONDITION_KIND,
+                            "property_id": property_id,
+                            "assurance": assurance,
+                            "task_id": task_id,
+                        }
+                    ),
+                    formula_id=proof_formula.formula_id,
+                    task_id=task_id,
+                    event_id=event_records[1].event_id,
+                    metadata={
+                        "kind": REQUIRES_PROOF_PRECONDITION_KIND,
+                        "property_id": property_id,
+                        "assurance": assurance,
+                        "required_assurance": assurance,
+                        "predicate": REQUIRES_PROOF_PRECONDITION_KIND,
+                    },
+                )
+                task_preconditions.append(proof_precondition)
+                preconditions.append(proof_precondition)
             deadline = record.get("deadline")
             if deadline not in (None, ""):
                 if (
@@ -3365,6 +3423,252 @@ def _assurance(value: Any) -> AssuranceLevel:
         raise ValueError(f"unsupported assurance level {value!r}") from exc
 
 
+def _coerce_requires_proof_declaration(
+    raw: Any, *, allow_implicit_kind: bool
+) -> dict[str, str] | None:
+    """Return ``{property_id, assurance}`` for a reviewed requires_proof form.
+
+    Returns ``None`` when *raw* is not a requires_proof declaration (caller may
+    treat that as unsupported nested semantics).  Returns a mapping with empty
+    property_id when the shape is recognized but incomplete.
+    """
+
+    if isinstance(raw, str):
+        text = raw.strip()
+        match = _REQUIRES_PROOF_STRING_RE.match(text)
+        if match is None:
+            return None
+        return {
+            "property_id": match.group(1).strip().strip("'\""),
+            "assurance": (match.group(2) or "").strip().strip("'\""),
+        }
+    if not isinstance(raw, Mapping):
+        return None
+    record = _record(raw)
+    kind = str(
+        record.get("kind") or record.get("predicate") or record.get("op") or ""
+    ).strip().lower()
+    if kind:
+        if kind not in _REQUIRES_PROOF_KINDS:
+            return None
+    elif not allow_implicit_kind and record.get("requires_proof") not in (
+        True,
+        "true",
+        1,
+        "1",
+    ):
+        # Nested under ``preconditions`` must declare the kind explicitly.
+        if "property_id" not in record and "property" not in record:
+            return None
+        return None
+    property_id = str(
+        record.get("property_id")
+        or record.get("property")
+        or record.get("code_property_id")
+        or ""
+    ).strip()
+    assurance = str(
+        record.get("assurance")
+        or record.get("required_assurance")
+        or record.get("minimum_assurance")
+        or record.get("minimum_code_assurance")
+        or ""
+    ).strip()
+    return {"property_id": property_id, "assurance": assurance}
+
+
+def _collect_requires_proof_declarations(
+    record: Mapping[str, Any],
+    *,
+    task_id: str,
+    source_id: str,
+    issues: list[CompilationIssue],
+) -> list[dict[str, str]]:
+    """Parse task-level requires_proof declarations into canonical pairs.
+
+    Accepts:
+    - ``requires_proof`` / ``require_proof`` fields (list or single object)
+    - ``preconditions`` entries with ``kind: requires_proof``
+    - string form ``requires_proof(property_id, assurance)``
+
+    Unknown nested precondition shapes fail closed as unsupported semantics.
+    Unknown catalog property ids fail closed.  Omitted assurance defaults to the
+    catalog entry's required assurance when available.
+    """
+
+    from ..proof.code_property_catalog import DEFAULT_CODE_PROPERTY_CATALOG
+
+    catalog = DEFAULT_CODE_PROPERTY_CATALOG
+    collected: list[dict[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+
+    def _emit(path: str, raw: Any, *, allow_implicit_kind: bool) -> None:
+        parsed = _coerce_requires_proof_declaration(
+            raw, allow_implicit_kind=allow_implicit_kind
+        )
+        if parsed is None:
+            issues.append(
+                CompilationIssue(
+                    CompilationIssueCode.UNKNOWN_SEMANTIC,
+                    CompilationIssueSeverity.UNSUPPORTED,
+                    path,
+                    "nested precondition is not a reviewed requires_proof form",
+                    source_id,
+                    "preconditions",
+                    raw,
+                )
+            )
+            return
+        property_id = parsed["property_id"]
+        assurance_text = parsed["assurance"]
+        if not property_id:
+            issues.append(
+                CompilationIssue(
+                    CompilationIssueCode.MISSING_SEMANTICS,
+                    CompilationIssueSeverity.UNSUPPORTED,
+                    path,
+                    "requires_proof precondition is missing property_id",
+                    source_id,
+                    "property_id",
+                    raw,
+                )
+            )
+            return
+        prop = catalog.get(property_id)
+        if prop is None:
+            issues.append(
+                CompilationIssue(
+                    CompilationIssueCode.UNKNOWN_SEMANTIC,
+                    CompilationIssueSeverity.UNSUPPORTED,
+                    path,
+                    f"requires_proof references unknown property_id {property_id!r}",
+                    source_id,
+                    "property_id",
+                    property_id,
+                )
+            )
+            return
+        if not assurance_text:
+            assurance_text = prop.required_assurance.value
+        try:
+            assurance = _assurance(assurance_text)
+        except ValueError:
+            issues.append(
+                CompilationIssue(
+                    CompilationIssueCode.INVALID_RECORD,
+                    CompilationIssueSeverity.ERROR,
+                    path,
+                    f"requires_proof has unsupported assurance {assurance_text!r}",
+                    source_id,
+                    "assurance",
+                    assurance_text,
+                )
+            )
+            return
+        key = (property_id, assurance.value)
+        if key in seen:
+            return
+        seen.add(key)
+        collected.append(
+            {
+                "property_id": property_id,
+                "assurance": assurance.value,
+            }
+        )
+
+    for field_name in ("requires_proof", "require_proof"):
+        raw_field = record.get(field_name)
+        if raw_field in (None, "", {}, []):
+            continue
+        values = _values(raw_field)
+        if not values and raw_field not in (None, "", {}, []):
+            values = (raw_field,)
+        for ordinal, raw in enumerate(values):
+            _emit(
+                f"$.tasks[{task_id}].{field_name}[{ordinal}]",
+                raw,
+                allow_implicit_kind=True,
+            )
+
+    precondition_values = _values(record.get("preconditions"))
+    for ordinal, raw in enumerate(precondition_values):
+        _emit(
+            f"$.tasks[{task_id}].preconditions[{ordinal}]",
+            raw,
+            allow_implicit_kind=False,
+        )
+
+    return collected
+
+
+def is_requires_proof_precondition(precondition: Any) -> bool:
+    """Return True when a plan precondition is a compiled requires_proof gate."""
+
+    if precondition is None:
+        return False
+    metadata: Mapping[str, Any]
+    if isinstance(precondition, Mapping):
+        metadata = precondition.get("metadata") or {}
+        kind = str(
+            metadata.get("kind")
+            or metadata.get("predicate")
+            or precondition.get("kind")
+            or ""
+        ).strip().lower()
+    else:
+        metadata = getattr(precondition, "metadata", None) or {}
+        kind = str(
+            metadata.get("kind") or metadata.get("predicate") or ""
+        ).strip().lower()
+    return kind in _REQUIRES_PROOF_KINDS
+
+
+def requires_proof_precondition_bindings(
+    plan: FormalWorkPlan | Mapping[str, Any] | None,
+) -> tuple[dict[str, str], ...]:
+    """Project compiled requires_proof preconditions as property/assurance pairs."""
+
+    if plan is None:
+        return ()
+    if isinstance(plan, Mapping):
+        preconditions = plan.get("preconditions") or ()
+    else:
+        preconditions = plan.preconditions
+    bindings: list[dict[str, str]] = []
+    for item in preconditions:
+        if not is_requires_proof_precondition(item):
+            continue
+        if isinstance(item, Mapping):
+            metadata = item.get("metadata") or {}
+            precondition_id = str(item.get("precondition_id") or "")
+            task_id = str(item.get("task_id") or "")
+        else:
+            metadata = getattr(item, "metadata", None) or {}
+            precondition_id = str(getattr(item, "precondition_id", "") or "")
+            task_id = str(getattr(item, "task_id", "") or "")
+        property_id = str(
+            metadata.get("property_id") or metadata.get("property") or ""
+        ).strip()
+        assurance = str(
+            metadata.get("assurance")
+            or metadata.get("required_assurance")
+            or ""
+        ).strip()
+        if not property_id or not assurance:
+            continue
+        bindings.append(
+            {
+                "precondition_id": precondition_id,
+                "task_id": task_id,
+                "property_id": property_id,
+                "assurance": assurance,
+                "required_assurance": assurance,
+                "kind": REQUIRES_PROOF_PRECONDITION_KIND,
+            }
+        )
+    return tuple(bindings)
+
+
 def _evidence_kind(value: Any) -> EvidenceRequirementKind:
     if isinstance(value, EvidenceRequirementKind):
         return value
@@ -3573,11 +3877,14 @@ __all__ = [
     "PROMPT_FORMAL_PLAN_INPUT_SCHEMA",
     "PlanCompilationResult",
     "PlanGraphProjection",
+    "REQUIRES_PROOF_PRECONDITION_KIND",
     "compile_formal_plan",
     "compile_formal_plan_duckdb",
     "compile_formal_plan_json",
     "compile_plan_admission",
+    "is_requires_proof_precondition",
     "project_formal_plan_for_admission",
     "prompt_goal_graph_to_formal_input",
+    "requires_proof_precondition_bindings",
     "write_formal_plan_compiler_input_duckdb",
 ]

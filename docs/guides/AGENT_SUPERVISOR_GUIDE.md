@@ -11,8 +11,9 @@ repository and state allowlists, identity and policy bindings, deterministic
 validation, fresh evidence, leases, fencing, and authorization.
 
 For the design rationale and rollout invariants, see the
-[Agent Supervisor Architecture](../architecture/AGENT_SUPERVISOR_ARCHITECTURE.md)
-and
+[Agent Supervisor philosophy](../architecture/AGENT_SUPERVISOR_PHILOSOPHY.md),
+[Architecture](../architecture/AGENT_SUPERVISOR_ARCHITECTURE.md),
+[documentation hub](../architecture/agent_supervisor/README.md), and
 [Self-Improvement Plan](../architecture/AGENT_SUPERVISOR_SELF_IMPROVEMENT_PLAN.md).
 
 ## Installation and entry points
@@ -46,6 +47,50 @@ execution, recovery, and migrations:
 These scripts are execution engines, not competing control APIs. The unified
 service can call their package APIs through registered handlers; it never
 turns a typed operation into a shell string.
+
+## Mental model (short)
+
+1. **Objectives** state durable intent; **taskboards** are drainable projections.  
+2. **Models propose**; validation, leases, and typed evidence **admit**.  
+3. **Domain packages** (`control`, `proof`, `runtime`, …) own code—not board prefixes.  
+4. Discovery ≠ capability ≠ proof (see [philosophy](../architecture/AGENT_SUPERVISOR_PHILOSOPHY.md)).
+
+Package placement and DAG: [Package map](../architecture/agent_supervisor/PACKAGE_MAP.md).  
+Agent fail-closed list: [FOR_AGENTS.md](../architecture/agent_supervisor/FOR_AGENTS.md).
+
+## Implementation provider environment
+
+Implementation daemons select a code-edit provider from the environment.
+Defaults used by multi-lane programs in this repo:
+
+| Role | Variable | Recommended value |
+| --- | --- | --- |
+| Provider selection | `IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER` | `grok` (Grok Build CLI) |
+| Grok model | `IPFS_ACCELERATE_AGENT_GROK_MODEL` | `grok-4.5` |
+| Grok binary | `IPFS_ACCELERATE_AGENT_GROK_BIN` | path to `grok` (e.g. `~/.local/bin/grok`) |
+| Grok permissions | `IPFS_ACCELERATE_AGENT_GROK_PERMISSION_MODE` | `bypassPermissions` for unattended lanes |
+| Codex model (when Codex path is used) | `IPFS_ACCELERATE_AGENT_CODEX_MODEL` | `gpt-5.6-terra` |
+
+Example `implementation.env` for a runtime directory:
+
+```bash
+export IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER=grok
+export IPFS_ACCELERATE_AGENT_GROK_MODEL=grok-4.5
+export IPFS_ACCELERATE_AGENT_GROK_PERMISSION_MODE=bypassPermissions
+export IPFS_ACCELERATE_AGENT_GROK_BIN=/home/barberb/.local/bin/grok
+export IPFS_ACCELERATE_AGENT_CODEX_MODEL=gpt-5.6-terra
+```
+
+Notes:
+
+- `provider=grok` forces the Grok Build path when the CLI is available.  
+- Codex is used when the provider is `codex` / `openai`, or as a fallback when
+  Grok is not selected and `codex` is on `PATH`. Always set
+  `IPFS_ACCELERATE_AGENT_CODEX_MODEL` so fallback does not inherit an unrelated
+  interactive Codex default.  
+- Source the env **before** starting multi-supervisor / daemons; children
+  inherit process environment and do not re-read files unless you wire that
+  yourself.
 
 ## One contract on Python, CLI, and MCP
 

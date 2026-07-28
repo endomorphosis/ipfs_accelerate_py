@@ -80,6 +80,14 @@ REQUIRED_CORE_FIELDS = (
     "failure_behavior",
 )
 
+# CBP-060: when compiling code-proof decision contexts, open obligations and
+# acceptance criteria belong in the invariant core (never optional).
+CODE_PROOF_OBLIGATION_FIRST_CORE_FIELDS = (
+    "obligations",
+    "acceptance",
+    "proof_state",
+)
+
 
 class DecisionContextError(ValueError):
     """A decision context or completeness claim is malformed."""

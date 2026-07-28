@@ -71,6 +71,29 @@ def test_grok_cli_provider_uses_bounded_headless_json_mode(monkeypatch) -> None:
     assert captured["env"]["XAI_API_KEY"] == "alternate-test-key"
 
 
+def test_grok_cli_agent_command_is_noninteractive(tmp_path) -> None:
+    prompt_path = tmp_path / "prompt.txt"
+    prompt_path.write_text("implement the task", encoding="utf-8")
+
+    cmd = llm_router.build_grok_cli_command(
+        mode="agent",
+        workspace=tmp_path,
+        model_name="grok-4.5",
+        max_turns=100_000,
+        grok_bin="grok",
+        prompt_file=prompt_path,
+    )
+
+    assert cmd[cmd.index("--model") + 1] == "grok-4.5"
+    assert cmd[cmd.index("--max-turns") + 1] == "100000"
+    assert cmd[cmd.index("--permission-mode") + 1] == "bypassPermissions"
+    assert cmd[cmd.index("--output-format") + 1] == "plain"
+    assert cmd[cmd.index("--cwd") + 1] == str(tmp_path.resolve())
+    assert cmd[cmd.index("--prompt-file") + 1] == str(prompt_path)
+    assert "--always-approve" in cmd
+    assert "--tools" not in cmd
+
+
 def test_grok_cli_provider_reports_missing_auth(monkeypatch) -> None:
     error = {
         "type": "error",

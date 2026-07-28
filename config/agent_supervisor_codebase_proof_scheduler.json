@@ -6,7 +6,7 @@
   "task_prefix": "## CBP-",
   "board_namespace": "agent-supervisor-codebase-proof-v1",
   "merge_target_branch": "main",
-  "max_lanes": 3,
+  "max_lanes": 5,
   "poll_interval_seconds": 5,
   "daemon_interval_seconds": 300,
   "check_interval_seconds": 60,
@@ -37,6 +37,7 @@
   },
   "resource_hints": {
     "cbp-proof-cache": "cpu-medium",
+    "cbp-evidence": "cpu-small",
     "cbp-obligations": "cpu-medium",
     "cbp-reproof": "cpu-proof-solver",
     "cbp-queries": "cpu-medium",

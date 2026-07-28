@@ -6867,6 +6867,34 @@ def expand_decision_context(
     return compiler.expand_decision_context(parent, request, resolver, **kwargs)
 
 
+
+
+def compile_code_proof_context_capsule(*args: Any, **kwargs: Any) -> Any:
+    """CBP-060: obligation-first context capsule for code-proof agents.
+
+    Delegates to :mod:`code_proof_context` so implementation agents receive
+    open obligations, counterexamples, and digest-only satisfied handles
+    without bulk source by default.
+    """
+
+    from ..proof.code_proof_context import (
+        compile_code_proof_context_capsule as _compile_code_proof_context_capsule,
+    )
+
+    return _compile_code_proof_context_capsule(*args, **kwargs)
+
+
+
+def compile_code_proof_context_delta(*args: Any, **kwargs: Any) -> Any:
+    """CBP-070: proof_delta-only retry context bound to a parent capsule."""
+
+    from ..proof.code_proof_context import (
+        compile_code_proof_context_delta as _compile_code_proof_context_delta,
+    )
+
+    return _compile_code_proof_context_delta(*args, **kwargs)
+
+
 def compile_context_capsule(
     budget: ContextBudget,
     **kwargs: Any,
@@ -7196,6 +7224,8 @@ __all__ = [
     "build_context_capsule",
     "build_context_delta",
     "build_prefix_context",
+    "compile_code_proof_context_capsule",
+    "compile_code_proof_context_delta",
     "compile_context_capsule",
     "compile_decision_context",
     "compile_decision_context_retry",

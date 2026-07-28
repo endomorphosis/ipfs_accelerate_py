@@ -4010,6 +4010,2581 @@ ImplementationEvidence = ImplementationResultEvidence
 FreshImplementationObligations = ImplementationObligationSet
 
 
+# ---------------------------------------------------------------------------
+# CBP-030: obligation compiler with cache-key binding
+# ---------------------------------------------------------------------------
+
+CODE_PROOF_OBLIGATION_COMPILATION_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/code-proof-obligation-compilation@1"
+)
+COMPILED_CODE_PROOF_ITEM_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/compiled-code-proof-item@1"
+)
+CODE_PROOF_COMPILE_REQUEST_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/code-proof-compile-request@1"
+)
+OBLIGATION_COMPILER_PRODUCER_ID = "producer:code-proof-obligation-compiler@1"
+MAX_PREMISE_HANDLE_LENGTH = 256
+_PREMISE_HANDLE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9:._/@+=-]{0,255}$")
+_FORBIDDEN_PREMISE_MARKERS = (
+    "\n",
+    "\r",
+    "\0",
+    "def ",
+    "class ",
+    "import ",
+    "from ",
+    "-----begin",
+    "gold_ir",
+    "gold_body",
+    "repository_dump",
+    "source_dump",
+    "full_source",
+    " monorepo",
+)
+_FORBIDDEN_RESIDUAL_BODY_KEYS = frozenset(
+    {
+        "gold",
+        "gold_ir",
+        "gold_body",
+        "source",
+        "source_text",
+        "source_dump",
+        "repository_dump",
+        "ir_body",
+        "secret",
+        "private_witness",
+        "raw_source",
+    }
+)
+_REPO_WIDE_PREMISE_VALUES = frozenset(
+    {
+        "*",
+        "**",
+        ".",
+        "./",
+        "/",
+        "/*",
+        "/**",
+        "repo",
+        "repository",
+        "repo:*",
+        "repository:*",
+        "tree:*",
+        "all",
+        "entire_repository",
+        "repository_wide",
+        "full_tree",
+    }
+)
+
+# Scope kinds that may feed family-specific obligations.
+_FAMILY_SCOPE_KINDS: Mapping[str, frozenset[ProofScopeKind]] = {
+    "dependency_reachability": frozenset(
+        {ProofScopeKind.IMPORT, ProofScopeKind.QUALIFIED_SYMBOL, ProofScopeKind.CALL}
+    ),
+    "api_contract": frozenset(
+        {ProofScopeKind.INTERFACE, ProofScopeKind.QUALIFIED_SYMBOL}
+    ),
+    "security_property": frozenset(
+        {
+            ProofScopeKind.QUALIFIED_SYMBOL,
+            ProofScopeKind.CALL,
+            ProofScopeKind.STATE_TRANSITION,
+        }
+    ),
+    "semantic_equivalence": frozenset(
+        {
+            ProofScopeKind.QUALIFIED_SYMBOL,
+            ProofScopeKind.INTERFACE,
+            ProofScopeKind.CALL,
+            ProofScopeKind.STATE_TRANSITION,
+        }
+    ),
+    "behavioral_invariant": frozenset(
+        {ProofScopeKind.STATE_TRANSITION, ProofScopeKind.QUALIFIED_SYMBOL}
+    ),
+    "supervisor_lifecycle": frozenset(
+        {ProofScopeKind.QUALIFIED_SYMBOL, ProofScopeKind.CALL}
+    ),
+    "srt_structural": frozenset(
+        {ProofScopeKind.QUALIFIED_SYMBOL, ProofScopeKind.INTERFACE}
+    ),
+    "unsupported": frozenset(
+        {
+            ProofScopeKind.QUALIFIED_SYMBOL,
+            ProofScopeKind.INTERFACE,
+            ProofScopeKind.IMPORT,
+            ProofScopeKind.CALL,
+            ProofScopeKind.STATE_TRANSITION,
+        }
+    ),
+}
+
+# Reviewed template fallbacks when a claim family has no catalog property.
+_FAMILY_FALLBACK_TEMPLATE: Mapping[str, str] = {
+    "dependency_reachability": "dag-acyclicity",
+    "api_contract": "legal-state-transitions",
+    "security_property": "lease-uniqueness-and-fencing",
+    "semantic_equivalence": "projection-equivalence",
+    "behavioral_invariant": "legal-state-transitions",
+    "supervisor_lifecycle": "merge-idempotence",
+    "srt_structural": "projection-equivalence",
+    "unsupported": "unsupported-proof-fail-closed",
+}
+
+
+class PremiseValidationError(ValueError):
+    """Raised when a proposed premise is not a typed, content-addressed handle."""
+
+
+class ObligationCompileStatus(str, Enum):
+    """Compiler disposition for one property request.
+
+    ``unsupported`` and ``not_measured`` must never collapse into each other
+    or into refutation: the former is a reviewed refusal; the latter means the
+    measurement path was not exercised for a still-supported shape.
+    """
+
+    OPEN = "open"
+    UNSUPPORTED = "unsupported"
+    NOT_MEASURED = "not_measured"
+
+
+def premise_set_digest(premise_ids: Sequence[str] | None = ()) -> str:
+    """Content-addressed digest of a closed premise-id set."""
+
+    values = _canonical_strings(premise_ids)
+    return content_identity({"schema": "premise-set@1", "premise_ids": list(values)})
+
+
+def assumption_set_digest(assumption_ids: Sequence[str] | None = ()) -> str:
+    """Content-addressed digest of a closed assumption-id set."""
+
+    values = _canonical_strings(assumption_ids)
+    return content_identity(
+        {"schema": "assumption-set@1", "assumption_ids": list(values)}
+    )
+
+
+def _looks_like_repository_wide_premise(value: str) -> bool:
+    lowered = value.strip().lower()
+    if lowered in _REPO_WIDE_PREMISE_VALUES:
+        return True
+    if lowered.startswith("repository-wide") or lowered.startswith("repo-wide"):
+        return True
+    if lowered.endswith("/**") or lowered.endswith("/*"):
+        return True
+    if "repository_dump" in lowered or "source_dump" in lowered:
+        return True
+    return False
+
+
+def _looks_like_opaque_source_dump(value: str) -> bool:
+    if len(value) > MAX_PREMISE_HANDLE_LENGTH:
+        return True
+    lowered = value.lower()
+    if any(marker in lowered for marker in _FORBIDDEN_PREMISE_MARKERS):
+        return True
+    # Multi-line or whitespace-heavy blobs are dumps, not handles.
+    if any(ch.isspace() and ch not in (" ", "\t") for ch in value):
+        return True
+    if value.count(" ") > 4:
+        return True
+    return False
+
+
+def normalize_premise_ids(
+    values: Any,
+    *,
+    field_name: str = "premise_ids",
+) -> tuple[str, ...]:
+    """Normalize premise handles and reject repository-wide / source dumps.
+
+    Premises must be short content-addressed ids (for example
+    ``premise:sha256:…``).  Full repository source dumps, gold IR bodies, and
+    secrets never become premises.
+    """
+
+    if values is None:
+        raw: Sequence[Any] = ()
+    elif isinstance(values, str):
+        raw = (values,)
+    elif isinstance(values, Sequence) and not isinstance(values, (bytes, bytearray)):
+        raw = values
+    else:
+        raise PremiseValidationError(f"{field_name} must be a sequence of handles")
+
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for item in raw:
+        if isinstance(item, Mapping):
+            # Allow structured premise refs only when they carry an id handle.
+            handle = str(
+                item.get("premise_id")
+                or item.get("id")
+                or item.get("handle")
+                or ""
+            ).strip()
+            forbidden = _FORBIDDEN_RESIDUAL_BODY_KEYS.intersection(
+                {str(key).strip().lower() for key in item}
+            )
+            if forbidden:
+                raise PremiseValidationError(
+                    f"{field_name} rejects opaque body fields: "
+                    + ", ".join(sorted(forbidden))
+                )
+            if not handle:
+                raise PremiseValidationError(
+                    f"{field_name} mapping requires premise_id/id handle"
+                )
+            text = handle
+        else:
+            text = str(item or "").strip()
+        if not text:
+            continue
+        if _looks_like_repository_wide_premise(text):
+            raise PremiseValidationError(
+                f"{field_name} rejects repository-wide source dumps: {text!r}"
+            )
+        if _looks_like_opaque_source_dump(text):
+            raise PremiseValidationError(
+                f"{field_name} rejects opaque source/gold dumps as premises"
+            )
+        if not _PREMISE_HANDLE_RE.match(text):
+            raise PremiseValidationError(
+                f"{field_name} entries must be content-addressed handles "
+                f"(got {text!r})"
+            )
+        if text not in seen:
+            seen.add(text)
+            normalized.append(text)
+    return tuple(sorted(normalized))
+
+
+def normalize_assumption_ids(
+    values: Any,
+    *,
+    field_name: str = "assumption_ids",
+) -> tuple[str, ...]:
+    """Normalize assumption handles with the same dump-rejection policy."""
+
+    return normalize_premise_ids(values, field_name=field_name)
+
+
+def normalize_residual_refs(
+    values: Any,
+    *,
+    field_name: str = "residual_refs",
+) -> tuple[str, ...]:
+    """Extract content-addressed residual-ref handles; never gold IR bodies."""
+
+    if values is None:
+        raw: Sequence[Any] = ()
+    elif isinstance(values, str):
+        raw = (values,)
+    elif isinstance(values, Sequence) and not isinstance(values, (bytes, bytearray)):
+        raw = values
+    else:
+        raise PremiseValidationError(f"{field_name} must be a sequence of residual refs")
+
+    handles: list[str] = []
+    seen: set[str] = set()
+    for item in raw:
+        if isinstance(item, Mapping):
+            keys = {str(key).strip().lower() for key in item}
+            forbidden = _FORBIDDEN_RESIDUAL_BODY_KEYS.intersection(keys)
+            if forbidden:
+                raise PremiseValidationError(
+                    f"{field_name} must not embed gold/source bodies; "
+                    f"forbidden keys: {', '.join(sorted(forbidden))}"
+                )
+            handle = str(
+                item.get("residual_ref_id")
+                or item.get("residual_id")
+                or item.get("id")
+                or item.get("handle")
+                or ""
+            ).strip()
+            if not handle:
+                raise PremiseValidationError(
+                    f"{field_name} mapping requires residual_ref_id handle"
+                )
+        else:
+            handle = str(item or "").strip()
+        if not handle:
+            continue
+        if _looks_like_opaque_source_dump(handle) or _looks_like_repository_wide_premise(
+            handle
+        ):
+            raise PremiseValidationError(
+                f"{field_name} rejects opaque residual bodies; use handles only"
+            )
+        if not _PREMISE_HANDLE_RE.match(handle):
+            raise PremiseValidationError(
+                f"{field_name} entries must be content-addressed handles"
+            )
+        if handle not in seen:
+            seen.add(handle)
+            handles.append(handle)
+    return tuple(sorted(handles))
+
+
+def _normalize_plan_effect_ids(values: Any) -> tuple[str, ...]:
+    if values is None:
+        return ()
+    if isinstance(values, str):
+        values = (values,)
+    if not isinstance(values, Sequence) or isinstance(values, (bytes, bytearray)):
+        raise ValueError("formal_plan_effects must be a sequence")
+    ids: list[str] = []
+    for item in values:
+        if isinstance(item, Mapping):
+            effect_id = str(
+                item.get("effect_id") or item.get("id") or item.get("handle") or ""
+            ).strip()
+        else:
+            effect_id = str(
+                getattr(item, "effect_id", "") or item or ""
+            ).strip()
+        if effect_id:
+            ids.append(effect_id)
+    return _canonical_strings(ids)
+
+
+def _claim_family_value(value: Any) -> str:
+    if value is None:
+        return ""
+    text = str(getattr(value, "value", value) or "").strip().lower().replace("-", "_")
+    return text
+
+
+def _scopes_for_family(
+    scope_set: CodeProofScopeSet,
+    claim_family: str,
+    *,
+    requested_scope_ids: Sequence[str] = (),
+    plan_effect_scope_ids: Sequence[str] = (),
+) -> tuple[CodeProofScope, ...]:
+    """Select non-conservative AST scopes relevant to a claim family."""
+
+    if requested_scope_ids:
+        return _selected_obligation_scopes(scope_set, requested_scope_ids)
+
+    allowed_kinds = _FAMILY_SCOPE_KINDS.get(
+        claim_family,
+        frozenset(
+            {
+                ProofScopeKind.QUALIFIED_SYMBOL,
+                ProofScopeKind.INTERFACE,
+                ProofScopeKind.IMPORT,
+                ProofScopeKind.CALL,
+                ProofScopeKind.STATE_TRANSITION,
+            }
+        ),
+    )
+    plan_ids = set(plan_effect_scope_ids)
+    selected = []
+    for scope in scope_set.scopes:
+        if scope.kind in (ProofScopeKind.CHANGED_PATH, ProofScopeKind.CONSERVATIVE_FILE):
+            continue
+        if scope.conservative:
+            continue
+        if plan_ids and scope.scope_id in plan_ids:
+            selected.append(scope)
+            continue
+        if scope.kind in allowed_kinds:
+            selected.append(scope)
+    # Prefer exact family match; fall back to any non-conservative AST scope.
+    if not selected:
+        selected = [
+            scope
+            for scope in scope_set.scopes
+            if scope.kind
+            not in (ProofScopeKind.CHANGED_PATH, ProofScopeKind.CONSERVATIVE_FILE)
+            and not scope.conservative
+        ]
+    if plan_ids:
+        # Always include plan-mapped scopes when present and non-conservative.
+        by_id = {scope.scope_id: scope for scope in scope_set.scopes}
+        for scope_id in sorted(plan_ids):
+            scope = by_id.get(scope_id)
+            if (
+                scope is not None
+                and not scope.conservative
+                and scope.kind
+                not in (ProofScopeKind.CHANGED_PATH, ProofScopeKind.CONSERVATIVE_FILE)
+                and scope not in selected
+            ):
+                selected.append(scope)
+    return tuple(sorted(selected, key=lambda item: item.scope_id))
+
+
+@dataclass(frozen=True)
+class CodeProofCompileRequest:
+    """One property/family request for the obligation compiler."""
+
+    property_id: str = ""
+    claim_family: str = ""
+    template_id: str = ""
+    template_version: str = ""
+    code_shape: str = ""
+    ast_scope_ids: tuple[str, ...] = ()
+    premise_ids: tuple[str, ...] = ()
+    residual_ref_ids: tuple[str, ...] = ()
+    required_assurance: AssuranceLevel | str = AssuranceLevel.KERNEL_VERIFIED
+    force_not_measured: bool = False
+    metadata: Mapping[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        for name in (
+            "property_id",
+            "claim_family",
+            "template_id",
+            "template_version",
+            "code_shape",
+        ):
+            object.__setattr__(
+                self, name, str(getattr(self, name) or "").strip()
+            )
+        if self.claim_family:
+            object.__setattr__(
+                self,
+                "claim_family",
+                self.claim_family.lower().replace("-", "_"),
+            )
+        object.__setattr__(
+            self,
+            "ast_scope_ids",
+            _canonical_strings(self.ast_scope_ids),
+        )
+        object.__setattr__(
+            self,
+            "premise_ids",
+            normalize_premise_ids(self.premise_ids),
+        )
+        object.__setattr__(
+            self,
+            "residual_ref_ids",
+            normalize_residual_refs(self.residual_ref_ids),
+        )
+        assurance = self.required_assurance
+        if not isinstance(assurance, AssuranceLevel):
+            assurance = AssuranceLevel(str(assurance))
+        object.__setattr__(self, "required_assurance", assurance)
+        object.__setattr__(self, "force_not_measured", bool(self.force_not_measured))
+        object.__setattr__(self, "metadata", _canonical_mapping(self.metadata))
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": CODE_PROOF_COMPILE_REQUEST_SCHEMA,
+            "property_id": self.property_id,
+            "claim_family": self.claim_family,
+            "template_id": self.template_id,
+            "template_version": self.template_version,
+            "code_shape": self.code_shape,
+            "ast_scope_ids": list(self.ast_scope_ids),
+            "premise_ids": list(self.premise_ids),
+            "residual_ref_ids": list(self.residual_ref_ids),
+            "required_assurance": self.required_assurance.value,
+            "force_not_measured": self.force_not_measured,
+            "metadata": dict(self.metadata),
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "CodeProofCompileRequest":
+        if not isinstance(payload, Mapping):
+            raise TypeError("compile request must be a mapping")
+        schema = payload.get("schema")
+        if schema not in (None, "", CODE_PROOF_COMPILE_REQUEST_SCHEMA):
+            raise ValueError(f"unsupported code-proof compile request schema: {schema}")
+        return cls(
+            property_id=str(payload.get("property_id") or ""),
+            claim_family=str(payload.get("claim_family") or ""),
+            template_id=str(payload.get("template_id") or ""),
+            template_version=str(payload.get("template_version") or ""),
+            code_shape=str(payload.get("code_shape") or ""),
+            ast_scope_ids=tuple(payload.get("ast_scope_ids") or ()),
+            premise_ids=tuple(payload.get("premise_ids") or ()),
+            residual_ref_ids=tuple(
+                payload.get("residual_ref_ids") or payload.get("residual_refs") or ()
+            ),
+            required_assurance=payload.get(
+                "required_assurance", AssuranceLevel.KERNEL_VERIFIED
+            ),
+            force_not_measured=bool(payload.get("force_not_measured", False)),
+            metadata=payload.get("metadata") or {},
+        )
+
+
+@dataclass(frozen=True)
+class CompiledCodeProofItem:
+    """One compiled obligation/claim pair with cache-key identity."""
+
+    status: ObligationCompileStatus
+    property_id: str
+    claim_family: str
+    obligation: CodeProofObligation | None
+    claim: Any
+    cache_key_id: str
+    premise_ids: tuple[str, ...] = ()
+    assumption_ids: tuple[str, ...] = ()
+    residual_ref_ids: tuple[str, ...] = ()
+    invalidation_selectors: tuple[Mapping[str, Any], ...] = ()
+    reason_codes: tuple[str, ...] = ()
+    template_id: str = ""
+    catalog_version: str = ""
+    required_assurance: AssuranceLevel = AssuranceLevel.KERNEL_VERIFIED
+    metadata: Mapping[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        status = self.status
+        if not isinstance(status, ObligationCompileStatus):
+            status = ObligationCompileStatus(str(status))
+        object.__setattr__(self, "status", status)
+        for name in (
+            "property_id",
+            "claim_family",
+            "cache_key_id",
+            "template_id",
+            "catalog_version",
+        ):
+            object.__setattr__(self, name, str(getattr(self, name) or "").strip())
+        object.__setattr__(self, "premise_ids", _canonical_strings(self.premise_ids))
+        object.__setattr__(
+            self, "assumption_ids", _canonical_strings(self.assumption_ids)
+        )
+        object.__setattr__(
+            self, "residual_ref_ids", _canonical_strings(self.residual_ref_ids)
+        )
+        object.__setattr__(
+            self, "reason_codes", _canonical_strings(self.reason_codes)
+        )
+        selectors = tuple(
+            dict(item) if isinstance(item, Mapping) else dict(item)
+            for item in (self.invalidation_selectors or ())
+        )
+        object.__setattr__(self, "invalidation_selectors", selectors)
+        assurance = self.required_assurance
+        if not isinstance(assurance, AssuranceLevel):
+            assurance = AssuranceLevel(str(assurance))
+        object.__setattr__(self, "required_assurance", assurance)
+        object.__setattr__(self, "metadata", _canonical_mapping(self.metadata))
+        if self.obligation is not None and not isinstance(
+            self.obligation, CodeProofObligation
+        ):
+            raise TypeError("obligation must be a CodeProofObligation or None")
+
+    @property
+    def item_id(self) -> str:
+        return content_identity(self.to_dict())
+
+    @property
+    def obligation_id(self) -> str:
+        if self.obligation is None:
+            return ""
+        return self.obligation.obligation_id
+
+    @property
+    def claim_id(self) -> str:
+        claim = self.claim
+        if claim is None:
+            return ""
+        if hasattr(claim, "claim_id"):
+            return str(claim.claim_id)
+        if isinstance(claim, Mapping):
+            return str(claim.get("claim_id") or claim.get("content_id") or "")
+        return ""
+
+    def to_dict(self) -> dict[str, Any]:
+        claim_payload: Any
+        if self.claim is None:
+            claim_payload = None
+        elif hasattr(self.claim, "to_record"):
+            claim_payload = self.claim.to_record()
+        elif hasattr(self.claim, "to_dict"):
+            claim_payload = self.claim.to_dict()
+        elif isinstance(self.claim, Mapping):
+            claim_payload = dict(self.claim)
+        else:
+            claim_payload = {"repr": repr(self.claim)}
+        return {
+            "schema": COMPILED_CODE_PROOF_ITEM_SCHEMA,
+            "status": self.status.value,
+            "property_id": self.property_id,
+            "claim_family": self.claim_family,
+            "obligation": (
+                None if self.obligation is None else self.obligation.to_dict()
+            ),
+            "obligation_id": self.obligation_id,
+            "claim": claim_payload,
+            "claim_id": self.claim_id,
+            "cache_key_id": self.cache_key_id,
+            "premise_ids": list(self.premise_ids),
+            "assumption_ids": list(self.assumption_ids),
+            "residual_ref_ids": list(self.residual_ref_ids),
+            "invalidation_selectors": [dict(item) for item in self.invalidation_selectors],
+            "reason_codes": list(self.reason_codes),
+            "template_id": self.template_id,
+            "catalog_version": self.catalog_version,
+            "required_assurance": self.required_assurance.value,
+            "metadata": dict(self.metadata),
+        }
+
+
+@dataclass(frozen=True)
+class CodeProofObligationCompilation:
+    """Result of compiling tree + AST scope (+ plan effects / residual refs)."""
+
+    repository_id: str
+    repository_tree_id: str
+    catalog_version: str
+    catalog_id: str
+    scope_set_id: str
+    items: tuple[CompiledCodeProofItem, ...]
+    premise_digest: str
+    assumption_digest: str
+    premise_ids: tuple[str, ...] = ()
+    assumption_ids: tuple[str, ...] = ()
+    plan_effect_ids: tuple[str, ...] = ()
+    residual_ref_ids: tuple[str, ...] = ()
+    toolchain_id: str = ""
+    policy_id: str = ""
+    task_id: str = ""
+    metadata: Mapping[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        for name in (
+            "repository_id",
+            "repository_tree_id",
+            "catalog_version",
+            "catalog_id",
+            "scope_set_id",
+            "premise_digest",
+            "assumption_digest",
+            "toolchain_id",
+            "policy_id",
+            "task_id",
+        ):
+            object.__setattr__(self, name, str(getattr(self, name) or "").strip())
+        if not self.repository_tree_id:
+            raise ValueError("repository_tree_id is required")
+        if not isinstance(self.items, tuple):
+            object.__setattr__(self, "items", tuple(self.items))
+        for item in self.items:
+            if not isinstance(item, CompiledCodeProofItem):
+                raise TypeError("items must be CompiledCodeProofItem instances")
+        object.__setattr__(self, "premise_ids", _canonical_strings(self.premise_ids))
+        object.__setattr__(
+            self, "assumption_ids", _canonical_strings(self.assumption_ids)
+        )
+        object.__setattr__(
+            self, "plan_effect_ids", _canonical_strings(self.plan_effect_ids)
+        )
+        object.__setattr__(
+            self, "residual_ref_ids", _canonical_strings(self.residual_ref_ids)
+        )
+        object.__setattr__(self, "metadata", _canonical_mapping(self.metadata))
+
+    @property
+    def compilation_id(self) -> str:
+        return content_identity(self.to_dict())
+
+    def by_status(
+        self, status: ObligationCompileStatus | str
+    ) -> tuple[CompiledCodeProofItem, ...]:
+        target = (
+            status
+            if isinstance(status, ObligationCompileStatus)
+            else ObligationCompileStatus(str(status))
+        )
+        return tuple(item for item in self.items if item.status is target)
+
+    def by_family(self, claim_family: str) -> tuple[CompiledCodeProofItem, ...]:
+        family = _claim_family_value(claim_family)
+        return tuple(
+            item for item in self.items if _claim_family_value(item.claim_family) == family
+        )
+
+    def open_obligations(self) -> tuple[CodeProofObligation, ...]:
+        return tuple(
+            item.obligation
+            for item in self.items
+            if item.status is ObligationCompileStatus.OPEN and item.obligation is not None
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": CODE_PROOF_OBLIGATION_COMPILATION_SCHEMA,
+            "repository_id": self.repository_id,
+            "repository_tree_id": self.repository_tree_id,
+            "catalog_version": self.catalog_version,
+            "catalog_id": self.catalog_id,
+            "scope_set_id": self.scope_set_id,
+            "items": [item.to_dict() for item in self.items],
+            "premise_digest": self.premise_digest,
+            "assumption_digest": self.assumption_digest,
+            "premise_ids": list(self.premise_ids),
+            "assumption_ids": list(self.assumption_ids),
+            "plan_effect_ids": list(self.plan_effect_ids),
+            "residual_ref_ids": list(self.residual_ref_ids),
+            "toolchain_id": self.toolchain_id,
+            "policy_id": self.policy_id,
+            "task_id": self.task_id,
+            "metadata": dict(self.metadata),
+        }
+
+    def to_json(self) -> str:
+        return canonical_json(self.to_dict())
+
+
+def _resolve_property_and_family(
+    request: CodeProofCompileRequest,
+    catalog: Any,
+):
+    """Return (property_or_None, property_id, claim_family, template_id, code_shape, assurance)."""
+
+    from .code_claim_contracts import resolve_claim_family
+    from .code_property_catalog import CodeProperty
+
+    prop = None
+    property_id = request.property_id
+    if property_id and catalog is not None:
+        prop = catalog.get(property_id)
+    template_id = request.template_id
+    code_shape = request.code_shape
+    assurance = request.required_assurance
+    claim_family = request.claim_family
+
+    if prop is not None:
+        property_id = prop.property_id
+        template_id = template_id or prop.template_id
+        code_shape = code_shape or prop.code_shape
+        if assurance is None:
+            assurance = prop.required_assurance
+        elif isinstance(assurance, AssuranceLevel) and assurance is AssuranceLevel.KERNEL_VERIFIED:
+            # Prefer the catalog assurance when the request left the default and
+            # the property declares a different bar.
+            assurance = prop.required_assurance or assurance
+        if not claim_family:
+            claim_family = resolve_claim_family(
+                template_id=prop.template_id,
+                invariant_class=prop.invariant_class,
+                property_id=prop.property_id,
+                code_shape=prop.code_shape,
+            ).value
+    elif claim_family:
+        # Prefer a catalog property whose family matches.
+        if catalog is not None:
+            for candidate in getattr(catalog, "properties", ()):
+                if not isinstance(candidate, CodeProperty):
+                    continue
+                family = resolve_claim_family(
+                    template_id=candidate.template_id,
+                    invariant_class=candidate.invariant_class,
+                    property_id=candidate.property_id,
+                    code_shape=candidate.code_shape,
+                ).value
+                if family == claim_family:
+                    prop = candidate
+                    property_id = candidate.property_id
+                    template_id = template_id or candidate.template_id
+                    code_shape = code_shape or candidate.code_shape
+                    assurance = candidate.required_assurance
+                    break
+        if not template_id:
+            template_id = _FAMILY_FALLBACK_TEMPLATE.get(claim_family, "")
+        if not property_id and claim_family:
+            property_id = (
+                f"property:{template_id}"
+                if template_id
+                else f"property:family:{claim_family}"
+            )
+    elif template_id:
+        claim_family = resolve_claim_family(template_id=template_id).value
+        if not property_id:
+            property_id = f"property:{template_id}"
+            if catalog is not None:
+                matched = catalog.get(property_id)
+                if matched is not None:
+                    prop = matched
+                    code_shape = code_shape or matched.code_shape
+                    assurance = matched.required_assurance
+
+    if not claim_family and template_id:
+        claim_family = resolve_claim_family(template_id=template_id).value
+    if not claim_family and property_id:
+        claim_family = resolve_claim_family(property_id=property_id).value
+    if not claim_family:
+        claim_family = "unsupported"
+
+    return prop, property_id, claim_family, template_id, code_shape, assurance
+
+
+def _default_resource_budget() -> dict[str, Any]:
+    return {
+        "wall_time_ms": 30_000,
+        "cpu_time_ms": 20_000,
+        "memory_bytes": 512 * 1024 * 1024,
+        "max_processes": 4,
+        "max_premises": 32,
+        "network_allowed": False,
+    }
+
+
+def compiled_obligation_cache_identity(
+    *,
+    property_id: str,
+    catalog_version: str,
+    catalog_id: str = "",
+    repository_tree_id: str,
+    ast_scope_ids: Sequence[str],
+    premise_ids: Sequence[str],
+    assumption_ids: Sequence[str],
+    residual_ref_ids: Sequence[str] = (),
+    toolchain_id: str,
+    policy_id: str,
+    required_assurance: AssuranceLevel | str,
+    template_id: str = "",
+    template_version: str = "",
+    template_semantic_hash: str = "",
+    obligation_id: str = "",
+) -> str:
+    """Deterministic cache-key identity for a compiled obligation binding.
+
+    Binds property/catalog version, tree/scope, premise/assumption digests,
+    toolchain, policy, and required assurance — the G015/G050 identity surface.
+    """
+
+    assurance = (
+        required_assurance
+        if isinstance(required_assurance, AssuranceLevel)
+        else AssuranceLevel(str(required_assurance))
+    )
+    premises = _canonical_strings(premise_ids)
+    assumptions = _canonical_strings(assumption_ids)
+    residuals = _canonical_strings(residual_ref_ids)
+    scopes = _canonical_strings(ast_scope_ids)
+    return content_identity(
+        {
+            "schema": CODE_OBLIGATION_CACHE_KEY_SCHEMA,
+            "property_id": str(property_id or "").strip(),
+            "catalog_version": str(catalog_version or "").strip(),
+            "catalog_id": str(catalog_id or "").strip(),
+            "repository_tree_id": str(repository_tree_id or "").strip(),
+            "ast_scope_ids": list(scopes),
+            "premise_digest": premise_set_digest(premises),
+            "assumption_digest": assumption_set_digest(assumptions),
+            "residual_ref_ids": list(residuals),
+            "toolchain_id": str(toolchain_id or "").strip(),
+            "policy_id": str(policy_id or "").strip(),
+            "required_assurance": assurance.value,
+            "template_id": str(template_id or "").strip(),
+            "template_version": str(template_version or "").strip(),
+            "template_semantic_hash": str(template_semantic_hash or "").strip(),
+            "obligation_id": str(obligation_id or "").strip(),
+        }
+    )
+
+
+def _build_not_measured_or_unsupported_claim(
+    *,
+    status: ObligationCompileStatus,
+    property_id: str,
+    claim_family: str,
+    repository_id: str,
+    repository_tree_id: str,
+    scope_ids: Sequence[str],
+    premise_ids: Sequence[str],
+    assumption_ids: Sequence[str],
+    residual_ref_ids: Sequence[str],
+    toolchain_id: str,
+    policy_id: str,
+    catalog_version: str,
+    template_id: str,
+    required_assurance: AssuranceLevel,
+    statement: str,
+    metadata: Mapping[str, Any],
+):
+    from .code_claim_contracts import (
+        ClaimFamily,
+        ClaimStatus,
+        CodeClaimRecord,
+        build_invalidation_selectors,
+    )
+
+    family = ClaimFamily(claim_family) if claim_family else ClaimFamily.UNSUPPORTED
+    claim_status = (
+        ClaimStatus.UNSUPPORTED
+        if status is ObligationCompileStatus.UNSUPPORTED
+        else ClaimStatus.NOT_MEASURED
+    )
+    # Unsupported family with unsupported status is valid without obligation_id
+    # only when family is UNSUPPORTED; otherwise bind a property handle.
+    selectors = build_invalidation_selectors(
+        repository_tree_id=repository_tree_id,
+        scope_ids=scope_ids,
+        premise_ids=premise_ids,
+        assumption_ids=assumption_ids,
+        toolchain_id=toolchain_id,
+        policy_id=policy_id,
+        catalog_version=catalog_version,
+        property_id=property_id,
+        producer_id=OBLIGATION_COMPILER_PRODUCER_ID,
+        required_assurance=required_assurance,
+    )
+    meta = dict(metadata)
+    if residual_ref_ids:
+        meta["residual_ref_ids"] = list(residual_ref_ids)
+    meta["compile_status"] = status.value
+    return CodeClaimRecord(
+        claim_family=family,
+        status=claim_status,
+        property_id=property_id or f"property:family:{family.value}",
+        obligation_id="",
+        repository_id=repository_id,
+        repository_tree_id=repository_tree_id,
+        scope_ids=tuple(scope_ids),
+        premise_ids=tuple(premise_ids),
+        assumption_ids=tuple(assumption_ids),
+        producer_id=OBLIGATION_COMPILER_PRODUCER_ID,
+        toolchain_id=toolchain_id,
+        policy_id=policy_id,
+        catalog_version=catalog_version,
+        required_assurance=required_assurance,
+        derived_assurance=AssuranceLevel.UNVERIFIED,
+        invalidation_selectors=selectors,
+        statement=statement,
+        template_id=template_id,
+        metadata=meta,
+    )
+
+
+def compile_code_proof_obligations(
+    scope_set: CodeProofScopeSet | None = None,
+    *,
+    repository_tree_id: str,
+    repository_id: str = "",
+    candidate_diff: Any = None,
+    property_ids: Sequence[str] = (),
+    claim_families: Sequence[str] = (),
+    requests: Sequence[CodeProofCompileRequest | Mapping[str, Any]] = (),
+    catalog: Any = None,
+    formal_plan_effects: Sequence[Any] = (),
+    effect_scope_map: Mapping[str, Sequence[str]] | None = None,
+    residual_refs: Sequence[Any] = (),
+    premise_ids: Sequence[str] = (),
+    assumption_ids: Sequence[str] = (),
+    toolchain_id: str = "",
+    policy_id: str = "",
+    translator_id: str = "translator:default",
+    solver_id: str = "solver:default",
+    kernel_id: str = "kernel:default",
+    theorem_registry_id: str = "registry:default",
+    resource_budget: Any = None,
+    task_id: str = "",
+    required_assurance: AssuranceLevel | str | None = None,
+    registry: ProofObligationTemplateRegistry = DEFAULT_TEMPLATE_REGISTRY,
+    metadata: Mapping[str, Any] | None = None,
+) -> CodeProofObligationCompilation:
+    """Compile tree + changed AST scope (+ plan effects / residual refs).
+
+    Emits typed claim records with explicit premise/assumption ids and
+    invalidation selectors.  Unsupported and not-measured dispositions remain
+    distinct.  Cache-key identity binds property/catalog version, tree/scope,
+    premise/assumption digests, toolchain, policy, and required assurance.
+    Repository-wide source dumps are rejected as premises.
+    """
+
+    from .code_claim_contracts import (
+        ClaimFamily,
+        ClaimStatus,
+        claim_from_obligation,
+        resolve_claim_family,
+    )
+    from .code_property_catalog import (
+        DEFAULT_CODE_PROPERTY_CATALOG,
+        CodePropertyCatalog,
+    )
+
+    tree_id = str(repository_tree_id or "").strip()
+    if not tree_id:
+        raise ValueError("repository_tree_id is required")
+
+    if scope_set is None:
+        if candidate_diff is None:
+            raise ValueError("scope_set or candidate_diff is required")
+        scope_set = compile_candidate_proof_scopes(candidate_diff)
+    if not isinstance(scope_set, CodeProofScopeSet):
+        raise TypeError("scope_set must be a CodeProofScopeSet")
+
+    if catalog is None:
+        catalog = DEFAULT_CODE_PROPERTY_CATALOG
+    if not isinstance(catalog, CodePropertyCatalog):
+        raise TypeError("catalog must be a CodePropertyCatalog")
+
+    global_premises = normalize_premise_ids(premise_ids)
+    global_assumptions = normalize_assumption_ids(assumption_ids)
+    residual_handles = normalize_residual_refs(residual_refs)
+    plan_effect_ids = _normalize_plan_effect_ids(formal_plan_effects)
+
+    plan_effect_scope_ids: list[str] = []
+    if effect_scope_map:
+        if not isinstance(effect_scope_map, Mapping):
+            raise ValueError("effect_scope_map must be a mapping")
+        for effect_id, scope_ids in effect_scope_map.items():
+            if plan_effect_ids and str(effect_id).strip() not in set(plan_effect_ids):
+                continue
+            plan_effect_scope_ids.extend(
+                str(scope_id).strip()
+                for scope_id in (scope_ids or ())
+                if str(scope_id).strip()
+            )
+    plan_effect_scope_ids_t = _canonical_strings(plan_effect_scope_ids)
+
+    # Plan effect ids are typed handles and may participate as premises.
+    if plan_effect_ids:
+        global_premises = normalize_premise_ids(
+            (*global_premises, *(f"plan-effect:{eid}" for eid in plan_effect_ids))
+        )
+    if residual_handles:
+        # Residual refs are premise handles only — never gold bodies.
+        global_premises = normalize_premise_ids(
+            (*global_premises, *residual_handles)
+        )
+
+    compile_requests: list[CodeProofCompileRequest] = []
+    for raw in requests:
+        if isinstance(raw, CodeProofCompileRequest):
+            compile_requests.append(raw)
+        elif isinstance(raw, Mapping):
+            compile_requests.append(CodeProofCompileRequest.from_dict(raw))
+        else:
+            raise TypeError("requests entries must be mappings or CodeProofCompileRequest")
+
+    for property_id in _canonical_strings(property_ids):
+        compile_requests.append(CodeProofCompileRequest(property_id=property_id))
+    for family in _canonical_strings(claim_families):
+        compile_requests.append(
+            CodeProofCompileRequest(claim_family=_claim_family_value(family))
+        )
+
+    # Residual-ref hook: ensure an SRT structural request when residuals present
+    # and the caller did not already request one.
+    if residual_handles and not any(
+        req.claim_family == "srt_structural" or "residual" in req.property_id
+        for req in compile_requests
+    ):
+        compile_requests.append(
+            CodeProofCompileRequest(
+                claim_family="srt_structural",
+                residual_ref_ids=residual_handles,
+                metadata={"residual_ref_hook": True},
+            )
+        )
+
+    if not compile_requests:
+        # Default: open every catalog property against available scopes.
+        for prop in catalog.properties:
+            compile_requests.append(
+                CodeProofCompileRequest(property_id=prop.property_id)
+            )
+
+    toolchain = str(toolchain_id or "").strip()
+    policy = str(policy_id or "").strip()
+    default_assurance = (
+        AssuranceLevel(str(required_assurance))
+        if required_assurance is not None
+        else AssuranceLevel.KERNEL_VERIFIED
+    )
+    budget = resource_budget if resource_budget is not None else _default_resource_budget()
+
+    items: list[CompiledCodeProofItem] = []
+    for request in compile_requests:
+        (
+            prop,
+            property_id,
+            claim_family,
+            template_id,
+            code_shape,
+            assurance,
+        ) = _resolve_property_and_family(request, catalog)
+        if assurance is None:
+            assurance = default_assurance
+        if not isinstance(assurance, AssuranceLevel):
+            assurance = AssuranceLevel(str(assurance))
+
+        item_premises = normalize_premise_ids(
+            (*global_premises, *request.premise_ids, *request.residual_ref_ids)
+        )
+        item_residuals = normalize_residual_refs(
+            (*residual_handles, *request.residual_ref_ids)
+        )
+        item_assumptions = global_assumptions
+        reason_codes: list[str] = []
+
+        # Force not-measured path (measurement out of bounds / not executed).
+        if request.force_not_measured:
+            claim = _build_not_measured_or_unsupported_claim(
+                status=ObligationCompileStatus.NOT_MEASURED,
+                property_id=property_id,
+                claim_family=claim_family,
+                repository_id=repository_id,
+                repository_tree_id=tree_id,
+                scope_ids=request.ast_scope_ids,
+                premise_ids=item_premises,
+                assumption_ids=item_assumptions,
+                residual_ref_ids=item_residuals,
+                toolchain_id=toolchain,
+                policy_id=policy,
+                catalog_version=catalog.catalog_version,
+                template_id=template_id,
+                required_assurance=assurance,
+                statement=f"not measured: {property_id or claim_family}",
+                metadata={
+                    **dict(request.metadata),
+                    "reason": "force_not_measured",
+                },
+            )
+            cache_key_id = compiled_obligation_cache_identity(
+                property_id=property_id,
+                catalog_version=catalog.catalog_version,
+                catalog_id=catalog.catalog_id,
+                repository_tree_id=tree_id,
+                ast_scope_ids=request.ast_scope_ids,
+                premise_ids=item_premises,
+                assumption_ids=item_assumptions,
+                residual_ref_ids=item_residuals,
+                toolchain_id=toolchain,
+                policy_id=policy,
+                required_assurance=assurance,
+                template_id=template_id,
+            )
+            items.append(
+                CompiledCodeProofItem(
+                    status=ObligationCompileStatus.NOT_MEASURED,
+                    property_id=property_id,
+                    claim_family=claim_family,
+                    obligation=None,
+                    claim=claim,
+                    cache_key_id=cache_key_id,
+                    premise_ids=item_premises,
+                    assumption_ids=item_assumptions,
+                    residual_ref_ids=item_residuals,
+                    invalidation_selectors=tuple(
+                        selector.to_dict() for selector in claim.invalidation_selectors
+                    ),
+                    reason_codes=("not_measured", "force_not_measured"),
+                    template_id=template_id,
+                    catalog_version=catalog.catalog_version,
+                    required_assurance=assurance,
+                    metadata=dict(request.metadata),
+                )
+            )
+            continue
+
+        # Unsupported shape / template path.
+        is_unsupported = (
+            claim_family == ClaimFamily.UNSUPPORTED.value
+            or template_id == "unsupported-proof-fail-closed"
+            or (
+                prop is not None
+                and prop.code_shape
+                == ReviewedCodeShape.UNSUPPORTED_PROOF_FAIL_CLOSED.value
+            )
+        )
+        if is_unsupported and not request.ast_scope_ids and not template_id:
+            template_id = "unsupported-proof-fail-closed"
+
+        selected_scopes: tuple[CodeProofScope, ...] = ()
+        scope_error: str | None = None
+        try:
+            selected_scopes = _scopes_for_family(
+                scope_set,
+                claim_family,
+                requested_scope_ids=request.ast_scope_ids,
+                plan_effect_scope_ids=plan_effect_scope_ids_t,
+            )
+        except UnsupportedProofTemplateError as exc:
+            scope_error = str(exc)
+            reason_codes.append("unsupported_scopes")
+        except ValueError as exc:
+            scope_error = str(exc)
+            reason_codes.append("invalid_scopes")
+
+        if not selected_scopes and not is_unsupported:
+            # Supported family without measurable scopes → not_measured.
+            claim = _build_not_measured_or_unsupported_claim(
+                status=ObligationCompileStatus.NOT_MEASURED,
+                property_id=property_id,
+                claim_family=claim_family,
+                repository_id=repository_id,
+                repository_tree_id=tree_id,
+                scope_ids=(),
+                premise_ids=item_premises,
+                assumption_ids=item_assumptions,
+                residual_ref_ids=item_residuals,
+                toolchain_id=toolchain,
+                policy_id=policy,
+                catalog_version=catalog.catalog_version,
+                template_id=template_id,
+                required_assurance=assurance,
+                statement=(
+                    f"not measured: no matching AST scopes for {property_id or claim_family}"
+                ),
+                metadata={
+                    **dict(request.metadata),
+                    "reason": scope_error or "no_matching_scopes",
+                },
+            )
+            cache_key_id = compiled_obligation_cache_identity(
+                property_id=property_id,
+                catalog_version=catalog.catalog_version,
+                catalog_id=catalog.catalog_id,
+                repository_tree_id=tree_id,
+                ast_scope_ids=(),
+                premise_ids=item_premises,
+                assumption_ids=item_assumptions,
+                residual_ref_ids=item_residuals,
+                toolchain_id=toolchain,
+                policy_id=policy,
+                required_assurance=assurance,
+                template_id=template_id,
+            )
+            items.append(
+                CompiledCodeProofItem(
+                    status=ObligationCompileStatus.NOT_MEASURED,
+                    property_id=property_id,
+                    claim_family=claim_family,
+                    obligation=None,
+                    claim=claim,
+                    cache_key_id=cache_key_id,
+                    premise_ids=item_premises,
+                    assumption_ids=item_assumptions,
+                    residual_ref_ids=item_residuals,
+                    invalidation_selectors=tuple(
+                        selector.to_dict() for selector in claim.invalidation_selectors
+                    ),
+                    reason_codes=tuple(
+                        sorted(set(reason_codes) | {"not_measured", "no_matching_scopes"})
+                    ),
+                    template_id=template_id,
+                    catalog_version=catalog.catalog_version,
+                    required_assurance=assurance,
+                    metadata=dict(request.metadata),
+                )
+            )
+            continue
+
+        if not template_id:
+            template_id = _FAMILY_FALLBACK_TEMPLATE.get(claim_family, "")
+        if not template_id:
+            # Cannot materialize without a reviewed template.
+            claim = _build_not_measured_or_unsupported_claim(
+                status=ObligationCompileStatus.UNSUPPORTED,
+                property_id=property_id or f"property:family:{claim_family}",
+                claim_family="unsupported",
+                repository_id=repository_id,
+                repository_tree_id=tree_id,
+                scope_ids=tuple(scope.scope_id for scope in selected_scopes),
+                premise_ids=item_premises,
+                assumption_ids=item_assumptions,
+                residual_ref_ids=item_residuals,
+                toolchain_id=toolchain,
+                policy_id=policy,
+                catalog_version=catalog.catalog_version,
+                template_id="",
+                required_assurance=assurance,
+                statement="unsupported: no reviewed template for claim family",
+                metadata={
+                    **dict(request.metadata),
+                    "reason": "no_reviewed_template",
+                    "requested_claim_family": claim_family,
+                },
+            )
+            cache_key_id = compiled_obligation_cache_identity(
+                property_id=property_id,
+                catalog_version=catalog.catalog_version,
+                catalog_id=catalog.catalog_id,
+                repository_tree_id=tree_id,
+                ast_scope_ids=tuple(scope.scope_id for scope in selected_scopes),
+                premise_ids=item_premises,
+                assumption_ids=item_assumptions,
+                residual_ref_ids=item_residuals,
+                toolchain_id=toolchain,
+                policy_id=policy,
+                required_assurance=assurance,
+            )
+            items.append(
+                CompiledCodeProofItem(
+                    status=ObligationCompileStatus.UNSUPPORTED,
+                    property_id=property_id or f"property:family:{claim_family}",
+                    claim_family="unsupported",
+                    obligation=None,
+                    claim=claim,
+                    cache_key_id=cache_key_id,
+                    premise_ids=item_premises,
+                    assumption_ids=item_assumptions,
+                    residual_ref_ids=item_residuals,
+                    invalidation_selectors=tuple(
+                        selector.to_dict() for selector in claim.invalidation_selectors
+                    ),
+                    reason_codes=("unsupported", "no_reviewed_template"),
+                    template_id="",
+                    catalog_version=catalog.catalog_version,
+                    required_assurance=assurance,
+                    metadata=dict(request.metadata),
+                )
+            )
+            continue
+
+        # Ensure scopes for unsupported fail-closed path.
+        if not selected_scopes:
+            try:
+                selected_scopes = _selected_obligation_scopes(scope_set, ())
+            except UnsupportedProofTemplateError:
+                selected_scopes = ()
+            if not selected_scopes:
+                # Still emit unsupported claim even without scopes.
+                claim = _build_not_measured_or_unsupported_claim(
+                    status=ObligationCompileStatus.UNSUPPORTED,
+                    property_id=property_id
+                    or "property:unsupported-proof-fail-closed",
+                    claim_family="unsupported",
+                    repository_id=repository_id,
+                    repository_tree_id=tree_id,
+                    scope_ids=(),
+                    premise_ids=item_premises,
+                    assumption_ids=item_assumptions,
+                    residual_ref_ids=item_residuals,
+                    toolchain_id=toolchain,
+                    policy_id=policy,
+                    catalog_version=catalog.catalog_version,
+                    template_id=template_id,
+                    required_assurance=assurance,
+                    statement="unsupported proof shape (fail closed)",
+                    metadata=dict(request.metadata),
+                )
+                cache_key_id = compiled_obligation_cache_identity(
+                    property_id=property_id,
+                    catalog_version=catalog.catalog_version,
+                    catalog_id=catalog.catalog_id,
+                    repository_tree_id=tree_id,
+                    ast_scope_ids=(),
+                    premise_ids=item_premises,
+                    assumption_ids=item_assumptions,
+                    residual_ref_ids=item_residuals,
+                    toolchain_id=toolchain,
+                    policy_id=policy,
+                    required_assurance=assurance,
+                    template_id=template_id,
+                )
+                items.append(
+                    CompiledCodeProofItem(
+                        status=ObligationCompileStatus.UNSUPPORTED,
+                        property_id=property_id
+                        or "property:unsupported-proof-fail-closed",
+                        claim_family="unsupported",
+                        obligation=None,
+                        claim=claim,
+                        cache_key_id=cache_key_id,
+                        premise_ids=item_premises,
+                        assumption_ids=item_assumptions,
+                        residual_ref_ids=item_residuals,
+                        invalidation_selectors=tuple(
+                            selector.to_dict()
+                            for selector in claim.invalidation_selectors
+                        ),
+                        reason_codes=("unsupported", "no_ast_scopes"),
+                        template_id=template_id,
+                        catalog_version=catalog.catalog_version,
+                        required_assurance=assurance,
+                        metadata=dict(request.metadata),
+                    )
+                )
+                continue
+
+        obligation_metadata = {
+            **dict(request.metadata),
+            "property_id": property_id,
+            "claim_family": claim_family,
+            "catalog_version": catalog.catalog_version,
+            "catalog_id": catalog.catalog_id,
+            "premise_digest": premise_set_digest(item_premises),
+            "assumption_digest": assumption_set_digest(item_assumptions),
+            "residual_ref_ids": list(item_residuals),
+            "plan_effect_ids": list(plan_effect_ids),
+            "semantic_authority": False,
+        }
+        if code_shape:
+            obligation_metadata["code_shape"] = code_shape
+
+        try:
+            obligation = materialize_code_proof_obligation(
+                scope_set,
+                repository_tree_id=tree_id,
+                repository_id=repository_id,
+                template_id=template_id,
+                template_version=request.template_version or None,
+                ast_scope_ids=tuple(scope.scope_id for scope in selected_scopes),
+                code_shape=code_shape,
+                premise_ids=item_premises,
+                required_assurance=assurance,
+                task_id=task_id,
+                metadata=obligation_metadata,
+                registry=registry,
+            )
+        except UnsupportedProofTemplateError as exc:
+            # Shape/template mismatch → unsupported (reviewed refusal).
+            claim = _build_not_measured_or_unsupported_claim(
+                status=ObligationCompileStatus.UNSUPPORTED,
+                property_id=property_id,
+                claim_family="unsupported"
+                if claim_family == "unsupported"
+                else claim_family,
+                repository_id=repository_id,
+                repository_tree_id=tree_id,
+                scope_ids=tuple(scope.scope_id for scope in selected_scopes),
+                premise_ids=item_premises,
+                assumption_ids=item_assumptions,
+                residual_ref_ids=item_residuals,
+                toolchain_id=toolchain,
+                policy_id=policy,
+                catalog_version=catalog.catalog_version,
+                template_id=template_id,
+                required_assurance=assurance,
+                statement=f"unsupported: {exc}",
+                metadata={**dict(request.metadata), "reason": str(exc)},
+            )
+            # Keep family distinction: if the request was for a supported family
+            # but template refused, still mark compile status unsupported.
+            claim = claim.with_updates(
+                claim_family=(
+                    ClaimFamily.UNSUPPORTED
+                    if claim_family == "unsupported"
+                    else ClaimFamily(claim_family)
+                ),
+                status=ClaimStatus.UNSUPPORTED,
+            )
+            cache_key_id = compiled_obligation_cache_identity(
+                property_id=property_id,
+                catalog_version=catalog.catalog_version,
+                catalog_id=catalog.catalog_id,
+                repository_tree_id=tree_id,
+                ast_scope_ids=tuple(scope.scope_id for scope in selected_scopes),
+                premise_ids=item_premises,
+                assumption_ids=item_assumptions,
+                residual_ref_ids=item_residuals,
+                toolchain_id=toolchain,
+                policy_id=policy,
+                required_assurance=assurance,
+                template_id=template_id,
+            )
+            items.append(
+                CompiledCodeProofItem(
+                    status=ObligationCompileStatus.UNSUPPORTED,
+                    property_id=property_id,
+                    claim_family=claim_family,
+                    obligation=None,
+                    claim=claim,
+                    cache_key_id=cache_key_id,
+                    premise_ids=item_premises,
+                    assumption_ids=item_assumptions,
+                    residual_ref_ids=item_residuals,
+                    invalidation_selectors=tuple(
+                        selector.to_dict() for selector in claim.invalidation_selectors
+                    ),
+                    reason_codes=("unsupported", "template_refusal"),
+                    template_id=template_id,
+                    catalog_version=catalog.catalog_version,
+                    required_assurance=assurance,
+                    metadata=dict(request.metadata),
+                )
+            )
+            continue
+
+        # Emit typed claim with explicit premise/assumption ids + invalidators.
+        family_enum = resolve_claim_family(
+            template_id=obligation.template_id,
+            invariant_class=obligation.invariant_class,
+            property_id=property_id,
+            code_shape=code_shape,
+            explicit=claim_family,
+        )
+        claim_status = (
+            ClaimStatus.UNSUPPORTED
+            if family_enum is ClaimFamily.UNSUPPORTED
+            or is_unsupported
+            else ClaimStatus.OPEN
+        )
+        compile_status = (
+            ObligationCompileStatus.UNSUPPORTED
+            if claim_status is ClaimStatus.UNSUPPORTED
+            else ObligationCompileStatus.OPEN
+        )
+        claim = claim_from_obligation(
+            obligation,
+            property_id=property_id,
+            claim_family=family_enum,
+            assumption_ids=item_assumptions,
+            producer_id=OBLIGATION_COMPILER_PRODUCER_ID,
+            toolchain_id=toolchain,
+            policy_id=policy,
+            catalog_version=catalog.catalog_version,
+            status=claim_status,
+            metadata={
+                **dict(request.metadata),
+                "residual_ref_ids": list(item_residuals),
+                "plan_effect_ids": list(plan_effect_ids),
+                "premise_digest": premise_set_digest(item_premises),
+                "assumption_digest": assumption_set_digest(item_assumptions),
+                "catalog_id": catalog.catalog_id,
+                "semantic_authority": False,
+            },
+        )
+
+        cache_key = build_code_proof_cache_key(
+            obligation,
+            translator_id=translator_id,
+            solver_id=solver_id,
+            kernel_id=kernel_id,
+            toolchain_id=toolchain or "toolchain:default",
+            theorem_registry_id=theorem_registry_id,
+            policy_id=policy or "policy:default",
+            resource_budget=budget,
+            candidate_tree=tree_id,
+            property_id=property_id,
+            catalog_version=catalog.catalog_version,
+            catalog_id=catalog.catalog_id,
+            assumption_ids=item_assumptions,
+            residual_ref_ids=item_residuals,
+        )
+        # Also expose the compact content-identity used by capsule/query layers.
+        compact_id = compiled_obligation_cache_identity(
+            property_id=property_id,
+            catalog_version=catalog.catalog_version,
+            catalog_id=catalog.catalog_id,
+            repository_tree_id=tree_id,
+            ast_scope_ids=obligation.ast_scope_ids,
+            premise_ids=item_premises,
+            assumption_ids=item_assumptions,
+            residual_ref_ids=item_residuals,
+            toolchain_id=toolchain or "toolchain:default",
+            policy_id=policy or "policy:default",
+            required_assurance=assurance,
+            template_id=obligation.template_id,
+            template_version=obligation.template_version,
+            template_semantic_hash=obligation.template_semantic_hash,
+            obligation_id=obligation.obligation_id,
+        )
+        items.append(
+            CompiledCodeProofItem(
+                status=compile_status,
+                property_id=property_id,
+                claim_family=family_enum.value,
+                obligation=obligation,
+                claim=claim,
+                cache_key_id=cache_key.key_id,
+                premise_ids=item_premises,
+                assumption_ids=item_assumptions,
+                residual_ref_ids=item_residuals,
+                invalidation_selectors=tuple(
+                    selector.to_dict() for selector in claim.invalidation_selectors
+                ),
+                reason_codes=(
+                    ("unsupported",) if compile_status is ObligationCompileStatus.UNSUPPORTED else ()
+                ),
+                template_id=obligation.template_id,
+                catalog_version=catalog.catalog_version,
+                required_assurance=assurance,
+                metadata={
+                    **dict(request.metadata),
+                    "compact_cache_identity": compact_id,
+                    "proof_cache_key_id": cache_key.key_id,
+                },
+            )
+        )
+
+    # Stable order: family then property then status.
+    ordered = tuple(
+        sorted(
+            items,
+            key=lambda item: (
+                item.claim_family,
+                item.property_id,
+                item.status.value,
+                item.cache_key_id,
+            ),
+        )
+    )
+    return CodeProofObligationCompilation(
+        repository_id=str(repository_id or "").strip(),
+        repository_tree_id=tree_id,
+        catalog_version=catalog.catalog_version,
+        catalog_id=catalog.catalog_id,
+        scope_set_id=scope_set.scope_set_id,
+        items=ordered,
+        premise_digest=premise_set_digest(global_premises),
+        assumption_digest=assumption_set_digest(global_assumptions),
+        premise_ids=global_premises,
+        assumption_ids=global_assumptions,
+        plan_effect_ids=plan_effect_ids,
+        residual_ref_ids=residual_handles,
+        toolchain_id=toolchain,
+        policy_id=policy,
+        task_id=str(task_id or "").strip(),
+        metadata=dict(metadata or {}),
+    )
+
+
+# Compatibility spellings for the obligation compiler.
+compile_code_proof_obligation_set = compile_code_proof_obligations
+compile_obligations_from_scopes = compile_code_proof_obligations
+
+
+# ---------------------------------------------------------------------------
+# CBP-120: supervisor self-properties (lease, merge, DAG, freshness)
+# ---------------------------------------------------------------------------
+
+SUPERVISOR_SELF_PROPERTY_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/supervisor-self-property@1"
+)
+SUPERVISOR_SELF_PROPERTY_SELECTION_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/supervisor-self-property-selection@1"
+)
+SUPERVISOR_SELF_PROPERTY_POLICY_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/supervisor-self-property-policy@1"
+)
+SUPERVISOR_SELF_PROPERTY_BUNDLE = "agent-supervisor/codebase-proof/self"
+SUPERVISOR_SELF_PROPERTY_PRODUCER_ID = (
+    "producer:supervisor-self-property-compiler@1"
+)
+
+# Canonical property_ids / shapes that always-on (or policy-gated) self proofs
+# must exercise.  Template ids come from the reviewed registry via exact shape.
+_SELF_PROPERTY_SHAPE_ORDER: tuple[ReviewedCodeShape, ...] = (
+    ReviewedCodeShape.LEASE_UNIQUENESS_AND_FENCING,
+    ReviewedCodeShape.MERGE_IDEMPOTENCE,
+    ReviewedCodeShape.DAG_ACYCLICITY,
+    ReviewedCodeShape.EVIDENCE_FRESHNESS,
+)
+
+_SELF_PROPERTY_ID_BY_SHAPE: Mapping[str, str] = {
+    ReviewedCodeShape.LEASE_UNIQUENESS_AND_FENCING.value: (
+        "property:lease-uniqueness-and-fencing"
+    ),
+    ReviewedCodeShape.MERGE_IDEMPOTENCE.value: "property:merge-idempotence",
+    ReviewedCodeShape.DAG_ACYCLICITY.value: "property:dag-acyclicity",
+    ReviewedCodeShape.EVIDENCE_FRESHNESS.value: "property:evidence-freshness",
+}
+
+
+@dataclass(frozen=True)
+class SupervisorSelfPropertySpec:
+    """One always-on (or policy-gated) supervisor self-property binding."""
+
+    property_id: str
+    code_shape: str
+    template_id: str
+    template_version: str
+    template_semantic_hash: str
+    invariant_class: str
+    always_on: bool = True
+    title: str = ""
+
+    def __post_init__(self) -> None:
+        for name in (
+            "property_id",
+            "code_shape",
+            "template_id",
+            "template_version",
+            "template_semantic_hash",
+            "invariant_class",
+            "title",
+        ):
+            object.__setattr__(
+                self, name, str(getattr(self, name) or "").strip()
+            )
+        if not self.property_id:
+            raise ValueError("property_id is required")
+        if not self.code_shape:
+            raise ValueError("code_shape is required")
+        if not self.template_id:
+            raise ValueError("template_id is required")
+        object.__setattr__(self, "always_on", bool(self.always_on))
+        if not self.title:
+            object.__setattr__(
+                self, "title", self.template_id.replace("-", " ")
+            )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": SUPERVISOR_SELF_PROPERTY_SCHEMA,
+            "property_id": self.property_id,
+            "code_shape": self.code_shape,
+            "template_id": self.template_id,
+            "template_version": self.template_version,
+            "template_semantic_hash": self.template_semantic_hash,
+            "invariant_class": self.invariant_class,
+            "always_on": self.always_on,
+            "title": self.title,
+        }
+
+
+@dataclass(frozen=True)
+class SupervisorSelfPropertyPolicy:
+    """Policy gate for supervisor self-property obligations.
+
+    * ``enabled=False`` disables every self-property (no compile/prove).
+    * ``always_on=True`` (default) enables every reviewed self-property shape.
+    * When ``always_on=False``, only ``enabled_property_ids`` / shapes are
+      compiled — empty enable lists then mean none.
+    """
+
+    enabled: bool = True
+    always_on: bool = True
+    enabled_property_ids: tuple[str, ...] = ()
+    enabled_code_shapes: tuple[str, ...] = ()
+    required_assurance: AssuranceLevel = AssuranceLevel.KERNEL_VERIFIED
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "enabled", bool(self.enabled))
+        object.__setattr__(self, "always_on", bool(self.always_on))
+        object.__setattr__(
+            self,
+            "enabled_property_ids",
+            _canonical_strings(self.enabled_property_ids),
+        )
+        shapes = tuple(
+            str(getattr(item, "value", item) or "").strip()
+            for item in (self.enabled_code_shapes or ())
+            if str(getattr(item, "value", item) or "").strip()
+        )
+        object.__setattr__(self, "enabled_code_shapes", tuple(sorted(set(shapes))))
+        assurance = self.required_assurance
+        if not isinstance(assurance, AssuranceLevel):
+            assurance = AssuranceLevel(str(assurance))
+        object.__setattr__(self, "required_assurance", assurance)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": SUPERVISOR_SELF_PROPERTY_POLICY_SCHEMA,
+            "enabled": self.enabled,
+            "always_on": self.always_on,
+            "enabled_property_ids": list(self.enabled_property_ids),
+            "enabled_code_shapes": list(self.enabled_code_shapes),
+            "required_assurance": self.required_assurance.value,
+        }
+
+    @classmethod
+    def always_on_default(
+        cls,
+        *,
+        required_assurance: AssuranceLevel = AssuranceLevel.KERNEL_VERIFIED,
+    ) -> "SupervisorSelfPropertyPolicy":
+        return cls(
+            enabled=True,
+            always_on=True,
+            required_assurance=required_assurance,
+        )
+
+    @classmethod
+    def from_value(
+        cls,
+        value: "SupervisorSelfPropertyPolicy | bool | Mapping[str, Any] | None",
+    ) -> "SupervisorSelfPropertyPolicy":
+        if value is None:
+            return cls.always_on_default()
+        if isinstance(value, cls):
+            return value
+        if isinstance(value, bool):
+            return cls(enabled=value, always_on=value)
+        if isinstance(value, Mapping):
+            return cls(
+                enabled=bool(value.get("enabled", True)),
+                always_on=bool(value.get("always_on", True)),
+                enabled_property_ids=tuple(
+                    value.get("enabled_property_ids") or ()
+                ),
+                enabled_code_shapes=tuple(
+                    value.get("enabled_code_shapes") or ()
+                ),
+                required_assurance=value.get(
+                    "required_assurance", AssuranceLevel.KERNEL_VERIFIED
+                ),
+            )
+        raise TypeError(
+            "supervisor self-property policy must be bool, mapping, "
+            "SupervisorSelfPropertyPolicy, or None"
+        )
+
+
+@dataclass(frozen=True)
+class SupervisorSelfPropertySelection:
+    """Exact ReviewedCodeShape → reviewed template selection for self proofs."""
+
+    specs: tuple[SupervisorSelfPropertySpec, ...]
+    registry_version: str = ""
+    policy: SupervisorSelfPropertyPolicy = field(
+        default_factory=SupervisorSelfPropertyPolicy.always_on_default
+    )
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.specs, tuple):
+            object.__setattr__(self, "specs", tuple(self.specs))
+        ordered = tuple(
+            sorted(self.specs, key=lambda item: item.property_id)
+        )
+        object.__setattr__(self, "specs", ordered)
+        object.__setattr__(
+            self, "registry_version", str(self.registry_version or "").strip()
+        )
+        if not isinstance(self.policy, SupervisorSelfPropertyPolicy):
+            object.__setattr__(
+                self, "policy", SupervisorSelfPropertyPolicy.from_value(self.policy)
+            )
+
+    @property
+    def property_ids(self) -> tuple[str, ...]:
+        return tuple(spec.property_id for spec in self.specs)
+
+    @property
+    def code_shapes(self) -> tuple[str, ...]:
+        return tuple(spec.code_shape for spec in self.specs)
+
+    @property
+    def template_ids(self) -> tuple[str, ...]:
+        return tuple(spec.template_id for spec in self.specs)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": SUPERVISOR_SELF_PROPERTY_SELECTION_SCHEMA,
+            "bundle": SUPERVISOR_SELF_PROPERTY_BUNDLE,
+            "registry_version": self.registry_version,
+            "property_ids": list(self.property_ids),
+            "code_shapes": list(self.code_shapes),
+            "template_ids": list(self.template_ids),
+            "specs": [spec.to_dict() for spec in self.specs],
+            "policy": self.policy.to_dict(),
+        }
+
+
+def default_supervisor_self_property_shapes() -> tuple[ReviewedCodeShape, ...]:
+    """Return the closed always-on self-property shape population (CBP-120)."""
+
+    return _SELF_PROPERTY_SHAPE_ORDER
+
+
+def default_supervisor_self_property_ids() -> tuple[str, ...]:
+    """Return catalog property ids for the closed self-property population."""
+
+    return tuple(
+        _SELF_PROPERTY_ID_BY_SHAPE[shape.value]
+        for shape in _SELF_PROPERTY_SHAPE_ORDER
+    )
+
+
+def _normalize_self_code_shapes(
+    shapes: Sequence[str | ReviewedCodeShape] | None,
+) -> tuple[str, ...]:
+    if shapes is None:
+        return tuple(shape.value for shape in _SELF_PROPERTY_SHAPE_ORDER)
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for item in shapes:
+        value = str(getattr(item, "value", item) or "").strip()
+        if not value or value in seen:
+            continue
+        seen.add(value)
+        normalized.append(value)
+    return tuple(normalized)
+
+
+def select_supervisor_self_templates(
+    registry: ProofObligationTemplateRegistry = DEFAULT_TEMPLATE_REGISTRY,
+    *,
+    code_shapes: Sequence[str | ReviewedCodeShape] | None = None,
+    policy: SupervisorSelfPropertyPolicy | bool | Mapping[str, Any] | None = None,
+    catalog: Any = None,
+) -> SupervisorSelfPropertySelection:
+    """Select reviewed templates for supervisor self-properties by exact shape.
+
+    Shape membership is exact: unknown or ambiguous shapes fail closed via the
+    template registry.  Catalog property ids are preferred when present.
+    """
+
+    resolved_policy = SupervisorSelfPropertyPolicy.from_value(policy)
+    if not resolved_policy.enabled:
+        return SupervisorSelfPropertySelection(
+            specs=(),
+            registry_version=str(getattr(registry, "registry_version", "") or ""),
+            policy=resolved_policy,
+        )
+
+    requested_shapes = _normalize_self_code_shapes(code_shapes)
+    if not resolved_policy.always_on:
+        allowed_shapes = set(resolved_policy.enabled_code_shapes)
+        allowed_ids = set(resolved_policy.enabled_property_ids)
+        if not allowed_shapes and not allowed_ids:
+            return SupervisorSelfPropertySelection(
+                specs=(),
+                registry_version=str(
+                    getattr(registry, "registry_version", "") or ""
+                ),
+                policy=resolved_policy,
+            )
+        filtered: list[str] = []
+        for shape in requested_shapes:
+            property_id = _SELF_PROPERTY_ID_BY_SHAPE.get(shape, f"property:{shape}")
+            if allowed_shapes and shape in allowed_shapes:
+                filtered.append(shape)
+            elif allowed_ids and property_id in allowed_ids:
+                filtered.append(shape)
+            elif not allowed_shapes and property_id in allowed_ids:
+                filtered.append(shape)
+        requested_shapes = tuple(filtered)
+
+    specs: list[SupervisorSelfPropertySpec] = []
+    for shape in requested_shapes:
+        selection = registry.select_for_code_shape(shape)
+        template = selection.require_supported()
+        property_id = _SELF_PROPERTY_ID_BY_SHAPE.get(
+            shape, f"property:{template.template_id}"
+        )
+        if catalog is not None:
+            matched = catalog.get(property_id)
+            if matched is not None:
+                property_id = matched.property_id
+                # Catalog binding must still match the exact reviewed shape.
+                if str(matched.code_shape or "") != shape:
+                    raise UnsupportedProofTemplateError(
+                        f"catalog property {property_id!r} code_shape "
+                        f"{matched.code_shape!r} does not match exact shape "
+                        f"{shape!r}"
+                    )
+                if str(matched.template_id or "") != template.template_id:
+                    raise UnsupportedProofTemplateError(
+                        f"catalog property {property_id!r} template "
+                        f"{matched.template_id!r} does not match shape-selected "
+                        f"template {template.template_id!r}"
+                    )
+        specs.append(
+            SupervisorSelfPropertySpec(
+                property_id=property_id,
+                code_shape=shape,
+                template_id=template.template_id,
+                template_version=str(template.version),
+                template_semantic_hash=str(template.semantic_hash),
+                invariant_class=str(template.invariant_class or ""),
+                always_on=resolved_policy.always_on,
+                title=template.template_id.replace("-", " "),
+            )
+        )
+
+    return SupervisorSelfPropertySelection(
+        specs=tuple(specs),
+        registry_version=str(getattr(registry, "registry_version", "") or ""),
+        policy=resolved_policy,
+    )
+
+
+def evaluate_supervisor_self_property_mutations(
+    registry: ProofObligationTemplateRegistry = DEFAULT_TEMPLATE_REGISTRY,
+    *,
+    code_shapes: Sequence[str | ReviewedCodeShape] | None = None,
+    policy: SupervisorSelfPropertyPolicy | bool | Mapping[str, Any] | None = None,
+) -> dict[str, dict[str, bool]]:
+    """Run reviewed mutation cases for each selected self-property template.
+
+    Returns ``{template_id: {case_id: passed}}``.  Every case must evaluate to
+    its declared expected result for the self-property wiring to be sound.
+    """
+
+    selection = select_supervisor_self_templates(
+        registry, code_shapes=code_shapes, policy=policy
+    )
+    outcomes: dict[str, dict[str, bool]] = {}
+    for spec in selection.specs:
+        template = registry.require(spec.template_id, spec.template_version or None)
+        if not template.supports_code_shape(spec.code_shape):
+            raise UnsupportedProofTemplateError(
+                f"template {template.template_id!r} does not support exact "
+                f"code shape {spec.code_shape!r}"
+            )
+        results = template.verify_mutation_cases()
+        outcomes[spec.template_id] = dict(results)
+        failed = [case_id for case_id, ok in results.items() if not ok]
+        if failed:
+            raise UnsupportedProofTemplateError(
+                f"self-property mutation cases failed for "
+                f"{spec.template_id!r}: {', '.join(sorted(failed))}"
+            )
+    return outcomes
+
+
+def _self_property_compile_requests(
+    selection: SupervisorSelfPropertySelection,
+) -> list[CodeProofCompileRequest]:
+    requests: list[CodeProofCompileRequest] = []
+    for spec in selection.specs:
+        requests.append(
+            CodeProofCompileRequest(
+                property_id=spec.property_id,
+                template_id=spec.template_id,
+                template_version=spec.template_version,
+                code_shape=spec.code_shape,
+                required_assurance=selection.policy.required_assurance,
+                metadata={
+                    "supervisor_self_property": True,
+                    "bundle": SUPERVISOR_SELF_PROPERTY_BUNDLE,
+                    "always_on": spec.always_on,
+                    "producer_id": SUPERVISOR_SELF_PROPERTY_PRODUCER_ID,
+                    "code_shape": spec.code_shape,
+                },
+            )
+        )
+    return requests
+
+
+def compile_supervisor_self_properties(
+    scope_set: CodeProofScopeSet | None = None,
+    *,
+    repository_tree_id: str,
+    repository_id: str = "",
+    candidate_diff: Any = None,
+    policy: SupervisorSelfPropertyPolicy | bool | Mapping[str, Any] | None = None,
+    code_shapes: Sequence[str | ReviewedCodeShape] | None = None,
+    catalog: Any = None,
+    premise_ids: Sequence[str] = (),
+    assumption_ids: Sequence[str] = (),
+    residual_refs: Sequence[Any] = (),
+    formal_plan_effects: Sequence[Any] = (),
+    effect_scope_map: Mapping[str, Sequence[str]] | None = None,
+    toolchain_id: str = "",
+    policy_id: str = "",
+    translator_id: str = "translator:default",
+    solver_id: str = "solver:default",
+    kernel_id: str = "kernel:default",
+    theorem_registry_id: str = "registry:default",
+    resource_budget: Any = None,
+    task_id: str = "",
+    required_assurance: AssuranceLevel | str | None = None,
+    registry: ProofObligationTemplateRegistry = DEFAULT_TEMPLATE_REGISTRY,
+    metadata: Mapping[str, Any] | None = None,
+    verify_mutation_cases: bool = True,
+) -> CodeProofObligationCompilation:
+    """Compile always-on / policy-gated supervisor self-property obligations.
+
+    Templates are selected only by exact :class:`ReviewedCodeShape` membership.
+    Each open item binds the selected template semantic hash and code shape so
+    the trust-aware proof cache can warm-hit on re-proof and invalidate on
+    tree/premise/toolchain/policy mutations.
+    """
+
+    from .code_property_catalog import DEFAULT_CODE_PROPERTY_CATALOG
+
+    resolved_policy = SupervisorSelfPropertyPolicy.from_value(policy)
+    if required_assurance is not None:
+        assurance = (
+            required_assurance
+            if isinstance(required_assurance, AssuranceLevel)
+            else AssuranceLevel(str(required_assurance))
+        )
+        resolved_policy = SupervisorSelfPropertyPolicy(
+            enabled=resolved_policy.enabled,
+            always_on=resolved_policy.always_on,
+            enabled_property_ids=resolved_policy.enabled_property_ids,
+            enabled_code_shapes=resolved_policy.enabled_code_shapes,
+            required_assurance=assurance,
+        )
+
+    if catalog is None:
+        catalog = DEFAULT_CODE_PROPERTY_CATALOG
+
+    selection = select_supervisor_self_templates(
+        registry,
+        code_shapes=code_shapes,
+        policy=resolved_policy,
+        catalog=catalog,
+    )
+    if verify_mutation_cases and selection.specs:
+        evaluate_supervisor_self_property_mutations(
+            registry,
+            code_shapes=selection.code_shapes,
+            policy=resolved_policy,
+        )
+
+    meta = {
+        "bundle": SUPERVISOR_SELF_PROPERTY_BUNDLE,
+        "producer_id": SUPERVISOR_SELF_PROPERTY_PRODUCER_ID,
+        "supervisor_self_properties": True,
+        "self_property_policy": resolved_policy.to_dict(),
+        "selected_code_shapes": list(selection.code_shapes),
+        "selected_template_ids": list(selection.template_ids),
+        **dict(metadata or {}),
+    }
+
+    if not selection.specs:
+        # Policy disabled / empty enable list: emit an empty compilation bound
+        # to the candidate scopes so callers still get a stable tree handle.
+        if scope_set is None:
+            if candidate_diff is None:
+                raise ValueError("scope_set or candidate_diff is required")
+            scope_set = compile_candidate_proof_scopes(candidate_diff)
+        tree_id = str(repository_tree_id or "").strip()
+        if not tree_id:
+            raise ValueError("repository_tree_id is required")
+        return CodeProofObligationCompilation(
+            repository_id=str(repository_id or "").strip(),
+            repository_tree_id=tree_id,
+            catalog_version=str(getattr(catalog, "catalog_version", "") or ""),
+            catalog_id=str(getattr(catalog, "catalog_id", "") or ""),
+            scope_set_id=scope_set.scope_set_id,
+            items=(),
+            premise_digest=premise_set_digest(normalize_premise_ids(premise_ids)),
+            assumption_digest=assumption_set_digest(
+                normalize_assumption_ids(assumption_ids)
+            ),
+            premise_ids=normalize_premise_ids(premise_ids),
+            assumption_ids=normalize_assumption_ids(assumption_ids),
+            plan_effect_ids=_normalize_plan_effect_ids(formal_plan_effects),
+            residual_ref_ids=normalize_residual_refs(residual_refs),
+            toolchain_id=str(toolchain_id or "").strip(),
+            policy_id=str(policy_id or "").strip(),
+            task_id=str(task_id or "").strip(),
+            metadata=meta,
+        )
+
+    compilation = compile_code_proof_obligations(
+        scope_set,
+        repository_tree_id=repository_tree_id,
+        repository_id=repository_id,
+        candidate_diff=candidate_diff,
+        requests=_self_property_compile_requests(selection),
+        catalog=catalog,
+        formal_plan_effects=formal_plan_effects,
+        effect_scope_map=effect_scope_map,
+        residual_refs=residual_refs,
+        premise_ids=premise_ids,
+        assumption_ids=assumption_ids,
+        toolchain_id=toolchain_id,
+        policy_id=policy_id,
+        translator_id=translator_id,
+        solver_id=solver_id,
+        kernel_id=kernel_id,
+        theorem_registry_id=theorem_registry_id,
+        resource_budget=resource_budget,
+        task_id=task_id,
+        # Pass the enum value string: compile_code_proof_obligations coerces via
+        # AssuranceLevel(str(...)), which rejects str(enum_member) name forms.
+        required_assurance=resolved_policy.required_assurance.value,
+        registry=registry,
+        metadata=meta,
+    )
+    # Ensure every selected shape survived compile with exact shape binding.
+    by_property = {item.property_id: item for item in compilation.items}
+    for spec in selection.specs:
+        item = by_property.get(spec.property_id)
+        if item is None:
+            raise UnsupportedProofTemplateError(
+                f"self-property {spec.property_id!r} missing from compilation"
+            )
+        if item.template_id and item.template_id != spec.template_id:
+            raise UnsupportedProofTemplateError(
+                f"self-property {spec.property_id!r} compiled with template "
+                f"{item.template_id!r}, expected {spec.template_id!r}"
+            )
+        if item.obligation is not None:
+            bound_shape = str(
+                (item.obligation.metadata or {}).get("code_shape") or ""
+            )
+            if bound_shape and bound_shape != spec.code_shape:
+                raise UnsupportedProofTemplateError(
+                    f"self-property {spec.property_id!r} bound shape "
+                    f"{bound_shape!r}, expected exact {spec.code_shape!r}"
+                )
+    return compilation
+
+
+def prove_supervisor_self_properties(
+    cache: Any,
+    compilation: CodeProofObligationCompilation,
+    *,
+    prove: Callable[[Any, Any], ProofReceipt],
+    previous: CodeProofObligationCompilation | None = None,
+    metrics: "ProofCacheMetrics | None" = None,
+    translator_id: str = "translator:default",
+    solver_id: str = "solver:default",
+    kernel_id: str = "kernel:default",
+    theorem_registry_id: str = "registry:default",
+    resource_budget: Any = None,
+    changed_paths: Sequence[str] = (),
+    dependency_edge_changed: bool = False,
+    prefer_cache_before_provider: bool = True,
+) -> Any:
+    """Prove / re-prove supervisor self-property obligations cache-first.
+
+    Cold path invokes ``prove`` once per open obligation; warm re-proof of an
+    unchanged binding must hit the trust-aware proof cache without a second
+    provider call.  Binding mutations invalidate and force re-solve.
+    """
+
+    # Local import keeps the CBP-050 re-export graph stable for type checkers.
+    from .code_proof_reproof import reprove_code_proof_compilation as _reprove
+
+    if not isinstance(compilation, CodeProofObligationCompilation):
+        raise TypeError(
+            "compilation must be a CodeProofObligationCompilation"
+        )
+    return _reprove(
+        cache,
+        compilation,
+        prove=prove,
+        previous=previous,
+        metrics=metrics,
+        translator_id=translator_id,
+        solver_id=solver_id,
+        kernel_id=kernel_id,
+        theorem_registry_id=theorem_registry_id,
+        resource_budget=resource_budget,
+        changed_paths=changed_paths,
+        dependency_edge_changed=dependency_edge_changed,
+        prefer_cache_before_provider=prefer_cache_before_provider,
+    )
+
+
+# ---------------------------------------------------------------------------
+
+# CBP-015: cache-first prove path over TrustAwareProofCache
+# ---------------------------------------------------------------------------
+
+from collections import Counter
+from collections.abc import Callable
+
+from .formal_verification_cache import (
+    CacheLookupStatus,
+    CacheRejectionReason,
+    FormalVerificationCache,
+    ProofCacheKey,
+    TrustAwareProofCache,
+    build_proof_cache_key,
+)
+
+
+@dataclass
+class ProofCacheMetrics:
+    """Process-local hit/miss/reject counters for the cache-first prove path."""
+
+    hits: int = 0
+    misses: int = 0
+    rejects: int = 0
+    puts: int = 0
+    put_failures: int = 0
+    single_flight_calls: int = 0
+    reject_reasons: Counter[str] = field(default_factory=Counter)
+
+    def record_reject(self, *reason_codes: str) -> None:
+        self.rejects += 1
+        for code in reason_codes:
+            if code:
+                self.reject_reasons[str(code)] += 1
+
+    def snapshot(self) -> dict[str, Any]:
+        return {
+            "hits": self.hits,
+            "misses": self.misses,
+            "rejects": self.rejects,
+            "puts": self.puts,
+            "put_failures": self.put_failures,
+            "single_flight_calls": self.single_flight_calls,
+            "reject_reasons": dict(sorted(self.reject_reasons.items())),
+            "hit_rate": (
+                self.hits / (self.hits + self.misses)
+                if (self.hits + self.misses)
+                else 0.0
+            ),
+        }
+
+
+@dataclass(frozen=True)
+class CachedProveResult:
+    """Outcome of :func:`prove_code_obligation_with_cache`."""
+
+    status: str
+    from_cache: bool
+    receipt: ProofReceipt | None
+    reason_codes: tuple[str, ...] = ()
+    key_id: str = ""
+    metrics: Mapping[str, Any] = field(default_factory=dict)
+
+    @property
+    def authoritative(self) -> bool:
+        return self.receipt is not None and self.receipt.authoritative_assurance not in (
+            AssuranceLevel.UNVERIFIED,
+            AssuranceLevel.CANDIDATE,
+        )
+
+
+def build_code_proof_cache_key(
+    obligation: CodeProofObligation,
+    *,
+    translator_id: str = "translator:default",
+    solver_id: str = "solver:default",
+    kernel_id: str = "kernel:default",
+    toolchain_id: str = "toolchain:default",
+    theorem_registry_id: str = "registry:default",
+    policy_id: str = "policy:default",
+    resource_budget: Any = None,
+    candidate_tree: str | None = None,
+    property_id: str = "",
+    catalog_version: str = "",
+    catalog_id: str = "",
+    assumption_ids: Sequence[str] = (),
+    residual_ref_ids: Sequence[str] = (),
+) -> ProofCacheKey:
+    """Build a :class:`ProofCacheKey` from a typed code-proof obligation.
+
+    The key binds obligation identity (which already includes template semantics),
+    property/catalog version, tree/scope, premise and assumption digests,
+    toolchain/policy identities, required assurance, and candidate tree.
+    """
+
+    if not isinstance(obligation, CodeProofObligation):
+        raise TypeError("obligation must be a CodeProofObligation")
+    budget = resource_budget
+    if budget is None:
+        budget = {
+            "wall_time_ms": 30_000,
+            "cpu_time_ms": 20_000,
+            "memory_bytes": 512 * 1024 * 1024,
+            "max_processes": 4,
+            "max_premises": 32,
+            "network_allowed": False,
+        }
+    if hasattr(budget, "to_dict"):
+        budget = budget.to_dict()
+    tree = candidate_tree if candidate_tree is not None else obligation.repository_tree_id
+    premises = tuple(obligation.premise_ids)
+    assumptions = _canonical_strings(assumption_ids)
+    residuals = _canonical_strings(residual_ref_ids)
+    # Include required assurance, catalog, and property in the obligation
+    # component so raising the bar or catalog drift cannot reuse a weaker
+    # cached receipt under the same key.
+    obligation_component = {
+        "obligation_id": obligation.obligation_id,
+        "repository_tree_id": obligation.repository_tree_id,
+        "ast_scope_ids": list(obligation.ast_scope_ids),
+        "premise_ids": list(premises),
+        "premise_digest": premise_set_digest(premises),
+        "assumption_ids": list(assumptions),
+        "assumption_digest": assumption_set_digest(assumptions),
+        "residual_ref_ids": list(residuals),
+        "template_id": obligation.template_id,
+        "template_version": obligation.template_version,
+        "template_semantic_hash": obligation.template_semantic_hash,
+        "required_assurance": obligation.required_assurance.value,
+        "property_id": str(property_id or "").strip(),
+        "catalog_version": str(catalog_version or "").strip(),
+        "catalog_id": str(catalog_id or "").strip(),
+        "policy_id": policy_id,
+        "toolchain_id": toolchain_id,
+    }
+    return build_proof_cache_key(
+        obligation=obligation_component,
+        premises=premises,
+        translator=translator_id,
+        solver=solver_id,
+        kernel=kernel_id,
+        toolchain=toolchain_id,
+        theorem_registry=theorem_registry_id,
+        policy=policy_id,
+        resource_budget=budget,
+        candidate_tree=tree,
+    )
+
+
+def _map_binding_reason(
+    key: ProofCacheKey,
+    receipt: ProofReceipt,
+    reasons: Iterable[str],
+) -> tuple[str, ...]:
+    """Augment cache reasons with stale_tree / toolchain_drift aliases."""
+
+    codes = {str(code) for code in reasons if code}
+    if receipt.repository_tree_id and str(key.candidate_tree) not in (
+        str(receipt.repository_tree_id),
+        receipt.repository_tree_id,
+    ):
+        if str(key.candidate_tree) != str(receipt.repository_tree_id):
+            codes.add("stale_tree")
+    if receipt.toolchain_id and str(key.toolchain) != str(receipt.toolchain_id):
+        codes.add("toolchain_drift")
+    if receipt.authoritative_assurance in (
+        AssuranceLevel.UNVERIFIED,
+        AssuranceLevel.CANDIDATE,
+    ):
+        codes.add("candidate_only")
+    return tuple(sorted(codes))
+
+
+def prove_code_obligation_with_cache(
+    cache: FormalVerificationCache | TrustAwareProofCache,
+    key: ProofCacheKey,
+    *,
+    prove: Callable[[], ProofReceipt],
+    required_assurance: AssuranceLevel = AssuranceLevel.KERNEL_VERIFIED,
+    metrics: ProofCacheMetrics | None = None,
+    prefer_cache_before_provider: bool = True,
+    store_on_success: bool = True,
+) -> CachedProveResult:
+    """Lookup-before-provider prove path with single-flight and metrics.
+
+    Hits re-derive assurance inside :meth:`FormalVerificationCache.lookup`.
+    Candidate-only receipts are never stored as authoritative cache entries.
+    """
+
+    if not callable(prove):
+        raise TypeError("prove must be callable")
+    stats = metrics if metrics is not None else ProofCacheMetrics()
+
+    if prefer_cache_before_provider:
+        lookup = cache.lookup(key, required_assurance=required_assurance)
+        if lookup.status is CacheLookupStatus.HIT and lookup.receipt is not None:
+            # Re-derive is already performed; refuse candidate-only hits.
+            if lookup.receipt.authoritative_assurance in (
+                AssuranceLevel.UNVERIFIED,
+                AssuranceLevel.CANDIDATE,
+            ):
+                stats.record_reject("candidate_only")
+                return CachedProveResult(
+                    status="rejected",
+                    from_cache=True,
+                    receipt=None,
+                    reason_codes=("candidate_only",),
+                    key_id=key.key_id,
+                    metrics=stats.snapshot(),
+                )
+            stats.hits += 1
+            return CachedProveResult(
+                status="hit",
+                from_cache=True,
+                receipt=lookup.receipt,
+                reason_codes=(),
+                key_id=key.key_id,
+                metrics=stats.snapshot(),
+            )
+        if lookup.status is CacheLookupStatus.REJECTED:
+            stats.record_reject(*lookup.reason_codes)
+            # Fall through to re-prove on recoverable rejections (stale/miss-like).
+            recoverable = {
+                CacheRejectionReason.STALE_ENTRY.value,
+                CacheRejectionReason.CACHE_MISS.value,
+                CacheRejectionReason.FRESHNESS_NOT_SATISFIED.value,
+            }
+            if not set(lookup.reason_codes) & recoverable and lookup.reason_codes:
+                # Still attempt prove for insufficient assurance / poisoned after
+                # clearing is caller responsibility; treat as miss path.
+                pass
+        else:
+            stats.misses += 1
+    else:
+        stats.misses += 1
+
+    stats.single_flight_calls += 1
+
+    def _execute() -> dict[str, Any]:
+        receipt = prove()
+        if not isinstance(receipt, ProofReceipt):
+            raise TypeError("prove() must return a ProofReceipt")
+        # Single-flight outcomes must be DAG-JSON-safe public values.
+        return receipt.to_dict()
+
+    payload = cache.single_flight(key, _execute)
+    if isinstance(payload, ProofReceipt):
+        receipt = payload
+    elif isinstance(payload, Mapping):
+        receipt = ProofReceipt.from_dict(payload)
+    else:
+        raise TypeError(
+            "single_flight must return a ProofReceipt or receipt mapping"
+        )
+    if receipt.authoritative_assurance in (
+        AssuranceLevel.UNVERIFIED,
+        AssuranceLevel.CANDIDATE,
+    ):
+        reasons = _map_binding_reason(key, receipt, ("candidate_only",))
+        stats.record_reject(*reasons)
+        return CachedProveResult(
+            status="rejected",
+            from_cache=False,
+            receipt=receipt,
+            reason_codes=reasons,
+            key_id=key.key_id,
+            metrics=stats.snapshot(),
+        )
+
+    if not receipt.satisfies(required_assurance):
+        reasons = _map_binding_reason(
+            key,
+            receipt,
+            (CacheRejectionReason.INSUFFICIENT_ASSURANCE.value,),
+        )
+        stats.record_reject(*reasons)
+        return CachedProveResult(
+            status="rejected",
+            from_cache=False,
+            receipt=receipt,
+            reason_codes=reasons,
+            key_id=key.key_id,
+            metrics=stats.snapshot(),
+        )
+
+    if store_on_success:
+        stored = cache.put(key, receipt)
+        if stored.stored:
+            stats.puts += 1
+        else:
+            stats.put_failures += 1
+            reasons = _map_binding_reason(key, receipt, stored.reason_codes)
+            if "private_material" in str(stored.reason_codes) or any(
+                "private" in str(code) for code in stored.reason_codes
+            ):
+                reasons = tuple(sorted(set(reasons) | {"private_material"}))
+            stats.record_reject(*reasons)
+            return CachedProveResult(
+                status="rejected",
+                from_cache=False,
+                receipt=receipt,
+                reason_codes=reasons,
+                key_id=key.key_id,
+                metrics=stats.snapshot(),
+            )
+
+    return CachedProveResult(
+        status="proved",
+        from_cache=False,
+        receipt=receipt,
+        reason_codes=(),
+        key_id=key.key_id,
+        metrics=stats.snapshot(),
+    )
+
+
+# Compatibility spellings.
+prove_code_obligation = prove_code_obligation_with_cache
+lookup_or_prove_code_obligation = prove_code_obligation_with_cache
+
+
+# CBP-050 re-exports (implementation lives in code_proof_reproof).
+from .code_proof_reproof import (  # noqa: E402
+    InvalidationReason,
+    ReproofDisposition,
+    ReproofReport,
+    invalidation_reasons,
+    plan_reproof_from_delta,
+    reprove_code_proof_compilation,
+)
+
 __all__ = [
     "ASTProofScope",
     "CODE_OBLIGATION_CACHE_KEY_SCHEMA",
@@ -4064,7 +6639,9 @@ __all__ = [
     "ProofScopeType",
     "TypedASTProofScope",
     "build_code_proof_obligation",
+    "build_code_proof_cache_key",
     "build_obligation_cache_key",
+    "CachedProveResult",
     "code_proof_obligation_cache_identity",
     "collect_git_candidate_diff",
     "compile_candidate_diff",
@@ -4077,11 +6654,47 @@ __all__ = [
     "compile_implementation_obligations",
     "derive_fresh_implementation_obligations",
     "derive_implementation_obligations",
+    "lookup_or_prove_code_obligation",
     "materialize_code_proof_obligation",
     "obligation_cache_identity",
     "parse_unified_diff",
+    "ProofCacheMetrics",
+    "prove_code_obligation",
+    "prove_code_obligation_with_cache",
     "prove_proof_candidate_non_authority",
     "transitive_impact_blocks_proof_derivation",
     "validate_code_proof_receipt_binding",
     "validate_code_proof_receipt_bindings",
+    "ObligationCompileStatus",
+    "PremiseValidationError",
+    "CodeProofCompileRequest",
+    "CompiledCodeProofItem",
+    "CodeProofObligationCompilation",
+    "compile_code_proof_obligations",
+    "compiled_obligation_cache_identity",
+    "normalize_premise_ids",
+    "normalize_assumption_ids",
+    "normalize_residual_refs",
+    "premise_set_digest",
+    "assumption_set_digest",
+    "SUPERVISOR_SELF_PROPERTY_SCHEMA",
+    "SUPERVISOR_SELF_PROPERTY_SELECTION_SCHEMA",
+    "SUPERVISOR_SELF_PROPERTY_POLICY_SCHEMA",
+    "SUPERVISOR_SELF_PROPERTY_BUNDLE",
+    "SUPERVISOR_SELF_PROPERTY_PRODUCER_ID",
+    "SupervisorSelfPropertySpec",
+    "SupervisorSelfPropertyPolicy",
+    "SupervisorSelfPropertySelection",
+    "default_supervisor_self_property_shapes",
+    "default_supervisor_self_property_ids",
+    "select_supervisor_self_templates",
+    "evaluate_supervisor_self_property_mutations",
+    "compile_supervisor_self_properties",
+    "prove_supervisor_self_properties",
+    "InvalidationReason",
+    "ReproofDisposition",
+    "ReproofReport",
+    "invalidation_reasons",
+    "plan_reproof_from_delta",
+    "reprove_code_proof_compilation",
 ]

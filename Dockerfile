@@ -128,6 +128,10 @@ RUN pip install --upgrade pip setuptools wheel
 # Copy source code
 COPY --chown=appuser:appuser . .
 
+# Drop any host-side egg-info that may arrive read-only or root-owned and break
+# later `python -m build` / setuptools timestamp updates under appuser.
+RUN rm -rf /app/*.egg-info /app/ipfs_accelerate_py.egg-info /app/src/*.egg-info 2>/dev/null || true
+
 # Install ipfs_kit_py without recursive submodules (see development stage note).
 RUN git clone --depth 1 --filter=blob:none \
       https://github.com/endomorphosis/ipfs_kit_py.git /tmp/ipfs_kit_py \
@@ -136,7 +140,9 @@ RUN git clone --depth 1 --filter=blob:none \
 
 # Install package with ONLY testing dependencies (not the heavy ML libs)
 # This significantly reduces image size and build time
-RUN pip install -e ".[minimal,testing,mcp]"
+RUN pip install -e ".[minimal,testing,mcp]" \
+ && chown -R appuser:appuser /app \
+ && chmod -R u+w /app
 
 # Copy startup validation and entrypoint scripts
 COPY --chown=appuser:appuser deployments/docker/docker_startup_check.py /app/
