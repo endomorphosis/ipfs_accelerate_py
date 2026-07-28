@@ -6,11 +6,11 @@ from typing import Any
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.authorization_logic import (
+from ipfs_accelerate_py.agent_supervisor.control.authorization_logic import (
     ControlMutationAuthorizer,
     ControlMutationPolicy,
 )
-from ipfs_accelerate_py.agent_supervisor.control_contracts import (
+from ipfs_accelerate_py.agent_supervisor.control.control_contracts import (
     AuthorizationDecision,
     AuthorizationVerdict,
     EffectKind,
@@ -22,7 +22,7 @@ from ipfs_accelerate_py.agent_supervisor.control_contracts import (
     OperationRequest,
     OperationStatus,
 )
-from ipfs_accelerate_py.agent_supervisor.control_plane import (
+from ipfs_accelerate_py.agent_supervisor.control.control_plane import (
     BackendResponse,
     InMemoryControlStateStore,
     JsonlControlStateStore,

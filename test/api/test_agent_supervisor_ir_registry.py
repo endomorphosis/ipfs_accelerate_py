@@ -10,12 +10,12 @@ from types import MappingProxyType, SimpleNamespace
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.decision_contracts import (
+from ipfs_accelerate_py.agent_supervisor.context.decision_contracts import (
     PinnedArtifactRef,
     ReferenceAuthority,
     canonical_artifact_bytes,
 )
-from ipfs_accelerate_py.agent_supervisor.ir_registry import (
+from ipfs_accelerate_py.agent_supervisor.proof.ir_registry import (
     IR_CAPABILITY_SCHEMA,
     IR_REGISTRY_VERSION,
     IRCapability,
@@ -630,7 +630,7 @@ def test_async_provider_is_typed_unavailable_for_sync_and_supported_async() -> N
 
 
 def test_analysis_transport_only_locates_then_exact_bytes_are_reverified() -> None:
-    from ipfs_accelerate_py.agent_supervisor.analysis_transport import (
+    from ipfs_accelerate_py.agent_supervisor.analysis.analysis_transport import (
         AnalysisTransportStatus,
     )
 
@@ -753,7 +753,7 @@ supervisor_package.__path__ = [
 sys.modules["ipfs_accelerate_py"] = top_package
 sys.modules["ipfs_accelerate_py.agent_supervisor"] = supervisor_package
 module = importlib.import_module(
-    "ipfs_accelerate_py.agent_supervisor.ir_registry"
+    "ipfs_accelerate_py.agent_supervisor.proof.ir_registry"
 )
 
 registry = module.create_default_ir_registry(

@@ -6,28 +6,28 @@ from pathlib import Path
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.code_proof_obligations import (
+from ipfs_accelerate_py.agent_supervisor.proof.code_proof_obligations import (
     build_code_proof_cache_key,
 )
-from ipfs_accelerate_py.agent_supervisor.code_property_catalog import (
+from ipfs_accelerate_py.agent_supervisor.proof.code_property_catalog import (
     DEFAULT_CODE_PROPERTY_CATALOG,
 )
-from ipfs_accelerate_py.agent_supervisor.formal_plan_compiler import (
+from ipfs_accelerate_py.agent_supervisor.planning.formal_plan_compiler import (
     CompilationStatus,
     compile_formal_plan,
     is_requires_proof_precondition,
     requires_proof_precondition_bindings,
 )
-from ipfs_accelerate_py.agent_supervisor.formal_plan_conformance import (
+from ipfs_accelerate_py.agent_supervisor.planning.formal_plan_conformance import (
     evaluate_requires_proof_admission,
     evaluate_requires_proof_preconditions,
 )
-from ipfs_accelerate_py.agent_supervisor.formal_verification_cache import (
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_cache import (
     CacheLookupStatus,
     FormalVerificationCache,
     TrustAwareProofCache,
 )
-from ipfs_accelerate_py.agent_supervisor.formal_verification_contracts import (
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
     AssuranceLevel,
     CodeProofObligation,
     EvidenceAuthority,

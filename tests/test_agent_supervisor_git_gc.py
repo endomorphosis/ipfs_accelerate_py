@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.git_gc import _run_git
+from ipfs_accelerate_py.agent_supervisor.merge.git_gc import _run_git
 
 
 def test_run_git_returns_captured_result(tmp_path: Path) -> None:

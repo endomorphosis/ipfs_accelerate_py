@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.code_property_catalog import (
+from ipfs_accelerate_py.agent_supervisor.proof.code_property_catalog import (
     CODE_PROPERTY_CATALOG_INTERFACE,
     DEFAULT_CODE_PROPERTY_CATALOG,
     SRT_STRUCTURAL_TAGS,
@@ -16,7 +16,7 @@ from ipfs_accelerate_py.agent_supervisor.code_property_catalog import (
     build_seed_code_properties,
     register_code_property,
 )
-from ipfs_accelerate_py.agent_supervisor.formal_verification_contracts import (
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
     AssuranceLevel,
 )
 from ipfs_accelerate_py.agent_supervisor.proof_obligation_templates import (

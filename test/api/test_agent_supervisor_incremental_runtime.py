@@ -7,13 +7,13 @@ import time
 from dataclasses import asdict
 from pathlib import Path
 
-from ipfs_accelerate_py.agent_supervisor.backlog_refinery import (
+from ipfs_accelerate_py.agent_supervisor.objectives.backlog_refinery import (
     CodebaseScanInventory,
     scan_codebase_findings,
 )
-from ipfs_accelerate_py.agent_supervisor.dataset_store import ObjectiveDatasetStore
-from ipfs_accelerate_py.agent_supervisor import objective_graph
-from ipfs_accelerate_py.agent_supervisor.objective_graph import scan_objective_gaps
+from ipfs_accelerate_py.agent_supervisor.task_sources.dataset_store import ObjectiveDatasetStore
+from ipfs_accelerate_py.agent_supervisor.objectives import objective_graph
+from ipfs_accelerate_py.agent_supervisor.objectives.objective_graph import scan_objective_gaps
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     PortalImplementationDaemon,
     PortalTask,

@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.analysis_cache import (
+from ipfs_accelerate_py.agent_supervisor.analysis.analysis_cache import (
     AnalysisCache,
     AnalysisCacheEntry,
     AnalysisCacheKey,

@@ -4,7 +4,7 @@ from dataclasses import dataclass, replace
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.adaptive_goal_refiner import (
+from ipfs_accelerate_py.agent_supervisor.objectives.adaptive_goal_refiner import (
     AdaptiveGoalRefinementError,
     AdaptiveGoalRefiner,
     AdaptiveRefinementCandidate,
@@ -16,17 +16,17 @@ from ipfs_accelerate_py.agent_supervisor.adaptive_goal_refiner import (
     RefinementSignalKind,
     RefinementValueEstimate,
 )
-from ipfs_accelerate_py.agent_supervisor.formal_planning_contracts import (
+from ipfs_accelerate_py.agent_supervisor.planning.formal_planning_contracts import (
     Actor,
     ActorKind,
     FormalWorkPlan,
     Goal,
     PlanTask,
 )
-from ipfs_accelerate_py.agent_supervisor.goal_refinement_verification import (
+from ipfs_accelerate_py.agent_supervisor.objectives.goal_refinement_verification import (
     FrozenRefinementContext,
 )
-from ipfs_accelerate_py.agent_supervisor.objective_tracker import (
+from ipfs_accelerate_py.agent_supervisor.objectives.objective_tracker import (
     ObjectiveRefinementEventTracker,
     ObjectiveRefinementPollDecision,
 )

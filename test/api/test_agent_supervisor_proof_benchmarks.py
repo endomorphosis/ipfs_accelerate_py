@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.proof_metrics import (
+from ipfs_accelerate_py.agent_supervisor.proof.proof_metrics import (
     PROOF_BENCHMARK_PHASES,
     ProofBenchmarkThresholds,
     build_proof_benchmark_report,

@@ -7,12 +7,12 @@ from pathlib import Path
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.event_log import (
+from ipfs_accelerate_py.agent_supervisor.runtime.event_log import (
     append_jsonl_event,
     latest_event_cursor,
     read_jsonl_events,
 )
-from ipfs_accelerate_py.agent_supervisor.supervisor_recovery import (
+from ipfs_accelerate_py.agent_supervisor.rescue.supervisor_recovery import (
     BOUNDED_RECOVERY_REQUIREMENT_ID,
     FaultInjector,
     RecoveryCheckpoint,

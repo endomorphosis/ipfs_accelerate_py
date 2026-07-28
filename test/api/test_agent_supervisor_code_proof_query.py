@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.code_claim_contracts import (
+from ipfs_accelerate_py.agent_supervisor.proof.code_claim_contracts import (
     ClaimFamily,
     ClaimStatus,
     CodeClaimRecord,
@@ -13,20 +13,20 @@ from ipfs_accelerate_py.agent_supervisor.code_claim_contracts import (
     cache_miss_status,
 )
 from ipfs_accelerate_py.agent_supervisor.code_evidence_graph import CodeImpactIndex
-from ipfs_accelerate_py.agent_supervisor.code_proof_obligations import (
+from ipfs_accelerate_py.agent_supervisor.proof.code_proof_obligations import (
     CandidateDiffEntry,
     CodeProofCompileRequest,
     DiffChangeKind,
     ObligationCompileStatus,
     compile_code_proof_obligations,
 )
-from ipfs_accelerate_py.agent_supervisor.code_proof_query import (
+from ipfs_accelerate_py.agent_supervisor.proof.code_proof_query import (
     CACHE_MISS_STATUS,
     CODE_PROOF_QUERY_INTERFACE,
     CodeProofQuery,
     build_code_proof_query,
 )
-from ipfs_accelerate_py.agent_supervisor.formal_verification_contracts import (
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
     AssuranceLevel,
 )
 

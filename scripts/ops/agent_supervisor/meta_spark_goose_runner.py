@@ -2,7 +2,7 @@
 """Ops wrapper for Meta Spark + goose implementation runner.
 
 Delegates to
-``python -m ipfs_accelerate_py.agent_supervisor.meta_spark_goose_runner``.
+``python -m ipfs_accelerate_py.agent_supervisor.integrations.meta_spark_goose_runner``.
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ if str(REPO_ROOT) not in sys.path:
 
 
 def main(argv: list[str] | None = None) -> int:
-    from ipfs_accelerate_py.agent_supervisor.meta_spark_goose_runner import main as run
+    from ipfs_accelerate_py.agent_supervisor.integrations.meta_spark_goose_runner import main as run
 
     return int(run(argv))
 

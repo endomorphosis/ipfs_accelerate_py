@@ -5,7 +5,7 @@ from dataclasses import replace
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.formal_counterexamples import (
+from ipfs_accelerate_py.agent_supervisor.proof.formal_counterexamples import (
     COUNTEREXAMPLE_CAPSULE_SCHEMA,
     COUNTEREXAMPLE_GRAPH_SCHEMA,
     FORMAL_COUNTEREXAMPLE_SCHEMA,
@@ -32,7 +32,7 @@ from ipfs_accelerate_py.agent_supervisor.formal_counterexamples import (
     normalize_tla_trace,
     normalize_unsat_core,
 )
-from ipfs_accelerate_py.agent_supervisor.runtime_temporal_monitor import (
+from ipfs_accelerate_py.agent_supervisor.runtime.runtime_temporal_monitor import (
     monitor_event_trace,
 )
 

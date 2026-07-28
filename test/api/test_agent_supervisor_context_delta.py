@@ -7,7 +7,7 @@ from statistics import median
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.context_compiler import (
+from ipfs_accelerate_py.agent_supervisor.context.context_compiler import (
     DELTA_RETRY_EVIDENCE_ID,
     ContextCompiler,
     ContextDeltaError,
@@ -27,7 +27,7 @@ from ipfs_accelerate_py.agent_supervisor.context_compiler import (
     render_retry_context,
     reconstruct_context,
 )
-from ipfs_accelerate_py.agent_supervisor.context_contracts import (
+from ipfs_accelerate_py.agent_supervisor.context.context_contracts import (
     ContextBudget,
     ContextCapsule,
     ContextContractError,

@@ -25,12 +25,12 @@ from pathlib import Path
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.provider_batch_scheduler import (
+from ipfs_accelerate_py.agent_supervisor.runtime.provider_batch_scheduler import (
     ProviderBatchRequest,
     ProviderBatchScheduler,
     ProviderBatchSchedulerConfig,
 )
-from ipfs_accelerate_py.agent_supervisor.resource_scheduler import (
+from ipfs_accelerate_py.agent_supervisor.runtime.resource_scheduler import (
     HostResourceSnapshot,
     LaneResourceRequirements,
     ResourcePolicy,

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.code_claim_contracts import (
+from ipfs_accelerate_py.agent_supervisor.proof.code_claim_contracts import (
     CACHE_LOOKUP_HIT,
     CACHE_LOOKUP_MISS,
     CLAIM_CATALOG_VERSION,
@@ -33,11 +33,11 @@ from ipfs_accelerate_py.agent_supervisor.code_claim_contracts import (
     resolve_claim_family,
     tiers_can_independently_mint_kernel,
 )
-from ipfs_accelerate_py.agent_supervisor.code_proof_obligations import (
+from ipfs_accelerate_py.agent_supervisor.proof.code_proof_obligations import (
     ImplementationEvidenceKind,
     ImplementationResultEvidence,
 )
-from ipfs_accelerate_py.agent_supervisor.formal_verification_contracts import (
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
     AssuranceLevel,
     CodeProofObligation,
     EvidenceAuthority,

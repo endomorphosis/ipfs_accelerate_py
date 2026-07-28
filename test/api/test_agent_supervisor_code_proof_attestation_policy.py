@@ -20,7 +20,7 @@ from pathlib import Path
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.formal_verification_contracts import (
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
     AssuranceLevel,
     EvidenceAuthority,
     EvidenceFreshness,
@@ -31,7 +31,7 @@ from ipfs_accelerate_py.agent_supervisor.formal_verification_contracts import (
     ProofVerdict,
     ResourceBudget,
 )
-from ipfs_accelerate_py.agent_supervisor.proof_attestation import (
+from ipfs_accelerate_py.agent_supervisor.proof.proof_attestation import (
     AttestationBackendMode,
     AttestationBackendPolicy,
     AttestationGate,
@@ -602,7 +602,7 @@ def test_cbp_public_bindings_appear_in_authoritative_attestation_evidence() -> N
 
 
 def test_module_exports_policy_surface_for_supervisor_integration() -> None:
-    from ipfs_accelerate_py.agent_supervisor import proof_attestation as mod
+    from ipfs_accelerate_py.agent_supervisor.proof import proof_attestation as mod
 
     for name in (
         "ZkUseCaseDecisionRecord",

@@ -4,11 +4,11 @@ from dataclasses import FrozenInstanceError, replace
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.formal_verification_contracts import (
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
     AssuranceLevel,
     ContractValidationError,
 )
-from ipfs_accelerate_py.agent_supervisor.goal_development_contracts import (
+from ipfs_accelerate_py.agent_supervisor.objectives.goal_development_contracts import (
     GOAL_DECOMPOSITION_DRAFT_SCHEMA,
     GOAL_DEVELOPMENT_CONTRACT_VERSION,
     GoalAdmissionDecision,

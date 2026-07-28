@@ -4,10 +4,10 @@ from dataclasses import replace
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.formal_verification_capabilities import (
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_capabilities import (
     CapabilityHealth,
 )
-from ipfs_accelerate_py.agent_supervisor.formal_verification_contracts import (
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
     EvidenceAuthority,
     EvidenceKind,
     EvidenceVerdict,
@@ -16,7 +16,7 @@ from ipfs_accelerate_py.agent_supervisor.formal_verification_contracts import (
     ProofVerdict,
     ResourceBudget,
 )
-from ipfs_accelerate_py.agent_supervisor.proof_attestation import (
+from ipfs_accelerate_py.agent_supervisor.proof.proof_attestation import (
     AttestationBackendMode,
     AttestationBackendPolicy,
     AttestationValidationError,

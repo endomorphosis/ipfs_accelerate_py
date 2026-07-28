@@ -8,14 +8,14 @@ from __future__ import annotations
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.code_claim_contracts import (
+from ipfs_accelerate_py.agent_supervisor.proof.code_claim_contracts import (
     ClaimFamily,
     ClaimStatus,
 )
-from ipfs_accelerate_py.agent_supervisor.code_edit_packet import (
+from ipfs_accelerate_py.agent_supervisor.proof.code_edit_packet import (
     CODE_EDIT_PACKET_INTERFACE,
 )
-from ipfs_accelerate_py.agent_supervisor.code_proof_srt_bridge import (
+from ipfs_accelerate_py.agent_supervisor.proof.code_proof_srt_bridge import (
     CODE_PROOF_SRT_BRIDGE_INTERFACE,
     METHOD_ROLES_TABLE,
     PLATEAU_CODEX_PACKET_INTERFACE,
@@ -48,10 +48,10 @@ from ipfs_accelerate_py.agent_supervisor.code_proof_srt_bridge import (
     resolve_method_role,
     structural_admission_to_claims,
 )
-from ipfs_accelerate_py.agent_supervisor.code_property_catalog import (
+from ipfs_accelerate_py.agent_supervisor.proof.code_property_catalog import (
     SRT_STRUCTURAL_TAGS,
 )
-from ipfs_accelerate_py.agent_supervisor.formal_verification_contracts import (
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
     AssuranceLevel,
 )
 

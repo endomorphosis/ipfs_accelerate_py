@@ -33,9 +33,7 @@ from ipfs_accelerate_py.agent_supervisor import (
     SelfImprovementRolloutMode,
     evaluate_paired_self_improvement_rollout,
 )
-from ipfs_accelerate_py.agent_supervisor import (
-    self_improvement_rollout as rollout_module,
-)
+from ipfs_accelerate_py.agent_supervisor import self_improvement_rollout as rollout_module
 
 
 NOW = datetime(2026, 7, 25, 12, 0, tzinfo=timezone.utc)

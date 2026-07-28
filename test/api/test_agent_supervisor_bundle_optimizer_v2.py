@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.bundle_optimizer import (
+from ipfs_accelerate_py.agent_supervisor.objectives.bundle_optimizer import (
     BundleOptimizationPolicy,
     BundlePlanningChange,
     BundlePlanningChangeKind,

@@ -4,12 +4,12 @@ import threading
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.formal_verification_contracts import (
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
     AssuranceLevel,
     CodeProofObligation,
     ContractValidationError,
 )
-from ipfs_accelerate_py.agent_supervisor.multi_prover_router import (
+from ipfs_accelerate_py.agent_supervisor.proof.multi_prover_router import (
     DEFAULT_PROPERTY_POLICIES,
     AttemptOutcome,
     MultiProverRouter,
@@ -24,10 +24,10 @@ from ipfs_accelerate_py.agent_supervisor.multi_prover_router import (
     classify_property_kind,
     route_obligation,
 )
-from ipfs_accelerate_py.agent_supervisor.prover_conformance import (
+from ipfs_accelerate_py.agent_supervisor.proof.prover_conformance import (
     LEGACY_CEC_DCEC_WRAPPER,
 )
-from ipfs_accelerate_py.agent_supervisor.prover_matrix_registry import (
+from ipfs_accelerate_py.agent_supervisor.proof.prover_matrix_registry import (
     ProverMatrixSnapshot,
 )
 

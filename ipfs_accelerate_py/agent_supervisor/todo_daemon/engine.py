@@ -18,8 +18,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Iterable, Iterator, Mapping, Optional, Sequence
 
-from ..event_log import unique_backup_path
-from ..validation_runtime import (
+from ..runtime.event_log import unique_backup_path
+from ..validation.validation_runtime import (
     ValidationRuntimeError,
     build_validation_environment,
     validation_argv_command,

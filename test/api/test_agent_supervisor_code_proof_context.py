@@ -4,20 +4,20 @@ from __future__ import annotations
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.code_claim_contracts import (
+from ipfs_accelerate_py.agent_supervisor.proof.code_claim_contracts import (
     ClaimFamily,
     ClaimStatus,
     CodeClaimRecord,
     EvidenceTier,
     build_invalidation_selectors,
 )
-from ipfs_accelerate_py.agent_supervisor.code_proof_context import (
+from ipfs_accelerate_py.agent_supervisor.proof.code_proof_context import (
     CODE_PROOF_CONTEXT_INTERFACE,
     UNTRUSTED_DATA_LABEL,
     CodeProofContextRequest,
     compile_code_proof_context_capsule,
 )
-from ipfs_accelerate_py.agent_supervisor.code_proof_query import build_code_proof_query
+from ipfs_accelerate_py.agent_supervisor.proof.code_proof_query import build_code_proof_query
 from ipfs_accelerate_py.agent_supervisor.context_compiler import (
     compile_code_proof_context_capsule as compile_via_compiler_module,
 )
@@ -25,7 +25,7 @@ from ipfs_accelerate_py.agent_supervisor.context_contracts import ContextBudget,
 from ipfs_accelerate_py.agent_supervisor.decision_context import (
     CODE_PROOF_OBLIGATION_FIRST_CORE_FIELDS,
 )
-from ipfs_accelerate_py.agent_supervisor.formal_verification_contracts import (
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
     AssuranceLevel,
 )
 

@@ -5,7 +5,7 @@ from dataclasses import FrozenInstanceError, replace
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.goal_quality import (
+from ipfs_accelerate_py.agent_supervisor.objectives.goal_quality import (
     GOAL_GRAMMAR_REQUIREMENT_ID,
     AcceptanceCriterion,
     DebtSeverity,

@@ -838,7 +838,7 @@ Program invariants:
 
 ## AICAT-035 Prove usage-routing conformance, faults, security, and staged rollout
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false

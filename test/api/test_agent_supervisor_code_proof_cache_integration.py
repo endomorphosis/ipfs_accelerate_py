@@ -7,18 +7,18 @@ from pathlib import Path
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.code_proof_obligations import (
+from ipfs_accelerate_py.agent_supervisor.proof.code_proof_obligations import (
     CachedProveResult,
     ProofCacheMetrics,
     build_code_proof_cache_key,
     prove_code_obligation_with_cache,
 )
-from ipfs_accelerate_py.agent_supervisor.formal_verification_cache import (
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_cache import (
     CacheLookupStatus,
     FormalVerificationCache,
     build_proof_cache_key,
 )
-from ipfs_accelerate_py.agent_supervisor.formal_verification_contracts import (
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
     AssuranceLevel,
     CodeProofObligation,
     EvidenceAuthority,
@@ -338,7 +338,7 @@ def test_stale_tree_and_toolchain_aliases_on_binding_mismatch() -> None:
         candidate_tree="git-tree:v1",
     )
     wrong_tree = _receipt(obligation, tree="git-tree:old")
-    from ipfs_accelerate_py.agent_supervisor.code_proof_obligations import (
+    from ipfs_accelerate_py.agent_supervisor.proof.code_proof_obligations import (
         _map_binding_reason,
     )
 

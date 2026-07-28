@@ -5,15 +5,15 @@ from dataclasses import replace
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.formal_verification_contracts import (
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
     AssuranceLevel,
     CodeProofObligation,
 )
-from ipfs_accelerate_py.agent_supervisor.formal_verification_policy import (
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_policy import (
     ProofResultStatus,
     RolloutMode,
 )
-from ipfs_accelerate_py.agent_supervisor.proof_fallbacks import (
+from ipfs_accelerate_py.agent_supervisor.proof.proof_fallbacks import (
     DEFAULT_MAX_DIAGNOSTIC_BYTES,
     ProofFailureKind,
     ProofFallbackDeduplicator,
@@ -27,7 +27,7 @@ from ipfs_accelerate_py.agent_supervisor.proof_fallbacks import (
     route_proof_fallback,
     route_proof_fallbacks,
 )
-from ipfs_accelerate_py.agent_supervisor.validation_commands import (
+from ipfs_accelerate_py.agent_supervisor.validation.validation_commands import (
     ValidationRequirementKind,
     ValidationStage,
     build_declared_validations,

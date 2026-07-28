@@ -16,13 +16,13 @@ from types import SimpleNamespace
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.context_contracts import ContextBudget
-from ipfs_accelerate_py.agent_supervisor.objective_daemon import (
+from ipfs_accelerate_py.agent_supervisor.context.context_contracts import ContextBudget
+from ipfs_accelerate_py.agent_supervisor.objectives.objective_daemon import (
     build_arg_parser,
     discovery_fingerprints,
     run_objective_daemon,
 )
-from ipfs_accelerate_py.agent_supervisor.bundle_supervisor import (
+from ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor import (
     _bundle_lane_pythonpath,
     bundle_member_completion_receipts,
     build_arg_parser as build_bundle_arg_parser,
@@ -31,44 +31,44 @@ from ipfs_accelerate_py.agent_supervisor.bundle_supervisor import (
     plan_bundle_lanes,
     run_bundle_supervisor,
 )
-from ipfs_accelerate_py.agent_supervisor.objective_graph import (
+from ipfs_accelerate_py.agent_supervisor.objectives.objective_graph import (
     ObjectiveGoal,
     objective_heap_schedule,
     parse_goal_heap,
     scan_objective_gaps,
 )
-from ipfs_accelerate_py.agent_supervisor.todo_vector_index import (
+from ipfs_accelerate_py.agent_supervisor.task_sources.todo_vector_index import (
     _canonical_dependency_waves,
     parse_todo_vector_records,
     write_todo_vector_index,
 )
-from ipfs_accelerate_py.agent_supervisor.objective_tracker import fibonacci_priority, run_goal_validation
-from ipfs_accelerate_py.agent_supervisor.validation_commands import split_validation_commands
-from ipfs_accelerate_py.agent_supervisor.backlog_refinery import (
+from ipfs_accelerate_py.agent_supervisor.objectives.objective_tracker import fibonacci_priority, run_goal_validation
+from ipfs_accelerate_py.agent_supervisor.validation.validation_commands import split_validation_commands
+from ipfs_accelerate_py.agent_supervisor.objectives.backlog_refinery import (
     dependency_guardrail_records,
     reconciliation_guardrail_plan,
     reconciliation_guardrail_records,
     record_reconciliation_guardrail_findings,
 )
 from ipfs_accelerate_py.agent_supervisor import merge_resolver
-from ipfs_accelerate_py.agent_supervisor.merge_queue import (
+from ipfs_accelerate_py.agent_supervisor.merge.merge_queue import (
     MERGE_TARGET_BINDING_SCHEMA,
     MergeQueue,
 )
-from ipfs_accelerate_py.agent_supervisor.merge_resolver import (
+from ipfs_accelerate_py.agent_supervisor.merge.merge_resolver import (
     ConfiguredMergeResolverRunner,
     MergeResolverNamespaceSpec,
     build_configured_merge_resolver_runner,
     build_namespace_merge_resolver_runner_from_spec,
 )
-from ipfs_accelerate_py.agent_supervisor.llm_merge_resolver_fallback import (
+from ipfs_accelerate_py.agent_supervisor.integrations.llm_merge_resolver_fallback import (
     _DEFAULT_CODEX_TIMEOUT_SECONDS,
     _DEFAULT_COPILOT_TIMEOUT_SECONDS,
     _timeout_seconds,
     llm_merge_resolver_fallback_command,
 )
 from ipfs_accelerate_py.agent_supervisor import task_proposal_router
-from ipfs_accelerate_py.agent_supervisor.task_proposal_router import (
+from ipfs_accelerate_py.agent_supervisor.planning.task_proposal_router import (
     ConfiguredTaskProposalRouterRunner,
     TaskProposalRouteSpec,
     build_configured_task_proposal_router_runner,
@@ -79,7 +79,7 @@ from ipfs_accelerate_py.agent_supervisor.task_proposal_router import (
     standard_task_proposal_requested_outputs,
 )
 from ipfs_accelerate_py.agent_supervisor import multi_supervisor_runner
-from ipfs_accelerate_py.agent_supervisor.multi_supervisor_runner import (
+from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import (
     ConfiguredMultiSupervisorCliRunner,
     ConfiguredMultiSupervisorLauncher,
     ImplementationSupervisorNamespaceTrackSpec,
@@ -102,7 +102,7 @@ from ipfs_accelerate_py.agent_supervisor.multi_supervisor_runner import (
     supervisor_track_payload,
     tracks_from_parsed_args,
 )
-from ipfs_accelerate_py.agent_supervisor.implementation_daemon_runner import (
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon_runner import (
     ConfiguredImplementationDaemonRunner,
     ImplementationDaemonDefaults,
     ImplementationDaemonRunContext,
@@ -115,7 +115,7 @@ from ipfs_accelerate_py.agent_supervisor.implementation_daemon_runner import (
     build_portal_implementation_daemon_from_args,
 )
 from ipfs_accelerate_py.agent_supervisor import implementation_daemon_runner
-from ipfs_accelerate_py.agent_supervisor.implementation_supervisor_runner import (
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor_runner import (
     CodebaseRefillDefaults,
     ImplementationSupervisorDefaults,
     ObjectiveRefillDefaults,
@@ -130,7 +130,7 @@ from ipfs_accelerate_py.agent_supervisor.implementation_supervisor_runner import
 )
 from ipfs_accelerate_py.agent_supervisor import git_gc as git_gc_module
 from ipfs_accelerate_py.agent_supervisor import implementation_supervisor_runner
-from ipfs_accelerate_py.agent_supervisor.git_gc import GitGarbageCollector
+from ipfs_accelerate_py.agent_supervisor.merge.git_gc import GitGarbageCollector
 from ipfs_accelerate_py.agent_supervisor.todo_daemon import implementation_daemon as implementation_daemon_module
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     PortalTask,
@@ -200,7 +200,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_runtime import (
     terminate_process_with_grace,
     terminate_supervised_child,
 )
-from ipfs_accelerate_py.agent_supervisor.wrapper_utils import (
+from ipfs_accelerate_py.agent_supervisor.core.wrapper_utils import (
     AGENT_SUPERVISOR_DIRECTORY_BOOTSTRAP_KEYS,
     AgentSupervisorNamespaceContext,
     AgentSupervisorNamespacePaths,
@@ -3895,10 +3895,10 @@ def test_repo_implementation_multi_supervisor_launcher_uses_packaged_resolver_de
     args = launcher.args()
     assert "--implementation-supervisor-command" not in args
     assert args[args.index("--implementation-supervisor-llm-merge-resolver-command") + 1] == (
-        "python-test -m ipfs_accelerate_py.agent_supervisor.llm_merge_resolver_fallback"
+        "python-test -m ipfs_accelerate_py.agent_supervisor.integrations.llm_merge_resolver_fallback"
     )
     assert llm_merge_resolver_fallback_command(python_executable="python-test") == (
-        "python-test -m ipfs_accelerate_py.agent_supervisor.llm_merge_resolver_fallback"
+        "python-test -m ipfs_accelerate_py.agent_supervisor.integrations.llm_merge_resolver_fallback"
     )
 
 
@@ -3927,7 +3927,7 @@ def test_llm_merge_resolver_fallback_module_uses_codex_first(tmp_path):
         [
             sys.executable,
             "-m",
-            "ipfs_accelerate_py.agent_supervisor.llm_merge_resolver_fallback",
+            "ipfs_accelerate_py.agent_supervisor.integrations.llm_merge_resolver_fallback",
             str(tmp_path),
         ],
         input="resolve this conflict",
@@ -3993,7 +3993,7 @@ def test_llm_merge_resolver_fallback_uses_copilot_after_codex_timeout(tmp_path):
         [
             sys.executable,
             "-m",
-            "ipfs_accelerate_py.agent_supervisor.llm_merge_resolver_fallback",
+            "ipfs_accelerate_py.agent_supervisor.integrations.llm_merge_resolver_fallback",
             str(tmp_path),
         ],
         input="resolve this conflict",
@@ -4032,7 +4032,7 @@ def test_llm_merge_resolver_fallback_skips_unauthenticated_copilot(tmp_path):
         [
             sys.executable,
             "-m",
-            "ipfs_accelerate_py.agent_supervisor.llm_merge_resolver_fallback",
+            "ipfs_accelerate_py.agent_supervisor.integrations.llm_merge_resolver_fallback",
             str(tmp_path),
         ],
         input="resolve this conflict",
@@ -15690,7 +15690,7 @@ def test_goal_packet_aggregate_releases_every_covered_member_dependency(
         return Process()
 
     monkeypatch.setattr(
-        "ipfs_accelerate_py.agent_supervisor.bundle_supervisor.subprocess.Popen",
+        "ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor.subprocess.Popen",
         fake_popen,
     )
     launched = launch_bundle_lanes(
@@ -15857,7 +15857,7 @@ def test_legacy_aggregate_member_ids_release_downstream_lane(
         return Process()
 
     monkeypatch.setattr(
-        "ipfs_accelerate_py.agent_supervisor.bundle_supervisor.subprocess.Popen",
+        "ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor.subprocess.Popen",
         fake_popen,
     )
     launched = launch_bundle_lanes(
@@ -16096,7 +16096,7 @@ def test_implementation_daemon_invokes_configured_llm_merge_resolver(tmp_path):
 
 
 def test_llm_merge_resolver_times_out_hung_command(tmp_path):
-    from ipfs_accelerate_py.agent_supervisor.merge_resolver import invoke_llm_resolver
+    from ipfs_accelerate_py.agent_supervisor.merge.merge_resolver import invoke_llm_resolver
 
     sleeper = tmp_path / "sleeper.py"
     sleeper.write_text("import time\ntime.sleep(5)\n", encoding="utf-8")

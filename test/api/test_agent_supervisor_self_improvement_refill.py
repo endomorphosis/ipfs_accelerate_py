@@ -8,13 +8,9 @@ from pathlib import Path
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor import (
-    backlog_refinery as backlog_refinery_module,
-)
-from ipfs_accelerate_py.agent_supervisor import (
-    objective_tracker as objective_tracker_module,
-)
-from ipfs_accelerate_py.agent_supervisor.backlog_refinery import (
+from ipfs_accelerate_py.agent_supervisor.objectives import backlog_refinery as backlog_refinery_module
+from ipfs_accelerate_py.agent_supervisor import objective_tracker as objective_tracker_module
+from ipfs_accelerate_py.agent_supervisor.objectives.backlog_refinery import (
     SELF_IMPROVEMENT_SUCCESSOR_RECORDS_KEY,
     align_completion_gate_force_goal_ids,
     filter_self_improvement_successor_candidates,
@@ -23,26 +19,26 @@ from ipfs_accelerate_py.agent_supervisor.backlog_refinery import (
     record_self_improvement_successor_admission,
     self_improvement_epoch_wait_active,
 )
-from ipfs_accelerate_py.agent_supervisor.goal_completion import (
+from ipfs_accelerate_py.agent_supervisor.objectives.goal_completion import (
     CompletionEvidence,
     GoalState,
     validate_completion_evidence,
 )
-from ipfs_accelerate_py.agent_supervisor.objective_graph import (
+from ipfs_accelerate_py.agent_supervisor.objectives.objective_graph import (
     EvidenceMatchKind,
     EvidenceSourcePolicy,
     ObjectiveWorkProposal,
     completion_evidence_source_decision,
 )
-from ipfs_accelerate_py.agent_supervisor.objective_tracker import (
+from ipfs_accelerate_py.agent_supervisor.objectives.objective_tracker import (
     SelfImprovementGoalEvidenceReconciliation,
     reconcile_self_improvement_goal_evidence,
     resolve_objective_evidence_projection,
 )
-from ipfs_accelerate_py.agent_supervisor.scan_receipts import (
+from ipfs_accelerate_py.agent_supervisor.objectives.scan_receipts import (
     RepositoryTreeIdentity,
 )
-from ipfs_accelerate_py.agent_supervisor.self_improvement import (
+from ipfs_accelerate_py.agent_supervisor.self_improvement.self_improvement import (
     DEFAULT_BENCHMARK_DIMENSIONS,
     EPOCH_IDEMPOTENCY_REQUIREMENT_ID,
     HEALTHY_EXHAUSTION_REQUIREMENT_ID,

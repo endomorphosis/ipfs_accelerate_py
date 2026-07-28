@@ -20,7 +20,7 @@ from threading import RLock
 from types import MappingProxyType
 from typing import Any
 
-from ....agent_supervisor.control_contracts import (
+from ....agent_supervisor.control.control_contracts import (
     ControlContractError,
     ControlDiscoveryManifest,
     ControlSurface,
@@ -34,7 +34,7 @@ from ....agent_supervisor.control_contracts import (
     operation_request_json_schema,
     operation_result_json_schema,
 )
-from ....agent_supervisor.control_plane import (
+from ....agent_supervisor.control.control_plane import (
     DIRECT_CONTROL_SERVICE_DISPATCHER_ID,
     ControlSurfacePublication,
     SupervisorControlService,

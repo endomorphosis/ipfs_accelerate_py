@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.formal_verification_cache import (
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_cache import (
     CacheLookupStatus,
     CacheRejectionReason,
     FormalVerificationCache,
@@ -16,7 +16,7 @@ from ipfs_accelerate_py.agent_supervisor.formal_verification_cache import (
     SingleFlightTimeout,
     build_proof_cache_key,
 )
-from ipfs_accelerate_py.agent_supervisor.formal_verification_contracts import (
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
     MAX_REJECTION_REASON_CHARS,
     AssuranceLevel,
     AttemptStatus,
@@ -33,7 +33,7 @@ from ipfs_accelerate_py.agent_supervisor.formal_verification_contracts import (
     ResourceBudget,
     bounded_rejection_reason,
 )
-from ipfs_accelerate_py.agent_supervisor.formal_verification_policy import (
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_policy import (
     ChangedScope,
     FormalVerificationPolicy,
     MergeProofGateReceipt,
@@ -44,11 +44,11 @@ from ipfs_accelerate_py.agent_supervisor.formal_verification_policy import (
     RiskLevel,
     RolloutMode,
 )
-from ipfs_accelerate_py.agent_supervisor.kernel_verification import (
+from ipfs_accelerate_py.agent_supervisor.proof.kernel_verification import (
     KernelFailureCode,
     admit_lean_proof_text,
 )
-from ipfs_accelerate_py.agent_supervisor.proof_attestation import (
+from ipfs_accelerate_py.agent_supervisor.proof.proof_attestation import (
     AttestationBackendMode,
     AttestationBackendPolicy,
     PrivateAttestationWitness,

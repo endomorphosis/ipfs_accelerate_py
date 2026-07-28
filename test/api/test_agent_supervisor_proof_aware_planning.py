@@ -5,18 +5,18 @@ from typing import Any
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.objective_graph import (
+from ipfs_accelerate_py.agent_supervisor.objectives.objective_graph import (
     ProofRepairPolicy,
     ProofRepairWorkKind,
     generate_proof_repair_work,
 )
-from ipfs_accelerate_py.agent_supervisor.plan_evaluator import (
+from ipfs_accelerate_py.agent_supervisor.planning.plan_evaluator import (
     PlanBranch,
     ProofAwarePlanCandidate,
     ProofAwarePlanPolicy,
     evaluate_proof_aware_plans,
 )
-from ipfs_accelerate_py.agent_supervisor.proof_context import (
+from ipfs_accelerate_py.agent_supervisor.proof.proof_context import (
     ContextEntry,
     ContextTrust,
     ProofContextError,

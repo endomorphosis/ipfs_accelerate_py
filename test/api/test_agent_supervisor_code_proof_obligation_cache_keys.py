@@ -8,12 +8,12 @@ from __future__ import annotations
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.code_claim_contracts import (
+from ipfs_accelerate_py.agent_supervisor.proof.code_claim_contracts import (
     ClaimFamily,
     ClaimStatus,
     InvalidationSelectorKind,
 )
-from ipfs_accelerate_py.agent_supervisor.code_proof_obligations import (
+from ipfs_accelerate_py.agent_supervisor.proof.code_proof_obligations import (
     CandidateDiffEntry,
     CodeProofCompileRequest,
     CodeProofObligationCompilation,
@@ -28,10 +28,10 @@ from ipfs_accelerate_py.agent_supervisor.code_proof_obligations import (
     normalize_residual_refs,
     premise_set_digest,
 )
-from ipfs_accelerate_py.agent_supervisor.code_property_catalog import (
+from ipfs_accelerate_py.agent_supervisor.proof.code_property_catalog import (
     DEFAULT_CODE_PROPERTY_CATALOG,
 )
-from ipfs_accelerate_py.agent_supervisor.formal_verification_contracts import (
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
     AssuranceLevel,
 )
 

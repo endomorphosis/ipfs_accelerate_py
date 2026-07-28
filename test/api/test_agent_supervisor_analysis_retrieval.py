@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.analysis_retrieval import (
+from ipfs_accelerate_py.agent_supervisor.analysis.analysis_retrieval import (
     DEFAULT_SIGNAL_WEIGHTS,
     SIGNAL_ORDER,
     BackendState,
@@ -15,7 +15,7 @@ from ipfs_accelerate_py.agent_supervisor.analysis_retrieval import (
     RetrievalValidationError,
     retrieve_analysis_evidence,
 )
-from ipfs_accelerate_py.agent_supervisor.code_evidence_graph import (
+from ipfs_accelerate_py.agent_supervisor.analysis.code_evidence_graph import (
     materialize_code_evidence_graph,
 )
 

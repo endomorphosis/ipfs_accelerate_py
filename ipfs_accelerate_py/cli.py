@@ -2634,7 +2634,7 @@ Examples:
         # Agent-supervisor commands are parser-only at discovery time.  The
         # adapter constructs no service, imports no optional provider, and
         # starts no process until a command is actually dispatched.
-        from ipfs_accelerate_py.agent_supervisor.control_cli import register_agent_cli
+        from ipfs_accelerate_py.agent_supervisor.control.control_cli import register_agent_cli
         agent_parser = register_agent_cli(subparsers)
         
         # MCP commands
@@ -2887,7 +2887,7 @@ Examples:
             if not args.agent_command:
                 agent_parser.print_help()
                 return 1
-            from ipfs_accelerate_py.agent_supervisor.control_cli import run_agent_cli
+            from ipfs_accelerate_py.agent_supervisor.control.control_cli import run_agent_cli
             return run_agent_cli(
                 args,
                 service=agent_control_service,

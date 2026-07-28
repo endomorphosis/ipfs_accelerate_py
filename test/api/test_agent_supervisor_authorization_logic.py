@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.authorization_logic import (
+from ipfs_accelerate_py.agent_supervisor.control.authorization_logic import (
     AUTHORIZATION_CONFORMANCE_FIXTURES,
     AuthorizationChecker,
     AuthorizationDecision,
@@ -29,7 +29,7 @@ from ipfs_accelerate_py.agent_supervisor.authorization_logic import (
     render_datalog_policy,
     render_secpal_policy,
 )
-from ipfs_accelerate_py.agent_supervisor.prover_matrix_registry import (
+from ipfs_accelerate_py.agent_supervisor.proof.prover_matrix_registry import (
     CommandRequest,
     CommandResult,
 )

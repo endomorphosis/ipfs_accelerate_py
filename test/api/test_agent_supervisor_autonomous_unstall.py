@@ -6,19 +6,19 @@ from typing import Any
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.prompt_workflow import (
+from ipfs_accelerate_py.agent_supervisor.prompt.prompt_workflow import (
     RescueOperation,
     prompt_workflow_cid,
 )
-from ipfs_accelerate_py.agent_supervisor.recovery_diagnostics import (
+from ipfs_accelerate_py.agent_supervisor.rescue.recovery_diagnostics import (
     diagnose_supervisor_incident,
 )
-from ipfs_accelerate_py.agent_supervisor.rescue_planner import (
+from ipfs_accelerate_py.agent_supervisor.rescue.rescue_planner import (
     RescuePlanner,
     RescuePlannerPolicy,
     RescuePlanningRequest,
 )
-from ipfs_accelerate_py.agent_supervisor.supervisor_watchdog import (
+from ipfs_accelerate_py.agent_supervisor.rescue.supervisor_watchdog import (
     AUTONOMOUS_UNSTALL_STATE_SCHEMA,
     AutonomousUnstallCoordinator,
     AutonomousUnstallPolicy,

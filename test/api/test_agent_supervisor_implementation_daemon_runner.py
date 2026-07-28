@@ -5,7 +5,7 @@ import logging
 import sys
 from pathlib import Path
 
-from ipfs_accelerate_py.agent_supervisor.implementation_daemon_runner import (
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon_runner import (
     ConfiguredDaemonBootstrapRunner,
     ConfiguredImplementationDaemonRunner,
     DaemonLoopHook,
@@ -29,7 +29,7 @@ from ipfs_accelerate_py.agent_supervisor.implementation_daemon_runner import (
     run_configured_portal_implementation_daemon,
     run_portal_implementation_daemon_loop,
 )
-from ipfs_accelerate_py.agent_supervisor.checkout_lock import checkout_lock_owner_is_active
+from ipfs_accelerate_py.agent_supervisor.merge.checkout_lock import checkout_lock_owner_is_active
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     PortalImplementationDaemon,
     PortalTaskState,
@@ -41,11 +41,11 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor i
     parse_args as parse_supervisor_args,
     supervisor_config_from_args,
 )
-from ipfs_accelerate_py.agent_supervisor.validation_commands import (
+from ipfs_accelerate_py.agent_supervisor.validation.validation_commands import (
     normalize_validation_command_text,
     split_validation_commands,
 )
-from ipfs_accelerate_py.agent_supervisor.wrapper_utils import agent_supervisor_namespace_paths
+from ipfs_accelerate_py.agent_supervisor.core.wrapper_utils import agent_supervisor_namespace_paths
 
 
 def test_validation_command_helpers_unwrap_markdown_inline_code():
@@ -224,7 +224,7 @@ def test_daemon_uses_explicit_merge_target_branch_and_rejects_missing_branch(tmp
 
 def test_daemon_uses_packaged_merge_resolver_by_default(tmp_path: Path, monkeypatch):
     monkeypatch.delenv("IPFS_ACCELERATE_AGENT_LLM_MERGE_RESOLVER_COMMAND", raising=False)
-    expected = f"{sys.executable} -m ipfs_accelerate_py.agent_supervisor.llm_merge_resolver_fallback"
+    expected = f"{sys.executable} -m ipfs_accelerate_py.agent_supervisor.integrations.llm_merge_resolver_fallback"
     daemon = PortalImplementationDaemon(
         todo_path=tmp_path / "tasks.todo.md",
         state_path=tmp_path / "state.json",

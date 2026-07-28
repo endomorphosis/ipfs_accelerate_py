@@ -7,15 +7,15 @@ from dataclasses import replace
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.code_claim_contracts import (
+from ipfs_accelerate_py.agent_supervisor.proof.code_claim_contracts import (
     ClaimFamily,
     ClaimStatus,
     EvidenceTier,
 )
-from ipfs_accelerate_py.agent_supervisor.formal_verification_contracts import (
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
     AssuranceLevel,
 )
-from ipfs_accelerate_py.agent_supervisor.supervisor_code_proof_benchmark import (
+from ipfs_accelerate_py.agent_supervisor.proof.supervisor_code_proof_benchmark import (
     CODEBASE_PROOF_BENCHMARK_CORPUS_VERSION,
     CODEBASE_PROOF_BENCHMARK_INTERFACE,
     CODEBASE_PROOF_EFFICIENCY_REQUIREMENT_ID,

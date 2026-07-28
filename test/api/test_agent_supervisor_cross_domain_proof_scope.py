@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.proof_scope_index import (
+from ipfs_accelerate_py.agent_supervisor.proof.proof_scope_index import (
     ArtifactActivityState,
     ProofInputKind,
     ProofScopeIndex,
@@ -12,7 +12,7 @@ from ipfs_accelerate_py.agent_supervisor.proof_scope_index import (
     build_cross_domain_proof_scope_index,
     build_proof_scope_index,
 )
-from ipfs_accelerate_py.agent_supervisor.semantic_dependency_graph import (
+from ipfs_accelerate_py.agent_supervisor.analysis.semantic_dependency_graph import (
     SemanticAuthority,
     SemanticDependencyGraph,
     SemanticEdge,

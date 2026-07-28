@@ -6,7 +6,7 @@ import json
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.context_compiler import (
+from ipfs_accelerate_py.agent_supervisor.context.context_compiler import (
     REQUIRED_CONTEXT_BUDGET_EVIDENCE_ID,
     CalibratedTokenEstimator,
     ContextCompilationError,
@@ -21,7 +21,7 @@ from ipfs_accelerate_py.agent_supervisor.context_compiler import (
     compile_context_capsule,
     render_context_capsule,
 )
-from ipfs_accelerate_py.agent_supervisor.context_contracts import (
+from ipfs_accelerate_py.agent_supervisor.context.context_contracts import (
     ContextBudget,
     ContextBudgetResolution,
     ContextContractError,

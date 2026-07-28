@@ -6,7 +6,7 @@ import threading
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.ir_adapters import (
+from ipfs_accelerate_py.agent_supervisor.proof.ir_adapters import (
     IRAdapterBounds,
     IRAdapterError,
     IRAdapterRegistry,
@@ -14,7 +14,7 @@ from ipfs_accelerate_py.agent_supervisor.ir_adapters import (
     IRNodeKind,
     NormalizedResultAuthority,
 )
-from ipfs_accelerate_py.agent_supervisor.ir_registry import (
+from ipfs_accelerate_py.agent_supervisor.proof.ir_registry import (
     IRDeclaredAuthority,
     IRFailure,
     IRFailureCode,
@@ -355,7 +355,7 @@ def test_malformed_sections_missing_ids_and_every_adapter_bound_fail_closed() ->
 
 def test_family_mismatch_is_typed_unsupported_not_an_authority_conversion() -> None:
     verified = _verified_load(IRFamily.INTENT).require_artifact()
-    from ipfs_accelerate_py.agent_supervisor.ir_adapters import LegalIRAdapter
+    from ipfs_accelerate_py.agent_supervisor.proof.ir_adapters import LegalIRAdapter
 
     result = LegalIRAdapter().normalize(verified)
 

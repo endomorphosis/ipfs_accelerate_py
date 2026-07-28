@@ -6,7 +6,7 @@ from dataclasses import replace
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.formal_logic_vocabulary import (
+from ipfs_accelerate_py.agent_supervisor.proof.formal_logic_vocabulary import (
     DCEC,
     ReviewedPredicate,
     TDFOL,
@@ -14,11 +14,11 @@ from ipfs_accelerate_py.agent_supervisor.formal_logic_vocabulary import (
     atom,
     variable,
 )
-from ipfs_accelerate_py.agent_supervisor.formal_verification_contracts import (
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
     AssuranceLevel,
     ContractValidationError,
 )
-from ipfs_accelerate_py.agent_supervisor.logic_translation_validation import (
+from ipfs_accelerate_py.agent_supervisor.proof.logic_translation_validation import (
     ApproximationDirection,
     LogicForm,
     SemanticDimension,
@@ -30,7 +30,7 @@ from ipfs_accelerate_py.agent_supervisor.logic_translation_validation import (
     inventory_from_reviewed_formula,
     validate_translation,
 )
-from ipfs_accelerate_py.agent_supervisor.prover_conformance import (
+from ipfs_accelerate_py.agent_supervisor.proof.prover_conformance import (
     DEFAULT_CONFORMANCE_FIXTURE_SET,
     DEFAULT_CONFORMANCE_FIXTURE_SET_ID,
     DEFAULT_QUARANTINE_RULES,

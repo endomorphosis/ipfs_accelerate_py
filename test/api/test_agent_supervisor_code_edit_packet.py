@@ -4,14 +4,14 @@ from __future__ import annotations
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.code_claim_contracts import (
+from ipfs_accelerate_py.agent_supervisor.proof.code_claim_contracts import (
     ClaimFamily,
     ClaimStatus,
     CodeClaimRecord,
     EvidenceTier,
     build_invalidation_selectors,
 )
-from ipfs_accelerate_py.agent_supervisor.code_edit_materialize import (
+from ipfs_accelerate_py.agent_supervisor.proof.code_edit_materialize import (
     CODE_EDIT_MATERIALIZE_INTERFACE,
     VALIDATION_KIND_CACHE_AWARE_REPROOF,
     VALIDATION_KIND_DOMAIN_METRICS,
@@ -26,7 +26,7 @@ from ipfs_accelerate_py.agent_supervisor.code_edit_materialize import (
     packet_from_claim,
     packet_from_query_hit,
 )
-from ipfs_accelerate_py.agent_supervisor.code_edit_packet import (
+from ipfs_accelerate_py.agent_supervisor.proof.code_edit_packet import (
     CODE_EDIT_PACKET_INTERFACE,
     CODE_EDIT_PACKET_SCHEMA,
     REQUIRED_NON_IMPLEMENTABLE,
@@ -40,11 +40,11 @@ from ipfs_accelerate_py.agent_supervisor.code_edit_packet import (
     build_code_edit_packet,
     compute_implementable,
 )
-from ipfs_accelerate_py.agent_supervisor.code_proof_query import (
+from ipfs_accelerate_py.agent_supervisor.proof.code_proof_query import (
     ClaimQueryHit,
     build_code_proof_query,
 )
-from ipfs_accelerate_py.agent_supervisor.formal_verification_contracts import (
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
     AssuranceLevel,
 )
 

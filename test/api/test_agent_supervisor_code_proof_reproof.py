@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.code_proof_obligations import (
+from ipfs_accelerate_py.agent_supervisor.proof.code_proof_obligations import (
     CandidateDiffEntry,
     DiffChangeKind,
     ObligationCompileStatus,
@@ -15,7 +15,7 @@ from ipfs_accelerate_py.agent_supervisor.code_proof_obligations import (
     build_code_proof_cache_key,
     compile_code_proof_obligations,
 )
-from ipfs_accelerate_py.agent_supervisor.code_proof_reproof import (
+from ipfs_accelerate_py.agent_supervisor.proof.code_proof_reproof import (
     InvalidationReason,
     ReproofDisposition,
     binding_fingerprint_for_item,
@@ -23,10 +23,10 @@ from ipfs_accelerate_py.agent_supervisor.code_proof_reproof import (
     plan_reproof_from_delta,
     reprove_code_proof_compilation,
 )
-from ipfs_accelerate_py.agent_supervisor.formal_verification_cache import (
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_cache import (
     FormalVerificationCache,
 )
-from ipfs_accelerate_py.agent_supervisor.formal_verification_contracts import (
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
     AssuranceLevel,
     EvidenceAuthority,
     EvidenceKind,
