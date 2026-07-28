@@ -188,12 +188,23 @@ PROVIDER_CAPACITY_PATTERNS = (
     (
         "grok",
         re.compile(
-            r"(?:grok.*(?:rate limit|quota|usage limit)|xai.*(?:429|rate.?limit)|"
+            r"(?:grok.*(?:rate limit|quota|usage limit|balance exhausted|usage balance)|"
+            r"xai.*(?:429|rate.?limit|402)|"
+            r"402\s*payment\s*required|"
+            r"payment\s*required|"
             r"resource.?exhausted|too many requests)",
             re.IGNORECASE,
         ),
     ),
-    ("provider", re.compile(r"(?:insufficient_quota|quota[_ ]exceeded|rate_limit_exceeded)", re.IGNORECASE)),
+    (
+        "provider",
+        re.compile(
+            r"(?:insufficient_quota|quota[_ ]exceeded|rate_limit_exceeded|"
+            r"402\s*payment\s*required|payment\s*required|"
+            r"usage\s+balance\s+exhausted)",
+            re.IGNORECASE,
+        ),
+    ),
 )
 IMPLEMENTATION_PROVIDER_ENV = "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER"
 _GOOSE_BIN_ENV = "IPFS_ACCELERATE_AGENT_GOOSE_BIN"
@@ -1177,6 +1188,15 @@ def parse_timestamp(value: str) -> datetime | None:
 
 def classify_provider_capacity_failure(text: str) -> dict[str, Any]:
     """Classify provider quota/capacity failures without treating them as code failures."""
+
+    # Worktree pool races can dispose the workspace between setup and provider
+    # launch. That is infrastructure, not an implementation attempt to charge.
+    if re.search(r"workspace is not a directory", text, re.IGNORECASE):
+        return {
+            "exhausted": True,
+            "providers": ["infrastructure"],
+            "reason": "workspace_missing_before_provider",
+        }
 
     providers = [provider for provider, pattern in PROVIDER_CAPACITY_PATTERNS if pattern.search(text)]
     unique_providers = list(dict.fromkeys(providers))
