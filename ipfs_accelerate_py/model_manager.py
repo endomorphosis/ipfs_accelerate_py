@@ -593,6 +593,7 @@ class ModelManager:
         cache_eviction_policy: str = "lru",
         catalog: Optional[Any] = None,
         project_legacy_models: Optional[bool] = None,
+        usage_service: Optional[Any] = None,
     ):
         """
         Initialize the model manager.
@@ -609,6 +610,10 @@ class ModelManager:
             project_legacy_models: Whether to register this manager's persisted
                 ModelMetadata as a pure catalog source. Defaults to True; pass
                 False only when an injected catalog already owns that source.
+            usage_service: Optional read-only usage snapshot service (for example
+                a :class:`~ipfs_accelerate_py.endpoint_usage.coordinator.UsageCoordinator`).
+                When omitted, existing catalog APIs are unchanged and usage-plane
+                facades raise :class:`UsageServiceUnavailable`.
         """
         # Determine storage backend
         if use_database is None:
@@ -712,6 +717,9 @@ class ModelManager:
         # publishes one complete legacy projection and never rewrites storage.
         self._init_catalog(catalog, project_legacy_models)
 
+        # Optional dynamic usage overlay.  Never mutates static catalog records.
+        self._usage_service = usage_service
+
     def _init_catalog(
         self,
         catalog: Optional[Any],
@@ -784,6 +792,27 @@ class ModelManager:
         """Content revision of the currently published catalog snapshot."""
 
         return self._catalog.snapshot().revision
+
+    @property
+    def usage_service(self) -> Optional[Any]:
+        """Injected usage snapshot service, or ``None`` when unconfigured."""
+
+        return self._usage_service
+
+    def _require_usage_service(self) -> Any:
+        """Return the injected usage service or fail closed."""
+
+        from .endpoint_usage.resolution import UsageServiceUnavailable
+
+        if self._usage_service is None:
+            raise UsageServiceUnavailable(
+                "usage service is not configured on this ModelManager"
+            )
+        if not callable(getattr(self._usage_service, "snapshot", None)):
+            raise TypeError(
+                "usage_service must provide a side-effect-free snapshot(scope_id) method"
+            )
+        return self._usage_service
 
     def _sync_legacy_catalog(self) -> None:
         """Republish the pure legacy projection after a successful CRUD write."""
@@ -1878,6 +1907,196 @@ class ModelManager:
             snapshot=snapshot,
             **constraints,
         )
+
+    def usage_snapshot(
+        self,
+        scope_id: str,
+        *,
+        expected_usage_revision: Optional[str] = None,
+    ) -> Any:
+        """Return one immutable usage snapshot without reserving or probing.
+
+        Side-effect free: does not refresh the catalog, instantiate a provider,
+        or expose credentials/raw endpoints.
+        """
+
+        from .endpoint_usage.resolution import read_snapshot
+
+        service = self._require_usage_service()
+        return read_snapshot(
+            service,
+            scope_id,
+            expected_usage_revision=expected_usage_revision,
+        )
+
+    def list_usage_limits(
+        self,
+        scope_id: str,
+        *,
+        limit: int = 100,
+        cursor: Optional[str] = None,
+        dimension: Optional[Any] = None,
+        expected_usage_revision: Optional[str] = None,
+    ) -> Any:
+        """Return a bounded, paginated page of usage limits for one scope."""
+
+        from .endpoint_usage.resolution import list_limits_page
+
+        snapshot = self.usage_snapshot(
+            scope_id, expected_usage_revision=expected_usage_revision
+        )
+        return list_limits_page(
+            snapshot,
+            limit=limit,
+            cursor=cursor,
+            dimension=dimension,
+        )
+
+    def get_endpoint_headroom(
+        self,
+        scope_id: str,
+        *,
+        dimension: Optional[Any] = None,
+        expected_usage_revision: Optional[str] = None,
+    ) -> Any:
+        """Return typed headroom entries for one endpoint usage scope."""
+
+        from .endpoint_usage.resolution import filter_headroom
+
+        snapshot = self.usage_snapshot(
+            scope_id, expected_usage_revision=expected_usage_revision
+        )
+        return filter_headroom(snapshot, dimension=dimension)
+
+    def resolve_for_routing(
+        self,
+        request: Optional[Any] = None,
+        *,
+        usage_request: Optional[Any] = None,
+        routing_policy: Optional[Any] = None,
+        snapshot: Optional[Any] = None,
+        scope_by_binding: Optional[Dict[str, str]] = None,
+        snapshots_by_scope: Optional[Dict[str, Any]] = None,
+        expected_catalog_revision: Optional[str] = None,
+        expected_usage_revision: Optional[str] = None,
+        limit: Optional[int] = None,
+        **constraints: Any,
+    ) -> Any:
+        """Plan usage-aware candidates without reserving or invoking a provider.
+
+        Flow:
+        1. Resolve statically eligible candidates from one catalog revision.
+        2. Read one usage snapshot per bound scope (or use caller-supplied
+           snapshots) and hard-filter operation-adjacent usage gates.
+        3. Soft-rank remaining candidates with per-dimension headroom inputs.
+        4. Return a :class:`UsageAwareResolution` binding both revisions.
+
+        Missing ``usage_service`` preserves existing ``resolve`` behavior when
+        *routing_policy* is ``off``/omitted; enforcing modes fail closed.
+        """
+
+        from .endpoint_usage.resolution import (
+            MAX_CANDIDATES,
+            RevisionMismatch,
+            UsageRoutingRequest,
+            UsageServiceUnavailable,
+            collect_snapshots,
+            resolve_usage_aware,
+        )
+        from .endpoint_usage.schema import RoutingMode, RoutingPolicy
+
+        catalog_snapshot = self._catalog.snapshot() if snapshot is None else snapshot
+        catalog_revision = getattr(catalog_snapshot, "revision", None)
+        if not isinstance(catalog_revision, str) or not catalog_revision:
+            raise ValueError("catalog snapshot must expose a revision")
+        if (
+            expected_catalog_revision is not None
+            and catalog_revision != expected_catalog_revision
+        ):
+            raise RevisionMismatch(
+                "catalog revision mismatch",
+                expected=expected_catalog_revision,
+                actual=catalog_revision,
+                kind="catalog",
+            )
+
+        # Static resolve first — never probes or reserves.
+        if request is not None and constraints:
+            raise ValueError("pass either request or keyword constraints, not both")
+        static = self._catalog.resolve(
+            request,
+            snapshot=catalog_snapshot,
+            **constraints,
+        )
+
+        policy = routing_policy
+        if policy is None:
+            policy = RoutingPolicy(mode=RoutingMode.OFF)
+        elif not isinstance(policy, RoutingPolicy):
+            policy = RoutingPolicy.from_dict(policy)
+
+        ureq = usage_request
+        if ureq is None:
+            ureq = UsageRoutingRequest()
+        elif not isinstance(ureq, UsageRoutingRequest):
+            ureq = UsageRoutingRequest.from_dict(ureq)
+
+        scope_map = dict(scope_by_binding or {})
+        # Allow scope ids embedded on usage_request preferred fields only as
+        # planning hints; bindings still need an explicit map or pre-bound id.
+
+        snap_map: Dict[str, Any] = {}
+        if snapshots_by_scope is not None:
+            snap_map = dict(snapshots_by_scope)
+            if expected_usage_revision is not None:
+                # When a single composite pin is supplied, every snapshot must
+                # either match that revision or participate in a composite that
+                # the caller already validated externally.  Per-scope pins are
+                # preferred; a lone composite pin is checked after planning.
+                pass
+        elif policy.mode is not RoutingMode.OFF:
+            # Need a usage service to materialize snapshots for enforcing modes.
+            try:
+                service = self._require_usage_service()
+            except UsageServiceUnavailable:
+                if policy.mode is RoutingMode.OBSERVE:
+                    service = None
+                else:
+                    raise
+            if service is not None:
+                scope_ids = []
+                for cand in static.candidates:
+                    binding_id = cand.binding_id
+                    sid = scope_map.get(binding_id)
+                    if sid:
+                        scope_ids.append(sid)
+                snap_map = collect_snapshots(service, scope_ids)
+
+        candidate_limit = limit if limit is not None else min(
+            getattr(static.request, "limit", MAX_CANDIDATES),
+            MAX_CANDIDATES,
+        )
+        resolution = resolve_usage_aware(
+            catalog_revision=catalog_revision,
+            candidates=static.candidates,
+            snapshots_by_scope=snap_map,
+            policy=policy,
+            request=ureq,
+            scope_by_binding=scope_map,
+            limit=candidate_limit,
+        )
+
+        if (
+            expected_usage_revision is not None
+            and resolution.usage_revision != expected_usage_revision
+        ):
+            raise RevisionMismatch(
+                "usage revision mismatch after planning",
+                expected=expected_usage_revision,
+                actual=resolution.usage_revision,
+                kind="usage",
+            )
+        return resolution
 
     def health(self, *, snapshot: Optional[Any] = None) -> Any:
         """Project already-published catalog health without active probes."""
