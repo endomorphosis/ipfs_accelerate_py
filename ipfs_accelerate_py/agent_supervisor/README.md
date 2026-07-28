@@ -268,9 +268,12 @@ artifacts**):
 - Plan: `docs/architecture/AGENT_SUPERVISOR_MODULE_REFACTOR_PLAN.md`
 - Objectives heap: `docs/architecture/agent_supervisor_module_refactor.objectives.md`
 - Todo board: `docs/architecture/agent_supervisor_module_refactor.todo.md`
-- Move map: `docs/architecture/asref/move_map.json`
-- Import inventory: `docs/architecture/asref/import_inventory.md`
+- Move map (ASREF-G010): `docs/architecture/asref/move_map.json`
+- Import inventory (ASREF-G010): `docs/architecture/asref/import_inventory.md`
 - Nested monorepo products: `docs/NESTED_PACKAGES.md`
+- Layout evidence module: `asref_layout_evidence.py` (ASREF-G010 / ASREF-G090 / ASREF-G100)
+- Multi-lane launch (ASREF-G100): `scripts/ops/agent_supervisor/asref_multi_lane_launch.py`
+- Supervisor launcher (ASREF-G100): `scripts/ops/asref_module_refactor_supervisor.py`
 
 ## Validation (cutover gate)
 
@@ -280,6 +283,7 @@ python -m pytest \
   test/api/test_agent_supervisor_control_conformance_v2.py \
   test/api/test_agent_supervisor_objective_graph.py \
   test/api/test_agent_supervisor_proposal_validation.py \
+  test/api/test_agent_supervisor_asref_layout_evidence.py \
   -q
 ```
 
@@ -287,7 +291,14 @@ These cover **ASREF-G080** daemon ports, **ASREF-G030** control conformance,
 **ASREF-G070** objective graph, and **ASREF-G070** proposal validation —
 the shared cutover packet validation surface for `ASREF-G090`.
 
-## Status (ASREF-012 / ASREF-G090 cutover)
+Layout evidence CLI:
+
+```bash
+python -m ipfs_accelerate_py.agent_supervisor.asref_layout_evidence
+python scripts/ops/agent_supervisor/asref_multi_lane_launch.py recipe
+```
+
+## Status (ASREF-012 / ASREF-G090 cutover + ASREF-008 evidence)
 
 | Acceptance item | Status |
 |---|---|
@@ -295,6 +306,9 @@ the shared cutover packet validation surface for `ASREF-G090`.
 | Root `__init__.py` intentional public symbols + package-path resolution | present |
 | Evidence terms **ASREF-G020** … **ASREF-G080** named for parent goal | present (package map + evidence table + constants) |
 | Domain package READMEs for landed packages | present for core/control/task_sources/objectives/planning/validation/merge/rescue/runtime/self_improvement |
+| Frozen move map + import inventory (**ASREF-G010**) | present under `docs/architecture/asref/` |
+| Layout evidence module (**ASREF-G010** / **ASREF-G090** / **ASREF-G100**) | `asref_layout_evidence.py` |
+| Multi-lane Grok launch recipe + protected-path wiring (**ASREF-G100**) | present under `scripts/ops/agent_supervisor/` |
 | Nested product trees documented | `docs/NESTED_PACKAGES.md` |
 | Process junk ignored | `.gitignore` (`dashboard.out`, `dashboard.pid`, `err.txt`, …) |
 | No-old-import gate owned by cutover | rg recipes above; landed flat dual-copy **files** removed for owner map stems |
