@@ -220,7 +220,7 @@ Program invariants:
 
 ## GOOSE-009 Add opt-in Goose P2P worker policy
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
