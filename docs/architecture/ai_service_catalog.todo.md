@@ -588,7 +588,7 @@ Program invariants:
 
 ## AICAT-025 Define endpoint-scoped usage, limit, event, and receipt contracts
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
