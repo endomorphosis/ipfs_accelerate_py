@@ -208,7 +208,7 @@ compact references and bounded spans only.
 
 ## VFS-011 Implement the dependency-aware program-analysis cache
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: content-addressing
