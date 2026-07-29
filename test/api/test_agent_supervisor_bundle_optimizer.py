@@ -1281,6 +1281,62 @@ def test_bundle_supervisor_rebuilds_contract_for_derived_planning_projection():
     assert projected["work_contract_id"] == contract.work_contract_id
 
 
+def test_bundle_optimizer_preserves_width_for_disjoint_managed_submodule_tasks():
+    first = _task(
+        "SUBMODULE-ALPHA",
+        outputs=["vendor/runtime/src/alpha.py"],
+        predicted_paths=["vendor/runtime/src/alpha.py"],
+        files=["vendor/runtime/src/alpha.py"],
+        submodules=["vendor/runtime"],
+        interfaces=["AlphaAPI@1"],
+        goal_id="GOAL-ALPHA",
+        context_paths=["vendor/runtime/src/alpha.py"],
+        validation_commands=["pytest tests/test_alpha.py"],
+        merge_fate="objective/GOAL-ALPHA",
+    )
+    second = _task(
+        "SUBMODULE-BETA",
+        outputs=["vendor/runtime/src/beta.py"],
+        predicted_paths=["vendor/runtime/src/beta.py"],
+        files=["vendor/runtime/src/beta.py"],
+        submodules=["vendor/runtime"],
+        interfaces=["BetaAPI@1"],
+        goal_id="GOAL-BETA",
+        context_paths=["vendor/runtime/src/beta.py"],
+        validation_commands=["pytest tests/test_beta.py"],
+        merge_fate="objective/GOAL-BETA",
+        resource_class="cpu-large",
+    )
+    source = [
+        {
+            "bundle_key": "objective/managed-submodule",
+            "parallel_lane": "managed-submodule",
+            "tasks": [first, second],
+        }
+    ]
+
+    conservative = optimize_bundle_payloads(source)
+    concurrent = optimize_bundle_payloads(
+        source,
+        managed_submodule_paths=("vendor/runtime",),
+        allow_disjoint_submodule_concurrency=True,
+    )
+
+    assert sorted(
+        payload["optimizer_execution_wave"] for payload in conservative
+    ) == [0, 1]
+    assert sorted(
+        payload["optimizer_execution_wave"] for payload in concurrent
+    ) == [0, 0]
+    assert all(
+        payload["bundle_optimization"]["metrics"][
+            "blocking_conflict_count"
+        ]
+        == 0
+        for payload in concurrent
+    )
+
+
 def test_bundle_supervisor_optimizer_cannot_resurrect_completed_members():
     completed = _task("SUPERVISOR-COMPLETED")
     ready = _task(

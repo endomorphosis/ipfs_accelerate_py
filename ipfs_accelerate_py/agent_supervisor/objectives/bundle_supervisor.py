@@ -2142,8 +2142,18 @@ def _managed_submodule_concurrency_overrides(
     overrides: list[tuple[str, str]] = []
     for index, left in enumerate(conflict_tasks):
         for right in conflict_tasks[index + 1 :]:
-            left_cid = str(left.get("task_cid") or left.get("task_id") or "")
-            right_cid = str(right.get("task_cid") or right.get("task_id") or "")
+            left_cid = str(
+                left.get("canonical_task_cid")
+                or left.get("task_cid")
+                or left.get("task_id")
+                or ""
+            )
+            right_cid = str(
+                right.get("canonical_task_cid")
+                or right.get("task_cid")
+                or right.get("task_id")
+                or ""
+            )
             if not left_cid or not right_cid:
                 continue
             shared_submodules = (
@@ -2611,6 +2621,9 @@ def optimize_bundle_payloads(
     payloads: Sequence[dict[str, Any]],
     *,
     policy: BundleOptimizationPolicy | None = None,
+    managed_submodule_paths: Sequence[str] = (),
+    allow_disjoint_submodule_concurrency: bool = False,
+    conflict_inputs: Mapping[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     """Split current-planner payloads into optimized canonical execution units.
 
@@ -2733,6 +2746,38 @@ def optimize_bundle_payloads(
                     or []
                 )
             normalized.append(member)
+
+        if allow_disjoint_submodule_concurrency:
+            automatic_overrides = _managed_submodule_concurrency_overrides(
+                normalized,
+                managed_submodule_paths=managed_submodule_paths,
+                inputs=conflict_inputs or {},
+            )
+            task_by_cid = {
+                str(task.get("canonical_task_cid") or task.get("task_cid") or ""): task
+                for task in normalized
+            }
+            for left_cid, right_cid in automatic_overrides:
+                left = task_by_cid.get(left_cid)
+                right = task_by_cid.get(right_cid)
+                if left is None or right is None:
+                    continue
+                left["allow_concurrent_with"] = list(
+                    dict.fromkeys(
+                        [
+                            *_string_list(left.get("allow_concurrent_with")),
+                            right_cid,
+                        ]
+                    )
+                )
+                right["allow_concurrent_with"] = list(
+                    dict.fromkeys(
+                        [
+                            *_string_list(right.get("allow_concurrent_with")),
+                            left_cid,
+                        ]
+                    )
+                )
 
         try:
             result = optimize_task_bundles(
@@ -2926,6 +2971,9 @@ def plan_bundle_lanes(
         bundle_payloads = optimize_bundle_payloads(
             bundle_payloads,
             policy=bundle_optimization_policy,
+            managed_submodule_paths=worktree_submodule_paths,
+            allow_disjoint_submodule_concurrency=allow_disjoint_submodule_concurrency,
+            conflict_inputs=_conflict_graph_inputs(bundle_index_path),
         )
     conflict_annotations = _bundle_conflict_annotations(
         bundle_payloads,
