@@ -288,7 +288,7 @@ compact references and bounded spans only.
 
 ## VFS-015 Extract contracts from IDL, schema, types, tests, specs, and observations
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: contract-ir
