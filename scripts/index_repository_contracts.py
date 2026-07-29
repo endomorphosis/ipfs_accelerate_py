@@ -990,14 +990,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     requested_output_root = Path(args.output_root)
     output_root = requested_output_root
     indexer: RepositoryIndexer | None = None
-    publication_staging: tempfile.TemporaryDirectory[str] | None = None
     try:
         validate_authoritative_publication_options(args)
-        if args.publish_handoff:
-            publication_staging = tempfile.TemporaryDirectory(
-                prefix="sca-authoritative-run-"
-            )
-            output_root = Path(publication_staging.name) / "baseline"
         limits = PolyglotASTLimits(
             max_files=min(args.max_paths, 10_000),
             max_file_bytes=min(
@@ -1216,8 +1210,6 @@ def main(argv: Sequence[str] | None = None) -> int:
     finally:
         if indexer is not None:
             indexer.close()
-        if publication_staging is not None:
-            publication_staging.cleanup()
 
 
 if __name__ == "__main__":
