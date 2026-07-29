@@ -548,7 +548,7 @@ compact references and bounded spans only.
 
 ## VFS-028 Check VFS manifest, SDK, MCP, and MCP++ parity end to end
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: vfs-drift
