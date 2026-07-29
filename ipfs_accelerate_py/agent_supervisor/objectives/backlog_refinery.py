@@ -5226,7 +5226,7 @@ def validation_retry_task_block(
 
 
 def retry_task_execution_metadata(source_task: Any) -> str:
-    """Preserve reviewed provider and context bounds on generated repair work."""
+    """Preserve reviewed execution and write-scope bounds on repair work."""
 
     raw_metadata = getattr(source_task, "metadata", {}) or {}
     if not isinstance(raw_metadata, Mapping):
@@ -5237,12 +5237,18 @@ def retry_task_execution_metadata(source_task: Any) -> str:
         if str(value).strip()
     }
     lines: list[str] = []
-    provider_role = metadata.get("provider role", "")
-    context_budget = metadata.get("context budget tokens", "")
-    if provider_role:
-        lines.append(f"- Provider role: {provider_role}")
-    if context_budget:
-        lines.append(f"- Context budget tokens: {context_budget}")
+    inherited_fields = (
+        ("provider role", "Provider role"),
+        ("context budget tokens", "Context budget tokens"),
+        ("parallel lane", "Parallel lane"),
+        ("predicted files", "Predicted files"),
+        ("allow concurrent with", "Allow concurrent with"),
+        ("conflict policy", "Conflict policy"),
+    )
+    for field, label in inherited_fields:
+        value = metadata.get(field, "")
+        if value:
+            lines.append(f"- {label}: {value}")
     return "\n".join(lines)
 
 
