@@ -6519,6 +6519,198 @@ def test_merge_train_accepts_commit_integrated_by_merge_resolver(tmp_path: Path,
     assert "- Status: completed" in todo_path.read_text(encoding="utf-8")
 
 
+def test_merge_train_recovers_integrated_quarantine_without_mutating_dirty_divergent_submodule(
+    tmp_path: Path,
+):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """## REF-041Q Recover integrated queue candidate
+
+- Status: todo
+- Completion: manual
+- Outputs: integrated.txt
+""",
+        encoding="utf-8",
+    )
+    (repo / "integrated.txt").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "todo.md", "integrated.txt")
+    _git(repo, "commit", "-m", "queue recovery base")
+    baseline = _git(repo, "rev-parse", "HEAD")
+
+    branch_name = "implementation/ref-041q"
+    _git(repo, "checkout", "-b", branch_name)
+    (repo / "integrated.txt").write_text("candidate\n", encoding="utf-8")
+    _git(repo, "commit", "-am", "REF-041Q: candidate")
+    candidate = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "main")
+    _git(repo, "merge", "--no-ff", "--no-edit", branch_name)
+
+    child_base = _git(submodule, "rev-parse", "HEAD")
+    stale_submodule_branch = (
+        f"{branch_name}-submodule-libs-child"
+    )
+    _git(
+        submodule,
+        "checkout",
+        "-b",
+        stale_submodule_branch,
+        child_base,
+    )
+    (submodule / "stale.txt").write_text(
+        "stale task branch\n",
+        encoding="utf-8",
+    )
+    _git(submodule, "add", "stale.txt")
+    _git(submodule, "commit", "-m", "stale task submodule result")
+    stale_submodule_head = _git(submodule, "rev-parse", "HEAD")
+    _git(repo, "add", "libs/child")
+    _git(repo, "commit", "-m", "record divergent child gitlink")
+    divergent_parent_candidate = _git(repo, "rev-parse", "HEAD")
+    _git(submodule, "checkout", "main")
+    (submodule / "child.txt").write_text(
+        "target child\n",
+        encoding="utf-8",
+    )
+    _git(submodule, "commit", "-am", "advance target child")
+    target_submodule_head = _git(submodule, "rev-parse", "HEAD")
+    _git(repo, "add", "libs/child")
+    _git(repo, "commit", "-m", "advance target child gitlink")
+
+    # Keep unrelated nested work dirty.  The old task branch is now divergent
+    # from the target submodule branch and must not be checked out or merged.
+    (submodule / "child.txt").write_text(
+        "dirty nested content that must survive\n",
+        encoding="utf-8",
+    )
+    submodule_before = {
+        "head": _git(submodule, "rev-parse", "HEAD"),
+        "branch": _git(submodule, "symbolic-ref", "--short", "HEAD"),
+        "index": _git(submodule, "write-tree"),
+        "status": _git(
+            submodule,
+            "status",
+            "--porcelain=v1",
+            "--untracked-files=all",
+        ),
+        "stale_branch": _git(
+            submodule,
+            "rev-parse",
+            stale_submodule_branch,
+        ),
+        "target_branch": _git(submodule, "rev-parse", "main"),
+        "content": (submodule / "child.txt").read_text(
+            encoding="utf-8"
+        ),
+    }
+    assert submodule_before["head"] == target_submodule_head
+    assert submodule_before["stale_branch"] == stale_submodule_head
+    assert submodule_before["status"]
+
+    state_dir = tmp_path / "integrated-quarantine-state"
+    queue = MergeQueue(
+        tmp_path / "integrated-quarantine-queue",
+        max_attempts=3,
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## REF-",
+        worktree_submodule_paths=["libs/child"],
+        merge_queue=queue,
+    )
+    task = daemon._load_tasks()[0]
+    unsafe_request = queue.enqueue(
+        branch_name="implementation/ref-041q-divergent",
+        task_id="REF-041Q-DIVERGENT",
+        canonical_task_id="canonical-ref-041q-divergent",
+        commit_sha=divergent_parent_candidate,
+        metadata={"changed_submodule_paths": ["libs/child"]},
+        target_repository_id=daemon.merge_target_repository_id,
+        target_branch=daemon.resolved_merge_target_branch,
+    )
+    unsafe_claim = queue.dequeue(consumer_id="merge-train:crashed")
+    assert unsafe_claim is not None
+    queue.quarantine(
+        unsafe_claim,
+        reason="divergent nested handoff must remain quarantined",
+    )
+    request, _ = daemon._enqueue_merge_candidate(
+        branch_name=branch_name,
+        implementation_commit=candidate,
+        baseline_ref=baseline,
+        worktree_path=None,
+        task=task,
+        attempt=3,
+        changed_submodule_paths=["libs/child"],
+    )
+    claimed = queue.dequeue(consumer_id="merge-train:crashed")
+    assert claimed is not None
+    queue.quarantine(
+        claimed,
+        reason="crashed worker exhausted attempts",
+        metadata={"failure_count": 3},
+    )
+    assert queue.get(request.request_id).status == "quarantined"  # type: ignore[union-attr]
+
+    result = daemon._consume_one_merge_candidate()
+
+    assert result is not None
+    assert result["status"] == "already_merged"
+    assert result["merge_result"]["mutation_short_circuited"] is True
+    assert (
+        result["merge_result"]["integrated_handoff_proof"]["passed"]
+        is True
+    )
+    assert (
+        result["merge_result"]["integrated_handoff_proof"]["paths"][0][
+            "chain"
+        ][0]["relationship"]
+        == "ancestor"
+    )
+    stored = queue.get(request.request_id)
+    assert stored is not None and stored.status == "completed"
+    assert stored.failure_count == 0
+    unsafe_stored = queue.get(unsafe_request.request_id)
+    assert unsafe_stored is not None
+    assert unsafe_stored.status == "quarantined"
+    assert unsafe_stored.failure_reason == (
+        "divergent nested handoff must remain quarantined"
+    )
+    assert stored.metadata["revivals"][-1]["previous_failure_reason"] == (
+        "crashed worker exhausted attempts"
+    )
+    assert "- Status: completed" in todo_path.read_text(encoding="utf-8")
+    replay = daemon._merge_train_callback(request)
+    assert replay["already_merged"] is True
+    assert replay["todo_update_result"]["reason"] == "already_completed"
+
+    submodule_after = {
+        "head": _git(submodule, "rev-parse", "HEAD"),
+        "branch": _git(submodule, "symbolic-ref", "--short", "HEAD"),
+        "index": _git(submodule, "write-tree"),
+        "status": _git(
+            submodule,
+            "status",
+            "--porcelain=v1",
+            "--untracked-files=all",
+        ),
+        "stale_branch": _git(
+            submodule,
+            "rev-parse",
+            stale_submodule_branch,
+        ),
+        "target_branch": _git(submodule, "rev-parse", "main"),
+        "content": (submodule / "child.txt").read_text(
+            encoding="utf-8"
+        ),
+    }
+    assert submodule_after == submodule_before
+
+
 def test_merge_train_rejects_resolver_merge_with_unverified_changed_submodule(
     tmp_path: Path,
     monkeypatch,

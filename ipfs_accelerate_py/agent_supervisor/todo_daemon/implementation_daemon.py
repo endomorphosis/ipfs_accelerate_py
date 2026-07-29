@@ -7951,6 +7951,10 @@ class PortalImplementationDaemon:
             "task_header_prefix": self.task_header_prefix,
             "task": asdict(task),
             "completion_task_cids": completion_task_cids,
+            # An explicit empty declaration is authoritative.  Omitting this
+            # field would make a callback restart unable to distinguish a
+            # root-only candidate from incomplete legacy handoff metadata.
+            "changed_submodule_paths": [],
             "implementation_protected_paths": list(
                 self.implementation_protected_paths
             ),
@@ -8420,6 +8424,24 @@ class PortalImplementationDaemon:
             return "scope_adjudication_paths_mismatch"
         return ""
 
+    def _integrated_changed_submodule_proof(
+        self,
+        *,
+        candidate_commit: str,
+        target_commit: str,
+        changed_submodule_paths: Any,
+    ) -> dict[str, Any]:
+        """Return the shared read-only parent/gitlink handoff proof."""
+
+        from ..merge_train import integrated_candidate_handoff_proof
+
+        return integrated_candidate_handoff_proof(
+            self.repo_root,
+            candidate_commit=candidate_commit,
+            target_commit=target_commit,
+            changed_submodule_paths=changed_submodule_paths,
+        )
+
     def _merge_train_callback(self, request: Any) -> dict[str, Any]:
         """Adapt one durable queue request to the daemon's mature merge path."""
 
@@ -8523,20 +8545,6 @@ class PortalImplementationDaemon:
                         queued_identity.canonical_task_key
                     ),
                 }
-            completion_binding_error = (
-                completion_daemon._completion_task_revision_binding_error(
-                    metadata,
-                    require_pending=True,
-                )
-            )
-            if completion_binding_error:
-                return {
-                    "attempted": False,
-                    "merged": False,
-                    "returncode": 2,
-                    "reason": "merge_candidate_task_revision_mismatch",
-                    "completion_binding_error": completion_binding_error,
-                }
         task = self._portal_task_from_merge_request(request)
         branch_name = str(request.branch_name or "")
         implementation_commit = str(
@@ -8586,23 +8594,6 @@ class PortalImplementationDaemon:
                 "returncode": 2,
                 **protected_rejection,
             }
-        branch_rehydration = self._rehydrate_merge_request_branch(
-            branch_name=branch_name,
-            commit_sha=implementation_commit,
-            task=task,
-            attempt=int(request.attempt or 0),
-        )
-        if not branch_rehydration.get("ready", False):
-            return {
-                "attempted": False,
-                "merged": False,
-                "returncode": 2,
-                "reason": str(
-                    branch_rehydration.get("reason") or "merge_branch_rehydration_failed"
-                ),
-                "branch": branch_name,
-                "branch_rehydration": branch_rehydration,
-            }
         validation_proof = metadata.get("validation_proof")
         if isinstance(validation_proof, dict):
             selection = validation_proof.get("selection")
@@ -8648,13 +8639,189 @@ class PortalImplementationDaemon:
             if isinstance(raw_changed_submodule_paths, list)
             else None
         )
-        result = self._merge_branch_to_main(
-            branch_name,
-            task,
-            int(request.attempt or 0),
-            baseline_ref=str(metadata.get("baseline_ref") or ""),
-            changed_submodule_paths=changed_submodule_paths,
+        target_branch = self._main_branch_name()
+        candidate_resolution = subprocess.run(
+            [
+                "git",
+                "rev-parse",
+                "--verify",
+                f"{implementation_commit}^{{commit}}",
+            ],
+            cwd=self.repo_root,
+            text=True,
+            capture_output=True,
+            check=False,
         )
+        target_resolution = subprocess.run(
+            [
+                "git",
+                "rev-parse",
+                "--verify",
+                f"{target_branch}^{{commit}}",
+            ],
+            cwd=self.repo_root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        exact_candidate = candidate_resolution.stdout.strip()
+        target_commit = target_resolution.stdout.strip()
+        if (
+            candidate_resolution.returncode != 0
+            or target_resolution.returncode != 0
+            or not exact_candidate
+            or not target_commit
+            or exact_candidate.casefold()
+            != implementation_commit.strip().casefold()
+        ):
+            return {
+                "attempted": False,
+                "merged": False,
+                "returncode": 2,
+                "reason": "merge_candidate_ancestry_unavailable",
+                "branch": branch_name,
+                "implementation_commit": implementation_commit,
+                "target_branch": target_branch,
+                "candidate_stderr": candidate_resolution.stderr[-2000:],
+                "target_stderr": target_resolution.stderr[-2000:],
+            }
+        implementation_commit = exact_candidate
+        parent_ancestry = subprocess.run(
+            [
+                "git",
+                "merge-base",
+                "--is-ancestor",
+                implementation_commit,
+                target_commit,
+            ],
+            cwd=self.repo_root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if parent_ancestry.returncode not in {0, 1}:
+            return {
+                "attempted": False,
+                "merged": False,
+                "returncode": 2,
+                "reason": "merge_candidate_ancestry_unavailable",
+                "branch": branch_name,
+                "implementation_commit": implementation_commit,
+                "target_branch": target_branch,
+                "target_commit": target_commit,
+                "ancestry_returncode": parent_ancestry.returncode,
+                "ancestry_stderr": parent_ancestry.stderr[-2000:],
+            }
+        initially_integrated = parent_ancestry.returncode == 0
+        if (
+            candidate_schema
+            == "ipfs_accelerate_py/agent-supervisor/merge-candidate@3"
+        ):
+            completion_binding_error = (
+                completion_daemon._completion_task_revision_binding_error(
+                    metadata,
+                    require_pending=not initially_integrated,
+                )
+            )
+            if completion_binding_error:
+                return {
+                    "attempted": False,
+                    "merged": False,
+                    "returncode": 2,
+                    "reason": "merge_candidate_task_revision_mismatch",
+                    "completion_binding_error": completion_binding_error,
+                }
+
+        integrated_handoff_proof: dict[str, Any] = {}
+        if initially_integrated:
+            integrated_handoff_proof = (
+                self._integrated_changed_submodule_proof(
+                    candidate_commit=implementation_commit,
+                    target_commit=target_commit,
+                    changed_submodule_paths=raw_changed_submodule_paths,
+                )
+                if isinstance(raw_changed_submodule_paths, Sequence)
+                and not isinstance(
+                    raw_changed_submodule_paths,
+                    (str, bytes, bytearray),
+                )
+                else {
+                    "passed": False,
+                    "reason": "changed_submodule_scope_missing",
+                    "candidate_commit": implementation_commit,
+                    "target_commit": target_commit,
+                    "paths": [],
+                }
+            )
+            if integrated_handoff_proof.get("passed") is not True:
+                return {
+                    "attempted": False,
+                    "merged": False,
+                    "returncode": 2,
+                    "reason": "integrated_candidate_handoff_unproven",
+                    "branch": branch_name,
+                    "implementation_commit": implementation_commit,
+                    "target_branch": target_branch,
+                    "target_commit": target_commit,
+                    "integrated_handoff_proof": integrated_handoff_proof,
+                }
+        branch_rehydration = (
+            {
+                "ready": True,
+                "rehydrated": False,
+                "mutation_short_circuited": True,
+            }
+            if initially_integrated
+            else self._rehydrate_merge_request_branch(
+                branch_name=branch_name,
+                commit_sha=implementation_commit,
+                task=task,
+                attempt=int(request.attempt or 0),
+            )
+        )
+        if not branch_rehydration.get("ready", False):
+            return {
+                "attempted": False,
+                "merged": False,
+                "returncode": 2,
+                "reason": str(
+                    branch_rehydration.get("reason")
+                    or "merge_branch_rehydration_failed"
+                ),
+                "branch": branch_name,
+                "branch_rehydration": branch_rehydration,
+            }
+        if initially_integrated:
+            result = {
+                "attempted": False,
+                # Preserve the callback's historical "integrated" boolean
+                # while the explicit status tells the train no merge ran.
+                "merged": True,
+                "already_merged": True,
+                "returncode": 0,
+                "reason": "implementation_commit_already_merged",
+                "merge_commit": target_commit,
+                "target_commit": target_commit,
+                "target_branch": target_branch,
+                "integrated_handoff_proof": integrated_handoff_proof,
+                "mutation_short_circuited": True,
+                "submodule_merge_results": [
+                    {
+                        "path": path,
+                        "merged": True,
+                        "reason": "gitlink_handoff_proved_integrated",
+                    }
+                    for path in sorted(changed_submodule_paths or ())
+                ],
+            }
+        else:
+            result = self._merge_branch_to_main(
+                branch_name,
+                task,
+                int(request.attempt or 0),
+                baseline_ref=str(metadata.get("baseline_ref") or ""),
+                changed_submodule_paths=changed_submodule_paths,
+            )
         raw_submodule_merge_results = result.get("submodule_merge_results", [])
         submodule_merge_results = (
             raw_submodule_merge_results
@@ -8698,6 +8865,7 @@ class PortalImplementationDaemon:
         target_branch = self._main_branch_name()
         if (
             not result.get("merged", False)
+            and not result.get("already_merged", False)
             and implementation_commit
             and not result.get("submodule_merge_failed", False)
             and not failed_submodules
@@ -8728,20 +8896,26 @@ class PortalImplementationDaemon:
         if branch_rehydration.get("rehydrated", False):
             result["branch_rehydration"] = branch_rehydration
         if (
-            result.get("merged")
+            (
+                result.get("merged")
+                or result.get("already_merged")
+            )
             and candidate_schema
             == "ipfs_accelerate_py/agent-supervisor/merge-candidate@3"
         ):
             completion_binding_error = (
                 completion_daemon._completion_task_revision_binding_error(
                     metadata,
-                    require_pending=True,
+                    require_pending=not bool(
+                        result.get("already_merged")
+                    ),
                 )
             )
             if completion_binding_error:
                 result.update(
                     {
                         "merged": False,
+                        "already_merged": False,
                         "returncode": 2,
                         "reason": "merge_integrated_task_revision_mismatch",
                         "integration_occurred": True,
@@ -8752,14 +8926,20 @@ class PortalImplementationDaemon:
                     }
                 )
                 return result
-        if result.get("merged"):
+        if result.get("merged") or result.get("already_merged"):
             worktree_path_text = str(metadata.get("worktree_path") or "")
             cleanup_result = (
                 self._cleanup_merged_worktree(
                     Path(worktree_path_text) if worktree_path_text else None,
                     branch_name,
                 )
-                if worktree_path_text or metadata.get("worktree_pool_handoff") is True
+                if (
+                    not result.get("already_merged")
+                    and (
+                        worktree_path_text
+                        or metadata.get("worktree_pool_handoff") is True
+                    )
+                )
                 else {}
             )
             result["cleanup_result"] = cleanup_result
@@ -8861,6 +9041,7 @@ class PortalImplementationDaemon:
                         result.update(
                             {
                                 "merged": False,
+                                "already_merged": False,
                                 "returncode": 2,
                                 "reason": (
                                     "merge_completion_receipt_invalid"
@@ -8890,6 +9071,7 @@ class PortalImplementationDaemon:
                         result.update(
                             {
                                 "merged": False,
+                                "already_merged": False,
                                 "returncode": 2,
                                 "reason": (
                                     "merge_completion_receipt_invalid"

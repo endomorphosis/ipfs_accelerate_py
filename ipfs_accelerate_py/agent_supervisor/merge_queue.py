@@ -1208,6 +1208,41 @@ class MergeQueue:
         receipt_path = self._write_stage_receipt(revived)
         return replace(revived, file_path=receipt_path)
 
+    def quarantined_requests(
+        self,
+        *,
+        limit: int = 32,
+    ) -> tuple[MergeRequest, ...]:
+        """Return a bounded deterministic snapshot of target-bound quarantines.
+
+        This is intentionally read-only.  A merge train may use the snapshot
+        to prove that an immutable candidate was integrated before a worker
+        crashed, then revive that one request through
+        :meth:`revive_quarantined`.  Foreign target rows and malformed target
+        metadata are never exposed through a bound queue view.
+        """
+
+        requested = max(0, min(int(limit), 256))
+        if requested == 0:
+            return ()
+        # A shared legacy database can contain rows for another target.  Scan
+        # a small multiple of the requested bound, then apply the authoritative
+        # metadata predicate in Python just like the other queue projections.
+        scan_limit = min(256, max(requested, requested * 4))
+        with self._connect() as connection:
+            rows = connection.execute(
+                """SELECT * FROM merge_requests
+                   WHERE status='quarantined'
+                   ORDER BY finished_at, request_id
+                   LIMIT ?""",
+                (scan_limit,),
+            ).fetchall()
+        return tuple(
+            self._request_from_row(row)
+            for row in rows
+            if self._metadata_matches_target(row["metadata_json"])
+        )[:requested]
+
     def get(self, request_id: str) -> MergeRequest | None:
         """Return the current durable request by id."""
 

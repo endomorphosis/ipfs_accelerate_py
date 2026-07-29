@@ -14,7 +14,10 @@ from ipfs_accelerate_py.agent_supervisor.merge_resolver import (
     MergeResolverRegistry,
     conflict_fingerprint,
 )
-from ipfs_accelerate_py.agent_supervisor.merge_train import MergeTrain
+from ipfs_accelerate_py.agent_supervisor.merge_train import (
+    MergeTrain,
+    integrated_candidate_handoff_proof,
+)
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     PortalImplementationDaemon,
     PortalTask,
@@ -281,6 +284,86 @@ def test_train_immediately_recovers_a_claim_abandoned_by_dead_consumer(tmp_path:
     assert stored is not None and stored.status == "completed"
     assert stored.attempt == 2
     assert stored.failure_count == 1
+
+
+def test_train_leaves_integrated_quarantine_closed_without_handoff_scope(
+    tmp_path: Path,
+) -> None:
+    repo = _repo(tmp_path)
+    candidate = _git(repo, "rev-parse", "HEAD")
+    repository_id = checkout_repository_id(repo)
+    queue = MergeQueue(
+        tmp_path / "queue",
+        target_repository_id=repository_id,
+        target_branch="main",
+        require_target_binding=True,
+    )
+    request = queue.enqueue(
+        branch_name="implementation/ref-016-missing-scope",
+        task_id="REF-016-MISSING-SCOPE",
+        canonical_task_id="canonical-ref-016-missing-scope",
+        commit_sha=candidate,
+        # A callback-aware recovery requires an explicit, complete declaration
+        # even when this particular fixture has no changed submodules.
+        metadata={},
+    )
+    claimed = queue.dequeue(consumer_id="merge-train:dead")
+    assert claimed is not None
+    queue.quarantine(
+        claimed,
+        reason="synthetic terminal failure",
+    )
+    callbacks: list[str] = []
+
+    result = MergeTrain(
+        repo,
+        queue,
+        target_branch="main",
+        merge_callback=lambda claimed: callbacks.append(
+            claimed.request_id
+        )
+        or {"merged": True},
+    ).run_once()
+
+    assert result is None
+    assert callbacks == []
+    stored = queue.get(request.request_id)
+    assert stored is not None
+    assert stored.status == "quarantined"
+    assert stored.failure_reason == "synthetic terminal failure"
+
+
+@pytest.mark.parametrize(
+    ("changed_paths", "reason"),
+    (
+        (
+            [f"nested-{index}" for index in range(65)],
+            "changed_submodule_scope_too_large",
+        ),
+        (["x" * 1025], "changed_submodule_paths_malformed"),
+        (
+            ["/".join(["nested"] * 65)],
+            "changed_submodule_paths_malformed",
+        ),
+    ),
+)
+def test_integrated_handoff_proof_bounds_untrusted_path_scope(
+    tmp_path: Path,
+    changed_paths: list[str],
+    reason: str,
+) -> None:
+    repo = _repo(tmp_path)
+    commit = _git(repo, "rev-parse", "HEAD")
+
+    proof = integrated_candidate_handoff_proof(
+        repo,
+        candidate_commit=commit,
+        target_commit=commit,
+        changed_submodule_paths=changed_paths,
+    )
+
+    assert proof["passed"] is False
+    assert proof["reason"] == reason
 
 
 def test_bounded_train_failures_create_durable_quarantine_receipt(tmp_path: Path) -> None:
