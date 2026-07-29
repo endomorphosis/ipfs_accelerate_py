@@ -460,7 +460,7 @@ task IDs on this board.
 
 ## RPR-014 Materialize a target-decision-bound edit packet
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
