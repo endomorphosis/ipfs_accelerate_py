@@ -10584,7 +10584,8 @@ class PortalImplementationDaemon:
         scope_paths = self._proposal_scope_paths(task)
         normalized = full_relative.strip("/")
         if not normalized or not any(
-            path.startswith(f"{normalized}/") for path in scope_paths
+            self._path_matches_prefix(path, normalized)
+            for path in scope_paths
         ):
             return None
         recorded_commit = self._submodule_gitlink_ref(
@@ -11413,7 +11414,12 @@ class PortalImplementationDaemon:
         self,
         scope_paths: Sequence[str],
     ) -> tuple[str, ...]:
-        """Return configured submodules with explicitly task-owned descendants."""
+        """Return configured submodules explicitly owned by the task scope.
+
+        A task may own either the configured submodule root or one of its
+        descendants. In both cases the proposal gate must materialize the
+        child-repository diff instead of validating an opaque gitlink.
+        """
 
         return tuple(
             sorted(
@@ -11422,7 +11428,10 @@ class PortalImplementationDaemon:
                     for relative in self.worktree_submodule_paths
                     if relative.strip("/")
                     and any(
-                        path.startswith(f"{relative.strip('/')}/")
+                        self._path_matches_prefix(
+                            path,
+                            relative.strip("/"),
+                        )
                         for path in scope_paths
                     )
                 }

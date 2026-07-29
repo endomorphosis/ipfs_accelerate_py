@@ -4097,6 +4097,34 @@ def test_implementation_proposal_materializes_committed_submodule_change(tmp_pat
     assert "Subproject commit" not in result.proposal.patch_text
 
 
+def test_implementation_proposal_materializes_declared_submodule_root(tmp_path: Path):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    baseline = _git(repo, "rev-parse", "HEAD")
+    (submodule / "child.txt").write_text(
+        "root-owned candidate\n",
+        encoding="utf-8",
+    )
+    _git(submodule, "commit", "-am", "update root-owned child")
+    _git(repo, "add", "libs/child")
+    _git(repo, "commit", "-m", "advance root-owned child gitlink")
+
+    result = _submodule_proposal_daemon(
+        repo,
+        tmp_path,
+    )._validate_implementation_patch(
+        repo,
+        _submodule_proposal_task("libs/child"),
+        baseline_ref=baseline,
+    )
+
+    assert result.accepted is True
+    assert result.proposal.changed_paths == ("libs/child/child.txt",)
+    assert result.proposal.candidate_diff[0].after_source == (
+        "root-owned candidate\n"
+    )
+    assert "Subproject commit" not in result.proposal.patch_text
+
+
 def test_implementation_proposal_materializes_dirty_submodule_change(tmp_path: Path):
     repo, submodule = _seed_parent_with_submodule(tmp_path)
     baseline = _git(repo, "rev-parse", "HEAD")
@@ -4585,6 +4613,50 @@ def test_implementation_daemon_handoffs_clean_provider_submodule_commit(
     ]
     assert _git(repo, "rev-parse", "HEAD:libs/child") == child_commit
     assert _git(submodule, "rev-parse", "HEAD") == child_commit
+    assert _git(repo, "diff", "--name-only", baseline, result["commit"]) == (
+        "libs/child"
+    )
+
+
+def test_implementation_daemon_handoffs_declared_submodule_root_commit(
+    tmp_path: Path,
+):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    baseline = _git(repo, "rev-parse", "HEAD")
+    (submodule / "child.txt").write_text(
+        "root-owned provider commit\n",
+        encoding="utf-8",
+    )
+    _git(submodule, "commit", "-am", "provider root-owned child change")
+    child_commit = _git(submodule, "rev-parse", "HEAD")
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=["libs/child"],
+    )
+
+    result = daemon._commit_worktree_changes(
+        repo,
+        _submodule_proposal_task("libs/child"),
+        1,
+    )
+
+    assert result["committed"] is True
+    assert result["commit"] != baseline
+    assert result["submodule_results"] == [
+        {
+            "path": "libs/child",
+            "committed": True,
+            "commit": child_commit,
+            "recorded_commit": _git(repo, "rev-parse", f"{baseline}:libs/child"),
+            "reason": "existing_commit",
+        }
+    ]
+    assert _git(repo, "rev-parse", "HEAD:libs/child") == child_commit
     assert _git(repo, "diff", "--name-only", baseline, result["commit"]) == (
         "libs/child"
     )
