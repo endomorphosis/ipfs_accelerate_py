@@ -22,6 +22,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from typing import Any, Callable, Iterable, Mapping, Sequence
+from urllib.parse import unquote, urlsplit
 
 from .. import implementation_timeout as _implementation_timeout
 from ..context_compiler import (
@@ -159,6 +160,11 @@ WORKTREE_POOL_MAX_ENTRIES_ENV = "IPFS_ACCELERATE_AGENT_WORKTREE_POOL_MAX_ENTRIES
 DISABLE_SUBAGENTS_ENV = "IPFS_ACCELERATE_AGENT_DISABLE_SUBAGENTS"
 WORKTREE_CONTEXT_SNAPSHOT_SCHEMA = "agent-supervisor-worktree-context-snapshot-v1"
 DEFAULT_WORKTREE_POOL_MAX_ENTRIES = 4
+MAX_NESTED_SUBMODULE_DEPTH = 8
+MAX_NESTED_SUBMODULE_PATH_BYTES = 1024
+MAX_NESTED_SUBMODULE_PATH_PARTS = 64
+MAX_NESTED_SUBMODULE_GUARD_EVENTS = 32
+MAX_NESTED_SUBMODULE_GUARD_EVENT_TEXT_BYTES = 512
 SHARED_WORKTREE_SOURCE_ROOT_ENV = "IPFS_ACCELERATE_AGENT_SHARED_WORKTREE_SOURCE_ROOT"
 LLM_MERGE_RESOLVER_COMMAND_ENV = "IPFS_ACCELERATE_AGENT_LLM_MERGE_RESOLVER_COMMAND"
 LLM_MERGE_RESOLVER_TIMEOUT_ENV = "IPFS_ACCELERATE_AGENT_LLM_MERGE_RESOLVER_TIMEOUT_SECONDS"
@@ -9656,9 +9662,117 @@ class PortalImplementationDaemon:
         *,
         branch_name: str,
         parent_relative: str,
+        _depth: int = 0,
+        _ancestor_identities: frozenset[str] | None = None,
+        _configured_identities: frozenset[str] | None = None,
+        _guard_state: dict[str, int | bool] | None = None,
     ) -> None:
+        ancestor_identities = _ancestor_identities
+        if ancestor_identities is None:
+            ancestor_identities = frozenset(
+                {
+                    *self._submodule_repository_identities(self.repo_root),
+                    *self._submodule_repository_identities(worktree_path),
+                }
+            )
+        configured_identities = _configured_identities
+        if configured_identities is None:
+            configured_identities = frozenset(
+                identity
+                for relative in self.worktree_submodule_paths
+                for identity in self._nested_submodule_candidate_identities(
+                    self.repo_root,
+                    relative,
+                    source_relative=relative,
+                )
+            )
+        guard_state = _guard_state if _guard_state is not None else {
+            "emitted": 0,
+            "suppression_recorded": False,
+        }
+
         for relative in self._declared_submodule_paths(worktree_path):
             full_relative = f"{parent_relative.rstrip('/')}/{relative}"
+            full_relative_bytes = len(full_relative.encode("utf-8"))
+            full_relative_parts = len(PurePosixPath(full_relative).parts)
+            child_depth = _depth + 1
+            if child_depth > MAX_NESTED_SUBMODULE_DEPTH:
+                self._record_nested_submodule_guard_event(
+                    reason="max_depth_exceeded",
+                    parent_relative=parent_relative,
+                    relative=relative,
+                    full_relative=full_relative,
+                    depth=child_depth,
+                    path_bytes=full_relative_bytes,
+                    guard_state=guard_state,
+                )
+                continue
+            if (
+                full_relative_bytes > MAX_NESTED_SUBMODULE_PATH_BYTES
+                or full_relative_parts > MAX_NESTED_SUBMODULE_PATH_PARTS
+            ):
+                self._record_nested_submodule_guard_event(
+                    reason="path_limit_exceeded",
+                    parent_relative=parent_relative,
+                    relative=relative,
+                    full_relative=full_relative,
+                    depth=child_depth,
+                    path_bytes=full_relative_bytes,
+                    guard_state=guard_state,
+                )
+                continue
+
+            candidate_identities = self._nested_submodule_candidate_identities(
+                worktree_path,
+                relative,
+                source_relative=full_relative,
+            )
+            gitlink_ref = self._submodule_gitlink_ref(worktree_path, relative)
+            if not candidate_identities:
+                self._record_nested_submodule_guard_event(
+                    reason="identity_unavailable",
+                    parent_relative=parent_relative,
+                    relative=relative,
+                    full_relative=full_relative,
+                    depth=child_depth,
+                    path_bytes=full_relative_bytes,
+                    guard_state=guard_state,
+                    expected_gitlink_ref=gitlink_ref,
+                )
+                continue
+            cycle_identities = candidate_identities.intersection(ancestor_identities)
+            if cycle_identities:
+                self._record_nested_submodule_guard_event(
+                    reason="repository_cycle",
+                    parent_relative=parent_relative,
+                    relative=relative,
+                    full_relative=full_relative,
+                    depth=child_depth,
+                    path_bytes=full_relative_bytes,
+                    guard_state=guard_state,
+                    matched_identity=min(cycle_identities),
+                    expected_gitlink_ref=gitlink_ref,
+                )
+                continue
+            duplicate_identities = candidate_identities.intersection(configured_identities)
+            if duplicate_identities:
+                # The same repository is already prepared as an explicitly
+                # configured top-level dependency. Reusing that checkout keeps
+                # nested tool/doc copies out of implementation worktrees and
+                # avoids divergent branches for one logical dependency.
+                self._record_nested_submodule_guard_event(
+                    reason="configured_dependency_duplicate",
+                    parent_relative=parent_relative,
+                    relative=relative,
+                    full_relative=full_relative,
+                    depth=child_depth,
+                    path_bytes=full_relative_bytes,
+                    guard_state=guard_state,
+                    matched_identity=min(duplicate_identities),
+                    expected_gitlink_ref=gitlink_ref,
+                )
+                continue
+
             if self._create_local_submodule_worktree(
                 worktree_path,
                 relative,
@@ -9667,12 +9781,250 @@ class PortalImplementationDaemon:
             ):
                 target = worktree_path / relative
                 if self._is_git_worktree(target):
+                    target_identities = self._submodule_repository_identities(target)
+                    late_cycle_identities = target_identities.intersection(ancestor_identities)
+                    if late_cycle_identities:
+                        # Repository metadata can be absent from .gitmodules or
+                        # an unresolved source. Stop before descending even
+                        # when the stable identity becomes visible only after
+                        # the single requested checkout is prepared.
+                        self._record_nested_submodule_guard_event(
+                            reason="repository_cycle",
+                            parent_relative=parent_relative,
+                            relative=relative,
+                            full_relative=full_relative,
+                            depth=child_depth,
+                            path_bytes=full_relative_bytes,
+                            guard_state=guard_state,
+                            matched_identity=min(late_cycle_identities),
+                            expected_gitlink_ref=gitlink_ref,
+                        )
+                        continue
+                    late_duplicate_identities = target_identities.intersection(
+                        configured_identities
+                    )
+                    if late_duplicate_identities:
+                        self._record_nested_submodule_guard_event(
+                            reason="configured_dependency_duplicate",
+                            parent_relative=parent_relative,
+                            relative=relative,
+                            full_relative=full_relative,
+                            depth=child_depth,
+                            path_bytes=full_relative_bytes,
+                            guard_state=guard_state,
+                            matched_identity=min(late_duplicate_identities),
+                            expected_gitlink_ref=gitlink_ref,
+                        )
+                        continue
                     self._initialize_nested_worktree_submodules(
                         target,
                         branch_name=branch_name,
                         parent_relative=full_relative,
+                        _depth=child_depth,
+                        _ancestor_identities=frozenset(
+                            {
+                                *ancestor_identities,
+                                *candidate_identities,
+                                *target_identities,
+                            }
+                        ),
+                        _configured_identities=configured_identities,
+                        _guard_state=guard_state,
                     )
                 continue
+
+    def _nested_submodule_candidate_identities(
+        self,
+        worktree_path: Path,
+        relative: str,
+        *,
+        source_relative: str,
+    ) -> set[str]:
+        """Return stable local and remote identities for a candidate edge."""
+
+        identities = self._declared_submodule_repository_identities(worktree_path, relative)
+        if self._repo_relative_path_safe(source_relative):
+            source = self.repo_root / source_relative
+            if source.exists() and self._is_git_worktree(source):
+                identities.update(self._submodule_repository_identities(source))
+        return identities
+
+    def _declared_submodule_repository_identities(
+        self,
+        worktree_path: Path,
+        relative: str,
+    ) -> set[str]:
+        """Return normalized repository identities declared for ``relative``."""
+
+        gitmodules = worktree_path / ".gitmodules"
+        if not gitmodules.is_file():
+            return set()
+        result = subprocess.run(
+            [
+                "git",
+                "config",
+                "--file",
+                str(gitmodules),
+                "--get-regexp",
+                r"^submodule\..*\.(path|url)$",
+            ],
+            cwd=worktree_path,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            return set()
+
+        entries: dict[str, dict[str, str]] = {}
+        for line in result.stdout.splitlines():
+            key, separator, value = line.partition(" ")
+            if not separator or not key.startswith("submodule."):
+                continue
+            section_and_field = key.removeprefix("submodule.")
+            section, field_separator, field = section_and_field.rpartition(".")
+            if not field_separator or field not in {"path", "url"}:
+                continue
+            entries.setdefault(section, {})[field] = value.strip()
+
+        identities: set[str] = set()
+        for entry in entries.values():
+            if entry.get("path") != relative:
+                continue
+            normalized = self._normalize_submodule_repository_url(entry.get("url", ""))
+            if normalized:
+                identities.add(normalized)
+        return identities
+
+    def _submodule_repository_identities(self, repo: Path) -> set[str]:
+        """Return content-independent identities that survive linked worktrees."""
+
+        if not self._is_git_worktree(repo):
+            return set()
+        identities: set[str] = set()
+        origin = subprocess.run(
+            ["git", "config", "--get", "remote.origin.url"],
+            cwd=repo,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if origin.returncode == 0:
+            normalized_origin = self._normalize_submodule_repository_url(origin.stdout.strip())
+            if normalized_origin:
+                identities.add(normalized_origin)
+
+        common_dir = self._git_common_dir(repo)
+        if common_dir is not None:
+            identities.add(f"git-common:{common_dir}")
+            # An ordinary repository's common directory is ``<root>/.git``.
+            # Match it to absolute file:// or local-path submodule URLs.
+            if common_dir.name == ".git":
+                identities.add(f"local:{common_dir.parent}")
+        return identities
+
+    @staticmethod
+    def _normalize_submodule_repository_url(raw_url: str) -> str:
+        """Canonicalize common Git URL spellings for cycle comparison."""
+
+        value = raw_url.strip()
+        if not value:
+            return ""
+        if value.startswith("file://"):
+            parsed = urlsplit(value)
+            if parsed.netloc not in {"", "localhost"}:
+                return f"network:{parsed.netloc.lower()}/{parsed.path.strip('/').removesuffix('.git').lower()}"
+            try:
+                return f"local:{Path(unquote(parsed.path)).resolve()}"
+            except OSError:
+                return ""
+        if value.startswith("/"):
+            try:
+                return f"local:{Path(value).resolve()}"
+            except OSError:
+                return ""
+
+        scp_style = re.fullmatch(r"(?:[^@/\s]+@)?([^:/\s]+):(.+)", value)
+        if scp_style and "://" not in value:
+            host, path = scp_style.groups()
+            return f"network:{host.lower()}/{path.strip('/').removesuffix('.git').lower()}"
+
+        parsed = urlsplit(value)
+        if parsed.scheme and parsed.netloc:
+            host = (parsed.hostname or parsed.netloc).lower()
+            path = unquote(parsed.path).strip("/").removesuffix(".git").lower()
+            return f"network:{host}/{path}"
+
+        # Relative Git URLs cannot be resolved safely without the parent
+        # remote. Retain the normalized declaration as a weak identity; the
+        # hard depth/path bounds remain authoritative when it is ambiguous.
+        normalized_relative = posixpath.normpath(value).removesuffix(".git")
+        return f"relative:{normalized_relative}"
+
+    def _record_nested_submodule_guard_event(
+        self,
+        *,
+        reason: str,
+        parent_relative: str,
+        relative: str,
+        full_relative: str,
+        depth: int,
+        path_bytes: int,
+        guard_state: dict[str, int | bool],
+        matched_identity: str = "",
+        expected_gitlink_ref: str = "",
+    ) -> None:
+        """Emit a bounded diagnostic without allowing adversarial log growth."""
+
+        emitted = int(guard_state.get("emitted", 0))
+        if emitted >= MAX_NESTED_SUBMODULE_GUARD_EVENTS:
+            if not bool(guard_state.get("suppression_recorded", False)):
+                self._record_event(
+                    "nested_submodule_initialization_guard_suppressed",
+                    {
+                        "limit": MAX_NESTED_SUBMODULE_GUARD_EVENTS,
+                        "reason": "diagnostic_limit_reached",
+                    },
+                )
+                guard_state["suppression_recorded"] = True
+            return
+        payload = {
+            "reason": reason,
+            "parent_relative": self._bounded_submodule_guard_text(parent_relative),
+            "relative": self._bounded_submodule_guard_text(relative),
+            "path": self._bounded_submodule_guard_text(full_relative),
+            "path_sha256": hashlib.sha256(full_relative.encode("utf-8")).hexdigest(),
+            "depth": depth,
+            "max_depth": MAX_NESTED_SUBMODULE_DEPTH,
+            "path_bytes": path_bytes,
+            "max_path_bytes": MAX_NESTED_SUBMODULE_PATH_BYTES,
+            "path_parts": len(PurePosixPath(full_relative).parts),
+            "max_path_parts": MAX_NESTED_SUBMODULE_PATH_PARTS,
+            "expected_gitlink_ref_available": bool(expected_gitlink_ref),
+            "expected_gitlink_ref_sha256": (
+                hashlib.sha256(expected_gitlink_ref.encode("utf-8")).hexdigest()
+                if expected_gitlink_ref
+                else ""
+            ),
+        }
+        if matched_identity:
+            payload["matched_identity_sha256"] = hashlib.sha256(
+                matched_identity.encode("utf-8")
+            ).hexdigest()
+        self._record_event("nested_submodule_initialization_guarded", payload)
+        guard_state["emitted"] = emitted + 1
+
+    @staticmethod
+    def _bounded_submodule_guard_text(value: str) -> str:
+        encoded = value.encode("utf-8")
+        if len(encoded) <= MAX_NESTED_SUBMODULE_GUARD_EVENT_TEXT_BYTES:
+            return value
+        suffix = "…"
+        suffix_bytes = suffix.encode("utf-8")
+        prefix = encoded[
+            : MAX_NESTED_SUBMODULE_GUARD_EVENT_TEXT_BYTES - len(suffix_bytes)
+        ]
+        return prefix.decode("utf-8", errors="ignore") + suffix
 
     def _create_local_submodule_worktree(
         self,
