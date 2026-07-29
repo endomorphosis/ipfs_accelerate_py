@@ -1,4 +1,10 @@
-"""Tests for minimal dependency-complete call/impact slice queries (VFS-013)."""
+"""Tests for minimal dependency-complete call/impact slice queries (VFS-013/041).
+
+VFS-041 objective validation repair: kind-partitioned query indexes accelerate
+traversal without changing canonical graph identity, and acceptance criteria
+(seeded transitive callers/callees and MCP paths complete within scope,
+unrelated source omitted, limits never silently claim complete) remain proven.
+"""
 
 from __future__ import annotations
 
@@ -19,10 +25,12 @@ from ipfs_accelerate_py.agent_supervisor.program_graph import (
 from ipfs_accelerate_py.agent_supervisor.program_graph_queries import (
     MINIMAL_CALL_SLICE_EVIDENCE,
     PROGRAM_GRAPH_SLICE_SCHEMA,
+    QUERY_INDEX_VERSION,
     ProgramGraphQuery,
     ProgramGraphQueryError,
     QueryBounds,
     QueryKind,
+    _GraphView,
     query_changed_blob_impact,
     query_contract_consumers,
     query_contract_producers,
@@ -1003,3 +1011,192 @@ def test_repository_filter_scopes_results() -> None:
     )
     assert fx["a"].node_id in result.seed_node_ids
     assert fx["b"].node_id in result.node_ids
+
+
+# ---------------------------------------------------------------------------
+# VFS-041: query index optimization + objective validation repair
+# ---------------------------------------------------------------------------
+
+
+def test_kind_partitioned_query_indexes_preserve_canonical_graph_identity() -> None:
+    """Indexes accelerate lookups; graph_id / node_id / edge_id stay canonical."""
+
+    fx = _seeded_call_graph()
+    graph = fx["graph"]
+    view = _GraphView(graph)
+    stats = view.index_stats()
+
+    assert stats["query_index_version"] == QUERY_INDEX_VERSION
+    assert stats["graph_id"] == graph.graph_id
+    assert stats["forest_id"] == graph.forest_id
+    assert stats["canonical_graph_identity_preserved"] is True
+    assert stats["node_count"] == len(graph.nodes)
+    assert stats["edge_count"] == len(graph.edges)
+    assert stats["kind_partitioned_edge_slots"] == len(graph.edges)
+    assert stats["qualified_name_keys"] >= 1
+    assert "symbol" in view.by_node_kind
+
+    # Every edge appears exactly once in the kind-partitioned forward index.
+    indexed_edge_ids: set[str] = set()
+    for node_map in view.forward_by_kind.values():
+        for bucket in node_map.values():
+            for item in bucket:
+                indexed_edge_ids.add(item.edge.edge_id)
+    assert indexed_edge_ids == {edge.edge_id for edge in graph.edges}
+
+    # Kind buckets match the edge kind vocabulary used by callers/callees.
+    calls = ProgramEdgeKind.CALLS.value
+    contains = ProgramEdgeKind.CONTAINS.value
+    call_ab = fx["call_ab"].node_id
+    # call_ab --calls--> symbol:b is present under the CALLS kind partition.
+    call_neighbors = {
+        item.neighbor
+        for item in view.forward_by_kind.get(call_ab, {}).get(calls, ())
+    }
+    assert fx["b"].node_id in call_neighbors
+    # symbol:a --contains--> call_ab under CONTAINS.
+    contains_neighbors = {
+        item.neighbor
+        for item in view.forward_by_kind.get(fx["a"].node_id, {}).get(
+            contains, ()
+        )
+    }
+    assert call_ab in contains_neighbors
+
+    # Building the view never mutates the underlying graph identity payload.
+    assert graph.graph_id == view.graph_id
+    assert graph.forest_id == view.forest_id
+    for node in graph.nodes:
+        assert node.node_id in view.nodes
+        assert view.nodes[node.node_id] is node
+    for edge in graph.edges:
+        assert edge.edge_id in view.edges
+        assert view.edges[edge.edge_id] is edge
+
+
+def test_query_index_layout_is_recorded_without_embedding_cardinalities() -> None:
+    """Provenance carries the fixed index layout marker, not volatile counts."""
+
+    fx = _seeded_call_graph()
+    result = query_symbol_callees(
+        fx["graph"], seed_qualified_names=["pkg.a"]
+    )
+    assert result.provenance["query_index"] == QUERY_INDEX_VERSION
+    assert result.provenance["canonical_graph_identity_preserved"] is True
+    assert result.provenance["graph_id"] == fx["graph"].graph_id
+    # Cardinalities must not leak into identity-bearing provenance.
+    for forbidden in (
+        "kind_partitioned_edge_slots",
+        "forward_nodes",
+        "node_count_index",
+        "vfs_candidates",
+    ):
+        assert forbidden not in result.provenance
+
+
+def test_objective_validation_repair_acceptance_seeded_slices() -> None:
+    """VFS-G041 acceptance: complete within scope, omit unrelated, no silent complete.
+
+    Objective validation repair for the missing evidence term is proven by
+    these hard-bounded query behaviours remaining green under the optimized
+    kind-partitioned indexes.
+    """
+
+    call_fx = _seeded_call_graph()
+    mcp_fx = _mcp_route_graph()
+
+    callees = query_symbol_callees(
+        call_fx["graph"], seed_qualified_names=["pkg.a"]
+    )
+    callers = query_symbol_callers(
+        call_fx["graph"], seed_qualified_names=["pkg.c"]
+    )
+    mcp = query_mcp_end_to_end(
+        mcp_fx["graph"], seed_node_ids=[mcp_fx["reg"].node_id]
+    )
+
+    # Seeded transitive callees / callers complete within scope.
+    for result in (callees, callers, mcp):
+        assert result.dependency_complete is True or result.truncated is True
+        if not result.truncated and not result.missing_node_ids:
+            assert result.minimal is True
+            # Dependency-complete implies required chain retained.
+            assert result.required_dependencies
+        # Limits never silently convert incomplete -> complete.
+        if result.truncated or result.omitted_dependencies or result.missing_node_ids:
+            assert result.complete is False
+            assert result.dependency_complete is False
+
+    # Transitive call chain A->B->C retained; unrelated U omitted.
+    assert {
+        call_fx["a"].node_id,
+        call_fx["b"].node_id,
+        call_fx["c"].node_id,
+    }.issubset(set(callees.node_ids))
+    assert call_fx["u"].node_id not in callees.node_ids
+    assert call_fx["a"].node_id in callers.node_ids
+    assert call_fx["u"].node_id not in callers.node_ids
+
+    # MCP registration route is dependency-complete for the registration seed.
+    assert mcp_fx["reg"].node_id in mcp.seed_node_ids
+    assert mcp_fx["impl"].node_id in mcp.node_ids
+    assert mcp.dependency_complete is True
+    assert mcp.minimal is True
+
+    # Hard bound still fails closed under the optimized indexes.
+    truncated = query_symbol_callees(
+        call_fx["graph"],
+        seed_qualified_names=["pkg.a"],
+        bounds=QueryBounds(max_nodes=2, max_edges=2, max_depth=1),
+    )
+    assert truncated.truncated is True
+    assert truncated.complete is False
+    assert truncated.dependency_complete is False
+    assert truncated.provenance["query_index"] == QUERY_INDEX_VERSION
+
+
+def test_kind_partitioned_neighbors_match_full_adjacency_filter() -> None:
+    """Kind partition must yield the same neighbor set as filtering full adj."""
+
+    fx = _seeded_call_graph()
+    view = _GraphView(fx["graph"])
+    edge_kinds = frozenset(
+        {
+            ProgramEdgeKind.CALLS.value,
+            ProgramEdgeKind.CONTAINS.value,
+            ProgramEdgeKind.RESOLVES_TO.value,
+        }
+    )
+    for node_id in list(view.nodes)[:12]:
+        partitioned = view.neighbors_for(
+            node_id, directions=("forward", "reverse"), edge_kinds=edge_kinds
+        )
+        # Reconstruct the pre-optimization filter from full adjacency.
+        raw: list[Any] = []
+        raw.extend(view.forward.get(node_id, ()))
+        raw.extend(view.reverse.get(node_id, ()))
+        expected_ids = []
+        for item in raw:
+            if item.edge.kind.value not in edge_kinds:
+                continue
+            if not view.allowed(item.neighbor):
+                continue
+            neighbor = view.nodes.get(item.neighbor)
+            current = view.nodes.get(node_id)
+            if item.edge.kind is ProgramEdgeKind.CONTAINS:
+                if neighbor is not None and neighbor.kind is ProgramNodeKind.REPOSITORY:
+                    continue
+                if (
+                    current is not None
+                    and current.kind is ProgramNodeKind.REPOSITORY
+                    and item.forward
+                ):
+                    continue
+            expected_ids.append(
+                (item.edge.edge_id, item.neighbor, item.forward)
+            )
+        got_ids = [
+            (item.edge.edge_id, item.neighbor, item.forward)
+            for item in partitioned
+        ]
+        assert sorted(got_ids) == sorted(expected_ids)
