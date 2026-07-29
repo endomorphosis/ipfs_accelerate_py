@@ -42,6 +42,10 @@ IMPLEMENTATION_PROVIDER_PROPOSAL_SCHEMA: Final = (
 IMPLEMENTATION_PROVIDER_ROUTE_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/implementation-provider-route@1"
 )
+PROVIDER_EXECUTION_RECEIPT_INTERFACE: Final = "ProviderExecutionReceipt@1"
+PROVIDER_EXECUTION_RECEIPT_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/provider-execution-receipt@1"
+)
 
 # These are protocol limits, not provider suggestions.  Size checks are over
 # UTF-8 bytes and are inclusive at the boundary.
@@ -67,6 +71,17 @@ class RouteStatus(str, Enum):
     REJECTED = "rejected"
 
 
+class ReviewPresence(str, Enum):
+    """Explicit independent-review disposition recorded on every receipt."""
+
+    INDEPENDENT = "independent_review"
+    ABSENT = "review_absent"
+    DEGRADED = "review_degraded"
+    DECLINED = "review_declined"
+    LOCAL_ONLY = "local_only"
+    NOT_APPLICABLE = "not_applicable"
+
+
 class ProviderReason(str, Enum):
     ROUTED = "bounded_provider_route"
     LOCAL_ONLY = "deterministic_local_route"
@@ -90,6 +105,10 @@ class ProviderReason(str, Enum):
     PROPOSAL_REJECTED = "proposal_rejected"
     REVIEW_REJECTED = "review_rejected"
     REVIEW_DECLINED = "review_declined"
+    REVIEW_ABSENT = "review_absent"
+    REVIEW_DEGRADED = "review_degraded"
+    SELF_REVIEW_FORBIDDEN = "grok_self_review_forbidden"
+    PROVIDERS_NOT_INDEPENDENT = "providers_not_independent"
     WRITER_LEASE_REQUIRED = "writer_lease_required"
     WRITER_NOT_CONFIGURED = "writer_not_configured"
     WRITE_FAILED = "admitted_write_failed"
@@ -618,10 +637,259 @@ class ProviderAttempt:
 
 
 @dataclass(frozen=True, slots=True)
+class PacketIdentity:
+    """Content-addressed identity of the bounded provider packet."""
+
+    packet_id: str
+    packet_cid: str
+    packet_bytes: int
+    snapshot_id: str = ""
+    task_id: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "packet_id": self.packet_id,
+            "packet_cid": self.packet_cid,
+            "packet_bytes": self.packet_bytes,
+            "snapshot_id": self.snapshot_id,
+            "task_id": self.task_id,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class ReviewChainStep:
+    """One ordered step of the Grok implementation / Codex review chain."""
+
+    role: str
+    status: str
+    reason_code: str
+    admitted: bool = False
+    response_digest: str = ""
+    prompt_bytes: int = 0
+    prompt_tokens: int = 0
+    response_bytes: int = 0
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "role": self.role,
+            "status": self.status,
+            "reason_code": self.reason_code,
+            "admitted": self.admitted,
+            "response_digest": self.response_digest,
+            "prompt_bytes": self.prompt_bytes,
+            "prompt_tokens": self.prompt_tokens,
+            "response_bytes": self.response_bytes,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class ProviderExecutionReceipt:
+    """Receipt proving which provider ran, on which packet, with which review.
+
+    A lane label is not a receipt.  Provider output never becomes completion or
+    proof authority; independent Codex review is required for admission of a
+    model-assisted result as reviewed.
+    """
+
+    receipt_id: str
+    status: str
+    reason_code: str
+    provider: str
+    packet: Mapping[str, Any]
+    review_chain: tuple[ReviewChainStep, ...]
+    review_presence: str
+    admission: Mapping[str, Any]
+    attempts: tuple[Mapping[str, Any], ...] = ()
+    writer_lease_id: str = ""
+    write_performed: bool = False
+    fallback: bool = False
+    selected_proposal_digest: str = ""
+    implementation_proposal_digest: str = ""
+    review_proposal_digest: str = ""
+
+    @property
+    def completion_authoritative(self) -> bool:
+        return False
+
+    @property
+    def proof_authoritative(self) -> bool:
+        return False
+
+    @property
+    def provider_result_admitted(self) -> bool:
+        return bool(self.admission.get("provider_result_admitted"))
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": PROVIDER_EXECUTION_RECEIPT_SCHEMA,
+            "interface": PROVIDER_EXECUTION_RECEIPT_INTERFACE,
+            "receipt_id": self.receipt_id,
+            "status": self.status,
+            "reason_code": self.reason_code,
+            "provider": self.provider,
+            "packet": dict(self.packet),
+            "review_chain": [step.to_dict() for step in self.review_chain],
+            "review_presence": self.review_presence,
+            "admission": dict(self.admission),
+            "attempts": [dict(item) for item in self.attempts],
+            "writer_lease_id": self.writer_lease_id if self.write_performed else "",
+            "write_performed": self.write_performed,
+            "fallback": self.fallback,
+            "selected_proposal_digest": self.selected_proposal_digest,
+            "implementation_proposal_digest": self.implementation_proposal_digest,
+            "review_proposal_digest": self.review_proposal_digest,
+            "proof_authoritative": False,
+            "completion_authoritative": False,
+        }
+
+
+def _packet_content_id(payload: Mapping[str, Any]) -> str:
+    """Return a stable content identity for the redacted packet payload."""
+
+    try:
+        from ..proof.formal_verification_contracts import content_identity
+
+        return str(content_identity(dict(payload)))
+    except Exception:
+        return _sha256(_canonical_bytes(payload))
+
+
+def _bounded_evidence_slice(
+    provider_input: Mapping[str, Any],
+    *,
+    packet_id: str,
+    snapshot_id: str,
+    task_id: str,
+) -> dict[str, Any]:
+    """Build the only packet slice Codex may see: proposal evidence, not corpus."""
+
+    scope = provider_input.get("scope")
+    acceptance = provider_input.get("acceptance")
+    expansion: Any = []
+    for key in (
+        "expansion_handles",
+        "expansion_references",
+        "expansion_cids",
+        "evidence_handles",
+    ):
+        if key in provider_input:
+            expansion = provider_input[key]
+            break
+    goal = provider_input.get("goal")
+    goal_ids: dict[str, Any] = {}
+    if isinstance(goal, Mapping):
+        for key in (
+            "contract_ids",
+            "obligation_ids",
+            "acceptance_ids",
+            "claim_ids",
+            "property_ids",
+        ):
+            if key in goal:
+                goal_ids[key] = goal[key]
+    return {
+        "packet_id": packet_id,
+        "snapshot_id": snapshot_id,
+        "task_id": task_id,
+        "scope": dict(scope) if isinstance(scope, Mapping) else scope,
+        "acceptance": (
+            dict(acceptance) if isinstance(acceptance, Mapping) else acceptance
+        ),
+        "goal_ids": goal_ids,
+        "expansion_handles": expansion if expansion is not None else [],
+        "authority": {
+            "provider_output_tier": "proposal",
+            "repository_write_allowed": False,
+            "proof_authoritative": False,
+            "completion_authoritative": False,
+        },
+    }
+
+
+def build_provider_execution_receipt(
+    result: "ImplementationRoutingResult",
+) -> ProviderExecutionReceipt:
+    """Materialize a content-addressed ProviderExecutionReceipt@1 from a route."""
+
+    review_chain = result.review_chain
+    review_presence = result.review_presence
+    provider = result.provider
+    packet = result.packet.to_dict() if result.packet is not None else {
+        "packet_id": result.packet_id,
+        "packet_cid": "",
+        "packet_bytes": 0,
+        "snapshot_id": "",
+        "task_id": "",
+    }
+    admission = {
+        "proposal_only": True,
+        "repository_write_allowed": bool(result.write_performed),
+        "completion_authoritative": False,
+        "proof_authoritative": False,
+        "provider_result_admitted": result.provider_result_admitted,
+        "independent_review": review_presence == ReviewPresence.INDEPENDENT.value,
+        "review_presence": review_presence,
+        "self_review": False,
+        "writer_lease_bound": bool(result.write_performed and result.writer_lease_id),
+    }
+    body = {
+        "schema": PROVIDER_EXECUTION_RECEIPT_SCHEMA,
+        "interface": PROVIDER_EXECUTION_RECEIPT_INTERFACE,
+        "status": result.status.value,
+        "reason_code": result.reason_code,
+        "provider": provider,
+        "packet": packet,
+        "review_chain": [step.to_dict() for step in review_chain],
+        "review_presence": review_presence,
+        "admission": admission,
+        "attempts": [item.to_dict() for item in result.attempts],
+        "writer_lease_id": result.writer_lease_id if result.write_performed else "",
+        "write_performed": result.write_performed,
+        "fallback": result.status is RouteStatus.FALLBACK,
+        "selected_proposal_digest": (
+            result.selected_proposal.response_digest
+            if result.selected_proposal is not None
+            else ""
+        ),
+        "implementation_proposal_digest": (
+            result.implementation_proposal.response_digest
+            if result.implementation_proposal is not None
+            else ""
+        ),
+        "review_proposal_digest": (
+            result.review_proposal.response_digest
+            if result.review_proposal is not None
+            else ""
+        ),
+        "proof_authoritative": False,
+        "completion_authoritative": False,
+    }
+    receipt_id = _packet_content_id(body)
+    return ProviderExecutionReceipt(
+        receipt_id=receipt_id,
+        status=result.status.value,
+        reason_code=result.reason_code,
+        provider=provider,
+        packet=MappingProxyType(packet),
+        review_chain=review_chain,
+        review_presence=review_presence,
+        admission=MappingProxyType(admission),
+        attempts=tuple(MappingProxyType(item.to_dict()) for item in result.attempts),
+        writer_lease_id=result.writer_lease_id if result.write_performed else "",
+        write_performed=result.write_performed,
+        fallback=result.status is RouteStatus.FALLBACK,
+        selected_proposal_digest=body["selected_proposal_digest"],
+        implementation_proposal_digest=body["implementation_proposal_digest"],
+        review_proposal_digest=body["review_proposal_digest"],
+    )
+
+
+@dataclass(frozen=True, slots=True)
 class ImplementationRoutingResult:
     status: RouteStatus
     reason_code: str
     packet_id: str = ""
+    packet: PacketIdentity | None = None
     selected_proposal: ProviderProposal | None = None
     implementation_proposal: ProviderProposal | None = None
     review_proposal: ProviderProposal | None = None
@@ -643,15 +911,263 @@ class ImplementationRoutingResult:
 
     @property
     def completion_authoritative(self) -> bool:
+        # Provider routes never complete tasks.  Absent or degraded independent
+        # review is explicit on the receipt and cannot satisfy authority.
         return False
 
+    @property
+    def provider(self) -> str:
+        if self.selected_proposal is not None:
+            return self.selected_proposal.role.value
+        if self.implementation_proposal is not None:
+            return self.implementation_proposal.role.value
+        for attempt in self.attempts:
+            return attempt.role.value
+        return ""
+
+    @property
+    def review_presence(self) -> str:
+        if self.status is RouteStatus.SUCCEEDED and self.review_proposal is not None:
+            decision = str(
+                self.review_proposal.payload.get("decision") or "approve"
+            ).strip().casefold()
+            if decision in {"reject", "decline", "changes_required"}:
+                return ReviewPresence.DECLINED.value
+            return ReviewPresence.INDEPENDENT.value
+        if self.reason_code in {
+            ProviderReason.REVIEW_DECLINED.value,
+            ProviderReason.REVIEW_REJECTED.value,
+        }:
+            return ReviewPresence.DECLINED.value
+        if self.reason_code in {
+            ProviderReason.LOCAL_ONLY.value,
+        } or (
+            self.selected_proposal is not None
+            and self.selected_proposal.role is ProviderRole.DETERMINISTIC_LOCAL
+            and self.implementation_proposal is not None
+            and self.implementation_proposal.role is ProviderRole.DETERMINISTIC_LOCAL
+        ):
+            if self.reason_code == ProviderReason.LOCAL_ONLY.value:
+                return ReviewPresence.LOCAL_ONLY.value
+        if self.reason_code in {
+            ProviderReason.CODEX_UNAVAILABLE.value,
+            ProviderReason.CODEX_QUOTA_EXHAUSTED.value,
+            ProviderReason.REVIEW_ABSENT.value,
+        }:
+            return ReviewPresence.ABSENT.value
+        if self.status is RouteStatus.FALLBACK and self.implementation_proposal is not None:
+            return ReviewPresence.DEGRADED.value
+        if self.review_proposal is None and self.implementation_proposal is not None:
+            if self.status is RouteStatus.REJECTED and self.reason_code in {
+                ProviderReason.PROPOSAL_REJECTED.value,
+                ProviderReason.PROVIDER_AUTHORITY_CLAIM.value,
+                ProviderReason.PROVIDER_RESPONSE_MALFORMED.value,
+                ProviderReason.PROVIDER_RESPONSE_TOO_LARGE.value,
+                ProviderReason.SELF_REVIEW_FORBIDDEN.value,
+                ProviderReason.PROVIDERS_NOT_INDEPENDENT.value,
+            }:
+                return ReviewPresence.NOT_APPLICABLE.value
+            return ReviewPresence.ABSENT.value
+        if self.implementation_proposal is None:
+            return ReviewPresence.NOT_APPLICABLE.value
+        return ReviewPresence.DEGRADED.value
+
+    @property
+    def provider_result_admitted(self) -> bool:
+        """True only when independent Codex review succeeded and was admitted."""
+
+        return (
+            self.status is RouteStatus.SUCCEEDED
+            and self.review_proposal is not None
+            and self.review_proposal.admitted
+            and self.admitted
+            and self.review_presence == ReviewPresence.INDEPENDENT.value
+        )
+
+    @property
+    def review_chain(self) -> tuple[ReviewChainStep, ...]:
+        steps: list[ReviewChainStep] = []
+        attempt_by_role = {item.role: item for item in self.attempts}
+
+        def _step_from_proposal(
+            proposal: ProviderProposal | None,
+            role: ProviderRole,
+            *,
+            default_status: str,
+            default_reason: str,
+        ) -> ReviewChainStep:
+            attempt = attempt_by_role.get(role)
+            if proposal is not None:
+                if default_status in {
+                    "absent",
+                    "degraded",
+                    "declined",
+                    "not_applicable",
+                    "failed",
+                }:
+                    step_status = default_status
+                elif proposal.admitted:
+                    step_status = "succeeded"
+                else:
+                    step_status = "failed"
+                return ReviewChainStep(
+                    role=role.value,
+                    status=step_status,
+                    reason_code=proposal.admission_reason or default_reason,
+                    admitted=proposal.admitted,
+                    response_digest=proposal.response_digest,
+                    prompt_bytes=attempt.prompt_bytes if attempt else 0,
+                    prompt_tokens=attempt.prompt_tokens if attempt else 0,
+                    response_bytes=proposal.response_bytes,
+                )
+            if attempt is not None:
+                # Prefer the explicit review-presence disposition over the raw
+                # attempt status so absent/degraded review stays explicit.
+                if default_status in {
+                    "absent",
+                    "degraded",
+                    "declined",
+                    "not_applicable",
+                }:
+                    step_status = default_status
+                    step_reason = default_reason or attempt.reason_code
+                else:
+                    step_status = attempt.status
+                    step_reason = attempt.reason_code or default_reason
+                return ReviewChainStep(
+                    role=role.value,
+                    status=step_status,
+                    reason_code=step_reason,
+                    admitted=False,
+                    response_digest=attempt.response_digest,
+                    prompt_bytes=attempt.prompt_bytes,
+                    prompt_tokens=attempt.prompt_tokens,
+                    response_bytes=attempt.response_bytes,
+                )
+            return ReviewChainStep(
+                role=role.value,
+                status=default_status,
+                reason_code=default_reason,
+                admitted=False,
+            )
+
+        if (
+            self.implementation_proposal is not None
+            or any(item.role is ProviderRole.GROK_IMPLEMENT for item in self.attempts)
+            or any(
+                item.role is ProviderRole.DETERMINISTIC_LOCAL for item in self.attempts
+            )
+        ):
+            if (
+                self.implementation_proposal is not None
+                and self.implementation_proposal.role is ProviderRole.DETERMINISTIC_LOCAL
+            ) or any(
+                item.role is ProviderRole.DETERMINISTIC_LOCAL for item in self.attempts
+            ):
+                steps.append(
+                    _step_from_proposal(
+                        self.implementation_proposal
+                        if self.implementation_proposal is not None
+                        and self.implementation_proposal.role
+                        is ProviderRole.DETERMINISTIC_LOCAL
+                        else None,
+                        ProviderRole.DETERMINISTIC_LOCAL,
+                        default_status=(
+                            "succeeded"
+                            if self.selected_proposal is not None
+                            else "failed"
+                        ),
+                        default_reason=self.reason_code or ProviderReason.LOCAL_ONLY.value,
+                    )
+                )
+            else:
+                steps.append(
+                    _step_from_proposal(
+                        self.implementation_proposal
+                        if self.implementation_proposal is not None
+                        and self.implementation_proposal.role
+                        is ProviderRole.GROK_IMPLEMENT
+                        else (
+                            self.implementation_proposal
+                            if self.implementation_proposal is not None
+                            else None
+                        ),
+                        ProviderRole.GROK_IMPLEMENT,
+                        default_status=(
+                            "succeeded"
+                            if self.implementation_proposal is not None
+                            and self.implementation_proposal.admitted
+                            else (
+                                "failed"
+                                if any(
+                                    item.role is ProviderRole.GROK_IMPLEMENT
+                                    and item.status == "failed"
+                                    for item in self.attempts
+                                )
+                                else "absent"
+                            )
+                        ),
+                        default_reason=self.reason_code or ProviderReason.ROUTED.value,
+                    )
+                )
+
+        # Independent review step is always explicit for model-assisted routes.
+        model_assisted = any(
+            item.role is ProviderRole.GROK_IMPLEMENT for item in self.attempts
+        ) or (
+            self.implementation_proposal is not None
+            and self.implementation_proposal.role is ProviderRole.GROK_IMPLEMENT
+        )
+        if model_assisted or self.review_proposal is not None:
+            presence = self.review_presence
+            if presence == ReviewPresence.INDEPENDENT.value:
+                default_status = "succeeded"
+                default_reason = ProviderReason.ROUTED.value
+            elif presence == ReviewPresence.DECLINED.value:
+                default_status = "declined"
+                default_reason = self.reason_code or ProviderReason.REVIEW_DECLINED.value
+            elif presence == ReviewPresence.ABSENT.value:
+                default_status = "absent"
+                default_reason = self.reason_code or ProviderReason.REVIEW_ABSENT.value
+            elif presence == ReviewPresence.DEGRADED.value:
+                default_status = "degraded"
+                default_reason = self.reason_code or ProviderReason.REVIEW_DEGRADED.value
+            else:
+                default_status = "not_applicable"
+                default_reason = self.reason_code or ""
+            steps.append(
+                _step_from_proposal(
+                    self.review_proposal,
+                    ProviderRole.CODEX_REVIEW,
+                    default_status=default_status,
+                    default_reason=default_reason,
+                )
+            )
+        return tuple(steps)
+
+    @property
+    def provider_receipt(self) -> ProviderExecutionReceipt:
+        return build_provider_execution_receipt(self)
+
     def to_dict(self) -> dict[str, Any]:
+        receipt = self.provider_receipt
         return {
             "schema": IMPLEMENTATION_PROVIDER_ROUTE_SCHEMA,
             "interface": IMPLEMENTATION_PROVIDER_ROUTER_INTERFACE,
             "status": self.status.value,
             "reason_code": self.reason_code,
+            "provider": self.provider,
             "packet_id": self.packet_id,
+            "packet": self.packet.to_dict() if self.packet is not None else {
+                "packet_id": self.packet_id,
+                "packet_cid": "",
+                "packet_bytes": 0,
+                "snapshot_id": "",
+                "task_id": "",
+            },
+            "review_chain": [step.to_dict() for step in self.review_chain],
+            "review_presence": self.review_presence,
+            "provider_receipt": receipt.to_dict(),
             "selected_proposal": (
                 self.selected_proposal.to_dict()
                 if self.selected_proposal is not None
@@ -670,6 +1186,7 @@ class ImplementationRoutingResult:
             "attempts": [item.to_dict() for item in self.attempts],
             "write_performed": self.write_performed,
             "writer_lease_id": self.writer_lease_id if self.write_performed else "",
+            "provider_result_admitted": self.provider_result_admitted,
             "proof_authoritative": False,
             "completion_authoritative": False,
         }
@@ -922,20 +1439,50 @@ class ImplementationProviderRouter:
         provider_input: Mapping[str, Any],
         admitted_proposal: ProviderProposal | None = None,
     ) -> ProviderRequest:
-        payload: dict[str, Any] = {"contract_packet": dict(provider_input)}
-        if admitted_proposal is not None:
-            if not admitted_proposal.admitted:
+        # Grok (and local fallback) receive the bounded contract packet.
+        # Independent Codex review receives only the admitted proposal plus a
+        # narrow evidence slice — never the implementer's full goal corpus.
+        if role is ProviderRole.CODEX_REVIEW:
+            if admitted_proposal is None or not admitted_proposal.admitted:
                 raise ProviderRoutingError(
                     "Codex may review only an admitted implementation proposal",
                     reason_code=ProviderReason.ADMISSION_REQUIRED,
                 )
-            payload["admitted_implementation_proposal"] = {
-                "role": admitted_proposal.role.value,
-                "response_digest": admitted_proposal.response_digest,
-                "proposal": dict(admitted_proposal.payload),
-                "proof_authoritative": False,
-                "completion_authoritative": False,
+            if admitted_proposal.role is not ProviderRole.GROK_IMPLEMENT:
+                raise ProviderRoutingError(
+                    "independent Codex review requires an admitted Grok proposal",
+                    reason_code=ProviderReason.PROVIDERS_NOT_INDEPENDENT,
+                )
+            payload = {
+                "admitted_implementation_proposal": {
+                    "role": admitted_proposal.role.value,
+                    "response_digest": admitted_proposal.response_digest,
+                    "proposal": dict(admitted_proposal.payload),
+                    "proof_authoritative": False,
+                    "completion_authoritative": False,
+                },
+                "evidence_slice": _bounded_evidence_slice(
+                    provider_input,
+                    packet_id=packet_id,
+                    snapshot_id=snapshot_id,
+                    task_id=task_id,
+                ),
             }
+        else:
+            payload = {"contract_packet": dict(provider_input)}
+            if admitted_proposal is not None:
+                if not admitted_proposal.admitted:
+                    raise ProviderRoutingError(
+                        "only an admitted implementation proposal may be attached",
+                        reason_code=ProviderReason.ADMISSION_REQUIRED,
+                    )
+                payload["admitted_implementation_proposal"] = {
+                    "role": admitted_proposal.role.value,
+                    "response_digest": admitted_proposal.response_digest,
+                    "proposal": dict(admitted_proposal.payload),
+                    "proof_authoritative": False,
+                    "completion_authoritative": False,
+                }
         envelope = {
             "schema": IMPLEMENTATION_PROVIDER_REQUEST_SCHEMA,
             "interface": IMPLEMENTATION_PROVIDER_ROUTER_INTERFACE,
@@ -1120,17 +1667,25 @@ class ImplementationProviderRouter:
         snapshot_id: str,
         task_id: str,
         payload: Mapping[str, Any],
+        packet: PacketIdentity | None = None,
         attempts: list[ProviderAttempt],
         fallback_reason: str,
         apply: bool,
         writer_lease_id: str,
     ) -> ImplementationRoutingResult:
+        packet_identity = packet or self._packet_identity(
+            packet_id=packet_id,
+            snapshot_id=snapshot_id,
+            task_id=task_id,
+            payload=payload,
+        )
         if self.deterministic_provider is None:
-            return ImplementationRoutingResult(
+            return self._result(
                 status=RouteStatus.DEFERRED,
                 reason_code=fallback_reason or ProviderReason.NO_FALLBACK.value,
                 packet_id=packet_id,
-                attempts=tuple(attempts),
+                packet=packet_identity,
+                attempts=attempts,
             )
         try:
             request = self._request(
@@ -1148,13 +1703,14 @@ class ImplementationProviderRouter:
             attempts.append(attempt)
             admitted = self._admit(proposal)
             if not admitted.admitted:
-                return ImplementationRoutingResult(
+                return self._result(
                     status=RouteStatus.REJECTED,
                     reason_code=admitted.admission_reason
                     or ProviderReason.PROPOSAL_REJECTED.value,
                     packet_id=packet_id,
+                    packet=packet_identity,
                     implementation_proposal=admitted,
-                    attempts=tuple(attempts),
+                    attempts=attempts,
                 )
             wrote, write_reason = self._write(
                 admitted,
@@ -1162,21 +1718,23 @@ class ImplementationProviderRouter:
                 writer_lease_id=writer_lease_id,
             )
             if apply and not wrote:
-                return ImplementationRoutingResult(
+                return self._result(
                     status=RouteStatus.REJECTED,
                     reason_code=write_reason,
                     packet_id=packet_id,
+                    packet=packet_identity,
                     selected_proposal=admitted,
                     implementation_proposal=admitted,
-                    attempts=tuple(attempts),
+                    attempts=attempts,
                 )
-            return ImplementationRoutingResult(
+            return self._result(
                 status=RouteStatus.FALLBACK,
                 reason_code=fallback_reason or ProviderReason.LOCAL_ONLY.value,
                 packet_id=packet_id,
+                packet=packet_identity,
                 selected_proposal=admitted,
                 implementation_proposal=admitted,
-                attempts=tuple(attempts),
+                attempts=attempts,
                 write_performed=wrote,
                 writer_lease_id=writer_lease_id if wrote else "",
             )
@@ -1187,11 +1745,12 @@ class ImplementationProviderRouter:
                     exc.reason_code,
                 )
             )
-            return ImplementationRoutingResult(
+            return self._result(
                 status=RouteStatus.DEFERRED,
                 reason_code=exc.reason_code or ProviderReason.NO_FALLBACK.value,
                 packet_id=packet_id,
-                attempts=tuple(attempts),
+                packet=packet_identity,
+                attempts=attempts,
             )
         except ProviderRoutingError as exc:
             attempts.append(
@@ -1201,12 +1760,57 @@ class ImplementationProviderRouter:
                     locals().get("request"),
                 )
             )
-            return ImplementationRoutingResult(
+            return self._result(
                 status=RouteStatus.REJECTED,
                 reason_code=exc.reason_code,
                 packet_id=packet_id,
-                attempts=tuple(attempts),
+                packet=packet_identity,
+                attempts=attempts,
             )
+
+    def _packet_identity(
+        self,
+        *,
+        packet_id: str,
+        snapshot_id: str,
+        task_id: str,
+        payload: Mapping[str, Any],
+    ) -> PacketIdentity:
+        encoded = _canonical_bytes(payload)
+        return PacketIdentity(
+            packet_id=packet_id,
+            packet_cid=_packet_content_id(payload),
+            packet_bytes=len(encoded),
+            snapshot_id=snapshot_id,
+            task_id=task_id,
+        )
+
+    def _result(
+        self,
+        *,
+        status: RouteStatus,
+        reason_code: str,
+        packet_id: str = "",
+        packet: PacketIdentity | None = None,
+        selected_proposal: ProviderProposal | None = None,
+        implementation_proposal: ProviderProposal | None = None,
+        review_proposal: ProviderProposal | None = None,
+        attempts: Sequence[ProviderAttempt] = (),
+        write_performed: bool = False,
+        writer_lease_id: str = "",
+    ) -> ImplementationRoutingResult:
+        return ImplementationRoutingResult(
+            status=status,
+            reason_code=reason_code,
+            packet_id=packet_id or (packet.packet_id if packet is not None else ""),
+            packet=packet,
+            selected_proposal=selected_proposal,
+            implementation_proposal=implementation_proposal,
+            review_proposal=review_proposal,
+            attempts=tuple(attempts),
+            write_performed=write_performed,
+            writer_lease_id=writer_lease_id if write_performed else "",
+        )
 
     def route(
         self,
@@ -1229,10 +1833,17 @@ class ImplementationProviderRouter:
                 packet, current_snapshot_id
             )
         except ProviderRoutingError as exc:
-            return ImplementationRoutingResult(
+            return self._result(
                 status=RouteStatus.REJECTED,
                 reason_code=exc.reason_code,
             )
+
+        packet_identity = self._packet_identity(
+            packet_id=packet_id,
+            snapshot_id=snapshot_id,
+            task_id=task_id,
+            payload=payload,
+        )
 
         if local_only:
             return self._local_fallback(
@@ -1240,6 +1851,7 @@ class ImplementationProviderRouter:
                 snapshot_id=snapshot_id,
                 task_id=task_id,
                 payload=payload,
+                packet=packet_identity,
                 attempts=attempts,
                 fallback_reason=ProviderReason.LOCAL_ONLY.value,
                 apply=apply,
@@ -1251,10 +1863,24 @@ class ImplementationProviderRouter:
                 snapshot_id=snapshot_id,
                 task_id=task_id,
                 payload=payload,
+                packet=packet_identity,
                 attempts=attempts,
                 fallback_reason=ProviderReason.GROK_UNAVAILABLE.value,
                 apply=apply,
                 writer_lease_id=writer_lease_id,
+            )
+
+        # Grok cannot self-review: implementer and reviewer must be independent
+        # callables.  A lane label is not a receipt of independence.
+        if (
+            self.codex_provider is not None
+            and self.grok_provider is self.codex_provider
+        ):
+            return self._result(
+                status=RouteStatus.REJECTED,
+                reason_code=ProviderReason.SELF_REVIEW_FORBIDDEN.value,
+                packet_id=packet_id,
+                packet=packet_identity,
             )
 
         grok_request: ProviderRequest | None = None
@@ -1282,6 +1908,7 @@ class ImplementationProviderRouter:
                 snapshot_id=snapshot_id,
                 task_id=task_id,
                 payload=payload,
+                packet=packet_identity,
                 attempts=attempts,
                 fallback_reason=ProviderReason.GROK_QUOTA_EXHAUSTED.value,
                 apply=apply,
@@ -1293,26 +1920,29 @@ class ImplementationProviderRouter:
                     ProviderRole.GROK_IMPLEMENT, exc.reason_code, grok_request
                 )
             )
-            return ImplementationRoutingResult(
+            return self._result(
                 status=RouteStatus.REJECTED,
                 reason_code=exc.reason_code,
                 packet_id=packet_id,
-                attempts=tuple(attempts),
+                packet=packet_identity,
+                attempts=attempts,
             )
         if not grok.admitted:
-            return ImplementationRoutingResult(
+            return self._result(
                 status=RouteStatus.REJECTED,
                 reason_code=grok.admission_reason
                 or ProviderReason.PROPOSAL_REJECTED.value,
                 packet_id=packet_id,
+                packet=packet_identity,
                 implementation_proposal=grok,
-                attempts=tuple(attempts),
+                attempts=attempts,
             )
 
         if self.codex_provider is None:
             return self._finish_with_grok(
                 grok,
                 attempts,
+                packet=packet_identity,
                 reason_code=ProviderReason.CODEX_UNAVAILABLE.value,
                 apply=apply,
                 writer_lease_id=writer_lease_id,
@@ -1342,6 +1972,7 @@ class ImplementationProviderRouter:
             return self._finish_with_grok(
                 grok,
                 attempts,
+                packet=packet_identity,
                 reason_code=ProviderReason.CODEX_QUOTA_EXHAUSTED.value,
                 apply=apply,
                 writer_lease_id=writer_lease_id,
@@ -1353,10 +1984,12 @@ class ImplementationProviderRouter:
                 )
             )
             # Grok has already passed the supervisor gate.  Review degradation
-            # does not invalidate that admission.
+            # does not invalidate that admission, but it remains explicit and
+            # cannot satisfy authoritative completion.
             return self._finish_with_grok(
                 grok,
                 attempts,
+                packet=packet_identity,
                 reason_code=exc.reason_code,
                 apply=apply,
                 writer_lease_id=writer_lease_id,
@@ -1365,6 +1998,7 @@ class ImplementationProviderRouter:
             return self._finish_with_grok(
                 grok,
                 attempts,
+                packet=packet_identity,
                 reason_code=review.admission_reason
                 or ProviderReason.REVIEW_REJECTED.value,
                 apply=apply,
@@ -1374,25 +2008,27 @@ class ImplementationProviderRouter:
 
         decision = str(review.payload.get("decision") or "approve").strip().casefold()
         if decision in {"reject", "decline", "changes_required"}:
-            return ImplementationRoutingResult(
+            return self._result(
                 status=RouteStatus.REJECTED,
                 reason_code=ProviderReason.REVIEW_DECLINED.value,
                 packet_id=packet_id,
+                packet=packet_identity,
                 implementation_proposal=grok,
                 review_proposal=review,
-                attempts=tuple(attempts),
+                attempts=attempts,
             )
         selected = grok
         if decision in {"repair", "replace"}:
             repaired = review.payload.get("proposal")
             if not isinstance(repaired, Mapping):
-                return ImplementationRoutingResult(
+                return self._result(
                     status=RouteStatus.REJECTED,
                     reason_code=ProviderReason.PROVIDER_RESPONSE_MALFORMED.value,
                     packet_id=packet_id,
+                    packet=packet_identity,
                     implementation_proposal=grok,
                     review_proposal=review,
-                    attempts=tuple(attempts),
+                    attempts=attempts,
                 )
             # The admitted review envelope is the authority-free provenance for
             # its nested repaired proposal.
@@ -1413,23 +2049,25 @@ class ImplementationProviderRouter:
             writer_lease_id=writer_lease_id,
         )
         if apply and not wrote:
-            return ImplementationRoutingResult(
+            return self._result(
                 status=RouteStatus.REJECTED,
                 reason_code=write_reason,
                 packet_id=packet_id,
+                packet=packet_identity,
                 selected_proposal=selected,
                 implementation_proposal=grok,
                 review_proposal=review,
-                attempts=tuple(attempts),
+                attempts=attempts,
             )
-        return ImplementationRoutingResult(
+        return self._result(
             status=RouteStatus.SUCCEEDED,
             reason_code=ProviderReason.ROUTED.value,
             packet_id=packet_id,
+            packet=packet_identity,
             selected_proposal=selected,
             implementation_proposal=grok,
             review_proposal=review,
-            attempts=tuple(attempts),
+            attempts=attempts,
             write_performed=wrote,
             writer_lease_id=writer_lease_id if wrote else "",
         )
@@ -1439,6 +2077,7 @@ class ImplementationProviderRouter:
         grok: ProviderProposal,
         attempts: list[ProviderAttempt],
         *,
+        packet: PacketIdentity | None,
         reason_code: str,
         apply: bool,
         writer_lease_id: str,
@@ -1450,23 +2089,25 @@ class ImplementationProviderRouter:
             writer_lease_id=writer_lease_id,
         )
         if apply and not wrote:
-            return ImplementationRoutingResult(
+            return self._result(
                 status=RouteStatus.REJECTED,
                 reason_code=write_reason,
                 packet_id=grok.packet_id,
+                packet=packet,
                 selected_proposal=grok,
                 implementation_proposal=grok,
                 review_proposal=review,
-                attempts=tuple(attempts),
+                attempts=attempts,
             )
-        return ImplementationRoutingResult(
+        return self._result(
             status=RouteStatus.FALLBACK,
             reason_code=reason_code,
             packet_id=grok.packet_id,
+            packet=packet,
             selected_proposal=grok,
             implementation_proposal=grok,
             review_proposal=review,
-            attempts=tuple(attempts),
+            attempts=attempts,
             write_performed=wrote,
             writer_lease_id=writer_lease_id if wrote else "",
         )
@@ -1536,9 +2177,13 @@ __all__ = [
     "MAX_PROVIDER_PROMPT_TOKENS",
     "MAX_PROVIDER_RESPONSE_BYTES",
     "MAX_PROVIDER_TIMEOUT_SECONDS",
+    "PROVIDER_EXECUTION_RECEIPT_INTERFACE",
+    "PROVIDER_EXECUTION_RECEIPT_SCHEMA",
+    "PacketIdentity",
     "ProviderAttempt",
     "ProviderBounds",
     "ProviderCallable",
+    "ProviderExecutionReceipt",
     "ProviderProposal",
     "ProviderQuotaError",
     "ProviderQuotaLatch",
@@ -1549,7 +2194,10 @@ __all__ = [
     "ProviderRoutingError",
     "QuotaLatch",
     "REDACTION_MARKER",
+    "ReviewChainStep",
+    "ReviewPresence",
     "RouteStatus",
+    "build_provider_execution_receipt",
     "redact_provider_data",
     "route_contract_packet",
 ]

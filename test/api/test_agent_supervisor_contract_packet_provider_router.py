@@ -576,3 +576,140 @@ def test_functional_facade_preserves_proposal_only_default() -> None:
     assert result.admitted
     assert not result.write_performed
     assert writes == []
+
+
+def test_route_receipt_has_provider_packet_review_chain_and_provider_receipt() -> None:
+    """SCA-228: successful model-assisted routes emit nonempty receipt fields."""
+
+    result = ImplementationProviderRouter(
+        grok_provider=_grok,
+        codex_provider=_codex,
+        admission_gate=_accept,
+    ).route(_Packet(), current_snapshot_id=SNAPSHOT)
+
+    assert result.status is RouteStatus.SUCCEEDED
+    assert result.provider == ProviderRole.GROK_IMPLEMENT.value
+    assert result.packet is not None
+    assert result.packet.packet_id == "packet:sca-111"
+    assert result.packet.packet_cid
+    assert result.packet.packet_bytes > 0
+    chain = result.review_chain
+    assert len(chain) == 2
+    assert chain[0].role == ProviderRole.GROK_IMPLEMENT.value
+    assert chain[0].admitted is True
+    assert chain[0].status == "succeeded"
+    assert chain[1].role == ProviderRole.CODEX_REVIEW.value
+    assert chain[1].admitted is True
+    assert chain[1].status == "succeeded"
+    receipt = result.provider_receipt
+    assert receipt.receipt_id
+    assert receipt.provider == ProviderRole.GROK_IMPLEMENT.value
+    assert receipt.packet["packet_cid"] == result.packet.packet_cid
+    assert receipt.review_presence == "independent_review"
+    assert receipt.provider_result_admitted is True
+    assert receipt.completion_authoritative is False
+    assert receipt.proof_authoritative is False
+    payload = result.to_dict()
+    assert payload["provider"]
+    assert payload["packet"]["packet_cid"]
+    assert payload["review_chain"]
+    assert payload["provider_receipt"]["receipt_id"]
+    assert payload["completion_authoritative"] is False
+
+
+def test_grok_cannot_self_review() -> None:
+    """SCA-228: the same callable cannot implement and review."""
+
+    def same_provider(request):
+        if request["role"] == ProviderRole.GROK_IMPLEMENT.value:
+            return {
+                "proposal": {
+                    "patch": f"diff --git a/{PATH} b/{PATH}\n",
+                    "declared_paths": [PATH],
+                }
+            }
+        return {"decision": "approve", "findings": []}
+
+    result = ImplementationProviderRouter(
+        grok_provider=same_provider,
+        codex_provider=same_provider,
+        admission_gate=_accept,
+    ).route(_Packet(), current_snapshot_id=SNAPSHOT)
+
+    assert result.status is RouteStatus.REJECTED
+    assert result.reason_code == ProviderReason.SELF_REVIEW_FORBIDDEN.value
+    assert result.provider_result_admitted is False
+    assert result.completion_authoritative is False
+    assert result.packet is not None
+    assert result.packet.packet_cid
+
+
+def test_codex_receives_only_bounded_proposal_and_evidence_slice() -> None:
+    """SCA-228: Codex never sees the full implementer contract packet body."""
+
+    seen = {}
+
+    def codex(request):
+        seen["role"] = request["role"]
+        seen["provider_input"] = request["provider_input"]
+        assert "contract_packet" not in request["provider_input"]
+        assert "admitted_implementation_proposal" in request["provider_input"]
+        assert "evidence_slice" in request["provider_input"]
+        slice_ = request["provider_input"]["evidence_slice"]
+        assert "goal" not in slice_
+        assert "counterexample" not in slice_
+        # Goal bodies are reduced to identifiers only.
+        assert set(slice_["goal_ids"]) <= {
+            "contract_ids",
+            "obligation_ids",
+            "acceptance_ids",
+            "claim_ids",
+            "property_ids",
+        }
+        assert slice_["authority"]["completion_authoritative"] is False
+        return {"decision": "approve", "findings": []}
+
+    result = ImplementationProviderRouter(
+        grok_provider=_grok,
+        codex_provider=codex,
+        admission_gate=_accept,
+    ).route(_Packet(), current_snapshot_id=SNAPSHOT)
+
+    assert result.status is RouteStatus.SUCCEEDED
+    assert seen["role"] == ProviderRole.CODEX_REVIEW.value
+    proposal = seen["provider_input"]["admitted_implementation_proposal"]
+    assert proposal["role"] == ProviderRole.GROK_IMPLEMENT.value
+    assert proposal["completion_authoritative"] is False
+
+
+def test_absent_or_degraded_review_is_explicit_and_not_authoritative() -> None:
+    """SCA-228: missing/degraded Codex review cannot satisfy completion."""
+
+    absent = ImplementationProviderRouter(
+        grok_provider=_grok,
+        admission_gate=_accept,
+    ).route(_Packet(), current_snapshot_id=SNAPSHOT)
+    assert absent.status is RouteStatus.FALLBACK
+    assert absent.review_presence == "review_absent"
+    assert absent.provider_result_admitted is False
+    assert absent.completion_authoritative is False
+    chain = absent.review_chain
+    assert chain[-1].role == ProviderRole.CODEX_REVIEW.value
+    assert chain[-1].status == "absent"
+    assert chain[-1].admitted is False
+    assert absent.provider_receipt.admission["independent_review"] is False
+    assert absent.provider_receipt.completion_authoritative is False
+
+    degraded = ImplementationProviderRouter(
+        grok_provider=_grok,
+        codex_provider=lambda _request: (_ for _ in ()).throw(
+            RuntimeError("codex crashed")
+        ),
+        admission_gate=_accept,
+    ).route(_Packet(), current_snapshot_id=SNAPSHOT)
+    assert degraded.status is RouteStatus.FALLBACK
+    assert degraded.review_presence == "review_degraded"
+    assert degraded.provider_result_admitted is False
+    assert degraded.completion_authoritative is False
+    assert degraded.review_chain[-1].status == "degraded"
+    assert degraded.provider_receipt.provider_result_admitted is False

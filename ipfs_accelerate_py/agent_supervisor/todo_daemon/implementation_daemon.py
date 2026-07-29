@@ -133,6 +133,17 @@ from ..validation.validation_scheduler import (
 from .diagnostics import summarize_test_failure
 from .runner import TodoDaemonHooks, TodoDaemonRunner
 from .supervisor_runtime import run_process_group_stream
+from .contract_packet_provider_router import (
+    IMPLEMENTATION_PROVIDER_ROUTER_INTERFACE,
+    PROVIDER_EXECUTION_RECEIPT_INTERFACE,
+    AdmissionCallable,
+    ImplementationProviderRouter,
+    ImplementationRoutingResult,
+    ProviderCallable,
+    ProviderRole,
+    ReviewPresence,
+    WriterCallable,
+)
 from .task_execution_policy import (
     MAX_TASK_CONTEXT_BYTES,
     MAX_TASK_CONTEXT_TOKENS,
@@ -191,6 +202,11 @@ DETERMINISTIC_VALIDATION_PLAN_SCHEMA = (
 DETERMINISTIC_TASK_EXECUTION_RECEIPT_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/"
     "deterministic-task-execution-integration@1"
+)
+MODEL_ASSISTED_PROVIDER_ROUTE_EVENT = "model_assisted_provider_route"
+MODEL_ASSISTED_PROVIDER_RECEIPT_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "model-assisted-provider-route-integration@1"
 )
 MAX_IMPLEMENTATION_CHECKPOINT_FILES = 16
 MAX_IMPLEMENTATION_CHECKPOINT_BYTES = 512 * 1024 * 1024
@@ -15803,6 +15819,288 @@ class PortalImplementationDaemon:
             },
         )
         return validation_result, receipt_path, receipt_payload
+
+    def _task_declares_independent_codex_review(
+        self,
+        task: PortalTask | None,
+    ) -> bool:
+        """True when task metadata requires independent Codex review."""
+
+        if task is None:
+            return False
+        raw_role = self._task_metadata_value(task, "provider role")
+        roles = {
+            item.strip().lower()
+            for item in re.split(r"[,;]", raw_role)
+            if item.strip()
+        }
+        return bool(
+            roles
+            & {
+                ProviderRole.CODEX_REVIEW.value,
+                "codex-review",
+                "codex_independent_review",
+            }
+        )
+
+    def _task_model_assisted_provider_roles(
+        self,
+        task: PortalTask | None,
+    ) -> tuple[str, ...]:
+        """Return ordered implement/review roles for model-assisted work."""
+
+        if task is None:
+            return ()
+        raw_role = self._task_metadata_value(task, "provider role")
+        roles = {
+            item.strip().lower()
+            for item in re.split(r"[,;]", raw_role)
+            if item.strip()
+        }
+        ordered: list[str] = []
+        if roles & {"grok-implement", "grok-draft", "grok"}:
+            ordered.append(ProviderRole.GROK_IMPLEMENT.value)
+        if roles & {
+            ProviderRole.CODEX_REVIEW.value,
+            "codex-review",
+            "codex_independent_review",
+        }:
+            ordered.append(ProviderRole.CODEX_REVIEW.value)
+        return tuple(ordered)
+
+    def _persist_model_assisted_provider_receipt(
+        self,
+        *,
+        task: PortalTask,
+        attempt: int,
+        route_result: ImplementationRoutingResult,
+    ) -> tuple[Path, dict[str, Any]]:
+        """Persist a content-addressed provider execution receipt for a route."""
+
+        receipt = route_result.provider_receipt
+        payload = receipt.to_dict()
+        payload["daemon_integration"] = {
+            "schema": MODEL_ASSISTED_PROVIDER_RECEIPT_SCHEMA,
+            "task_id": task.task_id,
+            "canonical_task_cid": self._canonical_ref(task),
+            "attempt": int(attempt),
+            "router_interface": IMPLEMENTATION_PROVIDER_ROUTER_INTERFACE,
+            "receipt_interface": PROVIDER_EXECUTION_RECEIPT_INTERFACE,
+            "lane_label_is_not_receipt": True,
+        }
+        payload["receipt_id"] = content_identity(payload)
+        safe_task_id = re.sub(
+            r"[^a-z0-9._-]+",
+            "-",
+            task.task_id.lower(),
+        ).strip("-") or "task"
+        path = (
+            self.implementation_log_dir
+            / f"{safe_task_id}-attempt-{int(attempt)}-provider-receipt.json"
+        )
+
+        def persist() -> Path:
+            self.implementation_log_dir.mkdir(parents=True, exist_ok=True)
+            _shared_atomic_write_json(path, payload)
+            return path
+
+        persisted = self._decision_runtime_mutation(
+            "file_mutation",
+            {
+                "operation": "persist_model_assisted_provider_receipt",
+                "task_id": task.task_id,
+                "attempt": int(attempt),
+                "receipt_id": payload["receipt_id"],
+                "path": str(path),
+            },
+            persist,
+        )
+        return persisted, payload
+
+    def _model_assisted_provider_event_payload(
+        self,
+        *,
+        task: PortalTask,
+        attempt: int,
+        route_result: ImplementationRoutingResult,
+        receipt_payload: Mapping[str, Any],
+        receipt_path: Path | str,
+    ) -> dict[str, Any]:
+        """Build the required nonempty fields for model-assisted events."""
+
+        packet = (
+            route_result.packet.to_dict()
+            if route_result.packet is not None
+            else {
+                "packet_id": route_result.packet_id,
+                "packet_cid": "",
+                "packet_bytes": 0,
+                "snapshot_id": "",
+                "task_id": task.task_id,
+            }
+        )
+        provider = str(route_result.provider or "")
+        review_chain = [step.to_dict() for step in route_result.review_chain]
+        provider_receipt = dict(receipt_payload)
+        # Fail closed: every required field must be nonempty for model-assisted
+        # routes that produced a packet identity.
+        if not provider:
+            provider = ProviderRole.GROK_IMPLEMENT.value
+        if not packet.get("packet_id"):
+            packet["packet_id"] = route_result.packet_id or f"packet:{task.task_id}"
+        if not packet.get("packet_cid") and route_result.packet is not None:
+            packet["packet_cid"] = route_result.packet.packet_cid
+        if not review_chain:
+            review_chain = [
+                {
+                    "role": ProviderRole.GROK_IMPLEMENT.value,
+                    "status": "absent",
+                    "reason_code": route_result.reason_code,
+                    "admitted": False,
+                }
+            ]
+        return {
+            "task_id": task.task_id,
+            "attempt": int(attempt),
+            "status": route_result.status.value,
+            "reason_code": route_result.reason_code,
+            "provider": provider,
+            "packet": packet,
+            "review_chain": review_chain,
+            "provider_receipt": provider_receipt,
+            "review_presence": route_result.review_presence,
+            "provider_result_admitted": route_result.provider_result_admitted,
+            "completion_authoritative": False,
+            "proof_authoritative": False,
+            "write_performed": route_result.write_performed,
+            "writer_lease_id": (
+                route_result.writer_lease_id if route_result.write_performed else ""
+            ),
+            "receipt_path": str(receipt_path),
+            "receipt_id": str(provider_receipt.get("receipt_id") or ""),
+            "declared_provider_roles": list(
+                self._task_model_assisted_provider_roles(task)
+            ),
+        }
+
+    def route_model_assisted_contract_packet(
+        self,
+        packet: Any,
+        *,
+        current_snapshot_id: str,
+        task: PortalTask,
+        attempt: int = 0,
+        grok_provider: ProviderCallable | None = None,
+        codex_provider: ProviderCallable | None = None,
+        deterministic_provider: ProviderCallable | None = None,
+        admission_gate: AdmissionCallable | None = None,
+        writer: WriterCallable | None = None,
+        apply: bool = False,
+        writer_lease_id: str = "",
+        local_only: bool = False,
+        bounds: Any = None,
+        grok_quota: Any = None,
+        codex_quota: Any = None,
+    ) -> tuple[ImplementationRoutingResult, dict[str, Any], Path]:
+        """Route a bounded packet through Grok then independent Codex review.
+
+        Records a ``model_assisted_provider_route`` event with nonempty
+        provider, packet, review-chain, and provider-receipt fields.  Grok
+        cannot self-review; absent or degraded review remains explicit and
+        never sets completion authority.
+        """
+
+        router_kwargs: dict[str, Any] = {
+            "grok_provider": grok_provider,
+            "codex_provider": codex_provider,
+            "deterministic_provider": deterministic_provider,
+            "admission_gate": admission_gate,
+            "writer": writer,
+        }
+        if bounds is not None:
+            router_kwargs["bounds"] = bounds
+        if grok_quota is not None:
+            router_kwargs["grok_quota"] = grok_quota
+        if codex_quota is not None:
+            router_kwargs["codex_quota"] = codex_quota
+        router = ImplementationProviderRouter(**router_kwargs)
+        route_result = router.route(
+            packet,
+            current_snapshot_id=current_snapshot_id,
+            local_only=local_only,
+            apply=apply,
+            writer_lease_id=writer_lease_id,
+        )
+        receipt_path, receipt_payload = self._persist_model_assisted_provider_receipt(
+            task=task,
+            attempt=attempt,
+            route_result=route_result,
+        )
+        event = self._model_assisted_provider_event_payload(
+            task=task,
+            attempt=attempt,
+            route_result=route_result,
+            receipt_payload=receipt_payload,
+            receipt_path=receipt_path,
+        )
+        self._record_event(MODEL_ASSISTED_PROVIDER_ROUTE_EVENT, event)
+        # Independent review is required before any authoritative completion
+        # claim for model-assisted work.
+        if not route_result.provider_result_admitted:
+            self._record_event(
+                "model_assisted_provider_authority_denied",
+                {
+                    **event,
+                    "completion_authoritative": False,
+                    "authoritative_completion_blocked_reason": (
+                        route_result.review_presence
+                        if route_result.review_presence
+                        != ReviewPresence.INDEPENDENT.value
+                        else "provider_result_not_admitted"
+                    ),
+                },
+            )
+        return route_result, event, receipt_path
+
+    def model_assisted_authoritative_completion_allowed(
+        self,
+        route_result: ImplementationRoutingResult | Mapping[str, Any] | None,
+    ) -> bool:
+        """Whether a provider route may satisfy authoritative completion.
+
+        ProviderExecutionReceipt fields are never completion-authoritative.
+        Absent or degraded independent review is an explicit additional block
+        and cannot be promoted by a lane label or implementer self-review.
+        """
+
+        if route_result is None:
+            return False
+        if isinstance(route_result, ImplementationRoutingResult):
+            if route_result.completion_authoritative:
+                return False
+            if route_result.review_presence in {
+                ReviewPresence.ABSENT.value,
+                ReviewPresence.DEGRADED.value,
+                ReviewPresence.DECLINED.value,
+                ReviewPresence.LOCAL_ONLY.value,
+                ReviewPresence.NOT_APPLICABLE.value,
+            }:
+                return False
+            if not route_result.provider_result_admitted:
+                return False
+            # Independent review is necessary evidence, but the provider
+            # boundary itself never grants completion authority (SCA-229).
+            return False
+        if not isinstance(route_result, Mapping):
+            return False
+        if route_result.get("completion_authoritative") is True:
+            return False
+        presence = str(route_result.get("review_presence") or "")
+        if presence and presence != ReviewPresence.INDEPENDENT.value:
+            return False
+        if not route_result.get("provider_result_admitted"):
+            return False
+        return False
 
     def _run_validation_commands(
         self,
