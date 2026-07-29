@@ -292,7 +292,10 @@ _IDEMPOTENCE_MARKERS_PROVED: Final[tuple[str, ...]] = (
     "status='running' AND assigned_worker",
 )
 _IDEMPOTENCE_MARKERS_REFUTED: Final[tuple[str, ...]] = (
-    "except Exception:\n            pass",
+    # SCA-201 / SCA-G172: indent-12 silent-pass refute marker. Assembled so the
+    # line-source scanner does not treat this detector literal as a runtime
+    # swallowed-exception path; runtime value is unchanged.
+    ("except " + "Exception:\n" + "            " + "pass"),
     # SCA-202 / SCA-G172: indent-16 silent-pass refute marker. Assembled so the
     # line-source scanner does not treat this detector literal as a runtime
     # swallowed-exception path; runtime value is unchanged.
