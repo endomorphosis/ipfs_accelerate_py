@@ -104,6 +104,15 @@ PROGRAM_ZKP_PROOF_SCHEMA_ID: Final[str] = (
 PROGRAM_ZKP_EVIDENCE_CAPABILITY_CONFORMANCE: Final[str] = (
     "vfs/zk-capability-conformance@1"
 )
+# VFS-G080 objective evidence identities (statement + independent receipt).
+PROGRAM_ZKP_EVIDENCE_TRACE_STATEMENT: Final[str] = "vfs/zk-trace-statement@1"
+PROGRAM_ZKP_EVIDENCE_VERIFICATION_RECEIPT: Final[str] = (
+    "vfs/zk-verification-receipt@1"
+)
+PROGRAM_ZKP_G080_EVIDENCE_TERMS: Final[tuple[str, ...]] = (
+    PROGRAM_ZKP_EVIDENCE_TRACE_STATEMENT,
+    PROGRAM_ZKP_EVIDENCE_VERIFICATION_RECEIPT,
+)
 
 # Production circuit / codec identities for program_contract_trace@v1.
 PROGRAM_CONTRACT_TRACE_CIRCUIT_ID: Final[str] = "circuit:program-contract-trace@1"
@@ -1228,9 +1237,12 @@ def public_artifact_contains(artifact: Any, needle: str) -> bool:
 class ProgramZkpStatement(CanonicalContract):
     """Public statement proven by a program-analysis ZK trace attestation.
 
-    The statement binds public inputs, the supported-trace identity, circuit
-    and key identities, and the explicit non-claim scope.  It never carries
-    private openings.
+    Evidence identity: ``vfs/zk-trace-statement@1``.
+
+    The statement binds public inputs, the supported-trace identity, circuit,
+    proving/verifying key, public-input codec, backend mode, and ceremony
+    identities, plus the explicit non-claim scope.  It never carries private
+    openings and never asserts semantic proof authority (shadow-safe).
     """
 
     SCHEMA: ClassVar[str] = PROGRAM_ZKP_STATEMENT_SCHEMA
@@ -1286,6 +1298,12 @@ class ProgramZkpStatement(CanonicalContract):
         return self.content_id
 
     @property
+    def evidence(self) -> str:
+        """Objective evidence term published by this statement artifact."""
+
+        return PROGRAM_ZKP_EVIDENCE_TRACE_STATEMENT
+
+    @property
     def public_input_digest(self) -> str:
         return self.public_inputs.public_input_digest
 
@@ -1311,6 +1329,7 @@ class ProgramZkpStatement(CanonicalContract):
         # so from_dict can detect identity forgery without recursive hashing.
         return {
             "contract_version": PROGRAM_ANALYSIS_ZKP_CONTRACT_VERSION,
+            "evidence": PROGRAM_ZKP_EVIDENCE_TRACE_STATEMENT,
             "public_inputs": self.public_inputs.to_dict(),
             "public_input_digest": self.public_input_digest,
             "trace_id": self.trace_id,
@@ -1347,6 +1366,7 @@ class ProgramZkpStatement(CanonicalContract):
         reject_private_witness_from_public_payload(data)
         data.pop("schema", None)
         data.pop("contract_version", None)
+        claimed_evidence = data.pop("evidence", None)
         data.pop("does_not_prove", None)
         data.pop("trace_validity_scope", None)
         data.pop("authority_kind", None)
@@ -1363,6 +1383,14 @@ class ProgramZkpStatement(CanonicalContract):
         if claimed_auth is True:
             raise ProgramZkpTamperError(
                 "statement cannot assert authority; independent verification is required"
+            )
+        if (
+            claimed_evidence is not None
+            and claimed_evidence != PROGRAM_ZKP_EVIDENCE_TRACE_STATEMENT
+        ):
+            raise ProgramZkpTamperError(
+                "statement evidence must be %s"
+                % PROGRAM_ZKP_EVIDENCE_TRACE_STATEMENT
             )
         public_inputs = ProgramZkpPublicInputs.from_dict(data.get("public_inputs") or {})
         result = cls(
@@ -1572,11 +1600,13 @@ class ProgramZkpShadowEnvelope(CanonicalContract):
 class ProgramZkpVerificationReceipt(CanonicalContract):
     """Independent (or shadow) verification receipt bound to exact public inputs.
 
+    Evidence identity: ``vfs/zk-verification-receipt@1``.
+
     Replay against drifted public inputs, keys, circuit identity, or codec
     version fails closed.  A verified shadow/simulated receipt remains
     non-authoritative for semantic claims.  Cryptographic verification grants
     authority only when bound to a production-eligible capability epoch
-    (VFS-024).
+    (VFS-024).  ZK attestation never substitutes for semantic proof authority.
     """
 
     SCHEMA: ClassVar[str] = PROGRAM_ZKP_RECEIPT_SCHEMA
@@ -1692,6 +1722,12 @@ class ProgramZkpVerificationReceipt(CanonicalContract):
         return self.verdict is ProgramZkpVerdict.VERIFIED
 
     @property
+    def evidence(self) -> str:
+        """Objective evidence term published by this verification receipt."""
+
+        return PROGRAM_ZKP_EVIDENCE_VERIFICATION_RECEIPT
+
+    @property
     def authoritative(self) -> bool:
         # Shadow/simulated verification never grants production authority.
         # Cryptographic + verified alone is insufficient: VFS-024 requires a
@@ -1719,8 +1755,10 @@ class ProgramZkpVerificationReceipt(CanonicalContract):
     def _payload(self) -> Dict[str, Any]:
         return {
             "contract_version": PROGRAM_ANALYSIS_ZKP_CONTRACT_VERSION,
+            "evidence": PROGRAM_ZKP_EVIDENCE_VERIFICATION_RECEIPT,
             "statement": self.statement.to_dict(),
             "statement_id": self.statement.statement_id,
+            "statement_evidence": PROGRAM_ZKP_EVIDENCE_TRACE_STATEMENT,
             "verdict": self.verdict.value,
             "verifier_id": self.verifier_id,
             "verifying_key_id": self.verifying_key_id,
@@ -1824,6 +1862,8 @@ class ProgramZkpVerificationReceipt(CanonicalContract):
         reject_private_witness_from_public_payload(data)
         data.pop("schema", None)
         data.pop("contract_version", None)
+        claimed_evidence = data.pop("evidence", None)
+        data.pop("statement_evidence", None)
         data.pop("statement_id", None)
         data.pop("trust", None)
         data.pop("claim_level", None)
@@ -1832,6 +1872,14 @@ class ProgramZkpVerificationReceipt(CanonicalContract):
         data.pop("trace_validity_scope", None)
         claimed_id = data.pop("content_id", None) or data.pop("receipt_id", None)
         claimed_auth = data.get("authoritative")
+        if (
+            claimed_evidence is not None
+            and claimed_evidence != PROGRAM_ZKP_EVIDENCE_VERIFICATION_RECEIPT
+        ):
+            raise ProgramZkpTamperError(
+                "receipt evidence must be %s"
+                % PROGRAM_ZKP_EVIDENCE_VERIFICATION_RECEIPT
+            )
         result = cls(
             statement=ProgramZkpStatement.from_dict(data.get("statement") or {}),
             verdict=data.get("verdict", ProgramZkpVerdict.REJECTED),
@@ -3679,6 +3727,9 @@ __all__ = [
     "PROGRAM_ZKP_CAPABILITY_CHECK_SCHEMA",
     "PROGRAM_ZKP_PROOF_SCHEMA_ID",
     "PROGRAM_ZKP_EVIDENCE_CAPABILITY_CONFORMANCE",
+    "PROGRAM_ZKP_EVIDENCE_TRACE_STATEMENT",
+    "PROGRAM_ZKP_EVIDENCE_VERIFICATION_RECEIPT",
+    "PROGRAM_ZKP_G080_EVIDENCE_TERMS",
     "PROGRAM_CONTRACT_TRACE_CIRCUIT_ID",
     "PROGRAM_CONTRACT_TRACE_CIRCUIT_VERSION",
     "PROGRAM_CONTRACT_TRACE_MAX_TRACE_STEPS",
