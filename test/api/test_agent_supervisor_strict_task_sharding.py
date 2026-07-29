@@ -65,7 +65,9 @@ def _daemon(
     )
 
 
-def test_strict_task_sharding_disables_cross_lane_ready_fallback(tmp_path: Path):
+def test_strict_task_sharding_disables_cross_lane_ready_fallback(
+    tmp_path: Path,
+) -> None:
     board = tmp_path / "todo.md"
     _write_cross_shard_board(board)
 
@@ -99,7 +101,9 @@ def test_strict_task_sharding_disables_cross_lane_ready_fallback(tmp_path: Path)
     ).read_text(encoding="utf-8")
 
 
-def test_daemon_cli_and_builder_propagate_strict_task_sharding(tmp_path: Path):
+def test_daemon_cli_and_builder_propagate_strict_task_sharding(
+    tmp_path: Path,
+) -> None:
     board = tmp_path / "todo.md"
     _write_cross_shard_board(board)
 
@@ -129,7 +133,7 @@ def test_daemon_cli_and_builder_propagate_strict_task_sharding(tmp_path: Path):
 
 def test_supervisor_propagates_strict_task_sharding_to_managed_daemon(
     tmp_path: Path,
-):
+) -> None:
     board = tmp_path / "todo.md"
     _write_cross_shard_board(board)
     parsed = parse_supervisor_args(
@@ -177,7 +181,7 @@ def test_supervisor_propagates_strict_task_sharding_to_managed_daemon(
     )
 
 
-def test_multi_supervisor_wrapper_propagates_strict_task_sharding():
+def test_multi_supervisor_wrapper_propagates_strict_task_sharding() -> None:
     parsed = build_multi_supervisor_arg_parser().parse_args(
         [
             "--implementation-track",
@@ -194,9 +198,12 @@ def test_multi_supervisor_wrapper_propagates_strict_task_sharding():
     assert common_args == ["--strict-task-sharding"]
     assert len(tracks) == 2
     assert all("--task-shard-count" in track.extra_args for track in tracks)
-    assert implementation_supervisor_common_args(
-        strict_task_sharding=True
-    ).count("--strict-task-sharding") == 1
+    assert (
+        implementation_supervisor_common_args(
+            strict_task_sharding=True
+        ).count("--strict-task-sharding")
+        == 1
+    )
 
     defaults = build_multi_supervisor_arg_parser().parse_args(
         ["--implementation-track", "T|worker.py|state|agent"]
