@@ -156,15 +156,11 @@ def _finding_codes_from_validation(
 def _changed_paths_from_validation(
     validation_result: Mapping[str, Any],
 ) -> tuple[str, ...]:
-    paths: set[str] = set()
-    for container_key in (
-        "proposal_gate",
-        "proposal_validation",
-        "selection",
-    ):
+    proposal_paths: set[str] = set()
+    for container_key in ("proposal_gate", "proposal_validation"):
         container = _mapping(validation_result.get(container_key))
         for key in ("changed_paths", "changed_files", "paths"):
-            paths.update(
+            proposal_paths.update(
                 path
                 for path in _normalized_paths(container.get(key) or ())
             )
@@ -173,8 +169,25 @@ def _changed_paths_from_validation(
         validation_result.get("proposal_validation")
     )
     proposal = _mapping(proposal_validation.get("proposal"))
-    paths.update(_normalized_paths(proposal.get("changed_paths") or ()))
-    return tuple(sorted(paths))
+    proposal_paths.update(
+        _normalized_paths(proposal.get("changed_paths") or ())
+    )
+    if proposal_paths:
+        return tuple(sorted(proposal_paths))
+
+    # Legacy validation records may not contain a proposal projection. Keep
+    # their selection paths as a best-effort fallback, but never union them
+    # with authoritative proposal paths: selection.changed_files also includes
+    # read-only validation impact paths and therefore is not candidate-edit
+    # evidence.
+    selection = _mapping(validation_result.get("selection"))
+    selection_paths: set[str] = set()
+    for key in ("changed_paths", "changed_files", "paths"):
+        selection_paths.update(
+            path
+            for path in _normalized_paths(selection.get(key) or ())
+        )
+    return tuple(sorted(selection_paths))
 
 
 def _failed_commands_from_validation(

@@ -106,6 +106,74 @@ def test_guide_rescue_for_out_of_scope_refactor_paths() -> None:
     )
 
 
+def test_validation_selection_impact_paths_are_not_candidate_changes() -> None:
+    expected_outputs = (
+        "data/validation/conformance-report.json",
+        "tests/contract/wallets/test_all_processors.py",
+        "tests/contract/wallets/test_worldcoin_differential.py",
+    )
+    review = review_implementation_failure(
+        task_id="WALPROC-027",
+        attempt=1,
+        expected_outputs=expected_outputs,
+        validation_result={
+            "attempted": True,
+            "passed": False,
+            "returncode": 1,
+            "reason": "declared_validation_failed",
+            "proposal_gate": {
+                "accepted": True,
+                "changed_paths": list(expected_outputs),
+            },
+            "selection": {
+                "changed_files": [
+                    *expected_outputs,
+                    "tests/contract/wallets",
+                    "tests/unit/wallets",
+                ],
+            },
+            "failed_commands": [
+                "python -m pytest -q tests/unit/wallets "
+                "tests/contract/wallets"
+            ],
+        },
+    )
+
+    assert review.changed_paths == expected_outputs
+    assert review.out_of_scope_paths == ()
+    assert (
+        FailureReviewReason.SCOPE_EXPANSION_DENIED.value
+        not in review.reason_codes
+    )
+    assert (
+        FailureReviewReason.LARGE_OR_UNDECLARED_REFACTOR.value
+        not in review.reason_codes
+    )
+    assert (
+        FailureReviewReason.VALIDATION_COMMAND_FAILED.value
+        in review.reason_codes
+    )
+
+
+def test_validation_selection_paths_remain_legacy_fallback() -> None:
+    review = review_implementation_failure(
+        task_id="LEGACY-001",
+        attempt=1,
+        expected_outputs=("src/runtime.py",),
+        validation_result={
+            "attempted": True,
+            "passed": False,
+            "returncode": 1,
+            "reason": "declared_validation_failed",
+            "selection": {"changed_files": ["src/runtime.py"]},
+            "failed_commands": ["python -m pytest -q tests/test_runtime.py"],
+        },
+    )
+
+    assert review.changed_paths == ("src/runtime.py",)
+    assert review.out_of_scope_paths == ()
+
+
 def test_reject_hard_deny_secret_findings() -> None:
     review = review_implementation_failure(
         task_id="ASI-1",
