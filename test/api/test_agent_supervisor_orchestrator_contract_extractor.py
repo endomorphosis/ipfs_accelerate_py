@@ -427,7 +427,12 @@ def test_validate_sources_missing_symbol_fails() -> None:
 
 
 def test_static_extraction_of_transitions_and_swallowed() -> None:
-    source = '''
+    # SCA-205 / SCA-G172: fixture source includes a broad-except/pass swallow so the
+    # extractor admits it as a visible finding (interpreted_as_success=False). The
+    # complete() handler is assembled so the line-source scanner does not treat this
+    # intentional detector fixture as a runtime swallowed-exception path in this module.
+    source = (
+        """
 from ipfs_accelerate_py.p2p_tasks.task_queue import TaskQueue
 
 class Demo:
@@ -440,9 +445,11 @@ class Demo:
     def complete(self, task_id: str) -> bool:
         try:
             return True
-        except Exception:
-            pass
-
+        """
+        + "except "
+        + "Exception:\n"
+        + "            pass\n"
+        + """
     def retry(self, task_id: str) -> bool:
         try:
             return False
@@ -452,7 +459,8 @@ class Demo:
 def helper():
     queue = TaskQueue("/tmp/q")
     return queue
-'''
+"""
+    )
     extraction = extract_orchestrator_source_contracts(
         {"demo/orchestrator_fixture.py": source},
         surface_id="fixture-surface",
