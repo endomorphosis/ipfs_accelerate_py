@@ -3753,19 +3753,31 @@ def dependency_guardrail_records(tasks: Sequence[Any]) -> list[dict[str, Any]]:
     }
     records: list[dict[str, Any]] = duplicate_task_id_records(tasks)
 
-    def reachable_cycle(start: str) -> list[str]:
-        path: list[str] = []
+    def cycle_containing(start: str) -> list[str]:
+        """Return a dependency cycle only when ``start`` is a member.
+
+        A task which merely waits on a cyclic prerequisite is blocked by that
+        prerequisite, but its own metadata is not cyclic.  Filing a separate
+        repair for every downstream waiter obscures the root defect and can
+        exhaust the bounded repair-task budget before the cycle member is
+        reached.
+        """
+
+        path = [start]
 
         def visit(node: str) -> list[str]:
-            if node in path:
-                index = path.index(node)
-                return [*path[index:], node]
-            path.append(node)
             for dependency in dependency_graph.get(node, []):
+                if dependency == start:
+                    return [*path, start]
+                if dependency in path:
+                    # This is a reachable cycle which does not contain the
+                    # source task.  Its own members receive their own records.
+                    continue
+                path.append(dependency)
                 cycle = visit(dependency)
+                path.pop()
                 if cycle:
                     return cycle
-            path.pop()
             return []
 
         return visit(start)
@@ -3780,7 +3792,7 @@ def dependency_guardrail_records(tasks: Sequence[Any]) -> list[dict[str, Any]]:
             if dep not in task_ids and dep not in task_ids_by_goal
         )
         self_references = sorted(dep for dep in dependencies if dep == task.task_id)
-        dependency_cycle = reachable_cycle(task.task_id)
+        dependency_cycle = cycle_containing(task.task_id)
         if not missing and not self_references and not dependency_cycle:
             continue
         fingerprint = sha1(
@@ -6040,6 +6052,149 @@ def completed_retry_budget_repairs_by_source(tasks: Sequence[Any]) -> dict[str, 
     return repairs
 
 
+def repair_generated_packet_internal_dependencies(
+    todo_text: str,
+    *,
+    task_prefix: str = DEFAULT_TASK_ID_PREFIX,
+) -> tuple[str, list[dict[str, Any]]]:
+    """Remove proven packet-internal goal prerequisites from aggregates.
+
+    Objective packet aggregates intentionally collapse several goals into one
+    execution unit.  Older projections retained a packet goal in ``Depends
+    on`` even when the same aggregate carried explicit completion evidence for
+    that goal.  The goal-to-task projection then produced a self-cycle.
+
+    This repair is deliberately narrow: it accepts only active, schedulable,
+    generated packet aggregates with canonical packet identities and non-empty
+    evidence bindings.  Ambiguous or hand-authored metadata is left unchanged
+    for the normal fail-closed dependency guardrail.
+    """
+
+    replacements: list[tuple[int, int, str]] = []
+    repairs: list[dict[str, Any]] = []
+
+    def field(block: str, label: str) -> str:
+        match = re.search(
+            rf"^-\s*{re.escape(label)}:\s*(.*?)\s*$",
+            block,
+            flags=re.IGNORECASE | re.MULTILINE,
+        )
+        return match.group(1).strip() if match is not None else ""
+
+    for start, end, block in task_blocks_with_spans(todo_text):
+        heading = task_id_pattern(task_prefix).match(block)
+        if heading is None:
+            continue
+        task_id = heading.group(1)
+        status = field(block, "Status").casefold().replace("-", "_")
+        if status in {"complete", "completed", "done", "succeeded"}:
+            continue
+        if (
+            field(block, "Candidate kind").casefold()
+            != "goal_packet_aggregate"
+            or field(block, "Goal packet role").casefold()
+            != "packet_aggregate"
+            or field(block, "Is schedulable").casefold() != "true"
+            or field(block, "Review only").casefold() != "false"
+        ):
+            continue
+        semantic_identity = field(block, "Semantic identity")
+        evidence_obligation_key = field(block, "Evidence obligation key")
+        if (
+            not semantic_identity.startswith(
+                "objective-evidence-packet/v1/"
+            )
+            or not evidence_obligation_key.startswith(
+                "objective-evidence-packet/v1/"
+            )
+        ):
+            continue
+        packet_key = field(block, "Goal packet")
+        packet_goal_ids = {
+            goal_id
+            for goal_id in split_csv(field(block, "Goal packet goals"))
+            if goal_id
+        }
+        if not packet_key or not packet_goal_ids:
+            continue
+        try:
+            raw_bindings = json.loads(
+                field(block, "Completion goal bindings")
+            )
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(raw_bindings, Mapping):
+            continue
+        evidenced_packet_goals = {
+            str(goal_id).strip()
+            for goal_id, requirements in raw_bindings.items()
+            if str(goal_id).strip() in packet_goal_ids
+            and isinstance(requirements, list)
+            and any(str(requirement).strip() for requirement in requirements)
+        }
+        if not evidenced_packet_goals:
+            continue
+        dependencies = split_csv(field(block, "Depends on"))
+        removed_dependencies = [
+            dependency
+            for dependency in dependencies
+            if dependency in evidenced_packet_goals
+        ]
+        if not removed_dependencies:
+            continue
+        retained_dependencies = [
+            dependency
+            for dependency in dependencies
+            if dependency not in evidenced_packet_goals
+        ]
+        updated_block, replacement_count = re.subn(
+            r"^-\s*Depends on:.*$",
+            f"- Depends on: {', '.join(retained_dependencies)}",
+            block,
+            count=1,
+            flags=re.IGNORECASE | re.MULTILINE,
+        )
+        if replacement_count != 1:
+            continue
+        repair_fingerprint = sha256(
+            json.dumps(
+                {
+                    "task_id": task_id,
+                    "packet_key": packet_key,
+                    "removed_dependencies": removed_dependencies,
+                    "retained_dependencies": retained_dependencies,
+                    "semantic_identity": semantic_identity,
+                },
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode("utf-8")
+        ).hexdigest()
+        replacements.append((start, end, updated_block))
+        repairs.append(
+            {
+                "source_task_id": task_id,
+                "follow_up_task_id": "",
+                "guardrail_kind": "dependency_guardrail",
+                "reason": "objective_packet_internal_dependency_removed",
+                "packet_key": packet_key,
+                "removed_dependencies": removed_dependencies,
+                "retained_dependencies": retained_dependencies,
+                "repair_fingerprint": repair_fingerprint,
+            }
+        )
+
+    if not replacements:
+        return todo_text, []
+    updated_parts: list[str] = []
+    cursor = 0
+    for start, end, updated_block in replacements:
+        updated_parts.append(todo_text[cursor:start])
+        updated_parts.append(updated_block)
+        cursor = end
+    updated_parts.append(todo_text[cursor:])
+    return "".join(updated_parts), repairs
+
+
 def release_completed_guardrail_blocks(
     *,
     todo_path: Path,
@@ -6053,7 +6208,16 @@ def release_completed_guardrail_blocks(
 
     if not todo_path.exists() or not strategy_path.exists():
         return []
-    todo_text = todo_path.read_text(encoding="utf-8")
+    with locked_taskboard(todo_path) as taskboard:
+        todo_text = taskboard.read()
+        todo_text, packet_dependency_repairs = (
+            repair_generated_packet_internal_dependencies(
+                todo_text,
+                task_prefix=task_prefix,
+            )
+        )
+        if packet_dependency_repairs:
+            replace_locked_taskboard(taskboard, todo_text)
     statuses = task_statuses_from_todo_text(todo_text, task_prefix=task_prefix)
     if not statuses:
         return []
@@ -6077,9 +6241,14 @@ def release_completed_guardrail_blocks(
     }
     strategy = load_strategy(strategy_path)
     blocked_tasks = [str(item) for item in strategy.get("blocked_tasks", []) if str(item).strip()]
-    todo_changed = False
+    todo_changed = bool(packet_dependency_repairs)
 
-    releases: list[dict[str, Any]] = []
+    releases: list[dict[str, Any]] = list(packet_dependency_repairs)
+    if packet_dependency_repairs:
+        strategy["last_objective_packet_dependency_repair_at"] = utc_now()
+        strategy["last_objective_packet_dependency_repairs"] = list(
+            packet_dependency_repairs
+        )
     deduplicated_blocked_tasks = list(dict.fromkeys(blocked_tasks))
     if len(deduplicated_blocked_tasks) != len(blocked_tasks):
         duplicate_ids = sorted(

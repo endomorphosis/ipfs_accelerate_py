@@ -10192,10 +10192,37 @@ def generate_objective_todos(
             shard_relative = repo_relative_path(
                 repo_root, bundle_path(bundle_dir, finding.bundle_key)
             )
+            packet_internal_goal_dependencies: set[str] = set()
+            if (
+                finding.candidate_kind == "goal_packet_aggregate"
+                and finding.goal_packet_role == "packet_aggregate"
+            ):
+                completion_bindings = _finding_completion_goal_bindings(
+                    finding
+                )
+                packet_goal_ids = {
+                    str(goal_id).strip()
+                    for goal_id in finding.goal_packet_goal_ids
+                    if str(goal_id).strip()
+                }
+                packet_internal_goal_dependencies = {
+                    goal_id
+                    for goal_id, requirements in completion_bindings.items()
+                    if goal_id in packet_goal_ids
+                    and any(str(requirement).strip() for requirement in requirements)
+                }
             projected_dependencies: list[str] = []
             for dependency in _unique_strings(
                 [*depends_on, *finding.dependencies]
             ):
+                # A packet aggregate is the execution unit which satisfies
+                # every explicitly bound packet goal.  Retaining one of those
+                # goals as its own prerequisite creates an impossible
+                # ``task -> goal -> task`` cycle.  Only bindings with concrete
+                # evidence requirements qualify; malformed or merely
+                # descriptive packet metadata remains fail-closed.
+                if dependency in packet_internal_goal_dependencies:
+                    continue
                 if dependency in materialized_task_ids:
                     projected_dependencies.append(dependency)
                 else:

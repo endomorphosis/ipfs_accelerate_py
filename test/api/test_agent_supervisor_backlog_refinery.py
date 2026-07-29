@@ -1901,6 +1901,45 @@ def test_backlog_refinery_dependency_guardrail_detects_dependency_cycle(tmp_path
     assert strategy["blocked_tasks"] == ["AUTO-001"]
 
 
+def test_dependency_guardrail_reports_cycle_members_not_downstream_waiters(
+    tmp_path,
+):
+    repo = _seed_repo(tmp_path)
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Agent Todos
+
+## AUTO-001 Cycle member one
+
+- Status: todo
+- Depends on: AUTO-002
+
+## AUTO-002 Cycle member two
+
+- Status: todo
+- Depends on: AUTO-001
+
+## AUTO-003 Downstream waiter
+
+- Status: todo
+- Depends on: AUTO-001
+""",
+        encoding="utf-8",
+    )
+
+    records = backlog_refinery.dependency_guardrail_records(
+        parse_task_file(todo_path, "## AUTO-")
+    )
+
+    assert {
+        record["source_task_id"]: record["dependency_cycle"]
+        for record in records
+    } == {
+        "AUTO-001": ["AUTO-001", "AUTO-002", "AUTO-001"],
+        "AUTO-002": ["AUTO-002", "AUTO-001", "AUTO-002"],
+    }
+
+
 def test_backlog_refinery_dependency_guardrail_preserves_prior_batches(tmp_path):
     repo = _seed_repo(tmp_path)
     todo_path = repo / "todo.md"
@@ -2615,6 +2654,151 @@ def test_backlog_refinery_releases_stale_dependency_guardrail_after_metadata_rep
         "## AUTO-002", 1
     )[1]
     assert "- Status: completed" in repair_block
+
+
+def test_backlog_refinery_repairs_generated_packet_self_goal_and_retires_guardrail(
+    tmp_path,
+):
+    repo = _seed_repo(tmp_path)
+    todo_path = repo / "todo.md"
+    strategy_path = repo / "state" / "strategy.json"
+    todo_path.write_text(
+        """# Agent Todos
+
+## AUTO-001 External prerequisite
+
+- Status: completed
+- Completion: manual
+- Priority: P0
+- Track: runtime
+- Depends on:
+- Outputs: src/base.py
+- Validation: true
+- Acceptance: External prerequisite is complete.
+
+## AUTO-002 Generated packet aggregate
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: runtime
+- Depends on: AUTO-001, VAIOS-G101, VAIOS-G102
+- Outputs: src/runtime.py
+- Validation: true
+- Goal id: VAIOS-G101
+- Semantic identity: objective-evidence-packet/v1/packet
+- Evidence obligation key: objective-evidence-packet/v1/packet
+- Goal packet: goal_packet/runtime/shared
+- Goal packet role: packet_aggregate
+- Goal packet goals: VAIOS-G101, VAIOS-G102
+- Completion goal bindings: {"VAIOS-G101":["anchor.json"],"VAIOS-G102":["member.json"]}
+- Candidate kind: goal_packet_aggregate
+- Acceptance: Close the packet goals together.
+
+## AUTO-003 Resolve dependency guardrail for AUTO-002
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on:
+- Outputs: todo.md
+- Validation: test -f todo.md
+- Acceptance: Repair the generated dependency cycle.
+""",
+        encoding="utf-8",
+    )
+    strategy_path.parent.mkdir(parents=True, exist_ok=True)
+    strategy_path.write_text(
+        json.dumps(
+            {
+                "blocked_tasks": ["AUTO-002"],
+                "dependency_guardrail_findings": [
+                    {
+                        "source_task_id": "AUTO-002",
+                        "follow_up_task_id": "AUTO-003",
+                        "fingerprint": "stale-self-cycle",
+                        "dependency_cycle": ["AUTO-002", "AUTO-002"],
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    releases = release_completed_guardrail_blocks(
+        todo_path=todo_path,
+        strategy_path=strategy_path,
+        task_prefix="AUTO-",
+    )
+
+    todo_text = todo_path.read_text(encoding="utf-8")
+    packet_block = todo_text.split("## AUTO-002", 1)[1].split(
+        "## AUTO-003", 1
+    )[0]
+    repair_block = todo_text.split("## AUTO-003", 1)[1]
+    assert "- Depends on: AUTO-001" in packet_block
+    assert "VAIOS-G101" not in packet_block.split(
+        "- Depends on:", 1
+    )[1].splitlines()[0]
+    assert "- Status: completed" in repair_block
+    strategy = json.loads(strategy_path.read_text(encoding="utf-8"))
+    assert strategy["blocked_tasks"] == []
+    assert strategy["dependency_guardrail_findings"] == []
+    assert strategy["last_objective_packet_dependency_repairs"][0][
+        "removed_dependencies"
+    ] == ["VAIOS-G101", "VAIOS-G102"]
+    assert {
+        release.get("reason")
+        for release in releases
+    } == {
+        "objective_packet_internal_dependency_removed",
+        "dependency_metadata_resolved",
+        "resolved_repair_task_retired",
+    }
+
+
+def test_generated_packet_dependency_repair_leaves_unproven_metadata_fail_closed(
+    tmp_path,
+):
+    todo_text = """# Agent Todos
+
+## AUTO-001 Unproven packet aggregate
+
+- Status: todo
+- Is schedulable: true
+- Review only: false
+- Depends on: VAIOS-G101
+- Goal id: VAIOS-G101
+- Semantic identity: objective-evidence-packet/v1/packet
+- Evidence obligation key: objective-evidence-packet/v1/packet
+- Goal packet: goal_packet/runtime/shared
+- Goal packet role: packet_aggregate
+- Goal packet goals: VAIOS-G101
+- Completion goal bindings: {"VAIOS-G101":[]}
+- Candidate kind: goal_packet_aggregate
+"""
+
+    updated, repairs = (
+        backlog_refinery.repair_generated_packet_internal_dependencies(
+            todo_text,
+            task_prefix="AUTO-",
+        )
+    )
+
+    assert updated == todo_text
+    assert repairs == []
+    todo_path = tmp_path / "todo.md"
+    todo_path.write_text(todo_text, encoding="utf-8")
+    tasks = parse_task_file(
+        todo_path,
+        "## AUTO-",
+    )
+    assert backlog_refinery.dependency_guardrail_records(tasks)[0][
+        "dependency_cycle"
+    ] == ["AUTO-001", "AUTO-001"]
 
 
 def test_backlog_refinery_retires_dependency_repair_and_releases_lost_finding(

@@ -2184,6 +2184,76 @@ def test_goal_packet_aggregate_does_not_mix_active_and_review_only_scope():
     )
 
 
+def test_generate_objective_todos_omits_evidenced_packet_internal_dependencies(
+    tmp_path,
+):
+    repo, objective_path, todo_path = _seed_repo(tmp_path)
+    objective_path.write_text(
+        """# Objective Heap
+
+## VAIOS-G101 Packet anchor
+
+- Status: active
+- Parent:
+- Evidence: anchor.json
+
+## VAIOS-G102 Packet member
+
+- Status: active
+- Parent:
+- Evidence: member.json
+""",
+        encoding="utf-8",
+    )
+    finding = ObjectiveFinding(
+        fingerprint="packet-aggregate",
+        goal_id="VAIOS-G101",
+        title="Packet aggregate",
+        summary="Implement packet aggregate",
+        priority="P1",
+        track="runtime",
+        missing_evidence=["anchor.json", "member.json"],
+        present_evidence={},
+        evidence_methods=[],
+        objective_path=str(objective_path),
+        outputs=["src/runtime_router.py"],
+        validation="true",
+        dependencies=[
+            "ACCEL-001",
+            "VAIOS-G101",
+            "VAIOS-G102",
+        ],
+        candidate_kind="goal_packet_aggregate",
+        goal_packet_key="goal_packet/runtime/shared",
+        goal_packet_role="packet_aggregate",
+        goal_packet_goal_ids=["VAIOS-G101", "VAIOS-G102"],
+        completion_goal_bindings={
+            "VAIOS-G101": ["anchor.json"],
+            "VAIOS-G102": ["member.json"],
+        },
+        semantic_identity="objective-evidence-packet/v1/packet",
+        dedupe_key="objective-evidence-packet/v1/packet",
+    )
+
+    records = generate_objective_todos(
+        repo_root=repo,
+        objective_path=objective_path,
+        todo_path=todo_path,
+        discovery_dir=repo / "discovery",
+        bundle_dir=repo / "bundles",
+        task_prefix="ACCEL-",
+        precomputed_findings=[finding],
+        persist_ast_dataset=False,
+        write_todo_vector_index=False,
+    )
+
+    assert len(records) == 1
+    assert records[0].depends_on == ("ACCEL-001",)
+    generated_block = records[0].task_block
+    assert "- Depends on: ACCEL-001" in generated_block
+    assert "Depends on: ACCEL-001, VAIOS-G101" not in generated_block
+
+
 def test_objective_graph_scanner_semantic_ast_bundles_implicit_goals(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
