@@ -428,7 +428,7 @@ compact references and bounded spans only.
 
 ## VFS-022 Define ZK public inputs, witness policy, and trace semantics for program assurance
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P1
 - Track: zero-knowledge
