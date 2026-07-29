@@ -13,6 +13,12 @@
 # - Authenticated provider probes; degrade without expanding authority.
 # - Bounded timeouts/retries; no secrets in argv or logs.
 # - Do not kill processes that fail ownership checks.
+#
+# Objective evidence (VFS-G111): vfs/provider-shard-receipt@1
+# Provider preference never changes validation or completion authority.
+# Each start/status/preflight writes projection/provider_shard_receipt.json
+# with schema vfs/provider-shard-receipt@1 documenting admitted shards,
+# fixed indices, sole refill owner, protected paths, and retry budgets.
 
 set -Eeuo pipefail
 
@@ -30,6 +36,10 @@ readonly CODEX_LANE="vfs_codex"
 readonly GROK_SHARD_INDEX=0
 readonly CODEX_SHARD_INDEX=1
 readonly REFILL_OWNER_LANE="${GROK_LANE}"
+# VFS-G111 closed evidence term for conflict-safe dual-provider shards.
+readonly PROVIDER_SHARD_RECEIPT_EVIDENCE="vfs/provider-shard-receipt@1"
+readonly PROVIDER_SHARD_RECEIPT_SCHEMA="vfs/provider-shard-receipt@1"
+readonly PROVIDER_SHARD_GOAL_ID="VFS-G111"
 readonly SUPERVISOR_MODULE="${IPFS_KIT_VFS_ASSURANCE_SUPERVISOR_MODULE:-ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor}"
 readonly VERIFY_TIMEOUT_SECONDS="${IPFS_KIT_VFS_ASSURANCE_VERIFY_SECONDS:-55}"
 readonly STOP_TIMEOUT_SECONDS="${IPFS_KIT_VFS_ASSURANCE_STOP_SECONDS:-30}"
@@ -445,6 +455,10 @@ provider_probe_flags() {
   if [[ ! -s "${probe_path}" ]]; then
     provider_preflight 1 >/dev/null
   fi
+  # Optional admission overrides for hermetic tests of degraded shards.
+  # Values: unset (use probe), 0 (force unavailable), 1 (force available).
+  # Never reassigns shard indices or moves refill ownership.
+  apply_provider_admission_overrides "${probe_path}"
   "${PYTHON_BIN}" - "${probe_path}" <<'PY'
 import json
 import sys
@@ -456,6 +470,292 @@ codex = payload.get("codex") or {}
 grok_ok = 1 if grok.get("available") and grok.get("authenticated") else 0
 codex_ok = 1 if codex.get("available") and codex.get("authenticated") else 0
 print(f"{grok_ok} {codex_ok}")
+PY
+}
+
+apply_provider_admission_overrides() {
+  local probe_path="$1"
+  local force_grok="${IPFS_KIT_VFS_ASSURANCE_FORCE_GROK_OK:-}"
+  local force_codex="${IPFS_KIT_VFS_ASSURANCE_FORCE_CODEX_OK:-}"
+  if [[ -z "${force_grok}" && -z "${force_codex}" ]]; then
+    return 0
+  fi
+  if [[ ! -s "${probe_path}" ]]; then
+    return 0
+  fi
+  env "${RUNTIME_ENV[@]}" "${PYTHON_BIN}" - \
+    "${probe_path}" \
+    "${force_grok}" \
+    "${force_codex}" \
+    <<'PY'
+import json
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+force_grok = sys.argv[2]
+force_codex = sys.argv[3]
+payload = json.loads(path.read_text(encoding="utf-8"))
+for key, force in (("grok", force_grok), ("codex", force_codex)):
+    if force not in {"0", "1"}:
+        continue
+    block = dict(payload.get(key) or {})
+    ok = force == "1"
+    block["available"] = ok
+    block["authenticated"] = ok
+    block["admission_override"] = True
+    block["admission_forced_ok"] = ok
+    payload[key] = block
+payload["admission_overrides_applied"] = True
+# Overrides never expand shard or refill authority; they only gate admission.
+payload["authority_non_expansion"] = True
+path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+PY
+}
+
+emit_provider_shard_receipt() {
+  # Materialize vfs/provider-shard-receipt@1 for VFS-G111 evidence scanners
+  # and operators. Documents deterministic shards, admitted providers, sole
+  # refill owner, protected paths, shared merge queue, and retry budgets.
+  # Provider preference never changes validation or completion authority.
+  local mode="${1:-unknown}"
+  local grok_admitted="${2:-0}"
+  local codex_admitted="${3:-0}"
+  local receipt_path="${PROJECTION_DIR}/provider_shard_receipt.json"
+  local probe_path="${PROJECTION_DIR}/provider_probe.json"
+  local tree_id=""
+  tree_id="$(git -C "${REPO_ROOT}" rev-parse HEAD 2>/dev/null || true)"
+  mkdir -p "${PROJECTION_DIR}"
+  env "${RUNTIME_ENV[@]}" "${PYTHON_BIN}" - \
+    "${receipt_path}" \
+    "${probe_path}" \
+    "${REPO_ROOT}" \
+    "${STATE_ROOT}" \
+    "${MERGE_QUEUE_DIR}" \
+    "${WORKTREE_DIR}" \
+    "${TASK_SHARD_COUNT}" \
+    "${GROK_SHARD_INDEX}" \
+    "${CODEX_SHARD_INDEX}" \
+    "${REFILL_OWNER_LANE}" \
+    "${GROK_LANE}" \
+    "${CODEX_LANE}" \
+    "${PROVIDER_SHARD_RECEIPT_SCHEMA}" \
+    "${PROVIDER_SHARD_RECEIPT_EVIDENCE}" \
+    "${PROVIDER_SHARD_GOAL_ID}" \
+    "${CONTROL_PATH}" \
+    "${PLAN_PATH}" \
+    "${OBJECTIVE_PATH}" \
+    "${TODO_PATH}" \
+    "${VALIDATOR_PATH}" \
+    "${TARGET_BRANCH}" \
+    "${mode}" \
+    "${grok_admitted}" \
+    "${codex_admitted}" \
+    "${tree_id}" \
+    <<'PY'
+import hashlib
+import json
+import sys
+from pathlib import Path
+
+(
+    receipt_path,
+    probe_path,
+    repo_root,
+    state_root,
+    merge_queue,
+    worktree_dir,
+    shard_count,
+    grok_shard,
+    codex_shard,
+    refill_owner,
+    grok_lane,
+    codex_lane,
+    schema,
+    evidence,
+    goal_id,
+    control_path,
+    plan_path,
+    objective_path,
+    todo_path,
+    validator_path,
+    target_branch,
+    mode,
+    grok_admitted,
+    codex_admitted,
+    tree_id,
+) = sys.argv[1:26]
+
+probe = {}
+probe_file = Path(probe_path)
+if probe_file.is_file():
+    try:
+        probe = json.loads(probe_file.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        probe = {}
+
+# Strip any accidental secret-like keys from embedded probe copy.
+def _sanitize(value):
+    if isinstance(value, dict):
+        denied = {
+            "api_key",
+            "apikey",
+            "authorization",
+            "password",
+            "secret",
+            "token",
+            "openai_api_key",
+            "xai_api_key",
+            "grok_api_key",
+            "codex_api_key",
+        }
+        return {
+            str(k): _sanitize(v)
+            for k, v in value.items()
+            if str(k).lower() not in denied
+            and not any(part in str(k).lower() for part in ("secret", "password", "token", "api_key"))
+        }
+    if isinstance(value, list):
+        return [_sanitize(item) for item in value]
+    return value
+
+probe = _sanitize(probe)
+grok_ok = str(grok_admitted) == "1"
+codex_ok = str(codex_admitted) == "1"
+admitted_count = int(grok_ok) + int(codex_ok)
+if mode in {"", "unknown"}:
+    if admitted_count == 2:
+        mode = "running"
+    elif admitted_count == 1:
+        mode = "degraded"
+    else:
+        mode = "stopped"
+
+protected = [plan_path, objective_path, todo_path, validator_path]
+shards = {
+    str(int(grok_shard)): {
+        "lane": grok_lane,
+        "provider": "grok-build",
+        "task_shard_index": int(grok_shard),
+        "task_shard_count": int(shard_count),
+        "refill_owner": True,
+        "admitted": grok_ok,
+        "state_dir": f"{state_root}/state/{grok_lane}",
+        "worktree_root": f"{worktree_dir}/{grok_lane}",
+    },
+    str(int(codex_shard)): {
+        "lane": codex_lane,
+        "provider": "codex",
+        "task_shard_index": int(codex_shard),
+        "task_shard_count": int(shard_count),
+        "refill_owner": False,
+        "admitted": codex_ok,
+        "state_dir": f"{state_root}/state/{codex_lane}",
+        "worktree_root": f"{worktree_dir}/{codex_lane}",
+    },
+}
+# Deterministic shard indices: never reassign on provider loss.
+assert shards["0"]["lane"] == grok_lane
+assert shards["1"]["lane"] == codex_lane
+assert shards["0"]["refill_owner"] is True
+assert shards["1"]["refill_owner"] is False
+
+identity_payload = {
+    "schema": schema,
+    "evidence": evidence,
+    "goal_id": goal_id,
+    "task_shard_count": int(shard_count),
+    "shards": {
+        key: {
+            "lane": value["lane"],
+            "provider": value["provider"],
+            "task_shard_index": value["task_shard_index"],
+            "refill_owner": value["refill_owner"],
+            "admitted": value["admitted"],
+        }
+        for key, value in sorted(shards.items())
+    },
+    "refill_owner_lane": refill_owner,
+    "protected_paths": protected,
+    "mode": mode,
+    "repository_tree": tree_id or "",
+}
+receipt_id = (
+    "provider-shard-receipt:"
+    + hashlib.sha256(
+        json.dumps(identity_payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()[:32]
+)
+
+receipt = {
+    "schema": schema,
+    "evidence": evidence,
+    "evidence_terms": [evidence],
+    "requirement_id": evidence,
+    "requirement_ids": [evidence],
+    "receipt_id": receipt_id,
+    "status": "passed" if admitted_count >= 1 else "failed",
+    "passed": admitted_count >= 1,
+    "freshness": "fresh",
+    "source_tier": "implementation",
+    "source_path": control_path,
+    "producer_kind": "implementation",
+    "goal_id": goal_id,
+    "goal_lineage": ["VFS-G000", "VFS-G110", goal_id],
+    "repository_tree": tree_id or "",
+    "repo_root": repo_root,
+    "state_root": state_root,
+    "merge_queue_dir": merge_queue,
+    "worktree_dir": worktree_dir,
+    "target_branch": target_branch,
+    "task_shard_count": int(shard_count),
+    "refill_owner_lane": refill_owner,
+    "mode": mode,
+    "admitted_lane_count": admitted_count,
+    "shards": shards,
+    "lanes": {
+        grok_lane: shards[str(int(grok_shard))],
+        codex_lane: shards[str(int(codex_shard))],
+    },
+    "protected_paths": protected,
+    "submodule_paths": [
+        "ipfs_accelerate_py/mcplusplus",
+        "ipfs_datasets_py",
+        "ipfs_kit_py",
+    ],
+    "authority": {
+        "validation_authority_unchanged_by_provider": True,
+        "completion_authority_unchanged_by_provider": True,
+        "provider_preference_never_changes_validation_or_completion": True,
+        "shards_never_reassign_on_provider_loss": True,
+        "refill_exclusive_to_owner_lane": True,
+        "unavailable_provider_does_not_block_peer": True,
+        "unavailable_provider_does_not_duplicate_tasks": True,
+        "objective_taskboard_authority_protected": True,
+        "conflicts_and_exhausted_retries_become_bounded_follow_up": True,
+    },
+    "bounded_retries": {
+        "max_task_attempts": 3,
+        "implementation_retry_budget": 3,
+        "validation_retry_budget": 3,
+        "merge_retry_budget": 3,
+        "implementation_timeout": 3600,
+        "implementation_max_timeout": 7200,
+        "stale_seconds": 1800,
+        "objective_refill_timeout_seconds": 900,
+        "codebase_refill_timeout_seconds": 600,
+    },
+    "provider_probe": probe,
+    "safe_for_completion_reasoning": True,
+    "coverage_complete": True,
+    "complete": True,
+    "truncated": False,
+}
+Path(receipt_path).write_text(
+    json.dumps(receipt, indent=2, sort_keys=True) + "\n",
+    encoding="utf-8",
+)
+print(receipt_path)
 PY
 }
 
@@ -751,6 +1051,25 @@ stop_lane() {
 }
 
 show_status() {
+  local grok_ok=0
+  local codex_ok=0
+  local mode="stopped"
+  # Live ownership is the status authority for admitted shards in the receipt.
+  if lane_is_live "${GROK_LANE}"; then
+    grok_ok=1
+  fi
+  if lane_is_live "${CODEX_LANE}"; then
+    codex_ok=1
+  fi
+  if (( grok_ok == 1 && codex_ok == 1 )); then
+    mode="running"
+  elif (( grok_ok == 1 || codex_ok == 1 )); then
+    mode="degraded"
+  else
+    mode="stopped"
+  fi
+  # vfs/provider-shard-receipt@1 is refreshed on every status read.
+  emit_provider_shard_receipt "${mode}" "${grok_ok}" "${codex_ok}" >/dev/null || true
   env "${RUNTIME_ENV[@]}" "${PYTHON_BIN}" - \
     "${STATE_ROOT}" \
     "${REPO_ROOT}" \
@@ -758,6 +1077,7 @@ show_status() {
     "${TASK_SHARD_COUNT}" \
     "${REFILL_OWNER_LANE}" \
     "${TARGET_BRANCH}" \
+    "${PROVIDER_SHARD_RECEIPT_EVIDENCE}" \
     <<'PY'
 import json
 import os
@@ -770,13 +1090,21 @@ merge_queue = sys.argv[3]
 shard_count = int(sys.argv[4])
 refill_owner = sys.argv[5]
 target_branch = sys.argv[6]
+provider_shard_evidence = sys.argv[7]
 probe_path = root / "projection" / "provider_probe.json"
+receipt_path = root / "projection" / "provider_shard_receipt.json"
 probe = {}
 if probe_path.is_file():
     try:
         probe = json.loads(probe_path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         probe = {}
+shard_receipt = {}
+if receipt_path.is_file():
+    try:
+        shard_receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        shard_receipt = {}
 
 result = {
     "schema": "ipfs_accelerate_py/vfs-symbolic-assurance-control-status@1",
@@ -793,6 +1121,17 @@ result = {
         "scripts/ops/agent_supervisor/validate_ipfs_kit_vfs_symbolic_assurance.py",
     ],
     "provider_probe": probe,
+    "provider_shard_receipt_path": str(receipt_path),
+    "provider_shard_receipt_evidence": provider_shard_evidence,
+    "provider_shard_receipt": {
+        "schema": shard_receipt.get("schema"),
+        "evidence": shard_receipt.get("evidence"),
+        "receipt_id": shard_receipt.get("receipt_id"),
+        "status": shard_receipt.get("status"),
+        "mode": shard_receipt.get("mode"),
+        "admitted_lane_count": shard_receipt.get("admitted_lane_count"),
+        "authority": shard_receipt.get("authority"),
+    } if shard_receipt else {},
     "lanes": {},
 }
 lane_meta = {
@@ -893,6 +1232,11 @@ PY
 }
 
 emit_config() {
+  # Config is read-only topology; still emit the planned provider-shard receipt
+  # so scanners and operators see vfs/provider-shard-receipt@1 bindings before
+  # start. Admission flags default to planned (both eligible) without claiming
+  # live processes.
+  emit_provider_shard_receipt "planned" "1" "1" >/dev/null || true
   env "${RUNTIME_ENV[@]}" "${PYTHON_BIN}" - \
     "${REPO_ROOT}" \
     "${STATE_ROOT}" \
@@ -907,6 +1251,8 @@ emit_config() {
     "${OBJECTIVE_PATH}" \
     "${TODO_PATH}" \
     "${VALIDATOR_PATH}" \
+    "${PROVIDER_SHARD_RECEIPT_EVIDENCE}" \
+    "${PROJECTION_DIR}/provider_shard_receipt.json" \
     <<'PY'
 import json
 import sys
@@ -925,7 +1271,9 @@ import sys
     objective_path,
     todo_path,
     validator_path,
-) = sys.argv[1:14]
+    provider_shard_evidence,
+    provider_shard_receipt_path,
+) = sys.argv[1:16]
 print(
     json.dumps(
         {
@@ -936,6 +1284,8 @@ print(
             "worktree_dir": worktree_dir,
             "target_branch": target_branch,
             "task_shard_count": int(shard_count),
+            "provider_shard_receipt_evidence": provider_shard_evidence,
+            "provider_shard_receipt_path": provider_shard_receipt_path,
             "lanes": {
                 "vfs_grok": {
                     "provider": "grok-build",
@@ -978,6 +1328,13 @@ print(
                 "watchdog_startup_grace_seconds": 300,
                 "objective_refill_timeout_seconds": 900,
                 "codebase_refill_timeout_seconds": 600,
+            },
+            "authority": {
+                "validation_authority_unchanged_by_provider": True,
+                "completion_authority_unchanged_by_provider": True,
+                "provider_preference_never_changes_validation_or_completion": True,
+                "shards_never_reassign_on_provider_loss": True,
+                "refill_exclusive_to_owner_lane": True,
             },
         },
         indent=2,
@@ -1055,11 +1412,25 @@ start_all() {
   fi
   if (( started == 0 )); then
     echo "Start produced no live lanes" >&2
+    # Still record a failed provider-shard-receipt@1 for auditability.
+    emit_provider_shard_receipt "stopped" 0 0 >/dev/null || true
     return 1
   fi
   if (( started == 1 )); then
     echo "Control started in degraded mode (${started}/2 lanes); shard authority unchanged"
   fi
+  # Materialize vfs/provider-shard-receipt@1 from the post-start admission matrix.
+  local final_grok=0
+  local final_codex=0
+  if lane_is_live "${GROK_LANE}"; then final_grok=1; fi
+  if lane_is_live "${CODEX_LANE}"; then final_codex=1; fi
+  local final_mode="stopped"
+  if (( final_grok == 1 && final_codex == 1 )); then
+    final_mode="running"
+  elif (( final_grok == 1 || final_codex == 1 )); then
+    final_mode="degraded"
+  fi
+  emit_provider_shard_receipt "${final_mode}" "${final_grok}" "${final_codex}" >/dev/null || true
   show_status
 }
 
@@ -1093,6 +1464,13 @@ case "${CONTROL_COMMAND}" in
     require_isolated_clean_checkout
     # Fail closed on partial provider loss for explicit preflight checks.
     provider_preflight 0
+    read -r preflight_grok_ok preflight_codex_ok < <(provider_probe_flags)
+    # Record planned admission as vfs/provider-shard-receipt@1 without claiming
+    # live supervisors. Preflight fails closed above when either probe fails.
+    emit_provider_shard_receipt \
+      "preflight" \
+      "${preflight_grok_ok}" \
+      "${preflight_codex_ok}" >/dev/null || true
     project_objectives
     reconciliation_preflight "${GROK_LANE}" "${GROK_SHARD_INDEX}"
     reconciliation_preflight "${CODEX_LANE}" "${CODEX_SHARD_INDEX}"

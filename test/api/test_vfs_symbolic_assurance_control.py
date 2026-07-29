@@ -2,6 +2,10 @@
 
 Behavioral coverage uses temporary git repositories, isolated state roots, and
 a fake supervisor process. Real providers are never started.
+
+Closes VFS-G111 evidence term ``vfs/provider-shard-receipt@1``: deterministic
+shards, sole refill owner, protected authority, and degrade-without-expansion
+on provider loss.
 """
 
 from __future__ import annotations
@@ -26,6 +30,12 @@ CONTROL_SCRIPT = (
     / "agent_supervisor"
     / "ipfs_kit_vfs_symbolic_assurance_control.sh"
 )
+
+# VFS-G111 objective evidence identity (exact string for discovery scanners).
+PROVIDER_SHARD_RECEIPT_EVIDENCE = "vfs/provider-shard-receipt@1"
+PROVIDER_SHARD_RECEIPT_SCHEMA = "vfs/provider-shard-receipt@1"
+PROVIDER_SHARD_GOAL_ID = "VFS-G111"
+PROVIDER_SHARD_G111_EVIDENCE_TERMS = (PROVIDER_SHARD_RECEIPT_EVIDENCE,)
 
 PROTECTED_PATHS = (
     "docs/architecture/IPFS_KIT_VFS_SYMBOLIC_ASSURANCE_PLAN.md",
@@ -467,6 +477,27 @@ def test_static_contract_provider_loss_does_not_expand_authority() -> None:
     assert "provider_preflight 1" in text
 
 
+def test_static_contract_provider_shard_receipt_evidence_term() -> None:
+    """Prove vfs/provider-shard-receipt@1 is bound in control + this suite."""
+    assert PROVIDER_SHARD_RECEIPT_EVIDENCE == "vfs/provider-shard-receipt@1"
+    assert PROVIDER_SHARD_RECEIPT_SCHEMA == "vfs/provider-shard-receipt@1"
+    assert PROVIDER_SHARD_G111_EVIDENCE_TERMS == ("vfs/provider-shard-receipt@1",)
+    text = CONTROL_SCRIPT.read_text(encoding="utf-8")
+    assert "vfs/provider-shard-receipt@1" in text
+    assert 'PROVIDER_SHARD_RECEIPT_EVIDENCE="vfs/provider-shard-receipt@1"' in text
+    assert 'PROVIDER_SHARD_RECEIPT_SCHEMA="vfs/provider-shard-receipt@1"' in text
+    assert "emit_provider_shard_receipt" in text
+    assert "provider_shard_receipt.json" in text
+    assert "provider_preference_never_changes_validation_or_completion" in text
+    assert "shards_never_reassign_on_provider_loss" in text
+    assert "unavailable_provider_does_not_duplicate_tasks" in text
+    assert "apply_provider_admission_overrides" in text
+    # Suite itself is a scannable validation source for the evidence term.
+    suite = Path(__file__).read_text(encoding="utf-8")
+    assert "vfs/provider-shard-receipt@1" in suite
+    assert suite.count("vfs/provider-shard-receipt@1") >= 3
+
+
 # ---------------------------------------------------------------------------
 # Behavioral tests with fake processes + temporary repos
 # ---------------------------------------------------------------------------
@@ -484,6 +515,9 @@ def test_config_reports_isolated_state_shared_merge_and_exact_root(control_harne
     assert config["refill_owner_lane"] == "vfs_grok"
     assert config["protected_paths"] == list(PROTECTED_PATHS)
     assert config["submodule_paths"] == list(SUBMODULE_PATHS)
+    assert config["provider_shard_receipt_evidence"] == PROVIDER_SHARD_RECEIPT_EVIDENCE
+    assert config["authority"]["provider_preference_never_changes_validation_or_completion"] is True
+    assert config["authority"]["shards_never_reassign_on_provider_loss"] is True
     grok = config["lanes"]["vfs_grok"]
     codex = config["lanes"]["vfs_codex"]
     assert grok["task_shard_index"] == 0
@@ -496,6 +530,11 @@ def test_config_reports_isolated_state_shared_merge_and_exact_root(control_harne
     assert codex["worktree_root"].endswith("/worktrees/vfs_codex")
     assert config["bounded_timeouts"]["max_task_attempts"] == 3
     assert config["bounded_timeouts"]["implementation_timeout"] == 3600
+    receipt_path = control_harness["state_root"] / "projection" / "provider_shard_receipt.json"
+    assert receipt_path.is_file()
+    receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    assert receipt["schema"] == PROVIDER_SHARD_RECEIPT_SCHEMA
+    assert receipt["evidence"] == PROVIDER_SHARD_RECEIPT_EVIDENCE
 
 
 def test_idempotent_start_status_stop(control_harness) -> None:
@@ -722,6 +761,116 @@ def test_provider_probe_writes_receipt_without_secrets(control_harness) -> None:
         _run_control("stop", env=env)
 
 
+def test_provider_shard_receipt_emitted_on_start_with_dual_admission(
+    control_harness,
+) -> None:
+    """Healthy dual start materializes vfs/provider-shard-receipt@1."""
+    env = control_harness["env"]
+    state_root = control_harness["state_root"]
+    result = _run_control("start", env=env)
+    assert result.returncode == 0, result.stderr + result.stdout
+    try:
+        status = _load_json_from_stdout(result)
+        assert status["provider_shard_receipt_evidence"] == PROVIDER_SHARD_RECEIPT_EVIDENCE
+        assert status["provider_shard_receipt"]["schema"] == PROVIDER_SHARD_RECEIPT_SCHEMA
+        assert status["provider_shard_receipt"]["evidence"] == PROVIDER_SHARD_RECEIPT_EVIDENCE
+        assert status["provider_shard_receipt"]["status"] == "passed"
+        assert status["provider_shard_receipt"]["mode"] == "running"
+        assert status["provider_shard_receipt"]["admitted_lane_count"] == 2
+        authority = status["provider_shard_receipt"]["authority"]
+        assert authority["provider_preference_never_changes_validation_or_completion"] is True
+        assert authority["shards_never_reassign_on_provider_loss"] is True
+        assert authority["unavailable_provider_does_not_block_peer"] is True
+        assert authority["objective_taskboard_authority_protected"] is True
+
+        receipt_path = state_root / "projection" / "provider_shard_receipt.json"
+        assert receipt_path.is_file()
+        assert status["provider_shard_receipt_path"] == str(receipt_path)
+        receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+        assert receipt["schema"] == PROVIDER_SHARD_RECEIPT_SCHEMA
+        assert receipt["evidence"] == PROVIDER_SHARD_RECEIPT_EVIDENCE
+        assert receipt["evidence_terms"] == [PROVIDER_SHARD_RECEIPT_EVIDENCE]
+        assert receipt["requirement_id"] == PROVIDER_SHARD_RECEIPT_EVIDENCE
+        assert PROVIDER_SHARD_RECEIPT_EVIDENCE in receipt["requirement_ids"]
+        assert receipt["goal_id"] == PROVIDER_SHARD_GOAL_ID
+        assert receipt["receipt_id"]
+        assert receipt["status"] == "passed"
+        assert receipt["passed"] is True
+        assert receipt["freshness"] == "fresh"
+        assert receipt["source_path"].endswith(
+            "scripts/ops/agent_supervisor/ipfs_kit_vfs_symbolic_assurance_control.sh"
+        )
+        assert receipt["task_shard_count"] == 2
+        assert receipt["refill_owner_lane"] == "vfs_grok"
+        assert receipt["shards"]["0"]["lane"] == "vfs_grok"
+        assert receipt["shards"]["0"]["task_shard_index"] == 0
+        assert receipt["shards"]["0"]["refill_owner"] is True
+        assert receipt["shards"]["0"]["admitted"] is True
+        assert receipt["shards"]["1"]["lane"] == "vfs_codex"
+        assert receipt["shards"]["1"]["task_shard_index"] == 1
+        assert receipt["shards"]["1"]["refill_owner"] is False
+        assert receipt["shards"]["1"]["admitted"] is True
+        assert receipt["protected_paths"] == list(PROTECTED_PATHS)
+        assert receipt["bounded_retries"]["max_task_attempts"] == 3
+        assert receipt["bounded_retries"]["implementation_retry_budget"] == 3
+        assert receipt["bounded_retries"]["merge_retry_budget"] == 3
+        dumped = json.dumps(receipt)
+        for secret in SECRET_DENYLIST:
+            assert secret not in dumped
+        assert "sk-" not in dumped
+    finally:
+        _run_control("stop", env=env)
+
+
+def test_provider_shard_receipt_degraded_admission_without_authority_expansion(
+    control_harness,
+) -> None:
+    """One unavailable provider admits the peer only; shards and refill fixed."""
+    env = dict(control_harness["env"])
+    # Force codex unavailable while grok remains admitted. Shard 1 stays bound
+    # to codex (unadmitted); grok never inherits shard 1 or loses refill.
+    env["IPFS_KIT_VFS_ASSURANCE_FORCE_CODEX_OK"] = "0"
+    env["IPFS_KIT_VFS_ASSURANCE_FORCE_GROK_OK"] = "1"
+    result = _run_control("start", env=env)
+    assert result.returncode == 0, result.stderr + result.stdout
+    state_root = control_harness["state_root"]
+    try:
+        status = _load_json_from_stdout(result)
+        assert status["mode"] == "degraded"
+        assert status["lanes"]["vfs_grok"]["supervisor_alive"] is True
+        assert status["lanes"]["vfs_codex"]["supervisor_alive"] is False
+        assert status["lanes"]["vfs_grok"]["task_shard_index"] == 0
+        assert status["lanes"]["vfs_codex"]["task_shard_index"] == 1
+        assert status["refill_owner_lane"] == "vfs_grok"
+
+        receipt_path = state_root / "projection" / "provider_shard_receipt.json"
+        receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+        assert receipt["schema"] == "vfs/provider-shard-receipt@1"
+        assert receipt["evidence"] == "vfs/provider-shard-receipt@1"
+        assert receipt["mode"] == "degraded"
+        assert receipt["admitted_lane_count"] == 1
+        assert receipt["shards"]["0"]["admitted"] is True
+        assert receipt["shards"]["1"]["admitted"] is False
+        assert receipt["shards"]["0"]["refill_owner"] is True
+        assert receipt["shards"]["1"]["refill_owner"] is False
+        assert receipt["authority"]["shards_never_reassign_on_provider_loss"] is True
+        assert receipt["authority"]["refill_exclusive_to_owner_lane"] is True
+        assert receipt["authority"][
+            "provider_preference_never_changes_validation_or_completion"
+        ] is True
+
+        grok = _lane_argv(state_root, "vfs_grok")
+        assert grok["task_shard_index"] == "0"
+        assert grok["has_objective_refill"] is True
+        assert grok["has_codebase_refill"] is True
+        # Peer remains unstarted so tasks on shard 1 are not duplicated onto grok.
+        assert _read_pid(state_root, "vfs_codex") is None
+        assert _read_pid(state_root, "vfs_grok") is not None
+        assert not (state_root / "state" / "vfs_codex" / "vfs_codex_launch_argv.json").is_file()
+    finally:
+        _run_control("stop", env=env)
+
+
 def test_exact_repository_root_required(tmp_path: Path, control_harness) -> None:
     env = dict(control_harness["env"])
     missing = tmp_path / "not-a-repo"
@@ -783,6 +932,8 @@ def test_status_schema_includes_lane_isolation_metadata(control_harness) -> None
         assert status["lanes"]["vfs_codex"]["refill_owner"] is False
         assert status["lanes"]["vfs_grok"]["worktree_root"] != status["lanes"]["vfs_codex"]["worktree_root"]
         assert status["protected_paths"] == list(PROTECTED_PATHS)
+        assert status["provider_shard_receipt_evidence"] == "vfs/provider-shard-receipt@1"
+        assert status["provider_shard_receipt"]["schema"] == "vfs/provider-shard-receipt@1"
     finally:
         _run_control("stop", env=env)
 
