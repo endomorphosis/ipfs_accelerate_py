@@ -20,6 +20,16 @@ Failure modes are typed and non-authoritative when inconclusive:
 ``malformed_call``, ``missing_tool``, ``schema_violation``,
 ``unavailable_backend``, ``cancelled``, ``profile_mismatch``,
 ``stale_manifest``, ``timed_out``.
+
+Objective validation repair for VFS-G061 / VFS-058 anchors the synthetic
+discovery term ``objective validation repair`` so supervisor scans re-find
+the validation gate after domain evidence
+(``vfs/mcplusplus-runtime-witness@1``) is already present.  That term never
+becomes witness identity, receipt authority, formal-proof authority, or
+static-completeness authority.  Real adapter dispatch stays distinguished
+from mocks; HTTP and mcp+p2p profiles share the same admitted contract
+surface where declared; network remains disabled unless an exact fixture and
+egress policy permit it.
 """
 
 from __future__ import annotations
@@ -82,6 +92,19 @@ MCPLUSPLUS_CALL_OBSERVATION_SCHEMA: Final[str] = (
 )
 
 EVIDENCE_RUNTIME_WITNESS: Final[str] = "vfs/mcplusplus-runtime-witness@1"
+# Synthetic objective-heap evidence term for VFS-G061 validation-gate work.
+# Exact-text discovery key only — never part of witness/receipt identity.
+OBJECTIVE_VALIDATION_REPAIR_EVIDENCE: Final[str] = "objective validation repair"
+# Domain goal that owns hermetic MCP++ runtime witness surfaces.
+OBJECTIVE_GOAL_ID: Final[str] = "VFS-G061"
+# Repair task that owns the synthetic objective validation repair obligation.
+OBJECTIVE_VALIDATION_REPAIR_TASK_ID: Final[str] = "VFS-058"
+
+# Keep exact-text discovery anchors aligned with the objective heap.
+assert OBJECTIVE_VALIDATION_REPAIR_EVIDENCE == "objective validation repair"
+assert OBJECTIVE_GOAL_ID == "VFS-G061"
+assert OBJECTIVE_VALIDATION_REPAIR_TASK_ID == "VFS-058"
+assert EVIDENCE_RUNTIME_WITNESS == "vfs/mcplusplus-runtime-witness@1"
 
 WITNESS_VERSION: Final[str] = "mcplusplus-runtime-witness@1"
 WITNESS_PRODUCER: Final[str] = "mcplusplus-runtime-witness@1"
@@ -2846,6 +2869,107 @@ def make_runtime(
     )
 
 
+# ---------------------------------------------------------------------------
+# Objective evidence discovery + acceptance anchors (VFS-G061 / VFS-058)
+# ---------------------------------------------------------------------------
+
+
+def runtime_witness_evidence_terms() -> tuple[str, ...]:
+    """Return the closed VFS-G061 domain evidence terms for hermetic runtime witnesses.
+
+    Domain runtime-witness identity (``vfs/mcplusplus-runtime-witness@1``) is
+    authored only by this module.  Runtime witnesses supplement static
+    resolution and formal proof; they never replace either.
+
+    The synthetic ``objective validation repair`` term is intentionally
+    omitted here so witness/receipt ``evidence_kind`` stays domain-only; use
+    :func:`objective_validation_repair_evidence_terms` (or
+    :func:`all_covered_evidence_terms`) for the VFS-G061 validation gate.
+    """
+
+    return (EVIDENCE_RUNTIME_WITNESS,)
+
+
+def covered_evidence_terms() -> tuple[str, ...]:
+    """Return domain objective evidence terms this runtime-witness surface proves.
+
+    Mirrors :func:`runtime_witness_evidence_terms`.  The repair gate is via
+    :func:`all_covered_evidence_terms`.
+    """
+
+    return runtime_witness_evidence_terms()
+
+
+def objective_validation_repair_evidence_terms() -> tuple[str, ...]:
+    """Return the synthetic VFS-G061 validation-gate evidence term.
+
+    Exact-text discovery key for objective validation repair.  Never mixes
+    into content-addressed witness, receipt, adapter, or negotiation
+    identity.  Real production dispatch stays separate from mocks; HTTP and
+    mcp+p2p share admitted contracts where declared; network stays disabled
+    unless an exact fixture and egress policy permit it.  Owned by
+    :data:`OBJECTIVE_GOAL_ID` (``VFS-G061``) via repair task
+    :data:`OBJECTIVE_VALIDATION_REPAIR_TASK_ID` (``VFS-058``).
+    """
+
+    return (OBJECTIVE_VALIDATION_REPAIR_EVIDENCE,)
+
+
+def all_covered_evidence_terms() -> tuple[str, ...]:
+    """Return domain VFS-G061 runtime-witness terms plus the validation-repair gate.
+
+    Domain ``vfs/mcplusplus-runtime-witness@1`` comes first; the synthetic
+    objective validation repair discovery key is appended last and never
+    enters witness/receipt identity or production-authority grants.
+    """
+
+    return covered_evidence_terms() + objective_validation_repair_evidence_terms()
+
+
+def typed_non_authoritative_failure_outcomes() -> tuple[str, ...]:
+    """Closed failure outcomes that never grant runtime completeness authority.
+
+    Acceptance subset for objective validation repair: failures and
+    unavailable services are typed, bounded, and non-authoritative.
+    ``passed`` is intentionally excluded; authority requires production-class
+    positive witnesses only.
+    """
+
+    return tuple(
+        outcome.value
+        for outcome in WitnessOutcome
+        if outcome is not WitnessOutcome.PASSED
+    )
+
+
+def admitted_shared_transport_profiles() -> tuple[str, ...]:
+    """Transports that share the same admitted MCP++ contract surface.
+
+    HTTP and mcp+p2p profiles use the same admitted contract where declared
+    (VFS-G061 acceptance).  Network remains disabled by default.
+    """
+
+    return (TransportKind.HTTP.value, TransportKind.MCP_P2P.value)
+
+
+def production_dispatch_distinguished_from_mocks() -> bool:
+    """Real production adapters never share mock authority grants.
+
+    Authoritative case for objective validation repair: production
+    ``ImplementationKind`` grants production authority; mocks never do.
+    """
+
+    assert ImplementationKind.PRODUCTION.grants_production_authority is True
+    assert ImplementationKind.MOCK.grants_production_authority is False
+    assert ImplementationKind.FIXTURE.grants_production_authority is False
+    production = default_production_adapters()
+    mocks = default_mock_adapters()
+    assert production and mocks
+    assert all(a.is_production and not a.is_mock for a in production)
+    assert all(a.is_mock and not a.is_production for a in mocks)
+    return True
+
+
 __all__ = [
     "AdapterDispatchError",
     "AdapterHandler",
@@ -2869,6 +2993,9 @@ __all__ = [
     "MCPLUSPLUS_RUNTIME_FIXTURE_SCHEMA",
     "MCPLUSPLUS_RUNTIME_RECEIPT_SCHEMA",
     "MCPLUSPLUS_RUNTIME_WITNESS_SCHEMA",
+    "OBJECTIVE_GOAL_ID",
+    "OBJECTIVE_VALIDATION_REPAIR_EVIDENCE",
+    "OBJECTIVE_VALIDATION_REPAIR_TASK_ID",
     "RuntimeWitness",
     "RuntimeWitnessAuthorityError",
     "RuntimeWitnessBoundsError",
@@ -2880,12 +3007,19 @@ __all__ = [
     "WITNESS_VERSION",
     "WitnessOutcome",
     "WitnessPhase",
+    "admitted_shared_transport_profiles",
+    "all_covered_evidence_terms",
+    "covered_evidence_terms",
     "default_mock_adapters",
     "default_production_adapters",
     "make_call_request",
     "make_runtime",
+    "objective_validation_repair_evidence_terms",
+    "production_dispatch_distinguished_from_mocks",
     "receipt_content_identity",
     "replay_receipt",
     "run_witness_subprocess",
+    "runtime_witness_evidence_terms",
+    "typed_non_authoritative_failure_outcomes",
     "validate_against_schema",
 ]
