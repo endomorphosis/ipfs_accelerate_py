@@ -3116,6 +3116,319 @@ def test_backlog_refinery_retires_clean_reconciliation_guardrail_and_refiles_reg
     assert "- Status: blocked" in todo_text.split("## AUTO-002", 1)[1]
 
 
+def test_backlog_refinery_retires_reconciliation_guardrail_after_candidates_reach_zero(
+    tmp_path,
+):
+    repo = _seed_repo(tmp_path)
+    todo_path = repo / "todo.md"
+    strategy_path = repo / "state" / "strategy.json"
+    todo_path.write_text(
+        """# Agent Todos
+
+## AUTO-001 Resolve dirty main checkout blocking 1 worktree merges
+
+- Status: blocked
+- Completion: manual
+- Is schedulable: false
+- Review only: true
+- Blocked reason: operator_reconciliation_required
+- Priority: P1
+- Track: ops
+- Fingerprint: dirty-fingerprint
+- Dedupe key: reconciliation_guardrail:main_checkout_dirty
+- Depends on:
+- Outputs: discovery, todo.md
+- Validation: test -f todo.md
+- Acceptance: Confirm that the blocked candidate count decreases.
+""",
+        encoding="utf-8",
+    )
+    strategy_path.parent.mkdir(parents=True, exist_ok=True)
+    strategy_path.write_text(
+        json.dumps(
+            {
+                "blocked_tasks": ["AUTO-001"],
+                "reconciliation_guardrail_seen_fingerprints": [
+                    "dirty-fingerprint"
+                ],
+                "reconciliation_guardrail_findings": [
+                    {
+                        "follow_up_task_id": "AUTO-001",
+                        "fingerprint": "dirty-fingerprint",
+                        "kind": "main_checkout_dirty",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    releases = release_completed_guardrail_blocks(
+        todo_path=todo_path,
+        strategy_path=strategy_path,
+        reconciliation_result={
+            "attempted": True,
+            "main_checkout_status_available": True,
+            "main_checkout_status_error": "",
+            "main_checkout_dirty": True,
+            "main_status_short": [" m ipfs_accelerate_py"],
+            "candidate_count": 0,
+            "processed_count": 0,
+            "reconciled_count": 0,
+            "preflight_blocked_count": 0,
+            "preflight_resolver_escalation_count": 0,
+            "cleanup_count": 0,
+            "skipped_count": 0,
+            "candidates": [],
+            "processed": [],
+            "skipped": [],
+        },
+        replay_result={
+            "attempted": False,
+            "reason": "no_pending_reconciliation_replays",
+            "pending_count": 0,
+            "processed_count": 0,
+            "completed_count": 0,
+            "failed_count": 0,
+            "deferred_count": 0,
+            "results": [],
+        },
+        cleanup_result={
+            "attempted": True,
+            "prune_returncode": 0,
+            "removed_count": 1,
+            "skipped_count": 0,
+            "dirty_worktree_groups": {},
+            "removed": [
+                {
+                    "path": "/tmp/worktrees/auto-001",
+                    "removed": True,
+                    "returncode": 0,
+                    "branch_delete": {
+                        "attempted": True,
+                        "deleted": True,
+                        "returncode": 0,
+                    },
+                }
+            ],
+            "skipped": [],
+        },
+        task_prefix="AUTO-",
+    )
+
+    assert releases == [
+        {
+            "source_task_id": "AUTO-001",
+            "follow_up_task_id": "",
+            "guardrail_kind": "reconciliation_guardrail",
+            "reason": "reconciliation_finding_resolved",
+            "dedupe_key": "reconciliation_guardrail:main_checkout_dirty",
+        }
+    ]
+    assert "- Status: completed" in todo_path.read_text(encoding="utf-8")
+    strategy = json.loads(strategy_path.read_text(encoding="utf-8"))
+    assert strategy["blocked_tasks"] == []
+    assert strategy["reconciliation_guardrail_findings"] == []
+    assert strategy["reconciliation_guardrail_seen_fingerprints"] == []
+
+
+def test_backlog_refinery_zero_candidate_reconciliation_proof_fails_closed():
+    reconciliation = {
+        "attempted": True,
+        "main_checkout_status_available": True,
+        "main_checkout_status_error": "",
+        "main_checkout_dirty": True,
+        "main_status_short": [" m ipfs_accelerate_py"],
+        "candidate_count": 0,
+        "processed_count": 0,
+        "reconciled_count": 0,
+        "preflight_blocked_count": 0,
+        "preflight_resolver_escalation_count": 0,
+        "cleanup_count": 0,
+        "skipped_count": 0,
+        "candidates": [],
+        "processed": [],
+        "skipped": [],
+    }
+    replay = {
+        "attempted": False,
+        "reason": "no_pending_reconciliation_replays",
+        "pending_count": 0,
+        "processed_count": 0,
+        "completed_count": 0,
+        "failed_count": 0,
+        "deferred_count": 0,
+        "results": [],
+    }
+    cleanup = {
+        "attempted": True,
+        "prune_returncode": 0,
+        "removed_count": 0,
+        "skipped_count": 0,
+        "dirty_worktree_groups": {},
+        "removed": [],
+        "skipped": [],
+    }
+
+    assert backlog_refinery.resolved_reconciliation_guardrail_keys(
+        reconciliation_result=reconciliation,
+        replay_result=replay,
+        cleanup_result=cleanup,
+    ) == {"reconciliation_guardrail:main_checkout_dirty"}
+
+    bad_proofs = [
+        (
+            "missing candidate count",
+            {key: value for key, value in reconciliation.items() if key != "candidate_count"},
+            replay,
+            cleanup,
+        ),
+        (
+            "string candidate count",
+            {**reconciliation, "candidate_count": "0"},
+            replay,
+            cleanup,
+        ),
+        (
+            "nonzero candidate count",
+            {
+                **reconciliation,
+                "candidate_count": 1,
+                "candidates": [{"branch": "implementation/auto-001"}],
+            },
+            replay,
+            cleanup,
+        ),
+        (
+            "status unavailable",
+            {
+                **reconciliation,
+                "main_checkout_status_available": False,
+                "main_checkout_status_error": "git status failed",
+            },
+            replay,
+            cleanup,
+        ),
+        (
+            "preflight blocked",
+            {**reconciliation, "preflight_blocked_count": 1},
+            replay,
+            cleanup,
+        ),
+        (
+            "reconciliation dirty worktree",
+            {
+                **reconciliation,
+                "skipped_count": 1,
+                "skipped": [{"reason": "dirty_worktree"}],
+            },
+            replay,
+            cleanup,
+        ),
+        (
+            "replay deferred",
+            reconciliation,
+            {
+                **replay,
+                "attempted": False,
+                "pending_count": 1,
+                "deferred_count": 1,
+                "results": [
+                    {
+                        "attempted": False,
+                        "settled": False,
+                        "reason": "task_claim_held",
+                    }
+                ],
+            },
+            cleanup,
+        ),
+        (
+            "replay disabled",
+            reconciliation,
+            {
+                **replay,
+                "reason": "worktree_reconciliation_replay_disabled",
+            },
+            cleanup,
+        ),
+        (
+            "replay reason missing",
+            reconciliation,
+            {
+                **replay,
+                "reason": "",
+            },
+            cleanup,
+        ),
+        (
+            "replay settlement unproven",
+            reconciliation,
+            {
+                **replay,
+                "attempted": True,
+                "reason": "reconciliation_replays_processed",
+                "pending_count": 1,
+                "processed_count": 1,
+                "results": [
+                    {
+                        "attempted": True,
+                        "completed": False,
+                        "queued": False,
+                        "settled": True,
+                    }
+                ],
+            },
+            cleanup,
+        ),
+        (
+            "cleanup failed",
+            reconciliation,
+            replay,
+            {**cleanup, "prune_returncode": 1},
+        ),
+        (
+            "cleanup dirty worktree",
+            reconciliation,
+            replay,
+            {
+                **cleanup,
+                "skipped_count": 1,
+                "dirty_worktree_groups": {
+                    "content_not_in_target": {"count": 1}
+                },
+                "skipped": [{"reason": "dirty_worktree"}],
+            },
+        ),
+        (
+            "cleanup branch delete failed",
+            reconciliation,
+            replay,
+            {
+                **cleanup,
+                "removed_count": 1,
+                "removed": [
+                    {
+                        "removed": True,
+                        "returncode": 0,
+                        "branch_delete": {
+                            "attempted": True,
+                            "deleted": False,
+                            "returncode": 1,
+                        },
+                    }
+                ],
+            },
+        ),
+    ]
+    for label, bad_reconciliation, bad_replay, bad_cleanup in bad_proofs:
+        assert backlog_refinery.resolved_reconciliation_guardrail_keys(
+            reconciliation_result=bad_reconciliation,
+            replay_result=bad_replay,
+            cleanup_result=bad_cleanup,
+        ) == set(), label
+
+
 def test_backlog_refinery_reconciliation_guardrail_retirement_fails_closed(
     tmp_path,
 ):

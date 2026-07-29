@@ -4780,18 +4780,19 @@ def resolved_reconciliation_guardrail_keys(
     *,
     reconciliation_result: Mapping[str, Any] | None = None,
     cleanup_result: Mapping[str, Any] | None = None,
+    replay_result: Mapping[str, Any] | None = None,
 ) -> set[str]:
     """Return guardrail identities backed by a conclusive clean rescan.
 
     A missing/disabled scan, unavailable checkout status, any effective dirty
     status (including staged or unknown status), and all cleanup/preflight
-    guardrails currently fail closed.  The main-checkout proof deliberately
-    accepts raw lowercase submodule-content dirt only after the reconciliation
-    classifier has removed it from ``main_status_short`` and explicitly
-    reported the effective checkout as clean.
+    guardrails currently fail closed.  A main-checkout guardrail can also
+    retire when an exact rescan proves that its blocked candidate population
+    reached zero and the replay and cleanup passes completed without residual
+    work.  That second proof deliberately permits unrelated parent-checkout
+    dirt because there is no longer a candidate for it to block.
     """
 
-    del cleanup_result  # Reserved for future kind-specific completion proofs.
     reconciliation = (
         dict(reconciliation_result)
         if isinstance(reconciliation_result, Mapping)
@@ -4805,7 +4806,195 @@ def resolved_reconciliation_guardrail_keys(
         and not reconciliation.get("main_status_short")
     ):
         return {"reconciliation_guardrail:main_checkout_dirty"}
+    if (
+        _zero_candidate_reconciliation_is_conclusive(reconciliation)
+        and _reconciliation_replay_is_conclusive(replay_result)
+        and _worktree_cleanup_is_conclusive(cleanup_result)
+    ):
+        return {"reconciliation_guardrail:main_checkout_dirty"}
     return set()
+
+
+def _explicit_nonnegative_int(
+    record: Mapping[str, Any],
+    key: str,
+) -> int | None:
+    """Return an explicitly encoded non-negative integer, excluding booleans."""
+
+    if key not in record:
+        return None
+    value = record[key]
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        return None
+    return value
+
+
+def _zero_candidate_reconciliation_is_conclusive(
+    reconciliation: Mapping[str, Any],
+) -> bool:
+    """Prove that reconciliation found no candidate or residual blocker."""
+
+    zero_count_fields = (
+        "candidate_count",
+        "processed_count",
+        "reconciled_count",
+        "preflight_blocked_count",
+        "preflight_resolver_escalation_count",
+        "cleanup_count",
+        "skipped_count",
+    )
+    main_status_short = reconciliation.get("main_status_short")
+    main_checkout_dirty = reconciliation.get("main_checkout_dirty")
+    if (
+        reconciliation.get("attempted") is not True
+        or reconciliation.get("main_checkout_status_available") is not True
+        or reconciliation.get("main_checkout_status_error") != ""
+        or not isinstance(main_checkout_dirty, bool)
+        or not isinstance(main_status_short, list)
+        or main_checkout_dirty != bool(main_status_short)
+        or any(
+            _explicit_nonnegative_int(reconciliation, key) != 0
+            for key in zero_count_fields
+        )
+        or reconciliation.get("candidates") != []
+        or reconciliation.get("processed") != []
+        or reconciliation.get("skipped") != []
+    ):
+        return False
+    return not any(
+        reconciliation.get(key)
+        for key in ("error", "errors", "exception_type")
+    )
+
+
+def _reconciliation_replay_is_conclusive(
+    replay_result: Mapping[str, Any] | None,
+) -> bool:
+    """Prove that every replay candidate is settled without deferral."""
+
+    if not isinstance(replay_result, Mapping):
+        return False
+    replay = dict(replay_result)
+    counts = {
+        key: _explicit_nonnegative_int(replay, key)
+        for key in (
+            "pending_count",
+            "processed_count",
+            "completed_count",
+            "failed_count",
+            "deferred_count",
+        )
+    }
+    if any(value is None for value in counts.values()):
+        return False
+    pending_count = counts["pending_count"]
+    processed_count = counts["processed_count"]
+    completed_count = counts["completed_count"]
+    reason = str(replay.get("reason") or "")
+    if (
+        pending_count != processed_count
+        or counts["failed_count"] != 0
+        or counts["deferred_count"] != 0
+        or any(replay.get(key) for key in ("error", "errors", "exception_type"))
+    ):
+        return False
+    results = replay.get("results")
+    if (
+        reason
+        not in {
+            "no_pending_reconciliation_replays",
+            "reconciliation_replays_processed",
+        }
+        or not isinstance(results, list)
+        or len(results) != pending_count
+        or len(results) != processed_count
+    ):
+        return False
+    if reason == "no_pending_reconciliation_replays":
+        return (
+            replay.get("attempted") is False
+            and not results
+            and not any(counts.values())
+        )
+    if replay.get("attempted") is not True or not results:
+        return False
+
+    completed_results = 0
+    for result in results:
+        if (
+            not isinstance(result, Mapping)
+            or result.get("attempted") is not True
+            or result.get("settled") is not True
+            or (
+                result.get("completed") is not True
+                and result.get("queued") is not True
+            )
+            or any(
+                result.get(key)
+                for key in ("error", "errors", "exception_type")
+            )
+        ):
+            return False
+        if result.get("completed") is True:
+            completed_results += 1
+    return completed_count == completed_results
+
+
+def _worktree_cleanup_is_conclusive(
+    cleanup_result: Mapping[str, Any] | None,
+) -> bool:
+    """Prove that cleanup observed no dirty, skipped, or failed worktree."""
+
+    if not isinstance(cleanup_result, Mapping):
+        return False
+    cleanup = dict(cleanup_result)
+    skipped_count = _explicit_nonnegative_int(cleanup, "skipped_count")
+    removed_count = _explicit_nonnegative_int(cleanup, "removed_count")
+    dirty_groups = cleanup.get("dirty_worktree_groups", {})
+    removed = cleanup.get("removed")
+    if (
+        cleanup.get("attempted") is not True
+        or _explicit_nonnegative_int(cleanup, "prune_returncode") != 0
+        or skipped_count != 0
+        or removed_count is None
+        or cleanup.get("skipped") != []
+        or not isinstance(dirty_groups, Mapping)
+        or bool(dirty_groups)
+        or not isinstance(removed, list)
+        or len(removed) != removed_count
+        or cleanup.get("reason")
+        or any(cleanup.get(key) for key in ("error", "errors", "exception_type"))
+    ):
+        return False
+    return all(_worktree_cleanup_removal_is_conclusive(item) for item in removed)
+
+
+def _worktree_cleanup_removal_is_conclusive(item: Any) -> bool:
+    """Prove one cleanup removal, including any branch deletion, succeeded."""
+
+    if (
+        not isinstance(item, Mapping)
+        or item.get("removed") is not True
+        or _explicit_nonnegative_int(item, "returncode") != 0
+        or any(
+            item.get(key)
+            for key in ("error", "errors", "exception_type")
+        )
+    ):
+        return False
+    branch_delete = item.get("branch_delete")
+    if branch_delete in (None, {}):
+        return True
+    return (
+        isinstance(branch_delete, Mapping)
+        and branch_delete.get("attempted") is True
+        and branch_delete.get("deleted") is True
+        and _explicit_nonnegative_int(branch_delete, "returncode") == 0
+        and not any(
+            branch_delete.get(key)
+            for key in ("error", "errors", "exception_type")
+        )
+    )
 
 
 def reconciliation_guardrail_refresh_is_noise(block: str, record: Mapping[str, Any]) -> bool:
@@ -6321,6 +6510,7 @@ def release_completed_guardrail_blocks(
     strategy_path: Path,
     reconciliation_result: Mapping[str, Any] | None = None,
     cleanup_result: Mapping[str, Any] | None = None,
+    replay_result: Mapping[str, Any] | None = None,
     task_prefix: str = DEFAULT_TASK_ID_PREFIX,
     commit_outputs: bool = False,
     repo_root: Path | None = None,
@@ -6385,6 +6575,7 @@ def release_completed_guardrail_blocks(
         resolved_reconciliation_guardrail_keys(
             reconciliation_result=reconciliation_result,
             cleanup_result=cleanup_result,
+            replay_result=replay_result,
         )
         - active_reconciliation_keys
     )

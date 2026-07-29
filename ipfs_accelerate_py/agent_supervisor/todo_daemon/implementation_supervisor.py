@@ -1456,8 +1456,9 @@ class PortalImplementationSupervisor:
         )
         update_maintenance_phase("guardrail_releases")
         guardrail_releases = self.release_completed_guardrail_blocks(
-            worktree_reconciliation,
-            worktree_cleanup,
+            reconciliation_result=worktree_reconciliation,
+            cleanup_result=worktree_cleanup,
+            replay_result=worktree_reconciliation_replay,
         )
         state = PortalTaskState.load(self.config.state_path)
         now_ts = time.time()
@@ -6573,6 +6574,7 @@ class PortalImplementationSupervisor:
         self,
         reconciliation_result: Mapping[str, Any] | None = None,
         cleanup_result: Mapping[str, Any] | None = None,
+        replay_result: Mapping[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
         """Remove strategy blocks once their generated repair task is completed."""
 
@@ -6595,6 +6597,7 @@ class PortalImplementationSupervisor:
                 strategy_path=self.config.strategy_path,
                 reconciliation_result=reconciliation_result,
                 cleanup_result=cleanup_result,
+                replay_result=replay_result,
                 task_prefix=task_id_prefix(self.config.task_prefix),
                 commit_outputs=commit_outputs,
                 repo_root=self.config.repo_root,
