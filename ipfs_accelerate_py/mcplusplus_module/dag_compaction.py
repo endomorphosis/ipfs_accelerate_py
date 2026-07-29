@@ -1,20 +1,20 @@
-"""Zero-Knowledge DAG Compaction for MCP++ Event DAG.
+"""Content-addressed DAG compaction for the MCP++ Event DAG.
 
 When the EventDAG grows beyond a configurable threshold, older epochs are
-compacted into a single ZK-verifiable summary node. This allows:
+compacted into a verifiable summary node. This allows:
 
 1. **Memory efficiency**: Only recent events stay in hot memory
-2. **Verifiability**: Compacted epochs produce a Merkle root + ZK proof
-   that attests to the integrity of all compacted events without keeping them
+2. **Verifiability**: Compacted epochs always produce a Merkle root and a
+   content-addressed integrity commitment
 3. **Full recovery**: Cold events remain on disk and can be loaded on demand
 
 Compaction Strategy:
 - Events are grouped into epochs (default 1000 events per epoch)
 - When an epoch completes, its events are hashed into a Merkle tree
-- A ZK proof (simulated Groth16 or real if available) attests that:
-  * The Merkle root correctly summarizes N events
-  * All parent references within the epoch are valid
-  * The epoch frontier connects to the next epoch's roots
+- A real ZK certificate is attached only when the canonical
+  ``ipfs_datasets_py`` provider both proves and verifies it
+- Otherwise the summary is explicitly labelled ``hash-commitment-v1`` with
+  ``zero_knowledge=False``
 - The compacted epoch is replaced in memory by a single CompactionProof node
 - Full event data is persisted to disk for on-demand retrieval
 
@@ -24,13 +24,13 @@ Module: ipfs_accelerate_py.mcplusplus_module.dag_compaction
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 import logging
 import os
 import threading
-import time
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 logger = logging.getLogger("ipfs_accelerate_mcp.mcplusplus.dag_compaction")
 
@@ -38,6 +38,7 @@ logger = logging.getLogger("ipfs_accelerate_mcp.mcplusplus.dag_compaction")
 EPOCH_SIZE = int(os.environ.get("MCPPP_EPOCH_SIZE", "1000"))
 HOT_TIER_MAX = int(os.environ.get("MCPPP_HOT_TIER_MAX", "2000"))
 COLD_TIER_DIR = os.environ.get("MCPPP_STORAGE_DIR", ".mcppp_dag_cold")
+HASH_COMMITMENT_PROOF_SYSTEM = "hash-commitment-v1"
 
 
 @dataclass
@@ -51,7 +52,7 @@ class MerkleNode:
 
 @dataclass
 class CompactionProof:
-    """Zero-knowledge proof that an epoch of events is valid.
+    """Certificate describing a compacted epoch.
 
     Contains:
     - merkle_root: Root hash of the Merkle tree over all epoch events
@@ -59,7 +60,10 @@ class CompactionProof:
     - event_count: Number of events in the compacted epoch
     - frontier_cids: CIDs of leaf events at epoch boundary (connect to next epoch)
     - root_cids: CIDs of root events in this epoch (connect from previous epoch)
-    - proof: ZK proof bytes (Groth16 simulated or real)
+    - proof: Hash commitment or serialized verifier-backed proof
+    - proof_system: Exact proof/commitment scheme identifier
+    - zero_knowledge: True only for a certificate accepted by a real verifier
+    - validation_digest: Digest of the archived epoch's DAG-consistency summary
     - timestamp_range: (start, end) timestamps of epoch
     - cold_storage_path: File path where full epoch data is stored
     """
@@ -68,7 +72,12 @@ class CompactionProof:
     event_count: int
     frontier_cids: List[str] = field(default_factory=list)
     root_cids: List[str] = field(default_factory=list)
-    proof: str = ""  # Hex-encoded proof
+    proof: str = ""
+    proof_system: str = HASH_COMMITMENT_PROOF_SYSTEM
+    zero_knowledge: bool = False
+    validation_digest: str = ""
+    verification_key_cid: str = ""
+    verification_key_sha256: str = ""
     timestamp_start: float = 0.0
     timestamp_end: float = 0.0
     cold_storage_path: str = ""
@@ -83,6 +92,12 @@ class CompactionProof:
             "event_count": self.event_count,
             "frontier_cids": self.frontier_cids,
             "root_cids": self.root_cids,
+            "proof": self.proof,
+            "proof_system": self.proof_system,
+            "zero_knowledge": self.zero_knowledge,
+            "validation_digest": self.validation_digest,
+            "verification_key_cid": self.verification_key_cid,
+            "verification_key_sha256": self.verification_key_sha256,
         }, sort_keys=True, separators=(",", ":"))
         return hashlib.sha256(payload.encode()).hexdigest()
 
@@ -95,6 +110,11 @@ class CompactionProof:
             "frontier_cids": self.frontier_cids,
             "root_cids": self.root_cids,
             "proof": self.proof,
+            "proof_system": self.proof_system,
+            "zero_knowledge": self.zero_knowledge,
+            "validation_digest": self.validation_digest,
+            "verification_key_cid": self.verification_key_cid,
+            "verification_key_sha256": self.verification_key_sha256,
             "timestamp_start": self.timestamp_start,
             "timestamp_end": self.timestamp_end,
             "cold_storage_path": self.cold_storage_path,
@@ -183,61 +203,139 @@ def verify_merkle_proof(event_cid: str, proof_path: List[Dict[str, str]], expect
 
 
 # ---------------------------------------------------------------------------
-# ZK Proof Generation (Simulated Groth16)
+# Profile F proof selection
 # ---------------------------------------------------------------------------
+
+def _is_sha256_hex(value: Any) -> bool:
+    """Return whether *value* is a canonical lower-case SHA-256 digest."""
+    return (
+        isinstance(value, str)
+        and len(value) == 64
+        and value == value.lower()
+        and all(character in "0123456789abcdef" for character in value)
+    )
+
+
+def _hash_commitment(
+    merkle_root: str,
+    epoch_id: int,
+    event_count: int,
+    validation_digest: str,
+) -> str:
+    """Bind the public compaction metadata to a deterministic commitment."""
+    commitment_input = json.dumps({
+        "domain": "mcp++-event-dag-compaction",
+        "proof_system": HASH_COMMITMENT_PROOF_SYSTEM,
+        "merkle_root": merkle_root,
+        "epoch_id": epoch_id,
+        "event_count": event_count,
+        "validation_digest": validation_digest,
+    }, sort_keys=True, separators=(",", ":"))
+    first_hash = hashlib.sha256(commitment_input.encode()).digest()
+    return hashlib.sha256(first_hash).hexdigest()
+
+
+def _generate_hash_commitment(
+    epoch_events: List[Dict[str, Any]],
+    merkle_root: str,
+    epoch_id: int,
+) -> Tuple[str, str]:
+    validation_digest = _compute_validation_digest(epoch_events)
+    commitment = _hash_commitment(
+        merkle_root=merkle_root,
+        epoch_id=epoch_id,
+        event_count=len(epoch_events),
+        validation_digest=validation_digest,
+    )
+    return commitment, validation_digest
+
+
+def _profile_f_zk_certificate(event_cids: Sequence[str]) -> Optional[Dict[str, Any]]:
+    """Return a verifier-accepted certificate, or no ZK claim.
+
+    ``MCPPP_PROFILE_F_ZK=required`` makes provider failure fatal. The legacy
+    ``IPFS_DATASETS_ENABLE_GROTH16`` switch remains an opt-in alias, but it can
+    never cause a hash commitment to be labelled as Groth16.
+    """
+    configured_mode = os.environ.get("MCPPP_PROFILE_F_ZK")
+    if configured_mode is None:
+        legacy_mode = os.environ.get("IPFS_DATASETS_ENABLE_GROTH16", "0")
+        configured_mode = "1" if legacy_mode.strip().lower() in {"1", "true", "yes"} else "0"
+    mode = configured_mode.strip().lower()
+    if mode not in {"1", "true", "yes", "required"}:
+        return None
+
+    try:
+        from ipfs_datasets_py.mcp_server.event_dag_zkp import (
+            availability,
+            prove_event_dag_compaction,
+            verify_event_dag_compaction,
+        )
+
+        provider_status = availability()
+        if not isinstance(provider_status, Mapping) or provider_status.get("available") is not True:
+            raise RuntimeError("canonical Profile F verifier is unavailable")
+
+        certificate = prove_event_dag_compaction(list(event_cids))
+        if not isinstance(certificate, Mapping):
+            raise RuntimeError("canonical Profile F prover returned a non-object certificate")
+        proof_system = certificate.get("proof_system")
+        if (
+            not isinstance(proof_system, str)
+            or not proof_system
+            or proof_system == HASH_COMMITMENT_PROOF_SYSTEM
+            or certificate.get("zero_knowledge") is not True
+            or certificate.get("event_count") != len(event_cids)
+        ):
+            raise RuntimeError("canonical Profile F prover returned invalid certificate metadata")
+        if provider_status.get("proof_system") not in {None, proof_system}:
+            raise RuntimeError("Profile F provider and certificate proof systems differ")
+
+        for key_field in ("verification_key_cid", "verification_key_sha256"):
+            key_value = certificate.get(key_field)
+            if not isinstance(key_value, str) or not key_value:
+                raise RuntimeError(f"Profile F certificate is missing {key_field}")
+            provider_value = provider_status.get(key_field)
+            if provider_value is not None and provider_value != key_value:
+                raise RuntimeError(f"Profile F certificate has an unexpected {key_field}")
+        if not _is_sha256_hex(certificate["verification_key_sha256"]):
+            raise RuntimeError("Profile F certificate has an invalid verification key digest")
+
+        verification = verify_event_dag_compaction(certificate, list(event_cids))
+        if not isinstance(verification, Mapping) or verification.get("valid") is not True:
+            raise RuntimeError("canonical Profile F verifier rejected the generated certificate")
+        return dict(certificate)
+    except Exception as error:
+        if mode == "required":
+            raise RuntimeError("Profile F ZK proof is required but unavailable") from error
+        logger.warning(
+            "Profile F ZK proof unavailable; retaining %s: %s",
+            HASH_COMMITMENT_PROOF_SYSTEM,
+            error,
+        )
+        return None
+
 
 def generate_compaction_proof(
     epoch_events: List[Dict[str, Any]],
     merkle_root: str,
     epoch_id: int,
 ) -> str:
-    """Generate a ZK proof attesting to epoch validity.
+    """Generate a deterministic content-addressed integrity commitment.
 
-    This uses a simulated Groth16 proof by default. When the groth16 backend
-    is available (via IPFS_DATASETS_ENABLE_GROTH16=1), uses real proofs.
-
-    The proof attests:
-    1. The Merkle root correctly covers all N events
-    2. All internal parent references are valid (no dangling parents within epoch)
-    3. Events are temporally ordered (timestamps non-decreasing for causal chains)
-
-    Returns hex-encoded proof string.
+    This function deliberately never returns simulated ZK material. A real ZK
+    certificate is selected separately so its proof-system metadata cannot be
+    lost through this legacy string-returning API.
     """
-    # Check if real Groth16 is available
-    use_real_groth16 = os.environ.get("IPFS_DATASETS_ENABLE_GROTH16", "0") == "1"
-
-    if use_real_groth16:
-        try:
-            return _generate_real_groth16_proof(epoch_events, merkle_root, epoch_id)
-        except Exception as e:
-            logger.warning("Real Groth16 failed (%s), falling back to simulated", e)
-
-    # Simulated proof: hash of (merkle_root || epoch_id || event_count || validation_digest)
-    # The validation_digest proves we checked internal consistency
-    validation_digest = _compute_validation_digest(epoch_events)
-
-    proof_input = json.dumps({
-        "merkle_root": merkle_root,
-        "epoch_id": epoch_id,
-        "event_count": len(epoch_events),
-        "validation_digest": validation_digest,
-        "proof_type": "simulated_groth16",
-        "timestamp": time.time(),
-    }, sort_keys=True, separators=(",", ":"))
-
-    # Simulated proof = double-SHA256 (mimics the structure without the ZK property)
-    first_hash = hashlib.sha256(proof_input.encode()).digest()
-    proof_bytes = hashlib.sha256(first_hash).hexdigest()
-    return proof_bytes
+    commitment, _ = _generate_hash_commitment(epoch_events, merkle_root, epoch_id)
+    return commitment
 
 
 def _compute_validation_digest(epoch_events: List[Dict[str, Any]]) -> str:
-    """Compute a digest proving internal DAG consistency within an epoch.
+    """Summarize internal and cross-epoch references deterministically.
 
-    Checks:
-    - All parent_cids referenced within the epoch exist in the epoch
-      (or are marked as cross-epoch references)
-    - Timestamps are monotonically non-decreasing for causal chains
+    This digest is commitment material, not an independent proof that the DAG
+    is valid. ``verify_cold_epoch`` recomputes it from the durable archive.
     """
     all_cids = {e.get("cid", "") for e in epoch_events}
     cross_epoch_parents = set()
@@ -256,33 +354,90 @@ def _compute_validation_digest(epoch_events: List[Dict[str, Any]]) -> str:
     return hashlib.sha256(digest_input.encode()).hexdigest()
 
 
-def _generate_real_groth16_proof(
-    epoch_events: List[Dict[str, Any]],
-    merkle_root: str,
-    epoch_id: int,
-) -> str:
-    """Generate a real Groth16 proof (requires external circuit/prover)."""
-    # This would interface with a Groth16 prover like snarkjs or bellman
-    # For now, raise to fall back to simulated
-    raise NotImplementedError("Real Groth16 prover not yet integrated")
-
-
-def verify_compaction_proof(proof: CompactionProof) -> bool:
-    """Verify a compaction proof is valid.
-
-    For simulated proofs, re-checks the proof structure.
-    For real Groth16, would verify the proof against the verification key.
-    """
-    if not proof.proof:
+def verify_compaction_proof(
+    proof: CompactionProof,
+    event_cids: Optional[Sequence[str]] = None,
+) -> bool:
+    """Verify a compaction certificate without trusting its persisted status."""
+    if not isinstance(proof, CompactionProof) or not isinstance(proof.proof, str):
+        return False
+    if (
+        type(proof.epoch_id) is not int
+        or proof.epoch_id < 0
+        or type(proof.event_count) is not int
+        or proof.event_count < 0
+        or not _is_sha256_hex(proof.merkle_root)
+        or not _is_sha256_hex(proof.validation_digest)
+    ):
         return False
 
-    # Reconstruct what the proof should be (for simulated)
-    # In production with real ZK, this would use a verification key
-    if len(proof.proof) == 64:  # SHA-256 hex = 64 chars (simulated)
-        # We can't re-derive without the events, but we can check structure
-        return True
+    canonical_event_cids = None
+    if event_cids is not None:
+        try:
+            canonical_event_cids = list(event_cids)
+        except TypeError:
+            return False
+        if (
+            len(canonical_event_cids) != proof.event_count
+            or any(
+                not isinstance(event_cid, str) or not event_cid
+                for event_cid in canonical_event_cids
+            )
+        ):
+            return False
+        computed_root, _ = build_merkle_tree(canonical_event_cids)
+        if not hmac.compare_digest(computed_root, proof.merkle_root):
+            return False
 
-    return False
+    if proof.zero_knowledge is True:
+        if (
+            canonical_event_cids is None
+            or proof.proof_system == HASH_COMMITMENT_PROOF_SYSTEM
+            or not isinstance(proof.proof_system, str)
+            or not proof.proof_system
+            or not isinstance(proof.verification_key_cid, str)
+            or not proof.verification_key_cid
+            or not _is_sha256_hex(proof.verification_key_sha256)
+        ):
+            return False
+        try:
+            certificate = json.loads(proof.proof)
+            if (
+                not isinstance(certificate, Mapping)
+                or certificate.get("proof_system") != proof.proof_system
+                or certificate.get("zero_knowledge") is not True
+                or certificate.get("event_count") != proof.event_count
+                or certificate.get("verification_key_cid") != proof.verification_key_cid
+                or certificate.get("verification_key_sha256") != proof.verification_key_sha256
+            ):
+                return False
+            from ipfs_datasets_py.mcp_server.event_dag_zkp import verify_event_dag_compaction
+
+            verification = verify_event_dag_compaction(
+                certificate,
+                canonical_event_cids,
+            )
+            return bool(
+                isinstance(verification, Mapping)
+                and verification.get("valid") is True
+            )
+        except Exception:
+            return False
+
+    if (
+        proof.zero_knowledge is not False
+        or proof.proof_system != HASH_COMMITMENT_PROOF_SYSTEM
+        or not _is_sha256_hex(proof.proof)
+    ):
+        return False
+
+    expected = _hash_commitment(
+        merkle_root=proof.merkle_root,
+        epoch_id=proof.epoch_id,
+        event_count=proof.event_count,
+        validation_digest=proof.validation_digest,
+    )
+    return hmac.compare_digest(proof.proof, expected)
 
 
 # ---------------------------------------------------------------------------
@@ -293,7 +448,7 @@ class DAGCompactor:
     """Manages epoch-based compaction of an EventDAG.
 
     Splits the DAG into hot (in-memory), cold (on-disk), and compacted
-    (ZK proof only) tiers.
+    (integrity commitment, optionally verifier-backed ZK) tiers.
 
     Usage:
         compactor = DAGCompactor(storage_dir="/path/to/dag_storage")
@@ -349,18 +504,36 @@ class DAGCompactor:
                 self._current_epoch_id = data.get("current_epoch_id", 0)
                 self._total_compacted_events = data.get("total_compacted_events", 0)
                 for pd in data.get("proofs", []):
-                    self._compaction_proofs.append(CompactionProof(
+                    loaded_proof = CompactionProof(
                         merkle_root=pd["merkle_root"],
                         epoch_id=pd["epoch_id"],
                         event_count=pd["event_count"],
                         frontier_cids=pd.get("frontier_cids", []),
                         root_cids=pd.get("root_cids", []),
                         proof=pd.get("proof", ""),
+                        proof_system=pd.get(
+                            "proof_system",
+                            HASH_COMMITMENT_PROOF_SYSTEM,
+                        ),
+                        zero_knowledge=pd.get("zero_knowledge", False),
+                        validation_digest=pd.get("validation_digest", ""),
+                        verification_key_cid=pd.get("verification_key_cid", ""),
+                        verification_key_sha256=pd.get(
+                            "verification_key_sha256",
+                            "",
+                        ),
                         timestamp_start=pd.get("timestamp_start", 0.0),
                         timestamp_end=pd.get("timestamp_end", 0.0),
                         cold_storage_path=pd.get("cold_storage_path", ""),
-                        verified=pd.get("verified", False),
-                    ))
+                        verified=False,
+                    )
+                    loaded_proof.verified = verify_compaction_proof(loaded_proof)
+                    if pd.get("verified") is True and not loaded_proof.verified:
+                        logger.warning(
+                            "Compaction proof for epoch %s failed fresh verification",
+                            loaded_proof.epoch_id,
+                        )
+                    self._compaction_proofs.append(loaded_proof)
                 logger.info(
                     "Loaded compaction index: %d epochs, %d total compacted events",
                     len(self._compaction_proofs), self._total_compacted_events,
@@ -411,7 +584,7 @@ class DAGCompactor:
         events: Dict[str, Any],
         children: Dict[str, List[str]],
     ) -> Optional["CompactionResult"]:
-        """Compact the oldest epoch of events into a ZK proof.
+        """Compact the oldest epoch into a verified integrity certificate.
 
         Args:
             events: Dict of cid -> event data (mutable, will NOT be modified here)
@@ -443,7 +616,9 @@ class DAGCompactor:
             epoch_data = []
             for cid, event in epoch_items:
                 if isinstance(event, dict):
-                    epoch_data.append(event)
+                    serialized_event = dict(event)
+                    serialized_event["cid"] = cid
+                    epoch_data.append(serialized_event)
                 else:
                     # Dataclass event — serialize
                     epoch_data.append({
@@ -472,9 +647,6 @@ class DAGCompactor:
             # Build Merkle tree
             merkle_root, layers = build_merkle_tree(epoch_cids)
 
-            # Generate ZK proof
-            proof_hex = generate_compaction_proof(epoch_data, merkle_root, self._current_epoch_id)
-
             # Persist cold epoch to disk (atomic write with flock to prevent multi-server collision)
             import fcntl
             index_path = os.path.join(self.storage_dir, "compaction_index.json")
@@ -490,6 +662,65 @@ class DAGCompactor:
             cold_path = os.path.join(
                 self.storage_dir, f"epoch_{self._current_epoch_id:06d}.json"
             )
+
+            # Always generate a re-verifiable hash commitment. Replace its
+            # proof bytes only when the canonical ZK provider returns a
+            # certificate which it has also accepted.
+            commitment, validation_digest = _generate_hash_commitment(
+                epoch_data,
+                merkle_root,
+                self._current_epoch_id,
+            )
+            zk_certificate = _profile_f_zk_certificate(epoch_cids)
+            proof_value = (
+                json.dumps(zk_certificate, sort_keys=True, separators=(",", ":"))
+                if zk_certificate
+                else commitment
+            )
+            timestamps = [
+                e.get("timestamp", 0) if isinstance(e, dict) else getattr(e, "timestamp", 0)
+                for _, e in epoch_items
+            ]
+            compaction = CompactionProof(
+                merkle_root=merkle_root,
+                epoch_id=self._current_epoch_id,
+                event_count=len(epoch_cids),
+                frontier_cids=frontier_cids[:50],  # Cap for memory
+                root_cids=root_cids[:50],
+                proof=proof_value,
+                proof_system=(
+                    zk_certificate.get("proof_system")
+                    if zk_certificate
+                    else HASH_COMMITMENT_PROOF_SYSTEM
+                ),
+                zero_knowledge=bool(
+                    zk_certificate
+                    and zk_certificate.get("zero_knowledge") is True
+                ),
+                validation_digest=validation_digest,
+                verification_key_cid=(
+                    zk_certificate.get("verification_key_cid", "")
+                    if zk_certificate
+                    else ""
+                ),
+                verification_key_sha256=(
+                    zk_certificate.get("verification_key_sha256", "")
+                    if zk_certificate
+                    else ""
+                ),
+                timestamp_start=min(timestamps) if timestamps else 0.0,
+                timestamp_end=max(timestamps) if timestamps else 0.0,
+                cold_storage_path=cold_path,
+                verified=False,
+            )
+            compaction.verified = verify_compaction_proof(compaction, epoch_cids)
+            if not compaction.verified:
+                logger.error(
+                    "Generated compaction certificate for epoch %d failed verification",
+                    self._current_epoch_id,
+                )
+                return None
+
             tmp_cold_path = cold_path + ".tmp"
             try:
                 with open(tmp_cold_path, "w") as f:
@@ -510,24 +741,6 @@ class DAGCompactor:
                     pass
                 return None  # Abort compaction on disk failure
 
-            # Build compaction proof
-            timestamps = [
-                e.get("timestamp", 0) if isinstance(e, dict) else getattr(e, "timestamp", 0)
-                for _, e in epoch_items
-            ]
-            compaction = CompactionProof(
-                merkle_root=merkle_root,
-                epoch_id=self._current_epoch_id,
-                event_count=len(epoch_cids),
-                frontier_cids=frontier_cids[:50],  # Cap for memory
-                root_cids=root_cids[:50],
-                proof=proof_hex,
-                timestamp_start=min(timestamps) if timestamps else 0.0,
-                timestamp_end=max(timestamps) if timestamps else 0.0,
-                cold_storage_path=cold_path,
-                verified=True,
-            )
-
             self._compaction_proofs.append(compaction)
             self._current_epoch_id += 1
             self._total_compacted_events += len(epoch_cids)
@@ -536,7 +749,7 @@ class DAGCompactor:
             logger.info(
                 "Compacted epoch %d: %d events → merkle_root=%s, proof=%s...",
                 compaction.epoch_id, compaction.event_count,
-                merkle_root[:16], proof_hex[:16],
+                merkle_root[:16], compaction.proof[:16],
             )
 
             return CompactionResult(
@@ -580,7 +793,7 @@ class DAGCompactor:
             return []
 
     def verify_cold_epoch(self, epoch_id: int) -> bool:
-        """Verify a cold epoch's Merkle root matches its stored proof."""
+        """Verify the archive and its certificate against each other."""
         # Find the proof for this epoch
         proof = None
         for p in self._compaction_proofs:
@@ -596,10 +809,26 @@ class DAGCompactor:
         if not events:
             return False
 
-        event_cids = [e.get("cid", "") for e in events]
+        if (
+            not all(isinstance(event, dict) for event in events)
+            or not _is_sha256_hex(proof.merkle_root)
+            or not _is_sha256_hex(proof.validation_digest)
+        ):
+            proof.verified = False
+            return False
+        event_cids = [event.get("cid", "") for event in events]
         computed_root, _ = build_merkle_tree(event_cids)
-
-        return computed_root == proof.merkle_root
+        computed_validation_digest = _compute_validation_digest(events)
+        is_valid = (
+            hmac.compare_digest(computed_root, proof.merkle_root)
+            and hmac.compare_digest(
+                computed_validation_digest,
+                proof.validation_digest,
+            )
+            and verify_compaction_proof(proof, event_cids)
+        )
+        proof.verified = is_valid
+        return is_valid
 
     def find_epoch_for_cid(self, cid: str) -> Optional[int]:
         """Find which cold epoch (if any) contains a given CID.
