@@ -1,4 +1,9 @@
-"""Tests for the canonical cross-repository program evidence graph."""
+"""Tests for the canonical cross-repository program evidence graph.
+
+Covers VFS-G040 evidence terms ``vfs/program-graph@1`` (canonical construction)
+and, via the ranking provider import, ``vfs/graphrag-projection@1`` (optional
+GraphRAG ranking only).  Construction and ranking remain separate surfaces.
+"""
 
 from __future__ import annotations
 
@@ -7,6 +12,12 @@ from typing import Any
 
 import pytest
 
+from ipfs_accelerate_py.agent_supervisor.ipfs_datasets_program_graph_provider import (
+    GRAPHRAG_PROJECTION_EVIDENCE,
+    IpfsDatasetsProgramGraphProvider,
+    covered_evidence_terms,
+    graphrag_projection_evidence_terms,
+)
 from ipfs_accelerate_py.agent_supervisor.program_graph import (
     DanglingEdgeError,
     ForgedIdentityError,
@@ -14,6 +25,7 @@ from ipfs_accelerate_py.agent_supervisor.program_graph import (
     GraphCompleteness,
     GraphIndex,
     IllegalCycleError,
+    PROGRAM_GRAPH_EVIDENCE,
     PROGRAM_GRAPH_SCHEMA,
     ProgramEdgeKind,
     ProgramGraph,
@@ -21,10 +33,13 @@ from ipfs_accelerate_py.agent_supervisor.program_graph import (
     ProgramNodeKind,
     ResolverStatus,
     SourceSpan,
+    all_program_edge_kinds,
+    all_program_node_kinds,
     build_program_graph,
     make_edge,
     make_node,
     merge_program_graphs,
+    program_graph_evidence_terms,
 )
 
 
@@ -171,6 +186,16 @@ def _fixture_graph() -> ProgramGraph:
         qualified_name="tool.entry.input",
         blob_cid=BLOB_B,
     )
+    contract = _node(
+        ProgramNodeKind.CONTRACT,
+        "contract:tool.entry",
+        component_id="mcp:entry",
+        path="schemas/entry.json",
+        language="json",
+        qualified_name="tool.entry",
+        blob_cid=BLOB_B,
+        record={"role": "expected"},
+    )
     doc = _node(
         ProgramNodeKind.DOC,
         "doc:pkg.mod.entry",
@@ -221,6 +246,26 @@ def _fixture_graph() -> ProgramGraph:
         path="pkg/mod.py",
         qualified_name="ast:pkg.mod",
     )
+    finding = _node(
+        ProgramNodeKind.FINDING,
+        "finding:entry-contract-drift",
+        component_id="mcp:entry",
+        path="findings/entry.json",
+        language="json",
+        qualified_name="entry-contract-drift",
+        blob_cid=BLOB_B,
+        record={"severity": "error"},
+    )
+    proof_obligation = _node(
+        ProgramNodeKind.PROOF_OBLIGATION,
+        "proof:entry-precondition",
+        component_id="mcp:entry",
+        path="proofs/entry.json",
+        language="json",
+        qualified_name="entry-precondition",
+        blob_cid=BLOB_B,
+        record={"kind": "precondition"},
+    )
 
     nodes = (
         repo,
@@ -233,12 +278,15 @@ def _fixture_graph() -> ProgramGraph:
         call,
         type_node,
         schema,
+        contract,
         doc,
         test,
         mcp_tool,
         mcp_reg,
         transport,
         artifact,
+        finding,
+        proof_obligation,
     )
     edges = (
         _edge(repo.node_id, blob.node_id, ProgramEdgeKind.CONTAINS, component_id="repo:accelerator"),
@@ -271,6 +319,15 @@ def _fixture_graph() -> ProgramGraph:
             component_id="mcp:entry",
         ),
         _edge(mcp_tool.node_id, schema.node_id, ProgramEdgeKind.REFERENCES, component_id="mcp:entry"),
+        _edge(contract.node_id, schema.node_id, ProgramEdgeKind.REFERENCES, component_id="mcp:entry"),
+        _edge(contract.node_id, mcp_tool.node_id, ProgramEdgeKind.OBLIGATES, component_id="mcp:entry"),
+        _edge(finding.node_id, contract.node_id, ProgramEdgeKind.SUPPORTS, component_id="mcp:entry"),
+        _edge(
+            proof_obligation.node_id,
+            symbol.node_id,
+            ProgramEdgeKind.OBLIGATES,
+            component_id="mcp:entry",
+        ),
         _edge(artifact.node_id, module.node_id, ProgramEdgeKind.DERIVED_FROM, component_id="module:pkg.mod"),
         _edge(symbol.node_id, module.node_id, ProgramEdgeKind.MEMBER_OF, component_id="module:pkg.mod"),
         _edge(module.node_id, repo.node_id, ProgramEdgeKind.DEPENDS_ON, component_id="module:pkg.mod"),
@@ -615,13 +672,26 @@ def test_schema_constant_and_node_kind_vocabulary() -> None:
         "call",
         "type",
         "schema",
+        "contract",
         "doc",
         "test",
         "mcp_tool",
         "mcp_registration",
         "transport",
         "artifact",
+        "finding",
+        "proof_obligation",
     }
+    assert {kind.value for kind in all_program_node_kinds()} == {
+        kind.value for kind in ProgramNodeKind
+    }
+    assert {kind.value for kind in ProgramEdgeKind} >= {
+        "supports",
+        "obligates",
+        "references",
+        "calls",
+    }
+    assert set(all_program_edge_kinds()) == set(ProgramEdgeKind)
 
 
 def test_self_referential_contains_is_illegal() -> None:
@@ -667,3 +737,131 @@ def test_replacement_rejects_dangling_and_foreign_nodes() -> None:
         graph.replace_component(
             "module:pkg.mod", nodes=[local], edges=[dangling]
         )
+
+
+# ---------------------------------------------------------------------------
+# VFS-G040 evidence terms: canonical graph vs optional GraphRAG ranking
+# ---------------------------------------------------------------------------
+
+
+def test_program_graph_evidence_term_vfs_program_graph() -> None:
+    """Prove exact-text evidence term vfs/program-graph@1 for discovery scans."""
+
+    assert PROGRAM_GRAPH_EVIDENCE == "vfs/program-graph@1"
+    assert program_graph_evidence_terms() == ("vfs/program-graph@1",)
+
+    graph = _fixture_graph()
+    payload = graph.to_dict()
+    assert payload["evidence"] == ["vfs/program-graph@1"]
+    assert payload["evidence_program_graph"] == "vfs/program-graph@1"
+    assert payload["canonical_construction"] is True
+    assert payload["graphrag_ranking_authority"] is False
+    # Envelope metadata must not alter content-addressed graph identity.
+    assert payload["graph_id"] == graph.graph_id
+    # Provenance remains content-bound on every node/edge.
+    for node in graph.nodes:
+        assert node.binding.blob_cid
+        assert node.binding.forest_id == FOREST_ID
+        assert node.node_id.startswith("pnode-")
+    for edge in graph.edges:
+        assert edge.binding.blob_cid
+        assert edge.edge_id.startswith("pedge-")
+
+
+def test_contract_finding_and_proof_obligation_nodes_are_provenance_bound() -> None:
+    """VFS-G040 node kinds for contracts, findings, and proof obligations."""
+
+    graph = _fixture_graph()
+    by_kind = {node.kind: node for node in graph.nodes}
+    assert ProgramNodeKind.CONTRACT in by_kind
+    assert ProgramNodeKind.FINDING in by_kind
+    assert ProgramNodeKind.PROOF_OBLIGATION in by_kind
+    assert graph.edges_by_kind(ProgramEdgeKind.SUPPORTS)
+    assert graph.edges_by_kind(ProgramEdgeKind.OBLIGATES)
+    for kind in (
+        ProgramNodeKind.CONTRACT,
+        ProgramNodeKind.FINDING,
+        ProgramNodeKind.PROOF_OBLIGATION,
+    ):
+        node = by_kind[kind]
+        assert node.binding.blob_cid == BLOB_B
+        assert node.binding.producer == PRODUCER
+        assert node.binding.forest_id == FOREST_ID
+
+
+def test_graphrag_projection_evidence_term_and_non_authority() -> None:
+    """Prove vfs/graphrag-projection@1 is ranking-only and non-authoritative."""
+
+    assert GRAPHRAG_PROJECTION_EVIDENCE == "vfs/graphrag-projection@1"
+    assert graphrag_projection_evidence_terms() == ("vfs/graphrag-projection@1",)
+    assert covered_evidence_terms() == (
+        "vfs/program-graph@1",
+        "vfs/graphrag-projection@1",
+    )
+    # Construction and ranking remain separate surfaces.
+    assert program_graph_evidence_terms() == ("vfs/program-graph@1",)
+    assert "vfs/graphrag-projection@1" not in program_graph_evidence_terms()
+
+    def _unavailable(_name: str) -> Any:
+        raise ModuleNotFoundError("ipfs_datasets_py unavailable in test")
+
+    graph = _fixture_graph()
+    # Force explicit local fallback so ranking does not depend on optional backends.
+    provider = IpfsDatasetsProgramGraphProvider(importer=_unavailable)
+    projection, result = provider.project_and_query(graph, "pkg.mod.entry")
+
+    for payload in (projection.to_dict(), result.to_dict()):
+        assert payload["evidence"] == "vfs/graphrag-projection@1"
+        assert payload["evidence_graphrag_projection"] == "vfs/graphrag-projection@1"
+        assert payload["evidence_program_graph"] == "vfs/program-graph@1"
+        assert payload["canonical_construction"] is False
+        assert payload["ranking_only"] is True
+        assert payload["completion_authority"] is False
+        assert payload["mutation_authority"] is False
+        assert payload["creates_proofs"] is False
+        assert payload["creates_findings"] is False
+        assert payload["non_authoritative"] is True
+        assert payload["safe_for_completion_reasoning"] is False
+        assert payload["safe_for_proof_authority"] is False
+
+    assert result.safe_for_completion_reasoning is False
+    assert result.non_authoritative is True
+    # Compact references with ranking reasons — never full source bodies.
+    assert result.references
+    for ref in result.references:
+        body = ref.to_dict()
+        assert "node_id" in body or "reference_id" in body
+        assert "source_body" not in body
+        assert "source_code" not in body
+        assert "completion" not in body
+        assert "ranking_reason" in body or "score" in body or "reasons" in body
+
+
+def test_canonical_construction_separated_from_optional_graphrag_ranking() -> None:
+    """GraphRAG cannot mint program-graph records or change graph identity."""
+
+    def _unavailable(_name: str) -> Any:
+        raise ModuleNotFoundError("ipfs_datasets_py unavailable in test")
+
+    graph = _fixture_graph()
+    original_id = graph.graph_id
+    original_records = graph.canonical_records()
+
+    provider = IpfsDatasetsProgramGraphProvider(importer=_unavailable)
+    projection = provider.project(graph)
+    result = provider.query(graph, "entry", projection=projection)
+
+    # Ranking leaves the canonical graph untouched.
+    assert graph.graph_id == original_id
+    assert graph.canonical_records() == original_records
+    assert projection.forest_id == graph.forest_id
+    # Chunk CIDs are deterministic and bound to admitted evidence only.
+    assert projection.chunks
+    for chunk in projection.chunks:
+        assert chunk.chunk_cid
+    chunk_payload = projection.to_dict()
+    assert chunk_payload["ranking_only"] is True
+    assert chunk_payload["creates_calls"] is False
+    # Result identity is independent of program-graph identity.
+    assert result.result_id != graph.graph_id
+    assert not result.result_id.startswith("pgraph-")

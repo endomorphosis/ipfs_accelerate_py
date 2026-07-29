@@ -1,10 +1,15 @@
 """Bounded ``ipfs_datasets_py`` GraphRAG/IPLD projection over program graphs.
 
 This module is an **optional lazy projection and query adapter** over the
-canonical program evidence graph owned by :mod:`program_graph` (VFS-008).
-It never synthesizes calls, contracts, findings, proofs, completion, or
-mutation authority.  GraphRAG may only rank neighborhoods that already exist
-in the admitted canonical evidence set.
+canonical program evidence graph owned by :mod:`program_graph` (VFS-008 /
+VFS-G040).  It never synthesizes calls, contracts, findings, proofs,
+completion, or mutation authority.  GraphRAG may only rank neighborhoods that
+already exist in the admitted canonical evidence set.
+
+Canonical construction (``vfs/program-graph@1``) and optional GraphRAG ranking
+(``vfs/graphrag-projection@1``) are separate evidence surfaces.  Retrieval
+returns compact references and ranking reasons only; GraphRAG output cannot
+create completion or proof authority.
 
 Properties:
 
@@ -18,8 +23,8 @@ Properties:
   explicit local-fallback or inconclusive/poisoned result; and
 * every result carries permanent non-authority claims.
 
-Conflict policy: the canonical graph remains owned by VFS-008; this module is
-only a ranking/indexing projection.
+Conflict policy: the canonical graph remains owned by VFS-008 / program_graph;
+this module is only a ranking/indexing projection.
 """
 
 from __future__ import annotations
@@ -43,12 +48,14 @@ from typing import Any, Final
 from .program_graph import (
     DEFAULT_MAX_CHUNK_EDGES,
     DEFAULT_MAX_CHUNK_NODES,
+    PROGRAM_GRAPH_EVIDENCE,
     GraphChunk,
     ProgramGraph,
     ProgramGraphEdge,
     ProgramGraphError,
     ProgramGraphNode,
     canonical_program_json,
+    program_graph_evidence_terms,
 )
 from .proof.formal_verification_contracts import content_identity
 
@@ -62,6 +69,10 @@ IPFS_DATASETS_PROGRAM_GRAPH_PROVIDER_ID: Final = (
 )
 IPFS_DATASETS_PROGRAM_GRAPH_PROVIDER_VERSION: Final = "1.0.0"
 IPFS_DATASETS_PROGRAM_GRAPH_PROTOCOL_VERSION: Final = 1
+
+# Objective evidence term for VFS-G040 GraphRAG/IPLD projection (exact-text
+# discovery key).  Ranking-only: never authorizes completion or proof.
+GRAPHRAG_PROJECTION_EVIDENCE: Final[str] = "vfs/graphrag-projection@1"
 
 PROVIDER_CAPABILITY_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/"
@@ -148,6 +159,13 @@ _AUTHORITY_FALSE: Final = MappingProxyType(
         "ranking_only": True,
         "canonical_evidence_only": True,
         "non_authoritative": True,
+        "evidence": GRAPHRAG_PROJECTION_EVIDENCE,
+        "evidence_graphrag_projection": GRAPHRAG_PROJECTION_EVIDENCE,
+        "evidence_program_graph": PROGRAM_GRAPH_EVIDENCE,
+        "canonical_construction": False,
+        "graphrag_ranking_authority": False,
+        "safe_for_completion_reasoning": False,
+        "safe_for_proof_authority": False,
     }
 )
 
@@ -370,6 +388,28 @@ def _tokens(value: Any) -> frozenset[str]:
 
 def _authority_payload() -> dict[str, Any]:
     return dict(_AUTHORITY_FALSE)
+
+
+def graphrag_projection_evidence_terms() -> tuple[str, ...]:
+    """Return the closed VFS-G040 GraphRAG projection evidence terms.
+
+    Covers ``vfs/graphrag-projection@1`` for optional bounded ranking only.
+    Canonical construction remains ``vfs/program-graph@1`` and is never
+    authored by this ranking adapter.
+    """
+
+    return (GRAPHRAG_PROJECTION_EVIDENCE,)
+
+
+def covered_evidence_terms() -> tuple[str, ...]:
+    """Return both VFS-G040 evidence surfaces in construction-then-ranking order.
+
+    Discovery scans match exact term strings.  Construction
+    (``vfs/program-graph@1``) is listed before optional ranking
+    (``vfs/graphrag-projection@1``) so the separation stays explicit.
+    """
+
+    return program_graph_evidence_terms() + graphrag_projection_evidence_terms()
 
 
 def _find_forbidden(value: Any, *, depth: int = 0) -> str | None:
@@ -2850,6 +2890,7 @@ __all__ = [
     "DEFAULT_MAX_RESULTS",
     "DEFAULT_OPTIONAL_ROOT",
     "DEFAULT_TIMEOUT_MS",
+    "GRAPHRAG_PROJECTION_EVIDENCE",
     "IPFS_DATASETS_PROGRAM_GRAPH_PROTOCOL_VERSION",
     "IPFS_DATASETS_PROGRAM_GRAPH_PROVIDER_ID",
     "IPFS_DATASETS_PROGRAM_GRAPH_PROVIDER_VERSION",
@@ -2867,6 +2908,8 @@ __all__ = [
     "GraphQueryResult",
     "IpfsDatasetsProgramGraphProvider",
     "ProjectedChunk",
+    "covered_evidence_terms",
+    "graphrag_projection_evidence_terms",
     "ProgramGraphProviderBoundsError",
     "ProgramGraphProviderError",
     "ProgramGraphProviderPoisonError",
