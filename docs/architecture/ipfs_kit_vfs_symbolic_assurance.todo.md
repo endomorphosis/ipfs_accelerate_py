@@ -188,7 +188,7 @@ compact references and bounded spans only.
 
 ## VFS-010 Add a strict DAG-JSON/CIDv1/multihash identity bridge
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: content-addressing
