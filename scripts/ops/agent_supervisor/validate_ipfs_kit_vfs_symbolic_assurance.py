@@ -77,6 +77,11 @@ REQUIRED_TASK_FIELDS = (
     "resource class",
     "acceptance",
 )
+REQUIRED_TASK_DEPENDENCIES = {
+    # The adversarial rollout gate must directly admit both runtime drift
+    # evidence and provider-control evidence before the frozen pilot can run.
+    "VFS-036": frozenset({"VFS-027", "VFS-033"}),
+}
 
 
 def _sha256(path: Path) -> str:
@@ -267,6 +272,14 @@ def validate(objective_path: Path, todo_path: Path) -> dict[str, object]:
     task_cycles = _cycle_nodes(task_edges)
     if task_cycles:
         errors.append(f"task dependency cycle: {list(task_cycles)}")
+    for task_id, required_dependencies in REQUIRED_TASK_DEPENDENCIES.items():
+        missing_dependencies = sorted(
+            required_dependencies.difference(task_edges.get(task_id, ()))
+        )
+        if missing_dependencies:
+            errors.append(
+                f"{task_id} missing required dependencies: {missing_dependencies}"
+            )
 
     dependency_graph = materialize_task_dependency_dag(task_records)
     if dependency_graph.invalid_task_cids:
