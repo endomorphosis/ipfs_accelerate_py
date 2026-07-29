@@ -199,6 +199,74 @@ def test_python_probe_rejects_out_of_range_distributions(
     assert receipt.reason == "distribution_version_mismatch"
 
 
+def test_cvc5_cli_probe_requires_the_exact_native_release() -> None:
+    exact = dependencies.probe_cvc5_cli(
+        which=lambda _command: "/managed/bin/cvc5",
+        runner=lambda command, **_kwargs: _completed(
+            list(command),
+            stdout=f"This is cvc5 version {dependencies.PINNED_CVC5_VERSION}\n",
+        ),
+    )
+    mismatched = dependencies.probe_cvc5_cli(
+        which=lambda _command: "/managed/bin/cvc5",
+        runner=lambda command, **_kwargs: _completed(
+            list(command),
+            stdout="This is cvc5 version 1.2.0\n",
+        ),
+    )
+
+    assert exact.available
+    assert exact.executable_path == "/managed/bin/cvc5"
+    assert mismatched.status == "incompatible"
+    assert mismatched.reason == "native_version_mismatch"
+
+
+def test_cvc5_cli_loader_is_explicit_and_delegates_to_datasets(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    state = {"available": False}
+
+    def probe(**_kwargs):
+        if state["available"]:
+            return dependencies.ContractRepairDependencyReceipt(
+                "cvc5_cli",
+                "available",
+                dependencies.CVC5_CLI_REQUIREMENT,
+                version=dependencies.PINNED_CVC5_VERSION,
+                executable_path="/managed/bin/cvc5",
+            )
+        return dependencies.ContractRepairDependencyReceipt(
+            "cvc5_cli",
+            "missing",
+            dependencies.CVC5_CLI_REQUIREMENT,
+            reason="native_executable_missing",
+        )
+
+    monkeypatch.setattr(dependencies, "probe_cvc5_cli", probe)
+    monkeypatch.setattr(dependencies.tempfile, "gettempdir", lambda: str(tmp_path))
+    calls: list[list[str]] = []
+
+    def runner(command, **_kwargs):
+        calls.append(list(command))
+        state["available"] = True
+        return _completed(list(command))
+
+    disabled = dependencies.ensure_cvc5_cli(auto_install=False, runner=runner)
+    assert disabled.status == "install_disabled"
+    assert calls == []
+
+    installed = dependencies.ensure_cvc5_cli(auto_install=True, runner=runner)
+    assert installed.available
+    assert installed.install_attempted is True
+    assert len(calls) == 1
+    assert calls[0][1:3] == [
+        "-m",
+        "ipfs_datasets_py.logic.integration.bridges.prover_installer",
+    ]
+    assert {"--cvc5-cli", "--yes", "--strict", "--update"} <= set(calls[0])
+
+
 def test_typescript_probe_binds_cli_and_compiler_api(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -278,6 +346,33 @@ def test_typescript_version_mismatch_fails_closed(
     assert receipt.details["expected_version"] == dependencies.PINNED_TYPESCRIPT_VERSION
 
 
+@pytest.mark.parametrize(
+    ("payload", "expected_reason"),
+    (
+        (b"\xff", "package_metadata_invalid:UnicodeDecodeError"),
+        (b"[]", "package_metadata_invalid:non_object"),
+        (b"null", "package_metadata_invalid:non_object"),
+        (
+            b'{"name":"not-typescript","version":"5.9.3"}',
+            "package_identity_mismatch",
+        ),
+    ),
+)
+def test_typescript_malformed_metadata_fails_closed(
+    tmp_path: Path,
+    payload: bytes,
+    expected_reason: str,
+) -> None:
+    root = tmp_path / "typescript"
+    _write_typescript_fixture(root, dependencies.PINNED_TYPESCRIPT_VERSION)
+    (root / "node_modules" / "typescript" / "package.json").write_bytes(payload)
+
+    receipt = dependencies.probe_typescript_toolchain(root=root)
+
+    assert receipt.status == "incompatible"
+    assert receipt.reason == expected_reason
+
+
 def test_typescript_loader_is_explicit_and_uses_pinned_npm_package(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -338,3 +433,33 @@ def test_managed_environment_is_detect_only(
     bindings = dependencies.contract_repair_toolchain_environment(environ={"PATH": "/usr/bin"})
     assert bindings["TYPESCRIPT_PATH"] == receipt.module_path
     assert bindings["PATH"].split(":")[0] == "/managed/node_modules/.bin"
+
+
+def test_managed_environment_binds_cvc5_without_typescript(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        dependencies,
+        "probe_typescript_toolchain",
+        lambda **_kwargs: dependencies.ContractRepairDependencyReceipt(
+            "typescript",
+            "missing",
+            dependencies.TYPESCRIPT_REQUIREMENT,
+        ),
+    )
+    monkeypatch.setattr(
+        dependencies,
+        "probe_cvc5_cli",
+        lambda **_kwargs: dependencies.ContractRepairDependencyReceipt(
+            "cvc5_cli",
+            "available",
+            dependencies.CVC5_CLI_REQUIREMENT,
+            version=dependencies.PINNED_CVC5_VERSION,
+            executable_path="/managed/provers/bin/cvc5",
+        ),
+    )
+
+    bindings = dependencies.contract_repair_toolchain_environment(environ={"PATH": "/usr/bin"})
+
+    assert "TYPESCRIPT_PATH" not in bindings
+    assert bindings["PATH"] == "/managed/provers/bin:/usr/bin"

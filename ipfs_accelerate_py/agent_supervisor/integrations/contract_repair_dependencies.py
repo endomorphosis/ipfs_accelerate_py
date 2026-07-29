@@ -37,7 +37,9 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Final
 
+PINNED_CVC5_VERSION: Final = "1.3.3"
 PINNED_TYPESCRIPT_VERSION: Final = "5.9.3"
+CVC5_CLI_REQUIREMENT: Final = f"cvc5-cli@{PINNED_CVC5_VERSION}"
 TYPESCRIPT_REQUIREMENT: Final = f"typescript@{PINNED_TYPESCRIPT_VERSION}"
 _TYPESCRIPT_API_CANARY: Final = """
 const ts = require(process.argv[1]);
@@ -95,7 +97,7 @@ PYTHON_DEPENDENCY_SPECS: Final[Mapping[str, PythonDependencySpec]] = MappingProx
             dependency_id="cvc5",
             import_name="cvc5",
             distribution="cvc5",
-            requirement="cvc5==1.3.3",
+            requirement=f"cvc5=={PINNED_CVC5_VERSION}",
             executable="cvc5",
             exact_version=(1, 3, 3),
         ),
@@ -188,6 +190,36 @@ def _scripts_directories() -> tuple[Path, ...]:
     except (OSError, RuntimeError):
         pass
     return tuple(dict.fromkeys(path.resolve() for path in candidates))
+
+
+def _datasets_managed_prover_bin() -> Path | None:
+    """Locate the datasets checksum-verified native-prover launcher directory."""
+
+    configured = str(os.environ.get("IPFS_DATASETS_PY_EXTERNAL_PROVER_ROOT", "") or "").strip()
+    try:
+        root = (
+            Path(configured).expanduser()
+            if configured
+            else Path.home() / ".local" / "share" / "ipfs_datasets_py" / "theorem-provers"
+        )
+    except (OSError, RuntimeError):
+        return None
+    return root / "bin"
+
+
+def _managed_native_executable(command: str) -> str:
+    directory = _datasets_managed_prover_bin()
+    if directory is None:
+        return ""
+    names = (command, f"{command}.exe", f"{command}.cmd") if os.name == "nt" else (command,)
+    for name in names:
+        candidate = directory / name
+        try:
+            if candidate.is_file() and (os.name == "nt" or os.access(candidate, os.X_OK)):
+                return str(candidate.resolve())
+        except OSError:
+            continue
+    return ""
 
 
 def find_python_executable(
@@ -322,6 +354,75 @@ def probe_python_dependency(
     )
 
 
+def probe_cvc5_cli(
+    *,
+    which: Callable[[str], str | None] | None = None,
+    runner: Runner = subprocess.run,
+    timeout_seconds: float = 15.0,
+) -> ContractRepairDependencyReceipt:
+    """Verify the separate native cvc5 CLI at the Python binding's exact version."""
+
+    locate = which or find_contract_repair_executable
+    try:
+        executable = locate("cvc5")
+    except Exception as exc:
+        return ContractRepairDependencyReceipt(
+            "cvc5_cli",
+            "incompatible",
+            CVC5_CLI_REQUIREMENT,
+            reason=f"executable_lookup_failed:{type(exc).__name__}",
+        )
+    if not executable:
+        return ContractRepairDependencyReceipt(
+            "cvc5_cli",
+            "missing",
+            CVC5_CLI_REQUIREMENT,
+            reason="native_executable_missing",
+        )
+    try:
+        completed = _run(
+            runner,
+            [str(executable), "--version"],
+            timeout_seconds=timeout_seconds,
+        )
+    except subprocess.TimeoutExpired:
+        return ContractRepairDependencyReceipt(
+            "cvc5_cli",
+            "timed_out",
+            CVC5_CLI_REQUIREMENT,
+            executable_path=str(executable),
+            reason="version_probe_timed_out",
+        )
+    except OSError as exc:
+        return ContractRepairDependencyReceipt(
+            "cvc5_cli",
+            "incompatible",
+            CVC5_CLI_REQUIREMENT,
+            executable_path=str(executable),
+            reason=f"version_probe_failed:{type(exc).__name__}",
+        )
+    observed_version = _version_from_output(completed)
+    if completed.returncode != 0 or observed_version != PINNED_CVC5_VERSION:
+        return ContractRepairDependencyReceipt(
+            "cvc5_cli",
+            "incompatible",
+            CVC5_CLI_REQUIREMENT,
+            version=observed_version,
+            executable_path=str(executable),
+            reason="native_version_mismatch",
+            details={"expected_version": PINNED_CVC5_VERSION},
+        )
+    executable_path = str(Path(executable).resolve())
+    return ContractRepairDependencyReceipt(
+        "cvc5_cli",
+        "available",
+        CVC5_CLI_REQUIREMENT,
+        version=observed_version,
+        executable_path=executable_path,
+        details={"executable_sha256": _sha256(Path(executable_path))},
+    )
+
+
 def _data_home(environ: Mapping[str, str]) -> Path:
     configured = str(environ.get("XDG_DATA_HOME", "") or "").strip()
     if configured:
@@ -447,12 +548,26 @@ def probe_typescript_toolchain(
         )
     try:
         package = json.loads(package_json.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
         return ContractRepairDependencyReceipt(
             "typescript",
             "incompatible",
             TYPESCRIPT_REQUIREMENT,
             reason=f"package_metadata_invalid:{type(exc).__name__}",
+        )
+    if not isinstance(package, dict):
+        return ContractRepairDependencyReceipt(
+            "typescript",
+            "incompatible",
+            TYPESCRIPT_REQUIREMENT,
+            reason="package_metadata_invalid:non_object",
+        )
+    if package.get("name") != "typescript":
+        return ContractRepairDependencyReceipt(
+            "typescript",
+            "incompatible",
+            TYPESCRIPT_REQUIREMENT,
+            reason="package_identity_mismatch",
         )
     metadata_version = str(package.get("version", "") or "")
     if metadata_version != PINNED_TYPESCRIPT_VERSION:
@@ -713,6 +828,125 @@ def ensure_python_dependency(
     )
 
 
+def _datasets_installer_environment() -> dict[str, str]:
+    """Bind a source checkout's datasets gitlink for the native installer."""
+
+    env = dict(os.environ)
+    datasets_root = Path(__file__).resolve().parents[3] / "ipfs_datasets_py"
+    if (datasets_root / "ipfs_datasets_py" / "logic").is_dir():
+        existing = str(env.get("PYTHONPATH", "") or "")
+        env["PYTHONPATH"] = os.pathsep.join(
+            part for part in (str(datasets_root), existing) if part
+        )
+    return env
+
+
+def ensure_cvc5_cli(
+    *,
+    auto_install: bool = False,
+    runner: Runner = subprocess.run,
+    timeout_seconds: float = DEFAULT_INSTALL_TIMEOUT_SECONDS,
+    lock_timeout_seconds: float = DEFAULT_LOCK_TIMEOUT_SECONDS,
+) -> ContractRepairDependencyReceipt:
+    """Resolve the native CLI through datasets' checksum-aware lazy loader."""
+
+    current = probe_cvc5_cli(
+        runner=runner,
+        timeout_seconds=min(timeout_seconds, 30.0),
+    )
+    if current.available:
+        return current
+    if not auto_install:
+        return ContractRepairDependencyReceipt(
+            "cvc5_cli",
+            "install_disabled",
+            CVC5_CLI_REQUIREMENT,
+            version=current.version,
+            executable_path=current.executable_path,
+            reason=current.reason or "explicit_install_required",
+        )
+
+    lock_path = (
+        Path(tempfile.gettempdir())
+        / f"ipfs_accelerate_py-contract-repair-cvc5-{PINNED_CVC5_VERSION}.lock"
+    )
+    command = [
+        sys.executable,
+        "-m",
+        "ipfs_datasets_py.logic.integration.bridges.prover_installer",
+        "--cvc5-cli",
+        "--yes",
+        "--strict",
+        "--update",
+    ]
+    try:
+        with _InstallLock(lock_path, lock_timeout_seconds):
+            current = probe_cvc5_cli(
+                runner=runner,
+                timeout_seconds=min(timeout_seconds, 30.0),
+            )
+            if current.available:
+                return current
+            completed = _run(
+                runner,
+                command,
+                timeout_seconds=timeout_seconds,
+                environ=_datasets_installer_environment(),
+            )
+    except (subprocess.TimeoutExpired, TimeoutError):
+        return ContractRepairDependencyReceipt(
+            "cvc5_cli",
+            "timed_out",
+            CVC5_CLI_REQUIREMENT,
+            install_attempted=True,
+            reason="datasets_native_install_timed_out",
+        )
+    except OSError as exc:
+        return ContractRepairDependencyReceipt(
+            "cvc5_cli",
+            "install_failed",
+            CVC5_CLI_REQUIREMENT,
+            install_attempted=True,
+            reason=f"datasets_native_install_failed:{type(exc).__name__}",
+        )
+    if completed.returncode != 0:
+        return ContractRepairDependencyReceipt(
+            "cvc5_cli",
+            "install_failed",
+            CVC5_CLI_REQUIREMENT,
+            install_attempted=True,
+            reason="datasets_native_install_nonzero_exit",
+            details={
+                "returncode": completed.returncode,
+                "output": _bounded_process_output(completed),
+            },
+        )
+    installed = probe_cvc5_cli(
+        runner=runner,
+        timeout_seconds=min(timeout_seconds, 30.0),
+    )
+    if not installed.available:
+        return ContractRepairDependencyReceipt(
+            "cvc5_cli",
+            "install_failed",
+            CVC5_CLI_REQUIREMENT,
+            version=installed.version,
+            executable_path=installed.executable_path,
+            install_attempted=True,
+            reason=f"post_install_verification_failed:{installed.reason}",
+            details=installed.details,
+        )
+    return ContractRepairDependencyReceipt(
+        installed.dependency_id,
+        installed.status,
+        installed.requirement,
+        version=installed.version,
+        executable_path=installed.executable_path,
+        install_attempted=True,
+        details=installed.details,
+    )
+
+
 def ensure_typescript_toolchain(
     *,
     auto_install: bool = False,
@@ -833,6 +1067,10 @@ def find_contract_repair_executable(command: str) -> str | None:
         receipt = probe_typescript_toolchain()
         if receipt.available:
             return receipt.executable_path
+    if command == "cvc5":
+        managed = _managed_native_executable(command)
+        if managed:
+            return managed
     located = find_python_executable(command)
     return located or None
 
@@ -843,15 +1081,26 @@ def contract_repair_toolchain_environment(
     """Return child-process bindings for an already provisioned toolchain."""
 
     env = dict(os.environ if environ is None else environ)
-    receipt = probe_typescript_toolchain(environ=env)
-    if not receipt.available:
-        return {}
-    bin_dir = str(Path(receipt.executable_path).parent)
+    bindings: dict[str, str] = {}
+    bin_directories: list[str] = []
+    typescript = probe_typescript_toolchain(environ=env)
+    if typescript.available:
+        bindings["TYPESCRIPT_PATH"] = typescript.module_path
+        bin_directories.append(str(Path(typescript.executable_path).parent))
+    cvc5_cli = probe_cvc5_cli()
+    if cvc5_cli.available:
+        bin_directories.append(str(Path(cvc5_cli.executable_path).parent))
+    if not bin_directories:
+        return bindings
     existing_path = str(env.get("PATH", "") or "")
-    return {
-        "TYPESCRIPT_PATH": receipt.module_path,
-        "PATH": os.pathsep.join(part for part in (bin_dir, existing_path) if part),
-    }
+    bindings["PATH"] = os.pathsep.join(
+        dict.fromkeys(
+            part
+            for part in (*bin_directories, *existing_path.split(os.pathsep))
+            if part
+        )
+    )
+    return bindings
 
 
 def ensure_contract_repair_dependencies(
@@ -861,11 +1110,16 @@ def ensure_contract_repair_dependencies(
 ) -> tuple[ContractRepairDependencyReceipt, ...]:
     """Resolve the requested closed dependency set."""
 
-    selected = tuple(dependency_ids or (*PYTHON_DEPENDENCY_SPECS.keys(), "typescript"))
+    selected = tuple(
+        dependency_ids
+        or (*PYTHON_DEPENDENCY_SPECS.keys(), "cvc5_cli", "typescript")
+    )
     receipts: list[ContractRepairDependencyReceipt] = []
     for dependency_id in selected:
         if dependency_id == "typescript":
             receipts.append(ensure_typescript_toolchain(auto_install=auto_install))
+        elif dependency_id == "cvc5_cli":
+            receipts.append(ensure_cvc5_cli(auto_install=auto_install))
         else:
             receipts.append(
                 ensure_python_dependency(
@@ -883,7 +1137,7 @@ def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     parser.add_argument(
         "dependencies",
         nargs="*",
-        choices=tuple(PYTHON_DEPENDENCY_SPECS) + ("typescript",),
+        choices=tuple(PYTHON_DEPENDENCY_SPECS) + ("cvc5_cli", "typescript"),
         help="closed dependency ids; omitted means all",
     )
     parser.add_argument(
@@ -918,20 +1172,24 @@ if __name__ == "__main__":  # pragma: no cover - exercised through the CLI
 
 
 __all__ = [
+    "CVC5_CLI_REQUIREMENT",
     "CONTRACT_REPAIR_PYTHON_REQUIREMENTS",
     "DEPENDENCY_RECEIPT_SCHEMA_VERSION",
+    "PINNED_CVC5_VERSION",
     "PINNED_TYPESCRIPT_VERSION",
     "PYTHON_DEPENDENCY_SPECS",
     "TYPESCRIPT_REQUIREMENT",
     "ContractRepairDependencyReceipt",
     "PythonDependencySpec",
     "contract_repair_toolchain_environment",
+    "ensure_cvc5_cli",
     "ensure_contract_repair_dependencies",
     "ensure_python_dependency",
     "ensure_typescript_toolchain",
     "find_contract_repair_executable",
     "find_python_executable",
     "probe_python_dependency",
+    "probe_cvc5_cli",
     "probe_typescript_toolchain",
     "typescript_toolchain_root",
 ]

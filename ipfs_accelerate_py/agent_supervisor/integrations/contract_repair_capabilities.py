@@ -29,6 +29,7 @@ from types import MappingProxyType
 from typing import Any, Final
 
 from .contract_repair_dependencies import (
+    PINNED_CVC5_VERSION,
     PINNED_TYPESCRIPT_VERSION,
     find_contract_repair_executable,
 )
@@ -549,7 +550,7 @@ def probe_contract_repair_capabilities(
         _run_version("toolchain.typescript", ("tsc", "--version"), expected_version=PINNED_TYPESCRIPT_VERSION, which=locate, runner=execute, timeout_seconds=float(timeout_seconds)),
         _run_version("toolchain.mypy", ("mypy", "--version"), which=locate, runner=execute, timeout_seconds=float(timeout_seconds)),
         _run_version("toolchain.ruff", ("ruff", "--version"), which=locate, runner=execute, timeout_seconds=float(timeout_seconds)),
-        _run_version("toolchain.cvc5", ("cvc5", "--version"), which=locate, runner=execute, timeout_seconds=float(timeout_seconds)),
+        _run_version("toolchain.cvc5", ("cvc5", "--version"), expected_version=PINNED_CVC5_VERSION, which=locate, runner=execute, timeout_seconds=float(timeout_seconds)),
         _run_version("toolchain.z3", ("z3", "--version"), which=locate, runner=execute, timeout_seconds=float(timeout_seconds)),
     ))
     gitlink_revision, gitlink_diagnostic = _gitlink_revision(root, execute, float(timeout_seconds))
