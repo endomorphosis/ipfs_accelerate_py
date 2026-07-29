@@ -3539,6 +3539,8 @@ def codebase_scan_task_block(
         f"- Evidence subset: {finding.root_relative_path}:{finding.line_number}, {discovery_path}",
         "- Resource class: cpu-small",
         "- Token class: small",
+        "- Context budget tokens: 2048",
+        "- Provider role: grok-implement, codex-review",
         "- Resources: python, focused validation runner",
         f"- Merge fate: {finding.root_relative_path}",
         "- Rejection reasons: none",
