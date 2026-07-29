@@ -1850,3 +1850,68 @@ compact references and bounded spans only.
 - Candidate kind: validation_gate
 - Todo vector key: 483799395bd2973d
 - Acceptance: Objective scan filed this gap for VFS-G144. Use evidence in /home/barberb/.local/state/ipfs_accelerate_py/ipfs_kit_vfs_symbolic_assurance/projection/discovery/2026-07-29-vfs-054-objective-gap-abcab1b61e70.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (objective validation repair), and keep the supervisor-fed backlog aligned with the objective heap. This task is part of goal_packet/program_graph/ipfs_accelerate_py/b1681ac58b21; implement a complete, cohesive change that fully advances the packet goals (VFS-G041, VFS-G144) and covers all the shared packet evidence in one comprehensive pass. Refine the objective heap if the gap needs smaller child goals.
+
+## VFS-055 Close objective gap: Prove vfs/autonomous-refill-exhaustion@1 for Prove and repair IPFS Kit VFS contracts from a content-addressed SwissKnife program graph
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: vfs-symbolic-assurance
+- Depends on:
+- Outputs: docs/architecture/IPFS_KIT_VFS_SYMBOLIC_ASSURANCE_PLAN.md, docs/architecture/ipfs_kit_vfs_symbolic_assurance.todo.md, data/agent_supervisor/ipfs_kit_vfs_symbolic_assurance
+- Validation: python -m pytest test/api/test_vfs_symbolic_assurance_e2e.py -q
+- Evidence inputs: data/agent_supervisor/ipfs_kit_vfs_symbolic_assurance/objective_gap.json
+- Discovery evidence: /home/barberb/.local/state/ipfs_accelerate_py/ipfs_kit_vfs_symbolic_assurance/projection/discovery/2026-07-29-vfs-055-objective-gap-78d3dfc7b17c.md
+- Bundle: vfs-assurance/root
+- Bundle shard: /home/barberb/.local/state/ipfs_accelerate_py/ipfs_kit_vfs_symbolic_assurance/projection/bundles/vfs-assurance-root.todo.md
+- Bundle strategy: explicit
+- Graph parents: VFS-G000
+- Graph depth: 1
+- Objective heap index: 28
+- Parallel lane: vfs-assurance/root
+- Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
+- Predicted files: docs/architecture/IPFS_KIT_VFS_SYMBOLIC_ASSURANCE_PLAN.md, docs/architecture/ipfs_kit_vfs_symbolic_assurance.todo.md, data/agent_supervisor/ipfs_kit_vfs_symbolic_assurance
+- Changed paths:
+- AST symbols: vfs/autonomous-refill-exhaustion@1
+- Interfaces:
+- Submodules:
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: VFS-G135
+- Completion authority: local
+- External authority blockers:
+- Canonical task key: task/v1/2847b280b6488b9262af66c7d1e6ce32876d03db924018ccccf81ac6f88f93d7
+- Canonical task CID: baguqeerafbd3fafwjcfzeyvpm3d5dzwogkdw2a63sjabrtgm7anmn6epsplq
+- Semantic identity: objective-evidence-obligation/v1/2cd5a6c67a15dc67a15ed9547da00beb51d5383c13ea7c05a228c7ee11f05204
+- Acceptance subset: Every direct child has fresh criterion-level evidence, no unsupported or stale result is promoted to proof, the complete frozen repository inventory is accounted for, accepted repairs retain normal authorization, validation, and merge gates, drained work triggers bounded evidence-driven refill or a conclusive exhaustion receipt.
+- Preconditions: objective goal VFS-G135 is schedulable
+- Effects: satisfy evidence requirement: vfs/autonomous-refill-exhaustion@1
+- Evidence subset: vfs/autonomous-refill-exhaustion@1
+- Resource class: cpu-medium
+- Token class: medium
+- Estimated tokens: 0
+- Resources: cpu-medium
+- Merge fate: objective/VFS-G135
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/2cd5a6c67a15dc67a15ed9547da00beb51d5383c13ea7c05a228c7ee11f05204
+- Missing evidence: vfs/autonomous-refill-exhaustion@1
+- Embedding query: vfs/autonomous-refill-exhaustion@1
+- AST query: vfs/autonomous-refill-exhaustion@1
+- Surplus group: objective/VFS-G135
+- Merge key: 3fe00fcbda142fbc
+- Merge family: goal_packet/vfs_symbolic_assurance/general/13f52635926c
+- Merge role: aggregate
+- Work item count: 1
+- Work scope: goal_subgoal_multi_evidence_batch; goal_subgoal_packet
+- Goal packet: goal_packet/vfs_symbolic_assurance/general/13f52635926c
+- Goal packet role: packet_member
+- Goal packet goals: VFS-G133, VFS-G134, VFS-G135
+- Goal packet task count: 3
+- Goal packet work item count: 3
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: aggregate
+- Todo vector key: 4790ba7ec952d2d7
+- Acceptance: Objective scan filed this gap for VFS-G135. Use evidence in /home/barberb/.local/state/ipfs_accelerate_py/ipfs_kit_vfs_symbolic_assurance/projection/discovery/2026-07-29-vfs-055-objective-gap-78d3dfc7b17c.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (vfs/autonomous-refill-exhaustion@1), and keep the supervisor-fed backlog aligned with the objective heap. This task is part of goal_packet/vfs_symbolic_assurance/general/13f52635926c; implement a complete, cohesive change that fully advances the packet goals (VFS-G133, VFS-G134, VFS-G135) and covers all the shared packet evidence in one comprehensive pass. Refine the objective heap if the gap needs smaller child goals.
