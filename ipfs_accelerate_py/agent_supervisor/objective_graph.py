@@ -902,7 +902,7 @@ class EvidenceSourcePolicy:
             return EvidenceRequirementKind.OPAQUE_RECEIPT
         if repo_relative_path_safe(normalized):
             suffix = Path(normalized).suffix.lower()
-            if suffix or "/" in normalized:
+            if "/" in normalized or suffix in SCAN_SUFFIXES:
                 return EvidenceRequirementKind.PATH
         words = set(re.findall(r"[a-z0-9_]+", normalized.casefold()))
         if words & {"benchmark", "benchmarks", "performance", "throughput"}:
@@ -1244,6 +1244,14 @@ class EvidenceSourcePolicy:
             reasons.append("proposal_source_forbidden")
         if match in {EvidenceMatchKind.SEMANTIC, EvidenceMatchKind.RETRIEVAL}:
             reasons.append("semantic_match_nomination_only")
+        if kind is EvidenceRequirementKind.PATH:
+            normalized_source_path = str(source_path or "").strip().replace(
+                "\\", "/"
+            )
+            if match is not EvidenceMatchKind.PATH:
+                reasons.append("path_reference_nomination_only")
+            elif normalized_source_path != normalized.replace("\\", "/"):
+                reasons.append("path_identity_mismatch")
         if kind is EvidenceRequirementKind.OPAQUE_RECEIPT and match is not EvidenceMatchKind.TYPED_RECEIPT:
             reasons.append("opaque_requirement_requires_typed_receipt")
         if receipt is not None:
@@ -1294,6 +1302,14 @@ class EvidenceSourcePolicy:
             satisfies = True
         elif (
             kind not in authoritative_kinds
+            and (
+                kind is not EvidenceRequirementKind.PATH
+                or (
+                    match is EvidenceMatchKind.PATH
+                    and normalized_source_path
+                    == normalized.replace("\\", "/")
+                )
+            )
             and tier is not EvidenceSourceTier.PROPOSAL
             and (
                 match in {
@@ -5209,6 +5225,85 @@ def tracked_files(git_root: Path) -> list[Path]:
     return files
 
 
+def tracked_regular_file_path(
+    repo_root: Path,
+    relative: str,
+) -> Path | None:
+    """Resolve one declared path only when Git tracks a regular file there.
+
+    Objective content scans may exclude large or sensitive roots. A declared
+    path requirement is a narrower question: whether one exact repository
+    path exists as a stage-zero regular-file entry. This inventory check reads
+    no file bytes, follows no symlink, rejects gitlinks, and remains subject to
+    the mandatory source-protected deny policy.
+    """
+
+    normalized = str(relative or "").strip().replace("\\", "/")
+    if (
+        not repo_relative_path_safe(normalized)
+        or normalized != Path(normalized).as_posix()
+    ):
+        return None
+    root = Path(repo_root).resolve()
+    candidate = root / normalized
+    if source_protected_scan_reason(root, candidate):
+        return None
+    try:
+        if not candidate.is_file():
+            return None
+    except OSError:
+        return None
+
+    owner = subprocess.run(
+        ["git", "-C", str(candidate.parent), "rev-parse", "--show-toplevel"],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if owner.returncode != 0 or not owner.stdout.strip():
+        return None
+    git_root = Path(owner.stdout.strip()).resolve()
+    try:
+        candidate_relative = candidate.resolve().relative_to(git_root)
+        git_root.relative_to(root)
+    except (OSError, ValueError):
+        return None
+    if not candidate_relative.parts:
+        return None
+    listed = subprocess.run(
+        [
+            "git",
+            "-C",
+            str(git_root),
+            "ls-files",
+            "--stage",
+            "-z",
+            "--error-unmatch",
+            "--",
+            candidate_relative.as_posix(),
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    if listed.returncode != 0:
+        return None
+    entries = [entry for entry in listed.stdout.split(b"\0") if entry]
+    if len(entries) != 1 or b"\t" not in entries[0]:
+        return None
+    metadata, raw_path = entries[0].split(b"\t", 1)
+    fields = metadata.split()
+    if (
+        len(fields) != 3
+        or fields[0] not in {b"100644", b"100755"}
+        or fields[2] != b"0"
+        or raw_path.decode("utf-8", errors="surrogateescape")
+        != candidate_relative.as_posix()
+    ):
+        return None
+    return candidate
+
+
 def scan_candidate(
     path: Path,
     *,
@@ -5439,13 +5534,10 @@ def evidence_index(
     for term in normalized_terms:
         if not repo_relative_path_safe(term):
             continue
-        candidate = repo_root / term
-        if (
-            not source_protected_scan_reason(repo_root, candidate)
-            and
-            not _path_is_scan_excluded(candidate, resolved_scan_excludes)
-            and candidate.exists()
-        ):
+        # Content exclusions remain in force below. Exact declared paths use
+        # a Git index/stat inventory that does not read the excluded file.
+        candidate = tracked_regular_file_path(repo_root, term)
+        if candidate is not None:
             reference = f"{Path(term).as_posix()} (path)"
             consider(
                 term,

@@ -120,6 +120,47 @@ def test_exact_authoritative_sources_satisfy_only_their_typed_requirement(
     assert "semantic_match_nomination_only" in semantic.reason_codes
 
 
+def test_path_requirements_need_the_exact_path_identity_not_a_text_reference() -> None:
+    policy = EvidenceSourcePolicy()
+    requirement = "data/policy/resource-bounds-v1.json"
+
+    mention = policy.evaluate(
+        requirement,
+        match_kind=EvidenceMatchKind.EXACT_TEXT,
+        source_path="tests/test_execution_profile.py",
+    )
+    wrong_path = policy.evaluate(
+        requirement,
+        match_kind=EvidenceMatchKind.PATH,
+        source_path="data/policy/analyzer-profile-v1.json",
+    )
+    receipt = policy.evaluate(
+        requirement,
+        match_kind=EvidenceMatchKind.TYPED_RECEIPT,
+        source_path=requirement,
+        typed_receipt=_receipt(requirement_id=requirement),
+        repository_tree=TREE_ID,
+        policy_id=POLICY_ID,
+    )
+    exact_path = policy.evaluate(
+        requirement,
+        match_kind=EvidenceMatchKind.PATH,
+        source_path=requirement,
+    )
+
+    assert mention.nomination_only
+    assert not mention.satisfies
+    assert "path_reference_nomination_only" in mention.reason_codes
+    assert wrong_path.nomination_only
+    assert not wrong_path.satisfies
+    assert "path_identity_mismatch" in wrong_path.reason_codes
+    assert receipt.nomination_only
+    assert not receipt.satisfies
+    assert "path_reference_nomination_only" in receipt.reason_codes
+    assert exact_path.satisfies
+    assert not exact_path.nomination_only
+
+
 @pytest.mark.parametrize(
     ("changes", "reason"),
     [

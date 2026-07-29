@@ -395,6 +395,162 @@ def test_objective_scanner_excludes_sensitive_root_without_reading_it(
     assert stale_cached_evidence == {"HSSLEV_PRIVATE_INPUT": []}
 
 
+def test_completed_objective_card_refills_only_a_genuine_path_residual(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    objective_path = repo / "objective.md"
+    todo_path = repo / "todo.md"
+    discovery_dir = repo / "generated" / "discovery"
+    bundle_dir = repo / "generated" / "bundles"
+    analyzer = "data/policy/analyzer-profile-v1.json"
+    resource_bounds = "data/policy/resource-bounds-v1.json"
+    objective_path.write_text(
+        f"""# Objective Heap
+
+## TEST-G050 Pin execution policy
+
+- Status: active
+- Parent:
+- Track: trust
+- Priority: P0
+- Bundle: objective/trust
+- Goal: Pin both execution policy artifacts.
+- Evidence: {analyzer}, {resource_bounds}
+- Outputs: {analyzer}, {resource_bounds}
+- Validation: true
+- Gap task: Add each missing policy artifact.
+""",
+        encoding="utf-8",
+    )
+    todo_path.write_text("# Objective Todo\n", encoding="utf-8")
+    _git(repo, "add", "objective.md", "todo.md")
+    _git(repo, "commit", "-m", "seed objective")
+
+    original = generate_objective_todos(
+        repo_root=repo,
+        objective_path=objective_path,
+        todo_path=todo_path,
+        discovery_dir=discovery_dir,
+        bundle_dir=bundle_dir,
+        task_prefix="TEST-",
+        max_findings=1,
+        scan_exclude_paths=["data"],
+        persist_ast_dataset=False,
+        write_todo_vector_index=False,
+    )
+    assert [record.finding.missing_evidence for record in original] == [
+        [analyzer, resource_bounds]
+    ]
+    todo_path.write_text(
+        todo_path.read_text(encoding="utf-8").replace(
+            "- Status: todo",
+            "- Status: completed",
+            1,
+        ),
+        encoding="utf-8",
+    )
+
+    analyzer_path = repo / analyzer
+    analyzer_path.parent.mkdir(parents=True)
+    analyzer_path.write_text('{"schema":"analyzer@1"}\n', encoding="utf-8")
+    validation_path = repo / "tests" / "test_execution_profile.py"
+    validation_path.parent.mkdir()
+    validation_path.write_text(
+        f'RESOURCE_BOUNDS = "{resource_bounds}"\n',
+        encoding="utf-8",
+    )
+    _git(repo, "add", analyzer, "tests/test_execution_profile.py")
+    _git(repo, "commit", "-m", "complete only analyzer profile")
+
+    evidence = evidence_index(
+        repo,
+        objective_path=objective_path,
+        terms=[analyzer, resource_bounds],
+        scan_exclude_paths=["data"],
+    )
+    assert evidence == {
+        analyzer: [f"{analyzer} (path)"],
+        resource_bounds: [],
+    }
+
+    residual = generate_objective_todos(
+        repo_root=repo,
+        objective_path=objective_path,
+        todo_path=todo_path,
+        discovery_dir=discovery_dir,
+        bundle_dir=bundle_dir,
+        task_prefix="TEST-",
+        max_findings=1,
+        scan_exclude_paths=["data"],
+        persist_ast_dataset=False,
+        write_todo_vector_index=False,
+    )
+    assert [record.task_id for record in residual] == ["TEST-002"]
+    assert [record.finding.missing_evidence for record in residual] == [
+        [resource_bounds]
+    ]
+    assert todo_path.read_text(encoding="utf-8").count("## TEST-") == 2
+
+    replay = generate_objective_todos(
+        repo_root=repo,
+        objective_path=objective_path,
+        todo_path=todo_path,
+        discovery_dir=discovery_dir,
+        bundle_dir=bundle_dir,
+        task_prefix="TEST-",
+        max_findings=1,
+        scan_exclude_paths=["data"],
+        persist_ast_dataset=False,
+        write_todo_vector_index=False,
+    )
+    assert replay == []
+    assert todo_path.read_text(encoding="utf-8").count("## TEST-") == 2
+
+
+def test_declared_path_evidence_requires_a_tracked_regular_file(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    objective_path = repo / "objective.md"
+    objective_path.write_text("# Objective Heap\n", encoding="utf-8")
+    policy_dir = repo / "data" / "policy"
+    policy_dir.mkdir(parents=True)
+    tracked = policy_dir / "tracked.json"
+    tracked.write_text('{"tracked":true}\n', encoding="utf-8")
+    untracked = policy_dir / "untracked.json"
+    untracked.write_text('{"tracked":false}\n', encoding="utf-8")
+    symlink = policy_dir / "alias.json"
+    symlink.symlink_to("tracked.json")
+    _git(repo, "add", "objective.md", "data/policy/tracked.json", "data/policy/alias.json")
+    _git(repo, "commit", "-m", "seed path evidence")
+
+    evidence = evidence_index(
+        repo,
+        objective_path=objective_path,
+        terms=[
+            "data/policy/tracked.json",
+            "data/policy/untracked.json",
+            "data/policy/alias.json",
+        ],
+        scan_exclude_paths=["data"],
+    )
+
+    assert evidence == {
+        "data/policy/tracked.json": ["data/policy/tracked.json (path)"],
+        "data/policy/untracked.json": [],
+        "data/policy/alias.json": [],
+    }
+
+
 def test_objective_scanner_enforces_source_protected_roots_in_repo_and_submodule(
     tmp_path,
     monkeypatch,
