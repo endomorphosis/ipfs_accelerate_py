@@ -43,6 +43,7 @@ from ..merge.lease_coordination import (
 from .objective_graph import (
     DEFAULT_TASK_PREFIX,
     build_bundle_task_payloads,
+    profile_g_safe_planning_value,
     repo_relative_path,
     safe_bundle_key,
     utc_now,
@@ -2838,6 +2839,15 @@ def optimize_bundle_payloads(
                 bundle.execution_wave * 1_000_000
                 + _schedule_int(payload, "schedule_rank")
             )
+            if not (
+                isinstance(projected.get("profile_g"), Mapping)
+                and projected["profile_g"].get("task_cid")
+            ):
+                # Split optimizer slices deliberately discard the source
+                # bundle's shared Profile-G identity.  The lease adapter will
+                # derive a distinct chain from the full projected payload, so
+                # normalize its learned float metrics before content hashing.
+                projected = dict(profile_g_safe_planning_value(projected))
             optimized_payloads.append(projected)
     return optimized_payloads
 

@@ -46,6 +46,9 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.todo_vector_index import (
 from ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor import (
     optimize_bundle_payloads,
 )
+from ipfs_accelerate_py.agent_supervisor.merge.lease_coordination import (
+    adapt_goal_bundle,
+)
 from ipfs_accelerate_py.agent_supervisor.task_sources.task_identity import (
     canonical_bundle_identity,
 )
@@ -1351,6 +1354,12 @@ def test_split_optimizer_slices_receive_distinct_execution_identities():
     assert len({payload["bundle_key"] for payload in payloads}) == 2
     assert all("profile_g" not in payload for payload in payloads)
     assert all(payload["source_profile_g_ref"] for payload in payloads)
+    assert all(
+        adapt_goal_bundle(payload, created_at_ms=1_783_872_000_000)[
+            "task_cid"
+        ]
+        for payload in payloads
+    )
     identities = {
         canonical_bundle_identity(payload).canonical_task_cid
         for payload in payloads

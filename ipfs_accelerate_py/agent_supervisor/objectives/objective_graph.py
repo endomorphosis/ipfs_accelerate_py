@@ -11454,17 +11454,20 @@ def generate_objective_todos_result(
     )
 
 
-def _profile_g_safe_planning_value(value: Any) -> Any:
-    """Encode graph weights without violating Profile G's no-float codec."""
+def profile_g_safe_planning_value(value: Any) -> Any:
+    """Encode planning weights without violating Profile G's no-float codec."""
 
     if isinstance(value, float):
         if not math.isfinite(value):
             return str(value)
         return format(value, ".12g")
     if isinstance(value, Mapping):
-        return {str(key): _profile_g_safe_planning_value(item) for key, item in value.items()}
+        return {
+            str(key): profile_g_safe_planning_value(item)
+            for key, item in value.items()
+        }
     if isinstance(value, (list, tuple)):
-        return [_profile_g_safe_planning_value(item) for item in value]
+        return [profile_g_safe_planning_value(item) for item in value]
     return value
 
 
@@ -11960,7 +11963,7 @@ def build_bundle_task_payloads(
             and task_payload.get("review_only") is False
         ):
             task_payload["profile_g"] = adapt_goal_bundle(
-                _profile_g_safe_planning_value(task_payload),
+                profile_g_safe_planning_value(task_payload),
                 created_at_ms=profile_created_at_ms,
             )
     return task_payloads
