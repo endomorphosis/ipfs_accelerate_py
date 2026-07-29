@@ -943,7 +943,7 @@ compact references and bounded spans only.
 
 ## VFS-041 Close objective gap: Answer minimal call-slice and contract-impact queries
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
