@@ -588,7 +588,7 @@ compact references and bounded spans only.
 
 ## VFS-030 Add security-property/dataflow findings and SARIF projection
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: finding-generation
