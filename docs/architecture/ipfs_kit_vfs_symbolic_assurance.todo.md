@@ -68,7 +68,7 @@ compact references and bounded spans only.
 
 ## VFS-004 Probe real ipfs_datasets_py AST, GraphRAG, IR, solver, multiformats, and ZKP capabilities
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: provider-capabilities
