@@ -1,0 +1,74 @@
+{
+  "schema": "ipfs_accelerate_py.agent_supervisor.proof_gated_contract_repair.scheduler_config@1",
+  "taskboard_path": "docs/architecture/agent_supervisor_proof_gated_contract_repair.todo.md",
+  "objectives_path": "docs/architecture/agent_supervisor_proof_gated_contract_repair.objectives.md",
+  "plan_path": "docs/architecture/AGENT_SUPERVISOR_PROOF_GATED_CONTRACT_REPAIR_PLAN.md",
+  "task_prefix": "RPR-",
+  "board_namespace": "agent-supervisor-proof-gated-contract-repair-v1",
+  "merge_target_branch": "agent/proof-gated-contract-repair",
+  "max_lanes": 4,
+  "strict_task_sharding": true,
+  "objective_refill_enabled": false,
+  "codebase_refill_enabled": false,
+  "poll_interval_seconds": 5,
+  "daemon_interval_seconds": 60,
+  "check_interval_seconds": 30,
+  "stale_seconds": 1800,
+  "watchdog_startup_grace_seconds": 300,
+  "max_restarts": 3,
+  "max_task_attempts": 3,
+  "implementation_timeout_seconds": 3600,
+  "implementation_max_timeout_seconds": 7200,
+  "implementation_log_stall_seconds": 1200,
+  "worktree_submodule_paths": [
+    "ipfs_datasets_py"
+  ],
+  "protected_paths": [
+    "docs/architecture/AGENT_SUPERVISOR_PROOF_GATED_CONTRACT_REPAIR_PLAN.md",
+    "docs/architecture/agent_supervisor_proof_gated_contract_repair.objectives.md",
+    "docs/architecture/agent_supervisor_proof_gated_contract_repair.todo.md",
+    "config/agent_supervisor_proof_gated_contract_repair_scheduler.json",
+    "scripts/proof_gated_contract_repair_supervisor.sh"
+  ],
+  "provider": {
+    "provider_id": "codex",
+    "model_id": "gpt-5.6-terra",
+    "max_concurrency": 4
+  },
+  "proof_policy": {
+    "datasets_logic_required_before_target_admission": true,
+    "candidate_solver_results_authoritative": false,
+    "independent_reconstruction_required": true,
+    "vector_semantic_authority": false,
+    "stale_or_unsupported_disposition": "abstain",
+    "memory_resource_bound_implies_memory_safety": false
+  },
+  "release_safety_floors": {
+    "wrong_path_automated_mutation_rate": 0,
+    "failed_obligation_override_rate": 0,
+    "stale_forged_or_poisoned_authoritative_admission_rate": 0,
+    "unsupported_memory_safety_promotion_rate": 0
+  },
+  "resource_hints": {
+    "rpr-contracts": "cpu-small",
+    "rpr-capabilities": "cpu-small",
+    "rpr-code-index": "cpu-medium",
+    "rpr-fixtures": "cpu-small",
+    "rpr-trace": "cpu-medium",
+    "rpr-contract-synthesis": "cpu-medium",
+    "rpr-memory-safety": "cpu-medium",
+    "rpr-retrieval": "cpu-medium",
+    "rpr-obligations": "cpu-proof-solver",
+    "rpr-prover": "cpu-proof-solver",
+    "rpr-placement": "cpu-medium",
+    "rpr-reranker": "cpu-medium",
+    "rpr-target-admission": "cpu-small",
+    "rpr-edit-packet": "cpu-medium",
+    "rpr-task-source": "cpu-small",
+    "rpr-provider-gate": "cpu-small",
+    "rpr-integration-serialized": "cpu-medium",
+    "rpr-post-edit": "cpu-large",
+    "rpr-benchmark": "cpu-large",
+    "rpr-rollout": "cpu-small"
+  }
+}
