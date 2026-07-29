@@ -1720,3 +1720,133 @@ compact references and bounded spans only.
 - Candidate kind: aggregate
 - Todo vector key: 8b9a7dda343fd6c8
 - Acceptance: Objective scan filed this gap for VFS-G132. Use evidence in /home/barberb/.local/state/ipfs_accelerate_py/ipfs_kit_vfs_symbolic_assurance/projection/discovery/2026-07-29-vfs-052-objective-gap-a318dedf612e.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (vfs/repository-forest-receipt@1), and keep the supervisor-fed backlog aligned with the objective heap. This task is part of goal_packet/vfs_symbolic_assurance/general/7414e86c1a7c; implement a complete, cohesive change that fully advances the packet goals (VFS-G132, VFS-G133, VFS-G134, VFS-G135) and covers all the shared packet evidence in one comprehensive pass. Refine the objective heap if the gap needs smaller child goals.
+
+## VFS-053 Close objective gap: Translate supported code contracts into kernel-checkable proof obligations
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: formal-proof
+- Depends on:
+- Outputs: ipfs_accelerate_py/agent_supervisor/code_contract_logic.py, ipfs_accelerate_py/agent_supervisor/code_contract_prover.py, test/api/test_agent_supervisor_code_contract_prover.py
+- Validation: python -m pytest test/api/test_agent_supervisor_code_contract_logic.py test/api/test_agent_supervisor_code_contract_prover.py -q
+- Evidence inputs: data/agent_supervisor/ipfs_kit_vfs_symbolic_assurance/objective_gap.json
+- Discovery evidence: /home/barberb/.local/state/ipfs_accelerate_py/ipfs_kit_vfs_symbolic_assurance/projection/discovery/2026-07-29-vfs-053-objective-gap-3b1c2418f6e7.md
+- Bundle: vfs-assurance/proof
+- Bundle shard: /home/barberb/.local/state/ipfs_accelerate_py/ipfs_kit_vfs_symbolic_assurance/projection/bundles/vfs-assurance-proof.todo.md
+- Bundle strategy: explicit
+- Graph parents: VFS-G000
+- Graph depth: 1
+- Objective heap index: 12
+- Parallel lane: vfs-assurance/proof
+- Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
+- Predicted files: ipfs_accelerate_py/agent_supervisor/code_contract_logic.py, ipfs_accelerate_py/agent_supervisor/code_contract_prover.py, test/api/test_agent_supervisor_code_contract_prover.py
+- Changed paths:
+- AST symbols: FormalLogicVocabulary MultiProverRouter KernelVerification
+- Interfaces:
+- Submodules:
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: VFS-G070
+- Completion authority: local
+- External authority blockers:
+- Canonical task key: task/v1/4540b431da3ad8a8642f81e47484c9b825498a4145609ee9a10842d34c8381ee
+- Canonical task CID: baguqeeraivalimo2hlmkqzbpqhshjbgjxasutcsbivqj52nbbbbngtedqhxa
+- Semantic identity: objective-evidence-obligation/v1/eb308b6367cf93f0073e14bfddeb6c5055f8c4c1b521fdb1e1f87d49a7f4bf6c
+- Acceptance subset: Translation round trips are checked, assumptions and unsupported semantics are explicit, premise selectors and candidate solvers lack authority, wrong theorem, stale proof, omitted effect, and capability-loss cases fail closed.
+- Preconditions: objective goal VFS-G070 is schedulable
+- Effects: satisfy evidence requirement: objective validation repair
+- Evidence subset: objective validation repair
+- Resource class: cpu-medium
+- Token class: medium
+- Estimated tokens: 0
+- Resources: cpu-medium
+- Merge fate: objective/VFS-G070
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/eb308b6367cf93f0073e14bfddeb6c5055f8c4c1b521fdb1e1f87d49a7f4bf6c
+- Missing evidence: objective validation repair
+- Embedding query: formal logic code contract theorem proof kernel premise selection
+- AST query: FormalLogicVocabulary MultiProverRouter KernelVerification
+- Surplus group: objective/VFS-G070
+- Merge key: 0e4306c4a4be20c0
+- Merge family: objective/VFS-G070
+- Merge role: validation_gate
+- Work item count: 1
+- Work scope: objective_validation_repair
+- Goal packet:
+- Goal packet role:
+- Goal packet goals:
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: validation_gate
+- Todo vector key: d0ad62a666b0262b
+- Acceptance: Objective scan filed this gap for VFS-G070. Use evidence in /home/barberb/.local/state/ipfs_accelerate_py/ipfs_kit_vfs_symbolic_assurance/projection/discovery/2026-07-29-vfs-053-objective-gap-3b1c2418f6e7.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (objective validation repair), and keep the supervisor-fed backlog aligned with the objective heap.  Keep translation, candidate search, and kernel validation separate.
+
+## VFS-054 Close objective gap: Prove objective validation repair for Project a provenance-preserving program and GraphRAG evidence graph
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: program-graph
+- Depends on:
+- Outputs: ipfs_accelerate_py/agent_supervisor/program_graph.py, ipfs_accelerate_py/agent_supervisor/ipfs_datasets_program_graph_provider.py, test/api/test_agent_supervisor_program_graph.py
+- Validation: python -m pytest test/api/test_agent_supervisor_program_graph.py test/api/test_agent_supervisor_ipfs_datasets_program_graph_provider.py -q
+- Evidence inputs: data/agent_supervisor/ipfs_kit_vfs_symbolic_assurance/objective_gap.json
+- Discovery evidence: /home/barberb/.local/state/ipfs_accelerate_py/ipfs_kit_vfs_symbolic_assurance/projection/discovery/2026-07-29-vfs-054-objective-gap-abcab1b61e70.md
+- Bundle: vfs-assurance/graph
+- Bundle shard: /home/barberb/.local/state/ipfs_accelerate_py/ipfs_kit_vfs_symbolic_assurance/projection/bundles/vfs-assurance-graph.todo.md
+- Bundle strategy: explicit
+- Graph parents: VFS-G040
+- Graph depth: 2
+- Objective heap index: 33
+- Parallel lane: vfs-assurance/graph
+- Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
+- Predicted files: ipfs_accelerate_py/agent_supervisor/program_graph.py, ipfs_accelerate_py/agent_supervisor/ipfs_datasets_program_graph_provider.py, test/api/test_agent_supervisor_program_graph.py
+- Changed paths:
+- AST symbols: objective validation repair
+- Interfaces:
+- Submodules:
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: VFS-G144
+- Completion authority: local
+- External authority blockers:
+- Canonical task key: task/v1/a3c0f2649165745790de3f88b373a4c0e36347b1143e410f69c0bf1752ebc941
+- Canonical task CID: baguqeeraupapezermv2fpeg6h6elg45eydrwgr5rcq7ecd3jyc7rouxlzfaq
+- Semantic identity: objective-evidence-obligation/v1/12e9e6537114c48832df898e1d7b1614cce378df4639e8667bc43ccc353734ca
+- Acceptance subset: Node and edge provenance is content bound, graph chunks are deterministic and bounded, retrieval returns compact references and ranking reasons, provider absence degrades explicitly, GraphRAG output cannot create completion or proof authority.
+- Preconditions: objective goal VFS-G144 is schedulable
+- Effects: satisfy evidence requirement: objective validation repair
+- Evidence subset: objective validation repair
+- Resource class: cpu-medium
+- Token class: medium
+- Estimated tokens: 0
+- Resources: cpu-medium
+- Merge fate: objective/VFS-G144
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/12e9e6537114c48832df898e1d7b1614cce378df4639e8667bc43ccc353734ca
+- Missing evidence: objective validation repair
+- Embedding query: objective validation repair
+- AST query: objective validation repair
+- Surplus group: objective/VFS-G144
+- Merge key: 94ebe20c06c3784c
+- Merge family: goal_packet/program_graph/ipfs_accelerate_py/b1681ac58b21
+- Merge role: validation_gate
+- Work item count: 1
+- Work scope: objective_validation_repair; goal_subgoal_packet
+- Goal packet: goal_packet/program_graph/ipfs_accelerate_py/b1681ac58b21
+- Goal packet role: packet_anchor
+- Goal packet goals: VFS-G041, VFS-G144
+- Goal packet task count: 2
+- Goal packet work item count: 2
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: validation_gate
+- Todo vector key: 483799395bd2973d
+- Acceptance: Objective scan filed this gap for VFS-G144. Use evidence in /home/barberb/.local/state/ipfs_accelerate_py/ipfs_kit_vfs_symbolic_assurance/projection/discovery/2026-07-29-vfs-054-objective-gap-abcab1b61e70.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (objective validation repair), and keep the supervisor-fed backlog aligned with the objective heap. This task is part of goal_packet/program_graph/ipfs_accelerate_py/b1681ac58b21; implement a complete, cohesive change that fully advances the packet goals (VFS-G041, VFS-G144) and covers all the shared packet evidence in one comprehensive pass. Refine the objective heap if the gap needs smaller child goals.
