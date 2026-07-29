@@ -239,6 +239,27 @@ export class Service {
     assert other_compiler.record_id != record.record_id
 
 
+def test_explicit_typescript_path_is_normalized_to_absolute(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    provider = PolyglotASTProvider(
+        typescript_path="toolchains/typescript/lib/typescript.js"
+    )
+
+    assert provider.typescript_path == str(
+        (
+            tmp_path
+            / "toolchains"
+            / "typescript"
+            / "lib"
+            / "typescript.js"
+        ).resolve()
+    )
+
+
 def test_typed_parse_error_is_a_version_bound_empty_record() -> None:
     parse_error = "typescript_parse_error:TS1005@2:12:'}' expected."
 

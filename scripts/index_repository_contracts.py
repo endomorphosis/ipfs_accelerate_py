@@ -43,6 +43,8 @@ from ipfs_accelerate_py.agent_supervisor.analysis.repository_indexer import (  #
 )
 from ipfs_accelerate_py.agent_supervisor.analysis.repository_snapshot import (  # noqa: E402
     RepositorySnapshotError,
+    default_scope_policy_path,
+    load_scope_policy,
 )
 
 
@@ -174,6 +176,51 @@ def build_arg_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _resolve_typescript_path(
+    *,
+    repo_root: str | os.PathLike[str],
+    scope_config: str | os.PathLike[str] | None,
+    explicit: str | os.PathLike[str] | None,
+) -> str | None:
+    """Resolve one bounded compiler path for the reviewed inventory root.
+
+    An explicit path remains authoritative.  Otherwise discovery checks only
+    the exact TypeScript compiler installed beneath the scope policy's
+    ``primaryRoot``; it never recursively searches the checkout or silently
+    borrows a compiler from an unrelated repository.
+    """
+
+    if explicit is not None:
+        return str(Path(explicit).expanduser().resolve())
+
+    repository = Path(repo_root).expanduser().resolve()
+    config_path = (
+        Path(scope_config)
+        if scope_config is not None
+        else default_scope_policy_path(repository)
+    )
+    policy = load_scope_policy(config_path)
+    if policy.primary_root in {"", "."}:
+        primary = repository
+    else:
+        primary = repository.joinpath(*Path(policy.primary_root).parts)
+        if not primary.is_dir() and (
+            repository.name == policy.primary_repository
+            or (repository / ".git").exists()
+        ):
+            # Match repository snapshot semantics when repo_root already names
+            # the reviewed primary worktree.
+            primary = repository
+    candidate = (
+        primary
+        / "node_modules"
+        / "typescript"
+        / "lib"
+        / "typescript.js"
+    ).resolve()
+    return str(candidate) if candidate.is_file() else None
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_arg_parser().parse_args(argv)
     output_root = Path(args.output_root)
@@ -189,10 +236,15 @@ def main(argv: Sequence[str] | None = None) -> int:
             max_output_bytes=args.parser_output_bytes,
             process_timeout_seconds=args.parser_timeout_seconds,
         )
+        typescript_path = _resolve_typescript_path(
+            repo_root=args.repo_root,
+            scope_config=args.scope_config,
+            explicit=args.typescript_path,
+        )
         provider = PolyglotASTProvider(
             limits,
             node_executable=args.node,
-            typescript_path=args.typescript_path,
+            typescript_path=typescript_path,
             expected_typescript_version=args.typescript_version,
         )
         thresholds = AnalyzerHealthThresholds(

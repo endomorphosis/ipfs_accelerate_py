@@ -17,7 +17,7 @@ import sys
 import tempfile
 import threading
 import time
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from typing import Any, Callable, Iterable, Mapping, Sequence
@@ -109,6 +109,7 @@ from ..integrations.llm_merge_resolver_fallback import llm_merge_resolver_fallba
 from ..merge.merge_checkpoint import MergeCheckpoint
 from ..merge.merge_queue import MERGE_TARGET_BINDING_SCHEMA, MergeQueue
 from ..validation.validation_commands import (
+    build_validation_commands,
     infer_validation_impact_paths,
     normalize_validation_command_text,
     split_validation_commands,
@@ -121,6 +122,18 @@ from ..validation.validation_scheduler import (
 from .diagnostics import summarize_test_failure
 from .runner import TodoDaemonHooks, TodoDaemonRunner
 from .supervisor_runtime import run_process_group_stream
+from .task_execution_policy import (
+    MAX_TASK_CONTEXT_BYTES,
+    MAX_TASK_CONTEXT_TOKENS,
+    ExecutionMode,
+    ExecutionStatus,
+    LocalOperationType,
+    TaskContextMetadata,
+    TaskExecutionPolicy,
+    TaskExecutionReceipt,
+    TaskExecutionRequest,
+    TypedLocalOperation,
+)
 from .worktrees import WorktreeLease, WorktreePool
 
 REPO_ROOT = Path.cwd()
@@ -159,6 +172,14 @@ IMPLEMENTATION_ATTEMPT_ENV = "IPFS_ACCELERATE_AGENT_TASK_ATTEMPT"
 IMPLEMENTATION_CHECKPOINT_MANIFEST_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/"
     "implementation-checkpoint-manifest@1"
+)
+DETERMINISTIC_VALIDATION_PLAN_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "deterministic-declared-validation-plan@1"
+)
+DETERMINISTIC_TASK_EXECUTION_RECEIPT_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "deterministic-task-execution-integration@1"
 )
 MAX_IMPLEMENTATION_CHECKPOINT_FILES = 16
 MAX_IMPLEMENTATION_CHECKPOINT_BYTES = 512 * 1024 * 1024
@@ -6368,6 +6389,10 @@ class PortalImplementationDaemon:
             }
             self._record_event("implementation_skipped", result)
             return result
+        deterministic_only = (
+            self._task_declared_implementation_provider(task)
+            == ExecutionMode.DETERMINISTIC_ONLY.value
+        )
         completion_scope = completion_gap_edit_scope(
             task,
             repo_root=self.repo_root,
@@ -6381,7 +6406,11 @@ class PortalImplementationDaemon:
             }
             self._record_event("implementation_skipped", result)
             return result
-        provider_backoff = self._active_provider_capacity_backoff()
+        provider_backoff = (
+            {}
+            if deterministic_only
+            else self._active_provider_capacity_backoff()
+        )
         if provider_backoff:
             result = {
                 "skipped": True,
@@ -6487,7 +6516,20 @@ class PortalImplementationDaemon:
         acquired_lock = False
         log_path = self.implementation_log_dir / f"{task.task_id.lower()}-attempt-{attempt}.log"
         try:
-            prompt = self._build_implementation_prompt(task, attempt)
+            if deterministic_only:
+                if not task.validation:
+                    raise ImplementationRetryDeferred(
+                        "deterministic-only task requires typed local operation",
+                        backoff_seconds=300,
+                    )
+                if self._implementation_cancel_requested():
+                    raise ImplementationRetryDeferred(
+                        "implementation dispatch cancelled"
+                    )
+                self._compile_implementation_context(task, attempt)
+                prompt = ""
+            else:
+                prompt = self._build_implementation_prompt(task, attempt)
         except ImplementationRetryDeferred as exc:
             canonical_task_cid = self._canonical_ref(task)
             if exc.backoff_seconds > 0:
@@ -6591,6 +6633,8 @@ class PortalImplementationDaemon:
         context_receipt_path: Path | None = None
         protected_path_snapshot: dict[str, dict[str, Any]] | None = None
         protected_path_violation: dict[str, Any] = {}
+        task_execution_receipt_path: Path | None = None
+        task_execution_receipt: dict[str, Any] = {}
         checkpoint_dir = self._ensure_implementation_checkpoint_dir(task)
         timeout_policy = self._implementation_timeout_policy(task)
 
@@ -6642,9 +6686,13 @@ class PortalImplementationDaemon:
                 ).stdout.strip()
             except (OSError, RuntimeError):
                 baseline_ref = ""
-            command = self._build_implementation_command(
-                workspace_path,
-                task=task,
+            command = (
+                []
+                if deterministic_only
+                else self._build_implementation_command(
+                    workspace_path,
+                    task=task,
+                )
             )
             protected_path_snapshot = self._require_implementation_protected_snapshot(
                 task=task,
@@ -6666,48 +6714,67 @@ class PortalImplementationDaemon:
                     "attempt": attempt,
                     "command": command,
                     "log_path": str(log_path),
+                    "execution_mode": (
+                        ExecutionMode.DETERMINISTIC_ONLY.value
+                        if deterministic_only
+                        else "model-assisted"
+                    ),
                 },
             )
             with log_path.open("w", encoding="utf-8") as log_fh:
                 log_fh.write(f"Task: {task.task_id} {task.title}\n")
                 log_fh.write(f"Started: {started_at}\n")
-                log_fh.write(f"Command: {' '.join(shlex.quote(item) for item in command)}\n\n")
+                if deterministic_only:
+                    log_fh.write(
+                        "Execution: typed local declared-validation-plan\n\n"
+                    )
+                else:
+                    log_fh.write(
+                        "Command: "
+                        f"{' '.join(shlex.quote(item) for item in command)}\n\n"
+                    )
                 log_fh.flush()
-                completed = self._decision_runtime_mutation(
-                    "command_invocation",
-                    {
-                        "operation": "implementation_provider",
-                        "task_id": task.task_id,
-                        "attempt": int(attempt),
-                        "command": tuple(command),
-                        "workspace_path": str(workspace_path),
-                        "context_receipt_path": str(context_receipt_path),
-                    },
-                    lambda: run_process_group_stream(
-                        command,
-                        cwd=workspace_path,
-                        stdout=log_fh,
-                        input_text=prompt,
-                        env=self._implementation_process_environment(
-                            task,
-                            attempt=attempt,
-                            checkpoint_dir=checkpoint_dir,
+                if deterministic_only:
+                    completed = subprocess.CompletedProcess(
+                        args=(),
+                        returncode=0,
+                    )
+                else:
+                    completed = self._decision_runtime_mutation(
+                        "command_invocation",
+                        {
+                            "operation": "implementation_provider",
+                            "task_id": task.task_id,
+                            "attempt": int(attempt),
+                            "command": tuple(command),
+                            "workspace_path": str(workspace_path),
+                            "context_receipt_path": str(context_receipt_path),
+                        },
+                        lambda: run_process_group_stream(
+                            command,
+                            cwd=workspace_path,
+                            stdout=log_fh,
+                            input_text=prompt,
+                            env=self._implementation_process_environment(
+                                task,
+                                attempt=attempt,
+                                checkpoint_dir=checkpoint_dir,
+                            ),
+                            timeout_seconds=timeout_policy.max_timeout_seconds,
+                            progress_timeout_seconds=(
+                                timeout_policy.progress_timeout_seconds
+                                if timeout_policy.progress_aware
+                                else None
+                            ),
+                            max_timeout_seconds=timeout_policy.max_timeout_seconds,
+                            progress_paths=(checkpoint_dir,),
+                            on_progress=self._implementation_progress_observer(
+                                state,
+                                task,
+                                attempt=attempt,
+                            ),
                         ),
-                        timeout_seconds=timeout_policy.max_timeout_seconds,
-                        progress_timeout_seconds=(
-                            timeout_policy.progress_timeout_seconds
-                            if timeout_policy.progress_aware
-                            else None
-                        ),
-                        max_timeout_seconds=timeout_policy.max_timeout_seconds,
-                        progress_paths=(checkpoint_dir,),
-                        on_progress=self._implementation_progress_observer(
-                            state,
-                            task,
-                            attempt=attempt,
-                        ),
-                    ),
-                )
+                    )
             effective_returncode = completed.returncode
             protected_path_violation = (
                 self._implementation_protected_path_violation(
@@ -6768,18 +6835,41 @@ class PortalImplementationDaemon:
                     phase="validating",
                     phase_detail="; ".join(task.validation) if task.validation else "",
                 )
-                proposal_validation = self._validate_implementation_patch(
-                    workspace_path,
-                    task,
-                    baseline_ref=baseline_ref,
-                )
-                validation_result = self._run_validation_commands(
-                    workspace_path,
-                    task,
-                    log_path,
-                    state=state,
-                    proposal_validation=proposal_validation,
-                )
+                if deterministic_only:
+                    (
+                        validation_result,
+                        task_execution_receipt_path,
+                        task_execution_receipt,
+                    ) = self._execute_deterministic_validation_plan(
+                        workspace_path=workspace_path,
+                        task=task,
+                        attempt=attempt,
+                        log_path=log_path,
+                        state=state,
+                    )
+                    validation_result = (
+                        self._admit_deterministic_validation_materialization(
+                            workspace_path,
+                            task,
+                            log_path,
+                            state=state,
+                            baseline_ref=baseline_ref,
+                            materialization_result=validation_result,
+                        )
+                    )
+                else:
+                    proposal_validation = self._validate_implementation_patch(
+                        workspace_path,
+                        task,
+                        baseline_ref=baseline_ref,
+                    )
+                    validation_result = self._run_validation_commands(
+                        workspace_path,
+                        task,
+                        log_path,
+                        state=state,
+                        proposal_validation=proposal_validation,
+                    )
                 protected_path_violation = (
                     self._implementation_protected_path_violation(
                         task=task,
@@ -6860,6 +6950,13 @@ class PortalImplementationDaemon:
                 "validation_result": validation_result,
                 "context_receipt_path": str(context_receipt_path),
             }
+            if task_execution_receipt_path is not None:
+                result["task_execution_receipt_path"] = str(
+                    task_execution_receipt_path
+                )
+                result["task_execution_receipt_id"] = str(
+                    task_execution_receipt.get("receipt_id") or ""
+                )
             if protected_path_violation:
                 result["reason"] = "implementation_protected_path_mutated"
                 result["agent_returncode"] = completed.returncode
@@ -8884,6 +8981,10 @@ class PortalImplementationDaemon:
     ) -> dict[str, Any]:
         self.implementation_log_dir.mkdir(parents=True, exist_ok=True)
         self.worktree_root.mkdir(parents=True, exist_ok=True)
+        deterministic_only = (
+            self._task_declared_implementation_provider(task)
+            == ExecutionMode.DETERMINISTIC_ONLY.value
+        )
         safe_task_id = task.task_id.lower().replace("/", "-")
         identity_suffix = self._identity_for_task(task).short_id
         execution_id = f"{safe_task_id}-{identity_suffix}"
@@ -8911,6 +9012,8 @@ class PortalImplementationDaemon:
         timeout_result: dict[str, Any] = {}
         protected_path_snapshot: dict[str, dict[str, Any]] | None = None
         protected_path_violation: dict[str, Any] = {}
+        task_execution_receipt_path: Path | None = None
+        task_execution_receipt: dict[str, Any] = {}
         checkpoint_dir = self._ensure_implementation_checkpoint_dir(task)
         timeout_policy = self._implementation_timeout_policy(task)
         lifecycle_record: WorkspaceLifecycleRecord | None = None
@@ -8985,9 +9088,13 @@ class PortalImplementationDaemon:
                 )
             workspace_setup = self._worktree_setup_result(worktree_path)
             workspace_setup["prior_attempt_seed"] = dict(seed_apply)
-            command = self._build_implementation_command(
-                worktree_path,
-                task=task,
+            command = (
+                []
+                if deterministic_only
+                else self._build_implementation_command(
+                    worktree_path,
+                    task=task,
+                )
             )
             protected_path_snapshot = self._require_implementation_protected_snapshot(
                 task=task,
@@ -9038,6 +9145,11 @@ class PortalImplementationDaemon:
                     "saved_duration_seconds": workspace_setup["saved_duration_seconds"],
                     "checkpoint_directory": str(checkpoint_dir),
                     "timeout_policy": timeout_policy.to_dict(),
+                    "execution_mode": (
+                        ExecutionMode.DETERMINISTIC_ONLY.value
+                        if deterministic_only
+                        else "model-assisted"
+                    ),
                     "worktree_lifecycle": (
                         None
                         if lifecycle_record is None
@@ -9056,43 +9168,57 @@ class PortalImplementationDaemon:
                 log_fh.write(f"Workspace: {worktree_path}\n")
                 log_fh.write(f"Branch: {branch_name}\n")
                 log_fh.write(f"Baseline: {baseline_ref}\n")
-                log_fh.write(f"Command: {' '.join(shlex.quote(item) for item in command)}\n\n")
+                if deterministic_only:
+                    log_fh.write(
+                        "Execution: typed local declared-validation-plan\n\n"
+                    )
+                else:
+                    log_fh.write(
+                        "Command: "
+                        f"{' '.join(shlex.quote(item) for item in command)}\n\n"
+                    )
                 log_fh.flush()
-                completed = self._decision_runtime_mutation(
-                    "command_invocation",
-                    {
-                        "operation": "implementation_provider",
-                        "task_id": task.task_id,
-                        "attempt": int(attempt),
-                        "command": tuple(command),
-                        "workspace_path": str(worktree_path),
-                        "branch": branch_name,
-                    },
-                    lambda: run_process_group_stream(
-                        command,
-                        cwd=worktree_path,
-                        stdout=log_fh,
-                        input_text=prompt,
-                        env=self._implementation_process_environment(
-                            task,
-                            attempt=attempt,
-                            checkpoint_dir=checkpoint_dir,
+                if deterministic_only:
+                    completed = subprocess.CompletedProcess(
+                        args=(),
+                        returncode=0,
+                    )
+                else:
+                    completed = self._decision_runtime_mutation(
+                        "command_invocation",
+                        {
+                            "operation": "implementation_provider",
+                            "task_id": task.task_id,
+                            "attempt": int(attempt),
+                            "command": tuple(command),
+                            "workspace_path": str(worktree_path),
+                            "branch": branch_name,
+                        },
+                        lambda: run_process_group_stream(
+                            command,
+                            cwd=worktree_path,
+                            stdout=log_fh,
+                            input_text=prompt,
+                            env=self._implementation_process_environment(
+                                task,
+                                attempt=attempt,
+                                checkpoint_dir=checkpoint_dir,
+                            ),
+                            timeout_seconds=timeout_policy.max_timeout_seconds,
+                            progress_timeout_seconds=(
+                                timeout_policy.progress_timeout_seconds
+                                if timeout_policy.progress_aware
+                                else None
+                            ),
+                            max_timeout_seconds=timeout_policy.max_timeout_seconds,
+                            progress_paths=(checkpoint_dir,),
+                            on_progress=self._implementation_progress_observer(
+                                state,
+                                task,
+                                attempt=attempt,
+                            ),
                         ),
-                        timeout_seconds=timeout_policy.max_timeout_seconds,
-                        progress_timeout_seconds=(
-                            timeout_policy.progress_timeout_seconds
-                            if timeout_policy.progress_aware
-                            else None
-                        ),
-                        max_timeout_seconds=timeout_policy.max_timeout_seconds,
-                        progress_paths=(checkpoint_dir,),
-                        on_progress=self._implementation_progress_observer(
-                            state,
-                            task,
-                            attempt=attempt,
-                        ),
-                    ),
-                )
+                    )
             returncode = completed.returncode
             protected_path_violation = (
                 self._implementation_protected_path_violation(
@@ -9187,15 +9313,36 @@ class PortalImplementationDaemon:
                     cleanup_result = self._cleanup_merged_worktree(worktree_path, branch_name)
                 else:
                     self._prepare_worktree_for_validation(worktree_path, task=task, branch_name=branch_name)
-                    validation_result = (
-                        self._run_validation_with_candidate_binding(
+                    if deterministic_only:
+                        (
+                            validation_result,
+                            task_execution_receipt_path,
+                            task_execution_receipt,
+                        ) = self._execute_deterministic_validation_plan(
+                            workspace_path=worktree_path,
+                            task=task,
+                            attempt=attempt,
+                            log_path=log_path,
+                            state=state,
+                        )
+                        validation_result = (
+                            self._admit_deterministic_validation_materialization(
+                                worktree_path,
+                                task,
+                                log_path,
+                                state=state,
+                                baseline_ref=baseline_ref,
+                                materialization_result=validation_result,
+                            )
+                        )
+                    else:
+                        validation_result = self._run_validation_with_candidate_binding(
                             worktree_path,
                             task,
                             log_path,
                             state=state,
                             baseline_ref=baseline_ref,
                         )
-                    )
                 protected_path_violation = (
                     self._finalize_implementation_protected_path_fence(
                         task=task,
@@ -9855,6 +10002,13 @@ class PortalImplementationDaemon:
             "board_completion": dict(board_completion),
             "attempt_consumed": attempt_consumed,
         }
+        if task_execution_receipt_path is not None:
+            result["task_execution_receipt_path"] = str(
+                task_execution_receipt_path
+            )
+            result["task_execution_receipt_id"] = str(
+                task_execution_receipt.get("receipt_id") or ""
+            )
         if protected_path_violation:
             result["reason"] = "implementation_protected_path_mutated"
             result["protected_path_violation"] = protected_path_violation
@@ -13693,6 +13847,7 @@ class PortalImplementationDaemon:
         *,
         state: PortalTaskState | None = None,
         baseline_ref: str,
+        proposal_validation: Any = None,
     ) -> dict[str, Any]:
         """Validate the exact final candidate, including generated outputs.
 
@@ -13701,11 +13856,12 @@ class PortalImplementationDaemon:
         proposal-authorized fixed point can proceed to commit.
         """
 
-        proposal_validation = self._validate_implementation_patch(
-            workspace_path,
-            task,
-            baseline_ref=baseline_ref,
-        )
+        if proposal_validation is None:
+            proposal_validation = self._validate_implementation_patch(
+                workspace_path,
+                task,
+                baseline_ref=baseline_ref,
+            )
         result = self._run_validation_commands(
             workspace_path,
             task,
@@ -13783,6 +13939,421 @@ class PortalImplementationDaemon:
             "candidate_rebind": rebind,
         }
 
+    def _admit_deterministic_validation_materialization(
+        self,
+        workspace_path: Path,
+        task: PortalTask,
+        log_path: Path,
+        *,
+        state: PortalTaskState,
+        baseline_ref: str,
+        materialization_result: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Apply ordinary proposal/scope gates to validation-generated files."""
+
+        result = dict(materialization_result)
+        if not result.get("passed", False):
+            return result
+        try:
+            entries, _submodule_expansions = (
+                self._collect_proposal_candidate_diff(
+                    workspace_path,
+                    baseline_ref=baseline_ref,
+                    scope_paths=self._proposal_scope_paths(task),
+                )
+            )
+        except (OSError, RuntimeError, ValueError) as exc:
+            return {
+                **result,
+                "passed": False,
+                "returncode": PROPOSAL_VALIDATION_FAILURE_RETURN_CODE,
+                "reason": "deterministic_materialization_collection_failed",
+                "proposal_gate": {
+                    "attempted": True,
+                    "accepted": False,
+                    "collection_error": type(exc).__name__,
+                },
+            }
+
+        if not entries:
+            binding = {
+                "verified": True,
+                "reason": "deterministic_read_only_no_candidate_changes",
+            }
+            self._record_event(
+                "implementation_candidate_binding_verified",
+                {"task_id": task.task_id, **binding},
+            )
+            result["proposal_gate"] = {
+                "attempted": False,
+                "accepted": True,
+                "reason": "no_candidate_changes",
+                "changed_paths": [],
+            }
+            result["candidate_binding"] = binding
+            return result
+
+        proposal_validation = self._validate_implementation_patch(
+            workspace_path,
+            task,
+            baseline_ref=baseline_ref,
+        )
+        compact = self._compact_proposal_validation(proposal_validation)
+        if not bool(getattr(proposal_validation, "accepted", False)):
+            return {
+                **result,
+                "passed": False,
+                "returncode": PROPOSAL_VALIDATION_FAILURE_RETURN_CODE,
+                "reason": "deterministic_materialization_proposal_rejected",
+                "error": "proposal_validation_failed",
+                "proposal_gate": compact,
+            }
+
+        validated = self._run_validation_with_candidate_binding(
+            workspace_path,
+            task,
+            log_path,
+            state=state,
+            baseline_ref=baseline_ref,
+            proposal_validation=proposal_validation,
+        )
+        validated["task_execution_receipt_id"] = str(
+            result.get("task_execution_receipt_id") or ""
+        )
+        plan_binding = result.get("validation_plan_binding")
+        if isinstance(plan_binding, Mapping):
+            validated["validation_plan_binding"] = dict(plan_binding)
+        validated["deterministic_materialization"] = {
+            "passed": True,
+            "returncode": int(result.get("returncode") or 0),
+            "proposal_gate": compact,
+        }
+        return validated
+
+    def _deterministic_validation_plan_binding(
+        self,
+        workspace_path: Path,
+        task: PortalTask,
+    ) -> dict[str, Any]:
+        """Bind one reviewed task's validation population without a prompt.
+
+        The returned record contains only content identities and scheduling
+        metadata.  Raw commands remain owned by the immutable ``PortalTask``;
+        callers cannot smuggle a different command through a typed local
+        operation's arguments.
+        """
+
+        commands: list[str] = []
+        for raw_command in task.validation:
+            command, _notes = self._normalize_validation_command(raw_command)
+            command, _pythonpath_note = self._with_worktree_validation_pythonpath(
+                command,
+                workspace_path,
+            )
+            commands.append(command)
+        if not commands:
+            raise ValueError(
+                "deterministic-only task requires a declared validation command"
+            )
+
+        completion_scope = completion_gap_edit_scope(
+            task,
+            repo_root=self.repo_root,
+        )
+        changed_paths = list(
+            completion_scope
+            if completion_scope is not None
+            else task.outputs
+        )
+        for metadata_key in ("predicted files", "predicted outputs"):
+            for path in split_csv(self._task_metadata_value(task, metadata_key)):
+                if path not in changed_paths:
+                    changed_paths.append(path)
+        if not changed_paths:
+            raise ValueError(
+                "deterministic-only task requires a declared output/edit target"
+            )
+
+        repository_id, fallback_tree_id = (
+            self._implementation_repository_and_tree_ids(task)
+        )
+        workspace_head = subprocess.run(
+            ["git", "rev-parse", "--verify", "HEAD^{commit}"],
+            cwd=workspace_path,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        tree_id = str(workspace_head.stdout or "").strip()
+        if workspace_head.returncode != 0 or not tree_id:
+            tree_id = fallback_tree_id
+        bound_commands, graph = build_declared_validation_plan_graph(
+            commands,
+            repository_tree_id=tree_id,
+            changed_paths=changed_paths,
+        )
+        command_bindings = [
+            {
+                "validation_id": spec.validation_id,
+                "command_cid": content_identity(
+                    {
+                        "command": spec.command,
+                        "raw_command": spec.raw_command,
+                        "ordinal": spec.ordinal,
+                    }
+                ),
+            }
+            for spec in bound_commands
+        ]
+        binding: dict[str, Any] = {
+            "schema": DETERMINISTIC_VALIDATION_PLAN_SCHEMA,
+            "task_id": task.task_id,
+            "canonical_task_cid": self._canonical_ref(task),
+            "repository_id": repository_id,
+            "repository_tree_id": tree_id,
+            "graph_id": graph.graph_id,
+            "graph_version": graph.graph_version,
+            "command_count": len(command_bindings),
+            "commands": command_bindings,
+            "changed_paths": sorted(dict.fromkeys(changed_paths)),
+        }
+        binding["validation_plan_cid"] = content_identity(binding)
+        return binding
+
+    def _persist_deterministic_task_execution_receipt(
+        self,
+        *,
+        task: PortalTask,
+        attempt: int,
+        receipt: TaskExecutionReceipt,
+        validation_plan_binding: Mapping[str, Any],
+    ) -> tuple[Path, dict[str, Any]]:
+        """Persist a CID-addressed policy receipt before validation executes."""
+
+        payload = receipt.to_dict()
+        payload["daemon_integration"] = {
+            "schema": DETERMINISTIC_TASK_EXECUTION_RECEIPT_SCHEMA,
+            "validation_plan_cid": str(
+                validation_plan_binding.get("validation_plan_cid") or ""
+            ),
+            "validation_graph_id": str(
+                validation_plan_binding.get("graph_id") or ""
+            ),
+            "raw_command_arguments_accepted": False,
+        }
+        payload["receipt_id"] = content_identity(payload)
+        safe_task_id = re.sub(
+            r"[^a-z0-9._-]+",
+            "-",
+            task.task_id.lower(),
+        ).strip("-") or "task"
+        path = (
+            self.implementation_log_dir
+            / f"{safe_task_id}-attempt-{int(attempt)}-task-execution-receipt.json"
+        )
+
+        def persist() -> Path:
+            self.implementation_log_dir.mkdir(parents=True, exist_ok=True)
+            _shared_atomic_write_json(path, payload)
+            return path
+
+        persisted = self._decision_runtime_mutation(
+            "file_mutation",
+            {
+                "operation": "persist_deterministic_task_execution_receipt",
+                "task_id": task.task_id,
+                "attempt": int(attempt),
+                "receipt_id": payload["receipt_id"],
+                "validation_plan_cid": payload["daemon_integration"][
+                    "validation_plan_cid"
+                ],
+                "path": str(path),
+            },
+            persist,
+        )
+        return persisted, payload
+
+    def _execute_deterministic_validation_plan(
+        self,
+        *,
+        workspace_path: Path,
+        task: PortalTask,
+        attempt: int,
+        log_path: Path,
+        state: PortalTaskState,
+    ) -> tuple[dict[str, Any], Path, dict[str, Any]]:
+        """Authorize and execute exactly one task-declared validation plan.
+
+        ``TaskExecutionPolicy`` performs the bounded, typed authorization.  Its
+        handler is pure and receives only the expected plan CID.  The existing
+        validation scheduler performs the separately receipted side effect
+        after authorization succeeds, keeping arbitrary shell strings out of
+        the local-operation interface and keeping every model/provider callback
+        unreachable.
+        """
+
+        binding = self._deterministic_validation_plan_binding(
+            workspace_path,
+            task,
+        )
+        plan_cid = str(binding["validation_plan_cid"])
+        declared_commands: list[str] = []
+        for raw_command in task.validation:
+            command, _notes = self._normalize_validation_command(raw_command)
+            command, _pythonpath_note = self._with_worktree_validation_pythonpath(
+                command,
+                workspace_path,
+            )
+            declared_commands.append(command)
+        operation_context = {
+            "schema": DETERMINISTIC_VALIDATION_PLAN_SCHEMA,
+            "task_id": task.task_id,
+            "canonical_task_cid": self._canonical_ref(task),
+            "validation_plan_cid": plan_cid,
+            "validation_graph_id": str(binding["graph_id"]),
+            "command_count": int(binding["command_count"]),
+            "changed_path_count": len(binding["changed_paths"]),
+            # The task-owned text is context, never an operation argument.
+            # Including it here makes the policy's byte/token receipt cover the
+            # complete plan rather than trusting claimed size metadata.
+            "declared_validation_commands": tuple(declared_commands),
+        }
+        expected_arguments = {"validation_plan_cid": plan_cid}
+
+        def authorize_declared_plan(
+            arguments: Mapping[str, Any],
+            context: Mapping[str, Any],
+        ) -> dict[str, Any]:
+            if dict(arguments) != expected_arguments:
+                raise ValueError(
+                    "declared validation operation accepts only its bound plan CID"
+                )
+            if dict(context) != operation_context:
+                raise ValueError("declared validation operation context binding changed")
+            return {
+                "authorized": True,
+                "task_id": task.task_id,
+                "validation_plan_cid": plan_cid,
+                "validation_graph_id": str(binding["graph_id"]),
+            }
+
+        declared_token_limit = self._task_context_token_limit(task)
+        token_limit = min(
+            declared_token_limit or MAX_TASK_CONTEXT_TOKENS,
+            MAX_TASK_CONTEXT_TOKENS,
+        )
+        byte_limit = min(
+            MAX_TASK_CONTEXT_BYTES,
+            max(1, token_limit * 4),
+        )
+        request = TaskExecutionRequest(
+            task_id=task.task_id,
+            mode=ExecutionMode.DETERMINISTIC_ONLY,
+            context=operation_context,
+            context_metadata=TaskContextMetadata(
+                max_bytes=byte_limit,
+                max_tokens=token_limit,
+            ),
+            local_operations=(
+                TypedLocalOperation(
+                    LocalOperationType.DECLARED_VALIDATION_PLAN,
+                    expected_arguments,
+                ),
+            ),
+        )
+        policy = TaskExecutionPolicy(
+            local_operation_handlers={
+                LocalOperationType.DECLARED_VALIDATION_PLAN: (
+                    authorize_declared_plan
+                )
+            },
+        )
+        receipt = policy.execute(request)
+        receipt_path, receipt_payload = (
+            self._persist_deterministic_task_execution_receipt(
+                task=task,
+                attempt=attempt,
+                receipt=receipt,
+                validation_plan_binding=binding,
+            )
+        )
+        authorization_event = {
+            "task_id": task.task_id,
+            "attempt": int(attempt),
+            "mode": ExecutionMode.DETERMINISTIC_ONLY.value,
+            "status": receipt.status.value,
+            "reason_code": receipt.reason_code,
+            "receipt_id": receipt_payload["receipt_id"],
+            "receipt_path": str(receipt_path),
+            "validation_plan_cid": plan_cid,
+            "validation_graph_id": str(binding["graph_id"]),
+            "context_usage": receipt_payload["context_usage"],
+            "isolation_audit": receipt_payload["isolation_audit"],
+        }
+        self._record_event(
+            "deterministic_task_execution_authorized"
+            if receipt.status is ExecutionStatus.SUCCEEDED
+            else "deterministic_task_execution_rejected",
+            authorization_event,
+        )
+
+        if receipt.status is not ExecutionStatus.SUCCEEDED:
+            validation_result = {
+                "attempted": False,
+                "passed": False,
+                "returncode": 1,
+                "results": [],
+                "reason": f"deterministic_execution_{receipt.reason_code}",
+                "task_execution_receipt_id": receipt_payload["receipt_id"],
+                "validation_plan_binding": dict(binding),
+            }
+        else:
+            try:
+                validation_result = self._run_validation_commands(
+                    workspace_path,
+                    task,
+                    log_path,
+                    state=state,
+                    force_uncached=True,
+                )
+            except Exception as exc:
+                validation_result = {
+                    "attempted": True,
+                    "passed": False,
+                    "returncode": 1,
+                    "results": [],
+                    "reason": "deterministic_declared_validation_exception",
+                    "exception_type": type(exc).__name__,
+                    "exception_detail": str(exc)[-1000:],
+                }
+            validation_result["task_execution_receipt_id"] = receipt_payload[
+                "receipt_id"
+            ]
+            validation_result["validation_plan_binding"] = dict(binding)
+
+        self._record_event(
+            "deterministic_task_execution_finished",
+            {
+                **authorization_event,
+                "status": (
+                    "succeeded"
+                    if validation_result.get("passed", False)
+                    else "failed"
+                ),
+                "validation_attempted": bool(
+                    validation_result.get("attempted", False)
+                ),
+                "validation_passed": bool(validation_result.get("passed", False)),
+                "validation_returncode": int(
+                    validation_result.get("returncode") or 0
+                ),
+                "validation_reason": str(
+                    validation_result.get("reason") or ""
+                ),
+            },
+        )
+        return validation_result, receipt_path, receipt_payload
+
     def _run_validation_commands(
         self,
         workspace_path: Path,
@@ -13791,6 +14362,7 @@ class PortalImplementationDaemon:
         *,
         state: PortalTaskState | None = None,
         proposal_validation: Any = None,
+        force_uncached: bool = False,
     ) -> dict[str, Any]:
         if not workspace_path.exists():
             return self._missing_validation_workspace_result(workspace_path, task=task, log_path=log_path)
@@ -13833,6 +14405,12 @@ class PortalImplementationDaemon:
             normalization_notes.extend(notes)
             if pythonpath_note:
                 normalization_notes.append(pythonpath_note)
+        scheduled_commands: Sequence[Any] = commands
+        if force_uncached:
+            scheduled_commands = tuple(
+                replace(spec, cacheable=False)
+                for spec in build_validation_commands(commands)
+            )
 
         # Validation is the last gate before a candidate is committed/enqueued
         # (or before an in-place task is marked complete).  Impact selection is
@@ -13848,7 +14426,7 @@ class PortalImplementationDaemon:
                     "scope": "pre_merge",
                 },
                 lambda: self.validation_scheduler.run(
-                    commands,
+                    scheduled_commands,
                     workspace_path=workspace_path,
                     require_full_validation=True,
                     scope="pre_merge",
@@ -13872,7 +14450,7 @@ class PortalImplementationDaemon:
                 try:
                     bound_commands, declared_graph = (
                         build_declared_validation_plan_graph(
-                            commands,
+                            scheduled_commands,
                             repository_tree_id=str(
                                 getattr(
                                     proposal,

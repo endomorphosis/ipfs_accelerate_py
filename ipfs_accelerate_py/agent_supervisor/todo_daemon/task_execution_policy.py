@@ -107,6 +107,11 @@ class LocalOperationType(str, Enum):
     SHA256 = "sha256"
     EXACT_EQUAL = "exact-equal"
     ALL_TRUE = "all-true"
+    # Daemon integrations may register a task-bound handler for this operation.
+    # It deliberately is not part of ``builtin_local_operation_handlers``:
+    # validation authority must be closed over a reviewed task and must never
+    # accept a caller-supplied shell command.
+    DECLARED_VALIDATION_PLAN = "declared-validation-plan"
 
 
 class TaskExecutionPolicyError(ValueError):

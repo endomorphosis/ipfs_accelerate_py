@@ -590,7 +590,9 @@ class PolyglotASTProvider:
             / "extract_typescript_ast.mjs"
         )
         self.typescript_path = (
-            str(Path(typescript_path)) if typescript_path is not None else ""
+            str(Path(typescript_path).expanduser().resolve())
+            if typescript_path is not None
+            else ""
         )
         self.expected_typescript_version = str(
             expected_typescript_version or ""

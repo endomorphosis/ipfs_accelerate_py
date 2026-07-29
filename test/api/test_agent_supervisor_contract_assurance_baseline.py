@@ -16,6 +16,7 @@ from ipfs_accelerate_py.agent_supervisor.analysis.contract_assurance_baseline im
     ContractAssuranceBaselineError,
     StageCompleteness,
     TerminalContractStatus,
+    _canonical_measurement,
     materialize_contract_assurance_baseline,
     publish_baseline_artifacts,
 )
@@ -148,6 +149,31 @@ def test_interface_and_zero_llm_runtime() -> None:
     assert result.findings["schema"] == BASELINE_FINDINGS_SCHEMA
     assert result.findings["interface"] == CONTRACT_ASSURANCE_BASELINE_INTERFACE
     assert result.result_id.startswith("b")
+
+
+def test_operational_float_measurements_are_canonical_decimal_evidence() -> None:
+    projected = _canonical_measurement(
+        {
+            "ratio": 0.125,
+            "whole": 1.0,
+            "zero": -0.0,
+            "large": 1e20,
+            "counter": 3,
+        }
+    )
+
+    assert projected == {
+        "counter": 3,
+        "large": "100000000000000000000",
+        "ratio": "0.125",
+        "whole": "1",
+        "zero": "0",
+    }
+    with pytest.raises(
+        ContractAssuranceBaselineError,
+        match="non-finite measurement",
+    ):
+        _canonical_measurement({"ratio": float("nan")})
 
 
 def test_every_contract_has_closed_terminal_status() -> None:
