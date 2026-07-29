@@ -1491,6 +1491,84 @@ prove_mcp_contract = prove_contract_obligation
 route_contract_proof = route_contract_obligation
 
 
+def create_mcp_contract_prover_with_datasets_logic_backends(
+    *,
+    importer: Callable[[str], Any] | None = None,
+    trusted_receipt_validator: TrustedReceiptValidator | None = None,
+    local_graph_checker: LocalChecker | None = None,
+    local_schema_checker: LocalChecker | None = None,
+    multi_prover_router: MultiProverRouter | None = None,
+    kinds: Sequence[str] | None = None,
+    invocation_hook: Callable[[str, Mapping[str, Any]], None] | None = None,
+    extra_providers: Mapping[ContractProofRoute | str, Any] | None = None,
+    provider_getter: Callable[[str], Any | None] | None = None,
+) -> tuple[McpContractProver, Any]:
+    """Bind only capability-probed exact datasets backends into the MCP prover.
+
+    Unregistered or unavailable backends remain unsupported.  Capability labels
+    alone cannot admit a backend: registration requires an exact-module
+    signature probe performed by the datasets logic facade.
+    """
+
+    # Keep the optional datasets integration lazy so importing this module does
+    # not require ``ipfs_datasets_py`` in minimal installations.
+    from ..integrations.ipfs_datasets_logic_provider import (
+        build_datasets_logic_backend_registry,
+    )
+
+    registry, probes = build_datasets_logic_backend_registry(
+        importer=importer,
+        kinds=kinds,
+        invocation_hook=invocation_hook,
+    )
+    providers: dict[ContractProofRoute | str, Any] = {
+        route: provider for route, provider in registry.mcp_providers().items()
+    }
+    for key, value in (extra_providers or {}).items():
+        providers[_route(key)] = value
+    # Only registered capability-probed backends may satisfy remote routes.
+    # Fall through to an explicit empty getter rather than the global registry
+    # so an unregistered id cannot silently resolve to an unrelated provider.
+    def _registered_only(provider_id: str) -> Any | None:
+        if provider_getter is not None:
+            return provider_getter(provider_id)
+        for registration in registry.registrations:
+            if registration.provider_id == provider_id:
+                return registration.provider
+        return None
+
+    prover = McpContractProver(
+        providers=providers,
+        provider_ids=registry.provider_ids() or None,
+        provider_getter=_registered_only,
+        local_graph_checker=local_graph_checker,
+        local_schema_checker=local_schema_checker,
+        trusted_receipt_validator=trusted_receipt_validator,
+        multi_prover_router=multi_prover_router,
+    )
+    # Attach registry evidence for conformance and receipts without making it
+    # part of the closed constructor contract.
+    prover.datasets_logic_registry = registry
+    prover.datasets_logic_probes = probes
+    return prover, registry
+
+
+def datasets_logic_backends_are_registered(
+    prover: McpContractProver,
+    *routes: ContractProofRoute | str,
+) -> bool:
+    """Return whether every requested MCP route has a registered provider."""
+
+    if not routes:
+        return False
+    for route in routes:
+        normalized = _route(route)
+        provider, _provider_id = prover._resolve_provider(normalized)
+        if provider is None:
+            return False
+    return True
+
+
 __all__ = [
     "ContractProofOutcome",
     "ContractProofResult",
@@ -1518,4 +1596,6 @@ __all__ = [
     "route_contract_obligation",
     "route_contract_proof",
     "route_mcp_contract_obligation",
+    "create_mcp_contract_prover_with_datasets_logic_backends",
+    "datasets_logic_backends_are_registered",
 ]
