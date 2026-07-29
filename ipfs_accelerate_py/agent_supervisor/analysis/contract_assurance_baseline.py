@@ -1,17 +1,22 @@
-"""Complete symbolic contract assurance baseline pipeline (SCA-200).
+"""Complete symbolic contract assurance baseline pipeline (SCA-200 / SCA-G179).
 
 Materializes a single-snapshot, zero-LLM shadow baseline over SwissKnife:
 
 1. repository index / coverage ledger
-2. expected-contract extraction and catalog normalization
-3. mandatory symbolic-contract graph projection
-4. expected-versus-actual MCP++ invocation tracing
-5. proof / cache verification (or explicit withhold)
-6. mismatch classification and vulnerability rule evaluation
-7. bounded artifact publication (coverage, findings, summary)
+2. multi-root provider source indexes (SCAEV179INDEXGRAPH)
+3. expected-contract extraction and catalog normalization
+4. mandatory symbolic-contract graph projection
+5. actual package MCP surface requirements (no expected-only synthesis)
+6. expected-versus-actual MCP++ invocation tracing
+7. bounded real-graph GraphRAG retrieval (context-only)
+8. typed provider-surface health backlog
+9. proof / cache verification (or explicit withhold)
+10. mismatch classification and vulnerability rule evaluation
+11. bounded artifact publication (coverage, findings, summary)
 
 Unhealthy or incomplete stages never grant exhaustive, no-drift, or no-findings
-claims. Empty findings under partial health are not parity evidence.
+claims. Empty findings under partial health are not parity evidence. GraphRAG is
+retrieval-only; Cypher AST remains syntax-only.
 """
 
 from __future__ import annotations
@@ -48,7 +53,14 @@ from .mcp_contract_analysis import (
 )
 from .mcp_contract_catalog import McpContractCatalog
 from .mcp_invocation_trace import McpInvocationTrace, McpInvocationTracer
-from .repository_indexer import RepositoryIndex
+from .provider_surface_health import (
+    PROVIDER_SURFACE_HEALTH_EVIDENCE,
+    ProviderSurfaceHealthReport,
+    assess_provider_surface_health,
+    provider_surface_health_blocks_exhaustive_parity,
+)
+from .python_mcp_surface_extractor import PythonMcpPackageSurface
+from .repository_indexer import MultiRootRepositoryIndex, RepositoryIndex
 from .repository_snapshot import RepositorySnapshot
 from .runtime_component_catalog import RuntimeComponentCatalog
 from .runtime_contract_evidence_compiler import (
@@ -63,12 +75,16 @@ from .swissknife_contract_extractor import (
 )
 from .symbolic_contract_graph import (
     GRAPH_VERSION,
+    BoundedGraphRAGRetriever,
     ContractAuthority,
     ContractEdgeKind,
     ContractGraphEdge,
     ContractGraphNode,
     ContractNodeKind,
     ContractProvenance,
+    ExactDatasetsGraphProviderError,
+    GraphRAGRetrievalReceipt,
+    RetrievalBounds,
     SymbolicContractGraph,
     build_symbolic_contract_graph,
     project_symbolic_contract_graph,
@@ -77,6 +93,7 @@ from .symbolic_contract_graph import (
 
 CONTRACT_ASSURANCE_BASELINE_INTERFACE: Final = "ContractAssuranceBaseline@1"
 CONTRACT_ASSURANCE_BASELINE_VERSION: Final = "1"
+CONTRACT_ASSURANCE_INDEXGRAPH_EVIDENCE: Final = "SCAEV179INDEXGRAPH"
 
 BASELINE_FINDINGS_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/sca-baseline-contract-findings@1"
@@ -93,6 +110,7 @@ BASELINE_STAGE_SCHEMA: Final = (
 BASELINE_CONTRACT_ROW_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/sca-baseline-contract-row@1"
 )
+DEFAULT_GRAPHRAG_QUERY: Final = "mcp contract tool registration surface"
 
 TERMINAL_STATUS_DOMAIN: Final[tuple[str, ...]] = (
     "proved",
@@ -130,9 +148,13 @@ class TerminalContractStatus(str, Enum):
 
 class BaselineStageName(str, Enum):
     REPOSITORY_INDEX = "repository_index"
+    PROVIDER_INDEX = "provider_index"
     EXTRACTION = "extraction"
     CATALOG = "catalog"
     GRAPH = "graph"
+    ACTUAL_SURFACES = "actual_surfaces"
+    GRAPHRAG = "graphrag"
+    PROVIDER_SURFACE_HEALTH = "provider_surface_health"
     INVOCATION_TRACE = "invocation_trace"
     PROOF_CACHE = "proof_cache"
     MISMATCH = "mismatch"
@@ -860,7 +882,26 @@ def _claims_projection(
             BaselineStageName.MISMATCH,
         }
     )
-    healthy = bool(health.get("safe_for_completion_reasoning")) and stages_ok
+    # Production multi-root / actual-surface / provider-health stages block
+    # exhaustive parity when present and incomplete.
+    production_blockers = {
+        BaselineStageName.PROVIDER_INDEX,
+        BaselineStageName.ACTUAL_SURFACES,
+        BaselineStageName.PROVIDER_SURFACE_HEALTH,
+    }
+    production_ok = all(
+        stage.completeness is StageCompleteness.COMPLETE
+        for stage in stages
+        if stage.name in production_blockers
+    )
+    healthy = (
+        bool(health.get("safe_for_completion_reasoning"))
+        and stages_ok
+        and production_ok
+        and not bool(health.get("provider_surface_blocks_exhaustive"))
+        and not bool(health.get("multi_root_blocks_exhaustive"))
+        and not bool(health.get("actual_surfaces_blocks_exhaustive"))
+    )
     # Never promote optional / model authority.
     no_findings = healthy and all(
         item.status is TerminalContractStatus.PROVED for item in terminals
@@ -873,6 +914,22 @@ def _claims_projection(
         "no_findings": no_findings,
         "authority_promoted_from_optional_provider": False,
     }
+
+
+def _observed_has_actual_tool_provenance(observed: Mapping[str, Any]) -> bool:
+    """True when an observed contract carries extracted actual tool provenance."""
+
+    if bool(observed.get("has_package_registration")):
+        return True
+    for route in observed.get("routes") or ():
+        if not isinstance(route, Mapping):
+            continue
+        if route.get("handler_symbol") or route.get("registration_api"):
+            return True
+        source_ids = route.get("source_ids") or ()
+        if any(str(item).startswith("python-mcp-tool:") for item in source_ids):
+            return True
+    return False
 
 
 def _summary_markdown(
@@ -1074,6 +1131,16 @@ def materialize_contract_assurance_baseline(
     graph: SymbolicContractGraph | None = None,
     runtime_catalog: RuntimeComponentCatalog | None = None,
     observed_contracts: Sequence[Mapping[str, Any]] | Mapping[str, Mapping[str, Any]] = (),
+    multi_root_index: MultiRootRepositoryIndex | None = None,
+    package_surfaces: Sequence[PythonMcpPackageSurface] | None = None,
+    require_actual_package_surfaces: bool = False,
+    provider_surface_health: ProviderSurfaceHealthReport | None = None,
+    assess_surface_health: bool = True,
+    run_graphrag: bool = True,
+    graphrag_query: str = DEFAULT_GRAPHRAG_QUERY,
+    graphrag_bounds: RetrievalBounds | Mapping[str, Any] | None = None,
+    require_exact_datasets_graphrag: bool = False,
+    use_exact_datasets_graphrag: bool = False,
     repo_root: str | Path | None = None,
     swissknife_root: str | Path | None = None,
     extract_expected: bool = True,
@@ -1091,10 +1158,23 @@ def materialize_contract_assurance_baseline(
 
     Stages that cannot complete under partial health still emit typed terminals
     and withhold no-drift claims. Model call count is always zero.
+
+    Production multi-root composition (SCAEV179INDEXGRAPH) optionally consumes
+    independent provider roots, requires extracted actual MCP surfaces when
+    ``require_actual_package_surfaces`` is set, projects the real contract graph
+    into bounded GraphRAG retrieval, and records typed provider-surface health.
     """
 
     llm_call_count = 0
     stages: list[BaselineStageReceipt] = []
+    package_surface_tuple: tuple[PythonMcpPackageSurface, ...] = tuple(
+        package_surfaces or ()
+    )
+    multi_root_blocks_exhaustive = False
+    actual_surfaces_blocks_exhaustive = False
+    provider_surface_blocks_exhaustive = False
+    graphrag_receipt: GraphRAGRetrievalReceipt | None = None
+    surface_health_report = provider_surface_health
 
     # --- Stage: repository index / coverage ---------------------------------
     if repository_index is not None:
@@ -1148,6 +1228,66 @@ def materialize_contract_assurance_baseline(
             scope_policy_root = repository_index.snapshot.scope_policy_id
         else:
             scope_policy_root = str(coverage.get("scope_policy_id") or "")
+
+    # --- Stage: multi-root provider index (SCAEV179INDEXGRAPH) --------------
+    if multi_root_index is not None:
+        multi_root_blocks_exhaustive = not bool(
+            multi_root_index.exhaustive_parity_allowed
+        )
+        provider_details = {
+            "multi_root_id": multi_root_index.multi_root_id,
+            "provider_count": len(multi_root_index.providers),
+            "packages": [item.package for item in multi_root_index.providers],
+            "all_providers_indexed": multi_root_index.all_providers_indexed,
+            "all_providers_healthy": multi_root_index.all_providers_healthy,
+            "all_symbol_extractions_complete": (
+                multi_root_index.all_symbol_extractions_complete
+            ),
+            "any_opaque_gitlink": multi_root_index.any_opaque_gitlink,
+            "exhaustive_parity_allowed": multi_root_index.exhaustive_parity_allowed,
+            "contradiction_count": len(multi_root_index.contradictions),
+            "cross_root_join_policy": "package_module_function_exact",
+            "bodies_in_cas": True,
+            "evidence": CONTRACT_ASSURANCE_INDEXGRAPH_EVIDENCE,
+        }
+        reason_codes: list[str] = []
+        if multi_root_blocks_exhaustive:
+            reason_codes.append("multi_root_exhaustive_parity_blocked")
+            if multi_root_index.any_opaque_gitlink:
+                reason_codes.append("opaque_gitlink_provider")
+            if not multi_root_index.all_providers_indexed:
+                reason_codes.append("provider_roots_not_fully_indexed")
+            if not multi_root_index.all_providers_healthy:
+                reason_codes.append("provider_roots_unhealthy")
+            if multi_root_index.contradictions:
+                reason_codes.append("provider_root_contradictions")
+        stages.append(
+            BaselineStageReceipt(
+                name=BaselineStageName.PROVIDER_INDEX,
+                completeness=(
+                    StageCompleteness.COMPLETE
+                    if multi_root_index.exhaustive_parity_allowed
+                    else StageCompleteness.PARTIAL
+                ),
+                reason_codes=tuple(sorted(set(reason_codes))),
+                root_id=multi_root_index.multi_root_id,
+                details=provider_details,
+            )
+        )
+    elif require_actual_package_surfaces:
+        # Production composition required independent provider roots.
+        multi_root_blocks_exhaustive = True
+        stages.append(
+            BaselineStageReceipt(
+                name=BaselineStageName.PROVIDER_INDEX,
+                completeness=StageCompleteness.FAILED,
+                reason_codes=("multi_root_index_required",),
+                details={
+                    "evidence": CONTRACT_ASSURANCE_INDEXGRAPH_EVIDENCE,
+                    "exhaustive_parity_allowed": False,
+                },
+            )
+        )
 
     # --- Stage: extraction --------------------------------------------------
     if extraction is None and extract_expected:
@@ -1297,6 +1437,248 @@ def materialize_contract_assurance_baseline(
             )
         )
 
+    # --- Stage: actual package surfaces (SCA-604 / SCAEV179INDEXGRAPH) -----
+    actual_surface_reasons: list[str] = []
+    if require_actual_package_surfaces and not package_surface_tuple:
+        actual_surfaces_blocks_exhaustive = True
+        actual_surface_reasons.append("package_surfaces_required")
+        stages.append(
+            BaselineStageReceipt(
+                name=BaselineStageName.ACTUAL_SURFACES,
+                completeness=StageCompleteness.FAILED,
+                reason_codes=tuple(actual_surface_reasons),
+                details={
+                    "evidence": CONTRACT_ASSURANCE_INDEXGRAPH_EVIDENCE,
+                    "package_surface_count": 0,
+                    "tool_count": 0,
+                    "unresolved_count": 0,
+                    "synthesized_from_expected": False,
+                },
+            )
+        )
+    elif package_surface_tuple:
+        tool_count = sum(len(item.tools) for item in package_surface_tuple)
+        unresolved_count = sum(
+            len(item.unresolved) for item in package_surface_tuple
+        )
+        if require_actual_package_surfaces and tool_count == 0:
+            actual_surfaces_blocks_exhaustive = True
+            actual_surface_reasons.append("actual_tools_missing")
+        if unresolved_count:
+            actual_surface_reasons.append("unresolved_registrations_present")
+            if require_actual_package_surfaces:
+                actual_surfaces_blocks_exhaustive = True
+        completeness = (
+            StageCompleteness.COMPLETE
+            if not actual_surfaces_blocks_exhaustive
+            else StageCompleteness.PARTIAL
+        )
+        stages.append(
+            BaselineStageReceipt(
+                name=BaselineStageName.ACTUAL_SURFACES,
+                completeness=completeness,
+                reason_codes=tuple(sorted(set(actual_surface_reasons))),
+                root_id=content_identity(
+                    {
+                        "schema": "sca-actual-package-surfaces@1",
+                        "surface_ids": [
+                            item.surface_id for item in package_surface_tuple
+                        ],
+                    }
+                ),
+                details={
+                    "evidence": CONTRACT_ASSURANCE_INDEXGRAPH_EVIDENCE,
+                    "package_surface_count": len(package_surface_tuple),
+                    "packages": [item.provider for item in package_surface_tuple],
+                    "tool_count": tool_count,
+                    "unresolved_count": unresolved_count,
+                    "surface_ids": [
+                        item.surface_id for item in package_surface_tuple
+                    ],
+                    "synthesized_from_expected": False,
+                    "require_actual_package_surfaces": (
+                        require_actual_package_surfaces
+                    ),
+                },
+            )
+        )
+    elif require_actual_package_surfaces:
+        # Already handled above; keep branch exhaustive.
+        pass
+
+    # --- Stage: real-graph GraphRAG (SCA-605 / SCAEV179INDEXGRAPH) ---------
+    graphrag_reasons: list[str] = []
+    if run_graphrag and graph is not None:
+        try:
+            retriever = BoundedGraphRAGRetriever(graph)
+            bounds = graphrag_bounds or RetrievalBounds(
+                max_candidates=16,
+                max_bytes=64_000,
+                max_query_bytes=4_096,
+            )
+            graphrag_receipt = retriever.retrieve(
+                graphrag_query or DEFAULT_GRAPHRAG_QUERY,
+                bounds=bounds,
+                use_exact_datasets=bool(use_exact_datasets_graphrag),
+                require_exact_datasets=bool(require_exact_datasets_graphrag),
+            )
+            # Results must remain members of the bound real graph root.
+            graph_node_ids = {node.node_id for node in graph.nodes}
+            foreign = [
+                node_id
+                for node_id in graphrag_receipt.candidate_node_ids
+                if node_id not in graph_node_ids
+            ]
+            if foreign:
+                graphrag_reasons.append("graphrag_foreign_nodes")
+                graphrag_receipt = None
+            elif graphrag_receipt.safe_for_proof:
+                graphrag_reasons.append("graphrag_authoritative_claim")
+                graphrag_receipt = None
+            else:
+                stages.append(
+                    BaselineStageReceipt(
+                        name=BaselineStageName.GRAPHRAG,
+                        completeness=StageCompleteness.COMPLETE,
+                        reason_codes=(),
+                        root_id=graphrag_receipt.receipt_id,
+                        details={
+                            "evidence": CONTRACT_ASSURANCE_INDEXGRAPH_EVIDENCE,
+                            "graph_root": graph.graph_root,
+                            "query": graphrag_receipt.query,
+                            "candidate_count": len(graphrag_receipt.candidates),
+                            "total_matches": graphrag_receipt.total_matches,
+                            "truncated": graphrag_receipt.truncated,
+                            "provider_status": graphrag_receipt.provider_status,
+                            "reason_code": graphrag_receipt.reason_code,
+                            "non_authoritative": True,
+                            "proof_authority": False,
+                            "canary_fixed_nodes": False,
+                            "exact_datasets_required": (
+                                require_exact_datasets_graphrag
+                            ),
+                        },
+                    )
+                )
+        except ExactDatasetsGraphProviderError as exc:
+            graphrag_reasons.extend(
+                ("exact_datasets_unavailable", exc.reason_code)
+            )
+            stages.append(
+                BaselineStageReceipt(
+                    name=BaselineStageName.GRAPHRAG,
+                    completeness=StageCompleteness.FAILED
+                    if require_exact_datasets_graphrag
+                    else StageCompleteness.PARTIAL,
+                    reason_codes=tuple(sorted(set(graphrag_reasons))),
+                    details={
+                        "evidence": CONTRACT_ASSURANCE_INDEXGRAPH_EVIDENCE,
+                        "exact_datasets_required": (
+                            require_exact_datasets_graphrag
+                        ),
+                        "message": str(exc)[:512],
+                    },
+                )
+            )
+        except Exception as exc:  # noqa: BLE001
+            graphrag_reasons.extend(
+                ("graphrag_retrieval_failed", type(exc).__name__)
+            )
+            stages.append(
+                BaselineStageReceipt(
+                    name=BaselineStageName.GRAPHRAG,
+                    completeness=StageCompleteness.FAILED
+                    if require_exact_datasets_graphrag
+                    else StageCompleteness.PARTIAL,
+                    reason_codes=tuple(sorted(set(graphrag_reasons))),
+                    details={
+                        "evidence": CONTRACT_ASSURANCE_INDEXGRAPH_EVIDENCE,
+                        "message": str(exc)[:512],
+                    },
+                )
+            )
+        if graphrag_reasons and not any(
+            stage.name is BaselineStageName.GRAPHRAG for stage in stages
+        ):
+            stages.append(
+                BaselineStageReceipt(
+                    name=BaselineStageName.GRAPHRAG,
+                    completeness=StageCompleteness.FAILED,
+                    reason_codes=tuple(sorted(set(graphrag_reasons))),
+                    details={"evidence": CONTRACT_ASSURANCE_INDEXGRAPH_EVIDENCE},
+                )
+            )
+    elif run_graphrag:
+        stages.append(
+            BaselineStageReceipt(
+                name=BaselineStageName.GRAPHRAG,
+                completeness=StageCompleteness.WITHHELD,
+                reason_codes=("graph_unavailable_for_graphrag",),
+                details={"evidence": CONTRACT_ASSURANCE_INDEXGRAPH_EVIDENCE},
+            )
+        )
+
+    # --- Stage: provider surface health (SCA-609 / SCAEV179INDEXGRAPH) -----
+    if assess_surface_health or surface_health_report is not None:
+        if surface_health_report is None:
+            surface_health_report = assess_provider_surface_health(
+                package_surfaces=package_surface_tuple or None,
+                multi_root_index=multi_root_index,
+                multi_root_id=(
+                    multi_root_index.multi_root_id
+                    if multi_root_index is not None
+                    else ""
+                ),
+                snapshot_id=snapshot_id,
+            )
+        provider_surface_blocks_exhaustive = (
+            provider_surface_health_blocks_exhaustive_parity(surface_health_report)
+        )
+        health_reasons: list[str] = []
+        if provider_surface_blocks_exhaustive:
+            health_reasons.append("provider_surface_blocks_exhaustive")
+        if surface_health_report.unresolved_registration_count:
+            health_reasons.append("unresolved_registrations")
+        if surface_health_report.blocking_issue_count:
+            health_reasons.append("blocking_surface_issues")
+        stages.append(
+            BaselineStageReceipt(
+                name=BaselineStageName.PROVIDER_SURFACE_HEALTH,
+                completeness=(
+                    StageCompleteness.COMPLETE
+                    if surface_health_report.exhaustive_parity_allowed
+                    else StageCompleteness.PARTIAL
+                ),
+                reason_codes=tuple(sorted(set(health_reasons))),
+                root_id=surface_health_report.report_id,
+                details={
+                    "evidence": PROVIDER_SURFACE_HEALTH_EVIDENCE,
+                    "report_id": surface_health_report.report_id,
+                    "blocking_issue_count": (
+                        surface_health_report.blocking_issue_count
+                    ),
+                    "blocking_family_count": (
+                        surface_health_report.blocking_family_count
+                    ),
+                    "unresolved_registration_count": (
+                        surface_health_report.unresolved_registration_count
+                    ),
+                    "family_count": len(surface_health_report.families),
+                    "packages_scanned": list(
+                        surface_health_report.packages_scanned
+                    ),
+                    "exhaustive_parity_allowed": (
+                        surface_health_report.exhaustive_parity_allowed
+                    ),
+                    "llm_call_count": 0,
+                    "per_file_prompts": False,
+                    "actual_surfaces_complete": (
+                        surface_health_report.exhaustive_parity_allowed
+                    ),
+                },
+            )
+        )
+
     # --- Stage: invocation traces + endpoint evidence (SCA-217) ------------
     traces: list[McpInvocationTrace] = []
     trace_reasons: list[str] = []
@@ -1304,6 +1686,8 @@ def materialize_contract_assurance_baseline(
     evidence_findings: list[dict[str, Any]] = []
     # Caller-supplied observed contracts win; otherwise the evidence compiler
     # projects observed package contracts from reviewed catalog/index facts.
+    # Actual package surfaces are required inputs when production composition
+    # demands them — expected descriptors cannot synthesize actual routes.
     observed_map: dict[str, Mapping[str, Any]] = {}
     if isinstance(observed_contracts, Mapping):
         observed_map = {
@@ -1315,27 +1699,59 @@ def materialize_contract_assurance_baseline(
             if op:
                 observed_map[op] = item
 
+    surfaces_for_compiler: Sequence[PythonMcpPackageSurface] | None = (
+        package_surface_tuple if package_surface_tuple else None
+    )
+    if require_actual_package_surfaces and not package_surface_tuple:
+        # Fail closed: do not let expected-only compilation manufacture actuals.
+        surfaces_for_compiler = None
+        if not observed_map:
+            trace_reasons.append("actual_package_surfaces_required")
+
     if catalog is not None and (
         run_traces or not observed_map
     ):
-        try:
-            evidence_compilation = compile_runtime_contract_evidence(
-                catalog,
-                snapshot_id=snapshot_id,
-                graph=graph if run_traces else None,
-                extraction=extraction,
-                runtime_catalog=runtime_catalog,
-                run_traces=bool(
-                    run_traces
-                    and graph is not None
-                    and graph.complete
-                ),
-            )
-        except Exception as exc:  # noqa: BLE001 - typed stage failure
-            trace_reasons.extend(
-                ("evidence_compilation_failed", type(exc).__name__)
-            )
+        if require_actual_package_surfaces and not package_surface_tuple:
+            # Skip synthesis entirely when actual surfaces are mandatory.
             evidence_compilation = None
+            trace_reasons.append("package_surfaces_omitted_fail_closed")
+            evidence_findings.append(
+                {
+                    "finding_id": content_identity(
+                        {
+                            "kind": "actual_package_surfaces_required",
+                            "snapshot_id": snapshot_id,
+                        }
+                    ),
+                    "operation_id": "",
+                    "kind": "actual_package_surfaces_required",
+                    "reason_code": "package_surfaces_required",
+                    "details": {
+                        "evidence": CONTRACT_ASSURANCE_INDEXGRAPH_EVIDENCE,
+                        "synthesized_from_expected": False,
+                    },
+                }
+            )
+        else:
+            try:
+                evidence_compilation = compile_runtime_contract_evidence(
+                    catalog,
+                    snapshot_id=snapshot_id,
+                    graph=graph if run_traces else None,
+                    extraction=extraction,
+                    package_surfaces=surfaces_for_compiler,
+                    runtime_catalog=runtime_catalog,
+                    run_traces=bool(
+                        run_traces
+                        and graph is not None
+                        and graph.complete
+                    ),
+                )
+            except Exception as exc:  # noqa: BLE001 - typed stage failure
+                trace_reasons.extend(
+                    ("evidence_compilation_failed", type(exc).__name__)
+                )
+                evidence_compilation = None
 
     if evidence_compilation is not None:
         if not observed_map:
@@ -1343,6 +1759,44 @@ def materialize_contract_assurance_baseline(
                 key: dict(value)
                 for key, value in evidence_compilation.observed_contract_map.items()
             }
+        # When actual surfaces are required, expected-only observed contracts
+        # cannot claim actual completeness.
+        if require_actual_package_surfaces:
+            rewritten: dict[str, Mapping[str, Any]] = {}
+            for key, value in observed_map.items():
+                payload = dict(value)
+                if not _observed_has_actual_tool_provenance(payload):
+                    payload["complete"] = False
+                    payload["has_package_registration"] = False
+                    payload["actual_surface_required"] = True
+                    payload["synthesized_from_expected"] = True
+                    actual_surfaces_blocks_exhaustive = True
+                    evidence_findings.append(
+                        {
+                            "finding_id": content_identity(
+                                {
+                                    "kind": "expected_only_observed_contract",
+                                    "operation_id": key,
+                                    "snapshot_id": snapshot_id,
+                                }
+                            ),
+                            "operation_id": key,
+                            "kind": "expected_only_observed_contract",
+                            "reason_code": "actual_route_not_extracted",
+                            "details": {
+                                "evidence": CONTRACT_ASSURANCE_INDEXGRAPH_EVIDENCE,
+                                "message": (
+                                    "expected descriptor cannot synthesize "
+                                    "an observed actual route"
+                                ),
+                            },
+                        }
+                    )
+                else:
+                    payload["synthesized_from_expected"] = False
+                    payload["actual_surface_required"] = True
+                rewritten[key] = payload
+            observed_map = rewritten
         for finding in evidence_compilation.findings:
             evidence_findings.append(finding.to_dict())
         traces.extend(evidence_compilation.traces)
@@ -1696,6 +2150,23 @@ def materialize_contract_assurance_baseline(
     )
     # Force no_drift_claim false in health projection until claims computed.
     health["no_drift_claim"] = False
+    health["multi_root_blocks_exhaustive"] = bool(multi_root_blocks_exhaustive)
+    health["actual_surfaces_blocks_exhaustive"] = bool(
+        actual_surfaces_blocks_exhaustive
+    )
+    health["provider_surface_blocks_exhaustive"] = bool(
+        provider_surface_blocks_exhaustive
+    )
+    if (
+        multi_root_blocks_exhaustive
+        or actual_surfaces_blocks_exhaustive
+        or provider_surface_blocks_exhaustive
+    ):
+        health["safe_for_completion_reasoning"] = False
+        health["exhaustive"] = False
+        if health.get("status") == "healthy":
+            health["status"] = "partial"
+            health["reason_code"] = "production_index_graph_incomplete"
 
     terminals: list[BaselineContractTerminal] = []
     if catalog is not None:
@@ -1885,6 +2356,47 @@ def materialize_contract_assurance_baseline(
         "stages": [stage.to_dict() for stage in stages],
         "interface": CONTRACT_ASSURANCE_BASELINE_INTERFACE,
         "version": CONTRACT_ASSURANCE_BASELINE_VERSION,
+        "evidence": {
+            "SCAEV179INDEXGRAPH": CONTRACT_ASSURANCE_INDEXGRAPH_EVIDENCE,
+            "provider_surface_health": PROVIDER_SURFACE_HEALTH_EVIDENCE,
+        },
+        "index_graph": {
+            "evidence": CONTRACT_ASSURANCE_INDEXGRAPH_EVIDENCE,
+            "multi_root_id": (
+                multi_root_index.multi_root_id
+                if multi_root_index is not None
+                else ""
+            ),
+            "multi_root_exhaustive_parity_allowed": (
+                multi_root_index.exhaustive_parity_allowed
+                if multi_root_index is not None
+                else False
+            ),
+            "package_surface_count": len(package_surface_tuple),
+            "package_surface_ids": [
+                item.surface_id for item in package_surface_tuple
+            ],
+            "require_actual_package_surfaces": require_actual_package_surfaces,
+            "actual_surfaces_blocks_exhaustive": (
+                actual_surfaces_blocks_exhaustive
+            ),
+            "provider_surface_health_report_id": (
+                surface_health_report.report_id
+                if surface_health_report is not None
+                else ""
+            ),
+            "provider_surface_blocks_exhaustive": (
+                provider_surface_blocks_exhaustive
+            ),
+            "graphrag_receipt_id": (
+                graphrag_receipt.receipt_id if graphrag_receipt is not None else ""
+            ),
+            "graphrag_graph_root": (
+                graphrag_receipt.graph_root if graphrag_receipt is not None else ""
+            ),
+            "graphrag_non_authoritative": True,
+            "llm_call_count": 0,
+        },
     }
 
     if runtime_catalog is not None:
@@ -1949,6 +2461,15 @@ def materialize_baseline_from_repository_index(
     observed_contracts: Sequence[Mapping[str, Any]]
     | Mapping[str, Mapping[str, Any]] = (),
     runtime_catalog: RuntimeComponentCatalog | None = None,
+    multi_root_index: MultiRootRepositoryIndex | None = None,
+    package_surfaces: Sequence[PythonMcpPackageSurface] | None = None,
+    require_actual_package_surfaces: bool = False,
+    provider_surface_health: ProviderSurfaceHealthReport | None = None,
+    assess_surface_health: bool = True,
+    run_graphrag: bool = True,
+    graphrag_query: str = DEFAULT_GRAPHRAG_QUERY,
+    require_exact_datasets_graphrag: bool = False,
+    use_exact_datasets_graphrag: bool = False,
     max_file_bytes: int = DEFAULT_MAX_ARTIFACT_BYTES,
 ) -> ContractAssuranceBaselineResult:
     """Convenience entry used by ``index_repository_contracts``."""
@@ -1960,6 +2481,15 @@ def materialize_baseline_from_repository_index(
         swissknife_root=swissknife_root,
         observed_contracts=observed_contracts,
         runtime_catalog=runtime_catalog,
+        multi_root_index=multi_root_index,
+        package_surfaces=package_surfaces,
+        require_actual_package_surfaces=require_actual_package_surfaces,
+        provider_surface_health=provider_surface_health,
+        assess_surface_health=assess_surface_health,
+        run_graphrag=run_graphrag,
+        graphrag_query=graphrag_query,
+        require_exact_datasets_graphrag=require_exact_datasets_graphrag,
+        use_exact_datasets_graphrag=use_exact_datasets_graphrag,
         max_file_bytes=max_file_bytes,
     )
 
@@ -1970,6 +2500,8 @@ __all__ = [
     "BASELINE_RUN_SCHEMA",
     "CONTRACT_ASSURANCE_BASELINE_INTERFACE",
     "CONTRACT_ASSURANCE_BASELINE_VERSION",
+    "CONTRACT_ASSURANCE_INDEXGRAPH_EVIDENCE",
+    "DEFAULT_GRAPHRAG_QUERY",
     "DEFAULT_MAX_ARTIFACT_BYTES",
     "DEFAULT_REPRODUCTION_COMMAND",
     "TERMINAL_STATUS_DOMAIN",

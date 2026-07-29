@@ -42,6 +42,7 @@ from ipfs_accelerate_py.agent_supervisor.analysis.analyzer_health import (  # no
 from ipfs_accelerate_py.agent_supervisor.analysis.contract_assurance_baseline import (  # noqa: E402
     DEFAULT_MAX_ARTIFACT_BYTES,
     materialize_baseline_from_repository_index,
+    materialize_contract_assurance_baseline,
 )
 from ipfs_accelerate_py.agent_supervisor.analysis.polyglot_ast_health import (  # noqa: E402
     POLYGLOT_AST_HEALTH_EVIDENCE,
@@ -52,14 +53,23 @@ from ipfs_accelerate_py.agent_supervisor.analysis.polyglot_ast_provider import (
     PolyglotASTLimits,
     PolyglotASTProvider,
 )
+from ipfs_accelerate_py.agent_supervisor.analysis.provider_surface_health import (  # noqa: E402
+    DEFAULT_PROVIDER_SURFACE_HEALTH_BACKLOG_RELATIVE,
+    assess_provider_surface_health,
+    extract_actual_provider_package_surfaces,
+    write_provider_surface_health_backlog,
+)
 from ipfs_accelerate_py.agent_supervisor.analysis.repository_indexer import (  # noqa: E402
     DEFAULT_MAX_COMPACT_ROW_BYTES,
     DEFAULT_MAX_INDEX_PATHS,
     DEFAULT_MAX_PARSER_SOURCE_BYTES,
     DEFAULT_MAX_SOURCE_BYTES,
+    PROVIDER_INDEX_BASELINE_RELATIVE,
     RepositoryIndex,
     RepositoryIndexer,
     RepositoryIndexerError,
+    build_multi_root_repository_index,
+    write_provider_index_baseline,
 )
 from ipfs_accelerate_py.agent_supervisor.analysis.repository_snapshot import (  # noqa: E402
     RepositorySnapshotError,
@@ -67,6 +77,8 @@ from ipfs_accelerate_py.agent_supervisor.analysis.repository_snapshot import (  
     default_scope_policy_path,
     load_scope_policy,
 )
+
+PRODUCTION_INDEX_GRAPH_EVIDENCE = "SCAEV179INDEXGRAPH"
 
 
 # Reviewed SwissKnife toolchain identity for the authoritative handoff.
@@ -265,6 +277,67 @@ def build_arg_parser() -> argparse.ArgumentParser:
         dest="invalidate_compiler_unavailable",
         action="store_false",
         help="allow previous compiler-unavailable rows to be considered for reuse",
+    )
+    parser.add_argument(
+        "--index-provider-roots",
+        action="store_true",
+        default=True,
+        help=(
+            "index every configured provider package root as an independent "
+            "content-addressed tree and emit provider-index.json "
+            f"({PRODUCTION_INDEX_GRAPH_EVIDENCE}; default: on)"
+        ),
+    )
+    parser.add_argument(
+        "--skip-provider-roots",
+        dest="index_provider_roots",
+        action="store_false",
+        help="skip multi-root provider package indexing",
+    )
+    parser.add_argument(
+        "--require-actual-package-surfaces",
+        action="store_true",
+        default=True,
+        help=(
+            "require cold-extracted actual MCP package surfaces; omit to fail "
+            "closed instead of synthesizing routes from expected descriptors "
+            "(default: on when provider roots are indexed)"
+        ),
+    )
+    parser.add_argument(
+        "--allow-expected-only-surfaces",
+        dest="require_actual_package_surfaces",
+        action="store_false",
+        help="legacy path: do not fail closed when package surfaces are omitted",
+    )
+    parser.add_argument(
+        "--provider-index-path",
+        default=None,
+        help=(
+            "optional destination for the compact provider-index baseline "
+            f"(default: <output-root>/provider-index.json or "
+            f"{PROVIDER_INDEX_BASELINE_RELATIVE})"
+        ),
+    )
+    parser.add_argument(
+        "--provider-surface-health-path",
+        default=None,
+        help=(
+            "optional destination for the provider surface health backlog "
+            f"(default: <output-root>/provider-surface-health.json or "
+            f"{DEFAULT_PROVIDER_SURFACE_HEALTH_BACKLOG_RELATIVE})"
+        ),
+    )
+    parser.add_argument(
+        "--max-provider-symbol-files",
+        type=int,
+        default=DEFAULT_MAX_INDEX_PATHS,
+        help="per-provider cap for package function symbol extraction",
+    )
+    parser.add_argument(
+        "--skip-graphrag",
+        action="store_true",
+        help="skip bounded real-graph GraphRAG retrieval stage",
     )
     return parser
 
@@ -952,16 +1025,71 @@ def main(argv: Sequence[str] | None = None) -> int:
             if candidate.is_dir():
                 swissknife_root = str(candidate)
 
-        if args.skip_extraction:
-            from ipfs_accelerate_py.agent_supervisor.analysis.contract_assurance_baseline import (
-                materialize_contract_assurance_baseline,
+        multi_root_index = None
+        package_surfaces = ()
+        provider_surface_health = None
+        provider_index_path: Path | None = None
+        provider_health_path: Path | None = None
+        if args.index_provider_roots:
+            multi_root_index = build_multi_root_repository_index(
+                args.repo_root,
+                index_root=output_root / "multi-root",
+                scope_config_path=args.scope_config,
+                provider=provider,
+                health_thresholds=thresholds,
+                allow_dirty_analysis=args.allow_dirty,
+                max_paths=args.max_paths,
+                max_symbol_files_per_package=args.max_provider_symbol_files,
+                extract_symbols=True,
+            )
+            provider_index_path = Path(
+                args.provider_index_path
+                or (output_root / "provider-index.json")
+            )
+            write_provider_index_baseline(multi_root_index, provider_index_path)
+            # Also retain the reviewed baseline path when present relative to
+            # the superproject so production handoffs stay discoverable.
+            reviewed_provider_index = Path(args.repo_root) / PROVIDER_INDEX_BASELINE_RELATIVE
+            if provider_index_path.resolve() != reviewed_provider_index.resolve():
+                try:
+                    write_provider_index_baseline(
+                        multi_root_index, reviewed_provider_index
+                    )
+                except OSError:
+                    # Output staging may be outside the superproject; non-fatal.
+                    pass
+            package_surfaces = extract_actual_provider_package_surfaces(
+                args.repo_root,
+                multi_root_index=multi_root_index,
+            )
+            provider_surface_health = assess_provider_surface_health(
+                package_surfaces=package_surfaces,
+                multi_root_index=multi_root_index,
+                snapshot_id=result.snapshot.snapshot_id,
+            )
+            provider_health_path = Path(
+                args.provider_surface_health_path
+                or (output_root / "provider-surface-health.json")
+            )
+            write_provider_surface_health_backlog(
+                provider_surface_health, provider_health_path
             )
 
+        if args.skip_extraction:
             baseline = materialize_contract_assurance_baseline(
                 repository_index=result,
                 extract_expected=False,
                 output_root=output_root,
                 max_file_bytes=args.max_artifact_bytes,
+                multi_root_index=multi_root_index,
+                package_surfaces=package_surfaces or None,
+                require_actual_package_surfaces=bool(
+                    args.require_actual_package_surfaces
+                    and args.index_provider_roots
+                ),
+                provider_surface_health=provider_surface_health,
+                assess_surface_health=bool(args.index_provider_roots),
+                run_graphrag=not bool(args.skip_graphrag),
             )
         else:
             baseline = materialize_baseline_from_repository_index(
@@ -970,6 +1098,15 @@ def main(argv: Sequence[str] | None = None) -> int:
                 repo_root=args.repo_root,
                 swissknife_root=swissknife_root,
                 max_file_bytes=args.max_artifact_bytes,
+                multi_root_index=multi_root_index,
+                package_surfaces=package_surfaces or None,
+                require_actual_package_surfaces=bool(
+                    args.require_actual_package_surfaces
+                    and args.index_provider_roots
+                ),
+                provider_surface_health=provider_surface_health,
+                assess_surface_health=bool(args.index_provider_roots),
+                run_graphrag=not bool(args.skip_graphrag),
             )
 
         handoff_root = resolve_handoff_root(
@@ -1049,6 +1186,43 @@ def main(argv: Sequence[str] | None = None) -> int:
             "typescript_version": typescript_version or "",
             "parser_identity": indexer.parser_identity,
             "compiler_unavailable_invalidation": invalidation_receipt,
+            "index_graph": {
+                "evidence": PRODUCTION_INDEX_GRAPH_EVIDENCE,
+                "provider_roots_indexed": multi_root_index is not None,
+                "multi_root_id": (
+                    multi_root_index.multi_root_id
+                    if multi_root_index is not None
+                    else ""
+                ),
+                "exhaustive_parity_allowed": (
+                    multi_root_index.exhaustive_parity_allowed
+                    if multi_root_index is not None
+                    else False
+                ),
+                "provider_index_path": (
+                    str(provider_index_path) if provider_index_path is not None else ""
+                ),
+                "package_surface_count": len(package_surfaces),
+                "require_actual_package_surfaces": bool(
+                    args.require_actual_package_surfaces and args.index_provider_roots
+                ),
+                "provider_surface_health_report_id": (
+                    provider_surface_health.report_id
+                    if provider_surface_health is not None
+                    else ""
+                ),
+                "provider_surface_health_path": (
+                    str(provider_health_path)
+                    if provider_health_path is not None
+                    else ""
+                ),
+                "provider_surface_blocks_exhaustive": (
+                    not provider_surface_health.exhaustive_parity_allowed
+                    if provider_surface_health is not None
+                    else False
+                ),
+                "llm_call_count": 0,
+            },
             "handoff": (
                 {
                     "published": True,
