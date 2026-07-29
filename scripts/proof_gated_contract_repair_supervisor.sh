@@ -442,7 +442,12 @@ for lane in range(lane_count):
             values["supervisor_pid"] = pid
             values["supervisor_pid_alive"] = alive
             values["restart_count"] = supervisor.get("restart_count", 0)
+            values["supervisor_heartbeat_age_seconds"] = round(
+                time.time() - supervisor_path.stat().st_mtime, 1
+            )
             if values["supervisor"] != "running" or not alive:
+                failed = True
+            if values["supervisor_heartbeat_age_seconds"] > 180:
                 failed = True
         except Exception as exc:
             values["supervisor_error"] = str(exc)
@@ -461,7 +466,17 @@ for lane in range(lane_count):
             values["heartbeat_age_seconds"] = round(
                 time.time() - task_path.stat().st_mtime, 1
             )
-            if values["heartbeat_age_seconds"] > 180:
+            quiescent = (
+                not values["active_task_id"]
+                and values["eligible_ready_count"] == 0
+                and values["selection_idle_reason"]
+                == "no_shard_selectable_ready_tasks"
+            )
+            values["task_state_quiescent"] = quiescent
+            # The daemon deliberately avoids rewriting an unchanged idle
+            # projection. Its task-state mtime can therefore be old while the
+            # supervisor heartbeat and process are healthy.
+            if values["heartbeat_age_seconds"] > 180 and not quiescent:
                 failed = True
             if values["blocked_count"]:
                 failed = True
