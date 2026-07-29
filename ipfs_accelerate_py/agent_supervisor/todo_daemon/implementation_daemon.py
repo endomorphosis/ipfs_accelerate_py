@@ -16301,10 +16301,14 @@ class PortalImplementationDaemon:
         return result
 
     def _cleanup_stale_locks(self, *, max_age_seconds: float = 0) -> dict[str, Any]:
-        """Remove stale .lock files that persist after crashes/SIGKILL.
+        """Remove stale transient Git locks while preserving flock inodes.
 
-        Lock files older than ``max_age_seconds`` (default 30 minutes) are
-        force-removed to prevent deadlocks in long-running supervisors.
+        Git transaction lock files use pathname existence as their exclusion
+        mechanism and can survive a crashed writer.  State-directory lock
+        files instead back durable leases or ``fcntl.flock`` coordination.
+        The kernel releases those locks when a process exits, so an old inode
+        is harmless; unlinking it can split concurrent writers across the old
+        and a newly created inode.
         """
         if max_age_seconds <= 0:
             max_age_seconds = float(
@@ -16313,41 +16317,53 @@ class PortalImplementationDaemon:
         if max_age_seconds <= 0:
             return {"attempted": False, "reason": "lock_cleanup_disabled"}
 
-        lock_patterns = [
-            self.repo_root / ".git" / "*.lock",
-            self.repo_root / ".git" / "refs" / "**" / "*.lock",
-        ]
-        # Also check state directory for merge resolver locks
+        git_dir = self.repo_root / ".git"
+        transient_git_lock_names = (
+            "index.lock",
+            "HEAD.lock",
+            "config.lock",
+            "packed-refs.lock",
+            "shallow.lock",
+        )
         state_dir = self.state_path.parent if self.state_path else None
 
         now_mono = time.time()
         removed: list[dict[str, Any]] = []
         skipped: list[dict[str, Any]] = []
 
-        import glob as glob_mod
-        lock_files: list[Path] = []
-        for pattern in lock_patterns:
-            lock_files.extend(Path(p) for p in glob_mod.glob(str(pattern), recursive=True))
+        transient_lock_files = [
+            git_dir / name
+            for name in transient_git_lock_names
+            if (git_dir / name).exists()
+        ]
+        if git_dir.is_dir():
+            transient_lock_files.extend(git_dir.glob("refs/**/*.lock"))
+        persistent_state_lock_files: set[Path] = set()
         if state_dir and state_dir.exists():
-            lock_files.extend(state_dir.glob("*.lock"))
+            persistent_state_lock_files.update(state_dir.glob("*.lock"))
 
         implementation_lock_path = self._implementation_lock_path()
         implementation_update_guard_path = implementation_lock_path.with_name(
             f".{implementation_lock_path.name}.update.lock"
         )
-        for lock_path in lock_files:
-            if lock_path in {
-                implementation_lock_path,
-                implementation_update_guard_path,
-            }:
-                # The durable implementation lease is inspected and repaired
-                # only by its serialized acquisition protocol.  The adjacent
-                # update guard is a persistent flock inode and must never be
-                # unlinked, even when its mtime is old.
+        for lock_path in sorted(
+            {*transient_lock_files, *persistent_state_lock_files},
+            key=str,
+        ):
+            if lock_path in persistent_state_lock_files:
+                reason = (
+                    "managed_by_implementation_lease_protocol"
+                    if lock_path
+                    in {
+                        implementation_lock_path,
+                        implementation_update_guard_path,
+                    }
+                    else "persistent_state_flock"
+                )
                 skipped.append(
                     {
                         "lock_path": str(lock_path),
-                        "reason": "managed_by_implementation_lease_protocol",
+                        "reason": reason,
                     }
                 )
                 continue
