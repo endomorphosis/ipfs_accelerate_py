@@ -9,6 +9,8 @@ import pytest
 from ipfs_accelerate_py.agent_supervisor.contract_checker import (
     CHECKER_VERSION,
     CLOSED_SUPPORTED_ASPECTS,
+    CONTRACT_CHECK_RESULT_EVIDENCE,
+    CONTRACT_COUNTEREXAMPLE_EVIDENCE,
     AspectCheckResult,
     AspectVerdict,
     CacheFreshness,
@@ -421,6 +423,35 @@ def test_closed_supported_aspects_cover_acceptance_dimensions() -> None:
     assert CHECKER_VERSION.startswith("contract-checker@")
 
 
+def test_objective_evidence_terms_are_emitted_on_result_and_witness() -> None:
+    result = compare_contracts(
+        expected_contract(),
+        observed_contract(returns=ReturnSpec(type_shape=string_type())),
+        evaluated_at=EVALUATED,
+        authority_expires_at=EXPIRES,
+    )
+    assert CONTRACT_CHECK_RESULT_EVIDENCE == "vfs/contract-check-result@1"
+    assert CONTRACT_COUNTEREXAMPLE_EVIDENCE == "vfs/contract-counterexample@1"
+    assert result.evidence == CONTRACT_CHECK_RESULT_EVIDENCE
+    assert result.to_dict()["evidence"] == CONTRACT_CHECK_RESULT_EVIDENCE
+    assert result.counterexample is not None
+    assert result.counterexample.evidence == CONTRACT_COUNTEREXAMPLE_EVIDENCE
+    assert (
+        result.counterexample.to_dict()["evidence"]
+        == CONTRACT_COUNTEREXAMPLE_EVIDENCE
+    )
+
+    forged_result = result.to_dict()
+    forged_result["evidence"] = "vfs/other-evidence@1"
+    with pytest.raises(ContractCheckerError):
+        ContractCheckResult.from_dict(forged_result)
+
+    forged_witness = result.counterexample.to_dict()
+    forged_witness["evidence"] = "vfs/other-evidence@1"
+    with pytest.raises(ContractCheckerError):
+        ContractCounterexample.from_dict(forged_witness)
+
+
 def test_path_traversal_detector() -> None:
     assert _path_is_traversal("../etc/passwd")
     assert _path_is_traversal("/absolute")
@@ -760,6 +791,10 @@ def test_cache_staleness_and_expired_authority() -> None:
     )
     assert stale_cache.kind is ContractCheckResultKind.STALE
     assert stale_cache.cache_freshness is CacheFreshness.STALE
+    assert (
+        stale_cache.binding.cache_binding_freshness
+        is CacheFreshness.STALE
+    )
     assert stale_cache.counterexample is None
 
     expired = compare_contracts(
@@ -770,6 +805,15 @@ def test_cache_staleness_and_expired_authority() -> None:
     )
     assert expired.kind is ContractCheckResultKind.STALE
     assert expired.freshness is CacheFreshness.STALE
+
+    stale_timeout = compare_contracts(
+        expected_contract(),
+        observed_contract(),
+        evaluated_at=EVALUATED,
+        authority_expires_at=STALE_EXPIRES,
+        force_timeout=True,
+    )
+    assert stale_timeout.kind is ContractCheckResultKind.STALE
 
 
 def test_timeout_result_kind() -> None:
@@ -805,6 +849,24 @@ def test_unsupported_aspect_blocks_proved_compatible() -> None:
     assert any(
         item.aspect is SemanticAspect.ORDERING
         and item.verdict is AspectVerdict.UNSUPPORTED
+        for item in result.aspect_results
+    )
+
+
+def test_unknown_semantics_emit_explicit_unknown_result() -> None:
+    result = compare_contracts(
+        expected_contract(),
+        observed_contract(
+            fallback=FallbackSpec(mode=DegradationMode.UNKNOWN)
+        ),
+        evaluated_at=EVALUATED,
+        authority_expires_at=EXPIRES,
+    )
+    assert result.kind is ContractCheckResultKind.UNKNOWN
+    assert result.counterexample is None
+    assert any(
+        item.aspect is SemanticAspect.FALLBACK_DEGRADATION
+        and item.verdict is AspectVerdict.UNKNOWN
         for item in result.aspect_results
     )
 
@@ -989,6 +1051,20 @@ def test_conclusive_counterexample_rejects_stale_authority() -> None:
             authority_expires_at=STALE_EXPIRES,
         )
 
+    stale_binding = make_binding(
+        expected_contract(),
+        observed_contract(),
+        cache_generation="gen:old",
+        expected_cache_generation="gen:new",
+    )
+    with pytest.raises(StaleAuthorityError):
+        minimal_counterexample(
+            binding=stale_binding,
+            aspect_result=aspect,
+            evaluated_at=EVALUATED,
+            authority_expires_at=EXPIRES,
+        )
+
 
 def test_scope_mismatch_on_call_path_repo() -> None:
     bad_path = CallPath(
@@ -1012,6 +1088,156 @@ def test_scope_mismatch_on_call_path_repo() -> None:
             evaluated_at=EVALUATED,
             authority_expires_at=EXPIRES,
         )
+
+
+@pytest.mark.parametrize(
+    ("observed", "different_field"),
+    (
+        (
+            observed_contract(
+                symbol=symbol(repository_id="repository:other")
+            ),
+            "repository",
+        ),
+        (
+            observed_contract(
+                symbol=SymbolIdentity(
+                    repository_id=REPO,
+                    tree_id=TREE,
+                    module_path="ipfs_kit_py/vfs.py",
+                    symbol_name="read_bytes",
+                    language="python",
+                    span_start=11,
+                    span_end=40,
+                    blob_cid="baguqeera" + "1" * 50,
+                )
+            ),
+            "symbol",
+        ),
+        (
+            observed_contract(
+                interface=InterfaceIdentity(
+                    interface_name="vfs.read",
+                    surface="mcp++",
+                    version="2.0",
+                    method="read",
+                    protocol="mcp",
+                    path_or_uri="mcp://vfs/read",
+                )
+            ),
+            "interface",
+        ),
+        (
+            observed_contract(policy_revision="policy:other@1"),
+            "policy",
+        ),
+    ),
+)
+def test_exact_subject_binding_rejects_near_matches(
+    observed: ObservedProgramContract,
+    different_field: str,
+) -> None:
+    result = compare_contracts(
+        expected_contract(),
+        observed,
+        evaluated_at=EVALUATED,
+        authority_expires_at=EXPIRES,
+    )
+    binding = result.binding
+    assert result.kind is ContractCheckResultKind.WITNESSED_MISMATCH
+    assert result.counterexample is not None
+    assert result.counterexample.aspect is SemanticAspect.IDENTITY
+    assert not binding.subject_matches
+    if different_field == "repository":
+        assert binding.repository_id != binding.observed_repository_id
+    elif different_field == "symbol":
+        assert binding.expected_symbol_id != binding.observed_symbol_id
+    elif different_field == "interface":
+        assert binding.expected_interface_id != binding.observed_interface_id
+    else:
+        assert binding.policy_revision != binding.observed_policy_revision
+
+
+def test_exact_call_path_symbol_and_interface_binding() -> None:
+    for path in (
+        CallPath(
+            repository_id=REPO,
+            tree_id=TREE,
+            policy_revision=POLICY,
+            path_name="wrong-interface",
+            entry_interface="vfs.write",
+            steps=(
+                CallPathStep(
+                    step_index=0,
+                    symbol_name="read_bytes",
+                    resolution=CallPathResolution.STATIC,
+                ),
+            ),
+        ),
+        CallPath(
+            repository_id=REPO,
+            tree_id=TREE,
+            policy_revision=POLICY,
+            path_name="wrong-symbol",
+            exit_symbol="write_bytes",
+            steps=(
+                CallPathStep(
+                    step_index=0,
+                    symbol_name="read_bytes",
+                    resolution=CallPathResolution.STATIC,
+                ),
+            ),
+        ),
+    ):
+        with pytest.raises(ScopeMismatchError):
+            compare_contracts(
+                expected_contract(),
+                observed_contract(),
+                call_path=path,
+                evaluated_at=EVALUATED,
+                authority_expires_at=EXPIRES,
+            )
+
+
+def test_freshness_is_bound_to_generations_and_witness_window() -> None:
+    current = compare_contracts(
+        expected_contract(),
+        observed_contract(),
+        evaluated_at=EVALUATED,
+        authority_expires_at=EXPIRES,
+        cache_generation="gen:9",
+        expected_cache_generation="gen:9",
+    )
+    assert current.binding.cache_generation == "gen:9"
+    assert current.binding.expected_cache_generation == "gen:9"
+    assert (
+        current.binding.cache_binding_freshness is CacheFreshness.CURRENT
+    )
+
+    forged_generation = current.to_dict()
+    forged_generation["binding"]["expected_cache_generation"] = "gen:10"
+    with pytest.raises(ForgedIdentityError):
+        ContractCheckResult.from_dict(forged_generation)
+
+    rebound_generation = current.to_dict()
+    rebound_generation["binding"]["expected_cache_generation"] = "gen:10"
+    rebound_generation["binding"]["cache_binding_freshness"] = "stale"
+    with pytest.raises(StaleAuthorityError):
+        ContractCheckResult.from_dict(rebound_generation)
+
+    mismatch = compare_contracts(
+        expected_contract(),
+        observed_contract(returns=ReturnSpec(type_shape=string_type())),
+        evaluated_at=EVALUATED,
+        authority_expires_at=EXPIRES,
+    )
+    forged_window = mismatch.to_dict()
+    assert forged_window["counterexample"] is not None
+    forged_window["counterexample"]["evaluated_at"] = (
+        "2026-07-29T12:01:00+00:00"
+    )
+    with pytest.raises(StaleAuthorityError):
+        ContractCheckResult.from_dict(forged_window)
 
 
 def test_proved_compatible_rejects_blocking_aspect_on_construction() -> None:
@@ -1153,8 +1379,11 @@ def test_check_binding_round_trip() -> None:
         observed_contract(),
         call_path=static_path(),
         cache_generation="gen:9",
+        expected_cache_generation="gen:9",
     )
     restored = CheckBinding.from_dict(binding.to_dict())
     assert restored.binding_id == binding.binding_id
     assert restored.call_path_id == static_path().path_id
     assert restored.checker_version == CHECKER_VERSION
+    assert restored.subject_matches
+    assert restored.cache_binding_freshness is CacheFreshness.CURRENT
