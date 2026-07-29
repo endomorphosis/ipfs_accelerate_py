@@ -22,6 +22,10 @@ from enum import Enum
 from types import MappingProxyType
 from typing import Any, Final
 
+from .cve_security_gate import (
+    CVESecurityGateResult,
+    correlate_security_requests,
+)
 from .decision_contracts import DecisionRequest
 from .formal_verification_contracts import (
     AssuranceLevel,
@@ -40,6 +44,7 @@ from .security_constraint_adapter import (
     SecurityDecisionOutcome,
     SecurityPolicyReceipt,
     evaluate_security_authorization,
+    revalidate_security_authorization,
 )
 from .semantic_dependency_graph import MandatoryClosure
 
@@ -59,6 +64,9 @@ PLAN_ADMISSION_REJECTION_SCHEMA: Final[str] = (
 )
 PLAN_ADMISSION_COUNTEREXAMPLE_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/plan-admission-counterexample@1"
+)
+CVE_SECURITY_ENFORCEMENT_EVIDENCE_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/cve-security-enforcement-evidence@1"
 )
 
 
@@ -97,6 +105,10 @@ class AdmissionRejectionCode(str, Enum):
     SECURITY_DENY = "security_deny"
     SECURITY_UNKNOWN = "security_unknown"
     SECURITY_CONFLICT = "security_conflict"
+    CVE_SECURITY_GATE_MISSING = "cve_security_gate_missing"
+    CVE_SECURITY_GATE_REJECTED = "cve_security_gate_rejected"
+    CVE_SECURITY_GATE_STALE = "cve_security_gate_stale"
+    CVE_SECURITY_GATE_DETACHED = "cve_security_gate_detached"
     DEPENDENCY_UNSATISFIED = "program_dependency_unsatisfied"
     ASSUMPTION_UNRESOLVED = "assumption_unresolved"
     MISSING_PROOF = "missing_proof"
@@ -111,6 +123,25 @@ class ValidationStatus(str, Enum):
     PASSED = "passed"
     FAILED = "failed"
     UNKNOWN = "unknown"
+
+
+class CVESecurityEnforcementStage(str, Enum):
+    """Ordered CVE gate boundaries from proposal through merged-tree use."""
+
+    PLAN_ADMISSION = "plan_admission"
+    PRE_EXECUTION = "pre_execution"
+    POST_GENERATION = "post_generation"
+    MERGE_ADMISSION = "merge_admission"
+    MERGED_TREE_REVALIDATION = "merged_tree_revalidation"
+
+
+_CVE_SECURITY_STAGE_ORDER: Final[tuple[CVESecurityEnforcementStage, ...]] = (
+    CVESecurityEnforcementStage.PLAN_ADMISSION,
+    CVESecurityEnforcementStage.PRE_EXECUTION,
+    CVESecurityEnforcementStage.POST_GENERATION,
+    CVESecurityEnforcementStage.MERGE_ADMISSION,
+    CVESecurityEnforcementStage.MERGED_TREE_REVALIDATION,
+)
 
 
 def _plain(value: Any) -> Any:
@@ -186,6 +217,84 @@ def _root_token(artifact: Any) -> str:
             str(getattr(artifact, "supervisor_digest", "") or ""),
         )
     )
+
+
+@dataclass(frozen=True)
+class CVESecurityEnforcementEvidence:
+    """One independently replayable CVE gate result at a runtime boundary.
+
+    The CVE gate result deliberately does not grant authority.  This wrapper
+    binds it to the repository tree and to the preceding stage so admission,
+    execution, generation, and merge callers cannot reuse a passing result
+    after the tree changes or skip an earlier boundary.
+    """
+
+    stage: CVESecurityEnforcementStage
+    repository_tree_id: str
+    gate_result: CVESecurityGateResult
+    parent_evidence_id: str = ""
+    authority: str = "authoritative"
+    expires_at_ms: int | None = None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self, "stage", CVESecurityEnforcementStage(self.stage)
+        )
+        object.__setattr__(
+            self,
+            "repository_tree_id",
+            _text(self.repository_tree_id, "repository_tree_id"),
+        )
+        object.__setattr__(
+            self,
+            "parent_evidence_id",
+            _text(
+                self.parent_evidence_id,
+                "parent_evidence_id",
+                required=False,
+            ),
+        )
+        object.__setattr__(self, "authority", _text(self.authority, "authority"))
+        if not isinstance(self.gate_result, CVESecurityGateResult):
+            raise IRConstraintCompilerError(
+                "gate_result must be a CVESecurityGateResult"
+            )
+        if self.expires_at_ms is not None and (
+            isinstance(self.expires_at_ms, bool)
+            or not isinstance(self.expires_at_ms, int)
+            or self.expires_at_ms < 0
+        ):
+            raise IRConstraintCompilerError(
+                "expires_at_ms must be a non-negative integer"
+            )
+
+    @property
+    def current_and_authoritative(self) -> bool:
+        return (
+            self.gate_result.passed
+            and self.authority in {"authoritative", "verified", "verified_input"}
+        )
+
+    @property
+    def evidence_id(self) -> str:
+        return _identity("cve-security-enforcement-evidence", self._payload())
+
+    def _payload(self) -> dict[str, Any]:
+        return {
+            "schema": CVE_SECURITY_ENFORCEMENT_EVIDENCE_SCHEMA,
+            "compiler_version": IR_CONSTRAINT_COMPILER_VERSION,
+            "stage": self.stage.value,
+            "repository_tree_id": self.repository_tree_id,
+            "gate_result": self.gate_result.to_dict(),
+            "parent_evidence_id": self.parent_evidence_id,
+            "authority": self.authority,
+            "expires_at_ms": self.expires_at_ms,
+            "grants_execution_authority": False,
+            "authorizes_completion": False,
+        }
+
+    def to_dict(self) -> dict[str, Any]:
+        return {**self._payload(), "evidence_id": self.evidence_id}
 
 
 @dataclass(frozen=True)
@@ -750,6 +859,8 @@ class PlanAdmissionRequest:
     proof_results: tuple[ProofReceipt, ...] = ()
     validation_requirements: tuple[ValidationRequirement, ...] = ()
     validation_results: tuple[ValidationResult, ...] = ()
+    cve_security_evidence: tuple[CVESecurityEnforcementEvidence, ...] = ()
+    required_cve_security_stage: CVESecurityEnforcementStage | None = None
     generated_formula_ids: tuple[str, ...] = ()
     decision_request: DecisionRequest | None = None
     mandatory_closure: MandatoryClosure | None = None
@@ -837,6 +948,25 @@ class PlanAdmissionRequest:
             "security_requests",
             tuple(sorted(self.security_requests, key=_record_id)),
         )
+        if any(
+            not isinstance(item, CVESecurityEnforcementEvidence)
+            for item in self.cve_security_evidence
+        ):
+            raise IRConstraintCompilerError(
+                "cve_security_evidence must contain "
+                "CVESecurityEnforcementEvidence records"
+            )
+        object.__setattr__(
+            self,
+            "cve_security_evidence",
+            tuple(self.cve_security_evidence),
+        )
+        if self.required_cve_security_stage is not None:
+            object.__setattr__(
+                self,
+                "required_cve_security_stage",
+                CVESecurityEnforcementStage(self.required_cve_security_stage),
+            )
         object.__setattr__(
             self,
             "generated_formula_ids",
@@ -902,6 +1032,14 @@ class PlanAdmissionRequest:
             "validation_results": [
                 item.to_dict() for item in self.validation_results
             ],
+            "cve_security_evidence": [
+                item.to_dict() for item in self.cve_security_evidence
+            ],
+            "required_cve_security_stage": (
+                self.required_cve_security_stage.value
+                if self.required_cve_security_stage is not None
+                else None
+            ),
             "generated_formula_ids": list(self.generated_formula_ids),
             "decision_request": (
                 self.decision_request.to_dict()
@@ -950,6 +1088,12 @@ class PlanAdmissionRequest:
                 value.get("validation_requirements") or ()
             ),
             validation_results=tuple(value.get("validation_results") or ()),
+            cve_security_evidence=tuple(
+                value.get("cve_security_evidence") or ()
+            ),
+            required_cve_security_stage=value.get(
+                "required_cve_security_stage"
+            ),
             generated_formula_ids=tuple(
                 value.get("generated_formula_ids") or ()
             ),
@@ -993,6 +1137,7 @@ class PlanAdmissionReceipt:
     generated_formula_ids: tuple[str, ...]
     proof_result_ids: tuple[str, ...]
     checked_validation_ids: tuple[str, ...]
+    cve_security_evidence_ids: tuple[str, ...] = ()
     rejection_reasons: tuple[AdmissionRejection, ...] = ()
     counterexamples: tuple[AdmissionCounterexample, ...] = ()
     local_replan_action_ids: tuple[str, ...] = ()
@@ -1032,6 +1177,7 @@ class PlanAdmissionReceipt:
             "generated_formula_ids",
             "proof_result_ids",
             "checked_validation_ids",
+            "cve_security_evidence_ids",
             "local_replan_action_ids",
         ):
             object.__setattr__(self, name, _strings(getattr(self, name), name))
@@ -1106,6 +1252,9 @@ class PlanAdmissionReceipt:
             "generated_formula_ids": list(self.generated_formula_ids),
             "proof_result_ids": list(self.proof_result_ids),
             "checked_validation_ids": list(self.checked_validation_ids),
+            "cve_security_evidence_ids": list(
+                self.cve_security_evidence_ids
+            ),
             "rejection_reasons": [
                 {**item.to_dict(), "rejection_id": item.rejection_id}
                 for item in self.rejection_reasons
@@ -1156,6 +1305,9 @@ class PlanAdmissionReceipt:
             generated_formula_ids=tuple(value.get("generated_formula_ids") or ()),
             proof_result_ids=tuple(value.get("proof_result_ids") or ()),
             checked_validation_ids=tuple(value.get("checked_validation_ids") or ()),
+            cve_security_evidence_ids=tuple(
+                value.get("cve_security_evidence_ids") or ()
+            ),
             rejection_reasons=tuple(
                 AdmissionRejection.from_dict(item)
                 for item in value.get("rejection_reasons") or ()
@@ -1271,6 +1423,293 @@ class IRConstraintCompiler:
                 AdmissionDomain.GRAPH,
                 "mandatory dependency closure is incomplete",
             )
+
+        cve_evidence = request.cve_security_evidence
+        if (
+            request.required_cve_security_stage is not None
+            and (
+                not cve_evidence
+                or cve_evidence[-1].stage
+                is not request.required_cve_security_stage
+            )
+        ):
+            reject(
+                AdmissionRejectionCode.CVE_SECURITY_GATE_MISSING,
+                AdmissionDomain.SECURITY,
+                "the required CVE security enforcement stage is absent",
+                source_ids=tuple(
+                    item.evidence_id for item in cve_evidence
+                ),
+                details={
+                    "required_stage": (
+                        request.required_cve_security_stage.value
+                    ),
+                    "terminal_stage": (
+                        cve_evidence[-1].stage.value
+                        if cve_evidence
+                        else None
+                    ),
+                },
+            )
+        if cve_evidence:
+            stages = tuple(item.stage for item in cve_evidence)
+            expected_stages = _CVE_SECURITY_STAGE_ORDER[: len(stages)]
+            if stages != expected_stages:
+                reject(
+                    AdmissionRejectionCode.CVE_SECURITY_GATE_MISSING,
+                    AdmissionDomain.SECURITY,
+                    "CVE security enforcement stages must form an exact "
+                    "plan-to-current prefix",
+                    source_ids=tuple(item.evidence_id for item in cve_evidence),
+                    details={
+                        "observed_stages": [item.value for item in stages],
+                        "expected_stages": [
+                            item.value for item in expected_stages
+                        ],
+                    },
+                )
+            for index, evidence in enumerate(cve_evidence):
+                expected_parent = (
+                    "" if index == 0 else cve_evidence[index - 1].evidence_id
+                )
+                if evidence.parent_evidence_id != expected_parent:
+                    reject(
+                        AdmissionRejectionCode.CVE_SECURITY_GATE_DETACHED,
+                        AdmissionDomain.SECURITY,
+                        "CVE security enforcement evidence is detached from "
+                        "the preceding stage",
+                        source_ids=(
+                            evidence.evidence_id,
+                            evidence.parent_evidence_id,
+                            expected_parent,
+                        ),
+                    )
+            if cve_evidence[-1].repository_tree_id != request.repository_tree_id:
+                reject(
+                    AdmissionRejectionCode.CVE_SECURITY_GATE_STALE,
+                    AdmissionDomain.ROOT,
+                    "the terminal CVE security gate is bound to a different tree",
+                    source_ids=(
+                        cve_evidence[-1].repository_tree_id,
+                        request.repository_tree_id,
+                    ),
+                )
+            pre_merge_trees = {
+                item.repository_tree_id
+                for item in cve_evidence
+                if item.stage
+                in {
+                    CVESecurityEnforcementStage.PLAN_ADMISSION,
+                    CVESecurityEnforcementStage.PRE_EXECUTION,
+                    CVESecurityEnforcementStage.POST_GENERATION,
+                }
+            }
+            merge_trees = {
+                item.repository_tree_id
+                for item in cve_evidence
+                if item.stage
+                in {
+                    CVESecurityEnforcementStage.MERGE_ADMISSION,
+                    CVESecurityEnforcementStage.MERGED_TREE_REVALIDATION,
+                }
+            }
+            if len(pre_merge_trees) > 1 or len(merge_trees) > 1:
+                reject(
+                    AdmissionRejectionCode.CVE_SECURITY_GATE_STALE,
+                    AdmissionDomain.ROOT,
+                    "CVE security evidence changed tree within one enforcement "
+                    "phase",
+                    source_ids=tuple(
+                        item.evidence_id for item in cve_evidence
+                    ),
+                )
+
+            prior_evaluated_at = -1
+            admission_security_request_ids = {
+                item.content_id for item in request.security_requests
+            }
+            policy_root = (
+                request.security_policy.security_root_artifact_id,
+                request.security_policy.security_root_cid_v1,
+                request.security_policy.security_root_supervisor_digest,
+            )
+            for evidence in cve_evidence:
+                gate = evidence.gate_result
+                gate_root = (
+                    gate.context.security_root_artifact_id,
+                    gate.context.security_root_cid_v1,
+                    gate.context.security_root_supervisor_digest,
+                )
+                if (
+                    not evidence.current_and_authoritative
+                    or gate.findings
+                    or gate.policy_receipt_id
+                    != request.security_policy.content_id
+                ):
+                    reject(
+                        AdmissionRejectionCode.CVE_SECURITY_GATE_REJECTED,
+                        AdmissionDomain.SECURITY,
+                        "CVE security gate is rejected, unknown, or "
+                        "non-authoritative",
+                        source_ids=(
+                            evidence.evidence_id,
+                            gate.gate_id,
+                            *(
+                                item.finding_id
+                                for item in gate.findings
+                            ),
+                        ),
+                    )
+                if gate_root != policy_root:
+                    reject(
+                        AdmissionRejectionCode.CVE_SECURITY_GATE_STALE,
+                        AdmissionDomain.ROOT,
+                        "CVE security gate binds a stale Security IR root",
+                        source_ids=(evidence.evidence_id, gate.gate_id),
+                    )
+                if (
+                    gate.context.principal != request.authority.principal
+                    or gate.context.requested_authority
+                    != request.authority.requested_authority
+                ):
+                    reject(
+                        AdmissionRejectionCode.CVE_SECURITY_GATE_DETACHED,
+                        AdmissionDomain.AUTHORITY,
+                        "CVE security gate principal or authority differs "
+                        "from plan admission",
+                        source_ids=(evidence.evidence_id, gate.gate_id),
+                    )
+                if gate.context.evaluated_at_ms < prior_evaluated_at:
+                    reject(
+                        AdmissionRejectionCode.CVE_SECURITY_GATE_STALE,
+                        AdmissionDomain.SECURITY,
+                        "CVE security stages are not evaluated monotonically",
+                        source_ids=(evidence.evidence_id,),
+                    )
+                prior_evaluated_at = gate.context.evaluated_at_ms
+                if (
+                    evidence.expires_at_ms is not None
+                    and evidence.expires_at_ms <= gate.context.evaluated_at_ms
+                ):
+                    reject(
+                        AdmissionRejectionCode.CVE_SECURITY_GATE_STALE,
+                        AdmissionDomain.SECURITY,
+                        "CVE security enforcement evidence is already expired",
+                        source_ids=(evidence.evidence_id,),
+                    )
+
+                mappings = (*gate.intent_mappings, *gate.code_mappings)
+                if (
+                    not gate.intent_mappings
+                    or not gate.code_mappings
+                    or any(not item.exact for item in mappings)
+                ):
+                    reject(
+                        AdmissionRejectionCode.CVE_SECURITY_GATE_REJECTED,
+                        AdmissionDomain.SECURITY,
+                        "CVE security gate requires non-empty exact intent and "
+                        "generated-code mappings",
+                        source_ids=(evidence.evidence_id, gate.gate_id),
+                    )
+                mapped_requests = {
+                    item.request.content_id
+                    for item in mappings
+                    if item.request is not None
+                }
+                if mapped_requests != admission_security_request_ids:
+                    reject(
+                        AdmissionRejectionCode.CVE_SECURITY_GATE_DETACHED,
+                        AdmissionDomain.SECURITY,
+                        "CVE gate requests differ from the exact plan security "
+                        "request population",
+                        source_ids=tuple(
+                            sorted(
+                                mapped_requests
+                                ^ admission_security_request_ids
+                            )
+                        ),
+                    )
+                if correlate_security_requests(
+                    gate.intent_mappings, gate.code_mappings
+                ):
+                    reject(
+                        AdmissionRejectionCode.CVE_SECURITY_GATE_REJECTED,
+                        AdmissionDomain.SECURITY,
+                        "intent and generated-code security mappings conflict",
+                        source_ids=(evidence.evidence_id, gate.gate_id),
+                    )
+
+                mapping_by_id = {
+                    item.mapping_id: item for item in mappings
+                }
+                decisions_by_mapping = {
+                    item.mapping_id: item for item in gate.decisions
+                }
+                if (
+                    len(mapping_by_id) != len(mappings)
+                    or len(decisions_by_mapping) != len(gate.decisions)
+                    or set(decisions_by_mapping) != set(mapping_by_id)
+                ):
+                    reject(
+                        AdmissionRejectionCode.CVE_SECURITY_GATE_DETACHED,
+                        AdmissionDomain.SECURITY,
+                        "CVE security decisions do not cover each exact mapping "
+                        "once",
+                        source_ids=(evidence.evidence_id, gate.gate_id),
+                    )
+                for mapping_id, mapping in mapping_by_id.items():
+                    mapped = decisions_by_mapping.get(mapping_id)
+                    if mapped is None or mapping.request is None:
+                        continue
+                    if mapped.stream is not mapping.stream:
+                        reject(
+                            AdmissionRejectionCode.CVE_SECURITY_GATE_DETACHED,
+                            AdmissionDomain.SECURITY,
+                            "CVE security decision stream differs from its "
+                            "mapping",
+                            source_ids=(evidence.evidence_id, mapping_id),
+                        )
+                        continue
+                    try:
+                        current = revalidate_security_authorization(
+                            request.security_policy,
+                            mapping.request,
+                            mapped.decision,
+                        )
+                    except ValueError:
+                        reject(
+                            AdmissionRejectionCode.CVE_SECURITY_GATE_STALE,
+                            AdmissionDomain.SECURITY,
+                            "CVE security decision is stale, forged, or "
+                            "detached",
+                            source_ids=(evidence.evidence_id, mapping_id),
+                        )
+                        continue
+                    if current.outcome is not SecurityDecisionOutcome.PERMIT:
+                        reject(
+                            {
+                                SecurityDecisionOutcome.DENY: (
+                                    AdmissionRejectionCode.SECURITY_DENY
+                                ),
+                                SecurityDecisionOutcome.UNKNOWN: (
+                                    AdmissionRejectionCode.SECURITY_UNKNOWN
+                                ),
+                                SecurityDecisionOutcome.CONFLICT: (
+                                    AdmissionRejectionCode.SECURITY_CONFLICT
+                                ),
+                            }.get(
+                                current.outcome,
+                                AdmissionRejectionCode.CVE_SECURITY_GATE_REJECTED,
+                            ),
+                            AdmissionDomain.SECURITY,
+                            "CVE security decision does not permit the exact "
+                            "mapping",
+                            source_ids=(
+                                evidence.evidence_id,
+                                mapping_id,
+                                current.content_id,
+                            ),
+                        )
 
         binding_by_action = {item.action_id: item for item in request.action_bindings}
         if set(binding_by_action) != set(actions):
@@ -1725,6 +2164,9 @@ class IRConstraintCompiler:
             checked_validation_ids=tuple(
                 item.requirement_id for item in request.validation_requirements
             ),
+            cve_security_evidence_ids=tuple(
+                item.evidence_id for item in request.cve_security_evidence
+            ),
             rejection_reasons=tuple(rejections),
             counterexamples=tuple(examples),
             local_replan_action_ids=tuple(sorted(replan)),
@@ -1747,6 +2189,71 @@ def compile_plan_admission(
     return IRConstraintCompiler().compile(request)
 
 
+def _compile_cve_stage_admission(
+    request: PlanAdmissionRequest,
+    stage: CVESecurityEnforcementStage,
+) -> PlanAdmissionReceipt:
+    if not isinstance(request, PlanAdmissionRequest):
+        raise IRConstraintCompilerError(
+            "CVE security admission requires a PlanAdmissionRequest"
+        )
+    if request.required_cve_security_stage is not stage:
+        raise IRConstraintCompilerError(
+            f"request must require the {stage.value} CVE security stage"
+        )
+    return compile_plan_admission(request)
+
+
+def compile_cve_plan_admission(
+    request: PlanAdmissionRequest,
+) -> PlanAdmissionReceipt:
+    """Require and replay the plan-admission CVE security gate."""
+
+    return _compile_cve_stage_admission(
+        request, CVESecurityEnforcementStage.PLAN_ADMISSION
+    )
+
+
+def compile_cve_pre_execution_admission(
+    request: PlanAdmissionRequest,
+) -> PlanAdmissionReceipt:
+    """Require an unbroken gate chain through the pre-execution boundary."""
+
+    return _compile_cve_stage_admission(
+        request, CVESecurityEnforcementStage.PRE_EXECUTION
+    )
+
+
+def compile_cve_post_generation_validation(
+    request: PlanAdmissionRequest,
+) -> PlanAdmissionReceipt:
+    """Re-admit generated code only after its exact CVE gate passes."""
+
+    return _compile_cve_stage_admission(
+        request, CVESecurityEnforcementStage.POST_GENERATION
+    )
+
+
+def compile_cve_merge_admission(
+    request: PlanAdmissionRequest,
+) -> PlanAdmissionReceipt:
+    """Admit a merge only after rebuilding the CVE gate on its tree."""
+
+    return _compile_cve_stage_admission(
+        request, CVESecurityEnforcementStage.MERGE_ADMISSION
+    )
+
+
+def revalidate_cve_merged_tree(
+    request: PlanAdmissionRequest,
+) -> PlanAdmissionReceipt:
+    """Replay the complete enforcement chain on the synthesized merged tree."""
+
+    return _compile_cve_stage_admission(
+        request, CVESecurityEnforcementStage.MERGED_TREE_REVALIDATION
+    )
+
+
 compile_ir_constraints = compile_plan_admission
 admit_plan = compile_plan_admission
 PlanAdmissionDecision = PlanAdmissionReceipt
@@ -1761,6 +2268,7 @@ __all__ = [
     "PLAN_ADMISSION_RECEIPT_SCHEMA",
     "PLAN_ADMISSION_REJECTION_SCHEMA",
     "PLAN_ADMISSION_REQUEST_SCHEMA",
+    "CVE_SECURITY_ENFORCEMENT_EVIDENCE_SCHEMA",
     "ActionDomainBinding",
     "AdmissionAssumption",
     "AdmissionAuthority",
@@ -1768,6 +2276,8 @@ __all__ = [
     "AdmissionDomain",
     "AdmissionRejection",
     "AdmissionRejectionCode",
+    "CVESecurityEnforcementEvidence",
+    "CVESecurityEnforcementStage",
     "IRConstraintCompiler",
     "IRConstraintCompilerError",
     "PlanAdmissionCounterexample",
@@ -1783,5 +2293,10 @@ __all__ = [
     "ValidationStatus",
     "admit_plan",
     "compile_ir_constraints",
+    "compile_cve_merge_admission",
+    "compile_cve_plan_admission",
+    "compile_cve_post_generation_validation",
+    "compile_cve_pre_execution_admission",
     "compile_plan_admission",
+    "revalidate_cve_merged_tree",
 ]

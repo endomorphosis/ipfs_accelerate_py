@@ -1942,8 +1942,35 @@ def evaluate_security_authorization(
     return SecurityConstraintAdapter().evaluate(policy, request)
 
 
+def revalidate_security_authorization(
+    policy: SecurityPolicyReceipt,
+    request: SecurityAuthorizationRequest,
+    receipt: SecurityDecisionReceipt,
+) -> SecurityDecisionReceipt:
+    """Re-evaluate and authenticate a previously emitted decision receipt.
+
+    Security decisions are inputs to later admission and permit boundaries,
+    not bearer grants.  Consumers at those boundaries must not trust a caller
+    supplied ``PERMIT`` projection: they replay the deterministic evaluator
+    against the current policy and exact request and require the complete
+    receipt identity to remain unchanged.
+    """
+
+    if not isinstance(receipt, SecurityDecisionReceipt):
+        raise SecurityConstraintError(
+            "receipt must be a SecurityDecisionReceipt"
+        )
+    current = evaluate_security_authorization(policy, request)
+    if current != receipt or current.content_id != receipt.content_id:
+        raise SecurityConstraintError(
+            "security decision receipt is stale, forged, or detached"
+        )
+    return current
+
+
 compile_security_policy = compile_security_constraints
 check_security_authorization = evaluate_security_authorization
+verify_security_authorization = revalidate_security_authorization
 
 
 def authorize_security_action(
@@ -1995,4 +2022,6 @@ __all__ = [
     "compile_security_policy",
     "compile_security_constraints",
     "evaluate_security_authorization",
+    "revalidate_security_authorization",
+    "verify_security_authorization",
 ]
