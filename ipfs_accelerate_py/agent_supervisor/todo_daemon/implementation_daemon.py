@@ -53,11 +53,14 @@ from .core import process_args as _shared_process_args
 from .engine import atomic_write_json as _shared_atomic_write_json
 from ..merge.checkout_lock import (
     BACKLOG_REFINERY_AUTHOR_EMAIL,
+    CheckoutMutationLease,
     GENERATED_PROTECTED_BOARD_COMMIT_MARKER,
+    acquire_checkout_mutation_lease,
     checkout_lock_metadata,
     checkout_mutation_lock_path,
     checkout_repository_id,
     merge_target_queue_dir,
+    release_checkout_mutation_lease,
     serialized_lock_update,
 )
 from ..worktree_lifecycle import (
@@ -329,6 +332,8 @@ IMPLEMENTATION_PROTECTED_ACTIVE_SNAPSHOT_FILENAME = (
 IMPLEMENTATION_PROTECTED_INCIDENT_FILENAME = (
     "implementation-protected-path-incident.json"
 )
+IMPLEMENTATION_PROTECTED_VERIFICATION_LOCK_TIMEOUT_SECONDS = 30.0
+IMPLEMENTATION_PROTECTED_VERIFICATION_LOCK_POLL_SECONDS = 0.05
 EVENT_DRIVEN_RUNTIME_REQUIREMENT_ID = (
     "asi-117:event-driven-delta-checkpoint-runtime"
 )
@@ -2112,6 +2117,7 @@ class PortalImplementationDaemon:
         self.state_path = state_path
         self.strategy_path = strategy_path
         self.events_path = events_path
+        self._checkout_mutation_context = threading.local()
         self.repo_root = (repo_root or REPO_ROOT).resolve()
         self.task_source: CanonicalTaskSource | None = None
         if configured_task_source is not None:
@@ -2996,12 +3002,211 @@ class PortalImplementationDaemon:
             return {}
         if self._implementation_protected_git_head(self.repo_root) != after_head:
             return {}
+        confirmed_status = subprocess.run(
+            [
+                "git",
+                "status",
+                "--porcelain",
+                "--untracked-files=all",
+                "--",
+                *protected_paths,
+            ],
+            cwd=self.repo_root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if confirmed_status.returncode != 0 or confirmed_status.stdout.strip():
+            return {}
         return {
             "before_head": before_head,
             "after_head": after_head,
             "protected_paths": protected_paths,
             "commits": commits,
         }
+
+    def _acquire_implementation_protected_verification_lock(
+        self,
+        *,
+        task_id: str,
+        attempt: int,
+        workspace_path: Path,
+    ) -> dict[str, Any]:
+        """Acquire a bounded repo-wide lease for the final protected snapshot."""
+
+        lock_path = self._repo_merge_lock_path()
+        lease, reason, existing, waited_seconds = (
+            self._acquire_checkout_mutation_lease(
+                task_id=task_id,
+                attempt=attempt,
+                branch="",
+                operation="implementation_protected_path_verification",
+                timeout_seconds=(
+                    IMPLEMENTATION_PROTECTED_VERIFICATION_LOCK_TIMEOUT_SECONDS
+                ),
+                extra={
+                    "workspace_path": str(workspace_path),
+                },
+            )
+        )
+        result: dict[str, Any] = {
+            "acquired": lease is not None,
+            "reason": reason,
+            "lock_path": str(lock_path),
+            "waited_seconds": waited_seconds,
+        }
+        if lease is not None:
+            result["lease"] = lease
+            return result
+        if existing:
+            result["lock_owner_pid"] = int(existing.get("pid") or 0)
+            result["lock_owner_task_id"] = str(
+                existing.get("task_id") or ""
+            )
+            result["lock_owner_branch"] = str(
+                existing.get("branch") or ""
+            )
+            result["lock_owner_operation"] = str(
+                existing.get("operation") or ""
+            )
+        return result
+
+    def _release_implementation_protected_verification_lock(
+        self,
+        lock_result: Mapping[str, Any],
+    ) -> bool:
+        """Release only the exact verification lease acquired by this call."""
+
+        lease = lock_result.get("lease")
+        if not isinstance(lease, CheckoutMutationLease):
+            return False
+        return self._release_checkout_mutation_lease(lease)
+
+    def _implementation_protected_verification_deferred(
+        self,
+        *,
+        task_id: str,
+        attempt: int,
+        workspace_path: Path,
+        before: Mapping[str, Mapping[str, Any]],
+        lock_result: Mapping[str, Any],
+        reason: str,
+    ) -> dict[str, Any]:
+        """Return a fail-closed, retryable external fence deferral."""
+
+        shared_before = before.get("shared_checkout")
+        if not isinstance(shared_before, Mapping):
+            shared_before = before.get("workspace")
+        shared_paths = (
+            shared_before.get("paths")
+            if isinstance(shared_before, Mapping)
+            else {}
+        )
+        if not isinstance(shared_paths, Mapping):
+            shared_paths = {}
+        mutations = [
+            {
+                "scope": "shared_checkout",
+                "path": relative,
+                "change": "verification_inconclusive",
+                "before": dict(shared_paths.get(relative) or {}),
+                "after": {
+                    "state": "error",
+                    "error": reason,
+                },
+            }
+            for relative in self.implementation_protected_paths
+        ]
+        payload = {
+            "reason": reason,
+            "task_id": task_id,
+            "attempt": attempt,
+            "workspace_path": str(workspace_path),
+            "protected_paths": list(self.implementation_protected_paths),
+            "mutations": mutations,
+            "shared_checkout_restored": False,
+            "verification_deferred": True,
+            "lock": {
+                key: value
+                for key, value in lock_result.items()
+                if key != "lease"
+            },
+        }
+        self._record_event(reason, payload)
+        return payload
+
+    @staticmethod
+    def _implementation_protected_scope_changed(
+        before: Mapping[str, Mapping[str, Any]],
+        after: Mapping[str, Mapping[str, Any]],
+        scope: str,
+    ) -> bool:
+        """Return whether one complete protected scope snapshot changed."""
+
+        return before.get(scope) != after.get(scope)
+
+    def _implementation_protected_mutation_payload(
+        self,
+        *,
+        task_id: str,
+        attempt: int,
+        workspace_path: Path,
+        before: Mapping[str, Mapping[str, Any]],
+        after: Mapping[str, Mapping[str, Any]],
+        changed_scope: str = "",
+    ) -> dict[str, Any]:
+        """Latch one real execution-workspace contract violation."""
+
+        mutations = self._implementation_protected_path_mutations(
+            before,
+            after,
+        )
+        if changed_scope and not any(
+            str(item.get("scope") or "") == changed_scope
+            for item in mutations
+        ):
+            before_scope = before.get(changed_scope)
+            after_scope = after.get(changed_scope)
+            mutations.append(
+                {
+                    "scope": changed_scope,
+                    "path": "",
+                    "change": "scope_snapshot_changed",
+                    "before": {
+                        key: value
+                        for key, value in dict(before_scope or {}).items()
+                        if key != "paths"
+                    },
+                    "after": {
+                        key: value
+                        for key, value in dict(after_scope or {}).items()
+                        if key != "paths"
+                    },
+                }
+            )
+        mutated_paths = sorted(
+            {
+                str(mutation.get("path") or "")
+                for mutation in mutations
+                if str(mutation.get("path") or "")
+            }
+        )
+        payload = {
+            "reason": "implementation_protected_path_mutated",
+            "task_id": task_id,
+            "attempt": attempt,
+            "workspace_path": str(workspace_path),
+            "protected_paths": (
+                mutated_paths
+                if mutated_paths
+                else list(self.implementation_protected_paths)
+            ),
+            "mutations": mutations,
+            "shared_checkout_restored": False,
+        }
+        self._latch_implementation_protected_incident(payload)
+        self._record_event("implementation_protected_path_mutated", payload)
+        return payload
 
     def _implementation_protected_active_snapshot_path(self) -> Path:
         return (
@@ -3907,6 +4112,7 @@ class PortalImplementationDaemon:
     ) -> dict[str, Any]:
         """Fail closed when any protected identity changes after agent execution."""
 
+        resolved_task_id = task.task_id if task is not None else task_id
         missing_ephemeral_before = (
             self._missing_ephemeral_workspace_shared_snapshot(
                 workspace_path,
@@ -3917,30 +4123,158 @@ class PortalImplementationDaemon:
         comparison_workspace = (
             self.repo_root if missing_ephemeral_before is not None else workspace_path
         )
-        after = self._implementation_protected_path_snapshot(comparison_workspace)
-        mutations = self._implementation_protected_path_mutations(
-            comparison_before,
-            after,
+        execution_scope = ""
+        if missing_ephemeral_before is None:
+            try:
+                execution_scope = (
+                    "shared_checkout"
+                    if workspace_path.resolve() == self.repo_root.resolve()
+                    else "workspace"
+                )
+            except (OSError, RuntimeError):
+                execution_scope = "workspace"
+        lock_result = (
+            self._acquire_implementation_protected_verification_lock(
+                task_id=resolved_task_id,
+                attempt=attempt,
+                workspace_path=workspace_path,
+            )
         )
+        if not lock_result.get("acquired", False):
+            unfenced_after = self._implementation_protected_path_snapshot(
+                comparison_workspace
+            )
+            if (
+                execution_scope
+                and self._implementation_protected_scope_changed(
+                    comparison_before,
+                    unfenced_after,
+                    execution_scope,
+                )
+            ):
+                return self._implementation_protected_mutation_payload(
+                    task_id=resolved_task_id,
+                    attempt=attempt,
+                    workspace_path=workspace_path,
+                    before=comparison_before,
+                    after=unfenced_after,
+                    changed_scope=execution_scope,
+                )
+            return self._implementation_protected_verification_deferred(
+                task_id=resolved_task_id,
+                attempt=attempt,
+                workspace_path=workspace_path,
+                before=comparison_before,
+                lock_result=lock_result,
+                reason=(
+                    "implementation_protected_path_verification_lock_timeout"
+                    if lock_result.get("reason") == "lock_exists"
+                    else (
+                        "implementation_protected_path_verification_lock_"
+                        f"{lock_result.get('reason') or 'unavailable'}"
+                    )
+                ),
+            )
+
+        after: dict[str, dict[str, Any]] = {}
+        mutations: list[dict[str, Any]] = []
+        concurrent_update: dict[str, Any] = {}
+        stable = False
+        first_after: dict[str, dict[str, Any]] = {}
+        confirmed_after: dict[str, dict[str, Any]] = {}
+        try:
+            first_after = self._implementation_protected_path_snapshot(
+                comparison_workspace
+            )
+            after = first_after
+            mutations = self._implementation_protected_path_mutations(
+                comparison_before,
+                after,
+            )
+            if mutations:
+                concurrent_update = (
+                    self._authorized_concurrent_protected_path_update(
+                        workspace_path=workspace_path,
+                        before=comparison_before,
+                        after=after,
+                        mutations=mutations,
+                    )
+                )
+            confirmed_after = self._implementation_protected_path_snapshot(
+                comparison_workspace
+            )
+            stable = confirmed_after == after
+            if not stable:
+                after = confirmed_after
+                mutations = self._implementation_protected_path_mutations(
+                    comparison_before,
+                    after,
+                )
+                concurrent_update = {}
+        finally:
+            released = (
+                self._release_implementation_protected_verification_lock(
+                    lock_result
+                )
+            )
+        workspace_snapshot_changed = bool(
+            execution_scope
+            and (
+                self._implementation_protected_scope_changed(
+                    comparison_before,
+                    first_after,
+                    execution_scope,
+                )
+                or self._implementation_protected_scope_changed(
+                    comparison_before,
+                    confirmed_after,
+                    execution_scope,
+                )
+            )
+        )
+        if workspace_snapshot_changed and (not released or not stable):
+            return self._implementation_protected_mutation_payload(
+                task_id=resolved_task_id,
+                attempt=attempt,
+                workspace_path=workspace_path,
+                before=comparison_before,
+                after=confirmed_after or first_after,
+                changed_scope=execution_scope,
+            )
+        if not released:
+            return self._implementation_protected_verification_deferred(
+                task_id=resolved_task_id,
+                attempt=attempt,
+                workspace_path=workspace_path,
+                before=comparison_before,
+                lock_result=lock_result,
+                reason=(
+                    "implementation_protected_path_verification_lock_lost"
+                ),
+            )
+        if not stable:
+            return self._implementation_protected_verification_deferred(
+                task_id=resolved_task_id,
+                attempt=attempt,
+                workspace_path=workspace_path,
+                before=comparison_before,
+                lock_result=lock_result,
+                reason=(
+                    "implementation_protected_path_verification_snapshot_changed"
+                ),
+            )
         if not mutations:
             if missing_ephemeral_before is not None:
                 self._record_event(
                     "implementation_protected_path_missing_ephemeral_checked",
                     {
-                        "task_id": task.task_id if task is not None else task_id,
+                        "task_id": resolved_task_id,
                         "attempt": attempt,
                         "workspace_path": str(workspace_path),
                         "shared_checkout_unchanged": True,
                     },
                 )
             return {}
-        resolved_task_id = task.task_id if task is not None else task_id
-        concurrent_update = self._authorized_concurrent_protected_path_update(
-            workspace_path=workspace_path,
-            before=comparison_before,
-            after=after,
-            mutations=mutations,
-        )
         if concurrent_update:
             self._record_event(
                 "implementation_protected_path_concurrent_update_accepted",
@@ -3952,20 +4286,13 @@ class PortalImplementationDaemon:
                 },
             )
             return {}
-        payload = {
-            "reason": "implementation_protected_path_mutated",
-            "task_id": resolved_task_id,
-            "attempt": attempt,
-            "workspace_path": str(workspace_path),
-            "protected_paths": sorted(
-                {str(mutation["path"]) for mutation in mutations}
-            ),
-            "mutations": mutations,
-            "shared_checkout_restored": False,
-        }
-        self._latch_implementation_protected_incident(payload)
-        self._record_event("implementation_protected_path_mutated", payload)
-        return payload
+        return self._implementation_protected_mutation_payload(
+            task_id=resolved_task_id,
+            attempt=attempt,
+            workspace_path=workspace_path,
+            before=comparison_before,
+            after=after,
+        )
 
     def _implementation_protected_path_mutations(
         self,
@@ -4476,19 +4803,51 @@ class PortalImplementationDaemon:
             ):
                 return None
 
-        after = self._implementation_protected_path_snapshot(workspace)
-        if self._implementation_protected_snapshot_errors(after):
-            return None
-        mutations = self._implementation_protected_path_mutations(before, after)
-        if not mutations:
-            return None
-        concurrent_update = self._authorized_concurrent_protected_path_update(
-            workspace_path=workspace,
-            before=before,
-            after=after,
-            mutations=mutations,
+        lock_result = (
+            self._acquire_implementation_protected_verification_lock(
+                task_id=task_id,
+                attempt=attempt,
+                workspace_path=workspace,
+            )
         )
-        if not concurrent_update:
+        if not lock_result.get("acquired", False):
+            return None
+        after: dict[str, dict[str, Any]] = {}
+        mutations: list[dict[str, Any]] = []
+        concurrent_update: dict[str, Any] = {}
+        stable = False
+        try:
+            after = self._implementation_protected_path_snapshot(workspace)
+            if not self._implementation_protected_snapshot_errors(after):
+                mutations = self._implementation_protected_path_mutations(
+                    before,
+                    after,
+                )
+            if mutations:
+                concurrent_update = (
+                    self._authorized_concurrent_protected_path_update(
+                        workspace_path=workspace,
+                        before=before,
+                        after=after,
+                        mutations=mutations,
+                    )
+                )
+            stable = (
+                self._implementation_protected_path_snapshot(workspace)
+                == after
+            )
+        finally:
+            released = (
+                self._release_implementation_protected_verification_lock(
+                    lock_result
+                )
+            )
+        if (
+            not released
+            or not stable
+            or not mutations
+            or not concurrent_update
+        ):
             return None
 
         clearance_payload = {
@@ -6811,22 +7170,29 @@ class PortalImplementationDaemon:
                 )
                 todo_update_result = self._mark_task_or_bundle_completed_in_todo(task)
             finished_at = utc_now()
-            self._record_task_attempt(state, task, attempt)
+            verification_deferred = bool(
+                protected_path_violation.get("verification_deferred")
+            )
+            if verification_deferred:
+                self._restore_task_attempt(state, task, max(0, attempt - 1))
+            else:
+                self._record_task_attempt(state, task, attempt)
             state.last_implementation_started_at = started_at
             state.last_implementation_finished_at = finished_at
             state.last_implementation_returncode = effective_returncode
             state.last_implementation_log_path = str(log_path)
             self._mark_implementation_finished(state, finished_at=finished_at)
             state.save(self.state_path)
-            self._record_task_queue_outcome(
-                task,
-                effective_returncode,
-                reason=(
-                    "implementation_protected_path_mutated"
-                    if protected_path_violation
-                    else "validation_or_implementation_failed"
-                ),
-            )
+            if not verification_deferred:
+                self._record_task_queue_outcome(
+                    task,
+                    effective_returncode,
+                    reason=(
+                        "implementation_protected_path_mutated"
+                        if protected_path_violation
+                        else "validation_or_implementation_failed"
+                    ),
+                )
             result = {
                 "task_id": task.task_id,
                 "attempt": attempt,
@@ -6836,17 +7202,27 @@ class PortalImplementationDaemon:
                 "context_receipt_path": str(context_receipt_path),
             }
             if protected_path_violation:
-                result["reason"] = "implementation_protected_path_mutated"
+                result["reason"] = str(
+                    protected_path_violation.get("reason")
+                    or "implementation_protected_path_mutated"
+                )
                 result["agent_returncode"] = completed.returncode
                 result["protected_path_violation"] = protected_path_violation
+            result["attempt_consumed"] = not verification_deferred
+            if verification_deferred:
+                result["deferred"] = True
             termination_result = self._implementation_returncode_detail(effective_returncode)
             if termination_result:
                 result["termination_result"] = termination_result
                 self._record_implementation_termination(task, attempt, termination_result)
-            diagnostic = self._record_failed_attempt_retry_context(
-                task,
-                returncode=effective_returncode,
-                validation_result=validation_result,
+            diagnostic = (
+                None
+                if verification_deferred
+                else self._record_failed_attempt_retry_context(
+                    task,
+                    returncode=effective_returncode,
+                    validation_result=validation_result,
+                )
             )
             if diagnostic is not None:
                 result["diagnostic_receipt_id"] = diagnostic.receipt_id
@@ -6867,22 +7243,29 @@ class PortalImplementationDaemon:
                 )
             terminal_returncode = 1 if protected_path_violation else 124
             finished_at = utc_now()
-            self._record_task_attempt(state, task, attempt)
+            verification_deferred = bool(
+                protected_path_violation.get("verification_deferred")
+            )
+            if verification_deferred:
+                self._restore_task_attempt(state, task, max(0, attempt - 1))
+            else:
+                self._record_task_attempt(state, task, attempt)
             state.last_implementation_started_at = started_at
             state.last_implementation_finished_at = finished_at
             state.last_implementation_returncode = terminal_returncode
             state.last_implementation_log_path = str(log_path)
             self._mark_implementation_finished(state, finished_at=finished_at)
             state.save(self.state_path)
-            self._record_task_queue_outcome(
-                task,
-                terminal_returncode,
-                reason=(
-                    "implementation_protected_path_mutated"
-                    if protected_path_violation
-                    else "implementation_timeout"
-                ),
-            )
+            if not verification_deferred:
+                self._record_task_queue_outcome(
+                    task,
+                    terminal_returncode,
+                    reason=(
+                        "implementation_protected_path_mutated"
+                        if protected_path_violation
+                        else "implementation_timeout"
+                    ),
+                )
             result = {
                 "task_id": task.task_id,
                 "attempt": attempt,
@@ -6909,7 +7292,10 @@ class PortalImplementationDaemon:
             }
             result["timeout_result"] = timeout_result
             if protected_path_violation:
-                result["reason"] = "implementation_protected_path_mutated"
+                result["reason"] = str(
+                    protected_path_violation.get("reason")
+                    or "implementation_protected_path_mutated"
+                )
                 result["protected_path_violation"] = protected_path_violation
             else:
                 result["error"] = "timeout"
@@ -6921,11 +7307,18 @@ class PortalImplementationDaemon:
                     attempt,
                     result["termination_result"],
                 )
-            diagnostic = self._record_failed_attempt_retry_context(
-                task,
-                returncode=terminal_returncode,
-                validation_result=validation_result,
-                timeout_result=timeout_result,
+            result["attempt_consumed"] = not verification_deferred
+            if verification_deferred:
+                result["deferred"] = True
+            diagnostic = (
+                None
+                if verification_deferred
+                else self._record_failed_attempt_retry_context(
+                    task,
+                    returncode=terminal_returncode,
+                    validation_result=validation_result,
+                    timeout_result=timeout_result,
+                )
             )
             if diagnostic is not None:
                 result["diagnostic_receipt_id"] = diagnostic.receipt_id
@@ -6944,14 +7337,25 @@ class PortalImplementationDaemon:
                 )
             finished_at = utc_now()
             failed_phase = state.active_phase or "implementation_setup"
-            self._record_task_attempt(state, task, attempt)
+            verification_deferred = bool(
+                protected_path_violation.get("verification_deferred")
+            )
+            if verification_deferred:
+                self._restore_task_attempt(state, task, max(0, attempt - 1))
+            else:
+                self._record_task_attempt(state, task, attempt)
             state.last_implementation_started_at = started_at
             state.last_implementation_finished_at = finished_at
             state.last_implementation_returncode = 1
             state.last_implementation_log_path = str(log_path)
             self._mark_implementation_finished(state, finished_at=finished_at)
             state.save(self.state_path)
-            self._record_task_queue_outcome(task, 1, reason=f"{type(exc).__name__}: {exc}"[-1000:])
+            if not verification_deferred:
+                self._record_task_queue_outcome(
+                    task,
+                    1,
+                    reason=f"{type(exc).__name__}: {exc}"[-1000:],
+                )
             exception_result = {
                 "exception_type": type(exc).__name__,
                 "message": str(exc)[-4000:],
@@ -6969,17 +7373,27 @@ class PortalImplementationDaemon:
                     str(context_receipt_path) if context_receipt_path else ""
                 ),
             }
-            diagnostic = self._record_failed_attempt_retry_context(
-                task,
-                returncode=1,
-                validation_result=validation_result,
-                exception_result=exception_result,
+            diagnostic = (
+                None
+                if verification_deferred
+                else self._record_failed_attempt_retry_context(
+                    task,
+                    returncode=1,
+                    validation_result=validation_result,
+                    exception_result=exception_result,
+                )
             )
             if diagnostic is not None:
                 result["diagnostic_receipt_id"] = diagnostic.receipt_id
             if protected_path_violation:
-                result["reason"] = "implementation_protected_path_mutated"
+                result["reason"] = str(
+                    protected_path_violation.get("reason")
+                    or "implementation_protected_path_mutated"
+                )
                 result["protected_path_violation"] = protected_path_violation
+            result["attempt_consumed"] = not verification_deferred
+            if verification_deferred:
+                result["deferred"] = True
             self._record_event(
                 "implementation_exception",
                 {"task_id": task.task_id, "attempt": attempt, **exception_result},
@@ -7024,10 +7438,31 @@ class PortalImplementationDaemon:
     ) -> dict[str, Any]:
         """Reopen transiently blocked tasks after their dependencies complete."""
 
-        target_task_ids = {
+        stable_task_ids = tuple(
             str(task_id).strip()
             for task_id in task_ids
             if str(task_id).strip()
+        )
+        if (
+            self.task_source is None
+            and self._current_checkout_mutation_lease() is None
+        ):
+            return self._run_checkout_mutation_transaction(
+                task_id=stable_task_ids[0] if stable_task_ids else "",
+                operation="reopen_dependency_blocked_tasks",
+                callback=lambda: self._mark_tasks_ready_in_todo(
+                    stable_task_ids,
+                    reason=reason,
+                ),
+                failure_fields={
+                    "updated": False,
+                    "updated_task_ids": [],
+                    "already_ready_task_ids": [],
+                },
+            )
+
+        target_task_ids = {
+            task_id for task_id in stable_task_ids
         }
         if not target_task_ids:
             return {
@@ -7220,6 +7655,28 @@ class PortalImplementationDaemon:
         completion_reason: str,
         bundle_work_order: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
+        def mutation() -> dict[str, Any]:
+            return self._mark_tasks_completed_in_todo_unchecked(
+                task_ids,
+                primary_task_id=primary_task_id,
+                completion_reason=completion_reason,
+                bundle_work_order=bundle_work_order,
+            )
+
+        if self.task_source is None:
+            unchecked_mutation = mutation
+
+            def mutation() -> dict[str, Any]:
+                return self._run_checkout_mutation_transaction(
+                    task_id=primary_task_id,
+                    operation="mark_tasks_completed",
+                    callback=unchecked_mutation,
+                    failure_fields={
+                        "updated": False,
+                        "task_id": primary_task_id,
+                        "completion_reason": completion_reason,
+                    },
+                )
         return self._decision_runtime_mutation(
             "task_board_mutation",
             {
@@ -7229,12 +7686,7 @@ class PortalImplementationDaemon:
                 "primary_task_id": primary_task_id,
                 "completion_reason": completion_reason,
             },
-            lambda: self._mark_tasks_completed_in_todo_unchecked(
-                task_ids,
-                primary_task_id=primary_task_id,
-                completion_reason=completion_reason,
-                bundle_work_order=bundle_work_order,
-            ),
+            mutation,
         )
 
     def _mark_tasks_completed_in_todo_unchecked(
@@ -7512,66 +7964,71 @@ class PortalImplementationDaemon:
         self._record_event("todo_status_updated", result)
         return result
 
-    def _commit_generated_file_update(self, path: Path, *, task_id: str, subject: str) -> dict[str, Any]:
-        """Commit a daemon-owned generated file and any parent gitlink updates."""
+    def _commit_generated_file_update(
+        self,
+        path: Path,
+        *,
+        task_id: str,
+        subject: str,
+    ) -> dict[str, Any]:
+        """Commit a daemon-owned generated file under one checkout lease."""
 
-        started_at = utc_now()
-        lock_path = self._repo_merge_lock_path()
-        lock_fd, lock_reason, existing_lock = self._try_acquire_lock(
-            lock_path,
-            lock_kind="merge",
-            owner_active=self._merge_lock_owner_is_active,
-        )
-        if lock_fd is None:
-            result: dict[str, Any] = {
-                "committed": False,
-                "reason": f"checkout_mutation_{lock_reason}",
-                "path": str(path),
-                "lock_path": str(lock_path),
-            }
-            if existing_lock:
-                result["lock_owner_pid"] = int(existing_lock.get("pid") or 0)
-                result["lock_owner_task_id"] = str(existing_lock.get("task_id") or "")
-                result["lock_owner_branch"] = str(existing_lock.get("branch") or "")
-            return result
-
-        try:
-            self._write_lock_metadata(
-                lock_fd,
-                checkout_lock_metadata(
-                    kind="merge",
-                    repo_root=self.repo_root,
-                    task_id=task_id,
-                    branch="generated-file-update",
-                    extra={
-                        "operation": "commit_generated_file_update",
-                        "path": str(path),
-                        "started_at": started_at,
-                        "state_dir": str(self.state_path.parent.resolve()),
-                        "state_path": str(self.state_path.resolve()),
-                    },
-                ),
+        if self._current_checkout_mutation_lease() is not None:
+            return self._commit_generated_file_update_locked(
+                path,
+                task_id=task_id,
+                subject=subject,
             )
-            repo = self._git_toplevel_for_path(path.parent)
-            if repo is None:
-                return {"committed": False, "reason": "not_in_git_repo", "path": str(path)}
-            relative = self._relative_to_repo(repo, path)
-            if not relative:
-                return {"committed": False, "reason": "path_outside_repo", "path": str(path), "repo": str(repo)}
+        return self._run_checkout_mutation_transaction(
+            task_id=task_id,
+            operation="commit_generated_file_update",
+            callback=lambda: self._commit_generated_file_update_locked(
+                path,
+                task_id=task_id,
+                subject=subject,
+            ),
+            failure_fields={
+                "committed": False,
+                "path": str(path),
+            },
+            extra={"path": str(path)},
+        )
 
-            result = self._commit_specific_path(repo, relative, subject=subject)
-            parent_results: list[dict[str, Any]] = []
-            if result.get("committed"):
-                parent_results = self._commit_parent_gitlink_updates(repo, task_id=task_id)
-            if parent_results:
-                result["parent_gitlink_commits"] = parent_results
-            return result
-        finally:
-            try:
-                if lock_path.exists():
-                    lock_path.unlink()
-            except OSError:
-                logger.warning("Failed to remove checkout mutation lock %s", lock_path)
+    def _commit_generated_file_update_locked(
+        self,
+        path: Path,
+        *,
+        task_id: str,
+        subject: str,
+    ) -> dict[str, Any]:
+        """Commit one generated file while the caller owns the checkout lease."""
+
+        repo = self._git_toplevel_for_path(path.parent)
+        if repo is None:
+            return {
+                "committed": False,
+                "reason": "not_in_git_repo",
+                "path": str(path),
+            }
+        relative = self._relative_to_repo(repo, path)
+        if not relative:
+            return {
+                "committed": False,
+                "reason": "path_outside_repo",
+                "path": str(path),
+                "repo": str(repo),
+            }
+
+        result = self._commit_specific_path(repo, relative, subject=subject)
+        parent_results: list[dict[str, Any]] = []
+        if result.get("committed"):
+            parent_results = self._commit_parent_gitlink_updates(
+                repo,
+                task_id=task_id,
+            )
+        if parent_results:
+            result["parent_gitlink_commits"] = parent_results
+        return result
 
     def _commit_parent_gitlink_updates(self, child_repo: Path, *, task_id: str) -> list[dict[str, Any]]:
         results: list[dict[str, Any]] = []
@@ -9721,8 +10178,11 @@ class PortalImplementationDaemon:
             for item in protected_path_violation.get("mutations", [])
             if isinstance(item, Mapping)
         }
-        protected_path_external_deferral = bool(protected_path_violation) and (
-            protected_mutation_scopes == {"shared_checkout"}
+        protected_path_external_deferral = bool(
+            protected_path_violation.get("verification_deferred")
+        ) or (
+            bool(protected_path_violation)
+            and protected_mutation_scopes == {"shared_checkout"}
         )
         attempt_consumed = not protected_path_external_deferral
         if attempt_consumed:
@@ -9855,7 +10315,10 @@ class PortalImplementationDaemon:
             "attempt_consumed": attempt_consumed,
         }
         if protected_path_violation:
-            result["reason"] = "implementation_protected_path_mutated"
+            result["reason"] = str(
+                protected_path_violation.get("reason")
+                or "implementation_protected_path_mutated"
+            )
             result["protected_path_violation"] = protected_path_violation
             result["deferred"] = protected_path_external_deferral
         result["cache_hit"] = result["workspace_setup"]["cache_hit"]
@@ -14924,6 +15387,43 @@ class PortalImplementationDaemon:
         baseline_ref: str = "",
         changed_submodule_paths: set[str] | None = None,
     ) -> dict[str, Any]:
+        """Merge one candidate while owning the checkout from first mutation."""
+
+        target_branch = self._main_branch_name()
+        return self._run_checkout_mutation_transaction(
+            task_id=task.task_id,
+            attempt=attempt,
+            branch=branch_name,
+            operation="merge_branch_to_main",
+            callback=lambda: self._merge_branch_to_main_locked(
+                branch_name,
+                task,
+                attempt,
+                baseline_ref=baseline_ref,
+                changed_submodule_paths=changed_submodule_paths,
+            ),
+            failure_fields={
+                "attempted": False,
+                "merged": False,
+                "branch": branch_name,
+                "target_branch": target_branch,
+                "started_at": utc_now(),
+                "identical_untracked_paths": [],
+            },
+            extra={"baseline_ref": baseline_ref},
+        )
+
+    def _merge_branch_to_main_locked(
+        self,
+        branch_name: str,
+        task: PortalTask,
+        attempt: int,
+        *,
+        baseline_ref: str = "",
+        changed_submodule_paths: set[str] | None = None,
+    ) -> dict[str, Any]:
+        """Merge one candidate while the caller owns the checkout lease."""
+
         started_at = utc_now()
         self._preserve_generated_nested_worktree_directories()
         stale_submodule_worktree_config_repair = self._repair_stale_submodule_worktree_configs(self.repo_root)
@@ -14953,33 +15453,11 @@ class PortalImplementationDaemon:
                 result["stale_submodule_worktree_config_repair"] = stale_submodule_worktree_config_repair
             self._record_event("merge_finished", result)
             return result
-        merge_lock = self._repo_merge_lock_path()
-        lock_metadata = self._build_merge_lock_metadata(branch_name, task, attempt, started_at)
-        lock_fd, lock_reason, existing_lock = self._try_acquire_lock(
-            merge_lock,
-            lock_kind="merge",
-            owner_active=self._merge_lock_owner_is_active,
-        )
-        if lock_fd is None:
-            result = {
-                "attempted": False,
-                "merged": False,
-                "reason": lock_reason,
-                "branch": branch_name,
-                "target_branch": target_branch,
-                "started_at": started_at,
-                "identical_untracked_paths": [],
-            }
-            if existing_lock:
-                result["lock_owner_pid"] = int(existing_lock.get("pid") or 0)
-                result["lock_owner_branch"] = str(existing_lock.get("branch") or "")
-            return result
 
         merge_workspace: Path | None = None
         merge_workspace_ephemeral = False
         removed_untracked: dict[str, bytes] = {}
         try:
-            self._write_lock_metadata(lock_fd, lock_metadata)
             workspace_result = self._prepare_main_merge_workspace(target_branch, branch_name)
             llm_workspace_resolver: dict[str, Any] = {}
             if not workspace_result.get("available", False):
@@ -15313,11 +15791,6 @@ class PortalImplementationDaemon:
                 )
                 if not merge_workspace_cleanup.get("cleaned", False):
                     self._record_event("main_merge_worktree_cleanup_failed", merge_workspace_cleanup)
-            try:
-                if merge_lock.exists():
-                    merge_lock.unlink()
-            except OSError:
-                logger.warning("Failed to remove merge lock %s", merge_lock)
 
     def _scrub_tracked_shared_worktree_paths(self, cwd: Path, *, task: PortalTask) -> dict[str, Any]:
         removed: list[dict[str, Any]] = []
@@ -19440,9 +19913,148 @@ class PortalImplementationDaemon:
             return False
         if not self._lock_owner_is_active(metadata, expected_kind="merge"):
             return False
+        # Atomic leases are fenced by a unique lease ID and the owning process.
+        # Their operation may be supervisor-wide or nested, so task projection
+        # is not an ownership signal for these fully published records.
+        if str(metadata.get("lease_id") or ""):
+            return True
         if self._lock_targets_current_daemon_state(metadata):
             return self._lock_task_is_active(metadata)
         return True
+
+    def _acquire_checkout_mutation_lease(
+        self,
+        *,
+        task_id: str,
+        attempt: int = 0,
+        branch: str = "",
+        operation: str,
+        timeout_seconds: float = 0.0,
+        extra: Mapping[str, Any] | None = None,
+    ) -> tuple[
+        CheckoutMutationLease | None,
+        str,
+        dict[str, Any] | None,
+        float,
+    ]:
+        metadata = checkout_lock_metadata(
+            kind="merge",
+            repo_root=self.repo_root,
+            task_id=task_id,
+            attempt=attempt,
+            branch=branch,
+            extra={
+                "operation": operation,
+                "state_dir": str(self.state_path.parent.resolve()),
+                "state_path": str(self.state_path.resolve()),
+                "started_at": utc_now(),
+                **dict(extra or {}),
+            },
+        )
+        result = acquire_checkout_mutation_lease(
+            self._repo_merge_lock_path(),
+            metadata,
+            owner_active=self._merge_lock_owner_is_active,
+            timeout_seconds=timeout_seconds,
+        )
+        lease, _reason, cleared_owner, _waited = result
+        if lease is not None and cleared_owner:
+            self._record_event(
+                "merge_lock_cleared",
+                {
+                    "lock_path": str(lease.lock_path),
+                    "lock_owner_pid": int(
+                        cleared_owner.get("pid") or 0
+                    ),
+                    "task_id": str(
+                        cleared_owner.get("task_id") or ""
+                    ),
+                    "branch": str(
+                        cleared_owner.get("branch") or ""
+                    ),
+                },
+            )
+        return result
+
+    def _release_checkout_mutation_lease(
+        self,
+        lease: CheckoutMutationLease,
+    ) -> bool:
+        released = release_checkout_mutation_lease(lease)
+        if not released:
+            logger.warning(
+                "Checkout mutation lease was replaced before release: %s",
+                lease.lock_path,
+            )
+        return released
+
+    def _current_checkout_mutation_lease(
+        self,
+    ) -> CheckoutMutationLease | None:
+        lease = getattr(
+            self._checkout_mutation_context,
+            "lease",
+            None,
+        )
+        return lease if isinstance(lease, CheckoutMutationLease) else None
+
+    def _run_checkout_mutation_transaction(
+        self,
+        *,
+        task_id: str,
+        attempt: int = 0,
+        branch: str = "",
+        operation: str,
+        callback: Callable[[], dict[str, Any]],
+        failure_fields: Mapping[str, Any] | None = None,
+        extra: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Run a complete shared-checkout mutation under one atomic lease."""
+
+        current = self._current_checkout_mutation_lease()
+        if current is not None:
+            return callback()
+        lease, reason, existing, _waited = (
+            self._acquire_checkout_mutation_lease(
+                task_id=task_id,
+                attempt=attempt,
+                branch=branch,
+                operation=operation,
+                extra=extra,
+            )
+        )
+        if lease is None:
+            result: dict[str, Any] = {
+                **dict(failure_fields or {}),
+                "reason": f"checkout_mutation_{reason}",
+                "lock_path": str(self._repo_merge_lock_path()),
+            }
+            if existing:
+                result["lock_owner_pid"] = int(
+                    existing.get("pid") or 0
+                )
+                result["lock_owner_task_id"] = str(
+                    existing.get("task_id") or ""
+                )
+                result["lock_owner_branch"] = str(
+                    existing.get("branch") or ""
+                )
+            return result
+        self._checkout_mutation_context.lease = lease
+        result: dict[str, Any] | None = None
+        try:
+            result = callback()
+        finally:
+            self._checkout_mutation_context.lease = None
+            released = self._release_checkout_mutation_lease(lease)
+        if not released:
+            return {
+                **dict(result or {}),
+                "checkout_mutation_release_failed": True,
+                "reason": "checkout_mutation_lease_lost",
+                "lock_path": str(lease.lock_path),
+            }
+        return dict(result or {})
 
     def _lock_targets_current_daemon_state(self, metadata: dict[str, Any]) -> bool:
         state_path = str(metadata.get("state_path") or "")

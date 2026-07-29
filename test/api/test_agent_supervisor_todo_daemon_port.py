@@ -121,6 +121,7 @@ from ipfs_accelerate_py.agent_supervisor import implementation_daemon_runner
 from ipfs_accelerate_py.agent_supervisor.merge.checkout_lock import (
     BACKLOG_REFINERY_AUTHOR_EMAIL,
     GENERATED_PROTECTED_BOARD_COMMIT_MARKER,
+    checkout_lock_metadata,
     checkout_mutation_lock_path,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor_runner import (
@@ -17278,6 +17279,216 @@ def test_implementation_daemon_defers_generated_commit_when_checkout_lock_is_liv
     assert result["reason"] == "checkout_mutation_lock_exists"
     assert result["lock_owner_task_id"] == "OTHER-2"
     assert _git(repo, "status", "--porcelain", "--", "generated.md").startswith("M ")
+
+
+def test_implementation_daemon_acquires_checkout_lease_before_merge_preamble(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+    )
+    observed: list[str] = []
+
+    def assert_checkout_owned(operation: str) -> None:
+        lease = daemon._current_checkout_mutation_lease()
+        assert lease is not None
+        assert lease.lock_path == checkout_mutation_lock_path(repo)
+        published = json.loads(lease.lock_path.read_text(encoding="utf-8"))
+        assert published["lease_id"] == lease.lease_id
+        assert published["operation"] == "merge_branch_to_main"
+        observed.append(operation)
+
+    monkeypatch.setattr(
+        daemon,
+        "_preserve_generated_nested_worktree_directories",
+        lambda: assert_checkout_owned("preserve_generated_nested_worktrees"),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_repair_stale_submodule_worktree_configs",
+        lambda _repo: (
+            assert_checkout_owned("repair_stale_submodule_worktree_configs")
+            or {}
+        ),
+    )
+    monkeypatch.setattr(daemon, "_main_branch_name", lambda: "main")
+    monkeypatch.setattr(
+        daemon,
+        "_rebase_stale_submodule_pointers",
+        lambda _branch, _target: (
+            assert_checkout_owned("rebase_stale_submodule_pointers")
+            or {"rebased": False}
+        ),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_git_ref_is_ancestor",
+        lambda _baseline, _target: False,
+    )
+
+    result = daemon._merge_branch_to_main(
+        "implementation/auto-lease",
+        PortalTask(
+            task_id="AUTO-LEASE",
+            title="Fence merge preamble",
+            status="todo",
+            completion="manual",
+            priority="P0",
+            track="ops",
+        ),
+        1,
+        baseline_ref="baseline-before-merge",
+    )
+
+    assert result["reason"] == "baseline_not_ancestor_of_target"
+    assert observed == [
+        "preserve_generated_nested_worktrees",
+        "repair_stale_submodule_worktree_configs",
+        "rebase_stale_submodule_pointers",
+    ]
+    assert not checkout_mutation_lock_path(repo).exists()
+
+
+def test_implementation_daemon_live_checkout_lease_preserves_todo_bytes(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Todos
+
+## ACCEL-001 Complete generated status
+
+- Status: todo
+- Priority: P1
+- Track: ops
+
+## ACCEL-002 Reopen dependency-ready task
+
+- Status: blocked
+- Priority: P1
+- Track: ops
+""",
+        encoding="utf-8",
+    )
+    before = todo_path.read_bytes()
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+    )
+    lock_path = checkout_mutation_lock_path(repo)
+    lock_path.write_text(
+        json.dumps(
+            checkout_lock_metadata(
+                kind="merge",
+                repo_root=repo,
+                task_id="OTHER-1",
+                branch="implementation/other",
+                owner_script="",
+                extra={"operation": "foreign_checkout_mutation"},
+            )
+        ),
+        encoding="utf-8",
+    )
+
+    completion = daemon._mark_task_completed_in_todo("ACCEL-001")
+    reopen = daemon._mark_tasks_ready_in_todo(
+        ["ACCEL-002"],
+        reason="dependencies_satisfied",
+    )
+
+    assert completion["updated"] is False
+    assert completion["reason"] == "checkout_mutation_lock_exists"
+    assert reopen["updated"] is False
+    assert reopen["reason"] == "checkout_mutation_lock_exists"
+    assert todo_path.read_bytes() == before
+    assert lock_path.exists()
+
+
+def test_implementation_daemon_board_write_and_commit_share_one_checkout_lease(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Todos
+
+## ACCEL-001 Complete generated status
+
+- Status: todo
+- Priority: P1
+- Track: ops
+""",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "todo.md")
+    _git(repo, "commit", "-m", "seed todo")
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+    )
+    acquired: list[tuple[str, str]] = []
+    released: list[str] = []
+    original_acquire = daemon._acquire_checkout_mutation_lease
+    original_release = daemon._release_checkout_mutation_lease
+
+    def tracking_acquire(**kwargs):
+        lease, reason, existing, waited = original_acquire(**kwargs)
+        if lease is not None:
+            acquired.append((str(kwargs["operation"]), lease.lease_id))
+        return lease, reason, existing, waited
+
+    def tracking_release(lease):
+        released.append(lease.lease_id)
+        return original_release(lease)
+
+    monkeypatch.setattr(
+        daemon,
+        "_acquire_checkout_mutation_lease",
+        tracking_acquire,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_release_checkout_mutation_lease",
+        tracking_release,
+    )
+
+    result = daemon._mark_task_completed_in_todo("ACCEL-001")
+
+    assert result["updated"] is True
+    assert result["commit_result"]["committed"] is True
+    assert len(acquired) == 1
+    assert len(released) == 1
+    assert acquired == [("mark_tasks_completed", released[0])]
+    assert not checkout_mutation_lock_path(repo).exists()
+    assert _git(repo, "status", "--porcelain") == ""
 
 
 def test_implementation_daemon_clears_stale_same_state_merge_lock_for_generated_commit(tmp_path):

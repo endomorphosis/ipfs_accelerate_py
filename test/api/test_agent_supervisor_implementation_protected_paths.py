@@ -22,6 +22,8 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
 from ipfs_accelerate_py.agent_supervisor.todo_daemon import supervisor_runtime
 from ipfs_accelerate_py.agent_supervisor.merge.checkout_lock import (
     BACKLOG_REFINERY_AUTHOR_EMAIL,
+    checkout_lock_metadata,
+    checkout_mutation_lock_path,
     generated_protected_board_commit_subject,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon_runner import (
@@ -905,6 +907,409 @@ def test_ephemeral_fence_accepts_tagged_generated_board_commit(
 
     assert violation == {}
     assert not daemon._implementation_protected_incident_path().exists()
+
+
+@pytest.mark.parametrize("trusted", [True, False])
+def test_ephemeral_fence_waits_for_checkout_transaction_before_verifying(
+    tmp_path: Path,
+    trusted: bool,
+) -> None:
+    daemon, repo, workspace, protected = _protected_git_worktree_daemon(
+        tmp_path
+    )
+    task = _task(outputs=["src/example.py"])
+    before = daemon._require_implementation_protected_snapshot(
+        task=task,
+        attempt=1,
+        workspace_path=workspace,
+    )
+    lock_path = checkout_mutation_lock_path(repo)
+    transaction_visible = threading.Event()
+
+    def commit_peer_update() -> None:
+        lock_fd = os.open(
+            lock_path,
+            os.O_CREAT | os.O_EXCL | os.O_WRONLY,
+        )
+        metadata = checkout_lock_metadata(
+            kind="merge",
+            repo_root=repo,
+            owner_script="",
+            extra={
+                "operation": "generated_board_update",
+                "lease_id": "peer-generated-board-transaction",
+            },
+        )
+        os.write(
+            lock_fd,
+            json.dumps(metadata, sort_keys=True).encode("utf-8"),
+        )
+        os.close(lock_fd)
+        protected.write_text("peer transaction\n", encoding="utf-8")
+        transaction_visible.set()
+        time.sleep(0.1)
+        _git(repo, "add", POLICY_PATH)
+        if trusted:
+            author_name = "Accelerator Backlog Refinery"
+            author_email = BACKLOG_REFINERY_AUTHOR_EMAIL
+            subject = generated_protected_board_commit_subject(
+                "Agent: persist serialized generated board"
+            )
+        else:
+            author_name = "Untrusted User"
+            author_email = "untrusted@example.invalid"
+            subject = "edit protected board"
+        _git(
+            repo,
+            "-c",
+            f"user.name={author_name}",
+            "-c",
+            f"user.email={author_email}",
+            "commit",
+            "-m",
+            subject,
+        )
+        lock_path.unlink()
+
+    worker = threading.Thread(target=commit_peer_update)
+    worker.start()
+    assert transaction_visible.wait(timeout=2)
+    started = time.monotonic()
+    violation = daemon._implementation_protected_path_violation(
+        task=task,
+        attempt=1,
+        workspace_path=workspace,
+        before=before,
+    )
+    waited_seconds = time.monotonic() - started
+    worker.join(timeout=2)
+
+    assert not worker.is_alive()
+    assert waited_seconds >= 0.05
+    if trusted:
+        assert violation == {}
+        assert not daemon._implementation_protected_incident_path().exists()
+    else:
+        assert violation["reason"] == (
+            "implementation_protected_path_mutated"
+        )
+        assert daemon._implementation_protected_incident_path().exists()
+
+
+def test_protected_verification_release_preserves_replacement_lock(
+    tmp_path: Path,
+) -> None:
+    daemon = _daemon(tmp_path)
+    lock_result = (
+        daemon._acquire_implementation_protected_verification_lock(
+            task_id="EX-001",
+            attempt=1,
+            workspace_path=tmp_path,
+        )
+    )
+    assert lock_result["acquired"] is True
+    lock_path = Path(lock_result["lock_path"])
+    replacement = checkout_lock_metadata(
+        kind="merge",
+        repo_root=tmp_path,
+        owner_script="",
+        extra={
+            "operation": "replacement_transaction",
+            "lease_id": "replacement-lease",
+        },
+    )
+    lock_path.unlink()
+    lock_path.write_text(
+        json.dumps(replacement, sort_keys=True),
+        encoding="utf-8",
+    )
+
+    assert (
+        daemon._release_implementation_protected_verification_lock(
+            lock_result
+        )
+        is False
+    )
+    assert json.loads(lock_path.read_text(encoding="utf-8")) == replacement
+
+
+def test_protected_verification_lock_timeout_defers_without_latching(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon, _repo, workspace, _protected = (
+        _protected_git_worktree_daemon(tmp_path)
+    )
+    task = _task(outputs=["src/example.py"])
+    before = daemon._require_implementation_protected_snapshot(
+        task=task,
+        attempt=1,
+        workspace_path=workspace,
+    )
+    lock_path = Path(
+        daemon._acquire_implementation_protected_verification_lock(
+            task_id="EX-PEER",
+            attempt=1,
+            workspace_path=workspace,
+        )["lock_path"]
+    )
+    replacement = checkout_lock_metadata(
+        kind="merge",
+        repo_root=daemon.repo_root,
+        owner_script="",
+        extra={
+            "operation": "generated_board_update",
+            "lease_id": "live-peer-lease",
+        },
+    )
+    lock_path.unlink()
+    lock_path.write_text(
+        json.dumps(replacement, sort_keys=True),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "IMPLEMENTATION_PROTECTED_VERIFICATION_LOCK_TIMEOUT_SECONDS",
+        0.0,
+    )
+
+    violation = daemon._implementation_protected_path_violation(
+        task=task,
+        attempt=1,
+        workspace_path=workspace,
+        before=before,
+    )
+
+    assert violation["reason"] == (
+        "implementation_protected_path_verification_lock_timeout"
+    )
+    assert violation["verification_deferred"] is True
+    assert {
+        item["scope"] for item in violation["mutations"]
+    } == {"shared_checkout"}
+    assert not daemon._implementation_protected_incident_path().exists()
+    assert json.loads(lock_path.read_text(encoding="utf-8")) == replacement
+    lock_path.unlink()
+
+
+def test_shared_terminal_verification_deferral_does_not_consume_attempt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    protected = tmp_path / POLICY_PATH
+    protected.parent.mkdir(parents=True)
+    protected.write_text("unchanged\n", encoding="utf-8")
+    daemon = _daemon(tmp_path)
+    task = _task(outputs=["src/example.py"])
+    canonical_task_cid = daemon._canonical_ref(task)
+    state = PortalTaskState(
+        implementation_attempts={task.task_id: 2},
+        implementation_attempts_by_cid={canonical_task_cid: 2},
+    )
+    queue_outcomes: list[int] = []
+    diagnostics: list[str] = []
+    deferral = {
+        "reason": "implementation_protected_path_verification_lock_timeout",
+        "task_id": task.task_id,
+        "attempt": 3,
+        "workspace_path": str(tmp_path),
+        "protected_paths": [POLICY_PATH],
+        # Keep this empty so the regression depends on the explicit signal,
+        # not the older shared-checkout-only mutation-scope heuristic.
+        "mutations": [],
+        "verification_deferred": True,
+    }
+
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "run_process_group_stream",
+        lambda *_args, **_kwargs: subprocess.CompletedProcess(
+            ["fake-agent"],
+            0,
+        ),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_implementation_protected_path_violation",
+        lambda **_kwargs: dict(deferral),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_record_task_queue_outcome",
+        lambda _task, returncode, **_kwargs: queue_outcomes.append(returncode),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_record_failed_attempt_retry_context",
+        lambda *_args, **_kwargs: diagnostics.append("retry") or None,
+    )
+
+    result = daemon._run_implementation(task, state)
+
+    assert result["returncode"] == 1
+    assert result["reason"] == deferral["reason"]
+    assert result["deferred"] is True
+    assert result["attempt_consumed"] is False
+    assert "diagnostic_receipt_id" not in result
+    assert queue_outcomes == []
+    assert diagnostics == []
+    assert state.implementation_attempts == {task.task_id: 2}
+    assert state.implementation_attempts_by_cid == {canonical_task_cid: 2}
+    persisted = PortalTaskState.load(daemon.state_path)
+    assert persisted.implementation_attempts == {task.task_id: 2}
+    assert persisted.implementation_attempts_by_cid == {
+        canonical_task_cid: 2
+    }
+
+
+def test_ephemeral_verification_lock_deferral_does_not_consume_attempt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon, _repo, _workspace, _protected = (
+        _protected_git_worktree_daemon(tmp_path)
+    )
+    task = _task(outputs=["src/example.py"])
+    canonical_task_cid = daemon._canonical_ref(task)
+    state = PortalTaskState(
+        implementation_attempts={task.task_id: 2},
+        implementation_attempts_by_cid={canonical_task_cid: 2},
+    )
+    queue_outcomes: list[int] = []
+    diagnostics: list[str] = []
+    preservation_calls: list[dict[str, object]] = []
+
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "run_process_group_stream",
+        lambda *_args, **_kwargs: subprocess.CompletedProcess(
+            ["fake-agent"],
+            0,
+        ),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_acquire_implementation_protected_verification_lock",
+        lambda **_kwargs: {
+            "acquired": False,
+            "reason": "lock_exists",
+            "lock_path": str(checkout_mutation_lock_path(daemon.repo_root)),
+            "waited_seconds": 0.0,
+        },
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_preserve_protected_path_interrupted_worktree",
+        lambda *_args, **kwargs: (
+            preservation_calls.append(dict(kwargs))
+            or {
+                "preserved": False,
+                "commit_result": {
+                    "committed": False,
+                    "reason": "verification_deferred",
+                },
+                "cleanup_result": {
+                    "cleaned": False,
+                    "reason": "verification_deferred",
+                },
+            }
+        ),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_record_task_queue_outcome",
+        lambda _task, returncode, **_kwargs: queue_outcomes.append(returncode),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_record_failed_attempt_retry_context",
+        lambda *_args, **_kwargs: diagnostics.append("retry") or None,
+    )
+
+    result = daemon._run_implementation_in_ephemeral_worktree(
+        task=task,
+        state=state,
+        attempt=3,
+        started_at="2026-07-29T00:00:00+00:00",
+        log_path=tmp_path / "state" / "ephemeral-deferral.log",
+        prompt="implement",
+    )
+
+    assert result["returncode"] == 1
+    assert result["reason"] == (
+        "implementation_protected_path_verification_lock_timeout"
+    )
+    assert result["protected_path_violation"]["verification_deferred"] is True
+    assert result["deferred"] is True
+    assert result["attempt_consumed"] is False
+    assert "diagnostic_receipt_id" not in result
+    assert len(preservation_calls) == 1
+    assert queue_outcomes == []
+    assert diagnostics == []
+    assert state.implementation_attempts == {task.task_id: 2}
+    assert state.implementation_attempts_by_cid == {canonical_task_cid: 2}
+    persisted = PortalTaskState.load(daemon.state_path)
+    assert persisted.implementation_attempts == {task.task_id: 2}
+    assert persisted.implementation_attempts_by_cid == {
+        canonical_task_cid: 2
+    }
+
+
+def test_protected_verification_double_snapshot_workspace_race_latches_mutation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon, _repo, workspace, _protected = (
+        _protected_git_worktree_daemon(tmp_path)
+    )
+    task = _task(outputs=["src/example.py"])
+    before = daemon._require_implementation_protected_snapshot(
+        task=task,
+        attempt=1,
+        workspace_path=workspace,
+    )
+    unchanged_after = json.loads(json.dumps(before))
+    (workspace / POLICY_PATH).write_text(
+        "changed-between-verification-snapshots\n",
+        encoding="utf-8",
+    )
+    changed_after = daemon._implementation_protected_path_snapshot(workspace)
+    snapshots = iter((unchanged_after, changed_after))
+
+    monkeypatch.setattr(
+        daemon,
+        "_acquire_implementation_protected_verification_lock",
+        lambda **_kwargs: {
+            "acquired": True,
+            "reason": "acquired",
+            "lock_path": str(checkout_mutation_lock_path(daemon.repo_root)),
+            "waited_seconds": 0.0,
+        },
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_release_implementation_protected_verification_lock",
+        lambda _lock_result: True,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_implementation_protected_path_snapshot",
+        lambda _workspace_path: next(snapshots),
+    )
+
+    violation = daemon._implementation_protected_path_violation(
+        task=task,
+        attempt=1,
+        workspace_path=workspace,
+        before=before,
+    )
+
+    assert violation["reason"] == "implementation_protected_path_mutated"
+    assert violation.get("verification_deferred", False) is False
+    assert {
+        item["scope"] for item in violation["mutations"]
+    } == {"workspace"}
+    assert daemon._implementation_protected_incident_path().exists()
 
 
 def test_reconciliation_accepts_trusted_board_commit_that_lands_after_latch(

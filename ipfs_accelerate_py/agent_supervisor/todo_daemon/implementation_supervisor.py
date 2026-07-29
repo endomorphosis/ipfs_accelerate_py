@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import inspect
 import json
 import logging
 import math
@@ -18,10 +19,13 @@ from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 from ..merge.checkout_lock import (
+    CheckoutMutationLease,
+    acquire_checkout_mutation_lease as acquire_atomic_checkout_mutation_lease,
     checkout_lock_metadata,
     checkout_lock_owner_is_active,
     checkout_mutation_lock_path,
     generated_protected_board_commit_subject,
+    release_checkout_mutation_lease,
     serialized_lock_update,
 )
 from ..runtime.event_log import append_jsonl_event, repair_jsonl_event_log, unique_backup_path
@@ -89,6 +93,24 @@ DEFAULT_OBJECTIVE_SURPLUS_MIN_TERMS_PER_TODO = int(
 )
 DEFAULT_WORKTREE_SCAN_CACHE_TTL_SECONDS = float(
     os.environ.get("IPFS_ACCELERATE_AGENT_WORKTREE_SCAN_CACHE_TTL_SECONDS", "900")
+)
+
+# Atomic checkout leases describe complete, bounded mutation transactions
+# rather than projected task ownership.  A live owner of one of these
+# recognized operations remains authoritative even when the supervisor's task
+# state advances before the transaction releases its lease.
+ATOMIC_CHECKOUT_MUTATION_LEASE_OPERATIONS = frozenset(
+    {
+        "cleanup_backlogged_worktrees",
+        "commit_generated_file_update",
+        "generated_board_update",
+        "generated_dirty_repair",
+        "implementation_protected_path_verification",
+        "mark_tasks_completed",
+        "merge_branch_to_main",
+        "reopen_dependency_blocked_tasks",
+        "repair_main_checkout_merge_state",
+    }
 )
 
 
@@ -416,6 +438,7 @@ class PortalImplementationSupervisor:
         self._last_supervisor_maintenance_at: float = 0.0
         self._worktree_worker_phase = ""
         self._last_worktree_worker_seen_monotonic: float | None = None
+        self._checkout_mutation_context = threading.local()
 
     def _autonomous_unstall_state_path(self) -> Path:
         return (
@@ -1552,7 +1575,16 @@ class PortalImplementationSupervisor:
             objective_started_at = datetime.now(timezone.utc)
             try:
                 objective_result = self._adapt_legacy_objective_result(
-                    self.refill_objective_backlog(),
+                    self._run_protected_refill_mutation(
+                        scan_kind="objective",
+                        scan_mode="supervisor_callback",
+                        analyzer_version=OBJECTIVE_REFILL_ANALYZER_VERSION,
+                        started_at=objective_started_at,
+                        output_paths=self._objective_refill_output_paths(),
+                        callback=self.refill_objective_backlog,
+                    )
+                    if self.config.objective_refill_enabled
+                    else self.refill_objective_backlog(),
                     scan_mode="supervisor_callback",
                     started_at=objective_started_at,
                 )
@@ -1601,7 +1633,16 @@ class PortalImplementationSupervisor:
                 codebase_started_at = datetime.now(timezone.utc)
                 try:
                     codebase_result = self._adapt_legacy_codebase_result(
-                        self.refill_codebase_backlog(),
+                        self._run_protected_refill_mutation(
+                            scan_kind="codebase",
+                            scan_mode="supervisor_callback",
+                            analyzer_version=CODEBASE_REFILL_ANALYZER_VERSION,
+                            started_at=codebase_started_at,
+                            output_paths=(self.config.todo_path,),
+                            callback=self.refill_codebase_backlog,
+                        )
+                        if self.config.codebase_refill_enabled
+                        else self.refill_codebase_backlog(),
                         scan_mode="supervisor_callback",
                         started_at=codebase_started_at,
                     )
@@ -2028,8 +2069,16 @@ class PortalImplementationSupervisor:
             return {"attempted": False, "repaired": False, "reason": "clean", "path": str(repo_root)}
 
         lock_path = self._repo_merge_lock_path()
-        lock_fd, lock_reason, existing_lock = self._try_acquire_checkout_lock(lock_path)
-        if lock_fd is None:
+        lock_metadata = self._supervisor_checkout_lock_metadata(
+            operation="repair_main_checkout_merge_state",
+        )
+        lease, lock_reason, existing_lock = (
+            self._acquire_supervisor_checkout_lease(
+                lock_path,
+                lock_metadata,
+            )
+        )
+        if lease is None:
             result: dict[str, Any] = {
                 "attempted": True,
                 "repaired": False,
@@ -2048,21 +2097,6 @@ class PortalImplementationSupervisor:
             self._record_event("main_checkout_merge_state_repair_deferred", result)
             return result
 
-        self._write_checkout_lock_metadata(
-            lock_fd,
-            checkout_lock_metadata(
-                kind="merge",
-                repo_root=repo_root,
-                task_id=self._active_task_id_for_lock(),
-                branch="supervisor-main-checkout-repair",
-                extra={
-                    "operation": "repair_main_checkout_merge_state",
-                    "started_at": utc_now(),
-                    "state_dir": str(self.config.state_dir.resolve()),
-                    "state_path": str(self.config.state_path.resolve()),
-                },
-            ),
-        )
         try:
             return self._repair_main_checkout_merge_state_locked(
                 repo_root,
@@ -2070,11 +2104,10 @@ class PortalImplementationSupervisor:
                 unmerged_paths=unmerged_paths,
             )
         finally:
-            try:
-                if lock_path.exists():
-                    lock_path.unlink()
-            except OSError:
-                logger.warning("Failed to remove checkout mutation lock %s", lock_path)
+            self._release_supervisor_checkout_lease(
+                lease,
+                operation="repair_main_checkout_merge_state",
+            )
 
     def _repair_main_checkout_merge_state_locked(
         self,
@@ -2276,12 +2309,6 @@ class PortalImplementationSupervisor:
         self._record_event("stale_active_execution_state_repaired", result)
         return result
 
-    def _active_task_id_for_lock(self) -> str:
-        try:
-            return PortalTaskState.load(self.config.state_path).active_task_id
-        except Exception:
-            return ""
-
     def _repo_merge_lock_path(self) -> Path:
         return checkout_mutation_lock_path(self.config.repo_root)
 
@@ -2318,16 +2345,54 @@ class PortalImplementationSupervisor:
         commit_outputs: bool,
         operation: str = "generated_board_update",
         callback,
+        deferred_result=None,
     ):
         """Serialize a committed generated-board update with checkout mutations."""
 
         if not commit_outputs:
             return callback()
+        current_lease = self._current_supervisor_checkout_lease()
+        if current_lease is not None:
+            # A protected refill holds the same repository checkout lease
+            # across generation and its nested generated-dirty commit.
+            result = callback()
+            if (
+                operation == "generated_dirty_repair"
+                and bool(
+                    getattr(
+                        self._checkout_mutation_context,
+                        "retain_until_protected_clean",
+                        False,
+                    )
+                )
+                and not self._dirty_implementation_protected_paths(
+                    tuple(
+                        self.config.repo_root / relative
+                        for relative in self.config.implementation_protected_paths
+                    )
+                )
+            ):
+                self._checkout_mutation_context.retain_until_protected_clean = (
+                    False
+                )
+                self._checkout_mutation_context.lease = None
+                self._release_supervisor_checkout_lease(
+                    current_lease,
+                    operation=operation,
+                )
+            return result
         lock_path = self._repo_merge_lock_path()
-        lock_fd, lock_reason, existing_lock = self._try_acquire_checkout_lock(
-            lock_path
+        lock_metadata = self._supervisor_checkout_lock_metadata(
+            operation=operation,
+            extra={"producer": producer},
         )
-        if lock_fd is None:
+        lease, lock_reason, existing_lock = (
+            self._acquire_supervisor_checkout_lease(
+                lock_path,
+                lock_metadata,
+            )
+        )
+        if lease is None:
             payload: dict[str, Any] = {
                 "producer": producer,
                 "reason": f"checkout_mutation_{lock_reason}",
@@ -2342,36 +2407,218 @@ class PortalImplementationSupervisor:
                     existing_lock.get("branch") or ""
                 )
             self._record_event("generated_board_update_deferred", payload)
-            return []
+            return deferred_result(payload) if deferred_result is not None else []
 
+        self._checkout_mutation_context.lease = lease
+        self._checkout_mutation_context.retain_until_protected_clean = False
         try:
-            self._write_checkout_lock_metadata(
-                lock_fd,
-                checkout_lock_metadata(
-                    kind="merge",
-                    repo_root=self.config.repo_root,
-                    branch=f"generated-board:{producer}",
-                    owner_script=Path(sys.argv[0]).name,
-                    extra={
-                        "operation": operation,
-                        "producer": producer,
-                        "state_dir": str(self.config.state_dir.resolve()),
-                        "state_path": str(self.config.state_path.resolve()),
-                        "started_at": utc_now(),
-                    },
-                ),
-            )
             return callback()
         finally:
-            try:
-                lock_path.unlink()
-            except FileNotFoundError:
-                pass
-            except OSError:
-                logger.warning(
-                    "Failed to remove generated-board checkout lock %s",
-                    lock_path,
+            if bool(
+                getattr(
+                    self._checkout_mutation_context,
+                    "retain_until_protected_clean",
+                    False,
                 )
+            ):
+                self._record_event(
+                    "checkout_mutation_lease_retained",
+                    {
+                        "operation": operation,
+                        "producer": producer,
+                        "lock_path": str(lease.lock_path),
+                        "lease_id": lease.lease_id,
+                        "reason": "protected_generated_outputs_remain_dirty",
+                    },
+                )
+            else:
+                self._checkout_mutation_context.lease = None
+                self._release_supervisor_checkout_lease(
+                    lease,
+                    operation=operation,
+                )
+
+    def _current_supervisor_checkout_lease(
+        self,
+    ) -> CheckoutMutationLease | None:
+        context = getattr(self, "_checkout_mutation_context", None)
+        lease = getattr(context, "lease", None)
+        return lease if isinstance(lease, CheckoutMutationLease) else None
+
+    def _implementation_protected_output_paths(
+        self,
+        paths: Sequence[Path | None],
+    ) -> tuple[Path, ...]:
+        repo_root = self.config.repo_root.resolve()
+        protected = set(self.config.implementation_protected_paths)
+        matches: list[Path] = []
+        for configured_path in paths:
+            if configured_path is None:
+                continue
+            path = Path(configured_path)
+            if not path.is_absolute():
+                path = repo_root / path
+            try:
+                relative = path.resolve().relative_to(repo_root).as_posix()
+            except (OSError, RuntimeError, ValueError):
+                continue
+            if relative in protected and path not in matches:
+                matches.append(path)
+        return tuple(matches)
+
+    def _dirty_implementation_protected_paths(
+        self,
+        paths: Sequence[Path],
+    ) -> tuple[str, ...]:
+        repo_root = self.config.repo_root.resolve()
+        relative_paths: list[str] = []
+        for path in paths:
+            candidate = path if path.is_absolute() else repo_root / path
+            try:
+                relative = candidate.resolve().relative_to(repo_root).as_posix()
+            except (OSError, RuntimeError, ValueError):
+                continue
+            if relative not in relative_paths:
+                relative_paths.append(relative)
+        if not relative_paths:
+            return ()
+        result = subprocess.run(
+            [
+                "git",
+                "status",
+                "--porcelain",
+                "--untracked-files=all",
+                "--",
+                *relative_paths,
+            ],
+            cwd=repo_root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            # Fail closed when cleanliness cannot be established.
+            return tuple(relative_paths)
+        dirty: list[str] = []
+        for line in result.stdout.splitlines():
+            relative = self._status_line_path(line)
+            if relative and relative not in dirty:
+                dirty.append(relative)
+        return tuple(dirty)
+
+    def _run_protected_refill_mutation(
+        self,
+        *,
+        scan_kind: str,
+        scan_mode: str,
+        analyzer_version: str,
+        started_at: datetime,
+        output_paths: Sequence[Path | None],
+        callback,
+    ):
+        """Fence protected refill writes through their trusted generated commit."""
+
+        protected_outputs = self._implementation_protected_output_paths(
+            output_paths
+        )
+        if not protected_outputs:
+            return callback()
+
+        def deferred(payload: Mapping[str, Any]) -> RefillScanResult:
+            return self._terminal_refill_result(
+                ScanTerminalReason.PARTIAL,
+                scan_mode=f"{scan_mode}_checkout_mutation_deferred",
+                analyzer_version=analyzer_version,
+                started_at=started_at,
+                metadata={
+                    "deferred_reason": str(
+                        payload.get("reason")
+                        or "checkout_mutation_lock_unavailable"
+                    ),
+                    "checkout_mutation": dict(payload),
+                    "protected_output_paths": [
+                        str(path) for path in protected_outputs
+                    ],
+                },
+            )
+
+        def run_and_commit():
+            try:
+                result = callback()
+            except Exception:
+                try:
+                    self.repair_generated_dirty_checkouts(
+                        force=True,
+                        additional_paths=protected_outputs,
+                    )
+                except Exception:
+                    logger.exception(
+                        "Protected %s refill cleanup failed after callback "
+                        "failure; retaining the checkout mutation lease",
+                        scan_kind,
+                    )
+                    self._checkout_mutation_context.retain_until_protected_clean = (
+                        True
+                    )
+                if self._dirty_implementation_protected_paths(
+                    protected_outputs
+                ):
+                    self._checkout_mutation_context.retain_until_protected_clean = (
+                        True
+                    )
+                raise
+
+            self.repair_generated_dirty_checkouts(
+                force=True,
+                additional_paths=protected_outputs,
+            )
+            dirty_paths = self._dirty_implementation_protected_paths(
+                protected_outputs
+            )
+            if dirty_paths:
+                self._checkout_mutation_context.retain_until_protected_clean = (
+                    True
+                )
+                raise RuntimeError(
+                    "protected refill outputs remain dirty after generated "
+                    f"commit: {', '.join(dirty_paths)}"
+                )
+            return result
+
+        return self._run_generated_board_producer(
+            producer=f"{scan_kind}-refill",
+            commit_outputs=True,
+            # The generated-output committer recognizes this operation as its
+            # own same-process transaction and therefore does not deadlock on
+            # the outer checkout lease.
+            operation="generated_dirty_repair",
+            callback=run_and_commit,
+            deferred_result=deferred,
+        )
+
+    def _objective_refill_output_paths(self) -> tuple[Path, ...]:
+        from ipfs_accelerate_py.agent_supervisor.objectives.objective_daemon import (
+            default_objective_path,
+        )
+
+        state_root = self.config.state_dir.parent
+        return tuple(
+            dict.fromkeys(
+                path
+                for path in (
+                    self.config.todo_path,
+                    self.config.objective_path
+                    or default_objective_path(self.config.repo_root),
+                    self.config.objective_graph_path
+                    or state_root / "objective_graph.json",
+                    state_root / "objective_generation.json",
+                    self.config.objective_todo_vector_index_path,
+                    self.config.objective_goal_completion_gate_path,
+                    self.config.objective_goal_completion_evidence_path,
+                )
+                if path is not None
+            )
+        )
 
     def _checkout_lock_owner_is_active(self, metadata: dict[str, Any]) -> bool:
         if not checkout_lock_owner_is_active(
@@ -2382,6 +2629,12 @@ class PortalImplementationSupervisor:
             process_is_running=process_is_running,
         ):
             return False
+        operation = str(metadata.get("operation") or "")
+        if (
+            str(metadata.get("lease_id") or "")
+            and operation in ATOMIC_CHECKOUT_MUTATION_LEASE_OPERATIONS
+        ):
+            return True
         if self._checkout_lock_targets_current_supervisor_state(metadata):
             return self._checkout_lock_task_is_active(metadata)
         return True
@@ -2420,52 +2673,111 @@ class PortalImplementationSupervisor:
         branch = str(metadata.get("branch") or "")
         return not branch or not state.active_branch or state.active_branch == branch
 
-    def _try_acquire_checkout_lock(self, lock_path: Path) -> tuple[int | None, str, dict[str, Any] | None]:
-        lock_path.parent.mkdir(parents=True, exist_ok=True)
-        for _ in range(2):
-            try:
-                return os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY), "acquired", None
-            except FileExistsError:
-                existing = load_json_dict(lock_path)
-                if existing is not None and self._checkout_lock_owner_is_active(existing):
-                    return None, "lock_exists", existing
-                if not self._clear_stale_checkout_lock(lock_path, metadata=existing):
-                    return None, "lock_cleanup_failed", existing
-        existing = load_json_dict(lock_path)
-        if existing is not None and self._checkout_lock_owner_is_active(existing):
-            return None, "lock_exists", existing
-        return None, "lock_unavailable", existing
+    def _supervisor_checkout_lock_metadata(
+        self,
+        *,
+        operation: str,
+        extra: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        return checkout_lock_metadata(
+            kind="merge",
+            repo_root=self.config.repo_root,
+            task_id="",
+            branch="",
+            owner_script=Path(sys.argv[0]).name,
+            extra={
+                "operation": operation,
+                "state_dir": str(self.config.state_dir.resolve()),
+                "state_path": str(self.config.state_path.resolve()),
+                "started_at": utc_now(),
+                **dict(extra or {}),
+            },
+        )
 
-    def _write_checkout_lock_metadata(self, lock_fd: int, metadata: dict[str, Any]) -> None:
-        try:
-            os.write(lock_fd, json.dumps(metadata, indent=2, sort_keys=True).encode("utf-8"))
-        finally:
-            os.close(lock_fd)
+    def _acquire_supervisor_checkout_lease(
+        self,
+        lock_path: Path,
+        metadata: Mapping[str, Any],
+    ) -> tuple[
+        CheckoutMutationLease | None,
+        str,
+        dict[str, Any] | None,
+    ]:
+        """Acquire a fully published lease, retaining legacy test-hook support."""
 
-    def _clear_stale_checkout_lock(self, lock_path: Path, *, metadata: dict[str, Any] | None) -> bool:
-        moved_directory_path = ""
+        acquire = self._try_acquire_checkout_lock
         try:
-            if lock_path.is_dir():
-                backup_path = unique_backup_path(lock_path, "directory-backup")
-                lock_path.rename(backup_path)
-                moved_directory_path = str(backup_path)
-            else:
-                lock_path.unlink()
-        except FileNotFoundError:
-            return True
-        except OSError:
-            logger.warning("Failed to remove stale checkout mutation lock %s", lock_path)
-            return False
-        event = {
-            "lock_path": str(lock_path),
-            "lock_owner_pid": int(metadata.get("pid") or 0) if metadata else 0,
-            "task_id": str(metadata.get("task_id") or "") if metadata else "",
-            "branch": str(metadata.get("branch") or "") if metadata else "",
-        }
-        if moved_directory_path:
-            event["moved_directory_path"] = moved_directory_path
-        self._record_event("checkout_mutation_lock_cleared", event)
-        return True
+            parameter_count = len(inspect.signature(acquire).parameters)
+        except (TypeError, ValueError):
+            parameter_count = 2
+        if parameter_count == 1:
+            # Older integrations monkeypatch the original one-argument helper.
+            # Preserve that narrow deferral hook while production uses complete
+            # metadata and the atomic lease implementation below.
+            return acquire(lock_path)
+        return acquire(lock_path, metadata)
+
+    def _try_acquire_checkout_lock(
+        self,
+        lock_path: Path,
+        metadata: Mapping[str, Any] | None = None,
+    ) -> tuple[
+        CheckoutMutationLease | None,
+        str,
+        dict[str, Any] | None,
+    ]:
+        normalized_metadata = (
+            dict(metadata)
+            if metadata is not None
+            else self._supervisor_checkout_lock_metadata(
+                operation="supervisor_checkout_mutation",
+            )
+        )
+        lease, reason, existing_or_cleared, _waited = (
+            acquire_atomic_checkout_mutation_lease(
+                lock_path,
+                normalized_metadata,
+                owner_active=self._checkout_lock_owner_is_active,
+                timeout_seconds=0.0,
+            )
+        )
+        if lease is not None and existing_or_cleared:
+            self._record_checkout_mutation_lock_cleared(
+                lock_path,
+                existing_or_cleared,
+            )
+        return lease, reason, existing_or_cleared
+
+    def _record_checkout_mutation_lock_cleared(
+        self,
+        lock_path: Path,
+        metadata: Mapping[str, Any],
+    ) -> None:
+        self._record_event(
+            "checkout_mutation_lock_cleared",
+            {
+                "lock_path": str(lock_path),
+                "lock_owner_pid": int(metadata.get("pid") or 0),
+                "task_id": str(metadata.get("task_id") or ""),
+                "branch": str(metadata.get("branch") or ""),
+            },
+        )
+
+    def _release_supervisor_checkout_lease(
+        self,
+        lease: CheckoutMutationLease,
+        *,
+        operation: str,
+    ) -> bool:
+        released = release_checkout_mutation_lease(lease)
+        if not released:
+            logger.warning(
+                "Supervisor checkout mutation lease for %s was replaced "
+                "before release: %s",
+                operation,
+                lease.lock_path,
+            )
+        return released
 
     def repair_generated_main_checkout_conflicts(self, repo_root: Path) -> list[dict[str, object]]:
         """Resolve configured append-only generated markdown conflicts without LLM calls."""
@@ -3484,7 +3796,11 @@ class PortalImplementationSupervisor:
             evidence["untracked_paths"] = untracked_paths
         return evidence
 
-    def _generated_main_checkout_status_filters(self) -> tuple[list[str], list[str]]:
+    def _generated_main_checkout_status_filters(
+        self,
+        *,
+        additional_paths: Sequence[Path] = (),
+    ) -> tuple[list[str], list[str]]:
         """Return supervisor-generated dirty paths that should not block reconciliation."""
 
         from ipfs_accelerate_py.agent_supervisor.objectives.backlog_refinery import (
@@ -3499,6 +3815,7 @@ class PortalImplementationSupervisor:
                 self.config.objective_graph_path,
                 self.config.objective_todo_vector_index_path,
                 *self.config.generated_dirty_repair_paths,
+                *additional_paths,
             )
             if path is not None
         ]
@@ -3524,12 +3841,21 @@ class PortalImplementationSupervisor:
             additional_generated_prefixes=additional_prefixes,
         )
 
-    def repair_generated_dirty_checkouts(self) -> dict[str, Any]:
+    def repair_generated_dirty_checkouts(
+        self,
+        *,
+        force: bool = False,
+        additional_paths: Sequence[Path] = (),
+    ) -> dict[str, Any]:
         """Commit safe generated supervisor outputs so reconciliation can proceed."""
 
-        if not self.config.generated_dirty_repair_enabled:
+        if not self.config.generated_dirty_repair_enabled and not force:
             return {"attempted": False, "reason": "generated_dirty_repair_disabled"}
-        generated_paths, generated_prefixes = self._generated_main_checkout_status_filters()
+        generated_paths, generated_prefixes = (
+            self._generated_main_checkout_status_filters(
+                additional_paths=additional_paths,
+            )
+        )
         candidate_git_roots = [
             self.config.repo_root / relative
             for relative in self.config.worktree_submodule_paths
@@ -4159,10 +4485,16 @@ class PortalImplementationSupervisor:
         """Remove inactive implementation worktrees whose branches are already merged."""
 
         lock_path = self._repo_merge_lock_path()
-        lock_fd, lock_reason, existing_lock = self._try_acquire_checkout_lock(
-            lock_path
+        lock_metadata = self._supervisor_checkout_lock_metadata(
+            operation="cleanup_backlogged_worktrees",
         )
-        if lock_fd is None:
+        lease, lock_reason, existing_lock = (
+            self._acquire_supervisor_checkout_lease(
+                lock_path,
+                lock_metadata,
+            )
+        )
+        if lease is None:
             result: dict[str, Any] = {
                 "attempted": True,
                 "removed_count": 0,
@@ -4181,33 +4513,13 @@ class PortalImplementationSupervisor:
             self._record_event("merged_worktree_cleanup_deferred", result)
             return result
 
-        self._write_checkout_lock_metadata(
-            lock_fd,
-            checkout_lock_metadata(
-                kind="merge",
-                repo_root=self.config.repo_root,
-                task_id=self._active_task_id_for_lock(),
-                branch="supervisor-worktree-cleanup",
-                extra={
-                    "operation": "cleanup_backlogged_worktrees",
-                    "state_dir": str(self.config.state_dir.resolve()),
-                    "state_path": str(self.config.state_path.resolve()),
-                    "started_at": utc_now(),
-                },
-            ),
-        )
         try:
             return self._cleanup_backlogged_worktrees_locked()
         finally:
-            try:
-                lock_path.unlink()
-            except FileNotFoundError:
-                pass
-            except OSError:
-                logger.warning(
-                    "Failed to remove worktree cleanup lock %s",
-                    lock_path,
-                )
+            self._release_supervisor_checkout_lease(
+                lease,
+                operation="cleanup_backlogged_worktrees",
+            )
 
     def _cleanup_backlogged_worktrees_locked(self) -> dict[str, Any]:
         """Clean merged worktrees while holding the checkout mutation lock."""
