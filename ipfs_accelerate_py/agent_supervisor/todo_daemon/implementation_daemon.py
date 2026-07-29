@@ -9418,6 +9418,12 @@ class PortalImplementationDaemon:
                 worktree_path,
                 task,
                 baseline_ref=resolved_baseline,
+                replayable_consumed_proposal_ids=(
+                    self._retryable_reconciliation_proposal_ids(
+                        task_id=task.task_id,
+                        recovery_key=recovery_key,
+                    )
+                ),
             )
             validation_result = self._run_validation_commands(
                 worktree_path,
@@ -13577,6 +13583,126 @@ class PortalImplementationDaemon:
         return tuple(sorted(consumed))
 
     @staticmethod
+    def _retryable_reconciliation_validation_failure(
+        validation_result: Mapping[str, Any],
+    ) -> bool:
+        """Identify environment/process failures that a later replay may fix."""
+
+        terminal_security_reasons = {
+            "candidate_changed_during_validation",
+            "implementation_protected_path_mutated",
+            "reconciled_candidate_commit_identity_changed",
+            "reconciled_candidate_existing_commit_invalid",
+            "reconciled_candidate_mutated_during_validation",
+            "workspace_protected_path_mutated",
+        }
+        reason = str(validation_result.get("reason") or "").strip()
+        if (
+            reason in terminal_security_reasons
+            or bool(validation_result.get("protected_path_violation"))
+        ):
+            return False
+        candidate_binding = validation_result.get("candidate_binding")
+        if (
+            isinstance(candidate_binding, Mapping)
+            and candidate_binding.get("verified") is False
+        ):
+            return False
+        proposal_gate = validation_result.get("proposal_gate")
+        if (
+            isinstance(proposal_gate, Mapping)
+            and proposal_gate.get("accepted") is False
+        ):
+            reason_codes = {
+                str(code).strip()
+                for code in (proposal_gate.get("reason_codes") or ())
+                if str(code).strip()
+            }
+            if reason_codes != {"stale_proposal_replay"}:
+                return False
+
+        retryable_returncodes = {
+            124,  # command timeout
+            126,  # command found but could not execute
+            127,  # command or local executable not found
+            130,  # interrupted
+            137,  # killed
+            143,  # terminated
+        }
+        raw_returncodes = [validation_result.get("returncode")]
+        command_results = validation_result.get("results")
+        if isinstance(command_results, Sequence) and not isinstance(
+            command_results,
+            (str, bytes, bytearray),
+        ):
+            for command_result in command_results:
+                if not isinstance(command_result, Mapping):
+                    continue
+                if command_result.get("timed_out") is True:
+                    return True
+                raw_returncodes.append(command_result.get("returncode"))
+        for raw_returncode in raw_returncodes:
+            try:
+                returncode = int(raw_returncode)
+            except (TypeError, ValueError):
+                continue
+            if returncode < 0 or returncode in retryable_returncodes:
+                return True
+        return False
+
+    def _retryable_reconciliation_proposal_ids(
+        self,
+        *,
+        task_id: str,
+        recovery_key: str,
+    ) -> tuple[str, ...]:
+        """Return exact proposal IDs left reusable by an environment failure."""
+
+        if not task_id or not recovery_key:
+            return ()
+        retryable: set[str] = set()
+        for event in self._iter_events():
+            if (
+                event.get("type")
+                != "worktree_reconciliation_validation_finished"
+                or str(event.get("task_id") or "") != task_id
+                or str(event.get("recovery_key") or "") != recovery_key
+                or event.get("provider_dispatched") is not False
+                or event.get("attempt_consumed") is not False
+            ):
+                continue
+            validation_result = event.get("validation_result")
+            if not isinstance(validation_result, Mapping):
+                continue
+            proposal_gate = validation_result.get("proposal_gate")
+            if not isinstance(proposal_gate, Mapping):
+                continue
+            proposal_id = str(
+                proposal_gate.get("proposal_id") or ""
+            ).strip()
+            if not proposal_id:
+                continue
+            reason_codes = {
+                str(code).strip()
+                for code in (proposal_gate.get("reason_codes") or ())
+                if str(code).strip()
+            }
+            if (
+                proposal_gate.get("accepted") is True
+                and self._retryable_reconciliation_validation_failure(
+                    validation_result
+                )
+            ):
+                retryable.add(proposal_id)
+            elif reason_codes == {"stale_proposal_replay"}:
+                # A stale-replay rejection caused by the consumed admission
+                # token does not supersede the earlier environmental failure.
+                continue
+            else:
+                retryable.discard(proposal_id)
+        return tuple(sorted(retryable))
+
+    @staticmethod
     def _compact_proposal_validation(
         proposal_validation: Any,
         *,
@@ -13697,6 +13823,7 @@ class PortalImplementationDaemon:
         task: PortalTask,
         *,
         baseline_ref: str,
+        replayable_consumed_proposal_ids: Sequence[str] = (),
     ) -> Any:
         """Validate a candidate patch before task validation is dispatched."""
 
@@ -13918,6 +14045,11 @@ class PortalImplementationDaemon:
             # The envelope helper admitted only exact set equality between
             # these changed paths and the identity-bound task outputs.
             policy_allowed_paths = changed_paths
+        replayable_proposal_ids = {
+            str(proposal_id).strip()
+            for proposal_id in replayable_consumed_proposal_ids
+            if str(proposal_id).strip()
+        }
         policy = ProposalValidationPolicy(
             allowed_paths=policy_allowed_paths,
             task_owned_paths=allowed_paths,
@@ -13929,7 +14061,11 @@ class PortalImplementationDaemon:
             expected_context_id=authority["context_id"],
             expected_baseline_id=authority["baseline_id"],
             expected_replay_nonce=replay_nonce,
-            consumed_proposal_ids=self._consumed_proposal_ids(),
+            consumed_proposal_ids=tuple(
+                proposal_id
+                for proposal_id in self._consumed_proposal_ids()
+                if proposal_id not in replayable_proposal_ids
+            ),
             symlink_paths=symlink_paths,
             submodule_paths=submodule_paths,
             allowed_validation_commands=allowed_validation_commands,

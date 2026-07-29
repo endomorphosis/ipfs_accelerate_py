@@ -18394,12 +18394,38 @@ def test_implementation_supervisor_retries_reconciliation_when_validation_execut
                 "reason": "declared_validation_failed",
                 "error": "validation_command_failed",
                 "failed_command": "npm run build",
+                "proposal_gate": {
+                    "attempted": True,
+                    "accepted": True,
+                    "proposal_id": "proposal-missing-executable",
+                    "reason_codes": [],
+                },
                 "results": [
                     {
                         "command": "npm run build",
                         "returncode": 127,
                     }
                 ],
+            },
+        },
+        {
+            "type": "worktree_reconciliation_validation_finished",
+            "task_id": task.task_id,
+            "branch": "implementation/accel-011-missing-executable",
+            "recovery_key": missing_executable_key,
+            "returncode": 1,
+            "validation_result": {
+                "attempted": True,
+                "passed": False,
+                "returncode": 1,
+                "reason": "proposal_gate_failed",
+                "proposal_gate": {
+                    "attempted": True,
+                    "accepted": False,
+                    "proposal_id": "proposal-missing-executable",
+                    "reason_codes": ["stale_proposal_replay"],
+                },
+                "results": [],
             },
         },
         {
@@ -18415,6 +18441,12 @@ def test_implementation_supervisor_retries_reconciliation_when_validation_execut
                 "reason": "declared_validation_failed",
                 "error": "validation_command_failed",
                 "failed_command": "python -m pytest -q",
+                "proposal_gate": {
+                    "attempted": True,
+                    "accepted": True,
+                    "proposal_id": "proposal-semantic-failure",
+                    "reason_codes": [],
+                },
                 "results": [
                     {
                         "command": "python -m pytest -q",
@@ -18449,6 +18481,433 @@ def test_implementation_supervisor_retries_reconciliation_when_validation_execut
 
     assert semantic_failure_key in outcome_keys
     assert missing_executable_key not in outcome_keys
+
+
+def test_reconciliation_proposal_allowlist_is_exact_task_and_recovery_bound(
+    tmp_path,
+    monkeypatch,
+):
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=tmp_path / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=tmp_path,
+    )
+    exact_task_id = "ACCEL-011A"
+    exact_recovery_key = "recovery-exact"
+    exact_proposal_id = "proposal-exact"
+    events = [
+        {
+            "type": "worktree_reconciliation_validation_finished",
+            "task_id": exact_task_id,
+            "recovery_key": exact_recovery_key,
+            "provider_dispatched": False,
+            "attempt_consumed": False,
+            "validation_result": {
+                "attempted": True,
+                "passed": False,
+                "returncode": 127,
+                "reason": "declared_validation_failed",
+                "proposal_gate": {
+                    "attempted": True,
+                    "accepted": True,
+                    "proposal_id": exact_proposal_id,
+                    "reason_codes": [],
+                },
+                "results": [
+                    {
+                        "command": "npm run build",
+                        "returncode": 127,
+                    }
+                ],
+            },
+        },
+        {
+            "type": "worktree_reconciliation_validation_finished",
+            "task_id": exact_task_id,
+            "recovery_key": exact_recovery_key,
+            "provider_dispatched": False,
+            "attempt_consumed": False,
+            "validation_result": {
+                "attempted": True,
+                "passed": False,
+                "returncode": 1,
+                "reason": "proposal_gate_failed",
+                "proposal_gate": {
+                    "attempted": True,
+                    "accepted": False,
+                    "proposal_id": exact_proposal_id,
+                    "reason_codes": ["stale_proposal_replay"],
+                },
+                "results": [],
+            },
+        },
+        {
+            "type": "worktree_reconciliation_validation_finished",
+            "task_id": exact_task_id,
+            "recovery_key": "recovery-unrelated",
+            "provider_dispatched": False,
+            "attempt_consumed": False,
+            "validation_result": {
+                "attempted": True,
+                "passed": False,
+                "returncode": 1,
+                "reason": "declared_validation_failed",
+                "proposal_gate": {
+                    "attempted": True,
+                    "accepted": True,
+                    "proposal_id": exact_proposal_id,
+                    "reason_codes": [],
+                },
+                "results": [
+                    {
+                        "command": "python -m pytest -q",
+                        "returncode": 1,
+                    }
+                ],
+            },
+        },
+    ]
+    monkeypatch.setattr(daemon, "_iter_events", lambda: iter(events))
+
+    assert daemon._retryable_reconciliation_proposal_ids(
+        task_id=exact_task_id,
+        recovery_key=exact_recovery_key,
+    ) == (exact_proposal_id,)
+    assert daemon._retryable_reconciliation_proposal_ids(
+        task_id=exact_task_id,
+        recovery_key="recovery-unrelated",
+    ) == ()
+    assert daemon._retryable_reconciliation_proposal_ids(
+        task_id="ACCEL-OTHER",
+        recovery_key=exact_recovery_key,
+    ) == ()
+
+    events.append(
+        {
+            "type": "worktree_reconciliation_validation_finished",
+            "task_id": exact_task_id,
+            "recovery_key": exact_recovery_key,
+            "provider_dispatched": False,
+            "attempt_consumed": False,
+            "validation_result": {
+                "attempted": True,
+                "passed": False,
+                "returncode": 1,
+                "reason": "declared_validation_failed",
+                "proposal_gate": {
+                    "attempted": True,
+                    "accepted": True,
+                    "proposal_id": exact_proposal_id,
+                    "reason_codes": [],
+                },
+                "results": [
+                    {
+                        "command": "python -m pytest -q",
+                        "returncode": 1,
+                    }
+                ],
+            },
+        }
+    )
+
+    assert daemon._retryable_reconciliation_proposal_ids(
+        task_id=exact_task_id,
+        recovery_key=exact_recovery_key,
+    ) == ()
+
+
+@pytest.mark.parametrize(
+    ("terminal_reason", "terminal_evidence", "nested_result"),
+    [
+        (
+            "implementation_protected_path_mutated",
+            {
+                "protected_path_violation": {
+                    "reason": "implementation_protected_path_mutated",
+                    "changed_paths": ["docs/planning/TODO.md"],
+                }
+            },
+            {
+                "command": "npm run build",
+                "returncode": 127,
+            },
+        ),
+        (
+            "candidate_changed_during_validation",
+            {
+                "candidate_binding": {
+                    "verified": False,
+                    "reason": "candidate_fingerprint_changed",
+                }
+            },
+            {
+                "command": "python -m pytest -q",
+                "returncode": 1,
+                "timed_out": True,
+            },
+        ),
+    ],
+    ids=("protected-path", "candidate-identity"),
+)
+def test_reconciliation_security_failure_precedes_nested_environmental_signal(
+    tmp_path,
+    monkeypatch,
+    terminal_reason,
+    terminal_evidence,
+    nested_result,
+):
+    state_dir = tmp_path / "runtime" / "codex"
+    state_dir.mkdir(parents=True)
+    task = SimpleNamespace(task_id="ACCEL-011C")
+    recovery_key = f"security-precedence-{terminal_reason}"
+    proposal_id = f"proposal-{terminal_reason}"
+    environmental_failure = {
+        "attempted": True,
+        "passed": False,
+        "returncode": 127,
+        "reason": "declared_validation_failed",
+        "proposal_gate": {
+            "attempted": True,
+            "accepted": True,
+            "proposal_id": proposal_id,
+            "reason_codes": [],
+        },
+        "results": [
+            {
+                "command": "npm run build",
+                "returncode": 127,
+            }
+        ],
+    }
+    terminal_failure = {
+        "attempted": True,
+        "passed": False,
+        "returncode": 1,
+        "reason": terminal_reason,
+        "proposal_gate": {
+            "attempted": True,
+            "accepted": True,
+            "proposal_id": proposal_id,
+            "reason_codes": [],
+        },
+        "results": [nested_result],
+        **terminal_evidence,
+    }
+    events = [
+        {
+            "type": "worktree_reconciliation_validation_finished",
+            "task_id": task.task_id,
+            "branch": "implementation/accel-011c-security-precedence",
+            "recovery_key": recovery_key,
+            "provider_dispatched": False,
+            "attempt_consumed": False,
+            "returncode": 127,
+            "validation_result": environmental_failure,
+        }
+    ]
+    daemon = TodoImplementationDaemon(
+        todo_path=tmp_path / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=tmp_path,
+    )
+    monkeypatch.setattr(daemon, "_load_tasks", lambda: [task])
+    monkeypatch.setattr(
+        daemon,
+        "_register_task_identities",
+        lambda tasks: None,
+    )
+    monkeypatch.setattr(daemon, "_iter_events", lambda: iter(events))
+
+    assert daemon._retryable_reconciliation_proposal_ids(
+        task_id=task.task_id,
+        recovery_key=recovery_key,
+    ) == (proposal_id,)
+
+    events.append(
+        {
+            "type": "worktree_reconciliation_validation_finished",
+            "task_id": task.task_id,
+            "branch": "implementation/accel-011c-security-precedence",
+            "recovery_key": recovery_key,
+            "provider_dispatched": False,
+            "attempt_consumed": False,
+            "returncode": 1,
+            "validation_result": terminal_failure,
+        }
+    )
+
+    assert (
+        daemon._retryable_reconciliation_validation_failure(
+            terminal_failure
+        )
+        is False
+    )
+    assert daemon._retryable_reconciliation_proposal_ids(
+        task_id=task.task_id,
+        recovery_key=recovery_key,
+    ) == ()
+
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=tmp_path / "todo.md",
+            state_path=state_dir / "task_state.json",
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "supervisor_events.jsonl",
+            state_dir=state_dir,
+            state_prefix="accel",
+            task_prefix="## ACCEL-",
+            repo_root=tmp_path,
+            worktree_root=tmp_path / "worktrees",
+            merge_target_branch="main",
+        )
+    )
+    (
+        _tasks_by_id,
+        _task_ids_by_branch,
+        outcome_keys,
+        _provenance_by_branch,
+    ) = supervisor._reconciliation_task_context(daemon)
+
+    assert recovery_key in outcome_keys
+
+
+def test_reconciled_candidate_reuses_only_environmentally_retryable_proposal(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        _reconciled_candidate_task_board(
+            task_id="ACCEL-011B",
+            validation="python -m py_compile feature.py",
+        ),
+        encoding="utf-8",
+    )
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    (repo / ".gitignore").write_text(
+        "__pycache__/\n*.pyc\n",
+        encoding="utf-8",
+    )
+    _git(repo, "add", ".gitignore", "README.md", "todo.md")
+    _git(repo, "commit", "-m", "base")
+    baseline = _git(repo, "rev-parse", "HEAD")
+    branch_name = "implementation/accel-011b-replayable-proposal"
+    _git(repo, "checkout", "-b", branch_name)
+    (repo / "feature.py").write_text("VALUE = 1\n", encoding="utf-8")
+    _git(repo, "add", "feature.py")
+    _git(repo, "commit", "-m", "feature")
+    candidate = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "main")
+    worktree_path = tmp_path / "candidate"
+    _git(repo, "worktree", "add", str(worktree_path), branch_name)
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        worktree_root=tmp_path / "worktrees",
+        merge_target_branch="main",
+        worktree_submodule_paths=[],
+    )
+    task = daemon._load_tasks()[0]
+    recovery_key = "environmentally-retryable-proposal"
+
+    first_proposal = daemon._validate_implementation_patch(
+        worktree_path,
+        task,
+        baseline_ref=baseline,
+    )
+    assert first_proposal.accepted is True
+    proposal_id = first_proposal.proposal.proposal_id
+    daemon._record_event(
+        "worktree_reconciliation_validation_finished",
+        {
+            "task_id": task.task_id,
+            "recovery_key": recovery_key,
+            "provider_dispatched": False,
+            "attempt_consumed": False,
+            "returncode": 127,
+            "validation_result": {
+                "attempted": True,
+                "passed": False,
+                "returncode": 127,
+                "reason": "declared_validation_failed",
+                "proposal_gate": daemon._compact_proposal_validation(
+                    first_proposal
+                ),
+                "results": [
+                    {
+                        "command": "npm run build",
+                        "returncode": 127,
+                    }
+                ],
+            },
+        },
+    )
+    stale_proposal = daemon._validate_implementation_patch(
+        worktree_path,
+        task,
+        baseline_ref=baseline,
+        replayable_consumed_proposal_ids=("proposal-from-unrelated-recovery",),
+    )
+    assert stale_proposal.accepted is False
+    assert {
+        finding.code.value
+        for finding in stale_proposal.findings
+    } == {"stale_proposal_replay"}
+    daemon._record_event(
+        "worktree_reconciliation_validation_finished",
+        {
+            "task_id": task.task_id,
+            "recovery_key": recovery_key,
+            "provider_dispatched": False,
+            "attempt_consumed": False,
+            "returncode": 1,
+            "validation_result": {
+                "attempted": True,
+                "passed": False,
+                "returncode": 1,
+                "reason": "proposal_gate_failed",
+                "proposal_gate": daemon._compact_proposal_validation(
+                    stale_proposal
+                ),
+                "results": [],
+            },
+        },
+    )
+
+    result = daemon.reconcile_validated_worktree_candidate(
+        worktree_path=worktree_path,
+        branch_name=branch_name,
+        task=task,
+        baseline_ref=baseline,
+        candidate_commit=candidate,
+        recovery_key=recovery_key,
+    )
+
+    assert result["returncode"] == 0
+    assert result["provider_dispatched"] is False
+    assert result["attempt_consumed"] is False
+    assert result["validation_result"]["passed"] is True
+    assert result["validation_result"]["proposal_gate"]["accepted"] is True
+    assert (
+        result["validation_result"]["proposal_gate"]["proposal_id"]
+        == proposal_id
+    )
+    assert "- Status: completed" in todo_path.read_text(encoding="utf-8")
 
 
 def test_implementation_supervisor_run_once_replays_historical_merge_under_maintenance_lease(
