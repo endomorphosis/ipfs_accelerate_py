@@ -508,7 +508,7 @@ compact references and bounded spans only.
 
 ## VFS-026 Define the canonical VFS operation and invariant contract pack
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: vfs-drift
