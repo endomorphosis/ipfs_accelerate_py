@@ -232,21 +232,6 @@ class ContentIdentity:
         return self.digest.removeprefix("sha256:")
 
 
-def _cache_module(name: str) -> ModuleType | None:
-    with _IMPORT_LOCK:
-        if name in _MODULE_CACHE:
-            return _MODULE_CACHE[name]
-        try:
-            module = importlib.import_module(name)
-        except Exception as exc:  # noqa: BLE001 - fail closed, cache the miss
-            _MODULE_CACHE[name] = None
-            _MODULE_ERRORS[name] = exc
-            return None
-        _MODULE_CACHE[name] = module
-        _MODULE_ERRORS.pop(name, None)
-        return module
-
-
 def _is_multiformats_failure(exc: BaseException | None) -> bool:
     if exc is None:
         return False
@@ -263,26 +248,45 @@ def _is_multiformats_failure(exc: BaseException | None) -> bool:
     return "multiformats" in str(exc)
 
 
-def _require_module(name: str) -> ModuleType:
-    module = _cache_module(name)
-    if module is None:
-        cause = _MODULE_ERRORS.get(name)
-        if (
-            name == PROVIDER_MULTIFORMATS
-            or name.startswith("multiformats.")
-            or _is_multiformats_failure(cause)
-        ):
-            raise MultiformatsUnavailableError(
-                details={
-                    "provider": name,
-                    "cause": repr(cause),
-                }
-            )
-        raise ProviderUnavailableError(
-            name,
-            cause=cause,
+def _module_import_error(
+    name: str,
+    cause: BaseException | None,
+) -> ContentIdentityError:
+    if (
+        name == PROVIDER_MULTIFORMATS
+        or name.startswith("multiformats.")
+        or _is_multiformats_failure(cause)
+    ):
+        return MultiformatsUnavailableError(
+            details={
+                "provider": name,
+                "cause": repr(cause),
+            }
         )
-    return module
+    return ProviderUnavailableError(name, cause=cause)
+
+
+def _cache_module(name: str) -> ModuleType:
+    with _IMPORT_LOCK:
+        if name in _MODULE_CACHE:
+            module = _MODULE_CACHE[name]
+            if module is None:
+                cause = _MODULE_ERRORS.get(name)
+                raise _module_import_error(name, cause) from cause
+            return module
+        try:
+            module = importlib.import_module(name)
+        except Exception as exc:  # noqa: BLE001 - normalize provider boundary failures
+            _MODULE_CACHE[name] = None
+            _MODULE_ERRORS[name] = exc
+            raise _module_import_error(name, exc) from exc
+        _MODULE_CACHE[name] = module
+        _MODULE_ERRORS.pop(name, None)
+        return module
+
+
+def _require_module(name: str) -> ModuleType:
+    return _cache_module(name)
 
 
 def reset_provider_import_cache() -> None:
@@ -296,13 +300,21 @@ def reset_provider_import_cache() -> None:
 def multiformats_available() -> bool:
     """Return whether the optional multiformats package can be imported."""
 
-    return _cache_module(PROVIDER_MULTIFORMATS) is not None
+    try:
+        _cache_module(PROVIDER_MULTIFORMATS)
+    except MultiformatsUnavailableError:
+        return False
+    return True
 
 
 def provider_available(provider: str) -> bool:
     """Return whether a named identity provider module can be imported."""
 
-    return _cache_module(provider) is not None
+    try:
+        _cache_module(provider)
+    except (MultiformatsUnavailableError, ProviderUnavailableError):
+        return False
+    return True
 
 
 def require_multiformats() -> ModuleType:
