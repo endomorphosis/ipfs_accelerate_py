@@ -1268,7 +1268,7 @@ compact references and bounded spans only.
 
 ## VFS-046 Close objective gap: Project a provenance-preserving program and GraphRAG evidence graph
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
