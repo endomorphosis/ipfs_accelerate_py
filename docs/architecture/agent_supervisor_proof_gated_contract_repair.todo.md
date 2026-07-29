@@ -243,7 +243,7 @@ task IDs on this board.
 
 ## RPR-007 Capture memory-safety and native-boundary evidence
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
