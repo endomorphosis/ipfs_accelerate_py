@@ -1463,7 +1463,7 @@ compact references and bounded spans only.
 
 ## VFS-049 Close objective gap: Generate a typed, deduplicated correctness and vulnerability ledger
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
