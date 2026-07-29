@@ -156,6 +156,7 @@ from .task_execution_policy import (
     TaskExecutionRequest,
     TypedLocalOperation,
 )
+from .authoritative_completion import *  # noqa: F403
 from .worktrees import WorktreeLease, WorktreePool
 
 REPO_ROOT = Path.cwd()
@@ -208,33 +209,6 @@ MODEL_ASSISTED_PROVIDER_RECEIPT_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/"
     "model-assisted-provider-route-integration@1"
 )
-IMPLEMENTATION_RECEIPT_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/implementation-receipt@1"
-)
-AUTHORITATIVE_COMPLETION_GATE_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/authoritative-completion-gate@1"
-)
-DETERMINISTIC_ONLY_POLICY_SCHEMA = (
-    "ipfs_accelerate_py/agent-supervisor/deterministic-only-policy@1"
-)
-# Board completion requires every listed gate.  A clean merge alone never
-# grants completion authority (SCA-229 / SCA-G167).
-AUTHORITATIVE_COMPLETION_GATE_KINDS: tuple[str, ...] = (
-    "merge",
-    "freshness",
-    "semantic",
-    "proof",
-    "provider_review",
-    "deterministic_only",
-)
-ACCEPTANCE_STATE_MERGED_PENDING = "implemented_merged_but_pending"
-ACCEPTANCE_STATE_AUTHORITATIVE = "authoritatively_completed"
-ACCEPTANCE_STATE_REOPENED = "acceptance_reopened"
-IMPLEMENTATION_MERGED_PENDING_EVENT = "implementation_merged_pending_acceptance"
-AUTHORITATIVE_COMPLETION_ADMITTED_EVENT = "authoritative_task_completion_admitted"
-AUTHORITATIVE_COMPLETION_DENIED_EVENT = "authoritative_task_completion_denied"
-ACCEPTANCE_REOPENED_STALE_EVENT = "acceptance_reopened_stale_post_merge_validation"
-DETERMINISTIC_ONLY_MODEL_REJECTED_EVENT = "deterministic_only_model_invocation_rejected"
 MAX_IMPLEMENTATION_CHECKPOINT_FILES = 16
 MAX_IMPLEMENTATION_CHECKPOINT_BYTES = 512 * 1024 * 1024
 MAX_IMPLEMENTATION_CHECKPOINT_PATH_BYTES = 256
@@ -2044,527 +2018,6 @@ class ImplementationTimeoutPolicy:
         }
 
 
-@dataclass(frozen=True)
-class ImplementationReceipt:
-    """Merge/implementation evidence that is never itself completion authority.
-
-    A clean merge records an implementation commit and optional validation
-    snapshot.  ``completion_authoritative`` remains false until an
-    :class:`AuthoritativeCompletionGate` admits every required gate.
-    """
-
-    task_id: str
-    implementation_commit: str = ""
-    merge_commit: str = ""
-    repository_tree_id: str = ""
-    merged: bool = False
-    validation_passed: bool = False
-    validation_stale: bool = False
-    completion_authoritative: bool = False
-    pending_gates: tuple[str, ...] = ()
-    gate_evidence: Mapping[str, Any] = field(default_factory=dict)
-    model_invocation_observed: bool = False
-    deterministic_only: bool = False
-    acceptance_state: str = ACCEPTANCE_STATE_MERGED_PENDING
-    reason_codes: tuple[str, ...] = ()
-    schema: str = IMPLEMENTATION_RECEIPT_SCHEMA
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "schema": self.schema,
-            "task_id": self.task_id,
-            "implementation_commit": self.implementation_commit,
-            "merge_commit": self.merge_commit,
-            "repository_tree_id": self.repository_tree_id,
-            "merged": bool(self.merged),
-            "validation_passed": bool(self.validation_passed),
-            "validation_stale": bool(self.validation_stale),
-            "completion_authoritative": bool(self.completion_authoritative),
-            "pending_gates": list(self.pending_gates),
-            "gate_evidence": dict(self.gate_evidence),
-            "model_invocation_observed": bool(self.model_invocation_observed),
-            "deterministic_only": bool(self.deterministic_only),
-            "acceptance_state": self.acceptance_state,
-            "reason_codes": list(self.reason_codes),
-        }
-
-    @classmethod
-    def from_dict(cls, payload: Mapping[str, Any]) -> "ImplementationReceipt":
-        if not isinstance(payload, Mapping):
-            raise TypeError("implementation receipt must be a mapping")
-        pending = payload.get("pending_gates") or ()
-        reasons = payload.get("reason_codes") or ()
-        evidence = payload.get("gate_evidence") or {}
-        if not isinstance(evidence, Mapping):
-            evidence = {}
-        return cls(
-            task_id=str(payload.get("task_id") or ""),
-            implementation_commit=str(
-                payload.get("implementation_commit") or ""
-            ),
-            merge_commit=str(payload.get("merge_commit") or ""),
-            repository_tree_id=str(payload.get("repository_tree_id") or ""),
-            merged=bool(payload.get("merged", False)),
-            validation_passed=bool(payload.get("validation_passed", False)),
-            validation_stale=bool(payload.get("validation_stale", False)),
-            completion_authoritative=bool(
-                payload.get("completion_authoritative", False)
-            ),
-            pending_gates=tuple(str(item) for item in pending if str(item)),
-            gate_evidence=dict(evidence),
-            model_invocation_observed=bool(
-                payload.get("model_invocation_observed", False)
-            ),
-            deterministic_only=bool(payload.get("deterministic_only", False)),
-            acceptance_state=str(
-                payload.get("acceptance_state")
-                or ACCEPTANCE_STATE_MERGED_PENDING
-            ),
-            reason_codes=tuple(str(item) for item in reasons if str(item)),
-            schema=str(payload.get("schema") or IMPLEMENTATION_RECEIPT_SCHEMA),
-        )
-
-
-@dataclass(frozen=True)
-class AuthoritativeCompletionGate:
-    """Fail-closed projection: may the board flip to authoritative completed?"""
-
-    admitted: bool
-    task_id: str = ""
-    completion_authoritative: bool = False
-    pending_gates: tuple[str, ...] = ()
-    satisfied_gates: tuple[str, ...] = ()
-    reason_codes: tuple[str, ...] = ()
-    acceptance_state: str = ACCEPTANCE_STATE_MERGED_PENDING
-    implementation_commit: str = ""
-    merge_commit: str = ""
-    repository_tree_id: str = ""
-    schema: str = AUTHORITATIVE_COMPLETION_GATE_SCHEMA
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "schema": self.schema,
-            "admitted": bool(self.admitted),
-            "task_id": self.task_id,
-            "completion_authoritative": bool(self.completion_authoritative),
-            "pending_gates": list(self.pending_gates),
-            "satisfied_gates": list(self.satisfied_gates),
-            "reason_codes": list(self.reason_codes),
-            "acceptance_state": self.acceptance_state,
-            "implementation_commit": self.implementation_commit,
-            "merge_commit": self.merge_commit,
-            "repository_tree_id": self.repository_tree_id,
-        }
-
-    @classmethod
-    def from_dict(
-        cls, payload: Mapping[str, Any]
-    ) -> "AuthoritativeCompletionGate":
-        if not isinstance(payload, Mapping):
-            raise TypeError("authoritative completion gate must be a mapping")
-        return cls(
-            admitted=bool(payload.get("admitted", False)),
-            task_id=str(payload.get("task_id") or ""),
-            completion_authoritative=bool(
-                payload.get("completion_authoritative", False)
-            ),
-            pending_gates=tuple(
-                str(item)
-                for item in (payload.get("pending_gates") or ())
-                if str(item)
-            ),
-            satisfied_gates=tuple(
-                str(item)
-                for item in (payload.get("satisfied_gates") or ())
-                if str(item)
-            ),
-            reason_codes=tuple(
-                str(item)
-                for item in (payload.get("reason_codes") or ())
-                if str(item)
-            ),
-            acceptance_state=str(
-                payload.get("acceptance_state")
-                or ACCEPTANCE_STATE_MERGED_PENDING
-            ),
-            implementation_commit=str(
-                payload.get("implementation_commit") or ""
-            ),
-            merge_commit=str(payload.get("merge_commit") or ""),
-            repository_tree_id=str(payload.get("repository_tree_id") or ""),
-            schema=str(
-                payload.get("schema") or AUTHORITATIVE_COMPLETION_GATE_SCHEMA
-            ),
-        )
-
-
-@dataclass(frozen=True)
-class DeterministicOnlyPolicy:
-    """Reject any model/provider invocation for deterministic-only tasks."""
-
-    task_id: str = ""
-    deterministic_only: bool = False
-    schema: str = DETERMINISTIC_ONLY_POLICY_SCHEMA
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "schema": self.schema,
-            "task_id": self.task_id,
-            "deterministic_only": bool(self.deterministic_only),
-        }
-
-    def allows_model_invocation(self) -> bool:
-        """Model dispatch is forbidden when the task is deterministic-only."""
-
-        return not bool(self.deterministic_only)
-
-    def reject_model_invocation(
-        self,
-        *,
-        provider: str = "",
-        reason: str = "model_invocation",
-    ) -> dict[str, Any]:
-        """Return a fail-closed rejection when model use is attempted."""
-
-        if self.allows_model_invocation():
-            return {
-                "rejected": False,
-                "task_id": self.task_id,
-                "deterministic_only": False,
-                "provider": provider,
-                "reason": "not_deterministic_only",
-            }
-        return {
-            "rejected": True,
-            "task_id": self.task_id,
-            "deterministic_only": True,
-            "provider": str(provider or ""),
-            "reason": "deterministic_only_forbids_model_invocation",
-            "attempted_reason": str(reason or "model_invocation"),
-            "completion_authoritative": False,
-        }
-
-    @classmethod
-    def for_task(cls, task: "PortalTask | None") -> "DeterministicOnlyPolicy":
-        if task is None:
-            return cls(task_id="", deterministic_only=False)
-        metadata = {
-            str(key).strip().lower().replace("_", " "): str(value or "").strip()
-            for key, value in (task.metadata or {}).items()
-        }
-        role = (
-            metadata.get("provider role")
-            or metadata.get("implementation provider")
-            or metadata.get("execution mode")
-            or ""
-        ).strip().lower()
-        deterministic = role in {
-            ExecutionMode.DETERMINISTIC_ONLY.value,
-            "operator-only",
-            "deterministic",
-            "deterministic only",
-        }
-        return cls(task_id=str(task.task_id or ""), deterministic_only=deterministic)
-
-
-def _gate_entry_satisfied(entry: Any) -> bool:
-    if entry is True:
-        return True
-    if not isinstance(entry, Mapping):
-        return False
-    if entry.get("satisfied") is True:
-        return True
-    if entry.get("not_applicable") is True:
-        return True
-    if entry.get("passed") is True and entry.get("stale") is not True:
-        return True
-    return False
-
-
-def build_implementation_receipt(
-    *,
-    task_id: str,
-    implementation_commit: str = "",
-    merge_commit: str = "",
-    repository_tree_id: str = "",
-    merged: bool = False,
-    validation_passed: bool = False,
-    validation_stale: bool = False,
-    gate_evidence: Mapping[str, Any] | None = None,
-    model_invocation_observed: bool = False,
-    deterministic_only: bool = False,
-    completion_authoritative: bool = False,
-) -> ImplementationReceipt:
-    """Build an implementation receipt; merge never upgrades completion authority."""
-
-    evidence = dict(gate_evidence or {})
-    # Merge evidence is structural: a clean merge records the commit but does
-    # not set completion_authoritative.
-    if merged and "merge" not in evidence:
-        evidence["merge"] = {
-            "satisfied": True,
-            "merge_commit": merge_commit or implementation_commit,
-        }
-    if validation_stale:
-        evidence["freshness"] = {
-            "satisfied": False,
-            "stale": True,
-            "reason": "post_merge_validation_stale",
-        }
-    elif validation_passed and "freshness" not in evidence:
-        evidence["freshness"] = {"satisfied": True, "stale": False}
-    if validation_passed and "semantic" not in evidence:
-        evidence["semantic"] = {"satisfied": True, "passed": True}
-
-    pending: list[str] = []
-    reasons: list[str] = []
-    for kind in AUTHORITATIVE_COMPLETION_GATE_KINDS:
-        if not _gate_entry_satisfied(evidence.get(kind)):
-            pending.append(kind)
-            reasons.append(f"pending_gate:{kind}")
-    if completion_authoritative is not True:
-        reasons.append("completion_authoritative_false")
-    if validation_stale:
-        reasons.append("validation_stale")
-    if deterministic_only and model_invocation_observed:
-        pending = list(
-            dict.fromkeys([*pending, "deterministic_only"])
-        )
-        reasons.append("deterministic_only_model_invocation")
-        evidence["deterministic_only"] = {
-            "satisfied": False,
-            "model_invocation_observed": True,
-        }
-
-    # Implementation merge evidence is never completion-authoritative by itself.
-    authoritative = False
-    acceptance_state = (
-        ACCEPTANCE_STATE_MERGED_PENDING
-        if merged
-        else "implementation_incomplete"
-    )
-    return ImplementationReceipt(
-        task_id=str(task_id or ""),
-        implementation_commit=str(implementation_commit or ""),
-        merge_commit=str(merge_commit or ""),
-        repository_tree_id=str(
-            repository_tree_id or merge_commit or implementation_commit or ""
-        ),
-        merged=bool(merged),
-        validation_passed=bool(validation_passed),
-        validation_stale=bool(validation_stale),
-        completion_authoritative=authoritative,
-        pending_gates=tuple(pending),
-        gate_evidence=evidence,
-        model_invocation_observed=bool(model_invocation_observed),
-        deterministic_only=bool(deterministic_only),
-        acceptance_state=acceptance_state,
-        reason_codes=tuple(dict.fromkeys(reasons)),
-    )
-
-
-def evaluate_authoritative_completion_gate(
-    receipt: ImplementationReceipt | Mapping[str, Any] | None,
-    *,
-    require_completion_authoritative_flag: bool = True,
-) -> AuthoritativeCompletionGate:
-    """Fail-closed gate: pending gates or false authority cannot complete.
-
-    ``require_completion_authoritative_flag`` defaults to true so a receipt
-    that still carries ``completion_authoritative=false`` (the normal
-    post-merge default) cannot admit board completion even if every
-    structural gate looks green.  Callers that have independently verified
-    all gates and are projecting final authority pass
-    ``require_completion_authoritative_flag=False`` after constructing a
-    receipt whose pending_gates are empty.
-    """
-
-    if receipt is None:
-        return AuthoritativeCompletionGate(
-            admitted=False,
-            completion_authoritative=False,
-            pending_gates=AUTHORITATIVE_COMPLETION_GATE_KINDS,
-            reason_codes=("implementation_receipt_missing",),
-            acceptance_state=ACCEPTANCE_STATE_MERGED_PENDING,
-        )
-    if isinstance(receipt, Mapping):
-        receipt = ImplementationReceipt.from_dict(receipt)
-
-    pending = list(receipt.pending_gates)
-    reasons = list(receipt.reason_codes)
-    satisfied = [
-        kind
-        for kind in AUTHORITATIVE_COMPLETION_GATE_KINDS
-        if kind not in pending
-    ]
-
-    if receipt.validation_stale:
-        if "freshness" not in pending:
-            pending.append("freshness")
-        reasons.append("validation_stale")
-    if receipt.deterministic_only and receipt.model_invocation_observed:
-        if "deterministic_only" not in pending:
-            pending.append("deterministic_only")
-        reasons.append("deterministic_only_model_invocation")
-    if require_completion_authoritative_flag and not receipt.completion_authoritative:
-        reasons.append("completion_authoritative_false")
-    if not receipt.merged and "merge" not in pending:
-        pending.append("merge")
-        reasons.append("not_merged")
-
-    pending_unique = tuple(
-        kind
-        for kind in AUTHORITATIVE_COMPLETION_GATE_KINDS
-        if kind in set(pending)
-    )
-    # Recompute satisfied after any late pending additions.
-    satisfied = [
-        kind
-        for kind in AUTHORITATIVE_COMPLETION_GATE_KINDS
-        if kind not in pending_unique
-    ]
-    reason_codes = tuple(dict.fromkeys(reasons))
-    flag_blocks = bool(
-        require_completion_authoritative_flag
-        and not receipt.completion_authoritative
-    )
-    admitted = (
-        not pending_unique
-        and not flag_blocks
-        and not receipt.validation_stale
-        and not (
-            receipt.deterministic_only and receipt.model_invocation_observed
-        )
-    )
-    return AuthoritativeCompletionGate(
-        admitted=admitted,
-        task_id=receipt.task_id,
-        completion_authoritative=bool(admitted),
-        pending_gates=pending_unique,
-        satisfied_gates=tuple(satisfied),
-        reason_codes=(
-            ()
-            if admitted
-            else reason_codes
-            or ("authoritative_completion_denied",)
-        ),
-        acceptance_state=(
-            ACCEPTANCE_STATE_AUTHORITATIVE
-            if admitted
-            else ACCEPTANCE_STATE_MERGED_PENDING
-        ),
-        implementation_commit=receipt.implementation_commit,
-        merge_commit=receipt.merge_commit,
-        repository_tree_id=receipt.repository_tree_id,
-    )
-
-
-def promote_authoritative_completion(
-    receipt: ImplementationReceipt | Mapping[str, Any],
-) -> tuple[ImplementationReceipt, AuthoritativeCompletionGate]:
-    """Promote a fully gated receipt to completion authority.
-
-    Structural gates are evaluated first.  Only when every required gate is
-    satisfied does the receipt gain ``completion_authoritative=true``.  The
-    resulting gate is re-checked with the authoritative flag enforced so a
-    partial promotion cannot mark the board complete.
-    """
-
-    if isinstance(receipt, Mapping):
-        base = ImplementationReceipt.from_dict(receipt)
-    else:
-        base = receipt
-    structural = evaluate_authoritative_completion_gate(
-        base,
-        require_completion_authoritative_flag=False,
-    )
-    if not structural.admitted:
-        denied = AuthoritativeCompletionGate(
-            admitted=False,
-            task_id=base.task_id,
-            completion_authoritative=False,
-            pending_gates=structural.pending_gates,
-            satisfied_gates=structural.satisfied_gates,
-            reason_codes=structural.reason_codes,
-            acceptance_state=ACCEPTANCE_STATE_MERGED_PENDING,
-            implementation_commit=base.implementation_commit,
-            merge_commit=base.merge_commit,
-            repository_tree_id=base.repository_tree_id,
-        )
-        return base, denied
-    promoted = ImplementationReceipt(
-        task_id=base.task_id,
-        implementation_commit=base.implementation_commit,
-        merge_commit=base.merge_commit,
-        repository_tree_id=base.repository_tree_id,
-        merged=base.merged,
-        validation_passed=base.validation_passed,
-        validation_stale=False,
-        completion_authoritative=True,
-        pending_gates=(),
-        gate_evidence=dict(base.gate_evidence),
-        model_invocation_observed=base.model_invocation_observed,
-        deterministic_only=base.deterministic_only,
-        acceptance_state=ACCEPTANCE_STATE_AUTHORITATIVE,
-        reason_codes=(),
-    )
-    gate = evaluate_authoritative_completion_gate(
-        promoted,
-        require_completion_authoritative_flag=True,
-    )
-    return promoted, gate
-
-
-def reopen_acceptance_for_stale_post_merge_validation(
-    receipt: ImplementationReceipt | Mapping[str, Any],
-    *,
-    stale_reason: str = "post_merge_validation_stale",
-) -> ImplementationReceipt:
-    """Reopen acceptance while preserving the implementation commit.
-
-    Stale post-merge validation invalidates acceptance authority only.  The
-    implementation commit and merge commit remain as durable evidence so the
-    work does not need to be re-implemented from scratch.
-    """
-
-    if isinstance(receipt, Mapping):
-        base = ImplementationReceipt.from_dict(receipt)
-    else:
-        base = receipt
-    evidence = dict(base.gate_evidence)
-    evidence["freshness"] = {
-        "satisfied": False,
-        "stale": True,
-        "reason": stale_reason,
-    }
-    pending = list(base.pending_gates)
-    if "freshness" not in pending:
-        pending.append("freshness")
-    reasons = list(base.reason_codes)
-    reasons.append(stale_reason)
-    reasons.append("acceptance_reopened")
-    return ImplementationReceipt(
-        task_id=base.task_id,
-        implementation_commit=base.implementation_commit,
-        merge_commit=base.merge_commit,
-        repository_tree_id=base.repository_tree_id,
-        merged=base.merged,
-        validation_passed=False,
-        validation_stale=True,
-        completion_authoritative=False,
-        pending_gates=tuple(
-            kind
-            for kind in AUTHORITATIVE_COMPLETION_GATE_KINDS
-            if kind in set(pending) or kind == "freshness"
-        ),
-        gate_evidence=evidence,
-        model_invocation_observed=base.model_invocation_observed,
-        deterministic_only=base.deterministic_only,
-        acceptance_state=ACCEPTANCE_STATE_REOPENED,
-        reason_codes=tuple(dict.fromkeys(reasons)),
-    )
-
-
 COMPLETION_GAP_EDIT_SCOPE_ROLES = frozenset(
     {
         "completion_gate_gap",
@@ -3123,7 +2576,7 @@ def dependency_satisfied_references(
     return satisfied
 
 
-class PortalImplementationDaemon:
+class PortalImplementationDaemon(AuthoritativeCompletionMixin):
     shared_todo_runner_class = TodoDaemonRunner
     shared_todo_hooks_class = TodoDaemonHooks
 
@@ -6709,7 +6162,8 @@ class PortalImplementationDaemon:
         board_completed_task_ids = {
             task.task_id for task in tasks if task.status == "completed"
         }
-        status_completed_task_ids = board_completed_task_ids | shared_completed_task_ids
+        # Merge-train completion is implementation evidence, not board authority.
+        status_completed_task_ids = set(board_completed_task_ids)
         pending_retry_repair_source_ids = pending_retry_budget_repair_sources(
             tasks,
             completed_task_ids=tuple(status_completed_task_ids),
@@ -6760,23 +6214,19 @@ class PortalImplementationDaemon:
         queued_merge_task_ids = self._pending_queued_merge_task_ids(recent_outcomes)
         quarantined_merge_task_ids = self._quarantined_queued_merge_task_ids(recent_outcomes)
         successfully_merged_task_ids = self._successfully_merged_task_ids()
-        completion_receipt_task_ids = successfully_merged_task_ids | shared_completed_task_ids
         merged_status_repair: dict[str, Any] = {}
         stale_merged_completed_task_ids = [
             task.task_id
             for task in tasks
-            if task.task_id in completion_receipt_task_ids and task.task_id not in board_completed_task_ids
+            if task.task_id in (successfully_merged_task_ids | shared_completed_task_ids)
+            and task.task_id not in board_completed_task_ids
         ]
         if stale_merged_completed_task_ids:
-            merged_status_repair = self._mark_tasks_completed_in_todo(
-                stale_merged_completed_task_ids,
-                primary_task_id=stale_merged_completed_task_ids[0],
-                completion_reason="merged_status_repair",
-            )
-            repaired_task_ids = set(merged_status_repair.get("updated_task_ids") or [])
-            repaired_task_ids.update(merged_status_repair.get("already_completed_task_ids") or [])
-            board_completed_task_ids.update(repaired_task_ids)
-            status_completed_task_ids.update(repaired_task_ids)
+            merged_status_repair = {
+                "updated": False,
+                "reason": "authoritative_completion_evidence_required",
+                "pending_task_ids": stale_merged_completed_task_ids,
+            }
 
         previous_completed = set(previous.completed_task_ids)
         completed_set: set[str] = set()
@@ -6798,12 +6248,7 @@ class PortalImplementationDaemon:
                 and not unresolved_merge_failure
                 and not transient_merge_deferral
             )
-            merged_complete = (
-                task.task_id in successfully_merged_task_ids
-                and not unresolved_merge_failure
-                and not transient_merge_deferral
-            )
-            if task.task_id in status_completed_task_ids or artifact_complete or merged_complete:
+            if task.task_id in status_completed_task_ids or artifact_complete:
                 completed_set.add(task.task_id)
 
         completed_cids = {
@@ -8103,43 +7548,27 @@ class PortalImplementationDaemon:
                         "protected_path_violation": protected_path_violation,
                     }
             if effective_returncode == 0:
-                _repository_id, completion_tree_id = (
+                _repository_id, completion_commit = (
                     self._implementation_repository_and_tree_ids(task)
                 )
-                # SCA-229: validation success is evidence, not completion authority.
+                tree = self._candidate_repository_tree(completion_commit)
                 acceptance_result = self.apply_post_merge_authoritative_acceptance(
                     task,
-                    implementation_commit=str(
-                        validation_result.get("implementation_commit") or ""
-                    ),
-                    merge_commit=completion_tree_id,
-                    repository_tree_id=completion_tree_id,
+                    implementation_commit=completion_commit,
+                    merge_commit=completion_commit,
+                    repository_tree_id=f"git-tree:{tree}" if tree else "",
                     validation_result=validation_result,
-                    gate_evidence={
-                        "merge": {
-                            "satisfied": True,
-                            "merge_commit": completion_tree_id,
-                        },
-                        "provider_review": {
-                            "not_applicable": True,
-                            "satisfied": True,
-                            "reason": "local_validation_path",
-                        },
-                    },
-                    model_invocation_observed=False,
+                    model_invocation_observed=not deterministic_only,
                 )
-                authoritatively_completed = bool(
+                completed_authoritatively = bool(
                     acceptance_result.get("authoritatively_completed")
                 )
                 self._decision_runtime_completion(
                     task,
-                    merged_tree_id=completion_tree_id,
+                    merged_tree_id=completion_commit,
                     evidence={
-                        "passed": bool(
-                            validation_result.get("passed", False)
-                        ),
-                        "completion_authoritative": authoritatively_completed,
-                        "repository_tree_id": completion_tree_id,
+                        "passed": bool(validation_result.get("passed", False)),
+                        "completion_authoritative": completed_authoritatively,
                         "validation": dict(validation_result),
                         "acceptance": dict(acceptance_result),
                     },
@@ -8490,13 +7919,6 @@ class PortalImplementationDaemon:
             self._record_event("dependency_blocked_tasks_reopened", result)
         return result
 
-    def _mark_task_completed_in_todo(self, task_id: str) -> dict[str, Any]:
-        return self._mark_tasks_completed_in_todo(
-            [task_id],
-            primary_task_id=task_id,
-            completion_reason="single_task",
-        )
-
     def _completion_receipts_for_task_ids(
         self,
         task_ids: Sequence[str],
@@ -8545,42 +7967,6 @@ class PortalImplementationDaemon:
             receipts.append(member_receipt)
         return receipts
 
-    def _mark_task_or_bundle_completed_in_todo(self, task: PortalTask) -> dict[str, Any]:
-        work_order = self._bundle_work_order_for_task(task)
-        if work_order is None:
-            return self._mark_task_completed_in_todo(task.task_id)
-        return self._mark_tasks_completed_in_todo(
-            work_order.task_ids,
-            primary_task_id=work_order.primary_task_id,
-            completion_reason="bundle_work_order",
-            bundle_work_order=work_order.to_dict(),
-        )
-
-    def _mark_tasks_completed_in_todo(
-        self,
-        task_ids: Sequence[str],
-        *,
-        primary_task_id: str,
-        completion_reason: str,
-        bundle_work_order: dict[str, Any] | None = None,
-    ) -> dict[str, Any]:
-        return self._decision_runtime_mutation(
-            "task_board_mutation",
-            {
-                "operation": "mark_tasks_completed",
-                "todo_path": str(self.todo_path),
-                "task_ids": tuple(task_ids),
-                "primary_task_id": primary_task_id,
-                "completion_reason": completion_reason,
-            },
-            lambda: self._mark_tasks_completed_in_todo_unchecked(
-                task_ids,
-                primary_task_id=primary_task_id,
-                completion_reason=completion_reason,
-                bundle_work_order=bundle_work_order,
-            ),
-        )
-
     def _mark_tasks_completed_in_todo_unchecked(
         self,
         task_ids: Sequence[str],
@@ -8588,7 +7974,26 @@ class PortalImplementationDaemon:
         primary_task_id: str,
         completion_reason: str,
         bundle_work_order: dict[str, Any] | None = None,
+        authoritative_receipt: ImplementationReceipt | Mapping[str, Any] | None = None,
+        authoritative_gate: AuthoritativeCompletionGate | Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
+        requested_ids = tuple(dict.fromkeys(str(item).strip() for item in task_ids if str(item).strip()))
+        if requested_ids != (primary_task_id,):
+            admitted, reason = False, "bundle_member_authority_missing"
+        else:
+            admitted, reason = self._authorize_completion_board_mutation(
+                primary_task_id,
+                authoritative_receipt,
+                authoritative_gate,
+            )
+        if not admitted:
+            return {
+                "updated": False,
+                "task_id": primary_task_id,
+                "updated_task_ids": [],
+                "reason": reason,
+                "completion_authoritative": False,
+            }
         target_task_ids = [
             str(task_id).strip()
             for task_id in dict.fromkeys(task_ids)
@@ -9391,6 +8796,7 @@ class PortalImplementationDaemon:
             "repo_root": str(self.repo_root),
             "task_header_prefix": self.task_header_prefix,
             "task": asdict(task),
+            "model_invocation_observed": not self._task_uses_typed_local_execution(task),
             "implementation_protected_paths": list(
                 self.implementation_protected_paths
             ),
@@ -9427,6 +8833,9 @@ class PortalImplementationDaemon:
                 if isinstance(item, dict)
             ]
             validation_proof = {
+                "schema": "ipfs_accelerate_py/agent-supervisor/pre-merge-validation-evidence@1",
+                "task_id": task.task_id,
+                "validation_scope": "pre_merge",
                 "attempted": bool(validation_result.get("attempted")),
                 "passed": bool(validation_result.get("passed")),
                 "returncode": int(validation_result.get("returncode") or 0),
@@ -9732,6 +9141,14 @@ class PortalImplementationDaemon:
                 "branch_rehydration": branch_rehydration,
             }
         validation_proof = metadata.get("validation_proof")
+        if not isinstance(validation_proof, dict):
+            return {
+                "attempted": False,
+                "merged": False,
+                "returncode": 2,
+                "reason": "validation_evidence_missing",
+                "branch": branch_name,
+            }
         if isinstance(validation_proof, dict):
             selection = validation_proof.get("selection")
             selection_scope = (
@@ -9890,45 +9307,23 @@ class PortalImplementationDaemon:
                         merge_queue_dir=self.merge_queue_dir,
                         decision_runtime=self.decision_runtime,
                     )
-                completion_tree_id = str(
+                completion_commit = str(
                     result.get("merge_commit")
                     or result.get("target_commit")
                     or implementation_commit
                 )
-                validation_snapshot = metadata.get("validation_result")
-                if not isinstance(validation_snapshot, Mapping):
-                    validation_snapshot = {
-                        "passed": True,
-                        "stale": False,
-                    }
-                gate_evidence: dict[str, Any] = {
-                    "merge": {
-                        "satisfied": True,
-                        "merge_commit": completion_tree_id,
-                    },
-                }
-                if not completion_daemon._task_uses_typed_local_execution(task):
-                    if not completion_daemon._task_declares_independent_codex_review(
-                        task
-                    ):
-                        gate_evidence["provider_review"] = {
-                            "not_applicable": True,
-                            "satisfied": True,
-                            "reason": "no_model_assisted_provider_chain",
-                        }
-                    elif metadata.get("provider_result_admitted") is True:
-                        gate_evidence["provider_review"] = {
-                            "satisfied": True,
-                            "provider_result_admitted": True,
-                        }
+                completion_tree = self._candidate_repository_tree(completion_commit)
                 acceptance_result = (
                     completion_daemon.apply_post_merge_authoritative_acceptance(
                         task,
                         implementation_commit=implementation_commit,
-                        merge_commit=completion_tree_id,
-                        repository_tree_id=completion_tree_id,
-                        validation_result=validation_snapshot,
-                        gate_evidence=gate_evidence,
+                        merge_commit=completion_commit,
+                        repository_tree_id=(
+                            f"git-tree:{completion_tree}"
+                            if completion_tree
+                            else ""
+                        ),
+                        validation_result=validation_proof,
                         model_invocation_observed=bool(
                             metadata.get("model_invocation_observed")
                         ),
@@ -9939,11 +9334,10 @@ class PortalImplementationDaemon:
                 )
                 completion_daemon._decision_runtime_completion(
                     task,
-                    merged_tree_id=completion_tree_id,
+                    merged_tree_id=completion_commit,
                     evidence={
                         "passed": True,
                         "completion_authoritative": authoritatively_completed,
-                        "repository_tree_id": completion_tree_id,
                         "merge_result": {
                             key: result.get(key)
                             for key in (
@@ -9959,30 +9353,6 @@ class PortalImplementationDaemon:
                 todo_update_result = dict(
                     acceptance_result.get("todo_update_result") or {}
                 )
-                # Bundle coverage still requires authoritative admission of the
-                # primary task; do not mark siblings complete from merge alone.
-                if (
-                    authoritatively_completed
-                    and isinstance(metadata.get("bundle_work_order"), dict)
-                    and not todo_update_result.get("updated")
-                ):
-                    bundle_payload = metadata["bundle_work_order"]
-                    task_ids = [
-                        str(item)
-                        for item in [
-                            bundle_payload.get("primary_task_id"),
-                            *(bundle_payload.get("covered_task_ids") or []),
-                        ]
-                        if str(item or "")
-                    ]
-                    todo_update_result = completion_daemon._mark_tasks_completed_in_todo(
-                        task_ids,
-                        primary_task_id=str(
-                            bundle_payload.get("primary_task_id") or task.task_id
-                        ),
-                        completion_reason="bundle_work_order",
-                        bundle_work_order=bundle_payload,
-                    )
                 if authoritatively_completed:
                     completion_daemon._record_task_queue_outcome(task, 0)
                 result["todo_update_result"] = todo_update_result
@@ -11204,90 +10574,52 @@ class PortalImplementationDaemon:
         )
         # Board completion is intentionally stricter than validation success:
         # merge-queued candidates remain incomplete until integrated into the
-        # configured merge target (see merge train consumer).  Even after a
-        # clean merge, SCA-229 keeps acceptance pending until freshness,
-        # semantic, proof, provider-review, and deterministic-only gates admit
-        # authoritative completion.
+        # configured merge target (see merge train consumer).
         board_completion = self._board_completion_decision(
             returncode=returncode,
             merge_result=merge_result,
             no_change_completion=no_change_completion,
         )
-        todo_update_result: dict[str, Any] = {}
         acceptance_result: dict[str, Any] = {}
         if board_completion["complete"]:
-            completion_tree_id = str(
+            completion_commit = str(
                 merge_result.get("merge_commit")
                 or implementation_commit
                 or baseline_ref
             )
+            completion_tree = self._candidate_repository_tree(completion_commit)
             model_invocation_observed = bool(
-                not self._task_uses_typed_local_execution(task)
-                and (
-                    merge_result.get("model_invocation_observed")
-                    or validation_result.get("model_invocation_observed")
-                )
+                not deterministic_only and implementation_started
             )
-            provider_review_evidence: dict[str, Any] | None = None
-            if not self._task_uses_typed_local_execution(task):
-                if self.model_assisted_authoritative_completion_allowed(
-                    merge_result.get("provider_route_result")
-                ):
-                    provider_review_evidence = {
-                        "satisfied": True,
-                        "review_presence": ReviewPresence.INDEPENDENT.value,
-                    }
-                elif merge_result.get("provider_result_admitted") is True:
-                    provider_review_evidence = {
-                        "satisfied": True,
-                        "provider_result_admitted": True,
-                    }
-            gate_evidence: dict[str, Any] = {}
-            if provider_review_evidence is not None:
-                gate_evidence["provider_review"] = provider_review_evidence
-            # Non-model tasks without a provider chain treat review as N/A.
-            if (
-                not self._task_uses_typed_local_execution(task)
-                and "provider_review" not in gate_evidence
-                and not self._task_declares_independent_codex_review(task)
-            ):
-                gate_evidence["provider_review"] = {
-                    "not_applicable": True,
-                    "satisfied": True,
-                    "reason": "no_model_assisted_provider_chain",
-                }
             acceptance_result = self.apply_post_merge_authoritative_acceptance(
                 task,
                 implementation_commit=implementation_commit,
-                merge_commit=str(merge_result.get("merge_commit") or ""),
-                repository_tree_id=completion_tree_id,
+                merge_commit=completion_commit,
+                repository_tree_id=f"git-tree:{completion_tree}" if completion_tree else "",
                 validation_result=validation_result,
-                gate_evidence=gate_evidence or None,
                 model_invocation_observed=model_invocation_observed,
-            )
-            todo_update_result = dict(
-                acceptance_result.get("todo_update_result") or {}
             )
             authoritatively_completed = bool(
                 acceptance_result.get("authoritatively_completed")
             )
             self._decision_runtime_completion(
                 task,
-                merged_tree_id=completion_tree_id,
+                merged_tree_id=completion_commit,
                 evidence={
                     "passed": bool(validation_result.get("passed", False)),
                     "completion_authoritative": authoritatively_completed,
-                    "repository_tree_id": completion_tree_id,
                     "validation": dict(validation_result),
                     "board_completion": dict(board_completion),
                     "acceptance": dict(acceptance_result),
                 },
             )
+            todo_update_result = dict(
+                acceptance_result.get("todo_update_result") or {}
+            )
             board_completion = {
                 **board_completion,
                 "complete": authoritatively_completed,
                 "acceptance_pending": not authoritatively_completed,
-                "authoritative_acceptance": dict(acceptance_result),
             }
         elif board_completion.get("pending_merge"):
             self._record_event(
@@ -11317,9 +10649,7 @@ class PortalImplementationDaemon:
         state.save(self.state_path)
         # Queueing is a successful implementation handoff, but not task
         # completion.  The train consumer records the terminal merge outcome.
-        # SCA-229: merge without admitted gates is also non-terminal for the board.
         terminal_outcome = bool(board_completion.get("complete"))
-        acceptance_pending = bool(board_completion.get("acceptance_pending"))
         if not merge_result.get("queued") and attempt_consumed:
             outcome_returncode = returncode
             outcome_reason = str(
@@ -11329,12 +10659,8 @@ class PortalImplementationDaemon:
                 or "implementation_failed"
             )
             if outcome_returncode == 0 and not terminal_outcome:
-                if acceptance_pending:
-                    # Implementation/merge landed; board stays pending (SCA-229).
-                    outcome_reason = "merged_acceptance_pending"
-                else:
-                    outcome_returncode = 1
-                    outcome_reason = "implementation_not_integrated"
+                outcome_returncode = 1
+                outcome_reason = "implementation_not_integrated"
             self._record_task_queue_outcome(
                 task,
                 outcome_returncode,
@@ -11364,13 +10690,6 @@ class PortalImplementationDaemon:
             "board_completion": dict(board_completion),
             "attempt_consumed": attempt_consumed,
         }
-        if todo_update_result:
-            result["todo_update_result"] = todo_update_result
-        if acceptance_result:
-            result["acceptance_result"] = acceptance_result
-            result["completion_authoritative"] = bool(
-                acceptance_result.get("authoritatively_completed")
-            )
         if task_execution_receipt_path is not None:
             result["task_execution_receipt_path"] = str(
                 task_execution_receipt_path
@@ -16806,304 +16125,6 @@ class PortalImplementationDaemon:
         if not route_result.get("provider_result_admitted"):
             return False
         return False
-
-    def deterministic_only_policy_for_task(
-        self,
-        task: PortalTask | None,
-    ) -> DeterministicOnlyPolicy:
-        """Return the deterministic-only policy binding for ``task``."""
-
-        if task is not None and self._task_uses_typed_local_execution(task):
-            return DeterministicOnlyPolicy(
-                task_id=str(task.task_id or ""),
-                deterministic_only=True,
-            )
-        return DeterministicOnlyPolicy.for_task(task)
-
-    def reject_deterministic_only_model_invocation(
-        self,
-        task: PortalTask | None,
-        *,
-        provider: str = "",
-        reason: str = "model_invocation",
-    ) -> dict[str, Any]:
-        """Fail-closed rejection when a deterministic-only task hits a model."""
-
-        policy = self.deterministic_only_policy_for_task(task)
-        decision = policy.reject_model_invocation(
-            provider=provider,
-            reason=reason,
-        )
-        if decision.get("rejected"):
-            self._record_event(
-                DETERMINISTIC_ONLY_MODEL_REJECTED_EVENT,
-                decision,
-            )
-        return decision
-
-    def build_task_implementation_receipt(
-        self,
-        task: PortalTask,
-        *,
-        implementation_commit: str = "",
-        merge_commit: str = "",
-        repository_tree_id: str = "",
-        merged: bool = False,
-        validation_result: Mapping[str, Any] | None = None,
-        gate_evidence: Mapping[str, Any] | None = None,
-        model_invocation_observed: bool = False,
-    ) -> ImplementationReceipt:
-        """Project merge/implementation evidence into an ImplementationReceipt."""
-
-        validation = dict(validation_result or {})
-        validation_passed = bool(validation.get("passed", False))
-        validation_stale = bool(
-            validation.get("stale")
-            or validation.get("validation_stale")
-            or validation.get("freshness_authoritative") is False
-            or (
-                isinstance(validation.get("freshness"), Mapping)
-                and validation["freshness"].get("stale") is True
-            )
-        )
-        deterministic_only = self._task_uses_typed_local_execution(task)
-        evidence = dict(gate_evidence or {})
-        if merged and "merge" not in evidence:
-            evidence["merge"] = {
-                "satisfied": True,
-                "merge_commit": merge_commit or implementation_commit,
-            }
-        if validation_passed and not validation_stale:
-            evidence.setdefault(
-                "freshness",
-                {"satisfied": True, "stale": False},
-            )
-            evidence.setdefault(
-                "semantic",
-                {"satisfied": True, "passed": True},
-            )
-        if "proof" not in evidence:
-            # Tasks without a declared proof obligation treat proof as N/A.
-            evidence["proof"] = {
-                "not_applicable": not bool(
-                    self._task_metadata_value(task, "proof required")
-                    or self._task_metadata_value(task, "proof obligation")
-                ),
-                "satisfied": not bool(
-                    self._task_metadata_value(task, "proof required")
-                    or self._task_metadata_value(task, "proof obligation")
-                ),
-            }
-        if deterministic_only:
-            evidence.setdefault(
-                "provider_review",
-                {"not_applicable": True, "satisfied": True},
-            )
-            evidence["deterministic_only"] = {
-                "satisfied": not model_invocation_observed,
-                "model_invocation_observed": bool(model_invocation_observed),
-            }
-        else:
-            evidence.setdefault(
-                "deterministic_only",
-                {"not_applicable": True, "satisfied": True},
-            )
-            if "provider_review" not in evidence:
-                evidence["provider_review"] = {
-                    "satisfied": False,
-                    "reason": "provider_review_evidence_missing",
-                }
-        return build_implementation_receipt(
-            task_id=task.task_id,
-            implementation_commit=implementation_commit,
-            merge_commit=merge_commit,
-            repository_tree_id=repository_tree_id
-            or merge_commit
-            or implementation_commit,
-            merged=merged,
-            validation_passed=validation_passed,
-            validation_stale=validation_stale,
-            gate_evidence=evidence,
-            model_invocation_observed=model_invocation_observed,
-            deterministic_only=deterministic_only,
-            completion_authoritative=False,
-        )
-
-    def evaluate_task_authoritative_completion(
-        self,
-        receipt: ImplementationReceipt | Mapping[str, Any] | None,
-    ) -> AuthoritativeCompletionGate:
-        """Evaluate whether board completion is authoritatively admitted."""
-
-        return evaluate_authoritative_completion_gate(receipt)
-
-    def mark_authoritatively_completed_if_admitted(
-        self,
-        task: PortalTask,
-        receipt: ImplementationReceipt | Mapping[str, Any],
-        *,
-        promote: bool = True,
-    ) -> dict[str, Any]:
-        """Mark the board complete only when the authoritative gate admits.
-
-        When ``promote`` is true and every structural gate is satisfied, the
-        receipt is promoted to ``completion_authoritative=true`` before the
-        final flag check.  Receipts that remain
-        ``completion_authoritative=false`` or still list pending gates never
-        flip the board to completed.
-        """
-
-        if isinstance(receipt, Mapping):
-            base = ImplementationReceipt.from_dict(receipt)
-        else:
-            base = receipt
-        if promote:
-            promoted, gate = promote_authoritative_completion(base)
-        else:
-            promoted = base
-            gate = evaluate_authoritative_completion_gate(base)
-        if not gate.admitted or not gate.completion_authoritative:
-            payload = {
-                "updated": False,
-                "authoritatively_completed": False,
-                "task_id": task.task_id,
-                "reason": "authoritative_completion_not_admitted",
-                "gate": gate.to_dict(),
-                "receipt": (
-                    promoted.to_dict()
-                    if isinstance(promoted, ImplementationReceipt)
-                    else dict(base.to_dict())
-                ),
-                "acceptance_state": gate.acceptance_state,
-                "pending_gates": list(gate.pending_gates),
-                "completion_authoritative": False,
-                "implementation_commit": gate.implementation_commit
-                or base.implementation_commit,
-            }
-            self._record_event(AUTHORITATIVE_COMPLETION_DENIED_EVENT, payload)
-            return payload
-        todo_update = self._mark_task_or_bundle_completed_in_todo(task)
-        payload = {
-            "updated": bool(todo_update.get("updated")),
-            "authoritatively_completed": True,
-            "task_id": task.task_id,
-            "reason": "authoritative_completion_admitted",
-            "gate": gate.to_dict(),
-            "receipt": promoted.to_dict(),
-            "todo_update_result": todo_update,
-            "acceptance_state": ACCEPTANCE_STATE_AUTHORITATIVE,
-            "pending_gates": [],
-            "completion_authoritative": True,
-            "implementation_commit": gate.implementation_commit
-            or base.implementation_commit,
-        }
-        self._record_event(AUTHORITATIVE_COMPLETION_ADMITTED_EVENT, payload)
-        return payload
-
-    def record_merged_pending_acceptance(
-        self,
-        task: PortalTask,
-        receipt: ImplementationReceipt | Mapping[str, Any],
-        gate: AuthoritativeCompletionGate | Mapping[str, Any] | None = None,
-    ) -> dict[str, Any]:
-        """Record merged-but-pending acceptance without discarding the commit."""
-
-        if isinstance(receipt, Mapping):
-            receipt_obj = ImplementationReceipt.from_dict(receipt)
-        else:
-            receipt_obj = receipt
-        if gate is None:
-            gate_obj = evaluate_authoritative_completion_gate(receipt_obj)
-        elif isinstance(gate, Mapping):
-            gate_obj = AuthoritativeCompletionGate.from_dict(gate)
-        else:
-            gate_obj = gate
-        payload = {
-            "task_id": task.task_id,
-            "acceptance_state": ACCEPTANCE_STATE_MERGED_PENDING,
-            "completion_authoritative": False,
-            "board_status": "pending",
-            "implementation_commit": receipt_obj.implementation_commit,
-            "merge_commit": receipt_obj.merge_commit,
-            "pending_gates": list(gate_obj.pending_gates),
-            "reason_codes": list(gate_obj.reason_codes),
-            "receipt": receipt_obj.to_dict(),
-            "gate": gate_obj.to_dict(),
-        }
-        self._record_event(IMPLEMENTATION_MERGED_PENDING_EVENT, payload)
-        return payload
-
-    def reopen_stale_post_merge_acceptance(
-        self,
-        task: PortalTask,
-        receipt: ImplementationReceipt | Mapping[str, Any],
-        *,
-        stale_reason: str = "post_merge_validation_stale",
-    ) -> dict[str, Any]:
-        """Reopen acceptance for stale post-merge validation; keep the commit."""
-
-        reopened = reopen_acceptance_for_stale_post_merge_validation(
-            receipt,
-            stale_reason=stale_reason,
-        )
-        gate = evaluate_authoritative_completion_gate(reopened)
-        payload = {
-            "task_id": task.task_id,
-            "acceptance_state": ACCEPTANCE_STATE_REOPENED,
-            "completion_authoritative": False,
-            "authoritatively_completed": False,
-            "implementation_commit": reopened.implementation_commit,
-            "merge_commit": reopened.merge_commit,
-            "implementation_commit_preserved": bool(
-                reopened.implementation_commit
-            ),
-            "pending_gates": list(gate.pending_gates),
-            "reason_codes": list(reopened.reason_codes),
-            "stale_reason": stale_reason,
-            "receipt": reopened.to_dict(),
-            "gate": gate.to_dict(),
-        }
-        self._record_event(ACCEPTANCE_REOPENED_STALE_EVENT, payload)
-        return payload
-
-    def apply_post_merge_authoritative_acceptance(
-        self,
-        task: PortalTask,
-        *,
-        implementation_commit: str = "",
-        merge_commit: str = "",
-        repository_tree_id: str = "",
-        validation_result: Mapping[str, Any] | None = None,
-        gate_evidence: Mapping[str, Any] | None = None,
-        model_invocation_observed: bool = False,
-    ) -> dict[str, Any]:
-        """After merge: either admit authoritative completion or stay pending.
-
-        A clean merge is implementation evidence only.  Board completion is
-        deferred until every gate is satisfied and the promoted receipt is
-        completion-authoritative.
-        """
-
-        receipt = self.build_task_implementation_receipt(
-            task,
-            implementation_commit=implementation_commit,
-            merge_commit=merge_commit,
-            repository_tree_id=repository_tree_id,
-            merged=True,
-            validation_result=validation_result,
-            gate_evidence=gate_evidence,
-            model_invocation_observed=model_invocation_observed,
-        )
-        if receipt.validation_stale:
-            return self.reopen_stale_post_merge_acceptance(task, receipt)
-        promoted, gate = promote_authoritative_completion(receipt)
-        if gate.admitted:
-            return self.mark_authoritatively_completed_if_admitted(
-                task,
-                promoted,
-                promote=False,
-            )
-        return self.record_merged_pending_acceptance(task, receipt, gate)
 
     def _run_validation_commands(
         self,

@@ -34,6 +34,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
     ImplementationReceipt,
     PortalTask,
     TodoImplementationDaemon,
+    bound_gate_evidence,
     build_implementation_receipt,
     evaluate_authoritative_completion_gate,
     promote_authoritative_completion,
@@ -167,29 +168,64 @@ def _bound_gate_evidence(
     implementation_commit: str,
     merge_commit: str,
     repository_tree_id: str,
+    deterministic_only: bool = False,
 ) -> dict[str, Any]:
-    binding = {
+    binding: dict[str, Any] = {
         "task_id": task_id,
         "implementation_commit": implementation_commit,
         "merge_commit": merge_commit,
         "repository_tree_id": repository_tree_id,
     }
-    return _full_gate_evidence(
-        merge={"satisfied": True, **binding},
-        freshness={"satisfied": True, "stale": False, **binding},
-        semantic={"satisfied": True, "passed": True, **binding},
-        proof={"not_applicable": True, "satisfied": True, **binding},
-        provider_review={
-            "satisfied": True,
-            "review_presence": "independent",
+    validation = {
+        **binding,
+        "satisfied": True,
+        "passed": True,
+        "stale": False,
+        "validation_scope": "post_merge",
+        "validation_receipt_id": "validation-receipt",
+    }
+    return {
+        "merge": bound_gate_evidence("merge", **binding, satisfied=True),
+        "freshness": bound_gate_evidence("freshness", **validation),
+        "semantic": bound_gate_evidence("semantic", **validation),
+        "proof": bound_gate_evidence(
+            "proof",
             **binding,
-        },
-        deterministic_only={
-            "not_applicable": True,
-            "satisfied": True,
+            satisfied=True,
+            not_applicable=True,
+            applicability_decision="no_declared_proof_obligation",
+        ),
+        "provider_review": bound_gate_evidence(
+            "provider_review",
             **binding,
-        },
-    )
+            satisfied=True,
+            **(
+                {
+                    "not_applicable": True,
+                    "route_kind": "deterministic_only",
+                    "model_invocation_observed": False,
+                }
+                if deterministic_only
+                else {
+                    "review_presence": "independent",
+                    "provider_result_admitted": True,
+                    "review_receipt_id": "review-receipt",
+                }
+            ),
+        ),
+        "deterministic_only": bound_gate_evidence(
+            "deterministic_only",
+            **binding,
+            satisfied=True,
+            not_applicable=not deterministic_only,
+            policy=(
+                "deterministic_only"
+                if deterministic_only
+                else "not_deterministic_only"
+            ),
+            model_invocation_observed=False,
+        ),
+    }
 
 
 def _queued_merge_request(
@@ -249,13 +285,20 @@ def _run_queued_merge_callback(
 
 
 def test_implementation_receipt_merge_is_not_completion_authority() -> None:
+    evidence = _bound_gate_evidence(
+        task_id="SCA-229",
+        implementation_commit="impl-sha",
+        merge_commit="merge-sha",
+        repository_tree_id="tree-sha",
+    )
     receipt = build_implementation_receipt(
         task_id="SCA-229",
         implementation_commit="impl-sha",
         merge_commit="merge-sha",
+        repository_tree_id="tree-sha",
         merged=True,
         validation_passed=True,
-        gate_evidence=_full_gate_evidence(),
+        gate_evidence=evidence,
     )
     assert receipt.merged is True
     assert receipt.implementation_commit == "impl-sha"
@@ -272,9 +315,15 @@ def test_completion_authoritative_false_blocks_authoritative_completion() -> Non
         task_id="SCA-229",
         implementation_commit="impl-sha",
         merge_commit="merge-sha",
+        repository_tree_id="tree-sha",
         merged=True,
         validation_passed=True,
-        gate_evidence=_full_gate_evidence(),
+        gate_evidence=_bound_gate_evidence(
+            task_id="SCA-229",
+            implementation_commit="impl-sha",
+            merge_commit="merge-sha",
+            repository_tree_id="tree-sha",
+        ),
     )
     gate = evaluate_authoritative_completion_gate(receipt)
     assert gate.admitted is False
@@ -391,7 +440,7 @@ def test_promotion_admits_when_all_gates_satisfied(
     monkeypatch.setattr(
         daemon,
         "_mark_task_or_bundle_completed_in_todo",
-        lambda t: completed.append(t.task_id) or {
+        lambda t, **_kwargs: completed.append(t.task_id) or {
             "updated": True,
             "task_id": t.task_id,
             "reason": "updated",
@@ -401,11 +450,15 @@ def test_promotion_admits_when_all_gates_satisfied(
         task_id=task.task_id,
         implementation_commit="impl-sha",
         merge_commit="merge-sha",
+        repository_tree_id="tree-sha",
         merged=True,
         validation_passed=True,
-        gate_evidence=_full_gate_evidence(
-            provider_review={"not_applicable": True, "satisfied": True},
-            deterministic_only={"satisfied": True, "model_invocation_observed": False},
+        gate_evidence=_bound_gate_evidence(
+            task_id=task.task_id,
+            implementation_commit="impl-sha",
+            merge_commit="merge-sha",
+            repository_tree_id="tree-sha",
+            deterministic_only=True,
         ),
         deterministic_only=True,
         model_invocation_observed=False,
@@ -525,9 +578,15 @@ def test_stale_post_merge_reopens_acceptance_preserves_commit() -> None:
         task_id="SCA-229",
         implementation_commit="durable-impl-sha",
         merge_commit="merge-sha",
+        repository_tree_id="tree-sha",
         merged=True,
         validation_passed=True,
-        gate_evidence=_full_gate_evidence(),
+        gate_evidence=_bound_gate_evidence(
+            task_id="SCA-229",
+            implementation_commit="durable-impl-sha",
+            merge_commit="merge-sha",
+            repository_tree_id="tree-sha",
+        ),
     )
     promoted, gate = promote_authoritative_completion(receipt)
     assert gate.admitted is True
@@ -555,11 +614,14 @@ def test_daemon_reopens_stale_post_merge_without_discarding_commit(
         task_id=task.task_id,
         implementation_commit="keep-impl",
         merge_commit="keep-merge",
+        repository_tree_id="keep-tree",
         merged=True,
         validation_passed=True,
-        gate_evidence=_full_gate_evidence(
-            provider_review={"not_applicable": True, "satisfied": True},
-            deterministic_only={"not_applicable": True, "satisfied": True},
+        gate_evidence=_bound_gate_evidence(
+            task_id=task.task_id,
+            implementation_commit="keep-impl",
+            merge_commit="keep-merge",
+            repository_tree_id="keep-tree",
         ),
         deterministic_only=False,
     )
@@ -876,11 +938,8 @@ def test_queued_callback_missing_validation_stays_pending(
         metadata={},
     )
 
-    acceptance = result["acceptance_result"]
-    assert acceptance["completion_authoritative"] is False
-    assert acceptance.get("authoritatively_completed") is not True
-    assert acceptance["receipt"]["validation_passed"] is False
-    assert set(acceptance["pending_gates"]) >= {"freshness", "semantic"}
+    assert result["merged"] is False
+    assert result["reason"] == "validation_evidence_missing"
     assert daemon.todo_path.read_text(encoding="utf-8") == original_board
 
 
@@ -898,7 +957,7 @@ def test_queued_callback_pre_merge_validation_unbound_to_final_tree_stays_pendin
         monkeypatch,
         final_tree_id="post-merge-tree",
         metadata={
-            "validation_result": {
+            "validation_proof": {
                 "attempted": True,
                 "passed": True,
                 "stale": False,
@@ -928,11 +987,12 @@ def test_raw_provider_admission_boolean_without_typed_receipt_stays_pending(
         task,
         monkeypatch,
         metadata={
-            "validation_result": {
+            "validation_proof": {
                 "attempted": True,
                 "passed": True,
                 "stale": False,
                 "repository_tree_id": "post-merge-tree",
+                "selection": {"scope": "pre_merge"},
             },
             "provider_result_admitted": True,
             # No provider_route_result, typed provider receipt, or review chain.
@@ -976,14 +1036,116 @@ def test_shared_model_assisted_task_cannot_claim_provider_review_not_applicable(
     assert daemon.todo_path.read_text(encoding="utf-8") == original_board
 
 
+def test_self_consistent_forged_git_packet_cannot_mutate_board(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _daemon(tmp_path, monkeypatch)
+    task = _task(provider_role="deterministic-only")
+    implementation_commit = "a" * 40
+    merge_commit = "b" * 40
+    repository_tree_id = f"git-tree:{'c' * 40}"
+    receipt = build_implementation_receipt(
+        task_id=task.task_id,
+        implementation_commit=implementation_commit,
+        merge_commit=merge_commit,
+        repository_tree_id=repository_tree_id,
+        merged=True,
+        validation_passed=True,
+        gate_evidence=_bound_gate_evidence(
+            task_id=task.task_id,
+            implementation_commit=implementation_commit,
+            merge_commit=merge_commit,
+            repository_tree_id=repository_tree_id,
+            deterministic_only=True,
+        ),
+        deterministic_only=True,
+    )
+    promoted, gate = promote_authoritative_completion(receipt)
+    assert gate.admitted is True
+    original_board = daemon.todo_path.read_text(encoding="utf-8")
+
+    guarded = daemon._mark_task_completed_in_todo(
+        task.task_id,
+        authoritative_receipt=promoted,
+        authoritative_gate=gate,
+    )
+    unchecked = daemon._mark_tasks_completed_in_todo_unchecked(
+        [task.task_id],
+        primary_task_id=task.task_id,
+        completion_reason="adversarial_forged_git_packet",
+        authoritative_receipt=promoted,
+        authoritative_gate=gate,
+    )
+
+    assert guarded["updated"] is False
+    assert unchecked["updated"] is False
+    assert guarded["reason"] == "authoritative_completion_git_binding_invalid"
+    assert unchecked["reason"] == "authoritative_completion_git_binding_invalid"
+    assert daemon.todo_path.read_text(encoding="utf-8") == original_board
+
+
+def test_exact_real_git_packet_can_mutate_its_single_bound_task(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _daemon(tmp_path, monkeypatch)
+    task = _task(provider_role="deterministic-only")
+    commit = _git_output(daemon.repo_root, "rev-parse", "HEAD")
+    repository_tree_id = (
+        f"git-tree:{_git_output(daemon.repo_root, 'rev-parse', 'HEAD^{tree}')}"
+    )
+    receipt = build_implementation_receipt(
+        task_id=task.task_id,
+        implementation_commit=commit,
+        merge_commit=commit,
+        repository_tree_id=repository_tree_id,
+        merged=True,
+        validation_passed=True,
+        gate_evidence=_bound_gate_evidence(
+            task_id=task.task_id,
+            implementation_commit=commit,
+            merge_commit=commit,
+            repository_tree_id=repository_tree_id,
+            deterministic_only=True,
+        ),
+        deterministic_only=True,
+    )
+    promoted, gate = promote_authoritative_completion(receipt)
+
+    result = daemon._mark_task_completed_in_todo(
+        task.task_id,
+        authoritative_receipt=promoted,
+        authoritative_gate=gate,
+    )
+
+    assert result["updated"] is True
+    assert result["updated_task_ids"] == [task.task_id]
+    assert "- Status: completed" in daemon.todo_path.read_text(encoding="utf-8")
+
+
 def test_stale_reopening_moves_completed_board_back_to_pending_and_keeps_commit(
     tmp_path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     daemon = _daemon(tmp_path, monkeypatch)
     task = _task(provider_role="deterministic-only")
-    completed = daemon._mark_task_or_bundle_completed_in_todo(task)
-    assert completed["updated"] is True
+    denied = daemon._mark_task_or_bundle_completed_in_todo(task)
+    assert denied["updated"] is False
+    assert denied["reason"] == "authoritative_completion_packet_missing"
+    unchecked = daemon._mark_tasks_completed_in_todo_unchecked(
+        [task.task_id],
+        primary_task_id=task.task_id,
+        completion_reason="adversarial_direct_call",
+    )
+    assert unchecked["updated"] is False
+    daemon.todo_path.write_text(
+        daemon.todo_path.read_text(encoding="utf-8").replace(
+            "- Status: ready",
+            "- Status: completed",
+        ),
+        encoding="utf-8",
+    )
     assert "- Status: completed" in daemon.todo_path.read_text(encoding="utf-8")
     receipt = build_implementation_receipt(
         task_id=task.task_id,
@@ -992,14 +1154,26 @@ def test_stale_reopening_moves_completed_board_back_to_pending_and_keeps_commit(
         repository_tree_id="validated-tree",
         merged=True,
         validation_passed=True,
-        gate_evidence=_full_gate_evidence(
-            provider_review={"not_applicable": True, "satisfied": True},
-            deterministic_only={"satisfied": True, "model_invocation_observed": False},
+        gate_evidence=_bound_gate_evidence(
+            task_id=task.task_id,
+            implementation_commit="keep-implementation-commit",
+            merge_commit="keep-merge-commit",
+            repository_tree_id="validated-tree",
+            deterministic_only=True,
         ),
         deterministic_only=True,
     )
     promoted, gate = promote_authoritative_completion(receipt)
     assert gate.admitted is True
+    bundle = daemon._mark_tasks_completed_in_todo_unchecked(
+        [task.task_id, "SCA-SIBLING"],
+        primary_task_id=task.task_id,
+        completion_reason="adversarial_bundle_reuse",
+        authoritative_receipt=promoted,
+        authoritative_gate=gate,
+    )
+    assert bundle["updated"] is False
+    assert bundle["reason"] == "bundle_member_authority_missing"
 
     result = daemon.reopen_stale_post_merge_acceptance(
         task,

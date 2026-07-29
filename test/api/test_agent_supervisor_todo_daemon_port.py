@@ -17,6 +17,8 @@ from types import SimpleNamespace
 
 import pytest
 
+from test.api.authoritative_completion_test_utils import real_git_authority
+
 from ipfs_accelerate_py.agent_supervisor.context.context_compiler import (
     ContextCompileResult,
 )
@@ -8470,7 +8472,7 @@ def test_implementation_daemon_accepts_planner_proven_external_dependency(tmp_pa
     assert state.ready_task_ids == ["ACCEL-002"]
 
 
-def test_implementation_daemon_uses_shared_merge_receipts_across_lanes(tmp_path):
+def test_shared_merge_receipts_do_not_grant_board_completion_across_lanes(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
     todo_path = repo / "todo.md"
@@ -8531,11 +8533,11 @@ def test_implementation_daemon_uses_shared_merge_receipts_across_lanes(tmp_path)
     result = daemon.run_once()
     state = TodoTaskState.load(daemon.state_path)
 
-    assert result["active_task_id"] == "ACCEL-003"
+    assert result["active_task_id"] == "ACCEL-001"
     assert result["shared_completed_task_ids"] == ["ACCEL-001"]
     assert result["shared_active_merge_task_ids"] == ["ACCEL-002"]
-    assert parse_task_file(todo_path, "## ACCEL-")[0].status == "completed"
-    assert state.task_statuses["ACCEL-001"] == "completed"
+    assert parse_task_file(todo_path, "## ACCEL-")[0].status == "todo"
+    assert state.task_statuses["ACCEL-001"] == "ready"
     assert state.task_statuses["ACCEL-002"] == "merge-queued"
     assert state.task_statuses["ACCEL-003"] == "ready"
 
@@ -16159,20 +16161,19 @@ def test_implementation_daemon_limits_bundle_work_order_to_current_bundle_shard(
 
     result = daemon._mark_task_or_bundle_completed_in_todo(aggregate_task)
 
-    assert result["updated"] is True
-    assert result["completion_reason"] == "bundle_work_order"
-    assert result["updated_task_ids"] == ["ACCEL-003", "ACCEL-001", "ACCEL-002"]
-    assert result["bundle_work_order"]["covered_task_ids"] == ["ACCEL-001", "ACCEL-002"]
+    assert result["updated"] is False
+    assert result["reason"] == "authoritative_completion_packet_missing"
+    assert result["updated_task_ids"] == []
     updated_tasks = parse_task_file(todo_path, task_header_prefix="## ACCEL-")
     assert {task.task_id: task.status for task in updated_tasks} == {
-        "ACCEL-001": "completed",
-        "ACCEL-002": "completed",
-        "ACCEL-003": "completed",
+        "ACCEL-001": "todo",
+        "ACCEL-002": "todo",
+        "ACCEL-003": "todo",
         "ACCEL-004": "todo",
     }
     events = [json.loads(line) for line in (state_dir / "events.jsonl").read_text(encoding="utf-8").splitlines()]
-    assert events[-1]["type"] == "todo_status_updated"
-    assert events[-1]["completion_reason"] == "bundle_work_order"
+    assert events[-1]["type"] == "authoritative_task_completion_denied"
+    assert events[-1]["completion_authoritative"] is False
 
 
 def test_implementation_daemon_commits_dirty_already_completed_todo_status(tmp_path):
@@ -16213,7 +16214,12 @@ def test_implementation_daemon_commits_dirty_already_completed_todo_status(tmp_p
         task_header_prefix="## ACCEL-",
     )
 
-    result = daemon._mark_task_completed_in_todo("ACCEL-001")
+    receipt, gate = real_git_authority(repo, "ACCEL-001")
+    result = daemon._mark_task_completed_in_todo(
+        "ACCEL-001",
+        authoritative_receipt=receipt,
+        authoritative_gate=gate,
+    )
 
     assert result["updated"] is False
     assert result["reason"] == "already_completed"
@@ -16241,6 +16247,11 @@ def test_implementation_daemon_updates_checkbox_with_completed_status(tmp_path):
 """,
         encoding="utf-8",
     )
+    _git(repo, "init")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    _git(repo, "add", "todo.md")
+    _git(repo, "commit", "-m", "seed todo")
     state_dir = repo / "state"
     daemon = TodoImplementationDaemon(
         todo_path=todo_path,
@@ -16251,7 +16262,12 @@ def test_implementation_daemon_updates_checkbox_with_completed_status(tmp_path):
         task_header_prefix="## ACCEL-",
     )
 
-    result = daemon._mark_task_completed_in_todo("ACCEL-001")
+    receipt, gate = real_git_authority(repo, "ACCEL-001")
+    result = daemon._mark_task_completed_in_todo(
+        "ACCEL-001",
+        authoritative_receipt=receipt,
+        authoritative_gate=gate,
+    )
     rendered = todo_path.read_text(encoding="utf-8")
 
     assert result["updated"] is True
@@ -17394,6 +17410,11 @@ def test_goal_packet_aggregate_releases_every_covered_member_dependency(
         ),
         encoding="utf-8",
     )
+    _git(repo, "init")
+    _git(repo, "config", "user.name", "Bundle Authority Test")
+    _git(repo, "config", "user.email", "bundle-authority@example.invalid")
+    _git(repo, "add", "aggregate.todo.md", "objective_bundles")
+    _git(repo, "commit", "-m", "seed aggregate packet")
     state_root = repo / "state"
     lane_state = state_root / "objective-aggregate" / "state"
     lane_state.mkdir(parents=True)
@@ -17418,22 +17439,31 @@ def test_goal_packet_aggregate_releases_every_covered_member_dependency(
     )
     tasks = parse_task_file(todo_path, task_header_prefix="## T-")
     daemon._register_task_identities(tasks)
-    aggregate = next(task for task in tasks if task.task_id == "T-AGGREGATE")
     expected_identities = {
         task_id: daemon._task_identity_by_display_id[task_id]
         for task_id in ("T-AGGREGATE", "T-COVERED-A", "T-COVERED-B")
     }
 
-    completion = daemon._mark_task_or_bundle_completed_in_todo(aggregate)
+    completions = []
+    for task_id in ("T-AGGREGATE", "T-COVERED-A", "T-COVERED-B"):
+        receipt, gate = real_git_authority(repo, task_id)
+        completions.append(
+            daemon._mark_task_completed_in_todo(
+                task_id,
+                authoritative_receipt=receipt,
+                authoritative_gate=gate,
+            )
+        )
     receipts = bundle_member_completion_receipts(state_root)
 
-    assert completion["updated_task_ids"] == [
-        "T-AGGREGATE",
-        "T-COVERED-A",
-        "T-COVERED-B",
+    assert [item["updated_task_ids"] for item in completions] == [
+        ["T-AGGREGATE"],
+        ["T-COVERED-A"],
+        ["T-COVERED-B"],
     ]
     completion_receipts = {
         receipt["task_id"]: receipt
+        for completion in completions
         for receipt in completion["completion_receipts"]
     }
     assert set(completion_receipts) == set(expected_identities)
@@ -17454,7 +17484,9 @@ def test_goal_packet_aggregate_releases_every_covered_member_dependency(
         .read_text(encoding="utf-8")
         .splitlines()[-1]
     )
-    assert persisted_event["completion_receipts"] == completion["completion_receipts"]
+    assert persisted_event["completion_receipts"] == completions[-1][
+        "completion_receipts"
+    ]
     assert set(receipts) == {
         identity.canonical_task_cid for identity in expected_identities.values()
     }
