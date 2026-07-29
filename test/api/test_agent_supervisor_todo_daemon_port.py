@@ -4448,6 +4448,112 @@ def test_implementation_daemon_recreates_missing_registered_submodule_worktree(
     assert worktree_listing.count(f"worktree {target}") == 1
 
 
+@pytest.mark.parametrize("incomplete_local_source", [False, True])
+def test_implementation_daemon_reuses_primary_submodule_from_linked_worktree(
+    tmp_path: Path,
+    monkeypatch,
+    incomplete_local_source: bool,
+):
+    source_root = tmp_path / "source"
+    source_root.mkdir()
+    parent_source, _ = _seed_parent_with_submodule(source_root)
+
+    outer = tmp_path / "outer"
+    outer.mkdir()
+    _git(outer, "init")
+    _git(outer, "checkout", "-b", "main")
+    _git(outer, "config", "user.name", "Test User")
+    _git(outer, "config", "user.email", "test@example.invalid")
+    _git(
+        outer,
+        "-c",
+        "protocol.file.allow=always",
+        "submodule",
+        "add",
+        str(parent_source),
+        "components/parent",
+    )
+    _git(outer, "commit", "-am", "add managed parent")
+
+    primary = outer / "components" / "parent"
+    _git(
+        primary,
+        "-c",
+        "protocol.file.allow=always",
+        "submodule",
+        "update",
+        "--init",
+        "--",
+        "libs/child",
+    )
+    integration = tmp_path / "integration"
+    _git(primary, "worktree", "add", "-b", "integration", str(integration), "main")
+    assert _git(integration, "config", "--path", "--get", "core.worktree")
+    assert not (integration / "libs" / "child" / ".git").exists()
+    if incomplete_local_source:
+        local_source = integration / "libs" / "child"
+        local_source.mkdir(parents=True, exist_ok=True)
+        _git(local_source, "init")
+        _git(local_source, "checkout", "-b", "main")
+        _git(local_source, "config", "user.name", "Test User")
+        _git(local_source, "config", "user.email", "test@example.invalid")
+        (local_source / "unrelated.txt").write_text("unrelated\n", encoding="utf-8")
+        _git(local_source, "add", "unrelated.txt")
+        _git(local_source, "commit", "-m", "unrelated local source")
+
+    branch_name = "implementation/local-primary-source"
+    worktree = tmp_path / "task-worktree"
+    _git(integration, "worktree", "add", "-b", branch_name, str(worktree), "main")
+    expected_ref = _git(worktree, "rev-parse", "HEAD:libs/child")
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=integration / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=integration,
+        worktree_submodule_paths=["libs/child"],
+    )
+
+    real_run = subprocess.run
+
+    def no_network_submodule_setup(command, *args, **kwargs):
+        normalized = [str(part) for part in command]
+        assert normalized[:2] != ["git", "fetch"]
+        assert normalized[:3] != ["git", "submodule", "update"]
+        return real_run(command, *args, **kwargs)
+
+    monkeypatch.setattr(
+        implementation_daemon_module.subprocess,
+        "run",
+        no_network_submodule_setup,
+    )
+
+    assert daemon._create_local_submodule_worktree(
+        worktree,
+        "libs/child",
+        branch_name=branch_name,
+    )
+    target = worktree / "libs" / "child"
+    assert daemon._is_git_worktree(target)
+    assert _git(target, "rev-parse", "HEAD") == expected_ref
+
+    events = [
+        json.loads(line)
+        for line in (state_dir / "events.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    discovered = next(
+        event for event in events if event["type"] == "local_submodule_source_discovered"
+    )
+    assert Path(discovered["source_root"]) == primary
+    assert Path(discovered["source"]) == primary / "libs" / "child"
+    assert discovered["expected_ref"] == expected_ref
+    assert daemon._discover_local_submodule_source(
+        "libs/child",
+        expected_ref="f" * 40,
+    ) is None
+
+
 def test_implementation_daemon_defers_nested_submodule_with_missing_gitlink(
     tmp_path: Path,
     monkeypatch,
