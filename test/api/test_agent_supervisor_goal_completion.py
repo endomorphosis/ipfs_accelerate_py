@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 import hashlib
 import json
 import subprocess
+import threading
 
 import pytest
 
@@ -25,6 +26,7 @@ from ipfs_accelerate_py.agent_supervisor.objectives.goal_completion import (
     validate_completion_evidence,
 )
 from ipfs_accelerate_py.agent_supervisor.objectives.objective_tracker import (
+    ObjectiveCompletionReconciliationOutcome,
     completion_tree_identity,
     migrate_legacy_objective_goals,
     objective_completion_revision,
@@ -1685,7 +1687,7 @@ def test_objective_tracker_persists_provisional_then_verified_state(tmp_path) ->
     assert replay.validation_results["G10.S3"]["passed"] is True
 
 
-def test_objective_tracker_aborts_when_validation_mutates_repository_tree(
+def test_objective_tracker_returns_stale_retry_when_validation_mutates_tree(
     tmp_path,
 ) -> None:
     repo = tmp_path / "repo"
@@ -1716,19 +1718,168 @@ def test_objective_tracker_aborts_when_validation_mutates_repository_tree(
         observed_at=datetime.now(timezone.utc),
     )
 
-    with pytest.raises(RuntimeError, match="repository tree changed"):
-        reconcile_objective_goal_completion(
-            repo_root=repo,
-            objective_path=objective_path,
-            completion_evidence_records={"G10.S3": [evidence]},
-            completion_gate_records={
-                "G10.S3": _tracker_gate(identity, "criterion one")
-            },
-        )
+    result = reconcile_objective_goal_completion(
+        repo_root=repo,
+        objective_path=objective_path,
+        completion_evidence_records={"G10.S3": [evidence]},
+        completion_gate_records={
+            "G10.S3": _tracker_gate(identity, "criterion one")
+        },
+    )
 
     assert (repo / "source.py").read_text(encoding="utf-8") == "VALUE = 2\n"
     assert objective_path.read_text(encoding="utf-8") == original_objective
     assert "- Status: provisionally_complete" in original_objective
+    assert result.retryable is True
+    assert result.reconciliation is not None
+    assert (
+        result.reconciliation.outcome
+        is ObjectiveCompletionReconciliationOutcome.STALE_RETRY
+    )
+    assert result.reconciliation.completion_updates_published is False
+    assert result.reconciliation.expected_tree_id != (
+        result.reconciliation.observed_tree_id
+    )
+    assert result.reconciliation.receipt_cid.startswith("b")
+    assert result.completed_goal_ids == []
+    assert result.completion_evidence == {}
+    assert result.decisions == {}
+    stale_validation = result.validation_results["G10.S3"]
+    assert stale_validation["passed"] is False
+    assert stale_validation["retryable"] is True
+    assert stale_validation["reason"] == "stale_repository_tree"
+    assert stale_validation["discarded_validation_receipt_cid"]
+    assert stale_validation["receipt_cid"].startswith("b")
+    assert result.to_dict()["reconciliation"]["outcome"] == "stale_retry"
+
+
+def test_objective_tracker_returns_stale_retry_during_parallel_commit_then_recovers(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    objective_path = repo / "objective.md"
+    objective_path.write_text(
+        """# Goals
+
+## G10.S3 Parallel tree fence
+
+- Status: provisionally_complete
+- Acceptance: criterion one
+- Validation: true
+""",
+        encoding="utf-8",
+    )
+    (repo / "source.py").write_text("VALUE = 1\n", encoding="utf-8")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "seed")
+    original_objective = objective_path.read_text(encoding="utf-8")
+    initial_identity = completion_tree_identity(
+        repo, objective_path=objective_path
+    )
+    initial_evidence = _complete_evidence(
+        acceptance_criterion="criterion one",
+        repository_tree=initial_identity.tree_id,
+        observed_at=datetime.now(timezone.utc),
+    )
+    validation_started = threading.Event()
+    commit_finished = threading.Event()
+    commit_errors: list[BaseException] = []
+
+    def blocking_validation(**kwargs):
+        repository_identity = kwargs["repository_identity"]
+        goal = kwargs["goal"]
+        validation_started.set()
+        assert commit_finished.wait(timeout=10)
+        return {
+            "schema": (
+                "ipfs_accelerate_py.agent_supervisor.goal-validation@1"
+            ),
+            "goal_id": goal.goal_id,
+            "attempted": True,
+            "passed": True,
+            "returncode": 0,
+            "results": [],
+            "repository_id": repository_identity.repository_id,
+            "tree_id": repository_identity.tree_id,
+            "receipt_cid": "bafy-parallel-validation",
+        }
+
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.objectives."
+        "objective_tracker.run_goal_validation",
+        blocking_validation,
+    )
+
+    def parallel_commit() -> None:
+        try:
+            assert validation_started.wait(timeout=10)
+            (repo / "source.py").write_text("VALUE = 2\n", encoding="utf-8")
+            _git(repo, "add", "source.py")
+            _git(repo, "commit", "-m", "parallel source update")
+        except BaseException as exc:  # pragma: no cover - surfaced below
+            commit_errors.append(exc)
+        finally:
+            commit_finished.set()
+
+    commit_thread = threading.Thread(target=parallel_commit)
+    commit_thread.start()
+    stale = reconcile_objective_goal_completion(
+        repo_root=repo,
+        objective_path=objective_path,
+        completion_evidence_records={"G10.S3": [initial_evidence]},
+        completion_gate_records={
+            "G10.S3": _tracker_gate(initial_identity, "criterion one")
+        },
+    )
+    commit_thread.join(timeout=10)
+
+    assert not commit_thread.is_alive()
+    assert commit_errors == []
+    assert stale.retryable is True
+    assert stale.reconciliation is not None
+    assert (
+        stale.reconciliation.outcome
+        is ObjectiveCompletionReconciliationOutcome.STALE_RETRY
+    )
+    assert stale.reconciliation.completion_updates_published is False
+    assert stale.completed_goal_ids == []
+    assert stale.completion_evidence == {}
+    assert stale.decisions == {}
+    assert objective_path.read_text(encoding="utf-8") == original_objective
+
+    monkeypatch.undo()
+    stable_identity = completion_tree_identity(
+        repo, objective_path=objective_path
+    )
+    stable_evidence = _complete_evidence(
+        acceptance_criterion="criterion one",
+        repository_tree=stable_identity.tree_id,
+        observed_at=datetime.now(timezone.utc),
+    )
+    stable = reconcile_objective_goal_completion(
+        repo_root=repo,
+        objective_path=objective_path,
+        completion_evidence_records={"G10.S3": [stable_evidence]},
+        completion_gate_records={
+            "G10.S3": _tracker_gate(stable_identity, "criterion one")
+        },
+    )
+
+    assert stable.retryable is False
+    assert stable.reconciliation is not None
+    assert (
+        stable.reconciliation.outcome
+        is ObjectiveCompletionReconciliationOutcome.APPLIED
+    )
+    assert stable.completed_goal_ids == ["G10.S3"]
+    assert "- Status: verified_complete" in objective_path.read_text(
+        encoding="utf-8"
+    )
 
 
 def test_completion_control_artifact_writes_do_not_self_invalidate_tree(tmp_path) -> None:
