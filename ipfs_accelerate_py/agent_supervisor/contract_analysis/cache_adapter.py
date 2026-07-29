@@ -103,6 +103,11 @@ class ContractAnalysisCacheAdapter:
     ) -> tuple[str, ...]:
         return self.cache.invalidate_source_closure(changed_cids)
 
+    def rebuild_indexes(self) -> tuple[str, ...]:
+        """Rebuild disposable indexes from verified immutable receipts."""
+
+        return self.cache.rebuild_indexes()
+
     def create_snapshot_receipt(
         self,
         repository_tree_cid: str,
