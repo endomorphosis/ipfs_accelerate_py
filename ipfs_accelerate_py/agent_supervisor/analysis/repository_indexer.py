@@ -2182,11 +2182,20 @@ class MultiRootRepositoryIndex:
         return any(item.opaque_gitlink for item in self.providers)
 
     @property
+    def incomplete_symbol_extraction(self) -> bool:
+        """True when any provider failed closed symbol extraction."""
+
+        return any(
+            item.kind is ProviderRootContradictionKind.INCOMPLETE_SYMBOL_EXTRACTION
+            for item in self.contradictions
+        )
+
+    @property
     def exhaustive_parity_allowed(self) -> bool:
         """Exhaustive multi-root parity requires every provider healthy and indexed.
 
-        Partial provider health, opaque gitlinks, or root contradictions block
-        exhaustive parity claims fail-closed.
+        Partial provider health, incomplete symbol extraction, opaque gitlinks,
+        or root contradictions block exhaustive parity claims fail-closed.
         """
 
         if not self.providers:
@@ -2198,6 +2207,8 @@ class MultiRootRepositoryIndex:
         if not self.all_providers_indexed:
             return False
         if not self.all_providers_healthy:
+            return False
+        if self.incomplete_symbol_extraction:
             return False
         if self.multi_root_snapshot.has_blocking_contradictions:
             return False
@@ -2234,6 +2245,7 @@ class MultiRootRepositoryIndex:
             "all_providers_indexed": self.all_providers_indexed,
             "all_providers_healthy": self.all_providers_healthy,
             "any_opaque_gitlink": self.any_opaque_gitlink,
+            "incomplete_symbol_extraction": self.incomplete_symbol_extraction,
         }
 
     def to_dict(self) -> dict[str, Any]:
@@ -2393,6 +2405,7 @@ def build_multi_root_repository_index(
             indexer.close()
 
         symbols: list[CrossRootSymbolIdentity] = []
+        incomplete_symbol_detail = ""
         if extract_symbols:
             # Re-open CAS via a reader indexer to pull source bodies only for
             # symbol extraction; bodies are never embedded in rows or baseline.
@@ -2404,16 +2417,27 @@ def build_multi_root_repository_index(
             try:
                 current = reader.load_current()
                 extracted = 0
+                eligible_py = 0
+                failed_paths: list[str] = []
+                missing_body_paths: list[str] = []
+                truncated = False
                 for row in current.rows:
-                    if extracted >= max_symbol_files_per_package:
-                        break
                     if not row.path.endswith(".py"):
                         continue
+                    # Only semantic/source-bearing package paths participate in
+                    # exact cross-root joins; missing CAS bodies or parse
+                    # failures make extraction incomplete fail-closed.
                     if row.source_ref is None:
+                        missing_body_paths.append(row.path)
                         continue
+                    eligible_py += 1
+                    if extracted >= max_symbol_files_per_package:
+                        truncated = True
+                        break
                     try:
                         source = reader.cas.read(row.source_ref)
                     except Exception:
+                        missing_body_paths.append(row.path)
                         continue
                     try:
                         symbols.extend(
@@ -2425,8 +2449,31 @@ def build_multi_root_repository_index(
                             )
                         )
                     except CrossRootSymbolJoinError:
+                        failed_paths.append(row.path)
                         continue
                     extracted += 1
+                if truncated:
+                    incomplete_symbol_detail = (
+                        f"symbol extraction truncated after "
+                        f"{max_symbol_files_per_package} files"
+                    )
+                elif failed_paths:
+                    sample = ",".join(failed_paths[:5])
+                    incomplete_symbol_detail = (
+                        f"symbol extraction failed for {len(failed_paths)} "
+                        f"python path(s): {sample}"
+                    )
+                elif missing_body_paths and eligible_py == 0:
+                    sample = ",".join(missing_body_paths[:5])
+                    incomplete_symbol_detail = (
+                        f"python sources lack CAS bodies for symbol extraction: "
+                        f"{sample}"
+                    )
+                elif eligible_py > 0 and not symbols:
+                    incomplete_symbol_detail = (
+                        "no package/module/function symbols extracted from "
+                        f"{eligible_py} eligible python path(s)"
+                    )
             finally:
                 reader.close()
 
@@ -2441,6 +2488,17 @@ def build_multi_root_repository_index(
                         f"provider analyzer health is {health.status.value}: "
                         + ",".join(health.reasons[:5])
                     ),
+                    gitlink_commit_id=observation.gitlink_commit_id,
+                    head_commit_id=observation.head_commit_id,
+                )
+            )
+        if incomplete_symbol_detail:
+            contradictions.append(
+                ProviderRootContradiction(
+                    kind=ProviderRootContradictionKind.INCOMPLETE_SYMBOL_EXTRACTION,
+                    package=observation.package,
+                    scope_path=observation.scope_path,
+                    detail=incomplete_symbol_detail,
                     gitlink_commit_id=observation.gitlink_commit_id,
                     head_commit_id=observation.head_commit_id,
                 )

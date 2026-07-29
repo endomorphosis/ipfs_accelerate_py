@@ -1873,6 +1873,7 @@ class ProviderRootContradictionKind(str, Enum):
     OPAQUE_GITLINK = "opaque_gitlink"
     UNREADABLE = "unreadable"
     PARTIAL_HEALTH = "partial_health"
+    INCOMPLETE_SYMBOL_EXTRACTION = "incomplete_symbol_extraction"
 
 
 @dataclass(frozen=True)
@@ -2040,36 +2041,17 @@ class ProviderRootObservation:
 
     @property
     def observation_id(self) -> str:
-        snapshot_id = self.snapshot.snapshot_id if self.snapshot is not None else ""
         return _identity(
             "sca-provider-root-observation",
-            {
-                "schema": PROVIDER_ROOT_OBSERVATION_SCHEMA,
-                "package": self.package,
-                "scope_path": self.scope_path,
-                "package_dirname": self.package_dirname,
-                "status": self.status.value,
-                "present": bool(self.present),
-                "indexed": bool(self.indexed),
-                "opaque_gitlink": bool(self.opaque_gitlink),
-                "origin_url": self.origin_url,
-                "gitlink_commit_id": self.gitlink_commit_id,
-                "head_commit_id": self.head_commit_id,
-                "head_tree_id": self.head_tree_id,
-                "index_tree_id": self.index_tree_id,
-                "dirty": bool(self.dirty),
-                "version_divergent": bool(self.version_divergent),
-                "moved": bool(self.moved),
-                "snapshot_id": snapshot_id,
-                "reason_code": self.reason_code,
-                "contradictions": [item.to_dict() for item in self.contradictions],
-            },
+            self._content_dict(),
         )
 
-    def to_dict(self) -> dict[str, Any]:
+    def _content_dict(self) -> dict[str, Any]:
+        """Relocation-stable identity payload (no absolute filesystem paths)."""
+
+        snapshot_id = self.snapshot.snapshot_id if self.snapshot is not None else ""
         return {
             "schema": PROVIDER_ROOT_OBSERVATION_SCHEMA,
-            "observation_id": self.observation_id,
             "package": self.package,
             "scope_path": self.scope_path,
             "package_dirname": self.package_dirname,
@@ -2085,27 +2067,38 @@ class ProviderRootObservation:
             "dirty": bool(self.dirty),
             "version_divergent": bool(self.version_divergent),
             "moved": bool(self.moved),
+            "snapshot_id": snapshot_id,
+            "reason_code": self.reason_code,
+            "contradictions": [item.to_dict() for item in self.contradictions],
+        }
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            **self._content_dict(),
+            "observation_id": self.observation_id,
+            # Absolute locations are verification metadata only; they must not
+            # participate in multi-root or observation content identity so
+            # checkout relocation preserves identities.
             "package_root": self.package_root,
             "git_worktree_root": self.git_worktree_root,
-            "snapshot_id": (
-                self.snapshot.snapshot_id if self.snapshot is not None else ""
-            ),
             "snapshot": (
                 self.snapshot.to_dict() if self.snapshot is not None else None
             ),
-            "contradictions": [item.to_dict() for item in self.contradictions],
-            "reason_code": self.reason_code,
             "stats": (
                 self.snapshot.stats.to_dict() if self.snapshot is not None else {}
             ),
         }
 
     def compact_dict(self) -> dict[str, Any]:
-        """Body-free summary suitable for baseline provider-index artifacts."""
+        """Body-free, relocation-stable summary for baseline artifacts."""
 
-        payload = self.to_dict()
-        payload.pop("snapshot", None)
-        return payload
+        return {
+            **self._content_dict(),
+            "observation_id": self.observation_id,
+            "stats": (
+                self.snapshot.stats.to_dict() if self.snapshot is not None else {}
+            ),
+        }
 
 
 @dataclass(frozen=True)
@@ -2206,6 +2199,7 @@ class MultiRootRepositorySnapshot:
         return {
             **self._content_dict(),
             "multi_root_id": self.multi_root_id,
+            # Absolute superproject path is verification metadata only.
             "superproject_root": self.superproject_root,
             "primary_snapshot": (
                 self.primary_snapshot.to_dict()
@@ -2218,12 +2212,11 @@ class MultiRootRepositorySnapshot:
         }
 
     def compact_dict(self) -> dict[str, Any]:
-        """Baseline-friendly projection without nested source ledgers."""
+        """Baseline-friendly, relocation-stable projection without nested ledgers."""
 
         return {
             **self._content_dict(),
             "multi_root_id": self.multi_root_id,
-            "superproject_root": self.superproject_root,
             "all_providers_indexed": self.all_providers_indexed,
             "has_blocking_contradictions": self.has_blocking_contradictions,
             "providers": [item.compact_dict() for item in self.providers],

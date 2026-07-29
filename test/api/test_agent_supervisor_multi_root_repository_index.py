@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -372,6 +373,60 @@ def test_moved_package_directory_is_explicit(tmp_path: Path) -> None:
     )
 
 
+def test_identities_survive_checkout_relocation(tmp_path: Path) -> None:
+    """Snapshot and symbol identities are path-independent across relocation."""
+
+    superproject, _ = _build_superproject(tmp_path)
+    multi_a = build_multi_root_repository_snapshot(
+        superproject,
+        scope_policy=_policy_for_fixture(),
+        include_primary_snapshot=False,
+    )
+    # Relocate the entire superproject checkout to a new absolute path.
+    relocated = tmp_path / "relocated-super"
+    shutil.copytree(superproject, relocated, symlinks=True)
+    multi_b = build_multi_root_repository_snapshot(
+        relocated,
+        scope_policy=_policy_for_fixture(),
+        include_primary_snapshot=False,
+    )
+    assert multi_a.multi_root_id == multi_b.multi_root_id
+    for left, right in zip(multi_a.providers, multi_b.providers, strict=True):
+        assert left.package == right.package
+        assert left.snapshot is not None and right.snapshot is not None
+        # Absolute package roots differ after relocation.
+        assert left.package_root != right.package_root
+        # Content-addressed identities remain stable.
+        assert left.snapshot.snapshot_id == right.snapshot.snapshot_id
+        assert left.head_commit_id == right.head_commit_id
+        assert left.head_tree_id == right.head_tree_id
+        digests_a = {
+            item.path: item.content_digest for item in left.snapshot.dispositions
+        }
+        digests_b = {
+            item.path: item.content_digest for item in right.snapshot.dispositions
+        }
+        assert digests_a == digests_b
+
+    # Symbol identities also exclude absolute roots (package/module/function only).
+    left_sym = make_cross_root_symbol(
+        package="ipfs_kit_py",
+        module="ipfs_kit_py.api",
+        function="dispatch",
+        path="api.py",
+        root_id="root-at-/tmp/a",
+    )
+    right_sym = make_cross_root_symbol(
+        package="ipfs_kit_py",
+        module="ipfs_kit_py.api",
+        function="dispatch",
+        path="api.py",
+        root_id="root-at-/other/b",
+    )
+    assert left_sym.identity_id == right_sym.identity_id
+    assert join_cross_root_symbols(left_sym, right_sym).identity_id == left_sym.identity_id
+
+
 def test_cross_root_joins_are_package_module_function_exact() -> None:
     left = make_cross_root_symbol(
         package="ipfs_accelerate_py",
@@ -544,6 +599,28 @@ def test_partial_provider_health_blocks_exhaustive_parity(tmp_path: Path) -> Non
     assert datasets is not None
     assert datasets.indexed is False
     assert datasets.opaque_gitlink is True
+
+
+def test_incomplete_symbol_extraction_blocks_exhaustive_parity(
+    tmp_path: Path,
+) -> None:
+    """Truncated or failed symbol extraction must fail-close exhaustive parity."""
+
+    superproject, _ = _build_superproject(tmp_path)
+    multi_index = build_multi_root_repository_index(
+        superproject,
+        index_root=tmp_path / "index-incomplete-symbols",
+        scope_policy=_policy_for_fixture(),
+        extract_symbols=True,
+        # Force truncation so extraction cannot cover every eligible .py path.
+        max_symbol_files_per_package=1,
+    )
+    assert multi_index.incomplete_symbol_extraction is True
+    assert multi_index.exhaustive_parity_allowed is False
+    assert any(
+        item.kind is ProviderRootContradictionKind.INCOMPLETE_SYMBOL_EXTRACTION
+        for item in multi_index.contradictions
+    )
 
 
 def test_provider_index_baseline_is_compact_and_body_free(
