@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -25,7 +26,9 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
     AUTHORITATIVE_COMPLETION_GATE_KINDS,
     AUTHORITATIVE_COMPLETION_ADMITTED_EVENT,
     DETERMINISTIC_ONLY_MODEL_REJECTED_EVENT,
+    IMPLEMENTATION_RECEIPT_SCHEMA,
     IMPLEMENTATION_MERGED_PENDING_EVENT,
+    MERGE_TARGET_BINDING_SCHEMA,
     AuthoritativeCompletionGate,
     DeterministicOnlyPolicy,
     ImplementationReceipt,
@@ -51,6 +54,16 @@ def _git(repo, *arguments: str) -> None:
         text=True,
         capture_output=True,
     )
+
+
+def _git_output(repo, *arguments: str) -> str:
+    return subprocess.run(
+        ["git", *arguments],
+        cwd=repo,
+        check=True,
+        text=True,
+        capture_output=True,
+    ).stdout.strip()
 
 
 def _daemon(tmp_path, monkeypatch: pytest.MonkeyPatch) -> TodoImplementationDaemon:
@@ -146,6 +159,93 @@ def _full_gate_evidence(**overrides: Any) -> dict[str, Any]:
     }
     evidence.update(overrides)
     return evidence
+
+
+def _bound_gate_evidence(
+    *,
+    task_id: str,
+    implementation_commit: str,
+    merge_commit: str,
+    repository_tree_id: str,
+) -> dict[str, Any]:
+    binding = {
+        "task_id": task_id,
+        "implementation_commit": implementation_commit,
+        "merge_commit": merge_commit,
+        "repository_tree_id": repository_tree_id,
+    }
+    return _full_gate_evidence(
+        merge={"satisfied": True, **binding},
+        freshness={"satisfied": True, "stale": False, **binding},
+        semantic={"satisfied": True, "passed": True, **binding},
+        proof={"not_applicable": True, "satisfied": True, **binding},
+        provider_review={
+            "satisfied": True,
+            "review_presence": "independent",
+            **binding,
+        },
+        deterministic_only={
+            "not_applicable": True,
+            "satisfied": True,
+            **binding,
+        },
+    )
+
+
+def _queued_merge_request(
+    daemon: TodoImplementationDaemon,
+    task: PortalTask,
+    *,
+    metadata: dict[str, Any] | None = None,
+) -> SimpleNamespace:
+    implementation_commit = _git_output(daemon.repo_root, "rev-parse", "HEAD")
+    return SimpleNamespace(
+        branch_name=f"implementation/{task.task_id.lower()}-adversarial",
+        commit_sha=implementation_commit,
+        task_id=task.task_id,
+        priority=task.priority,
+        attempt=1,
+        target_repository_id=daemon.merge_target_repository_id,
+        target_branch=daemon.resolved_merge_target_branch,
+        metadata={
+            "target_binding_schema": MERGE_TARGET_BINDING_SCHEMA,
+            "target_repository_id": daemon.merge_target_repository_id,
+            "target_branch": daemon.resolved_merge_target_branch,
+            "implementation_commit": implementation_commit,
+            "task": {
+                field: getattr(task, field)
+                for field in PortalTask.__dataclass_fields__
+            },
+            **dict(metadata or {}),
+        },
+    )
+
+
+def _run_queued_merge_callback(
+    daemon: TodoImplementationDaemon,
+    task: PortalTask,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    metadata: dict[str, Any] | None = None,
+    final_tree_id: str = "post-merge-tree",
+) -> dict[str, Any]:
+    monkeypatch.setattr(
+        daemon,
+        "_rehydrate_merge_request_branch",
+        lambda **_kwargs: {"ready": True, "rehydrated": False},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_merge_branch_to_main",
+        lambda *_args, **_kwargs: {
+            "attempted": True,
+            "merged": True,
+            "returncode": 0,
+            "merge_commit": final_tree_id,
+        },
+    )
+    request = _queued_merge_request(daemon, task, metadata=metadata)
+    return daemon._merge_train_callback(request)
 
 
 def test_implementation_receipt_merge_is_not_completion_authority() -> None:
@@ -602,3 +702,357 @@ def test_gate_kinds_cover_required_boundaries() -> None:
     )
     assert AuthoritativeCompletionGate(admitted=False).admitted is False
     assert ImplementationReceipt(task_id="x").completion_authoritative is False
+
+
+def test_empty_receipt_cannot_promote() -> None:
+    promoted, gate = promote_authoritative_completion({})
+    assert promoted.completion_authoritative is False
+    assert gate.admitted is False
+    assert gate.completion_authoritative is False
+
+
+def test_forged_empty_evidence_receipt_cannot_promote() -> None:
+    forged = {
+        "schema": IMPLEMENTATION_RECEIPT_SCHEMA,
+        "task_id": "SCA-229",
+        "implementation_commit": "impl",
+        "merge_commit": "merge",
+        "repository_tree_id": "tree",
+        "merged": True,
+        "validation_passed": True,
+        "validation_stale": False,
+        "completion_authoritative": False,
+        "pending_gates": [],
+        "gate_evidence": {},
+        "acceptance_state": ACCEPTANCE_STATE_MERGED_PENDING,
+    }
+    promoted, gate = promote_authoritative_completion(forged)
+    assert promoted.completion_authoritative is False
+    assert gate.admitted is False
+    assert gate.completion_authoritative is False
+
+
+@pytest.mark.parametrize(
+    "mismatch",
+    (
+        "task_id",
+        "schema",
+        "implementation_commit",
+        "merge_commit",
+        "repository_tree_id",
+    ),
+)
+def test_receipt_identity_binding_mismatch_cannot_complete(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+    mismatch: str,
+) -> None:
+    daemon = _daemon(tmp_path, monkeypatch)
+    task = _task()
+    implementation_commit = _git_output(daemon.repo_root, "rev-parse", "HEAD")
+    repository_tree_id = _git_output(
+        daemon.repo_root,
+        "rev-parse",
+        "HEAD^{tree}",
+    )
+    receipt = build_implementation_receipt(
+        task_id=task.task_id,
+        implementation_commit=implementation_commit,
+        merge_commit=implementation_commit,
+        repository_tree_id=repository_tree_id,
+        merged=True,
+        validation_passed=True,
+        gate_evidence=_bound_gate_evidence(
+            task_id=task.task_id,
+            implementation_commit=implementation_commit,
+            merge_commit=implementation_commit,
+            repository_tree_id=repository_tree_id,
+        ),
+    ).to_dict()
+    replacements = {
+        "task_id": "SCA-FORGED",
+        "schema": f"{IMPLEMENTATION_RECEIPT_SCHEMA}-forged",
+        "implementation_commit": "f" * 40,
+        "merge_commit": "d" * 40,
+        "repository_tree_id": "e" * 40,
+    }
+    receipt[mismatch] = replacements[mismatch]
+    marked: list[str] = []
+    monkeypatch.setattr(
+        daemon,
+        "_mark_task_or_bundle_completed_in_todo",
+        lambda selected: marked.append(selected.task_id)
+        or {"updated": True, "task_id": selected.task_id},
+    )
+
+    result = daemon.mark_authoritatively_completed_if_admitted(
+        task,
+        receipt,
+        promote=True,
+    )
+
+    assert result["authoritatively_completed"] is False
+    assert result["completion_authoritative"] is False
+    assert marked == []
+
+
+@pytest.mark.parametrize("completion_source", ("merged_event", "shared_queue"))
+def test_non_authoritative_merge_completion_source_does_not_mutate_board(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+    completion_source: str,
+) -> None:
+    daemon = _daemon(tmp_path, monkeypatch)
+    daemon.implement = False
+    # Use the task parsed from the live board so its canonical identity is
+    # exactly the one run_once() and the shared merge queue project.
+    task = daemon._load_tasks()[0]
+    implementation_commit = _git_output(daemon.repo_root, "rev-parse", "HEAD")
+    receipt = build_implementation_receipt(
+        task_id=task.task_id,
+        implementation_commit=implementation_commit,
+        merge_commit=implementation_commit,
+        merged=True,
+        validation_passed=True,
+        gate_evidence=_full_gate_evidence(),
+        completion_authoritative=False,
+    )
+    pending = daemon.record_merged_pending_acceptance(task, receipt)
+    assert pending["completion_authoritative"] is False
+    canonical_task_cid = daemon._canonical_ref(task)
+    if completion_source == "merged_event":
+        daemon._record_event(
+            "implementation_finished",
+            {
+                "task_id": task.task_id,
+                "returncode": 0,
+                "implementation_commit": implementation_commit,
+                "merge_result": {
+                    "merged": True,
+                    "returncode": 0,
+                    "merge_commit": implementation_commit,
+                },
+                "completion_authoritative": False,
+                "acceptance_result": pending,
+            },
+        )
+        monkeypatch.setattr(
+            daemon,
+            "_shared_merge_queue_task_cids",
+            lambda _method_name: set(),
+        )
+    else:
+        monkeypatch.setattr(
+            daemon,
+            "_shared_merge_queue_task_cids",
+            lambda method_name: (
+                {canonical_task_cid}
+                if method_name == "completed_canonical_task_ids"
+                else set()
+            ),
+        )
+    monkeypatch.setattr(daemon, "_consume_one_merge_candidate", lambda: None)
+    original_board = daemon.todo_path.read_text(encoding="utf-8")
+
+    result = daemon.run_once()
+
+    assert daemon.todo_path.read_text(encoding="utf-8") == original_board
+    assert task.task_id not in result.get("completed_task_ids", [])
+    assert not result.get("merged_status_repair", {}).get("updated")
+
+
+def test_queued_callback_missing_validation_stays_pending(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _daemon(tmp_path, monkeypatch)
+    task = _task(provider_role="deterministic-only")
+    original_board = daemon.todo_path.read_text(encoding="utf-8")
+
+    result = _run_queued_merge_callback(
+        daemon,
+        task,
+        monkeypatch,
+        metadata={},
+    )
+
+    acceptance = result["acceptance_result"]
+    assert acceptance["completion_authoritative"] is False
+    assert acceptance.get("authoritatively_completed") is not True
+    assert acceptance["receipt"]["validation_passed"] is False
+    assert set(acceptance["pending_gates"]) >= {"freshness", "semantic"}
+    assert daemon.todo_path.read_text(encoding="utf-8") == original_board
+
+
+def test_queued_callback_pre_merge_validation_unbound_to_final_tree_stays_pending(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _daemon(tmp_path, monkeypatch)
+    task = _task(provider_role="deterministic-only")
+    original_board = daemon.todo_path.read_text(encoding="utf-8")
+
+    result = _run_queued_merge_callback(
+        daemon,
+        task,
+        monkeypatch,
+        final_tree_id="post-merge-tree",
+        metadata={
+            "validation_result": {
+                "attempted": True,
+                "passed": True,
+                "stale": False,
+                "repository_tree_id": "pre-merge-tree",
+                "selection": {"scope": "pre_merge"},
+            },
+        },
+    )
+
+    acceptance = result["acceptance_result"]
+    assert acceptance["completion_authoritative"] is False
+    assert acceptance.get("authoritatively_completed") is not True
+    assert "freshness" in acceptance["pending_gates"]
+    assert daemon.todo_path.read_text(encoding="utf-8") == original_board
+
+
+def test_raw_provider_admission_boolean_without_typed_receipt_stays_pending(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _daemon(tmp_path, monkeypatch)
+    task = _task(provider_role="grok-implement, codex-review")
+    original_board = daemon.todo_path.read_text(encoding="utf-8")
+
+    result = _run_queued_merge_callback(
+        daemon,
+        task,
+        monkeypatch,
+        metadata={
+            "validation_result": {
+                "attempted": True,
+                "passed": True,
+                "stale": False,
+                "repository_tree_id": "post-merge-tree",
+            },
+            "provider_result_admitted": True,
+            # No provider_route_result, typed provider receipt, or review chain.
+        },
+    )
+
+    acceptance = result["acceptance_result"]
+    assert acceptance["completion_authoritative"] is False
+    assert acceptance.get("authoritatively_completed") is not True
+    assert "provider_review" in acceptance["pending_gates"]
+    assert daemon.todo_path.read_text(encoding="utf-8") == original_board
+
+
+def test_shared_model_assisted_task_cannot_claim_provider_review_not_applicable(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _daemon(tmp_path, monkeypatch)
+    task = _task(provider_role="grok-implement, codex-review")
+    original_board = daemon.todo_path.read_text(encoding="utf-8")
+
+    result = daemon.apply_post_merge_authoritative_acceptance(
+        task,
+        implementation_commit="impl",
+        merge_commit="merge",
+        repository_tree_id="tree",
+        validation_result={"attempted": True, "passed": True, "stale": False},
+        gate_evidence={
+            "provider_review": {
+                "not_applicable": True,
+                "satisfied": True,
+                "reason": "shared_execution_claimed_no_provider",
+            },
+        },
+        model_invocation_observed=False,
+    )
+
+    assert result["completion_authoritative"] is False
+    assert result.get("authoritatively_completed") is not True
+    assert "provider_review" in result["pending_gates"]
+    assert daemon.todo_path.read_text(encoding="utf-8") == original_board
+
+
+def test_stale_reopening_moves_completed_board_back_to_pending_and_keeps_commit(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _daemon(tmp_path, monkeypatch)
+    task = _task(provider_role="deterministic-only")
+    completed = daemon._mark_task_or_bundle_completed_in_todo(task)
+    assert completed["updated"] is True
+    assert "- Status: completed" in daemon.todo_path.read_text(encoding="utf-8")
+    receipt = build_implementation_receipt(
+        task_id=task.task_id,
+        implementation_commit="keep-implementation-commit",
+        merge_commit="keep-merge-commit",
+        repository_tree_id="validated-tree",
+        merged=True,
+        validation_passed=True,
+        gate_evidence=_full_gate_evidence(
+            provider_review={"not_applicable": True, "satisfied": True},
+            deterministic_only={"satisfied": True, "model_invocation_observed": False},
+        ),
+        deterministic_only=True,
+    )
+    promoted, gate = promote_authoritative_completion(receipt)
+    assert gate.admitted is True
+
+    result = daemon.reopen_stale_post_merge_acceptance(
+        task,
+        promoted,
+        stale_reason="post_merge_tree_changed",
+    )
+
+    assert result["implementation_commit"] == "keep-implementation-commit"
+    assert result["implementation_commit_preserved"] is True
+    assert result.get("board_status") == "pending"
+    board = daemon.todo_path.read_text(encoding="utf-8")
+    assert "- Status: completed" not in board
+    assert "- Status: todo" in board or "- Status: pending" in board
+
+
+def test_live_acceptance_results_project_merged_pending_and_reopened(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _daemon(tmp_path, monkeypatch)
+    task = _task(provider_role="grok-implement, codex-review")
+    merged_pending = daemon.apply_post_merge_authoritative_acceptance(
+        task,
+        implementation_commit="pending-implementation",
+        merge_commit="pending-merge",
+        repository_tree_id="pending-tree",
+        validation_result={"attempted": True, "passed": True, "stale": False},
+        model_invocation_observed=True,
+    )
+    pending_status = project_authoritative_acceptance_status(
+        task_id=task.task_id,
+        receipt=merged_pending["receipt"],
+        gate=merged_pending["gate"],
+    )
+    assert pending_status["acceptance_state"] == ACCEPTANCE_STATE_MERGED_PENDING
+    assert pending_status["board_status"] == "pending"
+    assert pending_status["completion_authoritative"] is False
+    assert pending_status["implementation_commit"] == "pending-implementation"
+
+    reopened = daemon.apply_post_merge_authoritative_acceptance(
+        _task(provider_role="deterministic-only"),
+        implementation_commit="reopened-implementation",
+        merge_commit="reopened-merge",
+        repository_tree_id="reopened-tree",
+        validation_result={"attempted": True, "passed": True, "stale": True},
+        model_invocation_observed=False,
+    )
+    reopened_status = project_authoritative_acceptance_status(
+        task_id=task.task_id,
+        receipt=reopened["receipt"],
+        gate=reopened["gate"],
+    )
+    assert reopened_status["acceptance_state"] == ACCEPTANCE_STATE_REOPENED
+    assert reopened_status["board_status"] == "pending"
+    assert reopened_status["completion_authoritative"] is False
+    assert reopened_status["implementation_commit"] == "reopened-implementation"
