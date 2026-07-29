@@ -4866,6 +4866,61 @@ class PortalImplementationDaemon:
             )
         return resets, deferred
 
+    def _release_completed_retry_budget_strategy_blocks(
+        self,
+        strategy: dict[str, Any],
+        tasks: Sequence[PortalTask],
+    ) -> list[dict[str, str]]:
+        """Release only source tasks named by completed retry repairs."""
+
+        completed_repairs: dict[str, tuple[str, str]] = {}
+        for repair_task in tasks:
+            if normalize_status(repair_task.status) != "completed":
+                continue
+            source_task_id, failure_kind = retry_budget_repair_source(
+                repair_task
+            )
+            if source_task_id:
+                completed_repairs[source_task_id] = (
+                    repair_task.task_id,
+                    failure_kind,
+                )
+
+        blocked_tasks = [
+            str(task_id)
+            for task_id in strategy.get("blocked_tasks", [])
+            if str(task_id).strip()
+        ]
+        released_source_ids = sorted(
+            set(blocked_tasks).intersection(completed_repairs)
+        )
+        if not released_source_ids:
+            return []
+
+        released_set = set(released_source_ids)
+        strategy["blocked_tasks"] = [
+            task_id
+            for task_id in blocked_tasks
+            if task_id not in released_set
+        ]
+        write_json_atomic(self.strategy_path, strategy)
+        released = [
+            {
+                "source_task_id": source_task_id,
+                "repair_task_id": completed_repairs[source_task_id][0],
+                "failure_kind": completed_repairs[source_task_id][1],
+            }
+            for source_task_id in released_source_ids
+        ]
+        self._record_event(
+            "retry_budget_strategy_blocks_released",
+            {
+                "release_count": len(released),
+                "released": released,
+            },
+        )
+        return released
+
     def _partition_tasks_at_attempt_limit(
         self,
         tasks: Sequence[PortalTask],
@@ -5632,6 +5687,12 @@ class PortalImplementationDaemon:
         }
         previous = PortalTaskState.load(self.state_path)
         strategy = self.load_strategy()
+        released_retry_budget_strategy_blocks = (
+            self._release_completed_retry_budget_strategy_blocks(
+                strategy,
+                tasks,
+            )
+        )
         now = utc_now()
         board_completed_task_ids = {
             task.task_id for task in tasks if task.status == "completed"
@@ -6118,6 +6179,10 @@ class PortalImplementationDaemon:
                         item["source_task_id"]
                         for item in retry_budget_reset_deferred
                     ],
+                    "released_retry_budget_strategy_block_task_ids": [
+                        item["source_task_id"]
+                        for item in released_retry_budget_strategy_blocks
+                    ],
                     "protected_path_conflicts": {
                         task_id: list(conflicts)
                         for task_id, conflicts in sorted(
@@ -6146,6 +6211,9 @@ class PortalImplementationDaemon:
             ],
             "retry_budget_resets": retry_budget_resets,
             "retry_budget_reset_deferred": retry_budget_reset_deferred,
+            "released_retry_budget_strategy_blocks": (
+                released_retry_budget_strategy_blocks
+            ),
             "protected_path_conflicts": {
                 task_id: list(conflicts)
                 for task_id, conflicts in sorted(
