@@ -58,6 +58,7 @@ from .implementation_daemon import (
     PortalTask,
     PortalTaskState,
     consume_stale_active_attempt,
+    implementation_task_claim_protected_fence_paths,
     load_json_dict,
     normalize_focus_tracks,
     normalize_implementation_protected_paths,
@@ -1239,20 +1240,30 @@ class PortalImplementationSupervisor:
             except (OSError, TypeError, ValueError):
                 same_repository = False
                 pid = 0
+            protected_fence_paths = (
+                implementation_task_claim_protected_fence_paths(metadata)
+            )
+            owner_live = process_is_running(pid)
             # Task claims may be owned through pytest, systemd, or another
             # wrapper whose argv does not contain the daemon filename. A live
             # PID on a compatible claim is sufficient to keep maintenance out.
+            # A crash-surviving snapshot or incident must do the same even
+            # after its process exits.
             if (
                 (not kind or kind == IMPLEMENTATION_TASK_CLAIM_LOCK_KIND)
                 and same_repository
-                and process_is_running(pid)
+                and (owner_live or protected_fence_paths)
             ):
                 active.append(
                     {
                         "claim_path": str(claim_path),
                         "task_id": str(metadata.get("task_id") or ""),
                         "pid": pid,
+                        "owner_live": owner_live,
                         "state_dir": str(metadata.get("state_dir") or ""),
+                        "protected_fence_paths": list(
+                            protected_fence_paths
+                        ),
                     }
                 )
         return active

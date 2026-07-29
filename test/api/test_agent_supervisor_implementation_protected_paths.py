@@ -18,6 +18,7 @@ from ipfs_accelerate_py.agent_supervisor.merge.checkout_lock import (
 from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
     core as core_module,
     implementation_daemon as implementation_daemon_module,
+    implementation_supervisor as implementation_supervisor_module,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon import supervisor_runtime
 from ipfs_accelerate_py.agent_supervisor.merge.checkout_lock import (
@@ -341,6 +342,69 @@ def test_shared_protected_maintenance_lease_defers_model_dispatch(
     ).exists()
 
 
+def test_repo_global_maintenance_lease_defers_daemon_without_local_paths(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    supervisor = _supervisor(tmp_path)
+    lease, guard = supervisor._acquire_protected_path_maintenance_lease()
+    assert lease is not None
+    assert guard["blocked"] is False
+    daemon = _daemon(tmp_path, protected_paths=())
+    task = _task(outputs=["src/example.py"])
+    monkeypatch.setattr(
+        daemon,
+        "_build_implementation_prompt",
+        lambda *_args, **_kwargs: pytest.fail(
+            "the repo-global lease must precede prompt construction"
+        ),
+    )
+
+    try:
+        result = daemon._run_implementation(task, PortalTaskState())
+    finally:
+        supervisor._release_protected_path_maintenance_lease(lease)
+
+    assert result["skipped"] is True
+    assert result["reason"] == "implementation_protected_path_maintenance_active"
+    assert daemon.task_queue.is_cooled_down(daemon._canonical_ref(task)) is True
+
+
+def test_live_shared_maintenance_lease_survives_empty_process_command_line(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    owner = _supervisor(
+        tmp_path,
+        state_path=tmp_path / "lane-owner" / "task-state.json",
+    )
+    contender = _supervisor(
+        tmp_path,
+        state_path=tmp_path / "lane-contender" / "task-state.json",
+    )
+    lease, guard = owner._acquire_protected_path_maintenance_lease()
+    assert lease is not None
+    assert guard["blocked"] is False
+    lock_path = owner._protected_path_maintenance_lock_path()
+    monkeypatch.setattr(
+        implementation_supervisor_module,
+        "process_command_line",
+        lambda _pid: "",
+    )
+
+    try:
+        contender_lease, contender_guard = (
+            contender._acquire_protected_path_maintenance_lease()
+        )
+        persisted = json.loads(lock_path.read_text(encoding="utf-8"))
+    finally:
+        owner._release_protected_path_maintenance_lease(lease)
+
+    assert contender_lease is None
+    assert contender_guard["reason"] == "protected_path_maintenance_active"
+    assert persisted["lease_id"] == lease["lease_id"]
+
+
 def test_shared_protected_maintenance_waits_for_active_task_claim(
     tmp_path: Path,
 ) -> None:
@@ -376,6 +440,91 @@ def test_shared_protected_maintenance_waits_for_active_task_claim(
     assert guard["reason"] == "shared_implementation_task_claim_active"
     assert guard["active_claims"][0]["task_id"] == task.task_id
     assert not supervisor._protected_path_maintenance_lock_path().exists()
+
+
+@pytest.mark.parametrize(
+    "fence_filename",
+    [
+        implementation_daemon_module.IMPLEMENTATION_PROTECTED_ACTIVE_SNAPSHOT_FILENAME,
+        implementation_daemon_module.IMPLEMENTATION_PROTECTED_INCIDENT_FILENAME,
+    ],
+)
+def test_shared_maintenance_waits_for_orphan_task_claim_fence(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fence_filename: str,
+) -> None:
+    daemon = _daemon(
+        tmp_path,
+        state_path=tmp_path / "lane-worker" / "task-state.json",
+    )
+    supervisor = _supervisor(
+        tmp_path,
+        state_path=tmp_path / "lane-maintenance" / "task-state.json",
+    )
+    task = _task(outputs=["src/example.py"])
+    claim_path = daemon._implementation_task_claim_path(
+        task.task_id,
+        canonical_task_cid=daemon._canonical_ref(task),
+    )
+    claim_metadata = daemon._build_implementation_task_claim_metadata(
+        task,
+        1,
+        "2026-07-29T00:00:00+00:00",
+    )
+    acquired, _reason, _existing = (
+        daemon._try_acquire_implementation_task_claim(
+            claim_path,
+            claim_metadata,
+        )
+    )
+    assert acquired is True
+    fence_path = daemon.state_path.parent / fence_filename
+    fence_path.parent.mkdir(parents=True, exist_ok=True)
+    fence_path.write_text('{"schema":"test-fence"}\n', encoding="utf-8")
+    # The attempt finalizer must keep the repo-wide pointer to its durable
+    # lane-local safety fence.
+    assert daemon._release_implementation_task_claim(
+        claim_path,
+        claim_metadata,
+    )
+    assert claim_path.exists()
+    monkeypatch.setattr(
+        implementation_supervisor_module,
+        "process_is_running",
+        lambda _pid: False,
+    )
+
+    blocked_lease, blocked_guard = (
+        supervisor._acquire_protected_path_maintenance_lease()
+    )
+
+    assert blocked_lease is None
+    assert blocked_guard["reason"] == "shared_implementation_task_claim_active"
+    assert blocked_guard["active_claims"][0]["owner_live"] is False
+    assert blocked_guard["active_claims"][0]["protected_fence_paths"] == [
+        str(fence_path)
+    ]
+    assert claim_path.exists()
+    assert fence_path.exists()
+
+    fence_path.unlink()
+    assert daemon._release_implementation_task_claim(
+        claim_path,
+        claim_metadata,
+    )
+    assert not claim_path.exists()
+    released_lease, released_guard = (
+        supervisor._acquire_protected_path_maintenance_lease()
+    )
+    try:
+        assert released_lease is not None
+        assert released_guard["blocked"] is False
+    finally:
+        if released_lease is not None:
+            supervisor._release_protected_path_maintenance_lease(
+                released_lease
+            )
 
 
 @pytest.mark.parametrize(

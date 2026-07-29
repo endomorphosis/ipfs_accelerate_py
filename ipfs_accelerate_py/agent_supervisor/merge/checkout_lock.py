@@ -232,7 +232,7 @@ def checkout_lock_owner_is_active(
         return False
     owner_script = str(metadata.get("owner_script") or "")
     command_line = process_command_line(pid)
-    if owner_script and owner_script not in command_line:
+    if owner_script and command_line and owner_script not in command_line:
         # Module launches (``python -m package.worker``) expose the module
         # name, not the source filename, in argv.
         owner_module_stem = Path(owner_script).stem

@@ -356,6 +356,40 @@ IMPLEMENTATION_PROTECTED_ACTIVE_SNAPSHOT_FILENAME = (
 IMPLEMENTATION_PROTECTED_INCIDENT_FILENAME = (
     "implementation-protected-path-incident.json"
 )
+
+
+def implementation_task_claim_protected_fence_paths(
+    metadata: Mapping[str, Any],
+) -> tuple[str, ...]:
+    """Return durable protected-path fences referenced by a task claim.
+
+    A task process can die after persisting its active snapshot or incident.
+    The repo-wide claim remains the durable pointer from maintenance to that
+    lane-local fence. Filesystem uncertainty is treated as present so shared
+    checkout maintenance fails closed.
+    """
+
+    state_dir_text = str(metadata.get("state_dir") or "").strip()
+    if not state_dir_text:
+        return ()
+    state_dir = Path(state_dir_text)
+    present: list[str] = []
+    for filename in (
+        IMPLEMENTATION_PROTECTED_ACTIVE_SNAPSHOT_FILENAME,
+        IMPLEMENTATION_PROTECTED_INCIDENT_FILENAME,
+    ):
+        path = state_dir / filename
+        try:
+            path.lstat()
+        except FileNotFoundError:
+            continue
+        except (OSError, ValueError):
+            # An unreadable fence cannot safely be treated as absent.
+            pass
+        present.append(str(path))
+    return tuple(present)
+
+
 EVENT_DRIVEN_RUNTIME_REQUIREMENT_ID = (
     "asi-117:event-driven-delta-checkpoint-runtime"
 )
@@ -6616,41 +6650,43 @@ class PortalImplementationDaemon:
             self._record_event("implementation_skipped", result)
             return result
 
-        if self.implementation_protected_paths:
-            maintenance_claim = self._active_protected_path_maintenance_claim()
-            if maintenance_claim is not None:
-                canonical_task_cid = self._canonical_ref(task)
-                self.task_queue.defer(
-                    canonical_task_cid,
-                    30,
-                    reason="implementation_protected_path_maintenance_active",
-                )
-                self.task_queue.save()
-                result = {
-                    "skipped": True,
-                    "reason": "implementation_protected_path_maintenance_active",
-                    "task_id": task.task_id,
-                    "attempt": attempt,
-                    "backoff_seconds": 30,
-                    "maintenance_owner_pid": int(
-                        maintenance_claim.get("pid") or 0
-                    ),
-                    "maintenance_owner_state_dir": str(
-                        maintenance_claim.get("state_dir") or ""
-                    ),
-                }
-                if not self._release_implementation_task_claim(
+        # This repository-global lease protects peer lanes' paths as well as
+        # this daemon's configured list. Every implementation must therefore
+        # participate, including a lane configured with no local paths.
+        maintenance_claim = self._active_protected_path_maintenance_claim()
+        if maintenance_claim is not None:
+            canonical_task_cid = self._canonical_ref(task)
+            self.task_queue.defer(
+                canonical_task_cid,
+                30,
+                reason="implementation_protected_path_maintenance_active",
+            )
+            self.task_queue.save()
+            result = {
+                "skipped": True,
+                "reason": "implementation_protected_path_maintenance_active",
+                "task_id": task.task_id,
+                "attempt": attempt,
+                "backoff_seconds": 30,
+                "maintenance_owner_pid": int(
+                    maintenance_claim.get("pid") or 0
+                ),
+                "maintenance_owner_state_dir": str(
+                    maintenance_claim.get("state_dir") or ""
+                ),
+            }
+            if not self._release_implementation_task_claim(
+                task_claim_path,
+                task_claim_metadata,
+            ):
+                logger.warning(
+                    "Refusing to remove implementation task claim no "
+                    "longer owned by this maintenance deferral: %s",
                     task_claim_path,
-                    task_claim_metadata,
-                ):
-                    logger.warning(
-                        "Refusing to remove implementation task claim no "
-                        "longer owned by this maintenance deferral: %s",
-                        task_claim_path,
-                    )
-                acquired_task_claim = False
-                self._record_event("implementation_retry_deferred", result)
-                return result
+                )
+            acquired_task_claim = False
+            self._record_event("implementation_retry_deferred", result)
+            return result
 
         acquired_lock = False
         log_path = self.implementation_log_dir / f"{task.task_id.lower()}-attempt-{attempt}.log"
@@ -20305,7 +20341,7 @@ class PortalImplementationDaemon:
         lock_path: Path,
         metadata: Mapping[str, Any],
     ) -> bool:
-        """Release only the canonical-task claim owned by this attempt."""
+        """Release an owned claim unless it anchors a durable safety fence."""
 
         with serialized_lock_update(lock_path):
             existing = load_json_dict(lock_path)
@@ -20316,6 +20352,10 @@ class PortalImplementationDaemon:
                 or str(existing.get("lease_id") or "") != lease_id
             ):
                 return False
+            if implementation_task_claim_protected_fence_paths(existing):
+                # A crash snapshot or incident must remain discoverable by
+                # every sibling supervisor after this task process exits.
+                return True
             try:
                 lock_path.unlink()
             except FileNotFoundError:
