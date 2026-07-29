@@ -2431,6 +2431,7 @@ def project_objective_markdown(
 
     overlay_map: dict[str, TypedGoal] = {}
     if isinstance(typed_overlay, ObjectiveTypedGoals):
+        validate_objective_typed_goals(markdown, typed_overlay)
         overlay_map = {item.goal_id: item for item in typed_overlay.goals}
     elif isinstance(typed_overlay, Mapping):
         for key, value in typed_overlay.items():
@@ -2521,6 +2522,49 @@ class ObjectiveTypedGoals(_GoalContract):
         )
         cls._verify_claim(payload, result)
         return result
+
+
+def validate_objective_typed_goals(
+    markdown: str,
+    document: ObjectiveTypedGoals,
+) -> ObjectiveTypedGoals:
+    """Reject a typed sidecar that is stale or incomplete for ``markdown``.
+
+    The heap content identity binds the source bytes, but it does not by
+    itself prove that a decoded sidecar carries one record for every heap
+    goal. Exact coverage is required before a sidecar can feed supervisor
+    admission; otherwise a self-consistent partial document could silently
+    remove a newly refined goal from the backlog projection.
+    """
+
+    if not isinstance(markdown, str):
+        raise TypeError("markdown must be a string")
+    if not isinstance(document, ObjectiveTypedGoals):
+        raise TypeError("document must be an ObjectiveTypedGoals value")
+
+    from .objective_graph import objective_heap_content_id, parse_goal_heap
+
+    current_id = objective_heap_content_id(markdown)
+    if document.objective_heap_id != current_id:
+        raise GoalQualityError(
+            "objective typed goals sidecar is stale for the current heap"
+        )
+
+    expected_goal_ids = {goal.goal_id for goal in parse_goal_heap(markdown)}
+    document_goal_ids = {goal.goal_id for goal in document.goals}
+    if document_goal_ids != expected_goal_ids:
+        missing = sorted(expected_goal_ids - document_goal_ids)
+        unexpected = sorted(document_goal_ids - expected_goal_ids)
+        details: list[str] = []
+        if missing:
+            details.append("missing: " + ", ".join(missing))
+        if unexpected:
+            details.append("unexpected: " + ", ".join(unexpected))
+        raise GoalQualityError(
+            "objective typed goals goal coverage does not match "
+            f"the current heap ({'; '.join(details)})"
+        )
+    return document
 
 
 def migrate_objective_markdown(markdown: str) -> ObjectiveTypedGoals:
@@ -2673,5 +2717,6 @@ __all__ = [
     "project_current_objective_markdown",
     "project_objective_markdown",
     "score_goal",
+    "validate_objective_typed_goals",
     "validate_goal",
 ]

@@ -76,6 +76,7 @@ from .goal_quality import (
     lint_objective_markdown,
     lint_objective_typed_goals,
     migrate_objective_markdown,
+    validate_objective_typed_goals,
 )
 from .validation_runtime import (
     build_validation_environment,
@@ -887,13 +888,10 @@ def load_objective_typed_goals(
         raise ValueError("objective typed goals sidecar must contain an object")
     document = ObjectiveTypedGoals.from_dict(payload)
     if objective_path is not None:
-        current_id = objective_heap_content_id(
-            objective_path.read_text(encoding="utf-8")
+        validate_objective_typed_goals(
+            objective_path.read_text(encoding="utf-8"),
+            document,
         )
-        if document.objective_heap_id != current_id:
-            raise ValueError(
-                "objective typed goals sidecar is stale for the current heap"
-            )
     return document
 
 

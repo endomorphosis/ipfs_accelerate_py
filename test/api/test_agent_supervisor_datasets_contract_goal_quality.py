@@ -12,6 +12,7 @@ from ipfs_accelerate_py.agent_supervisor.goal_quality import (
     DebtSeverity,
     EvidenceAuthority,
     GoalDebtCode,
+    GoalQualityError,
     ObjectiveTypedGoals,
     PYTEST_RECEIPT_OUTPUT_SCHEMA,
     goal_from_objective_markdown,
@@ -19,6 +20,7 @@ from ipfs_accelerate_py.agent_supervisor.goal_quality import (
     lint_objective_typed_goals,
     migrate_objective_markdown,
     project_objective_markdown,
+    validate_objective_typed_goals,
 )
 from ipfs_accelerate_py.agent_supervisor.objective_graph import (
     objective_heap_content_id,
@@ -178,6 +180,71 @@ def test_typed_overlay_and_tracker_sidecar_bind_exact_heap_cid(
     objective_path.write_text(text + "\n<!-- changed -->\n", encoding="utf-8")
     with pytest.raises(ValueError, match="stale"):
         load_objective_typed_goals(sidecar_path, objective_path=objective_path)
+
+
+def test_validation_repair_child_cannot_be_dropped_from_typed_sidecar(
+    tmp_path: Path,
+) -> None:
+    text = _objective_text()
+    validation_path = (
+        "ipfs_accelerate_py/test/api/"
+        "test_agent_supervisor_datasets_contract_goal_quality.py"
+    )
+    if not any(goal.goal_id == "DSCON-G733" for goal in parse_goal_heap(text)):
+        text += f"""
+
+## DSCON-G733 Prove objective validation repair
+
+- Status: active
+- Parent: DSCON-G055
+- Goal: Prove the typed objective validation module.
+- Evidence: {validation_path}
+- Outputs: {validation_path}
+- Validation: python -m pytest -q {validation_path}
+- Acceptance: objective validation repair
+"""
+
+    heap_id = objective_heap_content_id(text)
+    document = migrate_objective_markdown(text)
+    validation_goal = document.goal_map()["DSCON-G733"]
+    assert validation_path in {
+        producer.producer_id for producer in validation_goal.evidence_producers
+    }
+    assert any(
+        validation_path in rule.command
+        for rule in validation_goal.validation_rules
+    )
+
+    # Matching the heap CID is necessary but not sufficient: a partial
+    # sidecar must not remove this refined validation goal from the
+    # supervisor-fed backlog.
+    truncated = ObjectiveTypedGoals(
+        objective_heap_id=heap_id,
+        goals=tuple(
+            goal for goal in document.goals if goal.goal_id != "DSCON-G733"
+        ),
+    )
+    objective_path = tmp_path / "objectives.md"
+    truncated_path = tmp_path / "truncated-typed-goals.json"
+    objective_path.write_text(text, encoding="utf-8")
+    truncated_path.write_text(
+        json.dumps(truncated.to_dict(), indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(
+        GoalQualityError, match=r"goal coverage.*missing: DSCON-G733"
+    ):
+        validate_objective_typed_goals(text, truncated)
+    with pytest.raises(
+        GoalQualityError, match=r"goal coverage.*missing: DSCON-G733"
+    ):
+        project_objective_markdown(text, typed_overlay=truncated)
+    with pytest.raises(
+        GoalQualityError, match=r"goal coverage.*missing: DSCON-G733"
+    ):
+        load_objective_typed_goals(
+            truncated_path, objective_path=objective_path
+        )
 
 
 def test_launcher_summary_defaults_to_structural_legacy_and_reports_debt() -> None:
