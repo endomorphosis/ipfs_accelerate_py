@@ -4487,6 +4487,41 @@ def test_implementation_daemon_defers_nested_submodule_with_missing_gitlink(
     assert deferred_event["reason"] == "gitlink_ref_unavailable"
 
 
+def test_implementation_daemon_bounds_recursive_submodule_worktree_branch_names():
+    branch = "implementation/cvesir-013-attempt-2"
+    first_relative = "/".join(
+        [
+            "ipfs_datasets_py",
+            ".tools/ipfs_kit_py",
+            "ipfs_accelerate_py",
+            "ipfs_datasets_py",
+        ]
+        * 10
+    )
+    second_relative = f"{first_relative}/different-tail"
+
+    first = TodoImplementationDaemon._submodule_worktree_branch_name(
+        branch,
+        first_relative,
+    )
+    second = TodoImplementationDaemon._submodule_worktree_branch_name(
+        branch,
+        second_relative,
+    )
+
+    assert len(first.encode("utf-8")) <= 200
+    assert len(second.encode("utf-8")) <= 200
+    assert first.startswith(f"{branch}-submodule-")
+    assert second.startswith(f"{branch}-submodule-")
+    assert first != second
+    first_digest = first.rsplit("-", 1)[-1]
+    second_digest = second.rsplit("-", 1)[-1]
+    assert len(first_digest) == 16
+    assert all(character in "0123456789abcdef" for character in first_digest)
+    assert len(second_digest) == 16
+    assert all(character in "0123456789abcdef" for character in second_digest)
+
+
 def test_implementation_daemon_creates_parent_handoff_for_submodule_only_commit(
     tmp_path: Path,
     monkeypatch,

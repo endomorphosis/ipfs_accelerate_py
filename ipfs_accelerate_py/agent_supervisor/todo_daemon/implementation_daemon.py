@@ -9849,8 +9849,35 @@ class PortalImplementationDaemon:
 
     @staticmethod
     def _submodule_worktree_branch_name(branch_name: str, relative: str) -> str:
-        safe_relative = relative.strip("/").replace("/", "-")
-        return f"{branch_name}-submodule-{safe_relative}"
+        safe_relative = "".join(
+            character
+            if character.isalnum() or character in "-._"
+            else "-"
+            for character in relative.strip("/")
+        ).strip("-.")
+        safe_relative = safe_relative or "dependency"
+        prefix = f"{branch_name}-submodule-"
+        candidate = f"{prefix}{safe_relative}"
+        # Git stores the final ref component as a filesystem name. Recursive
+        # repository paths can otherwise exceed NAME_MAX even when the full
+        # ref is syntactically valid. Preserve readable short names and bind
+        # truncated names to the complete relative path with a stable digest.
+        max_bytes = 200
+        if len(candidate.encode("utf-8")) <= max_bytes:
+            return candidate
+        digest = hashlib.sha256(relative.encode("utf-8")).hexdigest()[:16]
+        suffix = f"-{digest}"
+        available = max_bytes - len(prefix.encode("utf-8")) - len(
+            suffix.encode("utf-8")
+        )
+        if available < 16:
+            branch_digest = hashlib.sha256(branch_name.encode("utf-8")).hexdigest()[:16]
+            return f"implementation/submodule-{branch_digest}-{digest}"
+        bounded_relative = safe_relative.encode("utf-8")[:available].decode(
+            "utf-8",
+            errors="ignore",
+        ).rstrip("-.")
+        return f"{prefix}{bounded_relative}{suffix}"
 
     def _is_git_worktree(self, path: Path) -> bool:
         if not path.exists() or path.is_symlink():
