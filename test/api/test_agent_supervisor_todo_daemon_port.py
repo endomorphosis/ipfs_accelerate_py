@@ -9818,6 +9818,54 @@ def test_implementation_supervisor_configures_worker_stall_watchdog(tmp_path):
     )
 
 
+def test_implementation_supervisor_propagates_source_checkout_pythonpath(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    monkeypatch.setenv("PYTHONPATH", "/existing-pythonpath")
+    config = TodoSupervisorConfig(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        state_dir=state_dir,
+        repo_root=repo,
+    )
+
+    loop_config = TodoImplementationSupervisor(
+        config
+    ).build_supervisor_loop_config()
+    pythonpath = loop_config.child_env["PYTHONPATH"].split(os.pathsep)
+    source_root = str(
+        Path(todo_supervisor_module.__file__).resolve().parents[3]
+    )
+
+    assert pythonpath[0] == source_root
+    assert "/existing-pythonpath" in pythonpath
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            (
+                "from ipfs_accelerate_py.agent_supervisor.todo_daemon "
+                "import implementation_daemon"
+            ),
+        ],
+        cwd=repo,
+        env={
+            "PYTHONNOUSERSITE": "1",
+            "PYTHONPATH": loop_config.child_env["PYTHONPATH"],
+        },
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert completed.returncode == 0, completed.stderr
+
+
 def test_implementation_supervisor_allows_startup_grace_override(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()

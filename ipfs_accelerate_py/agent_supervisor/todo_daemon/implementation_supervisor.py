@@ -92,6 +92,31 @@ DEFAULT_WORKTREE_SCAN_CACHE_TTL_SECONDS = float(
 )
 
 
+def _managed_daemon_child_environment() -> dict[str, str]:
+    """Keep a source-checkout supervisor's daemon on the same package code."""
+
+    entries: list[str] = []
+    source_root = Path(__file__).resolve().parents[3]
+    if (source_root / "ipfs_accelerate_py").is_dir():
+        entries.append(str(source_root))
+    for raw_entry in sys.path:
+        if not raw_entry:
+            continue
+        try:
+            candidate = Path(raw_entry).resolve()
+        except OSError:
+            continue
+        if (candidate / "ipfs_accelerate_py").is_dir():
+            entries.append(str(candidate))
+    entries.extend(
+        entry
+        for entry in os.environ.get("PYTHONPATH", "").split(os.pathsep)
+        if entry
+    )
+    pythonpath = os.pathsep.join(dict.fromkeys(entries))
+    return {"PYTHONPATH": pythonpath} if pythonpath else {}
+
+
 class ObjectiveRefillTimeoutError(TimeoutError):
     """Raised when supervisor-owned objective refill exceeds its local budget."""
 
@@ -1918,6 +1943,7 @@ class PortalImplementationSupervisor:
         return SupervisorLoopConfig(
             spec=spec,
             command=command,
+            child_env=_managed_daemon_child_environment(),
             log_prefix=f"{prefix}_implementation_daemon",
             restart_policy=RestartPolicy(
                 restart_backoff_seconds=max(0.0, float(self.config.check_interval)),
@@ -6966,7 +6992,14 @@ class PortalImplementationSupervisor:
     def _start_daemon(self) -> subprocess.Popen[str]:
         self.ensure_managed_daemon_pid_file()
         command = self._build_daemon_command()
-        process = subprocess.Popen(command, cwd=self.config.repo_root, text=True)
+        child_env = dict(os.environ)
+        child_env.update(_managed_daemon_child_environment())
+        process = subprocess.Popen(
+            command,
+            cwd=self.config.repo_root,
+            env=child_env,
+            text=True,
+        )
         write_text_atomic(self._managed_daemon_pid_path(), f"{process.pid}\n")
         return process
 
