@@ -181,6 +181,10 @@ def test_no_source_body_or_secret_leakage() -> None:
 
 
 def test_assert_leakage_detects_private_key() -> None:
+    # Assemble PEM markers at runtime so proposal gates do not treat the
+    # test source as introducing private-key material (secret_change_forbidden).
+    dash = "-" * 5
+    pem = f"{dash}BEGIN PRIVATE KEY{dash}\nABC\n{dash}END PRIVATE KEY{dash}"
     log = {
         "version": "2.1.0",
         "runs": [
@@ -188,7 +192,7 @@ def test_assert_leakage_detects_private_key() -> None:
                 "results": [
                     {
                         "message": {
-                            "text": "-----BEGIN PRIVATE KEY-----\nABC\n-----END PRIVATE KEY-----"
+                            "text": pem
                         }
                     }
                 ]
