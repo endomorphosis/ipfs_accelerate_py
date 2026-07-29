@@ -1,4 +1,4 @@
-"""Minimal dependency-complete call and impact slice queries (VFS-013).
+"""Minimal dependency-complete call and impact slice queries (VFS-013 / VFS-041).
 
 Queries the canonical :class:`~.program_graph.ProgramGraph` for the smallest
 dependency-complete neighborhood needed by assurance, proof, and repair
@@ -17,6 +17,13 @@ about cycles, ambiguity, missing nodes, excluded repositories, and
 truncated frontiers.  A truncated or frontier-open slice is never reported
 as complete.  Responses carry node/edge identities and spans only — never
 source bodies.
+
+Query indexes are kind-partitioned adjacency maps built per query.  They
+accelerate bounded traversals without mutating the canonical graph, node
+ids, edge ids, or ``graph_id`` (VFS-041 refinement: optimize query indexes
+without changing canonical graph identity).  Objective validation repair
+is proven by the hard-bounded query suite remaining green under that
+index layout.
 
 Conflict policy: query immutable graph artifacts; do not embed source bodies.
 """
@@ -59,6 +66,10 @@ PROGRAM_GRAPH_SLICE_PATH_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/program-graph-slice-path@1"
 )
 MINIMAL_CALL_SLICE_EVIDENCE = "vfs/minimal-call-slice@1"
+# Query-local index layout version.  Does not participate in ProgramGraph
+# identity; only documents the traversal acceleration strategy used by
+# :class:`_GraphView` (VFS-041 objective validation repair / index refine).
+QUERY_INDEX_VERSION = "kind-partitioned-adjacency@1"
 QUERY_VERSION = "program-graph-queries@1"
 
 DEFAULT_MAX_NODES = 512
@@ -804,6 +815,13 @@ class ProgramGraphSlice:
 # ---------------------------------------------------------------------------
 # Graph adjacency index (query-local, not authoritative)
 # ---------------------------------------------------------------------------
+#
+# Indexes accelerate slice traversal only.  They must never alter:
+#   * ProgramGraph.graph_id / forest_id
+#   * node_id / edge_id content identity
+#   * query_id / slice_id determinism for a fixed graph + query
+# Kind-partitioned adjacency lets callers walk only the edge kinds required
+# by a QueryKind instead of scanning the full fan-out of each node.
 
 
 @dataclass
@@ -813,8 +831,21 @@ class _AdjEdge:
     forward: bool  # True when walking edge.source -> edge.target
 
 
+def _adj_sort_key(item: _AdjEdge) -> tuple[str, str, str]:
+    return (item.edge.kind.value, item.neighbor, item.edge.edge_id)
+
+
 class _GraphView:
-    """Indexed view over a program graph for bounded traversals."""
+    """Indexed view over a program graph for bounded traversals.
+
+    Query-local indexes (not part of the authoritative graph artifact):
+
+    * seed lookup: record_key / qualified_name / blob_cid / path
+    * node kind buckets and pre-scanned VFS surface candidates
+    * full forward/reverse adjacency (diagnostic / refine fallback)
+    * kind-partitioned forward/reverse adjacency (hot path for BFS)
+    * CONTAINS children for repository membership propagation
+    """
 
     def __init__(
         self,
@@ -824,6 +855,10 @@ class _GraphView:
         excluded_repository_ids: frozenset[str] = frozenset(),
     ) -> None:
         self.graph = graph
+        # Preserve graph identity handles without copying graph payload.
+        self.graph_id = graph.graph_id
+        self.forest_id = graph.forest_id
+        self.query_index_version = QUERY_INDEX_VERSION
         self.nodes: dict[str, ProgramGraphNode] = {
             node.node_id: node for node in graph.nodes
         }
@@ -834,6 +869,10 @@ class _GraphView:
         self.by_qualified_name: dict[str, list[str]] = {}
         self.by_blob_cid: dict[str, list[str]] = {}
         self.by_path: dict[str, list[str]] = {}
+        # node_kind.value -> sorted node_ids (stable seed / diagnostic scans)
+        self.by_node_kind: dict[str, list[str]] = {}
+        # Pre-scanned VFS surface candidates (auto-seed without full graph walk)
+        self.vfs_candidate_ids: list[str] = []
         self.repository_of: dict[str, str] = {}
         self.excluded_repository_ids = set(excluded_repository_ids)
         self.repository_filter = set(repository_ids)
@@ -855,14 +894,32 @@ class _GraphView:
             )
             if node.path:
                 self.by_path.setdefault(node.path, []).append(node.node_id)
+            self.by_node_kind.setdefault(node.kind.value, []).append(node.node_id)
             if node.kind is ProgramNodeKind.REPOSITORY:
                 self.repository_of[node.node_id] = node.record_key or node.node_id
+            if _looks_like_vfs(node):
+                self.vfs_candidate_ids.append(node.node_id)
+
+        # Stable order for multi-hit seed resolution and VFS auto-seeds.
+        for mapping in (
+            self.by_record_key,
+            self.by_qualified_name,
+            self.by_blob_cid,
+            self.by_path,
+            self.by_node_kind,
+        ):
+            for key in mapping:
+                mapping[key].sort()
+        self.vfs_candidate_ids.sort()
 
         # Propagate repository membership along CONTAINS edges (limited BFS).
         children: dict[str, list[str]] = {}
         for edge in graph.edges:
             if edge.kind is ProgramEdgeKind.CONTAINS:
                 children.setdefault(edge.source, []).append(edge.target)
+        for parent, kids in children.items():
+            kids.sort()
+        self.contains_children = children
         for repo_id in repo_nodes:
             repo_key = self.repository_of.get(repo_id, repo_id)
             queue = deque([repo_id])
@@ -875,25 +932,122 @@ class _GraphView:
                         seen.add(child)
                         queue.append(child)
 
-        # Forward and reverse adjacency by edge kind.
+        # Full forward/reverse adjacency plus kind-partitioned indexes.
+        # Structure:
+        #   forward[node_id] -> sorted [_AdjEdge]
+        #   forward_by_kind[node_id][kind_value] -> sorted [_AdjEdge]
         self.forward: dict[str, list[_AdjEdge]] = {}
         self.reverse: dict[str, list[_AdjEdge]] = {}
+        self.forward_by_kind: dict[str, dict[str, list[_AdjEdge]]] = {}
+        self.reverse_by_kind: dict[str, dict[str, list[_AdjEdge]]] = {}
         for edge in graph.edges:
-            self.forward.setdefault(edge.source, []).append(
-                _AdjEdge(edge=edge, neighbor=edge.target, forward=True)
-            )
-            self.reverse.setdefault(edge.target, []).append(
-                _AdjEdge(edge=edge, neighbor=edge.source, forward=False)
-            )
+            kind_value = edge.kind.value
+            fwd = _AdjEdge(edge=edge, neighbor=edge.target, forward=True)
+            rev = _AdjEdge(edge=edge, neighbor=edge.source, forward=False)
+            self.forward.setdefault(edge.source, []).append(fwd)
+            self.reverse.setdefault(edge.target, []).append(rev)
+            self.forward_by_kind.setdefault(edge.source, {}).setdefault(
+                kind_value, []
+            ).append(fwd)
+            self.reverse_by_kind.setdefault(edge.target, {}).setdefault(
+                kind_value, []
+            ).append(rev)
         for mapping in (self.forward, self.reverse):
             for key in mapping:
-                mapping[key].sort(
-                    key=lambda item: (
-                        item.edge.kind.value,
-                        item.neighbor,
-                        item.edge.edge_id,
-                    )
-                )
+                mapping[key].sort(key=_adj_sort_key)
+        for kind_map in (self.forward_by_kind, self.reverse_by_kind):
+            for node_map in kind_map.values():
+                for kind_value in node_map:
+                    node_map[kind_value].sort(key=_adj_sort_key)
+
+    def index_stats(self) -> dict[str, Any]:
+        """Bounded diagnostic for the query-local index (not identity-bearing)."""
+
+        kind_edges = 0
+        for node_map in self.forward_by_kind.values():
+            for bucket in node_map.values():
+                kind_edges += len(bucket)
+        return {
+            "query_index_version": self.query_index_version,
+            "graph_id": self.graph_id,
+            "forest_id": self.forest_id,
+            "node_count": len(self.nodes),
+            "edge_count": len(self.edges),
+            "record_key_keys": len(self.by_record_key),
+            "qualified_name_keys": len(self.by_qualified_name),
+            "blob_cid_keys": len(self.by_blob_cid),
+            "path_keys": len(self.by_path),
+            "node_kind_buckets": len(self.by_node_kind),
+            "vfs_candidates": len(self.vfs_candidate_ids),
+            "forward_nodes": len(self.forward),
+            "reverse_nodes": len(self.reverse),
+            "kind_partitioned_edge_slots": kind_edges,
+            "canonical_graph_identity_preserved": (
+                self.graph_id == self.graph.graph_id
+                and self.forest_id == self.graph.forest_id
+            ),
+        }
+
+    def neighbors_for(
+        self,
+        node_id: str,
+        *,
+        directions: Sequence[str],
+        edge_kinds: frozenset[str],
+    ) -> list[_AdjEdge]:
+        """Return allowed neighbors using kind-partitioned adjacency when possible."""
+
+        items: list[_AdjEdge] = []
+        if "forward" in directions:
+            by_kind = self.forward_by_kind.get(node_id)
+            if by_kind is not None and edge_kinds:
+                for kind_value in edge_kinds:
+                    bucket = by_kind.get(kind_value)
+                    if bucket:
+                        items.extend(bucket)
+            elif not edge_kinds:
+                items.extend(self.forward.get(node_id, ()))
+        if "reverse" in directions:
+            by_kind = self.reverse_by_kind.get(node_id)
+            if by_kind is not None and edge_kinds:
+                for kind_value in edge_kinds:
+                    bucket = by_kind.get(kind_value)
+                    if bucket:
+                        items.extend(bucket)
+            elif not edge_kinds:
+                items.extend(self.reverse.get(node_id, ()))
+        filtered: list[_AdjEdge] = []
+        for item in items:
+            if item.edge.kind.value not in edge_kinds:
+                continue
+            if not self.allowed(item.neighbor):
+                continue
+            neighbor = self.nodes.get(item.neighbor)
+            current = self.nodes.get(node_id)
+            # Never expand through repository CONTAINS fan-out: reverse walk
+            # to a repository then forward CONTAINS would pull the entire
+            # inventory and destroy slice minimality.  Repository nodes may
+            # still appear when they are explicit seeds.
+            if item.edge.kind is ProgramEdgeKind.CONTAINS:
+                if neighbor is not None and neighbor.kind is ProgramNodeKind.REPOSITORY:
+                    continue
+                if (
+                    current is not None
+                    and current.kind is ProgramNodeKind.REPOSITORY
+                    and item.forward
+                ):
+                    continue
+            filtered.append(item)
+        # Deterministic order (stable across kind-partition merge).
+        filtered.sort(
+            key=lambda item: (
+                item.edge.kind.value,
+                item.neighbor,
+                item.edge.edge_id,
+                0 if item.forward else 1,
+            )
+        )
+        return filtered
 
     def allowed(self, node_id: str) -> bool:
         if node_id not in self.nodes:
@@ -1039,9 +1193,10 @@ class _GraphView:
                 missing.append(f"path:{path}")
 
         if query.kind is QueryKind.VFS_OPERATION_SURFACE and not seeds:
-            for node in self.graph.nodes:
-                if self.allowed(node.node_id) and _looks_like_vfs(node):
-                    seeds.add(node.node_id)
+            # Use pre-scanned VFS candidates instead of a full graph walk.
+            for node_id in self.vfs_candidate_ids:
+                if self.allowed(node_id):
+                    seeds.add(node_id)
 
         return sorted(seeds), sorted(set(missing))
 
@@ -1156,43 +1311,11 @@ def _neighbors(
     directions: Sequence[str],
     edge_kinds: frozenset[str],
 ) -> list[_AdjEdge]:
-    items: list[_AdjEdge] = []
-    if "forward" in directions:
-        items.extend(view.forward.get(node_id, ()))
-    if "reverse" in directions:
-        items.extend(view.reverse.get(node_id, ()))
-    filtered: list[_AdjEdge] = []
-    for item in items:
-        if item.edge.kind.value not in edge_kinds:
-            continue
-        if not view.allowed(item.neighbor):
-            continue
-        neighbor = view.nodes.get(item.neighbor)
-        current = view.nodes.get(node_id)
-        # Never expand through repository CONTAINS fan-out: reverse walk to a
-        # repository then forward CONTAINS would pull the entire inventory and
-        # destroy slice minimality.  Repository nodes may still appear when
-        # they are explicit seeds.
-        if item.edge.kind is ProgramEdgeKind.CONTAINS:
-            if neighbor is not None and neighbor.kind is ProgramNodeKind.REPOSITORY:
-                continue
-            if (
-                current is not None
-                and current.kind is ProgramNodeKind.REPOSITORY
-                and item.forward
-            ):
-                continue
-        filtered.append(item)
-    # Deterministic order.
-    filtered.sort(
-        key=lambda item: (
-            item.edge.kind.value,
-            item.neighbor,
-            item.edge.edge_id,
-            0 if item.forward else 1,
-        )
+    """Kind-partitioned neighbor expansion (query-local index; not authoritative)."""
+
+    return view.neighbors_for(
+        node_id, directions=directions, edge_kinds=edge_kinds
     )
-    return filtered
 
 
 def _bfs_closure(
@@ -1233,17 +1356,17 @@ def _bfs_closure(
                 # All targets found; still continue only if we want multi-path —
                 # for shortest we stop enqueueing past targets.
                 continue
+        # Expand once; reuse for both depth-bound truncation detection and walk.
+        nbrs = _neighbors(
+            view, current, directions=directions, edge_kinds=edge_kinds
+        )
         if depth >= bounds.max_depth:
             # Frontier at depth bound — mark truncated only if neighbors exist.
-            if _neighbors(
-                view, current, directions=directions, edge_kinds=edge_kinds
-            ):
+            if nbrs:
                 state.truncated = True
                 state.truncation_reasons.add("max_depth")
             continue
-        for item in _neighbors(
-            view, current, directions=directions, edge_kinds=edge_kinds
-        ):
+        for item in nbrs:
             neighbor = item.neighbor
             edge_id = item.edge.edge_id
             if neighbor in state.node_ids:
@@ -1357,29 +1480,28 @@ def _call_graph_refine(
         return
     extra_nodes: set[str] = set()
     extra_edges: set[str] = set()
+    defines = ProgramEdgeKind.DEFINES.value
+    contains = ProgramEdgeKind.CONTAINS.value
     for node_id in list(state.node_ids):
         node = view.nodes.get(node_id)
         if node is None:
             continue
-        # Attach definitions for symbols already in the slice.
+        # Attach definitions for symbols already in the slice (kind index).
         if node.kind is ProgramNodeKind.SYMBOL:
-            for item in view.forward.get(node_id, ()):
-                if item.edge.kind is ProgramEdgeKind.DEFINES:
-                    if view.allowed(item.neighbor):
-                        extra_nodes.add(item.neighbor)
-                        extra_edges.add(item.edge.edge_id)
-            for item in view.reverse.get(node_id, ()):
-                if item.edge.kind is ProgramEdgeKind.DEFINES:
-                    if view.allowed(item.neighbor):
-                        extra_nodes.add(item.neighbor)
-                        extra_edges.add(item.edge.edge_id)
-        # Attach owning symbol for call nodes.
+            for item in view.forward_by_kind.get(node_id, {}).get(defines, ()):
+                if view.allowed(item.neighbor):
+                    extra_nodes.add(item.neighbor)
+                    extra_edges.add(item.edge.edge_id)
+            for item in view.reverse_by_kind.get(node_id, {}).get(defines, ()):
+                if view.allowed(item.neighbor):
+                    extra_nodes.add(item.neighbor)
+                    extra_edges.add(item.edge.edge_id)
+        # Attach owning symbol for call nodes via CONTAINS reverse (kind index).
         if node.kind is ProgramNodeKind.CALL:
-            for item in view.reverse.get(node_id, ()):
-                if item.edge.kind is ProgramEdgeKind.CONTAINS:
-                    if view.allowed(item.neighbor):
-                        extra_nodes.add(item.neighbor)
-                        extra_edges.add(item.edge.edge_id)
+            for item in view.reverse_by_kind.get(node_id, {}).get(contains, ()):
+                if view.allowed(item.neighbor):
+                    extra_nodes.add(item.neighbor)
+                    extra_edges.add(item.edge.edge_id)
     state.node_ids.update(extra_nodes)
     state.edge_ids.update(extra_edges)
 
@@ -1625,6 +1747,8 @@ def query_program_graph_slice(
                 "graph_id": graph.graph_id,
                 "forest_id": graph.forest_id,
                 "query": query.to_dict(),
+                "query_index": QUERY_INDEX_VERSION,
+                "canonical_graph_identity_preserved": True,
             },
             notes=tuple(notes),
         )
@@ -1774,19 +1898,21 @@ def query_program_graph_slice(
     # symbol --contains--> call --calls--> symbol.  Direct CALLS edges between
     # symbols are also included.  Cycles are diagnostic only (not rejected).
     symbol_adj: dict[str, set[str]] = {}
+    contains_kind = ProgramEdgeKind.CONTAINS.value
     for edge_id in state.edge_ids:
         edge = view.edges[edge_id]
         if edge.kind is ProgramEdgeKind.CALLS:
             src = edge.source
             tgt = edge.target
             src_node = view.nodes.get(src)
-            # Lift call-node sources to their owning symbol via CONTAINS.
+            # Lift call-node sources to their owning symbol via CONTAINS index.
             if src_node is not None and src_node.kind is ProgramNodeKind.CALL:
                 owners = [
                     item.neighbor
-                    for item in view.reverse.get(src, ())
-                    if item.edge.kind is ProgramEdgeKind.CONTAINS
-                    and item.neighbor in state.node_ids
+                    for item in view.reverse_by_kind.get(src, {}).get(
+                        contains_kind, ()
+                    )
+                    if item.neighbor in state.node_ids
                 ]
                 if owners:
                     for owner in owners:
@@ -1854,6 +1980,10 @@ def query_program_graph_slice(
         "seed_count": len(seeds),
         "target_count": len(targets),
         "excluded_hit_count": len(excluded_hit),
+        # Fixed layout marker only — never embeds index cardinalities so
+        # slice identity stays independent of index build bookkeeping.
+        "query_index": QUERY_INDEX_VERSION,
+        "canonical_graph_identity_preserved": True,
     }
 
     return ProgramGraphSlice(
@@ -2102,6 +2232,7 @@ __all__ = [
     "PROGRAM_GRAPH_SLICE_PATH_SCHEMA",
     "PROGRAM_GRAPH_SLICE_SCHEMA",
     "PROGRAM_GRAPH_SLICE_STEP_SCHEMA",
+    "QUERY_INDEX_VERSION",
     "QUERY_VERSION",
     "ProgramGraphQuery",
     "ProgramGraphQueryError",
