@@ -1144,6 +1144,107 @@ class WorktreeLifecycleStore:
             _atomic_write_json(record_path, updated.to_dict())
             return updated
 
+    def reclaim_dead_owner_for_controlled_restart(
+        self,
+        workspace: str | Path,
+        *,
+        expected_state_dir: str | Path,
+        reclaimer_lease_id: str = "",
+        reclaimer: ProcessBirthIdentity | None = None,
+        reason: str = "controlled_restart_dead_owner",
+        now: float | None = None,
+    ) -> WorkspaceLifecycleRecord | None:
+        """Fence a dead same-lane owner during an explicit controlled restart.
+
+        Normal cleanup remains lease-expiry gated.  This recovery path is for
+        an operator-controlled daemon restart and fails closed unless the
+        record belongs to this repository and exact lane state directory and
+        the prior process-birth identity is provably dead.
+        """
+
+        expected_state = normalize_workspace_path(expected_state_dir)
+        if not expected_state:
+            return None
+        expected_repo = normalize_workspace_path(self.repo_root)
+        clock_now = float(self.clock() if now is None else now)
+        record_path = self.workspace_path_for(workspace)
+        with serialized_lock_update(record_path):
+            current = self.load_workspace(workspace)
+            if current is None or current.is_terminal:
+                return None
+            if (
+                not current.repo_root
+                or normalize_workspace_path(current.repo_root) != expected_repo
+            ):
+                return None
+            if (
+                not current.state_dir
+                or normalize_workspace_path(current.state_dir) != expected_state
+            ):
+                return None
+            if (
+                owner_liveness(current.owner, proc_root=self.proc_root)
+                is not OwnerLiveness.DEAD
+            ):
+                return None
+            updated = replace(
+                current,
+                state=WorkspaceLifecycleState.TERMINAL,
+                owner=reclaimer or current_process_birth(proc_root=self.proc_root),
+                lease_id=(
+                    reclaimer_lease_id
+                    or new_lease_id(seed="controlled-restart-reclaim")
+                ),
+                fence=int(current.fence) + 1,
+                updated_at=clock_now,
+                expires_at=clock_now,
+                terminal_reason=str(reason or "controlled_restart_dead_owner"),
+            )
+            _atomic_write_json(record_path, updated.to_dict())
+            index_path = self.task_index_path_for(
+                canonical_task_cid=updated.canonical_task_cid,
+                task_id=updated.task_id,
+                attempt=updated.attempt,
+            )
+            _atomic_write_json(
+                index_path,
+                {
+                    "schema": WORKTREE_LIFECYCLE_SCHEMA,
+                    "workspace_path": updated.workspace_path,
+                    "record_id": updated.record_id,
+                    "task_id": updated.task_id,
+                    "canonical_task_cid": updated.canonical_task_cid,
+                    "attempt": updated.attempt,
+                    "fence": updated.fence,
+                    "lease_id": updated.lease_id,
+                    "state": updated.state.value,
+                },
+            )
+            return updated
+
+    def reclaim_dead_owners_for_controlled_restart(
+        self,
+        *,
+        expected_state_dir: str | Path,
+        reclaimer_lease_id: str = "",
+        reason: str = "controlled_restart_dead_owner",
+    ) -> list[WorkspaceLifecycleRecord]:
+        """Fence all provably dead records owned by one restarted lane."""
+
+        recovered: list[WorkspaceLifecycleRecord] = []
+        for record in list(self.iter_records()):
+            if record.is_terminal:
+                continue
+            updated = self.reclaim_dead_owner_for_controlled_restart(
+                record.workspace_path,
+                expected_state_dir=expected_state_dir,
+                reclaimer_lease_id=reclaimer_lease_id,
+                reason=reason,
+            )
+            if updated is not None:
+                recovered.append(updated)
+        return recovered
+
     def compare_and_delete(
         self,
         workspace: str | Path,
