@@ -596,6 +596,48 @@ def _pcm16_acoustic_ratios(
     )
 
 
+def _pcm16_trailing_silence_ms(
+    pcm: bytes,
+    *,
+    channels: int,
+    sample_rate: int,
+    policy: ArtifactPolicy,
+) -> int:
+    """Return the contiguous silent PCM16 suffix duration in milliseconds.
+
+    Silence is evaluated per interleaved frame: every channel in a frame must
+    be at or below the configured peak threshold.  The ceiling conversion is
+    consistent with the WAV duration metric and preserves sub-millisecond
+    suffixes as a measurable millisecond.
+    """
+
+    frame_bytes = channels * 2
+    if channels <= 0 or sample_rate <= 0 or len(pcm) % frame_bytes:
+        raise VoiceJobExecutionError("audio_decode_failed")
+    max_amplitude = (1 << 15) - 1
+    silence_limit = (
+        max_amplitude * policy.silence_peak_threshold_bp
+    ) // _BASIS_POINT_SCALE
+    trailing_frames = 0
+    for frame_offset in range(len(pcm) - frame_bytes, -1, -frame_bytes):
+        frame_is_silent = True
+        for channel_offset in range(frame_offset, frame_offset + frame_bytes, 2):
+            magnitude = abs(
+                int.from_bytes(
+                    pcm[channel_offset : channel_offset + 2],
+                    "little",
+                    signed=True,
+                )
+            )
+            if magnitude > silence_limit:
+                frame_is_silent = False
+                break
+        if not frame_is_silent:
+            break
+        trailing_frames += 1
+    return (trailing_frames * 1000 + sample_rate - 1) // sample_rate
+
+
 def _inspect_decoded_pcm_wav(
     data: bytes,
     policy: ArtifactPolicy,
@@ -628,6 +670,12 @@ def _inspect_decoded_pcm_wav(
         pcm,
         policy=policy,
     )
+    trailing_silence_ms = _pcm16_trailing_silence_ms(
+        pcm,
+        channels=channels,
+        sample_rate=sample_rate,
+        policy=policy,
+    )
     return {
         "channels": channels,
         "sample_rate_hz": sample_rate,
@@ -636,6 +684,7 @@ def _inspect_decoded_pcm_wav(
         "decoded_bytes": decoded_bytes,
         "silence_ratio_bp": silence_ratio_bp,
         "clipping_ratio_bp": clipping_ratio_bp,
+        "trailing_silence_ms": trailing_silence_ms,
     }
 
 

@@ -413,6 +413,7 @@ def test_audio_validation_decodes_wav_and_enforces_job_duration_policy(
     # WAV paths must emit acoustic ratios (silent fixture => 100% silence).
     assert metrics["silence_ratio_bp"] == 10_000
     assert metrics["clipping_ratio_bp"] == 0
+    assert metrics["trailing_silence_ms"] == 250
     assert VoiceJobResult.from_payload(result).to_payload() == result
 
     with pytest.raises(
@@ -482,8 +483,47 @@ def test_audio_validation_decodes_non_wav_and_emits_acoustic_metrics(
         "decoded_bytes": 8,
         "silence_ratio_bp": 2_500,
         "clipping_ratio_bp": 2_500,
+        "trailing_silence_ms": 0,
     }
     assert VoiceJobResult.from_payload(result).to_payload() == result
+
+
+@pytest.mark.parametrize(
+    ("samples", "channels", "expected_trailing_silence_ms"),
+    [
+        ((1_000, 0, 0), 1, 2),
+        ((0, 0, 1_000), 1, 0),
+        ((0, 0, 0, 1_000, 0, 0, 0, 0), 2, 2),
+    ],
+    ids=("nonzero-suffix", "non-silent-ending", "multichannel-frame"),
+)
+def test_audio_validation_emits_contiguous_trailing_silence(
+    tmp_path: Path,
+    samples: tuple[int, ...],
+    channels: int,
+    expected_trailing_silence_ms: int,
+) -> None:
+    audio = _pcm16_wav_bytes(
+        samples,
+        sample_rate=1_000,
+        channels=channels,
+    )
+    descriptor = _external_audio_descriptor(audio, name="trailing-silence.wav")
+    resolver = _resolver(tmp_path, fetcher=lambda uri, limit: audio)
+
+    result = execute_voice_audio_validation_job(
+        VoiceAudioValidationJob(
+            model_name="fixture-quality",
+            lineage=_lineage(),
+            source_audio=descriptor,
+        ),
+        resolver=resolver,
+    )
+
+    assert (
+        result["quality_metrics"]["trailing_silence_ms"]
+        == expected_trailing_silence_ms
+    )
 
 
 def test_non_wav_ffmpeg_decoder_is_shell_free_and_bounded(
