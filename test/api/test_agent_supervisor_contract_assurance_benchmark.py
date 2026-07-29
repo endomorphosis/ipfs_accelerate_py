@@ -88,10 +88,26 @@ OPERATION = "repo.inspect"
 PACKET_PATH = (
     "external/ipfs_accelerate/ipfs_accelerate_py/mcp/dispatch.py"
 )
-REPOSITORY_ROOT = Path(__file__).resolve().parents[4]
+
+
+def _swissknife_superproject_root() -> Path | None:
+    candidates = (Path.cwd().resolve(), *Path(__file__).resolve().parents)
+    for candidate in candidates:
+        if (
+            candidate / "config/swissknife_symbolic_contract_scope.json"
+        ).is_file():
+            return candidate
+    return None
+
+
+REPOSITORY_ROOT = _swissknife_superproject_root()
 PUBLISHED_REPORT = (
-    REPOSITORY_ROOT
+    (REPOSITORY_ROOT or Path("/__missing_swissknife_superproject__"))
     / "data/agent_supervisor/swissknife_contract_assurance/benchmarks/report.json"
+)
+requires_published_swissknife_evidence = pytest.mark.skipif(
+    REPOSITORY_ROOT is None,
+    reason="published evidence requires a Swissknife superproject checkout",
 )
 CHECKPOINT_ENV = "IPFS_ACCELERATE_AGENT_TASK_CHECKPOINT_DIR"
 DEFAULT_CHECKPOINT_DIR = (
@@ -1159,6 +1175,7 @@ def test_safety_gates_pass_and_report_identity_is_sealed(
     assert not verify_benchmark_report(tampered)
 
 
+@requires_published_swissknife_evidence
 def test_published_report_matches_the_executed_benchmark(
     benchmark_report: dict[str, Any],
 ) -> None:
