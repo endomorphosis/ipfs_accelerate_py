@@ -677,6 +677,7 @@ DEFAULT_SURPLUS_MIN_TERMS_PER_TODO = int(
 DEFAULT_SCAN_OVERSAMPLE_MULTIPLIER = int(
     os.environ.get("IPFS_ACCELERATE_AGENT_OBJECTIVE_SCAN_OVERSAMPLE_MULTIPLIER", "2")
 )
+OBJECTIVE_EVIDENCE_REPROJECTION_SWEEP_LIMIT = 64
 DEFAULT_TASK_PREFIX = "AUTO-"
 DEFAULT_TASK_HEADER_PREFIX = f"## {DEFAULT_TASK_PREFIX}"
 OBJECTIVE_SCAN_ANALYZER_VERSION = "objective-gap-analyzer/v1"
@@ -8072,6 +8073,7 @@ def add_goal_packet_aggregate_findings(
     *,
     max_findings: int,
     seen_fingerprints: Iterable[str] = (),
+    retain_fingerprints: Iterable[str] = (),
     summary_prefix: str = DEFAULT_OBJECTIVE_TASK_SUMMARY_PREFIX,
 ) -> list[ObjectiveFinding]:
     """Add larger packet-level todos for related goal/subgoal findings when capacity allows."""
@@ -8081,6 +8083,9 @@ def add_goal_packet_aggregate_findings(
         return planned[:max_findings]
 
     seen = {str(item) for item in seen_fingerprints if str(item).strip()}
+    retained = {
+        str(item) for item in retain_fingerprints if str(item).strip()
+    }
     seen.update(finding.fingerprint for finding in planned)
     groups: dict[str, list[ObjectiveFinding]] = {}
     for finding in planned:
@@ -8113,7 +8118,7 @@ def add_goal_packet_aggregate_findings(
         if len(missing_terms) < 2:
             continue
         fingerprint = objective_goal_packet_aggregate_fingerprint(packet_key, sorted_group, missing_terms)
-        if fingerprint in seen:
+        if fingerprint in seen and fingerprint not in retained:
             continue
 
         anchor = sorted_group[0]
@@ -8602,6 +8607,7 @@ def scan_objective_gaps(
     max_findings: int = 10,
     seen_fingerprints: Iterable[str] = (),
     force_goal_ids: Iterable[str] = (),
+    retain_fingerprints: Iterable[str] = (),
     embedding_min_score: float = DEFAULT_EMBEDDING_MIN_SCORE,
     summary_prefix: str = DEFAULT_OBJECTIVE_TASK_SUMMARY_PREFIX,
     surplus_findings_per_goal: int = DEFAULT_SURPLUS_FINDINGS_PER_GOAL,
@@ -8624,6 +8630,17 @@ def scan_objective_gaps(
     forced_goal_ids = {
         str(item).strip() for item in force_goal_ids if str(item).strip()
     }
+    retained_fingerprints: set[str] = set()
+    for item in retain_fingerprints:
+        fingerprint = str(item).strip()
+        if not fingerprint:
+            continue
+        retained_fingerprints.add(fingerprint)
+        if (
+            len(retained_fingerprints)
+            >= OBJECTIVE_EVIDENCE_REPROJECTION_SWEEP_LIMIT
+        ):
+            break
     resolved_scan_excludes = resolve_scan_exclude_paths(
         repo_root,
         scan_exclude_paths,
@@ -8908,6 +8925,7 @@ def scan_objective_gaps(
         key=lambda goal: _objective_heap_sort_key(goal, graph),
     )
     evidence_owners = objective_evidence_owner_by_requirement(goals, graph)
+    ordinary_finding_count = 0
     for objective_heap_index, goal in enumerate(scheduled_goals):
         if goal.lifecycle_state_value == "provisionally_complete":
             # A provisional goal has left the implementation stage.  Missing
@@ -8966,7 +8984,20 @@ def scan_objective_gaps(
             if validation_gap:
                 candidate_kind = "validation_gate"
             fingerprint = objective_fingerprint(goal, candidate_missing_terms)
-            if fingerprint in seen and not forced_goal:
+            retained_finding = fingerprint in retained_fingerprints
+            if (
+                fingerprint in seen
+                and not forced_goal
+                and not retained_finding
+            ):
+                continue
+            if (
+                retained_fingerprints
+                and not retained_finding
+                and ordinary_finding_count >= candidate_limit
+            ):
+                # Exact migration nominations have dedicated bounded slots.
+                # Surplus from an earlier goal cannot consume those slots.
                 continue
             bundle_key = goal.bundle_key(candidate_missing_terms)
             obligation_key = objective_evidence_obligation_key(
@@ -9160,17 +9191,27 @@ def scan_objective_gaps(
                 external_authority_blockers=[],
             )
             findings.append(finding)
+            if not retained_finding:
+                ordinary_finding_count += 1
             if not forced_goal:
                 seen.add(fingerprint)
-            if len(findings) >= candidate_limit:
+            if (
+                not retained_fingerprints
+                and ordinary_finding_count >= candidate_limit
+            ):
                 break
-        if len(findings) >= candidate_limit:
+        if (
+            not retained_fingerprints
+            and ordinary_finding_count >= candidate_limit
+        ):
             break
     packeted_findings = assign_goal_subgoal_packets(plan_semantic_ast_bundles(findings))
+    expanded_limit = candidate_limit + len(retained_fingerprints)
     expanded_findings = add_goal_packet_aggregate_findings(
         packeted_findings,
-        max_findings=candidate_limit,
+        max_findings=expanded_limit,
         seen_fingerprints=seen_fingerprints,
+        retain_fingerprints=retained_fingerprints,
         summary_prefix=summary_prefix,
     )
     prioritized = prioritize_larger_work_surface_findings(
@@ -9190,7 +9231,17 @@ def scan_objective_gaps(
             continue
         seen_obligations.add(key)
         unique_findings.append(finding)
-    return unique_findings[:max_findings]
+    retained_findings = [
+        finding
+        for finding in unique_findings
+        if finding.fingerprint in retained_fingerprints
+    ]
+    ordinary_findings = [
+        finding
+        for finding in unique_findings
+        if finding.fingerprint not in retained_fingerprints
+    ]
+    return [*retained_findings, *ordinary_findings[:max_findings]]
 
 
 def task_ids_from_todo(todo_text: str, *, task_prefix: str = DEFAULT_TASK_PREFIX) -> list[str]:
@@ -9958,6 +10009,141 @@ def _objective_reprojection_committed(
     )
 
 
+def _objective_evidence_reprojection_sweep_scope(
+    markdown: str,
+    *,
+    task_prefix: str,
+    repo_root: Path,
+    discovery_dir: Path,
+    max_cards: int = OBJECTIVE_EVIDENCE_REPROJECTION_SWEEP_LIMIT,
+) -> tuple[tuple[str, ...], int]:
+    """Return exact fingerprints for unfinished projection migrations.
+
+    Normal refill suppresses findings whose discovery fingerprints have
+    already been seen.  That is correct for new-task generation, but legacy
+    open cards need one exact finding reconstruction before their typed
+    evidence authority can be proven.  Select only idle, generator-authored
+    cards which either lack that authority or lack the last-written discovery
+    commit marker.
+
+    This snapshot is nomination-only.  The locked migration path still proves
+    the unique obligation binding and reconstructs the prior canonical CID
+    before changing any board or artifact.
+    """
+
+    try:
+        card_limit = max(
+            0,
+            min(
+                int(max_cards),
+                OBJECTIVE_EVIDENCE_REPROJECTION_SWEEP_LIMIT,
+            ),
+        )
+    except (TypeError, ValueError):
+        card_limit = 0
+    if card_limit <= 0:
+        return (), 0
+
+    fingerprints: list[str] = []
+    selected_cards = 0
+    for block in _objective_task_blocks(markdown, task_prefix=task_prefix):
+        status = (
+            str(block.one("status") or "")
+            .strip()
+            .casefold()
+            .replace("-", "_")
+            .replace(" ", "_")
+        )
+        if status not in _EVIDENCE_REPROJECTION_IDLE_STATUSES:
+            continue
+        if any(
+            not block.one(field)
+            for field in (
+                "evidence obligation key",
+                "canonical task key",
+                "canonical task cid",
+                "discovery evidence",
+                "bundle shard",
+                "candidate kind",
+            )
+        ):
+            continue
+        raw_goal_ids = split_terms(str(block.one("goal id") or ""))
+        if len(raw_goal_ids) != 1:
+            continue
+
+        discovery_path = _resolve_generated_artifact_path(
+            str(block.one("discovery evidence") or ""),
+            repo_root=repo_root,
+            artifact_root=discovery_dir,
+            require_file=True,
+        )
+        if discovery_path is None:
+            continue
+        try:
+            discovery_text = discovery_path.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        fingerprint_matches = re.findall(
+            r"^Fingerprint:[ \t]*([0-9a-f]{40})[ \t]*$",
+            discovery_text,
+            flags=re.MULTILINE,
+        )
+        if len(fingerprint_matches) != 1:
+            continue
+        fingerprint = fingerprint_matches[0]
+
+        evidence_fields = block.metadata.get(
+            EVIDENCE_OUTPUTS_METADATA_KEY,
+            (),
+        )
+        if len(evidence_fields) > 1:
+            continue
+        committed = False
+        if evidence_fields:
+            raw_outputs = split_evidence_output_values(evidence_fields[0])
+            evidence_outputs = tuple(
+                normalize_evidence_output_path(value)
+                for value in raw_outputs
+            )
+            canonical_outputs = bool(
+                raw_outputs
+                and all(evidence_outputs)
+                and len(set(evidence_outputs)) == len(evidence_outputs)
+                and all(
+                    raw == normalized
+                    for raw, normalized in zip(
+                        raw_outputs,
+                        evidence_outputs,
+                    )
+                )
+            )
+            if canonical_outputs:
+                identity = TaskIdentity(
+                    canonical_task_key=str(
+                        block.one("canonical task key") or ""
+                    ),
+                    canonical_task_cid=str(
+                        block.one("canonical task cid") or ""
+                    ),
+                    semantic_fingerprint="",
+                )
+                committed = _objective_reprojection_committed(
+                    discovery_path,
+                    identity=identity,
+                    evidence_outputs=evidence_outputs,
+                )
+        if committed:
+            continue
+
+        selected_cards += 1
+        if fingerprint not in fingerprints:
+            fingerprints.append(fingerprint)
+        if selected_cards >= card_limit:
+            break
+    return tuple(fingerprints), selected_cards
+
+
 def objective_finding_conflict_record(
     task_id: str,
     finding: ObjectiveFinding,
@@ -10635,6 +10821,9 @@ def generate_objective_todos(
     # point deals only in canonical display-ID prefixes.
     task_prefix = normalize_task_id_prefix(task_prefix)
     records: list[ObjectiveTaskRecord] = []
+    seen_fingerprints = tuple(seen_fingerprints)
+    force_goal_ids = tuple(force_goal_ids)
+    scan_exclude_paths = tuple(scan_exclude_paths)
     objective_goals = (
         parse_goal_heap(objective_path.read_text(encoding="utf-8", errors="replace"))
         if objective_path.exists()
@@ -10646,13 +10835,30 @@ def generate_objective_todos(
             trust_recorded_completion=trust_recorded_external_completion,
         )
     )
+    reprojection_findings: list[ObjectiveFinding] = []
     if precomputed_findings is None:
-        findings = scan_objective_gaps(
+        try:
+            todo_snapshot = todo_path.read_text(
+                encoding="utf-8",
+                errors="replace",
+            )
+        except OSError:
+            todo_snapshot = ""
+        reprojection_fingerprints, _sweep_card_count = (
+            _objective_evidence_reprojection_sweep_scope(
+                todo_snapshot,
+                task_prefix=task_prefix,
+                repo_root=repo_root,
+                discovery_dir=discovery_dir,
+            )
+        )
+        scanned_findings = scan_objective_gaps(
             repo_root,
             objective_path=objective_path,
             max_findings=max_findings,
             seen_fingerprints=seen_fingerprints,
             force_goal_ids=force_goal_ids,
+            retain_fingerprints=reprojection_fingerprints,
             summary_prefix=summary_prefix,
             surplus_findings_per_goal=surplus_findings_per_goal,
             surplus_min_terms_per_todo=surplus_min_terms_per_todo,
@@ -10667,37 +10873,77 @@ def generate_objective_todos(
                 trust_recorded_external_completion
             ),
         )
+        reprojection_fingerprint_set = set(reprojection_fingerprints)
+        findings = [
+            finding
+            for finding in scanned_findings
+            if finding.fingerprint not in reprojection_fingerprint_set
+        ]
+        reprojection_findings = [
+            finding
+            for finding in scanned_findings
+            if finding.fingerprint in reprojection_fingerprint_set
+        ]
     else:
         findings = list(precomputed_findings)
+
+    def execution_allowed(finding: ObjectiveFinding) -> bool:
+        return (
+            not _requires_external_completion(
+                finding.goal_id,
+                {
+                    "completion_authority": finding.completion_authority,
+                    "external_completion_required": bool(
+                        finding.external_authority_blockers
+                    ),
+                },
+            )
+            and not finding.external_authority_blockers
+            and not external_blocked_goal_ids.intersection(
+                {
+                    str(finding.goal_id).strip(),
+                    *(
+                        str(item).strip()
+                        for item in finding.parent_goal_ids
+                    ),
+                    *(
+                        str(item).strip()
+                        for item in finding.goal_packet_goal_ids
+                    ),
+                }
+            )
+            and not any(
+                _requires_external_completion(goal_id, {})
+                for goal_id in (
+                    finding.goal_id,
+                    *finding.parent_goal_ids,
+                    *finding.goal_packet_goal_ids,
+                )
+            )
+        )
+
     findings = [
         apply_objective_finding_execution_policy(finding)
         for finding in findings
-        if not _requires_external_completion(
-            finding.goal_id,
-            {
-                "completion_authority": finding.completion_authority,
-                "external_completion_required": bool(
-                    finding.external_authority_blockers
-                ),
-            },
-        )
-        and not finding.external_authority_blockers
-        and not external_blocked_goal_ids.intersection(
-            {
-                str(finding.goal_id).strip(),
-                *(str(item).strip() for item in finding.parent_goal_ids),
-                *(str(item).strip() for item in finding.goal_packet_goal_ids),
-            }
-        )
-        and not any(
-            _requires_external_completion(goal_id, {})
-            for goal_id in (
-                finding.goal_id,
-                *finding.parent_goal_ids,
-                *finding.goal_packet_goal_ids,
-            )
-        )
+        if execution_allowed(finding)
     ]
+    reprojection_candidates: list[ObjectiveFinding] = []
+    seen_reprojection_candidates: set[tuple[str, str, str, str]] = set()
+    for finding in [*findings, *reprojection_findings]:
+        if not execution_allowed(finding):
+            continue
+        projected = apply_objective_finding_execution_policy(finding)
+        key = (
+            projected.fingerprint,
+            projected.dedupe_key,
+            projected.candidate_kind,
+            projected.bundle_key,
+        )
+        if key in seen_reprojection_candidates:
+            continue
+        seen_reprojection_candidates.add(key)
+        reprojection_candidates.append(projected)
+
     reprojected_records: list[ObjectiveTaskRecord] = []
     with locked_taskboard(todo_path) as taskboard:
         todo_text = taskboard.read() or "# Objective Todo\n"
@@ -10734,7 +10980,16 @@ def generate_objective_todos(
         # exact, idle, generator-authored card in place while this sole writer
         # holds the taskboard lock.  Generic legacy coverage is intentionally
         # insufficient: the prior canonical task CID must reconstruct.
-        for finding in findings:
+        #
+        # Operational idleness is fenced at the caller boundary, not inferred
+        # from Markdown alone.  Supervisor-owned refills run under the shared
+        # ``implementation.lock`` maintenance lease whenever the objective
+        # control plane is protected; a live attempt owns that same lease and
+        # prevents maintenance from entering this function.  Coordinated
+        # standalone refill launchers likewise require supervisors to be
+        # stopped.  The status check below is an additional fail-closed
+        # identity guard, not the concurrency primitive.
+        for finding in reprojection_candidates:
             evidence_outputs = objective_finding_evidence_output_paths(
                 finding,
                 excluded_paths=(discovery_output_path,),

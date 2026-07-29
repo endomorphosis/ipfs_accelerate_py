@@ -3127,6 +3127,235 @@ def test_objective_refill_reprojects_legacy_dscon_card_and_artifacts_in_place(
     } == generated_artifacts
 
 
+def test_normal_refill_sweeps_seen_legacy_card_once(tmp_path):
+    repo, objective_path, todo_path = _seed_repo(tmp_path)
+    discovery_dir = (
+        repo
+        / "data"
+        / "datasets_contract_analysis"
+        / "agent_supervisor"
+        / "discovery"
+    )
+    bundle_dir = (
+        repo
+        / "data"
+        / "datasets_contract_analysis"
+        / "agent_supervisor"
+        / "bundles"
+    )
+    manifests = [
+        "data/datasets_contract_analysis/manifests/repository-root.json",
+        "data/datasets_contract_analysis/manifests/coverage.json",
+    ]
+    objective_path.write_text(
+        f"""# Objective Heap
+
+## DSCON-G020 Build recursive tracked-object and coverage manifests
+
+- Status: active
+- Parent:
+- Fib priority: 1
+- Track: bootstrap
+- Priority: P0
+- Bundle: datasets-contract/bootstrap
+- Goal: Build recursive tracked-object and coverage manifests.
+- Evidence: {", ".join(manifests)}
+- Outputs: ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/repository.py, ipfs_datasets_py/tests/unit/logic/software_contracts/test_repository_manifest.py
+- Validation: true
+- Gap task: Generate deterministic repository coverage manifests.
+""",
+        encoding="utf-8",
+    )
+    created = generate_objective_todos(
+        repo_root=repo,
+        objective_path=objective_path,
+        todo_path=todo_path,
+        discovery_dir=discovery_dir,
+        bundle_dir=bundle_dir,
+        task_prefix="DSCON-",
+        max_findings=4,
+        persist_ast_dataset=False,
+        write_todo_vector_index=False,
+        discovery_output_path=(
+            "data/datasets_contract_analysis/agent_supervisor/discovery"
+        ),
+    )
+    assert len(created) == 1
+    record = created[0]
+    finding = record.finding
+    current_identity = objective_finding_task_identity(
+        record.task_id,
+        finding,
+    )
+    legacy_identity = objective_finding_task_identity(
+        record.task_id,
+        finding,
+        evidence_outputs=[],
+    )
+
+    def downgrade(markdown):
+        value = markdown.replace(
+            f"- Evidence outputs: {', '.join(manifests)}\n",
+            "",
+            1,
+        )
+        value = value.replace(
+            current_identity.canonical_task_key,
+            legacy_identity.canonical_task_key,
+            1,
+        )
+        return value.replace(
+            current_identity.canonical_task_cid,
+            legacy_identity.canonical_task_cid,
+            1,
+        )
+
+    todo_path.write_text(
+        downgrade(todo_path.read_text(encoding="utf-8")),
+        encoding="utf-8",
+    )
+    shard_path = bundle_dir / "datasets-contract-bootstrap.todo.md"
+    shard_path.write_text(
+        downgrade(shard_path.read_text(encoding="utf-8")),
+        encoding="utf-8",
+    )
+    discovery_text = record.discovery_path.read_text(encoding="utf-8")
+    for line in (
+        f"Evidence outputs: {', '.join(manifests)}\n",
+        f"Canonical task key: {current_identity.canonical_task_key}\n",
+        f"Canonical task CID: {current_identity.canonical_task_cid}\n",
+    ):
+        discovery_text = discovery_text.replace(line, "", 1)
+    record.discovery_path.write_text(discovery_text, encoding="utf-8")
+
+    # This is the real daemon path: discovery has already recorded the
+    # fingerprint, so the ordinary new-task scan returns no candidate.
+    assert scan_objective_gaps(
+        repo,
+        objective_path=objective_path,
+        max_findings=4,
+        seen_fingerprints=[finding.fingerprint],
+    ) == []
+    refilled = generate_objective_todos(
+        repo_root=repo,
+        objective_path=objective_path,
+        todo_path=todo_path,
+        discovery_dir=discovery_dir,
+        bundle_dir=bundle_dir,
+        task_prefix="DSCON-",
+        max_findings=4,
+        seen_fingerprints=[finding.fingerprint],
+        persist_ast_dataset=False,
+        write_todo_vector_index=False,
+        discovery_output_path=(
+            "data/datasets_contract_analysis/agent_supervisor/discovery"
+        ),
+    )
+
+    assert refilled == []
+    migrated = todo_path.read_text(encoding="utf-8")
+    assert migrated.count(f"## {record.task_id} ") == 1
+    assert f"- Evidence outputs: {', '.join(manifests)}" in migrated
+    assert current_identity.canonical_task_cid in migrated
+    assert legacy_identity.canonical_task_cid not in migrated
+
+    generated_artifacts = {
+        path: path.read_bytes()
+        for path in (
+            todo_path,
+            record.discovery_path,
+            shard_path,
+            bundle_dir / "index.json",
+        )
+    }
+    repeated = generate_objective_todos(
+        repo_root=repo,
+        objective_path=objective_path,
+        todo_path=todo_path,
+        discovery_dir=discovery_dir,
+        bundle_dir=bundle_dir,
+        task_prefix="DSCON-",
+        max_findings=4,
+        seen_fingerprints=[finding.fingerprint],
+        persist_ast_dataset=False,
+        write_todo_vector_index=False,
+        discovery_output_path=(
+            "data/datasets_contract_analysis/agent_supervisor/discovery"
+        ),
+    )
+    assert repeated == []
+    assert {
+        path: path.read_bytes() for path in generated_artifacts
+    } == generated_artifacts
+
+
+def test_retained_reprojection_fingerprint_cannot_be_starved_by_surplus(
+    tmp_path,
+):
+    repo, objective_path, _todo_path = _seed_repo(tmp_path)
+    objective_path.write_text(
+        """# Objective Heap
+
+## DSCON-G001 Early wide goal
+
+- Status: active
+- Parent:
+- Fib priority: 1
+- Track: bootstrap
+- Priority: P0
+- Goal: Fill the ordinary candidate pool first.
+- Evidence: data/manifests/early-a.json, data/manifests/early-b.json, data/manifests/early-c.json
+- Outputs: src/early.py
+- Validation: true
+
+## DSCON-G999 Late retained goal
+
+- Status: active
+- Parent:
+- Fib priority: 999
+- Track: drift
+- Priority: P3
+- Goal: Retain this exact legacy migration candidate.
+- Evidence: data/manifests/late.json
+- Outputs: src/late.py
+- Validation: true
+""",
+        encoding="utf-8",
+    )
+    all_findings = scan_objective_gaps(
+        repo,
+        objective_path=objective_path,
+        max_findings=16,
+        surplus_findings_per_goal=3,
+        surplus_min_terms_per_todo=1,
+    )
+    retained = next(
+        finding
+        for finding in all_findings
+        if finding.goal_id == "DSCON-G999"
+    )
+
+    constrained = scan_objective_gaps(
+        repo,
+        objective_path=objective_path,
+        max_findings=1,
+        seen_fingerprints=[retained.fingerprint],
+        retain_fingerprints=[retained.fingerprint],
+        surplus_findings_per_goal=3,
+        surplus_min_terms_per_todo=1,
+    )
+
+    assert constrained[0].fingerprint == retained.fingerprint
+    assert constrained[0].goal_id == "DSCON-G999"
+    assert len(
+        [
+            finding
+            for finding in constrained
+            if finding.fingerprint == retained.fingerprint
+        ]
+    ) == 1
+
+
 def test_objective_refill_repairs_artifacts_after_interrupted_card_rotation(
     tmp_path,
     monkeypatch,

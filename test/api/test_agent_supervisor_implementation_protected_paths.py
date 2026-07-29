@@ -1546,7 +1546,7 @@ def test_supervisor_blocks_maintenance_while_protected_snapshot_is_active(
     assert not (tmp_path / "state" / "implementation.lock").exists()
 
 
-def test_supervisor_live_daemon_lock_blocks_before_maintenance_mutation(
+def test_supervisor_live_daemon_lock_blocks_objective_refill_before_mutation(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1578,7 +1578,7 @@ def test_supervisor_live_daemon_lock_blocks_before_maintenance_mutation(
 
     result = supervisor._run_once_with_maintenance(
         phases.append,
-        include_refill=False,
+        include_refill=True,
     )
 
     assert result["maintenance_blocked"] is True
