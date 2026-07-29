@@ -93,7 +93,6 @@ readonly -a PROTECTED_ARGS=(
 )
 readonly -a COMMON_ARGS=(
   "--todo-path" "${TODO_ABS}"
-  "--state-dir" "${STATE_DIR}"
   "--task-prefix" "## VFS-"
   "--implement"
   "--max-task-attempts" "3"
@@ -108,7 +107,6 @@ readonly -a COMMON_ARGS=(
   "--stale-seconds" "1800"
   "--watchdog-startup-grace-seconds" "300"
   "--task-shard-count" "2"
-  "--worktree-root" "${WORKTREE_DIR}"
   "--worktree-submodule-path" "ipfs_accelerate_py/mcplusplus"
   "--worktree-submodule-path" "ipfs_datasets_py"
   "--worktree-submodule-path" "ipfs_kit_py"
@@ -121,12 +119,16 @@ prepare_state_dirs() {
   umask 077
   mkdir -p \
     "${STATE_DIR}" \
+    "${STATE_DIR}/vfs_grok" \
+    "${STATE_DIR}/vfs_codex" \
     "${RUNTIME_DIR}" \
     "${LOG_DIR}" \
     "${PROJECTION_DIR}/discovery" \
     "${PROJECTION_DIR}/bundles" \
     "${PROJECTION_DIR}/datasets" \
     "${WORKTREE_DIR}" \
+    "${WORKTREE_DIR}/vfs_grok" \
+    "${WORKTREE_DIR}/vfs_codex" \
     "${MERGE_QUEUE_DIR}"
 }
 
@@ -151,7 +153,7 @@ pid_file_for_lane() {
 }
 
 status_file_for_lane() {
-  printf '%s/%s_supervisor_status.json\n' "${STATE_DIR}" "$1"
+  printf '%s/%s/%s_supervisor_status.json\n' "${STATE_DIR}" "$1" "$1"
 }
 
 lane_pid() {
@@ -231,8 +233,10 @@ lane_args() {
   local shard="$2"
   printf '%s\0' \
     "${COMMON_ARGS[@]}" \
+    "--state-dir" "${STATE_DIR}/${lane}" \
     "--state-prefix" "${lane}" \
-    "--task-shard-index" "${shard}"
+    "--task-shard-index" "${shard}" \
+    "--worktree-root" "${WORKTREE_DIR}/${lane}"
 }
 
 reconciliation_preflight() {
@@ -371,7 +375,7 @@ PY
       if [[ "${status}" == "running" ]] && \
         [[ "${daemon_pid}" =~ ^[1-9][0-9]*$ ]] && \
         kill -0 "${daemon_pid}" 2>/dev/null && \
-        [[ -s "${STATE_DIR}/${lane}_task_state.json" ]]
+        [[ -s "${STATE_DIR}/${lane}/${lane}_task_state.json" ]]
       then
         healthy_observations=$((healthy_observations + 1))
         if (( healthy_observations >= 3 )); then
@@ -429,7 +433,7 @@ result = {
 }
 for lane in ("vfs_grok", "vfs_codex"):
     pid_path = root / "runtime" / f"{lane}_supervisor.pid"
-    status_path = root / "state" / f"{lane}_supervisor_status.json"
+    status_path = root / "state" / lane / f"{lane}_supervisor_status.json"
     try:
         supervisor_pid = int(pid_path.read_text(encoding="utf-8").strip())
     except (OSError, ValueError):
