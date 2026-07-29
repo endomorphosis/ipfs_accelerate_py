@@ -6,6 +6,7 @@ import json
 import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from ipfs_accelerate_py.agent_supervisor.integrations import (
@@ -35,7 +36,12 @@ def _write_typescript_fixture(root: Path, version: str) -> None:
         encoding="utf-8",
     )
     (package_dir / "lib" / "typescript.js").write_text(
-        "module.exports = {};\n",
+        (
+            "module.exports = {"
+            f'version: "{version}", '
+            "createSourceFile() {}, createProgram() {}, transpileModule() {}, "
+            "SyntaxKind: {}};\n"
+        ),
         encoding="utf-8",
     )
     (package_dir / "bin" / "tsc").write_text(
@@ -45,6 +51,26 @@ def _write_typescript_fixture(root: Path, version: str) -> None:
     tsc = root / "node_modules" / ".bin" / ("tsc.cmd" if sys.platform == "win32" else "tsc")
     tsc.write_text("#!/usr/bin/env node\n", encoding="utf-8")
     tsc.chmod(0o755)
+
+
+def _typescript_probe_result(command: list[str]) -> subprocess.CompletedProcess[str]:
+    if "-e" in command:
+        return _completed(
+            command,
+            stdout=json.dumps(
+                {
+                    "version": dependencies.PINNED_TYPESCRIPT_VERSION,
+                    "createSourceFile": True,
+                    "createProgram": True,
+                    "transpileModule": True,
+                    "SyntaxKind": True,
+                }
+            ),
+        )
+    return _completed(
+        command,
+        stdout=f"Version {dependencies.PINNED_TYPESCRIPT_VERSION}\n",
+    )
 
 
 def test_module_import_is_cold_for_optional_toolchains() -> None:
@@ -149,6 +175,30 @@ def test_python_loader_uses_only_allowlisted_requirement(
     assert calls == [[sys.executable, "-m", "pip", "install", spec.requirement]]
 
 
+@pytest.mark.parametrize(
+    ("dependency_id", "version"),
+    (
+        ("z3", "3.0.0"),
+        ("cvc5", "1.3.3rc1"),
+        ("mypy", "2.0.0"),
+        ("ruff", "1.0.0"),
+    ),
+)
+def test_python_probe_rejects_out_of_range_distributions(
+    dependency_id: str,
+    version: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(dependencies.importlib.metadata, "version", lambda _name: version)
+    receipt = dependencies.probe_python_dependency(
+        dependency_id,
+        importer=lambda _name: SimpleNamespace(__file__="/fixture/module.py"),
+        which=lambda command: f"/fixture/bin/{command}",
+    )
+    assert receipt.status == "incompatible"
+    assert receipt.reason == "distribution_version_mismatch"
+
+
 def test_typescript_probe_binds_cli_and_compiler_api(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -162,10 +212,7 @@ def test_typescript_probe_binds_cli_and_compiler_api(
     )
 
     def runner(command, **_kwargs):
-        return _completed(
-            list(command),
-            stdout=f"Version {dependencies.PINNED_TYPESCRIPT_VERSION}\n",
-        )
+        return _typescript_probe_result(list(command))
 
     receipt = dependencies.probe_typescript_toolchain(root=root, runner=runner)
     assert receipt.available
@@ -174,6 +221,44 @@ def test_typescript_probe_binds_cli_and_compiler_api(
     assert receipt.module_path.endswith("node_modules/typescript")
     assert receipt.details["compiler_api_path"].endswith("lib/typescript.js")
     assert receipt.details["compiler_api_sha256"]
+    assert set(receipt.details["api_symbols_verified"]) == {
+        "createSourceFile",
+        "createProgram",
+        "transpileModule",
+        "SyntaxKind",
+    }
+
+
+def test_typescript_probe_rejects_broken_compiler_api(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "typescript"
+    _write_typescript_fixture(root, dependencies.PINNED_TYPESCRIPT_VERSION)
+    monkeypatch.setattr(
+        dependencies.shutil,
+        "which",
+        lambda command, **_kwargs: "/usr/bin/node" if command == "node" else None,
+    )
+
+    def runner(command, **_kwargs):
+        command = list(command)
+        if "-e" in command:
+            return _completed(
+                command,
+                returncode=3,
+                stdout=json.dumps(
+                    {
+                        "version": dependencies.PINNED_TYPESCRIPT_VERSION,
+                        "createSourceFile": False,
+                    }
+                ),
+            )
+        return _typescript_probe_result(command)
+
+    receipt = dependencies.probe_typescript_toolchain(root=root, runner=runner)
+    assert receipt.status == "incompatible"
+    assert receipt.reason == "compiler_api_canary_failed"
 
 
 def test_typescript_version_mismatch_fails_closed(
@@ -211,10 +296,7 @@ def test_typescript_loader_is_explicit_and_uses_pinned_npm_package(
         if "install" in command:
             _write_typescript_fixture(root, dependencies.PINNED_TYPESCRIPT_VERSION)
             return _completed(command)
-        return _completed(
-            command,
-            stdout=f"Version {dependencies.PINNED_TYPESCRIPT_VERSION}\n",
-        )
+        return _typescript_probe_result(command)
 
     disabled = dependencies.ensure_typescript_toolchain(
         auto_install=False,

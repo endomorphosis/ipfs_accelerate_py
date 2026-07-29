@@ -24,6 +24,7 @@ import importlib
 import importlib.metadata
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -38,6 +39,24 @@ from typing import Any, Final
 
 PINNED_TYPESCRIPT_VERSION: Final = "5.9.3"
 TYPESCRIPT_REQUIREMENT: Final = f"typescript@{PINNED_TYPESCRIPT_VERSION}"
+_TYPESCRIPT_API_CANARY: Final = """
+const ts = require(process.argv[1]);
+const result = {
+  version: String(ts.version || ""),
+  createSourceFile: typeof ts.createSourceFile === "function",
+  createProgram: typeof ts.createProgram === "function",
+  transpileModule: typeof ts.transpileModule === "function",
+  SyntaxKind: typeof ts.SyntaxKind === "object"
+};
+process.stdout.write(JSON.stringify(result));
+if (!Object.values(result).every(Boolean)) process.exitCode = 3;
+"""
+_TYPESCRIPT_REQUIRED_API_SYMBOLS: Final = (
+    "createSourceFile",
+    "createProgram",
+    "transpileModule",
+    "SyntaxKind",
+)
 DEFAULT_INSTALL_TIMEOUT_SECONDS: Final = 600.0
 DEFAULT_LOCK_TIMEOUT_SECONDS: Final = 120.0
 DEPENDENCY_RECEIPT_SCHEMA_VERSION: Final = (
@@ -55,6 +74,9 @@ class PythonDependencySpec:
     requirement: str
     executable: str = ""
     executable_required: bool = False
+    minimum_version: tuple[int, ...] = ()
+    maximum_version_exclusive: tuple[int, ...] = ()
+    exact_version: tuple[int, ...] = ()
 
 
 PYTHON_DEPENDENCY_SPECS: Final[Mapping[str, PythonDependencySpec]] = MappingProxyType(
@@ -66,6 +88,8 @@ PYTHON_DEPENDENCY_SPECS: Final[Mapping[str, PythonDependencySpec]] = MappingProx
             requirement="z3-solver>=4.12.0,<5.0.0",
             executable="z3",
             executable_required=True,
+            minimum_version=(4, 12, 0),
+            maximum_version_exclusive=(5, 0, 0),
         ),
         "cvc5": PythonDependencySpec(
             dependency_id="cvc5",
@@ -73,6 +97,7 @@ PYTHON_DEPENDENCY_SPECS: Final[Mapping[str, PythonDependencySpec]] = MappingProx
             distribution="cvc5",
             requirement="cvc5==1.3.3",
             executable="cvc5",
+            exact_version=(1, 3, 3),
         ),
         "mypy": PythonDependencySpec(
             dependency_id="mypy",
@@ -80,6 +105,8 @@ PYTHON_DEPENDENCY_SPECS: Final[Mapping[str, PythonDependencySpec]] = MappingProx
             distribution="mypy",
             requirement="mypy>=1.8.0,<2.0.0",
             executable="mypy",
+            minimum_version=(1, 8, 0),
+            maximum_version_exclusive=(2, 0, 0),
         ),
         "ruff": PythonDependencySpec(
             dependency_id="ruff",
@@ -87,6 +114,8 @@ PYTHON_DEPENDENCY_SPECS: Final[Mapping[str, PythonDependencySpec]] = MappingProx
             distribution="ruff",
             requirement="ruff>=0.12.0,<1.0.0",
             executable="ruff",
+            minimum_version=(0, 12, 0),
+            maximum_version_exclusive=(1, 0, 0),
         ),
     }
 )
@@ -185,6 +214,34 @@ def _module_path(module: Any) -> str:
     return str(Path(path).resolve()) if path else ""
 
 
+def _numeric_version(value: str, width: int = 4) -> tuple[int, ...]:
+    match = re.match(r"^\s*(\d+(?:\.\d+)*)", str(value or ""))
+    if match is None:
+        return ()
+    parts = tuple(int(part) for part in match.group(1).split("."))
+    return (parts + (0,) * width)[:width]
+
+
+def _version_is_compatible(spec: PythonDependencySpec, version: str) -> bool:
+    observed = _numeric_version(version)
+    if not observed:
+        return False
+
+    if spec.exact_version:
+        expected = ".".join(str(part) for part in spec.exact_version)
+        if str(version).strip() != expected:
+            return False
+
+    def normalized(parts: tuple[int, ...]) -> tuple[int, ...]:
+        return (parts + (0,) * len(observed))[: len(observed)]
+
+    if spec.minimum_version and observed < normalized(spec.minimum_version):
+        return False
+    if spec.maximum_version_exclusive and observed >= normalized(spec.maximum_version_exclusive):
+        return False
+    return True
+
+
 def probe_python_dependency(
     dependency_id: str,
     *,
@@ -225,15 +282,15 @@ def probe_python_dependency(
         version = importlib.metadata.version(spec.distribution)
     except importlib.metadata.PackageNotFoundError:
         version = str(getattr(module, "__version__", "") or "")
-    if dependency_id == "cvc5" and version != "1.3.3":
+    if not _version_is_compatible(spec, version):
         return ContractRepairDependencyReceipt(
             dependency_id,
             "incompatible",
             spec.requirement,
             version=version,
             module_path=_module_path(module),
-            reason="python_binding_version_mismatch",
-            details={"expected_version": "1.3.3"},
+            reason="distribution_version_mismatch",
+            details={"requirement": spec.requirement},
         )
     executable_path = (
         find_python_executable(spec.executable, which=which) if spec.executable else ""
@@ -256,7 +313,11 @@ def probe_python_dependency(
         executable_path=executable_path,
         details={
             "executable_optional": bool(spec.executable and not spec.executable_required),
-            "python_module_command": [sys.executable, "-m", spec.import_name],
+            "python_module_command": (
+                [sys.executable, "-m", spec.import_name]
+                if dependency_id in {"mypy", "ruff"}
+                else []
+            ),
         },
     )
 
@@ -455,6 +516,54 @@ def probe_typescript_toolchain(
             reason="compiler_version_mismatch",
             details={"expected_version": PINNED_TYPESCRIPT_VERSION},
         )
+    try:
+        api_completed = _run(
+            runner,
+            [str(node), "-e", _TYPESCRIPT_API_CANARY, str(package_dir)],
+            timeout_seconds=timeout_seconds,
+            environ=env,
+        )
+    except subprocess.TimeoutExpired:
+        return ContractRepairDependencyReceipt(
+            "typescript",
+            "timed_out",
+            TYPESCRIPT_REQUIREMENT,
+            version=observed_version,
+            module_path=str(package_dir),
+            executable_path=str(tsc),
+            reason="compiler_api_canary_timed_out",
+        )
+    except OSError as exc:
+        return ContractRepairDependencyReceipt(
+            "typescript",
+            "incompatible",
+            TYPESCRIPT_REQUIREMENT,
+            version=observed_version,
+            module_path=str(package_dir),
+            executable_path=str(tsc),
+            reason=f"compiler_api_canary_failed:{type(exc).__name__}",
+        )
+    try:
+        api_report = json.loads(api_completed.stdout or "")
+    except (TypeError, json.JSONDecodeError):
+        api_report = {}
+    api_available = (
+        api_completed.returncode == 0
+        and isinstance(api_report, dict)
+        and api_report.get("version") == PINNED_TYPESCRIPT_VERSION
+        and all(api_report.get(symbol) is True for symbol in _TYPESCRIPT_REQUIRED_API_SYMBOLS)
+    )
+    if not api_available:
+        return ContractRepairDependencyReceipt(
+            "typescript",
+            "incompatible",
+            TYPESCRIPT_REQUIREMENT,
+            version=observed_version,
+            module_path=str(package_dir),
+            executable_path=str(tsc),
+            reason="compiler_api_canary_failed",
+            details={"required_symbols": list(_TYPESCRIPT_REQUIRED_API_SYMBOLS)},
+        )
     return ContractRepairDependencyReceipt(
         "typescript",
         "available",
@@ -469,6 +578,7 @@ def probe_typescript_toolchain(
             "compiler_api_sha256": _sha256(compiler_api),
             "package_lock_sha256": _sha256(managed_root / "package-lock.json"),
             "node_executable": str(Path(node).resolve()),
+            "api_symbols_verified": list(_TYPESCRIPT_REQUIRED_API_SYMBOLS),
         },
     )
 
