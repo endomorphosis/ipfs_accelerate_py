@@ -274,7 +274,7 @@ task IDs on this board.
 
 ## RPR-008 Nominate refactored receivers and implementation sites
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
