@@ -8804,6 +8804,11 @@ class PortalImplementationDaemon:
                 "ancestry_stderr": parent_ancestry.stderr[-2000:],
             }
         initially_integrated = parent_ancestry.returncode == 0
+        integrated_short_circuit = initially_integrated and (
+            candidate_schema
+            == "ipfs_accelerate_py/agent-supervisor/merge-candidate@3"
+            or raw_changed_submodule_paths is not None
+        )
         if (
             candidate_schema
             == "ipfs_accelerate_py/agent-supervisor/merge-candidate@3"
@@ -8824,7 +8829,7 @@ class PortalImplementationDaemon:
                 }
 
         integrated_handoff_proof: dict[str, Any] = {}
-        if initially_integrated:
+        if integrated_short_circuit:
             integrated_handoff_proof = (
                 self._integrated_changed_submodule_proof(
                     candidate_commit=implementation_commit,
@@ -8862,7 +8867,7 @@ class PortalImplementationDaemon:
                 "rehydrated": False,
                 "mutation_short_circuited": True,
             }
-            if initially_integrated
+            if integrated_short_circuit
             else self._rehydrate_merge_request_branch(
                 branch_name=branch_name,
                 commit_sha=implementation_commit,
@@ -8882,7 +8887,7 @@ class PortalImplementationDaemon:
                 "branch": branch_name,
                 "branch_rehydration": branch_rehydration,
             }
-        if initially_integrated:
+        if integrated_short_circuit:
             result = {
                 "attempted": False,
                 # Preserve the callback's historical "integrated" boolean
