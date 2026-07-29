@@ -22,8 +22,10 @@ from ipfs_accelerate_py.agent_supervisor.goal_quality import (
 )
 from ipfs_accelerate_py.agent_supervisor.objective_graph import (
     objective_heap_content_id,
+    parse_goal_heap,
 )
 from ipfs_accelerate_py.agent_supervisor.objective_tracker import (
+    ObjectiveGoalQualityReport,
     ObjectiveLaunchQualitySummary,
     build_objective_launch_quality_summary,
     build_objective_typed_goals,
@@ -204,7 +206,9 @@ def test_launcher_summary_defaults_to_structural_legacy_and_reports_debt() -> No
     assert claimed.typed_sidecar_content_id == build_objective_typed_goals(text).content_id
 
 
-def test_checked_in_goal_quality_report_is_bound_to_current_heap() -> None:
+def test_checked_in_goal_quality_report_is_bound_to_current_heap(
+    tmp_path: Path,
+) -> None:
     text = _objective_text()
     heap_id = objective_heap_content_id(text)
     assert GOAL_QUALITY_PATH.is_file(), f"missing evidence artifact: {GOAL_QUALITY_PATH}"
@@ -215,6 +219,22 @@ def test_checked_in_goal_quality_report_is_bound_to_current_heap() -> None:
     assert report.objective_heap_id == heap_id
     assert report.quality_records
     assert report.debt_records
+    expected_goal_ids = {goal.goal_id for goal in parse_goal_heap(text)}
+    by_goal_id = {record.goal_id: record for record in report.quality_records}
+    assert set(by_goal_id) == expected_goal_ids
+
+    gap_record = by_goal_id["DSCON-G732"]
+    assert (
+        "data/datasets_contract_analysis/agent_supervisor/goal-quality.json"
+        in gap_record.evidence_producer_ids
+    )
+    assert (
+        "python -m pytest -q "
+        "ipfs_accelerate_py/test/api/test_agent_supervisor_goal_quality.py "
+        "ipfs_accelerate_py/test/api/"
+        "test_agent_supervisor_datasets_contract_goal_quality.py"
+        in gap_record.validation_ids
+    )
 
     # Rewrite is deterministic and heap-bound.
     rebuilt = write_objective_goal_quality_report(OBJECTIVE_PATH, GOAL_QUALITY_PATH)
@@ -223,6 +243,26 @@ def test_checked_in_goal_quality_report_is_bound_to_current_heap() -> None:
     payload = json.loads(GOAL_QUALITY_PATH.read_text(encoding="utf-8"))
     assert payload["objective_heap_id"] == heap_id
     assert payload["content_id"] == report.content_id
+
+    # A self-consistent but truncated snapshot must not detach the
+    # supervisor-fed backlog from the exact objective heap.
+    truncated_path = tmp_path / "truncated-goal-quality.json"
+    truncated = ObjectiveGoalQualityReport(
+        objective_heap_id=heap_id,
+        quality_records=tuple(
+            record
+            for record in report.quality_records
+            if record.goal_id != "DSCON-G732"
+        ),
+    )
+    truncated_path.write_text(
+        json.dumps(truncated.to_dict(), indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="goal coverage.*DSCON-G732"):
+        load_objective_goal_quality_report(
+            truncated_path, objective_path=OBJECTIVE_PATH
+        )
 
 
 def test_reviewed_producer_classification_covers_evidence_kinds() -> None:

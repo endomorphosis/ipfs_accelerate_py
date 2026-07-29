@@ -617,7 +617,14 @@ def objective_goal_quality_record(
         "acceptance_criteria",
         "acceptance",
     )
-    producers = set(
+    # ``Evidence`` is the objective heap's canonical declaration of the
+    # artifacts or child goals that produce evidence for a goal.  Preserve
+    # those bindings in the compatibility quality report in addition to the
+    # newer explicit producer fields; otherwise a supervisor can report a
+    # goal while silently dropping the evidence obligation that caused it to
+    # be scheduled.
+    producers = set(goal.required_evidence)
+    producers.update(
         _quality_terms(
             goal,
             "evidence_producer_ids_json",
@@ -801,12 +808,29 @@ def load_objective_goal_quality_report(
         raise ValueError("objective goal-quality report must contain an object")
     report = ObjectiveGoalQualityReport.from_dict(payload)
     if objective_path is not None:
-        current_id = objective_heap_content_id(
-            objective_path.read_text(encoding="utf-8")
-        )
+        objective_text = objective_path.read_text(encoding="utf-8")
+        current_id = objective_heap_content_id(objective_text)
         if report.objective_heap_id != current_id:
             raise ValueError(
                 "objective goal-quality report is stale for the current heap"
+            )
+        expected_goal_ids = {
+            goal.goal_id for goal in parse_goal_heap(objective_text)
+        }
+        report_goal_ids = {
+            record.goal_id for record in report.quality_records
+        }
+        if report_goal_ids != expected_goal_ids:
+            missing = sorted(expected_goal_ids - report_goal_ids)
+            unexpected = sorted(report_goal_ids - expected_goal_ids)
+            details = []
+            if missing:
+                details.append("missing: " + ", ".join(missing))
+            if unexpected:
+                details.append("unexpected: " + ", ".join(unexpected))
+            raise ValueError(
+                "objective goal-quality report goal coverage does not match "
+                f"the current heap ({'; '.join(details)})"
             )
     return report
 
