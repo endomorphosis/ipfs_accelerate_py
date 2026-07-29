@@ -608,7 +608,7 @@ compact references and bounded spans only.
 
 ## VFS-031 Materialize a stable repair task source from admitted findings
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: finding-generation
