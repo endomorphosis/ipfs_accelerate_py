@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import importlib
 import os
-import shutil
 import subprocess
 import sys
 import threading
@@ -29,6 +28,10 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Final
 
+from .contract_repair_dependencies import (
+    PINNED_TYPESCRIPT_VERSION,
+    find_contract_repair_executable,
+)
 
 CONTRACT_REPAIR_CAPABILITY_SCHEMA_VERSION: Final = (
     "ipfs_accelerate_py/agent-supervisor/contract-repair-capability@1"
@@ -37,8 +40,9 @@ CONTRACT_REPAIR_CAPABILITY_REPORT_SCHEMA_VERSION: Final = (
     "ipfs_accelerate_py/agent-supervisor/contract-repair-capability-report@1"
 )
 CONTRACT_REPAIR_CAPABILITY_REPORT_VERSION: Final = 1
-DEFAULT_CAPABILITY_PROBE_TIMEOUT_SECONDS: Final = 2.0
-PINNED_TYPESCRIPT_VERSION: Final = "5.6.3"
+# Cold imports from the exact datasets gitlink can legitimately take several
+# seconds. Two seconds caused false timeouts for healthy logic backends.
+DEFAULT_CAPABILITY_PROBE_TIMEOUT_SECONDS: Final = 10.0
 
 
 class ContractRepairCapabilityStatus(str, Enum):
@@ -475,7 +479,9 @@ def _run_version(
     if not executable:
         return ContractRepairCapability(capability_id, ContractRepairCapabilityStatus.UNAVAILABLE, details={"executable_path": "", "version": ""}, diagnostic=_diagnostic(ContractRepairDiagnosticCode.EXECUTABLE_NOT_FOUND, capability_id, f"{command[0]} is not on PATH"))
     try:
-        completed = runner(command, capture_output=True, text=True, timeout=timeout_seconds, check=False)
+        # Execute the exact path that was admitted by the locator. This matters
+        # for managed/user-site tools whose scripts directory is not on PATH.
+        completed = runner((executable, *command[1:]), capture_output=True, text=True, timeout=timeout_seconds, check=False)
     except subprocess.TimeoutExpired as exc:
         return ContractRepairCapability(capability_id, ContractRepairCapabilityStatus.TIMED_OUT, details={"executable_path": executable, "version": ""}, diagnostic=_diagnostic(ContractRepairDiagnosticCode.PROBE_TIMED_OUT, capability_id, "version command exceeded probe timeout", exception=exc))
     except OSError as exc:
@@ -528,7 +534,9 @@ def probe_contract_repair_capabilities(
     if isinstance(timeout_seconds, bool) or not isinstance(timeout_seconds, (int, float)) or timeout_seconds <= 0:
         raise ValueError("timeout_seconds must be a positive number")
     load = importer or importlib.import_module
-    locate = which or shutil.which
+    # The managed locator is detect-only and additionally checks Python's
+    # scripts directory plus the pinned user-local TypeScript toolchain.
+    locate = which or find_contract_repair_executable
     execute = runner or subprocess.run
     started = time.monotonic()
     root = Path(repository_root) if repository_root is not None else Path(__file__).resolve().parents[3]
@@ -540,6 +548,7 @@ def probe_contract_repair_capabilities(
         _run_version("toolchain.node", ("node", "--version"), which=locate, runner=execute, timeout_seconds=float(timeout_seconds)),
         _run_version("toolchain.typescript", ("tsc", "--version"), expected_version=PINNED_TYPESCRIPT_VERSION, which=locate, runner=execute, timeout_seconds=float(timeout_seconds)),
         _run_version("toolchain.mypy", ("mypy", "--version"), which=locate, runner=execute, timeout_seconds=float(timeout_seconds)),
+        _run_version("toolchain.ruff", ("ruff", "--version"), which=locate, runner=execute, timeout_seconds=float(timeout_seconds)),
         _run_version("toolchain.cvc5", ("cvc5", "--version"), which=locate, runner=execute, timeout_seconds=float(timeout_seconds)),
         _run_version("toolchain.z3", ("z3", "--version"), which=locate, runner=execute, timeout_seconds=float(timeout_seconds)),
     ))

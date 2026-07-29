@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import subprocess
 import time
+from pathlib import Path
 from types import SimpleNamespace
 
 from ipfs_accelerate_py.agent_supervisor.integrations.contract_repair_capabilities import (
@@ -67,13 +68,14 @@ def _importer(name: str):
 
 
 def _runner(command, **_kwargs):
-    if command[0] == "git":
+    executable = Path(command[0]).name
+    if executable == "git":
         return SimpleNamespace(returncode=0, stdout="160000 commit d144be65ffe4c6423e4e1c30cd692812607343eb\tipfs_datasets_py\n", stderr="")
     output = {
         "node": "v18.19.1",
         "tsc": "Version 5.5.0",
         "cvc5": "cvc5 version 1.3.3",
-    }.get(command[0], "")
+    }.get(executable, "")
     return SimpleNamespace(returncode=0 if output else 1, stdout=output, stderr="")
 
 
@@ -121,7 +123,7 @@ def test_missing_symbol_and_timeout_are_typed_diagnostics(tmp_path):
 
 def test_version_command_timeout_is_typed(tmp_path):
     def runner(command, **_kwargs):
-        if command[0] == "node":
+        if Path(command[0]).name == "node":
             raise subprocess.TimeoutExpired(command, 1)
         return _runner(command)
 

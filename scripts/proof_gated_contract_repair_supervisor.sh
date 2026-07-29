@@ -34,6 +34,27 @@ export IPFS_DATASETS_AUTO_INSTALL=false
 export IPFS_AUTO_INSTALL=false
 export IPFS_DATASETS_PY_MINIMAL_IMPORTS=1
 
+bind_managed_contract_repair_toolchain() {
+  local bindings=""
+  local key=""
+  local value=""
+  bindings="$(
+    "${PYTHON_BIN}" \
+      -m ipfs_accelerate_py.agent_supervisor.integrations.contract_repair_dependencies \
+      --print-env 2>/dev/null || true
+  )"
+  while IFS='=' read -r key value; do
+    case "${key}" in
+      PATH)
+        export PATH="${value}"
+        ;;
+      TYPESCRIPT_PATH)
+        export TYPESCRIPT_PATH="${value}"
+        ;;
+    esac
+  done <<<"${bindings}"
+}
+
 require_file() {
   local path="$1"
   if [[ ! -f "${REPO_ROOT}/${path}" ]]; then
@@ -188,6 +209,7 @@ PY
 }
 
 doctor() {
+  bind_managed_contract_repair_toolchain
   require_file "${PLAN_PATH}"
   require_file "${OBJECTIVE_PATH}"
   require_file "${TODO_PATH}"
@@ -215,6 +237,16 @@ doctor() {
     mypy --version
   else
     echo "mypy unavailable (recorded capability; not a launch blocker)"
+  fi
+  if command -v ruff >/dev/null 2>&1; then
+    ruff --version
+  else
+    echo "ruff unavailable (worker validation may be reduced)"
+  fi
+  if command -v tsc >/dev/null 2>&1; then
+    tsc --version
+  else
+    echo "managed TypeScript unavailable; run ipfs-accelerate-contract-repair-deps --install typescript"
   fi
   if [[ -n "$(git -C "${REPO_ROOT}" status --porcelain --untracked-files=normal)" ]]; then
     echo "target checkout is dirty; commit the control plane before start" >&2
