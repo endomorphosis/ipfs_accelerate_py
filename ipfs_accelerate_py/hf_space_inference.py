@@ -18,19 +18,21 @@ import json
 import mimetypes
 import os
 import subprocess
+import threading
 import time
 import uuid
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable, Iterator, Mapping, Sequence
+from typing import Any, Callable, Iterator, Mapping, Sequence, TypeVar
 from urllib import parse as urllib_parse
 
 import requests
 
 
 HeadersFactory = Callable[[], Mapping[str, str]]
+ResultT = TypeVar("ResultT")
 
 
 def _utc_now() -> str:
@@ -44,6 +46,181 @@ def normalize_api_name(value: str) -> str:
     if not raw:
         return ""
     return raw if raw.startswith("/") else f"/{raw}"
+
+
+def _exception_chain(value: object) -> Iterator[BaseException]:
+    """Yield an exception and its explicit/implicit causes without looping."""
+
+    current = value if isinstance(value, BaseException) else None
+    seen: set[int] = set()
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        yield current
+        current = current.__cause__ or current.__context__
+
+
+def _exception_text(value: object) -> str:
+    chain = list(_exception_chain(value))
+    if not chain:
+        return str(value or "").casefold()
+    return " | ".join(
+        f"{type(error).__name__}: {error}" for error in chain
+    ).casefold()
+
+
+def is_stale_gradio_file_error(value: object) -> bool:
+    """Return whether a Space rejected an expired server-local FileData path."""
+
+    text = _exception_text(value)
+    has_gradio_path = any(
+        marker in text
+        for marker in (
+            "/tmp/gradio/",
+            "\\tmp\\gradio\\",
+            "gradio/file",
+            "gradio.filedata",
+        )
+    )
+    has_missing_file = any(
+        marker in text
+        for marker in (
+            "filenotfounderror",
+            "file not found",
+            "no such file or directory",
+            "does not exist",
+        )
+    )
+    return has_gradio_path and has_missing_file
+
+
+def is_hf_space_transport_error(value: object) -> bool:
+    """Return whether a failed Space call can be retried as transport I/O."""
+
+    transient_request_errors = (
+        requests.exceptions.Timeout,
+        requests.exceptions.ConnectionError,
+        requests.exceptions.ChunkedEncodingError,
+        requests.exceptions.ContentDecodingError,
+    )
+    for error in _exception_chain(value):
+        response = getattr(error, "response", None)
+        status_code = getattr(response, "status_code", None)
+        if isinstance(status_code, int) and (
+            status_code in {408, 425, 429} or 500 <= status_code <= 599
+        ):
+            return True
+        if isinstance(
+            error,
+            (TimeoutError, ConnectionError, *transient_request_errors),
+        ):
+            return True
+    text = _exception_text(value)
+    return any(
+        marker in text
+        for marker in (
+            "response ended prematurely",
+            "remote end closed connection",
+            "remote disconnected",
+            "connection reset",
+            "connection aborted",
+            "broken pipe",
+            "read timed out",
+        )
+    )
+
+
+def is_retryable_hf_space_error(value: object) -> bool:
+    """Classify transient Space failures, including expired Gradio uploads."""
+
+    if is_hf_space_transport_error(value) or is_stale_gradio_file_error(value):
+        return True
+    text = _exception_text(value)
+    return any(
+        marker in text
+        for marker in (
+            "queue full",
+            "queue_full",
+            "temporarily unavailable",
+            "service unavailable",
+            "bad gateway",
+            "gateway timeout",
+            "space queue failed",
+            "queue failed",
+            "zerogpu worker error",
+            "acceleratorerror",
+        )
+    )
+
+
+class RefreshableGradioFile:
+    """Cache a Gradio FileData upload and refresh it across transient failures.
+
+    Gradio upload paths are server-local leases rather than durable object
+    identifiers. A worker or Space restart can therefore invalidate a
+    previously successful upload while a long-running batch process is still
+    using it.
+    """
+
+    def __init__(
+        self,
+        uploader: Callable[[], Mapping[str, Any]],
+        *,
+        sleeper: Callable[[float], None] = time.sleep,
+    ):
+        self._uploader = uploader
+        self._sleeper = sleeper
+        self._value: dict[str, Any] | None = None
+        self._lock = threading.RLock()
+
+    def get(self) -> dict[str, Any]:
+        """Return the current FileData mapping, uploading it when necessary."""
+
+        with self._lock:
+            if self._value is None:
+                uploaded = self._uploader()
+                if not isinstance(uploaded, Mapping):
+                    raise TypeError(
+                        "Gradio file uploader must return a mapping"
+                    )
+                self._value = dict(uploaded)
+            return dict(self._value)
+
+    def invalidate(self) -> None:
+        """Discard the cached server-local upload reference."""
+
+        with self._lock:
+            self._value = None
+
+    def run(
+        self,
+        operation: Callable[[Mapping[str, Any]], ResultT],
+        *,
+        max_retries: int = 1,
+        retry_backoff_seconds: float = 0.0,
+        retry_backoff_multiplier: float = 2.0,
+        on_retry: Callable[[BaseException, int], None] | None = None,
+    ) -> ResultT:
+        """Run an operation and re-upload before retrying transient failures."""
+
+        retries = max(0, int(max_retries))
+        backoff = max(0.0, float(retry_backoff_seconds))
+        multiplier = max(1.0, float(retry_backoff_multiplier))
+        for attempt in range(retries + 1):
+            try:
+                return operation(self.get())
+            except Exception as error:
+                retryable = is_retryable_hf_space_error(error)
+                if retryable:
+                    self.invalidate()
+                if not retryable or attempt >= retries:
+                    raise
+                retry_number = attempt + 1
+                if on_retry is not None:
+                    on_retry(error, retry_number)
+                delay = backoff * (multiplier ** attempt)
+                if delay > 0:
+                    self._sleeper(delay)
+        raise AssertionError("unreachable")
 
 
 @dataclass(frozen=True)
@@ -571,6 +748,57 @@ class HFSpaceClient:
             raise RuntimeError(f"Space {operation} failed: {event}")
         return None
 
+    def _wait_for_sse_result(
+        self,
+        stream_url: str,
+        *,
+        operation: str,
+        timeout_seconds: float,
+        poll_interval_seconds: float,
+        timeout_message: str,
+    ) -> dict[str, Any]:
+        """Consume an SSE result, reconnecting the same admitted operation."""
+
+        deadline = time.monotonic() + timeout_seconds
+        last_transport_error: BaseException | None = None
+        while time.monotonic() < deadline:
+            remaining = max(1.0, deadline - time.monotonic())
+            response: requests.Response | None = None
+            try:
+                response = self._session.get(
+                    stream_url,
+                    headers=self._headers(),
+                    timeout=min(30.0, max(5.0, remaining)),
+                    stream=True,
+                )
+                response.raise_for_status()
+                for event in self._iter_sse_events(response):
+                    terminal = self._resolve_terminal_event(
+                        event,
+                        operation=operation,
+                    )
+                    if terminal is not None:
+                        return terminal
+            except Exception as error:
+                if not is_hf_space_transport_error(error):
+                    raise
+                last_transport_error = error
+            finally:
+                close = getattr(response, "close", None)
+                if callable(close):
+                    close()
+            remaining = deadline - time.monotonic()
+            if remaining > 0:
+                time.sleep(
+                    min(
+                        remaining,
+                        max(0.05, float(poll_interval_seconds)),
+                    )
+                )
+        if last_transport_error is not None:
+            raise TimeoutError(timeout_message) from last_transport_error
+        raise TimeoutError(timeout_message)
+
     def wait_for_queue_result(
         self,
         session_hash: str,
@@ -585,36 +813,17 @@ class HFSpaceClient:
             if timeout_seconds is None
             else max(1.0, float(timeout_seconds))
         )
-        deadline = time.monotonic() + timeout
         stream_url = self._url(
             "gradio_api/queue/data?session_hash="
             f"{urllib_parse.quote(str(session_hash), safe='')}"
         )
-        while time.monotonic() < deadline:
-            remaining = max(1.0, deadline - time.monotonic())
-            response = self._session.get(
-                stream_url,
-                headers=self._headers(),
-                timeout=min(30.0, max(5.0, remaining)),
-                stream=True,
-            )
-            response.raise_for_status()
-            for event in self._iter_sse_events(response):
-                terminal = self._resolve_terminal_event(
-                    event,
-                    operation="queue",
-                )
-                if terminal is not None:
-                    return terminal
-            remaining = deadline - time.monotonic()
-            if remaining > 0:
-                time.sleep(
-                    min(
-                        remaining,
-                        max(0.05, float(poll_interval_seconds)),
-                    )
-                )
-        raise TimeoutError("Space queue timed out")
+        return self._wait_for_sse_result(
+            stream_url,
+            operation="queue",
+            timeout_seconds=timeout,
+            poll_interval_seconds=poll_interval_seconds,
+            timeout_message="Space queue timed out",
+        )
 
     def call_api_name(
         self,
@@ -653,36 +862,17 @@ class HFSpaceClient:
                 return dict(submitted)
             raise ValueError("Gradio call response did not include event_id")
 
-        deadline = time.monotonic() + timeout
         stream_url = self._url(
             f"gradio_api/call/{encoded_name}/"
             f"{urllib_parse.quote(event_id, safe='')}"
         )
-        while time.monotonic() < deadline:
-            remaining = max(1.0, deadline - time.monotonic())
-            result_response = self._session.get(
-                stream_url,
-                headers=self._headers(),
-                timeout=min(30.0, max(5.0, remaining)),
-                stream=True,
-            )
-            result_response.raise_for_status()
-            for event in self._iter_sse_events(result_response):
-                terminal = self._resolve_terminal_event(
-                    event,
-                    operation="call",
-                )
-                if terminal is not None:
-                    return terminal
-            remaining = deadline - time.monotonic()
-            if remaining > 0:
-                time.sleep(
-                    min(
-                        remaining,
-                        max(0.05, float(poll_interval_seconds)),
-                    )
-                )
-        raise TimeoutError("Space Gradio call timed out")
+        return self._wait_for_sse_result(
+            stream_url,
+            operation="call",
+            timeout_seconds=timeout,
+            poll_interval_seconds=poll_interval_seconds,
+            timeout_message="Space Gradio call timed out",
+        )
 
     def file_url(self, reference: Any) -> str:
         """Resolve a Gradio FileData record into a downloadable URL."""
@@ -966,7 +1156,11 @@ __all__ = [
     "LocalFileSystemBackend",
     "HFBucketBackend",
     "HFSpaceClient",
+    "RefreshableGradioFile",
     "BatchState",
     "BatchProcessor",
+    "is_hf_space_transport_error",
+    "is_retryable_hf_space_error",
+    "is_stale_gradio_file_error",
     "normalize_api_name",
 ]

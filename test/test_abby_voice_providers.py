@@ -219,8 +219,20 @@ def test_abby_provider_import_and_builtin_capabilities_are_lazy(
     assert provider.default_model == PUBLICUS_INDEXTTS_MODEL
     assert provider.backend == "publicus_gradio"
     assert provider.authenticated
+    assert provider._authorization_headers()["X-HF-Bill-To"] == "Publicus"
     assert provider.policy.timeout_seconds == 900
     assert dict(provider.gradio_contract)["input_count"] == 25
+
+
+def test_publicus_group_billing_can_be_explicitly_disabled() -> None:
+    provider = IndexTTSHTTPProvider(
+        token="private-token",
+        bill_to="",
+    )
+
+    assert provider._authorization_headers() == {
+        "Authorization": "Bearer private-token"
+    }
 
 
 def test_explicit_hf_token_avoids_cached_token_lookup(
@@ -323,9 +335,22 @@ def test_publicus_batch_uses_fn7_and_reuses_upload_across_client_sessions() -> N
     assert all(client.closed for client in clients)
 
 
-def test_publicus_retry_reuploads_reference_after_queue_failure() -> None:
+@pytest.mark.parametrize(
+    "queue_error",
+    [
+        TimeoutError("ZeroGPU queue timed out"),
+        RuntimeError(
+            "FileNotFoundError: [Errno 2] No such file or directory: "
+            "'/tmp/gradio/expired/reference.wav'"
+        ),
+    ],
+    ids=("timeout", "stale-gradio-upload"),
+)
+def test_publicus_retry_reuploads_reference_after_queue_failure(
+    queue_error: Exception,
+) -> None:
     clients: List[FakePublicusSpaceClient] = []
-    outcomes = [TimeoutError("ZeroGPU queue timed out"), None]
+    outcomes = [queue_error, None]
 
     def factory(endpoint, timeout, headers_factory):
         client = FakePublicusSpaceClient(

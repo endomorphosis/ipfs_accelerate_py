@@ -478,6 +478,12 @@ def _status_retryable(status: int) -> bool:
 def _exception_retryable(error: BaseException) -> bool:
     if isinstance(error, AbbyProviderError):
         return error.retryable
+    # Keep requests lazy for provider discovery while sharing the Space
+    # transport and expired-FileData classifier with batch workers.
+    from ..hf_space_inference import is_retryable_hf_space_error
+
+    if is_retryable_hf_space_error(error):
+        return True
     return isinstance(
         error,
         (
@@ -1121,7 +1127,11 @@ class IndexTTSHTTPProvider(_ResilientHTTPProvider):
             clock=clock,
         )
         self._token = str(token or "").strip()
-        self._bill_to = str(bill_to or "").strip()
+        self._bill_to = (
+            "Publicus"
+            if bill_to is None and publicus_default
+            else str(bill_to or "").strip()
+        )
         self.default_model = str(default_model or "").strip()
         self._backend_mode = normalized_backend
         self._reference_audio = reference_audio
@@ -1189,6 +1199,7 @@ class IndexTTSHTTPProvider(_ResilientHTTPProvider):
                 os.getenv("IPFS_ACCELERATE_PY_ABBY_HF_BILL_TO", "")
                 or os.getenv("IPFS_DATASETS_PY_HF_BILL_TO", "")
                 or os.getenv("WALLET_INDEXTTS_HF_BILL_TO", "")
+                or None
             ),
             "default_model": (
                 os.getenv("IPFS_ACCELERATE_PY_ABBY_INDEXTTS_MODEL", "")

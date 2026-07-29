@@ -23,7 +23,11 @@ from .hf_space_inference import (
     HFSpaceClient,
     LocalFileSystemBackend,
     OutputBackend,
+    RefreshableGradioFile,
     SpaceRuntimeInfo,
+    is_hf_space_transport_error,
+    is_retryable_hf_space_error,
+    is_stale_gradio_file_error,
     normalize_api_name,
 )
 
@@ -224,8 +228,12 @@ export = {
     "LocalFileSystemBackend": LocalFileSystemBackend,
     "HFBucketBackend": HFBucketBackend,
     "HFSpaceClient": HFSpaceClient,
+    "RefreshableGradioFile": RefreshableGradioFile,
     "BatchState": BatchState,
     "BatchProcessor": BatchProcessor,
+    "is_hf_space_transport_error": is_hf_space_transport_error,
+    "is_retryable_hf_space_error": is_retryable_hf_space_error,
+    "is_stale_gradio_file_error": is_stale_gradio_file_error,
     "normalize_api_name": normalize_api_name,
 }
 
@@ -626,7 +634,9 @@ __all__ = [
     'webnn_webgpu_available', 'ModelManager', 'get_default_model_manager',
     'model_manager_available', 'SpaceRuntimeInfo', 'EndpointContract',
     'OutputBackend', 'LocalFileSystemBackend', 'HFBucketBackend',
-    'HFSpaceClient', 'BatchState', 'BatchProcessor', 'normalize_api_name',
+    'HFSpaceClient', 'RefreshableGradioFile', 'BatchState', 'BatchProcessor',
+    'is_hf_space_transport_error', 'is_retryable_hf_space_error',
+    'is_stale_gradio_file_error', 'normalize_api_name',
     'cli_main', 'get_system_logs', 'SystemLogs',
     'P2PWorkflowScheduler', 'P2PTask', 'WorkflowTag', 'MerkleClock',
     'FibonacciHeap', 'calculate_hamming_distance',

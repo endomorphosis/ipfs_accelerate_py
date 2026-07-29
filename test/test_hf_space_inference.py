@@ -5,14 +5,20 @@ from __future__ import annotations
 import json
 import subprocess
 from pathlib import Path
+from typing import Mapping
 from unittest.mock import Mock
 
 import pytest
+import requests
 
 import ipfs_accelerate_py
 from ipfs_accelerate_py.hf_space_inference import (
     HFBucketBackend,
     HFSpaceClient,
+    RefreshableGradioFile,
+    is_hf_space_transport_error,
+    is_retryable_hf_space_error,
+    is_stale_gradio_file_error,
 )
 
 
@@ -46,6 +52,58 @@ def _indextts_config() -> dict[str, object]:
 def test_package_exports_compatibility_client() -> None:
     assert ipfs_accelerate_py.HFSpaceClient is HFSpaceClient
     assert ipfs_accelerate_py.HFBucketBackend is HFBucketBackend
+    assert ipfs_accelerate_py.RefreshableGradioFile is RefreshableGradioFile
+
+
+def test_space_error_classifier_covers_stream_disconnect_and_stale_upload() -> None:
+    stream_error = RuntimeError("Response ended prematurely")
+    stale_upload = RuntimeError(
+        "FileNotFoundError: [Errno 2] No such file or directory: "
+        "'/tmp/gradio/session/reference.wav'"
+    )
+
+    assert is_hf_space_transport_error(stream_error)
+    assert is_stale_gradio_file_error(stale_upload)
+    assert is_retryable_hf_space_error(stream_error)
+    assert is_retryable_hf_space_error(stale_upload)
+    assert not is_retryable_hf_space_error(ValueError("invalid payload"))
+
+
+def test_refreshable_gradio_file_reuploads_before_retry() -> None:
+    upload_paths: list[str] = []
+    operation_paths: list[str] = []
+    delays: list[float] = []
+    retries: list[tuple[str, int]] = []
+
+    def upload() -> dict[str, object]:
+        path = f"/tmp/gradio/upload-{len(upload_paths) + 1}/reference.wav"
+        upload_paths.append(path)
+        return {"path": path, "meta": {"_type": "gradio.FileData"}}
+
+    def operation(reference: Mapping[str, object]) -> str:
+        path = str(reference["path"])
+        operation_paths.append(path)
+        if len(operation_paths) == 1:
+            raise RuntimeError(
+                f"FileNotFoundError: no such file or directory: {path}"
+            )
+        return "completed"
+
+    reference = RefreshableGradioFile(upload, sleeper=delays.append)
+    result = reference.run(
+        operation,
+        max_retries=1,
+        retry_backoff_seconds=0.25,
+        on_retry=lambda error, attempt: retries.append(
+            (type(error).__name__, attempt)
+        ),
+    )
+
+    assert result == "completed"
+    assert operation_paths == upload_paths
+    assert len(upload_paths) == 2
+    assert delays == [0.25]
+    assert retries == [("RuntimeError", 1)]
 
 
 def test_endpoint_contract_resolution_and_arity() -> None:
@@ -149,6 +207,52 @@ def test_queue_join_and_sse_completion() -> None:
     assert session.get.call_args.args[0].endswith(
         "session_hash=session%20with%20spaces"
     )
+
+
+def test_queue_stream_reconnects_same_session_after_chunk_truncation() -> None:
+    session = Mock()
+    session.post.return_value = _response({"event_id": "event-1"})
+    interrupted_response = _response()
+
+    def interrupted_events() -> object:
+        yield 'data: {"msg":"estimation","rank":0}'
+        raise requests.exceptions.ChunkedEncodingError(
+            "Response ended prematurely"
+        )
+
+    interrupted_response.iter_lines.return_value = interrupted_events()
+    completed_response = _response()
+    completed_response.iter_lines.return_value = [
+        (
+            'data: {"msg":"process_completed","success":true,'
+            '"output":{"data":[{"path":"/tmp/result.wav"}]}}'
+        ),
+    ]
+    session.get.side_effect = [interrupted_response, completed_response]
+    client = HFSpaceClient("https://example.hf.space", session=session)
+
+    session_hash = client.queue_join(
+        6,
+        ["hello"],
+        session_hash="stable-session",
+    )
+    result = client.wait_for_queue_result(
+        session_hash,
+        timeout_seconds=2,
+        poll_interval_seconds=0,
+    )
+
+    assert result["data"][0]["path"] == "/tmp/result.wav"
+    assert session.post.call_count == 1
+    assert session.get.call_count == 2
+    assert {
+        call.args[0] for call in session.get.call_args_list
+    } == {
+        (
+            "https://example.hf.space/gradio_api/queue/data?"
+            "session_hash=stable-session"
+        )
+    }
 
 
 def test_queue_failure_is_not_treated_as_a_cacheable_result() -> None:
