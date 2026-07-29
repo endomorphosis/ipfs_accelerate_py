@@ -11,7 +11,7 @@ import crypto from "node:crypto";
 import { createRequire } from "node:module";
 
 const PROTOCOL_VERSION = 1;
-const PRODUCER_VERSION = "typescript-ast-extractor@1";
+const PRODUCER_VERSION = "typescript-ast-extractor@2";
 const DEFAULT_MAX_INPUT_BYTES = 4 * 1024 * 1024;
 const LANGUAGES = new Set(["javascript", "jsx", "typescript", "tsx"]);
 
@@ -362,8 +362,9 @@ function extractFacts(ts, sourceFile) {
       ts.isVariableDeclaration(node) &&
       ts.isIdentifier(node.name) &&
       (scope.length === 0 ||
-        ts.isArrowFunction(node.initializer) ||
-        ts.isFunctionExpression(node.initializer))
+        (node.initializer &&
+          (ts.isArrowFunction(node.initializer) ||
+            ts.isFunctionExpression(node.initializer))))
     ) {
       scopeName = addDefinition(node, String(node.name.text));
     }
@@ -555,8 +556,15 @@ if (request !== undefined) {
               }
             : extractFacts(ts, sourceFile),
         });
-      } catch {
-        failure("process_failed", "TypeScript compiler AST traversal failed");
+      } catch (error) {
+        const errorName = stableText(error?.name || "Error");
+        const errorMessage = stableText(error?.message || "");
+        failure(
+          "process_failed",
+          `TypeScript compiler AST traversal failed: ${errorName}${
+            errorMessage ? `: ${errorMessage}` : ""
+          }`,
+        );
       }
     }
   }

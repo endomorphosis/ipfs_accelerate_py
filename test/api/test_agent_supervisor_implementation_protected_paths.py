@@ -2224,7 +2224,9 @@ def test_serialized_lock_update_has_windows_backend(
     monkeypatch.setattr(checkout_lock_module, "msvcrt", FakeMsvcrt)
     lock_path = tmp_path / "state" / "implementation.lock"
 
-    with serialized_lock_update(lock_path):
+    # Resolve through the monkeypatched module so this remains isolated even
+    # when another test reloads the checkout-lock module during collection.
+    with checkout_lock_module.serialized_lock_update(lock_path):
         assert calls == [(FakeMsvcrt.LK_NBLCK, 1)]
 
     assert calls == [

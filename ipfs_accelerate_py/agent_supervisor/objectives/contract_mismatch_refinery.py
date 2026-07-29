@@ -1350,7 +1350,9 @@ def write_contract_repair_board(path: str | Path, markdown: str) -> None:
         raise
 
 
-def _load_packet_records(path: Path) -> tuple[Mapping[str, Any], ...]:
+def _load_packet_document(
+    path: Path,
+) -> tuple[tuple[Mapping[str, Any], ...], str | None]:
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
@@ -1358,7 +1360,11 @@ def _load_packet_records(path: Path) -> tuple[Mapping[str, Any], ...]:
             f"unable to load packet records: {exc}",
             reason_code=ContractMismatchRefineryReason.MALFORMED_PACKET,
         ) from exc
+    document_snapshot_id: str | None = None
     if isinstance(payload, Mapping):
+        raw_snapshot_id = payload.get("snapshot_id")
+        if isinstance(raw_snapshot_id, str) and raw_snapshot_id:
+            document_snapshot_id = raw_snapshot_id
         for key in ("packets", "edit_packets", "findings"):
             if key in payload:
                 payload = payload[key]
@@ -1377,7 +1383,31 @@ def _load_packet_records(path: Path) -> tuple[Mapping[str, Any], ...]:
             "packet input contains a non-object record",
             reason_code=ContractMismatchRefineryReason.MALFORMED_PACKET,
         )
-    return tuple(payload)
+    records = tuple(payload)
+    record_snapshot_ids = {
+        str(item["snapshot_id"])
+        for item in records
+        if isinstance(item.get("snapshot_id"), str) and item.get("snapshot_id")
+    }
+    inferred_snapshot_ids = set(record_snapshot_ids)
+    if document_snapshot_id is not None:
+        inferred_snapshot_ids.add(document_snapshot_id)
+    if len(inferred_snapshot_ids) > 1:
+        raise ContractMismatchRefineryError(
+            "packet input contains conflicting snapshot_id values",
+            reason_code=ContractMismatchRefineryReason.MALFORMED_PACKET,
+        )
+    inferred_snapshot_id = (
+        next(iter(inferred_snapshot_ids)) if inferred_snapshot_ids else None
+    )
+    return records, inferred_snapshot_id
+
+
+def _load_packet_records(path: Path) -> tuple[Mapping[str, Any], ...]:
+    """Load packet records while retaining the original helper contract."""
+
+    records, _ = _load_packet_document(path)
+    return records
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -1392,7 +1422,13 @@ def _build_parser() -> argparse.ArgumentParser:
         help="JSON CodeEditPacket@1 record(s); no repository source is scanned.",
     )
     parser.add_argument("--output", required=True)
-    parser.add_argument("--snapshot", required=True)
+    parser.add_argument(
+        "--snapshot",
+        help=(
+            "Current repository snapshot identity. When omitted, exactly one "
+            "snapshot_id must be present in the packet document or records."
+        ),
+    )
     parser.add_argument(
         "--owner",
         default="external/ipfs_accelerate",
@@ -1416,9 +1452,21 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
     output = Path(args.output)
     existing = output.read_text(encoding="utf-8") if output.exists() else ""
+    try:
+        packet_records, inferred_snapshot_id = _load_packet_document(
+            Path(args.packets_path)
+        )
+    except ContractMismatchRefineryError as exc:
+        parser.error(str(exc))
+    current_snapshot_id = args.snapshot or inferred_snapshot_id
+    if not current_snapshot_id:
+        parser.error(
+            "--snapshot is required when the packet document does not "
+            "contain exactly one snapshot_id"
+        )
     result = refine_contract_mismatch_packets(
-        _load_packet_records(Path(args.packets_path)),
-        current_snapshot_id=args.snapshot,
+        packet_records,
+        current_snapshot_id=current_snapshot_id,
         existing_board=existing,
         current_open_work=args.current_open_work,
         now_epoch=int(time.time()) if args.now_epoch is None else args.now_epoch,

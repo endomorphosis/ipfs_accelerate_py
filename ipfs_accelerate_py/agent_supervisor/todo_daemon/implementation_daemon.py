@@ -2082,6 +2082,7 @@ class PortalImplementationDaemon:
         merged_worktree_cleanup_max: int | None = None,
         task_shard_count: int = 1,
         task_shard_index: int = 0,
+        strict_task_sharding: bool = False,
         merge_queue: MergeQueue | None = None,
         merge_queue_dir: Path | None = None,
         validation_scheduler: ValidationScheduler | None = None,
@@ -2330,6 +2331,7 @@ class PortalImplementationDaemon:
         self.task_shard_index = int(task_shard_index)
         if self.task_shard_index < 0 or self.task_shard_index >= self.task_shard_count:
             raise ValueError("task_shard_index must be in range [0, task_shard_count)")
+        self.strict_task_sharding = bool(strict_task_sharding)
         self.maintenance_interval_seconds = max(
             0.0,
             _env_float(
@@ -4095,37 +4097,6 @@ class PortalImplementationDaemon:
                     },
                 )
             return {}
-        # Align live fence with auto-clear policy: seed/prune thrash against
-        # ephemeral worktree copies is not an operator-protected mutation when
-        # the shared checkout still holds the authoritative files.
-        protected_set = set(self.implementation_protected_paths)
-        remaining_mutations: list[dict[str, Any]] = []
-        clearable_mutations: list[dict[str, Any]] = []
-        for mutation in mutations:
-            class_code = self._protected_mutation_is_auto_clearable_stall(
-                mutation,
-                protected=protected_set,
-            )
-            if class_code:
-                clearable_mutations.append(
-                    {**mutation, "auto_clearable_class": class_code}
-                )
-            else:
-                remaining_mutations.append(mutation)
-        if clearable_mutations and not remaining_mutations:
-            resolved_task_id = task.task_id if task is not None else task_id
-            self._record_event(
-                "implementation_protected_path_benign_thrash_accepted",
-                {
-                    "task_id": resolved_task_id,
-                    "attempt": attempt,
-                    "workspace_path": str(workspace_path),
-                    "mutations": clearable_mutations,
-                    "reason": "auto_clearable_stall_class_accepted_live",
-                },
-            )
-            return {}
-        mutations = remaining_mutations
         resolved_task_id = task.task_id if task is not None else task_id
         concurrent_update = self._authorized_concurrent_protected_path_update(
             workspace_path=workspace_path,
@@ -5858,8 +5829,13 @@ class PortalImplementationDaemon:
                 and task.task_id not in active_task_claims
             )
         ]
-        if self.task_shard_count > 1 and not any(
-            resolved_statuses.get(task.task_id) == "ready" for task in selectable_tasks
+        if (
+            self.task_shard_count > 1
+            and not self.strict_task_sharding
+            and not any(
+                resolved_statuses.get(task.task_id) == "ready"
+                for task in selectable_tasks
+            )
         ):
             fallback_tasks = [
                 task
@@ -22816,6 +22792,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Zero-based shard index implemented by this daemon lane. Defaults to 0.",
     )
     parser.add_argument(
+        "--strict-task-sharding",
+        action="store_true",
+        help=(
+            "Keep each daemon lane within its deterministic task shard when that "
+            "shard has no ready work; disables cross-shard ready-task fallback."
+        ),
+    )
+    parser.add_argument(
         "--daemon-hook-timeout-seconds",
         type=float,
         default=None,
@@ -23050,6 +23034,7 @@ def main(argv: list[str] | None = None) -> None:
         merged_worktree_cleanup_max=args.merged_worktree_cleanup_max,
         task_shard_count=args.task_shard_count,
         task_shard_index=args.task_shard_index,
+        strict_task_sharding=args.strict_task_sharding,
         validation_max_workers=args.validation_max_workers,
         validation_resource_budget=args.validation_resource_budget,
         maintenance_interval_seconds=args.maintenance_interval_seconds,

@@ -209,7 +209,7 @@ export class Service {
     assert extraction.compiler_name == "typescript"
     assert extraction.compiler_version == "5.7.3"
     assert extraction.tool_identity == (
-        "typescript-ast-extractor@1/typescript@5.7.3"
+        "typescript-ast-extractor@2/typescript@5.7.3"
     )
     assert record.language == "typescript@typescript-5.7.3"
     assert record.qualified_symbols == ("Service", "Service.run")
@@ -436,6 +436,10 @@ export class Service implements Runner {
     return this.client.send(request);
   }
 }
+
+export function leavesTypedLocalUninitialized(): void {
+  let pending: string;
+}
 """
     provider = PolyglotASTProvider(typescript_path=typescript_path)
     first = provider.extract_with_metadata(
@@ -457,6 +461,7 @@ export class Service implements Runner {
         "Service",
         "Service.constructor",
         "Service.run",
+        "leavesTypedLocalUninitialized",
     }.issubset(record.qualified_symbols)
     assert 'import type {Request} from "./request"' in record.imports
     assert 'import {Client as Transport} from "./client"' in record.imports

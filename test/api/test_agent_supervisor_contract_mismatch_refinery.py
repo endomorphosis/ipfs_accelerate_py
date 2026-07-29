@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import replace
 from pathlib import Path
 
@@ -28,6 +29,7 @@ from ipfs_accelerate_py.agent_supervisor.objectives.contract_mismatch_refinery i
     ContractMismatchRefineryReason,
     ContractRepairTask,
     deterministic_repair_task_id,
+    main,
     parse_contract_repair_board,
     render_contract_repair_board,
 )
@@ -413,6 +415,50 @@ def test_empty_generated_board_is_valid_and_non_authoritative() -> None:
     assert parsed.tasks == ()
     assert "admitted CodeEditPacket@1 records only" in board
     assert "Generated evidence authoritative: false" in board
+
+
+def test_cli_derives_snapshot_from_empty_content_addressed_findings(
+    tmp_path: Path,
+) -> None:
+    findings = tmp_path / "findings.json"
+    output = tmp_path / "generated.todo.md"
+    findings.write_text(
+        json.dumps(
+            {
+                "schema": "ipfs_accelerate_py/agent-supervisor/"
+                "contract-mismatch-analysis@1",
+                "snapshot_id": "sca-repository-snapshot:sha256:current",
+                "findings": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert main(["--findings", str(findings), "--output", str(output)]) == 0
+    assert parse_contract_repair_board(output.read_text(encoding="utf-8")).tasks == ()
+
+
+def test_cli_rejects_missing_or_conflicting_inferred_snapshot(
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "generated.todo.md"
+    missing = tmp_path / "missing.json"
+    missing.write_text(json.dumps({"findings": []}), encoding="utf-8")
+    with pytest.raises(SystemExit, match="2"):
+        main(["--findings", str(missing), "--output", str(output)])
+
+    conflicting = tmp_path / "conflicting.json"
+    conflicting.write_text(
+        json.dumps(
+            {
+                "snapshot_id": "git-tree:document",
+                "findings": [{"snapshot_id": "git-tree:record"}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(SystemExit, match="2"):
+        main(["--findings", str(conflicting), "--output", str(output)])
 
 
 def test_emitted_board_is_consumable_by_existing_markdown_task_source(

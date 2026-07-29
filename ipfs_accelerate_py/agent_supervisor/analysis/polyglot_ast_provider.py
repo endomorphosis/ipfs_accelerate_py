@@ -31,7 +31,7 @@ POLYGLOT_AST_PROVIDER_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/polyglot-ast-provider@1"
 )
 TYPESCRIPT_EXTRACTOR_PROTOCOL_VERSION = 1
-TYPESCRIPT_EXTRACTOR_VERSION = "typescript-ast-extractor@1"
+TYPESCRIPT_EXTRACTOR_VERSION = "typescript-ast-extractor@2"
 
 DEFAULT_MAX_FILES = 256
 DEFAULT_MAX_FILE_BYTES = 2 * 1024 * 1024
