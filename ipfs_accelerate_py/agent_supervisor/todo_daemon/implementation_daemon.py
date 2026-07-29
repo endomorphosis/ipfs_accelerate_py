@@ -263,6 +263,9 @@ PROVIDER_CAPACITY_PATTERNS = (
     ),
 )
 IMPLEMENTATION_PROVIDER_ENV = "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER"
+REQUIRE_TASK_EXECUTION_METADATA_ENV = (
+    "IPFS_ACCELERATE_AGENT_REQUIRE_TASK_EXECUTION_METADATA"
+)
 _GOOSE_BIN_ENV = "IPFS_ACCELERATE_AGENT_GOOSE_BIN"
 _GOOSE_MODEL_ENV = "IPFS_ACCELERATE_AGENT_GOOSE_MODEL"
 _GOOSE_MAX_TURNS_ENV = "IPFS_ACCELERATE_AGENT_GOOSE_MAX_TURNS"
@@ -19566,6 +19569,14 @@ class PortalImplementationDaemon:
         if task is None:
             return ""
         raw_role = self._task_metadata_value(task, "provider role")
+        if not raw_role and _env_bool(
+            REQUIRE_TASK_EXECUTION_METADATA_ENV,
+            False,
+        ):
+            raise ImplementationRetryDeferred(
+                "task provider role is required by execution policy",
+                backoff_seconds=300,
+            )
         roles = {
             item.strip().lower()
             for item in re.split(r"[,;]", raw_role)
@@ -19595,6 +19606,11 @@ class PortalImplementationDaemon:
     def _task_context_token_limit(self, task: PortalTask) -> int | None:
         raw_limit = self._task_metadata_value(task, "context budget tokens")
         if not raw_limit:
+            if _env_bool(REQUIRE_TASK_EXECUTION_METADATA_ENV, False):
+                raise ImplementationRetryDeferred(
+                    "task context budget tokens are required by execution policy",
+                    backoff_seconds=300,
+                )
             return None
         try:
             limit = int(raw_limit)

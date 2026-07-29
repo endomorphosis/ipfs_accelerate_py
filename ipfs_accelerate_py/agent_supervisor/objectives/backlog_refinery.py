@@ -5208,6 +5208,7 @@ def validation_retry_task_block(
         if launch_playwright_validation_gate
         else ""
     )
+    execution_metadata = retry_task_execution_metadata(source_task)
     return f"""## {task_id} Resolve validation retry-budget failure for {source_task.task_id}
 
 - Status: todo
@@ -5217,8 +5218,30 @@ def validation_retry_task_block(
 - Depends on: {", ".join(depends_on)}
 - Outputs: {", ".join(outputs)}
 - Validation: {validation_command}
+{execution_metadata}
 - Acceptance: Retry-budget guardrail filed this from repeated validation failures in {source_task.task_id}. Use evidence in {discovery_path} to fix the validation blocker, then mark this repair task completed so the supervisor can release {source_task.task_id} from strategy blocked_tasks.{validation_scope_acceptance}{launch_gate_acceptance}
 """
+
+
+def retry_task_execution_metadata(source_task: Any) -> str:
+    """Preserve reviewed provider and context bounds on generated repair work."""
+
+    raw_metadata = getattr(source_task, "metadata", {}) or {}
+    if not isinstance(raw_metadata, Mapping):
+        return ""
+    metadata = {
+        str(key).strip().lower().replace("_", " "): str(value).strip()
+        for key, value in raw_metadata.items()
+        if str(value).strip()
+    }
+    lines: list[str] = []
+    provider_role = metadata.get("provider role", "")
+    context_budget = metadata.get("context budget tokens", "")
+    if provider_role:
+        lines.append(f"- Provider role: {provider_role}")
+    if context_budget:
+        lines.append(f"- Context budget tokens: {context_budget}")
+    return "\n".join(lines)
 
 
 def safe_retry_validation_command(command: str, *, discovery_path: Path) -> str:
@@ -5295,6 +5318,7 @@ def implementation_retry_task_block(
     if discovery_output_path not in outputs:
         outputs.append(discovery_output_path)
     validation_command = f"test -f {shlex.quote(str(discovery_path))}"
+    execution_metadata = retry_task_execution_metadata(source_task)
     return f"""## {task_id} Resolve implementation retry-budget failure for {source_task.task_id}
 
 - Status: todo
@@ -5304,6 +5328,7 @@ def implementation_retry_task_block(
 - Depends on: {", ".join(depends_on)}
 - Outputs: {", ".join(outputs)}
 - Validation: {validation_command}
+{execution_metadata}
 - Acceptance: Implementation retry-budget guardrail filed this from repeated implementation failures in {source_task.task_id}. Use evidence in {discovery_path} to fix the setup, runtime, or timeout blocker, then mark this repair task completed so the supervisor can release {source_task.task_id} from strategy blocked_tasks.
 """
 
@@ -5330,6 +5355,7 @@ def merge_retry_task_block(
     if discovery_output_path not in outputs:
         outputs.append(discovery_output_path)
     validation_command = f"test -f {shlex.quote(str(discovery_path))}"
+    execution_metadata = retry_task_execution_metadata(source_task)
     return f"""## {task_id} Resolve merge retry-budget failure for {source_task.task_id}
 
 - Status: todo
@@ -5339,6 +5365,7 @@ def merge_retry_task_block(
 - Depends on: {", ".join(depends_on)}
 - Outputs: {", ".join(outputs)}
 - Validation: {validation_command}
+{execution_metadata}
 - Acceptance: Merge retry-budget guardrail filed this from repeated merge failures in {source_task.task_id}. Use evidence in {discovery_path} to fix the merge blocker, verify the intended implementation changes are committed in their owning repository or submodule, run `ipfs-accelerate-agent-merge-resolver --events-path ... --apply` when the conflict is semantic, then mark this repair task completed so the supervisor can release {source_task.task_id} from strategy blocked_tasks.
 """
 

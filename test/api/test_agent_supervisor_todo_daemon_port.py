@@ -10,6 +10,7 @@ import signal
 import subprocess
 import sys
 import time
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
@@ -1275,6 +1276,50 @@ def test_deterministic_only_task_cannot_dispatch_a_model(tmp_path):
         match="typed local operation",
     ):
         daemon._build_implementation_prompt(task, attempt=1)
+
+
+def test_strict_execution_metadata_policy_defers_unbounded_task(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+    )
+    task = PortalTask(
+        task_id="SCA-190",
+        title="Repair generated task",
+        status="ready",
+        completion="manual",
+        priority="P0",
+        track="ops",
+        outputs=["src/runtime.py"],
+    )
+    monkeypatch.setenv(
+        implementation_daemon_module.REQUIRE_TASK_EXECUTION_METADATA_ENV,
+        "1",
+    )
+
+    with pytest.raises(
+        implementation_daemon_module.ImplementationRetryDeferred,
+        match="provider role is required",
+    ):
+        daemon._build_implementation_prompt(task, attempt=1)
+
+    bounded = replace(
+        task,
+        metadata={"Provider role": "grok-implement"},
+    )
+    with pytest.raises(
+        implementation_daemon_module.ImplementationRetryDeferred,
+        match="context budget tokens are required",
+    ):
+        daemon._task_context_token_limit(bounded)
 
 
 def test_implementation_daemon_does_not_seed_modified_tracked_context(tmp_path):
@@ -12385,6 +12430,8 @@ def test_implementation_supervisor_records_retry_budget_guardrail(tmp_path):
 - Depends on:
 - Outputs: src/runtime.py
 - Validation: test -f src/runtime.py
+- Provider role: grok-implement, codex-review
+- Context budget tokens: 2048
 - Acceptance: Fix the repeated implementation blocker.
 """,
         encoding="utf-8",
@@ -12422,6 +12469,8 @@ def test_implementation_supervisor_records_retry_budget_guardrail(tmp_path):
     assert result["retry_budget_count"] == 1
     todo_text = todo_path.read_text(encoding="utf-8")
     assert "## AUTO-002 Resolve implementation retry-budget failure for AUTO-001" in todo_text
+    assert "- Provider role: grok-implement, codex-review" in todo_text
+    assert "- Context budget tokens: 2048" in todo_text
     strategy = json.loads((state_dir / "auto_strategy.json").read_text(encoding="utf-8"))
     assert strategy["blocked_tasks"] == ["AUTO-001"]
     supervisor_events = [
