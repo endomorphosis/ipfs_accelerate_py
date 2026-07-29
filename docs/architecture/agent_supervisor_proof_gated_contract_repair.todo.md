@@ -181,7 +181,7 @@ task IDs on this board.
 
 ## RPR-005 Classify a broken call into a bounded trace
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
