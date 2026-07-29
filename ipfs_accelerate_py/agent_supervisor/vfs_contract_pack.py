@@ -21,8 +21,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Final, Iterable, Mapping, Sequence
 
-from .program_contracts import ContractSourceKind, SOURCE_PRECEDENCE
-
+from .program_contracts import SOURCE_PRECEDENCE, ContractSourceKind
 
 VFS_CONTRACT_PACK_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/vfs-contract-pack@1"
@@ -30,14 +29,27 @@ VFS_CONTRACT_PACK_SCHEMA: Final[str] = (
 VFS_CANONICAL_OPERATION_MATRIX_SCHEMA: Final[str] = (
     "vfs/canonical-operation-matrix@1"
 )
+VFS_DRIFT_INVENTORY_SCHEMA: Final[str] = "vfs/drift-inventory@1"
 VFS_CONTRACT_PACK_VERSION: Final[str] = "vfs-contract-pack/v1"
 VFS_CONTRACT_PACK_GOAL_ID: Final[str] = "VFS-026"
+VFS_DRIFT_INVENTORY_GOAL_ID: Final[str] = "VFS-G090"
+VFS_DRIFT_INVENTORY_TASK_ID: Final[str] = "VFS-045"
+VFS_DRIFT_INVENTORY_OBJECTIVE_REVISION: Final[str] = (
+    "baguqeerahsnzkm2u6e6qvh6hnjyrwwwhyf6usdlocisaibw5zyk4ujektotq"
+)
+VFS_DRIFT_INVENTORY_SOURCE_REVISION: Final[str] = (
+    "git:f6a574375febbcf9a46fcd24bbc7bc5cfb551de5"
+)
 
 # Authority bounds: this is a comparison contract, not proof of repository
 # correctness or permission to select/modify an implementation.
 CONTRACT_PACK_IS_COMPLETION_EVIDENCE: Final[bool] = False
 CONTRACT_PACK_IS_CORRECTNESS_EVIDENCE: Final[bool] = False
 CONTRACT_PACK_AUTHORIZES_REPAIR: Final[bool] = False
+DRIFT_INVENTORY_IS_COMPLETION_EVIDENCE: Final[bool] = False
+DRIFT_INVENTORY_IS_CORRECTNESS_EVIDENCE: Final[bool] = False
+DRIFT_INVENTORY_AUTHORIZES_REPAIR: Final[bool] = False
+DRIFT_INVENTORY_VARIANT_PRESENCE_IS_DEFECT: Final[bool] = False
 
 
 class VfsContractPackError(ValueError):
@@ -143,6 +155,41 @@ class ExecutionMode(str, Enum):
 class FacadeCompatibility(str, Enum):
     COMPATIBLE = "compatible"
     INCOMPATIBLE = "incompatible"
+    UNRESOLVED = "unresolved"
+
+
+class DriftSurfaceKind(str, Enum):
+    """Closed inventory vocabulary required by objective VFS-G090."""
+
+    VFS = "vfs"
+    FSSPEC = "fsspec"
+    VFS_MANAGER = "vfs_manager"
+    BUCKET = "bucket"
+    JOURNAL = "journal"
+    VERSION = "version"
+    BACKEND = "backend"
+    MCP_HANDLER = "mcp_handler"
+    ENDPOINT = "endpoint"
+    TOOL = "tool"
+    SDK_MANIFEST = "sdk_manifest"
+    VARIANT = "variant"
+
+
+class DriftFindingKind(str, Enum):
+    """What an inventory finding reports, without selecting a repair."""
+
+    SURFACE = "surface"
+    CONTRACT_DRIFT = "contract_drift"
+    MANIFEST_DRIFT = "manifest_drift"
+    DUPLICATE_CANDIDATE = "duplicate_candidate"
+    VARIANT_PRESENCE = "variant_presence"
+
+
+class DriftAssessment(str, Enum):
+    """Evidence state of a finding, not a defect or repair verdict."""
+
+    OBSERVED = "observed"
+    DRIFT = "drift"
     UNRESOLVED = "unresolved"
 
 
@@ -618,6 +665,293 @@ class FacadeExample:
             "rationale": self.rationale,
             "source_contract_ids": list(self.source_contract_ids),
         }
+
+
+@dataclass(frozen=True)
+class VfsDriftEvidence:
+    """One reviewed implementation observation bound to an exact Git blob."""
+
+    evidence_id: str
+    locator: str
+    revision: str
+    summary: str
+    observed_symbols: tuple[str, ...]
+    reviewed: bool = True
+    available: bool = True
+    expectation_authority: bool = False
+
+    def __post_init__(self) -> None:
+        _require_identifier(self.evidence_id, "evidence_id")
+        _require_identifier(self.locator, "locator")
+        _require_identifier(self.revision, "revision")
+        _require_identifier(self.summary, "summary")
+        _require_unique(self.observed_symbols, "observed_symbols")
+        if not self.observed_symbols:
+            raise VfsContractPackError(
+                f"drift evidence {self.evidence_id!r} must name an observation"
+            )
+        if (
+            type(self.reviewed) is not bool
+            or type(self.available) is not bool
+            or type(self.expectation_authority) is not bool
+        ):
+            raise VfsContractPackError("drift evidence authority flags must be booleans")
+        if not self.reviewed or not self.available:
+            raise VfsContractPackError(
+                f"drift evidence {self.evidence_id!r} must be available and reviewed"
+            )
+        if self.expectation_authority:
+            raise VfsContractPackError(
+                "implementation observations cannot define canonical expectations"
+            )
+
+    def to_record(self) -> dict[str, Any]:
+        return {
+            "evidence_id": self.evidence_id,
+            "source_kind": ContractSourceKind.IMPLEMENTATION_OBSERVATION.value,
+            "locator": self.locator,
+            "revision": self.revision,
+            "summary": self.summary,
+            "observed_symbols": list(self.observed_symbols),
+            "reviewed": self.reviewed,
+            "available": self.available,
+            "expectation_authority": self.expectation_authority,
+        }
+
+
+@dataclass(frozen=True)
+class VfsDriftFinding:
+    """Inventory result mapped to reviewed operations, never a repair decision."""
+
+    finding_id: str
+    kind: DriftFindingKind
+    assessment: DriftAssessment
+    surface_kinds: tuple[DriftSurfaceKind, ...]
+    summary: str
+    evidence_ids: tuple[str, ...]
+    canonical_operations: tuple[VfsOperation, ...]
+    source_contract_ids: tuple[str, ...]
+    variant_presence_only: bool = False
+    defect_label: None = None
+    repair_decision: None = None
+
+    def __post_init__(self) -> None:
+        _require_identifier(self.finding_id, "finding_id")
+        _require_identifier(self.summary, "summary")
+        _require_unique(
+            (item.value for item in self.surface_kinds), "surface_kinds"
+        )
+        _require_unique(self.evidence_ids, "evidence_ids")
+        _require_unique(
+            (item.value for item in self.canonical_operations),
+            "canonical_operations",
+        )
+        _require_unique(self.source_contract_ids, "source_contract_ids")
+        if not self.surface_kinds:
+            raise VfsContractPackError(
+                f"drift finding {self.finding_id!r} needs a surface kind"
+            )
+        if not self.evidence_ids:
+            raise VfsContractPackError(
+                f"drift finding {self.finding_id!r} needs observation evidence"
+            )
+        if not self.canonical_operations or not self.source_contract_ids:
+            raise VfsContractPackError(
+                f"drift finding {self.finding_id!r} needs a reviewed operation mapping"
+            )
+        if type(self.variant_presence_only) is not bool:
+            raise VfsContractPackError("variant_presence_only must be a boolean")
+        if self.kind is DriftFindingKind.VARIANT_PRESENCE:
+            if (
+                not self.variant_presence_only
+                or self.assessment is not DriftAssessment.OBSERVED
+            ):
+                raise VfsContractPackError(
+                    "variant presence must remain an observation, not a drift verdict"
+                )
+        elif self.variant_presence_only:
+            raise VfsContractPackError(
+                "variant_presence_only is reserved for variant-presence findings"
+            )
+        if self.defect_label is not None:
+            raise VfsContractPackError(
+                "inventory findings cannot assign a defect label"
+            )
+        if self.repair_decision is not None:
+            raise VfsContractPackError(
+                "inventory findings cannot contain repair decisions"
+            )
+
+    def to_record(self) -> dict[str, Any]:
+        return {
+            "finding_id": self.finding_id,
+            "kind": self.kind.value,
+            "assessment": self.assessment.value,
+            "surface_kinds": _enum_values(self.surface_kinds),
+            "summary": self.summary,
+            "evidence_ids": list(self.evidence_ids),
+            "canonical_operations": _enum_values(self.canonical_operations),
+            "source_contract_ids": list(self.source_contract_ids),
+            "variant_presence_only": self.variant_presence_only,
+            "defect_label": self.defect_label,
+            "repair_decision": self.repair_decision,
+        }
+
+
+@dataclass(frozen=True)
+class VfsDriftInventory:
+    """Revision-bound VFS surface findings mapped to the canonical contract."""
+
+    contract_pack_id: str
+    contract_version: str
+    source_revision: str
+    evidence: tuple[VfsDriftEvidence, ...]
+    findings: tuple[VfsDriftFinding, ...]
+    schema: str = VFS_DRIFT_INVENTORY_SCHEMA
+    goal_id: str = VFS_DRIFT_INVENTORY_GOAL_ID
+    task_id: str = VFS_DRIFT_INVENTORY_TASK_ID
+    objective_revision: str = VFS_DRIFT_INVENTORY_OBJECTIVE_REVISION
+
+    def __post_init__(self) -> None:
+        expected_identity = (
+            (self.schema, VFS_DRIFT_INVENTORY_SCHEMA, "schema"),
+            (self.goal_id, VFS_DRIFT_INVENTORY_GOAL_ID, "goal_id"),
+            (self.task_id, VFS_DRIFT_INVENTORY_TASK_ID, "task_id"),
+            (
+                self.objective_revision,
+                VFS_DRIFT_INVENTORY_OBJECTIVE_REVISION,
+                "objective_revision",
+            ),
+            (
+                self.source_revision,
+                VFS_DRIFT_INVENTORY_SOURCE_REVISION,
+                "source_revision",
+            ),
+            (self.contract_version, VFS_CONTRACT_PACK_VERSION, "contract_version"),
+        )
+        for actual, expected, field_name in expected_identity:
+            if actual != expected:
+                raise VfsContractPackError(
+                    f"{field_name} must be {expected!r}, got {actual!r}"
+                )
+        _require_identifier(self.contract_pack_id, "contract_pack_id")
+        _require_unique((item.evidence_id for item in self.evidence), "evidence ids")
+        _require_unique((item.finding_id for item in self.findings), "finding ids")
+        if not self.evidence or not self.findings:
+            raise VfsContractPackError("drift inventory cannot be empty")
+
+        evidence_ids = {item.evidence_id for item in self.evidence}
+        referenced_evidence = {
+            evidence_id
+            for finding in self.findings
+            for evidence_id in finding.evidence_ids
+        }
+        if referenced_evidence != evidence_ids:
+            missing = sorted(referenced_evidence - evidence_ids)
+            unused = sorted(evidence_ids - referenced_evidence)
+            raise VfsContractPackError(
+                f"drift evidence coverage differs; missing={missing}, unused={unused}"
+            )
+
+        covered_surfaces = {
+            surface_kind
+            for finding in self.findings
+            for surface_kind in finding.surface_kinds
+        }
+        if covered_surfaces != set(DriftSurfaceKind):
+            missing = sorted(
+                item.value for item in set(DriftSurfaceKind) - covered_surfaces
+            )
+            extra = sorted(
+                item.value for item in covered_surfaces - set(DriftSurfaceKind)
+            )
+            raise VfsContractPackError(
+                f"drift surface coverage differs; missing={missing}, extra={extra}"
+            )
+
+        covered_operations = {
+            operation
+            for finding in self.findings
+            for operation in finding.canonical_operations
+        }
+        if covered_operations != set(VfsOperation):
+            missing = sorted(
+                item.value for item in set(VfsOperation) - covered_operations
+            )
+            raise VfsContractPackError(
+                f"drift operation mapping is incomplete; missing={missing}"
+            )
+        if not any(
+            item.kind is DriftFindingKind.MANIFEST_DRIFT for item in self.findings
+        ):
+            raise VfsContractPackError(
+                "drift inventory must contain an evidence-backed manifest finding"
+            )
+        if not any(
+            item.kind is DriftFindingKind.VARIANT_PRESENCE for item in self.findings
+        ):
+            raise VfsContractPackError(
+                "drift inventory must record variant presence separately"
+            )
+        if not any(
+            item.kind is DriftFindingKind.DUPLICATE_CANDIDATE
+            for item in self.findings
+        ):
+            raise VfsContractPackError(
+                "drift inventory must record duplicate candidates separately"
+            )
+
+    @property
+    def drift_findings(self) -> tuple[VfsDriftFinding, ...]:
+        return tuple(
+            item
+            for item in self.findings
+            if item.assessment is DriftAssessment.DRIFT
+        )
+
+    @property
+    def repair_decisions(self) -> tuple[Any, ...]:
+        """Repair selection belongs to a separate authority-bearing workflow."""
+
+        return ()
+
+    def to_record(self) -> dict[str, Any]:
+        record: dict[str, Any] = {
+            "schema": self.schema,
+            "evidence_kinds": [VFS_DRIFT_INVENTORY_SCHEMA],
+            "goal_id": self.goal_id,
+            "task_id": self.task_id,
+            "objective_revision": self.objective_revision,
+            "contract_pack_id": self.contract_pack_id,
+            "contract_version": self.contract_version,
+            "source_revision": self.source_revision,
+            "authority": {
+                "completion_evidence": DRIFT_INVENTORY_IS_COMPLETION_EVIDENCE,
+                "correctness_evidence": DRIFT_INVENTORY_IS_CORRECTNESS_EVIDENCE,
+                "authorizes_repair": DRIFT_INVENTORY_AUTHORIZES_REPAIR,
+                "variant_presence_is_defect": (
+                    DRIFT_INVENTORY_VARIANT_PRESENCE_IS_DEFECT
+                ),
+            },
+            "evidence": [item.to_record() for item in self.evidence],
+            "inventory_findings": [item.to_record() for item in self.findings],
+            "repair_decisions": list(self.repair_decisions),
+        }
+        record["content_id"] = _content_id(record)
+        return record
+
+    @property
+    def content_id(self) -> str:
+        return self.to_record()["content_id"]
+
+    def to_json(self, *, indent: int | None = 2) -> str:
+        return json.dumps(
+            self.to_record(),
+            ensure_ascii=False,
+            allow_nan=False,
+            sort_keys=True,
+            indent=indent,
+        )
 
 
 @dataclass(frozen=True)
@@ -1583,6 +1917,453 @@ def _canonical_facade_examples() -> tuple[FacadeExample, ...]:
     )
 
 
+def _canonical_drift_evidence() -> tuple[VfsDriftEvidence, ...]:
+    """Reviewed observations from the pinned IPFS Kit source revision."""
+
+    return (
+        VfsDriftEvidence(
+            evidence_id="evidence:vfs-core-fsspec",
+            locator="ipfs_kit_py/ipfs_kit_py/ipfs_fsspec.py",
+            revision="git-blob:8c968bac7497f342fd7fbbb454b145910b4ba41e",
+            summary=(
+                "The fsspec module defines both the registered IPFS filesystem "
+                "facade and the broad VFS core."
+            ),
+            observed_symbols=(
+                "IPFSFSSpecFileSystem",
+                "VFSCore",
+                "fsspec.register_implementation",
+                "get_vfs",
+            ),
+        ),
+        VfsDriftEvidence(
+            evidence_id="evidence:vfs-manager",
+            locator="ipfs_kit_py/ipfs_kit_py/vfs_manager.py",
+            revision="git-blob:dd679f5e3ab15ed0873473719fc962389abf17fc",
+            summary=(
+                "The VFS manager exposes a generic operation dispatcher and "
+                "namespace helpers."
+            ),
+            observed_symbols=(
+                "VFSManager",
+                "execute_vfs_operation",
+                "list_files",
+                "create_folder",
+                "delete_item",
+                "rename_item",
+                "move_item",
+            ),
+        ),
+        VfsDriftEvidence(
+            evidence_id="evidence:bucket-vfs",
+            locator="ipfs_kit_py/ipfs_kit_py/bucket_vfs_manager.py",
+            revision="git-blob:d8504612125b8e3cf4be19b9984f82890274a85b",
+            summary=(
+                "BucketVFSManager and BucketVFS expose a competing bucket-oriented "
+                "file namespace."
+            ),
+            observed_symbols=(
+                "BucketVFSManager",
+                "BucketVFS",
+                "add_file",
+                "cat_file",
+                "list_files",
+                "remove_file",
+            ),
+        ),
+        VfsDriftEvidence(
+            evidence_id="evidence:filesystem-journal",
+            locator="ipfs_kit_py/ipfs_kit_py/filesystem_journal.py",
+            revision="git-blob:5287ae3eb0cb06e062eb4ab7a15f837be10864ae",
+            summary=(
+                "The filesystem journal records, replays, and directly applies "
+                "namespace mutations."
+            ),
+            observed_symbols=(
+                "FilesystemJournal",
+                "FilesystemJournalManager",
+                "record_operation",
+                "recover",
+                "write_file",
+                "delete",
+                "rename",
+                "mount",
+            ),
+        ),
+        VfsDriftEvidence(
+            evidence_id="evidence:vfs-version",
+            locator="ipfs_kit_py/ipfs_kit_py/vfs_version_tracker.py",
+            revision="git-blob:5c05e99b810e60ac79b932571137acfd47d744eb",
+            summary=(
+                "The version tracker scans filesystem state and exposes snapshots, "
+                "history, status, and checkout."
+            ),
+            observed_symbols=(
+                "VFSVersionTracker",
+                "scan_filesystem",
+                "create_version_snapshot",
+                "get_version_history",
+                "checkout_version",
+            ),
+        ),
+        VfsDriftEvidence(
+            evidence_id="evidence:iroh-vfs-backend",
+            locator="ipfs_kit_py/ipfs_kit_py/iroh_vfs.py",
+            revision="git-blob:aa0d65976501d389e7406af195f182c7700c457c",
+            summary=(
+                "The Iroh backend adapter exposes its own path, byte, metadata, "
+                "and namespace operations."
+            ),
+            observed_symbols=(
+                "IrohVFSAdapter",
+                "resolve",
+                "read_bytes",
+                "write_bytes",
+                "mkdir",
+                "remove",
+                "info",
+                "list",
+            ),
+        ),
+        VfsDriftEvidence(
+            evidence_id="evidence:mcp-vfs-handler",
+            locator=(
+                "ipfs_kit_py/ipfs_kit_py/mcp/handlers/"
+                "mcp_vfs_action_handler.py"
+            ),
+            revision="git-blob:921bf3a40a4548d934b688ae13fcfa49c3737379",
+            summary=(
+                "The MCP vfs.action handler returns a success envelope around an "
+                "explicit placeholder implementation."
+            ),
+            observed_symbols=(
+                "McpVfsActionHandler",
+                "handle",
+                "_execute_mcp_vfs_action_controller",
+                "Comprehensive feature implementation in progress",
+            ),
+        ),
+        VfsDriftEvidence(
+            evidence_id="evidence:vfs-endpoints",
+            locator="ipfs_kit_py/ipfs_kit_py/mcp/ipfs_kit/api/vfs_endpoints.py",
+            revision="git-blob:28187edb12e3ac7a6f27edea7f9f60b448f64360",
+            summary=(
+                "The primary HTTP endpoint class exposes list/create/delete/rename/"
+                "upload/move namespace methods."
+            ),
+            observed_symbols=(
+                "VFSEndpoints",
+                "list_files",
+                "create_folder",
+                "delete_item",
+                "rename_item",
+                "upload_file",
+                "move_item",
+            ),
+        ),
+        VfsDriftEvidence(
+            evidence_id="evidence:vfs-endpoints-fixed",
+            locator=(
+                "ipfs_kit_py/ipfs_kit_py/mcp/ipfs_kit/api/"
+                "vfs_endpoints_fixed.py"
+            ),
+            revision="git-blob:7f473fd50cc22851fa6dfc34ce8752760d78af78",
+            summary="A separately named fixed endpoint variant is present.",
+            observed_symbols=("VFSEndpoints", "vfs_endpoints_fixed.py"),
+        ),
+        VfsDriftEvidence(
+            evidence_id="evidence:vfs-endpoints-optimized",
+            locator=(
+                "ipfs_kit_py/ipfs_kit_py/mcp/ipfs_kit/api/"
+                "vfs_endpoints_optimized.py"
+            ),
+            revision="git-blob:2144f72856847266b861d2fbd45cc7f3bf406312",
+            summary="A separately named optimized endpoint variant is present.",
+            observed_symbols=("vfs_endpoints_optimized.py",),
+        ),
+        VfsDriftEvidence(
+            evidence_id="evidence:mcp-vfs-tools",
+            locator=(
+                "ipfs_kit_py/ipfs_kit_py/mcp/ipfs_kit/mcp_tools/vfs_tools.py"
+            ),
+            revision="git-blob:c439f866bb240202a663cc06872f7a7f2fc75423",
+            summary=(
+                "The Python MCP VFS tool surface exposes statistics, cache, vector "
+                "index, and knowledge-base methods."
+            ),
+            observed_symbols=(
+                "VFSTools",
+                "get_vfs_statistics",
+                "get_vfs_cache",
+                "get_vfs_vector_index",
+                "get_vfs_knowledge_base",
+            ),
+        ),
+        VfsDriftEvidence(
+            evidence_id="evidence:mcp-js-tools-manifest",
+            locator=(
+                "ipfs_kit_py/ipfs_kit_py/mcp_server/js_sdk/"
+                "tools-manifest.json"
+            ),
+            revision="git-blob:af7a5cffeefab111f9f16bd3ba1d7426ffd6e45f",
+            summary=(
+                "The JS SDK manifest registers files_* operations but none of the "
+                "observed Python VFSTools get_vfs_* names."
+            ),
+            observed_symbols=(
+                "files_ls",
+                "files_mkdir",
+                "files_stat",
+                "files_write",
+                "files_read",
+                "files_rm",
+                "absence:get_vfs_*",
+            ),
+        ),
+        VfsDriftEvidence(
+            evidence_id="evidence:ipfs-fsspec-clean-variant",
+            locator="ipfs_kit_py/ipfs_kit_py/ipfs_fsspec.py.clean",
+            revision="git-blob:700beedf6f20d6b91682c125322231cd004216d3",
+            summary="A .clean fsspec variant is present in the source tree.",
+            observed_symbols=("ipfs_fsspec.py.clean",),
+        ),
+        VfsDriftEvidence(
+            evidence_id="evidence:ipfs-fsspec-full-variant",
+            locator="ipfs_kit_py/ipfs_kit_py/ipfs_fsspec.py.full",
+            revision="git-blob:92dfb961574d6cefd3b7cc76ee8160f599f664b8",
+            summary="A .full fsspec variant is present in the source tree.",
+            observed_symbols=("ipfs_fsspec.py.full",),
+        ),
+    )
+
+
+def _canonical_drift_findings() -> tuple[VfsDriftFinding, ...]:
+    """Map every reviewed inventory family to canonical operation contracts."""
+
+    contract = ("source:vfs-026-acceptance",)
+    return (
+        VfsDriftFinding(
+            finding_id="finding:vfs-core-fsspec",
+            kind=DriftFindingKind.SURFACE,
+            assessment=DriftAssessment.OBSERVED,
+            surface_kinds=(DriftSurfaceKind.VFS, DriftSurfaceKind.FSSPEC),
+            summary=(
+                "VFSCore and IPFSFSSpecFileSystem are reviewed against the complete "
+                "canonical operation vocabulary."
+            ),
+            evidence_ids=("evidence:vfs-core-fsspec",),
+            canonical_operations=_ALL,
+            source_contract_ids=contract,
+        ),
+        VfsDriftFinding(
+            finding_id="finding:vfs-manager",
+            kind=DriftFindingKind.SURFACE,
+            assessment=DriftAssessment.OBSERVED,
+            surface_kinds=(DriftSurfaceKind.VFS_MANAGER,),
+            summary="VFSManager namespace helpers map to canonical namespace operations.",
+            evidence_ids=("evidence:vfs-manager",),
+            canonical_operations=(
+                VfsOperation.LIST,
+                VfsOperation.MKDIR,
+                VfsOperation.REMOVE,
+                VfsOperation.RENAME,
+                VfsOperation.COPY,
+            ),
+            source_contract_ids=contract,
+        ),
+        VfsDriftFinding(
+            finding_id="finding:bucket-vfs",
+            kind=DriftFindingKind.SURFACE,
+            assessment=DriftAssessment.OBSERVED,
+            surface_kinds=(DriftSurfaceKind.BUCKET,),
+            summary="Bucket operations map to the same canonical byte and namespace model.",
+            evidence_ids=("evidence:bucket-vfs",),
+            canonical_operations=(
+                VfsOperation.READ,
+                VfsOperation.WRITE,
+                VfsOperation.STAT,
+                VfsOperation.LIST,
+                VfsOperation.MKDIR,
+                VfsOperation.REMOVE,
+                VfsOperation.COPY,
+            ),
+            source_contract_ids=contract,
+        ),
+        VfsDriftFinding(
+            finding_id="finding:filesystem-journal",
+            kind=DriftFindingKind.SURFACE,
+            assessment=DriftAssessment.OBSERVED,
+            surface_kinds=(DriftSurfaceKind.JOURNAL,),
+            summary=(
+                "Journal mutation and replay entrypoints map to canonical mutation, "
+                "atomicity, and replay contracts."
+            ),
+            evidence_ids=("evidence:filesystem-journal",),
+            canonical_operations=(
+                VfsOperation.MOUNT,
+                VfsOperation.WRITE,
+                VfsOperation.STAT,
+                VfsOperation.MKDIR,
+                VfsOperation.REMOVE,
+                VfsOperation.RENAME,
+            ),
+            source_contract_ids=contract,
+        ),
+        VfsDriftFinding(
+            finding_id="finding:vfs-version",
+            kind=DriftFindingKind.SURFACE,
+            assessment=DriftAssessment.OBSERVED,
+            surface_kinds=(DriftSurfaceKind.VERSION,),
+            summary=(
+                "Snapshot, history, and checkout entrypoints map to canonical "
+                "versioned path and content operations."
+            ),
+            evidence_ids=("evidence:vfs-version",),
+            canonical_operations=(
+                VfsOperation.PATH_RESOLVE,
+                VfsOperation.READ,
+                VfsOperation.WRITE,
+                VfsOperation.STAT,
+                VfsOperation.LIST,
+            ),
+            source_contract_ids=contract,
+        ),
+        VfsDriftFinding(
+            finding_id="finding:iroh-vfs-backend",
+            kind=DriftFindingKind.SURFACE,
+            assessment=DriftAssessment.OBSERVED,
+            surface_kinds=(DriftSurfaceKind.BACKEND,),
+            summary=(
+                "The Iroh adapter is a backend surface subject to canonical path, "
+                "byte, metadata, and namespace semantics."
+            ),
+            evidence_ids=("evidence:iroh-vfs-backend",),
+            canonical_operations=(
+                VfsOperation.PATH_RESOLVE,
+                VfsOperation.READ,
+                VfsOperation.WRITE,
+                VfsOperation.STAT,
+                VfsOperation.LIST,
+                VfsOperation.MKDIR,
+                VfsOperation.REMOVE,
+            ),
+            source_contract_ids=contract,
+        ),
+        VfsDriftFinding(
+            finding_id="finding:mcp-vfs-handler-placeholder",
+            kind=DriftFindingKind.CONTRACT_DRIFT,
+            assessment=DriftAssessment.DRIFT,
+            surface_kinds=(DriftSurfaceKind.MCP_HANDLER,),
+            summary=(
+                "The generic MCP VFS action surface can emit success for a named "
+                "placeholder; this is an inventory finding, not a repair selection."
+            ),
+            evidence_ids=("evidence:mcp-vfs-handler",),
+            canonical_operations=_ALL,
+            source_contract_ids=contract,
+        ),
+        VfsDriftFinding(
+            finding_id="finding:vfs-http-endpoints",
+            kind=DriftFindingKind.SURFACE,
+            assessment=DriftAssessment.OBSERVED,
+            surface_kinds=(DriftSurfaceKind.ENDPOINT,),
+            summary=(
+                "HTTP VFS namespace methods map to canonical list, create, remove, "
+                "rename, write, and copy operations."
+            ),
+            evidence_ids=("evidence:vfs-endpoints",),
+            canonical_operations=(
+                VfsOperation.LIST,
+                VfsOperation.MKDIR,
+                VfsOperation.REMOVE,
+                VfsOperation.RENAME,
+                VfsOperation.WRITE,
+                VfsOperation.COPY,
+            ),
+            source_contract_ids=contract,
+        ),
+        VfsDriftFinding(
+            finding_id="finding:mcp-vfs-tools",
+            kind=DriftFindingKind.SURFACE,
+            assessment=DriftAssessment.OBSERVED,
+            surface_kinds=(DriftSurfaceKind.TOOL,),
+            summary=(
+                "Python VFS observability tools are mapped to canonical stat and "
+                "bounded list result semantics."
+            ),
+            evidence_ids=("evidence:mcp-vfs-tools",),
+            canonical_operations=(VfsOperation.STAT, VfsOperation.LIST),
+            source_contract_ids=contract,
+        ),
+        VfsDriftFinding(
+            finding_id="finding:mcp-sdk-manifest-drift",
+            kind=DriftFindingKind.MANIFEST_DRIFT,
+            assessment=DriftAssessment.DRIFT,
+            surface_kinds=(DriftSurfaceKind.SDK_MANIFEST,),
+            summary=(
+                "The JS SDK manifest and Python VFS tool namespace differ at the "
+                "pinned revision; the observation does not decide whether to repair "
+                "either surface."
+            ),
+            evidence_ids=(
+                "evidence:mcp-vfs-tools",
+                "evidence:mcp-js-tools-manifest",
+            ),
+            canonical_operations=(
+                VfsOperation.READ,
+                VfsOperation.WRITE,
+                VfsOperation.STAT,
+                VfsOperation.LIST,
+                VfsOperation.MKDIR,
+                VfsOperation.REMOVE,
+            ),
+            source_contract_ids=contract,
+        ),
+        VfsDriftFinding(
+            finding_id="finding:vfs-endpoint-duplicate-candidates",
+            kind=DriftFindingKind.DUPLICATE_CANDIDATE,
+            assessment=DriftAssessment.UNRESOLVED,
+            surface_kinds=(DriftSurfaceKind.ENDPOINT, DriftSurfaceKind.VARIANT),
+            summary=(
+                "Base, fixed, and optimized endpoint modules are duplicate candidates; "
+                "presence and naming do not establish a defect or preferred module."
+            ),
+            evidence_ids=(
+                "evidence:vfs-endpoints",
+                "evidence:vfs-endpoints-fixed",
+                "evidence:vfs-endpoints-optimized",
+            ),
+            canonical_operations=(
+                VfsOperation.LIST,
+                VfsOperation.MKDIR,
+                VfsOperation.REMOVE,
+                VfsOperation.RENAME,
+                VfsOperation.WRITE,
+                VfsOperation.COPY,
+            ),
+            source_contract_ids=contract,
+        ),
+        VfsDriftFinding(
+            finding_id="finding:ipfs-fsspec-variant-presence",
+            kind=DriftFindingKind.VARIANT_PRESENCE,
+            assessment=DriftAssessment.OBSERVED,
+            surface_kinds=(DriftSurfaceKind.FSSPEC, DriftSurfaceKind.VARIANT),
+            summary=(
+                "The base, .clean, and .full fsspec paths are recorded without "
+                "classifying any variant as broken, canonical, or repair-worthy."
+            ),
+            evidence_ids=(
+                "evidence:vfs-core-fsspec",
+                "evidence:ipfs-fsspec-clean-variant",
+                "evidence:ipfs-fsspec-full-variant",
+            ),
+            canonical_operations=_ALL,
+            source_contract_ids=contract,
+            variant_presence_only=True,
+        ),
+    )
+
+
 def build_vfs_contract_pack() -> VfsContractPack:
     """Return the canonical VFS-026 pack.
 
@@ -1623,6 +2404,66 @@ def canonical_vfs_contract_pack() -> VfsContractPack:
     return build_vfs_contract_pack()
 
 
+def assert_vfs_drift_inventory_complete(
+    inventory: VfsDriftInventory,
+    contract_pack: VfsContractPack | None = None,
+) -> None:
+    """Validate coverage and reviewed mapping authority for a drift inventory."""
+
+    inventory.__post_init__()
+    pack = contract_pack or build_vfs_contract_pack()
+    if inventory.contract_pack_id != pack.content_id:
+        raise VfsContractPackError(
+            "drift inventory contract_pack_id does not match the reviewed pack"
+        )
+
+    sources = {item.source_id: item for item in pack.sources}
+    for finding in inventory.findings:
+        unknown_sources = sorted(set(finding.source_contract_ids) - sources.keys())
+        if unknown_sources:
+            raise VfsContractPackError(
+                f"{finding.finding_id} references unknown contract sources: "
+                f"{unknown_sources}"
+            )
+        if not all(
+            sources[source_id].expectation_authority
+            for source_id in finding.source_contract_ids
+        ):
+            raise VfsContractPackError(
+                f"{finding.finding_id} lacks reviewed mapping authority"
+            )
+        for operation in finding.canonical_operations:
+            operation_contract = pack.operation_contract(operation)
+            if operation_contract.state is not ExpectationState.RESOLVED:
+                raise VfsContractPackError(
+                    f"{finding.finding_id} maps to unresolved operation "
+                    f"{operation.value!r}"
+                )
+
+
+def build_vfs_drift_inventory(
+    contract_pack: VfsContractPack | None = None,
+) -> VfsDriftInventory:
+    """Return the revision-bound ``vfs/drift-inventory@1`` evidence artifact."""
+
+    pack = contract_pack or build_vfs_contract_pack()
+    inventory = VfsDriftInventory(
+        contract_pack_id=pack.content_id,
+        contract_version=pack.contract_version,
+        source_revision=VFS_DRIFT_INVENTORY_SOURCE_REVISION,
+        evidence=_canonical_drift_evidence(),
+        findings=_canonical_drift_findings(),
+    )
+    assert_vfs_drift_inventory_complete(inventory, pack)
+    return inventory
+
+
+def canonical_vfs_drift_inventory() -> VfsDriftInventory:
+    """Compatibility spelling for :func:`build_vfs_drift_inventory`."""
+
+    return build_vfs_drift_inventory()
+
+
 def assert_vfs_contract_pack_complete(pack: VfsContractPack) -> None:
     """Re-run the fail-closed construction checks for an existing pack."""
 
@@ -1657,6 +2498,34 @@ def publish_vfs_contract_pack(
     return destination
 
 
+def publish_vfs_drift_inventory(
+    output_path: str | os.PathLike[str],
+    inventory: VfsDriftInventory | None = None,
+) -> Path:
+    """Atomically publish the drift inventory without publishing a repair plan."""
+
+    destination = Path(output_path).expanduser().resolve()
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    payload = (inventory or build_vfs_drift_inventory()).to_json(indent=2) + "\n"
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{destination.name}.",
+        suffix=".tmp",
+        dir=destination.parent,
+        text=True,
+    )
+    temporary = Path(temporary_name)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as stream:
+            stream.write(payload)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, destination)
+    except BaseException:
+        temporary.unlink(missing_ok=True)
+        raise
+    return destination
+
+
 # Explicit alias for consumers which use the goal's "canonical pack" wording.
 CanonicalVfsContractPack = VfsContractPack
 
@@ -1665,10 +2534,27 @@ __all__ = [
     "CONTRACT_PACK_AUTHORIZES_REPAIR",
     "CONTRACT_PACK_IS_COMPLETION_EVIDENCE",
     "CONTRACT_PACK_IS_CORRECTNESS_EVIDENCE",
+    "DRIFT_INVENTORY_AUTHORIZES_REPAIR",
+    "DRIFT_INVENTORY_IS_COMPLETION_EVIDENCE",
+    "DRIFT_INVENTORY_IS_CORRECTNESS_EVIDENCE",
+    "DRIFT_INVENTORY_VARIANT_PRESENCE_IS_DEFECT",
+    "SOURCE_PRECEDENCE",
+    "VFS_CANONICAL_OPERATION_MATRIX_SCHEMA",
+    "VFS_CONTRACT_PACK_GOAL_ID",
+    "VFS_CONTRACT_PACK_SCHEMA",
+    "VFS_CONTRACT_PACK_VERSION",
+    "VFS_DRIFT_INVENTORY_GOAL_ID",
+    "VFS_DRIFT_INVENTORY_OBJECTIVE_REVISION",
+    "VFS_DRIFT_INVENTORY_SCHEMA",
+    "VFS_DRIFT_INVENTORY_SOURCE_REVISION",
+    "VFS_DRIFT_INVENTORY_TASK_ID",
     "CanonicalVector",
     "CanonicalVfsContractPack",
     "ContractSourceKind",
     "DataMode",
+    "DriftAssessment",
+    "DriftFindingKind",
+    "DriftSurfaceKind",
     "ExecutionMode",
     "ExpectationIssue",
     "ExpectationState",
@@ -1680,20 +2566,22 @@ __all__ = [
     "OperationSupport",
     "PublicSurface",
     "PublicSurfaceContract",
-    "SOURCE_PRECEDENCE",
     "SourceContract",
     "SurfaceOperationContract",
-    "VFS_CANONICAL_OPERATION_MATRIX_SCHEMA",
-    "VFS_CONTRACT_PACK_GOAL_ID",
-    "VFS_CONTRACT_PACK_SCHEMA",
-    "VFS_CONTRACT_PACK_VERSION",
     "VfsContractPack",
     "VfsContractPackError",
+    "VfsDriftEvidence",
+    "VfsDriftFinding",
+    "VfsDriftInventory",
     "VfsErrorCode",
     "VfsInvariantKind",
     "VfsOperation",
     "assert_vfs_contract_pack_complete",
+    "assert_vfs_drift_inventory_complete",
     "build_vfs_contract_pack",
+    "build_vfs_drift_inventory",
     "canonical_vfs_contract_pack",
+    "canonical_vfs_drift_inventory",
     "publish_vfs_contract_pack",
+    "publish_vfs_drift_inventory",
 ]
