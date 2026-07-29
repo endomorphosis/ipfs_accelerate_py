@@ -668,7 +668,7 @@ compact references and bounded spans only.
 
 ## VFS-034 Refill goals and tasks from fresh symbolic finding families
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: autonomous-refill
