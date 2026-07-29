@@ -88,7 +88,7 @@ compact references and bounded spans only.
 
 ## VFS-005 Build an exhaustive Git-aware multi-repository corpus inventory
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: corpus-index
