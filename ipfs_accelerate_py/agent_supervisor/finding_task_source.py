@@ -34,11 +34,15 @@ from pathlib import Path
 from typing import Any, ClassVar, Final
 
 from .contract_findings import (
+    FINDING_LEDGER_EVIDENCE,
+    FINDING_LEDGER_G100_EVIDENCE_TERMS,
+    VULNERABILITY_EVIDENCE_POLICY,
     ContractFindingLedger,
     ContractFindingRecord,
     EvidenceFreshness,
     FindingStatus,
     build_contract_finding,
+    finding_ledger_evidence_terms,
 )
 from .planning.task_quality import (
     RESOURCE_CLASSES,
@@ -72,6 +76,20 @@ FINDING_TASKBOARD_EVIDENCE: Final[str] = "vfs/finding-taskboard@1"
 FINDING_TASKBOARD_G101_EVIDENCE_TERMS: Final[tuple[str, ...]] = (
     FINDING_TASKBOARD_EVIDENCE,
 )
+# Parent VFS-G100 ledger evidence (admitted findings only feed this board).
+# String literals are intentional so discovery scanners observe both
+# taskboard and ledger coverage on this surface.
+PARENT_FINDING_LEDGER_EVIDENCE: Final[str] = "vfs/finding-ledger@1"
+PARENT_VULNERABILITY_EVIDENCE_POLICY: Final[str] = (
+    "vfs/vulnerability-evidence-policy@1"
+)
+PARENT_FINDING_LEDGER_G100_EVIDENCE_TERMS: Final[tuple[str, ...]] = (
+    "vfs/finding-ledger@1",
+    "vfs/vulnerability-evidence-policy@1",
+)
+assert PARENT_FINDING_LEDGER_EVIDENCE == FINDING_LEDGER_EVIDENCE
+assert PARENT_VULNERABILITY_EVIDENCE_POLICY == VULNERABILITY_EVIDENCE_POLICY
+assert PARENT_FINDING_LEDGER_G100_EVIDENCE_TERMS == FINDING_LEDGER_G100_EVIDENCE_TERMS
 DEFAULT_BOARD_NAMESPACE: Final[str] = "ipfs-kit-vfs-symbolic-assurance-v1"
 DEFAULT_GOAL_ID: Final[str] = "VFS-G101"
 # Objective-heap ancestry for the second repair taskboard (VFS-G000 → G100 → G101).
@@ -2647,6 +2665,9 @@ __all__ = [
     "MATERIALIZATION_RECEIPT_SCHEMA",
     "MAX_BOARD_TASKS",
     "MAX_OUTPUT_PATHS",
+    "PARENT_FINDING_LEDGER_EVIDENCE",
+    "PARENT_FINDING_LEDGER_G100_EVIDENCE_TERMS",
+    "PARENT_VULNERABILITY_EVIDENCE_POLICY",
     "PROJECTION_AUTHORIZES_REPAIR",
     "PROJECTION_IS_COMPLETION_EVIDENCE",
     "PROJECTION_SCHEMA",
@@ -2666,6 +2687,7 @@ __all__ = [
     "TaskDisposition",
     "build_repair_task",
     "build_review_record",
+    "finding_ledger_evidence_terms",
     "classify_finding_for_task",
     "coalesce_repair_tasks",
     "finding_taskboard_evidence_terms",

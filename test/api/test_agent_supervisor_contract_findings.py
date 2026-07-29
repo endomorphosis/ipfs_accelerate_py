@@ -1,4 +1,4 @@
-"""Tests for the append-only content-addressed contract finding ledger (VFS-029)."""
+"""Tests for the append-only content-addressed contract finding ledger (VFS-029 / VFS-049)."""
 
 from __future__ import annotations
 
@@ -12,10 +12,15 @@ import pytest
 
 from ipfs_accelerate_py.agent_supervisor.contract_findings import (
     CONTRACT_FINDINGS_VERSION,
+    FINDING_LEDGER_EVIDENCE,
+    FINDING_LEDGER_G100_EVIDENCE_TERMS,
+    GOAL_ID,
     LEDGER_VERSION,
     MAX_COLLECTION_ITEMS,
     MAX_RECORD_BYTES,
     MAX_TEXT_BYTES,
+    VULNERABILITY_EVIDENCE_POLICY,
+    VULNERABILITY_LABEL,
     AnalyzerVersions,
     AppendOutcome,
     AppendReceipt,
@@ -37,11 +42,17 @@ from ipfs_accelerate_py.agent_supervisor.contract_findings import (
     ProjectionSnapshot,
     SemanticDedupKey,
     StaleFindingError,
+    VulnerabilityEvidencePolicyError,
     build_contract_finding,
     claims_contradict,
+    covered_evidence_terms,
     finding_content_cid,
+    finding_ledger_evidence_terms,
     is_partial_finding,
+    is_vulnerability_labeled,
     validate_severity_binding,
+    validate_vulnerability_evidence_policy,
+    vulnerability_evidence_requirements_met,
 )
 from ipfs_accelerate_py.agent_supervisor.program_assurance_contracts import (
     ClaimLevel,
@@ -145,6 +156,162 @@ def suspected_finding(**overrides) -> ContractFindingRecord:
     )
     base.update(overrides)
     return build_contract_finding(**base)
+
+
+# ---------------------------------------------------------------------------
+# VFS-G100 evidence term binding
+# ---------------------------------------------------------------------------
+
+
+def test_finding_ledger_evidence_terms_are_bound() -> None:
+    """Prove vfs/finding-ledger@1 and vfs/vulnerability-evidence-policy@1."""
+
+    assert FINDING_LEDGER_EVIDENCE == "vfs/finding-ledger@1"
+    assert VULNERABILITY_EVIDENCE_POLICY == "vfs/vulnerability-evidence-policy@1"
+    assert FINDING_LEDGER_G100_EVIDENCE_TERMS == (
+        "vfs/finding-ledger@1",
+        "vfs/vulnerability-evidence-policy@1",
+    )
+    assert finding_ledger_evidence_terms() == FINDING_LEDGER_G100_EVIDENCE_TERMS
+    assert covered_evidence_terms() == finding_ledger_evidence_terms()
+    assert GOAL_ID == "VFS-G100"
+    assert VULNERABILITY_LABEL == "vulnerability"
+    assert "vfs/finding-ledger@1" in FINDING_LEDGER_G100_EVIDENCE_TERMS
+    assert "vfs/vulnerability-evidence-policy@1" in FINDING_LEDGER_G100_EVIDENCE_TERMS
+
+
+def test_append_receipt_and_stats_bind_finding_ledger_evidence(
+    tmp_path: Path,
+) -> None:
+    ledger = ContractFindingLedger(tmp_path / "ledger")
+    receipt = ledger.append(broken_finding())
+    payload = receipt.to_record()
+    assert payload["evidence"] == "vfs/finding-ledger@1"
+    assert payload["evidence_terms"] == [
+        "vfs/finding-ledger@1",
+        "vfs/vulnerability-evidence-policy@1",
+    ] or payload["evidence_terms"] == (
+        "vfs/finding-ledger@1",
+        "vfs/vulnerability-evidence-policy@1",
+    )
+    assert payload["goal_id"] == "VFS-G100"
+    assert AppendReceipt.from_dict(payload) == receipt
+
+    stats = ledger.stats()
+    assert stats["evidence"] == FINDING_LEDGER_EVIDENCE
+    assert stats["evidence_terms"] == list(FINDING_LEDGER_G100_EVIDENCE_TERMS)
+    assert stats["goal_id"] == GOAL_ID
+    assert stats["history_is_append_only"] is True
+    assert stats["projection_is_mutable_current_tree"] is True
+
+    snapshot = ledger.projection()
+    snap_payload = snapshot.to_record()
+    assert snap_payload["evidence"] == FINDING_LEDGER_EVIDENCE
+    assert tuple(snap_payload["evidence_terms"]) == FINDING_LEDGER_G100_EVIDENCE_TERMS
+    assert snap_payload["history_is_append_only"] is True
+    assert snap_payload["projection_is_mutable_current_tree"] is True
+    assert ProjectionSnapshot.from_dict(snap_payload).snapshot_id == snapshot.snapshot_id
+
+    meta = json.loads((tmp_path / "ledger" / "meta.json").read_text(encoding="utf-8"))
+    assert meta["evidence"] == FINDING_LEDGER_EVIDENCE
+    assert meta["evidence_terms"] == list(FINDING_LEDGER_G100_EVIDENCE_TERMS)
+
+
+def test_vulnerability_label_requires_threat_path_and_impact() -> None:
+    """vfs/vulnerability-evidence-policy@1: fail closed without path + impact."""
+
+    ok, missing = vulnerability_evidence_requirements_met(
+        labels=(),
+        threat_path_cid="",
+        impact="",
+    )
+    assert ok is True
+    assert missing == ()
+
+    ok, missing = vulnerability_evidence_requirements_met(
+        labels=(VULNERABILITY_LABEL,),
+        threat_path_cid="",
+        impact="escape",
+    )
+    assert ok is False
+    assert "threat_path_cid" in missing
+
+    ok, missing = vulnerability_evidence_requirements_met(
+        labels=(VULNERABILITY_LABEL,),
+        threat_path_cid="threat:path:1",
+        impact="",
+    )
+    assert ok is False
+    assert "impact" in missing
+
+    with pytest.raises(VulnerabilityEvidencePolicyError, match="threat path"):
+        validate_vulnerability_evidence_policy(
+            labels=(VULNERABILITY_LABEL,),
+            threat_path_cid="",
+            impact="",
+        )
+
+    with pytest.raises(VulnerabilityEvidencePolicyError, match="threat path"):
+        broken_finding(labels=(VULNERABILITY_LABEL,))
+
+    with pytest.raises(VulnerabilityEvidencePolicyError, match="impact"):
+        broken_finding(
+            labels=(VULNERABILITY_LABEL,),
+            threat_path_cid="threat:path:1",
+            impact="",
+        )
+
+    record = broken_finding(
+        labels=(VULNERABILITY_LABEL, "security"),
+        threat_path_cid="threat:path:closed:1",
+        impact="Arbitrary path escape outside the declared root.",
+    )
+    assert record.is_vulnerability is True
+    assert is_vulnerability_labeled(record.labels) is True
+    assert VULNERABILITY_LABEL in record.labels
+    assert record.threat_path_cid == "threat:path:closed:1"
+    assert "path escape" in record.impact
+    restored = ContractFindingRecord.from_dict(record.to_record())
+    assert restored == record
+    assert restored.is_vulnerability is True
+
+    # Correctness findings without the label need no threat path.
+    plain = broken_finding(labels=("correctness",), impact="")
+    assert plain.is_vulnerability is False
+    assert plain.threat_path_cid == ""
+
+
+def test_duplicates_and_stale_are_not_actionable_current(
+    tmp_path: Path,
+) -> None:
+    """Duplicates and stale admissions do not create actionable work."""
+
+    ledger = ContractFindingLedger(tmp_path / "ledger")
+    first = broken_finding()
+    ledger.append(first)
+    # Exact content re-append is an idempotent duplicate.
+    dup = ledger.append(first)
+    assert dup.outcome is AppendOutcome.DUPLICATE
+    assert len(ledger.current_findings(admitted_only=True)) == 1
+
+    # Semantic duplicate of a distinct payload does not expand admitted set.
+    semantic = broken_finding(
+        summary="Same semantic identity, different body text",
+        confidence_millionths=960_000,
+    )
+    assert semantic.semantic_key_id == first.semantic_key_id
+    assert semantic.finding_cid != first.finding_cid
+    semantic_receipt = ledger.append(semantic)
+    assert semantic_receipt.admission is FindingAdmissionState.DUPLICATE
+    assert len(ledger.current_findings(admitted_only=True)) == 1
+
+    ledger.invalidate_stale(finding_cids=(first.finding_cid,))
+    assert ledger.current_findings(admitted_only=True) == ()
+    stale_entries = [e for e in ledger.projection().entries if e.admission is FindingAdmissionState.STALE]
+    assert len(stale_entries) >= 1
+    # History retained separately from the mutable current projection.
+    assert len(ledger.history()) >= 3
+    assert ledger.require(first.finding_cid) == first
 
 
 # ---------------------------------------------------------------------------
