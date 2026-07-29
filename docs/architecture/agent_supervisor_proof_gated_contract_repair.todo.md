@@ -150,7 +150,7 @@ task IDs on this board.
 
 ## RPR-004 Build the adversarial broken-contract fixture corpus
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
