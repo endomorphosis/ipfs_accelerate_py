@@ -1,16 +1,18 @@
-"""ZK public inputs, witness policy, and trace semantics for program assurance.
+"""ZK public inputs, witness policy, capability, and verifier conformance.
 
 This module is the VFS program-assurance zero-knowledge contract surface
-(VFS-022 / VFS-G080).  It defines:
+(VFS-022 / VFS-G080 and VFS-024 / VFS-G081).  It defines:
 
 * canonical public commitments for repository forest, inventory, contract,
   call slice, assumptions, analyzer/resolver/translator/prover versions,
   supported result, circuit, proving/verifying keys, ceremony, and the
   public-input codec;
 * a private witness and redaction policy that never serializes protected
-  openings into public artifacts; and
-* supported deterministic trace transitions that a future bounded circuit
-  may check.
+  openings into public artifacts;
+* supported deterministic trace transitions that the bounded
+  ``program_contract_trace`` circuit may check; and
+* production capability probing, ceremony/setup admission, independent
+  verifier replay, and fail-closed authority gates (VFS-024).
 
 Trace validity is intentionally narrow.  A verified program-analysis trace
 establishes only that committed public inputs open to a witness following the
@@ -18,17 +20,26 @@ declared transition rules and that the trace ends in the committed supported
 result.  It does **not** prove inventory completeness, translator soundness,
 arbitrary runtime semantics, or any theorem beyond that committed result.
 
-Circuit implementation and production capability probing live in later tasks
-(VFS-023, VFS-024).  Simulated paths remain non-authoritative.
+Simulated backends, knowledge-graph fail-open fallbacks, placeholder field
+encodings, v1 nonzero-only circuits, incompatible TDFOL-only circuits,
+unversioned or missing artifacts, and stale capabilities cannot emit
+authoritative ZK receipts.  Shadow rollout is the default until every
+production probe dimension is production-eligible.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
+import os
 import pickle
+import platform
+import shutil
+import threading
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import Enum
+from pathlib import Path
 from types import MappingProxyType
 from typing import Any, ClassVar, Dict, Final, TypeVar
 
@@ -81,6 +92,31 @@ PROGRAM_ZKP_RECEIPT_SCHEMA: Final[str] = (
 PROGRAM_ZKP_SHADOW_ENVELOPE_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/program-analysis-zkp-shadow-envelope@1"
 )
+PROGRAM_ZKP_CAPABILITY_CONFORMANCE_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/program-analysis-zkp-capability-conformance@1"
+)
+PROGRAM_ZKP_CAPABILITY_CHECK_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/program-analysis-zkp-capability-check@1"
+)
+PROGRAM_ZKP_PROOF_SCHEMA_ID: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/program-analysis-zkp-proof@1"
+)
+PROGRAM_ZKP_EVIDENCE_CAPABILITY_CONFORMANCE: Final[str] = (
+    "vfs/zk-capability-conformance@1"
+)
+
+# Production circuit / codec identities for program_contract_trace@v1.
+PROGRAM_CONTRACT_TRACE_CIRCUIT_ID: Final[str] = "circuit:program-contract-trace@1"
+PROGRAM_CONTRACT_TRACE_CIRCUIT_VERSION: Final[int] = 1
+PROGRAM_CONTRACT_TRACE_MAX_TRACE_STEPS: Final[int] = 16
+PROGRAM_CONTRACT_TRACE_CANONICAL_TRACE_LENGTH: Final[int] = 8
+BN254_SCALAR_FIELD_MODULUS: Final[int] = (
+    21888242871839275222246405745257275088548364400416034343698204186575808495617
+)
+FIELD_ENCODING_BN254_SHA256: Final[str] = "bn254_sha256"
+# Simulated proof layout magic from educational backends (must never grant authority).
+_SIMZKP_MAGIC: Final[bytes] = b"SIMZKP\x00\x01"
+_SIMZKP_PROOF_LENGTH: Final[int] = 160
 
 # Normative ordered public-input slots consumed by the codec and (later) circuit.
 PUBLIC_COMMITMENT_KEYS: Final[tuple[str, ...]] = (
@@ -184,6 +220,14 @@ class ProgramZkpVersionError(ProgramAnalysisZkpError):
 
 class ProgramZkpClaimPromotionError(ProgramAnalysisZkpError, ClaimPromotionError):
     """Raised when a ZK trace claim is illegally promoted to a stronger claim."""
+
+
+class ProgramZkpCapabilityError(ProgramAnalysisZkpError):
+    """Raised when production ZK capability or ceremony probes fail closed."""
+
+
+class ProgramZkpAuthorityError(ProgramAnalysisZkpError):
+    """Raised when a non-production path attempts to claim ZK authority."""
 
 
 class ProgramZkpBackendMode(str, Enum):
@@ -1402,7 +1446,8 @@ class ProgramZkpShadowEnvelope(CanonicalContract):
     """Non-authoritative shadow-mode envelope for serialization and workflow tests.
 
     Shadow and simulated envelopes never grant authority.  Production
-    cryptographic verification is a later capability (VFS-024).
+    cryptographic verification requires a production-eligible capability
+    report and independent verifier path (VFS-024).
     """
 
     SCHEMA: ClassVar[str] = PROGRAM_ZKP_SHADOW_ENVELOPE_SCHEMA
@@ -1440,8 +1485,8 @@ class ProgramZkpShadowEnvelope(CanonicalContract):
             self, "prover_id", _text(self.prover_id, field_name="prover_id", required=False)
         )
         if self.backend_mode is ProgramZkpBackendMode.CRYPTOGRAPHIC:
-            # VFS-022 lands contracts only; cryptographic mode requires later
-            # capability conformance before any authority can attach.
+            # Cryptographic mode alone never grants authority; VFS-024 capability
+            # conformance and independent verification are required first.
             pass
 
     @property
@@ -1529,7 +1574,9 @@ class ProgramZkpVerificationReceipt(CanonicalContract):
 
     Replay against drifted public inputs, keys, circuit identity, or codec
     version fails closed.  A verified shadow/simulated receipt remains
-    non-authoritative for semantic claims.
+    non-authoritative for semantic claims.  Cryptographic verification grants
+    authority only when bound to a production-eligible capability epoch
+    (VFS-024).
     """
 
     SCHEMA: ClassVar[str] = PROGRAM_ZKP_RECEIPT_SCHEMA
@@ -1543,6 +1590,10 @@ class ProgramZkpVerificationReceipt(CanonicalContract):
     ceremony_id: str
     public_input_codec_version: str
     backend_mode: ProgramZkpBackendMode = ProgramZkpBackendMode.SHADOW
+    capability_epoch: str = ""
+    capability_production_eligible: bool = False
+    proof_schema_id: str = PROGRAM_ZKP_PROOF_SCHEMA_ID
+    independent_verifier: bool = False
 
     def __post_init__(self) -> None:
         if not isinstance(self.statement, ProgramZkpStatement):
@@ -1571,6 +1622,33 @@ class ProgramZkpVerificationReceipt(CanonicalContract):
             "backend_mode",
             _enum(self.backend_mode, ProgramZkpBackendMode, field_name="backend_mode"),
         )
+        object.__setattr__(
+            self,
+            "capability_epoch",
+            _text(self.capability_epoch, field_name="capability_epoch", required=False),
+        )
+        object.__setattr__(
+            self,
+            "capability_production_eligible",
+            _boolean(
+                self.capability_production_eligible,
+                field_name="capability_production_eligible",
+            ),
+        )
+        object.__setattr__(
+            self,
+            "proof_schema_id",
+            _text(self.proof_schema_id, field_name="proof_schema_id"),
+        )
+        object.__setattr__(
+            self,
+            "independent_verifier",
+            _boolean(self.independent_verifier, field_name="independent_verifier"),
+        )
+        if self.proof_schema_id != PROGRAM_ZKP_PROOF_SCHEMA_ID:
+            raise ProgramZkpVersionError(
+                "proof_schema_id must be %s" % PROGRAM_ZKP_PROOF_SCHEMA_ID
+            )
         # Bind receipt pins to the statement's public inputs (tamper resistance).
         pins = self.statement.public_inputs
         if self.verifying_key_id != pins.verifying_key_id:
@@ -1589,6 +1667,21 @@ class ProgramZkpVerificationReceipt(CanonicalContract):
             raise ProgramZkpVersionError(
                 "receipt public-input codec version does not match statement"
             )
+        if self.capability_production_eligible and not self.capability_epoch:
+            raise ProgramZkpCapabilityError(
+                "production-eligible receipts require a capability_epoch binding"
+            )
+        if self.capability_production_eligible and not self.independent_verifier:
+            raise ProgramZkpCapabilityError(
+                "production authority requires independent verification"
+            )
+        if (
+            self.capability_production_eligible
+            and self.backend_mode is not ProgramZkpBackendMode.CRYPTOGRAPHIC
+        ):
+            raise ProgramZkpAuthorityError(
+                "only cryptographic backends may bind production-eligible capability"
+            )
 
     @property
     def receipt_id(self) -> str:
@@ -1601,9 +1694,17 @@ class ProgramZkpVerificationReceipt(CanonicalContract):
     @property
     def authoritative(self) -> bool:
         # Shadow/simulated verification never grants production authority.
+        # Cryptographic + verified alone is insufficient: VFS-024 requires a
+        # production-eligible capability epoch and independent verification.
         if self.backend_mode is not ProgramZkpBackendMode.CRYPTOGRAPHIC:
             return False
-        return self.verdict is ProgramZkpVerdict.VERIFIED
+        if self.verdict is not ProgramZkpVerdict.VERIFIED:
+            return False
+        if not self.independent_verifier:
+            return False
+        if not self.capability_production_eligible or not self.capability_epoch:
+            return False
+        return True
 
     @property
     def trust(self) -> ProgramZkpTrust:
@@ -1628,6 +1729,10 @@ class ProgramZkpVerificationReceipt(CanonicalContract):
             "ceremony_id": self.ceremony_id,
             "public_input_codec_version": self.public_input_codec_version,
             "backend_mode": self.backend_mode.value,
+            "capability_epoch": self.capability_epoch,
+            "capability_production_eligible": self.capability_production_eligible,
+            "proof_schema_id": self.proof_schema_id,
+            "independent_verifier": self.independent_verifier,
             "authoritative": self.authoritative,
             "trust": self.trust.value,
             "claim_level": self.claim_level.value,
@@ -1649,6 +1754,7 @@ class ProgramZkpVerificationReceipt(CanonicalContract):
         circuit_id: str,
         ceremony_id: str,
         public_input_codec_version: str = PUBLIC_INPUT_CODEC_VERSION,
+        capability_epoch: str | None = None,
     ) -> None:
         """Fail closed when replay inputs drift from the receipt binding."""
 
@@ -1687,6 +1793,28 @@ class ProgramZkpVerificationReceipt(CanonicalContract):
             raise ProgramZkpReplayError(
                 "replay public inputs do not match the bound statement"
             )
+        if capability_epoch is not None:
+            expected = self.capability_epoch
+            actual = _text(
+                capability_epoch, field_name="capability_epoch", required=False
+            )
+            if expected and actual != expected:
+                raise ProgramZkpReplayError(
+                    "replay capability_epoch does not match verification receipt"
+                )
+
+    def require_capability_epoch(self, capability_epoch: str) -> None:
+        """Fail closed when the bound capability epoch has been lost or replaced."""
+
+        expected = _text(capability_epoch, field_name="capability_epoch")
+        if not self.capability_epoch:
+            raise ProgramZkpCapabilityError(
+                "receipt has no capability epoch; cannot validate authority continuity"
+            )
+        if self.capability_epoch != expected:
+            raise ProgramZkpCapabilityError(
+                "capability loss invalidates prior authoritative projection"
+            )
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "ProgramZkpVerificationReceipt":
@@ -1716,6 +1844,12 @@ class ProgramZkpVerificationReceipt(CanonicalContract):
                 "public_input_codec_version", PUBLIC_INPUT_CODEC_VERSION
             ),
             backend_mode=data.get("backend_mode", ProgramZkpBackendMode.SHADOW),
+            capability_epoch=data.get("capability_epoch", ""),
+            capability_production_eligible=data.get(
+                "capability_production_eligible", False
+            ),
+            proof_schema_id=data.get("proof_schema_id", PROGRAM_ZKP_PROOF_SCHEMA_ID),
+            independent_verifier=data.get("independent_verifier", False),
         )
         if claimed_auth is True and not result.authoritative:
             raise ProgramZkpTamperError(
@@ -1794,8 +1928,17 @@ def record_program_zkp_verification(
     *,
     verdict: ProgramZkpVerdict | str,
     verifier_id: str,
+    capability_epoch: str = "",
+    capability_production_eligible: bool = False,
+    independent_verifier: bool = False,
 ) -> ProgramZkpVerificationReceipt:
-    """Record an independent (or shadow) verification bound to envelope pins."""
+    """Record an independent (or shadow) verification bound to envelope pins.
+
+    Production authority requires ``capability_production_eligible=True``, a
+    non-empty ``capability_epoch``, ``independent_verifier=True``, cryptographic
+    backend mode, and a verified verdict.  Shadow/simulated paths remain
+    non-authoritative even when the verdict is verified.
+    """
 
     if not isinstance(envelope, ProgramZkpShadowEnvelope):
         raise ProgramAnalysisZkpError("envelope must be ProgramZkpShadowEnvelope")
@@ -1810,6 +1953,9 @@ def record_program_zkp_verification(
         ceremony_id=pins.ceremony_id,
         public_input_codec_version=pins.public_input_codec_version,
         backend_mode=envelope.backend_mode,
+        capability_epoch=capability_epoch,
+        capability_production_eligible=capability_production_eligible,
+        independent_verifier=independent_verifier,
     )
 
 
@@ -1824,6 +1970,7 @@ def assert_trace_non_claims(receipt_or_statement: Any) -> None:
             ProgramZkpVerificationReceipt,
             ProgramZkpTrace,
             ProgramZkpShadowEnvelope,
+            ProgramZkpCapabilityConformanceReport,
         ),
     ):
         payload = receipt_or_statement.to_dict()
@@ -1840,6 +1987,12 @@ def assert_trace_non_claims(receipt_or_statement: Any) -> None:
         )
     scope = payload.get("trace_validity_scope", "")
     if TRACE_VALIDITY_SCOPE_STATEMENT not in str(scope):
+        # Capability reports carry the scope under a dedicated key; tolerate
+        # either embedding form so callers may assert non-claims uniformly.
+        if "trace_validity_scope" not in payload and isinstance(
+            receipt_or_statement, ProgramZkpCapabilityConformanceReport
+        ):
+            return
         raise ProgramAnalysisZkpError("artifact is missing trace validity scope statement")
 
 
@@ -1861,6 +2014,1652 @@ def inconclusive_state_for_shadow() -> InconclusiveState:
     return InconclusiveState.NONE
 
 
+# ---------------------------------------------------------------------------
+# VFS-024: production capability, setup, ceremony, and verifier conformance
+# ---------------------------------------------------------------------------
+
+
+class ProgramZkpCapabilityDimension(str, Enum):
+    """Probe dimensions that must pass before production ZK authority attaches."""
+
+    EXECUTABLE_ARCHITECTURE = "executable_architecture"
+    BACKEND = "backend"
+    CIRCUIT_VERSION = "circuit_version"
+    SETUP_ARTIFACTS = "setup_artifacts"
+    CEREMONY = "ceremony"
+    PROVING_KEY = "proving_key"
+    VERIFYING_KEY = "verifying_key"
+    PUBLIC_INPUT_CODEC = "public_input_codec"
+    PROOF_SCHEMA = "proof_schema"
+    INDEPENDENT_VERIFIER = "independent_verifier"
+    BOUNDS = "bounds"
+    CANCELLATION = "cancellation"
+
+
+REQUIRED_CAPABILITY_DIMENSIONS: Final[tuple[ProgramZkpCapabilityDimension, ...]] = (
+    tuple(ProgramZkpCapabilityDimension)
+)
+
+
+class ProgramZkpCapabilityStatus(str, Enum):
+    """Status of one production capability probe dimension."""
+
+    VERIFIED = "verified"
+    AVAILABLE = "available"
+    CONFIGURED = "configured"
+    DEGRADED = "degraded"
+    UNAVAILABLE = "unavailable"
+    SIMULATED = "simulated"
+    SHADOW = "shadow"
+    FAILED = "failed"
+    STALE = "stale"
+    REJECTED = "rejected"
+
+
+class ProgramZkpRolloutMode(str, Enum):
+    """Rollout posture derived from capability probes (fail-closed to shadow)."""
+
+    DISABLED = "disabled"
+    SHADOW = "shadow"
+    CANARY = "canary"
+    ENFORCEMENT = "enforcement"
+
+
+class ProgramZkpFieldEncodingKind(str, Enum):
+    """Field encoding classes admitted (or rejected) for production circuits."""
+
+    BN254_SHA256 = "bn254_sha256"
+    PLACEHOLDER = "placeholder"
+    NONZERO_ONLY_V1 = "nonzero_only_v1"
+    UNKNOWN = "unknown"
+
+
+class ProgramZkpCircuitFamily(str, Enum):
+    """Circuit families; only program_contract_trace is production-compatible."""
+
+    PROGRAM_CONTRACT_TRACE = "program_contract_trace"
+    TDFOL_ONLY = "tdfol_only"
+    NONZERO_ONLY_V1 = "nonzero_only_v1"
+    UNKNOWN = "unknown"
+
+
+class ProgramZkpAuthorityDenialReason(str, Enum):
+    """Normative fail-closed reasons that block production ZK authority."""
+
+    SIMULATED_DEFAULT = "simulated_default"
+    KNOWLEDGE_GRAPH_FAIL_OPEN = "knowledge_graph_fail_open"
+    PLACEHOLDER_FIELD_ENCODING = "placeholder_field_encoding"
+    V1_NONZERO_ONLY_CIRCUIT = "v1_nonzero_only_circuit"
+    INCOMPATIBLE_TDFOL_ONLY_CIRCUIT = "incompatible_tdfol_only_circuit"
+    UNVERSIONED_ARTIFACT = "unversioned_artifact"
+    MISSING_ARTIFACT = "missing_artifact"
+    STALE_CAPABILITY = "stale_capability"
+    BACKEND_NOT_CRYPTOGRAPHIC = "backend_not_cryptographic"
+    CEREMONY_INELIGIBLE = "ceremony_ineligible"
+    SETUP_INELIGIBLE = "setup_ineligible"
+    INDEPENDENT_VERIFIER_ABSENT = "independent_verifier_absent"
+    PROOF_SCHEMA_MISMATCH = "proof_schema_mismatch"
+    CODEC_INCOMPATIBLE = "codec_incompatible"
+    BOUNDS_EXCEEDED = "bounds_exceeded"
+    CANCELLED = "cancelled"
+    CAPABILITY_LOSS = "capability_loss"
+    CORRUPTED_PROOF = "corrupted_proof"
+    CORRUPTED_KEY = "corrupted_key"
+    CORRUPTED_INPUT = "corrupted_input"
+    SEMANTIC_CLAIM_PROMOTION = "semantic_claim_promotion"
+    SHADOW_ONLY_ROLLOUT = "shadow_only_rollout"
+    PROBE_FAILED = "probe_failed"
+
+
+_PRODUCTION_CAPABILITY_STATUSES: Final[frozenset[ProgramZkpCapabilityStatus]] = (
+    frozenset(
+        {
+            ProgramZkpCapabilityStatus.VERIFIED,
+            ProgramZkpCapabilityStatus.AVAILABLE,
+        }
+    )
+)
+
+_FAIL_CLOSED_CAPABILITY_STATUSES: Final[frozenset[ProgramZkpCapabilityStatus]] = (
+    frozenset(
+        {
+            ProgramZkpCapabilityStatus.SIMULATED,
+            ProgramZkpCapabilityStatus.SHADOW,
+            ProgramZkpCapabilityStatus.FAILED,
+            ProgramZkpCapabilityStatus.STALE,
+            ProgramZkpCapabilityStatus.REJECTED,
+            ProgramZkpCapabilityStatus.UNAVAILABLE,
+            ProgramZkpCapabilityStatus.DEGRADED,
+            ProgramZkpCapabilityStatus.CONFIGURED,
+        }
+    )
+)
+
+
+def field_element_from_text(value: str) -> int:
+    """Map UTF-8 text to the BN254 scalar field via SHA-256 (mod P).
+
+    This is the production field encoding for program_contract_trace public
+    inputs.  Placeholder encodings must not be substituted.
+    """
+
+    text = _text(value, field_name="field_text")
+    digest = hashlib.sha256(text.encode("utf-8")).digest()
+    return int.from_bytes(digest, "big") % BN254_SCALAR_FIELD_MODULUS
+
+
+def encode_public_input_field_vector(
+    public_inputs: ProgramZkpPublicInputs | Mapping[str, str],
+    *,
+    field_encoding: ProgramZkpFieldEncodingKind | str = ProgramZkpFieldEncodingKind.BN254_SHA256,
+) -> tuple[int, ...]:
+    """Encode public inputs as BN254 field elements in codec order.
+
+    Placeholder and nonzero-only encodings fail closed for production use.
+    """
+
+    encoding = _enum(
+        field_encoding, ProgramZkpFieldEncodingKind, field_name="field_encoding"
+    )
+    if encoding is ProgramZkpFieldEncodingKind.PLACEHOLDER:
+        raise ProgramZkpAuthorityError(
+            "placeholder field encoding cannot encode production public inputs"
+        )
+    if encoding is ProgramZkpFieldEncodingKind.NONZERO_ONLY_V1:
+        raise ProgramZkpAuthorityError(
+            "v1 nonzero-only field encoding is insufficient for production authority"
+        )
+    if encoding is not ProgramZkpFieldEncodingKind.BN254_SHA256:
+        raise ProgramZkpVersionError(
+            "unsupported field encoding %s" % encoding.value
+        )
+    if isinstance(public_inputs, ProgramZkpPublicInputs):
+        vector = public_inputs.public_input_vector
+    elif isinstance(public_inputs, Mapping):
+        vector = encode_public_input_vector(public_inputs)
+    else:
+        raise ProgramAnalysisZkpError("public_inputs must be ProgramZkpPublicInputs")
+    return tuple(field_element_from_text(item) for item in vector)
+
+
+def classify_circuit_family(circuit_id: str) -> ProgramZkpCircuitFamily:
+    """Classify a circuit identity for production compatibility."""
+
+    identity = _text(circuit_id, field_name="circuit_id").lower()
+    if "tdfol" in identity and "program-contract-trace" not in identity:
+        return ProgramZkpCircuitFamily.TDFOL_ONLY
+    if "nonzero-only" in identity or identity.endswith("@nonzero-v1"):
+        return ProgramZkpCircuitFamily.NONZERO_ONLY_V1
+    if identity == PROGRAM_CONTRACT_TRACE_CIRCUIT_ID.lower() or (
+        "program-contract-trace" in identity and "@" in identity
+    ):
+        return ProgramZkpCircuitFamily.PROGRAM_CONTRACT_TRACE
+    return ProgramZkpCircuitFamily.UNKNOWN
+
+
+def is_versioned_artifact_id(artifact_id: str) -> bool:
+    """Return True when an artifact id carries an explicit version suffix."""
+
+    text = (artifact_id or "").strip()
+    if not text:
+        return False
+    # Require @N, @N.M, or trailing :sha256- style content pin after a version.
+    if "@" in text:
+        suffix = text.rsplit("@", 1)[-1]
+        if suffix and suffix[0].isdigit():
+            return True
+    if ":sha256" in text.lower() or text.lower().startswith("sha256:"):
+        return True
+    return False
+
+
+def proof_bytes_are_simulated(proof_data: bytes | bytearray | memoryview | str) -> bool:
+    """Detect educational SIMZKP layouts that must never grant authority."""
+
+    if isinstance(proof_data, str):
+        stripped = proof_data.strip()
+        hex_candidate = stripped[2:] if stripped.startswith(("0x", "0X")) else stripped
+        try:
+            if hex_candidate and len(hex_candidate) % 2 == 0:
+                raw = bytes.fromhex(hex_candidate)
+            else:
+                raw = proof_data.encode("utf-8")
+        except ValueError:
+            raw = proof_data.encode("utf-8")
+    elif isinstance(proof_data, (bytes, bytearray, memoryview)):
+        raw = bytes(proof_data)
+    else:
+        raise ProgramAnalysisZkpError("proof_data must be bytes or hex string")
+    if len(raw) == _SIMZKP_PROOF_LENGTH and raw[:8] == _SIMZKP_MAGIC:
+        return True
+    if raw.startswith(b"SIMZKP"):
+        return True
+    return False
+
+
+def _path_if_exists(value: Any) -> Path | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    path = Path(text).expanduser()
+    return path if path.exists() else None
+
+
+def _resolve_executable(
+    names: Sequence[str],
+    *,
+    env_names: Sequence[str] = (),
+) -> tuple[str | None, str]:
+    for env_name in env_names:
+        configured = os.environ.get(env_name, "").strip()
+        if configured:
+            path = Path(configured).expanduser()
+            if path.is_file() and os.access(path, os.X_OK):
+                return str(path), "configured_via_%s" % env_name
+    for name in names:
+        found = shutil.which(name)
+        if found:
+            return found, "path_lookup"
+    return None, "not_found"
+
+
+@dataclass(frozen=True)
+class ProgramZkpCapabilityCheck(CanonicalContract):
+    """One production capability probe result."""
+
+    SCHEMA: ClassVar[str] = PROGRAM_ZKP_CAPABILITY_CHECK_SCHEMA
+
+    dimension: ProgramZkpCapabilityDimension
+    status: ProgramZkpCapabilityStatus
+    reason: str
+    production_eligible: bool = False
+    evidence: Mapping[str, Any] = field(default_factory=dict)
+    denial_reasons: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "dimension",
+            _enum(self.dimension, ProgramZkpCapabilityDimension, field_name="dimension"),
+        )
+        object.__setattr__(
+            self,
+            "status",
+            _enum(self.status, ProgramZkpCapabilityStatus, field_name="status"),
+        )
+        object.__setattr__(
+            self, "reason", _text(self.reason, field_name="reason", required=False)
+        )
+        object.__setattr__(
+            self,
+            "production_eligible",
+            _boolean(self.production_eligible, field_name="production_eligible"),
+        )
+        evidence = self.evidence if isinstance(self.evidence, Mapping) else {}
+        object.__setattr__(self, "evidence", MappingProxyType(dict(evidence)))
+        denials: list[str] = []
+        for item in self.denial_reasons or ():
+            denials.append(_text(item, field_name="denial_reason"))
+        object.__setattr__(self, "denial_reasons", tuple(denials))
+        if self.production_eligible and self.status in _FAIL_CLOSED_CAPABILITY_STATUSES:
+            raise ProgramZkpCapabilityError(
+                "dimension %s cannot be production_eligible with status %s"
+                % (self.dimension.value, self.status.value)
+            )
+        if self.production_eligible and self.status not in _PRODUCTION_CAPABILITY_STATUSES:
+            raise ProgramZkpCapabilityError(
+                "production_eligible requires verified or available status"
+            )
+
+    def _payload(self) -> Dict[str, Any]:
+        return {
+            "contract_version": PROGRAM_ANALYSIS_ZKP_CONTRACT_VERSION,
+            "dimension": self.dimension.value,
+            "status": self.status.value,
+            "reason": self.reason,
+            "production_eligible": self.production_eligible,
+            "evidence": dict(self.evidence),
+            "denial_reasons": list(self.denial_reasons),
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "ProgramZkpCapabilityCheck":
+        if not isinstance(payload, Mapping):
+            raise ProgramAnalysisZkpError("capability check payload must be a mapping")
+        data = dict(payload)
+        data.pop("schema", None)
+        data.pop("contract_version", None)
+        data.pop("content_id", None)
+        return cls(
+            dimension=data.get("dimension", ""),
+            status=data.get("status", ""),
+            reason=data.get("reason", ""),
+            production_eligible=data.get("production_eligible", False),
+            evidence=data.get("evidence") or {},
+            denial_reasons=tuple(data.get("denial_reasons") or ()),
+        )
+
+
+@dataclass(frozen=True)
+class ProgramZkpCapabilityConformanceReport(CanonicalContract):
+    """Aggregate production ZK capability and conformance probe report.
+
+    Evidence identity: ``vfs/zk-capability-conformance@1``.
+    """
+
+    SCHEMA: ClassVar[str] = PROGRAM_ZKP_CAPABILITY_CONFORMANCE_SCHEMA
+
+    checks: tuple[ProgramZkpCapabilityCheck, ...]
+    backend_mode: ProgramZkpBackendMode = ProgramZkpBackendMode.SHADOW
+    field_encoding: ProgramZkpFieldEncodingKind = ProgramZkpFieldEncodingKind.BN254_SHA256
+    circuit_family: ProgramZkpCircuitFamily = ProgramZkpCircuitFamily.PROGRAM_CONTRACT_TRACE
+    circuit_id: str = PROGRAM_CONTRACT_TRACE_CIRCUIT_ID
+    circuit_version: int = PROGRAM_CONTRACT_TRACE_CIRCUIT_VERSION
+    knowledge_graph_fail_open: bool = False
+    stale: bool = False
+    architecture: str = ""
+    cancellation_supported: bool = True
+    notes: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "backend_mode",
+            _enum(self.backend_mode, ProgramZkpBackendMode, field_name="backend_mode"),
+        )
+        object.__setattr__(
+            self,
+            "field_encoding",
+            _enum(
+                self.field_encoding,
+                ProgramZkpFieldEncodingKind,
+                field_name="field_encoding",
+            ),
+        )
+        object.__setattr__(
+            self,
+            "circuit_family",
+            _enum(
+                self.circuit_family, ProgramZkpCircuitFamily, field_name="circuit_family"
+            ),
+        )
+        object.__setattr__(
+            self, "circuit_id", _text(self.circuit_id, field_name="circuit_id")
+        )
+        if (
+            isinstance(self.circuit_version, bool)
+            or not isinstance(self.circuit_version, int)
+            or self.circuit_version < 1
+        ):
+            raise ProgramZkpVersionError("circuit_version must be a positive integer")
+        object.__setattr__(
+            self,
+            "knowledge_graph_fail_open",
+            _boolean(
+                self.knowledge_graph_fail_open, field_name="knowledge_graph_fail_open"
+            ),
+        )
+        object.__setattr__(self, "stale", _boolean(self.stale, field_name="stale"))
+        object.__setattr__(
+            self,
+            "architecture",
+            _text(self.architecture, field_name="architecture", required=False),
+        )
+        object.__setattr__(
+            self,
+            "cancellation_supported",
+            _boolean(self.cancellation_supported, field_name="cancellation_supported"),
+        )
+        normalized: list[ProgramZkpCapabilityCheck] = []
+        if not isinstance(self.checks, Sequence) or isinstance(self.checks, (str, bytes)):
+            raise ProgramAnalysisZkpError("checks must be a sequence")
+        for raw in self.checks:
+            check = (
+                raw
+                if isinstance(raw, ProgramZkpCapabilityCheck)
+                else ProgramZkpCapabilityCheck.from_dict(raw)
+            )
+            normalized.append(check)
+        # Stable order by required dimension order, then extras.
+        order = {dim: index for index, dim in enumerate(REQUIRED_CAPABILITY_DIMENSIONS)}
+        normalized.sort(key=lambda item: order.get(item.dimension, 1_000))
+        object.__setattr__(self, "checks", tuple(normalized))
+        notes = tuple(
+            _text(item, field_name="note", required=False)
+            for item in (self.notes or ())
+            if str(item).strip()
+        )
+        object.__setattr__(self, "notes", notes)
+        seen = {check.dimension for check in self.checks}
+        missing = [dim for dim in REQUIRED_CAPABILITY_DIMENSIONS if dim not in seen]
+        if missing:
+            raise ProgramZkpCapabilityError(
+                "capability report missing required dimensions: %s"
+                % ", ".join(dim.value for dim in missing)
+            )
+
+    @property
+    def capability_epoch(self) -> str:
+        """Stable identity used to bind receipts and detect capability loss."""
+
+        return self.content_id
+
+    @property
+    def checks_by_dimension(
+        self,
+    ) -> Mapping[ProgramZkpCapabilityDimension, ProgramZkpCapabilityCheck]:
+        return {check.dimension: check for check in self.checks}
+
+    @property
+    def denial_reasons(self) -> tuple[str, ...]:
+        reasons: list[str] = []
+        if self.stale:
+            reasons.append(ProgramZkpAuthorityDenialReason.STALE_CAPABILITY.value)
+        if self.knowledge_graph_fail_open:
+            reasons.append(
+                ProgramZkpAuthorityDenialReason.KNOWLEDGE_GRAPH_FAIL_OPEN.value
+            )
+        if self.backend_mode is ProgramZkpBackendMode.SIMULATED:
+            reasons.append(ProgramZkpAuthorityDenialReason.SIMULATED_DEFAULT.value)
+        if self.backend_mode is ProgramZkpBackendMode.SHADOW:
+            reasons.append(ProgramZkpAuthorityDenialReason.SHADOW_ONLY_ROLLOUT.value)
+        if self.field_encoding is ProgramZkpFieldEncodingKind.PLACEHOLDER:
+            reasons.append(
+                ProgramZkpAuthorityDenialReason.PLACEHOLDER_FIELD_ENCODING.value
+            )
+        if self.field_encoding is ProgramZkpFieldEncodingKind.NONZERO_ONLY_V1:
+            reasons.append(
+                ProgramZkpAuthorityDenialReason.V1_NONZERO_ONLY_CIRCUIT.value
+            )
+        if self.circuit_family is ProgramZkpCircuitFamily.TDFOL_ONLY:
+            reasons.append(
+                ProgramZkpAuthorityDenialReason.INCOMPATIBLE_TDFOL_ONLY_CIRCUIT.value
+            )
+        if self.circuit_family is ProgramZkpCircuitFamily.NONZERO_ONLY_V1:
+            reasons.append(
+                ProgramZkpAuthorityDenialReason.V1_NONZERO_ONLY_CIRCUIT.value
+            )
+        for check in self.checks:
+            for reason in check.denial_reasons:
+                if reason not in reasons:
+                    reasons.append(reason)
+            if not check.production_eligible:
+                # Dimension-level failures contribute a generic probe reason once.
+                if (
+                    ProgramZkpAuthorityDenialReason.PROBE_FAILED.value not in reasons
+                    and check.status
+                    in {
+                        ProgramZkpCapabilityStatus.FAILED,
+                        ProgramZkpCapabilityStatus.REJECTED,
+                        ProgramZkpCapabilityStatus.UNAVAILABLE,
+                    }
+                ):
+                    reasons.append(ProgramZkpAuthorityDenialReason.PROBE_FAILED.value)
+        return tuple(reasons)
+
+    @property
+    def production_eligible(self) -> bool:
+        if self.stale:
+            return False
+        if self.knowledge_graph_fail_open:
+            return False
+        if self.backend_mode is not ProgramZkpBackendMode.CRYPTOGRAPHIC:
+            return False
+        if self.field_encoding is not ProgramZkpFieldEncodingKind.BN254_SHA256:
+            return False
+        if self.circuit_family is not ProgramZkpCircuitFamily.PROGRAM_CONTRACT_TRACE:
+            return False
+        if self.circuit_version != PROGRAM_CONTRACT_TRACE_CIRCUIT_VERSION:
+            return False
+        if not self.cancellation_supported:
+            return False
+        if not all(check.production_eligible for check in self.checks):
+            return False
+        return True
+
+    @property
+    def rollout_mode(self) -> ProgramZkpRolloutMode:
+        if self.production_eligible:
+            return ProgramZkpRolloutMode.ENFORCEMENT
+        # Fail closed: non-production always rolls out as shadow-only.
+        return ProgramZkpRolloutMode.SHADOW
+
+    @property
+    def shadow_only(self) -> bool:
+        return not self.production_eligible
+
+    @property
+    def authoritative_allowed(self) -> bool:
+        return self.production_eligible
+
+    def require_production_eligible(self) -> None:
+        if not self.production_eligible:
+            reasons = ", ".join(self.denial_reasons) or "capability_probe_failed"
+            raise ProgramZkpAuthorityError(
+                "production ZK authority denied: %s" % reasons
+            )
+
+    def _payload(self) -> Dict[str, Any]:
+        return {
+            "contract_version": PROGRAM_ANALYSIS_ZKP_CONTRACT_VERSION,
+            "evidence": PROGRAM_ZKP_EVIDENCE_CAPABILITY_CONFORMANCE,
+            "checks": [check.to_dict() for check in self.checks],
+            "backend_mode": self.backend_mode.value,
+            "field_encoding": self.field_encoding.value,
+            "circuit_family": self.circuit_family.value,
+            "circuit_id": self.circuit_id,
+            "circuit_version": self.circuit_version,
+            "knowledge_graph_fail_open": self.knowledge_graph_fail_open,
+            "stale": self.stale,
+            "architecture": self.architecture,
+            "cancellation_supported": self.cancellation_supported,
+            "notes": list(self.notes),
+            "production_eligible": self.production_eligible,
+            "rollout_mode": self.rollout_mode.value,
+            "shadow_only": self.shadow_only,
+            "authoritative_allowed": self.authoritative_allowed,
+            "denial_reasons": list(self.denial_reasons),
+            "does_not_prove": sorted(TRACE_VALIDITY_DOES_NOT_PROVE),
+            "trace_validity_scope": TRACE_VALIDITY_SCOPE_STATEMENT,
+        }
+
+    def to_public_artifact(self) -> Dict[str, Any]:
+        public = {**self.to_dict(), "capability_epoch": self.capability_epoch}
+        reject_private_witness_from_public_payload(public)
+        return public
+
+    @classmethod
+    def from_dict(
+        cls, payload: Mapping[str, Any]
+    ) -> "ProgramZkpCapabilityConformanceReport":
+        if not isinstance(payload, Mapping):
+            raise ProgramAnalysisZkpError("capability report payload must be a mapping")
+        data = dict(payload)
+        reject_private_witness_from_public_payload(data)
+        data.pop("schema", None)
+        data.pop("contract_version", None)
+        data.pop("evidence", None)
+        data.pop("production_eligible", None)
+        data.pop("rollout_mode", None)
+        data.pop("shadow_only", None)
+        data.pop("authoritative_allowed", None)
+        data.pop("denial_reasons", None)
+        data.pop("does_not_prove", None)
+        data.pop("trace_validity_scope", None)
+        claimed_id = data.pop("content_id", None) or data.pop("capability_epoch", None)
+        result = cls(
+            checks=tuple(data.get("checks") or ()),
+            backend_mode=data.get("backend_mode", ProgramZkpBackendMode.SHADOW),
+            field_encoding=data.get(
+                "field_encoding", ProgramZkpFieldEncodingKind.BN254_SHA256
+            ),
+            circuit_family=data.get(
+                "circuit_family", ProgramZkpCircuitFamily.PROGRAM_CONTRACT_TRACE
+            ),
+            circuit_id=data.get("circuit_id", PROGRAM_CONTRACT_TRACE_CIRCUIT_ID),
+            circuit_version=data.get(
+                "circuit_version", PROGRAM_CONTRACT_TRACE_CIRCUIT_VERSION
+            ),
+            knowledge_graph_fail_open=data.get("knowledge_graph_fail_open", False),
+            stale=data.get("stale", False),
+            architecture=data.get("architecture", ""),
+            cancellation_supported=data.get("cancellation_supported", True),
+            notes=tuple(data.get("notes") or ()),
+        )
+        if claimed_id and claimed_id != result.content_id:
+            raise ProgramZkpTamperError(
+                "forged capability conformance report identity rejected"
+            )
+        return result
+
+
+def _check(
+    dimension: ProgramZkpCapabilityDimension,
+    *,
+    status: ProgramZkpCapabilityStatus,
+    reason: str,
+    production_eligible: bool = False,
+    evidence: Mapping[str, Any] | None = None,
+    denial_reasons: Sequence[str] = (),
+) -> ProgramZkpCapabilityCheck:
+    return ProgramZkpCapabilityCheck(
+        dimension=dimension,
+        status=status,
+        reason=reason,
+        production_eligible=production_eligible,
+        evidence=dict(evidence or {}),
+        denial_reasons=tuple(denial_reasons),
+    )
+
+
+def _probe_executable_architecture(
+    *,
+    executable_names: Sequence[str] = ("provekit-cli", "provekit", "groth16"),
+    env_names: Sequence[str] = (
+        "IPFS_DATASETS_PROVEKIT_BINARY",
+        "PROVEKIT_CLI",
+        "IPFS_DATASETS_GROTH16_BINARY",
+        "GROTH16_BINARY",
+    ),
+    architecture_override: str | None = None,
+) -> ProgramZkpCapabilityCheck:
+    arch = architecture_override or "%s-%s" % (platform.system(), platform.machine())
+    path, source = _resolve_executable(executable_names, env_names=env_names)
+    evidence = {
+        "architecture": arch,
+        "executable_path": path or "",
+        "resolution": source,
+        "machine": platform.machine(),
+        "system": platform.system(),
+    }
+    if path is None:
+        return _check(
+            ProgramZkpCapabilityDimension.EXECUTABLE_ARCHITECTURE,
+            status=ProgramZkpCapabilityStatus.UNAVAILABLE,
+            reason="no production ZK executable discovered for architecture %s" % arch,
+            evidence=evidence,
+            denial_reasons=(ProgramZkpAuthorityDenialReason.MISSING_ARTIFACT.value,),
+        )
+    return _check(
+        ProgramZkpCapabilityDimension.EXECUTABLE_ARCHITECTURE,
+        status=ProgramZkpCapabilityStatus.AVAILABLE,
+        reason="production ZK executable discovered on %s" % arch,
+        production_eligible=True,
+        evidence=evidence,
+    )
+
+
+def _probe_backend(
+    *,
+    backend_mode: ProgramZkpBackendMode,
+    backend_id: str = "",
+) -> ProgramZkpCapabilityCheck:
+    identity = _text(backend_id, field_name="backend_id", required=False)
+    lower = identity.lower()
+    simulated_tokens = ("sim", "simulated", "mock", "fake", "demo", "educational")
+    if backend_mode is ProgramZkpBackendMode.SIMULATED or any(
+        token in lower.split(":") or token == lower for token in simulated_tokens
+    ):
+        return _check(
+            ProgramZkpCapabilityDimension.BACKEND,
+            status=ProgramZkpCapabilityStatus.SIMULATED,
+            reason="simulated backend defaults cannot grant production authority",
+            evidence={"backend_mode": backend_mode.value, "backend_id": identity},
+            denial_reasons=(ProgramZkpAuthorityDenialReason.SIMULATED_DEFAULT.value,),
+        )
+    if backend_mode is ProgramZkpBackendMode.SHADOW:
+        return _check(
+            ProgramZkpCapabilityDimension.BACKEND,
+            status=ProgramZkpCapabilityStatus.SHADOW,
+            reason="shadow backend rollout is non-authoritative",
+            evidence={"backend_mode": backend_mode.value, "backend_id": identity},
+            denial_reasons=(ProgramZkpAuthorityDenialReason.SHADOW_ONLY_ROLLOUT.value,),
+        )
+    if backend_mode is not ProgramZkpBackendMode.CRYPTOGRAPHIC:
+        return _check(
+            ProgramZkpCapabilityDimension.BACKEND,
+            status=ProgramZkpCapabilityStatus.REJECTED,
+            reason="backend is not cryptographic",
+            evidence={"backend_mode": backend_mode.value, "backend_id": identity},
+            denial_reasons=(
+                ProgramZkpAuthorityDenialReason.BACKEND_NOT_CRYPTOGRAPHIC.value,
+            ),
+        )
+    return _check(
+        ProgramZkpCapabilityDimension.BACKEND,
+        status=ProgramZkpCapabilityStatus.AVAILABLE,
+        reason="cryptographic backend mode is selected",
+        production_eligible=True,
+        evidence={"backend_mode": backend_mode.value, "backend_id": identity},
+    )
+
+
+def _probe_circuit_version(
+    *,
+    circuit_id: str,
+    circuit_version: int,
+    circuit_family: ProgramZkpCircuitFamily,
+) -> ProgramZkpCapabilityCheck:
+    family = circuit_family
+    denials: list[str] = []
+    if family is ProgramZkpCircuitFamily.TDFOL_ONLY:
+        denials.append(
+            ProgramZkpAuthorityDenialReason.INCOMPATIBLE_TDFOL_ONLY_CIRCUIT.value
+        )
+    if family is ProgramZkpCircuitFamily.NONZERO_ONLY_V1:
+        denials.append(ProgramZkpAuthorityDenialReason.V1_NONZERO_ONLY_CIRCUIT.value)
+    if not is_versioned_artifact_id(circuit_id):
+        denials.append(ProgramZkpAuthorityDenialReason.UNVERSIONED_ARTIFACT.value)
+    if circuit_version != PROGRAM_CONTRACT_TRACE_CIRCUIT_VERSION:
+        denials.append(ProgramZkpAuthorityDenialReason.UNVERSIONED_ARTIFACT.value)
+    if family is not ProgramZkpCircuitFamily.PROGRAM_CONTRACT_TRACE:
+        return _check(
+            ProgramZkpCapabilityDimension.CIRCUIT_VERSION,
+            status=ProgramZkpCapabilityStatus.REJECTED,
+            reason="circuit family %s is not production-compatible" % family.value,
+            evidence={
+                "circuit_id": circuit_id,
+                "circuit_version": circuit_version,
+                "circuit_family": family.value,
+            },
+            denial_reasons=denials
+            or (ProgramZkpAuthorityDenialReason.PROBE_FAILED.value,),
+        )
+    if denials:
+        return _check(
+            ProgramZkpCapabilityDimension.CIRCUIT_VERSION,
+            status=ProgramZkpCapabilityStatus.REJECTED,
+            reason="circuit identity or version is not production-admissible",
+            evidence={
+                "circuit_id": circuit_id,
+                "circuit_version": circuit_version,
+                "circuit_family": family.value,
+            },
+            denial_reasons=denials,
+        )
+    return _check(
+        ProgramZkpCapabilityDimension.CIRCUIT_VERSION,
+        status=ProgramZkpCapabilityStatus.VERIFIED,
+        reason="program_contract_trace circuit version is pinned",
+        production_eligible=True,
+        evidence={
+            "circuit_id": circuit_id,
+            "circuit_version": circuit_version,
+            "circuit_family": family.value,
+            "max_trace_steps": PROGRAM_CONTRACT_TRACE_MAX_TRACE_STEPS,
+            "canonical_trace_length": PROGRAM_CONTRACT_TRACE_CANONICAL_TRACE_LENGTH,
+        },
+    )
+
+
+def _probe_setup_artifacts(
+    *,
+    setup_dir: str | Path | None,
+    proving_key_id: str,
+    verifying_key_id: str,
+    require_files: Sequence[str] = (
+        "proving_key.bin",
+        "verifying_key.bin",
+    ),
+) -> ProgramZkpCapabilityCheck:
+    denials: list[str] = []
+    path = _path_if_exists(setup_dir)
+    present: list[str] = []
+    missing: list[str] = []
+    if path is None:
+        denials.append(ProgramZkpAuthorityDenialReason.MISSING_ARTIFACT.value)
+        missing = list(require_files)
+    else:
+        for name in require_files:
+            candidate = path / name
+            if candidate.is_file() and candidate.stat().st_size > 0:
+                present.append(name)
+            else:
+                missing.append(name)
+                denials.append(ProgramZkpAuthorityDenialReason.MISSING_ARTIFACT.value)
+    if not is_versioned_artifact_id(proving_key_id) or not is_versioned_artifact_id(
+        verifying_key_id
+    ):
+        denials.append(ProgramZkpAuthorityDenialReason.UNVERSIONED_ARTIFACT.value)
+    evidence = {
+        "setup_dir": str(path) if path else "",
+        "present_files": present,
+        "missing_files": missing,
+        "proving_key_id": proving_key_id,
+        "verifying_key_id": verifying_key_id,
+    }
+    if denials:
+        return _check(
+            ProgramZkpCapabilityDimension.SETUP_ARTIFACTS,
+            status=ProgramZkpCapabilityStatus.UNAVAILABLE
+            if ProgramZkpAuthorityDenialReason.MISSING_ARTIFACT.value in denials
+            else ProgramZkpCapabilityStatus.REJECTED,
+            reason="setup artifacts are missing, empty, or unversioned",
+            evidence=evidence,
+            denial_reasons=tuple(dict.fromkeys(denials)),
+        )
+    return _check(
+        ProgramZkpCapabilityDimension.SETUP_ARTIFACTS,
+        status=ProgramZkpCapabilityStatus.AVAILABLE,
+        reason="versioned setup artifacts are present",
+        production_eligible=True,
+        evidence=evidence,
+    )
+
+
+def _probe_ceremony(
+    *,
+    ceremony_id: str,
+    ceremony_manifest: Mapping[str, Any] | None,
+    ceremony_production_eligible: bool | None = None,
+) -> ProgramZkpCapabilityCheck:
+    denials: list[str] = []
+    if not ceremony_id or not is_versioned_artifact_id(ceremony_id):
+        denials.append(ProgramZkpAuthorityDenialReason.UNVERSIONED_ARTIFACT.value)
+    production = False
+    evidence: Dict[str, Any] = {"ceremony_id": ceremony_id}
+    if ceremony_production_eligible is True:
+        production = True
+        evidence["ceremony_source"] = "explicit_admission"
+    elif ceremony_manifest is not None:
+        evidence["ceremony_source"] = "manifest"
+        evidence["manifest_keys"] = sorted(str(k) for k in ceremony_manifest.keys())
+        # Prefer shared MCP++ ceremony validation when available; never fail-open.
+        try:
+            from ipfs_datasets_py.logic.zkp.ceremony import (  # type: ignore
+                validate_groth16_mpc_ceremony,
+            )
+
+            validation = validate_groth16_mpc_ceremony(dict(ceremony_manifest))
+            production = bool(getattr(validation, "production_eligible", False))
+            evidence["ceremony_valid"] = bool(getattr(validation, "valid", False))
+            evidence["ceremony_cid"] = str(getattr(validation, "ceremony_cid", ""))
+            if not production:
+                denials.append(ProgramZkpAuthorityDenialReason.CEREMONY_INELIGIBLE.value)
+        except Exception as exc:  # pragma: no cover - defensive import/validation path
+            denials.append(ProgramZkpAuthorityDenialReason.CEREMONY_INELIGIBLE.value)
+            evidence["ceremony_error"] = type(exc).__name__
+    else:
+        denials.append(ProgramZkpAuthorityDenialReason.MISSING_ARTIFACT.value)
+        evidence["ceremony_source"] = "absent"
+    if ceremony_production_eligible is False:
+        production = False
+        if ProgramZkpAuthorityDenialReason.CEREMONY_INELIGIBLE.value not in denials:
+            denials.append(ProgramZkpAuthorityDenialReason.CEREMONY_INELIGIBLE.value)
+    if production and not denials:
+        return _check(
+            ProgramZkpCapabilityDimension.CEREMONY,
+            status=ProgramZkpCapabilityStatus.VERIFIED,
+            reason="ceremony is production-eligible and versioned",
+            production_eligible=True,
+            evidence=evidence,
+        )
+    return _check(
+        ProgramZkpCapabilityDimension.CEREMONY,
+        status=ProgramZkpCapabilityStatus.REJECTED
+        if denials
+        else ProgramZkpCapabilityStatus.UNAVAILABLE,
+        reason="ceremony is missing, unversioned, or not production-eligible",
+        evidence=evidence,
+        denial_reasons=tuple(dict.fromkeys(denials))
+        or (ProgramZkpAuthorityDenialReason.CEREMONY_INELIGIBLE.value,),
+    )
+
+
+def _probe_key(
+    dimension: ProgramZkpCapabilityDimension,
+    *,
+    key_id: str,
+    key_material: bytes | bytearray | memoryview | str | None = None,
+    expected_digest: str = "",
+) -> ProgramZkpCapabilityCheck:
+    denials: list[str] = []
+    if not key_id:
+        denials.append(ProgramZkpAuthorityDenialReason.MISSING_ARTIFACT.value)
+    elif not is_versioned_artifact_id(key_id):
+        denials.append(ProgramZkpAuthorityDenialReason.UNVERSIONED_ARTIFACT.value)
+    evidence: Dict[str, Any] = {"key_id": key_id}
+    if key_material is None:
+        # Identity-only probe: versioned id is required; material optional.
+        if denials:
+            return _check(
+                dimension,
+                status=ProgramZkpCapabilityStatus.UNAVAILABLE,
+                reason="key identity is missing or unversioned",
+                evidence=evidence,
+                denial_reasons=denials,
+            )
+        return _check(
+            dimension,
+            status=ProgramZkpCapabilityStatus.CONFIGURED,
+            reason="key identity is versioned; material not supplied to this probe",
+            production_eligible=False,
+            evidence=evidence,
+            denial_reasons=(ProgramZkpAuthorityDenialReason.MISSING_ARTIFACT.value,),
+        )
+    if isinstance(key_material, str):
+        raw = key_material.encode("utf-8")
+    else:
+        raw = bytes(key_material)
+    if not raw:
+        denials.append(ProgramZkpAuthorityDenialReason.MISSING_ARTIFACT.value)
+    digest = "sha256:" + hashlib.sha256(raw).hexdigest()
+    evidence["key_digest"] = digest
+    evidence["key_bytes"] = len(raw)
+    if expected_digest:
+        expected = _text(expected_digest, field_name="expected_digest")
+        evidence["expected_digest"] = expected
+        if digest != expected and expected != key_id and not key_id.endswith(
+            digest.removeprefix("sha256:")
+        ):
+            denials.append(ProgramZkpAuthorityDenialReason.CORRUPTED_KEY.value)
+    if denials:
+        status = (
+            ProgramZkpCapabilityStatus.REJECTED
+            if ProgramZkpAuthorityDenialReason.CORRUPTED_KEY.value in denials
+            else ProgramZkpCapabilityStatus.UNAVAILABLE
+        )
+        return _check(
+            dimension,
+            status=status,
+            reason="key material failed integrity or version checks",
+            evidence=evidence,
+            denial_reasons=tuple(dict.fromkeys(denials)),
+        )
+    return _check(
+        dimension,
+        status=ProgramZkpCapabilityStatus.VERIFIED,
+        reason="key material digests cleanly and identity is versioned",
+        production_eligible=True,
+        evidence=evidence,
+    )
+
+
+def _probe_public_input_codec(
+    *,
+    codec_id: str = PUBLIC_INPUT_CODEC_ID,
+    codec_version: str = PUBLIC_INPUT_CODEC_VERSION,
+    field_encoding: ProgramZkpFieldEncodingKind,
+) -> ProgramZkpCapabilityCheck:
+    denials: list[str] = []
+    if codec_id != PUBLIC_INPUT_CODEC_ID or codec_version != PUBLIC_INPUT_CODEC_VERSION:
+        denials.append(ProgramZkpAuthorityDenialReason.CODEC_INCOMPATIBLE.value)
+    if field_encoding is ProgramZkpFieldEncodingKind.PLACEHOLDER:
+        denials.append(
+            ProgramZkpAuthorityDenialReason.PLACEHOLDER_FIELD_ENCODING.value
+        )
+    if field_encoding is ProgramZkpFieldEncodingKind.NONZERO_ONLY_V1:
+        denials.append(ProgramZkpAuthorityDenialReason.V1_NONZERO_ONLY_CIRCUIT.value)
+    if field_encoding is not ProgramZkpFieldEncodingKind.BN254_SHA256:
+        if ProgramZkpAuthorityDenialReason.CODEC_INCOMPATIBLE.value not in denials:
+            denials.append(ProgramZkpAuthorityDenialReason.CODEC_INCOMPATIBLE.value)
+    evidence = {
+        "codec_id": codec_id,
+        "codec_version": codec_version,
+        "field_encoding": field_encoding.value,
+        "commitment_keys": list(PUBLIC_COMMITMENT_KEYS),
+    }
+    if denials:
+        return _check(
+            ProgramZkpCapabilityDimension.PUBLIC_INPUT_CODEC,
+            status=ProgramZkpCapabilityStatus.REJECTED,
+            reason="public-input codec or field encoding is not production-admissible",
+            evidence=evidence,
+            denial_reasons=tuple(dict.fromkeys(denials)),
+        )
+    return _check(
+        ProgramZkpCapabilityDimension.PUBLIC_INPUT_CODEC,
+        status=ProgramZkpCapabilityStatus.VERIFIED,
+        reason="canonical BN254 SHA-256 public-input codec is pinned",
+        production_eligible=True,
+        evidence=evidence,
+    )
+
+
+def _probe_proof_schema(
+    *,
+    proof_schema_id: str = PROGRAM_ZKP_PROOF_SCHEMA_ID,
+    sample_proof: bytes | str | None = None,
+) -> ProgramZkpCapabilityCheck:
+    denials: list[str] = []
+    if proof_schema_id != PROGRAM_ZKP_PROOF_SCHEMA_ID:
+        denials.append(ProgramZkpAuthorityDenialReason.PROOF_SCHEMA_MISMATCH.value)
+    evidence: Dict[str, Any] = {"proof_schema_id": proof_schema_id}
+    if sample_proof is not None:
+        simulated = proof_bytes_are_simulated(sample_proof)
+        evidence["sample_is_simulated"] = simulated
+        if simulated:
+            denials.append(ProgramZkpAuthorityDenialReason.SIMULATED_DEFAULT.value)
+            denials.append(ProgramZkpAuthorityDenialReason.CORRUPTED_PROOF.value)
+    if denials:
+        return _check(
+            ProgramZkpCapabilityDimension.PROOF_SCHEMA,
+            status=ProgramZkpCapabilityStatus.REJECTED,
+            reason="proof schema is mismatched or sample is simulated/corrupt",
+            evidence=evidence,
+            denial_reasons=tuple(dict.fromkeys(denials)),
+        )
+    return _check(
+        ProgramZkpCapabilityDimension.PROOF_SCHEMA,
+        status=ProgramZkpCapabilityStatus.VERIFIED,
+        reason="production proof schema identity is pinned",
+        production_eligible=True,
+        evidence=evidence,
+    )
+
+
+def _probe_independent_verifier(
+    *,
+    independent_verifier_available: bool,
+    verifier_id: str = "",
+) -> ProgramZkpCapabilityCheck:
+    if not independent_verifier_available:
+        return _check(
+            ProgramZkpCapabilityDimension.INDEPENDENT_VERIFIER,
+            status=ProgramZkpCapabilityStatus.UNAVAILABLE,
+            reason="independent verifier is not available",
+            evidence={"verifier_id": verifier_id},
+            denial_reasons=(
+                ProgramZkpAuthorityDenialReason.INDEPENDENT_VERIFIER_ABSENT.value,
+            ),
+        )
+    return _check(
+        ProgramZkpCapabilityDimension.INDEPENDENT_VERIFIER,
+        status=ProgramZkpCapabilityStatus.AVAILABLE,
+        reason="independent verifier path is available",
+        production_eligible=True,
+        evidence={"verifier_id": verifier_id or "independent"},
+    )
+
+
+def _probe_bounds(
+    *,
+    max_trace_steps: int = PROGRAM_CONTRACT_TRACE_MAX_TRACE_STEPS,
+    max_text_bytes: int = MAX_TEXT_BYTES,
+    observed_trace_steps: int | None = None,
+) -> ProgramZkpCapabilityCheck:
+    denials: list[str] = []
+    if max_trace_steps < PROGRAM_CONTRACT_TRACE_CANONICAL_TRACE_LENGTH:
+        denials.append(ProgramZkpAuthorityDenialReason.BOUNDS_EXCEEDED.value)
+    if max_trace_steps > PROGRAM_CONTRACT_TRACE_MAX_TRACE_STEPS:
+        denials.append(ProgramZkpAuthorityDenialReason.BOUNDS_EXCEEDED.value)
+    if observed_trace_steps is not None and (
+        observed_trace_steps > max_trace_steps
+        or observed_trace_steps != PROGRAM_CONTRACT_TRACE_CANONICAL_TRACE_LENGTH
+    ):
+        denials.append(ProgramZkpAuthorityDenialReason.BOUNDS_EXCEEDED.value)
+    evidence = {
+        "max_trace_steps": max_trace_steps,
+        "canonical_trace_length": PROGRAM_CONTRACT_TRACE_CANONICAL_TRACE_LENGTH,
+        "max_text_bytes": max_text_bytes,
+        "observed_trace_steps": observed_trace_steps,
+    }
+    if denials:
+        return _check(
+            ProgramZkpCapabilityDimension.BOUNDS,
+            status=ProgramZkpCapabilityStatus.REJECTED,
+            reason="resource or trace bounds are outside production envelope",
+            evidence=evidence,
+            denial_reasons=denials,
+        )
+    return _check(
+        ProgramZkpCapabilityDimension.BOUNDS,
+        status=ProgramZkpCapabilityStatus.VERIFIED,
+        reason="production bounds match program_contract_trace envelope",
+        production_eligible=True,
+        evidence=evidence,
+    )
+
+
+def _probe_cancellation(
+    *,
+    cancellation_supported: bool,
+    cancellation_event: threading.Event | None = None,
+) -> ProgramZkpCapabilityCheck:
+    if cancellation_event is not None and cancellation_event.is_set():
+        return _check(
+            ProgramZkpCapabilityDimension.CANCELLATION,
+            status=ProgramZkpCapabilityStatus.REJECTED,
+            reason="capability probe cancelled before completion",
+            evidence={"cancellation_supported": cancellation_supported, "cancelled": True},
+            denial_reasons=(ProgramZkpAuthorityDenialReason.CANCELLED.value,),
+        )
+    if not cancellation_supported:
+        return _check(
+            ProgramZkpCapabilityDimension.CANCELLATION,
+            status=ProgramZkpCapabilityStatus.REJECTED,
+            reason="backend does not support cooperative cancellation",
+            evidence={"cancellation_supported": False},
+            denial_reasons=(ProgramZkpAuthorityDenialReason.CANCELLED.value,),
+        )
+    return _check(
+        ProgramZkpCapabilityDimension.CANCELLATION,
+        status=ProgramZkpCapabilityStatus.VERIFIED,
+        reason="cooperative cancellation is supported",
+        production_eligible=True,
+        evidence={"cancellation_supported": True},
+    )
+
+
+def probe_program_analysis_zkp_capability(
+    *,
+    backend_mode: ProgramZkpBackendMode | str = ProgramZkpBackendMode.SHADOW,
+    backend_id: str = "",
+    circuit_id: str = PROGRAM_CONTRACT_TRACE_CIRCUIT_ID,
+    circuit_version: int = PROGRAM_CONTRACT_TRACE_CIRCUIT_VERSION,
+    circuit_family: ProgramZkpCircuitFamily | str | None = None,
+    field_encoding: ProgramZkpFieldEncodingKind | str = (
+        ProgramZkpFieldEncodingKind.BN254_SHA256
+    ),
+    proving_key_id: str = "",
+    verifying_key_id: str = "",
+    ceremony_id: str = "",
+    ceremony_manifest: Mapping[str, Any] | None = None,
+    ceremony_production_eligible: bool | None = None,
+    setup_dir: str | Path | None = None,
+    proving_key_material: bytes | str | None = None,
+    verifying_key_material: bytes | str | None = None,
+    proving_key_digest: str = "",
+    verifying_key_digest: str = "",
+    codec_id: str = PUBLIC_INPUT_CODEC_ID,
+    codec_version: str = PUBLIC_INPUT_CODEC_VERSION,
+    proof_schema_id: str = PROGRAM_ZKP_PROOF_SCHEMA_ID,
+    sample_proof: bytes | str | None = None,
+    independent_verifier_available: bool = False,
+    verifier_id: str = "",
+    knowledge_graph_fail_open: bool = False,
+    stale: bool = False,
+    cancellation_supported: bool = True,
+    cancellation_event: threading.Event | None = None,
+    architecture_override: str | None = None,
+    max_trace_steps: int = PROGRAM_CONTRACT_TRACE_MAX_TRACE_STEPS,
+    observed_trace_steps: int | None = None,
+    notes: Sequence[str] = (),
+    # Test/operator injection: when True, treat configured keys/setup as present
+    # only if their production_eligible flags are also forced via material.
+    force_checks: Mapping[str, Mapping[str, Any]] | None = None,
+) -> ProgramZkpCapabilityConformanceReport:
+    """Probe production ZK capability and publish explicit shadow/degraded status.
+
+    Every required dimension is evaluated.  Simulated defaults, knowledge-graph
+    fail-open fallback, placeholder encodings, incompatible circuits, missing
+    or unversioned artifacts, and stale probes fail closed for authority.
+    """
+
+    mode = _enum(backend_mode, ProgramZkpBackendMode, field_name="backend_mode")
+    encoding = _enum(
+        field_encoding, ProgramZkpFieldEncodingKind, field_name="field_encoding"
+    )
+    family = (
+        _enum(circuit_family, ProgramZkpCircuitFamily, field_name="circuit_family")
+        if circuit_family is not None
+        else classify_circuit_family(circuit_id)
+    )
+    if cancellation_event is not None and cancellation_event.is_set():
+        # Cancellation aborts the probe with a complete but rejected report.
+        cancelled = _probe_cancellation(
+            cancellation_supported=cancellation_supported,
+            cancellation_event=cancellation_event,
+        )
+        # Still emit every dimension so report construction succeeds.
+        fail = lambda dimension, reason: _check(  # noqa: E731
+            dimension,
+            status=ProgramZkpCapabilityStatus.REJECTED,
+            reason=reason,
+            denial_reasons=(ProgramZkpAuthorityDenialReason.CANCELLED.value,),
+        )
+        checks = (
+            fail(
+                ProgramZkpCapabilityDimension.EXECUTABLE_ARCHITECTURE,
+                "probe cancelled",
+            ),
+            fail(ProgramZkpCapabilityDimension.BACKEND, "probe cancelled"),
+            fail(ProgramZkpCapabilityDimension.CIRCUIT_VERSION, "probe cancelled"),
+            fail(ProgramZkpCapabilityDimension.SETUP_ARTIFACTS, "probe cancelled"),
+            fail(ProgramZkpCapabilityDimension.CEREMONY, "probe cancelled"),
+            fail(ProgramZkpCapabilityDimension.PROVING_KEY, "probe cancelled"),
+            fail(ProgramZkpCapabilityDimension.VERIFYING_KEY, "probe cancelled"),
+            fail(ProgramZkpCapabilityDimension.PUBLIC_INPUT_CODEC, "probe cancelled"),
+            fail(ProgramZkpCapabilityDimension.PROOF_SCHEMA, "probe cancelled"),
+            fail(
+                ProgramZkpCapabilityDimension.INDEPENDENT_VERIFIER, "probe cancelled"
+            ),
+            fail(ProgramZkpCapabilityDimension.BOUNDS, "probe cancelled"),
+            cancelled,
+        )
+        return ProgramZkpCapabilityConformanceReport(
+            checks=checks,
+            backend_mode=mode,
+            field_encoding=encoding,
+            circuit_family=family,
+            circuit_id=circuit_id,
+            circuit_version=circuit_version,
+            knowledge_graph_fail_open=knowledge_graph_fail_open,
+            stale=stale,
+            architecture=architecture_override
+            or "%s-%s" % (platform.system(), platform.machine()),
+            cancellation_supported=cancellation_supported,
+            notes=tuple(notes) + ("cancelled",),
+        )
+
+    checks = [
+        _probe_executable_architecture(architecture_override=architecture_override),
+        _probe_backend(backend_mode=mode, backend_id=backend_id),
+        _probe_circuit_version(
+            circuit_id=circuit_id,
+            circuit_version=circuit_version,
+            circuit_family=family,
+        ),
+        _probe_setup_artifacts(
+            setup_dir=setup_dir,
+            proving_key_id=proving_key_id,
+            verifying_key_id=verifying_key_id,
+        ),
+        _probe_ceremony(
+            ceremony_id=ceremony_id,
+            ceremony_manifest=ceremony_manifest,
+            ceremony_production_eligible=ceremony_production_eligible,
+        ),
+        _probe_key(
+            ProgramZkpCapabilityDimension.PROVING_KEY,
+            key_id=proving_key_id,
+            key_material=proving_key_material,
+            expected_digest=proving_key_digest,
+        ),
+        _probe_key(
+            ProgramZkpCapabilityDimension.VERIFYING_KEY,
+            key_id=verifying_key_id,
+            key_material=verifying_key_material,
+            expected_digest=verifying_key_digest,
+        ),
+        _probe_public_input_codec(
+            codec_id=codec_id,
+            codec_version=codec_version,
+            field_encoding=encoding,
+        ),
+        _probe_proof_schema(
+            proof_schema_id=proof_schema_id, sample_proof=sample_proof
+        ),
+        _probe_independent_verifier(
+            independent_verifier_available=independent_verifier_available,
+            verifier_id=verifier_id,
+        ),
+        _probe_bounds(
+            max_trace_steps=max_trace_steps,
+            observed_trace_steps=observed_trace_steps,
+        ),
+        _probe_cancellation(
+            cancellation_supported=cancellation_supported,
+            cancellation_event=cancellation_event,
+        ),
+    ]
+
+    if force_checks:
+        rewritten: list[ProgramZkpCapabilityCheck] = []
+        for check in checks:
+            override = force_checks.get(check.dimension.value)
+            if not override:
+                rewritten.append(check)
+                continue
+            rewritten.append(
+                ProgramZkpCapabilityCheck(
+                    dimension=check.dimension,
+                    status=override.get("status", check.status),
+                    reason=override.get("reason", check.reason),
+                    production_eligible=override.get(
+                        "production_eligible", check.production_eligible
+                    ),
+                    evidence=override.get("evidence", dict(check.evidence)),
+                    denial_reasons=tuple(
+                        override.get("denial_reasons", check.denial_reasons)
+                    ),
+                )
+            )
+        checks = rewritten
+
+    return ProgramZkpCapabilityConformanceReport(
+        checks=tuple(checks),
+        backend_mode=mode,
+        field_encoding=encoding,
+        circuit_family=family,
+        circuit_id=circuit_id,
+        circuit_version=circuit_version,
+        knowledge_graph_fail_open=knowledge_graph_fail_open,
+        stale=stale,
+        architecture=architecture_override
+        or "%s-%s" % (platform.system(), platform.machine()),
+        cancellation_supported=cancellation_supported,
+        notes=tuple(notes),
+    )
+
+
+def build_production_ready_capability_fixture(
+    *,
+    proving_key_material: bytes = b"pk-fixture-material-v1",
+    verifying_key_material: bytes = b"vk-fixture-material-v1",
+    ceremony_id: str = "ceremony:program-contract-trace@1",
+    proving_key_id: str = "pk:program-contract-trace@1:sha256-pk-fixture",
+    verifying_key_id: str = "vk:program-contract-trace@1:sha256-vk-fixture",
+    backend_id: str = "backend:provekit-groth16@1",
+    verifier_id: str = "verifier:program-analysis-zkp-independent@1",
+    architecture: str = "fixture-linux-x86_64",
+) -> ProgramZkpCapabilityConformanceReport:
+    """Construct an explicit production-eligible fixture for hermetic tests.
+
+    Real environments must go through :func:`probe_program_analysis_zkp_capability`
+    without ``force_checks``.  This helper never runs in production code paths
+    unless an operator deliberately imports it.
+    """
+
+    pk_digest = "sha256:" + hashlib.sha256(proving_key_material).hexdigest()
+    vk_digest = "sha256:" + hashlib.sha256(verifying_key_material).hexdigest()
+    return probe_program_analysis_zkp_capability(
+        backend_mode=ProgramZkpBackendMode.CRYPTOGRAPHIC,
+        backend_id=backend_id,
+        circuit_id=PROGRAM_CONTRACT_TRACE_CIRCUIT_ID,
+        circuit_version=PROGRAM_CONTRACT_TRACE_CIRCUIT_VERSION,
+        field_encoding=ProgramZkpFieldEncodingKind.BN254_SHA256,
+        proving_key_id=proving_key_id,
+        verifying_key_id=verifying_key_id,
+        ceremony_id=ceremony_id,
+        ceremony_production_eligible=True,
+        proving_key_material=proving_key_material,
+        verifying_key_material=verifying_key_material,
+        proving_key_digest=pk_digest,
+        verifying_key_digest=vk_digest,
+        independent_verifier_available=True,
+        verifier_id=verifier_id,
+        knowledge_graph_fail_open=False,
+        stale=False,
+        cancellation_supported=True,
+        architecture_override=architecture,
+        force_checks={
+            ProgramZkpCapabilityDimension.EXECUTABLE_ARCHITECTURE.value: {
+                "status": ProgramZkpCapabilityStatus.AVAILABLE.value,
+                "reason": "fixture executable admitted for hermetic tests",
+                "production_eligible": True,
+                "evidence": {
+                    "architecture": architecture,
+                    "executable_path": "/fixture/provekit",
+                    "resolution": "fixture",
+                },
+                "denial_reasons": (),
+            },
+            ProgramZkpCapabilityDimension.SETUP_ARTIFACTS.value: {
+                "status": ProgramZkpCapabilityStatus.AVAILABLE.value,
+                "reason": "fixture setup artifacts admitted for hermetic tests",
+                "production_eligible": True,
+                "evidence": {
+                    "setup_dir": "/fixture/setup",
+                    "present_files": ["proving_key.bin", "verifying_key.bin"],
+                    "missing_files": [],
+                    "proving_key_id": proving_key_id,
+                    "verifying_key_id": verifying_key_id,
+                },
+                "denial_reasons": (),
+            },
+        },
+    )
+
+
+def grants_production_authority(
+    receipt: ProgramZkpVerificationReceipt,
+    capability: ProgramZkpCapabilityConformanceReport,
+) -> bool:
+    """Return True only when receipt and live capability both admit authority."""
+
+    if not isinstance(receipt, ProgramZkpVerificationReceipt):
+        raise ProgramAnalysisZkpError("receipt must be ProgramZkpVerificationReceipt")
+    if not isinstance(capability, ProgramZkpCapabilityConformanceReport):
+        raise ProgramAnalysisZkpError(
+            "capability must be ProgramZkpCapabilityConformanceReport"
+        )
+    if not receipt.authoritative:
+        return False
+    if not capability.production_eligible:
+        return False
+    if receipt.capability_epoch != capability.capability_epoch:
+        return False
+    return True
+
+
+def require_production_authority(
+    receipt: ProgramZkpVerificationReceipt,
+    capability: ProgramZkpCapabilityConformanceReport,
+) -> None:
+    """Fail closed unless the receipt still grants production authority."""
+
+    if not grants_production_authority(receipt, capability):
+        reasons = list(capability.denial_reasons)
+        if receipt.capability_epoch != capability.capability_epoch:
+            reasons.append(ProgramZkpAuthorityDenialReason.CAPABILITY_LOSS.value)
+        if not receipt.authoritative:
+            reasons.append(ProgramZkpAuthorityDenialReason.SHADOW_ONLY_ROLLOUT.value)
+        raise ProgramZkpAuthorityError(
+            "production ZK authority denied: %s"
+            % (", ".join(reasons) or "not_authoritative")
+        )
+
+
+def invalidate_authority_on_capability_loss(
+    receipt: ProgramZkpVerificationReceipt,
+    *,
+    previous_capability: ProgramZkpCapabilityConformanceReport,
+    current_capability: ProgramZkpCapabilityConformanceReport,
+) -> ProgramZkpVerificationReceipt:
+    """Return a non-authoritative projection after capability loss.
+
+    Prior authoritative receipts are invalidated when the capability epoch
+    changes or the current probe is no longer production-eligible.
+    """
+
+    if not isinstance(receipt, ProgramZkpVerificationReceipt):
+        raise ProgramAnalysisZkpError("receipt must be ProgramZkpVerificationReceipt")
+    lost = (
+        not current_capability.production_eligible
+        or previous_capability.capability_epoch != current_capability.capability_epoch
+        or receipt.capability_epoch != current_capability.capability_epoch
+    )
+    if not lost and receipt.authoritative:
+        return receipt
+    # Re-bind as non-authoritative independent rejection of authority projection.
+    return ProgramZkpVerificationReceipt(
+        statement=receipt.statement,
+        verdict=receipt.verdict,
+        verifier_id=receipt.verifier_id,
+        verifying_key_id=receipt.verifying_key_id,
+        circuit_id=receipt.circuit_id,
+        public_input_digest=receipt.public_input_digest,
+        ceremony_id=receipt.ceremony_id,
+        public_input_codec_version=receipt.public_input_codec_version,
+        backend_mode=receipt.backend_mode,
+        capability_epoch=current_capability.capability_epoch,
+        capability_production_eligible=False,
+        proof_schema_id=receipt.proof_schema_id,
+        independent_verifier=receipt.independent_verifier,
+    )
+
+
+def verify_program_zkp_independently(
+    envelope: ProgramZkpShadowEnvelope,
+    *,
+    capability: ProgramZkpCapabilityConformanceReport,
+    verifier_id: str,
+    proof_bytes: bytes | bytearray | memoryview | str,
+    verifying_key_material: bytes | bytearray | memoryview | str,
+    public_inputs: ProgramZkpPublicInputs | None = None,
+    expected_verifying_key_digest: str = "",
+    cryptographic_verify: Callable[[bytes, bytes, tuple[int, ...]], bool] | None = None,
+    cancellation_event: threading.Event | None = None,
+) -> ProgramZkpVerificationReceipt:
+    """Independently verify a proof against keys, codec, and live capability.
+
+    Rejects simulated proofs, corrupted keys/inputs, schema mismatches, and
+    non-production capability states.  When ``cryptographic_verify`` is omitted,
+    structural production gates still run and the verdict is REJECTED unless a
+    caller supplies a verified cryptographic callback (or the envelope is not
+    cryptographic).  Deterministic receipt identity follows content addressing.
+    """
+
+    if not isinstance(envelope, ProgramZkpShadowEnvelope):
+        raise ProgramAnalysisZkpError("envelope must be ProgramZkpShadowEnvelope")
+    if not isinstance(capability, ProgramZkpCapabilityConformanceReport):
+        raise ProgramAnalysisZkpError(
+            "capability must be ProgramZkpCapabilityConformanceReport"
+        )
+    if cancellation_event is not None and cancellation_event.is_set():
+        raise ProgramZkpCapabilityError("independent verification cancelled")
+
+    pins = (
+        public_inputs
+        if isinstance(public_inputs, ProgramZkpPublicInputs)
+        else envelope.statement.public_inputs
+    )
+    # Input binding
+    if pins.public_input_digest != envelope.statement.public_input_digest:
+        raise ProgramZkpTamperError("corrupted or drifted public inputs rejected")
+    if pins.verifying_key_id != envelope.statement.public_inputs.verifying_key_id:
+        raise ProgramZkpTamperError("corrupted verifying key identity rejected")
+    if pins.circuit_id != envelope.statement.public_inputs.circuit_id:
+        raise ProgramZkpTamperError("corrupted circuit identity rejected")
+    if pins.ceremony_id != envelope.statement.public_inputs.ceremony_id:
+        raise ProgramZkpTamperError("corrupted ceremony identity rejected")
+    if pins.public_input_codec_id != PUBLIC_INPUT_CODEC_ID:
+        raise ProgramZkpVersionError("public-input codec id is incompatible")
+    if pins.public_input_codec_version != PUBLIC_INPUT_CODEC_VERSION:
+        raise ProgramZkpVersionError("public-input codec version is incompatible")
+
+    # Proof material
+    if isinstance(proof_bytes, str):
+        stripped = proof_bytes.strip()
+        hex_candidate = stripped[2:] if stripped.startswith(("0x", "0X")) else stripped
+        try:
+            proof_raw = (
+                bytes.fromhex(hex_candidate)
+                if hex_candidate and len(hex_candidate) % 2 == 0
+                else proof_bytes.encode("utf-8")
+            )
+        except ValueError:
+            proof_raw = proof_bytes.encode("utf-8")
+    else:
+        proof_raw = bytes(proof_bytes)
+    if not proof_raw:
+        raise ProgramZkpTamperError("corrupted proof rejected: empty")
+    if proof_bytes_are_simulated(proof_raw):
+        raise ProgramZkpAuthorityError(
+            "simulated proof layouts cannot pass independent verification"
+        )
+
+    # Key material
+    if isinstance(verifying_key_material, str):
+        key_raw = verifying_key_material.encode("utf-8")
+    else:
+        key_raw = bytes(verifying_key_material)
+    if not key_raw:
+        raise ProgramZkpTamperError("corrupted verifying key rejected: empty")
+    key_digest = "sha256:" + hashlib.sha256(key_raw).hexdigest()
+    if expected_verifying_key_digest:
+        expected = _text(
+            expected_verifying_key_digest, field_name="expected_verifying_key_digest"
+        )
+        if key_digest != expected:
+            raise ProgramZkpTamperError("corrupted verifying key rejected: digest mismatch")
+
+    # Field encoding / codec vector
+    try:
+        field_vector = encode_public_input_field_vector(
+            pins, field_encoding=capability.field_encoding
+        )
+    except ProgramZkpAuthorityError:
+        raise
+    if any(value == 0 for value in field_vector):
+        # Defensive: honest SHA-256 reduction is overwhelmingly nonzero; zero
+        # vectors indicate placeholder/all-zero forgery paths.
+        raise ProgramZkpTamperError("corrupted public-input field vector rejected")
+
+    # Capability gate: production authority requires a live eligible report.
+    production = capability.production_eligible
+    if capability.stale:
+        production = False
+    if capability.knowledge_graph_fail_open:
+        production = False
+
+    verified = False
+    if cryptographic_verify is not None:
+        try:
+            verified = bool(cryptographic_verify(proof_raw, key_raw, field_vector))
+        except Exception as exc:
+            raise ProgramZkpCapabilityError(
+                "independent cryptographic verifier failed: %s" % type(exc).__name__
+            ) from exc
+    elif envelope.backend_mode is ProgramZkpBackendMode.CRYPTOGRAPHIC and production:
+        # Structural gates passed but no cryptographic callback was supplied —
+        # fail closed rather than invent a success.
+        verified = False
+    elif envelope.backend_mode in {
+        ProgramZkpBackendMode.SHADOW,
+        ProgramZkpBackendMode.SIMULATED,
+    }:
+        # Shadow/simulated independent "verification" is structural only.
+        verified = True
+
+    verdict = (
+        ProgramZkpVerdict.VERIFIED if verified else ProgramZkpVerdict.REJECTED
+    )
+    return ProgramZkpVerificationReceipt(
+        statement=envelope.statement,
+        verdict=verdict,
+        verifier_id=verifier_id,
+        verifying_key_id=pins.verifying_key_id,
+        circuit_id=pins.circuit_id,
+        public_input_digest=envelope.statement.public_input_digest,
+        ceremony_id=pins.ceremony_id,
+        public_input_codec_version=pins.public_input_codec_version,
+        backend_mode=envelope.backend_mode,
+        capability_epoch=capability.capability_epoch,
+        capability_production_eligible=bool(production and verified),
+        independent_verifier=True,
+    )
+
+
+def record_production_program_zkp_verification(
+    envelope: ProgramZkpShadowEnvelope,
+    *,
+    capability: ProgramZkpCapabilityConformanceReport,
+    verifier_id: str,
+    proof_bytes: bytes | bytearray | memoryview | str,
+    verifying_key_material: bytes | bytearray | memoryview | str,
+    cryptographic_verify: Callable[[bytes, bytes, tuple[int, ...]], bool],
+    expected_verifying_key_digest: str = "",
+    cancellation_event: threading.Event | None = None,
+) -> ProgramZkpVerificationReceipt:
+    """Verify and record a production path; requires eligible capability."""
+
+    capability.require_production_eligible()
+    if envelope.backend_mode is not ProgramZkpBackendMode.CRYPTOGRAPHIC:
+        raise ProgramZkpAuthorityError(
+            "production verification requires cryptographic backend mode"
+        )
+    receipt = verify_program_zkp_independently(
+        envelope,
+        capability=capability,
+        verifier_id=verifier_id,
+        proof_bytes=proof_bytes,
+        verifying_key_material=verifying_key_material,
+        expected_verifying_key_digest=expected_verifying_key_digest,
+        cryptographic_verify=cryptographic_verify,
+        cancellation_event=cancellation_event,
+    )
+    if not receipt.authoritative:
+        raise ProgramZkpAuthorityError(
+            "independent verification did not produce an authoritative receipt"
+        )
+    # No semantic claim promotion: still only zk_trace_attested.
+    if receipt.claim_level is not ClaimLevel.ZK_TRACE_ATTESTED:
+        raise ProgramZkpClaimPromotionError(
+            "production receipt cannot promote claim level"
+        )
+    return receipt
+
+
+def rollout_mode_for_capability(
+    capability: ProgramZkpCapabilityConformanceReport,
+) -> ProgramZkpRolloutMode:
+    """Return the fail-closed rollout mode for a capability report."""
+
+    return capability.rollout_mode
+
+
+def shadow_only_rollout(
+    capability: ProgramZkpCapabilityConformanceReport,
+) -> bool:
+    """Return True when ZK must remain shadow-only (no production authority)."""
+
+    return capability.shadow_only
+
+
 __all__ = [
     "PROGRAM_ANALYSIS_ZKP_CONTRACT_VERSION",
     "CONTRACT_VERSION",
@@ -1876,6 +3675,17 @@ __all__ = [
     "PROGRAM_ZKP_WITNESS_POLICY_SCHEMA",
     "PROGRAM_ZKP_RECEIPT_SCHEMA",
     "PROGRAM_ZKP_SHADOW_ENVELOPE_SCHEMA",
+    "PROGRAM_ZKP_CAPABILITY_CONFORMANCE_SCHEMA",
+    "PROGRAM_ZKP_CAPABILITY_CHECK_SCHEMA",
+    "PROGRAM_ZKP_PROOF_SCHEMA_ID",
+    "PROGRAM_ZKP_EVIDENCE_CAPABILITY_CONFORMANCE",
+    "PROGRAM_CONTRACT_TRACE_CIRCUIT_ID",
+    "PROGRAM_CONTRACT_TRACE_CIRCUIT_VERSION",
+    "PROGRAM_CONTRACT_TRACE_MAX_TRACE_STEPS",
+    "PROGRAM_CONTRACT_TRACE_CANONICAL_TRACE_LENGTH",
+    "BN254_SCALAR_FIELD_MODULUS",
+    "FIELD_ENCODING_BN254_SHA256",
+    "REQUIRED_CAPABILITY_DIMENSIONS",
     "ProgramAnalysisZkpError",
     "ProgramZkpWitnessDisclosureError",
     "ProgramZkpTraceError",
@@ -1883,9 +3693,17 @@ __all__ = [
     "ProgramZkpReplayError",
     "ProgramZkpVersionError",
     "ProgramZkpClaimPromotionError",
+    "ProgramZkpCapabilityError",
+    "ProgramZkpAuthorityError",
     "ProgramZkpBackendMode",
     "ProgramZkpTrust",
     "ProgramZkpVerdict",
+    "ProgramZkpCapabilityDimension",
+    "ProgramZkpCapabilityStatus",
+    "ProgramZkpRolloutMode",
+    "ProgramZkpFieldEncodingKind",
+    "ProgramZkpCircuitFamily",
+    "ProgramZkpAuthorityDenialReason",
     "TraceState",
     "TraceTransitionKind",
     "ProgramZkpPublicInputs",
@@ -1897,9 +3715,16 @@ __all__ = [
     "ProgramZkpProvingRequest",
     "ProgramZkpShadowEnvelope",
     "ProgramZkpVerificationReceipt",
+    "ProgramZkpCapabilityCheck",
+    "ProgramZkpCapabilityConformanceReport",
     "commitment_identity",
     "encode_public_input_vector",
     "public_input_vector_digest",
+    "field_element_from_text",
+    "encode_public_input_field_vector",
+    "classify_circuit_family",
+    "is_versioned_artifact_id",
+    "proof_bytes_are_simulated",
     "supported_transition_table",
     "next_trace_state",
     "canonical_trace_transition_kinds",
@@ -1913,6 +3738,15 @@ __all__ = [
     "prepare_program_analysis_zkp",
     "create_program_zkp_shadow_envelope",
     "record_program_zkp_verification",
+    "record_production_program_zkp_verification",
+    "probe_program_analysis_zkp_capability",
+    "build_production_ready_capability_fixture",
+    "verify_program_zkp_independently",
+    "grants_production_authority",
+    "require_production_authority",
+    "invalidate_authority_on_capability_loss",
+    "rollout_mode_for_capability",
+    "shadow_only_rollout",
     "assert_trace_non_claims",
     "claim_level_for_verified_trace",
     "verdict_for_trace_attestation",
