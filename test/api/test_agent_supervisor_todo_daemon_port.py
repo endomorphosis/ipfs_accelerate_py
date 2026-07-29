@@ -11315,6 +11315,170 @@ def test_implementation_daemon_blocks_git_sync_recovery_note_tracked_by_candidat
     assert recovery_note.read_text(encoding="utf-8") == "operator recovery information\n"
 
 
+def test_implementation_daemon_preserves_nonoverlapping_untracked_operator_file(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(
+        ["git", "init", "-b", "main"],
+        cwd=repo,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.email", "agent@example.invalid"],
+        cwd=repo,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "Agent"],
+        cwd=repo,
+        check=True,
+    )
+    (repo / "README.md").write_text("clean\n", encoding="utf-8")
+    subprocess.run(["git", "add", "README.md"], cwd=repo, check=True)
+    subprocess.run(
+        ["git", "commit", "-m", "Initial"],
+        cwd=repo,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "checkout", "-b", "implementation/accel-002"],
+        cwd=repo,
+        check=True,
+    )
+    (repo / "README.md").write_text("implemented\n", encoding="utf-8")
+    subprocess.run(
+        ["git", "commit", "-am", "Implement candidate"],
+        cwd=repo,
+        check=True,
+    )
+    implementation_commit = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=repo,
+        text=True,
+        capture_output=True,
+        check=True,
+    ).stdout.strip()
+    subprocess.run(["git", "checkout", "main"], cwd=repo, check=True)
+    operator_file = (
+        repo
+        / ".cvefixes-build"
+        / "source"
+        / "data"
+        / "train-00000-of-00003.parquet"
+    )
+    operator_file.parent.mkdir(parents=True)
+    operator_file.write_bytes(b"operator dataset")
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+    )
+    candidates = [
+        {
+            "task_id": "ACCEL-002",
+            "branch": "implementation/accel-002",
+            "implementation_commit": implementation_commit,
+        }
+    ]
+
+    blocking, nonblocking = daemon._reconciliation_blocking_dirty_paths(
+        candidates,
+        target_branch="main",
+    )
+
+    relative = operator_file.relative_to(repo).as_posix()
+    assert blocking == []
+    assert nonblocking == [relative]
+    assert operator_file.read_bytes() == b"operator dataset"
+
+
+def test_implementation_daemon_blocks_untracked_path_owned_by_candidate(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(
+        ["git", "init", "-b", "main"],
+        cwd=repo,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.email", "agent@example.invalid"],
+        cwd=repo,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "Agent"],
+        cwd=repo,
+        check=True,
+    )
+    (repo / "README.md").write_text("clean\n", encoding="utf-8")
+    subprocess.run(["git", "add", "README.md"], cwd=repo, check=True)
+    subprocess.run(
+        ["git", "commit", "-m", "Initial"],
+        cwd=repo,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    relative = ".cvefixes-build/source/data/train.parquet"
+    subprocess.run(
+        ["git", "checkout", "-b", "implementation/accel-002"],
+        cwd=repo,
+        check=True,
+    )
+    candidate_file = repo / relative
+    candidate_file.parent.mkdir(parents=True)
+    candidate_file.write_bytes(b"candidate dataset")
+    subprocess.run(["git", "add", relative], cwd=repo, check=True)
+    subprocess.run(
+        ["git", "commit", "-m", "Track candidate dataset"],
+        cwd=repo,
+        check=True,
+    )
+    implementation_commit = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=repo,
+        text=True,
+        capture_output=True,
+        check=True,
+    ).stdout.strip()
+    subprocess.run(["git", "checkout", "main"], cwd=repo, check=True)
+    candidate_file.parent.mkdir(parents=True)
+    candidate_file.write_bytes(b"operator dataset")
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+    )
+    candidates = [
+        {
+            "task_id": "ACCEL-002",
+            "branch": "implementation/accel-002",
+            "implementation_commit": implementation_commit,
+        }
+    ]
+
+    blocking, nonblocking = daemon._reconciliation_blocking_dirty_paths(
+        candidates,
+        target_branch="main",
+    )
+
+    assert blocking == [relative]
+    assert nonblocking == []
+    assert candidate_file.read_bytes() == b"operator dataset"
+
+
 def test_implementation_daemon_abandons_stale_failed_merge_candidates(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()

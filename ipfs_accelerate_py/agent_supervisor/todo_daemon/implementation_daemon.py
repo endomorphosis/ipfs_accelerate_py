@@ -19186,8 +19186,55 @@ class PortalImplementationDaemon:
         producer contract and no target or candidate tree tracks that path.
         """
 
-        if not GIT_SYNC_RECOVERY_NOTE_PATTERN.fullmatch(relative):
+        return bool(
+            GIT_SYNC_RECOVERY_NOTE_PATTERN.fullmatch(relative)
+            and self._dirty_untracked_path_is_nonoverlapping_for_candidates(
+                relative,
+                candidates,
+                target_branch=target_branch,
+            )
+        )
+
+    def _dirty_untracked_path_is_nonoverlapping_for_candidates(
+        self,
+        relative: str,
+        candidates: Sequence[dict[str, Any]],
+        *,
+        target_branch: str,
+    ) -> bool:
+        """Prove an operator-owned untracked file cannot affect a merge.
+
+        Reconciliation runs in an isolated worktree, so an exact untracked file
+        in the shared checkout is nonblocking when every target and candidate
+        tree is known and none tracks an overlapping path.  Modified tracked
+        paths, unresolved refs, and ambiguous status records remain fail-closed.
+        """
+
+        if not self._repo_relative_path_safe(relative):
             return False
+        status = subprocess.run(
+            [
+                "git",
+                "--literal-pathspecs",
+                "status",
+                "--porcelain=v1",
+                "-z",
+                "--untracked-files=all",
+                "--",
+                relative,
+            ],
+            cwd=self.repo_root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        records = [record for record in status.stdout.split("\0") if record]
+        if (
+            status.returncode != 0
+            or records != [f"?? {relative}"]
+        ):
+            return False
+
         refs = [target_branch]
         for event in candidates:
             branch = str(event.get("branch") or "")
@@ -19206,7 +19253,7 @@ class PortalImplementationDaemon:
             if not self._git_ref_exists(ref):
                 return False
             result = subprocess.run(
-                ["git", "ls-tree", "-r", "--name-only", ref, "--", relative],
+                ["git", "ls-tree", "-r", "--name-only", "-z", ref],
                 cwd=self.repo_root,
                 text=True,
                 capture_output=True,
@@ -19215,8 +19262,9 @@ class PortalImplementationDaemon:
             if result.returncode != 0:
                 return False
             if any(
-                path == relative or path.startswith(f"{relative}/")
-                for path in result.stdout.splitlines()
+                self._paths_overlap(relative, path)
+                for path in result.stdout.split("\0")
+                if path
             ):
                 return False
         return True
@@ -19239,6 +19287,13 @@ class PortalImplementationDaemon:
                 nonblocking.append(relative)
                 continue
             if self._dirty_git_sync_recovery_note_is_untracked_for_candidates(
+                relative,
+                candidates,
+                target_branch=target_branch,
+            ):
+                nonblocking.append(relative)
+                continue
+            if self._dirty_untracked_path_is_nonoverlapping_for_candidates(
                 relative,
                 candidates,
                 target_branch=target_branch,
