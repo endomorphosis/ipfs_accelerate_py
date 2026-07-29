@@ -31,6 +31,7 @@ from .evidence_output_scope import (
     EVIDENCE_OUTPUTS_METADATA_KEY,
     evidence_output_path_is_excluded,
     normalize_evidence_output_path,
+    split_evidence_output_values,
 )
 from .scan_receipts import (
     RefillScanResult,
@@ -1978,6 +1979,7 @@ class ObjectiveTaskRecord:
     discovery_path: Path
     depends_on: tuple[str, ...] = ()
     evidence_outputs: tuple[str, ...] | None = None
+    reprojected: bool = False
 
 
 @dataclass(frozen=True)
@@ -9349,10 +9351,32 @@ def write_discovery(
     discovery_dir: Path,
     task_id: str,
     finding: ObjectiveFinding,
+    discovery_path: Path | None = None,
+    evidence_outputs: Sequence[str] = (),
 ) -> Path:
     date = datetime.now(timezone.utc).date().isoformat()
-    path = discovery_dir / f"{date}-{task_id.lower()}-objective-gap-{finding.fingerprint[:12]}.md"
+    path = discovery_path or (
+        discovery_dir
+        / f"{date}-{task_id.lower()}-objective-gap-{finding.fingerprint[:12]}.md"
+    )
     discovery_dir.mkdir(parents=True, exist_ok=True)
+    normalized_evidence_outputs = _unique_strings(
+        normalize_evidence_output_path(item)
+        for item in evidence_outputs
+        if normalize_evidence_output_path(item)
+    )
+    identity_metadata = ""
+    if normalized_evidence_outputs:
+        identity = objective_finding_task_identity(
+            task_id,
+            finding,
+            evidence_outputs=normalized_evidence_outputs,
+        )
+        identity_metadata = (
+            f"\nEvidence outputs: {', '.join(normalized_evidence_outputs)}"
+            f"\nCanonical task key: {identity.canonical_task_key}"
+            f"\nCanonical task CID: {identity.canonical_task_cid}"
+        )
     missing = "\n".join(f"- {term}" for term in finding.missing_evidence) or "- none"
     present_items: list[str] = []
     for term, paths in finding.present_evidence.items():
@@ -9393,7 +9417,7 @@ Interfaces: {", ".join(finding.interfaces) or "none"}
 Submodules: {", ".join(finding.submodules) or "none"}
 Generated artifacts: {", ".join(finding.generated_artifacts) or "none"}
 Allow concurrent with: {", ".join(finding.allow_concurrent_with) or "none"}
-Semantic identity: {finding.semantic_identity or finding.dedupe_key or f"objective-finding:{finding.fingerprint}"}
+Semantic identity: {finding.semantic_identity or finding.dedupe_key or f"objective-finding:{finding.fingerprint}"}{identity_metadata}
 Acceptance subset: {", ".join(finding.acceptance_subset or finding.evidence_subset or finding.missing_evidence)}
 Preconditions: {", ".join(finding.preconditions) or f"objective goal {finding.goal_id} is schedulable"}
 Effects: {", ".join(finding.effects) or ", ".join(f"satisfy evidence requirement: {term}" for term in (finding.evidence_subset or finding.missing_evidence))}
@@ -9532,6 +9556,313 @@ def objective_finding_task_identity(
         },
         board_namespace="objective-graph",
         source_path=finding.objective_path,
+    )
+
+
+_EVIDENCE_REPROJECTION_IDLE_STATUSES = frozenset({"todo", "blocked"})
+
+
+@dataclass(frozen=True)
+class _ObjectiveTaskBlock:
+    """One exact generated-task block used by the locked migration path."""
+
+    task_id: str
+    start: int
+    end: int
+    text: str
+    metadata: Mapping[str, tuple[str, ...]]
+
+    def one(self, name: str) -> str | None:
+        values = self.metadata.get(name.casefold(), ())
+        return values[0] if len(values) == 1 else None
+
+
+@dataclass(frozen=True)
+class _ObjectiveEvidenceReprojection:
+    """A proof-bound in-place metadata rotation for one generated task."""
+
+    task_id: str
+    start: int
+    end: int
+    candidate_block: str
+    identity: TaskIdentity
+    evidence_outputs: tuple[str, ...]
+    changed: bool
+
+
+def _objective_task_blocks(
+    markdown: str,
+    *,
+    task_prefix: str,
+) -> list[_ObjectiveTaskBlock]:
+    """Parse exact task blocks without silently accepting duplicate fields."""
+
+    prefix = normalize_task_id_prefix(task_prefix)
+    heading = re.compile(
+        rf"^##[ \t]+(?P<task_id>{re.escape(prefix)}\d+)(?=[ \t]|$).*$",
+        flags=re.MULTILINE,
+    )
+    matches = list(heading.finditer(markdown))
+    blocks: list[_ObjectiveTaskBlock] = []
+    for index, match in enumerate(matches):
+        start = match.start()
+        end = matches[index + 1].start() if index + 1 < len(matches) else len(markdown)
+        text = markdown[start:end]
+        values: dict[str, list[str]] = {}
+        for line in text.splitlines():
+            metadata = re.match(r"^-[ \t]+(?P<name>[^:\r\n]+):(?P<value>.*)$", line)
+            if metadata is None:
+                continue
+            name = metadata.group("name").strip().casefold()
+            values.setdefault(name, []).append(metadata.group("value").strip())
+        blocks.append(
+            _ObjectiveTaskBlock(
+                task_id=match.group("task_id"),
+                start=start,
+                end=end,
+                text=text,
+                metadata={
+                    name: tuple(field_values)
+                    for name, field_values in values.items()
+                },
+            )
+        )
+    return blocks
+
+
+def _normalized_requirement_set(value: str | Sequence[str]) -> frozenset[str] | None:
+    raw_values = split_terms(value) if isinstance(value, str) else list(value)
+    normalized = [
+        normalize_objective_evidence_requirement(item)
+        for item in raw_values
+    ]
+    if any(not item for item in normalized) or len(set(normalized)) != len(normalized):
+        return None
+    return frozenset(normalized)
+
+
+def _normalized_exact_values(value: str | Sequence[str]) -> tuple[str, ...] | None:
+    raw_values = split_terms(value) if isinstance(value, str) else list(value)
+    normalized = tuple(str(item).strip() for item in raw_values if str(item).strip())
+    if len(normalized) != len(raw_values) or len(set(normalized)) != len(normalized):
+        return None
+    return normalized
+
+
+def _replace_task_projection_metadata(
+    block: _ObjectiveTaskBlock,
+    *,
+    evidence_outputs: Sequence[str],
+    identity: TaskIdentity,
+) -> str:
+    """Replace only typed authority and identity lines in one exact block."""
+
+    text = block.text
+    evidence_line = (
+        f"- {EVIDENCE_OUTPUTS_METADATA_KEY.capitalize()}: "
+        f"{', '.join(evidence_outputs)}"
+    )
+    if EVIDENCE_OUTPUTS_METADATA_KEY in block.metadata:
+        text = re.sub(
+            rf"^-[ \t]+{re.escape(EVIDENCE_OUTPUTS_METADATA_KEY)}:.*$",
+            evidence_line,
+            text,
+            count=1,
+            flags=re.MULTILINE | re.IGNORECASE,
+        )
+    else:
+        text = re.sub(
+            r"(^-[ \t]+Outputs:.*$)",
+            rf"\1\n{evidence_line}",
+            text,
+            count=1,
+            flags=re.MULTILINE,
+        )
+    for label, value in (
+        ("Canonical task key", identity.canonical_task_key),
+        ("Canonical task CID", identity.canonical_task_cid),
+    ):
+        text = re.sub(
+            rf"^-[ \t]+{re.escape(label)}:.*$",
+            f"- {label}: {value}",
+            text,
+            count=1,
+            flags=re.MULTILINE | re.IGNORECASE,
+        )
+    return text
+
+
+def _prepare_objective_evidence_reprojection(
+    markdown: str,
+    *,
+    task_prefix: str,
+    finding: ObjectiveFinding,
+    evidence_outputs: Sequence[str],
+) -> _ObjectiveEvidenceReprojection | None:
+    """Prove and prepare one unique legacy-card evidence projection.
+
+    The legacy canonical CID is the migration authorization: it proves the
+    candidate block was rendered from this exact current finding before typed
+    evidence outputs existed.  Generic obligation coverage and descriptive
+    evidence never authorize an in-place task mutation.
+    """
+
+    desired = tuple(
+        dict.fromkeys(
+            normalized
+            for value in evidence_outputs
+            if (normalized := normalize_evidence_output_path(value))
+        )
+    )
+    if not desired or not finding.dedupe_key:
+        return None
+    semantic_identity = (
+        finding.semantic_identity
+        or finding.dedupe_key
+        or f"objective-finding:{finding.fingerprint}"
+    )
+    candidates: list[_ObjectiveTaskBlock] = []
+    for block in _objective_task_blocks(markdown, task_prefix=task_prefix):
+        if block.one("evidence obligation key") != finding.dedupe_key:
+            continue
+        candidates.append(block)
+    if len(candidates) != 1:
+        return None
+    block = candidates[0]
+
+    status = (
+        str(block.one("status") or "")
+        .strip()
+        .casefold()
+        .replace("-", "_")
+        .replace(" ", "_")
+    )
+    if status not in _EVIDENCE_REPROJECTION_IDLE_STATUSES:
+        return None
+    if (
+        block.one("goal id") != finding.goal_id
+        or block.one("semantic identity") != semantic_identity
+        or block.one("candidate kind") != finding.candidate_kind
+        or block.one("bundle") != finding.bundle_key
+    ):
+        return None
+    board_missing = _normalized_requirement_set(
+        str(block.one("missing evidence") or "")
+    )
+    finding_missing = _normalized_requirement_set(finding.missing_evidence)
+    board_subset = _normalized_requirement_set(
+        str(block.one("evidence subset") or "")
+    )
+    finding_subset = _normalized_requirement_set(
+        finding.evidence_subset or finding.missing_evidence
+    )
+    board_outputs = _normalized_exact_values(str(block.one("outputs") or ""))
+    finding_outputs = _normalized_exact_values(
+        finding.outputs or finding.predicted_files
+    )
+    if (
+        board_missing is None
+        or finding_missing is None
+        or board_missing != finding_missing
+        or board_subset is None
+        or finding_subset is None
+        or board_subset != finding_subset
+        or board_outputs is None
+        or finding_outputs is None
+        or set(board_outputs) != set(finding_outputs)
+    ):
+        return None
+
+    raw_evidence_fields = block.metadata.get(EVIDENCE_OUTPUTS_METADATA_KEY, ())
+    if len(raw_evidence_fields) > 1:
+        return None
+    current: tuple[str, ...] = ()
+    if raw_evidence_fields:
+        raw_values = split_evidence_output_values(raw_evidence_fields[0])
+        normalized_values = tuple(
+            normalize_evidence_output_path(value) for value in raw_values
+        )
+        if (
+            not raw_values
+            or any(not value for value in normalized_values)
+            or len(set(normalized_values)) != len(normalized_values)
+            or any(raw != normalized for raw, normalized in zip(raw_values, normalized_values))
+            or not set(normalized_values).issubset(desired)
+        ):
+            return None
+        current = tuple(normalized_values)
+
+    prior_identity = objective_finding_task_identity(
+        block.task_id,
+        finding,
+        evidence_outputs=current,
+    )
+    if (
+        block.one("canonical task key") != prior_identity.canonical_task_key
+        or block.one("canonical task cid") != prior_identity.canonical_task_cid
+    ):
+        return None
+    identity = objective_finding_task_identity(
+        block.task_id,
+        finding,
+        evidence_outputs=desired,
+    )
+    candidate = _replace_task_projection_metadata(
+        block,
+        evidence_outputs=desired,
+        identity=identity,
+    )
+    return _ObjectiveEvidenceReprojection(
+        task_id=block.task_id,
+        start=block.start,
+        end=block.end,
+        candidate_block=candidate,
+        identity=identity,
+        evidence_outputs=desired,
+        changed=candidate != block.text,
+    )
+
+
+def _resolve_generated_artifact_path(
+    value: str,
+    *,
+    repo_root: Path,
+    artifact_root: Path,
+    require_file: bool,
+) -> Path | None:
+    raw = str(value or "").strip()
+    if not raw or "\x00" in raw:
+        return None
+    path = Path(raw)
+    if not path.is_absolute():
+        path = repo_root / path
+    try:
+        resolved = path.resolve()
+        resolved.relative_to(artifact_root.resolve())
+    except (OSError, RuntimeError, ValueError):
+        return None
+    if resolved == artifact_root.resolve():
+        return None
+    if require_file and not resolved.is_file():
+        return None
+    return resolved
+
+
+def _objective_reprojection_committed(
+    discovery_path: Path,
+    *,
+    identity: TaskIdentity,
+    evidence_outputs: Sequence[str],
+) -> bool:
+    """Use the last-written discovery projection as the artifact commit marker."""
+
+    try:
+        text = discovery_path.read_text(encoding="utf-8")
+    except OSError:
+        return False
+    return (
+        text.count(f"Evidence outputs: {', '.join(evidence_outputs)}") == 1
+        and text.count(f"Canonical task CID: {identity.canonical_task_cid}") == 1
     )
 
 
@@ -9914,6 +10245,25 @@ def write_bundle_shards(
             )
         )
 
+    def record_status(record: ObjectiveTaskRecord) -> str:
+        if record.reprojected:
+            matches = re.findall(
+                r"^- Status:[ \t]*(.+?)[ \t]*$",
+                record.task_block,
+                flags=re.MULTILINE,
+            )
+            if len(matches) == 1:
+                status = (
+                    matches[0]
+                    .strip()
+                    .casefold()
+                    .replace("-", "_")
+                    .replace(" ", "_")
+                )
+                if status in _EVIDENCE_REPROJECTION_IDLE_STATUSES:
+                    return status
+        return objective_finding_execution_state(record.finding)[0]
+
     generated_planning_graph = materialize_task_planning_graph(
         [
             {
@@ -9944,7 +10294,7 @@ def write_bundle_shards(
                     ]
                 ),
                 "work_item_count": record.finding.work_item_count or len(record.finding.missing_evidence),
-                "status": objective_finding_execution_state(record.finding)[0],
+                "status": record_status(record),
                 "is_schedulable": objective_finding_execution_state(record.finding)[1],
                 "review_only": objective_finding_execution_state(record.finding)[2],
             }
@@ -9973,6 +10323,29 @@ def write_bundle_shards(
         changed = False
         for record in bundle_records:
             if f"## {record.task_id} " in shard_text:
+                if record.reprojected:
+                    prefix = record.task_id.rsplit("-", 1)[0] + "-"
+                    matching = [
+                        block
+                        for block in _objective_task_blocks(
+                            shard_text,
+                            task_prefix=prefix,
+                        )
+                        if block.task_id == record.task_id
+                    ]
+                    if len(matching) != 1:
+                        raise ValueError(
+                            "objective bundle task projection is ambiguous: "
+                            f"{record.task_id}"
+                        )
+                    block = matching[0]
+                    candidate = (
+                        shard_text[: block.start]
+                        + record.task_block
+                        + shard_text[block.end :]
+                    )
+                    changed = changed or candidate != shard_text
+                    shard_text = candidate
                 continue
             shard_text = shard_text.rstrip() + "\n\n" + record.task_block.strip() + "\n"
             changed = True
@@ -10059,6 +10432,8 @@ def write_bundle_shards(
             existing_status = str(existing_task.get("status") or "").strip()
             if manual_review_required:
                 task_payload["status"] = "blocked"
+            elif record.reprojected:
+                task_payload["status"] = record_status(record)
             elif existing_status and task_payload.get("is_schedulable") is True:
                 task_payload["status"] = existing_status
             task_map[record.task_id] = task_payload
@@ -10231,9 +10606,9 @@ def generate_objective_todos(
             )
         )
     ]
+    reprojected_records: list[ObjectiveTaskRecord] = []
     with locked_taskboard(todo_path) as taskboard:
         todo_text = taskboard.read() or "# Objective Todo\n"
-        existing_canonical_task_cids = canonical_task_cids_from_todo(todo_text)
         objective_goals = parse_goal_heap(
             objective_path.read_text(encoding="utf-8")
         )
@@ -10260,6 +10635,99 @@ def generate_objective_todos(
         materialized_task_ids = set(
             task_ids_from_todo(todo_text, task_prefix=task_prefix)
         )
+
+        # Objective cards written before typed evidence-output authority were
+        # introduced are already covered by the obligation dedupe below.  A
+        # refill therefore cannot append a replacement card.  Rotate only an
+        # exact, idle, generator-authored card in place while this sole writer
+        # holds the taskboard lock.  Generic legacy coverage is intentionally
+        # insufficient: the prior canonical task CID must reconstruct.
+        for finding in findings:
+            evidence_outputs = objective_finding_evidence_output_paths(
+                finding,
+                excluded_paths=(discovery_output_path,),
+            )
+            if not evidence_outputs:
+                continue
+            projection = _prepare_objective_evidence_reprojection(
+                todo_text,
+                task_prefix=task_prefix,
+                finding=finding,
+                evidence_outputs=evidence_outputs,
+            )
+            if projection is None:
+                continue
+            original_blocks = [
+                block
+                for block in _objective_task_blocks(
+                    todo_text,
+                    task_prefix=task_prefix,
+                )
+                if block.task_id == projection.task_id
+            ]
+            if len(original_blocks) != 1:
+                continue
+            original_block = original_blocks[0]
+            discovery_path = _resolve_generated_artifact_path(
+                str(original_block.one("discovery evidence") or ""),
+                repo_root=repo_root,
+                artifact_root=discovery_dir,
+                require_file=True,
+            )
+            expected_shard_path = bundle_path(
+                bundle_dir,
+                finding.bundle_key,
+            ).resolve()
+            shard_path = _resolve_generated_artifact_path(
+                str(original_block.one("bundle shard") or ""),
+                repo_root=repo_root,
+                artifact_root=bundle_dir,
+                require_file=False,
+            )
+            if (
+                discovery_path is None
+                or shard_path is None
+                or shard_path != expected_shard_path
+            ):
+                continue
+            if (
+                not projection.changed
+                and _objective_reprojection_committed(
+                    discovery_path,
+                    identity=projection.identity,
+                    evidence_outputs=projection.evidence_outputs,
+                )
+            ):
+                continue
+
+            if projection.changed:
+                todo_text = (
+                    todo_text[: projection.start]
+                    + projection.candidate_block
+                    + todo_text[projection.end :]
+                )
+            projected_dependencies = tuple(
+                _normalized_exact_values(
+                    str(original_block.one("depends on") or "")
+                )
+                or ()
+            )
+            reprojected_records.append(
+                ObjectiveTaskRecord(
+                    task_id=projection.task_id,
+                    task_block=projection.candidate_block,
+                    finding=replace(
+                        finding,
+                        dependencies=list(projected_dependencies),
+                    ),
+                    discovery_path=discovery_path,
+                    depends_on=projected_dependencies,
+                    evidence_outputs=projection.evidence_outputs,
+                    reprojected=True,
+                )
+            )
+
+        existing_canonical_task_cids = canonical_task_cids_from_todo(todo_text)
 
         def finding_obligation_segments(
             finding: ObjectiveFinding,
@@ -10414,6 +10882,7 @@ def generate_objective_todos(
                 discovery_dir=discovery_dir,
                 task_id=task_id,
                 finding=finding,
+                evidence_outputs=evidence_outputs,
             )
             task_block = render_task_block(
                 task_id=task_id,
@@ -10437,12 +10906,18 @@ def generate_objective_todos(
                 )
             )
 
-        if records:
+        if records or reprojected_records:
             replace_locked_taskboard(taskboard, todo_text)
 
-    if not records:
+    artifact_records = [*reprojected_records, *records]
+    if not artifact_records:
         return []
-    bundle_result = write_bundle_shards(bundle_dir=bundle_dir, repo_root=repo_root, todo_path=todo_path, records=records)
+    bundle_result = write_bundle_shards(
+        bundle_dir=bundle_dir,
+        repo_root=repo_root,
+        todo_path=todo_path,
+        records=artifact_records,
+    )
     if write_todo_vector_index:
         from .todo_vector_index import write_todo_vector_index as write_index
 
@@ -10456,6 +10931,17 @@ def generate_objective_todos(
             dataset_dir=(dataset_dir or bundle_dir.parent / "objective_datasets") if persist_ast_dataset else None,
             dataset_id=f"{task_prefix.rstrip('-').lower()}-todo-vector-index",
             persist_dataset=persist_ast_dataset,
+        )
+    # This discovery projection is the migration's commit marker.  Writing it
+    # last makes a crash after the locked board rotation restart-repairable:
+    # the next refill sees the current card but stale/missing artifact marker.
+    for record in reprojected_records:
+        write_discovery(
+            discovery_dir=discovery_dir,
+            task_id=record.task_id,
+            finding=record.finding,
+            discovery_path=record.discovery_path,
+            evidence_outputs=record.evidence_outputs or (),
         )
     return records
 

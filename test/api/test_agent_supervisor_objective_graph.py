@@ -2715,6 +2715,406 @@ def test_generate_objective_todos_projects_dscon_path_evidence_as_typed_outputs(
     )
 
 
+def _seed_legacy_dscon_evidence_output_card(tmp_path):
+    repo, objective_path, todo_path = _seed_repo(tmp_path)
+    discovery_dir = (
+        repo
+        / "data"
+        / "datasets_contract_analysis"
+        / "agent_supervisor"
+        / "discovery"
+    )
+    bundle_dir = (
+        repo
+        / "data"
+        / "datasets_contract_analysis"
+        / "agent_supervisor"
+        / "bundles"
+    )
+    manifests = [
+        "data/datasets_contract_analysis/manifests/repository-root.json",
+        "data/datasets_contract_analysis/manifests/coverage.json",
+    ]
+    finding = ObjectiveFinding(
+        fingerprint="4f91244e4ecbba7c3c22c1c2a2f1da27e59c41a0",
+        goal_id="DSCON-G020",
+        title="Build recursive tracked-object and coverage manifests",
+        summary=(
+            "Implement datasets symbolic contract objective: "
+            "Build recursive tracked-object and coverage manifests"
+        ),
+        priority="P0",
+        track="bootstrap",
+        missing_evidence=manifests,
+        present_evidence={},
+        evidence_methods=[],
+        objective_path="objective-heap.md",
+        outputs=[
+            "ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/repository.py",
+            "ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/coverage.py",
+            (
+                "ipfs_datasets_py/tests/unit/logic/software_contracts/"
+                "test_repository_manifest.py"
+            ),
+        ],
+        validation=(
+            "python -m pytest -q "
+            "ipfs_datasets_py/tests/unit/logic/software_contracts/"
+            "test_repository_manifest.py"
+        ),
+        evidence_subset=manifests,
+        bundle_key="datasets-contract/bootstrap",
+        parallel_lane="bootstrap-coverage",
+        dedupe_key=(
+            "objective-evidence-obligation/v1/"
+            "f56244a68715f27b32683260e3b53b8ff915bc8dcefee0b3c5b91b6b8f2dbd96"
+        ),
+        semantic_identity=(
+            "objective-evidence-obligation/v1/"
+            "f56244a68715f27b32683260e3b53b8ff915bc8dcefee0b3c5b91b6b8f2dbd96"
+        ),
+    )
+    created = generate_objective_todos(
+        repo_root=repo,
+        objective_path=objective_path,
+        todo_path=todo_path,
+        discovery_dir=discovery_dir,
+        bundle_dir=bundle_dir,
+        task_prefix="DSCON-",
+        precomputed_findings=[finding],
+        persist_ast_dataset=False,
+        write_todo_vector_index=True,
+        discovery_output_path=(
+            "data/datasets_contract_analysis/agent_supervisor/discovery"
+        ),
+    )
+    assert len(created) == 1
+    task_id = created[0].task_id
+    current_identity = objective_finding_task_identity(task_id, finding)
+    legacy_identity = objective_finding_task_identity(
+        task_id,
+        finding,
+        evidence_outputs=[],
+    )
+
+    def downgrade(markdown):
+        downgraded = markdown.replace(
+            f"- Evidence outputs: {', '.join(manifests)}\n",
+            "",
+            1,
+        )
+        downgraded = downgraded.replace(
+            current_identity.canonical_task_key,
+            legacy_identity.canonical_task_key,
+            1,
+        )
+        downgraded = downgraded.replace(
+            current_identity.canonical_task_cid,
+            legacy_identity.canonical_task_cid,
+            1,
+        )
+        obligation_line = f"- Evidence obligation key: {finding.dedupe_key}"
+        return downgraded.replace(
+            obligation_line,
+            (
+                obligation_line
+                + "\n- Projection history: preserve this operator note"
+            ),
+            1,
+        )
+
+    todo_path.write_text(
+        downgrade(todo_path.read_text(encoding="utf-8")),
+        encoding="utf-8",
+    )
+    shard_path = bundle_dir / "datasets-contract-bootstrap.todo.md"
+    shard_path.write_text(
+        downgrade(shard_path.read_text(encoding="utf-8")),
+        encoding="utf-8",
+    )
+    discovery_text = created[0].discovery_path.read_text(encoding="utf-8")
+    for line in (
+        f"Evidence outputs: {', '.join(manifests)}\n",
+        f"Canonical task key: {current_identity.canonical_task_key}\n",
+        f"Canonical task CID: {current_identity.canonical_task_cid}\n",
+    ):
+        discovery_text = discovery_text.replace(line, "", 1)
+    created[0].discovery_path.write_text(discovery_text, encoding="utf-8")
+    return {
+        "repo": repo,
+        "objective_path": objective_path,
+        "todo_path": todo_path,
+        "discovery_dir": discovery_dir,
+        "bundle_dir": bundle_dir,
+        "shard_path": shard_path,
+        "vector_path": bundle_dir / "todo_vector_index.json",
+        "finding": finding,
+        "manifests": manifests,
+        "task_id": task_id,
+        "legacy_identity": legacy_identity,
+        "current_identity": current_identity,
+        "discovery_path": created[0].discovery_path,
+    }
+
+
+def test_objective_refill_reprojects_legacy_dscon_card_and_artifacts_in_place(
+    tmp_path,
+):
+    seeded = _seed_legacy_dscon_evidence_output_card(tmp_path)
+    old_vector_bytes = seeded["vector_path"].read_bytes()
+    old_vector = json.loads(
+        seeded["vector_path"].read_text(encoding="utf-8")
+    )
+    old_vector_task = next(
+        item
+        for item in old_vector["records"]
+        if item["task_id"] == seeded["task_id"]
+    )
+
+    refilled = generate_objective_todos(
+        repo_root=seeded["repo"],
+        objective_path=seeded["objective_path"],
+        todo_path=seeded["todo_path"],
+        discovery_dir=seeded["discovery_dir"],
+        bundle_dir=seeded["bundle_dir"],
+        task_prefix="DSCON-",
+        precomputed_findings=[seeded["finding"]],
+        persist_ast_dataset=False,
+        write_todo_vector_index=True,
+        discovery_output_path=(
+            "data/datasets_contract_analysis/agent_supervisor/discovery"
+        ),
+    )
+
+    # Obligation dedupe still reports zero newly generated tasks.  The exact
+    # existing display ID is rotated under the generator's taskboard lock.
+    assert refilled == []
+    todo_text = seeded["todo_path"].read_text(encoding="utf-8")
+    assert todo_text.count(f"## {seeded['task_id']} ") == 1
+    assert "- Status: todo" in todo_text
+    assert "- Projection history: preserve this operator note" in todo_text
+    assert (
+        f"- Evidence outputs: {', '.join(seeded['manifests'])}"
+        in todo_text
+    )
+    assert seeded["current_identity"].canonical_task_key in todo_text
+    assert seeded["current_identity"].canonical_task_cid in todo_text
+    assert seeded["legacy_identity"].canonical_task_cid not in todo_text
+
+    discovery_text = seeded["discovery_path"].read_text(encoding="utf-8")
+    assert (
+        f"Evidence outputs: {', '.join(seeded['manifests'])}"
+        in discovery_text
+    )
+    assert (
+        f"Canonical task CID: {seeded['current_identity'].canonical_task_cid}"
+        in discovery_text
+    )
+    shard_text = seeded["shard_path"].read_text(encoding="utf-8")
+    assert "- Projection history: preserve this operator note" in shard_text
+    assert (
+        f"- Evidence outputs: {', '.join(seeded['manifests'])}"
+        in shard_text
+    )
+
+    bundle_index = json.loads(
+        (seeded["bundle_dir"] / "index.json").read_text(encoding="utf-8")
+    )
+    indexed_task = bundle_index["bundles"][
+        "datasets-contract/bootstrap"
+    ]["tasks"][0]
+    assert indexed_task["task_id"] == seeded["task_id"]
+    assert (
+        indexed_task["canonical_task_cid"]
+        == seeded["current_identity"].canonical_task_cid
+    )
+    assert indexed_task["evidence_outputs"] == sorted(seeded["manifests"])
+
+    new_vector = json.loads(
+        seeded["vector_path"].read_text(encoding="utf-8")
+    )
+    new_vector_task = next(
+        item
+        for item in new_vector["records"]
+        if item["task_id"] == seeded["task_id"]
+    )
+    assert seeded["vector_path"].read_bytes() != old_vector_bytes
+    assert new_vector_task["task_id"] == old_vector_task["task_id"]
+
+    generated_artifacts = {
+        path: path.read_bytes()
+        for path in (
+            seeded["todo_path"],
+            seeded["discovery_path"],
+            seeded["shard_path"],
+            seeded["bundle_dir"] / "index.json",
+            seeded["vector_path"],
+        )
+    }
+    repeated = generate_objective_todos(
+        repo_root=seeded["repo"],
+        objective_path=seeded["objective_path"],
+        todo_path=seeded["todo_path"],
+        discovery_dir=seeded["discovery_dir"],
+        bundle_dir=seeded["bundle_dir"],
+        task_prefix="DSCON-",
+        precomputed_findings=[seeded["finding"]],
+        persist_ast_dataset=False,
+        write_todo_vector_index=True,
+        discovery_output_path=(
+            "data/datasets_contract_analysis/agent_supervisor/discovery"
+        ),
+    )
+    assert repeated == []
+    assert {
+        path: path.read_bytes() for path in generated_artifacts
+    } == generated_artifacts
+
+
+def test_objective_refill_repairs_artifacts_after_interrupted_card_rotation(
+    tmp_path,
+    monkeypatch,
+):
+    seeded = _seed_legacy_dscon_evidence_output_card(tmp_path)
+    write_bundles = objective_graph_module.write_bundle_shards
+
+    def interrupt_after_board(**_kwargs):
+        raise RuntimeError("simulated interruption after locked board rotation")
+
+    monkeypatch.setattr(
+        objective_graph_module,
+        "write_bundle_shards",
+        interrupt_after_board,
+    )
+    with pytest.raises(RuntimeError, match="simulated interruption"):
+        generate_objective_todos(
+            repo_root=seeded["repo"],
+            objective_path=seeded["objective_path"],
+            todo_path=seeded["todo_path"],
+            discovery_dir=seeded["discovery_dir"],
+            bundle_dir=seeded["bundle_dir"],
+            task_prefix="DSCON-",
+            precomputed_findings=[seeded["finding"]],
+            persist_ast_dataset=False,
+            write_todo_vector_index=True,
+            discovery_output_path=(
+                "data/datasets_contract_analysis/agent_supervisor/discovery"
+            ),
+        )
+    assert seeded["current_identity"].canonical_task_cid in (
+        seeded["todo_path"].read_text(encoding="utf-8")
+    )
+    assert "Evidence outputs:" not in (
+        seeded["discovery_path"].read_text(encoding="utf-8")
+    )
+
+    monkeypatch.setattr(
+        objective_graph_module,
+        "write_bundle_shards",
+        write_bundles,
+    )
+    recovered = generate_objective_todos(
+        repo_root=seeded["repo"],
+        objective_path=seeded["objective_path"],
+        todo_path=seeded["todo_path"],
+        discovery_dir=seeded["discovery_dir"],
+        bundle_dir=seeded["bundle_dir"],
+        task_prefix="DSCON-",
+        precomputed_findings=[seeded["finding"]],
+        persist_ast_dataset=False,
+        write_todo_vector_index=True,
+        discovery_output_path=(
+            "data/datasets_contract_analysis/agent_supervisor/discovery"
+        ),
+    )
+    assert recovered == []
+    assert (
+        f"Canonical task CID: "
+        f"{seeded['current_identity'].canonical_task_cid}"
+        in seeded["discovery_path"].read_text(encoding="utf-8")
+    )
+    assert (
+        seeded["current_identity"].canonical_task_cid
+        in seeded["shard_path"].read_text(encoding="utf-8")
+    )
+
+
+@pytest.mark.parametrize("status", ["completed", "in_progress", "running"])
+def test_objective_refill_does_not_reproject_terminal_or_active_cards(
+    tmp_path,
+    status,
+):
+    seeded = _seed_legacy_dscon_evidence_output_card(tmp_path)
+    board = seeded["todo_path"].read_text(encoding="utf-8").replace(
+        "- Status: todo",
+        f"- Status: {status}",
+        1,
+    )
+    seeded["todo_path"].write_text(board, encoding="utf-8")
+    before = {
+        path: path.read_bytes()
+        for path in (
+            seeded["todo_path"],
+            seeded["discovery_path"],
+            seeded["shard_path"],
+            seeded["bundle_dir"] / "index.json",
+            seeded["vector_path"],
+        )
+    }
+
+    records = generate_objective_todos(
+        repo_root=seeded["repo"],
+        objective_path=seeded["objective_path"],
+        todo_path=seeded["todo_path"],
+        discovery_dir=seeded["discovery_dir"],
+        bundle_dir=seeded["bundle_dir"],
+        task_prefix="DSCON-",
+        precomputed_findings=[seeded["finding"]],
+        persist_ast_dataset=False,
+        write_todo_vector_index=True,
+        discovery_output_path=(
+            "data/datasets_contract_analysis/agent_supervisor/discovery"
+        ),
+    )
+
+    assert records == []
+    assert {path: path.read_bytes() for path in before} == before
+
+
+def test_objective_refill_fails_closed_for_ambiguous_legacy_card_binding(
+    tmp_path,
+):
+    seeded = _seed_legacy_dscon_evidence_output_card(tmp_path)
+    board = seeded["todo_path"].read_text(encoding="utf-8")
+    original_block = board.split(f"## {seeded['task_id']} ", 1)[1]
+    ambiguous_block = (
+        f"## DSCON-099 {original_block}"
+    )
+    seeded["todo_path"].write_text(
+        board.rstrip() + "\n\n" + ambiguous_block,
+        encoding="utf-8",
+    )
+    before = seeded["todo_path"].read_bytes()
+
+    records = generate_objective_todos(
+        repo_root=seeded["repo"],
+        objective_path=seeded["objective_path"],
+        todo_path=seeded["todo_path"],
+        discovery_dir=seeded["discovery_dir"],
+        bundle_dir=seeded["bundle_dir"],
+        task_prefix="DSCON-",
+        precomputed_findings=[seeded["finding"]],
+        persist_ast_dataset=False,
+        write_todo_vector_index=False,
+        discovery_output_path=(
+            "data/datasets_contract_analysis/agent_supervisor/discovery"
+        ),
+    )
+
+    assert records == []
+    assert seeded["todo_path"].read_bytes() == before
+
+
 @pytest.mark.parametrize(
     "unsafe_requirement",
     [
