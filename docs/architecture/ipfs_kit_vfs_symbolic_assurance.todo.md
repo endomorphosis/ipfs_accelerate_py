@@ -813,7 +813,7 @@ compact references and bounded spans only.
 
 ## VFS-039 Close objective gap: Prove transitive cache invalidation and bounded storage
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
