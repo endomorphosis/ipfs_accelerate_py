@@ -1,13 +1,19 @@
 """Canonical cross-repository program evidence graph.
 
 This module is the immutable, content-addressed projection of repository,
-blob, module, symbol, definition, import/export, call, type, schema, doc,
-test, MCP tool/registration, transport, and artifact evidence.  Every node
-and edge binds producer, blob CID, source span, resolver status, and forest
-identity.  GraphRAG and model enrichment may rank neighborhoods later; they
-cannot mint authoritative program-graph records.
+blob, module, symbol, definition, import/export, call, type, schema, contract,
+doc, test, MCP tool/registration, transport, artifact, finding, and proof-
+obligation evidence.  Every node and edge binds producer, blob CID, source
+span, resolver status, and forest identity.
 
-Composition policy (VFS-008): compose the semantic-dependency and
+Canonical graph construction (this module, evidence ``vfs/program-graph@1``)
+is intentionally separate from optional GraphRAG ranking
+(``vfs/graphrag-projection@1`` in
+:mod:`ipfs_datasets_program_graph_provider`).  GraphRAG and model enrichment
+may rank neighborhoods later; they cannot mint authoritative program-graph
+records, completion authority, or proof authority.
+
+Composition policy (VFS-008 / VFS-G040): compose the semantic-dependency and
 code-evidence graph contracts without mutating GraphRAG or contract
 extraction.
 """
@@ -20,7 +26,7 @@ from collections import deque
 from dataclasses import dataclass, field
 from enum import Enum
 from types import MappingProxyType
-from typing import Any, Iterable, Mapping, Sequence
+from typing import Any, Final, Iterable, Mapping, Sequence
 
 from .proof.formal_verification_contracts import content_identity
 
@@ -47,6 +53,11 @@ PROGRAM_GRAPH_FRONTIER_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/program-graph-frontier@1"
 )
 
+# Objective evidence term for VFS-G040 (exact-text discovery key).
+# Canonical construction lives here; optional GraphRAG ranking is a separate
+# evidence surface (vfs/graphrag-projection@1) and must not author these records.
+PROGRAM_GRAPH_EVIDENCE: Final[str] = "vfs/program-graph@1"
+
 DEFAULT_MAX_GRAPH_NODES = 250_000
 DEFAULT_MAX_GRAPH_EDGES = 1_000_000
 DEFAULT_MAX_CHUNK_NODES = 4_096
@@ -69,6 +80,7 @@ _ACYCLIC_EDGE_KINDS: frozenset[str] = frozenset(
         "implements",
         "registers",
         "uses_transport",
+        "obligates",
     }
 )
 
@@ -94,7 +106,7 @@ class IllegalCycleError(ProgramGraphError):
 
 
 class ProgramNodeKind(str, Enum):
-    """Closed vocabulary of program-evidence node kinds (VFS-008)."""
+    """Closed vocabulary of program-evidence node kinds (VFS-008 / VFS-G040)."""
 
     REPOSITORY = "repository"
     BLOB = "blob"
@@ -106,12 +118,15 @@ class ProgramNodeKind(str, Enum):
     CALL = "call"
     TYPE = "type"
     SCHEMA = "schema"
+    CONTRACT = "contract"
     DOC = "doc"
     TEST = "test"
     MCP_TOOL = "mcp_tool"
     MCP_REGISTRATION = "mcp_registration"
     TRANSPORT = "transport"
     ARTIFACT = "artifact"
+    FINDING = "finding"
+    PROOF_OBLIGATION = "proof_obligation"
 
 
 class ProgramEdgeKind(str, Enum):
@@ -133,6 +148,8 @@ class ProgramEdgeKind(str, Enum):
     REFERENCES = "references"
     IMPLEMENTS = "implements"
     MEMBER_OF = "member_of"
+    SUPPORTS = "supports"
+    OBLIGATES = "obligates"
 
 
 class ResolverStatus(str, Enum):
@@ -1125,6 +1142,11 @@ class ProgramGraph:
             "graph_id": self.graph_id,
             "forest_id": self.forest_id,
             "producer": self.producer,
+            # Envelope metadata only — not part of graph_id identity.
+            "evidence": list(program_graph_evidence_terms()),
+            "evidence_program_graph": PROGRAM_GRAPH_EVIDENCE,
+            "canonical_construction": True,
+            "graphrag_ranking_authority": False,
             "node_count": len(self.nodes),
             "edge_count": len(self.edges),
             "unexplained_gap_count": self.unexplained_gap_count,
@@ -1653,6 +1675,30 @@ def digest_hex(value: Any) -> str:
     return hashlib.sha256(canonical_program_json(value).encode("utf-8")).hexdigest()
 
 
+def program_graph_evidence_terms() -> tuple[str, ...]:
+    """Return the closed VFS-G040 evidence terms covered by canonical construction.
+
+    Canonical program-graph identity and provenance (``vfs/program-graph@1``)
+    are authored only by this module.  Optional GraphRAG ranking is a
+    separate surface (``vfs/graphrag-projection@1``) and cannot create
+    completion or proof authority.
+    """
+
+    return (PROGRAM_GRAPH_EVIDENCE,)
+
+
+def all_program_node_kinds() -> tuple[ProgramNodeKind, ...]:
+    """Return the closed program-evidence node vocabulary."""
+
+    return tuple(ProgramNodeKind)
+
+
+def all_program_edge_kinds() -> tuple[ProgramEdgeKind, ...]:
+    """Return the closed program-evidence edge vocabulary."""
+
+    return tuple(ProgramEdgeKind)
+
+
 __all__ = [
     "DEFAULT_MAX_CHUNK_EDGES",
     "DEFAULT_MAX_CHUNK_NODES",
@@ -1670,6 +1716,7 @@ __all__ = [
     "PROGRAM_GRAPH_CHUNK_SCHEMA",
     "PROGRAM_GRAPH_COMPLETENESS_SCHEMA",
     "PROGRAM_GRAPH_EDGE_SCHEMA",
+    "PROGRAM_GRAPH_EVIDENCE",
     "PROGRAM_GRAPH_FRONTIER_SCHEMA",
     "PROGRAM_GRAPH_INDEX_SCHEMA",
     "PROGRAM_GRAPH_NODE_SCHEMA",
@@ -1684,9 +1731,12 @@ __all__ = [
     "ProgramNodeKind",
     "ResolverStatus",
     "SourceSpan",
+    "all_program_edge_kinds",
+    "all_program_node_kinds",
     "build_program_graph",
     "canonical_program_json",
     "digest_hex",
+    "program_graph_evidence_terms",
     "make_binding",
     "make_edge",
     "make_node",
