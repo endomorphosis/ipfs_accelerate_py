@@ -2712,6 +2712,52 @@ class PortalImplementationSupervisor:
         return [line.rstrip() for line in result.stdout.splitlines() if line.strip()]
 
     @staticmethod
+    def _git_status_short_strict(repo_root: Path) -> list[str]:
+        """Return color-free short status or fail when Git cannot certify it.
+
+        Reconciliation mutates the shared checkout.  The ordinary status
+        helper intentionally treats an unavailable repository as empty for
+        best-effort diagnostics, but that behavior is unsafe at this gate:
+        an unavailable or truncated status must never be interpreted as a
+        clean main checkout.  ``--short`` is deliberate here: porcelain-v1
+        collapses a submodule's lowercase content-only ``m`` marker to
+        uppercase ``M`` and would erase the distinction this proof requires.
+        """
+
+        try:
+            result = subprocess.run(
+                [
+                    "git",
+                    "-c",
+                    "color.status=false",
+                    "status",
+                    "--short",
+                    "--untracked-files=all",
+                ],
+                cwd=repo_root,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+            )
+        except OSError as exc:
+            raise RuntimeError(
+                "main checkout status unavailable"
+            ) from exc
+        if result.returncode != 0:
+            detail = (result.stderr or result.stdout).strip()
+            raise RuntimeError(
+                "main checkout status unavailable"
+                f" (returncode={result.returncode})"
+                + (f": {detail[-1000:]}" if detail else "")
+            )
+        return [
+            line
+            for line in result.stdout.splitlines()
+            if line
+        ]
+
+    @staticmethod
     def _git_current_branch(repo_root: Path) -> str:
         result = subprocess.run(
             ["git", "branch", "--show-current"],
@@ -3151,16 +3197,41 @@ class PortalImplementationSupervisor:
             or "HEAD"
         )
         target_signature = self._git_ref_commit(repo_root, target_ref) or target_ref
-        raw_main_status = self._main_status_for_worktree_reconciliation(repo_root, worktree_root)
-        raw_main_dirty_evidence = (
-            self._main_checkout_dirty_evidence(repo_root, raw_main_status)
-            if raw_main_status
-            else {}
-        )
-        main_status, main_dirty_evidence = self._filter_generated_main_checkout_status(
-            raw_main_status,
-            raw_main_dirty_evidence,
-        )
+        main_status_available = True
+        main_status_error = ""
+        try:
+            raw_main_status = (
+                self._main_status_for_worktree_reconciliation(
+                    repo_root,
+                    worktree_root,
+                )
+            )
+        except (OSError, RuntimeError) as exc:
+            main_status_available = False
+            main_status_error = f"{type(exc).__name__}: {exc}"
+            raw_main_status = []
+        if main_status_available:
+            raw_main_dirty_evidence = (
+                self._main_checkout_dirty_evidence(
+                    repo_root,
+                    raw_main_status,
+                )
+                if raw_main_status
+                else {}
+            )
+            main_status, main_dirty_evidence = (
+                self._filter_generated_main_checkout_status(
+                    raw_main_status,
+                    raw_main_dirty_evidence,
+                )
+            )
+        else:
+            raw_main_dirty_evidence = {
+                "reason": "main_checkout_status_unavailable",
+                "error": main_status_error[-2000:],
+            }
+            main_status = []
+            main_dirty_evidence = dict(raw_main_dirty_evidence)
         max_merges = max(0, int(self.config.worktree_reconciliation_max_merges))
         dry_run = bool(self.config.worktree_reconciliation_dry_run)
         scan_cache = self._load_worktree_scan_cache()
@@ -3168,6 +3239,12 @@ class PortalImplementationSupervisor:
         candidates: list[dict[str, Any]] = []
         processed: list[dict[str, Any]] = []
         skipped: list[dict[str, Any]] = []
+        blocking_main_status: list[str] = []
+        nonblocking_main_gitlinks: list[dict[str, Any]] = []
+        candidate_main_status_cache: dict[
+            tuple[str, str],
+            tuple[list[str], list[dict[str, Any]]],
+        ] = {}
         reconciliation_daemon: PortalImplementationDaemon | None = None
         reconciliation_tasks_by_id: dict[str, PortalTask] = {}
         reconciliation_task_ids_by_branch: dict[str, str] = {}
@@ -3175,6 +3252,56 @@ class PortalImplementationSupervisor:
         reconciliation_provenance_by_branch: dict[
             str, dict[str, Any]
         ] = {}
+
+        def candidate_main_status(
+            branch: str,
+            head: str,
+        ) -> tuple[list[str], list[dict[str, Any]]]:
+            key = (branch, head)
+            cached = candidate_main_status_cache.get(key)
+            if cached is not None:
+                return cached
+            if not main_status_available or not main_status:
+                classified = (list(main_status), [])
+            else:
+                try:
+                    classified = self._candidate_main_checkout_status(
+                        repo_root,
+                        main_status,
+                        target_ref=target_ref,
+                        branch=branch,
+                        candidate_head=head,
+                    )
+                except (OSError, RuntimeError, ValueError):
+                    # This is an authorization proof, not a liveness hint.
+                    # Any failed identity/status query keeps every line
+                    # blocking without mutating the nested checkout.
+                    classified = (list(main_status), [])
+            candidate_main_status_cache[key] = classified
+            return classified
+
+        def record_main_status_classification(
+            blocking: Sequence[str],
+            nonblocking: Sequence[dict[str, Any]],
+        ) -> None:
+            for line in blocking:
+                if line not in blocking_main_status:
+                    blocking_main_status.append(line)
+            known = {
+                (
+                    str(item.get("path") or ""),
+                    str(item.get("candidate_commit") or ""),
+                )
+                for item in nonblocking_main_gitlinks
+            }
+            for proof in nonblocking:
+                identity = (
+                    str(proof.get("path") or ""),
+                    str(proof.get("candidate_commit") or ""),
+                )
+                if identity not in known:
+                    nonblocking_main_gitlinks.append(dict(proof))
+                    known.add(identity)
 
         for record in records:
             path_text = str(record.get("worktree") or "")
@@ -3219,16 +3346,35 @@ class PortalImplementationSupervisor:
                         scan_cache_hit_count += 1
                         continue
                 elif classification == "candidate":
-                    if dry_run or main_status:
+                    cached_blocking, cached_nonblocking = (
+                        candidate_main_status(branch, head)
+                    )
+                    record_main_status_classification(
+                        cached_blocking,
+                        cached_nonblocking,
+                    )
+                    if (
+                        dry_run
+                        or not main_status_available
+                        or cached_blocking
+                    ):
                         candidate = {**payload, "cached": True}
+                        if cached_nonblocking:
+                            candidate[
+                                "nonblocking_main_gitlinks"
+                            ] = cached_nonblocking
                         candidates.append(candidate)
                         scan_cache_hit_count += 1
                         if not dry_run:
                             skipped.append(
                                 {
                                     **candidate,
-                                    "reason": "main_checkout_dirty",
-                                    "status_short": main_status[:20],
+                                    "reason": (
+                                        "main_checkout_dirty"
+                                        if main_status_available
+                                        else "main_checkout_status_unavailable"
+                                    ),
+                                    "status_short": cached_blocking[:20],
                                 }
                             )
                         continue
@@ -3326,7 +3472,18 @@ class PortalImplementationSupervisor:
                     )
                     continue
 
+            candidate_blocking, candidate_nonblocking = (
+                candidate_main_status(branch, head)
+            )
+            record_main_status_classification(
+                candidate_blocking,
+                candidate_nonblocking,
+            )
             candidate = {**detail, "target_ref": target_ref}
+            if candidate_nonblocking:
+                candidate[
+                    "nonblocking_main_gitlinks"
+                ] = candidate_nonblocking
             candidates.append(candidate)
             self._store_worktree_scan_cache_entry(
                 scan_cache,
@@ -3340,8 +3497,23 @@ class PortalImplementationSupervisor:
             )
             if dry_run:
                 continue
-            if main_status:
-                skipped.append({**candidate, "reason": "main_checkout_dirty", "status_short": main_status[:20]})
+            if not main_status_available:
+                skipped.append(
+                    {
+                        **candidate,
+                        "reason": "main_checkout_status_unavailable",
+                        "status_short": [],
+                    }
+                )
+                continue
+            if candidate_blocking:
+                skipped.append(
+                    {
+                        **candidate,
+                        "reason": "main_checkout_dirty",
+                        "status_short": candidate_blocking[:20],
+                    }
+                )
                 continue
             if sum(1 for item in processed if item.get("merged")) >= max_merges:
                 skipped.append({**candidate, "reason": "reconciliation_limit_reached"})
@@ -3540,6 +3712,41 @@ class PortalImplementationSupervisor:
                 reconciliation_outcome_keys.add(recovery_key)
                 continue
 
+        effective_main_status = (
+            list(main_status)
+            if not candidates
+            else list(blocking_main_status)
+        )
+        if nonblocking_main_gitlinks:
+            main_dirty_evidence = {
+                **main_dirty_evidence,
+                "nonblocking_submodule_content_status": (
+                    nonblocking_main_gitlinks[:50]
+                ),
+                "filtered_nonblocking_status_paths": sorted(
+                    {
+                        str(item.get("path") or "")
+                        for item in nonblocking_main_gitlinks
+                        if str(item.get("path") or "")
+                    }
+                )[:50],
+            }
+        if effective_main_status:
+            main_dirty_evidence = {
+                **main_dirty_evidence,
+                "status_short": effective_main_status[:50],
+                "status_paths": [
+                    self._status_line_path(line)
+                    for line in effective_main_status[:50]
+                ],
+            }
+        elif main_status_available:
+            main_dirty_evidence = {
+                **main_dirty_evidence,
+                "status_short": [],
+                "status_paths": [],
+            }
+
         result = {
             "attempted": True,
             "worktree_root": str(worktree_root),
@@ -3547,10 +3754,18 @@ class PortalImplementationSupervisor:
             "target_signature": target_signature,
             "dry_run": dry_run,
             "max_merges": max_merges,
-            "main_checkout_dirty": bool(main_status),
-            "main_status_short": main_status[:20],
+            "main_checkout_dirty": (
+                not main_status_available
+                or bool(effective_main_status)
+            ),
+            "main_checkout_status_available": main_status_available,
+            "main_checkout_status_error": main_status_error[-2000:],
+            "main_status_short": effective_main_status[:20],
             "main_dirty_evidence": main_dirty_evidence,
-            "raw_main_checkout_dirty": bool(raw_main_status),
+            "raw_main_checkout_dirty": (
+                not main_status_available
+                or bool(raw_main_status)
+            ),
             "raw_main_status_short": raw_main_status[:20],
             "raw_main_dirty_evidence": raw_main_dirty_evidence,
             "candidate_count": len(candidates),
@@ -4941,7 +5156,7 @@ class PortalImplementationSupervisor:
         )
 
     def _main_status_for_worktree_reconciliation(self, repo_root: Path, worktree_root: Path) -> list[str]:
-        status = self._git_status_short(repo_root)
+        status = self._git_status_short_strict(repo_root)
         try:
             root_relative = worktree_root.resolve().relative_to(repo_root.resolve()).as_posix().rstrip("/")
         except (OSError, ValueError):
@@ -4953,6 +5168,298 @@ class PortalImplementationSupervisor:
             for line in status
             if not self._status_line_targets_prefix(line, root_relative)
         ]
+
+    @staticmethod
+    def _stage_zero_gitlink(
+        repo_root: Path,
+        relative: str,
+    ) -> str:
+        """Return one exact stage-zero gitlink object, or an empty proof."""
+
+        result = subprocess.run(
+            ["git", "ls-files", "--stage", "-z", "--", relative],
+            cwd=repo_root,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+        if result.returncode != 0:
+            return ""
+        raw = bytes(result.stdout or b"")
+        if not raw.endswith(b"\0"):
+            return ""
+        records = [record for record in raw[:-1].split(b"\0") if record]
+        if len(records) != 1:
+            return ""
+        metadata, separator, raw_path = records[0].partition(b"\t")
+        try:
+            fields = metadata.decode("ascii", errors="strict").split()
+            path = raw_path.decode("utf-8", errors="surrogateescape")
+        except UnicodeError:
+            return ""
+        if (
+            not separator
+            or len(fields) != 3
+            or fields[0] != "160000"
+            or fields[2] != "0"
+            or path != relative
+        ):
+            return ""
+        return fields[1]
+
+    @staticmethod
+    def _gitlink_at_ref(
+        repo_root: Path,
+        ref: str,
+        relative: str,
+    ) -> str:
+        """Return an exact gitlink object at ``ref``, or an empty proof."""
+
+        if not ref:
+            return ""
+        result = subprocess.run(
+            ["git", "ls-tree", "-z", ref, "--", relative],
+            cwd=repo_root,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+        if result.returncode != 0:
+            return ""
+        raw = bytes(result.stdout or b"")
+        if not raw.endswith(b"\0"):
+            return ""
+        records = [record for record in raw[:-1].split(b"\0") if record]
+        if len(records) != 1:
+            return ""
+        metadata, separator, raw_path = records[0].partition(b"\t")
+        try:
+            fields = metadata.decode("ascii", errors="strict").split()
+            path = raw_path.decode("utf-8", errors="surrogateescape")
+        except UnicodeError:
+            return ""
+        if (
+            not separator
+            or len(fields) != 3
+            or fields[0] != "160000"
+            or fields[1] != "commit"
+            or path != relative
+        ):
+            return ""
+        return fields[2]
+
+    @staticmethod
+    def _unique_git_merge_base(
+        repo_root: Path,
+        left: str,
+        right: str,
+    ) -> str:
+        """Return the sole merge base, failing closed for criss-cross bases."""
+
+        result = subprocess.run(
+            ["git", "merge-base", "--all", left, right],
+            cwd=repo_root,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+        if result.returncode != 0:
+            return ""
+        merge_bases = [
+            line.strip()
+            for line in result.stdout.splitlines()
+            if line.strip()
+        ]
+        if len(merge_bases) != 1:
+            return ""
+        resolved = TodoImplementationSupervisor._git_ref_commit(
+            repo_root,
+            merge_bases[0],
+        )
+        return resolved if resolved == merge_bases[0] else ""
+
+    def _candidate_submodule_content_status_proof(
+        self,
+        repo_root: Path,
+        status_line: str,
+        *,
+        target_ref: str,
+        branch: str,
+        candidate_head: str,
+    ) -> dict[str, Any]:
+        """Prove one lowercase submodule-content status is merge-independent.
+
+        Only porcelain ``" m"`` is eligible: the superproject index and
+        gitlink are unchanged while files below the nested checkout are dirty.
+        The candidate must preserve that gitlink relative to its unique merge
+        base.  Every missing or ambiguous identity leaves the line blocking.
+        """
+
+        proof: dict[str, Any] = {
+            "status": status_line,
+            "path": self._status_line_path(status_line),
+            "nonblocking": False,
+        }
+        if len(status_line) < 4 or status_line[:3] != " m ":
+            proof["reason"] = "status_not_submodule_content_only"
+            return proof
+        relative = status_line[3:]
+        proof["path"] = relative
+        if (
+            not relative
+            or relative != relative.strip()
+            or relative.startswith("/")
+            or "\0" in relative
+            or ".." in Path(relative).parts
+            or " -> " in relative
+        ):
+            proof["reason"] = "status_path_ambiguous"
+            return proof
+
+        target_commit = self._git_ref_commit(repo_root, target_ref)
+        checkout_commit = self._git_ref_commit(repo_root, "HEAD")
+        branch_commit = self._git_ref_commit(repo_root, branch)
+        candidate_commit = self._git_ref_commit(
+            repo_root,
+            candidate_head,
+        )
+        proof.update(
+            {
+                "target_commit": target_commit,
+                "checkout_commit": checkout_commit,
+                "branch_commit": branch_commit,
+                "candidate_commit": candidate_commit,
+            }
+        )
+        if not all(
+            (
+                target_commit,
+                checkout_commit,
+                branch_commit,
+                candidate_commit,
+            )
+        ):
+            proof["reason"] = "commit_identity_unavailable"
+            return proof
+        if target_commit != checkout_commit:
+            proof["reason"] = "target_checkout_identity_mismatch"
+            return proof
+        if branch_commit != candidate_commit:
+            proof["reason"] = "candidate_branch_identity_mismatch"
+            return proof
+
+        merge_base = self._unique_git_merge_base(
+            repo_root,
+            target_commit,
+            candidate_commit,
+        )
+        proof["merge_base"] = merge_base
+        if not merge_base:
+            proof["reason"] = "unique_merge_base_unavailable"
+            return proof
+
+        index_gitlink = self._stage_zero_gitlink(repo_root, relative)
+        target_gitlink = self._gitlink_at_ref(
+            repo_root,
+            target_commit,
+            relative,
+        )
+        baseline_gitlink = self._gitlink_at_ref(
+            repo_root,
+            merge_base,
+            relative,
+        )
+        candidate_gitlink = self._gitlink_at_ref(
+            repo_root,
+            candidate_commit,
+            relative,
+        )
+        proof.update(
+            {
+                "index_gitlink": index_gitlink,
+                "target_gitlink": target_gitlink,
+                "baseline_gitlink": baseline_gitlink,
+                "candidate_gitlink": candidate_gitlink,
+            }
+        )
+        if not all(
+            (
+                index_gitlink,
+                target_gitlink,
+                baseline_gitlink,
+                candidate_gitlink,
+            )
+        ):
+            proof["reason"] = "gitlink_identity_unavailable"
+            return proof
+        if index_gitlink != target_gitlink:
+            proof["reason"] = "index_gitlink_staged_or_mismatched"
+            return proof
+
+        staged = subprocess.run(
+            [
+                "git",
+                "diff",
+                "--cached",
+                "--quiet",
+                target_commit,
+                "--",
+                relative,
+            ],
+            cwd=repo_root,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+        if staged.returncode != 0:
+            proof["reason"] = (
+                "index_gitlink_staged"
+                if staged.returncode == 1
+                else "index_gitlink_status_unavailable"
+            )
+            return proof
+
+        nested_root = repo_root / relative
+        nested_head = self._git_ref_commit(nested_root, "HEAD")
+        proof["nested_checkout_commit"] = nested_head
+        if not nested_head or nested_head != index_gitlink:
+            proof["reason"] = "nested_checkout_gitlink_mismatch"
+            return proof
+        if candidate_gitlink != baseline_gitlink:
+            proof["reason"] = "candidate_changes_gitlink"
+            return proof
+
+        proof["nonblocking"] = True
+        proof["reason"] = "candidate_preserves_content_dirty_gitlink"
+        return proof
+
+    def _candidate_main_checkout_status(
+        self,
+        repo_root: Path,
+        status_lines: Sequence[str],
+        *,
+        target_ref: str,
+        branch: str,
+        candidate_head: str,
+    ) -> tuple[list[str], list[dict[str, Any]]]:
+        """Split shared-checkout status for one immutable candidate."""
+
+        blocking: list[str] = []
+        nonblocking: list[dict[str, Any]] = []
+        for status_line in status_lines:
+            proof = self._candidate_submodule_content_status_proof(
+                repo_root,
+                status_line,
+                target_ref=target_ref,
+                branch=branch,
+                candidate_head=candidate_head,
+            )
+            if proof.get("nonblocking") is True:
+                nonblocking.append(proof)
+            else:
+                blocking.append(status_line)
+        return blocking, nonblocking
 
     @staticmethod
     def _status_line_targets_prefix(line: str, relative_prefix: str) -> bool:

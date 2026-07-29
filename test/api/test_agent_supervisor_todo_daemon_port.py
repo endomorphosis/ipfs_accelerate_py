@@ -20839,6 +20839,233 @@ def test_implementation_supervisor_defers_worktree_reconciliation_when_main_dirt
     assert not (repo / "feature.txt").exists()
 
 
+def test_implementation_supervisor_allows_candidate_unchanged_lowercase_submodule_dirt(
+    tmp_path,
+):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    base_gitlink = _git(repo, "rev-parse", "HEAD:libs/child")
+    branch_name = "implementation/dscon-007-attempt-1-123"
+    _git(repo, "checkout", "-b", branch_name)
+    (repo / "feature.txt").write_text(
+        "candidate changes another module\n",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "feature.txt")
+    _git(repo, "commit", "-m", "candidate changes parent only")
+    candidate_commit = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "main")
+
+    (submodule / "target.txt").write_text(
+        "target advances gitlink\n",
+        encoding="utf-8",
+    )
+    _git(submodule, "add", "target.txt")
+    _git(submodule, "commit", "-m", "advance target child")
+    target_gitlink = _git(submodule, "rev-parse", "HEAD")
+    _git(repo, "add", "libs/child")
+    _git(repo, "commit", "-m", "advance target gitlink")
+    (submodule / "child.txt").write_text(
+        "preserve unrelated nested dirt\n",
+        encoding="utf-8",
+    )
+    assert _git(repo, "status", "--short") == "m libs/child"
+
+    worktree_root = repo / "worktrees"
+    worktree_path = worktree_root / "dscon-007-attempt-1-123"
+    _git(repo, "worktree", "add", str(worktree_path), branch_name)
+    state_dir = repo / "state"
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=repo / "missing.todo.md",
+            state_path=state_dir / "task_state.json",
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "events.jsonl",
+            state_dir=state_dir,
+            repo_root=repo,
+            worktree_root=worktree_root,
+        )
+    )
+
+    result = supervisor.reconcile_backlogged_worktrees()
+
+    assert result["raw_main_status_short"] == [" m libs/child"]
+    assert result["raw_main_checkout_dirty"] is True
+    assert result["main_checkout_status_available"] is True
+    assert result["main_checkout_dirty"] is False
+    assert result["main_status_short"] == []
+    assert result["candidate_count"] == 1
+    assert result["processed_count"] == 1
+    assert (
+        result["processed"][0]["merge_result"]["reason"]
+        == "reconciliation_candidate_task_board_unavailable"
+    )
+    proof = result["candidates"][0]["nonblocking_main_gitlinks"][0]
+    assert proof["reason"] == "candidate_preserves_content_dirty_gitlink"
+    assert proof["candidate_commit"] == candidate_commit
+    assert proof["candidate_gitlink"] == base_gitlink
+    assert proof["baseline_gitlink"] == base_gitlink
+    assert proof["target_gitlink"] == target_gitlink
+    assert proof["target_gitlink"] != proof["candidate_gitlink"]
+    assert (submodule / "child.txt").read_text(encoding="utf-8") == (
+        "preserve unrelated nested dirt\n"
+    )
+
+
+def test_implementation_supervisor_blocks_lowercase_dirt_when_candidate_changes_gitlink(
+    tmp_path,
+):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    base_gitlink = _git(repo, "rev-parse", "HEAD:libs/child")
+    branch_name = "implementation/dscon-unsafe-attempt-1-123"
+    _git(repo, "checkout", "-b", branch_name)
+    (submodule / "candidate.txt").write_text(
+        "candidate advances gitlink\n",
+        encoding="utf-8",
+    )
+    _git(submodule, "add", "candidate.txt")
+    _git(submodule, "commit", "-m", "candidate child")
+    _git(repo, "add", "libs/child")
+    _git(repo, "commit", "-m", "candidate changes gitlink")
+    candidate_commit = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "main")
+    _git(submodule, "checkout", "--detach", base_gitlink)
+    (submodule / "child.txt").write_text(
+        "preserve nested dirt\n",
+        encoding="utf-8",
+    )
+    assert _git(repo, "status", "--short") == "m libs/child"
+
+    worktree_root = repo / "worktrees"
+    worktree_path = worktree_root / "dscon-unsafe-attempt-1-123"
+    _git(repo, "worktree", "add", str(worktree_path), branch_name)
+    state_dir = repo / "state"
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=repo / "missing.todo.md",
+            state_path=state_dir / "task_state.json",
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "events.jsonl",
+            state_dir=state_dir,
+            repo_root=repo,
+            worktree_root=worktree_root,
+        )
+    )
+
+    proof = supervisor._candidate_submodule_content_status_proof(
+        repo,
+        " m libs/child",
+        target_ref="main",
+        branch=branch_name,
+        candidate_head=candidate_commit,
+    )
+    result = supervisor.reconcile_backlogged_worktrees()
+
+    assert proof["nonblocking"] is False
+    assert proof["reason"] == "candidate_changes_gitlink"
+    assert result["main_checkout_dirty"] is True
+    assert result["main_status_short"] == [" m libs/child"]
+    assert result["candidate_count"] == 1
+    assert result["processed_count"] == 0
+    assert result["skipped"][0]["reason"] == "main_checkout_dirty"
+    assert (submodule / "child.txt").read_text(encoding="utf-8") == (
+        "preserve nested dirt\n"
+    )
+
+
+def test_implementation_supervisor_lowercase_gitlink_proof_rejects_staged_index(
+    tmp_path,
+):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    branch_name = "implementation/dscon-index-attempt-1-123"
+    _git(repo, "checkout", "-b", branch_name)
+    (repo / "feature.txt").write_text("candidate\n", encoding="utf-8")
+    _git(repo, "add", "feature.txt")
+    _git(repo, "commit", "-m", "candidate parent change")
+    candidate_commit = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "main")
+
+    (submodule / "staged.txt").write_text("staged gitlink\n", encoding="utf-8")
+    _git(submodule, "add", "staged.txt")
+    _git(submodule, "commit", "-m", "staged child")
+    _git(repo, "add", "libs/child")
+    (submodule / "child.txt").write_text("nested dirt\n", encoding="utf-8")
+    assert _git(repo, "status", "--short").startswith("Mm libs/child")
+
+    state_dir = repo / "state"
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=repo / "missing.todo.md",
+            state_path=state_dir / "task_state.json",
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "events.jsonl",
+            state_dir=state_dir,
+            repo_root=repo,
+            worktree_root=repo / "worktrees",
+        )
+    )
+
+    proof = supervisor._candidate_submodule_content_status_proof(
+        repo,
+        " m libs/child",
+        target_ref="main",
+        branch=branch_name,
+        candidate_head=candidate_commit,
+    )
+
+    assert proof["nonblocking"] is False
+    assert proof["reason"] == "index_gitlink_staged_or_mismatched"
+
+
+def test_implementation_supervisor_worktree_reconciliation_fails_closed_when_main_status_unavailable(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "base")
+    branch_name = "implementation/dscon-status-attempt-1-123"
+    _git(repo, "checkout", "-b", branch_name)
+    (repo / "feature.txt").write_text("candidate\n", encoding="utf-8")
+    _git(repo, "add", "feature.txt")
+    _git(repo, "commit", "-m", "candidate")
+    _git(repo, "checkout", "main")
+    worktree_root = repo / "worktrees"
+    worktree_path = worktree_root / "dscon-status-attempt-1-123"
+    _git(repo, "worktree", "add", str(worktree_path), branch_name)
+    state_dir = repo / "state"
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=repo / "missing.todo.md",
+            state_path=state_dir / "task_state.json",
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "events.jsonl",
+            state_dir=state_dir,
+            repo_root=repo,
+            worktree_root=worktree_root,
+        )
+    )
+
+    def unavailable_status(_repo: Path, _root: Path) -> list[str]:
+        raise RuntimeError("injected status failure")
+
+    supervisor._main_status_for_worktree_reconciliation = unavailable_status  # type: ignore[method-assign]
+
+    result = supervisor.reconcile_backlogged_worktrees()
+
+    assert result["main_checkout_status_available"] is False
+    assert result["main_checkout_dirty"] is True
+    assert result["processed_count"] == 0
+    assert result["skipped"][0]["reason"] == (
+        "main_checkout_status_unavailable"
+    )
+    assert "injected status failure" in result["main_checkout_status_error"]
+
+
 def test_implementation_supervisor_ignores_generated_objective_heap_dirty_main(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
