@@ -88,7 +88,7 @@ task IDs on this board.
 
 ## RPR-002 Bind exact datasets-logic and VFS capabilities
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
