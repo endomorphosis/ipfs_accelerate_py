@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
-from ipfs_accelerate_py.agent_supervisor.analysis_ast_index import AnalysisASTIndex
-from ipfs_accelerate_py.agent_supervisor.conflict_graph import (
+from ipfs_accelerate_py.agent_supervisor.analysis.analysis_ast_index import (
+    AnalysisASTIndex,
+)
+from ipfs_accelerate_py.agent_supervisor.core.conflict_graph import (
     ASTBlobRecord,
     build_python_ast_blob_record,
 )

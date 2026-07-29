@@ -4,7 +4,7 @@ from dataclasses import replace
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.task_quality import (
+from ipfs_accelerate_py.agent_supervisor.planning.task_quality import (
     TaskCandidate,
     TaskCostMeasurement,
     TaskGranularityRun,

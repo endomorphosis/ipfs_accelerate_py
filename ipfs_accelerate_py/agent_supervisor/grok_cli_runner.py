@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import os
 import shutil
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -87,16 +88,29 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument(
         "--permission-mode",
         default="",
-        help="Grok permission mode (default: bypassPermissions).",
+        help="Grok permission mode (default: bypassPermissions in agent mode).",
+    )
+    parser.add_argument(
+        "--mode",
+        default="agent",
+        choices=("agent", "chat"),
+        help="agent enables tool approvals for implementation work",
     )
     args = parser.parse_args(list(argv) if argv is not None else None)
+
+    from ipfs_accelerate_py.llm_router import (
+        LLMRouterError,
+        build_grok_cli_command,
+        build_grok_cli_env,
+        find_grok_cli,
+    )
 
     workspace = args.workspace.expanduser().resolve()
     if not workspace.is_dir():
         print(f"workspace is not a directory: {workspace}", file=sys.stderr)
         return 2
 
-    grok_bin = _resolve_grok_bin(str(args.grok_bin or ""))
+    grok_bin = str(args.grok_bin).strip() or find_grok_cli() or ""
     if not grok_bin:
         print("grok CLI not found on PATH", file=sys.stderr)
         return 127
@@ -137,26 +151,31 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         with tempfile.NamedTemporaryFile(
             mode="w",
             encoding="utf-8",
-            prefix="asi-grok-prompt-",
+            prefix="asref-grok-prompt-",
             suffix=".txt",
             delete=False,
         ) as handle:
             handle.write(prompt)
             prompt_path = handle.name
 
-        cmd = build_grok_agent_command(
-            workspace=workspace,
-            prompt_file=Path(prompt_path),
-            model=model,
-            max_turns=max_turns,
-            permission_mode=permission_mode,
-            grok_bin=grok_bin,
-        )
+        try:
+            cmd = build_grok_cli_command(
+                mode=str(args.mode),
+                workspace=workspace,
+                model_name=model,
+                max_turns=max_turns,
+                grok_bin=grok_bin,
+                prompt_file=prompt_path,
+                permission_mode=permission_mode,
+            )
+            env = build_grok_cli_env()
+        except LLMRouterError as exc:
+            print(str(exc), file=sys.stderr)
+            return 2
+
         os.chdir(workspace)
-        os.execvpe(cmd[0], cmd, os.environ.copy())
-    except OSError as exc:
-        print(f"failed to exec grok: {exc}", file=sys.stderr)
-        return 126
+        completed = subprocess.run(cmd, env=env, check=False)
+        return int(completed.returncode)
     finally:
         if prompt_path:
             try:

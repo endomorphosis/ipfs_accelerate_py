@@ -25,9 +25,9 @@ from enum import Enum
 from pathlib import Path, PurePosixPath
 from typing import Any, Iterable, Mapping, Sequence
 
-from .checkout_lock import checkout_repository_id
-from .formal_verification_contracts import content_identity
-from .task_identity import canonical_content_cid
+from .merge.checkout_lock import checkout_repository_id
+from .proof.formal_verification_contracts import content_identity
+from .task_sources.task_identity import canonical_content_cid
 
 
 REPOSITORY_FOREST_SCHEMA = (

@@ -1,0 +1,24 @@
+{
+  "schema": "ipfs_accelerate_py.asref.lane_matrix.v1",
+  "lanes": [
+    {"bundle": "asref/bootstrap", "owns": ["branch", "inventory", "import graph", "move map"], "after": []},
+    {"bundle": "asref/core", "owns": ["ipfs_accelerate_py/agent_supervisor/core"], "after": ["asref/bootstrap"]},
+    {"bundle": "asref/control", "owns": ["ipfs_accelerate_py/agent_supervisor/control"], "after": ["asref/core"]},
+    {"bundle": "asref/task-sources", "owns": ["ipfs_accelerate_py/agent_supervisor/task_sources"], "after": ["asref/core"]},
+    {"bundle": "asref/context", "owns": ["ipfs_accelerate_py/agent_supervisor/context"], "after": ["asref/core"]},
+    {"bundle": "asref/analysis", "owns": ["ipfs_accelerate_py/agent_supervisor/analysis"], "after": ["asref/core"]},
+    {"bundle": "asref/proof", "owns": ["ipfs_accelerate_py/agent_supervisor/proof"], "after": ["asref/core"]},
+    {"bundle": "asref/objectives", "owns": ["ipfs_accelerate_py/agent_supervisor/objectives"], "after": ["asref/core", "asref/task-sources"]},
+    {"bundle": "asref/planning", "owns": ["ipfs_accelerate_py/agent_supervisor/planning"], "after": ["asref/core", "asref/proof"]},
+    {"bundle": "asref/prompt", "owns": ["ipfs_accelerate_py/agent_supervisor/prompt"], "after": ["asref/context"]},
+    {"bundle": "asref/validation", "owns": ["ipfs_accelerate_py/agent_supervisor/validation"], "after": ["asref/core"]},
+    {"bundle": "asref/merge", "owns": ["ipfs_accelerate_py/agent_supervisor/merge"], "after": ["asref/core"]},
+    {"bundle": "asref/rescue", "owns": ["ipfs_accelerate_py/agent_supervisor/rescue"], "after": ["asref/core"]},
+    {"bundle": "asref/runtime", "owns": ["ipfs_accelerate_py/agent_supervisor/runtime"], "after": ["asref/core"]},
+    {"bundle": "asref/self-improvement", "owns": ["ipfs_accelerate_py/agent_supervisor/self_improvement"], "after": ["asref/core"]},
+    {"bundle": "asref/todo-daemon", "owns": ["ipfs_accelerate_py/agent_supervisor/todo_daemon"], "after": ["asref/core", "asref/task-sources"]},
+    {"bundle": "asref/integrations", "owns": ["ipfs_accelerate_py/agent_supervisor/integrations"], "after": ["asref/core"]},
+    {"bundle": "asref/root-hygiene", "owns": ["root hygiene"], "after": ["asref/bootstrap"]},
+    {"bundle": "asref/cutover", "owns": ["public API", "entry points", "final import gate"], "after": ["asref/core", "asref/control", "asref/task-sources", "asref/context", "asref/analysis", "asref/proof", "asref/objectives", "asref/planning", "asref/prompt", "asref/validation", "asref/merge", "asref/rescue", "asref/runtime", "asref/self-improvement", "asref/todo-daemon", "asref/integrations"]}
+  ]
+}

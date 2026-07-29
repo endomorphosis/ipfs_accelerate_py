@@ -8,16 +8,16 @@ import sys
 
 import pytest
 
-import ipfs_accelerate_py.agent_supervisor.objective_tracker as objective_tracker_module
-from ipfs_accelerate_py.agent_supervisor.checkout_lock import (
+import ipfs_accelerate_py.agent_supervisor.objectives.objective_tracker as objective_tracker_module
+from ipfs_accelerate_py.agent_supervisor.merge.checkout_lock import (
     objective_admission_lock_path,
 )
-from ipfs_accelerate_py.agent_supervisor.duckdb_state import exclusive_file_lock
-from ipfs_accelerate_py.agent_supervisor.goal_coverage import (
+from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import exclusive_file_lock
+from ipfs_accelerate_py.agent_supervisor.objectives.goal_coverage import (
     UNMAPPED_GOAL_ID,
     goal_coverage_work_seeds,
 )
-from ipfs_accelerate_py.agent_supervisor.objective_graph import (
+from ipfs_accelerate_py.agent_supervisor.objectives.objective_graph import (
     ObjectiveGenerationLimits,
     ObjectiveGoalMaterializationPolicy,
     ObjectiveWorkKind,
@@ -27,7 +27,7 @@ from ipfs_accelerate_py.agent_supervisor.objective_graph import (
     preview_objective_goal_materialization,
     parse_goal_heap,
 )
-from ipfs_accelerate_py.agent_supervisor.objective_daemon import (
+from ipfs_accelerate_py.agent_supervisor.objectives.objective_daemon import (
     _objective_generation_board_state,
     active_objective_generation_work,
     blocked_review_objective_generation_families,
@@ -40,16 +40,16 @@ from ipfs_accelerate_py.agent_supervisor.objective_daemon import (
     objective_generation_proposals,
     objective_generation_task_findings,
 )
-from ipfs_accelerate_py.agent_supervisor.objective_tracker import (
+from ipfs_accelerate_py.agent_supervisor.objectives.objective_tracker import (
     ObjectiveMaterializationTransactionState,
     commit_objective_goal_materialization,
     objective_materialization_tree_identity,
 )
-from ipfs_accelerate_py.agent_supervisor.plan_evaluator import (
+from ipfs_accelerate_py.agent_supervisor.planning.plan_evaluator import (
     AnalysisProposal,
     ObjectiveWorkEvaluationPolicy,
 )
-from ipfs_accelerate_py.agent_supervisor.task_proposal_router import (
+from ipfs_accelerate_py.agent_supervisor.planning.task_proposal_router import (
     analysis_proposals_to_objective_work,
 )
 

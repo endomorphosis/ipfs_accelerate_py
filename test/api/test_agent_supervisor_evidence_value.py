@@ -6,11 +6,11 @@ from statistics import median
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.analysis_retrieval import (
+from ipfs_accelerate_py.agent_supervisor.analysis.analysis_retrieval import (
     retrieval_response_to_context_references,
     retrieve_analysis_evidence,
 )
-from ipfs_accelerate_py.agent_supervisor.context_compiler import (
+from ipfs_accelerate_py.agent_supervisor.context.context_compiler import (
     MIN_INPUT_TOKEN_REDUCTION_BPS,
     MIN_RETRY_INPUT_TOKEN_REDUCTION_BPS,
     VALUE_OF_INFORMATION_REQUIREMENT_ID,
@@ -28,7 +28,7 @@ from ipfs_accelerate_py.agent_supervisor.context_compiler import (
     expand_context_for_question,
     expand_context_references,
 )
-from ipfs_accelerate_py.agent_supervisor.context_contracts import (
+from ipfs_accelerate_py.agent_supervisor.context.context_contracts import (
     ContextBudget,
     ContextReference,
     ContextTier,

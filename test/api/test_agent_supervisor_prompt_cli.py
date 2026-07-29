@@ -13,7 +13,7 @@ from typing import Any
 import pytest
 
 from ipfs_accelerate_py import cli
-from ipfs_accelerate_py.agent_supervisor.control_cli import (
+from ipfs_accelerate_py.agent_supervisor.control.control_cli import (
     AGENT_CLI_EXIT_INVALID,
     AGENT_CLI_EXIT_SUCCESS,
     COMMAND_OPERATIONS,
@@ -25,17 +25,18 @@ from ipfs_accelerate_py.agent_supervisor.control_cli import (
     run_agent_cli,
     validate_agent_cli_catalog,
 )
-from ipfs_accelerate_py.agent_supervisor.control_contracts import (
+from ipfs_accelerate_py.agent_supervisor.control.control_contracts import (
     Operation,
     OperationRequest,
     OperationStatus,
 )
-from ipfs_accelerate_py.agent_supervisor.control_plane import (
+from ipfs_accelerate_py.agent_supervisor.control.control_plane import (
     BackendResponse,
     InMemoryControlStateStore,
     SupervisorControlService,
 )
-from ipfs_accelerate_py.agent_supervisor.prompt_workflow import (
+from ipfs_accelerate_py.agent_supervisor.prompt.prompt_workflow import (
+    PROMPT_WORKFLOW_CLI_COMMANDS,
     PROMPT_WORKFLOW_CLI_COMMANDS as MODULE_PROMPT_COMMANDS,
     PROMPT_WORKFLOW_CLI_EXIT_INVALID,
     PromptSource,
@@ -120,6 +121,7 @@ def test_help_and_import_are_side_effect_free(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     # Import already happened at module load; re-import must not start providers.
+    __import__("ipfs_accelerate_py.agent_supervisor.prompt.prompt_workflow")
     __import__("ipfs_accelerate_py.agent_supervisor.prompt_workflow")
     __import__("ipfs_accelerate_py.agent_supervisor.control_cli")
     parser = build_prompt_workflow_arg_parser()

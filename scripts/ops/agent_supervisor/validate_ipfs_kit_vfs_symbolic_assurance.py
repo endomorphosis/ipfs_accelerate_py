@@ -16,7 +16,7 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from ipfs_accelerate_py.agent_supervisor.objective_graph import (  # noqa: E402
+from ipfs_accelerate_py.agent_supervisor.objectives.objective_graph import (  # noqa: E402
     materialize_task_dependency_dag,
     parse_goal_heap,
 )

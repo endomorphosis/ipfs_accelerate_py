@@ -26,8 +26,8 @@ from pathlib import PurePosixPath
 from types import MappingProxyType
 from typing import Any, Iterable, Mapping, Sequence
 
-from .analysis_ast_index import AnalysisASTIndex, build_analysis_ast_index
-from .conflict_graph import ASTBlobRecord, build_python_ast_blob_record
+from .analysis.analysis_ast_index import AnalysisASTIndex, build_analysis_ast_index
+from .core.conflict_graph import ASTBlobRecord, build_python_ast_blob_record
 
 
 PROGRAM_AST_ADAPTER_SCHEMA = (

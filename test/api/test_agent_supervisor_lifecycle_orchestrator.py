@@ -7,7 +7,7 @@ from typing import Callable
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.control_contracts import (
+from ipfs_accelerate_py.agent_supervisor.control.control_contracts import (
     AuthorizationDecision,
     AuthorizationVerdict,
     ControlBounds,
@@ -19,14 +19,14 @@ from ipfs_accelerate_py.agent_supervisor.control_contracts import (
     OperationRequest,
     OperationStatus,
 )
-from ipfs_accelerate_py.agent_supervisor.control_plane import (
+from ipfs_accelerate_py.agent_supervisor.control.control_plane import (
     JsonlControlStateStore,
     PartialMutationError,
     StaleLeaseError,
     SupervisorControlService,
     TransactionConflictError,
 )
-from ipfs_accelerate_py.agent_supervisor.lifecycle_orchestrator import (
+from ipfs_accelerate_py.agent_supervisor.control.lifecycle_orchestrator import (
     LifecycleAction,
     LifecycleOrchestrator,
     LifecycleProfile,
@@ -597,7 +597,7 @@ def test_pid_reuse_is_detected_before_signal(
         ),
     )
     monkeypatch.setattr(
-        "ipfs_accelerate_py.agent_supervisor.lifecycle_orchestrator.os.kill",
+        "ipfs_accelerate_py.agent_supervisor.control.lifecycle_orchestrator.os.kill",
         lambda pid, signum: signals.append((pid, signum)),
     )
 

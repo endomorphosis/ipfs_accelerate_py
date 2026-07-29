@@ -4,13 +4,13 @@ from dataclasses import replace
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.self_improvement_v2 import (
+from ipfs_accelerate_py.agent_supervisor.self_improvement.self_improvement_v2 import (
     REQUIRED_V2_OBJECTIVE_DIMENSIONS,
     V2ObjectiveDimension,
     build_frozen_v2_ablation_receipts,
     build_frozen_v2_self_evaluation_inputs,
 )
-from ipfs_accelerate_py.agent_supervisor.self_improvement_v2_rollout import (
+from ipfs_accelerate_py.agent_supervisor.self_improvement.self_improvement_v2_rollout import (
     V2RolloutBinding,
     V2RolloutError,
     V2RolloutEvaluation,
@@ -21,7 +21,7 @@ from ipfs_accelerate_py.agent_supervisor.self_improvement_v2_rollout import (
     recompute_v2_rollout_evaluation,
     verify_v2_rollout_report,
 )
-from ipfs_accelerate_py.agent_supervisor.supervisor_v2_benchmark import (
+from ipfs_accelerate_py.agent_supervisor.self_improvement.supervisor_v2_benchmark import (
     V2BenchmarkArm,
     V2FixtureKind,
     build_frozen_v2_paired_corpus,

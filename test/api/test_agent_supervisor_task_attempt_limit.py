@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 
-from ipfs_accelerate_py.agent_supervisor.bundle_supervisor import (
+from ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor import (
     build_arg_parser as build_bundle_arg_parser,
     implementation_supervisor_command,
 )
@@ -411,6 +411,24 @@ def test_supervisor_stale_repair_migrates_legacy_active_attempt(tmp_path) -> Non
     assert recovered.implementation_attempts["TASK-001"] == 1
     assert recovered.implementation_attempts_by_cid[task_cid] == 1
     assert recovered.active_attempt == 0
+
+
+def test_classify_provider_capacity_detects_grok_402_balance_exhausted() -> None:
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+        classify_provider_capacity_failure,
+    )
+
+    text = (
+        'Internal error: {\n'
+        '  "message": "API error (status 402 Payment Required): '
+        'Grok Build usage balance exhausted",\n'
+        '  "http_status": 402\n'
+        "}\n"
+    )
+    classified = classify_provider_capacity_failure(text)
+    assert classified["exhausted"] is True
+    assert "grok" in classified["providers"] or "provider" in classified["providers"]
+    assert classified["reason"] == "provider_capacity_exhausted"
 
 
 def test_provider_capacity_deferral_rolls_back_start_charge(tmp_path) -> None:

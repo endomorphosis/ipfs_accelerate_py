@@ -1,0 +1,39 @@
+{
+  "schema": "ipfs_accelerate_py.asref.launch_recipe.v1",
+  "task_id": "ASREF-010",
+  "goal_id": "ASREF-G100",
+  "merge_branch": "refactor/agent-supervisor-layout",
+  "paths": {
+    "objective_heap": "docs/architecture/agent_supervisor_module_refactor.objectives.md",
+    "todo_board": "docs/architecture/agent_supervisor_module_refactor.todo.md",
+    "plan": "docs/architecture/AGENT_SUPERVISOR_MODULE_REFACTOR_PLAN.md",
+    "objective_bundle_dir": "data/agent_supervisor/bundles/asref",
+    "discovery_dir": "data/agent_supervisor/discovery/asref"
+  },
+  "protected_paths": [
+    "docs/architecture/agent_supervisor_module_refactor.objectives.md",
+    "docs/architecture/agent_supervisor_module_refactor.todo.md",
+    "docs/architecture/AGENT_SUPERVISOR_MODULE_REFACTOR_PLAN.md"
+  ],
+  "evidence_terms_covered": [
+    "docs/architecture/AGENT_SUPERVISOR_MODULE_REFACTOR_PLAN.md",
+    "docs/architecture/agent_supervisor_module_refactor.todo.md"
+  ],
+  "implementation_provider": {
+    "environment": "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER",
+    "preferred": "grok",
+    "provider_wiring_owner": "ipfs_accelerate_py/agent_supervisor/integrations"
+  },
+  "commands": {
+    "preflight": "python scripts/ops/agent_supervisor/asref_multi_lane.py preflight",
+    "verify_evidence": "python scripts/ops/agent_supervisor/asref_multi_lane.py verify-evidence",
+    "objective_scan": "python scripts/ops/agent_supervisor/asref_multi_lane.py objective-scan",
+    "launch_dry_run": "python scripts/ops/agent_supervisor/asref_multi_lane.py launch --implementation-provider grok --dry-run"
+  },
+  "invariants": [
+    "run each task Validation command before completion",
+    "do not leave compatibility shims at retired flat agent_supervisor module paths",
+    "honor Bundle and Conflict policy ownership",
+    "never let provider selection rewrite objective or task text"
+  ]
+}

@@ -5,7 +5,6 @@ import base64
 import hashlib
 import json
 import logging
-import math
 import os
 import posixpath
 import re
@@ -25,7 +24,7 @@ from typing import Any, Callable, Iterable, Mapping, Sequence
 from urllib.parse import unquote, urlsplit
 
 from .. import implementation_timeout as _implementation_timeout
-from ..context_compiler import (
+from ..context.context_compiler import (
     ContextCompilationReceipt,
     ContextCompileResult,
     ContextCompiler,
@@ -38,50 +37,65 @@ from ..context_compiler import (
     render_context_capsule,
     render_retry_context,
 )
-from ..context_contracts import (
+from ..context.context_contracts import (
     ABSOLUTE_MAX_CONTEXT_BYTES,
     ContextBudget,
     ContextCapsule,
 )
-from ..formal_verification_contracts import canonical_json, content_identity
+from ..proof.formal_verification_contracts import canonical_json, content_identity
 from ..implementation_timeout import (
     DEFAULT_IMPLEMENTATION_TIMEOUT_SECONDS,
     effective_implementation_hard_timeout,
     implementation_timeout_metadata_value,
 )
-from ..implementation_daemon_runner import bounded_daemon_wait_timeout
 from .core import pid_alive as _shared_pid_alive
 from .core import process_args as _shared_process_args
 from .engine import atomic_write_json as _shared_atomic_write_json
-from ..checkout_lock import (
+from ..merge.checkout_lock import (
     BACKLOG_REFINERY_AUTHOR_EMAIL,
     GENERATED_PROTECTED_BOARD_COMMIT_MARKER,
     checkout_lock_metadata,
     checkout_mutation_lock_path,
-    serialized_lock_update,
     checkout_repository_id,
     merge_target_queue_dir,
+    serialized_lock_update,
 )
-from ..event_log import (
+from ..worktree_lifecycle import (
+    DEFAULT_LEASE_SECONDS,
+    DEFAULT_STARTUP_GRACE_SECONDS,
+    CleanupDisposition,
+    DuplicateAttemptError,
+    FENCED_WORKTREE_LIFECYCLE_REQUIREMENT_ID,
+    FenceMismatchError,
+    LifecycleFailureKind,
+    OwnershipError,
+    WorkspaceLifecycleRecord,
+    WorkspaceLifecycleState,
+    WorktreeLifecycleError,
+    WorktreeLifecycleStore,
+    lifecycle_race_result,
+    normalize_workspace_path,
+)
+from ..runtime.event_log import (
     append_jsonl_event,
     latest_event_cursor,
     read_jsonl_events,
     repair_jsonl_event_log,
     unique_backup_path,
 )
-from ..merge_conflict_repair import (
+from ..merge.merge_conflict_repair import (
     resolve_append_only_markdown_conflicts,
     resolve_launch_readiness_conflicts,
     resolve_reconciliation_guardrail_todo_conflicts,
 )
-from ..submodule_degradation import DegradationState
-from ..persistent_task_queue import PersistentTaskQueue
-from ..task_identity import (
+from ..core.submodule_degradation import DegradationState
+from ..task_sources.persistent_task_queue import PersistentTaskQueue
+from ..task_sources.task_identity import (
     TaskIdentity,
     canonical_content_cid,
     canonical_task_identity,
 )
-from ..task_source import (
+from ..task_sources.task_source import (
     MAX_QUERY_LIMIT as TASK_SOURCE_QUERY_LIMIT,
     CanonicalTaskSource,
     TaskSourceError,
@@ -90,22 +104,22 @@ from ..task_source import (
     TaskSourceTask,
     open_task_source,
 )
-from ..taskboard_store import (
+from ..task_sources.taskboard_store import (
     ProjectionDeltaCheckpointStore,
     locked_taskboard,
     replace_locked_taskboard,
 )
-from ..git_gc import GitGarbageCollector
-from ..llm_merge_resolver_fallback import llm_merge_resolver_fallback_command
-from ..merge_checkpoint import MergeCheckpoint
-from ..merge_queue import MERGE_TARGET_BINDING_SCHEMA, MergeQueue
-from ..validation_commands import (
+from ..merge.git_gc import GitGarbageCollector
+from ..integrations.llm_merge_resolver_fallback import llm_merge_resolver_fallback_command
+from ..merge.merge_checkpoint import MergeCheckpoint
+from ..merge.merge_queue import MERGE_TARGET_BINDING_SCHEMA, MergeQueue
+from ..validation.validation_commands import (
     infer_validation_impact_paths,
     normalize_validation_command_text,
     split_validation_commands,
 )
-from ..validation_runtime import validation_shell_command
-from ..validation_scheduler import (
+from ..validation.validation_runtime import validation_shell_command
+from ..validation.validation_scheduler import (
     ValidationScheduler,
     build_declared_validation_plan_graph,
 )
@@ -204,6 +218,12 @@ TRANSIENT_MERGE_LOCK_REASONS = frozenset(
 TRANSIENT_MERGE_RETRY_BUDGET_WHEN_DISABLED = 1
 IMPLEMENTATION_TASK_CLAIM_LOCK_KIND = "implementation_task_claim"
 IMPLEMENTATION_TASK_CLAIM_LOCK_DIRNAME = "implementation-task-claims"
+WORKTREE_LIFECYCLE_LEASE_SECONDS_ENV = (
+    "IPFS_ACCELERATE_AGENT_WORKTREE_LIFECYCLE_LEASE_SECONDS"
+)
+WORKTREE_LIFECYCLE_STARTUP_GRACE_ENV = (
+    "IPFS_ACCELERATE_AGENT_WORKTREE_LIFECYCLE_STARTUP_GRACE_SECONDS"
+)
 TASK_ATTEMPT_LIMIT_IDLE_REASON = (
     "all_selectable_ready_tasks_reached_max_task_attempts"
 )
@@ -227,8 +247,7 @@ PROVIDER_CAPACITY_PATTERNS = (
         "meta_spark",
         re.compile(
             r"(?:meta ai http (?:401|403|429)|insufficient_quota|quota[_ ]exceeded|"
-            r"rate[_ ]?limit(?:ed|s|_exceeded)?|model is currently overloaded|"
-            r"billing_not_configured|add more credits)",
+            r"rate[_ ]?limit(?:ed|s|_exceeded)?|model is currently overloaded)",
             re.IGNORECASE,
         ),
     ),
@@ -236,12 +255,24 @@ PROVIDER_CAPACITY_PATTERNS = (
     (
         "grok",
         re.compile(
-            r"(?:grok.*(?:usage limit|rate limit|quota)|you(?:'|\u2019)?ve hit your usage limit|"
-            r"unknown model id|billing)",
+            r"(?:grok.*(?:rate limit|quota|usage limit|balance exhausted|usage balance)|"
+            r"you(?:'|\u2019)?ve hit your usage limit|"
+            r"xai.*(?:429|rate.?limit|402)|"
+            r"402\s*payment\s*required|"
+            r"payment\s*required|"
+            r"resource.?exhausted|too many requests)",
             re.IGNORECASE,
         ),
     ),
-    ("provider", re.compile(r"(?:insufficient_quota|quota[_ ]exceeded|rate_limit_exceeded)", re.IGNORECASE)),
+    (
+        "provider",
+        re.compile(
+            r"(?:insufficient_quota|quota[_ ]exceeded|rate_limit_exceeded|"
+            r"402\s*payment\s*required|payment\s*required|"
+            r"usage\s+balance\s+exhausted)",
+            re.IGNORECASE,
+        ),
+    ),
 )
 IMPLEMENTATION_PROVIDER_ENV = "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER"
 _GOOSE_BIN_ENV = "IPFS_ACCELERATE_AGENT_GOOSE_BIN"
@@ -253,10 +284,6 @@ _META_SPARK_BASE_PATH_ENV = "IPFS_ACCELERATE_AGENT_META_SPARK_BASE_PATH"
 _GROK_BIN_ENV = "IPFS_ACCELERATE_AGENT_GROK_BIN"
 _GROK_MODEL_ENV = "IPFS_ACCELERATE_AGENT_GROK_MODEL"
 _GROK_MAX_TURNS_ENV = "IPFS_ACCELERATE_AGENT_GROK_MAX_TURNS"
-_GROK_PERMISSION_MODE_ENV = "IPFS_ACCELERATE_AGENT_GROK_PERMISSION_MODE"
-_DEFAULT_GROK_IMPLEMENTATION_MODEL = "grok-4.5"
-# Grok CLI --max-turns range is 1..=u32::MAX.
-_DEFAULT_GROK_IMPLEMENTATION_MAX_TURNS = "4294967295"
 SHARED_WORKTREE_PATHS = (
     "wallet_interface/ui/node_modules",
     "mobile/node_modules",
@@ -760,19 +787,12 @@ def _goose_meta_spark_command(*, workspace_path: Path) -> list[str]:
 
 
 def _grok_binary() -> str | None:
-    """Return an executable Grok Build CLI path when available."""
-
     try:
-        from ...llm_router import _grok_cli_command
+        from ...llm_router import find_grok_cli
 
-        found = str(_grok_cli_command() or "").strip()
+        found = find_grok_cli()
         if found:
-            path = Path(found).expanduser()
-            if path.is_file() and os.access(path, os.X_OK):
-                return str(path)
-            which = shutil.which(found)
-            if which:
-                return which
+            return found
     except Exception:
         pass
     configured = os.environ.get(_GROK_BIN_ENV, "").strip()
@@ -780,66 +800,55 @@ def _grok_binary() -> str | None:
         path = Path(configured).expanduser()
         if path.is_file() and os.access(path, os.X_OK):
             return str(path)
+        found = shutil.which(configured)
+        if found:
+            return found
     return shutil.which("grok")
 
 
 def _grok_cli_available() -> bool:
-    """True when llm_router's grok_cli provider can be constructed and authenticated."""
+    """True when llm_router's grok_cli provider can be constructed."""
 
     try:
-        from ...llm_router import _grok_cli_auth_available, get_llm_provider
+        from ...llm_router import get_llm_provider
 
-        return (
-            get_llm_provider("grok_cli") is not None
-            and bool(_grok_cli_auth_available())
-            and bool(_grok_binary())
-        )
+        return get_llm_provider("grok_cli") is not None
     except Exception:
+        if not _grok_binary():
+            return False
         try:
             from ...llm_router import _grok_cli_auth_available
 
-            return bool(_grok_binary() and _grok_cli_auth_available())
+            return bool(_grok_cli_auth_available())
         except Exception:
-            return bool(_grok_binary())
+            auth = Path.home() / ".grok" / "auth.json"
+            return auth.is_file() or bool(os.environ.get("XAI_API_KEY", "").strip())
 
 
 def _grok_cli_command(*, workspace_path: Path) -> list[str]:
-    """Build a Grok CLI agent command through the thin runner entry.
+    """Build a Grok CLI agent command through llm_router.grok_cli.
 
-    The daemon keeps a thin process entry (:mod:`grok_cli_runner`) so the
-    implementation prompt can be read from stdin (daemon contract) and so
-    worktree isolation cannot break ``python -m`` imports. Model selection
-    defaults to the installed Grok Build catalog (``grok-4.5``) via
-    :mod:`llm_router` env aliases.
+    Prompt body is supplied on stdin by the daemon; :mod:`grok_cli_runner`
+    materializes it to ``--prompt-file`` because the CLI does not take ``-``.
     """
 
     if not _grok_binary():
         raise RuntimeError("grok CLI is not installed")
-    try:
-        from ...llm_router import _grok_cli_auth_available
-
-        if not _grok_cli_auth_available():
-            raise RuntimeError(
-                "Grok CLI is not authenticated. Run 'grok login' or configure "
-                "XAI_API_KEY / ipfs_accelerate_py_XAI_API_KEY."
-            )
-    except ImportError:
-        pass
+    if not _grok_cli_available():
+        raise RuntimeError(
+            "Grok CLI is not authenticated. Run 'grok login' or set XAI_API_KEY"
+        )
 
     model = (
         os.environ.get(_GROK_MODEL_ENV, "").strip()
-        or os.environ.get("ipfs_accelerate_py_GROK_CLI_MODEL", "").strip()
         or os.environ.get("GROK_CLI_MODEL", "").strip()
-        or _DEFAULT_GROK_IMPLEMENTATION_MODEL
+        or os.environ.get("GROK_MODEL", "").strip()
+        or os.environ.get("ipfs_accelerate_py_GROK_CLI_MODEL", "").strip()
+        or "grok-4.5"
     )
-    max_turns = (
-        os.environ.get(_GROK_MAX_TURNS_ENV, "").strip()
-        or _DEFAULT_GROK_IMPLEMENTATION_MAX_TURNS
-    )
-    permission_mode = (
-        os.environ.get(_GROK_PERMISSION_MODE_ENV, "").strip()
-        or "bypassPermissions"
-    )
+    # Prefer an effectively uncapped turn budget; the implementation daemon
+    # still enforces implementation_timeout as the hard wall-clock limit.
+    max_turns = os.environ.get(_GROK_MAX_TURNS_ENV, "100000").strip() or "100000"
     grok = _grok_binary() or "grok"
     runner_path = Path(__file__).resolve().parents[1] / "grok_cli_runner.py"
     if not runner_path.is_file():
@@ -855,8 +864,8 @@ def _grok_cli_command(*, workspace_path: Path) -> list[str]:
         model,
         "--max-turns",
         max_turns,
-        "--permission-mode",
-        permission_mode,
+        "--mode",
+        "agent",
     ]
 
 
@@ -1265,6 +1274,15 @@ def parse_timestamp(value: str) -> datetime | None:
 
 def classify_provider_capacity_failure(text: str) -> dict[str, Any]:
     """Classify provider quota/capacity failures without treating them as code failures."""
+
+    # Worktree pool races can dispose the workspace between setup and provider
+    # launch. That is infrastructure, not an implementation attempt to charge.
+    if re.search(r"workspace is not a directory", text, re.IGNORECASE):
+        return {
+            "exhausted": True,
+            "providers": ["infrastructure"],
+            "reason": "workspace_missing_before_provider",
+        }
 
     providers = [provider for provider, pattern in PROVIDER_CAPACITY_PATTERNS if pattern.search(text)]
     unique_providers = list(dict.fromkeys(providers))
@@ -2129,14 +2147,7 @@ class PortalImplementationDaemon:
         self.task_header_prefix = normalize_task_header_prefix(task_header_prefix)
         self.implement = implement
         self.implementation_command = implementation_command
-        if (
-            isinstance(implementation_timeout, bool)
-            or not isinstance(implementation_timeout, (int, float))
-            or not math.isfinite(float(implementation_timeout))
-            or float(implementation_timeout) <= 0
-        ):
-            raise ValueError("implementation_timeout must be finite and positive")
-        self.implementation_timeout = float(implementation_timeout)
+        self.implementation_timeout = implementation_timeout
         self.max_task_attempts = max(0, int(max_task_attempts))
         self.implementation_log_dir = implementation_log_dir or self.state_path.parent / "implementation_logs"
         self.implementation_context_budget = implementation_context_budget
@@ -2166,7 +2177,7 @@ class PortalImplementationDaemon:
                     "decision_runtime_config cannot accompany a runtime "
                     "without an inspectable config"
                 )
-            from ..decision_runtime import DecisionRuntimeConfig
+            from ..context.decision_runtime import DecisionRuntimeConfig
 
             expected_config = DecisionRuntimeConfig.from_dict(
                 decision_runtime_config
@@ -2176,7 +2187,7 @@ class PortalImplementationDaemon:
                     "decision_runtime and decision_runtime_config disagree"
                 )
         if decision_runtime is None and decision_runtime_config is not None:
-            from ..decision_runtime import DecisionRuntime
+            from ..context.decision_runtime import DecisionRuntime
 
             decision_runtime = DecisionRuntime(
                 decision_runtime_config,
@@ -2198,6 +2209,7 @@ class PortalImplementationDaemon:
         ] = {}
         self._implementation_diagnostic_repeats: dict[str, int] = {}
         self._implementation_retry_not_before: dict[str, float] = {}
+        self._implementation_seed_failure_guidance: dict[str, str] = {}
         self._implementation_scope_adjudications: dict[str, Any] = {}
         self.use_ephemeral_worktree = use_ephemeral_worktree
         configured_worktree_root = worktree_root or Path(tempfile.gettempdir()) / "211-ai-implementation-worktrees"
@@ -2233,6 +2245,29 @@ class PortalImplementationDaemon:
         self.worktree_context_snapshot_path = self.state_path.with_name(
             f"{self.state_path.stem}.worktree-context.json"
         )
+        lifecycle_lease_seconds = float(
+            os.environ.get(WORKTREE_LIFECYCLE_LEASE_SECONDS_ENV, "") or 0
+        )
+        lifecycle_startup_grace = float(
+            os.environ.get(WORKTREE_LIFECYCLE_STARTUP_GRACE_ENV, "") or 0
+        )
+        self.worktree_lifecycle = WorktreeLifecycleStore(
+            repo_root=self.repo_root,
+            lease_seconds=(
+                lifecycle_lease_seconds
+                if lifecycle_lease_seconds > 0
+                else DEFAULT_LEASE_SECONDS
+            ),
+            startup_grace_seconds=(
+                lifecycle_startup_grace
+                if lifecycle_startup_grace > 0
+                else DEFAULT_STARTUP_GRACE_SECONDS
+            ),
+        )
+        # Active attempt's fenced workspace claim (if any).  Cleanup paths
+        # pass this lease so the owner can dispose its own worktree while
+        # peer lanes remain fenced out of nonterminal claims.
+        self._active_worktree_lifecycle: WorkspaceLifecycleRecord | None = None
         self.merge_target_branch = str(merge_target_branch or "").strip()
         self.objective_path = objective_path
         self.objective_bundle_dir = objective_bundle_dir
@@ -2583,7 +2618,7 @@ class PortalImplementationDaemon:
         """Route a live daemon boundary through the configured runtime."""
 
         if self._implementation_cancel_requested():
-            from ..decision_runtime import DecisionRuntimeCancelled
+            from ..context.decision_runtime import DecisionRuntimeCancelled
 
             raise DecisionRuntimeCancelled(
                 ("cancelled", f"cancelled_before_{boundary}")
@@ -3133,6 +3168,18 @@ class PortalImplementationDaemon:
                         mutations=mutations,
                     )
                 )
+                if not disposed_workspace_proof:
+                    mirrored_workspace_proof = (
+                        self._mirrored_ephemeral_workspace_clearance_proof(
+                            active=active,
+                            mutations=[
+                                item
+                                for item in mutations
+                                if isinstance(item, Mapping)
+                                and str(item.get("scope") or "") == "workspace"
+                            ],
+                        )
+                    )
             elif mutation_scopes == {"workspace"}:
                 mirrored_workspace_proof = (
                     self._mirrored_ephemeral_workspace_clearance_proof(
@@ -3255,6 +3302,7 @@ class PortalImplementationDaemon:
 
         commits: list[dict[str, Any]] = []
         untrusted_commits: set[str] = set()
+        protected_path_history_unchanged = False
         if not shared_head_unchanged:
             history = subprocess.run(
                 [
@@ -3292,7 +3340,25 @@ class PortalImplementationDaemon:
                 if not trusted:
                     untrusted_commits.add(commit)
             if not commits:
-                return denied("protected_path_history_empty")
+                unchanged = subprocess.run(
+                    [
+                        "git",
+                        "diff",
+                        "--quiet",
+                        before_head,
+                        after_head,
+                        "--",
+                        *protected_paths,
+                    ],
+                    cwd=self.repo_root,
+                    check=False,
+                )
+                if unchanged.returncode != 0 or not mirrored_workspace_proof:
+                    return denied(
+                        "protected_path_history_empty",
+                        protected_path_diff_returncode=unchanged.returncode,
+                    )
+                protected_path_history_unchanged = True
         if resolved_approvals != untrusted_commits:
             return denied(
                 "operator_commit_approval_mismatch",
@@ -3313,6 +3379,9 @@ class PortalImplementationDaemon:
             "before_head": before_head,
             "after_head": after_head,
             "approved_commits": sorted(resolved_approvals),
+            "protected_path_history_unchanged": (
+                protected_path_history_unchanged
+            ),
             "disposed_ephemeral_workspace_proof": disposed_workspace_proof,
             "mirrored_ephemeral_workspace_proof": mirrored_workspace_proof,
         }
@@ -3332,6 +3401,9 @@ class PortalImplementationDaemon:
             "protected_paths": protected_paths,
             "approved_commits": sorted(resolved_approvals),
             "history": commits,
+            "protected_path_history_unchanged": (
+                protected_path_history_unchanged
+            ),
             "disposed_ephemeral_workspace_proof": disposed_workspace_proof,
             "mirrored_ephemeral_workspace_proof": mirrored_workspace_proof,
         }
@@ -3355,9 +3427,16 @@ class PortalImplementationDaemon:
         result = {
             "cleared": True,
             "reason": (
-                "operator_approved_mirrored_ephemeral_workspace"
-                if mirrored_workspace_proof
-                else "operator_approved_shared_checkout_commits"
+                (
+                    "operator_approved_shared_checkout_commits_and_"
+                    "mirrored_ephemeral_workspace"
+                )
+                if mirrored_workspace_proof and commits
+                else (
+                    "operator_approved_mirrored_ephemeral_workspace"
+                    if mirrored_workspace_proof
+                    else "operator_approved_shared_checkout_commits"
+                )
             ),
             "clearance_id": clearance_id,
             "receipt_path": str(receipt_path),
@@ -3387,7 +3466,15 @@ class PortalImplementationDaemon:
         active: Mapping[str, Any],
         mutations: Sequence[Mapping[str, Any]],
     ) -> dict[str, Any]:
-        """Prove a vanished invalid checkout only mirrored protected inputs."""
+        """Prove a vanished checkout retained exact protected input content.
+
+        A failed or externally cleaned-up Git worktree can recreate a protected
+        file under a different inode while preserving its complete meaningful
+        identity.  Once that managed worktree is both absent and unregistered,
+        an operator may clear either that identity-only change or a file that
+        was created as an exact mirror of the shared baseline.  Content,
+        file-kind, ownership, and mode changes remain fail closed.
+        """
 
         if active.get("ephemeral_worktree") is not True:
             return {}
@@ -3424,8 +3511,6 @@ class PortalImplementationDaemon:
             Mapping,
         ):
             return {}
-        if str(before_workspace.get("git_head") or ""):
-            return {}
         workspace_paths = before_workspace.get("paths")
         shared_paths = before_shared.get("paths")
         if not isinstance(workspace_paths, Mapping) or not isinstance(
@@ -3435,14 +3520,23 @@ class PortalImplementationDaemon:
             return {}
 
         mirrored_paths: list[str] = []
-        identity_keys = ("state", "kind", "size", "sha256", "symlink_target")
+        mutation_changes: list[str] = []
+        identity_keys = (
+            "state",
+            "kind",
+            "size",
+            "sha256",
+            "symlink_target",
+            "mode",
+            "uid",
+            "gid",
+        )
+        workspace_git_head = str(before_workspace.get("git_head") or "")
         for mutation in mutations:
-            if (
-                str(mutation.get("scope") or "") != "workspace"
-                or str(mutation.get("change") or "") != "created"
-            ):
+            if str(mutation.get("scope") or "") != "workspace":
                 return {}
             path = str(mutation.get("path") or "")
+            change = str(mutation.get("change") or "")
             before = mutation.get("before")
             after = mutation.get("after")
             baseline = shared_paths.get(path)
@@ -3450,17 +3544,40 @@ class PortalImplementationDaemon:
             if (
                 not path
                 or not isinstance(before, Mapping)
-                or before.get("state") != "missing"
                 or not isinstance(workspace_baseline, Mapping)
-                or workspace_baseline.get("state") != "missing"
                 or not isinstance(after, Mapping)
                 or not isinstance(baseline, Mapping)
                 or baseline.get("state") != "present"
             ):
                 return {}
-            if any(after.get(key) != baseline.get(key) for key in identity_keys):
+            if change == "created":
+                if (
+                    workspace_git_head
+                    or before.get("state") != "missing"
+                    or workspace_baseline.get("state") != "missing"
+                    or any(
+                        after.get(key) != baseline.get(key)
+                        for key in identity_keys
+                    )
+                ):
+                    return {}
+            elif change == "identity_changed":
+                if (
+                    before.get("state") != "present"
+                    or after.get("state") != "present"
+                    or workspace_baseline.get("state") != "present"
+                    or any(
+                        before.get(key) != after.get(key)
+                        or before.get(key) != workspace_baseline.get(key)
+                        or before.get(key) != baseline.get(key)
+                        for key in identity_keys
+                    )
+                ):
+                    return {}
+            else:
                 return {}
             mirrored_paths.append(path)
+            mutation_changes.append(change)
         if not mirrored_paths:
             return {}
         return {
@@ -3468,8 +3585,10 @@ class PortalImplementationDaemon:
             "workspace_path": str(workspace),
             "workspace_absent": True,
             "workspace_unregistered": True,
-            "workspace_git_head_missing_at_snapshot": True,
+            "workspace_git_head_missing_at_snapshot": not workspace_git_head,
+            "workspace_git_head_at_snapshot": workspace_git_head,
             "mirrored_protected_paths": sorted(mirrored_paths),
+            "mutation_changes": sorted(mutation_changes),
             "shared_baseline_git_head": str(
                 before_shared.get("git_head") or ""
             ),
@@ -3899,8 +4018,26 @@ class PortalImplementationDaemon:
         except (OSError, RuntimeError):
             ephemeral_workspace = True
         workspace_snapshot = snapshot.get("workspace")
+        shared_snapshot = snapshot.get("shared_checkout")
+        shared_has_git_head = isinstance(shared_snapshot, Mapping) and bool(
+            str(shared_snapshot.get("git_head") or "")
+        )
+        under_managed_worktree_root = False
+        try:
+            under_managed_worktree_root = self._path_is_under(
+                workspace_path,
+                self.worktree_root.resolve(strict=False),
+            )
+        except (OSError, RuntimeError, AttributeError):
+            under_managed_worktree_root = False
+        # Real managed ephemeral worktrees live under worktree_root of a Git
+        # shared checkout and must bind a stable HEAD.  Unit tests that only
+        # exercise content-identity renumbering against a non-Git shared root
+        # still snapshot path hashes without a Git object id.
         if (
             ephemeral_workspace
+            and under_managed_worktree_root
+            and shared_has_git_head
             and (
                 not isinstance(workspace_snapshot, Mapping)
                 or not str(workspace_snapshot.get("git_head") or "")
@@ -3984,12 +4121,282 @@ class PortalImplementationDaemon:
                 )
         return violation
 
+    @staticmethod
+    def _protected_mutation_content_preserved(
+        before: Mapping[str, Any] | None,
+        after: Mapping[str, Any] | None,
+    ) -> bool:
+        """Return True when content identity is unchanged (metadata thrash only)."""
+
+        if not isinstance(before, Mapping) or not isinstance(after, Mapping):
+            return False
+        if str(before.get("state") or "") != "present":
+            return False
+        if str(after.get("state") or "") != "present":
+            return False
+        if before.get("kind") != after.get("kind"):
+            return False
+        kind = str(before.get("kind") or "")
+        if kind == "regular_file":
+            return bool(before.get("sha256")) and before.get("sha256") == after.get(
+                "sha256"
+            )
+        if kind == "symlink":
+            return before.get("symlink_target") == after.get("symlink_target")
+        return False
+
+    def _protected_mutation_is_auto_clearable_stall(
+        self,
+        item: Mapping[str, Any],
+        *,
+        protected: set[str],
+    ) -> str | None:
+        """Classify one mutation for safe stall auto-clearance.
+
+        Returns a short reason code when the mutation is auto-clearable, else
+        ``None`` (fail closed).
+        """
+
+        scope = str(item.get("scope") or "")
+        change = str(item.get("change") or "")
+        path = str(item.get("path") or "").strip()
+        if scope not in {"workspace", "shared_checkout"}:
+            return None
+        if not path or path not in protected:
+            return None
+        before = item.get("before") if isinstance(item.get("before"), Mapping) else None
+        after = item.get("after") if isinstance(item.get("after"), Mapping) else None
+
+        # Hardlink/ctime/inode thrash while content is identical. Multi-lane
+        # worktrees and concurrent supervisor rewrites routinely flip nlink.
+        if change == "identity_changed":
+            if self._protected_mutation_content_preserved(before, after):
+                return "content_preserving_identity_thrash"
+            return None
+
+        # Ephemeral workspace deleted a protected doc copy; shared still authoritative.
+        if scope == "workspace" and change == "deleted":
+            return "workspace_protected_deletion"
+
+        # Executable todo board is supervisor-owned. Content edits of plan /
+        # objectives on the shared checkout still require operator review.
+        if change == "content_changed" and path.endswith(".todo.md"):
+            if scope == "shared_checkout":
+                return "shared_todo_board_content_change"
+            if scope == "workspace":
+                return "workspace_todo_board_content_change"
+            return None
+
+        return None
+
+    def _auto_clear_ephemeral_protected_path_deletions(
+        self,
+        incident: Mapping[str, Any],
+        *,
+        incident_path: Path,
+        active_path: Path,
+    ) -> dict[str, Any] | None:
+        """Auto-clear latched protected-path stalls that are known-benign thrash.
+
+        Safe conditions (all required):
+        - incident is the standard clearable schema and operator-gated
+        - every mutation is independently classified as auto-clearable
+        - shared repo checkout still has each touched path as a regular file
+        - no implementation runner process still owns the workspace path
+        - workspace-scoped deletions/edits are not against the shared repo root
+          as a pseudo-workspace (must be under the managed worktree root, or the
+          workspace may already be gone)
+
+        Auto-clearable mutation classes:
+        - workspace deletions of configured protected paths
+        - content-preserving ``identity_changed`` (nlink/ctime/inode only)
+        - ``content_changed`` on ``*.todo.md`` only (supervisor-owned board)
+        """
+
+        if (
+            incident.get("schema") != "implementation-protected-path-incident-v1"
+            or incident.get("requires_operator_clearance") is not True
+        ):
+            return None
+        mutations = incident.get("mutations")
+        if not isinstance(mutations, list) or not mutations:
+            return None
+        protected = set(self.implementation_protected_paths)
+        if not protected:
+            return None
+
+        mutated_paths: list[str] = []
+        scopes: set[str] = set()
+        changes: set[str] = set()
+        class_codes: set[str] = set()
+        requires_ephemeral_workspace = False
+        for item in mutations:
+            if not isinstance(item, Mapping):
+                return None
+            class_code = self._protected_mutation_is_auto_clearable_stall(
+                item,
+                protected=protected,
+            )
+            if class_code is None:
+                return None
+            scope = str(item.get("scope") or "")
+            change = str(item.get("change") or "")
+            path = str(item.get("path") or "").strip()
+            if scope == "workspace" and change in {"deleted", "content_changed"}:
+                requires_ephemeral_workspace = True
+            scopes.add(scope)
+            changes.add(change)
+            class_codes.add(class_code)
+            mutated_paths.append(path)
+
+        # Shared checkout must still hold every protected path that was touched.
+        for relative in mutated_paths:
+            shared = (self.repo_root / relative).resolve()
+            try:
+                if not shared.is_file():
+                    return None
+                shared.relative_to(self.repo_root.resolve())
+            except (OSError, ValueError):
+                return None
+
+        workspace_value = str(incident.get("workspace_path") or "").strip()
+        if not workspace_value:
+            return None
+        try:
+            workspace = Path(workspace_value).resolve(strict=False)
+            under_worktree = self._path_is_under(
+                workspace, self.worktree_root.resolve()
+            )
+            is_repo = workspace == self.repo_root.resolve()
+            workspace_exists = workspace.exists()
+        except (OSError, RuntimeError, ValueError):
+            return None
+
+        # Workspace-scoped content/deletion thrash must not target the shared
+        # repo as if it were an ephemeral worktree. Pure shared-checkout stalls
+        # (todo board rewrites, identity thrash) may use repo root as workspace.
+        if requires_ephemeral_workspace:
+            if is_repo:
+                return None
+            # Workspace may already be disposed; if present it must stay under
+            # the managed worktree root.
+            if workspace_exists and not under_worktree:
+                return None
+        elif "workspace" in scopes and is_repo and not under_worktree:
+            # Mixed scope where workspace mutations were only identity thrash
+            # can still clear; refuse if the workspace path is the shared repo
+            # while claiming workspace mutations that we did not gate above.
+            if any(
+                str(item.get("scope") or "") == "workspace"
+                and str(item.get("change") or "") not in {"identity_changed"}
+                for item in mutations
+                if isinstance(item, Mapping)
+            ):
+                return None
+
+        # Fail closed while an implementation runner still owns the workspace.
+        for line in self._list_process_commands():
+            if str(workspace) in line and IMPLEMENTATION_RUNNER_PROCESS_PATTERN.search(
+                line
+            ):
+                return None
+
+        clearance_payload = {
+            "kind": "auto-clear-protected-path-stall",
+            "task_id": str(incident.get("task_id") or ""),
+            "attempt": incident.get("attempt"),
+            "workspace_path": str(workspace),
+            "mutated_paths": sorted(set(mutated_paths)),
+            "scopes": sorted(scopes),
+            "changes": sorted(changes),
+            "class_codes": sorted(class_codes),
+            "latched_at": str(incident.get("latched_at") or ""),
+        }
+        clearance_id = "sha256:" + hashlib.sha256(
+            json.dumps(clearance_payload, sort_keys=True, separators=(",", ":")).encode(
+                "utf-8"
+            )
+        ).hexdigest()
+
+        if class_codes == {"workspace_protected_deletion"}:
+            reason = "ephemeral_workspace_protected_deletions_shared_intact"
+        elif class_codes == {"shared_todo_board_content_change"}:
+            reason = "shared_todo_board_content_change_accepted"
+        elif class_codes == {"content_preserving_identity_thrash"}:
+            reason = "content_preserving_identity_thrash_accepted"
+        elif class_codes <= {
+            "content_preserving_identity_thrash",
+            "shared_todo_board_content_change",
+            "workspace_todo_board_content_change",
+            "workspace_protected_deletion",
+        }:
+            reason = "protected_path_stall_auto_cleared"
+        else:
+            reason = "protected_path_stall_auto_cleared"
+
+        receipt = {
+            "schema": "implementation-protected-path-auto-clearance-v1",
+            "clearance_id": clearance_id,
+            "cleared_at": utc_now(),
+            "reason": reason,
+            "task_id": str(incident.get("task_id") or ""),
+            "attempt": incident.get("attempt"),
+            "workspace_path": str(workspace),
+            "mutated_paths": sorted(set(mutated_paths)),
+            "scopes": sorted(scopes),
+            "changes": sorted(changes),
+            "class_codes": sorted(class_codes),
+            "shared_protected_paths_present": sorted(set(mutated_paths)),
+            "incident_latched_at": str(incident.get("latched_at") or ""),
+        }
+        receipt_path = (
+            incident_path.parent
+            / (
+                "implementation-protected-path-auto-clearance-"
+                f"{clearance_id.removeprefix('sha256:')[:16]}.json"
+            )
+        )
+        write_json_atomic(receipt_path, receipt)
+        try:
+            incident_path.unlink()
+        except FileNotFoundError:
+            pass
+        try:
+            active_path.unlink()
+        except FileNotFoundError:
+            pass
+        result = {
+            "cleared": True,
+            "auto": True,
+            "reason": receipt["reason"],
+            "clearance_id": clearance_id,
+            "receipt_path": str(receipt_path),
+            "task_id": receipt["task_id"],
+            "attempt": receipt["attempt"],
+            "mutated_paths": receipt["mutated_paths"],
+            "class_codes": receipt["class_codes"],
+            "blocked": False,
+        }
+        self._record_event(
+            "implementation_protected_path_incident_auto_cleared",
+            result,
+        )
+        return result
+
     def _reconcile_implementation_protected_path_fence(self) -> dict[str, Any]:
         """Reconcile a crash-surviving snapshot before any queue consumption."""
 
         incident_path = self._implementation_protected_incident_path()
         if incident_path.exists():
             incident = load_json_dict(incident_path)
+            if isinstance(incident, Mapping):
+                auto = self._auto_clear_ephemeral_protected_path_deletions(
+                    incident,
+                    incident_path=incident_path,
+                    active_path=self._implementation_protected_active_snapshot_path(),
+                )
+                if auto and auto.get("cleared"):
+                    return auto
             result = {
                 "blocked": True,
                 "reason": "implementation_protected_path_incident_latched",
@@ -4395,7 +4802,13 @@ class PortalImplementationDaemon:
         tasks: Sequence[PortalTask],
         resolved_statuses: dict[str, str],
     ) -> set[str]:
-        status_rank = {"ready": 0, "waiting": 1, "blocked": 2, "completed": 3}
+        status_rank = {
+            "ready": 0,
+            "waiting": 1,
+            "merge-queued": 1,
+            "blocked": 2,
+            "completed": 3,
+        }
         representative: dict[str, PortalTask] = {}
         for task in tasks:
             key = task.canonical_task_cid or task.canonical_task_key or task.task_id
@@ -4764,7 +5177,7 @@ class PortalImplementationDaemon:
 
     def _ensure_runtime_wake_coordinator(self) -> Any:
         if self._runtime_wake_coordinator is None:
-            from ..taskboard_store import RuntimeWakeCoordinator
+            from ..task_sources.taskboard_store import RuntimeWakeCoordinator
 
             self._runtime_wake_coordinator = RuntimeWakeCoordinator(
                 self._runtime_source_paths(),
@@ -4962,7 +5375,6 @@ class PortalImplementationDaemon:
                 )
         self._last_safety_reconciliation_monotonic = time.monotonic()
         event_log_repair = self.ensure_event_log_file()
-        provider_retry_schedule = self._provider_capacity_backoff_schedule()
         state_file_repair = self.ensure_state_file()
         protected_path_reconciliation = (
             self._reconcile_implementation_protected_path_fence()
@@ -5214,13 +5626,17 @@ class PortalImplementationDaemon:
                 resolved_statuses[task.task_id] = "blocked"
                 continue
             if task.task_id in shared_active_merge_task_ids:
+                # Work owned by another lane is externally reserved. Keep the
+                # local projection waiting; ``merge-queued`` is reserved for
+                # this daemon's own validated candidate below.
                 resolved_statuses[task.task_id] = "waiting"
                 continue
             if task.task_id in transient_merge_deferral_task_ids:
                 resolved_statuses[task.task_id] = "waiting"
                 continue
             if task.task_id in queued_merge_task_ids:
-                resolved_statuses[task.task_id] = "waiting"
+                # Validated and enqueued; not board-complete until integrated.
+                resolved_statuses[task.task_id] = "merge-queued"
                 continue
             if task.task_id in quarantined_merge_task_ids:
                 resolved_statuses[task.task_id] = "blocked"
@@ -5297,7 +5713,9 @@ class PortalImplementationDaemon:
                 for task in selectable_tasks
             )
             if not remaining_ready:
-                attempt_limit_idle_reason = TASK_ATTEMPT_LIMIT_IDLE_REASON
+                attempt_limit_idle_reason = (
+                    "all_selectable_ready_tasks_reached_max_task_attempts"
+                )
             self._record_event(
                 "task_attempt_limit_backpressure",
                 {
@@ -5333,7 +5751,11 @@ class PortalImplementationDaemon:
         state.assumed_completed_task_ids = sorted(self.assumed_completed_task_ids)
         state.eligible_ready_task_ids = list(selection_scope["eligible_ready_task_ids"])
         state.strict_deprioritized_ready_task_ids = list(selection_scope["strict_deprioritized_ready_task_ids"])
-        state.waiting_task_ids = [task.task_id for task in tasks if resolved_statuses[task.task_id] == "waiting"]
+        state.waiting_task_ids = [
+            task.task_id
+            for task in tasks
+            if resolved_statuses[task.task_id] in {"waiting", "merge-queued"}
+        ]
         state.blocked_task_ids = [task.task_id for task in tasks if resolved_statuses[task.task_id] == "blocked"]
         state.ready_count = len(state.ready_task_ids)
         state.selectable_ready_count = len(state.selectable_ready_task_ids)
@@ -5397,12 +5819,7 @@ class PortalImplementationDaemon:
         state.last_merge_commit = previous.last_merge_commit
         state.last_merge_returncode = previous.last_merge_returncode
         state.last_merge_error = previous.last_merge_error
-        selection_deferred_for_provider_capacity = bool(
-            self.implement
-            and selected is not None
-            and provider_retry_schedule.get("active", False)
-        )
-        if selected is not None and not selection_deferred_for_provider_capacity:
+        if selected is not None:
             if state.active_task_id != selected.task_id:
                 state.active_task_started_at = now
                 state.last_progress_at = now
@@ -5424,9 +5841,6 @@ class PortalImplementationDaemon:
             state.recommended_task_id = selected.task_id
             state.recommended_actions = self._build_recommended_actions(selected)
             state.selection_idle_reason = ""
-        elif selection_deferred_for_provider_capacity:
-            self._clear_active_execution_state(state, clear_task=True)
-            state.selection_idle_reason = "provider_capacity_backoff"
         else:
             state.active_task_id = ""
             state.active_task_key = ""
@@ -5518,6 +5932,19 @@ class PortalImplementationDaemon:
                         )
                         for task in execution_tasks
                     },
+                    "retry_budget_reset_task_ids": [
+                        item["source_task_id"] for item in retry_budget_resets
+                    ],
+                    "retry_budget_reset_deferred_task_ids": [
+                        item["source_task_id"]
+                        for item in retry_budget_reset_deferred
+                    ],
+                    "protected_path_conflicts": {
+                        task_id: list(conflicts)
+                        for task_id, conflicts in sorted(
+                            protected_path_conflicts_by_task.items()
+                        )
+                    },
                     "shared_active_merge_task_ids": sorted(shared_active_merge_task_ids),
                     "shared_completed_task_ids": sorted(shared_completed_task_ids),
                     "projection_delta_keys": sorted(projection_delta),
@@ -5579,6 +6006,9 @@ class PortalImplementationDaemon:
             result["next_wake_after_seconds"] = provider_backoff[
                 "retry_after_seconds"
             ]
+        task_source_identity = self._task_source_identity_record()
+        if task_source_identity is not None:
+            result["task_source_identity"] = task_source_identity
         final_source_digest, final_sources = self._runtime_source_head()
         # An implementation may mutate attempt, lease, validation, and active
         # execution state after the board projection above was selected. Do
@@ -5642,16 +6072,6 @@ class PortalImplementationDaemon:
             os.environ.get(IMPLEMENTATION_PROVIDER_ENV, "").strip().lower() or "auto"
         )
         if provider in {
-            "grok",
-            "grok_cli",
-            "grok-cli",
-            "grok_build",
-            "grok-build",
-            "xai_cli",
-            "xai-cli",
-        }:
-            return {"grok", "grok_cli", "provider"}
-        if provider in {
             "goose",
             "goose_meta",
             "goose-meta",
@@ -5663,13 +6083,23 @@ class PortalImplementationDaemon:
             "spark",
         }:
             return {"goose", "meta_spark", "meta", "provider"}
+        if provider in {
+            "grok",
+            "grok_cli",
+            "grok-cli",
+            "xai_cli",
+            "xai-cli",
+            "grok_build",
+            "grok-build",
+        }:
+            return {"grok", "xai", "provider"}
         if provider in {"codex", "copilot", "openai"}:
             return {"codex", "copilot", "provider"}
         labels: set[str] = set()
-        if _grok_cli_available():
-            labels.update({"grok", "grok_cli", "provider"})
         if _goose_meta_spark_available():
             labels.update({"goose", "meta_spark", "meta", "provider"})
+        if _grok_cli_available():
+            labels.update({"grok", "xai", "provider"})
         if shutil.which("codex") or (shutil.which("copilot") and _copilot_has_auth()):
             labels.update({"codex", "copilot", "provider"})
         return labels or {"provider"}
@@ -5797,13 +6227,12 @@ class PortalImplementationDaemon:
         if provider_backoff:
             result = {
                 "skipped": True,
-                "deferred": True,
                 "reason": "provider_capacity_backoff",
                 "task_id": task.task_id,
                 "attempt": self._task_attempt(state, task),
-                "attempt_consumed": False,
                 **provider_backoff,
             }
+            self._record_event("implementation_skipped", result)
             return result
         inflight = self._find_live_inflight_implementation()
         if inflight is not None:
@@ -5819,7 +6248,6 @@ class PortalImplementationDaemon:
 
         started_at = utc_now()
         attempt = self._task_attempt(state, task)
-        self._ensure_implementation_checkpoint_dir(task)
         task_claim_path = self._implementation_task_claim_path(
             task.task_id,
             canonical_task_cid=self._canonical_ref(task),
@@ -6037,20 +6465,12 @@ class PortalImplementationDaemon:
                     "attempt": attempt,
                     "command": command,
                     "log_path": str(log_path),
-                    "checkpoint_directory": str(checkpoint_dir),
-                    "timeout_policy": timeout_policy.to_dict(),
                 },
             )
             with log_path.open("w", encoding="utf-8") as log_fh:
                 log_fh.write(f"Task: {task.task_id} {task.title}\n")
                 log_fh.write(f"Started: {started_at}\n")
                 log_fh.write(f"Command: {' '.join(shlex.quote(item) for item in command)}\n\n")
-                log_fh.write(f"Checkpoint directory: {checkpoint_dir}\n")
-                log_fh.write(
-                    "Timeout policy: "
-                    + canonical_json(timeout_policy.to_dict())
-                    + "\n\n"
-                )
                 log_fh.flush()
                 completed = self._decision_runtime_mutation(
                     "command_invocation",
@@ -6158,16 +6578,6 @@ class PortalImplementationDaemon:
                     log_path,
                     state=state,
                     proposal_validation=proposal_validation,
-                )
-                validation_result = self._apply_implementation_failure_review(
-                    task=task,
-                    attempt=attempt,
-                    workspace_path=workspace_path,
-                    validation_result=validation_result,
-                    log_path=log_path,
-                    proposal_validation=proposal_validation,
-                    baseline_ref=baseline_ref,
-                    state=state,
                 )
                 protected_path_violation = (
                     self._implementation_protected_path_violation(
@@ -6308,7 +6718,7 @@ class PortalImplementationDaemon:
             }
             timeout_result = {
                 "timeout_reason": str(
-                    getattr(timeout_exc, "timeout_reason", "absolute_timeout")
+                    getattr(timeout_exc, "timeout_reason", "hard_timeout")
                 ),
                 "elapsed_seconds": float(
                     getattr(timeout_exc, "elapsed_seconds", 0.0) or 0.0
@@ -7382,7 +7792,7 @@ class PortalImplementationDaemon:
         ]
         complete = len(valid_paths) <= MAX_MERGE_PROOF_METADATA_ITEMS
         scopes: list[dict[str, Any]] = []
-        from ..formal_verification_policy import ChangedScope
+        from ..proof.formal_verification_policy import ChangedScope
 
         for path in valid_paths[:MAX_MERGE_PROOF_METADATA_ITEMS]:
             scope = ChangedScope(
@@ -8127,12 +8537,21 @@ class PortalImplementationDaemon:
     def _consume_one_merge_candidate(self) -> dict[str, Any] | None:
         """Opportunistically advance one item while respecting the train lease."""
 
-        from ..merge_train import MergeTrain
+        from ..merge.merge_train import MergeTrain
 
+        target_branch = self.resolved_merge_target_branch or self._main_branch_name()
+        queue_branch = str(getattr(self.merge_queue, "target_branch", "") or "").strip()
+        if queue_branch and queue_branch != target_branch:
+            raise RuntimeError(
+                "merge queue target branch "
+                f"{queue_branch!r} differs from daemon merge target "
+                f"{target_branch!r}; multi-lane shards must share one "
+                "--merge-target-branch"
+            )
         train = MergeTrain(
             repo_root=self.repo_root,
             queue=self.merge_queue,
-            target_branch=self.resolved_merge_target_branch,
+            target_branch=target_branch,
             max_attempts=int(getattr(self.merge_queue, "max_attempts", 3)),
             merge_callback=self._merge_train_callback,
             formal_verification_policy=self.formal_verification_policy,
@@ -8293,15 +8712,78 @@ class PortalImplementationDaemon:
         protected_path_violation: dict[str, Any] = {}
         checkpoint_dir = self._ensure_implementation_checkpoint_dir(task)
         timeout_policy = self._implementation_timeout_policy(task)
+        lifecycle_record: WorkspaceLifecycleRecord | None = None
 
         try:
+            # Publish a preparing lifecycle claim *before* the cleanup-visible
+            # worktree exists so peer lanes cannot classify a branch-at-merge-
+            # target checkout as already-merged while the owner is still mid
+            # setup (ASI-171 / AICAT-025 prerequisite).
+            try:
+                lifecycle_record = self.worktree_lifecycle.begin_preparing(
+                    task_id=task.task_id,
+                    canonical_task_cid=self._canonical_ref(task),
+                    attempt=attempt,
+                    lane_id=self._worktree_lifecycle_lane_id(),
+                    workspace_path=worktree_path,
+                    branch=branch_name,
+                    merge_target=self._main_branch_name(),
+                    state_dir=str(self.state_path.parent.resolve()),
+                )
+                self._active_worktree_lifecycle = lifecycle_record
+            except DuplicateAttemptError as exc:
+                return lifecycle_race_result(
+                    reason="worktree_lifecycle_claim_exists",
+                    task_id=task.task_id,
+                    attempt=attempt,
+                    extra={
+                        "error": str(exc)[-1000:],
+                        "worktree_path": str(worktree_path),
+                        "branch": branch_name,
+                    },
+                )
+            seed_plan = self._prior_attempt_seed_plan(state=state, attempt=attempt)
             baseline_ref = self._create_seeded_worktree(worktree_path, branch_name, task=task)
             # A pooled checkout keeps a stable physical path so Git does not
             # have to relocate populated submodule worktrees.  Resolve the
             # task's provisional timestamp path before any command, state, or
             # merge metadata is built from it.
             worktree_path = self._effective_pooled_worktree_path(worktree_path)
+            seed_apply = self._apply_prior_attempt_seed(
+                worktree_path,
+                seed_plan=seed_plan,
+                baseline_ref=baseline_ref,
+            )
+            if seed_apply.get("applied"):
+                self._record_event(
+                    "implementation_prior_attempt_seeded",
+                    {
+                        "task_id": task.task_id,
+                        "attempt": attempt,
+                        "worktree_path": str(worktree_path),
+                        "branch": branch_name,
+                        **dict(seed_apply),
+                    },
+                )
+            elif seed_plan.get("reuse_prior_attempt"):
+                # Hard conflict / apply failure: keep clean baseline but leave
+                # durable guidance for this attempt's prompt and a short
+                # backoff so we do not thrash identical seed failures.
+                self._record_prior_attempt_seed_failure(
+                    task=task,
+                    attempt=attempt,
+                    seed_plan=seed_plan,
+                    seed_apply=seed_apply,
+                    worktree_path=worktree_path,
+                    branch_name=branch_name,
+                )
+            if lifecycle_record is not None:
+                lifecycle_record = self._sync_worktree_lifecycle_workspace(
+                    lifecycle_record,
+                    worktree_path,
+                )
             workspace_setup = self._worktree_setup_result(worktree_path)
+            workspace_setup["prior_attempt_seed"] = dict(seed_apply)
             command = self._build_implementation_command(
                 worktree_path,
                 task=task,
@@ -8311,6 +8793,25 @@ class PortalImplementationDaemon:
                 attempt=attempt,
                 workspace_path=worktree_path,
             )
+            if lifecycle_record is not None:
+                try:
+                    lifecycle_record = self.worktree_lifecycle.mark_active(
+                        lifecycle_record.workspace_path,
+                        lease_id=lifecycle_record.lease_id,
+                        expected_fence=lifecycle_record.fence,
+                    )
+                    self._active_worktree_lifecycle = lifecycle_record
+                except (FenceMismatchError, OwnershipError, WorktreeLifecycleError) as exc:
+                    return lifecycle_race_result(
+                        reason="worktree_lifecycle_active_transition_failed",
+                        task_id=task.task_id,
+                        attempt=attempt,
+                        extra={
+                            "error": str(exc)[-1000:],
+                            "worktree_path": str(worktree_path),
+                            "branch": branch_name,
+                        },
+                    )
             self._mark_implementation_started(
                 state,
                 task=task,
@@ -8336,6 +8837,16 @@ class PortalImplementationDaemon:
                     "saved_duration_seconds": workspace_setup["saved_duration_seconds"],
                     "checkpoint_directory": str(checkpoint_dir),
                     "timeout_policy": timeout_policy.to_dict(),
+                    "worktree_lifecycle": (
+                        None
+                        if lifecycle_record is None
+                        else {
+                            "state": lifecycle_record.state.value,
+                            "fence": lifecycle_record.fence,
+                            "lease_id": lifecycle_record.lease_id,
+                            "requirement_id": FENCED_WORKTREE_LIFECYCLE_REQUIREMENT_ID,
+                        }
+                    ),
                 },
             )
             with log_path.open("w", encoding="utf-8") as log_fh:
@@ -8345,12 +8856,6 @@ class PortalImplementationDaemon:
                 log_fh.write(f"Branch: {branch_name}\n")
                 log_fh.write(f"Baseline: {baseline_ref}\n")
                 log_fh.write(f"Command: {' '.join(shlex.quote(item) for item in command)}\n\n")
-                log_fh.write(f"Checkpoint directory: {checkpoint_dir}\n")
-                log_fh.write(
-                    "Timeout policy: "
-                    + canonical_json(timeout_policy.to_dict())
-                    + "\n\n"
-                )
                 log_fh.flush()
                 completed = self._decision_runtime_mutation(
                     "command_invocation",
@@ -8463,6 +8968,7 @@ class PortalImplementationDaemon:
                         failed_preservation_result.get("cleanup_result") or cleanup_result
                     )
             if returncode == 0 and not protected_path_violation:
+                self._mark_worktree_lifecycle_settling(worktree_path)
                 self._mark_active_phase(
                     state,
                     phase="validating",
@@ -8491,16 +8997,6 @@ class PortalImplementationDaemon:
                         log_path,
                         state=state,
                         proposal_validation=proposal_validation,
-                    )
-                    validation_result = self._apply_implementation_failure_review(
-                        task=task,
-                        attempt=attempt,
-                        workspace_path=worktree_path,
-                        validation_result=validation_result,
-                        log_path=log_path,
-                        proposal_validation=proposal_validation,
-                        baseline_ref=baseline_ref,
-                        state=state,
                     )
                     validation_result = (
                         self._verify_post_validation_candidate_binding(
@@ -8707,12 +9203,8 @@ class PortalImplementationDaemon:
                 "attempt": attempt,
                 "worktree_path": str(worktree_path),
                 "branch": branch_name,
-                "timeout_seconds": float(
-                    getattr(timeout_exc, "timeout", 0.0)
-                    or timeout_policy.progress_timeout_seconds
-                ),
                 "timeout_reason": str(
-                    getattr(timeout_exc, "timeout_reason", "absolute_timeout")
+                    getattr(timeout_exc, "timeout_reason", "hard_timeout")
                 ),
                 "elapsed_seconds": float(
                     getattr(timeout_exc, "elapsed_seconds", 0.0) or 0.0
@@ -8755,16 +9247,6 @@ class PortalImplementationDaemon:
                         log_path,
                         state=state,
                         proposal_validation=proposal_validation,
-                    )
-                    validation_result = self._apply_implementation_failure_review(
-                        task=task,
-                        attempt=attempt,
-                        workspace_path=worktree_path,
-                        validation_result=validation_result,
-                        log_path=log_path,
-                        proposal_validation=proposal_validation,
-                        baseline_ref=baseline_ref,
-                        state=state,
                     )
                     validation_result = (
                         self._verify_post_validation_candidate_binding(
@@ -9101,9 +9583,15 @@ class PortalImplementationDaemon:
             and isinstance(no_change_guard, dict)
             and no_change_guard.get("allowed")
         )
-        if returncode == 0 and (
-            no_change_completion or merge_result.get("merged")
-        ):
+        # Board completion is intentionally stricter than validation success:
+        # merge-queued candidates remain incomplete until integrated into the
+        # configured merge target (see merge train consumer).
+        board_completion = self._board_completion_decision(
+            returncode=returncode,
+            merge_result=merge_result,
+            no_change_completion=no_change_completion,
+        )
+        if board_completion["complete"]:
             completion_tree_id = str(
                 merge_result.get("merge_commit")
                 or implementation_commit
@@ -9117,16 +9605,39 @@ class PortalImplementationDaemon:
                     "completion_authoritative": True,
                     "repository_tree_id": completion_tree_id,
                     "validation": dict(validation_result),
+                    "board_completion": dict(board_completion),
                 },
             )
             todo_update_result = self._mark_task_or_bundle_completed_in_todo(task)
+        elif board_completion.get("pending_merge"):
+            self._record_event(
+                "implementation_pending_merge",
+                {
+                    "task_id": task.task_id,
+                    "attempt": attempt,
+                    "implementation_commit": implementation_commit,
+                    "branch": branch_name,
+                    "target_branch": self.resolved_merge_target_branch
+                    or self._main_branch_name(),
+                    "merge_result": {
+                        key: merge_result.get(key)
+                        for key in (
+                            "queued",
+                            "merged",
+                            "reason",
+                            "request_id",
+                            "target_branch",
+                        )
+                    },
+                    "board_status": "pending",
+                    "board_completion": dict(board_completion),
+                },
+            )
         self._mark_implementation_finished(state, finished_at=finished_at)
         state.save(self.state_path)
         # Queueing is a successful implementation handoff, but not task
         # completion.  The train consumer records the terminal merge outcome.
-        terminal_outcome = bool(
-            no_change_completion or merge_result.get("merged")
-        )
+        terminal_outcome = bool(board_completion.get("complete"))
         if not merge_result.get("queued") and attempt_consumed:
             outcome_returncode = returncode
             outcome_reason = str(
@@ -9143,6 +9654,12 @@ class PortalImplementationDaemon:
                 outcome_returncode,
                 reason=outcome_reason,
             )
+        workspace_setup = self._worktree_setup_result(worktree_path)
+        # Preserve seed metadata if setup metrics were already annotated.
+        if "prior_attempt_seed" not in workspace_setup:
+            prior_seed = locals().get("seed_apply")
+            if isinstance(prior_seed, Mapping):
+                workspace_setup["prior_attempt_seed"] = dict(prior_seed)
         result = {
             "task_id": task.task_id,
             "attempt": attempt,
@@ -9157,7 +9674,8 @@ class PortalImplementationDaemon:
             "validation_result": validation_result,
             "cleanup_result": cleanup_result,
             "failed_preservation_result": failed_preservation_result,
-            "workspace_setup": self._worktree_setup_result(worktree_path),
+            "workspace_setup": workspace_setup,
+            "board_completion": dict(board_completion),
             "attempt_consumed": attempt_consumed,
         }
         if protected_path_violation:
@@ -9416,6 +9934,264 @@ class PortalImplementationDaemon:
         state.heartbeat_at = finished_at
         state.last_progress_at = finished_at
         self._clear_active_execution_state(state, clear_task=True)
+
+    def _prior_attempt_seed_plan(
+        self,
+        *,
+        state: PortalTaskState,
+        attempt: int,
+    ) -> dict[str, Any]:
+        """Choose whether to reseed a retry worktree from a prior attempt commit.
+
+        Prior failed attempts already preserve their trees via
+        ``_preserve_failed_validation_worktree``. Retries should start from that
+        commit when it is not yet on the merge target so implementers do not
+        re-discover work from git history (LIG-016 attempt-2 class failures).
+        """
+
+        target = self._main_branch_name()
+        plan: dict[str, Any] = {
+            "baseline_ref": target,
+            "seed_ref": target,
+            "reuse_prior_attempt": False,
+            "reason": "merge_target_baseline",
+            "prior_commit": "",
+            "prior_branch": "",
+        }
+        if int(attempt or 0) <= 1:
+            return plan
+        prior_commit = str(state.last_implementation_commit or "").strip()
+        prior_branch = str(state.last_implementation_branch or "").strip()
+        candidate = ""
+        if prior_commit and self._git_commit_exists_in_repo(
+            self.repo_root, prior_commit
+        ):
+            candidate = prior_commit
+            plan["prior_commit"] = prior_commit
+        elif prior_branch and self._git_ref_exists(prior_branch):
+            resolved = self._resolve_git_commit_in_repo(
+                self.repo_root, prior_branch
+            )
+            if resolved:
+                candidate = resolved
+                plan["prior_commit"] = resolved
+                plan["prior_branch"] = prior_branch
+        if not candidate:
+            plan["reason"] = "no_prior_attempt_commit"
+            return plan
+        if self._git_ref_is_ancestor(candidate, target):
+            plan["reason"] = "prior_already_on_merge_target"
+            return plan
+        plan["seed_ref"] = candidate
+        plan["reuse_prior_attempt"] = True
+        plan["reason"] = "prior_failed_attempt_commit"
+        return plan
+
+    def _apply_prior_attempt_seed(
+        self,
+        worktree_path: Path,
+        *,
+        seed_plan: Mapping[str, Any],
+        baseline_ref: str,
+    ) -> dict[str, Any]:
+        """Overlay a preserved prior-attempt commit onto a fresh merge-target worktree."""
+
+        if not seed_plan.get("reuse_prior_attempt"):
+            return {
+                "applied": False,
+                "reason": str(seed_plan.get("reason") or "no_reuse"),
+                "seed_ref": str(seed_plan.get("seed_ref") or ""),
+                "baseline_ref": baseline_ref,
+            }
+        seed_ref = str(seed_plan.get("seed_ref") or "").strip()
+        if not seed_ref or not worktree_path.exists():
+            return {
+                "applied": False,
+                "reason": "missing_seed_or_workspace",
+                "seed_ref": seed_ref,
+                "baseline_ref": baseline_ref,
+            }
+        if seed_ref == baseline_ref:
+            return {
+                "applied": False,
+                "reason": "seed_equals_baseline",
+                "seed_ref": seed_ref,
+                "baseline_ref": baseline_ref,
+            }
+        # Fast-forward when the preserved attempt is a descendant of the
+        # merge-target baseline (common when main/feature has not moved).
+        if baseline_ref and self._git_ref_is_ancestor_in_repo(
+            worktree_path, baseline_ref, seed_ref
+        ):
+            reset = subprocess.run(
+                ["git", "reset", "--hard", seed_ref],
+                cwd=worktree_path,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            if reset.returncode == 0:
+                return {
+                    "applied": True,
+                    "reason": "fast_forward_reset",
+                    "seed_ref": seed_ref,
+                    "baseline_ref": baseline_ref,
+                }
+            return {
+                "applied": False,
+                "reason": "fast_forward_reset_failed",
+                "seed_ref": seed_ref,
+                "baseline_ref": baseline_ref,
+                "stderr": (reset.stderr or "")[-1000:],
+            }
+        merge = subprocess.run(
+            ["git", "merge", "--no-edit", "--no-ff", seed_ref],
+            cwd=worktree_path,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if merge.returncode == 0:
+            return {
+                "applied": True,
+                "reason": "merged_prior_seed",
+                "seed_ref": seed_ref,
+                "baseline_ref": baseline_ref,
+            }
+        subprocess.run(
+            ["git", "merge", "--abort"],
+            cwd=worktree_path,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        checkout = subprocess.run(
+            ["git", "checkout", seed_ref, "--", "."],
+            cwd=worktree_path,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if checkout.returncode == 0:
+            return {
+                "applied": True,
+                "reason": "checked_out_prior_tree",
+                "seed_ref": seed_ref,
+                "baseline_ref": baseline_ref,
+                "merge_stderr": (merge.stderr or "")[-500:],
+            }
+        return {
+            "applied": False,
+            "reason": "prior_seed_apply_failed",
+            "seed_ref": seed_ref,
+            "baseline_ref": baseline_ref,
+            "merge_stderr": (merge.stderr or "")[-500:],
+            "checkout_stderr": (checkout.stderr or "")[-500:],
+        }
+
+    def _record_prior_attempt_seed_failure(
+        self,
+        *,
+        task: PortalTask,
+        attempt: int,
+        seed_plan: Mapping[str, Any],
+        seed_apply: Mapping[str, Any],
+        worktree_path: Path,
+        branch_name: str,
+    ) -> None:
+        """Record durable guidance when a prior attempt cannot be reseeded."""
+
+        key = self._canonical_ref(task)
+        prior_commit = str(
+            seed_plan.get("prior_commit") or seed_apply.get("seed_ref") or ""
+        ).strip()
+        prior_branch = str(seed_plan.get("prior_branch") or "").strip()
+        reason = str(seed_apply.get("reason") or "prior_seed_apply_failed")
+        guidance = (
+            f"Prior attempt seed apply failed ({reason}). "
+            "Continue from the clean merge-target baseline, then recover "
+            "preserved work from "
+            f"commit {prior_commit or '(unknown)'} "
+            f"{('branch ' + prior_branch) if prior_branch else ''} "
+            "or rewrite compactly inside declared Outputs; do not re-dump "
+            "oversized fixtures."
+        ).strip()
+        self._implementation_seed_failure_guidance[key] = guidance
+        guide_path = ""
+        if worktree_path.exists():
+            try:
+                guide_dir = (
+                    worktree_path / "docs" / "agent-supervisor" / "rescue"
+                )
+                guide_dir.mkdir(parents=True, exist_ok=True)
+                safe_task = re.sub(
+                    r"[^a-z0-9._-]+", "-", task.task_id.lower()
+                ).strip("-") or "task"
+                guide_file = (
+                    guide_dir
+                    / f"{safe_task}-attempt-{int(attempt)}-seed-recovery.md"
+                )
+                guide_file.write_text(guidance + "\n", encoding="utf-8")
+                guide_path = str(guide_file.relative_to(worktree_path))
+            except OSError:
+                guide_path = ""
+        self._record_event(
+            "implementation_prior_attempt_seed_failed",
+            {
+                "task_id": task.task_id,
+                "attempt": attempt,
+                "worktree_path": str(worktree_path),
+                "branch": branch_name,
+                "guidance": guidance,
+                "guidance_path": guide_path,
+                "seed_plan": dict(seed_plan),
+                "seed_apply": dict(seed_apply),
+            },
+        )
+
+    @staticmethod
+    def _board_completion_decision(
+        *,
+        returncode: int,
+        merge_result: Mapping[str, Any],
+        no_change_completion: bool,
+    ) -> dict[str, Any]:
+        """Decide whether the durable board may flip to completed.
+
+        Validation success with ``merge_queued`` is intentionally *not*
+        completion: the merge train owns the terminal board update after the
+        candidate lands on the configured merge target.
+        """
+
+        merged = bool(merge_result.get("merged"))
+        queued = bool(merge_result.get("queued")) and not merged
+        if int(returncode or 0) != 0:
+            return {
+                "complete": False,
+                "pending_merge": False,
+                "reason": "implementation_or_validation_failed",
+            }
+        if merged or no_change_completion:
+            return {
+                "complete": True,
+                "pending_merge": False,
+                "reason": (
+                    "merged_into_target"
+                    if merged
+                    else "validated_no_change_completion"
+                ),
+            }
+        if queued:
+            return {
+                "complete": False,
+                "pending_merge": True,
+                "reason": "merge_queued_awaiting_integration",
+            }
+        return {
+            "complete": False,
+            "pending_merge": False,
+            "reason": "not_integrated",
+        }
 
     def _create_seeded_worktree(
         self,
@@ -11302,34 +12078,6 @@ class PortalImplementationDaemon:
         *,
         baseline_ref: str = "",
     ) -> dict[str, Any]:
-        # Materialize deterministic rescue guidance into the preserved tree so
-        # operators and the next attempt share the same follow-up contract.
-        review = validation_result.get("failure_review")
-        if isinstance(review, Mapping) and worktree_path.exists():
-            guidance = str(
-                review.get("guidance_markdown")
-                or validation_result.get("rescue_guidance_markdown")
-                or ""
-            ).strip()
-            if guidance:
-                try:
-                    guide_dir = worktree_path / "docs" / "agent-supervisor" / "rescue"
-                    guide_dir.mkdir(parents=True, exist_ok=True)
-                    safe_task = re.sub(
-                        r"[^a-z0-9._-]+", "-", task.task_id.lower()
-                    ).strip("-") or "task"
-                    guide_path = (
-                        guide_dir
-                        / f"{safe_task}-attempt-{int(attempt)}-failure-review.md"
-                    )
-                    guide_path.write_text(guidance + "\n", encoding="utf-8")
-                    receipt_path = (
-                        guide_dir
-                        / f"{safe_task}-attempt-{int(attempt)}-failure-review.json"
-                    )
-                    _shared_atomic_write_json(receipt_path, dict(review))
-                except OSError:
-                    pass
         return self._preserve_interrupted_worktree(
             worktree_path,
             branch_name,
@@ -11973,7 +12721,7 @@ class PortalImplementationDaemon:
     ) -> Any:
         """Prefix a fully materialized child-repository diff entry."""
 
-        from ..code_proof_obligations import CandidateDiffEntry
+        from ..proof.code_proof_obligations import CandidateDiffEntry
 
         prefix = relative.rstrip("/")
 
@@ -12014,7 +12762,7 @@ class PortalImplementationDaemon:
         is rejected by the ordinary proposal boundary policy.
         """
 
-        from ..code_proof_obligations import collect_git_candidate_diff
+        from ..proof.code_proof_obligations import collect_git_candidate_diff
 
         effective_baseline = baseline_ref or "HEAD"
         root_entries = list(
@@ -12357,9 +13105,9 @@ class PortalImplementationDaemon:
         task authority declares one strict, bounded artifact envelope.
 
         The optional envelope is deliberately atomic JSON rather than a set of
-        independent booleans.  Every changed path must exactly match its path
+        independent booleans. Every changed path must exactly match its path
         set, that set must remain inside the task-owned scope, and requested
-        ceilings cannot exceed the daemon's immutable process bounds.  The
+        ceilings cannot exceed the daemon's immutable process bounds. The
         resulting policy uses measured sizes, not the looser declared
         ceilings, and does not enable generated, binary, archive, or other
         content exemptions.
@@ -12730,7 +13478,15 @@ class PortalImplementationDaemon:
         """Validate a candidate patch before task validation is dispatched."""
 
         # Keep proof/compiler imports off administrative daemon paths.
-        from ..proposal_validation import (
+        # Reload so on-disk proposal-gate policy fixes (e.g. reviewed ``||``
+        # compounds) take effect without requiring a full daemon restart when
+        # this method body is itself freshly imported.
+        import importlib
+        from ..validation import (
+            proposal_validation as _proposal_validation_module,
+        )
+        importlib.reload(_proposal_validation_module)
+        from ..validation.proposal_validation import (
             ImplementationProposal,
             ProposalOperation,
             ProposalRisk,
@@ -12739,7 +13495,7 @@ class PortalImplementationDaemon:
             ProposalValidationPolicy,
             validate_implementation_proposal,
         )
-        from ..scope_adjudication import (
+        from ..validation.scope_adjudication import (
             adjudicate_scope_expansion,
             compact_scope_adjudication,
         )
@@ -12940,7 +13696,7 @@ class PortalImplementationDaemon:
             proposal,
             task=task,
         )
-        policy_version = "strict-proposal-v2+local-envelope-v1"
+        policy_version = "strict-proposal-v2+local-envelope-v2"
         policy_allowed_paths = allowed_paths
         if "max_file_bytes" in local_envelope_limits:
             policy_version += "+declared-artifact-envelope-v1"
@@ -13192,161 +13948,6 @@ class PortalImplementationDaemon:
             "error": "proposal_candidate_binding_failed",
         }
 
-    def _apply_implementation_failure_review(
-        self,
-        *,
-        task: PortalTask,
-        attempt: int,
-        workspace_path: Path,
-        validation_result: Mapping[str, Any] | dict[str, Any],
-        log_path: Path | None = None,
-        proposal_validation: Any = None,
-        baseline_ref: str = "",
-        state: PortalTaskState | None = None,
-    ) -> dict[str, Any]:
-        """Review a failed validation and accept or attach rescue guidance.
-
-        Acceptance is fail-closed and only applies when the deterministic
-        failure reviewer authorizes a pure justified scope expansion. All other
-        failures receive structured rescue/next-attempt guidance.
-        """
-
-        result = dict(validation_result or {})
-        if result.get("passed", False) or result.get("failure_review"):
-            return result
-        if int(result.get("returncode") or 1) == 0 and result.get("attempted") is False:
-            # No-command success paths already return passed=True.
-            return result
-
-        from ..implementation_failure_review import (
-            FailureReviewDecision,
-            compact_failure_review,
-            review_implementation_failure,
-        )
-
-        log_excerpt = ""
-        if log_path is not None:
-            try:
-                with Path(log_path).open("rb") as handle:
-                    handle.seek(0, os.SEEK_END)
-                    size = handle.tell()
-                    handle.seek(max(0, size - 8_192))
-                    log_excerpt = handle.read().decode("utf-8", errors="replace")
-            except OSError:
-                log_excerpt = ""
-
-        proposal_accepted: bool | None = None
-        if proposal_validation is not None:
-            proposal_accepted = bool(
-                getattr(proposal_validation, "accepted", False)
-            )
-        elif isinstance(result.get("proposal_validation"), Mapping):
-            proposal_accepted = bool(
-                result["proposal_validation"].get("accepted", False)
-            )
-
-        scope_payload = result.get("scope_adjudication")
-        if not isinstance(scope_payload, Mapping) and proposal_validation is not None:
-            # Prefer the live adjudication map when the validation report did
-            # not project it yet.
-            proposal_id = str(
-                getattr(getattr(proposal_validation, "proposal", None), "proposal_id", "")
-                or ""
-            )
-            adjudication = self._implementation_scope_adjudications.get(proposal_id)
-            if adjudication is not None:
-                try:
-                    from ..scope_adjudication import compact_scope_adjudication
-
-                    scope_payload = compact_scope_adjudication(adjudication)
-                    result["scope_adjudication"] = scope_payload
-                except Exception:
-                    scope_payload = None
-
-        review = review_implementation_failure(
-            task_id=task.task_id,
-            attempt=int(attempt),
-            expected_outputs=tuple(task.outputs),
-            validation_result=result,
-            workspace_path=workspace_path,
-            log_excerpt=log_excerpt,
-            proposal_accepted=proposal_accepted,
-            scope_adjudication=(
-                scope_payload if isinstance(scope_payload, Mapping) else None
-            ),
-        )
-        projection = compact_failure_review(review)
-        result["failure_review"] = review.to_record()
-        result["rescue_guidance_markdown"] = review.guidance_markdown
-        result["next_attempt_prompt_addendum"] = (
-            review.next_attempt_prompt_addendum
-        )
-        self._record_event(
-            "implementation_failure_reviewed",
-            {
-                "task_id": task.task_id,
-                "attempt": int(attempt),
-                "worktree_path": str(workspace_path),
-                **projection,
-            },
-        )
-
-        if review.decision is not FailureReviewDecision.ACCEPT:
-            return result
-
-        # Bounded accept path: re-run proposal+commands only when the original
-        # gate was proposal-scope. Hard fails never reach ACCEPT.
-        if (
-            result.get("reason") in {"proposal_gate_failed", "proposal_validation_failed"}
-            or result.get("error") == "proposal_validation_failed"
-        ):
-            revalidated_proposal = self._validate_implementation_patch(
-                workspace_path,
-                task,
-                baseline_ref=baseline_ref,
-            )
-            if not bool(getattr(revalidated_proposal, "accepted", False)):
-                result["failure_review_accept_revalidation"] = {
-                    "accepted": False,
-                    "reason": "proposal_still_rejected_after_review",
-                }
-                return result
-            rerun = self._run_validation_commands(
-                workspace_path,
-                task,
-                log_path if log_path is not None else Path(os.devnull),
-                state=state,
-                proposal_validation=revalidated_proposal,
-            )
-            # Prevent recursive review loops.
-            if not rerun.get("passed", False):
-                rerun = dict(rerun)
-                rerun["failure_review"] = review.to_record()
-                rerun["rescue_guidance_markdown"] = review.guidance_markdown
-                rerun["next_attempt_prompt_addendum"] = (
-                    review.next_attempt_prompt_addendum
-                )
-                rerun["failure_review_accept_revalidation"] = {
-                    "accepted": False,
-                    "reason": "commands_still_failing_after_review",
-                }
-                return rerun
-            rerun = dict(rerun)
-            rerun["failure_review"] = review.to_record()
-            rerun["failure_review_accept_revalidation"] = {
-                "accepted": True,
-                "reason": "scope_justified_and_revalidated",
-            }
-            rerun["reason"] = "failure_review_accepted"
-            return rerun
-
-        # Non-proposal failures are never auto-accepted.
-        result["failure_review_accept_revalidation"] = {
-            "accepted": False,
-            "reason": "accept_only_for_proposal_scope_gate",
-        }
-        return result
-
     def _run_validation_commands(
         self,
         workspace_path: Path,
@@ -13538,7 +14139,7 @@ class PortalImplementationDaemon:
                 else None
             )
             if scope_adjudication is not None:
-                from ..scope_adjudication import (
+                from ..validation.scope_adjudication import (
                     compact_scope_adjudication,
                 )
 
@@ -15068,7 +15669,7 @@ class PortalImplementationDaemon:
         command_template = self.llm_merge_resolver_command
         if not command_template:
             return {"attempted": False, "reason": "resolver_command_not_configured"}
-        from ipfs_accelerate_py.agent_supervisor.merge_resolver import build_merge_prompt, invoke_llm_resolver
+        from ipfs_accelerate_py.agent_supervisor.merge.merge_resolver import build_merge_prompt, invoke_llm_resolver
 
         merge_result = {
             "attempted": True,
@@ -16423,6 +17024,158 @@ class PortalImplementationDaemon:
     def _managed_cleanup_branch(branch_name: str) -> bool:
         return branch_name.startswith("implementation/") or branch_name.startswith("rescue/worktree/")
 
+    def _worktree_lifecycle_lane_id(self) -> str:
+        """Return a stable lane identity for lifecycle records."""
+
+        state_dir = str(self.state_path.parent.resolve())
+        shard = f"{self.task_shard_index}/{self.task_shard_count}"
+        return f"{state_dir}:{shard}:{os.getpid()}"
+
+    def _active_worktree_lifecycle_lease_id(self) -> str:
+        record = self._active_worktree_lifecycle
+        if record is None:
+            return ""
+        return str(record.lease_id or "")
+
+    def _mark_worktree_lifecycle_settling(
+        self,
+        worktree_path: Path | None,
+    ) -> WorkspaceLifecycleRecord | None:
+        """Advance the active claim into settling before validation/merge/cleanup."""
+
+        record = self._active_worktree_lifecycle
+        if worktree_path is not None:
+            loaded = self.worktree_lifecycle.load_workspace(worktree_path)
+            if loaded is not None:
+                record = loaded
+        if record is None or record.is_terminal:
+            return record
+        if record.state is WorkspaceLifecycleState.SETTLING:
+            self._active_worktree_lifecycle = record
+            return record
+        try:
+            updated = self.worktree_lifecycle.mark_settling(
+                record.workspace_path,
+                lease_id=record.lease_id,
+                expected_fence=record.fence,
+            )
+        except (FenceMismatchError, OwnershipError, WorktreeLifecycleError):
+            return record
+        self._active_worktree_lifecycle = updated
+        return updated
+
+    def _sync_worktree_lifecycle_workspace(
+        self,
+        record: WorkspaceLifecycleRecord,
+        worktree_path: Path,
+    ) -> WorkspaceLifecycleRecord:
+        """Rebind a preparing claim when pool resolution changes the path."""
+
+        normalized = normalize_workspace_path(worktree_path)
+        if normalize_workspace_path(record.workspace_path) == normalized:
+            return record
+        # Path changed (pooled checkout): move the existing claim with the
+        # owner lease so the task/attempt index never observes two concurrent
+        # nonterminal records for the same attempt.
+        rebound = self.worktree_lifecycle.rebind_workspace(
+            record.workspace_path,
+            normalized,
+            lease_id=record.lease_id,
+            expected_fence=record.fence,
+        )
+        self._active_worktree_lifecycle = rebound
+        return rebound
+
+    def _authorize_worktree_cleanup(
+        self,
+        worktree_path: Path | None,
+        branch_name: str = "",
+        *,
+        caller_lease_id: str = "",
+    ) -> dict[str, Any]:
+        """Return cleanup authorization for a managed worktree.
+
+        Peer lanes must not delete/prune/reuse a nonterminal fenced claim,
+        including the preparing window before child-process discovery.
+        """
+
+        if worktree_path is None:
+            return {
+                "allowed": True,
+                "reason": "no_worktree_path",
+                "disposition": CleanupDisposition.ALLOW.value,
+            }
+        lease_id = caller_lease_id or self._active_worktree_lifecycle_lease_id()
+        decision = self.worktree_lifecycle.authorize_cleanup(
+            workspace_path=worktree_path,
+            branch=branch_name,
+            caller_lease_id=lease_id,
+        )
+        payload = decision.to_dict()
+        if not decision.allowed:
+            self._record_event(
+                "worktree_cleanup_fenced",
+                {
+                    "worktree_path": str(worktree_path),
+                    "branch": branch_name,
+                    **payload,
+                },
+            )
+        return payload
+
+    def _finalize_worktree_lifecycle(
+        self,
+        worktree_path: Path | None,
+        *,
+        reason: str = "cleanup_finished",
+    ) -> dict[str, Any]:
+        """Mark the active (or path-bound) lifecycle record terminal after disposal."""
+
+        record = self._active_worktree_lifecycle
+        if worktree_path is not None:
+            loaded = self.worktree_lifecycle.load_workspace(worktree_path)
+            if loaded is not None:
+                record = loaded
+        if record is None:
+            return {"finalized": False, "reason": "no_lifecycle_record"}
+        if record.is_terminal:
+            self._active_worktree_lifecycle = None
+            return {
+                "finalized": True,
+                "reason": "already_terminal",
+                "fence": record.fence,
+            }
+        try:
+            terminal = self.worktree_lifecycle.mark_terminal(
+                record.workspace_path,
+                lease_id=record.lease_id,
+                expected_fence=record.fence,
+                reason=reason,
+            )
+            self.worktree_lifecycle.compare_and_delete(
+                terminal.workspace_path,
+                expected_fence=terminal.fence,
+                lease_id=terminal.lease_id,
+            )
+            self._active_worktree_lifecycle = None
+            return {
+                "finalized": True,
+                "reason": reason,
+                "fence": terminal.fence,
+                "state": terminal.state.value,
+            }
+        except (FenceMismatchError, OwnershipError, WorktreeLifecycleError) as exc:
+            # Peer reclamation or concurrent owner may have advanced the fence.
+            self._active_worktree_lifecycle = None
+            return {
+                "finalized": False,
+                "reason": "lifecycle_finalize_race",
+                "error": str(exc)[-500:],
+                "failure_kind": LifecycleFailureKind.LIFECYCLE_RACE.value,
+                "attempt_consumed": False,
+                "provider_call_allowed": False,
+            }
+
     def _cleanup_already_merged_worktrees(self) -> dict[str, Any]:
         """Continuously drain inactive worktrees whose branches are already merged."""
 
@@ -16477,6 +17230,22 @@ class PortalImplementationDaemon:
                 continue
             if any(str(worktree_resolved) in line for line in process_lines):
                 skipped.append({**detail, "reason": "active_process"})
+                continue
+            # Fenced ownership check must run before ancestry-based cleanup so a
+            # preparing/active claim whose tip still matches the merge target is
+            # never deleted by a peer lane (ASI-171).
+            lifecycle_auth = self._authorize_worktree_cleanup(
+                worktree_path,
+                branch_name,
+            )
+            if not lifecycle_auth.get("allowed", False):
+                skipped.append(
+                    {
+                        **detail,
+                        "reason": f"lifecycle_{lifecycle_auth.get('reason') or 'fenced'}",
+                        "lifecycle": lifecycle_auth,
+                    }
+                )
                 continue
             if not self._managed_cleanup_branch(branch_name):
                 skipped.append({**detail, "reason": "unmanaged_branch"})
@@ -16543,6 +17312,28 @@ class PortalImplementationDaemon:
         reusable: bool = True,
     ) -> dict[str, Any]:
         started_at = utc_now()
+        lifecycle_auth = self._authorize_worktree_cleanup(
+            worktree_path,
+            branch_name,
+        )
+        if not lifecycle_auth.get("allowed", False):
+            result = {
+                "cleaned": False,
+                "branch": branch_name,
+                "worktree_path": str(worktree_path or ""),
+                "started_at": started_at,
+                "finished_at": utc_now(),
+                "removed_worktree": False,
+                "deleted_branch": False,
+                "submodule_cleanup": [],
+                "reason": f"lifecycle_{lifecycle_auth.get('reason') or 'fenced'}",
+                "lifecycle": lifecycle_auth,
+                "failure_kind": LifecycleFailureKind.LIFECYCLE_RACE.value,
+                "attempt_consumed": False,
+                "provider_call_allowed": False,
+            }
+            self._record_event("cleanup_finished", result)
+            return result
         lease: WorktreeLease | None = None
         lease_key: Path | None = None
         if worktree_path is not None:
@@ -16577,6 +17368,11 @@ class PortalImplementationDaemon:
                 }
                 if branch_error:
                     result["error"] = branch_error
+                if result.get("cleaned"):
+                    result["lifecycle_finalize"] = self._finalize_worktree_lifecycle(
+                        worktree_path,
+                        reason="pool_release_cleaned",
+                    )
                 self._record_event("cleanup_finished", result)
                 return result
 
@@ -16623,6 +17419,10 @@ class PortalImplementationDaemon:
             "removed_worktree": removed_worktree,
             "deleted_branch": deleted_branch,
             "submodule_cleanup": submodule_cleanup,
+            "lifecycle_finalize": self._finalize_worktree_lifecycle(
+                worktree_path,
+                reason="worktree_cleaned",
+            ),
         }
         self._record_event("cleanup_finished", result)
         return result
@@ -16760,6 +17560,19 @@ class PortalImplementationDaemon:
                 continue
             if any(str(worktree_resolved) in line for line in process_lines):
                 skipped.append({**detail, "reason": "active_process"})
+                continue
+            lifecycle_auth = self._authorize_worktree_cleanup(
+                worktree_path,
+                branch_name,
+            )
+            if not lifecycle_auth.get("allowed", False):
+                skipped.append(
+                    {
+                        **detail,
+                        "reason": f"lifecycle_{lifecycle_auth.get('reason') or 'fenced'}",
+                        "lifecycle": lifecycle_auth,
+                    }
+                )
                 continue
             if not self._managed_cleanup_branch(branch_name):
                 skipped.append({**detail, "reason": "unmanaged_branch"})
@@ -17282,7 +18095,7 @@ class PortalImplementationDaemon:
     def _path_is_generated_status_output(self, relative: str) -> bool:
         if self._path_is_generated_worktree_artifact(relative):
             return True
-        from ipfs_accelerate_py.agent_supervisor.backlog_refinery import (
+        from ipfs_accelerate_py.agent_supervisor.objectives.backlog_refinery import (
             generated_guardrail_status_filters,
             path_is_generated_status_output,
         )
@@ -18370,7 +19183,7 @@ class PortalImplementationDaemon:
         reservations: dict[str, dict[str, Any]] = {}
         if not task_ids:
             return reservations
-        from ..artifact_store import read_artifact_fields
+        from ..runtime.artifact_store import read_artifact_fields
 
         for manifest_path in self.external_reservation_manifest_paths:
             try:
@@ -18996,7 +19809,9 @@ class PortalImplementationDaemon:
         }
         force_codex = provider in {"codex", "copilot", "openai"}
 
-        if force_grok or (prefer_grok and grok_ready and not force_codex and not force_goose_meta):
+        # Prefer only when the binary is actually resolvable so an auth-only
+        # readiness signal does not block auto-fallback to codex/copilot.
+        if force_grok:
             if not grok_ready:
                 raise RuntimeError(
                     "Implementation provider "
@@ -19004,14 +19819,24 @@ class PortalImplementationDaemon:
                     "login/auth (or XAI_API_KEY)"
                 )
             return _grok_cli_command(workspace_path=workspace_path)
+        if (
+            prefer_grok
+            and grok_ready
+            and _grok_binary()
+            and not force_codex
+            and not force_goose_meta
+        ):
+            return _grok_cli_command(workspace_path=workspace_path)
 
-        if force_goose_meta or (prefer_goose_meta and goose_meta_ready and not force_codex):
+        if force_goose_meta:
             if not goose_meta_ready:
                 raise RuntimeError(
                     "Implementation provider "
                     f"{provider!r} requires goose CLI and a Meta Spark key "
                     "(meta_ai_api_key / MODEL_API_KEY)"
                 )
+            return _goose_meta_spark_command(workspace_path=workspace_path)
+        if prefer_goose_meta and goose_meta_ready and _goose_binary() and not force_codex:
             return _goose_meta_spark_command(workspace_path=workspace_path)
 
         codex = shutil.which("codex")
@@ -19540,6 +20365,22 @@ class PortalImplementationDaemon:
         except ValueError:
             return str(path)
 
+    def _repository_context_path(self, path: Path) -> str:
+        """Return a repository-relative context path or no path binding.
+
+        Runtime artifacts such as shared todo-vector indexes may intentionally
+        live outside the repository.  Their text can still be included in a
+        bounded context reference, but the typed ``path`` field must never
+        claim that an absolute host path is repository-relative.
+        """
+
+        if not path.is_absolute():
+            return path.as_posix()
+        try:
+            return path.relative_to(self.repo_root).as_posix()
+        except ValueError:
+            return ""
+
     def _compact_value_list(self, value: Any, *, limit: int = 8) -> list[str]:
         if isinstance(value, list):
             items = [str(item).strip() for item in value if str(item).strip()]
@@ -19790,22 +20631,17 @@ class PortalImplementationDaemon:
         task: PortalTask,
         *keys: str,
     ) -> float | None:
-        return implementation_timeout_metadata_value(task.metadata, *keys)
+        return implementation_timeout_metadata_value(
+            task.metadata,
+            *keys,
+            task_id=task.task_id,
+        )
 
     def _implementation_timeout_policy(
         self,
         task: PortalTask,
     ) -> ImplementationTimeoutPolicy:
-        """Resolve a bounded, task-aware implementation timeout policy.
-
-        Provider-backed tasks receive a four-times hard cap while retaining
-        the configured timeout as their no-progress deadline.  Explicit task
-        metadata can tighten or expand either bound:
-
-        * ``Implementation timeout seconds`` sets the task hard cap.
-        * ``Implementation progress timeout seconds`` sets the idle deadline.
-        * ``Implementation max timeout seconds`` explicitly sets the hard cap.
-        """
+        """Resolve a bounded, task-aware implementation timeout policy."""
 
         configured = float(self.implementation_timeout)
         progress_timeout = self._task_timeout_metadata(
@@ -19819,7 +20655,6 @@ class PortalImplementationDaemon:
             task_id=task.task_id,
         )
         hard_timeout = resolved_hard_timeout.seconds
-
         idle_timeout = (
             progress_timeout
             if progress_timeout is not None
@@ -19953,9 +20788,7 @@ class PortalImplementationDaemon:
                     )
                 except (OSError, RuntimeError, ValueError):
                     if len(unstable_files) < 8:
-                        unstable_files.append(
-                            candidate.name[:128]
-                        )
+                        unstable_files.append(candidate.name[:128])
                     continue
                 total_bytes += size_bytes
                 records.append(
@@ -20457,6 +21290,10 @@ class PortalImplementationDaemon:
                 parent_capsule.budget.max_text_bytes,
             ),
         )
+        # See _compile_implementation_context: dual-loaded ContextBudget classes
+        # break isinstance; rehydrate via mapping for compiler-local types.
+        if hasattr(configured_budget, "to_dict"):
+            configured_budget = configured_budget.to_dict()
         compiler = ContextCompiler(
             configured_budget,
             tokenizer=self.implementation_context_tokenizer,
@@ -20653,10 +21490,16 @@ class PortalImplementationDaemon:
                 configured_budget.reserved_tool_tokens
             ),
         }
+        prompt_policy_appendix = str(
+            self._implementation_prompt_policy_appendix(task) or ""
+        ).strip()
         policy_revision = "sha256:" + hashlib.sha256(
             json.dumps(
                 {
                     "generic_prompt_policy": rules,
+                    "implementation_prompt_policy_appendix": (
+                        prompt_policy_appendix
+                    ),
                     "edit_policy": edit_policy,
                     "implementation_context_budget": (
                         context_budget_authority
@@ -20671,7 +21514,7 @@ class PortalImplementationDaemon:
             ).encode("utf-8")
         ).hexdigest()
         vector_text = self._render_todo_vector_context(task)
-        evidence: tuple[Any, ...] = ()
+        evidence = ()
         if vector_text:
             context = self._load_todo_vector_context(task)
             index_path = (
@@ -20680,40 +21523,23 @@ class PortalImplementationDaemon:
                 else None
             )
             artifact_path = (
-                self._display_context_path(index_path)
+                self._repository_context_path(index_path)
                 if isinstance(index_path, Path)
                 else ""
             )
-            evidence = (
-                *evidence,
-                *build_text_context_references(
-                    "Compact todo vector context:\n" + vector_text,
-                    reference_prefix="todo-vector",
-                    kind="todo-vector-context",
-                    path=artifact_path,
-                    repository_id=repository_id,
-                    tree_id=tree_id,
-                    priority=100,
-                    chunk_bytes=6_144,
-                    coverage_ids=tuple(
-                        self._compact_value_list(
-                            task.metadata.get("missing evidence", "")
-                        )
-                    ),
-                ),
-            )
-        if checkpoint_manifest["file_count"]:
-            evidence = (
-                *evidence,
-                *build_text_context_references(
-                    "Durable implementation checkpoint manifest:\n"
-                    + canonical_json(checkpoint_manifest),
-                    reference_prefix="implementation-checkpoint",
-                    kind="implementation-checkpoint-manifest",
-                    repository_id=repository_id,
-                    tree_id=tree_id,
-                    priority=1_100,
-                    chunk_bytes=8_192,
+            evidence = build_text_context_references(
+                "Compact todo vector context:\n" + vector_text,
+                reference_prefix="todo-vector",
+                kind="todo-vector-context",
+                path=artifact_path,
+                repository_id=repository_id,
+                tree_id=tree_id,
+                priority=100,
+                chunk_bytes=6_144,
+                coverage_ids=tuple(
+                    self._compact_value_list(
+                        task.metadata.get("missing evidence", "")
+                    )
                 ),
             )
         compiler = ContextCompiler(
@@ -20761,6 +21587,9 @@ class PortalImplementationDaemon:
                     "todo_file": todo_file,
                     "source_line": int(task.source_line),
                     "generic_prompt_policy": rules,
+                    "implementation_prompt_policy_appendix": (
+                        prompt_policy_appendix
+                    ),
                     "edit_policy": edit_policy,
                     "implementation_timeout_policy": canonical_json(
                         timeout_policy.to_dict()
@@ -20889,10 +21718,29 @@ class PortalImplementationDaemon:
         return path
 
     def _implementation_prompt_policy_appendix(self, task: PortalTask) -> str:
-        """Compatibility hook; all enforcement policy is capsule-bound."""
+        """Admission and output-ownership policy bound into implementer prompts.
 
-        del task
-        return ""
+        Capsule-bound enforcement remains authoritative; this appendix is
+        advisory so first attempts do not discover proposal size limits only
+        after a green pytest run (LIG-016 class failures).
+        """
+
+        outputs = ", ".join(task.outputs) if task.outputs else "(none declared)"
+        return (
+            "## Admission policy (fail-closed)\n"
+            "- Declared Outputs may be files **or directory trees**. Descendants "
+            "of a directory output are in-scope; undeclared paths outside those "
+            "trees are not.\n"
+            "- Proposal admission budgets "
+            f"(patch ≤ {DEFAULT_IMPLEMENTATION_PROPOSAL_PATCH_BYTES} bytes, "
+            f"provider output ≤ {DEFAULT_IMPLEMENTATION_PROPOSAL_OUTPUT_BYTES} bytes, "
+            f"single file ≤ {DEFAULT_IMPLEMENTATION_PROPOSAL_FILE_BYTES} bytes). "
+            "Pytest green does not bypass admission.\n"
+            "- For fixture-heavy integration tasks prefer compact recipes/"
+            "generators over bulk golden dumps that re-emit full envelopes per "
+            "case.\n"
+            f"- Declared Outputs for this task: {outputs}\n"
+        )
 
     def _build_implementation_prompt(self, task: PortalTask, attempt: int) -> str:
         if self._implementation_cancel_requested():
@@ -20983,7 +21831,20 @@ class PortalImplementationDaemon:
                             ),
                         },
                     )
+            seed_guidance = str(
+                self._implementation_seed_failure_guidance.get(key) or ""
+            ).strip()
+            if seed_guidance:
+                rendered = (
+                    f"{rendered.rstrip()}\n\n"
+                    "## Prior attempt seed recovery\n"
+                    f"{seed_guidance}\n"
+                )
         self._require_implementation_prompt_byte_budget(task, rendered)
+        if attempt > 1 and seed_guidance:
+            # One-shot after the bounded prompt is accepted; failed budget
+            # admission must retain the recovery guidance for diagnosis.
+            self._implementation_seed_failure_guidance.pop(key, None)
         return rendered
 
     def _build_recommended_actions(self, task: PortalTask) -> list[str]:
@@ -21691,15 +22552,6 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
-        "--merge-queue-dir",
-        type=Path,
-        default=None,
-        help=(
-            "Explicit merge-queue namespace. The queue remains durably bound "
-            "to this daemon's repository and resolved merge target."
-        ),
-    )
-    parser.add_argument(
         "--worktree-submodule-path",
         action="append",
         default=[],
@@ -21804,7 +22656,6 @@ def main(argv: list[str] | None = None) -> None:
         use_ephemeral_worktree=args.implement and not args.no_ephemeral_worktree,
         worktree_root=args.worktree_root,
         merge_target_branch=args.merge_target_branch,
-        merge_queue_dir=args.merge_queue_dir,
         worktree_submodule_paths=args.worktree_submodule_path or None,
         implementation_protected_paths=args.implementation_protected_path,
         objective_path=args.objective_path,
@@ -21842,12 +22693,7 @@ def main(argv: list[str] | None = None) -> None:
             logger.info("Portal implementation daemon pass complete: %s", result)
             if args.once:
                 break
-            daemon.wait_for_wake(
-                timeout=bounded_daemon_wait_timeout(
-                    result,
-                    default_timeout=args.interval,
-                )
-            )
+            daemon.wait_for_wake(timeout=args.interval)
     finally:
         daemon.close_event_runtime()
 

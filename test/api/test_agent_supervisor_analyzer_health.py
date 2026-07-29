@@ -4,7 +4,7 @@ import math
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.analyzer_health import (
+from ipfs_accelerate_py.agent_supervisor.analysis.analyzer_health import (
     ANALYZER_CANARY_FIXTURES,
     ANALYZER_SUPPORTED_FINDING_KINDS,
     ANALYZER_SUPPORTED_PARSER_PATHS,
@@ -17,7 +17,7 @@ from ipfs_accelerate_py.agent_supervisor.analyzer_health import (
     run_analyzer_canaries,
     validate_canary_registry,
 )
-from ipfs_accelerate_py.agent_supervisor.backlog_refinery import (
+from ipfs_accelerate_py.agent_supervisor.objectives.backlog_refinery import (
     CODEBASE_SCAN_ANALYZER_VERSION,
     run_codebase_analyzer_canaries,
 )

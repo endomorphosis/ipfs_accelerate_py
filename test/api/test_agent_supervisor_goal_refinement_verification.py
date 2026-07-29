@@ -5,7 +5,7 @@ from dataclasses import replace
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.formal_logic_vocabulary import (
+from ipfs_accelerate_py.agent_supervisor.proof.formal_logic_vocabulary import (
     LOGIC_VOCABULARY_VERSION,
     ReviewedPredicate,
     TDFOLVocabulary,
@@ -13,7 +13,7 @@ from ipfs_accelerate_py.agent_supervisor.formal_logic_vocabulary import (
     atom,
     constant,
 )
-from ipfs_accelerate_py.agent_supervisor.formal_planning_contracts import (
+from ipfs_accelerate_py.agent_supervisor.planning.formal_planning_contracts import (
     Actor,
     ActorKind,
     Effect,
@@ -32,10 +32,10 @@ from ipfs_accelerate_py.agent_supervisor.formal_planning_contracts import (
     RefinementMode,
     Subgoal,
 )
-from ipfs_accelerate_py.agent_supervisor.formal_verification_contracts import (
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
     ContractValidationError,
 )
-from ipfs_accelerate_py.agent_supervisor.goal_refinement_verification import (
+from ipfs_accelerate_py.agent_supervisor.objectives.goal_refinement_verification import (
     MAX_LEANSTRAL_REPAIR_ROUNDS,
     FrozenRefinementContext,
     GoalRefinementVerifier,
@@ -51,7 +51,7 @@ from ipfs_accelerate_py.agent_supervisor.goal_refinement_verification import (
     RepairImmutabilityReceipt,
     derive_refinement_obligations,
 )
-from ipfs_accelerate_py.agent_supervisor.multi_prover_router import (
+from ipfs_accelerate_py.agent_supervisor.proof.multi_prover_router import (
     AttemptOutcome,
     MultiProverRouter,
     PropertyKind,

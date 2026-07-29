@@ -2,7 +2,7 @@ from dataclasses import replace
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.decision_runtime_benchmark import (
+from ipfs_accelerate_py.agent_supervisor.context.decision_runtime_benchmark import (
     DecisionRuntimeBenchmark,
     DecisionRuntimeBenchmarkError,
     DecisionRuntimePath,

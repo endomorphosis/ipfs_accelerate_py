@@ -9,8 +9,8 @@ from pathlib import Path
 
 import pytest
 
-import ipfs_accelerate_py.agent_supervisor.objective_graph as objective_graph_module
-import ipfs_accelerate_py.agent_supervisor.objective_tracker as objective_tracker_module
+import ipfs_accelerate_py.agent_supervisor.objectives.objective_graph as objective_graph_module
+import ipfs_accelerate_py.agent_supervisor.objectives.objective_tracker as objective_tracker_module
 from ipfs_accelerate_py.agent_supervisor import (
     build_bundle_task_payloads,
     generate_objective_todos,
@@ -22,7 +22,7 @@ from ipfs_accelerate_py.agent_supervisor import (
     scan_objective_gaps,
     submit_bundle_tasks,
 )
-from ipfs_accelerate_py.agent_supervisor.merge_resolver import (
+from ipfs_accelerate_py.agent_supervisor.merge.merge_resolver import (
     MergeResolverCliConfig,
     build_llm_merge_resolver_invoker,
     build_merge_prompt_callback,
@@ -31,19 +31,19 @@ from ipfs_accelerate_py.agent_supervisor.merge_resolver import (
     main as merge_resolver_main,
     run_configured_merge_resolver_cli,
 )
-from ipfs_accelerate_py.agent_supervisor.bundle_supervisor import plan_bundle_lanes
-from ipfs_accelerate_py.agent_supervisor.objective_daemon import (
+from ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor import plan_bundle_lanes
+from ipfs_accelerate_py.agent_supervisor.objectives.objective_daemon import (
     build_arg_parser as build_objective_daemon_arg_parser,
     completion_gate_work_terms,
     objective_generation_proposals,
     objective_generation_task_findings,
     run_objective_daemon,
 )
-from ipfs_accelerate_py.agent_supervisor.goal_completion import CompletionEvidence
-from ipfs_accelerate_py.agent_supervisor.implementation_supervisor_runner import (
+from ipfs_accelerate_py.agent_supervisor.objectives.goal_completion import CompletionEvidence
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor_runner import (
     build_goal_completion_projection,
 )
-from ipfs_accelerate_py.agent_supervisor.objective_graph import (
+from ipfs_accelerate_py.agent_supervisor.objectives.objective_graph import (
     EXTERNAL_AUTHORITY_BENCHMARK_GOAL_IDS,
     EvidenceSourcePolicy,
     ObjectiveFinding,
@@ -59,7 +59,7 @@ from ipfs_accelerate_py.agent_supervisor.objective_graph import (
     tracked_files,
     write_bundle_shards,
 )
-from ipfs_accelerate_py.agent_supervisor.objective_tracker import (
+from ipfs_accelerate_py.agent_supervisor.objectives.objective_tracker import (
     append_launch_readiness_goals,
     append_refinement_goals,
     completion_tree_identity,

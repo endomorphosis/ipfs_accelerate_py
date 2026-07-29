@@ -22,7 +22,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
-from .formal_verification_contracts import content_identity
+from .proof.formal_verification_contracts import content_identity
 from .repository_forest import (
     ANALYZER_PROFILE_SCHEMA,
     AUTHORITY_SCHEMA,

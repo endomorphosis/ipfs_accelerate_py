@@ -2,11 +2,11 @@ from dataclasses import replace
 from pathlib import Path
 
 from ipfs_accelerate_py.agent_supervisor import bundle_supervisor
-from ipfs_accelerate_py.agent_supervisor.bundle_supervisor import (
+from ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor import (
     BundleLaneSpec,
     DynamicBundleScheduler,
 )
-from ipfs_accelerate_py.agent_supervisor.lease_coordination import TaskLeaseState
+from ipfs_accelerate_py.agent_supervisor.merge.lease_coordination import TaskLeaseState
 
 
 def _lane(repo: Path, shard: Path) -> BundleLaneSpec:

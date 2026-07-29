@@ -165,11 +165,11 @@ class CredentialManager:
         if not HAVE_CRYPTO:
             raise RuntimeError("cryptography package required, install with: pip install cryptography")
         
-        # Initialize storage wrapper
-        if storage_wrapper:
+        # Initialize storage wrapper (optional; fall back to local filesystem).
+        if HAVE_STORAGE_WRAPPER:
             try:
-                self.storage = storage_wrapper()
-            except:
+                self.storage = get_storage_wrapper(auto_detect_ci=True)
+            except Exception:
                 self.storage = None
         else:
             self.storage = None

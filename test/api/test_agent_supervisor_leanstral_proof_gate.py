@@ -10,14 +10,14 @@ from pathlib import Path
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.formal_verification_contracts import (
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
     AssuranceLevel,
 )
-from ipfs_accelerate_py.agent_supervisor.kernel_verification import (
+from ipfs_accelerate_py.agent_supervisor.proof.kernel_verification import (
     KernelFailureCode,
     KernelVerificationBindings,
 )
-from ipfs_accelerate_py.agent_supervisor.leanstral_proof_provider import (
+from ipfs_accelerate_py.agent_supervisor.proof.leanstral_proof_provider import (
     LEANSTRAL_DRAFT_SCHEMA_VERSION,
     LeanstralGateStatus,
     LeanstralPatchGatePolicy,
@@ -25,7 +25,7 @@ from ipfs_accelerate_py.agent_supervisor.leanstral_proof_provider import (
     check_leanstral_patch_proposal,
     verify_leanstral_draft,
 )
-from ipfs_accelerate_py.agent_supervisor.proof_context import (
+from ipfs_accelerate_py.agent_supervisor.proof.proof_context import (
     FixedTheoremIdentity,
 )
 

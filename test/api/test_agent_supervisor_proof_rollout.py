@@ -4,10 +4,10 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.formal_verification_contracts import (
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
     AssuranceLevel,
 )
-from ipfs_accelerate_py.agent_supervisor.formal_verification_policy import (
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_policy import (
     ChangedScope,
     FormalVerificationPolicy,
     OverrideReceipt,
@@ -20,7 +20,7 @@ from ipfs_accelerate_py.agent_supervisor.formal_verification_policy import (
     RolloutTransitionReceipt,
     build_proof_rollout_status,
 )
-from ipfs_accelerate_py.agent_supervisor.scheduler_metrics import (
+from ipfs_accelerate_py.agent_supervisor.runtime.scheduler_metrics import (
     build_scheduler_snapshot,
     query_proof_rollout_status,
     read_proof_rollout_status,

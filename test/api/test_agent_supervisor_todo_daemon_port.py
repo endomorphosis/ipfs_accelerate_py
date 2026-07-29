@@ -16,16 +16,16 @@ from types import SimpleNamespace
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.context_compiler import (
+from ipfs_accelerate_py.agent_supervisor.context.context_compiler import (
     ContextCompileResult,
 )
-from ipfs_accelerate_py.agent_supervisor.context_contracts import ContextBudget
-from ipfs_accelerate_py.agent_supervisor.objective_daemon import (
+from ipfs_accelerate_py.agent_supervisor.context.context_contracts import ContextBudget
+from ipfs_accelerate_py.agent_supervisor.objectives.objective_daemon import (
     build_arg_parser,
     discovery_fingerprints,
     run_objective_daemon,
 )
-from ipfs_accelerate_py.agent_supervisor.bundle_supervisor import (
+from ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor import (
     _bundle_lane_pythonpath,
     bundle_member_completion_receipts,
     build_arg_parser as build_bundle_arg_parser,
@@ -34,44 +34,44 @@ from ipfs_accelerate_py.agent_supervisor.bundle_supervisor import (
     plan_bundle_lanes,
     run_bundle_supervisor,
 )
-from ipfs_accelerate_py.agent_supervisor.objective_graph import (
+from ipfs_accelerate_py.agent_supervisor.objectives.objective_graph import (
     ObjectiveGoal,
     objective_heap_schedule,
     parse_goal_heap,
     scan_objective_gaps,
 )
-from ipfs_accelerate_py.agent_supervisor.todo_vector_index import (
+from ipfs_accelerate_py.agent_supervisor.task_sources.todo_vector_index import (
     _canonical_dependency_waves,
     parse_todo_vector_records,
     write_todo_vector_index,
 )
-from ipfs_accelerate_py.agent_supervisor.objective_tracker import fibonacci_priority, run_goal_validation
-from ipfs_accelerate_py.agent_supervisor.validation_commands import split_validation_commands
-from ipfs_accelerate_py.agent_supervisor.backlog_refinery import (
+from ipfs_accelerate_py.agent_supervisor.objectives.objective_tracker import fibonacci_priority, run_goal_validation
+from ipfs_accelerate_py.agent_supervisor.validation.validation_commands import split_validation_commands
+from ipfs_accelerate_py.agent_supervisor.objectives.backlog_refinery import (
     dependency_guardrail_records,
     reconciliation_guardrail_plan,
     reconciliation_guardrail_records,
     record_reconciliation_guardrail_findings,
 )
 from ipfs_accelerate_py.agent_supervisor import merge_resolver
-from ipfs_accelerate_py.agent_supervisor.merge_queue import (
+from ipfs_accelerate_py.agent_supervisor.merge.merge_queue import (
     MERGE_TARGET_BINDING_SCHEMA,
     MergeQueue,
 )
-from ipfs_accelerate_py.agent_supervisor.merge_resolver import (
+from ipfs_accelerate_py.agent_supervisor.merge.merge_resolver import (
     ConfiguredMergeResolverRunner,
     MergeResolverNamespaceSpec,
     build_configured_merge_resolver_runner,
     build_namespace_merge_resolver_runner_from_spec,
 )
-from ipfs_accelerate_py.agent_supervisor.llm_merge_resolver_fallback import (
+from ipfs_accelerate_py.agent_supervisor.integrations.llm_merge_resolver_fallback import (
     _DEFAULT_CODEX_TIMEOUT_SECONDS,
     _DEFAULT_COPILOT_TIMEOUT_SECONDS,
     _timeout_seconds,
     llm_merge_resolver_fallback_command,
 )
 from ipfs_accelerate_py.agent_supervisor import task_proposal_router
-from ipfs_accelerate_py.agent_supervisor.task_proposal_router import (
+from ipfs_accelerate_py.agent_supervisor.planning.task_proposal_router import (
     ConfiguredTaskProposalRouterRunner,
     TaskProposalRouteSpec,
     build_configured_task_proposal_router_runner,
@@ -82,7 +82,7 @@ from ipfs_accelerate_py.agent_supervisor.task_proposal_router import (
     standard_task_proposal_requested_outputs,
 )
 from ipfs_accelerate_py.agent_supervisor import multi_supervisor_runner
-from ipfs_accelerate_py.agent_supervisor.multi_supervisor_runner import (
+from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import (
     ConfiguredMultiSupervisorCliRunner,
     ConfiguredMultiSupervisorLauncher,
     ImplementationSupervisorNamespaceTrackSpec,
@@ -105,7 +105,7 @@ from ipfs_accelerate_py.agent_supervisor.multi_supervisor_runner import (
     supervisor_track_payload,
     tracks_from_parsed_args,
 )
-from ipfs_accelerate_py.agent_supervisor.implementation_daemon_runner import (
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon_runner import (
     ConfiguredImplementationDaemonRunner,
     ImplementationDaemonDefaults,
     ImplementationDaemonRunContext,
@@ -118,12 +118,12 @@ from ipfs_accelerate_py.agent_supervisor.implementation_daemon_runner import (
     build_portal_implementation_daemon_from_args,
 )
 from ipfs_accelerate_py.agent_supervisor import implementation_daemon_runner
-from ipfs_accelerate_py.agent_supervisor.checkout_lock import (
+from ipfs_accelerate_py.agent_supervisor.merge.checkout_lock import (
     BACKLOG_REFINERY_AUTHOR_EMAIL,
     GENERATED_PROTECTED_BOARD_COMMIT_MARKER,
     checkout_mutation_lock_path,
 )
-from ipfs_accelerate_py.agent_supervisor.implementation_supervisor_runner import (
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor_runner import (
     CodebaseRefillDefaults,
     ImplementationSupervisorDefaults,
     ObjectiveRefillDefaults,
@@ -138,7 +138,7 @@ from ipfs_accelerate_py.agent_supervisor.implementation_supervisor_runner import
 )
 from ipfs_accelerate_py.agent_supervisor import git_gc as git_gc_module
 from ipfs_accelerate_py.agent_supervisor import implementation_supervisor_runner
-from ipfs_accelerate_py.agent_supervisor.git_gc import GitGarbageCollector
+from ipfs_accelerate_py.agent_supervisor.merge.git_gc import GitGarbageCollector
 from ipfs_accelerate_py.agent_supervisor.todo_daemon import implementation_daemon as implementation_daemon_module
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     PortalTask,
@@ -208,7 +208,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_runtime import (
     terminate_process_with_grace,
     terminate_supervised_child,
 )
-from ipfs_accelerate_py.agent_supervisor.wrapper_utils import (
+from ipfs_accelerate_py.agent_supervisor.core.wrapper_utils import (
     AGENT_SUPERVISOR_DIRECTORY_BOOTSTRAP_KEYS,
     AgentSupervisorNamespaceContext,
     AgentSupervisorNamespacePaths,
@@ -1173,6 +1173,21 @@ def test_implementation_daemon_skips_unauthenticated_copilot_fallback(tmp_path, 
         repo_root=repo,
     )
 
+    # Hermetic against ambient agent-lane provider force (grok_cli) and PATH.
+    monkeypatch.delenv(
+        implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV,
+        raising=False,
+    )
+    monkeypatch.delenv("IMPLEMENTATION_DAEMON_COMMAND", raising=False)
+    monkeypatch.delenv(implementation_daemon_module._CODEX_MODEL_ENV, raising=False)
+    monkeypatch.delenv(implementation_daemon_module._CODEX_CONTEXT_WINDOW_ENV, raising=False)
+    monkeypatch.delenv(implementation_daemon_module._CODEX_REASONING_EFFORT_ENV, raising=False)
+    monkeypatch.delenv(implementation_daemon_module._CODEX_MAX_THREADS_ENV, raising=False)
+    monkeypatch.delenv(implementation_daemon_module._CODEX_MAX_DEPTH_ENV, raising=False)
+    monkeypatch.setattr(implementation_daemon_module, "_grok_cli_available", lambda: False)
+    monkeypatch.setattr(
+        implementation_daemon_module, "_goose_meta_spark_available", lambda: False
+    )
     monkeypatch.setattr(
         implementation_daemon_module.shutil,
         "which",
@@ -1391,6 +1406,25 @@ def test_implementation_daemon_uses_authenticated_copilot_fallback(tmp_path, mon
         repo_root=repo,
     )
 
+    # Hermetic against ambient agent-lane provider force (grok_cli) and PATH.
+    monkeypatch.delenv(
+        implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV,
+        raising=False,
+    )
+    monkeypatch.delenv("IMPLEMENTATION_DAEMON_COMMAND", raising=False)
+    monkeypatch.delenv(implementation_daemon_module._CODEX_MODEL_ENV, raising=False)
+    monkeypatch.delenv(implementation_daemon_module._CODEX_CONTEXT_WINDOW_ENV, raising=False)
+    monkeypatch.delenv(implementation_daemon_module._CODEX_REASONING_EFFORT_ENV, raising=False)
+    monkeypatch.delenv(implementation_daemon_module._CODEX_MAX_THREADS_ENV, raising=False)
+    monkeypatch.delenv(implementation_daemon_module._CODEX_MAX_DEPTH_ENV, raising=False)
+    monkeypatch.delenv(implementation_daemon_module._COPILOT_MODEL_ENV, raising=False)
+    monkeypatch.delenv(implementation_daemon_module._COPILOT_EFFORT_ENV, raising=False)
+    monkeypatch.delenv(implementation_daemon_module._COPILOT_CONTEXT_TIER_ENV, raising=False)
+    monkeypatch.delenv(implementation_daemon_module._COPILOT_MAX_CONTINUES_ENV, raising=False)
+    monkeypatch.setattr(implementation_daemon_module, "_grok_cli_available", lambda: False)
+    monkeypatch.setattr(
+        implementation_daemon_module, "_goose_meta_spark_available", lambda: False
+    )
     monkeypatch.setattr(
         implementation_daemon_module.shutil,
         "which",
@@ -3870,10 +3904,10 @@ def test_repo_implementation_multi_supervisor_launcher_uses_packaged_resolver_de
     args = launcher.args()
     assert "--implementation-supervisor-command" not in args
     assert args[args.index("--implementation-supervisor-llm-merge-resolver-command") + 1] == (
-        "python-test -m ipfs_accelerate_py.agent_supervisor.llm_merge_resolver_fallback"
+        "python-test -m ipfs_accelerate_py.agent_supervisor.integrations.llm_merge_resolver_fallback"
     )
     assert llm_merge_resolver_fallback_command(python_executable="python-test") == (
-        "python-test -m ipfs_accelerate_py.agent_supervisor.llm_merge_resolver_fallback"
+        "python-test -m ipfs_accelerate_py.agent_supervisor.integrations.llm_merge_resolver_fallback"
     )
 
 
@@ -3902,7 +3936,7 @@ def test_llm_merge_resolver_fallback_module_uses_codex_first(tmp_path):
         [
             sys.executable,
             "-m",
-            "ipfs_accelerate_py.agent_supervisor.llm_merge_resolver_fallback",
+            "ipfs_accelerate_py.agent_supervisor.integrations.llm_merge_resolver_fallback",
             str(tmp_path),
         ],
         input="resolve this conflict",
@@ -3968,7 +4002,7 @@ def test_llm_merge_resolver_fallback_uses_copilot_after_codex_timeout(tmp_path):
         [
             sys.executable,
             "-m",
-            "ipfs_accelerate_py.agent_supervisor.llm_merge_resolver_fallback",
+            "ipfs_accelerate_py.agent_supervisor.integrations.llm_merge_resolver_fallback",
             str(tmp_path),
         ],
         input="resolve this conflict",
@@ -4007,7 +4041,7 @@ def test_llm_merge_resolver_fallback_skips_unauthenticated_copilot(tmp_path):
         [
             sys.executable,
             "-m",
-            "ipfs_accelerate_py.agent_supervisor.llm_merge_resolver_fallback",
+            "ipfs_accelerate_py.agent_supervisor.integrations.llm_merge_resolver_fallback",
             str(tmp_path),
         ],
         input="resolve this conflict",
@@ -6283,7 +6317,19 @@ def test_implementation_daemon_failed_merge_reconciliation_remains_retryable(tmp
     assert candidates[0]["implementation_commit"] == implementation_commit
 
 
-def test_implementation_daemon_retries_submodule_after_parent_commit_already_landed(tmp_path):
+def test_implementation_daemon_retries_submodule_after_parent_commit_already_landed(
+    tmp_path, monkeypatch
+):
+    # Ambient agent-lane LLM merge resolvers must not auto-heal dirty checkouts
+    # in this deterministic dirty-gate regression (they hang and clear the race).
+    monkeypatch.delenv(
+        implementation_daemon_module.LLM_MERGE_RESOLVER_COMMAND_ENV,
+        raising=False,
+    )
+    monkeypatch.delenv(
+        implementation_daemon_module.LLM_MERGE_RESOLVER_TIMEOUT_ENV,
+        raising=False,
+    )
     repo, submodule = _seed_parent_with_submodule(tmp_path)
     (repo / "README.md").write_text("base\n", encoding="utf-8")
     _git(repo, "add", "README.md")
@@ -6311,6 +6357,7 @@ def test_implementation_daemon_retries_submodule_after_parent_commit_already_lan
         events_path=state_dir / "events.jsonl",
         repo_root=repo,
         worktree_submodule_paths=["libs/child"],
+        llm_merge_resolver_command="",
     )
     task = PortalTask(
         task_id="AUTO-116",
@@ -7029,6 +7076,119 @@ def test_implementation_daemon_run_once_cleans_already_merged_worktree(tmp_path)
     assert branch_exists.returncode != 0
     events = [json.loads(line) for line in (state_dir / "events.jsonl").read_text(encoding="utf-8").splitlines()]
     assert any(event["type"] == "merged_worktree_cleanup" for event in events)
+
+
+def test_implementation_daemon_fences_preparing_worktree_from_peer_merged_cleanup(
+    tmp_path,
+):
+    """ASI-171: peer cleanup must not remove a preparing claim at merge tip.
+
+    Reproduces the six-lane race: owner has claimed and created a worktree
+    whose branch tip is still an ancestor of main, with no child process
+    visible yet.  Another lane's already-merged cleanup must skip it.
+    """
+
+    from ipfs_accelerate_py.agent_supervisor.worktree_lifecycle import (
+        FENCED_WORKTREE_LIFECYCLE_REQUIREMENT_ID,
+        WorkspaceLifecycleState,
+    )
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "base")
+
+    # Branch tip is still at main (ancestor of merge target) — the false
+    # positive that previously triggered cleanup.
+    branch_name = "implementation/asi-171-attempt-1-race"
+    worktree_root = repo / "worktrees"
+    worktree_path = worktree_root / "asi-171-attempt-1-race"
+    _git(repo, "worktree", "add", "-b", branch_name, str(worktree_path), "HEAD")
+    ancestor = subprocess.run(
+        ["git", "merge-base", "--is-ancestor", branch_name, "main"],
+        cwd=repo,
+        check=False,
+    )
+    assert ancestor.returncode == 0
+
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Agent Todos
+
+## ASI-171 Fence cross-lane worktree ownership
+
+- Status: todo
+- Completion: manual
+- Priority: P0
+- Track: supervisor-worktree-fencing
+- Depends on:
+- Outputs: ipfs_accelerate_py/agent_supervisor/worktree_lifecycle.py
+- Validation: true
+- Acceptance: Preparing claims survive peer cleanup.
+""",
+        encoding="utf-8",
+    )
+    owner_state = repo / "state-owner"
+    peer_state = repo / "state-peer"
+    owner = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=owner_state / "task_state.json",
+        strategy_path=owner_state / "strategy.json",
+        events_path=owner_state / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ASI-",
+        worktree_root=worktree_root,
+        merged_worktree_cleanup_max=5,
+    )
+    peer = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=peer_state / "task_state.json",
+        strategy_path=peer_state / "strategy.json",
+        events_path=peer_state / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ASI-",
+        worktree_root=worktree_root,
+        merged_worktree_cleanup_max=5,
+    )
+
+    record = owner.worktree_lifecycle.begin_preparing(
+        task_id="ASI-171",
+        canonical_task_cid="task:asi-171",
+        attempt=1,
+        lane_id="owner-lane",
+        workspace_path=worktree_path,
+        branch=branch_name,
+        merge_target="main",
+        state_dir=str(owner_state),
+    )
+    assert record.state is WorkspaceLifecycleState.PREPARING
+    owner._active_worktree_lifecycle = record
+
+    # Peer lane has no active process scan hit and branch is already merged.
+    cleanup = peer._cleanup_already_merged_worktrees()
+    assert cleanup["removed_count"] == 0
+    assert worktree_path.exists()
+    assert any(
+        str(item.get("reason") or "").startswith("lifecycle_")
+        for item in cleanup.get("skipped") or []
+    ), cleanup
+
+    direct = peer._cleanup_merged_worktree(worktree_path, branch_name)
+    assert direct.get("cleaned") is False
+    assert direct.get("attempt_consumed") is False
+    assert direct.get("provider_call_allowed") is False
+    assert worktree_path.exists()
+
+    # Owner may still dispose its own claim.
+    owner_cleanup = owner._cleanup_merged_worktree(worktree_path, branch_name)
+    assert owner_cleanup.get("cleaned") is True
+    assert not worktree_path.exists()
+    assert FENCED_WORKTREE_LIFECYCLE_REQUIREMENT_ID
 
 
 def test_implementation_daemon_runs_validation_non_interactively(tmp_path, monkeypatch):
@@ -10544,6 +10704,7 @@ def test_implementation_supervisor_creates_missing_todo_before_refill(tmp_path):
 - Evidence: RuntimeBridge.dispatch, missing_runtime_contract
 - Outputs: src/runtime_bridge.py, tests
 - Validation: test -f objective-heap.md
+- Acceptance: Runtime bridge dispatch has a current validated contract proof.
 - Gap task: Add the missing runtime contract proof.
 """,
         encoding="utf-8",
@@ -10605,6 +10766,7 @@ def test_implementation_supervisor_repairs_directory_todo_before_refill(tmp_path
 - Evidence: missing_directory_todo_repair
 - Outputs: src/runtime_bridge.py, tests
 - Validation: test -f objective-heap.md
+- Acceptance: Todo board directory repair bootstraps a validated refill task.
 - Gap task: Add the directory todo repair proof.
 """,
         encoding="utf-8",
@@ -13425,6 +13587,69 @@ def test_implementation_prompt_uses_compact_todo_vector_context(tmp_path):
     assert '"embedding"' not in prompt
 
 
+def test_implementation_context_accepts_external_todo_vector_index(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    source = repo / "src" / "bridge.py"
+    source.parent.mkdir()
+    source.write_text("def route():\n    return None\n", encoding="utf-8")
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Todos
+
+## ACCEL-001 Close scheduler gap
+
+- Status: todo
+- Priority: P1
+- Track: runtime
+- Outputs: src/bridge.py
+- Validation: test -f src/bridge.py
+- Bundle: objective/runtime/bridge
+- Goal id: VAIOS-G021
+- Missing evidence: scheduler policy
+- Merge key: bridge-runtime
+- Acceptance: Add scheduler policy proof.
+""",
+        encoding="utf-8",
+    )
+    index_path = tmp_path / "shared-runtime" / "todo_vector_index.json"
+    write_todo_vector_index(
+        repo_root=repo,
+        todo_path=todo_path,
+        index_path=index_path,
+        task_header_prefix="## ACCEL-",
+    )
+    state_dir = repo / "state"
+    state_dir.mkdir()
+    strategy_path = state_dir / "strategy.json"
+    strategy_path.write_text(
+        json.dumps(
+            {"last_objective_todo_vector_index_path": str(index_path)}
+        ),
+        encoding="utf-8",
+    )
+    task = parse_task_file(todo_path, task_header_prefix="## ACCEL-")[0]
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=strategy_path,
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+    )
+
+    result = daemon._compile_implementation_context(task, attempt=1)
+
+    todo_vector_references = [
+        reference
+        for reference in result.capsule.evidence
+        if reference.kind == "todo-vector-context"
+    ]
+    assert todo_vector_references
+    assert all(reference.path == "" for reference in todo_vector_references)
+    assert "Compact todo vector context:" in todo_vector_references[0].summary
+
+
 def test_implementation_prompt_can_disable_unavailable_subagents(monkeypatch, tmp_path):
     monkeypatch.setenv("IPFS_ACCELERATE_AGENT_DISABLE_SUBAGENTS", "1")
     task = PortalTask(
@@ -16184,7 +16409,7 @@ def test_goal_packet_aggregate_releases_every_covered_member_dependency(
         return Process()
 
     monkeypatch.setattr(
-        "ipfs_accelerate_py.agent_supervisor.bundle_supervisor.subprocess.Popen",
+        "ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor.subprocess.Popen",
         fake_popen,
     )
     launched = launch_bundle_lanes(
@@ -16351,7 +16576,7 @@ def test_legacy_aggregate_member_ids_release_downstream_lane(
         return Process()
 
     monkeypatch.setattr(
-        "ipfs_accelerate_py.agent_supervisor.bundle_supervisor.subprocess.Popen",
+        "ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor.subprocess.Popen",
         fake_popen,
     )
     launched = launch_bundle_lanes(
@@ -16590,7 +16815,7 @@ def test_implementation_daemon_invokes_configured_llm_merge_resolver(tmp_path):
 
 
 def test_llm_merge_resolver_times_out_hung_command(tmp_path):
-    from ipfs_accelerate_py.agent_supervisor.merge_resolver import invoke_llm_resolver
+    from ipfs_accelerate_py.agent_supervisor.merge.merge_resolver import invoke_llm_resolver
 
     sleeper = tmp_path / "sleeper.py"
     sleeper.write_text("import time\ntime.sleep(5)\n", encoding="utf-8")

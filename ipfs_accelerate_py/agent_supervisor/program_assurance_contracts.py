@@ -21,7 +21,7 @@ from enum import Enum
 from pathlib import PurePosixPath, PureWindowsPath
 from typing import Any, ClassVar, Final, TypeVar
 
-from .formal_verification_contracts import (
+from .proof.formal_verification_contracts import (
     CanonicalContract,
     ContractValidationError,
     canonical_json_bytes,

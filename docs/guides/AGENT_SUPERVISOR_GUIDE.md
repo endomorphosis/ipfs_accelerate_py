@@ -10,10 +10,21 @@ completion, mutation, merge, and automatic self-improvement remain subject to
 repository and state allowlists, identity and policy bindings, deterministic
 validation, fresh evidence, leases, fencing, and authorization.
 
-For the design rationale and rollout invariants, see the
-[Agent Supervisor Architecture](../architecture/AGENT_SUPERVISOR_ARCHITECTURE.md)
-and
-[Self-Improvement Plan](../architecture/AGENT_SUPERVISOR_SELF_IMPROVEMENT_PLAN.md).
+## Related documentation
+
+| Need | Document |
+| --- | --- |
+| Design pillars | [Philosophy](../architecture/AGENT_SUPERVISOR_PHILOSOPHY.md) |
+| Extend / place code | [Developer guide](../architecture/agent_supervisor/DEVELOPER_GUIDE.md) |
+| Package ownership | [Package map](../architecture/agent_supervisor/PACKAGE_MAP.md) |
+| Deep contracts | [Architecture](../architecture/AGENT_SUPERVISOR_ARCHITECTURE.md) |
+| Doc hub | [agent_supervisor/](../architecture/agent_supervisor/README.md) |
+| Code-tree entry | [Package README](../../ipfs_accelerate_py/agent_supervisor/README.md) |
+| Self-improvement program | [Self-Improvement Plan](../architecture/AGENT_SUPERVISOR_SELF_IMPROVEMENT_PLAN.md) |
+
+This guide is the **operator / integration** surface (install, discover,
+authorize, profiles, recovery). Prefer the developer guide when changing
+package layout or implementing new domain features.
 
 ## Installation and entry points
 
@@ -46,6 +57,50 @@ execution, recovery, and migrations:
 These scripts are execution engines, not competing control APIs. The unified
 service can call their package APIs through registered handlers; it never
 turns a typed operation into a shell string.
+
+## Mental model (short)
+
+1. **Objectives** state durable intent; **taskboards** are drainable projections.  
+2. **Models propose**; validation, leases, and typed evidence **admit**.  
+3. **Domain packages** (`control`, `proof`, `runtime`, …) own code—not board prefixes.  
+4. Discovery ≠ capability ≠ proof (see [philosophy](../architecture/AGENT_SUPERVISOR_PHILOSOPHY.md)).
+
+Package placement and DAG: [Package map](../architecture/agent_supervisor/PACKAGE_MAP.md).  
+Agent fail-closed list: [FOR_AGENTS.md](../architecture/agent_supervisor/FOR_AGENTS.md).
+
+## Implementation provider environment
+
+Implementation daemons select a code-edit provider from the environment.
+Defaults used by multi-lane programs in this repo:
+
+| Role | Variable | Recommended value |
+| --- | --- | --- |
+| Provider selection | `IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER` | `grok` (Grok Build CLI) |
+| Grok model | `IPFS_ACCELERATE_AGENT_GROK_MODEL` | `grok-4.5` |
+| Grok binary | `IPFS_ACCELERATE_AGENT_GROK_BIN` | path to `grok` (e.g. `~/.local/bin/grok`) |
+| Grok permissions | `IPFS_ACCELERATE_AGENT_GROK_PERMISSION_MODE` | `bypassPermissions` for unattended lanes |
+| Codex model (when Codex path is used) | `IPFS_ACCELERATE_AGENT_CODEX_MODEL` | `gpt-5.6-terra` |
+
+Example `implementation.env` for a runtime directory:
+
+```bash
+export IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER=grok
+export IPFS_ACCELERATE_AGENT_GROK_MODEL=grok-4.5
+export IPFS_ACCELERATE_AGENT_GROK_PERMISSION_MODE=bypassPermissions
+export IPFS_ACCELERATE_AGENT_GROK_BIN=/home/barberb/.local/bin/grok
+export IPFS_ACCELERATE_AGENT_CODEX_MODEL=gpt-5.6-terra
+```
+
+Notes:
+
+- `provider=grok` forces the Grok Build path when the CLI is available.  
+- Codex is used when the provider is `codex` / `openai`, or as a fallback when
+  Grok is not selected and `codex` is on `PATH`. Always set
+  `IPFS_ACCELERATE_AGENT_CODEX_MODEL` so fallback does not inherit an unrelated
+  interactive Codex default.  
+- Source the env **before** starting multi-supervisor / daemons; children
+  inherit process environment and do not re-read files unless you wire that
+  yourself.
 
 ## One contract on Python, CLI, and MCP
 
@@ -131,10 +186,33 @@ prover integrations stay lazy until a configured operation invokes them.
 ### Generation-2 stable discovery
 
 Generation 2 publishes only the reviewed provider-free names in
-`AGENT_SUPERVISOR_V2_STABLE_EXPORTS`. `V2_STABLE_EXPORTS` is its compatibility
-alias, `AGENT_SUPERVISOR_V2_EXPORT_MODULES` maps every name to its owner module,
+`AGENT_SUPERVISOR_PUBLIC_API_EXPORTS` (also `AGENT_SUPERVISOR_V2_STABLE_EXPORTS` / `V2_STABLE_EXPORTS`), `AGENT_SUPERVISOR_V2_EXPORT_MODULES` maps every name to its owner module,
 and `AGENT_SUPERVISOR_V2_PUBLIC_API_VERSION` is `2`. Do not discover v2 by
 walking package modules or treating a private implementation symbol as stable.
+
+### Domain layout constants (semantic names)
+
+Package-root layout inventories use **product package names**, not board
+prefixes. Prefer:
+
+| Prefer | Role |
+| --- | --- |
+| `AGENT_SUPERVISOR_PUBLIC_API_EXPORTS` | Reviewed package-root public symbol set (alias: `…_V2_STABLE_EXPORTS`) |
+| `AGENT_SUPERVISOR_DOMAIN_PACKAGES` | Full domain package list |
+| `AGENT_SUPERVISOR_LANDED_MODULE_TO_PACKAGE` | Landed module stem → domain package |
+| `AGENT_SUPERVISOR_PLANNED_MODULE_TO_PACKAGE` | Planned module stem → domain package (scan evidence only) |
+| `AGENT_SUPERVISOR_CORE_PACKAGES` / `_CONTROL_` / `_TASK_SOURCES_` / … | Packages by product role |
+| `AGENT_SUPERVISOR_CORE_STEMS` / `_CONTROL_STEMS` / `_TASK_SOURCES_STEMS` | Landed stem inventories |
+| `AGENT_SUPERVISOR_FOUNDATION_LAYOUT_GOAL_IDS` | Foundation layout evidence cluster |
+| `AGENT_SUPERVISOR_OPERATIONS_LAYOUT_GOAL_IDS` | Operations layout evidence cluster |
+| `AGENT_SUPERVISOR_LAYOUT_GOAL_TO_PACKAGES` | Board goal-id string → packages map |
+| `AGENT_SUPERVISOR_DOMAIN_LAYOUT_CUTOVER_*` | Domain-layout cutover identity |
+
+Deprecated aliases (`AGENT_SUPERVISOR_G020_PACKAGES`,
+`AGENT_SUPERVISOR_EVIDENCE_CLUSTER_G020_G050`, `AGENT_SUPERVISOR_CUTOVER_*`,
+`AGENT_SUPERVISOR_LANDED_MODULE_OWNERS`, `AGENT_SUPERVISOR_PACKAGE_GOAL_EVIDENCE`, …)
+still resolve to the same objects. Board identifiers remain string *values*
+(for example `"ASREF-G020"`) for objective scanners.
 
 ```python
 from ipfs_accelerate_py.agent_supervisor import (
@@ -826,6 +904,87 @@ assert python_result.to_dict() == cli_result.to_dict() == mcp_result.to_dict()
 assert api.rollback().decision.effective_mode.value == "shadow"
 ```
 
+### Endpoint-aware supervisor usage rollout
+
+Supervisor provider work uses hierarchical usage envelopes and one
+reservation-aware gateway. Modes are `off`, `observe`, `shadow`, `assist`, and
+`enforce` (see also the shared endpoint routing plan). Default runtime mode is
+`off` via `IPFS_ACCELERATE_SUPERVISOR_USAGE_MODE`.
+
+| Mode | Operator meaning |
+| --- | --- |
+| `off` | Prior scheduler/provider behavior; no reservation |
+| `observe` | Meter and attribute only; never change selection |
+| `shadow` | Compute usage decisions beside legacy execution |
+| `assist` | Operator-authorized suggestions only |
+| `enforce` | Budgets, endpoint limits, fair wait/backpressure bind |
+
+`supervisor_usage_rollout.py` freezes one E2E stage/topology/consumer population
+and one chaos population (reservation races, estimate under/over actual,
+429/503/billing, malformed metadata, clock skew/jitter, cache/batch/stream
+partials, retry/fallback, cancel/timeout before and after dispatch, crash/replay,
+stale lease/fence, ledger corruption/migration/outage, coordinator
+partition/split-brain, endpoint loss/recovery, callsite bypass, unfair queue
+pressure, and reset herds). Promotion requires exact endpoint plus task/stage
+attribution, no hard-limit or ancestor-budget overshoot, no double/missing
+charge, no credential/account/tenant scope merge, bounded wait without
+starvation/herd, redacted receipts, and no authority/completion escape.
+
+Enforce is a two-observation mode. Keep the complete qualifying paired report,
+then collect a later distinct current-root report. Policy must approve
+`behavior:supervisor-endpoint-usage-aware@1` and `enforce`. Assist additionally
+requires operator authority. Distributed enforcement without a strong fenced
+coordinator fails closed. Any safety, binding, parity, fairness, quality, cost,
+latency, or compatibility regression returns the affected feature to
+`shadow`/`off` while retaining observed usage for diagnosis.
+
+```python
+from ipfs_accelerate_py.agent_supervisor.supervisor_usage_rollout import (
+    SupervisorUsageRolloutEvaluation,
+    build_default_binding,
+    build_default_policy,
+    build_paired_report,
+    evaluate_supervisor_usage_rollout,
+)
+
+qualification = SupervisorUsageRolloutEvaluation(
+    "evaluation:qualification@1",
+    "2026-07-28T12:00:00Z",
+    build_paired_report(observation_label="qualification"),
+)
+current = SupervisorUsageRolloutEvaluation(
+    "evaluation:current@1",
+    "2026-07-29T12:00:00Z",
+    build_paired_report(observation_label="current"),
+)
+binding = build_default_binding()
+policy = build_default_policy(approve_enforce=True, approve_assist=True)
+
+assert qualification.report.passed
+decision = evaluate_supervisor_usage_rollout(
+    qualification,
+    binding=binding,
+    policy=policy,
+    desired_mode="enforce",
+    current_evaluation=current,
+    operator_authority_granted=True,
+)
+assert decision.effective_mode.value == "enforce"
+assert not decision.authoritative
+assert not decision.completion_authoritative
+```
+
+Threat model and incident notes:
+
+- Treat ledger/coordinator outage in `enforce` as fail-closed remote admission
+  unless a reviewed degraded local budget is present.
+- On partition or split-brain, refuse distributed grants; preserve local
+  observations for later reconciliation.
+- On hygiene, overshoot, double-charge, starvation, or authority escape in the
+  paired population, roll the feature back to `shadow`/`off` immediately.
+- Metrics and controls are projections of ledger events; they are not a second
+  ledger or a completion proof.
+
 Workflow bootstrap through the shared service (preview and mutation remain
 separate authority boundaries):
 
@@ -1346,6 +1505,23 @@ python -m pytest \
   test/api/test_agent_supervisor_control_conformance_v2.py \
   test/api/test_agent_supervisor_self_improvement_v2_rollout.py -q
 ```
+
+Run the endpoint-aware supervisor usage, controls, paired E2E, chaos, and
+rollout gate:
+
+```bash
+python -m pytest \
+  test/api/test_agent_supervisor_provider_usage.py \
+  test/api/test_agent_supervisor_provider_execution.py \
+  test/api/test_agent_supervisor_usage_scheduler.py \
+  test/api/test_agent_supervisor_provider_usage_migration.py \
+  test/api/test_agent_supervisor_usage_controls.py \
+  test/api/test_agent_supervisor_usage_control_conformance.py \
+  test/api/test_agent_supervisor_usage_e2e.py \
+  test/api/test_agent_supervisor_usage_chaos.py \
+  test/api/test_agent_supervisor_usage_rollout.py -q
+```
+
 
 The public API test includes the qualifying fresh-interpreter check. Running
 the same imports in a warm application is not evidence that package import,

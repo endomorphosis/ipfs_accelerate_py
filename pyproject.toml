@@ -32,14 +32,14 @@ Issues = "https://github.com/endomorphosis/ipfs_accelerate_py/issues"
 [project.scripts]
 ipfs_accelerate = "ipfs_accelerate_py.ai_inference_cli:main"
 ipfs-accelerate = "ipfs_accelerate_py.cli_entry:main"
-ipfs-accelerate-agent-objective-daemon = "ipfs_accelerate_py.agent_supervisor.objective_daemon:main"
-ipfs-accelerate-agent-backlog-refinery = "ipfs_accelerate_py.agent_supervisor.backlog_refinery:main"
-ipfs-accelerate-agent-bundle-supervisor = "ipfs_accelerate_py.agent_supervisor.bundle_supervisor:main"
-ipfs-accelerate-agent-artifact-query = "ipfs_accelerate_py.agent_supervisor.artifact_store:main"
+ipfs-accelerate-agent-objective-daemon = "ipfs_accelerate_py.agent_supervisor.objectives.objective_daemon:main"
+ipfs-accelerate-agent-backlog-refinery = "ipfs_accelerate_py.agent_supervisor.objectives.backlog_refinery:main"
+ipfs-accelerate-agent-bundle-supervisor = "ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor:main"
+ipfs-accelerate-agent-artifact-query = "ipfs_accelerate_py.agent_supervisor.runtime.artifact_store:main"
 ipfs-accelerate-agent-implementation-daemon = "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon:main"
 ipfs-accelerate-agent-implementation-supervisor = "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor:main"
-ipfs-accelerate-agent-merge-resolver = "ipfs_accelerate_py.agent_supervisor.merge_resolver:main"
-ipfs-accelerate-agent-llm-merge-resolver-fallback = "ipfs_accelerate_py.agent_supervisor.llm_merge_resolver_fallback:main"
+ipfs-accelerate-agent-merge-resolver = "ipfs_accelerate_py.agent_supervisor.merge.merge_resolver:main"
+ipfs-accelerate-agent-llm-merge-resolver-fallback = "ipfs_accelerate_py.agent_supervisor.integrations.llm_merge_resolver_fallback:main"
 ipfs-accelerate-llama-cpp-serve = "ipfs_accelerate_py.utils.llama_cpp:main"
 
 [tool.setuptools]
@@ -139,6 +139,9 @@ testing = [
   "scipy>=1.10.0",
   "scikit-learn>=1.3.0",
   "requests>=2.31.0",
+  # Serving contract gates use FastAPI TestClient
+  "fastapi>=0.110.0",
+  "httpx>=0.27.0",
 ]
 mcp = [
   "fastmcp>=0.1.0",

@@ -222,7 +222,7 @@ api = importlib.import_module(PACKAGE)
 stable_exports = api.AGENT_SUPERVISOR_V2_STABLE_EXPORTS
 export_modules = api.AGENT_SUPERVISOR_V2_EXPORT_MODULES
 
-from ipfs_accelerate_py.agent_supervisor import control_cli
+from ipfs_accelerate_py.agent_supervisor.control import control_cli
 from ipfs_accelerate_py.mcp_server.tools.agent_supervisor_tools import (
     native_agent_supervisor_tools as native_tools,
 )

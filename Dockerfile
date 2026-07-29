@@ -84,13 +84,26 @@ RUN pip install --upgrade pip setuptools wheel
 # Copy source code
 COPY --chown=appuser:appuser . .
 
-# Install ipfs_kit_py from GitHub main branch
-RUN pip install --no-cache-dir git+https://github.com/endomorphosis/ipfs_kit_py.git@main
+# Install ipfs_kit_py without recursive submodules.  Pip's git backend enables
+# --recurse-submodules by default; nested docs/vendor submodules on main
+# frequently pin unreachable SHAs and break CI image builds.
+RUN git clone --depth 1 --filter=blob:none \
+      https://github.com/endomorphosis/ipfs_kit_py.git /tmp/ipfs_kit_py \
+ && pip install --no-cache-dir /tmp/ipfs_kit_py \
+ && rm -rf /tmp/ipfs_kit_py
 
-# Install package in editable mode with development dependencies
-# Install Flask, Werkzeug, flask-cors, and fastmcp explicitly for MCP dashboard
+# Install package in editable mode with development dependencies.
+# Avoid the "all" extra: it pulls git+ deps (ipfs_transformers_py /
+# ipfs_model_manager_py) that currently lack installable packaging metadata
+# on their main branches and break CI image builds. Install the local
+# extras plus core ML/serving wheels that *are* on PyPI.
 RUN pip install flask>=3.0.0 flask-cors>=4.0.0 werkzeug>=3.0.0 fastmcp>=0.1.0 && \
-    pip install -e ".[all,testing,mcp,webnn,viz]"
+    pip install -e ".[testing,mcp,webnn,viz]" && \
+    pip install --no-cache-dir \
+      "torch>=2.1" \
+      "transformers>=4.46" \
+      "uvicorn>=0.27.0" \
+      "sentence-transformers" || true
 
 # Copy startup validation and entrypoint scripts
 COPY --chown=appuser:appuser deployments/docker/docker_startup_check.py /app/
@@ -115,12 +128,21 @@ RUN pip install --upgrade pip setuptools wheel
 # Copy source code
 COPY --chown=appuser:appuser . .
 
-# Install ipfs_kit_py from GitHub main branch
-RUN pip install --no-cache-dir git+https://github.com/endomorphosis/ipfs_kit_py.git@main
+# Drop any host-side egg-info that may arrive read-only or root-owned and break
+# later `python -m build` / setuptools timestamp updates under appuser.
+RUN rm -rf /app/*.egg-info /app/ipfs_accelerate_py.egg-info /app/src/*.egg-info 2>/dev/null || true
+
+# Install ipfs_kit_py without recursive submodules (see development stage note).
+RUN git clone --depth 1 --filter=blob:none \
+      https://github.com/endomorphosis/ipfs_kit_py.git /tmp/ipfs_kit_py \
+ && pip install --no-cache-dir /tmp/ipfs_kit_py \
+ && rm -rf /tmp/ipfs_kit_py
 
 # Install package with ONLY testing dependencies (not the heavy ML libs)
 # This significantly reduces image size and build time
-RUN pip install -e ".[minimal,testing,mcp]"
+RUN pip install -e ".[minimal,testing,mcp]" \
+ && chown -R appuser:appuser /app \
+ && chmod -R u+w /app
 
 # Copy startup validation and entrypoint scripts
 COPY --chown=appuser:appuser deployments/docker/docker_startup_check.py /app/

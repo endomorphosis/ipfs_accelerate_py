@@ -8,29 +8,29 @@ import threading
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.code_evidence_graph import (
+from ipfs_accelerate_py.agent_supervisor.analysis.code_evidence_graph import (
     ChangedASTSymbol,
     CodeImpactIndex,
 )
-from ipfs_accelerate_py.agent_supervisor.code_proof_obligations import (
+from ipfs_accelerate_py.agent_supervisor.proof.code_proof_obligations import (
     CandidateDiffEntry,
     DiffChangeKind,
 )
-from ipfs_accelerate_py.agent_supervisor.proposal_validation import (
+from ipfs_accelerate_py.agent_supervisor.validation.proposal_validation import (
     ImplementationProposal,
     NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_REQUIREMENT_ID,
     ProposalFindingCode,
     ProposalValidationPolicy,
     validate_implementation_proposal,
 )
-from ipfs_accelerate_py.agent_supervisor.validation_commands import (
+from ipfs_accelerate_py.agent_supervisor.validation.validation_commands import (
     ValidationCommand,
     ValidationStage,
 )
-from ipfs_accelerate_py.agent_supervisor.validation_runtime import (
+from ipfs_accelerate_py.agent_supervisor.validation.validation_runtime import (
     VALIDATION_PYTHON_ENV,
 )
-from ipfs_accelerate_py.agent_supervisor.validation_scheduler import (
+from ipfs_accelerate_py.agent_supervisor.validation.validation_scheduler import (
     ImpactSelectedValidationDAG,
     ImpactDependencyGraph,
     ImpactValidationCheck,

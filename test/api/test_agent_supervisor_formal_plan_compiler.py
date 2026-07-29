@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.formal_plan_compiler import (
+from ipfs_accelerate_py.agent_supervisor.planning.formal_plan_compiler import (
     CompilationIssueCode,
     CompilationIssueSeverity,
     CompilationStatus,
@@ -12,10 +12,10 @@ from ipfs_accelerate_py.agent_supervisor.formal_plan_compiler import (
     compile_formal_plan,
     write_formal_plan_compiler_input_duckdb,
 )
-from ipfs_accelerate_py.agent_supervisor.formal_logic_vocabulary import (
+from ipfs_accelerate_py.agent_supervisor.proof.formal_logic_vocabulary import (
     TDFOL,
 )
-from ipfs_accelerate_py.agent_supervisor.formal_planning_contracts import (
+from ipfs_accelerate_py.agent_supervisor.planning.formal_planning_contracts import (
     EventKind,
     RefinementMode,
 )

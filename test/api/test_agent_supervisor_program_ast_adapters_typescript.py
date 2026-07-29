@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from ipfs_accelerate_py.agent_supervisor.conflict_graph import ASTBlobRecord
+from ipfs_accelerate_py.agent_supervisor.core.conflict_graph import ASTBlobRecord
 from ipfs_accelerate_py.agent_supervisor.program_ast_adapters import (
     JAVASCRIPT_ADAPTER_VERSION,
     ProgramASTAdapterResult,

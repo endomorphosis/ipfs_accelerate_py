@@ -10,16 +10,16 @@ from types import SimpleNamespace
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.formal_verification_capabilities import (
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_capabilities import (
     PROOF_PROVIDER_CAPABILITY_SCHEMA_VERSION,
     ProofProviderCapability,
     ProofProviderIsolation,
     ProofProviderOperation,
 )
-from ipfs_accelerate_py.agent_supervisor.formal_verification_contracts import (
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
     ResourceBudget,
 )
-from ipfs_accelerate_py.agent_supervisor.formal_verification_provider import (
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_provider import (
     PROOF_PROVIDER_PROTOCOL_VERSION,
     PROOF_PROVIDER_REQUEST_SCHEMA,
     PROOF_PROVIDER_RESPONSE_SCHEMA,

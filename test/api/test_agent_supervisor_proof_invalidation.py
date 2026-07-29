@@ -2,16 +2,16 @@ from __future__ import annotations
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.goal_completion import (
+from ipfs_accelerate_py.agent_supervisor.objectives.goal_completion import (
     GoalState,
     contradictions_from_proof_invalidation,
     reconcile_goal_reopenings,
 )
-from ipfs_accelerate_py.agent_supervisor.objective_graph import ObjectiveGoal
-from ipfs_accelerate_py.agent_supervisor.objective_task_janitor import (
+from ipfs_accelerate_py.agent_supervisor.objectives.objective_graph import ObjectiveGoal
+from ipfs_accelerate_py.agent_supervisor.objectives.objective_task_janitor import (
     reconcile_objective_task_strategy,
 )
-from ipfs_accelerate_py.agent_supervisor.proof_scope_index import (
+from ipfs_accelerate_py.agent_supervisor.proof.proof_scope_index import (
     ProofInvalidationEvent,
     ProofInvalidationResult,
     build_proof_scope_index,

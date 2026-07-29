@@ -7,20 +7,20 @@ from types import SimpleNamespace
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.formal_verification_capabilities import (
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_capabilities import (
     CapabilityHealth,
     FormalVerificationCapabilityProbe,
 )
-from ipfs_accelerate_py.agent_supervisor.formal_verification_contracts import (
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
     AssuranceLevel,
     ResourceBudget,
 )
-from ipfs_accelerate_py.agent_supervisor.formal_verification_provider import (
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_provider import (
     ProviderFailureCode,
     ProviderRequest,
     dispatch_provider_request,
 )
-from ipfs_accelerate_py.agent_supervisor.leanstral_proof_provider import (
+from ipfs_accelerate_py.agent_supervisor.proof.leanstral_proof_provider import (
     LEANSTRAL_MODEL_RESOURCE_CLASS,
     LEANSTRAL_PROOF_PROVIDER_ID,
     LEAN_KERNEL_RESOURCE_CLASS,
@@ -267,7 +267,7 @@ def test_missing_optional_leanstral_stack_is_degraded_not_import_fatal() -> None
     # integration, codec, spaCy, model service dependencies, and Lean are absent.
     discovery = _Discovery(
         {
-            "ipfs_accelerate_py.agent_supervisor.leanstral_proof_provider",
+            "ipfs_accelerate_py.agent_supervisor.proof.leanstral_proof_provider",
             "ipfs_accelerate_py.llm_router",
         }
     )

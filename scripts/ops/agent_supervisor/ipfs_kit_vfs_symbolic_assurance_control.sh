@@ -209,7 +209,7 @@ project_objectives() {
   env "${RUNTIME_ENV[@]}" "${PYTHON_BIN}" "${VALIDATOR_ABS}" \
     > "${PROJECTION_DIR}/native_board_preflight.json"
   env "${RUNTIME_ENV[@]}" "${PYTHON_BIN}" \
-    -m ipfs_accelerate_py.agent_supervisor.objective_daemon \
+    -m ipfs_accelerate_py.agent_supervisor.objectives.objective_daemon \
     --repo-root "${REPO_ROOT}" \
     --objective-path "${OBJECTIVE_ABS}" \
     --todo-path "${TODO_ABS}" \

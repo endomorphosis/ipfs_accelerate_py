@@ -19,6 +19,7 @@ import shlex
 import subprocess
 import threading
 import time
+from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Tuple
 
 import importlib
@@ -2246,9 +2247,13 @@ def _compute_supported_task_types(
             ]
         )
 
-    # Mesh-targeted LLM execution (e.g., copilot_cli). Only advertise this task
-    # type when explicitly enabled, since it may rely on external tooling.
-    if _truthy(os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_COPILOT_CLI")):
+    # Mesh-targeted LLM execution (e.g., copilot_cli / goose_cli). Only advertise
+    # this task type when explicitly enabled, since it may rely on external tooling.
+    if (
+        _truthy(os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_COPILOT_CLI"))
+        or _truthy(os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_GOOSE_CLI"))
+        or _truthy(os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_GOOSE_AGENT"))
+    ):
         base_defaults.extend(["llm.generate", "llm_generate"])
     if _truthy(os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_MULTIMODAL", "1")):
         base_defaults.extend(["multimodal-generation", "multimodal_generation", "vision-generation", "vision_generation"])
@@ -2521,14 +2526,459 @@ def _copilot_session_controls_allowed(
             )
 
 
+# ---------------------------------------------------------------------------
+# Goose P2P worker policy (GOOSE-009 / GOOSE-G050)
+# ---------------------------------------------------------------------------
+
+_GOOSE_CLI_PROVIDER_NAMES: frozenset[str] = frozenset(
+    {
+        "goose_cli",
+        "goose",
+        "goose-cli",
+        "block_goose",
+        "block-goose",
+        "aaif_goose",
+    }
+)
+_GOOSE_AGENT_PROVIDER_NAMES: frozenset[str] = frozenset({"goose_agent", "goose-agent"})
+_GOOSE_ALL_PROVIDER_NAMES: frozenset[str] = _GOOSE_CLI_PROVIDER_NAMES | _GOOSE_AGENT_PROVIDER_NAMES
+
+# Path-like payload keys that must resolve under configured Goose roots.
+_GOOSE_PATH_FIELD_NAMES: frozenset[str] = frozenset(
+    {
+        "cwd",
+        "workspace",
+        "path_root",
+        "goose_path_root",
+        "GOOSE_PATH_ROOT",
+        "config",
+        "config_path",
+        "goose_config",
+        "goose_config_path",
+        "recipe",
+        "recipe_path",
+        "trace_jsonl_path",
+        "trace_dir",
+        "trace_path",
+        "extension",
+        "extension_path",
+        "extensions_path",
+        "session_path",
+        "session_dir",
+        "goose_session_path",
+    }
+)
+
+# In-process registry so uncertain / side-effecting Goose agent work is not
+# automatically replayed on duplicate delivery to the same worker process.
+_goose_agent_delivery_lock = threading.Lock()
+_goose_agent_deliveries: dict[str, dict[str, Any]] = {}
+
+
+class GooseWorkerPolicyError(RuntimeError):
+    """Policy or execution failure for Goose tasks with stable classification."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        error_kind: str = "policy_denial",
+        side_effects_started: bool = False,
+        details: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        super().__init__(message)
+        self.error_kind = str(error_kind or "policy_denial")
+        self.side_effects_started = bool(side_effects_started)
+        self.details = dict(details or {})
+
+
+def _goose_cli_enabled() -> bool:
+    return _truthy(os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_GOOSE_CLI"))
+
+
+def _goose_agent_enabled() -> bool:
+    return _truthy(os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_GOOSE_AGENT"))
+
+
+def _is_goose_provider_name(provider: str) -> bool:
+    return str(provider or "").strip().lower() in _GOOSE_ALL_PROVIDER_NAMES
+
+
+def _is_goose_agent_provider_name(provider: str) -> bool:
+    return str(provider or "").strip().lower() in _GOOSE_AGENT_PROVIDER_NAMES
+
+
+def _is_goose_cli_provider_name(provider: str) -> bool:
+    return str(provider or "").strip().lower() in _GOOSE_CLI_PROVIDER_NAMES
+
+
+def _goose_payload_requests_agent(payload: dict) -> bool:
+    """True when the remote payload authorizes side-effecting Goose agent mode."""
+
+    if not isinstance(payload, dict):
+        return False
+    if _is_goose_agent_provider_name(str(payload.get("provider") or "")):
+        return True
+    mode = str(payload.get("mode") or payload.get("goose_mode") or "").strip().lower()
+    if mode in {"agent", "auto"}:
+        return True
+    if bool(payload.get("agent")) or bool(payload.get("side_effecting")):
+        return True
+    if bool(payload.get("allow_side_effects")) or bool(payload.get("with_tools")):
+        return True
+    if payload.get("agent_policy") is not None or payload.get("policy") is not None:
+        return True
+    return False
+
+
+def _goose_configured_roots() -> list[str]:
+    """Absolute roots under which Goose path fields may resolve.
+
+    Env (comma-separated lists accepted):
+      - IPFS_ACCELERATE_PY_TASK_WORKER_GOOSE_PATH_ROOT
+      - GOOSE_PATH_ROOT
+      - IPFS_ACCELERATE_PY_TASK_WORKER_GOOSE_ALLOWED_ROOTS
+    """
+
+    roots: list[str] = []
+    seen: set[str] = set()
+
+    def _add(raw: object) -> None:
+        text = str(raw or "").strip()
+        if not text:
+            return
+        for part in text.split(","):
+            candidate = str(part or "").strip()
+            if not candidate:
+                continue
+            try:
+                resolved = str(Path(candidate).expanduser().resolve())
+            except Exception:
+                resolved = os.path.abspath(os.path.expanduser(candidate))
+            if resolved and resolved not in seen:
+                seen.add(resolved)
+                roots.append(resolved)
+
+    _add(os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_GOOSE_PATH_ROOT"))
+    _add(os.environ.get("GOOSE_PATH_ROOT"))
+    _add(os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_GOOSE_ALLOWED_ROOTS"))
+    return roots
+
+
+def _path_is_under_root(path: str, root: str) -> bool:
+    try:
+        path_p = Path(path).resolve()
+        root_p = Path(root).resolve()
+        return path_p == root_p or root_p in path_p.parents
+    except Exception:
+        try:
+            path_abs = os.path.realpath(path)
+            root_abs = os.path.realpath(root)
+            if path_abs == root_abs:
+                return True
+            prefix = root_abs if root_abs.endswith(os.sep) else root_abs + os.sep
+            return path_abs.startswith(prefix)
+        except Exception:
+            return False
+
+
+def _assert_goose_path_authorized(path: object, *, field_name: str, roots: list[str]) -> str:
+    """Resolve *path* and require it to fall under one of *roots*. Fail closed."""
+
+    text = str(path or "").strip()
+    if not text:
+        raise GooseWorkerPolicyError(
+            f"goose path field '{field_name}' must be non-empty",
+            error_kind="policy_denial",
+            details={"field": field_name},
+        )
+    if not roots:
+        raise GooseWorkerPolicyError(
+            f"goose path field '{field_name}' rejected: no GOOSE path roots configured "
+            "(set IPFS_ACCELERATE_PY_TASK_WORKER_GOOSE_PATH_ROOT or GOOSE_PATH_ROOT)",
+            error_kind="policy_denial",
+            details={"field": field_name, "path": text},
+        )
+    try:
+        resolved = str(Path(text).expanduser().resolve())
+    except Exception:
+        resolved = os.path.abspath(os.path.expanduser(text))
+    if not any(_path_is_under_root(resolved, root) for root in roots):
+        raise GooseWorkerPolicyError(
+            f"goose path field '{field_name}' escapes configured roots",
+            error_kind="policy_denial",
+            details={"field": field_name, "path": text, "resolved": resolved},
+        )
+    return resolved
+
+
+def _validate_goose_payload_paths(payload: dict) -> dict[str, str]:
+    """Reject arbitrary config/recipe/trace/extension/session/cwd paths.
+
+    Returns a map of authorized absolute paths for safe forwarding.
+    """
+
+    if not isinstance(payload, dict):
+        return {}
+    roots = _goose_configured_roots()
+    authorized: dict[str, str] = {}
+
+    def _check_mapping(mapping: dict, *, prefix: str = "") -> None:
+        for key, value in mapping.items():
+            name = str(key)
+            full = f"{prefix}{name}" if not prefix else f"{prefix}.{name}"
+            if name in _GOOSE_PATH_FIELD_NAMES or name.lower() in {k.lower() for k in _GOOSE_PATH_FIELD_NAMES}:
+                if value is None or value is False:
+                    continue
+                if isinstance(value, (list, tuple)):
+                    for idx, item in enumerate(value):
+                        if item is None or str(item).strip() == "":
+                            continue
+                        _assert_goose_path_authorized(item, field_name=f"{full}[{idx}]", roots=roots)
+                    continue
+                if isinstance(value, str) and not value.strip():
+                    continue
+                authorized[full] = _assert_goose_path_authorized(value, field_name=full, roots=roots)
+            elif isinstance(value, dict) and name in {"agent_policy", "policy"}:
+                _check_mapping(value, prefix=full)
+
+    _check_mapping(payload)
+    return authorized
+
+
+def _goose_delivery_key(*, task: Dict[str, Any], payload: dict) -> str:
+    tid = str(task.get("task_id") or "").strip()
+    if tid:
+        return f"task:{tid}"
+    sticky = str(payload.get("sticky_worker_id") or "").strip()
+    session = ""
+    for k in ("goose_session_id", "resume_session_id", "session_id", "chat_session_id"):
+        v = payload.get(k)
+        if isinstance(v, str) and v.strip():
+            session = v.strip()
+            break
+    prompt = str(payload.get("prompt") or payload.get("text") or payload.get("input") or "")[:256]
+    return f"sticky:{sticky}|session:{session}|prompt:{prompt}"
+
+
+def _goose_register_agent_attempt(*, key: str, phase: str, side_effects_started: bool = False) -> None:
+    with _goose_agent_delivery_lock:
+        prior = dict(_goose_agent_deliveries.get(key) or {})
+        prior["phase"] = phase
+        prior["side_effects_started"] = bool(
+            prior.get("side_effects_started") or side_effects_started
+        )
+        prior["updated_at"] = time.time()
+        _goose_agent_deliveries[key] = prior
+
+
+def _goose_check_duplicate_delivery(*, key: str) -> None:
+    with _goose_agent_delivery_lock:
+        prior = _goose_agent_deliveries.get(key)
+        if not prior:
+            return
+        phase = str(prior.get("phase") or "")
+        side_effects = bool(prior.get("side_effects_started"))
+        if phase in {"started", "uncertain", "completed"} or side_effects:
+            raise GooseWorkerPolicyError(
+                "goose agent duplicate delivery refused "
+                "(prior attempt may have started side effects; not replaying)",
+                error_kind="duplicate_delivery",
+                side_effects_started=side_effects,
+                details={"phase": phase, "delivery_key": key},
+            )
+
+
+def clear_goose_agent_delivery_registry() -> None:
+    """Test helper: reset the in-process Goose agent delivery registry."""
+
+    with _goose_agent_delivery_lock:
+        _goose_agent_deliveries.clear()
+
+
+def _goose_session_controls_allowed(
+    *,
+    payload: dict,
+    local_session: str,
+    assigned_worker_id: str,
+    agent_mode: bool,
+) -> None:
+    """Sticky-session policy for Goose persisted sessions.
+
+    Persisted Goose sessions remain on the assigned worker. Resume / continue /
+    agent session continuity requires sticky_worker_id matching the assignee,
+    and when the worker has a P2P session tag the payload must match it.
+    """
+
+    if not isinstance(payload, dict):
+        return
+
+    resume_session_id = payload.get("resume_session_id")
+    # goose_session_id is Goose's own session; payload session_id is the P2P
+    # affinity tag and must not be treated as a Goose session by itself.
+    goose_session_id = payload.get("goose_session_id")
+    continue_session = bool(payload.get("continue_session", False))
+    agent_policy = payload.get("agent_policy") or payload.get("policy")
+    resume_via_policy = False
+    if isinstance(agent_policy, dict):
+        resume_via_policy = bool(agent_policy.get("resume_session"))
+        if not goose_session_id and agent_policy.get("session_id"):
+            goose_session_id = agent_policy.get("session_id")
+
+    wants_resume = isinstance(resume_session_id, str) and bool(str(resume_session_id).strip())
+    wants_goose_session = isinstance(goose_session_id, str) and bool(str(goose_session_id).strip())
+    wants_continue = bool(continue_session) or resume_via_policy
+    # Persisted Goose sessions stay on the assigned worker.
+    needs_sticky = bool(wants_resume or wants_continue or wants_goose_session)
+
+    if not needs_sticky:
+        return
+
+    sticky = payload.get("sticky_worker_id")
+    sticky_text = str(sticky or "").strip() if isinstance(sticky, (str, int, float)) else ""
+    assigned = str(assigned_worker_id or "").strip()
+    if not sticky_text:
+        raise GooseWorkerPolicyError(
+            "goose session continuity requires sticky_worker_id",
+            error_kind="policy_denial",
+        )
+    if assigned and sticky_text != assigned:
+        raise GooseWorkerPolicyError(
+            "goose session continuity requires sticky_worker_id to match assigned_worker",
+            error_kind="policy_denial",
+            details={"sticky_worker_id": sticky_text, "assigned_worker": assigned},
+        )
+
+    local = str(local_session or "").strip()
+    if local:
+        required = _task_required_session(payload)
+        if not required:
+            raise GooseWorkerPolicyError(
+                "goose session continuity requires a session_id (P2P affinity tag)",
+                error_kind="policy_denial",
+            )
+        if required != local:
+            raise GooseWorkerPolicyError(
+                "goose session continuity requires matching session_id",
+                error_kind="policy_denial",
+                details={"required": required, "local": local},
+            )
+
+
+def _classify_goose_worker_error(exc: BaseException, *, agent_mode: bool = False) -> tuple[str, bool]:
+    """Return (error_kind, side_effects_started) for a Goose-related failure."""
+
+    side_effects = bool(getattr(exc, "side_effects_started", False))
+    kind_obj = getattr(exc, "error_kind", None)
+    if kind_obj is None:
+        kind_obj = getattr(exc, "goose_error_kind", None)
+    if kind_obj is not None:
+        kind = str(getattr(kind_obj, "value", kind_obj) or "").strip().lower()
+    else:
+        kind = ""
+
+    message = str(exc or "").lower()
+    if not kind:
+        if "duplicate delivery" in message:
+            kind = "duplicate_delivery"
+        elif "cancel" in message:
+            kind = "cancellation"
+        elif "timeout" in message or "timed out" in message:
+            kind = "timeout"
+        elif "not allowed" in message or "disabled" in message or "policy" in message:
+            kind = "policy_denial"
+        elif "escape" in message or "path" in message and "root" in message:
+            kind = "policy_denial"
+        else:
+            kind = "internal"
+
+    # Uncertain: agent attempt where side effects may have begun, or unknown
+    # failure after an agent start without a clean cancel/timeout classification.
+    if side_effects and kind not in {"cancellation", "duplicate_delivery", "policy_denial"}:
+        if kind in {"", "internal", "nonzero_exit", "malformed_output"}:
+            kind = "uncertain"
+    elif agent_mode and side_effects and kind == "timeout":
+        # Timeout after side effects is still a timeout, but flag remains set.
+        pass
+    elif agent_mode and not side_effects and kind in {"internal", ""} and "uncertain" in message:
+        kind = "uncertain"
+        side_effects = True
+
+    return kind or "internal", side_effects
+
+
+def _failure_fields_from_exc(exc: BaseException) -> Dict[str, Any]:
+    """Extract stable Goose/worker failure fields from an exception."""
+
+    out: Dict[str, Any] = {}
+    kind, side_effects = _classify_goose_worker_error(exc)
+    if isinstance(exc, GooseWorkerPolicyError):
+        kind = str(exc.error_kind or kind)
+        side_effects = bool(exc.side_effects_started or side_effects)
+        if exc.details:
+            out["error_details"] = dict(exc.details)
+    elif hasattr(exc, "side_effects_started"):
+        side_effects = bool(getattr(exc, "side_effects_started", False) or side_effects)
+        k2 = getattr(exc, "error_kind", None) or getattr(exc, "goose_error_kind", None)
+        if k2 is not None:
+            kind = str(getattr(k2, "value", k2))
+    out["error_kind"] = kind
+    out["goose_error_kind"] = kind
+    out["side_effects_started"] = bool(side_effects)
+    return out
+
+
+def _apply_goose_provider_gates(allowed: set[str], *, parts: list[str], wildcard: bool, default_set: bool) -> set[str]:
+    """Apply opt-in Goose gates to an allowlist set.
+
+    - Goose is absent from the default and ungated wildcard sets.
+    - ENABLE_GOOSE_CLI may add safe-chat Goose names (default, wildcard, or
+      explicitly listed).
+    - ENABLE_GOOSE_AGENT may add goose_agent only when allowlisted via wildcard
+      or an explicit entry (never silently on the empty default set).
+    """
+
+    out = {p for p in allowed if p not in _GOOSE_ALL_PROVIDER_NAMES}
+    requested = {p.strip().lower() for p in parts if p.strip()}
+
+    if _goose_cli_enabled():
+        if default_set or wildcard:
+            out |= set(_GOOSE_CLI_PROVIDER_NAMES)
+        else:
+            out |= requested & set(_GOOSE_CLI_PROVIDER_NAMES)
+
+    if _goose_agent_enabled():
+        if wildcard:
+            out |= set(_GOOSE_AGENT_PROVIDER_NAMES)
+        elif not default_set:
+            out |= requested & set(_GOOSE_AGENT_PROVIDER_NAMES)
+        # Agent mode on goose_cli still requires the agent gate at execution;
+        # chat names are already handled above when ENABLE_GOOSE_CLI is set.
+        # When only ENABLE_GOOSE_AGENT is set with an explicit goose_cli entry,
+        # allow the chat provider name so agent mode can be requested on it.
+        if not default_set and (requested & set(_GOOSE_CLI_PROVIDER_NAMES)):
+            out |= requested & set(_GOOSE_CLI_PROVIDER_NAMES)
+        if not default_set and (requested & set(_GOOSE_AGENT_PROVIDER_NAMES)):
+            out |= requested & set(_GOOSE_AGENT_PROVIDER_NAMES)
+
+    return out
+
+
 def _allowed_llm_providers() -> set[str]:
     """Return allowed providers for llm.generate.
 
     This prevents remote peers from selecting unexpected providers on a worker.
 
+    Goose is excluded from the default remote provider set. Chat requires
+    ``IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_GOOSE_CLI``; agent mode requires
+    ``IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_GOOSE_AGENT`` plus allowlist
+    membership. Wildcard expansion may include Goose only under these gates.
+
     Env:
       - IPFS_ACCELERATE_PY_TASK_WORKER_ALLOWED_LLM_PROVIDERS
       - IPFS_DATASETS_PY_TASK_WORKER_ALLOWED_LLM_PROVIDERS (compat)
+      - IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_GOOSE_CLI
+      - IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_GOOSE_AGENT
     """
 
     raw = os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_ALLOWED_LLM_PROVIDERS")
@@ -2536,15 +2986,15 @@ def _allowed_llm_providers() -> set[str]:
         raw = os.environ.get("IPFS_DATASETS_PY_TASK_WORKER_ALLOWED_LLM_PROVIDERS")
     text = str(raw or "").strip()
     if not text:
-        return {"copilot_cli"}
+        return _apply_goose_provider_gates({"copilot_cli"}, parts=[], wildcard=False, default_set=True)
 
     parts = [p.strip().lower() for p in text.split(",") if p.strip()]
     if not parts:
-        return {"copilot_cli"}
+        return _apply_goose_provider_gates({"copilot_cli"}, parts=[], wildcard=False, default_set=True)
 
     if "*" in parts or "all" in parts:
-        # Conservative built-in allowlist. (Exclude 'mock' and other test-only providers.)
-        return {
+        # Conservative built-in allowlist. (Exclude 'mock', Goose unless gated.)
+        base = {
             "copilot_cli",
             "copilot_sdk",
             "codex_cli",
@@ -2574,8 +3024,11 @@ def _allowed_llm_providers() -> set[str]:
             "llamacpp_native",
             "native_llama_cpp",
         }
+        return _apply_goose_provider_gates(base, parts=parts, wildcard=True, default_set=False)
 
-    return set(parts)
+    # Explicit list: strip Goose names then re-add only under gates.
+    base = {p for p in parts if p not in _GOOSE_ALL_PROVIDER_NAMES}
+    return _apply_goose_provider_gates(base, parts=parts, wildcard=False, default_set=False)
 
 
 def _allowed_multimodal_providers() -> set[str]:
@@ -2694,20 +3147,32 @@ def _run_llm_generate(task: Dict[str, Any]) -> Dict[str, Any]:
     if provider not in allowed:
         raise RuntimeError(f"llm.generate provider not allowed: {provider}")
 
-    # Session continuity is only supported for copilot_cli today.
+    goose_provider = _is_goose_provider_name(provider)
+    goose_agent_mode = bool(goose_provider and _goose_payload_requests_agent(payload))
+    if goose_provider and _is_goose_agent_provider_name(provider):
+        goose_agent_mode = True
+
+    # Session continuity is supported for copilot_cli and goose_* only.
     if provider == "copilot_cli":
         _copilot_session_controls_allowed(
             payload=payload,
             local_session=_expected_session_tag(),
             assigned_worker_id=str(task.get("assigned_worker") or "").strip(),
         )
+    elif goose_provider:
+        _goose_session_controls_allowed(
+            payload=payload,
+            local_session=_expected_session_tag(),
+            assigned_worker_id=str(task.get("assigned_worker") or "").strip(),
+            agent_mode=goose_agent_mode,
+        )
     else:
         if (isinstance(payload.get("resume_session_id"), str) and str(payload.get("resume_session_id") or "").strip()) or bool(
             payload.get("continue_session", False)
         ):
-            raise RuntimeError("resume_session_id/continue_session only supported for provider='copilot_cli'")
-
-
+            raise RuntimeError(
+                "resume_session_id/continue_session only supported for provider='copilot_cli' or goose providers"
+            )
 
     if provider == "copilot_cli":
         allow = str(os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_COPILOT_CLI") or "").strip().lower() in {
@@ -2718,6 +3183,43 @@ def _run_llm_generate(task: Dict[str, Any]) -> Dict[str, Any]:
         }
         if not allow:
             raise RuntimeError("copilot_cli tasks disabled (set IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_COPILOT_CLI=1)")
+
+    if goose_provider:
+        if goose_agent_mode:
+            if not _goose_agent_enabled():
+                raise GooseWorkerPolicyError(
+                    "goose agent tasks disabled "
+                    "(set IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_GOOSE_AGENT=1 and allowlist the provider)",
+                    error_kind="policy_denial",
+                )
+            # Agent mode always requires allowlist membership (already enforced
+            # above) and never runs under chat-only enablement.
+            if provider not in allowed:
+                raise GooseWorkerPolicyError(
+                    f"goose agent provider not allowlisted: {provider}",
+                    error_kind="policy_denial",
+                )
+        else:
+            if not _goose_cli_enabled():
+                raise GooseWorkerPolicyError(
+                    "goose_cli tasks disabled (set IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_GOOSE_CLI=1)",
+                    error_kind="policy_denial",
+                )
+
+        # Path escape protection for config/recipe/trace/extension/session/cwd.
+        _validate_goose_payload_paths(payload)
+
+        delivery_key = _goose_delivery_key(task=task, payload=payload)
+        if goose_agent_mode:
+            _goose_check_duplicate_delivery(key=delivery_key)
+
+        # Cooperative cancellation requested by payload before start.
+        if bool(payload.get("cancel")) or bool(payload.get("cancelled")) or bool(payload.get("cancellation_requested")):
+            raise GooseWorkerPolicyError(
+                "goose run cancelled before start",
+                error_kind="cancellation",
+                side_effects_started=False,
+            )
 
     # Forward known safe flags.
     kwargs: Dict[str, Any] = {}
@@ -2757,44 +3259,117 @@ def _run_llm_generate(task: Dict[str, Any]) -> Dict[str, Any]:
                 "continue_session",
             ]
         )
+    if goose_provider:
+        forwarded_keys.extend(
+            [
+                "goose_provider",
+                "max_turns",
+                "max_tool_repetitions",
+                "timeout",
+            ]
+        )
+        if goose_agent_mode:
+            # Explicit side-effect authorization for the router/adapter.
+            kwargs["allow_side_effects"] = True
+            kwargs["side_effecting"] = True
+            kwargs["agent"] = True
+            kwargs["disable_model_retry"] = True
+            for agent_key in ("agent_policy", "policy", "cwd", "workspace", "path_root", "session_id", "goose_session_id"):
+                if agent_key in payload and agent_key not in forwarded_keys:
+                    forwarded_keys.append(agent_key)
 
     for k in forwarded_keys:
         if k in payload:
             # Path-like args can alter account/config state or write files.
-            # Require an explicit opt-in on the worker.
-            if not allow_paths and k in {"trace_jsonl_path", "trace_dir", "copilot_config_dir", "copilot_log_dir"}:
+            # Require an explicit opt-in on the worker (Goose paths are separately
+            # validated against configured roots above).
+            if (
+                not allow_paths
+                and not goose_provider
+                and k in {"trace_jsonl_path", "trace_dir", "copilot_config_dir", "copilot_log_dir"}
+            ):
                 raise RuntimeError(
                     f"llm.generate disallows '{k}' unless IPFS_ACCELERATE_PY_TASK_WORKER_ALLOW_LLM_PATH_ARGS=1"
                 )
-            kwargs[k] = payload.get(k)
+            if k not in kwargs:
+                kwargs[k] = payload.get(k)
 
     from ipfs_accelerate_py import llm_router
 
     provider_error = ""
     effective_provider = str(provider)
+    goose_delivery_key = _goose_delivery_key(task=task, payload=payload) if goose_provider else ""
 
     # Provider fallback chain: try requested provider, then codex_cli, then copilot_cli,
     # then minimal local HF fallback.  This ensures if codex runs out of credits
     # the request still succeeds via copilot (or vice versa).
-    _provider_fallback_chain = []
+    #
+    # Goose is intentionally excluded from cross-provider fallback: after any
+    # Goose attempt (especially agent / uncertain failures) we never switch to
+    # Codex/Copilot or silently retry.
+    _provider_fallback_chain: list[str] = []
     if provider not in _provider_fallback_chain:
         _provider_fallback_chain.append(provider)
-    allowed = _allowed_llm_providers()
-    for _fb in ("codex_cli", "copilot_cli"):
-        if _fb != provider and _fb in allowed:
-            _provider_fallback_chain.append(_fb)
+    if not goose_provider:
+        allowed = _allowed_llm_providers()
+        for _fb in ("codex_cli", "copilot_cli"):
+            if _fb != provider and _fb in allowed:
+                _provider_fallback_chain.append(_fb)
 
     text = ""
+    last_exc: BaseException | None = None
+    goose_side_effects_started = False
+    goose_error_kind = ""
+
+    if goose_provider and goose_agent_mode:
+        _goose_register_agent_attempt(key=goose_delivery_key, phase="started")
+
     for _try_provider in _provider_fallback_chain:
         try:
             text = llm_router.generate_text(str(prompt or ""), model_name=model_name, provider=_try_provider, **kwargs)
             effective_provider = _try_provider
             provider_error = ""
+            last_exc = None
             break
         except Exception as exc:
+            last_exc = exc
             provider_error = f"{_try_provider}: {type(exc).__name__}: {exc}"
+            if goose_provider or _is_goose_provider_name(_try_provider):
+                kind, side_effects = _classify_goose_worker_error(exc, agent_mode=goose_agent_mode)
+                goose_side_effects_started = bool(goose_side_effects_started or side_effects)
+                goose_error_kind = kind
+                # Never continue the fallback chain after a Goose attempt.
+                break
 
     if not text:
+        # Goose agent / uncertain failures: never local-fallback or cross-provider switch.
+        if goose_provider:
+            kind = goose_error_kind or "internal"
+            side_effects = bool(goose_side_effects_started)
+            if last_exc is not None:
+                kind, side_effects = _classify_goose_worker_error(last_exc, agent_mode=goose_agent_mode)
+                side_effects = bool(side_effects or goose_side_effects_started)
+            if goose_agent_mode or side_effects:
+                phase = "uncertain" if side_effects or kind == "uncertain" else "failed"
+                _goose_register_agent_attempt(
+                    key=goose_delivery_key,
+                    phase=phase,
+                    side_effects_started=side_effects,
+                )
+                raise GooseWorkerPolicyError(
+                    provider_error or "goose llm.generate failed",
+                    error_kind=kind if kind != "internal" or not side_effects else ("uncertain" if side_effects else kind),
+                    side_effects_started=side_effects,
+                    details={"provider": provider, "provider_error": provider_error},
+                )
+            # Safe chat failure without side effects: still no cross-provider fallback.
+            raise GooseWorkerPolicyError(
+                provider_error or "goose_cli llm.generate failed",
+                error_kind=kind or "internal",
+                side_effects_started=False,
+                details={"provider": provider, "provider_error": provider_error},
+            )
+
         # Last resort: local HF text-generation (gpt2) so the task doesn't fail hard.
         fallback_enabled = _truthy(
             os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_LLM_GENERATE_LOCAL_FALLBACK", "1")
@@ -2805,6 +3380,10 @@ def _run_llm_generate(task: Dict[str, Any]) -> Dict[str, Any]:
             effective_provider = "minimal_hf_fallback"
         else:
             raise RuntimeError(f"All llm.generate providers failed: {provider_error}")
+
+    if goose_provider and goose_agent_mode:
+        _goose_register_agent_attempt(key=goose_delivery_key, phase="completed", side_effects_started=False)
+
     session_id = _expected_session_tag()
 
     out: Dict[str, Any] = {
@@ -2812,7 +3391,11 @@ def _run_llm_generate(task: Dict[str, Any]) -> Dict[str, Any]:
         "provider": effective_provider,
         "session_id": session_id,
         "executor_worker_id": str(task.get("assigned_worker") or "").strip(),
+        "side_effects_started": False if goose_provider else False,
     }
+    if goose_provider:
+        out["side_effects_started"] = False
+        out["goose_mode"] = "agent" if goose_agent_mode else "chat"
     if provider_error:
         out["provider_error"] = provider_error
     try:
@@ -2824,15 +3407,17 @@ def _run_llm_generate(task: Dict[str, Any]) -> Dict[str, Any]:
         out["chat_session_id"] = chat_session_id.strip()
         # Best-effort: persist transcript for failover/resubmission.
         # Stored in the TaskQueue cache store (when enabled).
-        try:
-            _chat_cache_append_turn(
-                chat_session_id=chat_session_id.strip(),
-                user_prompt=str(prompt or ""),
-                assistant_text=str(text or ""),
-                ttl_s=7 * 24 * 3600,
-            )
-        except Exception:
-            pass
+        # Goose agent transcripts are not used for cross-provider failover.
+        if not (goose_provider and goose_agent_mode):
+            try:
+                _chat_cache_append_turn(
+                    chat_session_id=chat_session_id.strip(),
+                    user_prompt=str(prompt or ""),
+                    assistant_text=str(text or ""),
+                    ttl_s=7 * 24 * 3600,
+                )
+            except Exception:
+                pass
     if isinstance(resume_session_id, str) and resume_session_id.strip():
         out["resume_session_id"] = resume_session_id.strip()
     return out
@@ -3448,11 +4033,23 @@ def run_worker(
             base["lineage"] = merged_lineage
         return base
 
-    def _failure_result(task_dict: Dict[str, Any], error: str) -> Dict[str, Any]:
+    def _failure_result(
+        task_dict: Dict[str, Any],
+        error: str,
+        *,
+        exc: BaseException | None = None,
+    ) -> Dict[str, Any]:
         out = _with_lineage_result(task_dict, None)
         out.setdefault("success", False)
         out["error_message"] = str(error or "unknown error")
-        out["failure"] = {"error": str(error or "unknown error")}
+        failure: Dict[str, Any] = {"error": str(error or "unknown error")}
+        if exc is not None:
+            fields = _failure_fields_from_exc(exc)
+            out.update(fields)
+            failure.update({k: v for k, v in fields.items() if k != "error_details"})
+            if "error_details" in fields:
+                failure["details"] = fields["error_details"]
+        out["failure"] = failure
         return out
 
     def _extract_backend_inputs(task_type: str, payload: Dict[str, Any]) -> List[Any]:
@@ -4622,7 +5219,7 @@ def run_worker(
                         except Exception as exc:
                             ok = False
                             error = str(exc)
-                            result = _failure_result(task_payload, error)
+                            result = _failure_result(task_payload, error, exc=exc)
                         _complete_mesh_task(remote=remote, task_id=tid, ok=ok, result=result, error=error)
                     if once:
                         return 0
@@ -4703,7 +5300,7 @@ def run_worker(
                     except Exception as exc:
                         ok = False
                         error = str(exc)
-                        result = _failure_result(task_payload, error)
+                        result = _failure_result(task_payload, error, exc=exc)
                     _complete_local_task(task_id=tid, ok=ok, result=result, error=error)
 
                 if once:
@@ -4780,7 +5377,7 @@ def run_worker(
             except Exception as exc:
                 status = "failed"
                 error = str(exc)
-                result = _failure_result(task_payload, error)
+                result = _failure_result(task_payload, error, exc=exc)
             finally:
                 # Stop heartbeat before completing to avoid DuckDB write conflicts.
                 stop_hb.set()

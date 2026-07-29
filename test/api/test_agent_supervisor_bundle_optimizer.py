@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.bundle_optimizer import (
+from ipfs_accelerate_py.agent_supervisor.objectives.bundle_optimizer import (
     CRITICAL_PATH_WIDTH_REQUIREMENT_ID,
     PACKET_COMPLETION_BINDING_REQUIREMENT_ID,
     BundleOptimizationPolicy,
@@ -16,7 +16,7 @@ from ipfs_accelerate_py.agent_supervisor.bundle_optimizer import (
     prove_critical_path_width,
     propagate_goal_packet_completion,
 )
-from ipfs_accelerate_py.agent_supervisor.objective_graph import (
+from ipfs_accelerate_py.agent_supervisor.objectives.objective_graph import (
     EvidenceSourcePolicy,
     TASK_GENERATION_ACCEPTANCE_CRITERIA,
     TASK_GENERATION_CHILD_GOAL_IDS,
@@ -29,25 +29,25 @@ from ipfs_accelerate_py.agent_supervisor.objective_graph import (
     evaluate_task_generation_completion,
     task_generation_evidence_producer_bindings,
 )
-from ipfs_accelerate_py.agent_supervisor.goal_completion import (
+from ipfs_accelerate_py.agent_supervisor.objectives.goal_completion import (
     CompletionEvidence,
     GoalState,
 )
-from ipfs_accelerate_py.agent_supervisor.conflict_graph import (
+from ipfs_accelerate_py.agent_supervisor.core.conflict_graph import (
     ConflictWaveProjection,
     project_conflict_free_wave,
 )
-from ipfs_accelerate_py.agent_supervisor.todo_vector_index import (
+from ipfs_accelerate_py.agent_supervisor.task_sources.todo_vector_index import (
     TodoIndexRecord,
     build_execution_packet,
 )
-from ipfs_accelerate_py.agent_supervisor.bundle_supervisor import (
+from ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor import (
     optimize_bundle_payloads,
 )
-from ipfs_accelerate_py.agent_supervisor.task_identity import (
+from ipfs_accelerate_py.agent_supervisor.task_sources.task_identity import (
     canonical_bundle_identity,
 )
-from ipfs_accelerate_py.agent_supervisor.task_quality import TaskCandidate
+from ipfs_accelerate_py.agent_supervisor.planning.task_quality import TaskCandidate
 
 
 def _task(task_id: str, **overrides: object) -> dict[str, object]:

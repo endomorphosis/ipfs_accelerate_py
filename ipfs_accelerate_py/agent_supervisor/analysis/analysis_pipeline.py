@@ -1,0 +1,3579 @@
+"""Authority-safe integration of supervisor analysis, retrieval, and caching.
+
+The pipeline composes the existing :mod:`analysis_cache`,
+:mod:`analysis_ast_index`, :mod:`analysis_retrieval`, and
+:mod:`analysis_contracts` implementations.  Cache authority is deliberately
+stricter than finding a historically successful entry: an entry is reused
+only after an exact seven-dimension key lookup, expiry checking, compact
+receipt verification, content-addressed packet loading, and a second binding
+check against the current request.
+
+Optional ``ipfs_datasets_py`` analysis is advisory.  It can enrich the context
+given to a local analyzer, but it cannot manufacture a conclusive supervisor
+receipt and its absence never changes local cache semantics.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import inspect
+import json
+import os
+import tempfile
+from copy import copy
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass, field, fields, is_dataclass
+from enum import Enum
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, Final
+
+if TYPE_CHECKING:
+    from ..objectives.goal_completion import GoalCompletionDecision
+
+from .analysis_ast_index import AnalysisASTIndex, build_analysis_ast_index
+from .analysis_cache import (
+    ANALYSIS_CACHE_ENTRY_SCHEMA,
+    ANALYSIS_CACHE_KEY_SCHEMA,
+    AnalysisCache,
+    AnalysisCacheKey,
+    AnalysisCacheLookupResult,
+    AnalysisCacheLookupStatus,
+    AnalysisOutcome as CacheOutcome,
+    build_analysis_cache_key,
+    canonical_analysis_json,
+    digest_analysis_input,
+)
+from .analysis_contracts import (
+    ANALYSIS_CONTRACT_VERSION,
+    AnalysisCacheDisposition,
+    AnalysisEvidencePacket,
+    AnalysisFreshness,
+    AnalysisOutcome as ContractOutcome,
+    AnalysisStageReceipt,
+    AnalysisStageStatus,
+)
+from .analysis_consensus import (
+    AnalysisClaimProvenance,
+    AnalysisClaimStatus,
+    AnalysisConsensusClaim,
+    AnalysisConsensusPolicy,
+    AnalysisConsensusReceipt,
+    AnalysisProducerKind,
+    build_analysis_consensus_receipt,
+)
+from .analysis_retrieval import (
+    RetrievalLimits,
+    RetrievalQuery,
+    RetrievalResponse,
+    retrieve_analysis_evidence,
+)
+from .cache_coordinator import (
+    INTEGRATED_ANALYSIS_CACHE_ACCEPTANCE_CRITERIA,
+    SINGLE_FLIGHT_COLLAPSE_REQUIREMENT_ID,
+    CacheAuthority,
+    CacheCoordinationError,
+    CacheCoordinationResult,
+    CacheCoordinationStatus,
+    CacheNamespace,
+    SingleFlightCollapseEvidence,
+    namespace_metadata,
+)
+from ..integrations.ipfs_datasets_analysis_provider import (
+    IPFS_DATASETS_COMPLETION_ACCEPTANCE_CRITERION,
+    IPFS_DATASETS_LAZY_DEGRADATION_REQUIREMENT_ID,
+    AnalysisProviderPolicy,
+    AnalysisProviderRequest,
+    AnalysisProviderResult,
+    IpfsDatasetsProviderDegradationEvidence,
+    IpfsDatasetsAnalysisProvider,
+)
+
+
+EXACT_TREE_REUSE_REQUIREMENT_ID: Final = (
+    "189057730455837902155591890661235220962"
+)
+EXACT_TREE_ANALYSIS_REUSE_REQUIREMENT_ID: Final = EXACT_TREE_REUSE_REQUIREMENT_ID
+ANALYSIS_PIPELINE_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/analysis-pipeline-result@1"
+)
+EXACT_TREE_REUSE_EVIDENCE_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/exact-tree-reuse-evidence@1"
+)
+EXACT_TREE_REUSE_ACCEPTANCE_CRITERIA: Final[tuple[str, ...]] = (
+    (
+        "The live pipeline composes the existing cache, incremental AST "
+        "index, bounded multi-signal retrieval, and optional datasets adapter"
+    ),
+    (
+        "persists packet bodies in a digest-addressed artifact store and "
+        "only compact bindings in AnalysisCache"
+    ),
+    "never treats an attached invalidated entry as authority",
+    "revalidates all seven key dimensions and derived completion state",
+    (
+        "collapses identical in-process lane misses without globally "
+        "serializing different keys"
+    ),
+    "achieves at least 70 percent reuse on repeated fixtures",
+    "and reports zero stale authoritative hits.",
+)
+SINGLE_FLIGHT_COLLAPSE_ACCEPTANCE_CRITERIA: Final[tuple[str, ...]] = (
+    "Sync, async, and mixed facades share one keyed flight",
+    (
+        "the full AST/retrieval/provider/analyzer path executes once for "
+        "identical concurrent misses"
+    ),
+    "unrelated keys are not globally serialized",
+    "failed flights clean up before retry",
+    (
+        "singleton, cache-hit, different-key, non-authoritative, malformed, "
+        "detached, or replayed results cannot claim the evidence ID"
+    ),
+)
+INTEGRATED_ANALYSIS_OBJECTIVE_ID: Final = "ASI-G020"
+INTEGRATED_ANALYSIS_OBJECTIVE_REVISION: Final = "ASI-G020@asi-079"
+INTEGRATED_ANALYSIS_REQUIRED_EXHAUSTIVE_RECEIPTS: Final = 2
+INTEGRATED_ANALYSIS_PRODUCING_TASK_IDS: Final[tuple[str, ...]] = (
+    "ASI-003",
+    "ASI-004",
+    "ASI-007",
+)
+INTEGRATED_ANALYSIS_CHILD_GOAL_IDS: Final[tuple[str, ...]] = (
+    "ASI-G094",
+    "ASI-G095",
+    "ASI-G096",
+)
+INTEGRATED_ANALYSIS_LIVE_ANALYZER_IDS: Final[frozenset[str]] = frozenset(
+    {
+        "objective.gap_scan",
+        "objective.low_backlog_analysis",
+    }
+)
+INTEGRATED_ANALYSIS_ACCEPTANCE_CRITERIA: Final[tuple[str, ...]] = (
+    (
+        "Existing analysis cache, AST index, and retrieval contracts are "
+        "used in the live objective/planning path"
+    ),
+    INTEGRATED_ANALYSIS_CACHE_ACCEPTANCE_CRITERIA[0],
+    INTEGRATED_ANALYSIS_CACHE_ACCEPTANCE_CRITERIA[1],
+    IPFS_DATASETS_COMPLETION_ACCEPTANCE_CRITERION,
+    INTEGRATED_ANALYSIS_CACHE_ACCEPTANCE_CRITERIA[2],
+)
+INTEGRATED_ANALYSIS_COMPLETION_EVIDENCE_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "integrated-analysis-completion-evidence@1"
+)
+ANALYSIS_PIPELINE_VERSION: Final = "analysis-pipeline@1"
+DEFAULT_ANALYZER_VERSION: Final = "supervisor-integrated-analysis@1"
+DEFAULT_POLICY_DIGEST: Final = digest_analysis_input(
+    {"policy": "supervisor-analysis-default@1"}
+)
+DEFAULT_CONFIGURATION_DIGEST: Final = digest_analysis_input(
+    {"configuration": "supervisor-analysis-default@1"}
+)
+_PACKET_ARTIFACT_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/analysis-packet-artifact@1"
+)
+_CONSENSUS_ARTIFACT_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/analysis-consensus-artifact@1"
+)
+
+
+class AnalysisPipelineError(RuntimeError):
+    """Base class for integrated analysis failures."""
+
+
+class AnalysisBindingError(AnalysisPipelineError, ValueError):
+    """A producer or cache artifact is not bound to the active request."""
+
+
+class AnalysisProducerError(AnalysisPipelineError):
+    """A local analyzer failed without returning a typed receipt."""
+
+
+class PipelineCacheStatus(str, Enum):
+    """Observable source of a pipeline result."""
+
+    EXACT_HIT = "exact_hit"
+    PRODUCED = "produced"
+    JOINED = "joined"
+    INCONCLUSIVE = "inconclusive"
+
+
+def _required_text(value: Any, field_name: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"{field_name} is required")
+    normalized = value.strip()
+    if "\x00" in normalized:
+        raise ValueError(f"{field_name} must not contain NUL bytes")
+    return normalized
+
+
+def _canonical_digest(value: Any, *, default: str) -> str:
+    if value is None:
+        return default
+    if isinstance(value, str):
+        normalized = value.strip()
+        if not normalized:
+            return default
+        if normalized.startswith(("sha256:", "analysis-")):
+            return normalized
+    return digest_analysis_input(value)
+
+
+def _json_digest(value: Any) -> str:
+    return "sha256:" + hashlib.sha256(
+        canonical_analysis_json(value).encode("utf-8")
+    ).hexdigest()
+
+
+def _identity_projection(value: Any) -> Any:
+    """Project authority-changing inputs without executing opaque objects."""
+
+    if value is None or isinstance(value, (str, bool, int, float)):
+        return value
+    if isinstance(value, Enum):
+        return value.value
+    if isinstance(value, Path):
+        return value.as_posix()
+    if isinstance(value, Mapping):
+        return {
+            str(key): _identity_projection(item)
+            for key, item in sorted(value.items(), key=lambda pair: str(pair[0]))
+        }
+    if isinstance(value, (tuple, list, set, frozenset)):
+        projected = [_identity_projection(item) for item in value]
+        if isinstance(value, (set, frozenset)):
+            projected.sort(key=canonical_analysis_json)
+        return projected
+    if is_dataclass(value) and not isinstance(value, type):
+        return {
+            item.name: _identity_projection(getattr(value, item.name))
+            for item in fields(value)
+        }
+    converter = getattr(value, "to_dict", None)
+    if callable(converter):
+        return _identity_projection(converter())
+    descriptor = {
+        "type": f"{type(value).__module__}.{type(value).__qualname__}",
+    }
+    for name in (
+        "content_id",
+        "index_id",
+        "provider_id",
+        "provider_version",
+        "version",
+        "__version__",
+        "cache_identity",
+    ):
+        item = getattr(value, name, None)
+        if item not in (None, "") and not callable(item):
+            descriptor[name] = _identity_projection(item)
+    if callable(value):
+        descriptor["callable"] = (
+            f"{getattr(value, '__module__', type(value).__module__)}."
+            f"{getattr(value, '__qualname__', type(value).__qualname__)}"
+        )
+    return descriptor
+
+
+@dataclass(frozen=True)
+class AnalysisPipelinePolicy:
+    """Hard bounds and optional-provider controls for one pipeline."""
+
+    retrieval_limits: RetrievalLimits = field(default_factory=RetrievalLimits)
+    enable_datasets_provider: bool = True
+    require_local_completion: bool = True
+    cache_negative_results: bool = True
+    negative_ttl_seconds: int = 300
+    consensus_policy: AnalysisConsensusPolicy = field(
+        default_factory=AnalysisConsensusPolicy
+    )
+
+    def __post_init__(self) -> None:
+        limits = RetrievalLimits.from_value(self.retrieval_limits)
+        object.__setattr__(self, "retrieval_limits", limits)
+        for name in (
+            "enable_datasets_provider",
+            "require_local_completion",
+            "cache_negative_results",
+        ):
+            if not isinstance(getattr(self, name), bool):
+                raise ValueError(f"{name} must be a boolean")
+        if (
+            isinstance(self.negative_ttl_seconds, bool)
+            or int(self.negative_ttl_seconds) < 1
+        ):
+            raise ValueError("negative_ttl_seconds must be a positive integer")
+        object.__setattr__(
+            self, "negative_ttl_seconds", int(self.negative_ttl_seconds)
+        )
+        object.__setattr__(
+            self,
+            "consensus_policy",
+            AnalysisConsensusPolicy.from_value(self.consensus_policy),
+        )
+
+    @classmethod
+    def from_value(
+        cls, value: "AnalysisPipelinePolicy | Mapping[str, Any] | None"
+    ) -> "AnalysisPipelinePolicy":
+        if value is None:
+            return cls()
+        if isinstance(value, cls):
+            return value
+        if not isinstance(value, Mapping):
+            raise TypeError("analysis pipeline policy must be a mapping")
+        values = dict(value)
+        if "retrieval_limits" in values:
+            values["retrieval_limits"] = RetrievalLimits.from_value(
+                values["retrieval_limits"]
+            )
+        if "consensus_policy" in values:
+            values["consensus_policy"] = AnalysisConsensusPolicy.from_value(
+                values["consensus_policy"]
+            )
+        unknown = sorted(set(values) - set(cls.__dataclass_fields__))
+        if unknown:
+            raise ValueError(
+                "unknown analysis pipeline policy fields: " + ", ".join(unknown)
+            )
+        return cls(**values)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "retrieval_limits": self.retrieval_limits.to_dict(),
+            "enable_datasets_provider": self.enable_datasets_provider,
+            "require_local_completion": self.require_local_completion,
+            "cache_negative_results": self.cache_negative_results,
+            "negative_ttl_seconds": self.negative_ttl_seconds,
+            "consensus_policy": self.consensus_policy.to_dict(),
+        }
+
+
+@dataclass(frozen=True)
+class AnalysisPipelineRequest:
+    """All authority-bearing inputs to an integrated analysis run."""
+
+    repository_id: str
+    tree_id: str
+    objective_revision: str
+    query: RetrievalQuery | str | Mapping[str, Any]
+    analyzer_id: str = "supervisor.integrated_analysis"
+    analyzer_version: str = DEFAULT_ANALYZER_VERSION
+    schema_version: str = str(ANALYSIS_CONTRACT_VERSION)
+    configuration: Any = None
+    policy: Any = None
+    configuration_digest: str = ""
+    query_digest: str = ""
+    policy_digest: str = ""
+    ast_records: Any = ()
+    previous_ast_index: AnalysisASTIndex | Mapping[str, Any] | None = None
+    retrieval_inputs: Mapping[str, Any] = field(default_factory=dict)
+    provider_operation: str = "graph_retrieval"
+    provider_payload: Mapping[str, Any] = field(default_factory=dict)
+    pipeline_policy_digest: str = ""
+
+    def __post_init__(self) -> None:
+        for name in (
+            "repository_id",
+            "tree_id",
+            "objective_revision",
+            "analyzer_id",
+            "analyzer_version",
+            "schema_version",
+        ):
+            object.__setattr__(
+                self, name, _required_text(getattr(self, name), name)
+            )
+        query = RetrievalQuery.from_value(self.query)
+        object.__setattr__(self, "query", query)
+        declared_configuration = (
+            self.configuration_digest
+            if self.configuration_digest
+            else self.configuration
+        )
+        object.__setattr__(
+            self,
+            "configuration_digest",
+            digest_analysis_input(
+                {
+                    "declared_configuration": _identity_projection(
+                        declared_configuration
+                    ),
+                    "analyzer_id": self.analyzer_id,
+                    "ast_records": _identity_projection(self.ast_records),
+                    "previous_ast_index": _identity_projection(
+                        self.previous_ast_index
+                    ),
+                    "retrieval_inputs": _identity_projection(
+                        self.retrieval_inputs
+                    ),
+                    "provider_operation": self.provider_operation,
+                    "provider_payload": _identity_projection(
+                        self.provider_payload
+                    ),
+                }
+            ),
+        )
+        declared_query = self.query_digest
+        object.__setattr__(
+            self,
+            "query_digest",
+            digest_analysis_input(
+                {
+                    "declared_query_digest": declared_query,
+                    "query": query.to_dict(),
+                }
+            ),
+        )
+        declared_policy = self.policy_digest if self.policy_digest else self.policy
+        object.__setattr__(
+            self,
+            "policy_digest",
+            _canonical_digest(
+                declared_policy,
+                default=DEFAULT_POLICY_DIGEST,
+            ),
+        )
+        object.__setattr__(
+            self,
+            "pipeline_policy_digest",
+            _canonical_digest(
+                self.pipeline_policy_digest,
+                default=DEFAULT_POLICY_DIGEST,
+            ),
+        )
+        if not isinstance(self.retrieval_inputs, Mapping):
+            raise TypeError("retrieval_inputs must be a mapping")
+        if not isinstance(self.provider_payload, Mapping):
+            raise TypeError("provider_payload must be a mapping")
+        object.__setattr__(
+            self, "retrieval_inputs", dict(self.retrieval_inputs)
+        )
+        object.__setattr__(self, "provider_payload", dict(self.provider_payload))
+        object.__setattr__(
+            self,
+            "provider_operation",
+            _required_text(self.provider_operation, "provider_operation"),
+        )
+
+    @property
+    def effective_policy_digest(self) -> str:
+        return digest_analysis_input(
+            {
+                "request_policy_digest": self.policy_digest,
+                "pipeline_policy_digest": self.pipeline_policy_digest,
+            }
+        )
+
+    def bind_pipeline_policy(self, value: Any) -> "AnalysisPipelineRequest":
+        digest = digest_analysis_input(_identity_projection(value))
+        if digest == self.pipeline_policy_digest:
+            return self
+        # __post_init__ folds declared digests into actual inputs exactly once.
+        # A normal dataclass replacement would fold the derived values again.
+        bound = copy(self)
+        object.__setattr__(bound, "pipeline_policy_digest", digest)
+        return bound
+
+    @property
+    def cache_key(self) -> AnalysisCacheKey:
+        return build_analysis_cache_key(
+            repository_tree_identity={
+                "repository_id": self.repository_id,
+                "tree_id": self.tree_id,
+            },
+            objective_revision=self.objective_revision,
+            analyzer_version=self.analyzer_version,
+            schema_version=self.schema_version,
+            configuration_digest=self.configuration_digest,
+            query_digest=self.query_digest,
+            policy_digest=self.effective_policy_digest,
+        )
+
+    @property
+    def request_id(self) -> str:
+        return "analysis-request:sha256:" + hashlib.sha256(
+            canonical_analysis_json(self.identity_dict()).encode("utf-8")
+        ).hexdigest()
+
+    def identity_dict(self) -> dict[str, Any]:
+        return {
+            "repository_id": self.repository_id,
+            "tree_id": self.tree_id,
+            "objective_revision": self.objective_revision,
+            "analyzer_id": self.analyzer_id,
+            "analyzer_version": self.analyzer_version,
+            "schema_version": self.schema_version,
+            "configuration_digest": self.configuration_digest,
+            "query_digest": self.query_digest,
+            "policy_digest": self.effective_policy_digest,
+            "query_id": self.query.query_id,
+        }
+
+
+AnalysisRequest = AnalysisPipelineRequest
+AnalysisPolicy = AnalysisPipelinePolicy
+
+
+@dataclass(frozen=True)
+class AnalysisStageContext:
+    """Bounded local inputs assembled before invoking the analyzer."""
+
+    request: AnalysisPipelineRequest
+    ast_index: AnalysisASTIndex | None
+    retrieval: RetrievalResponse
+    provider_result: Any = None
+    provider_evidence_claim_references: tuple[str, ...] = ()
+    provider_request: AnalysisProviderRequest | None = field(
+        default=None, repr=False, compare=False
+    )
+    provider_policy: AnalysisProviderPolicy | None = field(
+        default=None, repr=False, compare=False
+    )
+
+
+@dataclass(frozen=True)
+class OptionalProviderFailure:
+    """Non-authoritative projection when an optional adapter itself raises."""
+
+    repository_id: str
+    tree_id: str
+    objective_revision: str
+    reason_code: str = "optional_provider_invocation_failed"
+    status: str = "failed"
+
+    @property
+    def safe_for_completion_reasoning(self) -> bool:
+        return False
+
+    @property
+    def is_completion_evidence(self) -> bool:
+        return False
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "status": self.status,
+            "reason_code": self.reason_code,
+            "repository_id": self.repository_id,
+            "tree_id": self.tree_id,
+            "objective_revision": self.objective_revision,
+            "non_authoritative": True,
+            "safe_for_completion_reasoning": False,
+        }
+
+
+def _optional_provider_violation(
+    value: Any,
+    request: AnalysisPipelineRequest,
+    provider_request: AnalysisProviderRequest | None = None,
+) -> str:
+    """Return a fail-closed reason for an unsafe provider projection.
+
+    Optional providers are outside the supervisor authority boundary.  The
+    pipeline therefore rejects, rather than merely ignores, a provider value
+    that is rebound to another request or claims any form of completion
+    authority.  The rejection itself remains advisory so healthy local
+    analysis can continue.
+    """
+
+    try:
+        if isinstance(value, Mapping):
+            projected: Mapping[str, Any] = value
+        else:
+            converter = getattr(value, "to_dict", None)
+            projected = converter() if callable(converter) else {}
+            if inspect.isawaitable(projected):
+                _dispose_optional_awaitable(projected)
+                return "optional_provider_inspection_failed"
+            if not isinstance(projected, Mapping):
+                return "optional_provider_inspection_failed"
+    except Exception:
+        return "optional_provider_inspection_failed"
+
+    expected_bindings = {
+        "repository_id": request.repository_id,
+        "tree_id": request.tree_id,
+        "objective_revision": request.objective_revision,
+        "operation": (
+            provider_request.operation.value
+            if provider_request is not None
+            else request.provider_operation
+        ),
+    }
+    for name, expected in expected_bindings.items():
+        try:
+            actual = projected.get(name)
+            if actual in (None, ""):
+                actual = getattr(value, name, None)
+            if isinstance(actual, Enum):
+                actual = actual.value
+        except Exception:
+            return "optional_provider_inspection_failed"
+        if actual in (None, ""):
+            return "optional_provider_identity_missing"
+        if actual != expected:
+            return "optional_provider_identity_mismatch"
+
+    if provider_request is not None:
+        try:
+            actual_request_id = projected.get("request_id")
+            if actual_request_id in (None, ""):
+                actual_request_id = getattr(value, "request_id", None)
+        except Exception:
+            return "optional_provider_inspection_failed"
+        if actual_request_id in (None, ""):
+            return "optional_provider_identity_missing"
+        if actual_request_id != provider_request.request_id:
+            return "optional_provider_request_mismatch"
+
+    for name in (
+        "authoritative",
+        "completion_authority",
+        "is_completion_evidence",
+        "proof_success",
+        "safe_for_completion_reasoning",
+    ):
+        try:
+            claim = projected.get(name)
+            if claim is None:
+                claim = getattr(value, name, None)
+            if callable(claim):
+                # An optional object exposing an authority method is itself an
+                # attempted authority surface.  Do not execute untrusted code
+                # to ask whether that claim happens to return true.
+                return "optional_provider_authority_claim_rejected"
+            if inspect.isawaitable(claim):
+                _dispose_optional_awaitable(claim)
+                return "optional_provider_inspection_failed"
+        except Exception:
+            return "optional_provider_inspection_failed"
+        if claim is not None and claim is not False:
+            return "optional_provider_authority_claim_rejected"
+    return ""
+
+
+def _dispose_optional_awaitable(value: Any) -> None:
+    """Best-effort disposal of an unsupported optional-provider awaitable."""
+
+    try:
+        close = getattr(value, "close", None)
+    except Exception:
+        close = None
+    if callable(close):
+        try:
+            close()
+        except Exception:
+            pass
+        return
+    try:
+        cancel = getattr(value, "cancel", None)
+    except Exception:
+        cancel = None
+    if callable(cancel):
+        try:
+            cancel()
+        except Exception:
+            pass
+
+
+@dataclass(frozen=True)
+class ExactTreeReuseEvidence:
+    """Content-addressed witness for an authoritative exact-key cache hit."""
+
+    request_id: str
+    cache_key_id: str
+    packet_id: str
+    cache_entry_digest: str
+    repository_id: str
+    tree_id: str
+    objective_revision: str
+    analyzer_version: str
+    schema_version: str
+    configuration_digest: str
+    query_digest: str
+    policy_digest: str
+    lookup_reason: str = "exact_key_hit"
+    requirement_id: str = EXACT_TREE_REUSE_REQUIREMENT_ID
+
+    def __post_init__(self) -> None:
+        for name in (
+            "request_id",
+            "cache_key_id",
+            "packet_id",
+            "cache_entry_digest",
+            "repository_id",
+            "tree_id",
+            "objective_revision",
+            "analyzer_version",
+            "schema_version",
+            "configuration_digest",
+            "query_digest",
+            "policy_digest",
+            "lookup_reason",
+        ):
+            object.__setattr__(
+                self, name, _required_text(getattr(self, name), name)
+            )
+        if self.requirement_id != EXACT_TREE_REUSE_REQUIREMENT_ID:
+            raise AnalysisBindingError("unexpected exact-tree requirement ID")
+        if self.lookup_reason != "exact_key_hit":
+            raise AnalysisBindingError(
+                "exact-tree evidence requires an exact authoritative cache hit"
+            )
+
+    def _content(self) -> dict[str, Any]:
+        return {
+            "schema": EXACT_TREE_REUSE_EVIDENCE_SCHEMA,
+            "requirement_id": self.requirement_id,
+            "request_id": self.request_id,
+            "cache_key_id": self.cache_key_id,
+            "packet_id": self.packet_id,
+            "cache_entry_digest": self.cache_entry_digest,
+            "repository_id": self.repository_id,
+            "tree_id": self.tree_id,
+            "objective_revision": self.objective_revision,
+            "analyzer_version": self.analyzer_version,
+            "schema_version": self.schema_version,
+            "configuration_digest": self.configuration_digest,
+            "query_digest": self.query_digest,
+            "policy_digest": self.policy_digest,
+            "lookup_reason": self.lookup_reason,
+        }
+
+    @property
+    def evidence_id(self) -> str:
+        return "exact-tree-reuse:sha256:" + hashlib.sha256(
+            canonical_analysis_json(self._content()).encode("utf-8")
+        ).hexdigest()
+
+    def to_dict(self) -> dict[str, Any]:
+        return {**self._content(), "evidence_id": self.evidence_id}
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, Any]) -> "ExactTreeReuseEvidence":
+        """Restore a witness while checking schema and content identity."""
+
+        if not isinstance(value, Mapping):
+            raise AnalysisBindingError("exact-tree evidence must be an object")
+        allowed = {
+            "schema",
+            "evidence_id",
+            "requirement_id",
+            "request_id",
+            "cache_key_id",
+            "packet_id",
+            "cache_entry_digest",
+            "repository_id",
+            "tree_id",
+            "objective_revision",
+            "analyzer_version",
+            "schema_version",
+            "configuration_digest",
+            "query_digest",
+            "policy_digest",
+            "lookup_reason",
+        }
+        unknown = sorted(set(value) - allowed)
+        if unknown:
+            raise AnalysisBindingError(
+                "exact-tree evidence has unknown fields: "
+                + ", ".join(unknown)
+            )
+        if value.get("schema") != EXACT_TREE_REUSE_EVIDENCE_SCHEMA:
+            raise AnalysisBindingError("unsupported exact-tree evidence schema")
+        restored = cls(
+            request_id=value.get("request_id", ""),
+            cache_key_id=value.get("cache_key_id", ""),
+            packet_id=value.get("packet_id", ""),
+            cache_entry_digest=value.get("cache_entry_digest", ""),
+            repository_id=value.get("repository_id", ""),
+            tree_id=value.get("tree_id", ""),
+            objective_revision=value.get("objective_revision", ""),
+            analyzer_version=value.get("analyzer_version", ""),
+            schema_version=value.get("schema_version", ""),
+            configuration_digest=value.get("configuration_digest", ""),
+            query_digest=value.get("query_digest", ""),
+            policy_digest=value.get("policy_digest", ""),
+            lookup_reason=value.get("lookup_reason", ""),
+            requirement_id=value.get("requirement_id", ""),
+        )
+        if value.get("evidence_id") != restored.evidence_id:
+            raise AnalysisBindingError(
+                "exact-tree evidence identity does not match its content"
+            )
+        return restored
+
+    @classmethod
+    def from_lookup(
+        cls,
+        request: AnalysisPipelineRequest,
+        packet: AnalysisEvidencePacket,
+        lookup: AnalysisCacheLookupResult,
+    ) -> "ExactTreeReuseEvidence":
+        """Build a witness only from a verified, exact completion lookup."""
+
+        entry = (
+            lookup.entry
+            if isinstance(lookup, AnalysisCacheLookupResult)
+            else None
+        )
+        if entry is None:
+            raise AnalysisBindingError(
+                "exact-tree evidence requires a typed cache entry"
+            )
+        witness = cls(
+            request_id=request.request_id,
+            cache_key_id=request.cache_key.key_id,
+            packet_id=packet.packet_id,
+            cache_entry_digest=entry.entry_digest,
+            repository_id=request.repository_id,
+            tree_id=request.tree_id,
+            objective_revision=request.objective_revision,
+            analyzer_version=request.analyzer_version,
+            schema_version=request.schema_version,
+            configuration_digest=request.configuration_digest,
+            query_digest=request.query_digest,
+            policy_digest=request.effective_policy_digest,
+            lookup_reason=lookup.reason_code,
+        )
+        if not witness.proves_for(request, packet, lookup):
+            raise AnalysisBindingError(
+                "exact-tree evidence is not bound to the verified cache lookup"
+            )
+        return witness
+
+    def proves_for(
+        self,
+        request: AnalysisPipelineRequest,
+        packet: AnalysisEvidencePacket,
+        lookup: AnalysisCacheLookupResult,
+    ) -> bool:
+        """Independently verify this witness against its authority sources."""
+
+        if (
+            not isinstance(request, AnalysisPipelineRequest)
+            or not isinstance(packet, AnalysisEvidencePacket)
+            or not isinstance(lookup, AnalysisCacheLookupResult)
+            or lookup.status is not AnalysisCacheLookupStatus.HIT
+            or lookup.key != request.cache_key
+            or not lookup.is_completion_evidence
+            or lookup.reason_code != "exact_key_hit"
+            or lookup.entry is None
+            or not packet.safe_for_completion_reasoning
+        ):
+            return False
+        entry = lookup.entry
+        if (
+            not entry.entry_digest
+            or entry.entry_digest != entry.computed_digest
+            or self.cache_entry_digest != entry.entry_digest
+        ):
+            return False
+        try:
+            _validate_packet_binding(packet, request)
+        except (TypeError, ValueError, AnalysisPipelineError):
+            return False
+        summary = entry.receipt.get("summary")
+        if not isinstance(summary, Mapping):
+            return False
+        expected_summary = {
+            "repository_id": request.repository_id,
+            "tree_id": request.tree_id,
+            "objective_revision": request.objective_revision,
+            "analyzer_version": request.analyzer_version,
+            "schema_version": request.schema_version,
+            "configuration_digest": request.configuration_digest,
+            "query_digest": request.query_digest,
+            "policy_digest": request.effective_policy_digest,
+            "packet_id": packet.packet_id,
+            "safe_for_completion_reasoning": True,
+        }
+        if any(
+            summary.get(name) != expected
+            for name, expected in expected_summary.items()
+        ):
+            return False
+        expected_witness = {
+            "request_id": request.request_id,
+            "cache_key_id": request.cache_key.key_id,
+            "packet_id": packet.packet_id,
+            "cache_entry_digest": entry.entry_digest,
+            "repository_id": request.repository_id,
+            "tree_id": request.tree_id,
+            "objective_revision": request.objective_revision,
+            "analyzer_version": request.analyzer_version,
+            "schema_version": request.schema_version,
+            "configuration_digest": request.configuration_digest,
+            "query_digest": request.query_digest,
+            "policy_digest": request.effective_policy_digest,
+            "lookup_reason": "exact_key_hit",
+            "requirement_id": EXACT_TREE_REUSE_REQUIREMENT_ID,
+        }
+        return all(
+            getattr(self, name) == expected
+            for name, expected in expected_witness.items()
+        )
+
+
+@dataclass(frozen=True)
+class AnalysisPipelineMetrics:
+    requests: int = 0
+    exact_hits: int = 0
+    produced: int = 0
+    joined: int = 0
+    invalidated: int = 0
+    negative_rejections: int = 0
+    stale_authoritative_hits: int = 0
+
+    @property
+    def reuse_ratio(self) -> float:
+        return self.exact_hits / self.requests if self.requests else 0.0
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "requests": self.requests,
+            "exact_hits": self.exact_hits,
+            "produced": self.produced,
+            "joined": self.joined,
+            "invalidated": self.invalidated,
+            "negative_rejections": self.negative_rejections,
+            "stale_authoritative_hits": self.stale_authoritative_hits,
+            "reuse_ratio": self.reuse_ratio,
+        }
+
+
+@dataclass(frozen=True)
+class AnalysisPipelineResult:
+    """One integrated analysis result and its authority decision."""
+
+    request: AnalysisPipelineRequest
+    packet: AnalysisEvidencePacket
+    cache_status: PipelineCacheStatus
+    cache_lookup_status: AnalysisCacheLookupStatus
+    cache_reason_codes: tuple[str, ...] = ()
+    producer_executed: bool = False
+    joined_existing_flight: bool = False
+    exact_tree_reuse_evidence: ExactTreeReuseEvidence | None = None
+    cache_lookup: AnalysisCacheLookupResult | None = field(
+        default=None, repr=False, compare=False
+    )
+    ast_index_id: str = ""
+    retrieval_response_id: str = ""
+    ranked_evidence_references: tuple[Mapping[str, Any], ...] = ()
+    retrieval_backend_health: Mapping[str, Mapping[str, Any]] = field(
+        default_factory=dict
+    )
+    retrieval_truncation: Mapping[str, Any] = field(default_factory=dict)
+    provider_result: Any = None
+    advisory_evidence_claim_references: tuple[str, ...] = ()
+    provider_request: AnalysisProviderRequest | None = field(
+        default=None, repr=False, compare=False
+    )
+    provider_policy: AnalysisProviderPolicy | None = field(
+        default=None, repr=False, compare=False
+    )
+    consensus_receipt: AnalysisConsensusReceipt | None = None
+    single_flight_collapse_evidence: SingleFlightCollapseEvidence | None = None
+    coordination_result: CacheCoordinationResult | None = field(
+        default=None, repr=False, compare=False
+    )
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.cache_status, PipelineCacheStatus):
+            object.__setattr__(
+                self, "cache_status", PipelineCacheStatus(str(self.cache_status))
+            )
+        if not isinstance(
+            self.cache_lookup_status, AnalysisCacheLookupStatus
+        ):
+            object.__setattr__(
+                self,
+                "cache_lookup_status",
+                AnalysisCacheLookupStatus(str(self.cache_lookup_status)),
+            )
+        object.__setattr__(
+            self,
+            "cache_reason_codes",
+            tuple(
+                _required_text(item, "cache reason code")
+                for item in self.cache_reason_codes
+            ),
+        )
+        advisory_claims = tuple(
+            dict.fromkeys(
+                _required_text(item, "advisory evidence claim reference")
+                for item in self.advisory_evidence_claim_references
+            )
+        )
+        object.__setattr__(
+            self, "advisory_evidence_claim_references", advisory_claims
+        )
+        object.__setattr__(
+            self,
+            "ranked_evidence_references",
+            tuple(dict(item) for item in self.ranked_evidence_references),
+        )
+        object.__setattr__(
+            self,
+            "retrieval_backend_health",
+            {
+                str(name): dict(value)
+                for name, value in self.retrieval_backend_health.items()
+            },
+        )
+        object.__setattr__(
+            self, "retrieval_truncation", dict(self.retrieval_truncation)
+        )
+        consensus = self.consensus_receipt
+        if isinstance(consensus, Mapping):
+            consensus = AnalysisConsensusReceipt.from_dict(consensus)
+            object.__setattr__(self, "consensus_receipt", consensus)
+        if consensus is not None:
+            if not isinstance(consensus, AnalysisConsensusReceipt):
+                raise AnalysisBindingError(
+                    "consensus_receipt must be a typed consensus receipt"
+                )
+            expected_consensus_binding = {
+                "repository_id": self.request.repository_id,
+                "tree_id": self.request.tree_id,
+                "objective_revision": self.request.objective_revision,
+                "operation": self.request.provider_operation,
+            }
+            if any(
+                getattr(consensus, name) != expected
+                for name, expected in expected_consensus_binding.items()
+            ):
+                raise AnalysisBindingError(
+                    "consensus receipt is detached from the pipeline request"
+                )
+            if (
+                consensus.completion_authority
+                or consensus.is_completion_evidence
+                or consensus.safe_for_completion_reasoning
+            ):
+                raise AnalysisBindingError(
+                    "analysis consensus cannot create completion authority"
+                )
+        if advisory_claims:
+            if not isinstance(self.provider_result, AnalysisProviderResult):
+                raise AnalysisBindingError(
+                    "advisory provider claims require a typed provider result"
+                )
+            if not isinstance(self.provider_request, AnalysisProviderRequest):
+                raise AnalysisBindingError(
+                    "advisory provider claims require the exact provider request"
+                )
+            if not isinstance(self.provider_policy, AnalysisProviderPolicy):
+                raise AnalysisBindingError(
+                    "advisory provider claims require the provider policy"
+                )
+            provider_request = self.provider_request
+            try:
+                expected_provider_request = AnalysisProviderRequest(
+                    operation=self.request.provider_operation,
+                    repository_id=self.request.repository_id,
+                    tree_id=self.request.tree_id,
+                    objective_revision=self.request.objective_revision,
+                    query=self.request.query,
+                    payload=self.request.provider_payload,
+                    bounds=provider_request.bounds,
+                )
+            except (TypeError, ValueError) as exc:
+                raise AnalysisBindingError(
+                    "pipeline request cannot reproduce the provider request"
+                ) from exc
+            if expected_provider_request.request_id != provider_request.request_id:
+                raise AnalysisBindingError(
+                    "provider request is detached from pipeline request"
+                )
+            policy_bounds = self.provider_policy.bounds
+            if any(
+                getattr(provider_request.bounds, name)
+                > getattr(policy_bounds, name)
+                for name in provider_request.bounds.__dataclass_fields__
+            ):
+                raise AnalysisBindingError(
+                    "provider request bounds expand the provider policy"
+                )
+            proved = tuple(
+                self.provider_result.proved_requirement_ids_for(
+                    provider_request, self.provider_policy
+                )
+            )
+            if any(item not in proved for item in advisory_claims):
+                raise AnalysisBindingError(
+                    "advisory provider claims are not active-request bound"
+                )
+            if EXACT_TREE_REUSE_REQUIREMENT_ID in advisory_claims:
+                raise AnalysisBindingError(
+                    "exact-tree authority cannot be an advisory provider claim"
+                )
+            if SINGLE_FLIGHT_COLLAPSE_REQUIREMENT_ID in advisory_claims:
+                raise AnalysisBindingError(
+                    "single-flight proof cannot be an advisory provider claim"
+                )
+        _validate_packet_binding(self.packet, self.request)
+        witness = self.exact_tree_reuse_evidence
+        if self.cache_status is PipelineCacheStatus.EXACT_HIT:
+            if witness is None:
+                raise AnalysisBindingError(
+                    "exact cache hits require exact-tree reuse evidence"
+                )
+            if self.cache_lookup_status is not AnalysisCacheLookupStatus.HIT:
+                raise AnalysisBindingError(
+                    "exact cache hits require an authoritative HIT lookup"
+                )
+            if "exact_key_hit" not in self.cache_reason_codes:
+                raise AnalysisBindingError(
+                    "exact cache hits require the exact_key_hit reason"
+                )
+            if self.producer_executed or self.joined_existing_flight:
+                raise AnalysisBindingError(
+                    "exact cache hits cannot claim producer or follower work"
+                )
+            lookup = self.cache_lookup
+            if not isinstance(lookup, AnalysisCacheLookupResult):
+                raise AnalysisBindingError(
+                    "exact cache hits require the typed authoritative lookup"
+                )
+            if (
+                lookup.status is not self.cache_lookup_status
+                or tuple(lookup.reason_codes) != self.cache_reason_codes
+            ):
+                raise AnalysisBindingError(
+                    "exact cache hit diagnostics are detached from the lookup"
+                )
+            if not self.packet.safe_for_completion_reasoning:
+                raise AnalysisBindingError(
+                    "inconclusive packets cannot carry exact-tree reuse evidence"
+                )
+            if not witness.proves_for(self.request, self.packet, lookup):
+                raise AnalysisBindingError(
+                    "exact-tree evidence is not bound to the typed lookup"
+                )
+        elif witness is not None:
+            if self.cache_status is not PipelineCacheStatus.EXACT_HIT:
+                raise AnalysisBindingError(
+                    "exact-tree evidence is only valid for exact cache hits"
+                )
+        if (
+            self.cache_status is PipelineCacheStatus.JOINED
+            and not self.joined_existing_flight
+        ):
+            raise AnalysisBindingError("joined results must record flight joining")
+        collapse = self.single_flight_collapse_evidence
+        coordinated = self.coordination_result
+        if collapse is not None:
+            if not isinstance(coordinated, CacheCoordinationResult):
+                raise AnalysisBindingError(
+                    "single-flight evidence requires the typed coordination result"
+                )
+            expected_status = (
+                CacheCoordinationStatus.SHARED
+                if self.cache_status is PipelineCacheStatus.JOINED
+                else CacheCoordinationStatus.PRODUCED
+            )
+            if (
+                self.cache_status
+                not in (
+                    PipelineCacheStatus.PRODUCED,
+                    PipelineCacheStatus.JOINED,
+                )
+                or coordinated.status is not expected_status
+                or coordinated.single_flight_collapse_evidence != collapse
+                or not collapse.proves_for(self.request.cache_key, coordinated)
+                or collapse.receipt_id != self.packet.packet_id
+                or not self.packet.safe_for_completion_reasoning
+            ):
+                raise AnalysisBindingError(
+                    "single-flight evidence is detached from the pipeline result"
+                )
+        elif (
+            isinstance(coordinated, CacheCoordinationResult)
+            and coordinated.single_flight_collapse_evidence is not None
+        ):
+            raise AnalysisBindingError(
+                "pipeline result dropped coordinator single-flight evidence"
+            )
+
+    @property
+    def safe_for_completion_reasoning(self) -> bool:
+        return self.packet.safe_for_completion_reasoning
+
+    @property
+    def reused(self) -> bool:
+        return self.cache_status is PipelineCacheStatus.EXACT_HIT
+
+    @property
+    def evidence_references(self) -> tuple[Mapping[str, Any], ...]:
+        """Ranked compact retrieval references, identical on cold/warm runs."""
+
+        return self.ranked_evidence_references
+
+    @property
+    def backend_health(self) -> Mapping[str, Mapping[str, Any]]:
+        return self.retrieval_backend_health
+
+    @property
+    def truncation(self) -> Mapping[str, Any]:
+        return self.retrieval_truncation
+
+    @property
+    def evidence_claim_references(self) -> tuple[str, ...]:
+        """Established completion-authority evidence channel."""
+
+        return self.authoritative_evidence_claim_references
+
+    @property
+    def all_evidence_claim_references(self) -> tuple[str, ...]:
+        """All completion, operational, and advisory evidence claims."""
+
+        authoritative = self.evidence_claim_references
+        return tuple(
+            dict.fromkeys(
+                (
+                    *authoritative,
+                    *self.operational_evidence_claim_references,
+                    *self.advisory_evidence_claim_references,
+                )
+            )
+        )
+
+    @property
+    def operational_evidence_claim_references(self) -> tuple[str, ...]:
+        """Current-request-bound execution invariants, not packet semantics."""
+
+        witness = self.single_flight_collapse_evidence
+        coordinated = self.coordination_result
+        if (
+            witness is None
+            or not isinstance(coordinated, CacheCoordinationResult)
+            or not witness.proves_for(self.request.cache_key, coordinated)
+            or witness.receipt_id != self.packet.packet_id
+        ):
+            return ()
+        return (witness.requirement_id,)
+
+    @property
+    def authoritative_evidence_claim_references(self) -> tuple[str, ...]:
+        """Claims that participate in supervisor completion authority."""
+
+        if self.exact_tree_reuse_evidence is None:
+            return ()
+        return (self.exact_tree_reuse_evidence.requirement_id,)
+
+    @property
+    def result_id(self) -> str:
+        payload = self.to_dict(include_result_id=False)
+        return "analysis-pipeline-result:sha256:" + hashlib.sha256(
+            canonical_analysis_json(payload).encode("utf-8")
+        ).hexdigest()
+
+    def to_dict(self, *, include_result_id: bool = True) -> dict[str, Any]:
+        provider = self.provider_result
+        converter = getattr(provider, "to_dict", None)
+        if callable(converter):
+            provider = converter()
+        payload = {
+            "schema": ANALYSIS_PIPELINE_SCHEMA,
+            "request_id": self.request.request_id,
+            "cache_key_id": self.request.cache_key.key_id,
+            "packet": self.packet.to_record(),
+            "cache_status": self.cache_status.value,
+            "cache_lookup_status": self.cache_lookup_status.value,
+            "cache_reason_codes": list(self.cache_reason_codes),
+            "producer_executed": self.producer_executed,
+            "joined_existing_flight": self.joined_existing_flight,
+            "exact_tree_reuse_evidence": (
+                self.exact_tree_reuse_evidence.to_dict()
+                if self.exact_tree_reuse_evidence is not None
+                else None
+            ),
+            "single_flight_collapse_evidence": (
+                self.single_flight_collapse_evidence.to_dict()
+                if self.single_flight_collapse_evidence is not None
+                else None
+            ),
+            "authoritative_evidence_claim_references": list(
+                self.authoritative_evidence_claim_references
+            ),
+            "operational_evidence_claim_references": list(
+                self.operational_evidence_claim_references
+            ),
+            "advisory_evidence_claim_references": list(
+                self.advisory_evidence_claim_references
+            ),
+            "evidence_claim_references": list(self.evidence_claim_references),
+            "all_evidence_claim_references": list(
+                self.all_evidence_claim_references
+            ),
+            "ast_index_id": self.ast_index_id,
+            "retrieval_response_id": self.retrieval_response_id,
+            "ranked_evidence_references": [
+                dict(item) for item in self.ranked_evidence_references
+            ],
+            "retrieval_backend_health": {
+                name: dict(value)
+                for name, value in sorted(self.retrieval_backend_health.items())
+            },
+            "retrieval_truncation": dict(self.retrieval_truncation),
+            "provider_result": provider,
+            "consensus_receipt": (
+                self.consensus_receipt.to_dict()
+                if self.consensus_receipt is not None
+                else None
+            ),
+            "safe_for_completion_reasoning": self.safe_for_completion_reasoning,
+        }
+        if include_result_id:
+            payload["result_id"] = self.result_id
+        return payload
+
+    def evaluate_objective_completion(
+        self,
+        *,
+        current_state: Any = "active",
+        acceptance_criteria: Sequence[str] | str | None,
+        evidence: Sequence[Any] = (),
+        tasks_complete: bool = False,
+        coverage: Any = None,
+        analyzer_health: Any = None,
+        exhaustion_quorum: Any = None,
+        child_goals: Sequence[Any] = (),
+        now: Any = None,
+        freshness_seconds: float | None = None,
+        clock_skew_seconds: float | None = None,
+        analysis_inconclusive: bool = False,
+        blocked_reason: str = "",
+    ) -> "GoalCompletionDecision":
+        """Evaluate task completion against the pipeline's exact tree binding.
+
+        Integrated analysis packets and optional-provider results solve a
+        different problem from objective completion.  In particular, the
+        datasets adapter is advisory and an analysis packet does not prove
+        acceptance-criterion coverage, analyzer health, or an independent
+        exhaustive quorum.  This bridge therefore supplies neither as
+        completion evidence.  Callers must submit those typed records
+        explicitly; :mod:`goal_completion` then validates every record and
+        preserves the mandatory provisional transition.
+
+        Repository identity is derived from this result rather than accepted
+        from the caller.  A completion receipt for another checkout therefore
+        cannot be evaluated accidentally against a successful pipeline run.
+        The full completion gate is always enabled.
+        """
+
+        from ..objectives.goal_completion import evaluate_goal_completion
+
+        values: dict[str, Any] = {
+            "current_state": current_state,
+            "acceptance_criteria": acceptance_criteria,
+            "evidence": evidence,
+            "tasks_complete": tasks_complete,
+            "repository_tree": self.request.tree_id,
+            "repository_id": self.request.repository_id,
+            "now": now,
+            "analysis_inconclusive": analysis_inconclusive,
+            "blocked_reason": blocked_reason,
+            "coverage": coverage,
+            "analyzer_health": analyzer_health,
+            "exhaustion_quorum": exhaustion_quorum,
+            "child_goals": child_goals,
+            # A pipeline result is bounded nomination/analysis context, not
+            # an exhaustive audit receipt.  Do not implicitly promote it.
+            "analysis_result": None,
+            "require_completion_gate": True,
+        }
+        if freshness_seconds is not None:
+            values["freshness_seconds"] = freshness_seconds
+        if clock_skew_seconds is not None:
+            values["clock_skew_seconds"] = clock_skew_seconds
+        return evaluate_goal_completion(**values)
+
+    def _evaluate_closed_objective_completion(
+        self,
+        *,
+        acceptance_criteria: tuple[str, ...],
+        required_operational_requirement_id: str = "",
+        required_exhaustive_receipts: int | None = None,
+        current_state: Any = "active",
+        evidence: Sequence[Any] = (),
+        tasks_complete: bool = False,
+        coverage: Any = None,
+        analyzer_health: Any = None,
+        exhaustion_quorum: Any = None,
+        child_goals: Sequence[Any] = (),
+        now: Any = None,
+        freshness_seconds: float | None = None,
+        clock_skew_seconds: float | None = None,
+        analysis_inconclusive: bool = False,
+        blocked_reason: str = "",
+    ) -> "GoalCompletionDecision":
+        """Apply strict inputs shared by closed objective-specific gates."""
+
+        def payload(value: Any) -> dict[str, Any]:
+            if isinstance(value, Mapping):
+                return dict(value)
+            converter = getattr(value, "to_dict", None)
+            if callable(converter):
+                converted = converter()
+                if isinstance(converted, Mapping):
+                    return dict(converted)
+            return {}
+
+        health_value = payload(analyzer_health)
+        if not (
+            str(health_value.get("status") or "").strip().lower() == "healthy"
+            and health_value.get("healthy") is True
+            and health_value.get("safe_for_completion_reasoning") is True
+            and health_value.get("analyzer_version")
+            == self.request.analyzer_version
+        ):
+            health_value = {
+                **health_value,
+                "healthy": False,
+                "safe_for_completion_reasoning": False,
+            }
+
+        coverage_value = payload(coverage)
+        coverage_rows = coverage_value.get("criteria")
+        coverage_rows = (
+            coverage_rows if isinstance(coverage_rows, list) else []
+        )
+        rows_by_criterion: dict[str, list[Mapping[str, Any]]] = {}
+        for row in coverage_rows:
+            if not isinstance(row, Mapping):
+                continue
+            criterion = " ".join(
+                str(
+                    row.get(
+                        "criterion",
+                        row.get(
+                            "acceptance_criterion",
+                            row.get("acceptance", ""),
+                        ),
+                    )
+                    or ""
+                )
+                .strip()
+                .lower()
+                .split()
+            )
+            if criterion:
+                rows_by_criterion.setdefault(criterion, []).append(row)
+        expected_criteria = {
+            " ".join(criterion.strip().lower().split())
+            for criterion in acceptance_criteria
+        }
+        mapped_criteria = [
+            criterion
+            for criterion, rows in rows_by_criterion.items()
+            for _ in rows
+        ]
+        bindings_complete = bool(coverage_rows) and (
+            len(mapped_criteria) == len(expected_criteria)
+            and set(mapped_criteria) == expected_criteria
+            and len(mapped_criteria) == len(set(mapped_criteria))
+            and all(
+                isinstance(row, Mapping)
+                and bool(str(row.get("implementation") or "").strip())
+                and bool(str(row.get("validation") or "").strip())
+                for row in coverage_rows
+            )
+        )
+        operational_proof_bound = (
+            not required_operational_requirement_id
+            or self.operational_evidence_claim_references
+            == (required_operational_requirement_id,)
+        )
+        if not bindings_complete or not operational_proof_bound:
+            reasons = coverage_value.get("reason_codes")
+            reasons = list(reasons) if isinstance(reasons, (list, tuple)) else []
+            if not bindings_complete:
+                reasons.append(
+                    "coverage_missing_implementation_validation_binding"
+                )
+            if not operational_proof_bound:
+                reasons.append("active_operational_evidence_missing")
+            coverage_value = {
+                **coverage_value,
+                "verified": False,
+                "reason_codes": list(dict.fromkeys(reasons)),
+            }
+
+        quorum_value = payload(exhaustion_quorum)
+        members_value = quorum_value.get("members")
+        members = members_value if isinstance(members_value, list) else []
+        members_complete = bool(members) and all(
+            isinstance(member, Mapping)
+            and member.get("healthy") is True
+            and member.get("safe_for_completion_reasoning") is True
+            and str(member.get("scan_mode") or "").strip().lower()
+            == "exhaustive"
+            for member in members
+        )
+        receipt_ids = [
+            str(member.get("receipt_cid") or "").strip()
+            for member in members
+            if isinstance(member, Mapping)
+        ]
+        receipts_independent = bool(receipt_ids) and (
+            len(receipt_ids) == len(set(receipt_ids))
+            and all(receipt_ids)
+        )
+        binding_value = quorum_value.get("binding")
+        binding_value = (
+            binding_value if isinstance(binding_value, Mapping) else {}
+        )
+        expected_binding = {
+            "repository_id": self.request.repository_id,
+            "tree_id": self.request.tree_id,
+            "analyzer_version": self.request.analyzer_version,
+            "configuration_revision": self.request.configuration_digest,
+            "objective_revision": self.request.objective_revision,
+        }
+        binding_complete = all(
+            binding_value.get(name) == expected
+            for name, expected in expected_binding.items()
+        )
+        member_bindings_complete = bool(members) and all(
+            isinstance(member, Mapping)
+            and isinstance(member.get("binding"), Mapping)
+            and all(
+                member["binding"].get(name) == expected
+                for name, expected in expected_binding.items()
+            )
+            for member in members
+        )
+        configured_count_complete = (
+            required_exhaustive_receipts is None
+            or (
+                quorum_value.get("required_members")
+                == required_exhaustive_receipts
+                and len(members) >= required_exhaustive_receipts
+            )
+        )
+        if (
+            not members_complete
+            or not receipts_independent
+            or not binding_complete
+            or not member_bindings_complete
+            or not configured_count_complete
+        ):
+            quorum_value = {
+                **quorum_value,
+                "satisfied": False,
+                "quorum_met": False,
+            }
+
+        return self.evaluate_objective_completion(
+            current_state=current_state,
+            acceptance_criteria=acceptance_criteria,
+            evidence=evidence,
+            tasks_complete=tasks_complete,
+            coverage=coverage_value,
+            analyzer_health=health_value,
+            exhaustion_quorum=quorum_value,
+            child_goals=child_goals,
+            now=now,
+            freshness_seconds=freshness_seconds,
+            clock_skew_seconds=clock_skew_seconds,
+            analysis_inconclusive=analysis_inconclusive,
+            blocked_reason=blocked_reason,
+        )
+
+    def evaluate_exact_tree_reuse_completion(
+        self,
+        *,
+        current_state: Any = "active",
+        evidence: Sequence[Any] = (),
+        tasks_complete: bool = False,
+        coverage: Any = None,
+        analyzer_health: Any = None,
+        exhaustion_quorum: Any = None,
+        child_goals: Sequence[Any] = (),
+        now: Any = None,
+        freshness_seconds: float | None = None,
+        clock_skew_seconds: float | None = None,
+        analysis_inconclusive: bool = False,
+        blocked_reason: str = "",
+    ) -> "GoalCompletionDecision":
+        """Evaluate ASI-G094 against its closed mandatory proof population."""
+
+        return self._evaluate_closed_objective_completion(
+            acceptance_criteria=EXACT_TREE_REUSE_ACCEPTANCE_CRITERIA,
+            current_state=current_state,
+            evidence=evidence,
+            tasks_complete=tasks_complete,
+            coverage=coverage,
+            analyzer_health=analyzer_health,
+            exhaustion_quorum=exhaustion_quorum,
+            child_goals=child_goals,
+            now=now,
+            freshness_seconds=freshness_seconds,
+            clock_skew_seconds=clock_skew_seconds,
+            analysis_inconclusive=analysis_inconclusive,
+            blocked_reason=blocked_reason,
+        )
+
+    def evaluate_single_flight_collapse_completion(
+        self,
+        *,
+        current_state: Any = "active",
+        evidence: Sequence[Any] = (),
+        tasks_complete: bool = False,
+        coverage: Any = None,
+        analyzer_health: Any = None,
+        exhaustion_quorum: Any = None,
+        required_exhaustive_receipts: int = 2,
+        child_goals: Sequence[Any] = (),
+        now: Any = None,
+        freshness_seconds: float | None = None,
+        clock_skew_seconds: float | None = None,
+        analysis_inconclusive: bool = False,
+        blocked_reason: str = "",
+    ) -> "GoalCompletionDecision":
+        """Evaluate ASI-G096 with a live, active-key-bound collapse witness.
+
+        The caller cannot replace or narrow the five literal criteria.  A
+        qualifying pipeline result must carry the coordinator-attested
+        operational witness for its complete cache key and packet identity.
+        That runtime witness supplies context only: independent current-tree
+        validations, coverage, analyzer health, and exhaustive quorum records
+        remain mandatory, and the canonical two-phase lifecycle gate decides
+        completion.
+        """
+
+        if (
+            isinstance(required_exhaustive_receipts, bool)
+            or not isinstance(required_exhaustive_receipts, int)
+            or required_exhaustive_receipts < 1
+        ):
+            raise ValueError(
+                "required_exhaustive_receipts must be a positive integer"
+            )
+
+        return self._evaluate_closed_objective_completion(
+            acceptance_criteria=SINGLE_FLIGHT_COLLAPSE_ACCEPTANCE_CRITERIA,
+            required_operational_requirement_id=(
+                SINGLE_FLIGHT_COLLAPSE_REQUIREMENT_ID
+            ),
+            required_exhaustive_receipts=required_exhaustive_receipts,
+            current_state=current_state,
+            evidence=evidence,
+            tasks_complete=tasks_complete,
+            coverage=coverage,
+            analyzer_health=analyzer_health,
+            exhaustion_quorum=exhaustion_quorum,
+            child_goals=child_goals,
+            now=now,
+            freshness_seconds=freshness_seconds,
+            clock_skew_seconds=clock_skew_seconds,
+            analysis_inconclusive=analysis_inconclusive,
+            blocked_reason=blocked_reason,
+        )
+
+    def evaluate_integrated_analysis_completion(
+        self,
+        *,
+        operational_evidence: (
+            "IntegratedAnalysisCompletionEvidence | Mapping[str, Any] | None"
+        ) = None,
+        producing_tasks: Sequence[Any] = (),
+        current_state: Any = "active",
+        evidence: Sequence[Any] = (),
+        tasks_complete: bool = False,
+        coverage: Any = None,
+        analyzer_health: Any = None,
+        exhaustion_quorum: Any = None,
+        required_exhaustive_receipts: int = (
+            INTEGRATED_ANALYSIS_REQUIRED_EXHAUSTIVE_RECEIPTS
+        ),
+        child_goals: Sequence[Any] = (),
+        now: Any = None,
+        freshness_seconds: float | None = None,
+        clock_skew_seconds: float | None = None,
+        analysis_inconclusive: bool = False,
+        blocked_reason: str = "",
+    ) -> "GoalCompletionDecision":
+        """Evaluate the closed ASI-G020 parent completion boundary.
+
+        This parent bridge cannot be narrowed by caller-selected criteria or a
+        lower quorum count.  It requires the three completed producing tasks,
+        the exact verified G094/G095/G096 child population, a typed aggregate
+        of the live AST/retrieval/cache/provider runtime, explicit health bound
+        to that runtime, and one fresh validation identity on every exact
+        coverage row.  The operational aggregate remains non-authoritative and
+        is never submitted as validation or exhaustive evidence.
+        """
+
+        if (
+            isinstance(required_exhaustive_receipts, bool)
+            or not isinstance(required_exhaustive_receipts, int)
+            or required_exhaustive_receipts
+            != INTEGRATED_ANALYSIS_REQUIRED_EXHAUSTIVE_RECEIPTS
+        ):
+            raise ValueError(
+                "required_exhaustive_receipts must equal the configured "
+                f"ASI-G020 count "
+                f"{INTEGRATED_ANALYSIS_REQUIRED_EXHAUSTIVE_RECEIPTS}"
+            )
+
+        def payload(value: Any) -> dict[str, Any]:
+            if isinstance(value, Mapping):
+                return dict(value)
+            converter = getattr(value, "to_dict", None)
+            if callable(converter):
+                converted = converter()
+                if isinstance(converted, Mapping):
+                    return dict(converted)
+            return {}
+
+        operational = operational_evidence
+        if isinstance(operational, Mapping):
+            try:
+                operational = IntegratedAnalysisCompletionEvidence.from_dict(
+                    operational
+                )
+            except (CacheCoordinationError, TypeError, ValueError):
+                operational = None
+        operational_complete = bool(
+            isinstance(operational, IntegratedAnalysisCompletionEvidence)
+            and operational.proves_for(self)
+            and operational.proved_requirement_ids
+            == (
+                EXACT_TREE_REUSE_REQUIREMENT_ID,
+                IPFS_DATASETS_LAZY_DEGRADATION_REQUIREMENT_ID,
+                SINGLE_FLIGHT_COLLAPSE_REQUIREMENT_ID,
+            )
+            and operational.producing_task_ids
+            == tuple(sorted(INTEGRATED_ANALYSIS_PRODUCING_TASK_IDS))
+        )
+
+        task_payloads = [payload(item) for item in producing_tasks]
+        task_ids = [
+            str(
+                item.get(
+                    "task_id",
+                    item.get("id", item.get("goal_id", "")),
+                )
+                or ""
+            ).strip()
+            for item in task_payloads
+        ]
+        successful_statuses = {
+            "completed",
+            "complete",
+            "verified",
+            "verified_complete",
+            "passed",
+            "success",
+            "succeeded",
+        }
+        producing_tasks_complete = bool(task_payloads) and (
+            len(task_ids) == len(set(task_ids))
+            and tuple(sorted(task_ids))
+            == tuple(sorted(INTEGRATED_ANALYSIS_PRODUCING_TASK_IDS))
+            and all(
+                str(item.get("status") or item.get("state") or "")
+                .strip()
+                .lower()
+                in successful_statuses
+                for item in task_payloads
+            )
+        )
+
+        health_value = payload(analyzer_health)
+        health_binding = health_value.get("binding")
+        health_binding = (
+            health_binding if isinstance(health_binding, Mapping) else {}
+        )
+        expected_binding = {
+            "repository_id": self.request.repository_id,
+            "tree_id": self.request.tree_id,
+            "analyzer_version": self.request.analyzer_version,
+            "configuration_revision": self.request.configuration_digest,
+            "objective_revision": self.request.objective_revision,
+        }
+        health_fully_bound = bool(health_binding) and all(
+            health_binding.get(name) == expected
+            for name, expected in expected_binding.items()
+        )
+        if not health_fully_bound:
+            health_value = {
+                **health_value,
+                "healthy": False,
+                "safe_for_completion_reasoning": False,
+            }
+
+        evidence_payloads = [payload(item) for item in evidence]
+        receipt_ids_by_criterion: dict[str, set[str]] = {}
+        for item in evidence_payloads:
+            criterion = " ".join(
+                str(item.get("acceptance_criterion") or "")
+                .strip()
+                .lower()
+                .split()
+            )
+            receipt_id = str(
+                item.get(
+                    "provenance_cid",
+                    item.get("receipt_id", item.get("evidence_id", "")),
+                )
+                or ""
+            ).strip()
+            if criterion and receipt_id:
+                receipt_ids_by_criterion.setdefault(criterion, set()).add(
+                    receipt_id
+                )
+        coverage_value = payload(coverage)
+        rows = coverage_value.get("criteria")
+        rows = rows if isinstance(rows, list) else []
+        coverage_receipts_bound = bool(rows) and all(
+            isinstance(row, Mapping)
+            and str(row.get("validation_receipt_id") or "").strip()
+            in receipt_ids_by_criterion.get(
+                " ".join(
+                    str(
+                        row.get(
+                            "criterion",
+                            row.get("acceptance_criterion", ""),
+                        )
+                        or ""
+                    )
+                    .strip()
+                    .lower()
+                    .split()
+                ),
+                set(),
+            )
+            for row in rows
+        )
+        if not operational_complete or not coverage_receipts_bound:
+            reasons = coverage_value.get("reason_codes")
+            reasons = list(reasons) if isinstance(reasons, (list, tuple)) else []
+            if not operational_complete:
+                reasons.append("integrated_operational_evidence_missing")
+            if not coverage_receipts_bound:
+                reasons.append("coverage_validation_receipt_unbound")
+            coverage_value = {
+                **coverage_value,
+                "verified": False,
+                "reason_codes": list(dict.fromkeys(reasons)),
+            }
+
+        child_values = [payload(item) for item in child_goals]
+        child_ids = [
+            str(item.get("goal_id") or item.get("id") or "").strip()
+            for item in child_values
+        ]
+        child_population_complete = (
+            len(child_ids) == len(set(child_ids))
+            and tuple(sorted(child_ids))
+            == tuple(sorted(INTEGRATED_ANALYSIS_CHILD_GOAL_IDS))
+        )
+        if not child_population_complete:
+            child_values.append(
+                {
+                    "goal_id": "ASI-G020-required-child-population",
+                    "state": "active",
+                    "verified": False,
+                    "completion_gate": {
+                        "passed": False,
+                        "reason_code": "required_child_population_incomplete",
+                    },
+                }
+            )
+
+        return self._evaluate_closed_objective_completion(
+            acceptance_criteria=INTEGRATED_ANALYSIS_ACCEPTANCE_CRITERIA,
+            required_exhaustive_receipts=(
+                INTEGRATED_ANALYSIS_REQUIRED_EXHAUSTIVE_RECEIPTS
+            ),
+            current_state=current_state,
+            evidence=evidence,
+            tasks_complete=bool(
+                tasks_complete and producing_tasks_complete
+            ),
+            coverage=coverage_value,
+            analyzer_health=health_value,
+            exhaustion_quorum=exhaustion_quorum,
+            child_goals=child_values,
+            now=now,
+            freshness_seconds=freshness_seconds,
+            clock_skew_seconds=clock_skew_seconds,
+            analysis_inconclusive=analysis_inconclusive,
+            blocked_reason=blocked_reason,
+        )
+
+
+@dataclass(frozen=True)
+class IntegratedAnalysisCompletionEvidence:
+    """Operational ASI-G020 cohort; never objective-completion authority.
+
+    A single pipeline result cannot simultaneously be the cold provider
+    execution, the concurrent-miss publication, and a later exact cache hit.
+    This record therefore binds those three independently typed witnesses to
+    one live objective/planning request and one measured pipeline.  It proves
+    that the producing runtime exists; fresh criterion validations, analyzer
+    health, exhaustive receipts, producing-task state, and verified child
+    goals remain separate inputs to the completion gate.
+    """
+
+    repository_id: str
+    tree_id: str
+    objective_revision: str
+    analyzer_id: str
+    analyzer_version: str
+    configuration_digest: str
+    cache_key_id: str
+    live_result_id: str
+    live_packet_id: str
+    ast_index_id: str
+    retrieval_response_id: str
+    exact_tree_reuse_evidence: ExactTreeReuseEvidence
+    single_flight_collapse_evidence: SingleFlightCollapseEvidence
+    provider_degradation_evidence: IpfsDatasetsProviderDegradationEvidence
+    metrics: AnalysisPipelineMetrics
+    producing_task_ids: tuple[str, ...] = INTEGRATED_ANALYSIS_PRODUCING_TASK_IDS
+    objective_id: str = INTEGRATED_ANALYSIS_OBJECTIVE_ID
+
+    def __post_init__(self) -> None:
+        for name in (
+            "repository_id",
+            "tree_id",
+            "objective_revision",
+            "analyzer_id",
+            "analyzer_version",
+            "configuration_digest",
+            "cache_key_id",
+            "live_result_id",
+            "live_packet_id",
+            "ast_index_id",
+            "retrieval_response_id",
+            "objective_id",
+        ):
+            object.__setattr__(
+                self, name, _required_text(getattr(self, name), name)
+            )
+        if self.objective_id != INTEGRATED_ANALYSIS_OBJECTIVE_ID:
+            raise AnalysisBindingError(
+                "integrated completion evidence objective is not ASI-G020"
+            )
+        if self.analyzer_id not in INTEGRATED_ANALYSIS_LIVE_ANALYZER_IDS:
+            raise AnalysisBindingError(
+                "integrated completion evidence is not from a live "
+                "objective/planning analyzer"
+            )
+        task_ids = tuple(
+            sorted(
+                {
+                    _required_text(item, "producing task id")
+                    for item in self.producing_task_ids
+                }
+            )
+        )
+        if task_ids != tuple(sorted(INTEGRATED_ANALYSIS_PRODUCING_TASK_IDS)):
+            raise AnalysisBindingError(
+                "integrated completion evidence must bind every producing task"
+            )
+        object.__setattr__(self, "producing_task_ids", task_ids)
+        if not isinstance(self.exact_tree_reuse_evidence, ExactTreeReuseEvidence):
+            raise AnalysisBindingError("exact-tree reuse evidence must be typed")
+        if not isinstance(
+            self.single_flight_collapse_evidence,
+            SingleFlightCollapseEvidence,
+        ):
+            raise AnalysisBindingError(
+                "single-flight collapse evidence must be typed"
+            )
+        if not isinstance(
+            self.provider_degradation_evidence,
+            IpfsDatasetsProviderDegradationEvidence,
+        ):
+            raise AnalysisBindingError(
+                "provider degradation evidence must be typed"
+            )
+        if not isinstance(self.metrics, AnalysisPipelineMetrics):
+            if not isinstance(self.metrics, Mapping):
+                raise AnalysisBindingError(
+                    "integrated completion metrics must be typed"
+                )
+            allowed_metrics = set(AnalysisPipelineMetrics.__dataclass_fields__)
+            values = {
+                name: self.metrics.get(name, 0)
+                for name in allowed_metrics
+            }
+            try:
+                object.__setattr__(
+                    self, "metrics", AnalysisPipelineMetrics(**values)
+                )
+            except (TypeError, ValueError) as exc:
+                raise AnalysisBindingError(
+                    "integrated completion metrics are malformed"
+                ) from exc
+        for name in AnalysisPipelineMetrics.__dataclass_fields__:
+            value = getattr(self.metrics, name)
+            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                raise AnalysisBindingError(
+                    f"integrated completion metric {name} must be non-negative"
+                )
+        exact = self.exact_tree_reuse_evidence
+        collapse = self.single_flight_collapse_evidence
+        provider = self.provider_degradation_evidence
+        expected = {
+            "repository_id": self.repository_id,
+            "tree_id": self.tree_id,
+            "objective_revision": self.objective_revision,
+            "analyzer_version": self.analyzer_version,
+            "configuration_digest": self.configuration_digest,
+        }
+        if any(
+            getattr(exact, name) != value for name, value in expected.items()
+        ):
+            raise AnalysisBindingError(
+                "exact-tree evidence is detached from the integrated binding"
+            )
+        if exact.cache_key_id != self.cache_key_id:
+            raise AnalysisBindingError(
+                "exact-tree evidence uses a different cache key"
+            )
+        collapse_key = collapse.cache_key
+        if (
+            collapse_key.key_id != self.cache_key_id
+            or collapse_key.repository_tree_identity
+            != {
+                "repository_id": self.repository_id,
+                "tree_id": self.tree_id,
+            }
+            or collapse_key.objective_revision != self.objective_revision
+            or collapse_key.analyzer_version != self.analyzer_version
+            or collapse_key.configuration_digest != self.configuration_digest
+            or collapse.receipt_id != self.live_packet_id
+        ):
+            raise AnalysisBindingError(
+                "single-flight evidence is detached from the live binding"
+            )
+        if (
+            provider.repository_id != self.repository_id
+            or provider.tree_id != self.tree_id
+            or provider.objective_revision != self.objective_revision
+            or provider.requirement_id
+            != IPFS_DATASETS_LAZY_DEGRADATION_REQUIREMENT_ID
+            or not provider.proves_requirement
+        ):
+            raise AnalysisBindingError(
+                "provider degradation evidence is detached or non-proving"
+            )
+        if (
+            self.metrics.requests < 2
+            or self.metrics.reuse_ratio < 0.70
+            or self.metrics.stale_authoritative_hits != 0
+        ):
+            raise AnalysisBindingError(
+                "integrated completion metrics do not prove reuse and stale "
+                "authority thresholds"
+            )
+
+    @classmethod
+    def from_results(
+        cls,
+        *,
+        live_result: AnalysisPipelineResult,
+        exact_reuse_result: AnalysisPipelineResult,
+        collapse_result: AnalysisPipelineResult,
+        metrics: AnalysisPipelineMetrics | Mapping[str, Any],
+        producing_task_ids: Sequence[str] = (
+            INTEGRATED_ANALYSIS_PRODUCING_TASK_IDS
+        ),
+    ) -> "IntegratedAnalysisCompletionEvidence":
+        """Build the parent operational cohort from active typed results."""
+
+        for name, value in (
+            ("live_result", live_result),
+            ("exact_reuse_result", exact_reuse_result),
+            ("collapse_result", collapse_result),
+        ):
+            if not isinstance(value, AnalysisPipelineResult):
+                raise AnalysisBindingError(f"{name} must be a pipeline result")
+        request = live_result.request
+        if any(
+            value.request.cache_key.key_id != request.cache_key.key_id
+            for value in (exact_reuse_result, collapse_result)
+        ):
+            raise AnalysisBindingError(
+                "integrated completion results use different active cache keys"
+            )
+        if (
+            request.analyzer_id not in INTEGRATED_ANALYSIS_LIVE_ANALYZER_IDS
+            or not live_result.safe_for_completion_reasoning
+            or not live_result.ast_index_id
+            or not live_result.retrieval_response_id
+        ):
+            raise AnalysisBindingError(
+                "live result did not execute AST-backed objective/planning "
+                "analysis safely"
+            )
+        exact = exact_reuse_result.exact_tree_reuse_evidence
+        collapse = collapse_result.single_flight_collapse_evidence
+        provider_result = live_result.provider_result
+        provider_request = live_result.provider_request
+        provider_policy = live_result.provider_policy
+        if exact is None or collapse is None:
+            raise AnalysisBindingError(
+                "integrated completion requires exact-reuse and collapse witnesses"
+            )
+        if (
+            not isinstance(provider_result, AnalysisProviderResult)
+            or not isinstance(provider_request, AnalysisProviderRequest)
+            or not isinstance(provider_policy, AnalysisProviderPolicy)
+            or provider_result.proved_requirement_ids_for(
+                provider_request, provider_policy
+            )
+            != (IPFS_DATASETS_LAZY_DEGRADATION_REQUIREMENT_ID,)
+            or provider_result.degradation_evidence is None
+        ):
+            raise AnalysisBindingError(
+                "integrated completion requires active-policy-bound explicit "
+                "provider degradation"
+            )
+        return cls(
+            repository_id=request.repository_id,
+            tree_id=request.tree_id,
+            objective_revision=request.objective_revision,
+            analyzer_id=request.analyzer_id,
+            analyzer_version=request.analyzer_version,
+            configuration_digest=request.configuration_digest,
+            cache_key_id=request.cache_key.key_id,
+            live_result_id=live_result.result_id,
+            live_packet_id=live_result.packet.packet_id,
+            ast_index_id=live_result.ast_index_id,
+            retrieval_response_id=live_result.retrieval_response_id,
+            exact_tree_reuse_evidence=exact,
+            single_flight_collapse_evidence=collapse,
+            provider_degradation_evidence=(
+                provider_result.degradation_evidence
+            ),
+            metrics=metrics,
+            producing_task_ids=tuple(producing_task_ids),
+        )
+
+    @property
+    def proved_requirement_ids(self) -> tuple[str, ...]:
+        return (
+            EXACT_TREE_REUSE_REQUIREMENT_ID,
+            IPFS_DATASETS_LAZY_DEGRADATION_REQUIREMENT_ID,
+            SINGLE_FLIGHT_COLLAPSE_REQUIREMENT_ID,
+        )
+
+    @property
+    def safe_for_completion_reasoning(self) -> bool:
+        return False
+
+    @property
+    def is_completion_evidence(self) -> bool:
+        return False
+
+    @property
+    def content_id(self) -> str:
+        return "integrated-analysis-completion:sha256:" + hashlib.sha256(
+            canonical_analysis_json(self._content()).encode("utf-8")
+        ).hexdigest()
+
+    evidence_id = content_id
+
+    def _content(self) -> dict[str, Any]:
+        metrics = {
+            name: getattr(self.metrics, name)
+            for name in AnalysisPipelineMetrics.__dataclass_fields__
+        }
+        return {
+            "schema": INTEGRATED_ANALYSIS_COMPLETION_EVIDENCE_SCHEMA,
+            "objective_id": self.objective_id,
+            "requirement_ids": list(self.proved_requirement_ids),
+            "repository_id": self.repository_id,
+            "tree_id": self.tree_id,
+            "objective_revision": self.objective_revision,
+            "analyzer_id": self.analyzer_id,
+            "analyzer_version": self.analyzer_version,
+            "configuration_digest": self.configuration_digest,
+            "cache_key_id": self.cache_key_id,
+            "live_result_id": self.live_result_id,
+            "live_packet_id": self.live_packet_id,
+            "ast_index_id": self.ast_index_id,
+            "retrieval_response_id": self.retrieval_response_id,
+            "exact_tree_reuse_evidence": (
+                self.exact_tree_reuse_evidence.to_dict()
+            ),
+            "single_flight_collapse_evidence": (
+                self.single_flight_collapse_evidence.to_dict()
+            ),
+            "provider_degradation_evidence": (
+                self.provider_degradation_evidence.to_dict()
+            ),
+            "metrics": metrics,
+            "producing_task_ids": list(self.producing_task_ids),
+            "completion_authority": False,
+            "safe_for_completion_reasoning": False,
+        }
+
+    def to_dict(self) -> dict[str, Any]:
+        return {**self._content(), "content_id": self.content_id}
+
+    @classmethod
+    def from_dict(
+        cls, value: Mapping[str, Any]
+    ) -> "IntegratedAnalysisCompletionEvidence":
+        if not isinstance(value, Mapping):
+            raise AnalysisBindingError(
+                "integrated completion evidence must be an object"
+            )
+        allowed = set(
+            {
+                "content_id",
+                *cls.__dataclass_fields__,
+                "schema",
+                "requirement_ids",
+                "completion_authority",
+                "safe_for_completion_reasoning",
+            }
+        )
+        unknown = sorted(set(value) - allowed)
+        if unknown:
+            raise AnalysisBindingError(
+                "integrated completion evidence has unknown fields: "
+                + ", ".join(unknown)
+            )
+        if value.get("schema") != INTEGRATED_ANALYSIS_COMPLETION_EVIDENCE_SCHEMA:
+            raise AnalysisBindingError(
+                "unsupported integrated completion evidence schema"
+            )
+        if (
+            value.get("completion_authority") is not False
+            or value.get("safe_for_completion_reasoning") is not False
+        ):
+            raise AnalysisBindingError(
+                "operational integrated evidence cannot claim completion authority"
+            )
+        try:
+            result = cls(
+                repository_id=value.get("repository_id", ""),
+                tree_id=value.get("tree_id", ""),
+                objective_revision=value.get("objective_revision", ""),
+                analyzer_id=value.get("analyzer_id", ""),
+                analyzer_version=value.get("analyzer_version", ""),
+                configuration_digest=value.get("configuration_digest", ""),
+                cache_key_id=value.get("cache_key_id", ""),
+                live_result_id=value.get("live_result_id", ""),
+                live_packet_id=value.get("live_packet_id", ""),
+                ast_index_id=value.get("ast_index_id", ""),
+                retrieval_response_id=value.get("retrieval_response_id", ""),
+                exact_tree_reuse_evidence=ExactTreeReuseEvidence.from_dict(
+                    value.get("exact_tree_reuse_evidence") or {}
+                ),
+                single_flight_collapse_evidence=(
+                    SingleFlightCollapseEvidence.from_dict(
+                        value.get("single_flight_collapse_evidence") or {}
+                    )
+                ),
+                provider_degradation_evidence=(
+                    IpfsDatasetsProviderDegradationEvidence.from_dict(
+                        value.get("provider_degradation_evidence") or {}
+                    )
+                ),
+                metrics=value.get("metrics") or {},
+                producing_task_ids=tuple(
+                    value.get("producing_task_ids") or ()
+                ),
+                objective_id=value.get("objective_id", ""),
+            )
+        except (CacheCoordinationError, TypeError, ValueError) as exc:
+            if isinstance(exc, AnalysisBindingError):
+                raise
+            raise AnalysisBindingError(
+                "integrated completion evidence is malformed"
+            ) from exc
+        if tuple(value.get("requirement_ids") or ()) != (
+            result.proved_requirement_ids
+        ):
+            raise AnalysisBindingError(
+                "integrated completion requirement population does not match"
+            )
+        if value.get("content_id") != result.content_id:
+            raise AnalysisBindingError(
+                "integrated completion evidence identity does not match"
+            )
+        return result
+
+    def proves_for(self, result: AnalysisPipelineResult) -> bool:
+        return bool(
+            isinstance(result, AnalysisPipelineResult)
+            and result.result_id == self.live_result_id
+            and result.request.repository_id == self.repository_id
+            and result.request.tree_id == self.tree_id
+            and result.request.objective_revision == self.objective_revision
+            and result.request.analyzer_id == self.analyzer_id
+            and result.request.analyzer_version == self.analyzer_version
+            and result.request.configuration_digest
+            == self.configuration_digest
+            and result.request.cache_key.key_id == self.cache_key_id
+            and result.packet.packet_id == self.live_packet_id
+            and result.ast_index_id == self.ast_index_id
+            and result.retrieval_response_id == self.retrieval_response_id
+        )
+
+
+def _validate_packet_binding(
+    packet: AnalysisEvidencePacket, request: AnalysisPipelineRequest
+) -> None:
+    expected = {
+        "repository_id": request.repository_id,
+        "tree_id": request.tree_id,
+        "objective_revision": request.objective_revision,
+    }
+    for name, value in expected.items():
+        if getattr(packet, name) != value:
+            raise AnalysisBindingError(
+                f"analysis packet {name} is not bound to the active request"
+            )
+    for receipt in packet.stage_receipts:
+        bindings = {
+            "analyzer_version": request.analyzer_version,
+            "configuration_digest": request.configuration_digest,
+            "query_digest": request.query_digest,
+            "policy_digest": request.effective_policy_digest,
+        }
+        for name, value in bindings.items():
+            if getattr(receipt, name) != value:
+                raise AnalysisBindingError(
+                    f"analysis receipt {name} is not bound to the active request"
+                )
+
+
+class _PacketArtifactStore:
+    """Small content-addressed store for packet bodies excluded from the cache."""
+
+    def __init__(self, path: Path) -> None:
+        self.path = path
+        self.path.mkdir(parents=True, exist_ok=True, mode=0o700)
+
+    def _path(self, digest: str) -> Path:
+        value = digest.removeprefix("sha256:")
+        return self.path / value[:2] / f"{value}.json"
+
+    def put(self, packet: AnalysisEvidencePacket) -> dict[str, str]:
+        payload = {
+            "schema": _PACKET_ARTIFACT_SCHEMA,
+            "packet": packet.to_record(),
+        }
+        encoded = (
+            json.dumps(
+                payload,
+                sort_keys=True,
+                separators=(",", ":"),
+                ensure_ascii=False,
+            ).encode("utf-8")
+            + b"\n"
+        )
+        digest = "sha256:" + hashlib.sha256(encoded).hexdigest()
+        path = self._path(digest)
+        path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        if not path.exists():
+            descriptor, temporary_name = tempfile.mkstemp(
+                prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
+            )
+            temporary = Path(temporary_name)
+            try:
+                with os.fdopen(descriptor, "wb") as stream:
+                    stream.write(encoded)
+                    stream.flush()
+                    os.fsync(stream.fileno())
+                os.replace(temporary, path)
+            finally:
+                try:
+                    temporary.unlink()
+                except FileNotFoundError:
+                    pass
+        return {
+            "artifact_id": packet.packet_id,
+            "digest": digest,
+            "path": str(path),
+            "schema": _PACKET_ARTIFACT_SCHEMA,
+        }
+
+    def get(self, reference: Mapping[str, Any]) -> AnalysisEvidencePacket:
+        digest = _required_text(reference.get("digest"), "artifact digest")
+        path = Path(_required_text(reference.get("path"), "artifact path"))
+        expected = self._path(digest).resolve()
+        if path.resolve() != expected:
+            raise AnalysisBindingError("packet artifact path is not content addressed")
+        raw = path.read_bytes()
+        if "sha256:" + hashlib.sha256(raw).hexdigest() != digest:
+            raise AnalysisBindingError("packet artifact digest mismatch")
+        payload = json.loads(raw)
+        if (
+            not isinstance(payload, Mapping)
+            or payload.get("schema") != _PACKET_ARTIFACT_SCHEMA
+            or not isinstance(payload.get("packet"), Mapping)
+        ):
+            raise AnalysisBindingError("malformed analysis packet artifact")
+        packet = AnalysisEvidencePacket.from_dict(payload["packet"])
+        if reference.get("artifact_id") != packet.packet_id:
+            raise AnalysisBindingError("packet artifact identity mismatch")
+        return packet
+
+    def put_consensus(
+        self, receipt: AnalysisConsensusReceipt
+    ) -> dict[str, str]:
+        payload = {
+            "schema": _CONSENSUS_ARTIFACT_SCHEMA,
+            "consensus_receipt": receipt.to_dict(),
+        }
+        encoded = (
+            json.dumps(
+                payload,
+                sort_keys=True,
+                separators=(",", ":"),
+                ensure_ascii=False,
+            ).encode("utf-8")
+            + b"\n"
+        )
+        digest = "sha256:" + hashlib.sha256(encoded).hexdigest()
+        path = self._path(digest)
+        path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        if not path.exists():
+            descriptor, temporary_name = tempfile.mkstemp(
+                prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
+            )
+            temporary = Path(temporary_name)
+            try:
+                with os.fdopen(descriptor, "wb") as stream:
+                    stream.write(encoded)
+                    stream.flush()
+                    os.fsync(stream.fileno())
+                os.replace(temporary, path)
+            finally:
+                try:
+                    temporary.unlink()
+                except FileNotFoundError:
+                    pass
+        return {
+            "artifact_id": receipt.receipt_id,
+            "digest": digest,
+            "path": str(path),
+            "schema": _CONSENSUS_ARTIFACT_SCHEMA,
+        }
+
+    def get_consensus(
+        self, reference: Mapping[str, Any]
+    ) -> AnalysisConsensusReceipt:
+        if reference.get("schema") != _CONSENSUS_ARTIFACT_SCHEMA:
+            raise AnalysisBindingError("unsupported consensus artifact schema")
+        digest = _required_text(reference.get("digest"), "artifact digest")
+        path = Path(_required_text(reference.get("path"), "artifact path"))
+        expected = self._path(digest).resolve()
+        if path.resolve() != expected:
+            raise AnalysisBindingError(
+                "consensus artifact path is not content addressed"
+            )
+        raw = path.read_bytes()
+        if "sha256:" + hashlib.sha256(raw).hexdigest() != digest:
+            raise AnalysisBindingError("consensus artifact digest mismatch")
+        payload = json.loads(raw)
+        if (
+            not isinstance(payload, Mapping)
+            or payload.get("schema") != _CONSENSUS_ARTIFACT_SCHEMA
+            or not isinstance(payload.get("consensus_receipt"), Mapping)
+        ):
+            raise AnalysisBindingError("malformed analysis consensus artifact")
+        receipt = AnalysisConsensusReceipt.from_dict(
+            payload["consensus_receipt"]
+        )
+        if reference.get("artifact_id") != receipt.receipt_id:
+            raise AnalysisBindingError("consensus artifact identity mismatch")
+        return receipt
+
+
+def _cache_receipt(
+    packet: AnalysisEvidencePacket,
+    artifact: Mapping[str, str],
+    request: AnalysisPipelineRequest,
+    retrieval: RetrievalResponse,
+    ast_index: AnalysisASTIndex | None,
+    consensus_receipt: AnalysisConsensusReceipt,
+    consensus_artifact: Mapping[str, str],
+) -> dict[str, Any]:
+    successful = packet.safe_for_completion_reasoning
+    ranked_references = _ranked_retrieval_references(retrieval)
+    return {
+        "status": (
+            CacheOutcome.SUCCESSFUL.value
+            if successful
+            else CacheOutcome.INCONCLUSIVE.value
+        ),
+        "receipt_id": packet.packet_id,
+        "summary": {
+            "repository_id": request.repository_id,
+            "tree_id": request.tree_id,
+            "objective_revision": request.objective_revision,
+            "analyzer_version": request.analyzer_version,
+            "schema_version": request.schema_version,
+            "configuration_digest": request.configuration_digest,
+            "query_digest": request.query_digest,
+            "policy_digest": request.effective_policy_digest,
+            "packet_id": packet.packet_id,
+            "safe_for_completion_reasoning": successful,
+            "ast_index_id": ast_index.index_id if ast_index is not None else "",
+            "retrieval_response_id": retrieval.response_id,
+            "ranked_evidence_references": list(ranked_references),
+            "retrieval_backend_health": {
+                name: value.to_dict()
+                for name, value in sorted(retrieval.backend_health.items())
+            },
+            "retrieval_truncation": retrieval.truncation.to_dict(),
+            "consensus_receipt_id": consensus_receipt.receipt_id,
+            "consensus_artifact_ref": dict(consensus_artifact),
+            "cache_namespace": namespace_metadata(
+                CacheNamespace.ANALYSIS,
+                authority=(
+                    CacheAuthority.AUTHORITATIVE
+                    if successful
+                    else CacheAuthority.DIAGNOSTIC
+                ),
+                key_schema=ANALYSIS_CACHE_KEY_SCHEMA,
+                entry_schema=ANALYSIS_CACHE_ENTRY_SCHEMA,
+            ).to_dict(),
+        },
+        "artifact_refs": [dict(artifact)],
+    }
+
+
+def _ranked_retrieval_references(
+    retrieval: RetrievalResponse,
+) -> tuple[dict[str, Any], ...]:
+    """Project ranked durable references without retaining retrieved bodies."""
+
+    references: list[dict[str, Any]] = []
+    for rank, result in enumerate(retrieval.results):
+        for reference in result.evidence_references:
+            references.append(
+                {
+                    "rank": rank,
+                    "evidence_id": result.evidence_id,
+                    "entity_kind": result.entity_kind,
+                    "score": round(float(result.score), 6),
+                    "reference": reference.to_dict(),
+                }
+            )
+    return tuple(references)
+
+
+def _first_reference_value(
+    references: Sequence[Mapping[str, Any]], *names: str
+) -> str:
+    for reference in references:
+        for name in names:
+            value = reference.get(name)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+    return ""
+
+
+def _pipeline_consensus_receipt(
+    request: AnalysisPipelineRequest,
+    packet: AnalysisEvidencePacket,
+    context: AnalysisStageContext,
+    policy: AnalysisConsensusPolicy,
+) -> AnalysisConsensusReceipt:
+    """Normalize the local packet and optional result without adding authority."""
+
+    local_references: list[dict[str, Any]] = []
+    for reference in packet.provenance:
+        local_references.append(
+            {
+                "reference_id": reference.reference_id,
+                "kind": reference.kind.value,
+                "tree_id": reference.tree_id or request.tree_id,
+                "path": reference.path,
+                "record_id": reference.record_id,
+                "symbol": reference.symbol,
+            }
+        )
+    for artifact in packet.artifacts:
+        local_references.append(
+            {
+                "artifact_id": artifact.artifact_id,
+                "artifact_content_id": artifact.artifact_content_id,
+                "sha256": artifact.sha256,
+                "uri": artifact.uri,
+                "kind": artifact.kind,
+                "tree_id": request.tree_id,
+            }
+        )
+    if not local_references:
+        local_references.append(
+            {
+                "reference_id": packet.packet_id,
+                "kind": "analysis_packet",
+                "tree_id": request.tree_id,
+            }
+        )
+    if packet.safe_for_completion_reasoning:
+        local_status = AnalysisClaimStatus.CONCLUSIVE
+    elif packet.truncated or not packet.coverage_complete:
+        local_status = AnalysisClaimStatus.PARTIAL
+    else:
+        local_status = AnalysisClaimStatus.INCONCLUSIVE
+    local_claim = AnalysisConsensusClaim(
+        producer_kind=AnalysisProducerKind.LOCAL,
+        result_id=packet.packet_id,
+        verdict=packet.conclusion_code or packet.outcome.value,
+        status=local_status,
+        provenance=AnalysisClaimProvenance(
+            source_id=packet.packet_id,
+            producer_id=request.analyzer_id,
+            policy_id=request.effective_policy_digest,
+            capability_id=request.analyzer_version,
+            tree_id=request.tree_id,
+        ),
+        evidence_references=tuple(local_references),
+        proposal_only=False,
+        truncated=packet.truncated,
+        confidence_millionths=max(
+            (
+                receipt.confidence_millionths
+                for receipt in packet.stage_receipts
+            ),
+            default=0,
+        ),
+    )
+
+    provider_value = context.provider_result
+    datasets_claim: AnalysisConsensusClaim | None = None
+    fallback_reason = ""
+    if provider_value is not None:
+        converter = getattr(provider_value, "to_dict", None)
+        try:
+            projection = (
+                converter()
+                if callable(converter)
+                else (
+                    dict(provider_value)
+                    if isinstance(provider_value, Mapping)
+                    else {}
+                )
+            )
+        except Exception:
+            projection = {}
+        if not isinstance(projection, Mapping):
+            projection = {}
+        status_value = str(
+            getattr(getattr(provider_value, "status", ""), "value", "")
+            or projection.get("status")
+            or ""
+        ).strip()
+        reason = str(
+            getattr(provider_value, "reason_code", "")
+            or projection.get("reason_code")
+            or status_value
+            or "optional_provider_result_unknown"
+        ).strip()
+        truncated = bool(
+            getattr(provider_value, "truncated", False)
+            or projection.get("truncated", False)
+        )
+        if status_value == "completed" and not truncated:
+            datasets_status = AnalysisClaimStatus.CONCLUSIVE
+        elif status_value == "completed" or truncated:
+            datasets_status = AnalysisClaimStatus.PARTIAL
+        elif status_value == "stale":
+            datasets_status = AnalysisClaimStatus.STALE
+        elif status_value in {"partial", "inconclusive"}:
+            datasets_status = AnalysisClaimStatus.INCONCLUSIVE
+        else:
+            datasets_status = AnalysisClaimStatus.FAILED
+            fallback_reason = reason
+        evidence_raw = projection.get("evidence_references")
+        evidence_raw = (
+            evidence_raw
+            if isinstance(evidence_raw, Sequence)
+            and not isinstance(evidence_raw, (str, bytes))
+            else ()
+        )
+        provenance_raw = projection.get("provenance_references")
+        provenance_raw = (
+            provenance_raw
+            if isinstance(provenance_raw, Sequence)
+            and not isinstance(provenance_raw, (str, bytes))
+            else ()
+        )
+        compact_references = tuple(
+            item
+            for item in (*evidence_raw, *provenance_raw)
+            if isinstance(item, Mapping)
+        )
+        result_id = str(
+            getattr(provider_value, "result_id", "")
+            or projection.get("result_id")
+            or _json_digest(projection or {"reason_code": reason})
+        )
+        provider_id = str(
+            projection.get("provider_id")
+            or getattr(provider_value, "provider_id", "")
+            or "ipfs_datasets_py.analysis"
+        )
+        provider_version = str(
+            projection.get("provider_version")
+            or getattr(provider_value, "provider_version", "")
+            or "unknown"
+        )
+        datasets_claim = AnalysisConsensusClaim(
+            producer_kind=AnalysisProducerKind.DATASETS,
+            result_id=result_id,
+            verdict=str(projection.get("verdict") or reason),
+            status=datasets_status,
+            provenance=AnalysisClaimProvenance(
+                source_id=(
+                    _first_reference_value(
+                        compact_references,
+                        "source_id",
+                        "artifact_id",
+                        "reference_id",
+                        "evidence_id",
+                    )
+                    or result_id
+                ),
+                dataset_id=_first_reference_value(
+                    compact_references, "dataset_id", "dataset"
+                ),
+                graph_id=_first_reference_value(
+                    compact_references, "graph_id"
+                ),
+                chunk_id=_first_reference_value(
+                    compact_references, "chunk_id", "chunk"
+                ),
+                producer_id=provider_id,
+                model_id=_first_reference_value(
+                    compact_references, "model_id", "model"
+                ),
+                policy_id=request.effective_policy_digest,
+                capability_id=provider_version,
+                tree_id=request.tree_id,
+            ),
+            evidence_references=compact_references,
+            proposal_only=True,
+            truncated=truncated,
+            confidence_millionths=0,
+        )
+    else:
+        fallback_reason = (
+            "datasets_provider_disabled"
+            if not context.request.provider_operation
+            else "datasets_provider_not_configured_or_disabled"
+        )
+    return build_analysis_consensus_receipt(
+        repository_id=request.repository_id,
+        tree_id=request.tree_id,
+        objective_revision=request.objective_revision,
+        operation=request.provider_operation,
+        local_claim=local_claim,
+        datasets_claim=datasets_claim,
+        policy=policy,
+        fallback_reason_code=fallback_reason,
+    )
+
+
+def _packet_from_producer(
+    value: Any, request: AnalysisPipelineRequest
+) -> AnalysisEvidencePacket:
+    if isinstance(value, AnalysisEvidencePacket):
+        packet = value
+    elif isinstance(value, AnalysisStageReceipt):
+        packet = AnalysisEvidencePacket(
+            repository_id=request.repository_id,
+            tree_id=request.tree_id,
+            objective_revision=request.objective_revision,
+            outcome=(
+                ContractOutcome.CONCLUSIVE
+                if value.safe_for_completion_reasoning
+                else ContractOutcome.INCONCLUSIVE
+            ),
+            conclusion_code=(
+                "local_analysis_complete"
+                if value.safe_for_completion_reasoning
+                else "local_analysis_inconclusive"
+            ),
+            coverage_complete=value.coverage_complete,
+            truncated=value.truncated,
+            stage_receipts=(value,),
+        )
+    elif isinstance(value, Mapping):
+        candidate = value.get("packet", value)
+        if isinstance(candidate, AnalysisEvidencePacket):
+            packet = candidate
+        elif isinstance(candidate, Mapping) and (
+            candidate.get("schema") == AnalysisEvidencePacket.SCHEMA
+            or "stage_receipts" in candidate
+        ):
+            packet = AnalysisEvidencePacket.from_dict(candidate)
+        else:
+            receipt_candidate = value.get("receipt", value)
+            if isinstance(receipt_candidate, AnalysisStageReceipt):
+                receipt = receipt_candidate
+            elif isinstance(receipt_candidate, Mapping) and (
+                receipt_candidate.get("schema") == AnalysisStageReceipt.SCHEMA
+                or "analyzer_id" in receipt_candidate
+            ):
+                receipt = AnalysisStageReceipt.from_dict(receipt_candidate)
+            else:
+                raise AnalysisProducerError(
+                    "analysis producer mapping must contain a typed packet or receipt"
+                )
+            return _packet_from_producer(receipt, request)
+    else:
+        raise AnalysisProducerError(
+            "analysis producer must return AnalysisEvidencePacket or "
+            "AnalysisStageReceipt"
+        )
+    _validate_packet_binding(packet, request)
+    return packet
+
+
+def make_analysis_stage_receipt(
+    request: AnalysisPipelineRequest,
+    *,
+    successful: bool,
+    coverage_complete: bool = True,
+    truncated: bool = False,
+    reason_code: str = "",
+    error_code: str = "",
+    stage: str = "integrated_local_analysis",
+    **values: Any,
+) -> AnalysisStageReceipt:
+    """Build a correctly request-bound receipt for simple local analyzers."""
+
+    status = (
+        AnalysisStageStatus.COMPLETED
+        if successful
+        else AnalysisStageStatus.FAILED
+    )
+    outcome = (
+        ContractOutcome.CONCLUSIVE
+        if successful and coverage_complete and not truncated and not error_code
+        else ContractOutcome.INCONCLUSIVE
+    )
+    return AnalysisStageReceipt(
+        stage=stage,
+        status=status,
+        outcome=outcome,
+        analyzer_id=request.analyzer_id,
+        analyzer_version=request.analyzer_version,
+        repository_id=request.repository_id,
+        tree_id=request.tree_id,
+        objective_revision=request.objective_revision,
+        configuration_digest=request.configuration_digest,
+        query_digest=request.query_digest,
+        policy_digest=request.effective_policy_digest,
+        freshness=AnalysisFreshness.FRESH,
+        cache_disposition=AnalysisCacheDisposition.MISS,
+        coverage_complete=coverage_complete,
+        truncated=truncated,
+        reason_code=reason_code,
+        error_code=error_code,
+        **values,
+    )
+
+
+class AnalysisPipeline:
+    """Run and cache bounded integrated analysis with fail-closed authority."""
+
+    def __init__(
+        self,
+        cache: AnalysisCache,
+        analyzer: Callable[[AnalysisStageContext], Any] | Any,
+        *,
+        provider: Any = None,
+        coordinator: Any = None,
+        policy: AnalysisPipelinePolicy | Mapping[str, Any] | None = None,
+        artifact_path: str | os.PathLike[str] | None = None,
+    ) -> None:
+        if not isinstance(cache, AnalysisCache):
+            raise TypeError("cache must be an AnalysisCache")
+        if analyzer is None:
+            raise ValueError("a local analyzer is required")
+        self.cache = cache
+        self.analyzer = analyzer
+        self.provider = provider
+        self.policy = AnalysisPipelinePolicy.from_value(policy)
+        self._execution_identity = {
+            "pipeline_version": ANALYSIS_PIPELINE_VERSION,
+            "pipeline_policy": self.policy.to_dict(),
+            "analyzer": _identity_projection(analyzer),
+            "provider": _identity_projection(provider),
+            "provider_policy": _identity_projection(
+                getattr(provider, "policy", None)
+            ),
+        }
+        if coordinator is None:
+            from .cache_coordinator import AnalysisCacheCoordinator
+
+            coordinator = AnalysisCacheCoordinator(cache)
+        self.coordinator = coordinator
+        root = (
+            Path(artifact_path)
+            if artifact_path is not None
+            else cache.path / "pipeline-artifacts"
+        )
+        self._artifacts = _PacketArtifactStore(root)
+        self._metrics = {
+            "requests": 0,
+            "exact_hits": 0,
+            "produced": 0,
+            "joined": 0,
+            "invalidated": 0,
+            "negative_rejections": 0,
+            "stale_authoritative_hits": 0,
+        }
+
+    @property
+    def metrics(self) -> AnalysisPipelineMetrics:
+        return AnalysisPipelineMetrics(**self._metrics)
+
+    def _load_packet_receipt(
+        self,
+        receipt: Mapping[str, Any],
+        request: AnalysisPipelineRequest,
+        *,
+        require_completion_evidence: bool,
+    ) -> AnalysisEvidencePacket:
+        if not isinstance(receipt, Mapping):
+            raise AnalysisBindingError("cache result has no compact receipt")
+        summary = receipt.get("summary")
+        references = receipt.get("artifact_refs")
+        if not isinstance(summary, Mapping) or not isinstance(references, Sequence):
+            raise AnalysisBindingError("cache hit lacks packet binding metadata")
+        expected = {
+            "repository_id": request.repository_id,
+            "tree_id": request.tree_id,
+            "objective_revision": request.objective_revision,
+            "analyzer_version": request.analyzer_version,
+            "schema_version": request.schema_version,
+            "configuration_digest": request.configuration_digest,
+            "query_digest": request.query_digest,
+            "policy_digest": request.effective_policy_digest,
+        }
+        if any(summary.get(name) != value for name, value in expected.items()):
+            raise AnalysisBindingError("cached packet summary is stale")
+        if len(references) != 1 or not isinstance(references[0], Mapping):
+            raise AnalysisBindingError("cache hit requires one packet artifact")
+        packet = self._artifacts.get(references[0])
+        _validate_packet_binding(packet, request)
+        if packet.packet_id != summary.get("packet_id"):
+            raise AnalysisBindingError("cached packet ID does not match receipt")
+        if require_completion_evidence:
+            packet.require_completion_evidence()
+        return packet
+
+    def _load_cached_packet(
+        self,
+        lookup: AnalysisCacheLookupResult,
+        request: AnalysisPipelineRequest,
+    ) -> AnalysisEvidencePacket:
+        # Do not inspect lookup.entry until both derived authority gates pass.
+        if not lookup.hit or not lookup.is_completion_evidence:
+            raise AnalysisBindingError("cache lookup is not an authoritative hit")
+        receipt = lookup.receipt
+        if not isinstance(receipt, Mapping):
+            raise AnalysisBindingError("cache hit has no compact receipt")
+        return self._load_packet_receipt(
+            receipt, request, require_completion_evidence=True
+        )
+
+    def _exact_hit_result(
+        self,
+        lookup: AnalysisCacheLookupResult,
+        request: AnalysisPipelineRequest,
+    ) -> AnalysisPipelineResult:
+        """Revalidate and project one exact cache lookup as pipeline authority."""
+
+        packet = self._load_cached_packet(lookup, request)
+        witness = ExactTreeReuseEvidence.from_lookup(request, packet, lookup)
+        receipt = lookup.receipt if isinstance(lookup.receipt, Mapping) else {}
+        summary = receipt.get("summary")
+        summary = summary if isinstance(summary, Mapping) else {}
+        consensus_reference = summary.get("consensus_artifact_ref")
+        if not isinstance(consensus_reference, Mapping):
+            raise AnalysisBindingError(
+                "cache hit lacks the normalized consensus artifact reference"
+            )
+        consensus_receipt = self._artifacts.get_consensus(
+            consensus_reference
+        )
+        if consensus_receipt.receipt_id != summary.get("consensus_receipt_id"):
+            raise AnalysisBindingError(
+                "cached consensus receipt ID does not match its artifact"
+            )
+        return AnalysisPipelineResult(
+            request=request,
+            packet=packet,
+            cache_status=PipelineCacheStatus.EXACT_HIT,
+            cache_lookup_status=lookup.status,
+            cache_reason_codes=tuple(lookup.reason_codes),
+            exact_tree_reuse_evidence=witness,
+            cache_lookup=lookup,
+            ast_index_id=str(summary.get("ast_index_id") or ""),
+            retrieval_response_id=str(
+                summary.get("retrieval_response_id") or ""
+            ),
+            ranked_evidence_references=tuple(
+                item
+                for item in (summary.get("ranked_evidence_references") or ())
+                if isinstance(item, Mapping)
+            ),
+            retrieval_backend_health=(
+                summary.get("retrieval_backend_health")
+                if isinstance(summary.get("retrieval_backend_health"), Mapping)
+                else {}
+            ),
+            retrieval_truncation=(
+                summary.get("retrieval_truncation")
+                if isinstance(summary.get("retrieval_truncation"), Mapping)
+                else {}
+            ),
+            consensus_receipt=consensus_receipt,
+        )
+
+    def _accept_completion_lookup(
+        self,
+        lookup: AnalysisCacheLookupResult,
+        request: AnalysisPipelineRequest,
+    ) -> bool:
+        """Fail closed when a compact hit's external packet is unusable."""
+
+        try:
+            self._exact_hit_result(lookup, request)
+        except (OSError, TypeError, ValueError, AnalysisPipelineError):
+            return False
+        return True
+
+    def _build_context(
+        self, request: AnalysisPipelineRequest
+    ) -> AnalysisStageContext:
+        ast_index: AnalysisASTIndex | None = None
+        records = request.ast_records
+        if records not in (None, (), [], {}):
+            ast_index = build_analysis_ast_index(
+                records,
+                previous=request.previous_ast_index,
+            )
+        retrieval_values = dict(request.retrieval_inputs)
+        allowed = {
+            "evidence_graph",
+            "records",
+            "todo_records",
+            "dependency_graph",
+            "goal_coverage",
+            "proof_scope_index",
+            "vector_backend",
+            "vector_embedder",
+            "ast_backend",
+            "artifact_id",
+            "signal_weights",
+        }
+        unknown = sorted(set(retrieval_values) - allowed)
+        if unknown:
+            raise ValueError(
+                "unknown retrieval input fields: " + ", ".join(unknown)
+            )
+        if ast_index is not None and "ast_backend" not in retrieval_values:
+            # Feed compact AST query hits as retrieval records.  This avoids
+            # adapting incompatible backend signatures or exposing AST bodies.
+            ast_hits = ast_index.query_objective_terms(
+                request.query.text,
+                max_results=self.policy.retrieval_limits.max_backend_results,
+                max_bytes=min(
+                    self.policy.retrieval_limits.max_bytes,
+                    256 * 1024,
+                ),
+            )
+            projected = [
+                {
+                    "record_id": item.evidence_id,
+                    "title": item.value,
+                    "path": item.path,
+                    "ast_symbols": [item.symbol] if item.symbol else [],
+                    "artifact_id": item.record_id,
+                }
+                for item in ast_hits.evidence
+            ]
+            retrieval_values["records"] = (
+                *tuple(retrieval_values.get("records") or ()),
+                *projected,
+            )
+        retrieval = retrieve_analysis_evidence(
+            request.query,
+            limits=self.policy.retrieval_limits,
+            **retrieval_values,
+        )
+        provider_result = None
+        provider_evidence_claim_references: tuple[str, ...] = ()
+        provider_request: AnalysisProviderRequest | None = None
+        provider_policy: AnalysisProviderPolicy | None = None
+        if self.provider is not None and self.policy.enable_datasets_provider:
+            analyze = getattr(self.provider, "analyze", None)
+            if not callable(analyze):
+                analyze = (
+                    self.provider if callable(self.provider) else None
+                )
+            if analyze is not None:
+                try:
+                    if isinstance(self.provider, IpfsDatasetsAnalysisProvider):
+                        # Construct the adapter's exact bounded request here so
+                        # its degradation witness can be independently rebound
+                        # before the pipeline advertises the advisory claim.
+                        provider_request = self.provider.build_request(
+                            request.query,
+                            operation=request.provider_operation,
+                            repository_id=request.repository_id,
+                            tree_id=request.tree_id,
+                            objective_revision=request.objective_revision,
+                            payload=request.provider_payload,
+                            limits=self.policy.retrieval_limits,
+                        )
+                        provider_policy = self.provider.policy
+                        provider_result = analyze(provider_request)
+                    else:
+                        provider_result = analyze(
+                            request.query,
+                            operation=request.provider_operation,
+                            repository_id=request.repository_id,
+                            tree_id=request.tree_id,
+                            objective_revision=request.objective_revision,
+                            payload=request.provider_payload,
+                            limits=self.policy.retrieval_limits,
+                        )
+                except Exception:
+                    provider_result = OptionalProviderFailure(
+                        repository_id=request.repository_id,
+                        tree_id=request.tree_id,
+                        objective_revision=request.objective_revision,
+                    )
+                if inspect.isawaitable(provider_result):
+                    _dispose_optional_awaitable(provider_result)
+                    provider_result = OptionalProviderFailure(
+                        repository_id=request.repository_id,
+                        tree_id=request.tree_id,
+                        objective_revision=request.objective_revision,
+                        reason_code=(
+                            "optional_provider_async_result_unsupported"
+                        ),
+                    )
+                if isinstance(provider_result, OptionalProviderFailure):
+                    violation = ""
+                else:
+                    try:
+                        violation = _optional_provider_violation(
+                            provider_result, request, provider_request
+                        )
+                    except Exception:
+                        violation = "optional_provider_inspection_failed"
+                if violation:
+                    provider_result = OptionalProviderFailure(
+                        repository_id=request.repository_id,
+                        tree_id=request.tree_id,
+                        objective_revision=request.objective_revision,
+                        reason_code=violation,
+                    )
+                elif (
+                    provider_request is not None
+                    and provider_policy is not None
+                    and isinstance(provider_result, AnalysisProviderResult)
+                ):
+                    provider_evidence_claim_references = tuple(
+                        provider_result.proved_requirement_ids_for(
+                            provider_request, provider_policy
+                        )
+                    )
+        return AnalysisStageContext(
+            request=request,
+            ast_index=ast_index,
+            retrieval=retrieval,
+            provider_result=provider_result,
+            provider_evidence_claim_references=(
+                provider_evidence_claim_references
+            ),
+            provider_request=provider_request,
+            provider_policy=provider_policy,
+        )
+
+    def _invoke_analyzer(
+        self, context: AnalysisStageContext
+    ) -> AnalysisEvidencePacket:
+        analyzer = self.analyzer
+        method = getattr(analyzer, "analyze", None)
+        if callable(method):
+            value = method(context)
+        elif callable(analyzer):
+            value = analyzer(context)
+        else:
+            raise TypeError("analyzer must be callable or expose analyze()")
+        if inspect.isawaitable(value):
+            raise AnalysisProducerError(
+                "async analyzers require AnalysisPipeline.aanalyze"
+            )
+        return _packet_from_producer(value, context.request)
+
+    def _prepare_receipt(
+        self, request: AnalysisPipelineRequest
+    ) -> tuple[
+        dict[str, Any],
+        AnalysisEvidencePacket,
+        AnalysisStageContext,
+        AnalysisConsensusReceipt,
+    ]:
+        context = self._build_context(request)
+        packet = self._invoke_analyzer(context)
+        consensus_receipt = _pipeline_consensus_receipt(
+            request,
+            packet,
+            context,
+            self.policy.consensus_policy,
+        )
+        artifact = self._artifacts.put(packet)
+        consensus_artifact = self._artifacts.put_consensus(consensus_receipt)
+        receipt = _cache_receipt(
+            packet,
+            artifact,
+            request,
+            context.retrieval,
+            context.ast_index,
+            consensus_receipt,
+            consensus_artifact,
+        )
+        return receipt, packet, context, consensus_receipt
+
+    def analyze(
+        self,
+        request: AnalysisPipelineRequest | Mapping[str, Any],
+    ) -> AnalysisPipelineResult:
+        if not isinstance(request, AnalysisPipelineRequest):
+            if not isinstance(request, Mapping):
+                raise TypeError("analysis request must be a mapping")
+            request = AnalysisPipelineRequest(**dict(request))
+        request = request.bind_pipeline_policy(self._execution_identity)
+        self._metrics["requests"] += 1
+        lookup = self.cache.lookup(
+            request.cache_key, require_completion_evidence=True
+        )
+        initial_reasons = tuple(lookup.reason_codes)
+        if lookup.status is AnalysisCacheLookupStatus.INVALIDATED:
+            self._metrics["invalidated"] += 1
+            if (
+                lookup.entry is not None
+                and not lookup.entry.is_completion_evidence
+            ):
+                self._metrics["negative_rejections"] += 1
+        if lookup.hit and lookup.is_completion_evidence:
+            try:
+                result = self._exact_hit_result(lookup, request)
+            except (OSError, TypeError, ValueError, AnalysisPipelineError):
+                # A compact entry whose referenced packet is unavailable or
+                # fails its second binding check is a miss, never authority.
+                lookup = AnalysisCacheLookupResult(
+                    AnalysisCacheLookupStatus.INVALIDATED,
+                    request.cache_key,
+                    reason_codes=("packet_artifact_invalid",),
+                )
+                initial_reasons = tuple(lookup.reason_codes)
+                self._metrics["invalidated"] += 1
+            else:
+                self._metrics["exact_hits"] += 1
+                return result
+
+        produced: dict[str, Any] = {}
+
+        def produce() -> Mapping[str, Any]:
+            receipt, packet, context, consensus_receipt = self._prepare_receipt(
+                request
+            )
+            produced["packet"] = packet
+            produced["context"] = context
+            produced["consensus_receipt"] = consensus_receipt
+            return receipt
+
+        def coordinated_produce() -> Any:
+            from .cache_coordinator import CachePublication
+
+            receipt = produce()
+            packet = produced["packet"]
+            if packet.safe_for_completion_reasoning:
+                return CachePublication(receipt)
+            return CachePublication(
+                receipt,
+                store=self.policy.cache_negative_results,
+                ttl_seconds=(
+                    self.policy.negative_ttl_seconds
+                    if self.policy.cache_negative_results
+                    else None
+                ),
+            )
+
+        coordinate = (
+            getattr(self.coordinator, "single_flight", None)
+        )
+        if coordinate is None:
+            coordinate = getattr(self.coordinator, "run", None)
+        coordinated_receipt: Mapping[str, Any] = {}
+        if coordinate is None:
+            coordinated: CacheCoordinationResult | None = None
+            receipt = produce()
+            coordinated_receipt = receipt
+            ttl = (
+                None
+                if produced["packet"].safe_for_completion_reasoning
+                else self.policy.negative_ttl_seconds
+            )
+            if (
+                produced["packet"].safe_for_completion_reasoning
+                or self.policy.cache_negative_results
+            ):
+                stored = self.cache.put(
+                    request.cache_key, receipt, ttl_seconds=ttl
+                )
+                if (
+                    produced["packet"].safe_for_completion_reasoning
+                    and not stored.stored
+                ):
+                    raise AnalysisPipelineError(
+                        "authoritative analysis receipt could not be cached: "
+                        + stored.reason_code
+                    )
+            packet = produced["packet"]
+            context = produced["context"]
+            joined = False
+            coordinated_status = ""
+        else:
+            coordinated = coordinate(
+                request.cache_key,
+                coordinated_produce,
+                ttl_seconds=None,
+                completion_validator=lambda candidate: (
+                    self._accept_completion_lookup(candidate, request)
+                ),
+            )
+            joined = bool(
+                getattr(coordinated, "shared", False)
+                or getattr(coordinated, "waited", False)
+            )
+            coordinated_status = str(
+                getattr(getattr(coordinated, "status", ""), "value", "")
+            )
+            refreshed = self.cache.lookup(
+                request.cache_key, require_completion_evidence=True
+            )
+            if refreshed.hit and refreshed.is_completion_evidence:
+                packet = self._load_cached_packet(refreshed, request)
+            else:
+                receipt = getattr(coordinated, "receipt", None)
+                if not isinstance(receipt, Mapping):
+                    value = getattr(coordinated, "value", coordinated)
+                    receipt = value if isinstance(value, Mapping) else None
+                if not isinstance(receipt, Mapping):
+                    raise AnalysisPipelineError(
+                        "coordinator returned no compact analysis receipt"
+                    )
+                coordinated_receipt = receipt
+                packet = self._load_packet_receipt(
+                    receipt, request, require_completion_evidence=False
+                )
+            context = produced.get("context")
+            consensus_receipt = produced.get("consensus_receipt")
+            if coordinated_status == "cache_hit":
+                # A leader may have filled the cache between our optimistic
+                # lookup and flight registration.  Treat this as exact reuse.
+                self._metrics["exact_hits"] += 1
+                return self._exact_hit_result(refreshed, request)
+        if joined:
+            self._metrics["joined"] += 1
+            status = PipelineCacheStatus.JOINED
+        elif packet.safe_for_completion_reasoning:
+            self._metrics["produced"] += 1
+            status = PipelineCacheStatus.PRODUCED
+        else:
+            status = PipelineCacheStatus.INCONCLUSIVE
+        cached_summary: Mapping[str, Any] = {}
+        consensus_receipt = produced.get("consensus_receipt")
+        if context is None:
+            diagnostic_lookup = self.cache.lookup(
+                request.cache_key, require_completion_evidence=False
+            )
+            diagnostic_receipt = (
+                diagnostic_lookup.receipt
+                if isinstance(diagnostic_lookup.receipt, Mapping)
+                else coordinated_receipt
+            )
+            candidate_summary = diagnostic_receipt.get("summary")
+            if isinstance(candidate_summary, Mapping):
+                cached_summary = candidate_summary
+            cached_consensus = cached_summary.get("consensus_artifact_ref")
+            if isinstance(cached_consensus, Mapping):
+                consensus_receipt = self._artifacts.get_consensus(
+                    cached_consensus
+                )
+                if (
+                    consensus_receipt.receipt_id
+                    != cached_summary.get("consensus_receipt_id")
+                ):
+                    raise AnalysisBindingError(
+                        "cached consensus receipt identity mismatch"
+                    )
+        return AnalysisPipelineResult(
+            request=request,
+            packet=packet,
+            cache_status=status,
+            cache_lookup_status=lookup.status,
+            cache_reason_codes=initial_reasons,
+            producer_executed=not joined,
+            joined_existing_flight=joined,
+            ast_index_id=(
+                context.ast_index.index_id
+                if context is not None and context.ast_index
+                else str(cached_summary.get("ast_index_id") or "")
+            ),
+            retrieval_response_id=(
+                context.retrieval.response_id
+                if context is not None
+                else str(cached_summary.get("retrieval_response_id") or "")
+            ),
+            ranked_evidence_references=(
+                _ranked_retrieval_references(context.retrieval)
+                if context is not None
+                else tuple(
+                    item
+                    for item in (
+                        cached_summary.get("ranked_evidence_references") or ()
+                    )
+                    if isinstance(item, Mapping)
+                )
+            ),
+            retrieval_backend_health=(
+                {
+                    name: value.to_dict()
+                    for name, value in sorted(
+                        context.retrieval.backend_health.items()
+                    )
+                }
+                if context is not None
+                else (
+                    cached_summary.get("retrieval_backend_health")
+                    if isinstance(
+                        cached_summary.get("retrieval_backend_health"), Mapping
+                    )
+                    else {}
+                )
+            ),
+            retrieval_truncation=(
+                context.retrieval.truncation.to_dict()
+                if context is not None
+                else (
+                    cached_summary.get("retrieval_truncation")
+                    if isinstance(
+                        cached_summary.get("retrieval_truncation"), Mapping
+                    )
+                    else {}
+                )
+            ),
+            provider_result=(
+                context.provider_result if context is not None else None
+            ),
+            advisory_evidence_claim_references=(
+                context.provider_evidence_claim_references
+                if context is not None
+                else ()
+            ),
+            provider_request=(
+                context.provider_request if context is not None else None
+            ),
+            provider_policy=(
+                context.provider_policy if context is not None else None
+            ),
+            consensus_receipt=consensus_receipt,
+            single_flight_collapse_evidence=(
+                coordinated.single_flight_collapse_evidence
+                if isinstance(coordinated, CacheCoordinationResult)
+                else None
+            ),
+            coordination_result=(
+                coordinated
+                if isinstance(coordinated, CacheCoordinationResult)
+                else None
+            ),
+        )
+
+    run = analyze
+    execute = analyze
+
+    async def aanalyze(
+        self,
+        request: AnalysisPipelineRequest | Mapping[str, Any],
+    ) -> AnalysisPipelineResult:
+        """Async convenience wrapper without leaking awaitables.
+
+        The authority and durable-cache path remains synchronous and identical
+        to :meth:`analyze`; callers that need a non-blocking filesystem can run
+        it in their executor.  Async analyzer/provider values are intentionally
+        not guessed into a second contract.
+        """
+
+        import asyncio
+
+        return await asyncio.to_thread(self.analyze, request)
+
+    arun = aanalyze
+
+
+IntegratedAnalysisPipeline = AnalysisPipeline
+SupervisorAnalysisPipeline = AnalysisPipeline
+
+
+__all__ = [
+    "ANALYSIS_PIPELINE_SCHEMA",
+    "ANALYSIS_PIPELINE_VERSION",
+    "EXACT_TREE_ANALYSIS_REUSE_REQUIREMENT_ID",
+    "EXACT_TREE_REUSE_ACCEPTANCE_CRITERIA",
+    "EXACT_TREE_REUSE_EVIDENCE_SCHEMA",
+    "EXACT_TREE_REUSE_REQUIREMENT_ID",
+    "INTEGRATED_ANALYSIS_ACCEPTANCE_CRITERIA",
+    "INTEGRATED_ANALYSIS_CHILD_GOAL_IDS",
+    "INTEGRATED_ANALYSIS_COMPLETION_EVIDENCE_SCHEMA",
+    "INTEGRATED_ANALYSIS_LIVE_ANALYZER_IDS",
+    "INTEGRATED_ANALYSIS_OBJECTIVE_ID",
+    "INTEGRATED_ANALYSIS_OBJECTIVE_REVISION",
+    "INTEGRATED_ANALYSIS_PRODUCING_TASK_IDS",
+    "INTEGRATED_ANALYSIS_REQUIRED_EXHAUSTIVE_RECEIPTS",
+    "SINGLE_FLIGHT_COLLAPSE_ACCEPTANCE_CRITERIA",
+    "SINGLE_FLIGHT_COLLAPSE_REQUIREMENT_ID",
+    "AnalysisBindingError",
+    "AnalysisConsensusPolicy",
+    "AnalysisConsensusReceipt",
+    "AnalysisPipeline",
+    "AnalysisPipelineError",
+    "AnalysisPipelineMetrics",
+    "AnalysisPipelinePolicy",
+    "AnalysisPipelineRequest",
+    "AnalysisPipelineResult",
+    "AnalysisPolicy",
+    "AnalysisProducerError",
+    "AnalysisRequest",
+    "AnalysisStageContext",
+    "ExactTreeReuseEvidence",
+    "IntegratedAnalysisPipeline",
+    "IntegratedAnalysisCompletionEvidence",
+    "OptionalProviderFailure",
+    "PipelineCacheStatus",
+    "SingleFlightCollapseEvidence",
+    "SupervisorAnalysisPipeline",
+    "make_analysis_stage_receipt",
+]

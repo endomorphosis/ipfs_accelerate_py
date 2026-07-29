@@ -6,12 +6,12 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.analyzer_health import (
+from ipfs_accelerate_py.agent_supervisor.analysis.analyzer_health import (
     AnalyzerHealthReport,
     AnalyzerHealthStatus,
     AnalyzerHealthThresholds,
 )
-from ipfs_accelerate_py.agent_supervisor.context_compiler import (
+from ipfs_accelerate_py.agent_supervisor.context.context_compiler import (
     DELTA_RETRY_ACCEPTANCE_CRITERIA,
     DELTA_RETRY_EVIDENCE_ID,
     DELTA_RETRY_OBJECTIVE_ID,
@@ -19,25 +19,25 @@ from ipfs_accelerate_py.agent_supervisor.context_compiler import (
     REQUIRED_CONTEXT_BUDGET_EVIDENCE_ID as COMPILER_REQUIRED_CONTEXT_ID,
     ContextCompiler,
 )
-from ipfs_accelerate_py.agent_supervisor.context_contracts import (
+from ipfs_accelerate_py.agent_supervisor.context.context_contracts import (
     ContextBudget,
     ContextReference,
     ContextTier,
 )
-from ipfs_accelerate_py.agent_supervisor.goal_completion import (
+from ipfs_accelerate_py.agent_supervisor.objectives.goal_completion import (
     CompletionEvidence,
     GoalState,
 )
-from ipfs_accelerate_py.agent_supervisor.goal_coverage import (
+from ipfs_accelerate_py.agent_supervisor.objectives.goal_coverage import (
     AcceptanceCoverage,
     CoverageStatus,
     GoalCoverageMap,
 )
-from ipfs_accelerate_py.agent_supervisor.scan_receipts import (
+from ipfs_accelerate_py.agent_supervisor.objectives.scan_receipts import (
     ExhaustionBinding,
     evaluate_exhaustion_quorum,
 )
-from ipfs_accelerate_py.agent_supervisor.supervisor_efficiency_metrics import (
+from ipfs_accelerate_py.agent_supervisor.self_improvement.supervisor_efficiency_metrics import (
     DELTA_RETRY_CONTEXT_EVIDENCE_ID,
     DELTA_RETRY_PROMOTION_REPORT_SCHEMA,
     EFFICIENCY_CONTRACT_VERSION,
@@ -898,6 +898,7 @@ def test_g093_completion_requires_current_cohort_health_quorum_and_two_phases() 
         "status": "healthy",
         "healthy": True,
         "safe_for_completion_reasoning": True,
+        "exhaustive": True,
         "analyzer_version": analyzer_version,
     }
     binding = {
@@ -929,8 +930,18 @@ def test_g093_completion_requires_current_cohort_health_quorum_and_two_phases() 
                 "receipt_cid": "scan:asi-074:exhaustive-a",
                 "binding": binding,
                 "scan_mode": "exhaustive",
+                "passed": True,
                 "healthy": True,
                 "safe_for_completion_reasoning": True,
+                "exhaustive": True,
+                "conclusive": True,
+                "uncontradicted": True,
+                "analyzer_version": analyzer_version,
+                "producer_id": "asi-074-population",
+                "implementation": "terminal-receipt-population",
+                "child_receipt_binding": "cohort:asi-074:population",
+                "child_receipt_sha256": "sha256:" + "1" * 64,
+                "aggregate_tree_binding": terminal.repository_tree_digest,
                 "finished_at": now.isoformat(),
             },
             {
@@ -939,8 +950,18 @@ def test_g093_completion_requires_current_cohort_health_quorum_and_two_phases() 
                 "receipt_cid": "scan:asi-074:exhaustive-b",
                 "binding": binding,
                 "scan_mode": "exhaustive",
+                "passed": True,
                 "healthy": True,
                 "safe_for_completion_reasoning": True,
+                "exhaustive": True,
+                "conclusive": True,
+                "uncontradicted": True,
+                "analyzer_version": analyzer_version,
+                "producer_id": "asi-074-accounting",
+                "implementation": "terminal-accounting-lifecycle",
+                "child_receipt_binding": "cohort:asi-074:accounting",
+                "child_receipt_sha256": "sha256:" + "2" * 64,
+                "aggregate_tree_binding": terminal.repository_tree_digest,
                 "finished_at": now.isoformat(),
             },
         ],
@@ -1265,7 +1286,7 @@ def test_g093_completion_requires_current_cohort_health_quorum_and_two_phases() 
                 quorum["members"][0],
                 {
                     **quorum["members"][1],
-                    "evidence_channel": "receipt-population",
+                    "conclusive": False,
                 },
             ],
         },
@@ -1846,6 +1867,7 @@ def test_g091_completion_requires_current_tree_health_quorum_and_two_phases() ->
         "status": "healthy",
         "healthy": True,
         "safe_for_completion_reasoning": True,
+        "exhaustive": True,
         "analyzer_version": analyzer_version,
     }
     binding = {
@@ -1869,8 +1891,18 @@ def test_g091_completion_requires_current_tree_health_quorum_and_two_phases() ->
                 "receipt_cid": "scan:asi-061:exhaustive-a",
                 "binding": binding,
                 "scan_mode": "exhaustive",
+                "passed": True,
                 "healthy": True,
                 "safe_for_completion_reasoning": True,
+                "exhaustive": True,
+                "conclusive": True,
+                "uncontradicted": True,
+                "analyzer_version": analyzer_version,
+                "producer_id": "asi-061-compiler",
+                "implementation": "required-context-compiler",
+                "child_receipt_binding": "task:asi-061:compiler",
+                "child_receipt_sha256": "sha256:" + "3" * 64,
+                "aggregate_tree_binding": tree_id,
                 "finished_at": now.isoformat(),
             },
             {
@@ -1879,8 +1911,18 @@ def test_g091_completion_requires_current_tree_health_quorum_and_two_phases() ->
                 "receipt_cid": "scan:asi-061:exhaustive-b",
                 "binding": binding,
                 "scan_mode": "exhaustive",
+                "passed": True,
                 "healthy": True,
                 "safe_for_completion_reasoning": True,
+                "exhaustive": True,
+                "conclusive": True,
+                "uncontradicted": True,
+                "analyzer_version": analyzer_version,
+                "producer_id": "asi-061-promotion",
+                "implementation": "required-context-promotion",
+                "child_receipt_binding": "task:asi-061:promotion",
+                "child_receipt_sha256": "sha256:" + "4" * 64,
+                "aggregate_tree_binding": tree_id,
                 "finished_at": now.isoformat(),
             },
         ],
@@ -2186,6 +2228,7 @@ def test_g092_completion_requires_current_tree_health_quorum_and_two_phases() ->
         "status": "healthy",
         "healthy": True,
         "safe_for_completion_reasoning": True,
+        "exhaustive": True,
         "analyzer_version": analyzer_version,
     }
     binding = {
@@ -2212,8 +2255,18 @@ def test_g092_completion_requires_current_tree_health_quorum_and_two_phases() ->
                 "receipt_cid": "scan:asi-060:exhaustive-a",
                 "binding": binding,
                 "scan_mode": "exhaustive",
+                "passed": True,
                 "healthy": True,
                 "safe_for_completion_reasoning": True,
+                "exhaustive": True,
+                "conclusive": True,
+                "uncontradicted": True,
+                "analyzer_version": analyzer_version,
+                "producer_id": "asi-060-delta",
+                "implementation": "delta-context-compiler",
+                "child_receipt_binding": "task:asi-060:delta",
+                "child_receipt_sha256": "sha256:" + "5" * 64,
+                "aggregate_tree_binding": tree_id,
                 "finished_at": now.isoformat(),
             },
             {
@@ -2222,8 +2275,18 @@ def test_g092_completion_requires_current_tree_health_quorum_and_two_phases() ->
                 "receipt_cid": "scan:asi-060:exhaustive-b",
                 "binding": binding,
                 "scan_mode": "exhaustive",
+                "passed": True,
                 "healthy": True,
                 "safe_for_completion_reasoning": True,
+                "exhaustive": True,
+                "conclusive": True,
+                "uncontradicted": True,
+                "analyzer_version": analyzer_version,
+                "producer_id": "asi-060-promotion",
+                "implementation": "delta-retry-promotion",
+                "child_receipt_binding": "task:asi-060:promotion",
+                "child_receipt_sha256": "sha256:" + "6" * 64,
+                "aggregate_tree_binding": tree_id,
                 "finished_at": now.isoformat(),
             },
         ],
@@ -2382,7 +2445,7 @@ def test_g092_completion_requires_current_tree_health_quorum_and_two_phases() ->
                 quorum["members"][0],
                 {
                     **quorum["members"][1],
-                    "evidence_channel": "delta-contract-and-compiler",
+                    "uncontradicted": False,
                 },
             ],
         },
@@ -2966,6 +3029,7 @@ def test_g010_parent_completion_closes_producers_children_and_proof_gate() -> No
         "status": "healthy",
         "healthy": True,
         "safe_for_completion_reasoning": True,
+        "exhaustive": True,
         "analyzer_version": analyzer_version,
         "binding": binding,
     }
@@ -2982,8 +3046,18 @@ def test_g010_parent_completion_closes_producers_children_and_proof_gate() -> No
                 "receipt_cid": "scan:asi-088:exhaustive-a",
                 "binding": binding,
                 "scan_mode": "exhaustive",
+                "passed": True,
                 "healthy": True,
                 "safe_for_completion_reasoning": True,
+                "exhaustive": True,
+                "conclusive": True,
+                "uncontradicted": True,
+                "analyzer_version": analyzer_version,
+                "producer_id": "asi-088-contracts",
+                "implementation": "token-efficiency-contracts",
+                "child_receipt_binding": "task:asi-088:contracts",
+                "child_receipt_sha256": "sha256:" + "7" * 64,
+                "aggregate_tree_binding": tree_id,
                 "finished_at": now.isoformat(),
             },
             {
@@ -2992,8 +3066,18 @@ def test_g010_parent_completion_closes_producers_children_and_proof_gate() -> No
                 "receipt_cid": "scan:asi-088:exhaustive-b",
                 "binding": binding,
                 "scan_mode": "exhaustive",
+                "passed": True,
                 "healthy": True,
                 "safe_for_completion_reasoning": True,
+                "exhaustive": True,
+                "conclusive": True,
+                "uncontradicted": True,
+                "analyzer_version": analyzer_version,
+                "producer_id": "asi-088-measurement",
+                "implementation": "token-efficiency-measurement",
+                "child_receipt_binding": "task:asi-088:measurement",
+                "child_receipt_sha256": "sha256:" + "8" * 64,
+                "aggregate_tree_binding": tree_id,
                 "finished_at": now.isoformat(),
             },
         ],
@@ -3121,7 +3205,7 @@ def test_g010_parent_completion_closes_producers_children_and_proof_gate() -> No
             {
                 "receipt_cid": "scan:asi-088:typed-measurement",
                 "terminal_reason": "exhausted",
-                "scan_mode": "exhaustive",
+                "scan_mode": "audit",
                 "finished_at": now.isoformat(),
                 "metadata": {
                     "analyzer_health": {"status": "healthy"},

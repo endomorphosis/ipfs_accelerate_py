@@ -103,6 +103,10 @@ class _FakeBackendManager:
     def __init__(self):
         self.calls = []
 
+    def select_backend_for_task(self, task=None, model=None, **_kwargs):
+        # Opt out of batching middleware so tests exercise execute_task directly.
+        return None
+
     async def execute_task(self, *, task, model, inputs, preferred_types=None, required_protocols=None, parameters=None):
         self.calls.append(
             {

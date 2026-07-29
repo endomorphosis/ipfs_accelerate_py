@@ -9,24 +9,24 @@ from pathlib import Path
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.artifact_store import (
+from ipfs_accelerate_py.agent_supervisor.runtime.artifact_store import (
     write_code_evidence_graph_artifact,
 )
-from ipfs_accelerate_py.agent_supervisor.code_evidence_graph import (
+from ipfs_accelerate_py.agent_supervisor.analysis.code_evidence_graph import (
     build_code_evidence_graph,
 )
-from ipfs_accelerate_py.agent_supervisor.formal_verification_contracts import (
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
     ResourceBudget,
 )
-from ipfs_accelerate_py.agent_supervisor.formal_verification_provider import (
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_provider import (
     ProviderFailureCode,
     ProviderRequest,
     dispatch_provider_request,
 )
-from ipfs_accelerate_py.agent_supervisor.leanstral_proof_provider import (
+from ipfs_accelerate_py.agent_supervisor.proof.leanstral_proof_provider import (
     LeanstralProofProvider,
 )
-from ipfs_accelerate_py.agent_supervisor.proof_context import (
+from ipfs_accelerate_py.agent_supervisor.proof.proof_context import (
     LEANSTRAL_PROOF_OUTPUT_SCHEMA,
     ContextEntry,
     ContextTrust,

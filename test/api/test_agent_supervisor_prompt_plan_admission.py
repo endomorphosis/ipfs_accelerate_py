@@ -5,11 +5,11 @@ from dataclasses import replace
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.formal_plan_compiler import (
+from ipfs_accelerate_py.agent_supervisor.planning.formal_plan_compiler import (
     CompilationStatus,
     FormalPlanCompiler,
 )
-from ipfs_accelerate_py.agent_supervisor.formal_verification_contracts import (
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
     AssuranceLevel,
     EvidenceAuthority,
     EvidenceFreshness,
@@ -20,11 +20,11 @@ from ipfs_accelerate_py.agent_supervisor.formal_verification_contracts import (
     ProofVerdict,
     ResourceBudget,
 )
-from ipfs_accelerate_py.agent_supervisor.intent_constraint_adapter import (
+from ipfs_accelerate_py.agent_supervisor.proof.intent_constraint_adapter import (
     compile_intent_constraints,
     create_intent_conformance_request,
 )
-from ipfs_accelerate_py.agent_supervisor.ir_constraint_compiler import (
+from ipfs_accelerate_py.agent_supervisor.proof.ir_constraint_compiler import (
     ActionDomainBinding,
     AdmissionAssumption,
     AdmissionAuthority,
@@ -35,23 +35,23 @@ from ipfs_accelerate_py.agent_supervisor.ir_constraint_compiler import (
     ValidationResult,
     ValidationStatus,
 )
-from ipfs_accelerate_py.agent_supervisor.ir_registry import IRFamily
-from ipfs_accelerate_py.agent_supervisor.prompt_goal_planner import (
+from ipfs_accelerate_py.agent_supervisor.proof.ir_registry import IRFamily
+from ipfs_accelerate_py.agent_supervisor.prompt.prompt_goal_planner import (
     parse_prompt_goal_graph,
 )
-from ipfs_accelerate_py.agent_supervisor.prompt_plan_admission import (
+from ipfs_accelerate_py.agent_supervisor.prompt.prompt_plan_admission import (
     PromptPlanAdmissionCode,
     PromptPlanAdmissionPolicy,
     PromptPlanAdmissionReceipt,
     admit_prompt_plan,
 )
-from ipfs_accelerate_py.agent_supervisor.prompt_workflow import (
+from ipfs_accelerate_py.agent_supervisor.prompt.prompt_workflow import (
     PromptAcceptanceRecord,
     PromptGoalGraph,
     PromptOutputRecord,
     PromptValidationRecord,
 )
-from ipfs_accelerate_py.agent_supervisor.security_constraint_adapter import (
+from ipfs_accelerate_py.agent_supervisor.proof.security_constraint_adapter import (
     SecurityAuthorizationRequest,
     compile_security_constraints,
 )

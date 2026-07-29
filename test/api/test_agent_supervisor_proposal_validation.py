@@ -5,11 +5,11 @@ from copy import deepcopy
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.code_proof_obligations import (
+from ipfs_accelerate_py.agent_supervisor.proof.code_proof_obligations import (
     CandidateDiffEntry,
     DiffChangeKind,
 )
-from ipfs_accelerate_py.agent_supervisor.proposal_validation import (
+from ipfs_accelerate_py.agent_supervisor.validation.proposal_validation import (
     ImplementationProposal,
     NOOP_OR_OUT_OF_SCOPE_FAIL_FAST_REQUIREMENT_ID,
     ORDERED_PROPOSAL_GATES,
@@ -25,7 +25,7 @@ from ipfs_accelerate_py.agent_supervisor.proposal_validation import (
     ProposalValidationStep,
     validate_implementation_proposal,
 )
-from ipfs_accelerate_py.agent_supervisor.task_proposal_router import (
+from ipfs_accelerate_py.agent_supervisor.planning.task_proposal_router import (
     TASK_IMPLEMENTATION_PROPOSAL_SCHEMA,
     TaskProposalRouterError,
     parse_task_implementation_proposal,
@@ -1129,6 +1129,84 @@ def test_exact_reviewed_and_chain_is_an_allowed_validation_plan() -> None:
 
     assert result.accepted
     assert ProposalFindingCode.COMMAND_FORBIDDEN not in _finding_codes(result)
+
+def test_exact_reviewed_or_chain_is_an_allowed_validation_plan() -> None:
+    """Reviewed board commands may use ``||`` the same way as ``&&`` compounds."""
+    command = (
+        "test",
+        "!",
+        "-f",
+        "dashboard.out",
+        "&&",
+        "test",
+        "!",
+        "-f",
+        "dashboard.pid",
+        "&&",
+        "test",
+        "!",
+        "-f",
+        "err.txt",
+        "||",
+        "true",
+    )
+    result = validate_implementation_proposal(
+        _v2_proposal(
+            validation_plan=(
+                ProposalValidationStep(
+                    command=command,
+                    rationale_refs=(V2_RATIONALE,),
+                ),
+            ),
+        ),
+        policy=_v2_policy(allowed_validation_commands=(command,)),
+    )
+
+    assert result.accepted
+    assert ProposalFindingCode.COMMAND_FORBIDDEN not in _finding_codes(result)
+
+
+def test_exact_reviewed_rg_alternation_compound_is_allowed() -> None:
+    """ASREF-008-style boards: ``rg`` regex ``|`` inside argv is not a shell pipe.
+
+    The task validation plan is already shlex-split; alternation characters in a
+    single pattern token must not yield ``command_forbidden`` when the full
+    compound is on the reviewed allowlist.
+    """
+    command = (
+        "python",
+        "-m",
+        "pytest",
+        "test/api/test_agent_supervisor_todo_daemon_port.py",
+        "test/api/test_agent_supervisor_control_conformance_v2.py",
+        "-q",
+        "--collect-only",
+        "&&",
+        "rg",
+        "-n",
+        r"agent_supervisor\.(objective_daemon|backlog_refinery|merge_resolver)\b",
+        "pyproject.toml",
+        "setup.py",
+        "||",
+        "true",
+    )
+    result = validate_implementation_proposal(
+        _v2_proposal(
+            validation_plan=(
+                ProposalValidationStep(
+                    command=command,
+                    rationale_refs=(V2_RATIONALE,),
+                ),
+            ),
+        ),
+        policy=_v2_policy(allowed_validation_commands=(command,)),
+    )
+
+    assert result.accepted
+    assert ProposalFindingCode.COMMAND_FORBIDDEN not in _finding_codes(result)
+
+
+
 
 
 @pytest.mark.parametrize(

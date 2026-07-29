@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.task_proposal_router import (
+from ipfs_accelerate_py.agent_supervisor.planning.task_proposal_router import (
     StructuredPlanRouterConfig,
     TaskProposalRouterConfig,
     TaskProposalRouterCliConfig,

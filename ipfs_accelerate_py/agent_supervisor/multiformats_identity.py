@@ -678,7 +678,7 @@ def link_content_identity(
         derived_cid = cid_for_dag_json(value, for_identity=True)
         # Prefer formal content_identity when available for cross-check.
         try:
-            from ipfs_accelerate_py.agent_supervisor.formal_verification_contracts import (
+            from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
                 content_identity as formal_content_identity,
             )
         except Exception:  # pragma: no cover - package always present in-tree

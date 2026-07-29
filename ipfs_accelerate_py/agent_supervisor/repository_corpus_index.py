@@ -26,7 +26,7 @@ from enum import Enum
 from pathlib import Path, PurePosixPath
 from typing import Any, Iterable, Mapping, Sequence
 
-from .formal_verification_contracts import canonical_json_bytes, content_identity
+from .proof.formal_verification_contracts import canonical_json_bytes, content_identity
 from .repository_forest import (
     RepositoryDescriptor,
     RepositoryForest,

@@ -9,13 +9,13 @@ from typing import Any
 import pytest
 
 from ipfs_accelerate_py import cli
-from ipfs_accelerate_py.agent_supervisor.control_cli import (
+from ipfs_accelerate_py.agent_supervisor.control.control_cli import (
     AGENT_CLI_EXIT_CONFLICT,
     AGENT_CLI_EXIT_INVALID,
     AGENT_CLI_EXIT_SUCCESS,
     COMMAND_OPERATIONS,
 )
-from ipfs_accelerate_py.agent_supervisor.control_contracts import (
+from ipfs_accelerate_py.agent_supervisor.control.control_contracts import (
     AuthorizationDecision,
     AuthorizationVerdict,
     EffectKind,
@@ -28,7 +28,7 @@ from ipfs_accelerate_py.agent_supervisor.control_contracts import (
     OperationStatus,
     PROMPT_CONTROL_OPERATIONS,
 )
-from ipfs_accelerate_py.agent_supervisor.control_plane import (
+from ipfs_accelerate_py.agent_supervisor.control.control_plane import (
     BackendResponse,
     InMemoryControlStateStore,
     MutationRecoveryAction,

@@ -11,12 +11,12 @@ from pathlib import Path
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.analysis_cache import (
+from ipfs_accelerate_py.agent_supervisor.analysis.analysis_cache import (
     AnalysisCache,
     AnalysisCacheKey,
     AnalysisCacheReason,
 )
-from ipfs_accelerate_py.agent_supervisor.cache_coordinator import (
+from ipfs_accelerate_py.agent_supervisor.analysis.cache_coordinator import (
     INTEGRATED_ANALYSIS_CACHE_ACCEPTANCE_CRITERIA,
     SINGLE_FLIGHT_COLLAPSE_REQUIREMENT_ID,
     AnalysisCacheCoordinator,
@@ -35,8 +35,8 @@ from ipfs_accelerate_py.agent_supervisor.cache_coordinator import (
     build_namespace_semantic_key,
     namespace_metadata,
 )
-from ipfs_accelerate_py.agent_supervisor.runtime_cas import RuntimeCAS
-from ipfs_accelerate_py.agent_supervisor.supervisor_v2_contracts import (
+from ipfs_accelerate_py.agent_supervisor.runtime.runtime_cas import RuntimeCAS
+from ipfs_accelerate_py.agent_supervisor.self_improvement.supervisor_v2_contracts import (
     ResultBinding,
     SemanticDependencyIdentity,
 )
