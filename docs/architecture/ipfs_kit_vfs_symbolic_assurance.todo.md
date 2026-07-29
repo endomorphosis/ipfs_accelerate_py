@@ -648,7 +648,7 @@ compact references and bounded spans only.
 
 ## VFS-033 Harden and validate the two-provider Grok Build/Codex supervisor control
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P1
 - Track: low-context-repair
