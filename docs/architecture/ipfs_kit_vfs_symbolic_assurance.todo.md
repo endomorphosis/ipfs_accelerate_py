@@ -48,7 +48,7 @@ compact references and bounded spans only.
 
 ## VFS-003 Add a frozen four-repository manifest loader and replay validator
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: repository-identity

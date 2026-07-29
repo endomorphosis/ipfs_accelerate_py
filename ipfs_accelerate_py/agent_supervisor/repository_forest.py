@@ -63,6 +63,9 @@ FOREST_POLICY_SCHEMA = (
 GITLINK_ENTRY_SCHEMA = (
     "ipfs_accelerate_py.agent_supervisor.gitlink-closure-entry@1"
 )
+ANALYZER_PROFILE_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor.analyzer-profile@1"
+)
 
 DEFAULT_SWISSKNIFE_ROOT = "/home/barberb/swissknife"
 DEFAULT_SWISSKNIFE_ALIAS = "swissknife"
@@ -955,6 +958,164 @@ class RepositoryDescriptor:
 
 
 @dataclass(frozen=True)
+class AnalyzerProfile:
+    """Analyzer/parser/toolchain profile bound into forest portable identity.
+
+    Version pins and configuration digests are portable; host paths, API keys,
+    and environment secrets must never appear here.
+    """
+
+    schema: str = ANALYZER_PROFILE_SCHEMA
+    profile_name: str = "default"
+    analyzer_versions: tuple[tuple[str, str], ...] = ()
+    parser_versions: tuple[tuple[str, str], ...] = ()
+    toolchain_versions: tuple[tuple[str, str], ...] = ()
+    configuration_digest: str = ""
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "schema",
+            _text(self.schema, field_name="analyzer_profile.schema"),
+        )
+        if self.schema != ANALYZER_PROFILE_SCHEMA:
+            raise RepositoryForestError("unsupported_analyzer_profile_schema")
+        name = _text(self.profile_name, field_name="profile_name")
+        if not _ALIAS_RE.fullmatch(name):
+            raise RepositoryForestError(
+                "invalid_analyzer_profile_name",
+                "profile_name must be a short alphanumeric identifier",
+            )
+        object.__setattr__(self, "profile_name", name)
+        object.__setattr__(
+            self,
+            "analyzer_versions",
+            _normalize_version_pairs(
+                self.analyzer_versions,
+                field_name="analyzer_versions",
+            ),
+        )
+        object.__setattr__(
+            self,
+            "parser_versions",
+            _normalize_version_pairs(
+                self.parser_versions,
+                field_name="parser_versions",
+            ),
+        )
+        object.__setattr__(
+            self,
+            "toolchain_versions",
+            _normalize_version_pairs(
+                self.toolchain_versions,
+                field_name="toolchain_versions",
+            ),
+        )
+        digest = str(self.configuration_digest or "").strip()
+        object.__setattr__(self, "configuration_digest", digest)
+
+    @property
+    def profile_cid(self) -> str:
+        return content_identity(self.to_portable_dict())
+
+    def to_portable_dict(self) -> dict[str, Any]:
+        return {
+            "schema": self.schema,
+            "profile_name": self.profile_name,
+            "analyzer_versions": [
+                {"name": name, "version": version}
+                for name, version in self.analyzer_versions
+            ],
+            "parser_versions": [
+                {"name": name, "version": version}
+                for name, version in self.parser_versions
+            ],
+            "toolchain_versions": [
+                {"name": name, "version": version}
+                for name, version in self.toolchain_versions
+            ],
+            "configuration_digest": self.configuration_digest,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "AnalyzerProfile":
+        return cls(
+            schema=str(payload.get("schema") or ANALYZER_PROFILE_SCHEMA),
+            profile_name=str(payload.get("profile_name") or "default"),
+            analyzer_versions=_pairs_from_payload(
+                payload.get("analyzer_versions")
+            ),
+            parser_versions=_pairs_from_payload(payload.get("parser_versions")),
+            toolchain_versions=_pairs_from_payload(
+                payload.get("toolchain_versions")
+            ),
+            configuration_digest=str(
+                payload.get("configuration_digest") or ""
+            ),
+        )
+
+
+def _normalize_version_pairs(
+    values: Iterable[Any],
+    *,
+    field_name: str,
+) -> tuple[tuple[str, str], ...]:
+    pairs: list[tuple[str, str]] = []
+    seen: set[str] = set()
+    for raw in values or ():
+        if isinstance(raw, Mapping):
+            name = _text(raw.get("name"), field_name=f"{field_name}.name")
+            version = _text(
+                raw.get("version"),
+                field_name=f"{field_name}.version",
+            )
+        elif isinstance(raw, (tuple, list)) and len(raw) == 2:
+            name = _text(raw[0], field_name=f"{field_name}.name")
+            version = _text(raw[1], field_name=f"{field_name}.version")
+        else:
+            raise RepositoryForestError(
+                "invalid_version_pair",
+                f"{field_name} entries must be name/version pairs",
+            )
+        if name in seen:
+            raise RepositoryForestError(
+                "duplicate_version_name",
+                f"duplicate version name in {field_name}: {name}",
+            )
+        # Reject credential-shaped version strings without logging them.
+        lowered = f"{name}={version}".lower()
+        if any(
+            marker in lowered
+            for marker in (
+                "password=",
+                "secret=",
+                "api_key=",
+                "token=",
+                "authorization=",
+            )
+        ):
+            raise RepositoryForestError(
+                "secret_material_rejected",
+                f"{field_name} must not carry credential-like material",
+            )
+        seen.add(name)
+        pairs.append((name, version))
+    return tuple(sorted(pairs, key=lambda item: item[0]))
+
+
+def _pairs_from_payload(value: Any) -> tuple[tuple[str, str], ...]:
+    if value is None:
+        return ()
+    if isinstance(value, Mapping):
+        return tuple((str(key), str(val)) for key, val in value.items())
+    if isinstance(value, Sequence) and not isinstance(
+        value, (str, bytes, bytearray)
+    ):
+        return tuple(value)  # type: ignore[return-value]
+    raise RepositoryForestError("invalid_version_pairs")
+
+
+@dataclass(frozen=True)
 class ForestRootSpec:
     """Caller-supplied root binding used to build one descriptor."""
 
@@ -975,6 +1136,7 @@ class ForestPolicy:
     schema: str = FOREST_POLICY_SCHEMA
     roots: tuple[ForestRootSpec, ...] = ()
     sole_write_alias: str = DEFAULT_ACCELERATOR_ALIAS
+    analyzer_profile: AnalyzerProfile | Mapping[str, Any] | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -986,6 +1148,14 @@ class ForestPolicy:
             raise RepositoryForestError("unsupported_forest_policy_schema")
         write_alias = _normalize_alias(self.sole_write_alias)
         object.__setattr__(self, "sole_write_alias", write_alias)
+        profile = self.analyzer_profile
+        if profile is None:
+            profile = AnalyzerProfile()
+        elif isinstance(profile, Mapping):
+            profile = AnalyzerProfile.from_dict(profile)
+        elif not isinstance(profile, AnalyzerProfile):
+            raise RepositoryForestError("invalid_analyzer_profile")
+        object.__setattr__(self, "analyzer_profile", profile)
         normalized: list[ForestRootSpec] = []
         aliases: set[str] = set()
         write_count = 0
@@ -1069,9 +1239,14 @@ class ForestPolicy:
         return content_identity(self.to_portable_dict())
 
     def to_portable_dict(self) -> dict[str, Any]:
+        profile = self.analyzer_profile
+        if not isinstance(profile, AnalyzerProfile):
+            profile = AnalyzerProfile.from_dict(profile or {})
         return {
             "schema": self.schema,
             "sole_write_alias": self.sole_write_alias,
+            "analyzer_profile": profile.to_portable_dict(),
+            "analyzer_profile_cid": profile.profile_cid,
             "roots": [
                 {
                     "alias": root.alias,
@@ -1108,6 +1283,7 @@ class RepositoryForest:
     descriptors: tuple[RepositoryDescriptor, ...] = ()
     sole_write_alias: str = DEFAULT_ACCELERATOR_ALIAS
     policy_cid: str = ""
+    analyzer_profile: AnalyzerProfile | Mapping[str, Any] | None = None
     reason_codes: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
@@ -1120,6 +1296,14 @@ class RepositoryForest:
             raise RepositoryForestError("unsupported_forest_schema")
         write_alias = _normalize_alias(self.sole_write_alias)
         object.__setattr__(self, "sole_write_alias", write_alias)
+        profile = self.analyzer_profile
+        if profile is None:
+            profile = AnalyzerProfile()
+        elif isinstance(profile, Mapping):
+            profile = AnalyzerProfile.from_dict(profile)
+        elif not isinstance(profile, AnalyzerProfile):
+            raise RepositoryForestError("invalid_analyzer_profile")
+        object.__setattr__(self, "analyzer_profile", profile)
         descriptors = tuple(
             item
             if isinstance(item, RepositoryDescriptor)
@@ -1164,11 +1348,15 @@ class RepositoryForest:
     def forest_id(self) -> str:
         """Deterministic portable forest identity."""
 
+        profile = self.analyzer_profile
+        if not isinstance(profile, AnalyzerProfile):
+            profile = AnalyzerProfile.from_dict(profile or {})
         return content_identity(
             {
                 "schema": REPOSITORY_FOREST_SCHEMA + "/identity",
                 "sole_write_alias": self.sole_write_alias,
                 "policy_cid": self.policy_cid,
+                "analyzer_profile_cid": profile.profile_cid,
                 "descriptors": [
                     item.to_portable_dict() for item in self.descriptors
                 ],
@@ -1189,11 +1377,16 @@ class RepositoryForest:
         return self.descriptor_for_alias(self.sole_write_alias)
 
     def to_portable_dict(self) -> dict[str, Any]:
+        profile = self.analyzer_profile
+        if not isinstance(profile, AnalyzerProfile):
+            profile = AnalyzerProfile.from_dict(profile or {})
         return {
             "schema": self.schema,
             "forest_id": self.forest_id,
             "sole_write_alias": self.sole_write_alias,
             "policy_cid": self.policy_cid,
+            "analyzer_profile": profile.to_portable_dict(),
+            "analyzer_profile_cid": profile.profile_cid,
             "descriptors": [item.to_portable_dict() for item in self.descriptors],
         }
 
@@ -1244,6 +1437,9 @@ class RepositoryForest:
                 payload.get("sole_write_alias") or DEFAULT_ACCELERATOR_ALIAS
             ),
             policy_cid=str(payload.get("policy_cid") or ""),
+            analyzer_profile=AnalyzerProfile.from_dict(
+                payload.get("analyzer_profile") or {}
+            ),
             reason_codes=tuple(payload.get("reason_codes") or ()),
         )
         claimed = str(payload.get("forest_id") or "").strip()
@@ -1690,6 +1886,7 @@ def initial_vfs_assurance_forest_policy(
     kit_root: str | Path | None = None,
     datasets_root: str | Path | None = None,
     include_optional_missing: bool = False,
+    analyzer_profile: AnalyzerProfile | Mapping[str, Any] | None = None,
 ) -> ForestPolicy:
     """Initial policy: SwissKnife read-only; accelerator sole write root.
 
@@ -1738,6 +1935,7 @@ def initial_vfs_assurance_forest_policy(
     return ForestPolicy(
         roots=tuple(roots),
         sole_write_alias=DEFAULT_ACCELERATOR_ALIAS,
+        analyzer_profile=analyzer_profile,
     )
 
 
@@ -1797,10 +1995,14 @@ def build_repository_forest(
             "no repository descriptors could be built",
         )
 
+    profile = forest_policy.analyzer_profile
+    if not isinstance(profile, AnalyzerProfile):
+        profile = AnalyzerProfile.from_dict(profile or {})
     return RepositoryForest(
         descriptors=tuple(descriptors),
         sole_write_alias=forest_policy.sole_write_alias,
         policy_cid=forest_policy.policy_cid,
+        analyzer_profile=profile,
         reason_codes=tuple(dict.fromkeys(reasons)),
     )
 
@@ -1821,7 +2023,9 @@ def empty_dirty_overlay_digest() -> str:
 
 
 __all__ = [
+    "ANALYZER_PROFILE_SCHEMA",
     "AUTHORITY_SCHEMA",
+    "AnalyzerProfile",
     "AuthorityMode",
     "CASE_UNICODE_POLICY_SCHEMA",
     "CaseUnicodePolicy",
