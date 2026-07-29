@@ -13,7 +13,8 @@ TODO_PATH="docs/architecture/agent_supervisor_proof_gated_contract_repair.todo.m
 SCHEDULER_PATH="config/agent_supervisor_proof_gated_contract_repair_scheduler.json"
 LAUNCHER_PATH="scripts/proof_gated_contract_repair_supervisor.sh"
 
-PROGRAM_ROOT="data/agent_supervisor/proof_gated_contract_repair"
+DEFAULT_STATE_BASE="${XDG_STATE_HOME:-${HOME}/.local/state}"
+PROGRAM_ROOT="${RPR_STATE_ROOT:-${DEFAULT_STATE_BASE}/ipfs_accelerate_py/proof_gated_contract_repair}"
 RUNTIME_ROOT="${PROGRAM_ROOT}/runtime"
 STATE_ROOT="${PROGRAM_ROOT}/state"
 PREFLIGHT_ROOT="${PROGRAM_ROOT}/preflight"
@@ -223,13 +224,12 @@ doctor() {
 }
 
 preflight() {
-  mkdir -p "${REPO_ROOT}/${PREFLIGHT_ROOT}" "${REPO_ROOT}/${WORKTREE_ROOT}" "${REPO_ROOT}/${MERGE_QUEUE_ROOT}"
+  mkdir -p "${PREFLIGHT_ROOT}" "${WORKTREE_ROOT}" "${MERGE_QUEUE_ROOT}"
   (
     cd "${REPO_ROOT}"
     "${PYTHON_BIN}" \
-      -m ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor \
+      -m ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon \
       --once \
-      --no-implement \
       --todo-path "${TODO_PATH}" \
       --task-prefix "RPR-" \
       --state-dir "${PREFLIGHT_ROOT}" \
@@ -243,12 +243,9 @@ preflight() {
       --implementation-protected-path "${TODO_PATH}" \
       --implementation-protected-path "${SCHEDULER_PATH}" \
       --implementation-protected-path "${LAUNCHER_PATH}" \
-      --no-objective-task-janitor \
-      --no-objective-goal-refinement \
-      --no-objective-goal-migration \
       --log-level INFO
   )
-  "${PYTHON_BIN}" - "${REPO_ROOT}/${PREFLIGHT_ROOT}/rpr_task_state.json" <<'PY'
+  "${PYTHON_BIN}" - "${PREFLIGHT_ROOT}/rpr_task_state.json" <<'PY'
 import json
 import os
 import pathlib
@@ -287,13 +284,13 @@ PY
 }
 
 start() {
-  if pid="$(live_pid_from_file "${REPO_ROOT}/${MASTER_PID_PATH}")"; then
+  if pid="$(live_pid_from_file "${MASTER_PID_PATH}")"; then
     echo "proof-gated contract-repair supervisor is already running with master pid ${pid}" >&2
     return 2
   fi
   doctor
   preflight
-  mkdir -p "${REPO_ROOT}/${RUNTIME_ROOT}" "${REPO_ROOT}/${STATE_ROOT}" "${REPO_ROOT}/${WORKTREE_ROOT}" "${REPO_ROOT}/${MERGE_QUEUE_ROOT}"
+  mkdir -p "${RUNTIME_ROOT}" "${STATE_ROOT}" "${WORKTREE_ROOT}" "${MERGE_QUEUE_ROOT}"
   (
     cd "${REPO_ROOT}"
     "${PYTHON_BIN}" \
@@ -361,7 +358,7 @@ start() {
   )
   local attempt=""
   for attempt in {1..90}; do
-    if live_pid_from_file "${REPO_ROOT}/${MASTER_PID_PATH}" >/dev/null \
+    if live_pid_from_file "${MASTER_PID_PATH}" >/dev/null \
       && status >/dev/null 2>&1; then
       status
       return 0
@@ -375,12 +372,12 @@ start() {
 
 status() {
   local master_pid=""
-  if master_pid="$(live_pid_from_file "${REPO_ROOT}/${MASTER_PID_PATH}")"; then
+  if master_pid="$(live_pid_from_file "${MASTER_PID_PATH}")"; then
     echo "master: running pid=${master_pid}"
   else
     echo "master: stopped"
   fi
-  "${PYTHON_BIN}" - "${REPO_ROOT}/${STATE_ROOT}" "${LANE_COUNT}" <<'PY'
+  "${PYTHON_BIN}" - "${STATE_ROOT}" "${LANE_COUNT}" <<'PY'
 import json
 import os
 import pathlib
@@ -446,7 +443,7 @@ PY
 
 stop() {
   local pid=""
-  if ! pid="$(live_pid_from_file "${REPO_ROOT}/${MASTER_PID_PATH}")"; then
+  if ! pid="$(live_pid_from_file "${MASTER_PID_PATH}")"; then
     echo "master is already stopped"
     return 0
   fi
