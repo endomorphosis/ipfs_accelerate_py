@@ -907,6 +907,97 @@ def test_ephemeral_fence_accepts_tagged_generated_board_commit(
     assert not daemon._implementation_protected_incident_path().exists()
 
 
+def test_reconciliation_accepts_trusted_board_commit_that_lands_after_latch(
+    tmp_path: Path,
+) -> None:
+    daemon, repo, workspace, protected = _protected_git_worktree_daemon(tmp_path)
+    task = _task(outputs=["src/example.py"])
+    before = daemon._require_implementation_protected_snapshot(
+        task=task,
+        attempt=1,
+        workspace_path=workspace,
+    )
+
+    protected.write_text("generated update awaiting persistence\n", encoding="utf-8")
+    violation = daemon._implementation_protected_path_violation(
+        task=task,
+        attempt=1,
+        workspace_path=workspace,
+        before=before,
+    )
+    assert violation["reason"] == "implementation_protected_path_mutated"
+    assert daemon._implementation_protected_incident_path().exists()
+
+    _git(repo, "add", POLICY_PATH)
+    _git(
+        repo,
+        "-c",
+        "user.name=Accelerator Backlog Refinery",
+        "-c",
+        f"user.email={BACKLOG_REFINERY_AUTHOR_EMAIL}",
+        "commit",
+        "-m",
+        generated_protected_board_commit_subject(
+            "Agent: persist delayed generated board"
+        ),
+    )
+
+    result = daemon._reconcile_implementation_protected_path_fence()
+
+    assert result["cleared"] is True
+    assert result["auto"] is True
+    assert result["blocked"] is False
+    assert result["reason"] == "trusted_concurrent_protected_path_update"
+    assert result["protected_paths"] == [POLICY_PATH]
+    assert not daemon._implementation_protected_incident_path().exists()
+    assert not daemon._implementation_protected_active_snapshot_path().exists()
+    receipt = json.loads(Path(result["receipt_path"]).read_text(encoding="utf-8"))
+    assert receipt["schema"] == (
+        "implementation-protected-path-trusted-concurrent-clearance-v1"
+    )
+    assert receipt["commits"][0]["author_email"] == BACKLOG_REFINERY_AUTHOR_EMAIL
+
+
+def test_reconciliation_keeps_late_untrusted_board_commit_latched(
+    tmp_path: Path,
+) -> None:
+    daemon, repo, workspace, protected = _protected_git_worktree_daemon(tmp_path)
+    task = _task(outputs=["src/example.py"])
+    before = daemon._require_implementation_protected_snapshot(
+        task=task,
+        attempt=1,
+        workspace_path=workspace,
+    )
+
+    protected.write_text("untrusted delayed update\n", encoding="utf-8")
+    violation = daemon._implementation_protected_path_violation(
+        task=task,
+        attempt=1,
+        workspace_path=workspace,
+        before=before,
+    )
+    assert violation["reason"] == "implementation_protected_path_mutated"
+
+    _git(repo, "add", POLICY_PATH)
+    _git(
+        repo,
+        "-c",
+        "user.name=Untrusted User",
+        "-c",
+        "user.email=untrusted@example.invalid",
+        "commit",
+        "-m",
+        "edit protected board",
+    )
+
+    result = daemon._reconcile_implementation_protected_path_fence()
+
+    assert result["blocked"] is True
+    assert result["reason"] == "implementation_protected_path_incident_latched"
+    assert daemon._implementation_protected_incident_path().exists()
+    assert daemon._implementation_protected_active_snapshot_path().exists()
+
+
 def test_ephemeral_fence_rejects_untrusted_shared_checkout_commit(
     tmp_path: Path,
 ) -> None:

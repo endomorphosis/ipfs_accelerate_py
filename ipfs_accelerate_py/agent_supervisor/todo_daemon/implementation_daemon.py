@@ -3918,43 +3918,10 @@ class PortalImplementationDaemon:
             self.repo_root if missing_ephemeral_before is not None else workspace_path
         )
         after = self._implementation_protected_path_snapshot(comparison_workspace)
-        mutations: list[dict[str, Any]] = []
-        for scope in sorted(set(comparison_before) | set(after)):
-            before_scope = comparison_before.get(scope) or {}
-            after_scope = after.get(scope) or {}
-            before_paths = before_scope.get("paths")
-            after_paths = after_scope.get("paths")
-            if not isinstance(before_paths, Mapping):
-                before_paths = {}
-            if not isinstance(after_paths, Mapping):
-                after_paths = {}
-            for relative in sorted(set(before_paths) | set(after_paths)):
-                before_identity = before_paths.get(relative)
-                after_identity = after_paths.get(relative)
-                normalized_before = (
-                    dict(before_identity)
-                    if isinstance(before_identity, Mapping)
-                    else {"state": "error", "error": "missing baseline identity"}
-                )
-                normalized_after = (
-                    dict(after_identity)
-                    if isinstance(after_identity, Mapping)
-                    else {"state": "error", "error": "missing final identity"}
-                )
-                if normalized_before == normalized_after:
-                    continue
-                mutations.append(
-                    {
-                        "scope": scope,
-                        "path": str(relative),
-                        "change": self._implementation_protected_change_kind(
-                            normalized_before,
-                            normalized_after,
-                        ),
-                        "before": normalized_before,
-                        "after": normalized_after,
-                    }
-                )
+        mutations = self._implementation_protected_path_mutations(
+            comparison_before,
+            after,
+        )
         if not mutations:
             if missing_ephemeral_before is not None:
                 self._record_event(
@@ -3999,6 +3966,52 @@ class PortalImplementationDaemon:
         self._latch_implementation_protected_incident(payload)
         self._record_event("implementation_protected_path_mutated", payload)
         return payload
+
+    def _implementation_protected_path_mutations(
+        self,
+        before: Mapping[str, Mapping[str, Any]],
+        after: Mapping[str, Mapping[str, Any]],
+    ) -> list[dict[str, Any]]:
+        """Return exact protected-path identity changes between two snapshots."""
+
+        mutations: list[dict[str, Any]] = []
+        for scope in sorted(set(before) | set(after)):
+            before_scope = before.get(scope) or {}
+            after_scope = after.get(scope) or {}
+            before_paths = before_scope.get("paths")
+            after_paths = after_scope.get("paths")
+            if not isinstance(before_paths, Mapping):
+                before_paths = {}
+            if not isinstance(after_paths, Mapping):
+                after_paths = {}
+            for relative in sorted(set(before_paths) | set(after_paths)):
+                before_identity = before_paths.get(relative)
+                after_identity = after_paths.get(relative)
+                normalized_before = (
+                    dict(before_identity)
+                    if isinstance(before_identity, Mapping)
+                    else {"state": "error", "error": "missing baseline identity"}
+                )
+                normalized_after = (
+                    dict(after_identity)
+                    if isinstance(after_identity, Mapping)
+                    else {"state": "error", "error": "missing final identity"}
+                )
+                if normalized_before == normalized_after:
+                    continue
+                mutations.append(
+                    {
+                        "scope": scope,
+                        "path": str(relative),
+                        "change": self._implementation_protected_change_kind(
+                            normalized_before,
+                            normalized_after,
+                        ),
+                        "before": normalized_before,
+                        "after": normalized_after,
+                    }
+                )
+        return mutations
 
     def _require_implementation_protected_snapshot(
         self,
@@ -4383,6 +4396,158 @@ class PortalImplementationDaemon:
         )
         return result
 
+    def _auto_clear_trusted_concurrent_protected_path_update(
+        self,
+        incident: Mapping[str, Any],
+        *,
+        incident_path: Path,
+        active_path: Path,
+    ) -> dict[str, Any] | None:
+        """Admit a trusted generated-board commit that landed after latching.
+
+        A peer lane can update a protected generated board before its
+        checkout-serialized persistence commit lands. The live fence correctly
+        latches that uncommitted interval. Reconciliation may clear it later
+        only when the complete current delta is shared-checkout-only, every
+        commit touching those paths has a trusted generator identity, the
+        workspace binding still matches the active snapshot, and no
+        implementation runner owns that workspace.
+        """
+
+        if (
+            incident.get("schema") != "implementation-protected-path-incident-v1"
+            or incident.get("requires_operator_clearance") is not True
+        ):
+            return None
+        active = load_json_dict(active_path)
+        if (
+            active is None
+            or active.get("schema") != "implementation-protected-path-active-v1"
+            or active.get("ephemeral_worktree") is not True
+        ):
+            return None
+        task_id = str(incident.get("task_id") or "")
+        workspace_value = str(incident.get("workspace_path") or "").strip()
+        try:
+            attempt = int(incident.get("attempt") or 0)
+            active_attempt = int(active.get("attempt") or 0)
+            workspace = Path(workspace_value).resolve(strict=True)
+            active_workspace = Path(
+                str(active.get("workspace_path") or "")
+            ).resolve(strict=True)
+        except (OSError, RuntimeError, TypeError, ValueError):
+            return None
+        if (
+            not task_id
+            or attempt <= 0
+            or task_id != str(active.get("task_id") or "")
+            or attempt != active_attempt
+            or workspace != active_workspace
+            or workspace == self.repo_root.resolve()
+            or not self._path_is_under(workspace, self.worktree_root.resolve())
+        ):
+            return None
+        before = active.get("snapshot")
+        if not isinstance(before, Mapping):
+            return None
+        configured_paths = set(self.implementation_protected_paths)
+        active_paths = active.get("protected_paths")
+        if (
+            not isinstance(active_paths, list)
+            or set(map(str, active_paths)) != configured_paths
+            or self._implementation_protected_snapshot_errors(before)
+        ):
+            return None
+        for scope in ("workspace", "shared_checkout"):
+            scope_snapshot = before.get(scope)
+            if not isinstance(scope_snapshot, Mapping):
+                return None
+            scope_paths = scope_snapshot.get("paths")
+            if (
+                not isinstance(scope_paths, Mapping)
+                or set(map(str, scope_paths)) != configured_paths
+                or not str(scope_snapshot.get("git_head") or "")
+            ):
+                return None
+
+        for line in self._list_process_commands():
+            if str(workspace) in line and IMPLEMENTATION_RUNNER_PROCESS_PATTERN.search(
+                line
+            ):
+                return None
+
+        after = self._implementation_protected_path_snapshot(workspace)
+        if self._implementation_protected_snapshot_errors(after):
+            return None
+        mutations = self._implementation_protected_path_mutations(before, after)
+        if not mutations:
+            return None
+        concurrent_update = self._authorized_concurrent_protected_path_update(
+            workspace_path=workspace,
+            before=before,
+            after=after,
+            mutations=mutations,
+        )
+        if not concurrent_update:
+            return None
+
+        clearance_payload = {
+            "kind": "trusted-concurrent-protected-path-update",
+            "task_id": task_id,
+            "attempt": attempt,
+            "workspace_path": str(workspace),
+            **concurrent_update,
+            "incident_latched_at": str(incident.get("latched_at") or ""),
+        }
+        clearance_id = "sha256:" + hashlib.sha256(
+            json.dumps(
+                clearance_payload,
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode("utf-8")
+        ).hexdigest()
+        receipt = {
+            "schema": (
+                "implementation-protected-path-trusted-concurrent-clearance-v1"
+            ),
+            "clearance_id": clearance_id,
+            "cleared_at": utc_now(),
+            "reason": "trusted_concurrent_protected_path_update",
+            **clearance_payload,
+        }
+        receipt_path = (
+            incident_path.parent
+            / (
+                "implementation-protected-path-trusted-clearance-"
+                f"{clearance_id.removeprefix('sha256:')[:16]}.json"
+            )
+        )
+        write_json_atomic(receipt_path, receipt)
+        try:
+            incident_path.unlink()
+        except FileNotFoundError:
+            pass
+        try:
+            active_path.unlink()
+        except FileNotFoundError:
+            pass
+        result = {
+            "cleared": True,
+            "auto": True,
+            "blocked": False,
+            "reason": receipt["reason"],
+            "clearance_id": clearance_id,
+            "receipt_path": str(receipt_path),
+            "task_id": task_id,
+            "attempt": attempt,
+            **concurrent_update,
+        }
+        self._record_event(
+            "implementation_protected_path_incident_auto_cleared",
+            result,
+        )
+        return result
+
     def _reconcile_implementation_protected_path_fence(self) -> dict[str, Any]:
         """Reconcile a crash-surviving snapshot before any queue consumption."""
 
@@ -4390,6 +4555,17 @@ class PortalImplementationDaemon:
         if incident_path.exists():
             incident = load_json_dict(incident_path)
             if isinstance(incident, Mapping):
+                trusted = (
+                    self._auto_clear_trusted_concurrent_protected_path_update(
+                        incident,
+                        incident_path=incident_path,
+                        active_path=(
+                            self._implementation_protected_active_snapshot_path()
+                        ),
+                    )
+                )
+                if trusted and trusted.get("cleared"):
+                    return trusted
                 auto = self._auto_clear_ephemeral_protected_path_deletions(
                     incident,
                     incident_path=incident_path,
