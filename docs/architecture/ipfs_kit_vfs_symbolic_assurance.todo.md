@@ -248,7 +248,7 @@ compact references and bounded spans only.
 
 ## VFS-013 Implement minimal dependency-complete call and impact slice queries
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P1
 - Track: program-graph
