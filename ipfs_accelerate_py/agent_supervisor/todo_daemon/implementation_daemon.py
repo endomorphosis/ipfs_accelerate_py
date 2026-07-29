@@ -12497,6 +12497,93 @@ class PortalImplementationDaemon:
             normalized.add(path)
         return tuple(sorted(normalized))
 
+    def _stage_declared_ignored_outputs(
+        self,
+        workspace_path: Path,
+        task: PortalTask,
+    ) -> tuple[str, ...]:
+        """Bind exact task-owned ignored files into the candidate diff.
+
+        Generated evidence commonly lives below repository-wide ignored data
+        roots.  Git otherwise omits those validated files from both proposal
+        collection and ``git add -A``, allowing worktree cleanup to discard
+        them.  Only exact declared regular files are force-added; directories,
+        symlinks, submodule contents, and paths escaping the checkout remain
+        ineligible.
+        """
+
+        try:
+            workspace_root = workspace_path.resolve(strict=True)
+        except (OSError, RuntimeError) as exc:
+            raise RuntimeError("cannot resolve implementation workspace") from exc
+
+        _symlinks, tracked_gitlinks = self._proposal_boundary_paths(
+            workspace_path
+        )
+        submodule_boundaries = {
+            path.strip("/")
+            for path in (*self.worktree_submodule_paths, *tracked_gitlinks)
+            if path.strip("/")
+        }
+        staged: list[str] = []
+        for relative in self._proposal_scope_paths(task):
+            parts = Path(relative).parts
+            if (
+                not self._repo_relative_path_safe(relative)
+                or ".git" in parts
+                or self._path_is_generated_worktree_artifact(relative)
+                or any(
+                    self._path_matches_prefix(relative, prefix)
+                    for prefix in submodule_boundaries
+                )
+            ):
+                continue
+            target = workspace_path / relative
+            if target.is_symlink() or not target.is_file():
+                continue
+            try:
+                target.resolve(strict=True).relative_to(workspace_root)
+            except (OSError, RuntimeError, ValueError):
+                continue
+
+            ignored = subprocess.run(
+                ["git", "check-ignore", "--quiet", "--", relative],
+                cwd=workspace_path,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            if ignored.returncode == 1:
+                continue
+            if ignored.returncode != 0:
+                raise RuntimeError(
+                    f"cannot determine ignored output status for {relative}"
+                )
+            add = subprocess.run(
+                ["git", "add", "-f", "--", relative],
+                cwd=workspace_path,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            if add.returncode != 0:
+                raise RuntimeError(
+                    f"cannot stage declared ignored output {relative}: "
+                    f"{add.stderr[-1000:]}"
+                )
+            staged.append(relative)
+
+        if staged:
+            self._record_event(
+                "implementation_declared_ignored_outputs_staged",
+                {
+                    "task_id": task.task_id,
+                    "workspace_path": str(workspace_path),
+                    "paths": staged,
+                },
+            )
+        return tuple(staged)
+
     def _proposal_repository_id(self, workspace_path: Path) -> str:
         """Build a stable non-secret repository identity."""
 
@@ -13471,6 +13558,7 @@ class PortalImplementationDaemon:
         collection_error = ""
         submodule_expansions: tuple[dict[str, Any], ...] = ()
         try:
+            self._stage_declared_ignored_outputs(workspace_path, task)
             entries, submodule_expansions = (
                 self._collect_proposal_candidate_diff(
                     workspace_path,
@@ -13863,6 +13951,7 @@ class PortalImplementationDaemon:
         )
         collection_error = ""
         try:
+            self._stage_declared_ignored_outputs(workspace_path, task)
             current_entries, _ = self._collect_proposal_candidate_diff(
                 workspace_path,
                 baseline_ref=baseline_ref,
@@ -14024,6 +14113,7 @@ class PortalImplementationDaemon:
         if not result.get("passed", False):
             return result
         try:
+            self._stage_declared_ignored_outputs(workspace_path, task)
             entries, _submodule_expansions = (
                 self._collect_proposal_candidate_diff(
                     workspace_path,

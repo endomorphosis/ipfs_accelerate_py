@@ -4505,7 +4505,8 @@ def test_validation_rebinds_declared_generated_output_at_fixed_point(
     _git(repo, "config", "user.name", "Test User")
     _git(repo, "config", "user.email", "test@example.invalid")
     (repo / "summary.md").write_text("base\n", encoding="utf-8")
-    _git(repo, "add", "summary.md")
+    (repo / ".gitignore").write_text("coverage.json\n", encoding="utf-8")
+    _git(repo, "add", ".gitignore", "summary.md")
     _git(repo, "commit", "-m", "base")
     baseline = _git(repo, "rev-parse", "HEAD")
     (repo / "summary.md").write_text("candidate\n", encoding="utf-8")
@@ -4568,6 +4569,25 @@ def test_validation_rebinds_declared_generated_output_at_fixed_point(
         "coverage.json",
         "summary.md",
     ]
+    assert "coverage.json" in _git(
+        repo,
+        "diff",
+        "--cached",
+        "--name-only",
+    ).splitlines()
+
+    commit_result = daemon._commit_worktree_changes_unchecked(
+        repo,
+        task,
+        1,
+        baseline_ref=baseline,
+    )
+    assert commit_result["committed"] is True
+    assert _git(
+        repo,
+        "show",
+        f"{commit_result['commit']}:coverage.json",
+    ) == '{"coverage":1}'
 
 
 def test_validation_rebind_rejects_generated_change_outside_task_scope(

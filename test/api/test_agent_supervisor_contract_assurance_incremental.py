@@ -88,13 +88,28 @@ METRICS_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/contract-assurance-refill-metrics@1"
 )
 
-REPOSITORY_ROOT = Path(__file__).resolve().parents[4]
+
+def _swissknife_superproject_root() -> Path | None:
+    candidates = (Path.cwd().resolve(), *Path(__file__).resolve().parents)
+    for candidate in candidates:
+        if (
+            candidate / "config/swissknife_symbolic_contract_scope.json"
+        ).is_file():
+            return candidate
+    return None
+
+
+REPOSITORY_ROOT = _swissknife_superproject_root()
 STATE_DIR = (
-    REPOSITORY_ROOT
+    (REPOSITORY_ROOT or Path("/__missing_swissknife_superproject__"))
     / "data/agent_supervisor/swissknife_contract_assurance/state"
 )
 PUBLISHED_INVALIDATION = STATE_DIR / "invalidation.jsonl"
 PUBLISHED_METRICS = STATE_DIR / "refill_metrics.json"
+requires_published_swissknife_evidence = pytest.mark.skipif(
+    REPOSITORY_ROOT is None,
+    reason="published evidence requires a Swissknife superproject checkout",
+)
 
 DEPENDENT_OBLIGATIONS = ("obligation:api", "obligation:consumer")
 DEPENDENT_RECEIPTS = ("receipt:api", "receipt:consumer")
@@ -1294,6 +1309,7 @@ def test_invalidation_and_refill_crash_recovery_are_idempotent(
 # ---------------------------------------------------------------------------
 
 
+@requires_published_swissknife_evidence
 def test_published_invalidation_journal_matches_recomputed_fixture() -> None:
     assert PUBLISHED_INVALIDATION.is_file()
     published = _load_jsonl(PUBLISHED_INVALIDATION)
@@ -1331,6 +1347,7 @@ def test_published_invalidation_journal_matches_recomputed_fixture() -> None:
     assert crash["indexes_equal"] is True
 
 
+@requires_published_swissknife_evidence
 def test_published_refill_metrics_match_recomputed_bounds(tmp_path: Path) -> None:
     assert PUBLISHED_METRICS.is_file()
     published = json.loads(PUBLISHED_METRICS.read_text(encoding="utf-8"))
@@ -1358,6 +1375,7 @@ def test_published_refill_metrics_match_recomputed_bounds(tmp_path: Path) -> Non
     )
 
 
+@requires_published_swissknife_evidence
 def test_published_artifacts_are_canonical_and_tamper_evident() -> None:
     rows = _load_jsonl(PUBLISHED_INVALIDATION)
     for row in rows:
