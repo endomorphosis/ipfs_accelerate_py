@@ -90,7 +90,6 @@ readonly -a PROTECTED_ARGS=(
   "--implementation-protected-path" "${OBJECTIVE_PATH}"
   "--implementation-protected-path" "${TODO_PATH}"
   "--implementation-protected-path" "${VALIDATOR_PATH}"
-  "--implementation-protected-path" "${CONTROL_PATH}"
 )
 readonly -a COMMON_ARGS=(
   "--todo-path" "${TODO_ABS}"
