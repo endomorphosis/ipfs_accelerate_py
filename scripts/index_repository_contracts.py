@@ -27,6 +27,7 @@ import re
 import shutil
 import sys
 import tempfile
+from dataclasses import replace
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
@@ -415,8 +416,6 @@ def validate_authoritative_publication_options(
         return
 
     problems: list[str] = []
-    if not bool(args.require_healthy):
-        problems.append("--require-healthy is mandatory")
     if bool(args.shadow):
         problems.append("--shadow is analysis-only")
     if bool(args.skip_extraction):
@@ -441,16 +440,33 @@ def _fsync_directory(path: Path) -> None:
         os.close(descriptor)
 
 
-def _ensure_generation_link(path: Path, target: str) -> None:
-    """Install a stable canonical symlink without replacing regular files."""
+def _ensure_generation_link(
+    path: Path,
+    target: str,
+    *,
+    legacy_targets: Sequence[str] = (),
+    legacy_payload: bytes | None = None,
+) -> None:
+    """Install a stable canonical symlink with bounded legacy migration."""
 
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     if os.path.lexists(path):
-        if not path.is_symlink() or os.readlink(path) != target:
+        if path.is_symlink():
+            current_target = os.readlink(path)
+            if current_target == target:
+                return
+            if current_target not in set(legacy_targets):
+                raise RepositoryIndexerError(
+                    f"authoritative path is not the expected generation link: {path}"
+                )
+        elif (
+            legacy_payload is None
+            or not path.is_file()
+            or path.read_bytes() != legacy_payload
+        ):
             raise RepositoryIndexerError(
                 f"authoritative path is not the expected generation link: {path}"
             )
-        return
     temporary = path.parent / (
         f".{path.name}.link-{os.getpid()}-{hashlib.sha256(target.encode()).hexdigest()[:8]}"
     )
@@ -465,6 +481,34 @@ def _ensure_generation_link(path: Path, target: str) -> None:
             pass
 
 
+def _swap_generation_pointer(
+    root: Path,
+    *,
+    pointer_name: str,
+    generation_name: str,
+) -> None:
+    """Atomically move one reviewed pointer to an immutable generation."""
+
+    pointer = root / pointer_name
+    if os.path.lexists(pointer) and not pointer.is_symlink():
+        raise RepositoryIndexerError(
+            f"{pointer_name} generation pointer is not a symlink"
+        )
+    pointer_target = f"generations/{generation_name}"
+    temporary = root / (
+        f".{pointer_name}-{os.getpid()}-{generation_name[:12]}"
+    )
+    try:
+        os.symlink(pointer_target, temporary)
+        os.replace(temporary, pointer)
+        _fsync_directory(root)
+    finally:
+        try:
+            temporary.unlink()
+        except FileNotFoundError:
+            pass
+
+
 def _publish_immutable_generation(
     *,
     root: Path,
@@ -472,8 +516,9 @@ def _publish_immutable_generation(
     repository_index_bytes: bytes,
     health_bytes: bytes,
     handoff_bytes: bytes,
+    promote_authoritative: bool,
 ) -> None:
-    """Publish one immutable generation, then atomically swap one pointer."""
+    """Publish one immutable generation and its reviewed pointer set."""
 
     if not re.fullmatch(r"[a-z0-9][a-z0-9._-]{15,127}", generation_name):
         raise RepositoryIndexerError("invalid authoritative generation name")
@@ -516,42 +561,49 @@ def _publish_immutable_generation(
                 os.replace(staging, final_generation)
                 _fsync_directory(generations)
 
-            # These links never change; only `authoritative` is swapped.
+            if promote_authoritative:
+                _swap_generation_pointer(
+                    root,
+                    pointer_name="authoritative",
+                    generation_name=generation_name,
+                )
+            _swap_generation_pointer(
+                root,
+                pointer_name="current-generation",
+                generation_name=generation_name,
+            )
+
+            # Stable consumer paths follow the newest typed candidate. The
+            # separate authoritative pointer advances only for healthy,
+            # completion-safe generations.
             _ensure_generation_link(
                 root / "baseline" / "repository-index.json",
-                "../authoritative/baseline/repository-index.json",
+                "../current-generation/baseline/repository-index.json",
+                legacy_targets=(
+                    "../authoritative/baseline/repository-index.json",
+                ),
+                legacy_payload=repository_index_bytes,
             )
             _ensure_generation_link(
                 root / "baseline" / "current.json",
-                "../authoritative/baseline/current.json",
+                "../current-generation/baseline/current.json",
+                legacy_targets=("../authoritative/baseline/current.json",),
+                legacy_payload=repository_index_bytes,
             )
             _ensure_generation_link(
                 root / "baseline" / "handoff.json",
-                "../authoritative/baseline/handoff.json",
+                "../current-generation/baseline/handoff.json",
+                legacy_targets=("../authoritative/baseline/handoff.json",),
+                legacy_payload=handoff_bytes,
             )
             _ensure_generation_link(
                 root / "analyzer_health" / "report.json",
-                "../authoritative/analyzer_health/report.json",
+                "../current-generation/analyzer_health/report.json",
+                legacy_targets=(
+                    "../authoritative/analyzer_health/report.json",
+                ),
+                legacy_payload=health_bytes,
             )
-
-            pointer = root / "authoritative"
-            if os.path.lexists(pointer) and not pointer.is_symlink():
-                raise RepositoryIndexerError(
-                    "authoritative generation pointer is not a symlink"
-                )
-            pointer_target = f"generations/{generation_name}"
-            temporary_pointer = root / (
-                f".authoritative-{os.getpid()}-{generation_name[:12]}"
-            )
-            try:
-                os.symlink(pointer_target, temporary_pointer)
-                os.replace(temporary_pointer, pointer)
-                _fsync_directory(root)
-            finally:
-                try:
-                    temporary_pointer.unlink()
-                except FileNotFoundError:
-                    pass
         finally:
             if staging.exists():
                 shutil.rmtree(staging, ignore_errors=True)
@@ -562,8 +614,8 @@ def _validated_publication_evidence(
     evidence: Mapping[str, Any] | None,
     *,
     result: RepositoryIndex,
-) -> dict[str, Any]:
-    """Validate complete deterministic extraction and snapshot freshness."""
+) -> tuple[dict[str, Any], bool]:
+    """Validate deterministic extraction, freshness, and typed blockers."""
 
     if not isinstance(evidence, Mapping):
         raise RepositoryIndexerError(
@@ -599,20 +651,35 @@ def _validated_publication_evidence(
         for item in stages
         if isinstance(item, Mapping)
     }
+    stage_blockers: list[dict[str, Any]] = []
     for required in ("repository_index", "extraction", "catalog", "publish"):
         stage = stage_by_name.get(required)
-        if (
-            stage is None
-            or str(stage.get("completeness") or "") != "complete"
-            or any(
-                str(code).startswith("withheld")
-                or str(code).endswith("_unhealthy")
-                for code in stage.get("reason_codes") or ()
+        if stage is None:
+            raise RepositoryIndexerError(
+                f"authoritative handoff is missing the {required} stage"
             )
+        completeness = str(stage.get("completeness") or "")
+        if completeness == "complete":
+            continue
+        reason_codes = [
+            str(code).strip()
+            for code in stage.get("reason_codes") or ()
+            if str(code).strip()
+        ]
+        if (
+            completeness not in {"partial", "withheld", "failed"}
+            or not reason_codes
         ):
             raise RepositoryIndexerError(
-                f"authoritative handoff requires complete {required} stage"
+                f"authoritative handoff has an untyped {required} blocker"
             )
+        stage_blockers.append(
+            {
+                "stage": required,
+                "completeness": completeness,
+                "reason_codes": reason_codes,
+            }
+        )
 
     execution = receipt.get("execution")
     if not isinstance(execution, Mapping):
@@ -630,7 +697,8 @@ def _validated_publication_evidence(
         raise RepositoryIndexerError(
             "authoritative handoff requires deterministic-symbolic execution"
         )
-    return receipt
+    receipt["typed_stage_blockers"] = stage_blockers
+    return receipt, not stage_blockers
 
 
 def publish_authoritative_handoff(
@@ -657,19 +725,10 @@ def publish_authoritative_handoff(
         raise ValueError(
             "authoritative handoff forbids non-zero LLM/provider/model calls"
         )
-    evidence = _validated_publication_evidence(
+    evidence, evidence_complete = _validated_publication_evidence(
         publication_evidence,
         result=result,
     )
-
-    if result.health.status is not AnalyzerHealthStatus.HEALTHY:
-        raise RepositoryIndexerError(
-            "authoritative handoff requires healthy analyzer status"
-        )
-    if not result.safe_for_completion_reasoning:
-        raise RepositoryIndexerError(
-            "authoritative handoff requires safe_for_completion_reasoning"
-        )
 
     rows = [row.to_dict() for row in result.rows]
     health_report = assess_polyglot_ast_health(
@@ -682,9 +741,42 @@ def publish_authoritative_handoff(
             Path(result.snapshot.repository_root).parent,
         ],
     )
-    if not health_report.safe_for_completion_reasoning:
+    aggregate_reasons = {
+        *health_report.reasons,
+        *result.health.reasons,
+        *(
+            f"publication_stage_blocked:{blocker['stage']}:{reason}"
+            for blocker in evidence.get("typed_stage_blockers") or ()
+            for reason in blocker.get("reason_codes") or ()
+        ),
+    }
+    aggregate_status = health_report.status
+    if (
+        AnalyzerHealthStatus.UNHEALTHY
+        in {health_report.status, result.health.status}
+    ):
+        aggregate_status = AnalyzerHealthStatus.UNHEALTHY
+    elif (
+        AnalyzerHealthStatus.PARTIAL
+        in {health_report.status, result.health.status}
+        or not evidence_complete
+    ):
+        aggregate_status = AnalyzerHealthStatus.PARTIAL
+    health_report = replace(
+        health_report,
+        status=aggregate_status,
+        reasons=tuple(sorted(aggregate_reasons)),
+    )
+    if (
+        not health_report.safe_for_completion_reasoning
+        and not health_report.reasons
+    ):
         raise RepositoryIndexerError(
-            "authoritative handoff requires healthy polyglot AST canaries"
+            "authoritative handoff has an untyped polyglot AST blocker"
+        )
+    if not result.safe_for_completion_reasoning and not result.health.reasons:
+        raise RepositoryIndexerError(
+            "authoritative handoff has an untyped repository health blocker"
         )
 
     # Prefer the indexer's exact AnalyzerHealthReport for completion gates while
@@ -719,6 +811,12 @@ def publish_authoritative_handoff(
         if "compiler_unavailable"
         in f"{row.parser_reason} {row.reason_code}".casefold()
     ]
+    promotion_eligible = bool(
+        evidence_complete
+        and result.health.status is AnalyzerHealthStatus.HEALTHY
+        and result.safe_for_completion_reasoning
+        and health_report.safe_for_completion_reasoning
+    )
 
     root = Path(handoff_root)
     baseline_dir = root / "baseline"
@@ -761,7 +859,12 @@ def publish_authoritative_handoff(
         "safe_for_completion_reasoning": bool(
             result.safe_for_completion_reasoning
             and health_report.safe_for_completion_reasoning
+            and evidence_complete
         ),
+        "publication_state": (
+            "authoritative" if promotion_eligible else "typed_blocker"
+        ),
+        "promoted_authoritative": promotion_eligible,
         "analyzer_health": analyzer_health,
         "polyglot_health_status": polyglot_health.get("status"),
         "polyglot_health_reasons": list(polyglot_health.get("reasons") or ()),
@@ -824,8 +927,18 @@ def publish_authoritative_handoff(
         )
         handoff["polyglot_health_digest"] = health_identity.get("digest", "")
         handoff["polyglot_health_cid"] = health_identity.get("cid", "")
+        generation_basis = (
+            json.dumps(
+                handoff,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+                allow_nan=False,
+            ).encode("utf-8")
+            + b"\n"
+        )
         generation_name = "sha256-" + hashlib.sha256(
-            index_bytes + b"\0" + health_bytes
+            index_bytes + b"\0" + health_bytes + b"\0" + generation_basis
         ).hexdigest()
         handoff["generation"] = generation_name
         handoff["published"] = True
@@ -848,6 +961,7 @@ def publish_authoritative_handoff(
         repository_index_bytes=index_bytes,
         health_bytes=health_bytes,
         handoff_bytes=handoff_bytes,
+        promote_authoritative=promotion_eligible,
     )
 
     # Cross-check that the durable roots still bind the exact staged payloads.

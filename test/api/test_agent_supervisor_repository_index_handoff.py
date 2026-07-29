@@ -428,6 +428,8 @@ def test_publish_authoritative_handoff_binds_roots_and_zero_llm(
     assert handoff["coverage_root"] == "fixture-coverage-root"
     assert handoff["health_root"] not in {"healthy", "partial", "unhealthy"}
     assert handoff["generation"].startswith("sha256-")
+    assert handoff["publication_state"] == "authoritative"
+    assert handoff["promoted_authoritative"] is True
 
     repository_index = json.loads(
         (handoff_root / "baseline" / "repository-index.json").read_text(
@@ -454,6 +456,7 @@ def test_publish_authoritative_handoff_binds_roots_and_zero_llm(
     assert health["status"] == "healthy"
     assert health["safe_for_completion_reasoning"] is True
     assert (handoff_root / "authoritative").is_symlink()
+    assert (handoff_root / "current-generation").is_symlink()
     assert (
         handoff_root / "baseline" / "repository-index.json"
     ).is_symlink()
@@ -523,6 +526,34 @@ def test_publish_handoff_rejects_nonzero_llm_counts(tmp_path: Path) -> None:
 
 
 def test_unhealthy_handoff_preserves_prior_authority(tmp_path: Path) -> None:
+    healthy_files = {"ok.py": b"X = 1\n"}
+    healthy_snapshot = _snapshot(
+        tmp_path,
+        [
+            _disposition(
+                "ok.py",
+                CoverageKind.SEMANTIC_AST,
+                healthy_files["ok.py"],
+            )
+        ],
+    )
+    healthy_result = RepositoryIndexer(tmp_path / "healthy-idx").build(
+        healthy_snapshot,
+        source_loader=_loader(healthy_files),
+    )
+    handoff_root = tmp_path / "sca"
+    publish_authoritative_handoff(
+        healthy_result,
+        handoff_root=handoff_root,
+        provider=_authoritative_provider(),
+        typescript_path=None,
+        typescript_version="",
+        publication_evidence=_publication_evidence(healthy_result),
+    )
+    authoritative_generation = (
+        handoff_root / "authoritative"
+    ).readlink()
+
     files = {"broken.py": b"def broken(\n"}
     snapshot = _snapshot(
         tmp_path,
@@ -544,23 +575,78 @@ def test_unhealthy_handoff_preserves_prior_authority(tmp_path: Path) -> None:
     ).build(snapshot, source_loader=_loader(files))
     assert result.health.status is AnalyzerHealthStatus.UNHEALTHY
 
-    handoff_root = tmp_path / "sca"
-    current = handoff_root / "baseline" / "current.json"
-    current.parent.mkdir(parents=True)
-    current.write_bytes(b'{"index_id":"prior"}\n')
-    with pytest.raises(
-        RepositoryIndexerError,
-        match="requires healthy analyzer status",
-    ):
-        publish_authoritative_handoff(
-            result,
-            handoff_root=handoff_root,
-            provider=_authoritative_provider(),
-            typescript_path=None,
-            typescript_version="",
-            publication_evidence=_publication_evidence(result),
+    handoff = publish_authoritative_handoff(
+        result,
+        handoff_root=handoff_root,
+        provider=_authoritative_provider(),
+        typescript_path=None,
+        typescript_version="",
+        publication_evidence=_publication_evidence(result),
+    )
+
+    current = json.loads(
+        (handoff_root / "baseline" / "current.json").read_text(
+            encoding="utf-8"
         )
-    assert current.read_bytes() == b'{"index_id":"prior"}\n'
+    )
+    health = json.loads(
+        (handoff_root / "analyzer_health" / "report.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert current["index_id"] == result.index_id
+    assert handoff["publication_state"] == "typed_blocker"
+    assert handoff["promoted_authoritative"] is False
+    assert handoff["safe_for_completion_reasoning"] is False
+    assert health["safe_for_completion_reasoning"] is False
+    assert health["completion_blocker"] is True
+    assert (handoff_root / "authoritative").readlink() == authoritative_generation
+    assert (
+        handoff_root / "current-generation"
+    ).readlink() != authoritative_generation
+
+
+def test_typed_stage_blocker_publishes_candidate_without_authority(
+    tmp_path: Path,
+) -> None:
+    files = {"ok.py": b"X = 1\n"}
+    snapshot = _snapshot(
+        tmp_path,
+        [_disposition("ok.py", CoverageKind.SEMANTIC_AST, files["ok.py"])],
+    )
+    result = RepositoryIndexer(tmp_path / "idx").build(
+        snapshot,
+        source_loader=_loader(files),
+    )
+    evidence = _publication_evidence(result)
+    evidence["stages"][0] = {
+        "name": "repository_index",
+        "completeness": "partial",
+        "reason_codes": ["parser_failure_budget_exceeded"],
+        "root_id": result.index_id,
+    }
+
+    handoff_root = tmp_path / "sca"
+    handoff = publish_authoritative_handoff(
+        result,
+        handoff_root=handoff_root,
+        provider=_authoritative_provider(),
+        typescript_path=None,
+        typescript_version="",
+        publication_evidence=evidence,
+    )
+
+    assert handoff["publication_state"] == "typed_blocker"
+    assert handoff["promoted_authoritative"] is False
+    assert handoff["safe_for_completion_reasoning"] is False
+    assert handoff["publication_evidence"]["typed_stage_blockers"] == [
+        {
+            "stage": "repository_index",
+            "completeness": "partial",
+            "reason_codes": ["parser_failure_budget_exceeded"],
+        }
+    ]
+    assert (handoff_root / "current-generation").is_symlink()
     assert not (handoff_root / "authoritative").exists()
 
 
@@ -657,7 +743,6 @@ def test_cli_rejects_analysis_only_handoff_publication(tmp_path: Path) -> None:
     )
     assert completed.returncode == 2
     assert "authoritative handoff mode rejected" in completed.stderr
-    assert "--require-healthy is mandatory" in completed.stderr
     assert "--shadow is analysis-only" in completed.stderr
     assert "--skip-extraction cannot publish" in completed.stderr
     assert not (handoff_root / "baseline" / "current.json").exists()
@@ -703,12 +788,24 @@ def test_published_sca_artifacts_agree_when_present() -> None:
         in f"{row.get('parser_reason', '')} {row.get('reason_code', '')}".casefold()
     ]
     assert unavailable == []
-    assert health.get("status") == "healthy"
-    assert health.get("safe_for_completion_reasoning") is True
-    assert health.get("completion_blocker") is False
+    assert health.get("status") in {"healthy", "partial", "unhealthy"}
+    assert isinstance(health.get("safe_for_completion_reasoning"), bool)
+    assert isinstance(health.get("completion_blocker"), bool)
     assert health.get("schema") == POLYGLOT_AST_HEALTH_SCHEMA
     assert health.get("evidence_id") == POLYGLOT_AST_HEALTH_EVIDENCE
-    assert (_SCA_DATA / "authoritative").is_symlink()
+    assert (_SCA_DATA / "current-generation").is_symlink()
+    handoff = json.loads(
+        (_SCA_DATA / "baseline" / "handoff.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    if handoff["promoted_authoritative"]:
+        assert handoff["publication_state"] == "authoritative"
+        assert health["safe_for_completion_reasoning"] is True
+        assert (_SCA_DATA / "authoritative").is_symlink()
+    else:
+        assert handoff["publication_state"] == "typed_blocker"
+        assert handoff["safe_for_completion_reasoning"] is False
     # Zero LLM/provider/model is a handoff invariant for published artifacts.
     for key in ("llm_call_count", "provider_call_count", "model_call_count"):
         if key in health:
