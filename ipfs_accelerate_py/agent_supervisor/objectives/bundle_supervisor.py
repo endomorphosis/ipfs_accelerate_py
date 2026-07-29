@@ -26,7 +26,10 @@ from ..runtime.artifact_store import (
     read_artifact_fields,
     write_scheduler_manifest_artifact,
 )
-from ..core.conflict_graph import materialize_task_conflict_graph
+from ..core.conflict_graph import (
+    materialize_task_conflict_graph,
+    rehydrate_task_work_contract_projection,
+)
 from .bundle_optimizer import BundleOptimizationPolicy, optimize_task_bundles
 from ..merge.lease_coordination import (
     DistributedLaneDispatch,
@@ -2031,6 +2034,155 @@ def _bundle_conflict_task(
     }
 
 
+def _repo_path_is_within(path: str, root: str) -> bool:
+    """Return whether one normalized repository path is at or below another."""
+
+    normalized_path = str(path or "").strip().strip("/")
+    normalized_root = str(root or "").strip().strip("/")
+    return bool(
+        normalized_path
+        and normalized_root
+        and (
+            normalized_path == normalized_root
+            or normalized_path.startswith(f"{normalized_root}/")
+        )
+    )
+
+
+def _mutation_paths(conflict_task: Mapping[str, Any]) -> list[str]:
+    """Return the precise paths an execution unit may mutate."""
+
+    paths: list[str] = []
+    for key in ("files", "changed_paths", "generated_artifacts"):
+        paths.extend(_string_list(conflict_task.get(key)))
+    return list(dict.fromkeys(path for path in paths if path))
+
+
+def _paths_overlap(left: Sequence[str], right: Sequence[str]) -> bool:
+    """Return whether either precise mutation surface contains the other."""
+
+    return any(
+        _repo_path_is_within(left_path, right_path)
+        or _repo_path_is_within(right_path, left_path)
+        for left_path in left
+        for right_path in right
+    )
+
+
+def _recorded_pair_conflict(
+    left_cid: str,
+    right_cid: str,
+    *,
+    inputs: Mapping[str, Any],
+) -> bool:
+    """Keep learned pair conflicts authoritative over automatic concurrency."""
+
+    pair_key = "\0".join(sorted((left_cid, right_cid)))
+    history = inputs.get("history")
+    if isinstance(history, Mapping):
+        pair_weights = history.get("pair_weights")
+        if isinstance(pair_weights, Mapping):
+            try:
+                if float(pair_weights.get(pair_key) or 0.0) > 0:
+                    return True
+            except (TypeError, ValueError):
+                return True
+
+    receipts = inputs.get("conflict_receipts")
+    if isinstance(receipts, Mapping):
+        receipts = [receipts]
+    for receipt in receipts or ():
+        if not isinstance(receipt, Mapping):
+            continue
+        identities = _string_list(receipt.get("task_cids") or receipt.get("tasks"))
+        if not identities:
+            identities = [
+                str(
+                    receipt.get("left_task_cid")
+                    or receipt.get("source_task_cid")
+                    or receipt.get("task_cid")
+                    or ""
+                ),
+                str(
+                    receipt.get("right_task_cid")
+                    or receipt.get("target_task_cid")
+                    or receipt.get("other_task_cid")
+                    or ""
+                ),
+            ]
+        if {identity for identity in identities if identity} == {left_cid, right_cid}:
+            return True
+    return False
+
+
+def _managed_submodule_concurrency_overrides(
+    conflict_tasks: Sequence[dict[str, Any]],
+    *,
+    managed_submodule_paths: Sequence[str],
+    inputs: Mapping[str, Any],
+) -> list[tuple[str, str]]:
+    """Allow disjoint, precisely scoped work in isolated managed submodules.
+
+    A shared gitlink is normally a conservative conflict surface.  When the
+    operator explicitly opts in and the supervisor already provisions an
+    isolated worktree for that submodule, the gitlink alone need not serialize
+    two tasks.  Exact path, interface, global-symbol, and learned conflicts
+    remain blocking.
+    """
+
+    managed = {
+        str(path).strip().strip("/")
+        for path in managed_submodule_paths
+        if str(path).strip().strip("/")
+    }
+    if not managed:
+        return []
+
+    overrides: list[tuple[str, str]] = []
+    for index, left in enumerate(conflict_tasks):
+        for right in conflict_tasks[index + 1 :]:
+            left_cid = str(left.get("task_cid") or left.get("task_id") or "")
+            right_cid = str(right.get("task_cid") or right.get("task_id") or "")
+            if not left_cid or not right_cid:
+                continue
+            shared_submodules = (
+                set(_string_list(left.get("submodules")))
+                & set(_string_list(right.get("submodules")))
+            )
+            if not shared_submodules or not shared_submodules.issubset(managed):
+                continue
+
+            left_paths = _mutation_paths(left)
+            right_paths = _mutation_paths(right)
+            if not left_paths or not right_paths or _paths_overlap(left_paths, right_paths):
+                continue
+            if set(_string_list(left.get("interfaces"))) & set(
+                _string_list(right.get("interfaces"))
+            ):
+                continue
+            if set(_string_list(left.get("global_ast_symbols"))) & set(
+                _string_list(right.get("global_ast_symbols"))
+            ):
+                continue
+            if _recorded_pair_conflict(left_cid, right_cid, inputs=inputs):
+                continue
+
+            precise = True
+            for submodule in shared_submodules:
+                for paths in (left_paths, right_paths):
+                    if submodule in paths or not any(
+                        _repo_path_is_within(path, submodule) and path != submodule
+                        for path in paths
+                    ):
+                        precise = False
+                        break
+                if not precise:
+                    break
+            if precise:
+                overrides.append((left_cid, right_cid))
+    return overrides
+
+
 def _excluded_bundle_keys(bundle_index_path: Path) -> set[str]:
     """Return execution units retained only as dependency metadata."""
 
@@ -2088,6 +2240,8 @@ def _bundle_conflict_annotations(
     bundle_index_path: Path,
     repo_root: Path,
     task_prefix: str,
+    managed_submodule_paths: Sequence[str] = (),
+    allow_disjoint_submodule_concurrency: bool = False,
 ) -> dict[str, dict[str, Any]]:
     """Return graph color, surface, edges, and reasons keyed by bundle."""
 
@@ -2228,6 +2382,22 @@ def _bundle_conflict_annotations(
             else:
                 translated_overrides.append(override)
         inputs["concurrency_overrides"] = translated_overrides
+    if allow_disjoint_submodule_concurrency:
+        automatic_overrides = _managed_submodule_concurrency_overrides(
+            conflict_tasks,
+            managed_submodule_paths=managed_submodule_paths,
+            inputs=inputs,
+        )
+        if automatic_overrides:
+            existing_overrides = inputs.get("concurrency_overrides")
+            if isinstance(existing_overrides, (list, tuple, set, frozenset)):
+                combined_overrides = list(existing_overrides)
+            elif existing_overrides:
+                combined_overrides = [existing_overrides]
+            else:
+                combined_overrides = []
+            combined_overrides.extend(automatic_overrides)
+            inputs["concurrency_overrides"] = combined_overrides
     graph = materialize_task_conflict_graph(
         conflict_tasks,
         repo_root=repo_root,
@@ -2523,7 +2693,7 @@ def optimize_bundle_payloads(
 
         normalized: list[dict[str, Any]] = []
         for task in live_tasks:
-            member = dict(task)
+            member = rehydrate_task_work_contract_projection(task)
             for key in (
                 "goal_id",
                 "merge_family",
@@ -2700,6 +2870,7 @@ def plan_bundle_lanes(
     generated_dirty_repair_stale_lock_seconds: float | None = None,
     generated_dirty_repair_paths: Sequence[Path | str] = (),
     worktree_submodule_paths: Sequence[str] = (),
+    allow_disjoint_submodule_concurrency: bool = False,
     log_level: str = "INFO",
     max_lanes: int | None = None,
     completion_receipts: Mapping[str, Any] | None = None,
@@ -2751,6 +2922,8 @@ def plan_bundle_lanes(
         bundle_index_path=bundle_index_path,
         repo_root=repo_root,
         task_prefix=task_prefix,
+        managed_submodule_paths=worktree_submodule_paths,
+        allow_disjoint_submodule_concurrency=allow_disjoint_submodule_concurrency,
     )
     for payload in bundle_payloads:
         bundle_key = str(payload.get("bundle_key") or "objective/general")
@@ -3688,6 +3861,7 @@ class DynamicBundleScheduler:
                 "generated_dirty_repair_max_paths", "generated_dirty_repair_stale_lock_seconds",
                 "generated_dirty_repair_paths",
                 "worktree_submodule_paths", "log_level",
+                "allow_disjoint_submodule_concurrency",
                 "optimize_bundles", "bundle_optimization_policy",
             }
             options = {key: value for key, value in self.lane_options.items() if key in allowed}
@@ -5100,6 +5274,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default=[],
         help="Repeatable nested submodule path to prepare, commit, merge, and clean in every lane.",
     )
+    parser.add_argument(
+        "--allow-disjoint-submodule-concurrency",
+        action="store_true",
+        help=(
+            "Allow tasks with disjoint precise paths to run concurrently inside "
+            "submodules configured by --worktree-submodule-path. Exact path, "
+            "interface, global-symbol, and learned conflicts still serialize."
+        ),
+    )
     parser.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
     parser.add_argument("--coordination-path", type=Path, default=None)
     parser.add_argument("--claimant-did", default="did:web:ipfs-accelerate.local")
@@ -5159,6 +5342,9 @@ def run_bundle_supervisor(args: argparse.Namespace) -> dict[str, Any]:
         generated_dirty_repair_stale_lock_seconds=args.generated_dirty_stale_lock_seconds,
         generated_dirty_repair_paths=tuple(args.generated_dirty_path or ()),
         worktree_submodule_paths=tuple(args.worktree_submodule_path or ()),
+        allow_disjoint_submodule_concurrency=bool(
+            getattr(args, "allow_disjoint_submodule_concurrency", False)
+        ),
         log_level=args.log_level,
     )
     if args.start:
