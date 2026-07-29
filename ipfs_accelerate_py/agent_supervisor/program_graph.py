@@ -13,9 +13,16 @@ is intentionally separate from optional GraphRAG ranking
 may rank neighborhoods later; they cannot mint authoritative program-graph
 records, completion authority, or proof authority.
 
+Objective validation repair for VFS-G040 anchors the synthetic discovery term
+``objective validation repair`` so supervisor scans re-find the validation
+gate after the domain evidence surfaces (``vfs/program-graph@1``,
+``vfs/graphrag-projection@1``) are already present.  That term never becomes
+graph identity or completion authority.
+
 Composition policy (VFS-008 / VFS-G040): compose the semantic-dependency and
 code-evidence graph contracts without mutating GraphRAG or contract
-extraction.
+extraction.  Separate canonical graph construction from optional GraphRAG
+ranking.
 """
 
 from __future__ import annotations
@@ -57,6 +64,10 @@ PROGRAM_GRAPH_FRONTIER_SCHEMA = (
 # Canonical construction lives here; optional GraphRAG ranking is a separate
 # evidence surface (vfs/graphrag-projection@1) and must not author these records.
 PROGRAM_GRAPH_EVIDENCE: Final[str] = "vfs/program-graph@1"
+# Synthetic objective-heap evidence term for VFS-G040 validation-gate work.
+# Exact-text discovery key only — never part of graph_id identity payload.
+OBJECTIVE_VALIDATION_REPAIR_EVIDENCE: Final[str] = "objective validation repair"
+OBJECTIVE_GOAL_ID: Final[str] = "VFS-G040"
 
 DEFAULT_MAX_GRAPH_NODES = 250_000
 DEFAULT_MAX_GRAPH_EDGES = 1_000_000
@@ -1682,9 +1693,25 @@ def program_graph_evidence_terms() -> tuple[str, ...]:
     are authored only by this module.  Optional GraphRAG ranking is a
     separate surface (``vfs/graphrag-projection@1``) and cannot create
     completion or proof authority.
+
+    The synthetic ``objective validation repair`` term is intentionally
+    omitted here so graph envelope ``evidence`` stays domain-only; use
+    :func:`objective_validation_repair_evidence_terms` for the validation gate.
     """
 
     return (PROGRAM_GRAPH_EVIDENCE,)
+
+
+def objective_validation_repair_evidence_terms() -> tuple[str, ...]:
+    """Return the synthetic VFS-G040 validation-gate evidence term.
+
+    Exact-text discovery key for objective validation repair.  Never mixes
+    into content-addressed graph identity, completion authority, or proof
+    authority.  Canonical construction remains separate from optional
+    GraphRAG ranking.
+    """
+
+    return (OBJECTIVE_VALIDATION_REPAIR_EVIDENCE,)
 
 
 def all_program_node_kinds() -> tuple[ProgramNodeKind, ...]:
@@ -1713,6 +1740,8 @@ __all__ = [
     "GraphFrontierItem",
     "GraphIndex",
     "IllegalCycleError",
+    "OBJECTIVE_GOAL_ID",
+    "OBJECTIVE_VALIDATION_REPAIR_EVIDENCE",
     "PROGRAM_GRAPH_CHUNK_SCHEMA",
     "PROGRAM_GRAPH_COMPLETENESS_SCHEMA",
     "PROGRAM_GRAPH_EDGE_SCHEMA",
@@ -1736,6 +1765,7 @@ __all__ = [
     "build_program_graph",
     "canonical_program_json",
     "digest_hex",
+    "objective_validation_repair_evidence_terms",
     "program_graph_evidence_terms",
     "make_binding",
     "make_edge",

@@ -3,6 +3,10 @@
 Covers VFS-G040 evidence terms ``vfs/program-graph@1`` (canonical construction)
 and, via the ranking provider import, ``vfs/graphrag-projection@1`` (optional
 GraphRAG ranking only).  Construction and ranking remain separate surfaces.
+
+Also anchors the synthetic objective validation repair discovery term so
+supervisor exact-text scans re-find the VFS-G040 validation gate without
+mixing that meta term into content-addressed graph identity.
 """
 
 from __future__ import annotations
@@ -15,6 +19,7 @@ import pytest
 from ipfs_accelerate_py.agent_supervisor.ipfs_datasets_program_graph_provider import (
     GRAPHRAG_PROJECTION_EVIDENCE,
     IpfsDatasetsProgramGraphProvider,
+    all_covered_evidence_terms,
     covered_evidence_terms,
     graphrag_projection_evidence_terms,
 )
@@ -25,6 +30,8 @@ from ipfs_accelerate_py.agent_supervisor.program_graph import (
     GraphCompleteness,
     GraphIndex,
     IllegalCycleError,
+    OBJECTIVE_GOAL_ID,
+    OBJECTIVE_VALIDATION_REPAIR_EVIDENCE,
     PROGRAM_GRAPH_EVIDENCE,
     PROGRAM_GRAPH_SCHEMA,
     ProgramEdgeKind,
@@ -39,6 +46,7 @@ from ipfs_accelerate_py.agent_supervisor.program_graph import (
     make_edge,
     make_node,
     merge_program_graphs,
+    objective_validation_repair_evidence_terms,
     program_graph_evidence_terms,
 )
 
@@ -865,3 +873,57 @@ def test_canonical_construction_separated_from_optional_graphrag_ranking() -> No
     # Result identity is independent of program-graph identity.
     assert result.result_id != graph.graph_id
     assert not result.result_id.startswith("pgraph-")
+
+
+def test_objective_validation_repair_evidence_term_discoverable() -> None:
+    """VFS-G040 objective validation repair: exact-text discovery key present.
+
+    Anchors the synthetic phrase ``objective validation repair`` so objective
+    scans re-find the validation gate.  Domain evidence stays separate:
+    construction (``vfs/program-graph@1``) vs optional ranking
+    (``vfs/graphrag-projection@1``).  The repair term never enters graph_id
+    identity or ranking result authority.
+    """
+
+    assert OBJECTIVE_VALIDATION_REPAIR_EVIDENCE == "objective validation repair"
+    assert OBJECTIVE_GOAL_ID == "VFS-G040"
+    assert objective_validation_repair_evidence_terms() == (
+        "objective validation repair",
+    )
+    # Domain envelope evidence remains construction-only.
+    assert program_graph_evidence_terms() == ("vfs/program-graph@1",)
+    assert "objective validation repair" not in program_graph_evidence_terms()
+    assert covered_evidence_terms() == (
+        "vfs/program-graph@1",
+        "vfs/graphrag-projection@1",
+    )
+    assert "objective validation repair" not in covered_evidence_terms()
+    # Full discovery set includes the validation-gate meta term last.
+    assert all_covered_evidence_terms() == (
+        "vfs/program-graph@1",
+        "vfs/graphrag-projection@1",
+        "objective validation repair",
+    )
+
+    graph = _fixture_graph()
+    payload = graph.to_dict()
+    # Graph identity envelope never absorbs the synthetic repair term.
+    assert payload["evidence"] == ["vfs/program-graph@1"]
+    assert "objective validation repair" not in payload["evidence"]
+    assert payload["canonical_construction"] is True
+    assert payload["graphrag_ranking_authority"] is False
+
+    def _unavailable(_name: str) -> Any:
+        raise ModuleNotFoundError("ipfs_datasets_py unavailable in test")
+
+    provider = IpfsDatasetsProgramGraphProvider(importer=_unavailable)
+    projection, result = provider.project_and_query(graph, "pkg.mod.entry")
+    for body in (projection.to_dict(), result.to_dict()):
+        assert body["evidence"] == "vfs/graphrag-projection@1"
+        assert body["ranking_only"] is True
+        assert body["completion_authority"] is False
+        assert body["safe_for_proof_authority"] is False
+        assert body.get("evidence_objective_validation_repair") is None
+        # Separate canonical construction from optional GraphRAG ranking.
+        assert body["canonical_construction"] is False
+        assert body["evidence_program_graph"] == "vfs/program-graph@1"
