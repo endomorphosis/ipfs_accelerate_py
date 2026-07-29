@@ -522,7 +522,7 @@ task IDs on this board.
 
 ## RPR-016 Reject stale or unproved targets before provider invocation
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
