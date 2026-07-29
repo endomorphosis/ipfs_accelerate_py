@@ -22,14 +22,18 @@ from ..merge.checkout_lock import (
     BACKLOG_REFINERY_AUTHOR_EMAIL,
     CheckoutMutationLease,
     GENERATED_PROTECTED_BOARD_COMMIT_MARKER,
+    adopt_inactive_checkout_mutation_lease,
     acquire_checkout_mutation_lease as acquire_atomic_checkout_mutation_lease,
     checkout_lock_metadata,
     checkout_lock_owner_is_active,
     checkout_mutation_lock_path,
     generated_protected_board_commit_subject,
+    read_checkout_mutation_lease,
     release_checkout_mutation_lease,
     serialized_lock_update,
+    update_checkout_mutation_lease,
 )
+from ..proof.formal_verification_contracts import content_identity
 from ..runtime.event_log import append_jsonl_event, repair_jsonl_event_log, unique_backup_path
 from .implementation_supervisor_runner import (
     persist_goal_completion_projection,
@@ -1425,6 +1429,22 @@ class PortalImplementationSupervisor:
         *,
         include_refill: bool = True,
     ) -> dict[str, Any]:
+        # A producer can retain the checkout lease only when its protected
+        # outputs could not be proven clean.  Resolve that state before any
+        # other maintenance callback is allowed to mutate repository state.
+        update_maintenance_phase("retained_generated_checkout_recovery")
+        retained_generated_checkout_recovery = (
+            self._recover_retained_generated_checkout_lease()
+        )
+        if retained_generated_checkout_recovery.get("retained_lease"):
+            return {
+                "stuck": False,
+                "maintenance_blocked": True,
+                "reason": "checkout_mutation_protected_recovery_required",
+                "retained_generated_checkout_recovery": (
+                    retained_generated_checkout_recovery
+                ),
+            }
         update_maintenance_phase("event_log_repair")
         event_log_repair = self.ensure_event_log_file()
         update_maintenance_phase("state_file_repair")
@@ -1439,6 +1459,9 @@ class PortalImplementationSupervisor:
                 "event_log_repair": event_log_repair,
                 "state_file_repair": state_file_repair,
                 "protected_path_guard": protected_path_guard,
+                "retained_generated_checkout_recovery": (
+                    retained_generated_checkout_recovery
+                ),
             }
         update_maintenance_phase("stale_worktree_detection")
         stale_worktree_detection = self.detect_stale_worktrees()
@@ -1568,6 +1591,9 @@ class PortalImplementationSupervisor:
                 "worktree_reconciliation": worktree_reconciliation,
                 "worktree_cleanup": worktree_cleanup,
                 "guardrail_unblock_count": len(guardrail_releases),
+                "retained_generated_checkout_recovery": (
+                    retained_generated_checkout_recovery
+                ),
             }
         update_maintenance_phase("retry_dependency_guardrails")
         retry_budget_findings = self.record_retry_budget_guardrails()
@@ -1807,6 +1833,9 @@ class PortalImplementationSupervisor:
             "post_refill_generated_dirty_repair": post_refill_generated_dirty_repair,
             "worktree_reconciliation": worktree_reconciliation,
             "worktree_cleanup": worktree_cleanup,
+            "retained_generated_checkout_recovery": (
+                retained_generated_checkout_recovery
+            ),
         }
 
     def run_forever(self) -> None:
@@ -2065,10 +2094,24 @@ class PortalImplementationSupervisor:
         """Resolve or abort an interrupted merge in the shared repository checkout."""
 
         repo_root = self.config.repo_root
-        merge_head = self._git_merge_head(repo_root)
-        unmerged_paths = self._git_unmerged_paths(repo_root)
-        if not merge_head and not unmerged_paths:
-            return {"attempted": False, "repaired": False, "reason": "clean", "path": str(repo_root)}
+        merge_head_query = self._git_merge_head_query(repo_root)
+        unmerged_paths_query = self._git_unmerged_paths_query(repo_root)
+        merge_head = str(merge_head_query.get("merge_head") or "")
+        unmerged_paths = list(
+            unmerged_paths_query.get("unmerged_paths") or ()
+        )
+        if (
+            merge_head_query.get("ok")
+            and unmerged_paths_query.get("ok")
+            and not merge_head
+            and not unmerged_paths
+        ):
+            return {
+                "attempted": False,
+                "repaired": False,
+                "reason": "clean",
+                "path": str(repo_root),
+            }
 
         lock_path = self._repo_merge_lock_path()
         lock_metadata = self._supervisor_checkout_lock_metadata(
@@ -2088,6 +2131,8 @@ class PortalImplementationSupervisor:
                 "merge_in_progress": bool(merge_head),
                 "merge_head": merge_head,
                 "initial_unmerged_paths": unmerged_paths,
+                "initial_merge_head_query": merge_head_query,
+                "initial_unmerged_paths_query": unmerged_paths_query,
                 "status_short": self._git_status_short(repo_root),
                 "reason": f"checkout_mutation_{lock_reason}",
                 "lock_path": str(lock_path),
@@ -2104,8 +2149,28 @@ class PortalImplementationSupervisor:
             # may finish or change the merge before this supervisor acquires
             # the checkout lease, so all repair decisions must use a fresh
             # state sampled while the checkout is exclusively owned.
-            locked_merge_head = self._git_merge_head(repo_root)
-            locked_unmerged_paths = self._git_unmerged_paths(repo_root)
+            merge_head_query = self._git_merge_head_query(repo_root)
+            unmerged_paths_query = self._git_unmerged_paths_query(repo_root)
+            if not merge_head_query.get("ok") or not unmerged_paths_query.get(
+                "ok"
+            ):
+                result = {
+                    "attempted": True,
+                    "repaired": False,
+                    "reason": "main_checkout_merge_state_refresh_failed",
+                    "path": str(repo_root),
+                    "merge_head_query": merge_head_query,
+                    "unmerged_paths_query": unmerged_paths_query,
+                }
+                self._record_event(
+                    "main_checkout_merge_state_repair_deferred",
+                    result,
+                )
+                return result
+            locked_merge_head = str(merge_head_query.get("merge_head") or "")
+            locked_unmerged_paths = list(
+                unmerged_paths_query.get("unmerged_paths") or ()
+            )
             if not locked_merge_head and not locked_unmerged_paths:
                 return {
                     "attempted": False,
@@ -2368,40 +2433,49 @@ class PortalImplementationSupervisor:
             return callback()
         current_lease = self._current_supervisor_checkout_lease()
         if current_lease is not None:
-            # A protected refill holds the same repository checkout lease
-            # across generation and its nested generated-dirty commit.
-            result = callback()
-            if (
-                operation == "generated_dirty_repair"
-                and bool(
+            depth = self._supervisor_checkout_transaction_depth()
+            retained = bool(
+                getattr(
+                    self._checkout_mutation_context,
+                    "retain_until_protected_clean",
+                    False,
+                )
+            )
+            if depth <= 0:
+                retained_producer = str(
                     getattr(
                         self._checkout_mutation_context,
-                        "retain_until_protected_clean",
-                        False,
+                        "retained_producer",
+                        "",
+                    )
+                    or ""
+                )
+                recovery_allowed = bool(
+                    retained
+                    and (
+                        operation == "generated_dirty_repair"
+                        or (retained_producer and producer == retained_producer)
                     )
                 )
-            ):
-                release_guard = getattr(
-                    self._checkout_mutation_context,
-                    "generated_protected_release_guard",
-                    None,
+                if not recovery_allowed:
+                    raise RuntimeError(
+                        "checkout_mutation_protected_recovery_required"
+                    )
+                return self._run_retained_generated_checkout_recovery(
+                    current_lease,
+                    operation=operation,
+                    producer=producer,
+                    callback=callback,
                 )
-                release_verdict = self._generated_protected_release_guard(
-                    release_guard,
-                )
-                if release_verdict.get("release_allowed"):
-                    self._checkout_mutation_context.retain_until_protected_clean = (
-                        False
-                    )
-                    self._checkout_mutation_context.generated_protected_release_guard = (
-                        None
-                    )
-                    self._checkout_mutation_context.lease = None
-                    self._release_supervisor_checkout_lease(
-                        current_lease,
-                        operation=operation,
-                    )
-            return result
+
+            # True nesting is permitted only while the owning transaction is
+            # still on this thread's callback stack.  A retained transaction
+            # resets depth to zero and cannot admit unrelated producers.
+            self._checkout_mutation_context.transaction_depth = depth + 1
+            try:
+                return callback()
+            finally:
+                self._checkout_mutation_context.transaction_depth = depth
         lock_path = self._repo_merge_lock_path()
         lock_metadata = self._supervisor_checkout_lock_metadata(
             operation=operation,
@@ -2432,13 +2506,77 @@ class PortalImplementationSupervisor:
 
         self._checkout_mutation_context.lease = lease
         self._checkout_mutation_context.retain_until_protected_clean = False
-        release_guard = self._generated_protected_release_guard_snapshot()
+        self._checkout_mutation_context.transaction_depth = 0
+        release_guard: dict[str, Any] | None = None
+        try:
+            release_guard = self._generated_protected_release_guard_snapshot()
+            if release_guard:
+                release_guard = self._content_addressed_supervisor_release_guard(
+                    release_guard
+                )
+                initial_verdict = (
+                    self._safe_generated_protected_release_guard(
+                        release_guard
+                    )
+                )
+                dirty_repair_preflight = bool(
+                    operation == "generated_dirty_repair"
+                    and self._generated_dirty_repair_preflight_allowed(
+                        initial_verdict
+                    )
+                )
+                if (
+                    not initial_verdict.get("release_allowed")
+                    and not dirty_repair_preflight
+                ):
+                    raise RuntimeError(
+                        "protected generated outputs are unsafe before "
+                        f"mutation: {initial_verdict.get('reason') or 'unknown'}"
+                    )
+                journaled_lease = (
+                    self._publish_supervisor_protected_recovery_journal(
+                        lease,
+                        operation=operation,
+                        producer=producer,
+                        release_guard=release_guard,
+                    )
+                )
+                if journaled_lease is None:
+                    raise RuntimeError(
+                        "supervisor protected recovery journal publication "
+                        "failed"
+                    )
+                lease = journaled_lease
+        except BaseException:
+            release_error = (
+                self._clear_and_release_supervisor_checkout_lease(
+                    lease,
+                    operation=operation,
+                )
+            )
+            if release_error:
+                self._record_generated_checkout_retention(
+                    lease,
+                    operation=operation,
+                    producer=producer,
+                    release_guard=release_guard,
+                    release_verdict={
+                        "release_allowed": False,
+                        "reason": "protected_generated_snapshot_failed",
+                        "error": release_error,
+                    },
+                )
+            else:
+                self._checkout_mutation_context.transaction_depth = 0
+            raise
         self._checkout_mutation_context.generated_protected_release_guard = (
             release_guard
         )
+        self._checkout_mutation_context.transaction_depth = 1
         try:
             result = callback()
         except BaseException:
+            self._checkout_mutation_context.transaction_depth = 0
             self._finalize_generated_board_lease(
                 lease,
                 operation=operation,
@@ -2446,6 +2584,7 @@ class PortalImplementationSupervisor:
                 release_guard=release_guard,
             )
             raise
+        self._checkout_mutation_context.transaction_depth = 0
         release_verdict = self._finalize_generated_board_lease(
             lease,
             operation=operation,
@@ -2467,8 +2606,10 @@ class PortalImplementationSupervisor:
         producer: str,
         release_guard: Mapping[str, Any] | None,
     ) -> dict[str, Any]:
-        release_verdict = self._generated_protected_release_guard(
-            release_guard,
+        """Finalize without ever replacing the producer callback exception."""
+
+        release_verdict = self._safe_generated_protected_release_guard(
+            release_guard
         )
         retain_requested = bool(
             getattr(
@@ -2477,11 +2618,112 @@ class PortalImplementationSupervisor:
                 False,
             )
         )
-        if retain_requested or not release_verdict.get("release_allowed"):
-            self._checkout_mutation_context.retain_until_protected_clean = True
-            self._checkout_mutation_context.generated_protected_release_guard = (
-                dict(release_guard or {})
+        if retain_requested:
+            release_verdict = {
+                **release_verdict,
+                "release_allowed": False,
+                "reason": "protected_generated_release_retention_requested",
+            }
+        if not release_verdict.get("release_allowed"):
+            self._record_generated_checkout_retention(
+                lease,
+                operation=operation,
+                producer=producer,
+                release_guard=release_guard,
+                release_verdict=release_verdict,
             )
+            return release_verdict
+
+        release_error = self._clear_and_release_supervisor_checkout_lease(
+            lease,
+            operation=operation,
+        )
+        if release_error:
+            release_verdict = {
+                "release_allowed": False,
+                "reason": "checkout_mutation_lease_release_failed",
+                "error": release_error,
+            }
+            self._record_generated_checkout_retention(
+                lease,
+                operation=operation,
+                producer=producer,
+                release_guard=release_guard,
+                release_verdict=release_verdict,
+            )
+        return release_verdict
+
+    def _safe_generated_protected_release_guard(
+        self,
+        release_guard: Mapping[str, Any] | None,
+    ) -> dict[str, Any]:
+        try:
+            return self._generated_protected_release_guard(release_guard)
+        except BaseException as exc:
+            return {
+                "release_allowed": False,
+                "reason": "protected_generated_release_guard_failed",
+                "error": f"{type(exc).__name__}: {exc}",
+            }
+
+    @staticmethod
+    def _generated_dirty_repair_preflight_allowed(
+        verdict: Mapping[str, Any],
+    ) -> bool:
+        """Admit a repair only when existing protected dirt is the sole fault."""
+
+        if verdict.get("release_allowed"):
+            return True
+        if verdict.get("reason") != "protected_generated_outputs_dirty":
+            return False
+        scope_results = [
+            item
+            for item in verdict.get("scope_results", ())
+            if isinstance(item, Mapping)
+        ]
+        failed_scopes = [
+            item
+            for item in scope_results
+            if not item.get("release_allowed")
+        ]
+        return bool(failed_scopes) and all(
+            item.get("reason") == "protected_generated_outputs_dirty"
+            for item in failed_scopes
+        )
+
+    def _record_generated_checkout_retention(
+        self,
+        lease: CheckoutMutationLease,
+        *,
+        operation: str,
+        producer: str,
+        release_guard: Mapping[str, Any] | None,
+        release_verdict: Mapping[str, Any],
+    ) -> None:
+        self._checkout_mutation_context.transaction_depth = 0
+        self._checkout_mutation_context.retain_until_protected_clean = True
+        if not str(
+            getattr(
+                self._checkout_mutation_context,
+                "retained_operation",
+                "",
+            )
+            or ""
+        ):
+            self._checkout_mutation_context.retained_operation = operation
+        if not str(
+            getattr(
+                self._checkout_mutation_context,
+                "retained_producer",
+                "",
+            )
+            or ""
+        ):
+            self._checkout_mutation_context.retained_producer = producer
+        self._checkout_mutation_context.generated_protected_release_guard = (
+            dict(release_guard or {})
+        )
+        try:
             self._record_event(
                 "checkout_mutation_lease_retained",
                 {
@@ -2493,19 +2735,40 @@ class PortalImplementationSupervisor:
                         release_verdict.get("reason")
                         or "protected_generated_outputs_remain_dirty"
                     ),
-                    "release_guard": release_verdict,
+                    "release_guard": dict(release_verdict),
                 },
             )
-            return release_verdict
+        except BaseException:
+            logger.warning(
+                "Failed to record retained generated checkout lease %s",
+                lease.lock_path,
+                exc_info=True,
+            )
 
+    def _clear_and_release_supervisor_checkout_lease(
+        self,
+        lease: CheckoutMutationLease,
+        *,
+        operation: str,
+    ) -> str:
+        try:
+            released = self._release_supervisor_checkout_lease(
+                lease,
+                operation=operation,
+            )
+        except BaseException as exc:
+            return f"{type(exc).__name__}: {exc}"
+        if not released:
+            self._checkout_mutation_context.transaction_depth = 0
+            self._checkout_mutation_context.retain_until_protected_clean = True
+            return "checkout mutation lease was replaced before release"
+        self._checkout_mutation_context.transaction_depth = 0
         self._checkout_mutation_context.retain_until_protected_clean = False
+        self._checkout_mutation_context.retained_operation = ""
+        self._checkout_mutation_context.retained_producer = ""
         self._checkout_mutation_context.generated_protected_release_guard = None
         self._checkout_mutation_context.lease = None
-        self._release_supervisor_checkout_lease(
-            lease,
-            operation=operation,
-        )
-        return release_verdict
+        return ""
 
     def _current_supervisor_checkout_lease(
         self,
@@ -2575,18 +2838,280 @@ class PortalImplementationSupervisor:
                 dirty.append(relative)
         return tuple(dirty)
 
+    @staticmethod
+    def _content_addressed_supervisor_release_guard(
+        snapshot: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        guard = dict(snapshot)
+        guard.pop("guard_id", None)
+        guard["guard_id"] = content_identity(guard)
+        return guard
+
+    def _publish_supervisor_protected_recovery_journal(
+        self,
+        lease: CheckoutMutationLease,
+        *,
+        operation: str,
+        producer: str,
+        release_guard: Mapping[str, Any],
+    ) -> CheckoutMutationLease | None:
+        """CAS-journal exact recovery authority before protected writes."""
+
+        protected_paths = [
+            str(path)
+            for path in release_guard.get("protected_paths", ())
+            if str(path)
+        ]
+        journaled_guard = json.loads(
+            json.dumps(dict(release_guard), sort_keys=True)
+        )
+        guard_id = str(release_guard.get("guard_id") or "")
+        intent: dict[str, Any] = {
+            "schema": (
+                "ipfs_accelerate_py.agent_supervisor."
+                "supervisor-protected-recovery-intent@1"
+            ),
+            "operation": operation,
+            "producer": producer,
+            "protected_paths": protected_paths,
+            "guard_id": guard_id,
+        }
+        intent["intent_id"] = content_identity(intent)
+        updated = update_checkout_mutation_lease(
+            lease,
+            {
+                **dict(lease.metadata),
+                "protected_recovery_required": True,
+                "protected_recovery_owner": "implementation_supervisor",
+                "protected_paths": protected_paths,
+                "protected_release_guard": journaled_guard,
+                "protected_recovery_intent": intent,
+                "protected_recovery_started_at": utc_now(),
+            },
+        )
+        if updated is not None:
+            self._checkout_mutation_context.lease = updated
+        return updated
+
     def _generated_protected_release_guard_snapshot(
         self,
     ) -> dict[str, Any]:
         protected_paths = tuple(self.config.implementation_protected_paths)
         if not protected_paths:
             return {}
+        scope_paths: dict[Path, set[str]] = {}
+        discovery_errors: list[dict[str, str]] = []
+        repo_root = self.config.repo_root.resolve()
+        for protected_path in protected_paths:
+            target = repo_root / protected_path
+            containing_root = self._containing_git_root(target)
+            if containing_root is None:
+                discovery_errors.append(
+                    {
+                        "path": protected_path,
+                        "reason": "containing_git_root_unavailable",
+                    }
+                )
+                continue
+            try:
+                relative = target.resolve(strict=False).relative_to(
+                    containing_root
+                ).as_posix()
+            except (OSError, RuntimeError, ValueError):
+                discovery_errors.append(
+                    {
+                        "path": protected_path,
+                        "reason": "protected_path_outside_containing_git_root",
+                    }
+                )
+                continue
+            scope_paths.setdefault(containing_root, set()).add(relative)
+
+            child_root = containing_root
+            visited = {child_root}
+            while child_root != repo_root:
+                parent_root = self._parent_git_root(child_root, repo_root)
+                if parent_root is None or parent_root in visited:
+                    discovery_errors.append(
+                        {
+                            "path": protected_path,
+                            "reason": "parent_git_root_unavailable",
+                            "git_root": str(child_root),
+                        }
+                    )
+                    break
+                visited.add(parent_root)
+                try:
+                    gitlink = child_root.relative_to(parent_root).as_posix()
+                except ValueError:
+                    discovery_errors.append(
+                        {
+                            "path": protected_path,
+                            "reason": "child_git_root_outside_parent",
+                            "git_root": str(child_root),
+                            "parent_git_root": str(parent_root),
+                        }
+                    )
+                    break
+                scope_paths.setdefault(parent_root, set()).add(gitlink)
+                child_root = parent_root
+
+        scopes: list[dict[str, Any]] = []
+        for git_root, paths in sorted(
+            scope_paths.items(),
+            key=lambda item: str(item[0]),
+        ):
+            head_state = self._git_head_state(git_root)
+            scopes.append(
+                {
+                    "git_root": str(git_root),
+                    "paths": sorted(paths),
+                    "before_head": str(head_state.get("head") or ""),
+                    "before_head_query": head_state,
+                }
+            )
         return {
-            "before_head": self._git_output(
-                self.config.repo_root,
-                ["rev-parse", "--verify", "HEAD^{commit}"],
-            ),
             "protected_paths": protected_paths,
+            "scopes": scopes,
+            "discovery_errors": discovery_errors,
+        }
+
+    @staticmethod
+    def _git_toplevel(path: Path) -> Path | None:
+        try:
+            result = subprocess.run(
+                ["git", "rev-parse", "--show-toplevel"],
+                cwd=path,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+        except OSError:
+            return None
+        if result.returncode != 0 or not result.stdout.strip():
+            return None
+        try:
+            return Path(result.stdout.strip()).resolve()
+        except (OSError, RuntimeError):
+            return None
+
+    def _containing_git_root(self, target: Path) -> Path | None:
+        repo_root = self.config.repo_root.resolve()
+        probe = target if target.is_dir() else target.parent
+        while not probe.exists() and probe != repo_root:
+            parent = probe.parent
+            if parent == probe:
+                break
+            probe = parent
+        containing = self._git_toplevel(probe)
+        if containing is None:
+            return None
+        try:
+            containing.relative_to(repo_root)
+        except ValueError:
+            return None
+        return containing
+
+    def _parent_git_root(
+        self,
+        child_root: Path,
+        repo_root: Path,
+    ) -> Path | None:
+        try:
+            superproject = subprocess.run(
+                [
+                    "git",
+                    "rev-parse",
+                    "--show-superproject-working-tree",
+                ],
+                cwd=child_root,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+        except OSError:
+            superproject = None
+        if (
+            superproject is not None
+            and superproject.returncode == 0
+            and superproject.stdout.strip()
+        ):
+            parent_root = Path(superproject.stdout.strip()).resolve()
+        else:
+            parent_root = self._git_toplevel(child_root.parent)
+        if parent_root is None or parent_root == child_root:
+            return None
+        try:
+            child_root.relative_to(parent_root)
+            parent_root.relative_to(repo_root)
+        except ValueError:
+            return None
+        return parent_root
+
+    @staticmethod
+    def _git_head_state(git_root: Path) -> dict[str, Any]:
+        try:
+            result = subprocess.run(
+                ["git", "rev-parse", "--verify", "HEAD^{commit}"],
+                cwd=git_root,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+        except OSError as exc:
+            return {
+                "ok": False,
+                "head": "",
+                "error": f"{type(exc).__name__}: {exc}",
+            }
+        if result.returncode == 0 and result.stdout.strip():
+            return {"ok": True, "head": result.stdout.strip(), "unborn": False}
+        try:
+            symbolic = subprocess.run(
+                ["git", "symbolic-ref", "-q", "HEAD"],
+                cwd=git_root,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+        except OSError as exc:
+            return {
+                "ok": False,
+                "head": "",
+                "error": f"{type(exc).__name__}: {exc}",
+            }
+        if symbolic.returncode != 0 or not symbolic.stdout.strip():
+            return {
+                "ok": False,
+                "head": "",
+                "returncode": result.returncode,
+                "stderr": result.stderr[-4000:],
+            }
+        try:
+            referenced = subprocess.run(
+                [
+                    "git",
+                    "show-ref",
+                    "--verify",
+                    "--quiet",
+                    symbolic.stdout.strip(),
+                ],
+                cwd=git_root,
+                check=False,
+            )
+        except OSError as exc:
+            return {
+                "ok": False,
+                "head": "",
+                "error": f"{type(exc).__name__}: {exc}",
+            }
+        if referenced.returncode == 1:
+            return {"ok": True, "head": "", "unborn": True}
+        return {
+            "ok": False,
+            "head": "",
+            "returncode": result.returncode,
+            "stderr": result.stderr[-4000:],
         }
 
     @staticmethod
@@ -2607,119 +3132,212 @@ class PortalImplementationSupervisor:
 
         if not snapshot:
             return {"release_allowed": True, "reason": "no_protected_paths"}
-        protected_paths = tuple(
-            str(path).strip()
-            for path in snapshot.get("protected_paths", ())
-            if str(path).strip()
-        )
-        if not protected_paths:
-            return {"release_allowed": True, "reason": "no_protected_paths"}
-        protected_files = tuple(
-            self.config.repo_root / relative for relative in protected_paths
-        )
-        dirty_paths = self._dirty_implementation_protected_paths(
-            protected_files
-        )
-        if dirty_paths:
+        discovery_errors = [
+            dict(item)
+            for item in snapshot.get("discovery_errors", ())
+            if isinstance(item, Mapping)
+        ]
+        if discovery_errors:
             return {
                 "release_allowed": False,
+                "reason": "protected_generated_scope_discovery_failed",
+                "discovery_errors": discovery_errors,
+            }
+        scopes = [
+            dict(item)
+            for item in snapshot.get("scopes", ())
+            if isinstance(item, Mapping)
+        ]
+        if not scopes:
+            return {"release_allowed": True, "reason": "no_protected_paths"}
+        scope_results = [
+            self._generated_protected_scope_release_guard(scope)
+            for scope in scopes
+        ]
+        failed_scope = next(
+            (
+                item
+                for item in scope_results
+                if not item.get("release_allowed")
+            ),
+            None,
+        )
+        if failed_scope is not None:
+            return {
+                "release_allowed": False,
+                "reason": str(
+                    failed_scope.get("reason")
+                    or "protected_generated_scope_untrusted"
+                ),
+                "failed_git_root": str(failed_scope.get("git_root") or ""),
+                "scope_results": scope_results,
+            }
+        return {
+            "release_allowed": True,
+            "reason": (
+                "protected_generated_history_trusted"
+                if any(item.get("commits") for item in scope_results)
+                else "protected_outputs_clean_history_unchanged"
+            ),
+            "scope_results": scope_results,
+        }
+
+    def _generated_protected_scope_release_guard(
+        self,
+        scope: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        git_root = Path(str(scope.get("git_root") or "")).resolve()
+        paths = tuple(
+            str(path).strip()
+            for path in scope.get("paths", ())
+            if str(path).strip()
+        )
+        result_base: dict[str, Any] = {
+            "git_root": str(git_root),
+            "paths": list(paths),
+        }
+        before_query = scope.get("before_head_query")
+        if not isinstance(before_query, Mapping) or not before_query.get("ok"):
+            return {
+                **result_base,
+                "release_allowed": False,
+                "reason": "protected_generated_history_snapshot_failed",
+                "before_head_query": dict(before_query or {}),
+            }
+        dirty_query = self._git_scope_dirty_paths(git_root, paths)
+        if not dirty_query.get("ok"):
+            return {
+                **result_base,
+                "release_allowed": False,
+                "reason": "protected_generated_status_query_failed",
+                "status_query": dirty_query,
+            }
+        dirty_paths = list(dirty_query.get("dirty_paths") or ())
+        if dirty_paths:
+            return {
+                **result_base,
+                "release_allowed": False,
                 "reason": "protected_generated_outputs_dirty",
-                "dirty_paths": list(dirty_paths),
+                "dirty_paths": dirty_paths,
             }
 
-        before_head = str(snapshot.get("before_head") or "")
-        after_head = self._git_output(
-            self.config.repo_root,
-            ["rev-parse", "--verify", "HEAD^{commit}"],
-        )
-        if not before_head and not after_head:
+        before_head = str(scope.get("before_head") or "")
+        after_query = self._git_head_state(git_root)
+        if not after_query.get("ok"):
             return {
-                "release_allowed": True,
-                "reason": "protected_outputs_clean_unborn_repository",
-            }
-        if not after_head:
-            return {
+                **result_base,
                 "release_allowed": False,
                 "reason": "protected_generated_history_unavailable",
                 "before_head": before_head,
+                "after_head_query": after_query,
             }
-        if before_head == after_head:
-            return {
-                "release_allowed": True,
-                "reason": "protected_outputs_clean_history_unchanged",
-                "before_head": before_head,
-                "after_head": after_head,
-            }
-
+        after_head = str(after_query.get("head") or "")
+        commits: list[dict[str, Any]] = []
         if before_head:
-            ancestry = subprocess.run(
-                ["git", "merge-base", "--is-ancestor", before_head, after_head],
-                cwd=self.config.repo_root,
-                text=True,
-                capture_output=True,
-                check=False,
-            )
-            if ancestry.returncode != 0:
+            if not after_head:
                 return {
+                    **result_base,
                     "release_allowed": False,
                     "reason": "protected_generated_history_rewritten",
                     "before_head": before_head,
                     "after_head": after_head,
                 }
-            revision = f"{before_head}..{after_head}"
-        else:
-            revision = after_head
-
-        history = subprocess.run(
-            [
-                "git",
-                "log",
-                "--format=%H%x09%ae%x09%s",
-                revision,
-                "--",
-                *protected_paths,
-            ],
-            cwd=self.config.repo_root,
-            text=True,
-            capture_output=True,
-            check=False,
-        )
-        if history.returncode != 0:
-            return {
-                "release_allowed": False,
-                "reason": "protected_generated_history_query_failed",
-                "before_head": before_head,
-                "after_head": after_head,
-            }
-
-        commits: list[dict[str, Any]] = []
-        untrusted_commits: list[str] = []
-        for line in history.stdout.splitlines():
-            parts = line.split("\t", 2)
-            if len(parts) != 3:
+            if before_head != after_head:
+                try:
+                    ancestry = subprocess.run(
+                        [
+                            "git",
+                            "merge-base",
+                            "--is-ancestor",
+                            before_head,
+                            after_head,
+                        ],
+                        cwd=git_root,
+                        text=True,
+                        capture_output=True,
+                        check=False,
+                    )
+                except OSError as exc:
+                    return {
+                        **result_base,
+                        "release_allowed": False,
+                        "reason": "protected_generated_history_query_failed",
+                        "error": f"{type(exc).__name__}: {exc}",
+                    }
+                if ancestry.returncode != 0:
+                    return {
+                        **result_base,
+                        "release_allowed": False,
+                        "reason": "protected_generated_history_rewritten",
+                        "before_head": before_head,
+                        "after_head": after_head,
+                    }
+                history_result = self._git_protected_history(
+                    git_root,
+                    f"{before_head}..{after_head}",
+                    paths,
+                )
+                if not history_result.get("ok"):
+                    return {
+                        **result_base,
+                        "release_allowed": False,
+                        "reason": "protected_generated_history_query_failed",
+                        "history_query": history_result,
+                    }
+                commits = list(history_result.get("commits") or ())
+                if not commits:
+                    try:
+                        changed = subprocess.run(
+                            [
+                                "git",
+                                "diff",
+                                "--quiet",
+                                before_head,
+                                after_head,
+                                "--",
+                                *paths,
+                            ],
+                            cwd=git_root,
+                            check=False,
+                        )
+                    except OSError as exc:
+                        return {
+                            **result_base,
+                            "release_allowed": False,
+                            "reason": "protected_generated_history_query_failed",
+                            "error": f"{type(exc).__name__}: {exc}",
+                        }
+                    if changed.returncode != 0:
+                        return {
+                            **result_base,
+                            "release_allowed": False,
+                            "reason": "protected_generated_history_missing_commit",
+                            "before_head": before_head,
+                            "after_head": after_head,
+                        }
+        elif after_head:
+            history_result = self._git_protected_history(
+                git_root,
+                after_head,
+                paths,
+            )
+            if not history_result.get("ok"):
                 return {
+                    **result_base,
                     "release_allowed": False,
-                    "reason": "protected_generated_history_malformed",
-                    "before_head": before_head,
-                    "after_head": after_head,
+                    "reason": "protected_generated_history_query_failed",
+                    "history_query": history_result,
                 }
-            commit, author_email, subject = parts
-            trusted = self._trusted_generated_protected_commit(
-                author_email,
-                subject,
-            )
-            commits.append(
-                {
-                    "commit": commit,
-                    "author_email": author_email,
-                    "subject": subject,
-                    "trusted_generator": trusted,
-                }
-            )
-            if not trusted:
-                untrusted_commits.append(commit)
+            commits = list(history_result.get("commits") or ())
+
+        untrusted_commits = [
+            str(item.get("commit") or "")
+            for item in commits
+            if not item.get("trusted_generator")
+        ]
         if untrusted_commits:
             return {
+                **result_base,
                 "release_allowed": False,
                 "reason": "protected_generated_history_untrusted",
                 "before_head": before_head,
@@ -2728,45 +3346,25 @@ class PortalImplementationSupervisor:
                 "untrusted_commits": untrusted_commits,
             }
 
-        if before_head and not commits:
-            changed = subprocess.run(
-                [
-                    "git",
-                    "diff",
-                    "--quiet",
-                    before_head,
-                    after_head,
-                    "--",
-                    *protected_paths,
-                ],
-                cwd=self.config.repo_root,
-                check=False,
-            )
-            if changed.returncode != 0:
-                return {
-                    "release_allowed": False,
-                    "reason": "protected_generated_history_missing_commit",
-                    "before_head": before_head,
-                    "after_head": after_head,
-                }
-
-        confirmed_head = self._git_output(
-            self.config.repo_root,
-            ["rev-parse", "--verify", "HEAD^{commit}"],
-        )
-        confirmed_dirty = self._dirty_implementation_protected_paths(
-            protected_files
-        )
-        if confirmed_head != after_head or confirmed_dirty:
+        confirmed_head = self._git_head_state(git_root)
+        confirmed_status = self._git_scope_dirty_paths(git_root, paths)
+        if (
+            not confirmed_head.get("ok")
+            or str(confirmed_head.get("head") or "") != after_head
+            or not confirmed_status.get("ok")
+            or confirmed_status.get("dirty_paths")
+        ):
             return {
+                **result_base,
                 "release_allowed": False,
                 "reason": "protected_generated_release_state_changed",
                 "before_head": before_head,
                 "after_head": after_head,
                 "confirmed_head": confirmed_head,
-                "dirty_paths": list(confirmed_dirty),
+                "confirmed_status": confirmed_status,
             }
         return {
+            **result_base,
             "release_allowed": True,
             "reason": (
                 "protected_generated_history_trusted"
@@ -2777,6 +3375,108 @@ class PortalImplementationSupervisor:
             "after_head": after_head,
             "commits": commits,
         }
+
+    @staticmethod
+    def _git_scope_dirty_paths(
+        git_root: Path,
+        paths: Sequence[str],
+    ) -> dict[str, Any]:
+        try:
+            status = subprocess.run(
+                [
+                    "git",
+                    "status",
+                    "--porcelain",
+                    "--untracked-files=all",
+                    "--",
+                    *paths,
+                ],
+                cwd=git_root,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+        except OSError as exc:
+            return {
+                "ok": False,
+                "dirty_paths": [],
+                "error": f"{type(exc).__name__}: {exc}",
+            }
+        if status.returncode != 0:
+            return {
+                "ok": False,
+                "dirty_paths": [],
+                "returncode": status.returncode,
+                "stderr": status.stderr[-4000:],
+            }
+        dirty_paths = [
+            PortalImplementationSupervisor._status_line_path(line)
+            for line in status.stdout.splitlines()
+            if PortalImplementationSupervisor._status_line_path(line)
+        ]
+        return {
+            "ok": True,
+            "dirty_paths": list(dict.fromkeys(dirty_paths)),
+        }
+
+    def _git_protected_history(
+        self,
+        git_root: Path,
+        revision: str,
+        paths: Sequence[str],
+    ) -> dict[str, Any]:
+        try:
+            history = subprocess.run(
+                [
+                    "git",
+                    "log",
+                    "--format=%H%x09%ae%x09%s",
+                    revision,
+                    "--",
+                    *paths,
+                ],
+                cwd=git_root,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+        except OSError as exc:
+            return {
+                "ok": False,
+                "commits": [],
+                "error": f"{type(exc).__name__}: {exc}",
+            }
+        if history.returncode != 0:
+            return {
+                "ok": False,
+                "commits": [],
+                "returncode": history.returncode,
+                "stderr": history.stderr[-4000:],
+            }
+        commits: list[dict[str, Any]] = []
+        for line in history.stdout.splitlines():
+            parts = line.split("\t", 2)
+            if len(parts) != 3:
+                return {
+                    "ok": False,
+                    "commits": [],
+                    "reason": "history_malformed",
+                }
+            commit, author_email, subject = parts
+            commits.append(
+                {
+                    "commit": commit,
+                    "author_email": author_email,
+                    "subject": subject,
+                    "trusted_generator": (
+                        self._trusted_generated_protected_commit(
+                            author_email,
+                            subject,
+                        )
+                    ),
+                }
+            )
+        return {"ok": True, "commits": commits}
 
     def _run_protected_refill_mutation(
         self,
@@ -3249,6 +3949,78 @@ class PortalImplementationSupervisor:
         return result.stdout.strip()
 
     @staticmethod
+    def _git_merge_head_query(repo_root: Path) -> dict[str, Any]:
+        """Return a tri-state MERGE_HEAD observation without conflating errors."""
+
+        try:
+            git_path = subprocess.run(
+                ["git", "rev-parse", "--git-path", "MERGE_HEAD"],
+                cwd=repo_root,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+        except OSError as exc:
+            return {
+                "ok": False,
+                "merge_head": "",
+                "error": f"{type(exc).__name__}: {exc}",
+            }
+        if git_path.returncode != 0 or not git_path.stdout.strip():
+            return {
+                "ok": False,
+                "merge_head": "",
+                "returncode": git_path.returncode,
+                "stderr": git_path.stderr[-4000:],
+            }
+        merge_head_path = Path(git_path.stdout.strip())
+        if not merge_head_path.is_absolute():
+            merge_head_path = repo_root / merge_head_path
+        try:
+            merge_head_path.stat()
+        except FileNotFoundError:
+            return {
+                "ok": True,
+                "merge_head": "",
+                "merge_head_path": str(merge_head_path),
+            }
+        except OSError as exc:
+            return {
+                "ok": False,
+                "merge_head": "",
+                "merge_head_path": str(merge_head_path),
+                "error": f"{type(exc).__name__}: {exc}",
+            }
+        try:
+            result = subprocess.run(
+                ["git", "rev-parse", "--verify", "MERGE_HEAD^{commit}"],
+                cwd=repo_root,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+        except OSError as exc:
+            return {
+                "ok": False,
+                "merge_head": "",
+                "merge_head_path": str(merge_head_path),
+                "error": f"{type(exc).__name__}: {exc}",
+            }
+        if result.returncode != 0 or not result.stdout.strip():
+            return {
+                "ok": False,
+                "merge_head": "",
+                "merge_head_path": str(merge_head_path),
+                "returncode": result.returncode,
+                "stderr": result.stderr[-4000:],
+            }
+        return {
+            "ok": True,
+            "merge_head": result.stdout.strip(),
+            "merge_head_path": str(merge_head_path),
+        }
+
+    @staticmethod
     def _git_unmerged_paths(repo_root: Path) -> list[str]:
         result = subprocess.run(
             ["git", "diff", "--name-only", "--diff-filter=U"],
@@ -3260,6 +4032,40 @@ class PortalImplementationSupervisor:
         if result.returncode != 0:
             return []
         return sorted(line.strip() for line in result.stdout.splitlines() if line.strip())
+
+    @staticmethod
+    def _git_unmerged_paths_query(repo_root: Path) -> dict[str, Any]:
+        """Return unmerged paths only when Git successfully completed the query."""
+
+        try:
+            result = subprocess.run(
+                ["git", "diff", "--name-only", "--diff-filter=U"],
+                cwd=repo_root,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+        except OSError as exc:
+            return {
+                "ok": False,
+                "unmerged_paths": [],
+                "error": f"{type(exc).__name__}: {exc}",
+            }
+        if result.returncode != 0:
+            return {
+                "ok": False,
+                "unmerged_paths": [],
+                "returncode": result.returncode,
+                "stderr": result.stderr[-4000:],
+            }
+        return {
+            "ok": True,
+            "unmerged_paths": sorted(
+                line.strip()
+                for line in result.stdout.splitlines()
+                if line.strip()
+            ),
+        }
 
     @staticmethod
     def _git_status_short(repo_root: Path) -> list[str]:
@@ -4121,7 +4927,12 @@ class PortalImplementationSupervisor:
     ) -> dict[str, Any]:
         """Commit safe generated supervisor outputs so reconciliation can proceed."""
 
-        if not self.config.generated_dirty_repair_enabled and not force:
+        retained_recovery = self._retained_generated_checkout_lease()
+        if (
+            not self.config.generated_dirty_repair_enabled
+            and not force
+            and not retained_recovery
+        ):
             return {"attempted": False, "reason": "generated_dirty_repair_disabled"}
         generated_paths, generated_prefixes = (
             self._generated_main_checkout_status_filters(
@@ -7192,6 +8003,384 @@ class PortalImplementationSupervisor:
             scan_mode=mode,
             started_at=started_at,
         )
+        return result
+
+    def _supervisor_checkout_transaction_depth(self) -> int:
+        try:
+            return max(
+                0,
+                int(
+                    getattr(
+                        self._checkout_mutation_context,
+                        "transaction_depth",
+                        0,
+                    )
+                    or 0
+                ),
+            )
+        except (TypeError, ValueError):
+            return 0
+
+    def _supervisor_recovery_owner_is_active(
+        self,
+        metadata: dict[str, Any],
+    ) -> bool:
+        candidate = dict(metadata)
+        candidate.pop("protected_recovery_required", None)
+        return checkout_lock_owner_is_active(
+            candidate,
+            expected_kind="merge",
+            expected_repo_root=self.config.repo_root,
+            process_command_line=process_command_line,
+            process_is_running=process_is_running,
+        )
+
+    def _supervisor_recovery_journal_error(
+        self,
+        metadata: Mapping[str, Any],
+    ) -> str:
+        if str(metadata.get("kind") or "") != "merge":
+            return "kind_mismatch"
+        try:
+            if Path(str(metadata.get("repo_root") or "")).resolve() != (
+                self.config.repo_root.resolve()
+            ):
+                return "repository_mismatch"
+        except (OSError, RuntimeError, ValueError):
+            return "repository_invalid"
+        protected_paths = metadata.get("protected_paths")
+        expected_paths = list(self.config.implementation_protected_paths)
+        if (
+            not isinstance(protected_paths, list)
+            or [str(path) for path in protected_paths] != expected_paths
+        ):
+            return "protected_paths_mismatch"
+
+        guard = metadata.get("protected_release_guard")
+        if not isinstance(guard, Mapping):
+            return "guard_missing"
+        normalized_guard = dict(guard)
+        guard_id = str(normalized_guard.pop("guard_id", "") or "")
+        if not guard_id or content_identity(normalized_guard) != guard_id:
+            return "guard_identity_mismatch"
+        if [
+            str(path)
+            for path in normalized_guard.get("protected_paths", ())
+        ] != expected_paths:
+            return "guard_paths_mismatch"
+
+        intent = metadata.get("protected_recovery_intent")
+        if not isinstance(intent, Mapping):
+            return "intent_missing"
+        normalized_intent = dict(intent)
+        intent_id = str(normalized_intent.pop("intent_id", "") or "")
+        if not intent_id or content_identity(normalized_intent) != intent_id:
+            return "intent_identity_mismatch"
+        if [
+            str(path) for path in intent.get("protected_paths", ())
+        ] != expected_paths:
+            return "intent_paths_mismatch"
+        if str(intent.get("guard_id") or "") != guard_id:
+            return "intent_guard_mismatch"
+        if not str(intent.get("operation") or "") or not str(
+            intent.get("producer") or ""
+        ):
+            return "intent_operation_missing"
+        return ""
+
+    def _attach_supervisor_protected_recovery(
+        self,
+        lease: CheckoutMutationLease,
+    ) -> None:
+        intent = lease.metadata["protected_recovery_intent"]
+        self._checkout_mutation_context.lease = lease
+        self._checkout_mutation_context.transaction_depth = 0
+        self._checkout_mutation_context.retain_until_protected_clean = True
+        self._checkout_mutation_context.retained_operation = str(
+            intent.get("operation") or ""
+        )
+        self._checkout_mutation_context.retained_producer = str(
+            intent.get("producer") or ""
+        )
+        self._checkout_mutation_context.generated_protected_release_guard = (
+            dict(lease.metadata["protected_release_guard"])
+        )
+
+    def _adopt_supervisor_protected_recovery(
+        self,
+    ) -> dict[str, Any]:
+        existing = read_checkout_mutation_lease(
+            self._repo_merge_lock_path()
+        )
+        if existing is None or (
+            existing.metadata.get("protected_recovery_required") is not True
+        ):
+            return {"required": False, "adopted": False}
+        if str(
+            existing.metadata.get("protected_recovery_owner") or ""
+        ) != "implementation_supervisor":
+            return {
+                "required": True,
+                "adopted": False,
+                "blocked": True,
+                "reason": "external_protected_checkout_recovery_required",
+                "lock_path": str(existing.lock_path),
+            }
+
+        journal_error = self._supervisor_recovery_journal_error(
+            existing.metadata
+        )
+        if journal_error:
+            return {
+                "required": True,
+                "adopted": False,
+                "blocked": True,
+                "reason": "supervisor_protected_recovery_journal_invalid",
+                "journal_error": journal_error,
+                "lock_path": str(existing.lock_path),
+            }
+        try:
+            owner_pid = int(existing.metadata.get("pid") or 0)
+        except (TypeError, ValueError):
+            owner_pid = 0
+        if owner_pid == os.getpid():
+            self._attach_supervisor_protected_recovery(existing)
+            return {
+                "required": True,
+                "adopted": False,
+                "attached": True,
+                "lease": existing,
+            }
+        if self._supervisor_recovery_owner_is_active(
+            dict(existing.metadata)
+        ):
+            return {
+                "required": True,
+                "adopted": False,
+                "blocked": True,
+                "reason": "supervisor_protected_recovery_owner_active",
+                "lock_path": str(existing.lock_path),
+                "lock_owner_pid": owner_pid,
+            }
+
+        intent = existing.metadata["protected_recovery_intent"]
+        adopted_metadata = {
+            **dict(existing.metadata),
+            "pid": os.getpid(),
+            "owner_script": Path(sys.argv[0]).name,
+            "adopted_at": utc_now(),
+            "adopted_from_lease_id": existing.lease_id,
+        }
+        adopted_metadata["lease_id"] = content_identity(
+            {
+                "kind": "adopted-supervisor-protected-recovery",
+                "prior_lease_id": existing.lease_id,
+                "intent_id": str(intent.get("intent_id") or ""),
+                "pid": os.getpid(),
+                "thread_id": threading.get_ident(),
+                "issued_ns": time.time_ns(),
+            }
+        )
+        adopted = adopt_inactive_checkout_mutation_lease(
+            existing,
+            adopted_metadata,
+            owner_active=self._supervisor_recovery_owner_is_active,
+        )
+        if adopted is None:
+            return {
+                "required": True,
+                "adopted": False,
+                "blocked": True,
+                "reason": "supervisor_protected_recovery_adoption_raced",
+                "lock_path": str(existing.lock_path),
+            }
+        self._attach_supervisor_protected_recovery(adopted)
+        return {
+            "required": True,
+            "adopted": True,
+            "lease": adopted,
+        }
+
+    def _retained_generated_checkout_lease(self) -> bool:
+        return bool(
+            self._current_supervisor_checkout_lease() is not None
+            and self._supervisor_checkout_transaction_depth() == 0
+            and getattr(
+                self._checkout_mutation_context,
+                "retain_until_protected_clean",
+                False,
+            )
+        )
+
+    def _recover_retained_generated_checkout_lease(self) -> dict[str, Any]:
+        """Autonomously clean a retained generated-output transaction."""
+
+        if not self._retained_generated_checkout_lease():
+            adoption = self._adopt_supervisor_protected_recovery()
+            if adoption.get("required") and adoption.get("blocked"):
+                return {
+                    **adoption,
+                    "attempted": False,
+                    "recovered": False,
+                    "retained_lease": True,
+                }
+            if not self._retained_generated_checkout_lease():
+                return {
+                    "attempted": False,
+                    "recovered": False,
+                    "retained_lease": False,
+                    "reason": "no_retained_generated_checkout_lease",
+                }
+        else:
+            adoption = {"required": True, "adopted": False}
+        try:
+            repair = self.repair_generated_dirty_checkouts(force=True)
+        except Exception as exc:
+            result = {
+                "attempted": True,
+                "recovered": False,
+                "retained_lease": self._retained_generated_checkout_lease(),
+                "reason": "retained_generated_checkout_recovery_failed",
+                "error_type": type(exc).__name__,
+                "error": str(exc)[:1000],
+            }
+            try:
+                self._record_event(
+                    "retained_generated_checkout_recovery_failed",
+                    result,
+                )
+            except Exception:
+                logger.warning(
+                    "Failed to record retained checkout recovery failure",
+                    exc_info=True,
+                )
+            return result
+
+        retained = self._retained_generated_checkout_lease()
+        result = {
+            "attempted": True,
+            "recovered": not retained,
+            "retained_lease": retained,
+            "reason": (
+                "retained_generated_checkout_recovered"
+                if not retained
+                else "retained_generated_checkout_recovery_incomplete"
+            ),
+            "repair": dict(repair),
+            "adoption": {
+                key: value
+                for key, value in adoption.items()
+                if key != "lease"
+            },
+        }
+        try:
+            self._record_event(
+                (
+                    "retained_generated_checkout_recovered"
+                    if not retained
+                    else "retained_generated_checkout_recovery_failed"
+                ),
+                result,
+            )
+        except Exception:
+            logger.warning(
+                "Failed to record retained checkout recovery result",
+                exc_info=True,
+            )
+        return result
+
+    def _run_retained_generated_checkout_recovery(
+        self,
+        lease: CheckoutMutationLease,
+        *,
+        operation: str,
+        producer: str,
+        callback,
+    ):
+        if (
+            operation == "generated_dirty_repair"
+            and str(lease.metadata.get("operation") or "")
+            != "generated_dirty_repair"
+        ):
+            recovery_metadata = {
+                **dict(lease.metadata),
+                "operation": "generated_dirty_repair",
+                "retained_operation": str(
+                    getattr(
+                        self._checkout_mutation_context,
+                        "retained_operation",
+                        "",
+                    )
+                    or ""
+                ),
+                "retained_producer": str(
+                    getattr(
+                        self._checkout_mutation_context,
+                        "retained_producer",
+                        "",
+                    )
+                    or ""
+                ),
+            }
+            updated_lease = update_checkout_mutation_lease(
+                lease,
+                recovery_metadata,
+            )
+            if updated_lease is None:
+                raise RuntimeError(
+                    "checkout_mutation_protected_recovery_incomplete: "
+                    "checkout_mutation_lease_update_failed"
+                )
+            lease = updated_lease
+            self._checkout_mutation_context.lease = lease
+        self._checkout_mutation_context.transaction_depth = 1
+        try:
+            result = callback()
+        except BaseException:
+            self._checkout_mutation_context.transaction_depth = 0
+            raise
+        self._checkout_mutation_context.transaction_depth = 0
+        release_guard = getattr(
+            self._checkout_mutation_context,
+            "generated_protected_release_guard",
+            None,
+        )
+        release_verdict = self._safe_generated_protected_release_guard(
+            release_guard
+        )
+        if not release_verdict.get("release_allowed"):
+            self._record_generated_checkout_retention(
+                lease,
+                operation=operation,
+                producer=producer,
+                release_guard=release_guard,
+                release_verdict=release_verdict,
+            )
+            raise RuntimeError(
+                "checkout_mutation_protected_recovery_incomplete: "
+                f"{release_verdict.get('reason') or 'unknown'}"
+            )
+        release_error = self._clear_and_release_supervisor_checkout_lease(
+            lease,
+            operation=operation,
+        )
+        if release_error:
+            release_verdict = {
+                "release_allowed": False,
+                "reason": "checkout_mutation_lease_release_failed",
+                "error": release_error,
+            }
+            self._record_generated_checkout_retention(
+                lease,
+                operation=operation,
+                producer=producer,
+                release_guard=release_guard,
+                release_verdict=release_verdict,
+            )
+            raise RuntimeError(
+                "checkout_mutation_protected_recovery_incomplete: "
+                "checkout_mutation_lease_release_failed"
+            )
         return result
 
     def _implementation_attempt_is_active(self, state: PortalTaskState, *, now_ts: float) -> bool:

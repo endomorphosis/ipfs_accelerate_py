@@ -95,6 +95,37 @@ def _supervisor(
     )
 
 
+def _generated_protected_supervisor(
+    tmp_path: Path,
+) -> tuple[PortalImplementationSupervisor, Path, Path]:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "config", "user.name", "Fixture")
+    _git(repo, "config", "user.email", "fixture@example.invalid")
+    todo_path = repo / "tasks.todo.md"
+    todo_path.write_text("# Tasks\n", encoding="utf-8")
+    _git(repo, "add", "tasks.todo.md")
+    _git(repo, "commit", "-m", "initial")
+    args = parse_implementation_supervisor_args(
+        [
+            "--todo-path",
+            str(todo_path),
+            "--state-dir",
+            str(tmp_path / "state"),
+            "--implementation-protected-path",
+            "tasks.todo.md",
+        ]
+    )
+    return (
+        PortalImplementationSupervisor(
+            supervisor_config_from_args(args, repo_root=repo)
+        ),
+        repo,
+        todo_path,
+    )
+
+
 def _task(
     *,
     outputs: list[str] | None = None,
@@ -2331,27 +2362,8 @@ def test_generated_board_producer_retains_lease_for_unsafe_protected_output(
     tmp_path: Path,
     commit_untrusted: bool,
 ) -> None:
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    _git(repo, "init")
-    _git(repo, "config", "user.name", "Fixture")
-    _git(repo, "config", "user.email", "fixture@example.invalid")
-    todo_path = repo / "tasks.todo.md"
-    todo_path.write_text("# Tasks\n", encoding="utf-8")
-    _git(repo, "add", "tasks.todo.md")
-    _git(repo, "commit", "-m", "initial")
-    args = parse_implementation_supervisor_args(
-        [
-            "--todo-path",
-            str(todo_path),
-            "--state-dir",
-            str(tmp_path / "state"),
-            "--implementation-protected-path",
-            "tasks.todo.md",
-        ]
-    )
-    supervisor = PortalImplementationSupervisor(
-        supervisor_config_from_args(args, repo_root=repo)
+    supervisor, repo, todo_path = _generated_protected_supervisor(
+        tmp_path
     )
 
     def unsafe_producer() -> list[str]:
@@ -2384,6 +2396,448 @@ def test_generated_board_producer_retains_lease_for_unsafe_protected_output(
     ]
     assert events[-1]["type"] == "checkout_mutation_lease_retained"
     assert events[-1]["release_guard"]["reason"] == expected_reason
+
+    unrelated_called = False
+
+    def unrelated_producer() -> list[str]:
+        nonlocal unrelated_called
+        unrelated_called = True
+        return []
+
+    with pytest.raises(
+        RuntimeError,
+        match="checkout_mutation_protected_recovery_required",
+    ):
+        supervisor._run_generated_board_producer(
+            producer="unrelated-test",
+            commit_outputs=True,
+            callback=unrelated_producer,
+        )
+    assert unrelated_called is False
+
+
+def test_generated_board_same_producer_retry_releases_retained_lease(
+    tmp_path: Path,
+) -> None:
+    supervisor, repo, todo_path = _generated_protected_supervisor(tmp_path)
+
+    def dirty_producer() -> list[str]:
+        todo_path.write_text("# Tasks\n\n## EX-002 Retry\n", encoding="utf-8")
+        return ["dirty"]
+
+    with pytest.raises(
+        RuntimeError,
+        match="protected_generated_outputs_dirty",
+    ):
+        supervisor._run_generated_board_producer(
+            producer="retry-test",
+            commit_outputs=True,
+            callback=dirty_producer,
+        )
+
+    def trusted_retry() -> list[str]:
+        _git(repo, "add", "tasks.todo.md")
+        _git(
+            repo,
+            "-c",
+            "user.name=Agent Supervisor",
+            "-c",
+            f"user.email={BACKLOG_REFINERY_AUTHOR_EMAIL}",
+            "commit",
+            "-m",
+            generated_protected_board_commit_subject("retry generated output"),
+        )
+        return ["recovered"]
+
+    assert supervisor.config.generated_dirty_repair_enabled is False
+    assert supervisor._run_generated_board_producer(
+        producer="retry-test",
+        commit_outputs=True,
+        callback=trusted_retry,
+    ) == ["recovered"]
+    assert not checkout_mutation_lock_path(repo).exists()
+    assert supervisor._current_supervisor_checkout_lease() is None
+
+
+def test_generated_dirty_repair_recovers_retained_lease_when_disabled(
+    tmp_path: Path,
+) -> None:
+    supervisor, repo, todo_path = _generated_protected_supervisor(tmp_path)
+
+    with pytest.raises(
+        RuntimeError,
+        match="protected_generated_outputs_dirty",
+    ):
+        supervisor._run_generated_board_producer(
+            producer="repair-test",
+            commit_outputs=True,
+            callback=lambda: todo_path.write_text(
+                "# Tasks\n\n## EX-002 Repair\n",
+                encoding="utf-8",
+            ),
+        )
+
+    assert supervisor.config.generated_dirty_repair_enabled is False
+    result = supervisor.repair_generated_dirty_checkouts()
+
+    assert result["committed_count"] == 1
+    assert not checkout_mutation_lock_path(repo).exists()
+    assert supervisor._current_supervisor_checkout_lease() is None
+
+
+def test_fresh_generated_dirty_repair_journals_before_callback_and_retains(
+    tmp_path: Path,
+) -> None:
+    supervisor, repo, todo_path = _generated_protected_supervisor(tmp_path)
+    todo_path.write_text(
+        "# Tasks\n\n## EX-002 Fresh repair\n",
+        encoding="utf-8",
+    )
+    observed_journal: dict[str, object] = {}
+
+    def incomplete_repair() -> list[str]:
+        lease = checkout_lock_module.read_checkout_mutation_lease(
+            checkout_mutation_lock_path(repo)
+        )
+        assert lease is not None
+        observed_journal.update(lease.metadata)
+        return ["still-dirty"]
+
+    with pytest.raises(
+        RuntimeError,
+        match="protected_generated_outputs_dirty",
+    ):
+        supervisor._run_generated_board_producer(
+            producer="generated-dirty-repair",
+            commit_outputs=True,
+            operation="generated_dirty_repair",
+            callback=incomplete_repair,
+        )
+
+    assert observed_journal["protected_recovery_required"] is True
+    assert (
+        observed_journal["protected_recovery_owner"]
+        == "implementation_supervisor"
+    )
+    assert checkout_mutation_lock_path(repo).exists()
+    assert supervisor._retained_generated_checkout_lease() is True
+
+
+def test_generated_board_callback_exception_survives_guard_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    supervisor, repo, _todo_path = _generated_protected_supervisor(tmp_path)
+    real_guard = supervisor._generated_protected_release_guard
+    guard_calls = 0
+
+    def fail_guard(snapshot) -> dict[str, object]:
+        nonlocal guard_calls
+        guard_calls += 1
+        if guard_calls == 1:
+            return real_guard(snapshot)
+        raise RuntimeError("guard exploded")
+
+    monkeypatch.setattr(
+        supervisor,
+        "_generated_protected_release_guard",
+        fail_guard,
+    )
+
+    with pytest.raises(ValueError, match="producer sentinel"):
+        supervisor._run_generated_board_producer(
+            producer="exception-test",
+            commit_outputs=True,
+            callback=lambda: (_ for _ in ()).throw(
+                ValueError("producer sentinel")
+            ),
+        )
+
+    assert checkout_mutation_lock_path(repo).exists()
+    assert supervisor._supervisor_checkout_transaction_depth() == 0
+    assert supervisor._retained_generated_checkout_lease() is True
+
+
+def test_generated_board_replacement_failed_release_is_not_durable(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    supervisor, repo, _todo_path = _generated_protected_supervisor(tmp_path)
+    monkeypatch.setattr(
+        supervisor,
+        "_release_supervisor_checkout_lease",
+        lambda *_args, **_kwargs: False,
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="checkout_mutation_lease_release_failed",
+    ):
+        supervisor._run_generated_board_producer(
+            producer="replacement-test",
+            commit_outputs=True,
+            callback=lambda: ["unchanged"],
+        )
+
+    assert checkout_mutation_lock_path(repo).exists()
+    assert supervisor._retained_generated_checkout_lease() is True
+    assert supervisor._current_supervisor_checkout_lease() is not None
+
+
+def test_generated_board_snapshot_exception_releases_without_fake_nesting(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    supervisor, repo, _todo_path = _generated_protected_supervisor(tmp_path)
+    callback_called = False
+
+    def fail_snapshot() -> dict[str, object]:
+        raise RuntimeError("snapshot exploded")
+
+    def callback() -> list[str]:
+        nonlocal callback_called
+        callback_called = True
+        return []
+
+    monkeypatch.setattr(
+        supervisor,
+        "_generated_protected_release_guard_snapshot",
+        fail_snapshot,
+    )
+
+    with pytest.raises(RuntimeError, match="snapshot exploded"):
+        supervisor._run_generated_board_producer(
+            producer="snapshot-test",
+            commit_outputs=True,
+            callback=callback,
+        )
+
+    assert callback_called is False
+    assert not checkout_mutation_lock_path(repo).exists()
+    assert supervisor._current_supervisor_checkout_lease() is None
+    assert supervisor._supervisor_checkout_transaction_depth() == 0
+
+
+def test_supervisor_adopts_and_recovers_journal_after_restart(
+    tmp_path: Path,
+) -> None:
+    supervisor, repo, todo_path = _generated_protected_supervisor(tmp_path)
+    observed_journal: dict[str, object] = {}
+
+    def interrupted_producer() -> list[str]:
+        lease = checkout_lock_module.read_checkout_mutation_lease(
+            checkout_mutation_lock_path(repo)
+        )
+        assert lease is not None
+        observed_journal.update(lease.metadata)
+        todo_path.write_text(
+            "# Tasks\n\n## EX-002 Restart recovery\n",
+            encoding="utf-8",
+        )
+        return ["EX-002"]
+
+    with pytest.raises(
+        RuntimeError,
+        match="protected_generated_outputs_dirty",
+    ):
+        supervisor._run_generated_board_producer(
+            producer="restart-test",
+            commit_outputs=True,
+            callback=interrupted_producer,
+        )
+
+    assert observed_journal["protected_recovery_required"] is True
+    assert (
+        observed_journal["protected_recovery_owner"]
+        == "implementation_supervisor"
+    )
+    guard = dict(observed_journal["protected_release_guard"])
+    guard_id = guard.pop("guard_id")
+    assert checkout_lock_module.content_identity(guard) == guard_id
+    intent = dict(observed_journal["protected_recovery_intent"])
+    intent_id = intent.pop("intent_id")
+    assert checkout_lock_module.content_identity(intent) == intent_id
+    assert intent["operation"] == "generated_board_update"
+    assert intent["producer"] == "restart-test"
+    assert intent["protected_paths"] == ["tasks.todo.md"]
+
+    stale = checkout_lock_module.read_checkout_mutation_lease(
+        checkout_mutation_lock_path(repo)
+    )
+    assert stale is not None
+    dead_owner = checkout_lock_module.update_checkout_mutation_lease(
+        stale,
+        {
+            **dict(stale.metadata),
+            "pid": 2_147_483_647,
+        },
+    )
+    assert dead_owner is not None
+
+    restarted = PortalImplementationSupervisor(supervisor.config)
+    result = restarted._recover_retained_generated_checkout_lease()
+
+    assert result["recovered"] is True
+    assert result["retained_lease"] is False
+    assert result["adoption"]["adopted"] is True
+    assert not checkout_mutation_lock_path(repo).exists()
+    assert _git(repo, "status", "--porcelain", "--", "tasks.todo.md") == ""
+    assert _git(repo, "log", "-1", "--pretty=%ae") == (
+        BACKLOG_REFINERY_AUTHOR_EMAIL
+    )
+
+
+@pytest.mark.parametrize("commit_parent_gitlink", [False, True])
+def test_generated_protected_release_guard_covers_submodule_and_gitlink(
+    tmp_path: Path,
+    commit_parent_gitlink: bool,
+) -> None:
+    child_source = tmp_path / "child-source"
+    child_source.mkdir()
+    _git(child_source, "init")
+    child_todo = child_source / "tasks.todo.md"
+    child_todo.write_text("# Tasks\n", encoding="utf-8")
+    _git(child_source, "add", "tasks.todo.md")
+    _git(
+        child_source,
+        "-c",
+        "user.name=Fixture",
+        "-c",
+        "user.email=fixture@example.invalid",
+        "commit",
+        "-m",
+        "initial child",
+    )
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(
+        repo,
+        "-c",
+        "protocol.file.allow=always",
+        "submodule",
+        "add",
+        str(child_source),
+        "deps/child",
+    )
+    _git(repo, "add", ".gitmodules", "deps/child")
+    _git(
+        repo,
+        "-c",
+        "user.name=Fixture",
+        "-c",
+        "user.email=fixture@example.invalid",
+        "commit",
+        "-m",
+        "initial parent",
+    )
+    todo_path = repo / "deps/child/tasks.todo.md"
+    args = parse_implementation_supervisor_args(
+        [
+            "--todo-path",
+            str(todo_path),
+            "--state-dir",
+            str(tmp_path / "state"),
+            "--implementation-protected-path",
+            "deps/child/tasks.todo.md",
+        ]
+    )
+    supervisor = PortalImplementationSupervisor(
+        supervisor_config_from_args(args, repo_root=repo)
+    )
+    subject = generated_protected_board_commit_subject("submodule update")
+
+    def producer() -> list[str]:
+        todo_path.write_text("# Tasks\n\n## EX-002 Child\n", encoding="utf-8")
+        _git(todo_path.parent, "add", "tasks.todo.md")
+        _git(
+            todo_path.parent,
+            "-c",
+            "user.name=Agent Supervisor",
+            "-c",
+            f"user.email={BACKLOG_REFINERY_AUTHOR_EMAIL}",
+            "commit",
+            "-m",
+            subject,
+        )
+        if commit_parent_gitlink:
+            _git(repo, "add", "deps/child")
+            _git(
+                repo,
+                "-c",
+                "user.name=Agent Supervisor",
+                "-c",
+                f"user.email={BACKLOG_REFINERY_AUTHOR_EMAIL}",
+                "commit",
+                "-m",
+                subject,
+            )
+        return ["EX-002"]
+
+    if commit_parent_gitlink:
+        assert supervisor._run_generated_board_producer(
+            producer="submodule-test",
+            commit_outputs=True,
+            callback=producer,
+        ) == ["EX-002"]
+        assert not checkout_mutation_lock_path(repo).exists()
+    else:
+        with pytest.raises(
+            RuntimeError,
+            match="protected_generated_outputs_dirty",
+        ):
+            supervisor._run_generated_board_producer(
+                producer="submodule-test",
+                commit_outputs=True,
+                callback=producer,
+            )
+        events = [
+            json.loads(line)
+            for line in supervisor.config.events_path.read_text(
+                encoding="utf-8"
+            ).splitlines()
+        ]
+        scopes = events[-1]["release_guard"]["scope_results"]
+        assert {Path(scope["git_root"]) for scope in scopes} == {
+            repo.resolve(),
+            todo_path.parent.resolve(),
+        }
+        parent_scope = next(
+            scope for scope in scopes if Path(scope["git_root"]) == repo.resolve()
+        )
+        assert parent_scope["reason"] == "protected_generated_outputs_dirty"
+
+
+def test_maintenance_recovers_retained_checkout_before_other_mutations(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    supervisor = _supervisor(tmp_path)
+    phases: list[str] = []
+    monkeypatch.setattr(
+        supervisor,
+        "_recover_retained_generated_checkout_lease",
+        lambda: {
+            "attempted": True,
+            "recovered": False,
+            "retained_lease": True,
+        },
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "ensure_event_log_file",
+        lambda: pytest.fail("maintenance mutated state before recovery"),
+    )
+
+    result = supervisor._run_once_with_maintenance_under_lease(
+        phases.append,
+        include_refill=False,
+    )
+
+    assert phases == ["retained_generated_checkout_recovery"]
+    assert result["maintenance_blocked"] is True
+    assert result["reason"] == "checkout_mutation_protected_recovery_required"
 
 
 def test_supervisor_blocks_maintenance_while_protected_snapshot_is_active(

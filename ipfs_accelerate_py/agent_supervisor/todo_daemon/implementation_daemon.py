@@ -55,13 +55,16 @@ from ..merge.checkout_lock import (
     BACKLOG_REFINERY_AUTHOR_EMAIL,
     CheckoutMutationLease,
     GENERATED_PROTECTED_BOARD_COMMIT_MARKER,
+    adopt_inactive_checkout_mutation_lease,
     acquire_checkout_mutation_lease,
     checkout_lock_metadata,
     checkout_mutation_lock_path,
     checkout_repository_id,
     merge_target_queue_dir,
+    read_checkout_mutation_lease,
     release_checkout_mutation_lease,
     serialized_lock_update,
+    update_checkout_mutation_lease,
 )
 from ..worktree_lifecycle import (
     DEFAULT_LEASE_SECONDS,
@@ -101,6 +104,7 @@ from ..task_sources.task_identity import (
 from ..task_sources.task_source import (
     MAX_QUERY_LIMIT as TASK_SOURCE_QUERY_LIMIT,
     CanonicalTaskSource,
+    DualTaskSource,
     TaskSourceError,
     TaskSourceIdentity,
     TaskSourceIntegrityError,
@@ -2130,9 +2134,11 @@ class PortalImplementationDaemon:
                     else "markdown"
                 )
                 if inferred_kind == "markdown":
-                    source_options["task_prefix"] = normalize_task_header_prefix(
-                        task_header_prefix
-                    )
+                    source_options["task_prefix"] = re.sub(
+                        r"^\s*#{1,6}\s*",
+                        "",
+                        normalize_task_header_prefix(task_header_prefix),
+                    ).strip()
             self.task_source = open_task_source(
                 configured_task_source,
                 kind=task_source_kind,
@@ -2202,6 +2208,11 @@ class PortalImplementationDaemon:
         self.decision_runtime = decision_runtime
         self._last_runtime_decision: Any = None
         self._last_runtime_effect_observation: Any = None
+        # A completion decision is emitted before its protected checkout
+        # journal can be CAS-updated.  Retain the content-addressed result in
+        # process so a lost journal CAS does not emit a second runtime receipt
+        # or queue success on the retry.
+        self._completion_publications: dict[str, dict[str, Any]] = {}
         self._last_implementation_context: (
             ContextCompileResult | ContextDeltaResult
         ) | None = None
@@ -2701,6 +2712,387 @@ class PortalImplementationDaemon:
                 "fresh_merged_tree_required": True,
             },
         )
+
+    def _completion_publication_intent(
+        self,
+        task: PortalTask,
+        *,
+        merged_tree_id: str,
+        evidence: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Capture restart-stable inputs for terminal completion publication."""
+
+        previous = getattr(self._last_runtime_decision, "receipt", None)
+        observation = self._last_runtime_effect_observation
+        completion_payload = {
+            "task_id": task.task_id,
+            "task_cid": self._canonical_ref(task),
+            "merged_tree_id": merged_tree_id,
+            "prior_decision_receipt_id": str(
+                getattr(previous, "receipt_id", "")
+            ),
+            "effect_observation_receipt_id": str(
+                getattr(observation, "receipt_id", "")
+            ),
+            "post_merge_evidence": dict(evidence),
+            "fresh_merged_tree_required": True,
+        }
+        state_path = self.state_path.resolve(strict=False)
+        state_dir = state_path.parent
+        publication_sink: dict[str, Any] = {
+            "schema": (
+                "ipfs_accelerate_py.agent_supervisor."
+                "completion-publication-sink@1"
+            ),
+            "repository_id": checkout_repository_id(self.repo_root),
+            "state_path": str(state_path),
+            "state_dir": str(state_dir),
+            "task_queue_path": str(state_dir / "task_queue.json"),
+            "publication_store_path": str(
+                state_dir / "completion-publications"
+            ),
+        }
+        publication_sink["sink_id"] = content_identity(
+            publication_sink
+        )
+        intent: dict[str, Any] = {
+            "schema": (
+                "ipfs_accelerate_py.agent_supervisor."
+                "completion-publication-intent@1"
+            ),
+            "completion_payload": completion_payload,
+            "queue_task_cid": self._canonical_ref(task),
+            "publication_sink": publication_sink,
+        }
+        intent["intent_id"] = content_identity(intent)
+        return intent
+
+    def _validated_completion_publication_sink(
+        self,
+        intent: Mapping[str, Any],
+        *,
+        recovery_metadata: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Return the exact, content-bound state/queue sink for an intent."""
+
+        raw_sink = intent.get("publication_sink")
+        if not isinstance(raw_sink, Mapping):
+            raise ValueError("completion publication sink is missing")
+        sink = dict(raw_sink)
+        sink_id = str(sink.pop("sink_id", "") or "")
+        if not sink_id or content_identity(sink) != sink_id:
+            raise ValueError("completion publication sink identity mismatch")
+        sink["sink_id"] = sink_id
+        if sink.get("schema") != (
+            "ipfs_accelerate_py.agent_supervisor."
+            "completion-publication-sink@1"
+        ):
+            raise ValueError("completion publication sink schema mismatch")
+        if str(sink.get("repository_id") or "") != (
+            checkout_repository_id(self.repo_root)
+        ):
+            raise ValueError("completion publication sink repository mismatch")
+        try:
+            state_path = Path(str(sink.get("state_path") or ""))
+            state_dir = Path(str(sink.get("state_dir") or ""))
+            queue_path = Path(str(sink.get("task_queue_path") or ""))
+            store_path = Path(
+                str(sink.get("publication_store_path") or "")
+            )
+            if not all(
+                path.is_absolute()
+                for path in (
+                    state_path,
+                    state_dir,
+                    queue_path,
+                    store_path,
+                )
+            ):
+                raise ValueError("completion publication paths must be absolute")
+            canonical_state = state_path.resolve(strict=False)
+            canonical_dir = state_dir.resolve(strict=False)
+            canonical_queue = queue_path.resolve(strict=False)
+            canonical_store = store_path.resolve(strict=False)
+        except (OSError, RuntimeError, ValueError) as exc:
+            raise ValueError(
+                "completion publication sink paths are invalid"
+            ) from exc
+        if (
+            state_path != canonical_state
+            or state_dir != canonical_dir
+            or queue_path != canonical_queue
+            or store_path != canonical_store
+            or canonical_state.parent != canonical_dir
+            or canonical_queue != canonical_dir / "task_queue.json"
+            or canonical_store != canonical_dir / "completion-publications"
+        ):
+            raise ValueError("completion publication sink paths disagree")
+        if recovery_metadata is not None:
+            try:
+                journal_state = Path(
+                    str(recovery_metadata.get("state_path") or "")
+                ).resolve(strict=False)
+                journal_dir = Path(
+                    str(recovery_metadata.get("state_dir") or "")
+                ).resolve(strict=False)
+            except (OSError, RuntimeError, ValueError) as exc:
+                raise ValueError(
+                    "completion recovery state sink is invalid"
+                ) from exc
+            if (
+                journal_state != canonical_state
+                or journal_dir != canonical_dir
+            ):
+                raise ValueError(
+                    "completion publication sink does not match recovery journal"
+                )
+        return sink
+
+    @staticmethod
+    def _completion_publication_record_path(
+        sink: Mapping[str, Any],
+        intent_id: str,
+    ) -> Path:
+        digest = hashlib.sha256(intent_id.encode("utf-8")).hexdigest()
+        return (
+            Path(str(sink["publication_store_path"]))
+            / f"{digest}.json"
+        )
+
+    @staticmethod
+    def _validated_completion_publication_record(
+        record: Mapping[str, Any] | None,
+        *,
+        intent_id: str,
+        sink_id: str,
+    ) -> dict[str, Any] | None:
+        if not isinstance(record, Mapping):
+            return None
+        normalized = dict(record)
+        record_id = str(normalized.pop("record_id", "") or "")
+        if not record_id or content_identity(normalized) != record_id:
+            return None
+        normalized["record_id"] = record_id
+        publication = normalized.get("publication")
+        if (
+            normalized.get("schema")
+            != (
+                "ipfs_accelerate_py.agent_supervisor."
+                "completion-publication-record@1"
+            )
+            or normalized.get("phase") != "published"
+            or str(normalized.get("intent_id") or "") != intent_id
+            or str(normalized.get("sink_id") or "") != sink_id
+            or not isinstance(publication, Mapping)
+            or publication.get("published") is not True
+            or str(publication.get("intent_id") or "") != intent_id
+        ):
+            return None
+        return normalized
+
+    @staticmethod
+    def _validated_completion_publication_pending_record(
+        record: Mapping[str, Any] | None,
+        *,
+        intent_id: str,
+        sink_id: str,
+    ) -> dict[str, Any] | None:
+        if not isinstance(record, Mapping):
+            return None
+        normalized = dict(record)
+        record_id = str(normalized.pop("record_id", "") or "")
+        if (
+            not record_id
+            or content_identity(normalized) != record_id
+            or normalized.get("schema")
+            != (
+                "ipfs_accelerate_py.agent_supervisor."
+                "completion-publication-record@1"
+            )
+            or normalized.get("phase") != "routing"
+            or str(normalized.get("intent_id") or "") != intent_id
+            or str(normalized.get("sink_id") or "") != sink_id
+        ):
+            return None
+        normalized["record_id"] = record_id
+        return normalized
+
+    @staticmethod
+    def _write_completion_publication_record(
+        path: Path,
+        record: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        normalized = {
+            key: value
+            for key, value in dict(record).items()
+            if key != "record_id"
+        }
+        normalized["record_id"] = content_identity(normalized)
+        write_json_atomic(path, normalized)
+        return normalized
+
+    def _record_exact_task_queue_success(
+        self,
+        queue_path: Path,
+        task_cid: str,
+    ) -> None:
+        """Update and verify the journal-selected persistent queue."""
+
+        queue_path.parent.mkdir(parents=True, exist_ok=True)
+        with serialized_lock_update(queue_path):
+            queue = PersistentTaskQueue.load(queue_path)
+            key = queue.resolve_key(task_cid)
+            entry = queue.entries.get(key)
+            if entry is None or entry.last_completed_at <= 0:
+                queue.record_success(task_cid)
+                queue.save()
+            verified = PersistentTaskQueue.load(queue_path)
+            verified_key = verified.resolve_key(task_cid)
+            verified_entry = verified.entries.get(verified_key)
+            if (
+                verified_entry is None
+                or verified_entry.last_completed_at <= 0
+            ):
+                raise OSError(
+                    "persistent completion queue acknowledgement failed"
+                )
+            if queue_path == Path(
+                str(getattr(self.task_queue, "_path", "") or "")
+            ).resolve(strict=False):
+                self.task_queue = verified
+
+    def _publish_completion_intent(
+        self,
+        intent: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Publish one content-addressed terminal intent idempotently."""
+
+        normalized = dict(intent)
+        intent_id = str(normalized.pop("intent_id", "") or "")
+        if not intent_id or content_identity(normalized) != intent_id:
+            raise ValueError("completion publication intent identity mismatch")
+        payload = normalized.get("completion_payload")
+        task_cid = str(normalized.get("queue_task_cid") or "")
+        if not isinstance(payload, Mapping) or not task_cid:
+            raise ValueError("completion publication intent is incomplete")
+        sink = self._validated_completion_publication_sink(intent)
+        record_path = self._completion_publication_record_path(
+            sink,
+            intent_id,
+        )
+        record_path.parent.mkdir(parents=True, exist_ok=True)
+        with serialized_lock_update(record_path):
+            raw_record = load_json_dict(record_path)
+            durable = self._validated_completion_publication_record(
+                raw_record,
+                intent_id=intent_id,
+                sink_id=str(sink["sink_id"]),
+            )
+            if durable is None:
+                if raw_record is not None:
+                    pending = (
+                        self._validated_completion_publication_pending_record(
+                            raw_record,
+                            intent_id=intent_id,
+                            sink_id=str(sink["sink_id"]),
+                        )
+                    )
+                    if pending is not None:
+                        raise RuntimeError(
+                            "completion publication route is ambiguous; "
+                            "resolver idempotency is not proven"
+                        )
+                    raise RuntimeError(
+                        "completion publication record is invalid"
+                    )
+                self._write_completion_publication_record(
+                    record_path,
+                    {
+                        "schema": (
+                            "ipfs_accelerate_py.agent_supervisor."
+                            "completion-publication-record@1"
+                        ),
+                        "phase": "routing",
+                        "intent_id": intent_id,
+                        "sink_id": str(sink["sink_id"]),
+                        "routing_started_at": utc_now(),
+                    },
+                )
+                routed_payload = dict(payload)
+                routed_payload["completion_intent_id"] = intent_id
+                decision = self._decision_runtime_route(
+                    "completion",
+                    routed_payload,
+                )
+                receipt = getattr(decision, "receipt", None)
+                receipt_to_dict = getattr(receipt, "to_dict", None)
+                receipt_record = (
+                    receipt_to_dict()
+                    if callable(receipt_to_dict)
+                    else {
+                        "receipt_id": str(
+                            getattr(receipt, "receipt_id", "")
+                        )
+                    }
+                )
+                publication = {
+                    "published": True,
+                    "intent_id": intent_id,
+                    "decision_receipt_id": str(
+                        getattr(receipt, "receipt_id", "")
+                    ),
+                    "queue_task_cid": task_cid,
+                    "sink_id": str(sink["sink_id"]),
+                }
+                durable = self._write_completion_publication_record(
+                    record_path,
+                    {
+                        "schema": (
+                            "ipfs_accelerate_py.agent_supervisor."
+                            "completion-publication-record@1"
+                        ),
+                        "phase": "published",
+                        "intent_id": intent_id,
+                        "sink_id": str(sink["sink_id"]),
+                        "publication": publication,
+                        "runtime_receipt": receipt_record,
+                        "queue_recorded": False,
+                        "published_at": utc_now(),
+                    },
+                )
+            publication = dict(durable["publication"])
+            self._completion_publications[intent_id] = {
+                **publication,
+                "queue_recorded": bool(durable.get("queue_recorded")),
+            }
+        if durable.get("queue_recorded") is not True:
+            self._record_exact_task_queue_success(
+                Path(str(sink["task_queue_path"])),
+                task_cid,
+            )
+            with serialized_lock_update(record_path):
+                current = self._validated_completion_publication_record(
+                    load_json_dict(record_path),
+                    intent_id=intent_id,
+                    sink_id=str(sink["sink_id"]),
+                )
+                if current is None:
+                    raise RuntimeError(
+                        "completion publication record was replaced"
+                    )
+                if current.get("queue_recorded") is not True:
+                    current["queue_recorded"] = True
+                    current["queue_recorded_at"] = utc_now()
+                    current = self._write_completion_publication_record(
+                        record_path,
+                        current,
+                    )
+                durable = current
+            self._completion_publications[intent_id] = {
+                **publication,
+                "queue_recorded": True,
+            }
+        return publication
 
     @staticmethod
     def _implementation_protected_path_identity(
@@ -5885,6 +6277,70 @@ class PortalImplementationDaemon:
         return result
 
     def run_once(self) -> dict[str, Any]:
+        try:
+            protected_checkout_recovery = (
+                self._recover_protected_checkout_mutation()
+            )
+        except Exception as exc:
+            protected_checkout_recovery = {
+                "required": True,
+                "recovered": False,
+                "blocked": True,
+                "reason": "protected_checkout_recovery_failed",
+                "exception_type": type(exc).__name__,
+                "error": str(exc)[-4000:],
+            }
+        if (
+            protected_checkout_recovery.get("required", False)
+            and not protected_checkout_recovery.get(
+                "checkout_mutation_lease_recovered",
+                False,
+            )
+        ):
+            return {
+                "blocked": True,
+                "reason": str(
+                    protected_checkout_recovery.get("reason")
+                    or "protected_checkout_recovery_required"
+                ),
+                "protected_checkout_recovery": (
+                    protected_checkout_recovery
+                ),
+                "state_path": str(self.state_path),
+                "strategy_path": str(self.strategy_path),
+                "events_path": str(self.events_path),
+                "unchanged": False,
+                "write_count": 0,
+                "projection_delta": {},
+                "implementation_result": None,
+                "merge_reconciliation": [],
+                "wake_kinds": [],
+                "requirement_id": EVENT_DRIVEN_RUNTIME_REQUIREMENT_ID,
+            }
+        external_completion_recovery = (
+            self._recover_pending_external_completion_callbacks()
+        )
+        if external_completion_recovery.get("blocked", False):
+            return {
+                "blocked": True,
+                "reason": str(
+                    external_completion_recovery.get("reason")
+                    or "completion_callback_recovery_required"
+                ),
+                "external_completion_recovery": (
+                    external_completion_recovery
+                ),
+                "state_path": str(self.state_path),
+                "strategy_path": str(self.strategy_path),
+                "events_path": str(self.events_path),
+                "unchanged": False,
+                "write_count": 0,
+                "projection_delta": {},
+                "implementation_result": None,
+                "merge_reconciliation": [],
+                "wake_kinds": [],
+                "requirement_id": EVENT_DRIVEN_RUNTIME_REQUIREMENT_ID,
+            }
         wake_kinds = self._consume_runtime_wake_kinds()
         self._current_runtime_wake_kinds = set(wake_kinds)
         source_digest, _source_metadata = self._runtime_source_head()
@@ -6923,6 +7379,8 @@ class PortalImplementationDaemon:
             "reason": "not_run",
         }
         todo_update_result: dict[str, Any] = {}
+        completion_durability_deferred = False
+        completion_published_in_transaction = False
         context_receipt_path: Path | None = None
         protected_path_snapshot: dict[str, dict[str, Any]] | None = None
         protected_path_violation: dict[str, Any] = {}
@@ -7157,23 +7615,48 @@ class PortalImplementationDaemon:
                 _repository_id, completion_tree_id = (
                     self._implementation_repository_and_tree_ids(task)
                 )
-                self._decision_runtime_completion(
+                completion_evidence = {
+                    "passed": bool(
+                        validation_result.get("passed", False)
+                    ),
+                    "completion_authoritative": True,
+                    "repository_tree_id": completion_tree_id,
+                    "validation": dict(validation_result),
+                }
+                completion_intent = self._completion_publication_intent(
                     task,
                     merged_tree_id=completion_tree_id,
-                    evidence={
-                        "passed": bool(
-                            validation_result.get("passed", False)
-                        ),
-                        "completion_authoritative": True,
-                        "repository_tree_id": completion_tree_id,
-                        "validation": dict(validation_result),
-                    },
+                    evidence=completion_evidence,
                 )
-                todo_update_result = self._mark_task_or_bundle_completed_in_todo(task)
+                todo_update_result = (
+                    self._mark_task_or_bundle_completed_in_todo(
+                        task,
+                        completion_intent=completion_intent,
+                    )
+                )
+                completion_published_in_transaction = bool(
+                    isinstance(
+                        todo_update_result.get("completion_publication"),
+                        Mapping,
+                    )
+                    and todo_update_result["completion_publication"].get(
+                        "published"
+                    )
+                )
+                if self._todo_completion_is_durable(todo_update_result):
+                    if not completion_published_in_transaction:
+                        self._decision_runtime_completion(
+                            task,
+                            merged_tree_id=completion_tree_id,
+                            evidence=completion_evidence,
+                        )
+                else:
+                    completion_durability_deferred = True
+                    effective_returncode = 1
             finished_at = utc_now()
             verification_deferred = bool(
                 protected_path_violation.get("verification_deferred")
-            )
+            ) or completion_durability_deferred
             if verification_deferred:
                 self._restore_task_attempt(state, task, max(0, attempt - 1))
             else:
@@ -7184,7 +7667,10 @@ class PortalImplementationDaemon:
             state.last_implementation_log_path = str(log_path)
             self._mark_implementation_finished(state, finished_at=finished_at)
             state.save(self.state_path)
-            if not verification_deferred:
+            if (
+                not verification_deferred
+                and not completion_published_in_transaction
+            ):
                 self._record_task_queue_outcome(
                     task,
                     effective_returncode,
@@ -7209,6 +7695,9 @@ class PortalImplementationDaemon:
                 )
                 result["agent_returncode"] = completed.returncode
                 result["protected_path_violation"] = protected_path_violation
+            elif completion_durability_deferred:
+                result["reason"] = "protected_board_completion_not_durable"
+                result["completion_pending_durability"] = True
             result["attempt_consumed"] = not verification_deferred
             if verification_deferred:
                 result["deferred"] = True
@@ -7434,15 +7923,452 @@ class PortalImplementationDaemon:
     def _todo_board_is_implementation_protected(self) -> bool:
         """Return whether the markdown board is an exact protected path."""
 
-        try:
-            relative = (
-                self.todo_path.resolve()
-                .relative_to(self.repo_root.resolve())
-                .as_posix()
+        protected = set(self.implementation_protected_paths)
+        for path in (
+            self._task_source_markdown_checkout_paths()
+            or (self.todo_path,)
+        ):
+            try:
+                relative = (
+                    path.resolve()
+                    .relative_to(self.repo_root.resolve())
+                    .as_posix()
+                )
+            except (OSError, RuntimeError, ValueError):
+                continue
+            if relative in protected:
+                return True
+        return False
+
+    def _task_source_markdown_checkout_paths(self) -> tuple[Path, ...]:
+        """Return concrete Markdown projections mutated by task-source CAS."""
+
+        source = self.task_source
+        if source is None:
+            return ()
+        if str(getattr(source, "source_kind", "")).lower() == "markdown":
+            return (Path(source.path),)
+        if isinstance(source, DualTaskSource):
+            return tuple(
+                Path(projection.path)
+                for projection in (source.primary, source.shadow)
+                if str(
+                    getattr(projection, "source_kind", "")
+                ).lower()
+                == "markdown"
             )
-        except (OSError, RuntimeError, ValueError):
+        return ()
+
+    def _task_source_writes_markdown_checkout(self) -> bool:
+        """Return whether task-source CAS operations rewrite ``todo_path``."""
+
+        if self.task_source is None:
             return False
-        return relative in set(self.implementation_protected_paths)
+        if str(getattr(self.task_source, "source_kind", "")).lower() == (
+            "markdown"
+        ):
+            return True
+        if isinstance(self.task_source, DualTaskSource):
+            return any(
+                str(getattr(source, "source_kind", "")).lower()
+                == "markdown"
+                for source in (
+                    self.task_source.primary,
+                    self.task_source.shadow,
+                )
+            )
+        return False
+
+    def _todo_mutation_requires_checkout_lease(self) -> bool:
+        return self.task_source is None or (
+            self._task_source_writes_markdown_checkout()
+            and self._todo_board_is_implementation_protected()
+        )
+
+    def _protected_paths_for_checkout_mutation(
+        self,
+        operation: str,
+        extra: Mapping[str, Any] | None,
+    ) -> tuple[Path, ...]:
+        """Resolve the exact protected outputs a transaction may rewrite."""
+
+        candidates: list[Path] = []
+        if operation in {
+            "mark_tasks_completed",
+            "reopen_dependency_blocked_tasks",
+            "recover_protected_generated_outputs",
+        }:
+            candidates.extend(
+                self._task_source_markdown_checkout_paths()
+                or (self.todo_path,)
+            )
+        configured_path = str((extra or {}).get("path") or "")
+        if configured_path:
+            candidates.append(Path(configured_path))
+
+        root = self.repo_root.resolve()
+        protected = set(self.implementation_protected_paths)
+        selected: list[Path] = []
+        for candidate in candidates:
+            path = candidate if candidate.is_absolute() else root / candidate
+            try:
+                resolved = path.resolve()
+                relative = resolved.relative_to(root).as_posix()
+            except (OSError, RuntimeError, ValueError):
+                continue
+            if relative in protected:
+                selected.append(resolved)
+        return tuple(dict.fromkeys(selected))
+
+    @staticmethod
+    def _protected_path_content_snapshot(path: Path) -> dict[str, Any]:
+        try:
+            payload = path.read_bytes()
+        except FileNotFoundError:
+            return {"exists": False, "sha256": ""}
+        return {
+            "exists": True,
+            "sha256": hashlib.sha256(payload).hexdigest(),
+            "size": len(payload),
+        }
+
+    def _protected_checkout_release_guard(
+        self,
+        paths: Sequence[Path],
+    ) -> dict[str, Any]:
+        """Capture a content-addressed, cross-repository pre-mutation guard."""
+
+        root = self.repo_root.resolve()
+        records: list[dict[str, Any]] = []
+        for path in paths:
+            resolved = path.resolve()
+            relative = resolved.relative_to(root).as_posix()
+            current_repo = self._git_toplevel_for_path(resolved.parent)
+            if current_repo is None:
+                raise RuntimeError(
+                    f"protected path is not in a Git repository: {relative}"
+                )
+            current_target = resolved
+            repositories: list[dict[str, str]] = []
+            seen: set[Path] = set()
+            while current_repo not in seen:
+                current_repo = current_repo.resolve()
+                seen.add(current_repo)
+                target = self._relative_to_repo(
+                    current_repo,
+                    current_target,
+                )
+                head = self._implementation_protected_git_head(current_repo)
+                if not target or not head:
+                    raise RuntimeError(
+                        "unable to snapshot protected path repository chain: "
+                        f"{relative}"
+                    )
+                repository = (
+                    "."
+                    if current_repo == root
+                    else current_repo.relative_to(root).as_posix()
+                )
+                repositories.append(
+                    {
+                        "repository": repository,
+                        "target": target,
+                        "head": head,
+                    }
+                )
+                if current_repo == root:
+                    break
+                parent = self._parent_git_toplevel_for_repo(current_repo)
+                if parent is None:
+                    raise RuntimeError(
+                        "protected path repository chain does not reach root: "
+                        f"{relative}"
+                    )
+                current_target = current_repo
+                current_repo = parent
+            records.append(
+                {
+                    "path": relative,
+                    "content": self._protected_path_content_snapshot(resolved),
+                    "repositories": repositories,
+                }
+            )
+        payload: dict[str, Any] = {
+            "schema": (
+                "ipfs_accelerate_py.agent_supervisor."
+                "protected-checkout-release-guard@1"
+            ),
+            "repository_id": checkout_repository_id(root),
+            "paths": records,
+        }
+        payload["guard_id"] = content_identity(payload)
+        return payload
+
+    def _protected_checkout_release_proof(
+        self,
+        guard: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Prove exact rollback/no-op or trusted history since ``guard``."""
+
+        normalized = dict(guard)
+        guard_id = str(normalized.pop("guard_id", "") or "")
+        if not guard_id or content_identity(normalized) != guard_id:
+            return {
+                "trusted": False,
+                "clean": False,
+                "reason": "protected_release_guard_identity_mismatch",
+            }
+        if str(normalized.get("repository_id") or "") != (
+            checkout_repository_id(self.repo_root)
+        ):
+            return {
+                "trusted": False,
+                "clean": False,
+                "reason": "protected_release_guard_repository_mismatch",
+            }
+
+        root = self.repo_root.resolve()
+        protected = set(self.implementation_protected_paths)
+        raw_records = normalized.get("paths")
+        if not isinstance(raw_records, list) or not raw_records:
+            return {
+                "trusted": False,
+                "clean": False,
+                "reason": "protected_release_guard_paths_missing",
+            }
+        guarded_paths: list[Path] = []
+        records: list[Mapping[str, Any]] = []
+        for item in raw_records:
+            if not isinstance(item, Mapping):
+                return {
+                    "trusted": False,
+                    "clean": False,
+                    "reason": "protected_release_guard_invalid",
+                }
+            relative = str(item.get("path") or "")
+            if relative not in protected:
+                return {
+                    "trusted": False,
+                    "clean": False,
+                    "reason": "protected_release_guard_path_not_allowed",
+                }
+            guarded_paths.append(root / relative)
+            records.append(item)
+
+        dirty = self._dirty_implementation_protected_paths(guarded_paths)
+        if dirty:
+            return {
+                "trusted": False,
+                "clean": False,
+                "reason": "protected_outputs_dirty",
+                "dirty_paths": list(dirty),
+                "guard_id": guard_id,
+            }
+
+        histories: list[dict[str, Any]] = []
+        changed_path = False
+        for record in records:
+            relative = str(record.get("path") or "")
+            path = root / relative
+            before_content = record.get("content")
+            if not isinstance(before_content, Mapping):
+                return {
+                    "trusted": False,
+                    "clean": True,
+                    "reason": "protected_release_guard_content_missing",
+                    "guard_id": guard_id,
+                }
+            content_changed = (
+                self._protected_path_content_snapshot(path)
+                != dict(before_content)
+            )
+            changed_path = changed_path or content_changed
+            raw_repositories = record.get("repositories")
+            if not isinstance(raw_repositories, list) or not raw_repositories:
+                return {
+                    "trusted": False,
+                    "clean": True,
+                    "reason": "protected_release_guard_history_missing",
+                    "guard_id": guard_id,
+                }
+            leaf_changed_history = False
+            for index, raw_repository in enumerate(raw_repositories):
+                if not isinstance(raw_repository, Mapping):
+                    return {
+                        "trusted": False,
+                        "clean": True,
+                        "reason": "protected_release_guard_history_invalid",
+                        "guard_id": guard_id,
+                    }
+                repository_text = str(
+                    raw_repository.get("repository") or ""
+                )
+                repository = (
+                    root
+                    if repository_text == "."
+                    else root / repository_text
+                )
+                try:
+                    repository.resolve().relative_to(root)
+                except (OSError, RuntimeError, ValueError):
+                    return {
+                        "trusted": False,
+                        "clean": True,
+                        "reason": "protected_release_guard_repo_not_allowed",
+                        "guard_id": guard_id,
+                    }
+                target = str(raw_repository.get("target") or "")
+                before_head = str(raw_repository.get("head") or "")
+                after_head = self._implementation_protected_git_head(
+                    repository
+                )
+                if not target or not before_head or not after_head:
+                    return {
+                        "trusted": False,
+                        "clean": True,
+                        "reason": "protected_release_history_unavailable",
+                        "guard_id": guard_id,
+                    }
+                history_record: dict[str, Any] = {
+                    "repository": repository_text,
+                    "target": target,
+                    "before_head": before_head,
+                    "after_head": after_head,
+                    "commits": [],
+                }
+                if before_head != after_head:
+                    ancestry = subprocess.run(
+                        [
+                            "git",
+                            "merge-base",
+                            "--is-ancestor",
+                            before_head,
+                            after_head,
+                        ],
+                        cwd=repository,
+                        capture_output=True,
+                        check=False,
+                    )
+                    if ancestry.returncode != 0:
+                        return {
+                            "trusted": False,
+                            "clean": True,
+                            "reason": "protected_release_history_rewritten",
+                            "guard_id": guard_id,
+                        }
+                    changed = subprocess.run(
+                        [
+                            "git",
+                            "diff",
+                            "--quiet",
+                            before_head,
+                            after_head,
+                            "--",
+                            target,
+                        ],
+                        cwd=repository,
+                        capture_output=True,
+                        check=False,
+                    )
+                    if changed.returncode not in {0, 1}:
+                        return {
+                            "trusted": False,
+                            "clean": True,
+                            "reason": "protected_release_history_diff_failed",
+                            "guard_id": guard_id,
+                        }
+                    if changed.returncode == 1:
+                        history = subprocess.run(
+                            [
+                                "git",
+                                "log",
+                                "--format=%H%x09%ae%x09%s",
+                                f"{before_head}..{after_head}",
+                                "--",
+                                target,
+                            ],
+                            cwd=repository,
+                            text=True,
+                            capture_output=True,
+                            check=False,
+                        )
+                        if history.returncode != 0:
+                            return {
+                                "trusted": False,
+                                "clean": True,
+                                "reason": (
+                                    "protected_release_history_query_failed"
+                                ),
+                                "guard_id": guard_id,
+                            }
+                        commits: list[dict[str, str]] = []
+                        for line in history.stdout.splitlines():
+                            parts = line.split("\t", 2)
+                            if len(parts) != 3 or not (
+                                self._trusted_protected_path_commit(
+                                    parts[1],
+                                    parts[2],
+                                )
+                            ):
+                                return {
+                                    "trusted": False,
+                                    "clean": True,
+                                    "reason": (
+                                        "protected_release_history_untrusted"
+                                    ),
+                                    "guard_id": guard_id,
+                                }
+                            commits.append(
+                                {
+                                    "commit": parts[0],
+                                    "author_email": parts[1],
+                                    "subject": parts[2],
+                                }
+                            )
+                        if not commits:
+                            return {
+                                "trusted": False,
+                                "clean": True,
+                                "reason": (
+                                    "protected_release_history_commit_missing"
+                                ),
+                                "guard_id": guard_id,
+                            }
+                        history_record["commits"] = commits
+                        if index == 0:
+                            leaf_changed_history = True
+                histories.append(history_record)
+            if content_changed and not leaf_changed_history:
+                return {
+                    "trusted": False,
+                    "clean": True,
+                    "reason": "protected_release_content_not_in_history",
+                    "guard_id": guard_id,
+                    "histories": histories,
+                }
+
+        confirmed_dirty = self._dirty_implementation_protected_paths(
+            guarded_paths
+        )
+        if confirmed_dirty:
+            return {
+                "trusted": False,
+                "clean": False,
+                "reason": "protected_release_state_changed",
+                "dirty_paths": list(confirmed_dirty),
+                "guard_id": guard_id,
+            }
+        return {
+            "trusted": True,
+            "clean": True,
+            "reason": (
+                "protected_outputs_trusted_history"
+                if changed_path
+                else "protected_outputs_exact_pre_state"
+            ),
+            "guard_id": guard_id,
+            "histories": histories,
+        }
 
     def _dirty_implementation_protected_paths(
         self,
@@ -7562,13 +8488,42 @@ class PortalImplementationDaemon:
 
         if not self._todo_board_is_implementation_protected():
             return result
+        root = self.repo_root.resolve()
+        protected = set(self.implementation_protected_paths)
+        protected_board_paths: list[Path] = []
+        for candidate in (
+            self._task_source_markdown_checkout_paths()
+            or (self.todo_path,)
+        ):
+            try:
+                relative = (
+                    candidate.resolve().relative_to(root).as_posix()
+                )
+            except (OSError, RuntimeError, ValueError):
+                continue
+            if relative in protected:
+                protected_board_paths.append(candidate.resolve())
         dirty_paths = self._dirty_implementation_protected_paths(
-            (self.todo_path,)
+            protected_board_paths
+        )
+        release_guard = getattr(
+            self._checkout_mutation_context,
+            "protected_release_guard",
+            None,
+        )
+        release_proof = (
+            self._protected_checkout_release_proof(release_guard)
+            if isinstance(release_guard, Mapping)
+            else {}
         )
         commit_trusted = self._generated_file_commit_result_trusted(
             commit_result
         )
-        trusted = commit_trusted and not dirty_paths
+        trusted = bool(
+            release_proof.get("trusted")
+            if release_proof
+            else commit_trusted and not dirty_paths
+        )
         result["protected_board_postcondition"] = {
             "checked": True,
             "clean": not dirty_paths,
@@ -7576,6 +8531,10 @@ class PortalImplementationDaemon:
             "dirty_paths": list(dirty_paths),
             "commit_reason": str(commit_result.get("reason") or ""),
         }
+        if release_proof:
+            result["protected_board_postcondition"]["release_proof"] = (
+                release_proof
+            )
         result["durable"] = trusted
         if trusted:
             return result
@@ -7588,8 +8547,6 @@ class PortalImplementationDaemon:
             if dirty_paths
             else "protected_board_commit_untrusted"
         )
-        if not dirty_paths:
-            return result
 
         current = self._current_checkout_mutation_lease()
         if current is None:
@@ -7606,7 +8563,9 @@ class PortalImplementationDaemon:
             if str(item)
         )
         retained_paths = tuple(
-            dict.fromkeys((*existing_paths, self.todo_path.resolve()))
+            dict.fromkeys(
+                (*existing_paths, *protected_board_paths)
+            )
         )
         self._checkout_mutation_context.retain_until_protected_clean = True
         self._checkout_mutation_context.retained_protected_paths = (
@@ -7630,7 +8589,7 @@ class PortalImplementationDaemon:
             if str(task_id).strip()
         )
         if (
-            self.task_source is None
+            self._todo_mutation_requires_checkout_lease()
             and (
                 self._current_checkout_mutation_lease() is None
                 or int(
@@ -7720,6 +8679,37 @@ class PortalImplementationDaemon:
                 "already_ready_task_ids": already_ready_task_ids,
                 "task_source_identity": self._task_source_identity_record(),
             }
+            protected_board_dirty = bool(
+                already_ready_task_ids
+                and self._task_source_writes_markdown_checkout()
+                and self._todo_board_is_implementation_protected()
+                and self._dirty_implementation_protected_paths(
+                    (self.todo_path,)
+                )
+            )
+            if (
+                self._task_source_writes_markdown_checkout()
+                and self._todo_board_is_implementation_protected()
+                and (updated_task_ids or protected_board_dirty)
+            ):
+                commit_task_id = (
+                    sorted(updated_task_ids)[0]
+                    if updated_task_ids
+                    else sorted(already_ready_task_ids)[0]
+                )
+                commit_result = self._commit_generated_file_update(
+                    self.todo_path,
+                    task_id=commit_task_id,
+                    subject=(
+                        f"{commit_task_id}: reopen dependency-ready tasks"
+                    ),
+                )
+                if commit_result:
+                    result["commit_result"] = commit_result
+                self._protected_todo_commit_postcondition(
+                    result,
+                    commit_result,
+                )
             if updated_task_ids:
                 self._record_event("dependency_blocked_tasks_reopened", result)
             return result
@@ -7795,11 +8785,17 @@ class PortalImplementationDaemon:
             self._record_event("dependency_blocked_tasks_reopened", result)
         return result
 
-    def _mark_task_completed_in_todo(self, task_id: str) -> dict[str, Any]:
+    def _mark_task_completed_in_todo(
+        self,
+        task_id: str,
+        *,
+        completion_intent: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
         return self._mark_tasks_completed_in_todo(
             [task_id],
             primary_task_id=task_id,
             completion_reason="single_task",
+            completion_intent=completion_intent,
         )
 
     def _completion_receipts_for_task_ids(
@@ -7850,15 +8846,459 @@ class PortalImplementationDaemon:
             receipts.append(member_receipt)
         return receipts
 
-    def _mark_task_or_bundle_completed_in_todo(self, task: PortalTask) -> dict[str, Any]:
+    def _completion_callback_expectation(
+        self,
+        task_ids: Sequence[str],
+    ) -> dict[str, Any]:
+        """Snapshot the exact members and canonical source before first CAS."""
+
+        expected_task_ids = [
+            str(task_id).strip()
+            for task_id in task_ids
+            if str(task_id).strip()
+        ]
+        expectation: dict[str, Any] = {
+            "operation": "mark_tasks_completed",
+            "task_ids": expected_task_ids,
+            "expected_status": "completed",
+        }
+        if self.task_source is None:
+            tasks_by_id = {
+                task.task_id: task for task in self._load_tasks()
+            }
+            members: list[dict[str, Any]] = []
+            for task_id in expected_task_ids:
+                task = tasks_by_id.get(task_id)
+                if task is None:
+                    raise TaskSourceIntegrityError(
+                        f"task board does not contain {task_id!r}"
+                    )
+                identity = self._identity_for_task(task)
+                members.append(
+                    {
+                        "task_id": task_id,
+                        "canonical_task_cid": (
+                            identity.canonical_task_cid
+                        ),
+                        "canonical_task_key": (
+                            identity.canonical_task_key
+                        ),
+                        "initial_status": task.status,
+                        "board_namespace": identity.board_namespace,
+                    }
+                )
+            board_binding: dict[str, Any] = {
+                "path": str(self.todo_path.resolve(strict=False)),
+                "task_header_prefix": self.task_header_prefix,
+            }
+            board_binding["binding_id"] = content_identity(
+                board_binding
+            )
+            expectation["task_board"] = board_binding
+            expectation["members"] = members
+            expectation["expectation_id"] = content_identity(
+                expectation
+            )
+            return expectation
+
+        source = self.task_source
+        projections: list[dict[str, Any]] = []
+        if isinstance(source, DualTaskSource):
+            for projection in (source.primary, source.shadow):
+                projections.append(
+                    {
+                        "source_kind": projection.source_kind,
+                        "path": str(
+                            Path(projection.path).resolve(strict=False)
+                        ),
+                        "identity": projection.identity.to_dict(),
+                    }
+                )
+        else:
+            projections.append(
+                {
+                    "source_kind": source.source_kind,
+                    "path": str(
+                        Path(source.path).resolve(strict=False)
+                    ),
+                    "identity": source.identity.to_dict(),
+                }
+            )
+        source_binding: dict[str, Any] = {
+            "source_kind": source.identity.source_kind,
+            "path": str(Path(source.path).resolve(strict=False)),
+            "identity": source.identity.to_dict(),
+            "projections": projections,
+            "writes_markdown_checkout": (
+                self._task_source_writes_markdown_checkout()
+            ),
+            "protected_checkout": (
+                self._task_source_writes_markdown_checkout()
+                and self._todo_board_is_implementation_protected()
+            ),
+        }
+        if isinstance(source, DualTaskSource):
+            source_binding.update(
+                {
+                    "mode": source.mode,
+                    "journal_path": str(
+                        source.journal_path.resolve(strict=False)
+                    ),
+                }
+            )
+        source_binding["binding_id"] = content_identity(source_binding)
+        members: list[dict[str, Any]] = []
+        for task_id in expected_task_ids:
+            current = source.get(task_id)
+            if current is None:
+                raise TaskSourceIntegrityError(
+                    f"task source does not contain {task_id!r}"
+                )
+            members.append(
+                {
+                    "task_id": task_id,
+                    "canonical_task_cid": current.task_cid,
+                    "canonical_task_key": str(
+                        current.body.get("task_key")
+                        or current.task_cid
+                    ),
+                    "initial_status": current.status,
+                    "initial_revision": current.revision,
+                    "board_namespace": current.board_namespace,
+                }
+            )
+        expectation["task_source"] = source_binding
+        expectation["members"] = members
+        expectation["expectation_id"] = content_identity(expectation)
+        return expectation
+
+    def _todo_completion_is_durable(
+        self,
+        result: Mapping[str, Any],
+    ) -> bool:
+        """Return whether board completion crossed its protected commit gate."""
+
+        if result.get("durable") is False:
+            return False
+        postcondition = result.get("protected_board_postcondition")
+        if isinstance(postcondition, Mapping):
+            return bool(
+                result.get("durable") is True
+                and postcondition.get("trusted") is True
+            )
+        evidence = result.get("completion_callback_evidence")
+        if isinstance(evidence, Mapping):
+            return bool(
+                evidence.get("succeeded") is True
+                and evidence.get("evidence_id")
+                == content_identity(
+                    {
+                        key: value
+                        for key, value in evidence.items()
+                        if key != "evidence_id"
+                    }
+                )
+            )
+        if self.task_source is not None:
+            return False
+        return not self._todo_board_is_implementation_protected()
+
+    @staticmethod
+    def _completion_callback_record_path(
+        sink: Mapping[str, Any],
+        intent_id: str,
+    ) -> Path:
+        digest = hashlib.sha256(intent_id.encode("utf-8")).hexdigest()
+        return (
+            Path(str(sink["state_dir"]))
+            / "completion-callbacks"
+            / f"{digest}.json"
+        )
+
+    @staticmethod
+    def _validated_completion_callback_record(
+        payload: Mapping[str, Any] | None,
+    ) -> dict[str, Any] | None:
+        if not isinstance(payload, Mapping):
+            return None
+        normalized = dict(payload)
+        record_id = str(normalized.pop("record_id", "") or "")
+        if (
+            not record_id
+            or content_identity(normalized) != record_id
+            or normalized.get("schema")
+            != (
+                "ipfs_accelerate_py.agent_supervisor."
+                "completion-callback-record@1"
+            )
+            or normalized.get("phase") not in {
+                "pending",
+                "completed",
+            }
+            or not isinstance(
+                normalized.get("callback_expectation"),
+                Mapping,
+            )
+            or not isinstance(
+                normalized.get("completion_intent"),
+                Mapping,
+            )
+        ):
+            return None
+        normalized["record_id"] = record_id
+        return normalized
+
+    @staticmethod
+    def _write_completion_callback_record(
+        path: Path,
+        record: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        normalized = {
+            key: value
+            for key, value in dict(record).items()
+            if key != "record_id"
+        }
+        normalized["record_id"] = content_identity(normalized)
+        write_json_atomic(path, normalized)
+        return normalized
+
+    def _run_external_completion_callback_transaction(
+        self,
+        *,
+        expectation: Mapping[str, Any],
+        completion_intent: Mapping[str, Any],
+        callback: Callable[[], dict[str, Any]] | None,
+    ) -> dict[str, Any]:
+        """Journal and resume a non-checkout canonical source bundle."""
+
+        normalized_intent = dict(completion_intent)
+        intent_id = str(normalized_intent.pop("intent_id", "") or "")
+        if not intent_id or content_identity(normalized_intent) != intent_id:
+            raise ValueError("external completion intent identity mismatch")
+        sink = self._validated_completion_publication_sink(
+            completion_intent
+        )
+        if Path(str(sink["state_path"])) != self.state_path.resolve(
+            strict=False
+        ):
+            raise ValueError(
+                "external completion callback belongs to another state sink"
+            )
+        record_path = self._completion_callback_record_path(
+            sink,
+            intent_id,
+        )
+        record_path.parent.mkdir(parents=True, exist_ok=True)
+        created = False
+        with serialized_lock_update(record_path):
+            existing_payload = load_json_dict(record_path)
+            existing = self._validated_completion_callback_record(
+                existing_payload
+            )
+            if existing_payload is not None and existing is None:
+                raise RuntimeError(
+                    "external completion callback journal is invalid"
+                )
+            if existing is None:
+                existing = self._write_completion_callback_record(
+                    record_path,
+                    {
+                        "schema": (
+                            "ipfs_accelerate_py.agent_supervisor."
+                            "completion-callback-record@1"
+                        ),
+                        "phase": "pending",
+                        "intent_id": intent_id,
+                        "sink_id": str(sink["sink_id"]),
+                        "callback_expectation": dict(expectation),
+                        "completion_intent": dict(completion_intent),
+                        "created_at": utc_now(),
+                    },
+                )
+                created = True
+            if (
+                str(existing.get("intent_id") or "") != intent_id
+                or str(existing.get("sink_id") or "")
+                != str(sink["sink_id"])
+                or existing.get("callback_expectation")
+                != dict(expectation)
+                or existing.get("completion_intent")
+                != dict(completion_intent)
+            ):
+                raise RuntimeError(
+                    "external completion callback journal binding changed"
+                )
+            if existing.get("phase") == "completed":
+                stored_result = existing.get("result")
+                if not isinstance(stored_result, Mapping):
+                    raise RuntimeError(
+                        "completed callback journal has no result"
+                    )
+                result = dict(stored_result)
+            else:
+                result = {}
+
+        if not result:
+            result = (
+                callback()
+                if created and callback is not None
+                else self._replay_completion_callback_expectation(
+                    expectation
+                )
+            )
+            evidence = self._completion_callback_evidence(
+                expectation,
+                result,
+            )
+            if evidence is None:
+                return {
+                    **result,
+                    "durable": False,
+                    "completion_callback_recovery_required": True,
+                    "completion_callback_record_path": str(record_path),
+                }
+            result["completion_callback_evidence"] = evidence
+            result["durable"] = True
+            with serialized_lock_update(record_path):
+                current = self._validated_completion_callback_record(
+                    load_json_dict(record_path)
+                )
+                if current is None or current.get("phase") != "pending":
+                    raise RuntimeError(
+                        "external completion callback journal was replaced"
+                    )
+                current["phase"] = "completed"
+                current["result"] = result
+                current["completed_at"] = utc_now()
+                self._write_completion_callback_record(
+                    record_path,
+                    current,
+                )
+
+        publication = self._publish_completion_intent(
+            completion_intent
+        )
+        result["completion_publication"] = publication
+        with serialized_lock_update(record_path):
+            current = self._validated_completion_callback_record(
+                load_json_dict(record_path)
+            )
+            if current is None or current.get("phase") != "completed":
+                raise RuntimeError(
+                    "external completion callback completion was replaced"
+                )
+            current["completion_publication"] = publication
+            self._write_completion_callback_record(record_path, current)
+        return result
+
+    def _recover_pending_external_completion_callbacks(
+        self,
+    ) -> dict[str, Any]:
+        """Resume state-scoped external bundle callbacks before task load."""
+
+        directory = (
+            self.state_path.resolve(strict=False).parent
+            / "completion-callbacks"
+        )
+        if not directory.exists():
+            return {"required": False, "recovered": 0}
+        recovered = 0
+        for record_path in sorted(directory.glob("*.json")):
+            record = self._validated_completion_callback_record(
+                load_json_dict(record_path)
+            )
+            if record is None:
+                return {
+                    "required": True,
+                    "blocked": True,
+                    "reason": "completion_callback_journal_invalid",
+                    "record_path": str(record_path),
+                }
+            if record.get("phase") == "completed" and isinstance(
+                record.get("completion_publication"),
+                Mapping,
+            ):
+                continue
+            expectation = record.get("callback_expectation")
+            completion_intent = record.get("completion_intent")
+            if not isinstance(expectation, Mapping) or not isinstance(
+                completion_intent,
+                Mapping,
+            ):
+                return {
+                    "required": True,
+                    "blocked": True,
+                    "reason": "completion_callback_journal_incomplete",
+                    "record_path": str(record_path),
+                }
+            try:
+                sink = self._validated_completion_publication_sink(
+                    completion_intent
+                )
+                intent_id = str(
+                    completion_intent.get("intent_id") or ""
+                )
+                if (
+                    self._completion_callback_record_path(
+                        sink,
+                        intent_id,
+                    )
+                    != record_path.resolve(strict=False)
+                    or Path(str(sink["state_path"]))
+                    != self.state_path.resolve(strict=False)
+                ):
+                    raise ValueError(
+                        "completion callback filename/state binding mismatch"
+                    )
+                result = (
+                    self._run_external_completion_callback_transaction(
+                        expectation=expectation,
+                        completion_intent=completion_intent,
+                        callback=None,
+                    )
+                )
+            except Exception as exc:
+                return {
+                    "required": True,
+                    "blocked": True,
+                    "reason": "completion_callback_recovery_failed",
+                    "record_path": str(record_path),
+                    "exception_type": type(exc).__name__,
+                    "error": str(exc)[-4000:],
+                }
+            if not self._todo_completion_is_durable(result):
+                return {
+                    "required": True,
+                    "blocked": True,
+                    "reason": "completion_callback_recovery_incomplete",
+                    "record_path": str(record_path),
+                    "result": result,
+                }
+            recovered += 1
+        return {
+            "required": bool(recovered),
+            "blocked": False,
+            "recovered": recovered,
+        }
+
+    def _mark_task_or_bundle_completed_in_todo(
+        self,
+        task: PortalTask,
+        *,
+        completion_intent: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
         work_order = self._bundle_work_order_for_task(task)
         if work_order is None:
-            return self._mark_task_completed_in_todo(task.task_id)
+            return self._mark_task_completed_in_todo(
+                task.task_id,
+                completion_intent=completion_intent,
+            )
         return self._mark_tasks_completed_in_todo(
             work_order.task_ids,
             primary_task_id=work_order.primary_task_id,
             completion_reason="bundle_work_order",
             bundle_work_order=work_order.to_dict(),
+            completion_intent=completion_intent,
         )
 
     def _mark_tasks_completed_in_todo(
@@ -7868,16 +9308,59 @@ class PortalImplementationDaemon:
         primary_task_id: str,
         completion_reason: str,
         bundle_work_order: dict[str, Any] | None = None,
+        completion_intent: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
+        expected_task_ids = [
+            str(task_id).strip()
+            for task_id in dict.fromkeys(task_ids)
+            if str(task_id).strip()
+        ]
+        callback_expectation: dict[str, Any] | None
+        try:
+            callback_expectation = self._completion_callback_expectation(
+                expected_task_ids
+            )
+        except FileNotFoundError:
+            # Legacy merge reconciliation may need to finish after its
+            # transient Markdown board has already been removed.  There is no
+            # completion publication or protected checkout transaction to
+            # prove in that case, so preserve the historical best-effort
+            # update.  Every durable/protected task-source path still fails
+            # closed when its canonical source cannot be opened.
+            if (
+                completion_intent is not None
+                or self.task_source is not None
+                or self._todo_board_is_implementation_protected()
+            ):
+                raise
+            callback_expectation = None
+
         def mutation() -> dict[str, Any]:
-            return self._mark_tasks_completed_in_todo_unchecked(
-                task_ids,
+            result = self._mark_tasks_completed_in_todo_unchecked(
+                expected_task_ids,
                 primary_task_id=primary_task_id,
                 completion_reason=completion_reason,
                 bundle_work_order=bundle_work_order,
             )
+            evidence = (
+                self._completion_callback_evidence(
+                    callback_expectation,
+                    result,
+                )
+                if callback_expectation is not None
+                else None
+            )
+            if evidence is not None:
+                result["completion_callback_evidence"] = evidence
+                if self.task_source is not None and not (
+                    self._todo_board_is_implementation_protected()
+                ):
+                    result["durable"] = True
+            elif self.task_source is not None:
+                result["durable"] = False
+            return result
 
-        if self.task_source is None:
+        if self._todo_mutation_requires_checkout_lease():
             unchecked_mutation = mutation
 
             def mutation() -> dict[str, Any]:
@@ -7890,6 +9373,40 @@ class PortalImplementationDaemon:
                         "task_id": primary_task_id,
                         "completion_reason": completion_reason,
                     },
+                    extra={
+                        **(
+                            {
+                                "protected_callback_expectation": {
+                                    **callback_expectation,
+                                }
+                            }
+                            if callback_expectation is not None
+                            else {}
+                        ),
+                        **(
+                            {
+                                "completion_intent": dict(
+                                    completion_intent
+                                )
+                            }
+                            if completion_intent is not None
+                            else {}
+                        ),
+                    },
+                )
+        elif completion_intent is not None and self.task_source is not None:
+            if callback_expectation is None:
+                raise TaskSourceIntegrityError(
+                    "durable task-source completion requires a canonical "
+                    "callback expectation"
+                )
+            unchecked_mutation = mutation
+
+            def mutation() -> dict[str, Any]:
+                return self._run_external_completion_callback_transaction(
+                    expectation=callback_expectation,
+                    completion_intent=completion_intent,
+                    callback=unchecked_mutation,
                 )
         return self._decision_runtime_mutation(
             "task_board_mutation",
@@ -7929,6 +9446,31 @@ class PortalImplementationDaemon:
                         )
                     if normalize_status(current.status) == "completed":
                         already_completed_task_ids.append(task_id)
+                        completion_receipts.append(
+                            {
+                                "schema": (
+                                    "ipfs_accelerate_py.agent_supervisor."
+                                    "member_completion_receipt@1"
+                                ),
+                                "task_id": task_id,
+                                "canonical_task_key": str(
+                                    current.body.get("task_key")
+                                    or current.task_cid
+                                ),
+                                "canonical_task_cid": current.task_cid,
+                                "board_namespace": (
+                                    current.board_namespace
+                                ),
+                                "status": "succeeded",
+                                "task_source_status_proof": {
+                                    "status": current.status,
+                                    "revision": current.revision,
+                                },
+                                "task_source_identity": (
+                                    self.task_source.identity.to_dict()
+                                ),
+                            }
+                        )
                         continue
                     changed = self.task_source.compare_and_swap_status(
                         task_id,
@@ -7941,6 +9483,16 @@ class PortalImplementationDaemon:
                             "completion_reason": completion_reason,
                         },
                     )
+                    if (
+                        normalize_status(changed.task.status)
+                        != "completed"
+                        or not str(changed.receipt_id or "")
+                        or changed.identity != self.task_source.identity
+                    ):
+                        raise TaskSourceIntegrityError(
+                            "task-source completion CAS returned "
+                            "untrusted evidence"
+                        )
                     updated_task_ids.append(task_id)
                     completion_receipts.append(
                         {
@@ -7992,15 +9544,60 @@ class PortalImplementationDaemon:
                     "updated" if updated_task_ids else "already_completed"
                 ),
             }
-            completion_receipts.extend(
-                self._completion_receipts_for_task_ids(
-                    already_completed_task_ids
-                )
-            )
             if completion_receipts:
                 result["completion_receipts"] = completion_receipts
             if bundle_work_order is not None:
                 result["bundle_work_order"] = bundle_work_order
+            if (
+                self._task_source_writes_markdown_checkout()
+                and self._todo_board_is_implementation_protected()
+            ):
+                protected = set(self.implementation_protected_paths)
+                commit_results: list[dict[str, Any]] = []
+                for markdown_path in (
+                    self._task_source_markdown_checkout_paths()
+                ):
+                    try:
+                        relative = (
+                            markdown_path.resolve()
+                            .relative_to(self.repo_root.resolve())
+                            .as_posix()
+                        )
+                    except (OSError, RuntimeError, ValueError):
+                        continue
+                    if relative not in protected:
+                        continue
+                    commit_results.append(
+                        self._commit_generated_file_update(
+                            markdown_path,
+                            task_id=primary_task_id,
+                            subject=(
+                                f"{primary_task_id}: mark todo completed"
+                            ),
+                        )
+                    )
+                if commit_results:
+                    result["commit_results"] = commit_results
+                if len(commit_results) == 1:
+                    result["commit_result"] = commit_results[0]
+                commit_result = (
+                    commit_results[0]
+                    if len(commit_results) == 1
+                    else {
+                        "committed": bool(commit_results)
+                        and all(
+                            self._generated_file_commit_result_trusted(
+                                item
+                            )
+                            for item in commit_results
+                        ),
+                        "reason": "multiple_markdown_projections",
+                    }
+                )
+                self._protected_todo_commit_postcondition(
+                    result,
+                    commit_result,
+                )
             if updated_task_ids:
                 self._record_event("todo_status_updated", result)
             return result
@@ -8246,7 +9843,7 @@ class PortalImplementationDaemon:
                 "committed": False,
                 "path": str(path),
             },
-            extra={"path": str(path)},
+            extra={"path": str(path), "subject": subject},
         )
 
     def _commit_generated_file_update_locked(
@@ -9256,32 +10853,41 @@ class PortalImplementationDaemon:
                         worktree_root=self.worktree_root,
                         merge_target_branch=self.resolved_merge_target_branch,
                         worktree_submodule_paths=self.worktree_submodule_paths,
+                        implementation_protected_paths=(
+                            effective_protected_paths
+                        ),
                         merge_queue=self.merge_queue,
                         merge_queue_dir=self.merge_queue_dir,
                         decision_runtime=self.decision_runtime,
+                    )
+                    completion_daemon._completion_publications = (
+                        self._completion_publications
                     )
                 completion_tree_id = str(
                     result.get("merge_commit")
                     or result.get("target_commit")
                     or implementation_commit
                 )
-                completion_daemon._decision_runtime_completion(
-                    task,
-                    merged_tree_id=completion_tree_id,
-                    evidence={
-                        "passed": True,
-                        "completion_authoritative": True,
-                        "repository_tree_id": completion_tree_id,
-                        "merge_result": {
-                            key: result.get(key)
-                            for key in (
-                                "merged",
-                                "already_merged",
-                                "reason",
-                                "merge_commit",
-                            )
-                        },
+                completion_evidence = {
+                    "passed": True,
+                    "completion_authoritative": True,
+                    "repository_tree_id": completion_tree_id,
+                    "merge_result": {
+                        key: result.get(key)
+                        for key in (
+                            "merged",
+                            "already_merged",
+                            "reason",
+                            "merge_commit",
+                        )
                     },
+                }
+                completion_intent = (
+                    completion_daemon._completion_publication_intent(
+                        task,
+                        merged_tree_id=completion_tree_id,
+                        evidence=completion_evidence,
+                    )
                 )
                 bundle_payload = metadata.get("bundle_work_order")
                 if isinstance(bundle_payload, dict):
@@ -9298,10 +10904,39 @@ class PortalImplementationDaemon:
                         primary_task_id=str(bundle_payload.get("primary_task_id") or task.task_id),
                         completion_reason="bundle_work_order",
                         bundle_work_order=bundle_payload,
+                        completion_intent=completion_intent,
                     )
                 else:
-                    todo_update_result = completion_daemon._mark_task_completed_in_todo(task.task_id)
-                completion_daemon._record_task_queue_outcome(task, 0)
+                    todo_update_result = completion_daemon._mark_task_completed_in_todo(
+                        task.task_id,
+                        completion_intent=completion_intent,
+                    )
+                completion_published = bool(
+                    isinstance(
+                        todo_update_result.get("completion_publication"),
+                        Mapping,
+                    )
+                    and todo_update_result["completion_publication"].get(
+                        "published"
+                    )
+                )
+                if completion_daemon._todo_completion_is_durable(
+                    todo_update_result
+                ):
+                    if not completion_published:
+                        completion_daemon._decision_runtime_completion(
+                            task,
+                            merged_tree_id=completion_tree_id,
+                            evidence=completion_evidence,
+                        )
+                    if not completion_published:
+                        completion_daemon._record_task_queue_outcome(task, 0)
+                else:
+                    result["merged"] = False
+                    result["reason"] = (
+                        "protected_board_completion_not_durable"
+                    )
+                    result["completion_pending_durability"] = True
                 result["todo_update_result"] = todo_update_result
         return result
 
@@ -10484,24 +12119,60 @@ class PortalImplementationDaemon:
             merge_result=merge_result,
             no_change_completion=no_change_completion,
         )
+        completion_published_in_transaction = False
         if board_completion["complete"]:
             completion_tree_id = str(
                 merge_result.get("merge_commit")
                 or implementation_commit
                 or baseline_ref
             )
-            self._decision_runtime_completion(
+            completion_evidence = {
+                "passed": bool(validation_result.get("passed", False)),
+                "completion_authoritative": True,
+                "repository_tree_id": completion_tree_id,
+                "validation": dict(validation_result),
+                "board_completion": dict(board_completion),
+            }
+            completion_intent = self._completion_publication_intent(
                 task,
                 merged_tree_id=completion_tree_id,
-                evidence={
-                    "passed": bool(validation_result.get("passed", False)),
-                    "completion_authoritative": True,
-                    "repository_tree_id": completion_tree_id,
-                    "validation": dict(validation_result),
-                    "board_completion": dict(board_completion),
-                },
+                evidence=completion_evidence,
             )
-            todo_update_result = self._mark_task_or_bundle_completed_in_todo(task)
+            todo_update_result = self._mark_task_or_bundle_completed_in_todo(
+                task,
+                completion_intent=completion_intent,
+            )
+            completion_published_in_transaction = bool(
+                isinstance(
+                    todo_update_result.get("completion_publication"),
+                    Mapping,
+                )
+                and todo_update_result["completion_publication"].get(
+                    "published"
+                )
+            )
+            if self._todo_completion_is_durable(todo_update_result):
+                if not completion_published_in_transaction:
+                    self._decision_runtime_completion(
+                        task,
+                        merged_tree_id=completion_tree_id,
+                        evidence=completion_evidence,
+                    )
+            else:
+                board_completion = {
+                    **dict(board_completion),
+                    "complete": False,
+                    "pending_durability": True,
+                    "reason": "protected_board_completion_not_durable",
+                }
+                returncode = 1
+                state.last_implementation_returncode = returncode
+                attempt_consumed = False
+                self._restore_task_attempt(
+                    state,
+                    task,
+                    max(0, attempt - 1),
+                )
         elif board_completion.get("pending_merge"):
             self._record_event(
                 "implementation_pending_merge",
@@ -10531,7 +12202,11 @@ class PortalImplementationDaemon:
         # Queueing is a successful implementation handoff, but not task
         # completion.  The train consumer records the terminal merge outcome.
         terminal_outcome = bool(board_completion.get("complete"))
-        if not merge_result.get("queued") and attempt_consumed:
+        if (
+            not merge_result.get("queued")
+            and attempt_consumed
+            and not completion_published_in_transaction
+        ):
             outcome_returncode = returncode
             outcome_reason = str(
                 exception_result.get("message")
@@ -20299,6 +21974,8 @@ class PortalImplementationDaemon:
         repo_root = str(metadata.get("repo_root") or "")
         if repo_root and Path(repo_root).resolve() != self.repo_root.resolve():
             return False
+        if metadata.get("protected_recovery_required") is True:
+            return True
         if not self._lock_owner_is_active(metadata, expected_kind="merge"):
             return False
         # Atomic leases are fenced by a unique lease ID and the owning process.
@@ -20397,6 +22074,1370 @@ class PortalImplementationDaemon:
             if str(item)
         )
 
+    def _clear_checkout_mutation_context(self) -> None:
+        self._checkout_mutation_context.lease = None
+        self._checkout_mutation_context.transaction_depth = 0
+        self._checkout_mutation_context.retain_until_protected_clean = False
+        self._checkout_mutation_context.retained_protected_paths = ()
+        self._checkout_mutation_context.protected_release_guard = None
+        self._checkout_mutation_context.protected_recovery_active = False
+        self._checkout_mutation_context.protected_recovery_allowed_operations = ()
+        self._checkout_mutation_context.release_pending = False
+
+    @staticmethod
+    def _protected_recovery_subject(
+        operation: str,
+        task_id: str,
+        extra: Mapping[str, Any] | None,
+    ) -> str:
+        configured = str((extra or {}).get("subject") or "").strip()
+        if configured:
+            return configured
+        if operation == "mark_tasks_completed":
+            return f"{task_id}: mark todo completed"
+        if operation == "reopen_dependency_blocked_tasks":
+            return f"{task_id}: reopen dependency-ready tasks"
+        return f"{task_id}: update protected generated output"
+
+    def _publish_protected_checkout_recovery_guard(
+        self,
+        lease: CheckoutMutationLease,
+        *,
+        paths: Sequence[Path],
+        task_id: str,
+        attempt: int,
+        operation: str,
+        extra: Mapping[str, Any] | None,
+    ) -> CheckoutMutationLease | None:
+        """Atomically journal immutable recovery intent before any board write."""
+
+        guard = self._protected_checkout_release_guard(paths)
+        root = self.repo_root.resolve()
+        protected_paths = [
+            path.resolve().relative_to(root).as_posix() for path in paths
+        ]
+        subject = self._protected_recovery_subject(
+            operation,
+            task_id,
+            extra,
+        )
+        intent: dict[str, Any] = {
+            "schema": (
+                "ipfs_accelerate_py.agent_supervisor."
+                "protected-checkout-recovery-intent@1"
+            ),
+            "operation": operation,
+            "task_id": task_id,
+            "attempt": int(attempt or 0),
+            "protected_paths": protected_paths,
+            "subjects": {
+                relative: subject for relative in protected_paths
+            },
+            "guard_id": str(guard["guard_id"]),
+        }
+        completion_intent = (extra or {}).get("completion_intent")
+        if isinstance(completion_intent, Mapping):
+            intent["completion_intent"] = dict(completion_intent)
+        callback_expectation = (extra or {}).get(
+            "protected_callback_expectation"
+        )
+        if isinstance(callback_expectation, Mapping):
+            intent["callback_expectation"] = dict(callback_expectation)
+        intent["intent_id"] = content_identity(intent)
+        metadata = {
+            **dict(lease.metadata),
+            "protected_recovery_required": True,
+            "protected_paths": protected_paths,
+            "protected_release_guard": guard,
+            "protected_recovery_intent": intent,
+            "protected_recovery_started_at": utc_now(),
+        }
+        updated = update_checkout_mutation_lease(
+            lease,
+            metadata,
+        )
+        if updated is None:
+            return None
+        self._checkout_mutation_context.lease = updated
+        self._checkout_mutation_context.protected_release_guard = guard
+        self._checkout_mutation_context.protected_recovery_active = True
+        self._checkout_mutation_context.protected_recovery_allowed_operations = (
+            operation,
+            "commit_generated_file_update",
+            "recover_protected_generated_outputs",
+        )
+        self._checkout_mutation_context.retained_protected_paths = tuple(paths)
+        return updated
+
+    @staticmethod
+    def _completion_callback_evidence(
+        expectation: Mapping[str, Any],
+        result: Mapping[str, Any],
+    ) -> dict[str, Any] | None:
+        """Prove exact all-member completion from CAS/status receipts."""
+
+        normalized_expectation = dict(expectation)
+        expectation_id = str(
+            normalized_expectation.pop("expectation_id", "") or ""
+        )
+        if (
+            not expectation_id
+            or content_identity(normalized_expectation) != expectation_id
+            or expectation.get("operation") != "mark_tasks_completed"
+            or expectation.get("expected_status") != "completed"
+        ):
+            return None
+        raw_expected_ids = expectation.get("task_ids")
+        if not isinstance(raw_expected_ids, list):
+            return None
+        expected_task_ids = [str(item).strip() for item in raw_expected_ids]
+        if (
+            not expected_task_ids
+            or any(not item for item in expected_task_ids)
+            or len(set(expected_task_ids)) != len(expected_task_ids)
+        ):
+            return None
+        result_reason = str(result.get("reason") or "")
+        if result_reason not in {"updated", "already_completed"} and not (
+            not result_reason and result.get("updated") is True
+        ):
+            return None
+        missing_task_ids = {
+            str(item) for item in (result.get("missing_task_ids") or ())
+        }
+        missing_status_task_ids = {
+            str(item)
+            for item in (result.get("missing_status_task_ids") or ())
+        }
+        inserted_status_task_ids = {
+            str(item)
+            for item in (result.get("inserted_status_task_ids") or ())
+        }
+        if (
+            missing_task_ids
+            or missing_status_task_ids != inserted_status_task_ids
+        ):
+            return None
+        updated = [
+            str(item) for item in (result.get("updated_task_ids") or ())
+        ]
+        already = [
+            str(item)
+            for item in (
+                result.get("already_completed_task_ids") or ()
+            )
+        ]
+        if (
+            len(updated) != len(set(updated))
+            or len(already) != len(set(already))
+            or set(updated) & set(already)
+            or set(updated) | set(already) != set(expected_task_ids)
+        ):
+            return None
+
+        raw_receipts = result.get("completion_receipts")
+        if not isinstance(raw_receipts, list):
+            return None
+        receipts_by_task_id: dict[str, dict[str, Any]] = {}
+        for raw_receipt in raw_receipts:
+            if not isinstance(raw_receipt, Mapping):
+                return None
+            receipt = dict(raw_receipt)
+            task_id = str(receipt.get("task_id") or "")
+            if (
+                not task_id
+                or task_id in receipts_by_task_id
+                or receipt.get("status") != "succeeded"
+                or not str(receipt.get("canonical_task_cid") or "")
+            ):
+                return None
+            receipts_by_task_id[task_id] = receipt
+        if set(receipts_by_task_id) != set(expected_task_ids):
+            return None
+
+        source_binding = expectation.get("task_source")
+        expected_member_cids: dict[str, str] = {}
+        if isinstance(source_binding, Mapping):
+            binding = dict(source_binding)
+            binding_id = str(binding.pop("binding_id", "") or "")
+            if not binding_id or content_identity(binding) != binding_id:
+                return None
+            expected_identity = source_binding.get("identity")
+            if not isinstance(expected_identity, Mapping):
+                return None
+            raw_members = expectation.get("members")
+            if not isinstance(raw_members, list):
+                return None
+            for member in raw_members:
+                if not isinstance(member, Mapping):
+                    return None
+                task_id = str(member.get("task_id") or "")
+                if not task_id or task_id in expected_member_cids:
+                    return None
+                expected_member_cids[task_id] = str(
+                    member.get("canonical_task_cid") or ""
+                )
+            if set(expected_member_cids) != set(expected_task_ids):
+                return None
+            for task_id, receipt in receipts_by_task_id.items():
+                if (
+                    receipt.get("task_source_identity")
+                    != dict(expected_identity)
+                    or str(receipt.get("canonical_task_cid") or "")
+                    != expected_member_cids[task_id]
+                    or (
+                        task_id in set(updated)
+                        and not str(
+                            receipt.get("task_source_receipt_id") or ""
+                        )
+                    )
+                    or (
+                        task_id in set(already)
+                        and not isinstance(
+                            receipt.get("task_source_status_proof"),
+                            Mapping,
+                        )
+                    )
+                ):
+                    return None
+            if source_binding.get("protected_checkout") is True:
+                postcondition = result.get(
+                    "protected_board_postcondition"
+                )
+                if (
+                    result.get("durable") is not True
+                    or not isinstance(postcondition, Mapping)
+                    or postcondition.get("trusted") is not True
+                ):
+                    return None
+        else:
+            board_binding = expectation.get("task_board")
+            raw_members = expectation.get("members")
+            if not isinstance(board_binding, Mapping) or not isinstance(
+                raw_members,
+                list,
+            ):
+                return None
+            binding = dict(board_binding)
+            binding_id = str(binding.pop("binding_id", "") or "")
+            if not binding_id or content_identity(binding) != binding_id:
+                return None
+            for member in raw_members:
+                if not isinstance(member, Mapping):
+                    return None
+                task_id = str(member.get("task_id") or "")
+                if (
+                    not task_id
+                    or task_id in expected_member_cids
+                    or task_id not in receipts_by_task_id
+                ):
+                    return None
+                expected_member_cids[task_id] = str(
+                    member.get("canonical_task_cid") or ""
+                )
+                if (
+                    str(
+                        receipts_by_task_id[task_id].get(
+                            "canonical_task_cid"
+                        )
+                        or ""
+                    )
+                    != expected_member_cids[task_id]
+                ):
+                    return None
+            postcondition = result.get(
+                "protected_board_postcondition"
+            )
+            if (
+                result.get("durable") is not True
+                or not isinstance(postcondition, Mapping)
+                or postcondition.get("trusted") is not True
+            ):
+                return None
+
+        evidence: dict[str, Any] = {
+            "schema": (
+                "ipfs_accelerate_py.agent_supervisor."
+                "completion-callback-evidence@1"
+            ),
+            "succeeded": True,
+            "expectation_id": expectation_id,
+            "members": [
+                {
+                    "task_id": task_id,
+                    "expected_status": "completed",
+                    "completion_receipt": receipts_by_task_id[task_id],
+                }
+                for task_id in expected_task_ids
+            ],
+        }
+        evidence["evidence_id"] = content_identity(evidence)
+        return evidence
+
+    @classmethod
+    def _protected_completion_callback_marker(
+        cls,
+        intent: Mapping[str, Any],
+        result: Mapping[str, Any],
+    ) -> dict[str, Any] | None:
+        """Bind terminal publication to a complete successful board callback."""
+
+        completion_intent = intent.get("completion_intent")
+        expectation = intent.get("callback_expectation")
+        if not isinstance(completion_intent, Mapping) or not isinstance(
+            expectation,
+            Mapping,
+        ):
+            return None
+        evidence = cls._completion_callback_evidence(
+            expectation,
+            result,
+        )
+        if evidence is None:
+            return None
+        marker: dict[str, Any] = {
+            "schema": (
+                "ipfs_accelerate_py.agent_supervisor."
+                "protected-callback-success@1"
+            ),
+            "succeeded": True,
+            "operation": "mark_tasks_completed",
+            "completion_intent_id": str(
+                completion_intent.get("intent_id") or ""
+            ),
+            "callback_expectation_id": str(
+                expectation.get("expectation_id") or ""
+            ),
+            "callback_evidence": evidence,
+            "members": list(evidence["members"]),
+        }
+        if not marker["completion_intent_id"]:
+            return None
+        marker["marker_id"] = content_identity(marker)
+        return marker
+
+    @staticmethod
+    def _protected_completion_callback_marker_is_valid(
+        lease: CheckoutMutationLease,
+        completion_intent: Mapping[str, Any],
+    ) -> bool:
+        """Validate the journaled all-member callback-success binding."""
+
+        intent = lease.metadata.get("protected_recovery_intent")
+        marker = lease.metadata.get("protected_callback_success")
+        if not isinstance(intent, Mapping) or not isinstance(marker, Mapping):
+            return False
+        normalized = dict(marker)
+        marker_id = str(normalized.pop("marker_id", "") or "")
+        if not marker_id or content_identity(normalized) != marker_id:
+            return False
+        expectation = intent.get("callback_expectation")
+        if not isinstance(expectation, Mapping):
+            return False
+        expected_task_ids = [
+            str(item).strip()
+            for item in expectation.get("task_ids", ())
+            if str(item).strip()
+        ]
+        members = normalized.get("members")
+        evidence = normalized.get("callback_evidence")
+        if not isinstance(members, list):
+            return False
+        member_task_ids = [
+            str(item.get("task_id") or "")
+            for item in members
+            if isinstance(item, Mapping)
+            and str(item.get("expected_status") or "") == "completed"
+            and isinstance(item.get("completion_receipt"), Mapping)
+            and str(
+                item["completion_receipt"].get("status") or ""
+            ) == "succeeded"
+        ]
+        return bool(
+            normalized.get("succeeded") is True
+            and normalized.get("operation") == "mark_tasks_completed"
+            and str(normalized.get("completion_intent_id") or "")
+            == str(completion_intent.get("intent_id") or "")
+            and str(normalized.get("callback_expectation_id") or "")
+            == str(expectation.get("expectation_id") or "")
+            and isinstance(evidence, Mapping)
+            and evidence.get("evidence_id")
+            == content_identity(
+                {
+                    key: value
+                    for key, value in evidence.items()
+                    if key != "evidence_id"
+                }
+            )
+            and member_task_ids == expected_task_ids
+        )
+
+    def _journal_protected_completion_callback_success(
+        self,
+        lease: CheckoutMutationLease,
+        *,
+        result: Mapping[str, Any],
+    ) -> tuple[CheckoutMutationLease, bool]:
+        """CAS-persist callback success before any terminal side effect."""
+
+        intent = lease.metadata.get("protected_recovery_intent")
+        completion_intent = (
+            intent.get("completion_intent")
+            if isinstance(intent, Mapping)
+            else None
+        )
+        if not isinstance(completion_intent, Mapping):
+            return lease, True
+        marker = self._protected_completion_callback_marker(
+            intent,
+            result,
+        )
+        if marker is None:
+            return lease, False
+        updated = update_checkout_mutation_lease(
+            lease,
+            {
+                **dict(lease.metadata),
+                "protected_callback_success": marker,
+            },
+        )
+        if updated is None:
+            return lease, False
+        self._checkout_mutation_context.lease = updated
+        return updated, True
+
+    def _publish_guarded_completion_if_ready(
+        self,
+        lease: CheckoutMutationLease,
+        *,
+        proof: Mapping[str, Any],
+        result: dict[str, Any] | None,
+    ) -> tuple[CheckoutMutationLease, bool]:
+        """Publish a journaled completion before releasing its board lease."""
+
+        intent = lease.metadata.get("protected_recovery_intent")
+        completion_intent = (
+            intent.get("completion_intent")
+            if isinstance(intent, Mapping)
+            else None
+        )
+        if not isinstance(completion_intent, Mapping):
+            return lease, True
+        try:
+            self._validated_completion_publication_sink(
+                completion_intent,
+                recovery_metadata=lease.metadata,
+            )
+        except ValueError as exc:
+            if result is not None:
+                result["completion_publication"] = {
+                    "published": False,
+                    "reason": "completion_publication_sink_invalid",
+                    "error": str(exc)[-2000:],
+                }
+            return lease, False
+        existing = lease.metadata.get("completion_publication")
+        completion_intent_id = str(
+            completion_intent.get("intent_id") or ""
+        )
+        if (
+            isinstance(existing, Mapping)
+            and existing.get("published") is True
+            and str(existing.get("intent_id") or "")
+            == completion_intent_id
+        ):
+            if result is not None:
+                result["completion_publication"] = dict(existing)
+            return lease, True
+        callback_succeeded = (
+            self._protected_completion_callback_marker_is_valid(
+                lease,
+                completion_intent,
+            )
+        )
+        # Exact pre-state means the process died before the protected board
+        # mutation unless the live callback durably journaled complete
+        # all-member success.  Intent alone cannot manufacture terminal
+        # success after restart.
+        if str(proof.get("reason") or "") == (
+            "protected_outputs_exact_pre_state"
+        ) and not callback_succeeded:
+            return lease, True
+        if not callback_succeeded:
+            return lease, False
+        try:
+            publication = self._publish_completion_intent(
+                completion_intent
+            )
+        except Exception as exc:
+            if result is not None:
+                result["completion_publication"] = {
+                    "published": False,
+                    "intent_id": completion_intent_id,
+                    "reason": "completion_publication_failed",
+                    "exception_type": type(exc).__name__,
+                    "error": str(exc)[-4000:],
+                }
+            return lease, False
+        updated = update_checkout_mutation_lease(
+            lease,
+            {
+                **dict(lease.metadata),
+                "completion_publication": publication,
+            },
+        )
+        if updated is None:
+            if result is not None:
+                result["completion_publication"] = {
+                    **publication,
+                    "journaled": False,
+                }
+            return lease, False
+        self._checkout_mutation_context.lease = updated
+        if result is not None:
+            result["completion_publication"] = publication
+        return updated, True
+
+    def _recovery_lock_paths(
+        self,
+        metadata: Mapping[str, Any],
+    ) -> tuple[Path, ...]:
+        root = self.repo_root.resolve()
+        protected = set(self.implementation_protected_paths)
+        raw_paths = metadata.get("protected_paths")
+        if not isinstance(raw_paths, list) or not raw_paths:
+            return ()
+        paths: list[Path] = []
+        for item in raw_paths:
+            relative = str(item or "")
+            if relative not in protected:
+                return ()
+            path = (root / relative).resolve()
+            try:
+                path.relative_to(root)
+            except (OSError, RuntimeError, ValueError):
+                return ()
+            paths.append(path)
+        return tuple(dict.fromkeys(paths))
+
+    def _protected_recovery_journal_validation_error(
+        self,
+        metadata: Mapping[str, Any],
+        paths: Sequence[Path],
+        guard: Mapping[str, Any],
+        intent: Mapping[str, Any],
+    ) -> str:
+        """Validate repo-wide recovery authority before inspecting its owner."""
+
+        if str(metadata.get("kind") or "") != "merge":
+            return "kind_mismatch"
+        try:
+            if Path(str(metadata.get("repo_root") or "")).resolve() != (
+                self.repo_root.resolve()
+            ):
+                return "repository_path_mismatch"
+        except (OSError, RuntimeError, ValueError):
+            return "repository_path_invalid"
+        root = self.repo_root.resolve()
+        relative_paths = [
+            path.resolve().relative_to(root).as_posix()
+            for path in paths
+        ]
+        raw_metadata_paths = metadata.get("protected_paths")
+        if (
+            not isinstance(raw_metadata_paths, list)
+            or [str(item) for item in raw_metadata_paths] != relative_paths
+        ):
+            return "protected_paths_mismatch"
+
+        normalized_guard = dict(guard)
+        guard_id = str(normalized_guard.pop("guard_id", "") or "")
+        if not guard_id or content_identity(normalized_guard) != guard_id:
+            return "guard_identity_mismatch"
+        if str(normalized_guard.get("repository_id") or "") != (
+            checkout_repository_id(root)
+        ):
+            return "guard_repository_mismatch"
+        guard_records = normalized_guard.get("paths")
+        if not isinstance(guard_records, list):
+            return "guard_paths_missing"
+        guard_paths = [
+            str(record.get("path") or "")
+            for record in guard_records
+            if isinstance(record, Mapping)
+        ]
+        if len(guard_paths) != len(guard_records) or (
+            guard_paths != relative_paths
+        ):
+            return "guard_paths_mismatch"
+
+        normalized_intent = dict(intent)
+        intent_id = str(normalized_intent.pop("intent_id", "") or "")
+        if not intent_id or content_identity(normalized_intent) != intent_id:
+            return "intent_identity_mismatch"
+        raw_intent_paths = intent.get("protected_paths")
+        if (
+            not isinstance(raw_intent_paths, list)
+            or [str(item) for item in raw_intent_paths] != relative_paths
+        ):
+            return "intent_paths_mismatch"
+        if str(intent.get("guard_id") or "") != guard_id:
+            return "intent_guard_mismatch"
+        subjects = intent.get("subjects")
+        if (
+            not isinstance(subjects, Mapping)
+            or set(map(str, subjects)) != set(relative_paths)
+            or any(not str(subjects.get(path) or "") for path in relative_paths)
+        ):
+            return "intent_subjects_mismatch"
+        if not str(intent.get("operation") or ""):
+            return "intent_operation_missing"
+
+        completion_intent = intent.get("completion_intent")
+        if completion_intent is not None:
+            if not isinstance(completion_intent, Mapping):
+                return "completion_intent_invalid"
+            normalized_completion = dict(completion_intent)
+            completion_intent_id = str(
+                normalized_completion.pop("intent_id", "") or ""
+            )
+            if (
+                not completion_intent_id
+                or content_identity(normalized_completion)
+                != completion_intent_id
+            ):
+                return "completion_intent_identity_mismatch"
+            try:
+                self._validated_completion_publication_sink(
+                    completion_intent,
+                    recovery_metadata=metadata,
+                )
+            except ValueError:
+                return "completion_publication_sink_mismatch"
+            expectation = intent.get("callback_expectation")
+            if not isinstance(expectation, Mapping):
+                return "callback_expectation_missing"
+            normalized_expectation = dict(expectation)
+            expectation_id = str(
+                normalized_expectation.pop("expectation_id", "") or ""
+            )
+            if (
+                not expectation_id
+                or content_identity(normalized_expectation)
+                != expectation_id
+            ):
+                return "callback_expectation_identity_mismatch"
+            raw_task_ids = expectation.get("task_ids")
+            if (
+                expectation.get("operation") != "mark_tasks_completed"
+                or expectation.get("expected_status") != "completed"
+                or not isinstance(raw_task_ids, list)
+                or not raw_task_ids
+                or len({str(item) for item in raw_task_ids})
+                != len(raw_task_ids)
+            ):
+                return "callback_expectation_invalid"
+        return ""
+
+    def _attach_protected_checkout_recovery_context(
+        self,
+        lease: CheckoutMutationLease,
+        *,
+        paths: Sequence[Path],
+        guard: Mapping[str, Any],
+        intent: Mapping[str, Any],
+    ) -> None:
+        """Attach one already-validated exact lease to this daemon."""
+
+        self._checkout_mutation_context.lease = lease
+        self._checkout_mutation_context.transaction_depth = 0
+        self._checkout_mutation_context.retain_until_protected_clean = True
+        self._checkout_mutation_context.retained_protected_paths = tuple(paths)
+        self._checkout_mutation_context.protected_release_guard = dict(guard)
+        self._checkout_mutation_context.protected_recovery_active = True
+        self._checkout_mutation_context.protected_recovery_allowed_operations = (
+            str(intent.get("operation") or ""),
+            "commit_generated_file_update",
+            "recover_protected_generated_outputs",
+        )
+        self._checkout_mutation_context.release_pending = False
+
+    def _open_journaled_completion_task_source(
+        self,
+        expectation: Mapping[str, Any],
+    ) -> CanonicalTaskSource | DualTaskSource:
+        """Reopen the exact canonical source bound into recovery intent."""
+
+        raw_binding = expectation.get("task_source")
+        if not isinstance(raw_binding, Mapping):
+            raise TaskSourceIntegrityError(
+                "completion recovery task source is missing"
+            )
+        binding = dict(raw_binding)
+        binding_id = str(binding.pop("binding_id", "") or "")
+        if not binding_id or content_identity(binding) != binding_id:
+            raise TaskSourceIntegrityError(
+                "completion recovery task-source binding is invalid"
+            )
+        raw_identity = raw_binding.get("identity")
+        if not isinstance(raw_identity, Mapping):
+            raise TaskSourceIntegrityError(
+                "completion recovery source identity is missing"
+            )
+        expected_identity = TaskSourceIdentity.from_dict(raw_identity)
+        source_kind = str(raw_binding.get("source_kind") or "")
+        projections = raw_binding.get("projections")
+        if not isinstance(projections, list) or not projections:
+            raise TaskSourceIntegrityError(
+                "completion recovery projections are missing"
+            )
+
+        opened: list[CanonicalTaskSource] = []
+        for raw_projection in projections:
+            if not isinstance(raw_projection, Mapping):
+                raise TaskSourceIntegrityError(
+                    "completion recovery projection is invalid"
+                )
+            projection_kind = str(
+                raw_projection.get("source_kind") or ""
+            )
+            projection_path = Path(
+                str(raw_projection.get("path") or "")
+            )
+            if (
+                not projection_path.is_absolute()
+                or projection_path
+                != projection_path.resolve(strict=False)
+            ):
+                raise TaskSourceIntegrityError(
+                    "completion recovery projection path is unsafe"
+                )
+            raw_projection_identity = raw_projection.get("identity")
+            if not isinstance(raw_projection_identity, Mapping):
+                raise TaskSourceIntegrityError(
+                    "completion recovery projection identity is missing"
+                )
+            projection_identity = TaskSourceIdentity.from_dict(
+                raw_projection_identity
+            )
+            if projection_kind == "markdown":
+                try:
+                    projection_path.relative_to(
+                        self.repo_root.resolve()
+                    )
+                except (OSError, RuntimeError, ValueError) as exc:
+                    raise TaskSourceIntegrityError(
+                        "completion recovery Markdown source is outside repo"
+                    ) from exc
+            opened_source = open_task_source(
+                projection_path,
+                kind=projection_kind,
+                root=self.repo_root,
+                expected_identity=projection_identity,
+                expected_root_id=projection_identity.root_id,
+                expected_repository_root_id=(
+                    projection_identity.repository_root_id
+                ),
+            )
+            if not isinstance(opened_source, CanonicalTaskSource):
+                raise TaskSourceIntegrityError(
+                    "completion recovery projection is not canonical"
+                )
+            opened.append(opened_source)
+
+        if source_kind == "dual":
+            if len(opened) != 2:
+                raise TaskSourceIntegrityError(
+                    "dual completion recovery requires two projections"
+                )
+            source: CanonicalTaskSource | DualTaskSource = DualTaskSource(
+                opened[0],
+                opened[1],
+                mode=str(raw_binding.get("mode") or "shadow"),
+                journal_path=Path(
+                    str(raw_binding.get("journal_path") or "")
+                ),
+                recover=True,
+            )
+        elif len(opened) == 1 and opened[0].source_kind == source_kind:
+            source = opened[0]
+        else:
+            raise TaskSourceIntegrityError(
+                "completion recovery source kind disagrees"
+            )
+        if source.identity != expected_identity:
+            raise TaskSourceIntegrityError(
+                "completion recovery source identity changed"
+            )
+        return source
+
+    def _replay_completion_callback_expectation(
+        self,
+        expectation: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Finish pending members or reconstruct exact completed evidence."""
+
+        expected_task_ids = [
+            str(item)
+            for item in (expectation.get("task_ids") or ())
+        ]
+        raw_members = expectation.get("members")
+        if not expected_task_ids or not isinstance(raw_members, list):
+            raise TaskSourceIntegrityError(
+                "completion recovery members are missing"
+            )
+        members = {
+            str(member.get("task_id") or ""): dict(member)
+            for member in raw_members
+            if isinstance(member, Mapping)
+            and str(member.get("task_id") or "")
+        }
+        if set(members) != set(expected_task_ids):
+            raise TaskSourceIntegrityError(
+                "completion recovery member population changed"
+            )
+
+        source_binding = expectation.get("task_source")
+        updated: list[str] = []
+        already: list[str] = []
+        receipts: list[dict[str, Any]] = []
+        if isinstance(source_binding, Mapping):
+            source = self._open_journaled_completion_task_source(
+                expectation
+            )
+            for task_id in expected_task_ids:
+                expected = members[task_id]
+                current = source.get(task_id)
+                if (
+                    current is None
+                    or current.task_cid
+                    != str(expected.get("canonical_task_cid") or "")
+                ):
+                    raise TaskSourceIntegrityError(
+                        "completion recovery member identity changed"
+                    )
+                if normalize_status(current.status) == "completed":
+                    already.append(task_id)
+                    receipts.append(
+                        {
+                            "schema": (
+                                "ipfs_accelerate_py.agent_supervisor."
+                                "member_completion_receipt@1"
+                            ),
+                            "task_id": task_id,
+                            "canonical_task_key": str(
+                                current.body.get("task_key")
+                                or current.task_cid
+                            ),
+                            "canonical_task_cid": current.task_cid,
+                            "board_namespace": current.board_namespace,
+                            "status": "succeeded",
+                            "task_source_status_proof": {
+                                "status": current.status,
+                                "revision": current.revision,
+                            },
+                            "task_source_identity": (
+                                source.identity.to_dict()
+                            ),
+                        }
+                    )
+                    continue
+                if normalize_status(current.status) != normalize_status(
+                    str(expected.get("initial_status") or "")
+                ):
+                    raise TaskSourceIntegrityError(
+                        "completion recovery member status diverged"
+                    )
+                changed = source.compare_and_swap_status(
+                    task_id,
+                    expected_status=current.status,
+                    new_status="completed",
+                    expected_revision=current.revision,
+                    receipt={
+                        "operation": "recover_mark_task_completed",
+                        "completion_expectation_id": str(
+                            expectation.get("expectation_id") or ""
+                        ),
+                    },
+                )
+                if (
+                    normalize_status(changed.task.status) != "completed"
+                    or not str(changed.receipt_id or "")
+                    or changed.identity != source.identity
+                ):
+                    raise TaskSourceIntegrityError(
+                        "completion recovery CAS evidence is invalid"
+                    )
+                updated.append(task_id)
+                receipts.append(
+                    {
+                        "schema": (
+                            "ipfs_accelerate_py.agent_supervisor."
+                            "member_completion_receipt@1"
+                        ),
+                        "task_id": task_id,
+                        "canonical_task_key": str(
+                            changed.task.body.get("task_key")
+                            or changed.task.task_cid
+                        ),
+                        "canonical_task_cid": changed.task.task_cid,
+                        "board_namespace": (
+                            changed.task.board_namespace
+                        ),
+                        "status": "succeeded",
+                        "task_source_receipt_id": changed.receipt_id,
+                        "task_source_identity": (
+                            source.identity.to_dict()
+                        ),
+                    }
+                )
+        else:
+            raw_board = expectation.get("task_board")
+            if not isinstance(raw_board, Mapping):
+                raise TaskSourceIntegrityError(
+                    "completion recovery task board is missing"
+                )
+            board = dict(raw_board)
+            binding_id = str(board.pop("binding_id", "") or "")
+            if not binding_id or content_identity(board) != binding_id:
+                raise TaskSourceIntegrityError(
+                    "completion recovery task-board binding is invalid"
+                )
+            board_path = Path(str(raw_board.get("path") or ""))
+            tasks = {
+                task.task_id: task
+                for task in parse_task_file(
+                    board_path,
+                    str(raw_board.get("task_header_prefix") or ""),
+                )
+            }
+            for task_id in expected_task_ids:
+                task = tasks.get(task_id)
+                expected = members[task_id]
+                if (
+                    task is None
+                    or normalize_status(task.status) != "completed"
+                ):
+                    raise TaskSourceIntegrityError(
+                        "completion recovery board member is incomplete"
+                    )
+                identity = canonical_task_identity(
+                    {
+                        "task_id": task.task_id,
+                        "title": task.title,
+                        "outputs": task.outputs,
+                        "acceptance": task.acceptance,
+                        "metadata": dict(task.metadata),
+                    },
+                    board_namespace=(
+                        task.board_namespace or board_path.name
+                    ),
+                    source_path=board_path,
+                )
+                if identity.canonical_task_cid != str(
+                    expected.get("canonical_task_cid") or ""
+                ):
+                    raise TaskSourceIntegrityError(
+                        "completion recovery board member identity changed"
+                    )
+                already.append(task_id)
+                receipts.append(
+                    {
+                        "schema": (
+                            "ipfs_accelerate_py.agent_supervisor."
+                            "member_completion_receipt@1"
+                        ),
+                        "task_id": task_id,
+                        "canonical_task_key": (
+                            str(
+                                expected.get("canonical_task_key")
+                                or identity.canonical_task_key
+                            )
+                        ),
+                        "canonical_task_cid": (
+                            identity.canonical_task_cid
+                        ),
+                        "board_namespace": identity.board_namespace,
+                        "status": "succeeded",
+                    }
+                )
+        return {
+            "updated": bool(updated),
+            "reason": "updated" if updated else "already_completed",
+            "updated_task_ids": updated,
+            "already_completed_task_ids": already,
+            "missing_task_ids": [],
+            "missing_status_task_ids": [],
+            "inserted_status_task_ids": [],
+            "completion_receipts": receipts,
+        }
+
+    def _adopt_protected_checkout_recovery(
+        self,
+    ) -> dict[str, Any]:
+        """Adopt a dead daemon's exact durable recovery lease."""
+
+        current = self._current_checkout_mutation_lease()
+        if current is not None:
+            return {
+                "required": bool(
+                    getattr(
+                        self._checkout_mutation_context,
+                        "protected_recovery_active",
+                        False,
+                    )
+                ),
+                "adopted": False,
+                "lease": current,
+            }
+
+        existing = read_checkout_mutation_lease(
+            self._repo_merge_lock_path()
+        )
+        if existing is None or (
+            existing.metadata.get("protected_recovery_required") is not True
+        ):
+            return {"required": False, "adopted": False}
+        metadata = dict(existing.metadata)
+        paths = self._recovery_lock_paths(metadata)
+        guard = metadata.get("protected_release_guard")
+        intent = metadata.get("protected_recovery_intent")
+        if (
+            not paths
+            or not isinstance(guard, Mapping)
+            or not isinstance(intent, Mapping)
+        ):
+            return {
+                "required": True,
+                "adopted": False,
+                "blocked": True,
+                "reason": "protected_recovery_journal_invalid",
+                "lock_path": str(existing.lock_path),
+            }
+        journal_error = self._protected_recovery_journal_validation_error(
+            metadata,
+            paths,
+            guard,
+            intent,
+        )
+        if journal_error:
+            return {
+                "required": True,
+                "adopted": False,
+                "blocked": True,
+                "reason": "protected_recovery_journal_invalid",
+                "journal_error": journal_error,
+                "lock_path": str(existing.lock_path),
+            }
+        try:
+            owner_pid = int(metadata.get("pid") or 0)
+        except (TypeError, ValueError):
+            owner_pid = 0
+        if owner_pid == os.getpid():
+            self._attach_protected_checkout_recovery_context(
+                existing,
+                paths=paths,
+                guard=guard,
+                intent=intent,
+            )
+            self._record_event(
+                "checkout_mutation_recovery_attached",
+                {
+                    "lock_path": str(existing.lock_path),
+                    "lease_id": existing.lease_id,
+                    "intent_id": str(intent.get("intent_id") or ""),
+                    "protected_paths": [str(path) for path in paths],
+                },
+            )
+            return {
+                "required": True,
+                "adopted": False,
+                "attached": True,
+                "lease": existing,
+                "intent": dict(intent),
+            }
+        if self._lock_owner_is_active(
+            metadata,
+            expected_kind="merge",
+        ):
+            return {
+                "required": True,
+                "adopted": False,
+                "blocked": True,
+                "reason": "protected_recovery_owner_active",
+                "lock_path": str(existing.lock_path),
+                "lock_owner_pid": owner_pid,
+            }
+
+        adopted_metadata = {
+            **metadata,
+            "pid": os.getpid(),
+            "owner_script": Path(sys.argv[0]).name,
+            "adopted_at": utc_now(),
+            "adopted_from_lease_id": existing.lease_id,
+        }
+        adopted_metadata["lease_id"] = content_identity(
+            {
+                "kind": "adopted-protected-checkout-recovery",
+                "prior_lease_id": existing.lease_id,
+                "intent_id": str(intent.get("intent_id") or ""),
+                "pid": os.getpid(),
+                "thread_id": threading.get_ident(),
+                "issued_ns": time.time_ns(),
+            }
+        )
+        adopted = adopt_inactive_checkout_mutation_lease(
+            existing,
+            adopted_metadata,
+            owner_active=lambda candidate: self._lock_owner_is_active(
+                candidate,
+                expected_kind="merge",
+            ),
+        )
+        if adopted is None:
+            return {
+                "required": True,
+                "adopted": False,
+                "blocked": True,
+                "reason": "protected_recovery_adoption_raced",
+                "lock_path": str(existing.lock_path),
+            }
+        self._attach_protected_checkout_recovery_context(
+            adopted,
+            paths=paths,
+            guard=guard,
+            intent=intent,
+        )
+        self._record_event(
+            "checkout_mutation_recovery_adopted",
+            {
+                "lock_path": str(adopted.lock_path),
+                "lease_id": adopted.lease_id,
+                "prior_lease_id": existing.lease_id,
+                "intent_id": str(intent.get("intent_id") or ""),
+                "protected_paths": [
+                    str(path) for path in paths
+                ],
+            },
+        )
+        return {
+            "required": True,
+            "adopted": True,
+            "lease": adopted,
+            "intent": dict(intent),
+        }
+
+    def _recover_protected_checkout_mutation(self) -> dict[str, Any]:
+        """Autonomously finish a retained protected generated-file mutation."""
+
+        adoption = self._adopt_protected_checkout_recovery()
+        if not adoption.get("required", False):
+            return {"required": False, "recovered": False}
+        if adoption.get("blocked", False):
+            return {
+                **adoption,
+                "recovered": False,
+            }
+        lease = adoption.get("lease")
+        if not isinstance(lease, CheckoutMutationLease):
+            return {
+                **adoption,
+                "blocked": True,
+                "recovered": False,
+                "reason": "protected_recovery_lease_missing",
+            }
+        intent = lease.metadata.get("protected_recovery_intent")
+        if not isinstance(intent, Mapping):
+            return {
+                **adoption,
+                "blocked": True,
+                "recovered": False,
+                "reason": "protected_recovery_intent_missing",
+            }
+
+        guard = getattr(
+            self._checkout_mutation_context,
+            "protected_release_guard",
+            None,
+        )
+        proof = (
+            self._protected_checkout_release_proof(guard)
+            if isinstance(guard, Mapping)
+            else {}
+        )
+        completion_intent = intent.get("completion_intent")
+        callback_replay: dict[str, Any] | None = None
+        callback_marker_valid = bool(
+            isinstance(completion_intent, Mapping)
+            and self._protected_completion_callback_marker_is_valid(
+                lease,
+                completion_intent,
+            )
+        )
+        if isinstance(completion_intent, Mapping) and not (
+            callback_marker_valid
+        ):
+            expectation = intent.get("callback_expectation")
+            if not isinstance(expectation, Mapping):
+                return {
+                    **adoption,
+                    "blocked": True,
+                    "recovered": False,
+                    "reason": (
+                        "protected_recovery_callback_expectation_missing"
+                    ),
+                }
+            try:
+                callback_replay = (
+                    self._replay_completion_callback_expectation(
+                        expectation
+                    )
+                )
+            except (OSError, TaskSourceError, ValueError) as exc:
+                # A journal published before a callback that never mutated the
+                # board is safe to release without terminal publication.  Any
+                # changed/committed board must retain its lease until exact
+                # all-member replay succeeds.
+                if str(proof.get("reason") or "") == (
+                    "protected_outputs_exact_pre_state"
+                ):
+                    return self._finish_retained_checkout_mutation_recovery(
+                        lease,
+                        {
+                            "required": True,
+                            "recovery_attempted": True,
+                            "release_proof": proof,
+                            "callback_replay_skipped": True,
+                            "callback_replay_error": str(exc)[-2000:],
+                        },
+                        operation="recover_protected_generated_outputs",
+                    )
+                return {
+                    **adoption,
+                    "blocked": True,
+                    "recovered": False,
+                    "checkout_mutation_lease_retained": True,
+                    "checkout_mutation_recovery_required": True,
+                    "reason": "protected_recovery_callback_replay_failed",
+                    "exception_type": type(exc).__name__,
+                    "error": str(exc)[-4000:],
+                }
+
+        # Replaying an unfinished Markdown member may have dirtied the board,
+        # so the pre-replay proof is no longer authoritative.
+        proof = (
+            self._protected_checkout_release_proof(guard)
+            if isinstance(guard, Mapping)
+            else proof
+        )
+        if proof.get("trusted", False) and callback_replay is None:
+            return self._finish_retained_checkout_mutation_recovery(
+                lease,
+                {
+                    "required": True,
+                    "recovery_attempted": True,
+                    "release_proof": proof,
+                },
+                operation="recover_protected_generated_outputs",
+            )
+
+        subjects = intent.get("subjects")
+        if not isinstance(subjects, Mapping):
+            subjects = {}
+        task_id = str(intent.get("task_id") or "")
+        commit_results: list[dict[str, Any]] = []
+        self._checkout_mutation_context.transaction_depth = 1
+        try:
+            for path in self._retained_checkout_mutation_paths():
+                relative = path.resolve().relative_to(
+                    self.repo_root.resolve()
+                ).as_posix()
+                commit_results.append(
+                    self._commit_generated_file_update_locked(
+                        path,
+                        task_id=task_id,
+                        subject=str(
+                            subjects.get(relative)
+                            or self._protected_recovery_subject(
+                                str(intent.get("operation") or ""),
+                                task_id,
+                                None,
+                            )
+                        ),
+                    )
+                )
+        except BaseException:
+            self._checkout_mutation_context.retain_until_protected_clean = True
+            raise
+        finally:
+            self._checkout_mutation_context.transaction_depth = 0
+        result = {
+            "required": True,
+            "recovery_attempted": True,
+            "commit_results": commit_results,
+        }
+        if len(commit_results) == 1:
+            result["commit_result"] = commit_results[0]
+        if callback_replay is not None:
+            result.update(callback_replay)
+            completed_proof = (
+                self._protected_checkout_release_proof(guard)
+                if isinstance(guard, Mapping)
+                else {}
+            )
+            result["protected_board_postcondition"] = {
+                "checked": True,
+                "clean": bool(completed_proof.get("clean")),
+                "trusted": bool(completed_proof.get("trusted")),
+                "release_proof": completed_proof,
+            }
+            result["durable"] = bool(
+                completed_proof.get("trusted")
+            )
+            expectation = intent.get("callback_expectation")
+            evidence = (
+                self._completion_callback_evidence(
+                    expectation,
+                    result,
+                )
+                if isinstance(expectation, Mapping)
+                else None
+            )
+            if evidence is None:
+                return {
+                    **result,
+                    "blocked": True,
+                    "recovered": False,
+                    "checkout_mutation_lease_retained": True,
+                    "checkout_mutation_recovery_required": True,
+                    "reason": (
+                        "protected_recovery_callback_evidence_invalid"
+                    ),
+                }
+            result["completion_callback_evidence"] = evidence
+            lease, journaled = (
+                self._journal_protected_completion_callback_success(
+                    lease,
+                    result=result,
+                )
+            )
+            if not journaled:
+                return {
+                    **result,
+                    "blocked": True,
+                    "recovered": False,
+                    "checkout_mutation_lease_retained": True,
+                    "checkout_mutation_recovery_required": True,
+                    "reason": (
+                        "protected_recovery_callback_marker_pending"
+                    ),
+                }
+        return self._finish_retained_checkout_mutation_recovery(
+            lease,
+            result,
+            operation="recover_protected_generated_outputs",
+        )
+
     def _finish_retained_checkout_mutation_recovery(
         self,
         lease: CheckoutMutationLease,
@@ -20404,30 +23445,66 @@ class PortalImplementationDaemon:
         *,
         operation: str,
     ) -> dict[str, Any]:
-        """Release a retained lease only after its protected paths are clean."""
+        """Release only after a guard-bound clean/trusted history proof."""
 
         payload = dict(result)
         retained_paths = self._retained_checkout_mutation_paths()
         dirty_paths = self._dirty_implementation_protected_paths(
             retained_paths
         )
-        if dirty_paths:
+        guard = getattr(
+            self._checkout_mutation_context,
+            "protected_release_guard",
+            None,
+        )
+        proof = (
+            self._protected_checkout_release_proof(guard)
+            if isinstance(guard, Mapping)
+            else {
+                "trusted": not dirty_paths,
+                "clean": not dirty_paths,
+                "reason": "legacy_cleanliness_proof",
+                "dirty_paths": list(dirty_paths),
+            }
+        )
+        payload["protected_release_proof"] = proof
+        if not proof.get("trusted", False):
+            self._checkout_mutation_context.retain_until_protected_clean = True
             payload["checkout_mutation_lease_retained"] = True
             payload["checkout_mutation_recovery_required"] = True
             payload["dirty_protected_paths"] = list(dirty_paths)
             return payload
 
-        self._checkout_mutation_context.retain_until_protected_clean = False
-        self._checkout_mutation_context.retained_protected_paths = ()
-        self._checkout_mutation_context.lease = None
+        lease, completion_published = (
+            self._publish_guarded_completion_if_ready(
+                lease,
+                proof=proof,
+                result=payload,
+            )
+        )
+        if not completion_published:
+            self._checkout_mutation_context.retain_until_protected_clean = True
+            return {
+                **payload,
+                "checkout_mutation_lease_retained": True,
+                "checkout_mutation_recovery_required": True,
+                "reason": "completion_publication_pending",
+                "lock_path": str(lease.lock_path),
+            }
         released = self._release_checkout_mutation_lease(lease)
         if not released:
+            self._checkout_mutation_context.lease = lease
+            self._checkout_mutation_context.release_pending = True
+            self._checkout_mutation_context.retain_until_protected_clean = True
             return {
                 **payload,
                 "checkout_mutation_release_failed": True,
-                "reason": "checkout_mutation_lease_lost",
+                "checkout_mutation_lease_retained": True,
+                "checkout_mutation_recovery_required": True,
+                "reason": "checkout_mutation_release_pending",
                 "lock_path": str(lease.lock_path),
             }
+        self._clear_checkout_mutation_context()
         payload["checkout_mutation_lease_recovered"] = True
         payload["checkout_mutation_lease_retained"] = False
         self._record_event(
@@ -20457,6 +23534,22 @@ class PortalImplementationDaemon:
         """Run a complete shared-checkout mutation under one atomic lease."""
 
         current = self._current_checkout_mutation_lease()
+        if current is None:
+            recovery = self._recover_protected_checkout_mutation()
+            if recovery.get("required", False):
+                if not recovery.get(
+                    "checkout_mutation_lease_recovered",
+                    False,
+                ):
+                    return {
+                        **dict(failure_fields or {}),
+                        **recovery,
+                        "reason": str(
+                            recovery.get("reason")
+                            or "protected_checkout_recovery_required"
+                        ),
+                    }
+                current = self._current_checkout_mutation_lease()
         if current is not None:
             transaction_depth = int(
                 getattr(
@@ -20474,26 +23567,47 @@ class PortalImplementationDaemon:
                 )
             )
             if transaction_depth > 0:
-                return callback()
-            if retaining:
-                dirty_paths = self._dirty_implementation_protected_paths(
-                    self._retained_checkout_mutation_paths()
-                )
-                if not dirty_paths:
-                    released = (
-                        self._finish_retained_checkout_mutation_recovery(
-                            current,
-                            {},
-                            operation=operation,
-                        )
+                recovery_active = bool(
+                    getattr(
+                        self._checkout_mutation_context,
+                        "protected_recovery_active",
+                        False,
                     )
-                    if released.get(
-                        "checkout_mutation_release_failed"
-                    ):
-                        return {
-                            **dict(failure_fields or {}),
-                            **released,
-                        }
+                )
+                allowed = set(
+                    getattr(
+                        self._checkout_mutation_context,
+                        "protected_recovery_allowed_operations",
+                        (),
+                    )
+                )
+                if recovery_active and operation not in allowed:
+                    return {
+                        **dict(failure_fields or {}),
+                        "reason": (
+                            "checkout_mutation_nested_operation_not_allowed"
+                        ),
+                        "lock_path": str(current.lock_path),
+                        "checkout_mutation_recovery_required": True,
+                    }
+                self._checkout_mutation_context.transaction_depth = (
+                    transaction_depth + 1
+                )
+                try:
+                    return callback()
+                finally:
+                    self._checkout_mutation_context.transaction_depth = (
+                        transaction_depth
+                    )
+            if bool(
+                getattr(
+                    self._checkout_mutation_context,
+                    "release_pending",
+                    False,
+                )
+            ):
+                if self._release_checkout_mutation_lease(current):
+                    self._clear_checkout_mutation_context()
                     return self._run_checkout_mutation_transaction(
                         task_id=task_id,
                         attempt=attempt,
@@ -20503,11 +23617,39 @@ class PortalImplementationDaemon:
                         failure_fields=failure_fields,
                         extra=extra,
                     )
-                if operation not in {
-                    "commit_generated_file_update",
-                    "mark_tasks_completed",
-                    "reopen_dependency_blocked_tasks",
-                }:
+                return {
+                    **dict(failure_fields or {}),
+                    "reason": "checkout_mutation_release_pending",
+                    "lock_path": str(current.lock_path),
+                    "checkout_mutation_release_failed": True,
+                }
+            if retaining:
+                dirty_paths = self._dirty_implementation_protected_paths(
+                    self._retained_checkout_mutation_paths()
+                )
+                finished = self._finish_retained_checkout_mutation_recovery(
+                    current,
+                    {},
+                    operation=operation,
+                )
+                if finished.get("checkout_mutation_lease_recovered"):
+                    return self._run_checkout_mutation_transaction(
+                        task_id=task_id,
+                        attempt=attempt,
+                        branch=branch,
+                        operation=operation,
+                        callback=callback,
+                        failure_fields=failure_fields,
+                        extra=extra,
+                    )
+                allowed = set(
+                    getattr(
+                        self._checkout_mutation_context,
+                        "protected_recovery_allowed_operations",
+                        (),
+                    )
+                )
+                if operation not in allowed:
                     return {
                         **dict(failure_fields or {}),
                         "reason": (
@@ -20520,6 +23662,11 @@ class PortalImplementationDaemon:
                 self._checkout_mutation_context.transaction_depth = 1
                 try:
                     result = callback()
+                except BaseException:
+                    self._checkout_mutation_context.retain_until_protected_clean = (
+                        True
+                    )
+                    raise
                 finally:
                     self._checkout_mutation_context.transaction_depth = 0
                 return self._finish_retained_checkout_mutation_recovery(
@@ -20527,7 +23674,11 @@ class PortalImplementationDaemon:
                     result,
                     operation=operation,
                 )
-            return callback()
+            self._checkout_mutation_context.transaction_depth = 1
+            try:
+                return callback()
+            finally:
+                self._checkout_mutation_context.transaction_depth = 0
         lease, reason, existing, _waited = (
             self._acquire_checkout_mutation_lease(
                 task_id=task_id,
@@ -20558,13 +23709,105 @@ class PortalImplementationDaemon:
         self._checkout_mutation_context.transaction_depth = 1
         self._checkout_mutation_context.retain_until_protected_clean = False
         self._checkout_mutation_context.retained_protected_paths = ()
+        self._checkout_mutation_context.protected_release_guard = None
+        self._checkout_mutation_context.protected_recovery_active = False
+        self._checkout_mutation_context.protected_recovery_allowed_operations = ()
+        self._checkout_mutation_context.release_pending = False
+        protected_paths = self._protected_paths_for_checkout_mutation(
+            operation,
+            extra,
+        )
+        if protected_paths:
+            dirty_before = self._dirty_implementation_protected_paths(
+                protected_paths
+            )
+            if dirty_before:
+                self._checkout_mutation_context.transaction_depth = 0
+                released = self._release_checkout_mutation_lease(lease)
+                if released:
+                    self._clear_checkout_mutation_context()
+                else:
+                    self._checkout_mutation_context.release_pending = True
+                return {
+                    **dict(failure_fields or {}),
+                    "reason": "protected_paths_dirty_before_mutation",
+                    "dirty_protected_paths": list(dirty_before),
+                    "lock_path": str(lease.lock_path),
+                }
+            try:
+                guarded_lease = (
+                    self._publish_protected_checkout_recovery_guard(
+                        lease,
+                        paths=protected_paths,
+                        task_id=task_id,
+                        attempt=attempt,
+                        operation=operation,
+                        extra=extra,
+                    )
+                )
+            except (OSError, RuntimeError, ValueError):
+                guarded_lease = None
+            if guarded_lease is None:
+                self._checkout_mutation_context.transaction_depth = 0
+                released = self._release_checkout_mutation_lease(lease)
+                if released:
+                    self._clear_checkout_mutation_context()
+                else:
+                    self._checkout_mutation_context.release_pending = True
+                return {
+                    **dict(failure_fields or {}),
+                    "reason": "protected_recovery_journal_publish_failed",
+                    "lock_path": str(lease.lock_path),
+                    "checkout_mutation_release_failed": not released,
+                }
+            lease = guarded_lease
         result: dict[str, Any] | None = None
+        callback_completed = False
         retained = False
         released = True
         try:
             result = callback()
+            callback_completed = True
         finally:
             self._checkout_mutation_context.transaction_depth = 0
+            guard = getattr(
+                self._checkout_mutation_context,
+                "protected_release_guard",
+                None,
+            )
+            if isinstance(guard, Mapping):
+                callback_success_journaled = False
+                if callback_completed and isinstance(result, Mapping):
+                    lease, callback_success_journaled = (
+                        self._journal_protected_completion_callback_success(
+                            lease,
+                            result=result,
+                        )
+                    )
+                    if not callback_success_journaled:
+                        self._checkout_mutation_context.retain_until_protected_clean = (
+                            True
+                        )
+                proof = self._protected_checkout_release_proof(guard)
+                if (
+                    not callback_completed
+                    or not proof.get("trusted", False)
+                ):
+                    self._checkout_mutation_context.retain_until_protected_clean = (
+                        True
+                    )
+                elif callback_completed:
+                    lease, completion_published = (
+                        self._publish_guarded_completion_if_ready(
+                            lease,
+                            proof=proof,
+                            result=result,
+                        )
+                    )
+                    if not completion_published:
+                        self._checkout_mutation_context.retain_until_protected_clean = (
+                            True
+                        )
             retained = bool(
                 getattr(
                     self._checkout_mutation_context,
@@ -20597,16 +23840,19 @@ class PortalImplementationDaemon:
                     },
                 )
             else:
-                self._checkout_mutation_context.lease = None
-                self._checkout_mutation_context.retained_protected_paths = ()
                 released = self._release_checkout_mutation_lease(lease)
+                if released:
+                    self._clear_checkout_mutation_context()
+                else:
+                    self._checkout_mutation_context.lease = lease
+                    self._checkout_mutation_context.release_pending = True
         if retained:
             return dict(result or {})
         if not released:
             return {
                 **dict(result or {}),
                 "checkout_mutation_release_failed": True,
-                "reason": "checkout_mutation_lease_lost",
+                "reason": "checkout_mutation_release_pending",
                 "lock_path": str(lease.lock_path),
             }
         return dict(result or {})

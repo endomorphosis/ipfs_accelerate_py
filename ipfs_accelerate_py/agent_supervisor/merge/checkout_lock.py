@@ -359,6 +359,155 @@ def _read_checkout_lock(
     return payload, before_identity
 
 
+def read_checkout_mutation_lease(
+    lock_path: Path,
+) -> CheckoutMutationLease | None:
+    """Return a stable, fully published checkout lease when one exists."""
+
+    metadata, identity = _read_checkout_lock(lock_path)
+    if (
+        metadata is None
+        or identity is None
+        or not str(metadata.get("lease_id") or "")
+    ):
+        return None
+    return CheckoutMutationLease(
+        lock_path=lock_path,
+        metadata=metadata,
+        device=identity[0],
+        inode=identity[1],
+    )
+
+
+def _atomic_replace_checkout_mutation_lease(
+    lease: CheckoutMutationLease,
+    metadata: Mapping[str, Any],
+) -> CheckoutMutationLease | None:
+    """Replace an exact lease with complete metadata and a new inode binding."""
+
+    normalized = dict(metadata)
+    lease_id = str(normalized.get("lease_id") or "")
+    if not lease_id:
+        raise ValueError("checkout mutation lock metadata requires lease_id")
+    current, identity = _read_checkout_lock(lease.lock_path)
+    if (
+        current is None
+        or identity != (lease.device, lease.inode)
+        or str(current.get("lease_id") or "") != lease.lease_id
+    ):
+        return None
+
+    temp_fd, temp_name = tempfile.mkstemp(
+        prefix=f".{lease.lock_path.name}.",
+        suffix=".replacement",
+        dir=lease.lock_path.parent,
+    )
+    temp_path = Path(temp_name)
+    try:
+        fchmod = getattr(os, "fchmod", None)
+        if fchmod is not None:
+            fchmod(temp_fd, 0o600)
+        data = json.dumps(
+            normalized,
+            indent=2,
+            sort_keys=True,
+        ).encode("utf-8")
+        offset = 0
+        while offset < len(data):
+            written = os.write(temp_fd, data[offset:])
+            if written <= 0:
+                raise OSError(
+                    "short write while replacing checkout mutation lease"
+                )
+            offset += written
+        os.fsync(temp_fd)
+        replacement_stat = os.fstat(temp_fd)
+        replacement_identity = (
+            int(replacement_stat.st_dev),
+            int(replacement_stat.st_ino),
+        )
+        os.replace(temp_path, lease.lock_path)
+        destination_stat = lease.lock_path.stat(follow_symlinks=False)
+        if (
+            int(destination_stat.st_dev),
+            int(destination_stat.st_ino),
+        ) != replacement_identity:
+            return None
+        published, published_identity = _read_checkout_lock(lease.lock_path)
+        if published != normalized or published_identity != replacement_identity:
+            return None
+        return CheckoutMutationLease(
+            lock_path=lease.lock_path,
+            metadata=normalized,
+            device=replacement_identity[0],
+            inode=replacement_identity[1],
+        )
+    finally:
+        if temp_fd >= 0:
+            os.close(temp_fd)
+        temp_path.unlink(missing_ok=True)
+
+
+def update_checkout_mutation_lease(
+    lease: CheckoutMutationLease,
+    metadata: Mapping[str, Any],
+    *,
+    timeout_seconds: float = 1.0,
+) -> CheckoutMutationLease | None:
+    """CAS-replace one exact lease with atomically published metadata."""
+
+    try:
+        with serialized_lock_update(
+            lease.lock_path,
+            timeout_seconds=timeout_seconds,
+        ):
+            return _atomic_replace_checkout_mutation_lease(lease, metadata)
+    except (FileNotFoundError, TimeoutError):
+        return None
+
+
+def adopt_inactive_checkout_mutation_lease(
+    lease: CheckoutMutationLease,
+    metadata: Mapping[str, Any],
+    *,
+    owner_active: Callable[[dict[str, Any]], bool],
+    timeout_seconds: float = 1.0,
+) -> CheckoutMutationLease | None:
+    """CAS-adopt an exact dead-owner lease using a newly fenced identity."""
+
+    normalized = dict(metadata)
+    if str(normalized.get("lease_id") or "") == lease.lease_id:
+        raise ValueError("adopted checkout mutation lease must rotate lease_id")
+    try:
+        with serialized_lock_update(
+            lease.lock_path,
+            timeout_seconds=timeout_seconds,
+        ):
+            current, identity = _read_checkout_lock(lease.lock_path)
+            if (
+                current is None
+                or identity != (lease.device, lease.inode)
+                or str(current.get("lease_id") or "") != lease.lease_id
+            ):
+                return None
+            try:
+                if owner_active(current):
+                    return None
+            except Exception:
+                return None
+            confirmed, confirmed_identity = _read_checkout_lock(
+                lease.lock_path
+            )
+            if confirmed != current or confirmed_identity != identity:
+                return None
+            return _atomic_replace_checkout_mutation_lease(
+                lease,
+                normalized,
+            )
+    except (FileNotFoundError, TimeoutError):
+        return None
+
+
 def _try_publish_checkout_mutation_lease(
     lock_path: Path,
     metadata: Mapping[str, Any],
@@ -596,6 +745,13 @@ def checkout_lock_owner_is_active(
                 return False
         except OSError:
             return False
+    # A protected mutation recovery record is an intentionally retained
+    # durable fence, not an ordinary process lease.  Its owning daemon may
+    # have exited after changing a generated board.  Preserve it so the next
+    # compatible daemon can CAS-adopt and repair it instead of treating it as
+    # stale process metadata.
+    if metadata.get("protected_recovery_required") is True:
+        return True
     try:
         pid = int(metadata.get("pid") or 0)
     except (TypeError, ValueError):

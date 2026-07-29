@@ -16921,16 +16921,26 @@ def test_implementation_supervisor_refreshes_merge_state_after_checkout_lease(
             repo_root=repo,
         )
     )
-    merge_heads = iter(["stale-merge-head", ""])
-    unmerged_paths = iter([["conflict.txt"], []])
+    merge_heads = iter(
+        [
+            {"ok": False, "merge_head": "", "error": "transient query"},
+            {"ok": True, "merge_head": ""},
+        ]
+    )
+    unmerged_paths = iter(
+        [
+            {"ok": True, "unmerged_paths": []},
+            {"ok": True, "unmerged_paths": []},
+        ]
+    )
     monkeypatch.setattr(
         supervisor,
-        "_git_merge_head",
+        "_git_merge_head_query",
         lambda _repo: next(merge_heads),
     )
     monkeypatch.setattr(
         supervisor,
-        "_git_unmerged_paths",
+        "_git_unmerged_paths_query",
         lambda _repo: next(unmerged_paths),
     )
     monkeypatch.setattr(
@@ -16949,6 +16959,67 @@ def test_implementation_supervisor_refreshes_merge_state_after_checkout_lease(
         "reason": "clean",
         "path": str(repo),
     }
+    assert not supervisor._repo_merge_lock_path().exists()
+
+
+def test_implementation_supervisor_defers_when_locked_merge_query_fails(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    state_dir = repo / "state"
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=repo / "todo.md",
+            state_path=state_dir / "task_state.json",
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "events.jsonl",
+            state_dir=state_dir,
+            repo_root=repo,
+        )
+    )
+    merge_heads = iter(
+        [
+            {"ok": True, "merge_head": "observed-before-lock"},
+            {
+                "ok": False,
+                "merge_head": "",
+                "error": "locked query failed",
+            },
+        ]
+    )
+    unmerged_paths = iter(
+        [
+            {"ok": True, "unmerged_paths": ["conflict.txt"]},
+            {"ok": True, "unmerged_paths": []},
+        ]
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_git_merge_head_query",
+        lambda _repo: next(merge_heads),
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_git_unmerged_paths_query",
+        lambda _repo: next(unmerged_paths),
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_repair_main_checkout_merge_state_locked",
+        lambda *_args, **_kwargs: pytest.fail(
+            "unknown locked state must not be repaired or treated as clean"
+        ),
+    )
+
+    result = supervisor.repair_main_checkout_merge_state()
+
+    assert result["attempted"] is True
+    assert result["repaired"] is False
+    assert result["reason"] == "main_checkout_merge_state_refresh_failed"
+    assert result["merge_head_query"]["ok"] is False
     assert not supervisor._repo_merge_lock_path().exists()
 
 
