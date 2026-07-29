@@ -2808,6 +2808,26 @@ def _is_test_path(path: str) -> bool:
     return path.startswith(("test/", "tests/")) or name.startswith("test_")
 
 
+def _is_scoped_python_test_source(
+    path: str,
+    policy: ProposalValidationPolicy,
+) -> bool:
+    """Return whether ``path`` is a task-owned Python test source.
+
+    Test modules commonly describe the security property they exercise in
+    their filename (for example, ``test_wallet_processor_secrets.py``).
+    Such a name is not itself evidence that the candidate persists a secret.
+    Keep the exception narrow: non-source fixtures and paths outside either
+    authority envelope remain subject to the sensitive-path gate.
+    """
+
+    return (
+        path.endswith((".py", ".pyi"))
+        and _is_test_path(path)
+        and policy.path_is_in_scope(path)
+    )
+
+
 def _introduced_candidate_text(entry: CandidateDiffEntry) -> str:
     """Return only candidate lines not already present in the baseline.
 
@@ -3557,7 +3577,13 @@ class ProposalValidator:
                 for pattern in policy.sensitive_path_patterns
             )
             sensitive_content = _entry_introduces_secret(entry)
-            if not policy.allow_secrets and (sensitive_path or sensitive_content):
+            path_requires_secret_authority = (
+                sensitive_path
+                and not _is_scoped_python_test_source(entry.path, policy)
+            )
+            if not policy.allow_secrets and (
+                path_requires_secret_authority or sensitive_content
+            ):
                 add(
                     ProposalFindingCode.SECRET_CHANGE_FORBIDDEN,
                     ProposalGate.CONTENT,
