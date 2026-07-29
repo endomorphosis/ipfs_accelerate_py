@@ -26,6 +26,9 @@ from ..proof.formal_verification_contracts import content_identity
 
 
 DEFAULT_CHECKOUT_MUTATION_LOCK_NAME = "implementation-main-merge.lock"
+PROTECTED_PATH_MAINTENANCE_LOCK_NAME = (
+    "implementation-protected-path-maintenance.lock"
+)
 DEFAULT_MERGE_TRAIN_DIRECTORY_NAME = "agent-merge-trains"
 BACKLOG_REFINERY_AUTHOR_EMAIL = "accelerator-backlog-refinery@example.invalid"
 GENERATED_PROTECTED_BOARD_COMMIT_MARKER = (

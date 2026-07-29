@@ -48,6 +48,7 @@ from .engine import atomic_write_json as _shared_atomic_write_json
 from ..merge.checkout_lock import (
     BACKLOG_REFINERY_AUTHOR_EMAIL,
     GENERATED_PROTECTED_BOARD_COMMIT_MARKER,
+    PROTECTED_PATH_MAINTENANCE_LOCK_NAME,
     checkout_lock_metadata,
     checkout_mutation_lock_path,
     checkout_repository_id,
@@ -6446,6 +6447,42 @@ class PortalImplementationDaemon:
                 result["lock_owner_state_dir"] = str(existing_task_claim.get("state_dir") or "")
             self._record_event("implementation_skipped", result)
             return result
+
+        if self.implementation_protected_paths:
+            maintenance_claim = self._active_protected_path_maintenance_claim()
+            if maintenance_claim is not None:
+                canonical_task_cid = self._canonical_ref(task)
+                self.task_queue.defer(
+                    canonical_task_cid,
+                    30,
+                    reason="implementation_protected_path_maintenance_active",
+                )
+                self.task_queue.save()
+                result = {
+                    "skipped": True,
+                    "reason": "implementation_protected_path_maintenance_active",
+                    "task_id": task.task_id,
+                    "attempt": attempt,
+                    "backoff_seconds": 30,
+                    "maintenance_owner_pid": int(
+                        maintenance_claim.get("pid") or 0
+                    ),
+                    "maintenance_owner_state_dir": str(
+                        maintenance_claim.get("state_dir") or ""
+                    ),
+                }
+                if not self._release_implementation_task_claim(
+                    task_claim_path,
+                    task_claim_metadata,
+                ):
+                    logger.warning(
+                        "Refusing to remove implementation task claim no "
+                        "longer owned by this maintenance deferral: %s",
+                        task_claim_path,
+                    )
+                acquired_task_claim = False
+                self._record_event("implementation_retry_deferred", result)
+                return result
 
         acquired_lock = False
         log_path = self.implementation_log_dir / f"{task.task_id.lower()}-attempt-{attempt}.log"
@@ -18894,6 +18931,41 @@ class PortalImplementationDaemon:
 
     def _implementation_lock_path(self) -> Path:
         return self.state_path.parent / "implementation.lock"
+
+    def _protected_path_maintenance_lock_path(self) -> Path:
+        return checkout_mutation_lock_path(
+            self.repo_root,
+            lock_name=PROTECTED_PATH_MAINTENANCE_LOCK_NAME,
+        )
+
+    def _active_protected_path_maintenance_claim(
+        self,
+    ) -> dict[str, Any] | None:
+        """Return a live shared maintenance lease, failing closed on I/O."""
+
+        lock_path = self._protected_path_maintenance_lock_path()
+        try:
+            with serialized_lock_update(lock_path):
+                metadata = load_json_dict(lock_path)
+                if metadata is None:
+                    if lock_path.exists():
+                        return {
+                            "kind": "implementation-protected-maintenance",
+                            "coordination_error": "malformed_maintenance_lease",
+                        }
+                    return None
+                if self._lock_owner_is_active(
+                    metadata,
+                    expected_kind="implementation-protected-maintenance",
+                ):
+                    return metadata
+                lock_path.unlink(missing_ok=True)
+                return None
+        except (OSError, RuntimeError) as exc:
+            return {
+                "kind": "implementation-protected-maintenance",
+                "coordination_error": f"{type(exc).__name__}: {exc}",
+            }
 
     def _implementation_task_claim_path(self, task_id: str, *, canonical_task_cid: str = "") -> Path:
         lock_identity = canonical_task_cid or task_id

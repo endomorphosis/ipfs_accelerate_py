@@ -308,6 +308,76 @@ def test_daemon_skips_protected_declarations_before_launch(
     assert result["protected_paths"] == [POLICY_PATH]
 
 
+def test_shared_protected_maintenance_lease_defers_model_dispatch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    supervisor = _supervisor(tmp_path)
+    lease, guard = supervisor._acquire_protected_path_maintenance_lease()
+    assert lease is not None
+    assert guard["blocked"] is False
+    daemon = _daemon(tmp_path)
+    task = _task(outputs=["src/example.py"])
+    monkeypatch.setattr(
+        daemon,
+        "_build_implementation_prompt",
+        lambda *_args, **_kwargs: pytest.fail(
+            "maintenance coordination must precede model prompt construction"
+        ),
+    )
+
+    try:
+        result = daemon._run_implementation(task, PortalTaskState())
+    finally:
+        supervisor._release_protected_path_maintenance_lease(lease)
+
+    assert result["skipped"] is True
+    assert result["reason"] == "implementation_protected_path_maintenance_active"
+    assert result["backoff_seconds"] == 30
+    assert daemon.task_queue.is_cooled_down(daemon._canonical_ref(task)) is True
+    assert not daemon._implementation_task_claim_path(
+        task.task_id,
+        canonical_task_cid=daemon._canonical_ref(task),
+    ).exists()
+
+
+def test_shared_protected_maintenance_waits_for_active_task_claim(
+    tmp_path: Path,
+) -> None:
+    daemon = _daemon(tmp_path)
+    supervisor = _supervisor(tmp_path)
+    task = _task(outputs=["src/example.py"])
+    task_claim_path = daemon._implementation_task_claim_path(
+        task.task_id,
+        canonical_task_cid=daemon._canonical_ref(task),
+    )
+    task_claim_metadata = daemon._build_implementation_task_claim_metadata(
+        task,
+        1,
+        "2026-07-29T00:00:00+00:00",
+    )
+    acquired, _reason, _existing = (
+        daemon._try_acquire_implementation_task_claim(
+            task_claim_path,
+            task_claim_metadata,
+        )
+    )
+    assert acquired is True
+
+    try:
+        lease, guard = supervisor._acquire_protected_path_maintenance_lease()
+    finally:
+        daemon._release_implementation_task_claim(
+            task_claim_path,
+            task_claim_metadata,
+        )
+
+    assert lease is None
+    assert guard["reason"] == "shared_implementation_task_claim_active"
+    assert guard["active_claims"][0]["task_id"] == task.task_id
+    assert not supervisor._protected_path_maintenance_lock_path().exists()
+
+
 @pytest.mark.parametrize(
     ("initial_kind", "mutation", "expected_change"),
     [
@@ -1892,10 +1962,14 @@ def test_supervisor_maintenance_lease_is_visible_and_removed_on_success(
 ) -> None:
     supervisor = _supervisor(tmp_path)
     lock_path = tmp_path / "state" / "implementation.lock"
+    shared_lock_path = supervisor._protected_path_maintenance_lock_path()
     observed: dict[str, object] = {}
 
     def maintenance_body(_update_phase, *, include_refill: bool):
         observed.update(json.loads(lock_path.read_text(encoding="utf-8")))
+        assert json.loads(shared_lock_path.read_text(encoding="utf-8"))[
+            "lease_role"
+        ] == "shared_protected_path_maintenance"
         assert include_refill is False
         assert _daemon(tmp_path)._implementation_lock_owner_is_active(observed)
         return {"stuck": False, "completed_count": 0}
@@ -1917,6 +1991,7 @@ def test_supervisor_maintenance_lease_is_visible_and_removed_on_success(
     assert observed["pid"] == os.getpid()
     assert observed["lease_id"]
     assert not lock_path.exists()
+    assert not shared_lock_path.exists()
 
 
 def test_supervisor_maintenance_lease_is_removed_on_exception(
@@ -1925,12 +2000,14 @@ def test_supervisor_maintenance_lease_is_removed_on_exception(
 ) -> None:
     supervisor = _supervisor(tmp_path)
     lock_path = tmp_path / "state" / "implementation.lock"
+    shared_lock_path = supervisor._protected_path_maintenance_lock_path()
 
     def failing_maintenance(_update_phase, *, include_refill: bool):
         assert include_refill is False
         assert json.loads(lock_path.read_text(encoding="utf-8"))[
             "lease_role"
         ] == "supervisor_maintenance"
+        assert shared_lock_path.exists()
         raise RuntimeError("maintenance failed")
 
     monkeypatch.setattr(
@@ -1946,6 +2023,7 @@ def test_supervisor_maintenance_lease_is_removed_on_exception(
         )
 
     assert not lock_path.exists()
+    assert not shared_lock_path.exists()
 
 
 def test_supervisor_maintenance_lease_uses_effective_state_path_parent(

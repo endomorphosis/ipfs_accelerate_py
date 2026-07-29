@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 from ..merge.checkout_lock import (
+    PROTECTED_PATH_MAINTENANCE_LOCK_NAME,
     checkout_lock_metadata,
     checkout_lock_owner_is_active,
     checkout_mutation_lock_path,
@@ -50,6 +51,8 @@ from .implementation_daemon import (
     IMPLEMENTATION_PROTECTED_ACTIVE_SNAPSHOT_FILENAME,
     IMPLEMENTATION_PROTECTED_INCIDENT_FILENAME,
     IMPLEMENTATION_RUNNER_PROCESS_PATTERN,
+    IMPLEMENTATION_TASK_CLAIM_LOCK_DIRNAME,
+    IMPLEMENTATION_TASK_CLAIM_LOCK_KIND,
     TASK_HEADER_PREFIX,
     PortalImplementationDaemon,
     PortalTask,
@@ -1175,6 +1178,176 @@ class PortalImplementationSupervisor:
     def _implementation_maintenance_lock_path(self) -> Path:
         return self.config.state_path.parent / "implementation.lock"
 
+    def _protected_path_maintenance_lock_path(self) -> Path:
+        return checkout_mutation_lock_path(
+            self.config.repo_root,
+            lock_name=PROTECTED_PATH_MAINTENANCE_LOCK_NAME,
+        )
+
+    def _protected_path_maintenance_lease_metadata(self) -> dict[str, Any]:
+        metadata = self._implementation_maintenance_lease_metadata()
+        metadata["kind"] = "implementation-protected-maintenance"
+        metadata["lease_role"] = "shared_protected_path_maintenance"
+        return metadata
+
+    def _protected_path_maintenance_owner_is_active(
+        self,
+        metadata: Mapping[str, Any],
+    ) -> bool:
+        return checkout_lock_owner_is_active(
+            dict(metadata),
+            expected_kind="implementation-protected-maintenance",
+            expected_repo_root=self.config.repo_root,
+            process_command_line=process_command_line,
+            process_is_running=process_is_running,
+        )
+
+    def _active_implementation_task_claims_for_maintenance(
+        self,
+    ) -> list[dict[str, Any]]:
+        claim_dir = checkout_mutation_lock_path(
+            self.config.repo_root,
+            lock_name=IMPLEMENTATION_TASK_CLAIM_LOCK_DIRNAME,
+        )
+        try:
+            claim_paths = sorted(claim_dir.glob("*.lock"))
+        except OSError:
+            return [{"claim_path": str(claim_dir), "reason": "claim_scan_failed"}]
+        active: list[dict[str, Any]] = []
+        for claim_path in claim_paths:
+            if claim_path.name.startswith("."):
+                continue
+            metadata = load_json_dict(claim_path)
+            if metadata is None:
+                active.append(
+                    {
+                        "claim_path": str(claim_path),
+                        "reason": "claim_metadata_unreadable",
+                    }
+                )
+                continue
+            kind = str(metadata.get("kind") or "")
+            repo_root = str(metadata.get("repo_root") or "")
+            try:
+                same_repository = (
+                    not repo_root
+                    or Path(repo_root).resolve()
+                    == self.config.repo_root.resolve()
+                )
+                pid = int(metadata.get("pid") or 0)
+            except (OSError, TypeError, ValueError):
+                same_repository = False
+                pid = 0
+            # Task claims may be owned through pytest, systemd, or another
+            # wrapper whose argv does not contain the daemon filename. A live
+            # PID on a compatible claim is sufficient to keep maintenance out.
+            if (
+                (not kind or kind == IMPLEMENTATION_TASK_CLAIM_LOCK_KIND)
+                and same_repository
+                and process_is_running(pid)
+            ):
+                active.append(
+                    {
+                        "claim_path": str(claim_path),
+                        "task_id": str(metadata.get("task_id") or ""),
+                        "pid": pid,
+                        "state_dir": str(metadata.get("state_dir") or ""),
+                    }
+                )
+        return active
+
+    def _acquire_protected_path_maintenance_lease(
+        self,
+    ) -> tuple[dict[str, Any] | None, dict[str, Any]]:
+        lock_path = self._protected_path_maintenance_lock_path()
+        metadata = self._protected_path_maintenance_lease_metadata()
+        lease_published = False
+        try:
+            with serialized_lock_update(lock_path):
+                for _ in range(2):
+                    if self._publish_implementation_maintenance_lease(
+                        lock_path,
+                        metadata,
+                    ):
+                        lease_published = True
+                        break
+                    existing = load_json_dict(lock_path)
+                    if existing is not None and (
+                        self._protected_path_maintenance_owner_is_active(
+                            existing
+                        )
+                    ):
+                        return None, {
+                            "blocked": True,
+                            "reason": "protected_path_maintenance_active",
+                            "lock_path": str(lock_path),
+                            "lock_owner_pid": int(existing.get("pid") or 0),
+                            "lock_owner_state_dir": str(
+                                existing.get("state_dir") or ""
+                            ),
+                        }
+                    lock_path.unlink(missing_ok=True)
+                else:
+                    return None, {
+                        "blocked": True,
+                        "reason": "protected_path_maintenance_unavailable",
+                        "lock_path": str(lock_path),
+                    }
+            active_claims = (
+                self._active_implementation_task_claims_for_maintenance()
+            )
+            if active_claims:
+                self._release_protected_path_maintenance_lease(metadata)
+                lease_published = False
+                return None, {
+                    "blocked": True,
+                    "reason": "shared_implementation_task_claim_active",
+                    "lock_path": str(lock_path),
+                    "active_claims": active_claims,
+                }
+            return metadata, {
+                "blocked": False,
+                "reason": "protected_path_maintenance_lease_acquired",
+                "lock_path": str(lock_path),
+                "lease_id": str(metadata["lease_id"]),
+            }
+        except (OSError, RuntimeError) as exc:
+            if lease_published:
+                self._release_protected_path_maintenance_lease(metadata)
+            return None, {
+                "blocked": True,
+                "reason": "protected_path_maintenance_coordination_failed",
+                "lock_path": str(lock_path),
+                "error": f"{type(exc).__name__}: {exc}",
+            }
+
+    def _release_protected_path_maintenance_lease(
+        self,
+        metadata: Mapping[str, Any],
+    ) -> None:
+        lock_path = self._protected_path_maintenance_lock_path()
+        try:
+            with serialized_lock_update(lock_path):
+                existing = load_json_dict(lock_path)
+                if existing is None:
+                    return
+                if str(existing.get("lease_id") or "") != str(
+                    metadata.get("lease_id") or ""
+                ):
+                    logger.warning(
+                        "Refusing to remove shared protected-path lease no "
+                        "longer owned by this supervisor pass: %s",
+                        lock_path,
+                    )
+                    return
+                lock_path.unlink(missing_ok=True)
+        except (OSError, RuntimeError):
+            logger.warning(
+                "Failed to release shared protected-path maintenance lease %s",
+                lock_path,
+                exc_info=True,
+            )
+
     def _implementation_maintenance_lease_metadata(self) -> dict[str, Any]:
         lease_seed = (
             f"{os.getpid()}:{threading.get_ident()}:{time.time_ns()}:{id(self)}"
@@ -1410,13 +1583,29 @@ class PortalImplementationSupervisor:
                 "reason": str(lease_guard.get("reason") or ""),
                 "protected_path_guard": lease_guard,
             }
+        shared_lease: dict[str, Any] | None = None
         try:
             update_maintenance_phase("implementation_maintenance_lease")
+            shared_lease, shared_guard = (
+                self._acquire_protected_path_maintenance_lease()
+            )
+            if shared_lease is None:
+                return {
+                    "stuck": False,
+                    "maintenance_blocked": True,
+                    "reason": str(shared_guard.get("reason") or ""),
+                    "protected_path_guard": shared_guard,
+                }
+            update_maintenance_phase(
+                "shared_protected_path_maintenance_lease"
+            )
             return self._run_once_with_maintenance_under_lease(
                 update_maintenance_phase,
                 include_refill=include_refill,
             )
         finally:
+            if shared_lease is not None:
+                self._release_protected_path_maintenance_lease(shared_lease)
             self._release_implementation_maintenance_lease(lease)
 
     def _run_once_with_maintenance_under_lease(
