@@ -713,3 +713,23 @@ criterion.
 - Parallel lane: vfs-assurance/cas
 - Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
 - Gap task: Close the missing objective evidence `vfs/dependency-cache@1` with a narrow, verifiable change.
+
+## VFS-G143 Prove vfs/language-edge-resolution@1 for Resolve dynamic language features without inventing call edges
+
+- Status: active
+- Parent: VFS-G021
+- Fib priority: 8000
+- Track: corpus-index
+- Priority: P0
+- Bundle: vfs-assurance/index
+- Goal: Create concrete implementation, tests, docs, or interface descriptors proving `vfs/language-edge-resolution@1`.
+- Evidence: vfs/language-edge-resolution@1
+- Outputs: ipfs_accelerate_py/agent_supervisor/program_ast_adapters.py, ipfs_accelerate_py/agent_supervisor/program_graph.py, test/api/test_agent_supervisor_program_ast_adapters.py
+- Validation: python -m pytest test/api/test_agent_supervisor_program_ast_adapters.py test/api/test_agent_supervisor_program_graph.py -q
+- Acceptance: Every edge cites a source span and resolver rule ; ambiguous and unsupported constructs remain explicit ; adversarial name collisions and re-exports cannot become forged direct calls.
+- Refinement depth: 3
+- Embedding query: vfs/language-edge-resolution@1
+- AST query: vfs/language-edge-resolution@1
+- Parallel lane: vfs-assurance/index
+- Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
+- Gap task: Close the missing objective evidence `vfs/language-edge-resolution@1` with a narrow, verifiable change.
