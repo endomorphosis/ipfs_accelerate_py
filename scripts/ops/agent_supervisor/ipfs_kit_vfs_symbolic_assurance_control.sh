@@ -449,6 +449,16 @@ for lane in ("vfs_grok", "vfs_codex"):
         status = json.loads(status_path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         status = {}
+    task_status = {}
+    current_status_path = status.get("current_status_path")
+    if isinstance(current_status_path, str) and current_status_path:
+        candidate = Path(current_status_path)
+        lane_state_dir = root / "state" / lane
+        try:
+            candidate.resolve().relative_to(lane_state_dir.resolve())
+            task_status = json.loads(candidate.read_text(encoding="utf-8"))
+        except (OSError, ValueError, TypeError):
+            task_status = {}
     daemon_pid = status.get("daemon_pid")
     daemon_alive = False
     if isinstance(daemon_pid, int) and daemon_pid > 0:
@@ -465,14 +475,30 @@ for lane in ("vfs_grok", "vfs_codex"):
         "updated_at": status.get("updated_at"),
         "daemon_pid": daemon_pid,
         "daemon_pid_alive": daemon_alive,
-        "active_task_id": status.get("active_task_id"),
+        "active_task_id": task_status.get(
+            "active_task_id",
+            status.get("active_task_id"),
+        ),
+        "active_task_title": task_status.get("active_task_title"),
+        "active_phase": task_status.get("active_phase"),
+        "implementation_in_progress": task_status.get(
+            "implementation_in_progress"
+        ),
+        "task_state_heartbeat_at": task_status.get("heartbeat_at"),
+        "completed_count": task_status.get("completed_count"),
+        "ready_count": task_status.get("ready_count"),
+        "waiting_count": task_status.get("waiting_count"),
+        "blocked_count": task_status.get("blocked_count"),
         "last_agentic_maintenance_phase": status.get(
             "last_agentic_maintenance_phase"
         ),
         "last_agentic_maintenance_error": status.get(
             "last_agentic_maintenance_error"
         ),
-        "last_log_path": status.get("last_log_path"),
+        "last_log_path": task_status.get(
+            "active_log_path",
+            status.get("last_log_path"),
+        ),
     }
 print(json.dumps(result, indent=2, sort_keys=True))
 PY
