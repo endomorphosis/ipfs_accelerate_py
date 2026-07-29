@@ -10,6 +10,8 @@ from ipfs_accelerate_py.agent_supervisor.contract_extractor import (
     CONTRACT_IR_EVIDENCE,
     CONTRACT_SOURCE_PRECEDENCE_EVIDENCE,
     DEFAULT_POLICY_REVISION,
+    OBJECTIVE_GOAL_ID,
+    OBJECTIVE_VALIDATION_REPAIR_EVIDENCE,
     ContentKind,
     ContractExtractionResult,
     ContractExtractorError,
@@ -18,7 +20,9 @@ from ipfs_accelerate_py.agent_supervisor.contract_extractor import (
     SkipReason,
     SourceArtifactClass,
     all_artifact_classes,
+    all_covered_evidence_terms,
     all_extraction_rules,
+    all_program_contract_evidence_terms,
     classify_artifact_path,
     confidence_for,
     contract_source_unit_from_mapping,
@@ -29,6 +33,7 @@ from ipfs_accelerate_py.agent_supervisor.contract_extractor import (
     make_mcp_tool_unit,
     make_observation_unit,
     make_signature_unit,
+    objective_validation_repair_evidence_terms,
     reject_observation_as_expectation_source,
     type_shape_from_json_schema,
     type_shape_from_name,
@@ -36,6 +41,8 @@ from ipfs_accelerate_py.agent_supervisor.contract_extractor import (
 from ipfs_accelerate_py.agent_supervisor.program_contracts import (
     CONTRACT_IR_EVIDENCE as IR_EVIDENCE,
     CONTRACT_SOURCE_PRECEDENCE_EVIDENCE as PRECEDENCE_EVIDENCE,
+    OBJECTIVE_GOAL_ID as IR_OBJECTIVE_GOAL_ID,
+    OBJECTIVE_VALIDATION_REPAIR_EVIDENCE as IR_REPAIR_EVIDENCE,
     SOURCE_PRECEDENCE,
     AuthorizationMode,
     CapabilityMode,
@@ -52,7 +59,9 @@ from ipfs_accelerate_py.agent_supervisor.program_contracts import (
     SupportStatus,
     SyncMode,
     TypeConstructor,
+    all_program_contract_evidence_terms as ir_all_program_contract_evidence_terms,
     may_define_expectation,
+    objective_validation_repair_evidence_terms as ir_objective_validation_repair_evidence_terms,
     program_contract_evidence_terms,
     source_precedence_rank,
 )
@@ -1144,8 +1153,73 @@ def test_evidence_terms_cover_contract_ir_and_source_precedence() -> None:
     )
 
 
+def test_objective_validation_repair_evidence_term_discoverable() -> None:
+    """VFS-G050 objective validation repair: exact-text discovery key present.
+
+    Anchors the synthetic phrase ``objective validation repair`` so objective
+    scans re-find the validation gate.  Domain evidence stays separate:
+    IR (``vfs/contract-ir@1``) and source precedence
+    (``vfs/contract-source-precedence@1``).  The repair term never enters
+    contract identity or extraction result authority.
+    """
+
+    assert OBJECTIVE_VALIDATION_REPAIR_EVIDENCE == "objective validation repair"
+    assert IR_REPAIR_EVIDENCE == OBJECTIVE_VALIDATION_REPAIR_EVIDENCE
+    assert OBJECTIVE_GOAL_ID == "VFS-G050"
+    assert IR_OBJECTIVE_GOAL_ID == OBJECTIVE_GOAL_ID
+    assert objective_validation_repair_evidence_terms() == (
+        "objective validation repair",
+    )
+    assert ir_objective_validation_repair_evidence_terms() == (
+        "objective validation repair",
+    )
+    # Domain envelope evidence remains IR/precedence-only.
+    assert program_contract_evidence_terms() == (
+        "vfs/contract-ir@1",
+        "vfs/contract-source-precedence@1",
+    )
+    assert "objective validation repair" not in program_contract_evidence_terms()
+    assert covered_evidence_terms() == program_contract_evidence_terms()
+    assert "objective validation repair" not in covered_evidence_terms()
+    assert CONTRACT_EXTRACTOR_EVIDENCE == covered_evidence_terms()
+    # Full discovery set includes the validation-gate meta term last.
+    assert all_covered_evidence_terms() == (
+        "vfs/contract-ir@1",
+        "vfs/contract-source-precedence@1",
+        "objective validation repair",
+    )
+    assert all_program_contract_evidence_terms() == all_covered_evidence_terms()
+    assert ir_all_program_contract_evidence_terms() == all_covered_evidence_terms()
+
+    result = extract_contracts(
+        [_mcp_read(), _observation_read()],
+        repository_id=REPO,
+        tree_id=TREE,
+    )
+    record = result.to_record()
+    # Extraction identity envelope never absorbs the synthetic repair term.
+    assert record["evidence"] == list(covered_evidence_terms())
+    assert "objective validation repair" not in record["evidence"]
+    assert record["evidence_contract_ir"] == "vfs/contract-ir@1"
+    assert record["evidence_source_precedence"] == "vfs/contract-source-precedence@1"
+    assert record.get("evidence_objective_validation_repair") is None
+
+    expected_record = result.expected[0].to_record()
+    assert expected_record["evidence"] == list(program_contract_evidence_terms())
+    assert "objective validation repair" not in expected_record["evidence"]
+    observed_record = result.observed[0].to_record()
+    assert observed_record["evidence"] == list(program_contract_evidence_terms())
+    assert "objective validation repair" not in observed_record["evidence"]
+
+    bundle_record = result.to_bundle().to_record()
+    assert bundle_record["evidence"] == list(program_contract_evidence_terms())
+    assert "objective validation repair" not in bundle_record["evidence"]
+
+
 def test_extraction_independent_from_satisfaction_checking() -> None:
     """Contract extraction must not import or invoke satisfaction checking."""
+
+    import inspect
 
     import ipfs_accelerate_py.agent_supervisor.contract_extractor as extractor_mod
     import ipfs_accelerate_py.agent_supervisor.program_contracts as ir_mod
@@ -1155,6 +1229,21 @@ def test_extraction_independent_from_satisfaction_checking() -> None:
     assert "contract_checker" not in ir_mod.__dict__
     assert "contract_checker" not in getattr(extractor_mod, "__all__", ())
     assert "contract_checker" not in getattr(ir_mod, "__all__", ())
+    for forbidden in (
+        "ContractCheckResult",
+        "ContractCounterexample",
+        "compare_contracts",
+        "check_contracts",
+    ):
+        assert forbidden not in extractor_mod.__dict__
+        assert forbidden not in ir_mod.__dict__
+
+    # Source may document the boundary; must not import the checker.
+    for mod in (extractor_mod, ir_mod):
+        src = inspect.getsource(mod)
+        assert "from .contract_checker" not in src
+        assert "from . import contract_checker" not in src
+        assert "import contract_checker" not in src
 
     result = extract_contracts(
         [_mcp_read(), _observation_read()],
@@ -1168,9 +1257,14 @@ def test_extraction_independent_from_satisfaction_checking() -> None:
     assert "verdict" not in record
     assert "check_result" not in record
     assert "counterexample" not in record
+    assert "proved_compatible" not in record
+    assert "witnessed_mismatch" not in record
     # Roles stay separated: observation cannot define expectation.
     with pytest.raises(CircularExpectationError):
         result.observed[0].as_expectation_source()
+    # Objective validation repair is discoverable without satisfaction coupling.
+    assert "objective validation repair" in all_covered_evidence_terms()
+    assert OBJECTIVE_VALIDATION_REPAIR_EVIDENCE in all_covered_evidence_terms()
 
 
 def test_equal_precedence_authorization_and_fallback_conflict() -> None:
