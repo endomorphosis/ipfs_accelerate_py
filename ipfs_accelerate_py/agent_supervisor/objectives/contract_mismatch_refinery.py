@@ -1360,11 +1360,12 @@ def _load_packet_document(
             f"unable to load packet records: {exc}",
             reason_code=ContractMismatchRefineryReason.MALFORMED_PACKET,
         ) from exc
-    document_snapshot_id: str | None = None
+    document_snapshot_ids: set[str] = set()
     if isinstance(payload, Mapping):
-        raw_snapshot_id = payload.get("snapshot_id")
-        if isinstance(raw_snapshot_id, str) and raw_snapshot_id:
-            document_snapshot_id = raw_snapshot_id
+        for key in ("snapshot_id", "snapshot_root"):
+            raw_snapshot_id = payload.get(key)
+            if isinstance(raw_snapshot_id, str) and raw_snapshot_id:
+                document_snapshot_ids.add(raw_snapshot_id)
         for key in ("packets", "edit_packets", "findings"):
             if key in payload:
                 payload = payload[key]
@@ -1390,11 +1391,10 @@ def _load_packet_document(
         if isinstance(item.get("snapshot_id"), str) and item.get("snapshot_id")
     }
     inferred_snapshot_ids = set(record_snapshot_ids)
-    if document_snapshot_id is not None:
-        inferred_snapshot_ids.add(document_snapshot_id)
+    inferred_snapshot_ids.update(document_snapshot_ids)
     if len(inferred_snapshot_ids) > 1:
         raise ContractMismatchRefineryError(
-            "packet input contains conflicting snapshot_id values",
+            "packet input contains conflicting snapshot identity values",
             reason_code=ContractMismatchRefineryReason.MALFORMED_PACKET,
         )
     inferred_snapshot_id = (
@@ -1426,7 +1426,8 @@ def _build_parser() -> argparse.ArgumentParser:
         "--snapshot",
         help=(
             "Current repository snapshot identity. When omitted, exactly one "
-            "snapshot_id must be present in the packet document or records."
+            "snapshot_id or snapshot_root must be present in the packet "
+            "document or records."
         ),
     )
     parser.add_argument(
@@ -1462,7 +1463,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if not current_snapshot_id:
         parser.error(
             "--snapshot is required when the packet document does not "
-            "contain exactly one snapshot_id"
+            "contain exactly one snapshot identity"
         )
     result = refine_contract_mismatch_packets(
         packet_records,
