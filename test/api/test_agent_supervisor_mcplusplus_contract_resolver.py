@@ -1,4 +1,8 @@
-"""Tests for SwissKnife MCP++ call-path contract resolution (VFS-017)."""
+"""Tests for SwissKnife MCP++ call-path contract resolution (VFS-017 / VFS-G060).
+
+Static inventory resolution is covered here. Hermetic runtime conformance is
+owned by VFS-G061 / ``test_agent_supervisor_mcplusplus_runtime_contracts``.
+"""
 
 from __future__ import annotations
 
@@ -7,14 +11,24 @@ from typing import Any
 import pytest
 
 from ipfs_accelerate_py.agent_supervisor.mcplusplus_contract_resolver import (
+    EVIDENCE_CALL_PATH,
+    EVIDENCE_MANIFEST_PARITY,
+    EVIDENCE_RUNTIME_WITNESS,
+    EXCLUDED_RUNTIME_EVIDENCE_KINDS,
+    HERMETIC_RUNTIME_CHILD_GOAL_ID,
+    HERMETIC_RUNTIME_CLAIM_LEVEL,
     PATH_STAGE_ORDER,
     RESOLVER_VERSION,
+    STATIC_EVIDENCE_KINDS,
+    STATIC_RESOLUTION_CLAIM_LEVEL,
+    STATIC_RESOLUTION_GOAL_ID,
     ArtifactRole,
     CallPathClaim,
     DriftKind,
     InventoryArtifact,
     MCPlusPlusContractResolver,
     MCPlusPlusInventory,
+    MCPlusPlusResolutionResult,
     MCPlusPlusResolverError,
     ManifestDriftWitness,
     MissingPathEvidenceError,
@@ -23,6 +37,7 @@ from ipfs_accelerate_py.agent_supervisor.mcplusplus_contract_resolver import (
     PathStage,
     PathVerdict,
     ReasonCode,
+    ResolutionLayer,
     TransportKind,
     classify_non_invocation,
     confidence_for,
@@ -35,8 +50,10 @@ from ipfs_accelerate_py.agent_supervisor.mcplusplus_contract_resolver import (
     resolve_mcplusplus_paths,
     schema_fingerprint,
     split_hierarchical_alias,
+    static_resolution_boundary,
     tool_name_aliases,
 )
+from ipfs_accelerate_py.agent_supervisor.program_assurance_contracts import ClaimLevel
 from ipfs_accelerate_py.agent_supervisor.program_graph import (
     ProgramEdgeKind,
     ProgramNodeKind,
@@ -1356,3 +1373,190 @@ def test_transport_not_admitted() -> None:
     assert hop is not None
     assert hop.reason_code is ReasonCode.TRANSPORT_MISMATCH
     assert path.verdict is not PathVerdict.PROVED
+
+
+# ---------------------------------------------------------------------------
+# Static resolution vs hermetic runtime conformance (VFS-G060 refinement)
+# ---------------------------------------------------------------------------
+
+
+def test_static_resolution_boundary_defers_runtime_to_child_goal() -> None:
+    boundary = static_resolution_boundary()
+    assert boundary["resolution_layer"] == ResolutionLayer.STATIC.value
+    assert boundary["claim_level"] == ClaimLevel.RESOLVED_STATIC.value
+    assert boundary["claims_runtime_conformance"] is False
+    assert boundary["claims_hermetic_runtime"] is False
+    assert boundary["static_goal_id"] == STATIC_RESOLUTION_GOAL_ID == "VFS-G060"
+    assert (
+        boundary["defers_runtime_conformance_to_goal"]
+        == HERMETIC_RUNTIME_CHILD_GOAL_ID
+        == "VFS-G061"
+    )
+    assert (
+        boundary["defers_runtime_claim_level"]
+        == HERMETIC_RUNTIME_CLAIM_LEVEL.value
+        == ClaimLevel.RUNTIME_WITNESSED.value
+    )
+    assert (
+        boundary["defers_runtime_evidence"]
+        == EVIDENCE_RUNTIME_WITNESS
+        == "vfs/mcplusplus-runtime-witness@1"
+    )
+    assert list(boundary["evidence_kinds"]) == list(STATIC_EVIDENCE_KINDS)
+    assert list(boundary["excluded_evidence_kinds"]) == list(
+        EXCLUDED_RUNTIME_EVIDENCE_KINDS
+    )
+    assert EVIDENCE_CALL_PATH in boundary["evidence_kinds"]
+    assert EVIDENCE_MANIFEST_PARITY in boundary["evidence_kinds"]
+    assert EVIDENCE_RUNTIME_WITNESS not in boundary["evidence_kinds"]
+    assert boundary["opens_network"] is False
+    assert boundary["dispatches_adapters"] is False
+    assert boundary["emits_runtime_receipts"] is False
+
+
+def test_proved_path_is_static_only_never_runtime_witnessed() -> None:
+    result = resolve_mcplusplus_paths(_proved_inventory(), (_claim(),))
+    path = result.paths[0]
+    assert path.verdict is PathVerdict.PROVED
+    assert path.is_proved is True
+    assert path.is_statically_proved is True
+    assert path.is_runtime_witnessed is False
+    assert path.claim_level is ClaimLevel.RESOLVED_STATIC
+    assert path.claim_level is STATIC_RESOLUTION_CLAIM_LEVEL
+    assert path.claim_level is not HERMETIC_RUNTIME_CLAIM_LEVEL
+    assert path.resolution_layer is ResolutionLayer.STATIC
+    payload = path.to_dict()
+    assert payload["is_statically_proved"] is True
+    assert payload["is_runtime_witnessed"] is False
+    assert payload["claims_runtime_conformance"] is False
+    assert payload["claim_level"] == "resolved_static"
+    assert payload["resolution_layer"] == "static"
+    assert payload["evidence_kind"] == EVIDENCE_CALL_PATH
+
+
+def test_resolution_result_declares_static_runtime_split() -> None:
+    result = resolve_mcplusplus_paths(_proved_inventory(), (_claim(),))
+    assert result.resolution_layer is ResolutionLayer.STATIC
+    assert result.claim_level is ClaimLevel.RESOLVED_STATIC
+    assert result.claims_runtime_conformance is False
+    assert result.defers_runtime_to_goal == "VFS-G061"
+    assert result.statically_proved_paths() == result.proved_paths()
+    stats = result.stats()
+    assert stats["statically_proved_count"] == stats["proved_count"] == 1
+    assert stats["runtime_witnessed_count"] == 0
+    assert stats["resolution_layer"] == "static"
+
+    payload = result.to_dict()
+    assert payload["resolution_layer"] == "static"
+    assert payload["claim_level"] == "resolved_static"
+    assert payload["claims_runtime_conformance"] is False
+    assert payload["defers_runtime_to_goal"] == "VFS-G061"
+    assert payload["evidence_kinds"] == [
+        EVIDENCE_CALL_PATH,
+        EVIDENCE_MANIFEST_PARITY,
+    ]
+    assert EVIDENCE_RUNTIME_WITNESS not in payload["evidence_kinds"]
+    boundary = payload["static_runtime_boundary"]
+    assert boundary["defers_runtime_conformance_to_goal"] == "VFS-G061"
+    assert boundary["claims_runtime_conformance"] is False
+
+    restored = MCPlusPlusResolutionResult.from_dict(payload)
+    assert restored.result_id == result.result_id
+    assert restored.claims_runtime_conformance is False
+    assert restored.statically_proved_paths()
+
+
+def test_forged_runtime_claims_are_rejected_fail_closed() -> None:
+    result = resolve_mcplusplus_paths(_proved_inventory(), (_claim(),))
+    base = result.to_dict()
+
+    forged_layer = dict(base)
+    forged_layer["resolution_layer"] = ResolutionLayer.RUNTIME.value
+    with pytest.raises(MCPlusPlusResolverError, match="resolution_layer"):
+        MCPlusPlusResolutionResult.from_dict(forged_layer)
+
+    forged_claim = dict(base)
+    forged_claim["claims_runtime_conformance"] = True
+    with pytest.raises(MCPlusPlusResolverError, match="runtime conformance"):
+        MCPlusPlusResolutionResult.from_dict(forged_claim)
+
+    forged_level = dict(base)
+    forged_level["claim_level"] = ClaimLevel.RUNTIME_WITNESSED.value
+    with pytest.raises(MCPlusPlusResolverError, match="claim_level"):
+        MCPlusPlusResolutionResult.from_dict(forged_level)
+
+    forged_kinds = dict(base)
+    forged_kinds["evidence_kinds"] = [
+        EVIDENCE_CALL_PATH,
+        EVIDENCE_MANIFEST_PARITY,
+        EVIDENCE_RUNTIME_WITNESS,
+    ]
+    with pytest.raises(MCPlusPlusResolverError, match="runtime evidence"):
+        MCPlusPlusResolutionResult.from_dict(forged_kinds)
+
+    missing_kind = dict(base)
+    missing_kind["evidence_kinds"] = [EVIDENCE_CALL_PATH]
+    with pytest.raises(MCPlusPlusResolverError, match="missing evidence kind"):
+        MCPlusPlusResolutionResult.from_dict(missing_kind)
+
+    path_payload = result.paths[0].to_dict()
+    forged_path = dict(path_payload)
+    forged_path["is_runtime_witnessed"] = True
+    with pytest.raises(MCPlusPlusResolverError, match="is_runtime_witnessed"):
+        type(result.paths[0]).from_dict(forged_path)
+
+    forged_path_layer = dict(path_payload)
+    forged_path_layer["resolution_layer"] = "runtime"
+    with pytest.raises(MCPlusPlusResolverError, match="resolution_layer"):
+        type(result.paths[0]).from_dict(forged_path_layer)
+
+
+def test_cross_language_static_interop_fixture_does_not_claim_runtime() -> None:
+    """TS caller + Python implementation resolve statically without runtime."""
+
+    # _proved_inventory is the closed interop fixture: TypeScript UI/connector
+    # through HTTP transport to a Python package registration and implementation.
+    inventory = _proved_inventory("vfs.read")
+    callers = inventory.by_role(ArtifactRole.CALLER)
+    impls = inventory.by_role(ArtifactRole.IMPLEMENTATION)
+    assert callers and callers[0].language == "typescript"
+    assert impls and impls[0].language == "python"
+
+    claim = _claim(
+        "vfs.read",
+        path_name="path:cross-lang-static-interop",
+        language_names={"typescript": "vfs.read", "python": "vfs.read"},
+    )
+    result = resolve_mcplusplus_paths(inventory, (claim,))
+    path = result.paths[0]
+    assert path.verdict is PathVerdict.PROVED
+    assert path.is_statically_proved is True
+    assert path.is_runtime_witnessed is False
+    assert path.claim_level is ClaimLevel.RESOLVED_STATIC
+    assert path.implementation_ref
+    assert path.language_names.get("typescript") == "vfs.read"
+    assert path.language_names.get("python") == "vfs.read"
+    # Static proof of registration/implementation binding is not a hermetic
+    # runtime witness and must not assert runtime claim authority.
+    assert result.claims_runtime_conformance is False
+    assert result.defers_runtime_to_goal == HERMETIC_RUNTIME_CHILD_GOAL_ID
+    assert EVIDENCE_RUNTIME_WITNESS not in result.to_dict()["evidence_kinds"]
+    assert static_resolution_boundary()["emits_runtime_receipts"] is False
+    # Both admitted transports resolve statically under the same inventory
+    # without promoting either path to runtime authority.
+    p2p = resolve_mcplusplus_paths(
+        inventory,
+        (
+            _claim(
+                "vfs.read",
+                transport=TransportKind.MCP_P2P,
+                path_name="path:cross-lang-static-p2p",
+            ),
+        ),
+    )
+    # Force connector transport for p2p claim the same way as the dedicated
+    # transport test — when inventory admits both, HTTP inventory still binds.
+    # The important split: whatever the static verdict, runtime is never claimed.
+    assert p2p.claims_runtime_conformance is False
+    assert p2p.resolution_layer is ResolutionLayer.STATIC
+    assert p2p.stats()["runtime_witnessed_count"] == 0
