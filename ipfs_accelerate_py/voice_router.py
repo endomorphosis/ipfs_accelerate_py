@@ -21,7 +21,9 @@ Environment variables:
 - `IPFS_ACCELERATE_PY_STT_DEVICE`: device for local STT (falls back to VOICE_DEVICE)
 - `IPFS_ACCELERATE_PY_VOICE_DEVICE`: shared device fallback for local adapters (cpu/cuda)
 - `IPFS_ACCELERATE_PY_TTS_OUTPUT_FORMAT`: audio output format hint (wav/mp3)
-- `IPFS_ACCELERATE_PY_ABBY_INDEXTTS_URLS`: ordered Abby IndexTTS HTTP URLs
+- `IPFS_ACCELERATE_PY_ABBY_INDEXTTS_URLS`: ordered Publicus/IndexTTS URLs
+- `IPFS_ACCELERATE_PY_ABBY_INDEXTTS_REFERENCE_AUDIO`: voice-reference path
+- `IPFS_ACCELERATE_PY_ABBY_INDEXTTS_BACKEND`: auto, gradio, or http
 - `IPFS_ACCELERATE_PY_ABBY_WHISPER_BASE_URL`: Abby Whisper HTTP model base URL
 - `IPFS_ACCELERATE_PY_ABBY_*_TOKEN`: optional remote-provider credentials
 - `IPFS_ACCELERATE_PY_ABBY_*_TIMEOUT_SECONDS`: bounded provider timeouts
@@ -503,6 +505,10 @@ _BUILTIN_PROVIDER_CAPABILITIES: Mapping[str, VoiceProviderCapabilities] = {
 _BUILTIN_PROVIDER_ALIASES: Mapping[str, str] = {
     "abby_index_tts": "abby_indextts",
     "indextts": "abby_indextts",
+    "publicus": "abby_indextts",
+    "publicus_indextts": "abby_indextts",
+    "publicus_tts": "abby_indextts",
+    "publicus-indextts": "abby_indextts",
     "abby_hf_whisper": "abby_whisper",
     "hf_whisper": "abby_whisper",
     "openai_voice": "openai",
@@ -556,11 +562,14 @@ class _VoiceCatalogMetadata:
 
 _BUILTIN_VOICE_CATALOG: Mapping[str, _VoiceCatalogMetadata] = {
     "abby_indextts": _VoiceCatalogMetadata(
-        display_name="Abby IndexTTS",
-        description="Remote Abby IndexTTS speech synthesis.",
+        display_name="Publicus IndexTTS (Abby)",
+        description=(
+            "Authenticated Publicus Gradio speech synthesis with /gen_single, "
+            "/gen_batch, and compatible JSON endpoint fallback."
+        ),
         locality="remote",
         device="remote",
-        access_type="optional-token",
+        access_type="hf-token",
         synthesis_media_types=(
             "audio/flac",
             "audio/mpeg",
@@ -779,19 +788,19 @@ def _provider_configuration(name: str) -> Tuple[Optional[bool], Optional[bool]]:
         )
         return configured, configured
     if name == "abby_indextts":
-        configured = bool(
-            _coalesce_env(
-                "IPFS_ACCELERATE_PY_ABBY_INDEXTTS_URLS",
-                "IPFS_ACCELERATE_PY_ABBY_INDEXTTS_URL",
-                "WALLET_INDEXTTS_SPACE_URL",
-                "IPFS_ACCELERATE_PY_ABBY_INDEXTTS_FALLBACK_URL",
-                "WALLET_INDEXTTS_FALLBACK_SPACE_URL",
-            )
-        )
+        # The package-owned Publicus Space URL is the adapter default. Cached
+        # Hub authorization remains intentionally unknown here because catalog
+        # discovery must not import huggingface_hub or read its token cache.
+        configured = True
         authorized = (
             True
             if _coalesce_env(
-                "IPFS_ACCELERATE_PY_ABBY_INDEXTTS_TOKEN", "HF_TOKEN"
+                "IPFS_ACCELERATE_PY_ABBY_INDEXTTS_TOKEN",
+                "HF_TOKEN",
+                "HUGGINGFACEHUB_API_TOKEN",
+                "HUGGING_FACE_HUB_TOKEN",
+                "HUGGINGFACE_TOKEN",
+                "IPFS_DATASETS_PY_HF_API_TOKEN",
             )
             else None
         )
@@ -861,6 +870,8 @@ def _provider_capability_descriptors(
         operations = [Operation.AUDIO_SYNTHESIZE]
         if capabilities.streaming:
             operations.append(Operation.STREAM)
+        if name == "abby_indextts":
+            operations.append(Operation.BATCH)
         records.append(
             CapabilityDescriptor(
                 operations=tuple(operations),
@@ -893,10 +904,21 @@ def _provider_descriptor(name: str) -> ProviderDescriptor:
         "access_type": metadata.access_type,
         "readiness": readiness,
         "streaming": str(capabilities.streaming).lower(),
-        "batching": "false",
+        "batching": "true" if name == "abby_indextts" else "false",
         "audio.languages": metadata.languages,
         "audio.voices": metadata.voices,
     }
+    if name == "abby_indextts":
+        labels.update(
+            {
+                "backend": "publicus_gradio",
+                "gradio.single_api": "/gen_single",
+                "gradio.single_fn_index": "6",
+                "gradio.batch_api": "/gen_batch",
+                "gradio.batch_fn_index": "7",
+                "gradio.input_count": "25",
+            }
+        )
     if metadata.default_voice:
         labels["audio.default_voice"] = metadata.default_voice
     if metadata.sample_rates_hz:
@@ -1015,13 +1037,19 @@ def _model_descriptors_for_provider(
                     for item in capability.operations
                 }
             ).lower(),
-            "batching": "false",
+            "batching": (
+                "true"
+                if provider_descriptor.name == "abby_indextts"
+                else "false"
+            ),
             "audio.languages": metadata.languages,
             "audio.voices": metadata.voices,
             "audio.operations": ",".join(
                 sorted(item.value for item in set(model_operations))
             ),
         }
+        if provider_descriptor.name == "abby_indextts":
+            labels["backend"] = "publicus_gradio"
         if metadata.default_voice:
             labels["audio.default_voice"] = metadata.default_voice
         if metadata.sample_rates_hz:
@@ -3195,9 +3223,34 @@ def _provider_cache_key() -> tuple:
         os.getenv("IPFS_ACCELERATE_PY_ABBY_INDEXTTS_FALLBACK_URL", "").strip(),
         os.getenv("IPFS_ACCELERATE_PY_ABBY_INDEXTTS_TOKEN", "").strip(),
         os.getenv("IPFS_ACCELERATE_PY_ABBY_INDEXTTS_MODEL", "").strip(),
+        os.getenv("IPFS_ACCELERATE_PY_ABBY_INDEXTTS_BACKEND", "").strip(),
+        os.getenv(
+            "IPFS_ACCELERATE_PY_ABBY_INDEXTTS_REFERENCE_AUDIO", ""
+        ).strip(),
+        os.getenv(
+            "IPFS_ACCELERATE_PY_ABBY_INDEXTTS_REFERENCE_AUDIO_REMOTE_PATH", ""
+        ).strip(),
+        os.getenv(
+            "IPFS_ACCELERATE_PY_ABBY_INDEXTTS_VOICE_DESCRIPTION", ""
+        ).strip(),
+        os.getenv("IPFS_ACCELERATE_PY_ABBY_INDEXTTS_API_NAME", "").strip(),
+        os.getenv(
+            "IPFS_ACCELERATE_PY_ABBY_INDEXTTS_BATCH_API_NAME", ""
+        ).strip(),
+        os.getenv("IPFS_ACCELERATE_PY_ABBY_INDEXTTS_FN_INDEX", "").strip(),
+        os.getenv(
+            "IPFS_ACCELERATE_PY_ABBY_INDEXTTS_BATCH_FN_INDEX", ""
+        ).strip(),
         os.getenv("WALLET_INDEXTTS_SPACE_URL", "").strip(),
         os.getenv("WALLET_INDEXTTS_FALLBACK_SPACE_URL", "").strip(),
         os.getenv("WALLET_INDEXTTS_MODEL_NAME", "").strip(),
+        os.getenv("WALLET_INDEXTTS_REFERENCE_AUDIO_PATH", "").strip(),
+        os.getenv("WALLET_INDEXTTS_REFERENCE_AUDIO_REMOTE_PATH", "").strip(),
+        os.getenv("WALLET_INDEXTTS_VOICE_DESCRIPTION", "").strip(),
+        os.getenv("WALLET_INDEXTTS_API_NAME", "").strip(),
+        os.getenv("WALLET_INDEXTTS_BATCH_API_NAME", "").strip(),
+        os.getenv("WALLET_INDEXTTS_FN_INDEX", "").strip(),
+        os.getenv("WALLET_INDEXTTS_BATCH_FN_INDEX", "").strip(),
         os.getenv("IPFS_ACCELERATE_PY_ABBY_WHISPER_URLS", "").strip(),
         os.getenv("IPFS_ACCELERATE_PY_ABBY_WHISPER_BASE_URL", "").strip(),
         os.getenv("IPFS_ACCELERATE_PY_ABBY_WHISPER_TOKEN", "").strip(),
@@ -3206,6 +3259,10 @@ def _provider_cache_key() -> tuple:
         os.getenv("WALLET_HF_WHISPER_TOKEN", "").strip(),
         os.getenv("WALLET_HF_WHISPER_MODEL_NAME", "").strip(),
         os.getenv("HF_TOKEN", "").strip(),
+        os.getenv("HUGGINGFACEHUB_API_TOKEN", "").strip(),
+        os.getenv("HUGGING_FACE_HUB_TOKEN", "").strip(),
+        os.getenv("HUGGINGFACE_TOKEN", "").strip(),
+        os.getenv("IPFS_DATASETS_PY_HF_API_TOKEN", "").strip(),
         os.getenv("IPFS_ACCELERATE_PY_ABBY_HF_BILL_TO", "").strip(),
         os.getenv("IPFS_DATASETS_PY_HF_BILL_TO", "").strip(),
         os.getenv("IPFS_ACCELERATE_PY_ABBY_INDEXTTS_TIMEOUT_SECONDS", "").strip(),
@@ -3225,7 +3282,15 @@ def _builtin_provider_by_name(name: str, deps: RouterDeps) -> Optional[VoiceProv
     key = (name or "").strip().lower()
     if not key:
         return None
-    if key in {"abby_indextts", "abby_index_tts", "indextts"}:
+    if key in {
+        "abby_indextts",
+        "abby_index_tts",
+        "indextts",
+        "publicus",
+        "publicus_indextts",
+        "publicus_tts",
+        "publicus-indextts",
+    }:
         from .voice_providers.abby import IndexTTSHTTPProvider
 
         return IndexTTSHTTPProvider.from_environment()

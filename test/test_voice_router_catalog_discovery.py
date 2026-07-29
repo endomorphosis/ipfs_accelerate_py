@@ -97,6 +97,19 @@ def test_builtins_publish_typed_deterministic_operation_descriptors(monkeypatch)
     assert "audio/wav" in transcription.media_types
     assert transcription.max_input_bytes is None
 
+    publicus = by_name["abby_indextts"]
+    publicus_labels = dict(publicus.labels)
+    assert publicus.display_name == "Publicus IndexTTS (Abby)"
+    assert publicus.state.configured is True
+    assert Operation.BATCH in operations(publicus)
+    assert publicus_labels["backend"] == "publicus_gradio"
+    assert publicus_labels["batching"] == "true"
+    assert publicus_labels["gradio.single_api"] == "/gen_single"
+    assert publicus_labels["gradio.single_fn_index"] == "6"
+    assert publicus_labels["gradio.batch_api"] == "/gen_batch"
+    assert publicus_labels["gradio.batch_fn_index"] == "7"
+    assert publicus_labels["gradio.input_count"] == "25"
+
 
 def test_listing_is_side_effect_free(monkeypatch):
     constructed = []
@@ -152,6 +165,16 @@ def test_aliases_and_dynamic_registration_are_deterministic():
     assert get_provider_descriptor("local_hf") == canonical
     assert canonical.aliases == tuple(sorted(canonical.aliases))
     assert {"hf", "local_hf"}.issubset(set(canonical.aliases))
+
+    publicus = get_provider_descriptor("publicus")
+    assert publicus == get_provider_descriptor("publicus_indextts")
+    assert publicus == get_provider_descriptor("indextts")
+    assert {
+        "publicus",
+        "publicus_indextts",
+        "publicus_tts",
+        "indextts",
+    }.issubset(set(publicus.aliases))
 
     class Dynamic:
         def synthesize(self, text, **kwargs):
@@ -262,7 +285,9 @@ def test_filters_keep_unknown_distinct_from_false(monkeypatch):
         item.name for item in list_providers(operation="stt", authorized=True)
     }
     assert list_providers(operation="tts", streaming=True) == ()
-    assert list_providers(operation="tts", batching=True) == ()
+    assert tuple(
+        item.name for item in list_providers(operation="tts", batching=True)
+    ) == ("abby_indextts",)
     assert "huggingface" in {
         item.name
         for item in list_providers(
