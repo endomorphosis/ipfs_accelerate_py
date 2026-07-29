@@ -2026,6 +2026,56 @@ def test_supervisor_maintenance_lease_is_removed_on_exception(
     assert not shared_lock_path.exists()
 
 
+def test_supervisor_preflight_does_not_repair_checkout_before_shared_lease(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    supervisor = _supervisor(tmp_path)
+
+    class StoppedLoop:
+        def __init__(self, *_args, **_kwargs) -> None:
+            pass
+
+        def run(self) -> SimpleNamespace:
+            return SimpleNamespace(
+                status="stopped",
+                restart_count=0,
+                last_exit_code=None,
+                last_recycle_reason="",
+                last_run_id="",
+                last_log_path="",
+            )
+
+    monkeypatch.setattr(
+        supervisor,
+        "ensure_event_log_file",
+        lambda: {"repaired": False},
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "ensure_managed_daemon_pid_file",
+        lambda: {"adopted": False},
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "repair_main_checkout_merge_state",
+        lambda: pytest.fail(
+            "checkout repair must run only inside run_once's shared lease"
+        ),
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "run_once",
+        lambda *, include_refill=True: {
+            "stuck": False,
+            "include_refill": include_refill,
+        },
+    )
+    supervisor.shared_supervisor_loop_class = StoppedLoop
+
+    supervisor._run_forever_loop()
+
+
 def test_supervisor_maintenance_lease_uses_effective_state_path_parent(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

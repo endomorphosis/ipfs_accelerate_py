@@ -5150,6 +5150,7 @@ class PortalImplementationDaemon:
                 self.repo_root,
                 lock_name=IMPLEMENTATION_TASK_CLAIM_LOCK_DIRNAME,
             ),
+            self._protected_path_maintenance_lock_path(),
             *self.external_reservation_manifest_paths,
         ]
         policy_paths = [

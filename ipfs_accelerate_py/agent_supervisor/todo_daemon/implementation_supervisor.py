@@ -2015,7 +2015,6 @@ class PortalImplementationSupervisor:
 
     def _run_forever_loop(self) -> None:
         self.ensure_event_log_file()
-        self.repair_main_checkout_merge_state()
         self.ensure_managed_daemon_pid_file()
         try:
             preflight = self.run_once(include_refill=False)

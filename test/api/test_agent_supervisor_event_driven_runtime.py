@@ -779,11 +779,15 @@ def test_ephemeral_merge_consumer_lease_is_not_a_runtime_wake_source(
     shared_claim_dir = (
         tmp_path / ".git" / "implementation-task-claims"
     )
+    protected_maintenance_lock = (
+        tmp_path / ".git" / "implementation-protected-path-maintenance.lock"
+    )
 
     assert daemon.merge_queue.database_path in lease_paths
     assert daemon.merge_queue.pending_dir in lease_paths
     assert daemon.merge_queue.processing_dir in lease_paths
     assert shared_claim_dir in lease_paths
+    assert protected_maintenance_lock in lease_paths
     assert merge_queue_root not in lease_paths
     assert merge_queue_root / "train" not in lease_paths
 
@@ -809,3 +813,37 @@ def test_ephemeral_merge_consumer_lease_is_not_a_runtime_wake_source(
     assert event.kinds == (RuntimeWakeKind.OBSERVATION_WINDOW,)
     assert event.safety_timer is True
     assert clock() == pytest.approx(30.0)
+
+
+def test_shared_protected_maintenance_release_is_a_runtime_wake(
+    tmp_path: Path,
+) -> None:
+    daemon = _drained_daemon(tmp_path)
+    lease_paths = daemon._runtime_source_paths()["lease"]
+    maintenance_lock = daemon._protected_path_maintenance_lock_path()
+    clock = LogicalClock()
+    watcher = LogicalWatcher(clock)
+    coordinator = RuntimeWakeCoordinator(
+        {RuntimeWakeKind.LEASE: lease_paths},
+        safety_interval_seconds=30.0,
+        watcher=watcher,
+        clock=clock,
+    )
+    try:
+        maintenance_lock.parent.mkdir(parents=True, exist_ok=True)
+        maintenance_lock.write_text("active\n", encoding="utf-8")
+        watcher.notify()
+        acquired = coordinator.wait()
+        coordinator.acknowledge(acquired)
+
+        maintenance_lock.unlink()
+        watcher.notify()
+        released = coordinator.wait()
+    finally:
+        coordinator.close()
+
+    assert acquired.kinds == (RuntimeWakeKind.LEASE,)
+    assert acquired.safety_timer is False
+    assert released.kinds == (RuntimeWakeKind.LEASE,)
+    assert released.safety_timer is False
+    assert clock() == 0.0
