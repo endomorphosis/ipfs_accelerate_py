@@ -2648,7 +2648,7 @@ def test_leased_lane_signal_terminates_detached_descendants(tmp_path: Path) -> N
         [
             sys.executable,
             "-m",
-            "ipfs_accelerate_py.agent_supervisor.leased_lane",
+            "ipfs_accelerate_py.agent_supervisor.merge.leased_lane",
             "--coordination-path",
             str(coordination),
             "--grant-json",
