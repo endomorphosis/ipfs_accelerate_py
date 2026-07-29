@@ -1593,7 +1593,7 @@ compact references and bounded spans only.
 
 ## VFS-051 Close objective gap: Run conflict-safe Grok Build and Codex implementation shards
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
