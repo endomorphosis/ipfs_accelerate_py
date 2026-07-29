@@ -119,7 +119,12 @@ def _add_validation_script(repo: Path, name: str, source: str) -> str:
     return f"{shlex.quote(sys.executable)} {shlex.quote(name)}"
 
 
-def _task(validation: str, *, context_tokens: int = 4096) -> PortalTask:
+def _task(
+    validation: str,
+    *,
+    context_tokens: int = 4096,
+    provider_role: str = "deterministic-only",
+) -> PortalTask:
     return PortalTask(
         task_id="SCA-DET-001",
         title="Run a bounded symbolic validation plan",
@@ -131,7 +136,7 @@ def _task(validation: str, *, context_tokens: int = 4096) -> PortalTask:
         validation=[validation],
         acceptance="The declared deterministic validation succeeds.",
         metadata={
-            "Provider role": "deterministic-only",
+            "Provider role": provider_role,
             "Context budget tokens": str(context_tokens),
         },
     )
@@ -191,6 +196,42 @@ def test_deterministic_task_executes_declared_plan_with_zero_model_calls(
         event.get("operation") == "implementation_provider"
         for event in events
     )
+
+
+def test_operator_only_zero_token_task_validates_prepared_artifact_without_model(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, daemon = _daemon(tmp_path, monkeypatch)
+    task = _task(
+        _add_validation_script(
+            repo,
+            "prepare_operator_receipt.py",
+            "from pathlib import Path\n"
+            "Path('artifact.txt').write_text('operator-reviewed\\n')\n",
+        ),
+        context_tokens=0,
+        provider_role="operator-only",
+    )
+
+    assert daemon._task_context_token_limit(task) == 0
+    assert daemon._task_uses_typed_local_execution(task) is True
+
+    result = daemon._run_implementation(task, TodoTaskState())
+
+    assert result["returncode"] == 0
+    assert result["validation_result"]["passed"] is True
+    assert (repo / "artifact.txt").read_text(encoding="utf-8") == (
+        "operator-reviewed\n"
+    )
+    receipt = json.loads(
+        Path(result["task_execution_receipt_path"]).read_text(encoding="utf-8")
+    )
+    assert receipt["isolation_audit"] == {
+        "llm_call_count": 0,
+        "model_call_count": 0,
+        "provider_call_count": 0,
+    }
 
 
 def test_deterministic_task_reports_declared_validation_failure_without_model(

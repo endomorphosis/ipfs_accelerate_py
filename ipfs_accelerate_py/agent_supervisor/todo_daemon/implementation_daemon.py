@@ -6585,10 +6585,7 @@ class PortalImplementationDaemon:
             }
             self._record_event("implementation_skipped", result)
             return result
-        deterministic_only = (
-            self._task_declared_implementation_provider(task)
-            == ExecutionMode.DETERMINISTIC_ONLY.value
-        )
+        deterministic_only = self._task_uses_typed_local_execution(task)
         completion_scope = completion_gap_edit_scope(
             task,
             repo_root=self.repo_root,
@@ -6716,8 +6713,11 @@ class PortalImplementationDaemon:
         try:
             if deterministic_only:
                 if not task.validation:
+                    execution_role = self._task_declared_implementation_provider(
+                        task
+                    )
                     raise ImplementationRetryDeferred(
-                        "deterministic-only task requires typed local operation",
+                        f"{execution_role} task requires typed local operation",
                         backoff_seconds=300,
                     )
                 if self._implementation_cancel_requested():
@@ -9223,10 +9223,7 @@ class PortalImplementationDaemon:
     ) -> dict[str, Any]:
         self.implementation_log_dir.mkdir(parents=True, exist_ok=True)
         self.worktree_root.mkdir(parents=True, exist_ok=True)
-        deterministic_only = (
-            self._task_declared_implementation_provider(task)
-            == ExecutionMode.DETERMINISTIC_ONLY.value
-        )
+        deterministic_only = self._task_uses_typed_local_execution(task)
         safe_task_id = task.task_id.lower().replace("/", "-")
         identity_suffix = self._identity_for_task(task).short_id
         execution_id = f"{safe_task_id}-{identity_suffix}"
@@ -15199,9 +15196,10 @@ class PortalImplementationDaemon:
             }
 
         declared_token_limit = self._task_context_token_limit(task)
-        token_limit = min(
-            declared_token_limit or MAX_TASK_CONTEXT_TOKENS,
-            MAX_TASK_CONTEXT_TOKENS,
+        token_limit = (
+            MAX_TASK_CONTEXT_TOKENS
+            if declared_token_limit in (None, 0)
+            else min(declared_token_limit, MAX_TASK_CONTEXT_TOKENS)
         )
         byte_limit = min(
             MAX_TASK_CONTEXT_BYTES,
@@ -21361,12 +21359,17 @@ class PortalImplementationDaemon:
             for item in re.split(r"[,;]", raw_role)
             if item.strip()
         }
-        if "deterministic-only" in roles:
+        local_only_roles = roles & {
+            ExecutionMode.DETERMINISTIC_ONLY.value,
+            "operator-only",
+        }
+        if local_only_roles:
             if len(roles) != 1:
                 raise RuntimeError(
-                    "deterministic-only cannot be combined with model provider roles"
+                    "typed-local-only role cannot be combined with model "
+                    "provider roles"
                 )
-            return "deterministic-only"
+            return next(iter(local_only_roles))
 
         grok_roles = {"grok-implement", "grok-draft"}
         codex_roles = {"codex-implement", "codex-draft"}
@@ -21381,6 +21384,15 @@ class PortalImplementationDaemon:
         if wants_codex:
             return "codex"
         return ""
+
+    def _task_uses_typed_local_execution(
+        self,
+        task: PortalTask | None,
+    ) -> bool:
+        return self._task_declared_implementation_provider(task) in {
+            ExecutionMode.DETERMINISTIC_ONLY.value,
+            "operator-only",
+        }
 
     def _task_context_token_limit(self, task: PortalTask) -> int | None:
         raw_limit = self._task_metadata_value(task, "context budget tokens")
@@ -21398,6 +21410,8 @@ class PortalImplementationDaemon:
                 "invalid task context budget tokens",
                 backoff_seconds=300,
             ) from exc
+        if limit == 0 and self._task_uses_typed_local_execution(task):
+            return 0
         if limit < 1:
             raise ImplementationRetryDeferred(
                 "invalid task context budget tokens",
@@ -21416,9 +21430,9 @@ class PortalImplementationDaemon:
     ) -> list[str]:
         workspace_path = workspace_path.resolve()
         declared_provider = self._task_declared_implementation_provider(task)
-        if declared_provider == "deterministic-only":
+        if self._task_uses_typed_local_execution(task):
             raise RuntimeError(
-                "deterministic-only task requires a supervisor-owned typed "
+                f"{declared_provider} task requires a supervisor-owned typed "
                 "local operation; model dispatch is forbidden"
             )
         if self.implementation_command and not declared_provider:
@@ -21696,7 +21710,7 @@ class PortalImplementationDaemon:
     ) -> tuple[int, ContextBudget, int | None]:
         budget = self._base_implementation_context_budget()
         token_limit = self._task_context_token_limit(task)
-        if token_limit is not None:
+        if token_limit is not None and token_limit > 0:
             budget = replace(
                 budget,
                 max_input_tokens=min(
@@ -23463,9 +23477,10 @@ class PortalImplementationDaemon:
     def _build_implementation_prompt(self, task: PortalTask, attempt: int) -> str:
         if self._implementation_cancel_requested():
             raise ImplementationRetryDeferred("implementation dispatch cancelled")
-        if self._task_declared_implementation_provider(task) == "deterministic-only":
+        if self._task_uses_typed_local_execution(task):
+            execution_role = self._task_declared_implementation_provider(task)
             raise ImplementationRetryDeferred(
-                "deterministic-only task requires typed local operation",
+                f"{execution_role} task requires typed local operation",
                 backoff_seconds=300,
             )
         rendered = ""
