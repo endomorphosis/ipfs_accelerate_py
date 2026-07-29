@@ -1315,15 +1315,26 @@ def test_validation_restores_known_generated_review_artifact_only(tmp_path):
         / "desktop-chrome"
         / "proof-center.png"
     )
+    broad_scope_review = (
+        repo
+        / "wallet_interface"
+        / "ui"
+        / "artifacts"
+        / "ui-review"
+        / "proof-center.png"
+    )
     release_evidence = repo / "artifacts" / "release-evidence" / "receipt.json"
     generated_review.parent.mkdir(parents=True)
+    broad_scope_review.parent.mkdir(parents=True)
     release_evidence.parent.mkdir(parents=True)
     generated_review.write_bytes(b"baseline screenshot")
+    broad_scope_review.write_bytes(b"baseline broad-scope screenshot")
     release_evidence.write_text('{"status":"baseline"}\n', encoding="utf-8")
-    _git(repo, "add", "artifacts")
+    _git(repo, "add", "artifacts", "wallet_interface")
     _git(repo, "commit", "-m", "baseline artifacts")
 
     generated_review.write_bytes(b"validation screenshot")
+    broad_scope_review.write_bytes(b"validation broad-scope screenshot")
     release_evidence.write_text('{"status":"candidate"}\n', encoding="utf-8")
     daemon = TodoImplementationDaemon(
         todo_path=repo / "todo.md",
@@ -1332,16 +1343,340 @@ def test_validation_restores_known_generated_review_artifact_only(tmp_path):
         events_path=repo / "state" / "events.jsonl",
         repo_root=repo,
     )
+    task = PortalTask(
+        task_id="AUTO-122",
+        title="Validate broad UI changes",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="ops",
+        outputs=["wallet_interface/ui"],
+    )
 
-    daemon._prepare_worktree_for_validation(repo)
+    daemon._prepare_worktree_for_validation(repo, task=task)
 
     assert generated_review.read_bytes() == b"baseline screenshot"
+    assert broad_scope_review.read_bytes() == (
+        b"baseline broad-scope screenshot"
+    )
     assert release_evidence.read_text(encoding="utf-8") == (
         '{"status":"candidate"}\n'
     )
     assert _git(repo, "status", "--short") == (
         "M artifacts/release-evidence/receipt.json"
     )
+
+
+def test_validation_removes_ignored_ephemeral_root_without_touching_protected_overlap(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Agent Test")
+    _git(repo, "config", "user.email", "agent@example.test")
+    (repo / ".gitignore").write_text(
+        "wallet_interface/ui/dist/\n"
+        "wallet_interface/ui/test-results/\n",
+        encoding="utf-8",
+    )
+    (repo / "README.md").write_text("baseline\n", encoding="utf-8")
+    _git(repo, "add", ".gitignore", "README.md")
+    _git(repo, "commit", "-m", "baseline")
+
+    stale_ignored = (
+        repo / "wallet_interface" / "ui" / "dist" / "stale.js"
+    )
+    protected_relative = (
+        "wallet_interface/ui/test-results/protected-sentinel.txt"
+    )
+    protected_sentinel = repo / protected_relative
+    stale_ignored.parent.mkdir(parents=True)
+    protected_sentinel.parent.mkdir(parents=True)
+    stale_ignored.write_text("stale build\n", encoding="utf-8")
+    protected_sentinel.write_text("operator evidence\n", encoding="utf-8")
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        implementation_protected_paths=[protected_relative],
+    )
+
+    daemon._prepare_worktree_for_validation(repo)
+
+    assert not stale_ignored.exists()
+    assert protected_sentinel.read_text(encoding="utf-8") == (
+        "operator evidence\n"
+    )
+    assert _git(repo, "status", "--short") == ""
+
+
+def test_validation_does_not_replace_shared_root_with_protected_child(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    protected_relative = (
+        "wallet_interface/ui/node_modules/protected-sentinel.txt"
+    )
+    source_sentinel = repo / protected_relative
+    source_sentinel.parent.mkdir(parents=True)
+    source_sentinel.write_text("shared source\n", encoding="utf-8")
+    worktree_root = tmp_path / "worktrees"
+    worktree = worktree_root / "attempt"
+    target_sentinel = worktree / protected_relative
+    target_sentinel.parent.mkdir(parents=True)
+    target_sentinel.write_text("attempt-local evidence\n", encoding="utf-8")
+    _git(worktree, "init")
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_root=worktree_root,
+        implementation_protected_paths=[protected_relative],
+    )
+
+    daemon._prepare_worktree_for_validation(worktree)
+
+    target_root = worktree / "wallet_interface" / "ui" / "node_modules"
+    assert not target_root.is_symlink()
+    assert target_sentinel.read_text(encoding="utf-8") == (
+        "attempt-local evidence\n"
+    )
+
+
+def test_generated_cleanup_refuses_symlinked_ancestor_outside_worktree(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    worktree = tmp_path / "worktree"
+    worktree.mkdir()
+    external = tmp_path / "external"
+    external_dist = external / "ui" / "dist"
+    external_dist.mkdir(parents=True)
+    sentinel = external_dist / "sentinel.txt"
+    sentinel.write_text("must survive\n", encoding="utf-8")
+    (worktree / "wallet_interface").symlink_to(
+        external,
+        target_is_directory=True,
+    )
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="generated cleanup path has a symlink ancestor",
+    ):
+        daemon._restore_or_remove_generated_path_for_commit(
+            worktree,
+            "wallet_interface/ui/dist",
+        )
+
+    assert sentinel.read_text(encoding="utf-8") == "must survive\n"
+    assert (worktree / "wallet_interface").is_symlink()
+
+
+def _seed_validation_artifact_restore_repo(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Agent Test")
+    _git(repo, "config", "user.email", "agent@example.test")
+    screenshot = (
+        repo
+        / "artifacts"
+        / "world-id-idkit-ui-review"
+        / "desktop-chrome"
+        / "proof-center.png"
+    )
+    screenshot.parent.mkdir(parents=True)
+    screenshot.write_bytes(b"baseline screenshot")
+    _git(repo, "add", "artifacts")
+    _git(repo, "commit", "-m", "baseline artifact")
+    screenshot.write_bytes(b"validation screenshot")
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+    )
+    return repo, screenshot, daemon
+
+
+def test_validation_artifact_restore_fails_closed_on_initial_status_failure(
+    tmp_path,
+    monkeypatch,
+):
+    repo, screenshot, daemon = _seed_validation_artifact_restore_repo(
+        tmp_path
+    )
+    real_run = implementation_daemon_module.subprocess.run
+
+    def fail_status(command, *args, **kwargs):
+        if command == [
+            "git",
+            "status",
+            "--porcelain=v1",
+            "-z",
+            "--untracked-files=all",
+        ]:
+            return subprocess.CompletedProcess(
+                command,
+                128,
+                stdout=b"",
+                stderr=b"status unavailable",
+            )
+        return real_run(command, *args, **kwargs)
+
+    monkeypatch.setattr(
+        implementation_daemon_module.subprocess,
+        "run",
+        fail_status,
+    )
+
+    receipt = daemon._restore_validation_generated_artifacts(
+        repo,
+        reason="test_initial_status_failure",
+    )
+
+    assert receipt["scan_failed"] is True
+    assert receipt["scan_failure_stage"] == "initial"
+    assert receipt["attempted_count"] == 0
+    assert receipt["restored_count"] == 0
+    assert receipt["failed_count"] == 1
+    assert screenshot.read_bytes() == b"validation screenshot"
+
+
+def test_validation_artifact_restore_fails_closed_on_verification_status_failure(
+    tmp_path,
+    monkeypatch,
+):
+    repo, screenshot, daemon = _seed_validation_artifact_restore_repo(
+        tmp_path
+    )
+    real_run = implementation_daemon_module.subprocess.run
+    status_calls = 0
+
+    def fail_second_status(command, *args, **kwargs):
+        nonlocal status_calls
+        if command == [
+            "git",
+            "status",
+            "--porcelain=v1",
+            "-z",
+            "--untracked-files=all",
+        ]:
+            status_calls += 1
+            if status_calls == 2:
+                return subprocess.CompletedProcess(
+                    command,
+                    128,
+                    stdout=b"",
+                    stderr=b"verification unavailable",
+                )
+        return real_run(command, *args, **kwargs)
+
+    monkeypatch.setattr(
+        implementation_daemon_module.subprocess,
+        "run",
+        fail_second_status,
+    )
+
+    receipt = daemon._restore_validation_generated_artifacts(
+        repo,
+        reason="test_verification_status_failure",
+    )
+
+    assert receipt["scan_failed"] is True
+    assert receipt["scan_failure_stage"] == "verification"
+    assert receipt["attempted_count"] == 1
+    assert receipt["restored_count"] == 0
+    assert receipt["failed_count"] == 1
+    assert screenshot.read_bytes() == b"baseline screenshot"
+
+
+def test_validation_artifact_restore_exception_is_not_counted_as_restored(
+    tmp_path,
+    monkeypatch,
+):
+    repo, screenshot, daemon = _seed_validation_artifact_restore_repo(
+        tmp_path
+    )
+    restore = daemon._restore_or_remove_generated_path_for_commit
+
+    def restore_then_raise(workspace_path, relative):
+        restore(workspace_path, relative)
+        raise RuntimeError("restore reporting failed")
+
+    monkeypatch.setattr(
+        daemon,
+        "_restore_or_remove_generated_path_for_commit",
+        restore_then_raise,
+    )
+
+    receipt = daemon._restore_validation_generated_artifacts(
+        repo,
+        reason="test_restore_exception",
+    )
+
+    assert receipt["scan_failed"] is False
+    assert receipt["attempted_count"] == 1
+    assert receipt["restored_count"] == 0
+    assert receipt["failed_count"] == 1
+    assert receipt["results"][0]["error_type"] == "RuntimeError"
+    assert screenshot.read_bytes() == b"baseline screenshot"
+
+
+def test_prepare_validation_propagates_generated_artifact_restore_failure(
+    tmp_path,
+    monkeypatch,
+):
+    repo, _screenshot, daemon = _seed_validation_artifact_restore_repo(
+        tmp_path
+    )
+    failed_receipt = {
+        "reason": "pre_validation_generated_artifact",
+        "failed_count": 1,
+        "scan_failed": True,
+        "scan_failure_stage": "initial",
+    }
+    linked: list[Path] = []
+    monkeypatch.setattr(
+        daemon,
+        "_restore_validation_generated_artifacts",
+        lambda *args, **kwargs: failed_receipt,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_link_shared_worktree_paths",
+        lambda path: linked.append(path),
+    )
+
+    with pytest.raises(
+        implementation_daemon_module.ValidationGeneratedArtifactRestoreError
+    ) as exc_info:
+        daemon._prepare_worktree_for_validation(repo)
+
+    assert exc_info.value.receipt == failed_receipt
+    assert linked == []
+    assert repo.exists()
 
 
 def test_implementation_daemon_shares_repository_gc_state_across_lanes(tmp_path):
@@ -4399,6 +4734,192 @@ def _seed_parent_with_submodule(tmp_path: Path) -> tuple[Path, Path]:
     return repo, submodule
 
 
+def _seed_parent_with_nested_submodules(
+    tmp_path: Path,
+) -> tuple[Path, Path, Path]:
+    leaf_source = tmp_path / "leaf-source"
+    leaf_source.mkdir()
+    _git(leaf_source, "init")
+    _git(leaf_source, "checkout", "-b", "main")
+    _git(leaf_source, "config", "user.name", "Test User")
+    _git(leaf_source, "config", "user.email", "test@example.invalid")
+    (leaf_source / "leaf.txt").write_text("leaf base\n", encoding="utf-8")
+    _git(leaf_source, "add", "leaf.txt")
+    _git(leaf_source, "commit", "-m", "leaf base")
+
+    child_source = tmp_path / "nested-child-source"
+    child_source.mkdir()
+    _git(child_source, "init")
+    _git(child_source, "checkout", "-b", "main")
+    _git(child_source, "config", "user.name", "Test User")
+    _git(child_source, "config", "user.email", "test@example.invalid")
+    (child_source / "child.txt").write_text(
+        "child base\n",
+        encoding="utf-8",
+    )
+    _git(child_source, "add", "child.txt")
+    _git(child_source, "commit", "-m", "child base")
+    _git(
+        child_source,
+        "-c",
+        "protocol.file.allow=always",
+        "submodule",
+        "add",
+        str(leaf_source),
+        "vendor/leaf",
+    )
+    _git(child_source, "commit", "-am", "add nested leaf")
+
+    repo = tmp_path / "nested-parent"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    _git(
+        repo,
+        "-c",
+        "protocol.file.allow=always",
+        "submodule",
+        "add",
+        str(child_source),
+        "libs/child",
+    )
+    _git(repo, "commit", "-am", "add child")
+    _git(
+        repo,
+        "-c",
+        "protocol.file.allow=always",
+        "submodule",
+        "update",
+        "--init",
+        "--recursive",
+    )
+    child = repo / "libs" / "child"
+    leaf = child / "vendor" / "leaf"
+    for target in (child, leaf):
+        _git(target, "config", "user.name", "Test User")
+        _git(target, "config", "user.email", "test@example.invalid")
+    return repo, child, leaf
+
+
+def _protected_submodule_cleanup_daemon(
+    repo: Path,
+    tmp_path: Path,
+    protected_paths: list[str],
+) -> TodoImplementationDaemon:
+    state_dir = tmp_path / "protected-submodule-state"
+    return TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task-state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=["libs/child"],
+        implementation_protected_paths=protected_paths,
+    )
+
+
+def test_submodule_commit_cleanup_preserves_direct_and_nested_protected_artifacts(
+    tmp_path: Path,
+):
+    repo, child, leaf = _seed_parent_with_nested_submodules(tmp_path)
+    direct_protected = ".pytest_cache/direct-sentinel"
+    nested_protected = ".pytest_cache/nested-sentinel"
+    direct_keep = child / direct_protected
+    nested_keep = leaf / nested_protected
+    direct_remove = child / "test-results" / "direct-output.txt"
+    nested_remove = leaf / "test-results" / "nested-output.txt"
+    for target, content in (
+        (direct_keep, "direct protected\n"),
+        (nested_keep, "nested protected\n"),
+        (direct_remove, "direct generated\n"),
+        (nested_remove, "nested generated\n"),
+    ):
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(content, encoding="utf-8")
+    for name, target in (("child", child), ("leaf", leaf)):
+        excludes = tmp_path / f"{name}.exclude"
+        excludes.write_text(
+            ".pytest_cache/\ntest-results/\n",
+            encoding="utf-8",
+        )
+        _git(target, "config", "core.excludesfile", str(excludes))
+    (leaf / "leaf.txt").write_text(
+        "nested implementation\n",
+        encoding="utf-8",
+    )
+    daemon = _protected_submodule_cleanup_daemon(
+        repo,
+        tmp_path,
+        [
+            f"libs/child/{direct_protected}",
+            f"libs/child/vendor/leaf/{nested_protected}",
+        ],
+    )
+
+    results = daemon._commit_worktree_submodule_changes(
+        repo,
+        _submodule_proposal_task("libs/child/vendor/leaf/leaf.txt"),
+        1,
+    )
+
+    assert results[0]["committed"] is True
+    assert results[0]["nested_submodule_results"][0]["committed"] is True
+    assert direct_keep.read_text(encoding="utf-8") == "direct protected\n"
+    assert nested_keep.read_text(encoding="utf-8") == "nested protected\n"
+    assert not direct_remove.exists()
+    assert not nested_remove.exists()
+
+
+def test_staged_generated_cleanup_preserves_prefixed_protected_submodule_paths(
+    tmp_path: Path,
+):
+    repo, child, leaf = _seed_parent_with_nested_submodules(tmp_path)
+    protected = {
+        child: (
+            "libs/child",
+            ".pytest_cache/direct-staged.pyc",
+        ),
+        leaf: (
+            "libs/child/vendor/leaf",
+            ".pytest_cache/nested-staged.pyc",
+        ),
+    }
+    daemon = _protected_submodule_cleanup_daemon(
+        repo,
+        tmp_path,
+        [
+            f"{prefix}/{relative}"
+            for prefix, relative in protected.values()
+        ],
+    )
+
+    for target, (prefix, relative) in protected.items():
+        keep = target / relative
+        remove = target / "test-results" / "unprotected-staged.pyc"
+        keep.parent.mkdir(parents=True, exist_ok=True)
+        remove.parent.mkdir(parents=True, exist_ok=True)
+        keep.write_bytes(b"protected bytecode")
+        remove.write_bytes(b"generated bytecode")
+        _git(
+            target,
+            "add",
+            "-f",
+            relative,
+            "test-results/unprotected-staged.pyc",
+        )
+
+        daemon._remove_generated_paths_from_index(
+            target,
+            protected_path_prefix=prefix,
+        )
+
+        assert keep.read_bytes() == b"protected bytecode"
+        assert not remove.exists()
+        assert _git(target, "diff", "--cached", "--name-only") == relative
+
+
 def _submodule_proposal_daemon(
     repo: Path,
     tmp_path: Path,
@@ -4667,6 +5188,102 @@ def test_post_validation_candidate_binding_rejects_late_source_change(
     assert changed["passed"] is False
     assert changed["reason"] == "candidate_changed_during_validation"
     assert changed["candidate_binding"]["verified"] is False
+
+
+def test_post_validation_candidate_binding_restores_known_artifact_only(
+    tmp_path: Path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    screenshot = (
+        repo
+        / "artifacts"
+        / "world-id-idkit-ui-review"
+        / "desktop-chrome"
+        / "proof-center.png"
+    )
+    screenshot.parent.mkdir(parents=True)
+    screenshot.write_bytes(b"baseline screenshot")
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "README.md", "artifacts")
+    _git(repo, "commit", "-m", "base")
+    baseline = _git(repo, "rev-parse", "HEAD")
+    (repo / "feature.py").write_text("VALUE = 1\n", encoding="utf-8")
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=[],
+    )
+    task = PortalTask(
+        task_id="AUTO-123A",
+        title="Restore validation screenshots before binding",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="ops",
+        outputs=["feature.py"],
+        validation=["python -m pytest"],
+        acceptance="Generated validation evidence cannot alter the candidate.",
+    )
+    proposal_validation = daemon._validate_implementation_patch(
+        repo,
+        task,
+        baseline_ref=baseline,
+    )
+    passed_validation = {
+        "attempted": True,
+        "passed": True,
+        "returncode": 0,
+        "results": [],
+    }
+
+    screenshot.write_bytes(b"validation screenshot")
+    restored = daemon._restore_and_verify_post_validation_candidate(
+        repo,
+        task,
+        baseline_ref=baseline,
+        proposal_validation=proposal_validation,
+        validation_result=passed_validation,
+    )
+
+    assert proposal_validation.accepted is True
+    assert restored["passed"] is True
+    assert restored["candidate_binding"]["verified"] is True
+    assert screenshot.read_bytes() == b"baseline screenshot"
+    receipt = restored["generated_dirty_restore"]
+    assert receipt["attempted_count"] == 1
+    assert receipt["restored_count"] == 1
+    assert receipt["failed_count"] == 0
+    assert receipt["results"][0]["path"].endswith("proof-center.png")
+
+    screenshot.write_bytes(b"second validation screenshot")
+    (repo / "README.md").write_text(
+        "unexpected source mutation\n",
+        encoding="utf-8",
+    )
+    source_changed = daemon._restore_and_verify_post_validation_candidate(
+        repo,
+        task,
+        baseline_ref=baseline,
+        proposal_validation=proposal_validation,
+        validation_result=passed_validation,
+    )
+
+    assert screenshot.read_bytes() == b"baseline screenshot"
+    assert (repo / "README.md").read_text(encoding="utf-8") == (
+        "unexpected source mutation\n"
+    )
+    assert source_changed["passed"] is False
+    assert source_changed["reason"] == "candidate_changed_during_validation"
+    assert source_changed["candidate_binding"]["verified"] is False
 
 
 def test_implementation_proposal_accepts_exact_task_declared_and_chain(
@@ -10696,6 +11313,7 @@ def test_provider_superproject_commit_is_queued_before_todo_completion(
     state = TodoTaskState()
     enqueued: list[dict[str, object]] = []
     queue_outcomes: list[tuple[object, ...]] = []
+    validation_order: list[str] = []
 
     def fake_seed(worktree_path, _branch_name, *, task=None):
         worktree_path.mkdir(parents=True)
@@ -10711,15 +11329,23 @@ def test_provider_superproject_commit_is_queued_before_todo_completion(
         "_require_implementation_protected_snapshot",
         lambda **_kwargs: {},
     )
+    def protected_check(**_kwargs):
+        validation_order.append("protected_check")
+        return {}
+
+    def finalize_fence(**_kwargs):
+        validation_order.append("finalize_fence")
+        return {}
+
     monkeypatch.setattr(
         daemon,
         "_implementation_protected_path_violation",
-        lambda **_kwargs: {},
+        protected_check,
     )
     monkeypatch.setattr(
         daemon,
         "_finalize_implementation_protected_path_fence",
-        lambda **_kwargs: {},
+        finalize_fence,
     )
     monkeypatch.setattr(
         daemon,
@@ -10745,8 +11371,11 @@ def test_provider_superproject_commit_is_queued_before_todo_completion(
     )
     monkeypatch.setattr(
         daemon,
-        "_verify_post_validation_candidate_binding",
-        lambda *_args, validation_result, **_kwargs: dict(validation_result),
+        "_restore_and_verify_post_validation_candidate",
+        lambda *_args, validation_result, **_kwargs: (
+            validation_order.append("restore_then_bind")
+            or dict(validation_result)
+        ),
     )
     monkeypatch.setattr(
         daemon,
@@ -10792,6 +11421,11 @@ def test_provider_superproject_commit_is_queued_before_todo_completion(
     assert enqueued[0]["implementation_commit"] == "provider-root-commit"
     assert "todo_update_result" not in result
     assert queue_outcomes == []
+    assert validation_order[-3:] == [
+        "protected_check",
+        "restore_then_bind",
+        "finalize_fence",
+    ]
 
 
 def test_implementation_daemon_promotes_fully_validated_timeout_work(
@@ -10825,6 +11459,7 @@ def test_implementation_daemon_promotes_fully_validated_timeout_work(
     )
     state = TodoTaskState()
     enqueued: list[dict[str, object]] = []
+    validation_order: list[str] = []
 
     def fake_seed(worktree_path, _branch_name, *, task=None):
         worktree_path.mkdir(parents=True)
@@ -10852,8 +11487,25 @@ def test_implementation_daemon_promotes_fully_validated_timeout_work(
     )
     monkeypatch.setattr(
         daemon,
-        "_verify_post_validation_candidate_binding",
-        lambda *_args, validation_result, **_kwargs: dict(validation_result),
+        "_implementation_protected_path_violation",
+        lambda **_kwargs: (
+            validation_order.append("protected_check") or {}
+        ),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_finalize_implementation_protected_path_fence",
+        lambda **_kwargs: (
+            validation_order.append("finalize_fence") or {}
+        ),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_restore_and_verify_post_validation_candidate",
+        lambda *_args, validation_result, **_kwargs: (
+            validation_order.append("restore_then_bind")
+            or dict(validation_result)
+        ),
     )
     monkeypatch.setattr(
         daemon,
@@ -10881,6 +11533,11 @@ def test_implementation_daemon_promotes_fully_validated_timeout_work(
     assert result["implementation_commit"] == "validated-timeout-commit"
     assert result["merge_result"]["queued"] is True
     assert enqueued[0]["baseline_ref"] == "baseline"
+    assert validation_order[-3:] == [
+        "protected_check",
+        "restore_then_bind",
+        "finalize_fence",
+    ]
     events = [
         json.loads(line)
         for line in (state_dir / "events.jsonl").read_text(encoding="utf-8").splitlines()
@@ -18118,6 +18775,260 @@ def _reconciled_candidate_task_board(
         "- Acceptance: The current task contract validates the recovered "
         "candidate before completion.\n"
     )
+
+
+def _seed_reconciled_generated_artifact_candidate(
+    tmp_path: Path,
+    *,
+    task_id: str,
+    validation: str = "python -m pytest -q test_feature.py",
+) -> dict[str, object]:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        _reconciled_candidate_task_board(
+            task_id=task_id,
+            validation=validation,
+        ),
+        encoding="utf-8",
+    )
+    screenshot_relative = (
+        "artifacts/world-id-idkit-ui-review/"
+        "desktop-chrome/proof-center.png"
+    )
+    screenshot = repo / screenshot_relative
+    screenshot.parent.mkdir(parents=True)
+    screenshot.write_bytes(b"baseline screenshot")
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    (repo / "test_feature.py").write_text(
+        "from pathlib import Path\n\n"
+        "def test_feature():\n"
+        "    import feature\n"
+        "    assert feature.VALUE == 1\n"
+        f"    Path({screenshot_relative!r})."
+        "write_bytes(b'validation screenshot')\n",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "README.md", "artifacts", "test_feature.py", "todo.md")
+    _git(repo, "commit", "-m", "base")
+    baseline = _git(repo, "rev-parse", "HEAD")
+    branch_name = f"implementation/{task_id.lower()}-generated-artifact"
+    _git(repo, "checkout", "-b", branch_name)
+    (repo / "feature.py").write_text("VALUE = 1\n", encoding="utf-8")
+    _git(repo, "add", "feature.py")
+    _git(repo, "commit", "-m", "feature")
+    candidate = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "main")
+    worktree_path = tmp_path / "candidate"
+    _git(repo, "worktree", "add", str(worktree_path), branch_name)
+    return {
+        "repo": repo,
+        "todo_path": todo_path,
+        "screenshot_relative": screenshot_relative,
+        "baseline": baseline,
+        "branch_name": branch_name,
+        "candidate": candidate,
+        "worktree_path": worktree_path,
+    }
+
+
+def test_reconciled_candidate_restores_tracked_validation_screenshot(
+    tmp_path: Path,
+):
+    fixture = _seed_reconciled_generated_artifact_candidate(
+        tmp_path,
+        task_id="ACCEL-010R",
+    )
+    repo = fixture["repo"]
+    todo_path = fixture["todo_path"]
+    worktree_path = fixture["worktree_path"]
+    screenshot_relative = fixture["screenshot_relative"]
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        worktree_root=tmp_path / "worktrees",
+        merge_target_branch="main",
+        worktree_submodule_paths=[],
+    )
+    task = daemon._load_tasks()[0]
+
+    result = daemon.reconcile_validated_worktree_candidate(
+        worktree_path=worktree_path,
+        branch_name=fixture["branch_name"],
+        task=task,
+        baseline_ref=fixture["baseline"],
+        candidate_commit=fixture["candidate"],
+        recovery_key="tracked-screenshot-recovery",
+    )
+
+    validation = result["validation_result"]
+    assert result["returncode"] == 0
+    assert validation["passed"] is True
+    assert validation["candidate_binding"]["verified"] is True
+    receipt = validation["generated_dirty_restore"]
+    assert receipt["attempted_count"] >= 1
+    assert receipt["restored_count"] == receipt["attempted_count"]
+    assert receipt["failed_count"] == 0
+    assert screenshot_relative in {
+        item["path"] for item in receipt["results"]
+    }
+    assert (repo / fixture["screenshot_relative"]).read_bytes() == (
+        b"baseline screenshot"
+    )
+    assert _git(repo, "status", "--short") == ""
+
+
+def test_reconciled_candidate_records_protected_generated_artifact_mutation(
+    tmp_path: Path,
+):
+    fixture = _seed_reconciled_generated_artifact_candidate(
+        tmp_path,
+        task_id="ACCEL-010P",
+    )
+    repo = fixture["repo"]
+    todo_path = fixture["todo_path"]
+    worktree_path = fixture["worktree_path"]
+    screenshot_relative = fixture["screenshot_relative"]
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        worktree_root=tmp_path / "worktrees",
+        merge_target_branch="main",
+        worktree_submodule_paths=[],
+        implementation_protected_paths=[screenshot_relative],
+    )
+    task = daemon._load_tasks()[0]
+
+    result = daemon.reconcile_validated_worktree_candidate(
+        worktree_path=worktree_path,
+        branch_name=fixture["branch_name"],
+        task=task,
+        baseline_ref=fixture["baseline"],
+        candidate_commit=fixture["candidate"],
+        recovery_key="protected-screenshot-recovery",
+    )
+
+    validation = result["validation_result"]
+    assert result["returncode"] != 0
+    assert validation["reason"] == "implementation_protected_path_mutated"
+    assert validation["protected_path_violation"]["protected_paths"] == [
+        screenshot_relative
+    ]
+    assert "generated_dirty_restore" not in validation
+    assert (worktree_path / screenshot_relative).read_bytes() == (
+        b"validation screenshot"
+    )
+    assert daemon._implementation_protected_incident_path().exists()
+    assert "- Status: todo" in todo_path.read_text(encoding="utf-8")
+
+
+def test_reconciled_failure_cleanup_preserves_unchanged_protected_ephemeral_child(
+    tmp_path: Path,
+    monkeypatch,
+):
+    fixture = _seed_reconciled_generated_artifact_candidate(
+        tmp_path,
+        task_id="ACCEL-010U",
+        validation=(
+            "python -m pytest -q test_feature.py "
+            "-k no_such_test_selected"
+        ),
+    )
+    repo = fixture["repo"]
+    todo_path = fixture["todo_path"]
+    worktree_path = fixture["worktree_path"]
+    (repo / ".git" / "info" / "exclude").write_text(
+        ".pytest_cache/\n",
+        encoding="utf-8",
+    )
+    protected_relative = ".pytest_cache/operator-sentinel"
+    shared_sentinel = repo / protected_relative
+    worktree_sentinel = worktree_path / protected_relative
+    shared_sentinel.parent.mkdir(parents=True)
+    worktree_sentinel.parent.mkdir(parents=True)
+    shared_sentinel.write_text("operator evidence\n", encoding="utf-8")
+    worktree_sentinel.write_text("operator evidence\n", encoding="utf-8")
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        worktree_root=tmp_path / "worktrees",
+        merge_target_branch="main",
+        worktree_submodule_paths=[],
+        implementation_protected_paths=[protected_relative],
+    )
+    task = daemon._load_tasks()[0]
+    failure_cleanup_calls: list[Path] = []
+    unprotected_failure_output = (
+        worktree_path / "test-results" / "unprotected-output.txt"
+    )
+    restore_failure_outputs = (
+        daemon._restore_ephemeral_worktree_paths_for_commit
+    )
+
+    def record_failure_cleanup(path):
+        failure_cleanup_calls.append(path)
+        unprotected_failure_output.parent.mkdir(parents=True)
+        unprotected_failure_output.write_text(
+            "generated validation output\n",
+            encoding="utf-8",
+        )
+        restore_failure_outputs(path)
+
+    monkeypatch.setattr(
+        daemon,
+        "_restore_ephemeral_worktree_paths_for_commit",
+        record_failure_cleanup,
+    )
+
+    result = daemon.reconcile_validated_worktree_candidate(
+        worktree_path=worktree_path,
+        branch_name=fixture["branch_name"],
+        task=task,
+        baseline_ref=fixture["baseline"],
+        candidate_commit=fixture["candidate"],
+        recovery_key="protected-ephemeral-child-recovery",
+    )
+
+    assert result["returncode"] != 0
+    assert result["validation_result"]["passed"] is False
+    assert result["validation_result"]["reason"] == (
+        "declared_validation_failed"
+    )
+    assert result["validation_result"]["attempted"] is True
+    assert any(
+        item.get("returncode") == 5
+        for item in result["validation_result"]["results"]
+    )
+    assert not result["protected_path_violation"]
+    assert failure_cleanup_calls == [worktree_path]
+    assert worktree_sentinel.read_text(encoding="utf-8") == (
+        "operator evidence\n"
+    )
+    assert shared_sentinel.read_text(encoding="utf-8") == (
+        "operator evidence\n"
+    )
+    assert not daemon._implementation_protected_active_snapshot_path().exists()
+    assert not unprotected_failure_output.exists()
 
 
 def test_implementation_supervisor_validates_current_task_before_recovered_merge(

@@ -269,6 +269,7 @@ DEFAULT_IMPLEMENTATION_CONTEXT_TOOL_RESERVE = 8_192
 PROPOSAL_VALIDATION_FAILURE_RETURN_CODE = 78
 MAX_PERSISTED_PROPOSAL_REASON_CODES = 16
 MAX_PENDING_SCOPE_ADJUDICATIONS = 256
+MAX_VALIDATION_GENERATED_ARTIFACT_RECEIPT_PATHS = 50
 SECRET_CHANGE_SCOPE_EXAMINATION_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/"
     "secret-change-scope-examination@1"
@@ -1449,6 +1450,14 @@ class ImplementationRetryDeferred(RuntimeError):
         super().__init__(reason)
         self.reason = reason
         self.backoff_seconds = backoff_seconds
+
+
+class ValidationGeneratedArtifactRestoreError(RuntimeError):
+    """A typed pre-validation stop that preserves the candidate worktree."""
+
+    def __init__(self, receipt: Mapping[str, Any]) -> None:
+        super().__init__("validation generated artifact restore failed")
+        self.receipt = dict(receipt)
 
 
 @dataclass(frozen=True)
@@ -6421,8 +6430,20 @@ class PortalImplementationDaemon:
                         "reason": "implementation_protected_path_mutated",
                         "protected_path_violation": protected_path_violation,
                     }
-                elif not validation_result.get("passed", False):
-                    effective_returncode = int(validation_result.get("returncode") or 1)
+                else:
+                    validation_result = (
+                        self._restore_and_verify_post_validation_candidate(
+                            workspace_path,
+                            task,
+                            baseline_ref=baseline_ref,
+                            proposal_validation=proposal_validation,
+                            validation_result=validation_result,
+                        )
+                    )
+                    if not validation_result.get("passed", False):
+                        effective_returncode = int(
+                            validation_result.get("returncode") or 1
+                        )
             if not protected_path_violation:
                 protected_path_violation = (
                     self._finalize_implementation_protected_path_fence(
@@ -9495,26 +9516,43 @@ class PortalImplementationDaemon:
                 baseline_ref=resolved_baseline,
                 state=state,
             )
-            validation_result = (
-                self._verify_post_validation_candidate_binding(
-                    worktree_path,
-                    task,
-                    baseline_ref=resolved_baseline,
-                    proposal_validation=proposal_validation,
-                    validation_result=validation_result,
-                )
-            )
             protected_path_violation = (
-                self._finalize_implementation_protected_path_fence(
+                self._implementation_protected_path_violation(
                     task=task,
                     attempt=attempt,
                     workspace_path=worktree_path,
                     before=protected_path_snapshot,
-                    reason=(
-                        "reconciled_candidate_post_validation_unchanged"
-                    ),
                 )
             )
+            if protected_path_violation:
+                validation_result = {
+                    **validation_result,
+                    "passed": False,
+                    "returncode": 1,
+                    "reason": "implementation_protected_path_mutated",
+                    "protected_path_violation": protected_path_violation,
+                }
+            else:
+                validation_result = (
+                    self._restore_and_verify_post_validation_candidate(
+                        worktree_path,
+                        task,
+                        baseline_ref=resolved_baseline,
+                        proposal_validation=proposal_validation,
+                        validation_result=validation_result,
+                    )
+                )
+                protected_path_violation = (
+                    self._finalize_implementation_protected_path_fence(
+                        task=task,
+                        attempt=attempt,
+                        workspace_path=worktree_path,
+                        before=protected_path_snapshot,
+                        reason=(
+                            "reconciled_candidate_post_validation_unchanged"
+                        ),
+                    )
+                )
             protected_path_snapshot = None
             if protected_path_violation:
                 validation_result = {
@@ -9660,10 +9698,20 @@ class PortalImplementationDaemon:
                         "reason": "reconciled_candidate_handoff_failed",
                         "merge_result": merge_result,
                     }
-            if returncode != 0 and worktree_path.exists():
+            if (
+                returncode != 0
+                and worktree_path.exists()
+                and not protected_path_violation
+            ):
                 self._restore_ephemeral_worktree_paths_for_commit(
                     worktree_path
                 )
+        except ValidationGeneratedArtifactRestoreError as exc:
+            validation_result = (
+                self._validation_generated_artifact_restore_failure_result(
+                    exc.receipt
+                )
+            )
         except Exception as exc:
             validation_result = {
                 **validation_result,
@@ -9969,47 +10017,83 @@ class PortalImplementationDaemon:
                     )
                     cleanup_result = self._cleanup_merged_worktree(worktree_path, branch_name)
                 else:
-                    self._prepare_worktree_for_validation(worktree_path, task=task, branch_name=branch_name)
-                    proposal_validation = self._validate_implementation_patch(
-                        worktree_path,
-                        task,
-                        baseline_ref=baseline_ref,
-                    )
-                    validation_result = self._run_validation_commands(
-                        worktree_path,
-                        task,
-                        log_path,
-                        state=state,
-                        proposal_validation=proposal_validation,
-                    )
-                    validation_result = self._apply_implementation_failure_review(
-                        task=task,
-                        attempt=attempt,
-                        workspace_path=worktree_path,
-                        validation_result=validation_result,
-                        log_path=log_path,
-                        proposal_validation=proposal_validation,
-                        baseline_ref=baseline_ref,
-                        state=state,
-                    )
-                    validation_result = (
-                        self._verify_post_validation_candidate_binding(
+                    try:
+                        self._prepare_worktree_for_validation(
+                            worktree_path,
+                            task=task,
+                            branch_name=branch_name,
+                        )
+                    except ValidationGeneratedArtifactRestoreError as exc:
+                        validation_result = (
+                            self._validation_generated_artifact_restore_failure_result(
+                                exc.receipt
+                            )
+                        )
+                    else:
+                        proposal_validation = (
+                            self._validate_implementation_patch(
+                                worktree_path,
+                                task,
+                                baseline_ref=baseline_ref,
+                            )
+                        )
+                        validation_result = self._run_validation_commands(
                             worktree_path,
                             task,
-                            baseline_ref=baseline_ref,
+                            log_path,
+                            state=state,
                             proposal_validation=proposal_validation,
-                            validation_result=validation_result,
+                        )
+                        validation_result = (
+                            self._apply_implementation_failure_review(
+                                task=task,
+                                attempt=attempt,
+                                workspace_path=worktree_path,
+                                validation_result=validation_result,
+                                log_path=log_path,
+                                proposal_validation=proposal_validation,
+                                baseline_ref=baseline_ref,
+                                state=state,
+                            )
+                        )
+                    protected_path_violation = (
+                        self._implementation_protected_path_violation(
+                            task=task,
+                            attempt=attempt,
+                            workspace_path=worktree_path,
+                            before=protected_path_snapshot,
                         )
                     )
-                protected_path_violation = (
-                    self._finalize_implementation_protected_path_fence(
-                        task=task,
-                        attempt=attempt,
-                        workspace_path=worktree_path,
-                        before=protected_path_snapshot,
-                        reason="post_validation_check_unchanged",
+                    if protected_path_violation:
+                        validation_result = {
+                            **validation_result,
+                            "passed": False,
+                            "returncode": 1,
+                            "reason": "implementation_protected_path_mutated",
+                            "protected_path_violation": (
+                                protected_path_violation
+                            ),
+                        }
+                    elif validation_result.get("passed", False):
+                        validation_result = (
+                            self._restore_and_verify_post_validation_candidate(
+                                worktree_path,
+                                task,
+                                baseline_ref=baseline_ref,
+                                proposal_validation=proposal_validation,
+                                validation_result=validation_result,
+                            )
+                        )
+                if not protected_path_violation:
+                    protected_path_violation = (
+                        self._finalize_implementation_protected_path_fence(
+                            task=task,
+                            attempt=attempt,
+                            workspace_path=worktree_path,
+                            before=protected_path_snapshot,
+                            reason="post_validation_check_unchanged",
+                        )
                     )
-                )
                 if protected_path_violation:
                     returncode = 1
                     validation_result = {
@@ -10229,51 +10313,85 @@ class PortalImplementationDaemon:
                         worktree_path=worktree_path,
                         branch_name=branch_name,
                     )
-                    self._prepare_worktree_for_validation(
-                        worktree_path,
-                        task=task,
-                        branch_name=branch_name,
-                    )
-                    proposal_validation = self._validate_implementation_patch(
-                        worktree_path,
-                        task,
-                        baseline_ref=baseline_ref,
-                    )
-                    validation_result = self._run_validation_commands(
-                        worktree_path,
-                        task,
-                        log_path,
-                        state=state,
-                        proposal_validation=proposal_validation,
-                    )
-                    validation_result = self._apply_implementation_failure_review(
-                        task=task,
-                        attempt=attempt,
-                        workspace_path=worktree_path,
-                        validation_result=validation_result,
-                        log_path=log_path,
-                        proposal_validation=proposal_validation,
-                        baseline_ref=baseline_ref,
-                        state=state,
-                    )
-                    validation_result = (
-                        self._verify_post_validation_candidate_binding(
+                    try:
+                        self._prepare_worktree_for_validation(
+                            worktree_path,
+                            task=task,
+                            branch_name=branch_name,
+                        )
+                    except ValidationGeneratedArtifactRestoreError as exc:
+                        validation_result = (
+                            self._validation_generated_artifact_restore_failure_result(
+                                exc.receipt
+                            )
+                        )
+                    else:
+                        proposal_validation = (
+                            self._validate_implementation_patch(
+                                worktree_path,
+                                task,
+                                baseline_ref=baseline_ref,
+                            )
+                        )
+                        validation_result = self._run_validation_commands(
                             worktree_path,
                             task,
-                            baseline_ref=baseline_ref,
+                            log_path,
+                            state=state,
                             proposal_validation=proposal_validation,
-                            validation_result=validation_result,
                         )
-                    )
+                        validation_result = (
+                            self._apply_implementation_failure_review(
+                                task=task,
+                                attempt=attempt,
+                                workspace_path=worktree_path,
+                                validation_result=validation_result,
+                                log_path=log_path,
+                                proposal_validation=proposal_validation,
+                                baseline_ref=baseline_ref,
+                                state=state,
+                            )
+                        )
                     protected_path_violation = (
-                        self._finalize_implementation_protected_path_fence(
+                        self._implementation_protected_path_violation(
                             task=task,
                             attempt=attempt,
                             workspace_path=worktree_path,
                             before=protected_path_snapshot,
-                            reason="timeout_salvage_validation_unchanged",
                         )
                     )
+                    if protected_path_violation:
+                        validation_result = {
+                            **validation_result,
+                            "passed": False,
+                            "returncode": 1,
+                            "reason": "implementation_protected_path_mutated",
+                            "protected_path_violation": (
+                                protected_path_violation
+                            ),
+                        }
+                    elif validation_result.get("passed", False):
+                        validation_result = (
+                            self._restore_and_verify_post_validation_candidate(
+                                worktree_path,
+                                task,
+                                baseline_ref=baseline_ref,
+                                proposal_validation=proposal_validation,
+                                validation_result=validation_result,
+                            )
+                        )
+                    if not protected_path_violation:
+                        protected_path_violation = (
+                            self._finalize_implementation_protected_path_fence(
+                                task=task,
+                                attempt=attempt,
+                                workspace_path=worktree_path,
+                                before=protected_path_snapshot,
+                                reason=(
+                                    "timeout_salvage_validation_unchanged"
+                                ),
+                            )
+                        )
                     if protected_path_violation:
                         returncode = 1
                         validation_result = {
@@ -11521,6 +11639,19 @@ class PortalImplementationDaemon:
                 paths.append(path)
         return paths
 
+    def _overlaps_implementation_protected_path(
+        self,
+        relative: str,
+    ) -> bool:
+        """Return whether a path and any exact protected path intersect."""
+
+        normalized = str(relative).strip("/")
+        return any(
+            self._path_matches_prefix(normalized, protected)
+            or self._path_matches_prefix(protected, normalized)
+            for protected in self.implementation_protected_paths
+        )
+
     def _link_shared_worktree_paths(self, worktree_path: Path) -> None:
         try:
             worktree_path.resolve().relative_to(self.worktree_root.resolve())
@@ -11532,6 +11663,11 @@ class PortalImplementationDaemon:
             return
 
         for relative in SHARED_WORKTREE_PATHS:
+            # A shared dependency link replaces the complete target root.
+            # Never let that replacement erase an exact protected child before
+            # reconciliation has established its live identity snapshot.
+            if self._overlaps_implementation_protected_path(relative):
+                continue
             source: Path | None = None
             for source_root in self.shared_worktree_source_roots:
                 try:
@@ -11582,15 +11718,53 @@ class PortalImplementationDaemon:
         # Provider-side validation may have already populated known generated
         # evidence paths. Remove those deterministic side effects before the
         # proposal is collected so they cannot consume task mutation scope.
+        # Enumerate actual dirt and exclude protected paths; restoring an
+        # entire generated prefix could otherwise erase protected-path
+        # mutation evidence before the live fence observes it.
         # Shared dependency links are then restored for the validation run;
         # removing generated paths after linking would delete node_modules and
         # make an otherwise valid replay fail with missing local executables.
-        self._restore_ephemeral_worktree_paths_for_commit(worktree_path)
+        self._restore_pre_validation_ephemeral_roots(worktree_path)
+        generated_restore = self._restore_validation_generated_artifacts(
+            worktree_path,
+            # Known ephemeral paths are daemon policy output even when a task
+            # declares a broad source directory such as wallet_interface/ui.
+            # Protected paths remain excluded inside the helper.
+            excluded_paths=(),
+            reason="pre_validation_generated_artifact",
+            record_event=False,
+        )
+        if int(generated_restore.get("failed_count") or 0):
+            raise ValidationGeneratedArtifactRestoreError(generated_restore)
         self._link_shared_worktree_paths(worktree_path)
         # Untracked source context is snapshotted when the worktree lease starts.
         # Re-reading the primary checkout here can attribute files created by a
         # concurrent user or lane to this implementation after its agent exits.
         self._drop_unchanged_seeded_worktree_context(worktree_path, task=task)
+
+    def _restore_pre_validation_ephemeral_roots(
+        self,
+        worktree_path: Path,
+    ) -> None:
+        """Remove ignored stale validation roots without touching protection.
+
+        Git status omits ignored files, so the later dirty-path pass cannot
+        discover stale ``dist`` output, Playwright reports, or ignored
+        screenshots inherited from a pooled or replayed workspace. Preserve
+        the original explicit-root hygiene only where the complete root is
+        disjoint from every configured exact protected path. A single overlap
+        skips the whole root; the dirty-path pass may still repair other
+        visible generated paths without masking the protected child.
+        """
+
+        for relative in EPHEMERAL_WORKTREE_PATHS:
+            normalized = str(relative).strip("/")
+            if self._overlaps_implementation_protected_path(normalized):
+                continue
+            self._restore_or_remove_generated_path_for_commit(
+                worktree_path,
+                normalized,
+            )
 
     @staticmethod
     def _seeded_worktree_context_identity(path: Path) -> dict[str, Any]:
@@ -12163,9 +12337,15 @@ class PortalImplementationDaemon:
                 attempt,
                 parent_relative=relative,
             )
-            self._restore_ephemeral_worktree_paths_for_commit(target)
+            self._restore_ephemeral_worktree_paths_for_commit(
+                target,
+                protected_path_prefix=relative,
+            )
             self._run_git(["add", "-A"], cwd=target)
-            self._remove_generated_paths_from_index(target)
+            self._remove_generated_paths_from_index(
+                target,
+                protected_path_prefix=relative,
+            )
             status = self._run_git(["status", "--porcelain"], cwd=target).stdout.strip()
             staged_status = self._staged_worktree_status(target)
             if not staged_status:
@@ -12237,9 +12417,15 @@ class PortalImplementationDaemon:
                 attempt,
                 parent_relative=full_relative,
             )
-            self._restore_ephemeral_worktree_paths_for_commit(target)
+            self._restore_ephemeral_worktree_paths_for_commit(
+                target,
+                protected_path_prefix=full_relative,
+            )
             self._run_git(["add", "-A"], cwd=target)
-            self._remove_generated_paths_from_index(target)
+            self._remove_generated_paths_from_index(
+                target,
+                protected_path_prefix=full_relative,
+            )
             status = self._run_git(["status", "--porcelain"], cwd=target).stdout.strip()
             staged_status = self._staged_worktree_status(target)
             if not staged_status:
@@ -12536,23 +12722,60 @@ class PortalImplementationDaemon:
         safe_suffix = suffix.strip("/").replace(" ", "-") or "interrupted"
         return f"rescue/{safe_name or 'implementation-attempt'}-{safe_suffix}"
 
-    def _restore_ephemeral_worktree_paths_for_commit(self, worktree_path: Path) -> None:
+    def _restore_ephemeral_worktree_paths_for_commit(
+        self,
+        worktree_path: Path,
+        *,
+        protected_path_prefix: str = "",
+    ) -> None:
+        def protected_relative(relative: str) -> str:
+            prefix = protected_path_prefix.strip("/")
+            return f"{prefix}/{relative}" if prefix else relative
+
         for relative in EPHEMERAL_WORKTREE_PATHS:
+            if self._overlaps_implementation_protected_path(
+                protected_relative(relative)
+            ):
+                continue
             self._restore_or_remove_generated_path_for_commit(worktree_path, relative)
         for relative in sorted(self._dirty_worktree_paths(worktree_path)):
-            if self._path_is_generated_worktree_artifact(relative):
+            if (
+                self._path_is_generated_worktree_artifact(relative)
+                and not self._overlaps_implementation_protected_path(
+                    protected_relative(relative)
+                )
+            ):
                 self._restore_or_remove_generated_path_for_commit(worktree_path, relative)
 
-    def _remove_generated_paths_from_index(self, worktree_path: Path) -> None:
+    def _remove_generated_paths_from_index(
+        self,
+        worktree_path: Path,
+        *,
+        protected_path_prefix: str = "",
+    ) -> None:
+        prefix = protected_path_prefix.strip("/")
         for relative in self._staged_worktree_paths(worktree_path):
-            if self._path_is_generated_worktree_artifact(relative):
+            protected_relative = (
+                f"{prefix}/{relative}" if prefix else relative
+            )
+            if (
+                self._path_is_generated_worktree_artifact(relative)
+                and not self._overlaps_implementation_protected_path(
+                    protected_relative
+                )
+            ):
                 self._restore_or_remove_generated_path_for_commit(worktree_path, relative)
 
     def _restore_or_remove_generated_path_for_commit(self, worktree_path: Path, relative: str) -> None:
         if not self._repo_relative_path_safe(relative):
             return
-        target = worktree_path / relative
-        if relative in self.worktree_submodule_paths and target.is_symlink():
+        target, target_kind = self._validated_generated_cleanup_target(
+            worktree_path,
+            relative,
+        )
+        # A final-component symlink can be unlinked without following it once
+        # every ancestor below the worktree boundary has been authenticated.
+        if target_kind == "symlink":
             target.unlink()
         if self._path_tracked_in_head(worktree_path, relative) or self._path_tracked_in_repo(worktree_path, relative):
             restore = subprocess.run(
@@ -12571,10 +12794,87 @@ class PortalImplementationDaemon:
             capture_output=True,
             check=False,
         )
-        if target.is_symlink() or target.is_file():
+        target, target_kind = self._validated_generated_cleanup_target(
+            worktree_path,
+            relative,
+        )
+        if target_kind in {"symlink", "file"}:
             target.unlink()
-        elif target.is_dir():
+        elif target_kind == "directory":
             shutil.rmtree(target)
+
+    def _validated_generated_cleanup_target(
+        self,
+        worktree_path: Path,
+        relative: str,
+    ) -> tuple[Path, str]:
+        """Resolve one cleanup target without traversing symlinked ancestors."""
+
+        if not self._repo_relative_path_safe(relative):
+            raise RuntimeError("generated cleanup path is not repo-relative")
+        try:
+            root = worktree_path.resolve(strict=True)
+        except (OSError, RuntimeError) as exc:
+            raise RuntimeError(
+                "generated cleanup worktree boundary is unavailable"
+            ) from exc
+        if not root.is_dir():
+            raise RuntimeError(
+                "generated cleanup worktree boundary is not a directory"
+            )
+
+        parts = Path(relative).parts
+        current = worktree_path
+        for part in parts[:-1]:
+            current = current / part
+            try:
+                identity = current.lstat()
+            except FileNotFoundError:
+                break
+            except OSError as exc:
+                raise RuntimeError(
+                    "generated cleanup ancestor identity is unavailable"
+                ) from exc
+            if stat_module.S_ISLNK(identity.st_mode):
+                raise RuntimeError(
+                    "generated cleanup path has a symlink ancestor"
+                )
+            if not stat_module.S_ISDIR(identity.st_mode):
+                raise RuntimeError(
+                    "generated cleanup path has a non-directory ancestor"
+                )
+
+        target = worktree_path.joinpath(*parts)
+        try:
+            identity = target.lstat()
+        except FileNotFoundError:
+            target_kind = "missing"
+        except OSError as exc:
+            raise RuntimeError(
+                "generated cleanup target identity is unavailable"
+            ) from exc
+        else:
+            if stat_module.S_ISLNK(identity.st_mode):
+                return target, "symlink"
+            if stat_module.S_ISREG(identity.st_mode):
+                target_kind = "file"
+            elif stat_module.S_ISDIR(identity.st_mode):
+                target_kind = "directory"
+            else:
+                raise RuntimeError(
+                    "generated cleanup target has an unsupported file type"
+                )
+
+        try:
+            resolved_target = target.resolve(
+                strict=target_kind != "missing"
+            )
+            resolved_target.relative_to(root)
+        except (OSError, RuntimeError, ValueError) as exc:
+            raise RuntimeError(
+                "generated cleanup target escapes the worktree boundary"
+            ) from exc
+        return target, target_kind
 
     def _path_is_generated_worktree_artifact(self, relative: str) -> bool:
         if not self._repo_relative_path_safe(relative):
@@ -14481,6 +14781,301 @@ class PortalImplementationDaemon:
             default=str,
         ).encode("utf-8", errors="surrogatepass")
         return "sha256:" + hashlib.sha256(encoded).hexdigest()
+
+    def _restore_validation_generated_artifacts(
+        self,
+        workspace_path: Path,
+        *,
+        excluded_paths: Sequence[str] = (),
+        reason: str,
+        record_event: bool = True,
+    ) -> dict[str, Any]:
+        """Undo bounded validation output without changing authorized source.
+
+        Restore only actual dirty paths covered by the immutable
+        generated-worktree allowlist. Authorized candidate/output paths are
+        excluded because a task may intentionally own a generated artifact.
+        Protected paths are always excluded so their terminal fence can retain
+        and report mutation evidence instead of having it repaired away.
+        """
+
+        authorized_paths = {
+            str(path).strip("/")
+            for path in excluded_paths
+            if str(path).strip("/")
+        }
+        protected_paths = {
+            str(path).strip("/")
+            for path in self.implementation_protected_paths
+            if str(path).strip("/")
+        }
+
+        def overlaps_authorized_path(
+            relative: str,
+            paths: set[str],
+        ) -> bool:
+            return any(
+                self._path_matches_prefix(relative, authorized)
+                or self._path_matches_prefix(authorized, relative)
+                for authorized in paths
+            )
+
+        def emit_receipt(
+            *,
+            results: Sequence[Mapping[str, Any]],
+            known_dirty_count: int,
+            attempted_count: int,
+            restored_count: int,
+            skipped_count: int,
+            scan_failed: bool = False,
+            scan_failure_stage: str = "",
+            scan_error_type: str = "",
+        ) -> dict[str, Any]:
+            failed_count = attempted_count - restored_count
+            # An unavailable status scan is itself a cleanup certification
+            # failure, including when Git could not reveal any candidate path
+            # to count as attempted.
+            if scan_failed and failed_count == 0:
+                failed_count = 1
+            bounded_results = [
+                dict(item)
+                for item in results[
+                    :MAX_VALIDATION_GENERATED_ARTIFACT_RECEIPT_PATHS
+                ]
+            ]
+            receipt = {
+                "schema": (
+                    "ipfs_accelerate_py/agent-supervisor/"
+                    "validation-generated-artifact-restore@1"
+                ),
+                "reason": reason,
+                "known_dirty_count": known_dirty_count,
+                "attempted_count": attempted_count,
+                "restored_count": restored_count,
+                "failed_count": failed_count,
+                "skipped_count": skipped_count,
+                "scan_failed": scan_failed,
+                "scan_failure_stage": scan_failure_stage,
+                "scan_error_type": scan_error_type[:80],
+                "results": bounded_results,
+                "truncated_count": len(results) - len(bounded_results),
+            }
+            if record_event:
+                self._record_event(
+                    "validation_generated_artifact_restore",
+                    {
+                        "worktree_path": str(workspace_path),
+                        **receipt,
+                    },
+                )
+            return receipt
+
+        results: list[dict[str, Any]] = []
+        restore_paths: list[str] = []
+        try:
+            dirty_paths = sorted(
+                self._strict_dirty_worktree_paths(workspace_path)
+            )
+        except Exception as exc:
+            error_type = type(exc).__name__[:80]
+            return emit_receipt(
+                results=(
+                    {
+                        "path": "",
+                        "restored": False,
+                        "skipped": False,
+                        "reason": "initial_status_scan_failed",
+                        "error_type": error_type,
+                    },
+                ),
+                known_dirty_count=0,
+                attempted_count=0,
+                restored_count=0,
+                skipped_count=0,
+                scan_failed=True,
+                scan_failure_stage="initial",
+                scan_error_type=error_type,
+            )
+        for relative in dirty_paths:
+            if not self._path_is_generated_worktree_artifact(relative):
+                continue
+            if overlaps_authorized_path(relative, authorized_paths):
+                results.append(
+                    {
+                        "path": relative,
+                        "restored": False,
+                        "skipped": True,
+                        "reason": "authorized_candidate_or_output_path",
+                    }
+                )
+                continue
+            if overlaps_authorized_path(relative, protected_paths):
+                results.append(
+                    {
+                        "path": relative,
+                        "restored": False,
+                        "skipped": True,
+                        "reason": "implementation_protected_path",
+                    }
+                )
+                continue
+            restore_paths.append(relative)
+
+        restore_errors: dict[str, str] = {}
+        for relative in restore_paths:
+            try:
+                self._restore_or_remove_generated_path_for_commit(
+                    workspace_path,
+                    relative,
+                )
+            except Exception as exc:
+                restore_errors[relative] = type(exc).__name__[:80]
+        verification_scan_failed = False
+        verification_error_type = ""
+        try:
+            remaining_dirty_paths = self._strict_dirty_worktree_paths(
+                workspace_path
+            )
+        except Exception as exc:
+            remaining_dirty_paths = set()
+            verification_scan_failed = True
+            verification_error_type = type(exc).__name__[:80]
+        for relative in restore_paths:
+            restore_error_type = restore_errors.get(relative, "")
+            restored = bool(
+                not restore_error_type
+                and not verification_scan_failed
+                and relative not in remaining_dirty_paths
+            )
+            item: dict[str, Any] = {
+                "path": relative,
+                "restored": restored,
+                "reason": reason,
+            }
+            if restore_error_type:
+                item["error_type"] = restore_error_type
+            if verification_scan_failed:
+                item["verification_error_type"] = (
+                    verification_error_type
+                )
+            results.append(item)
+        if verification_scan_failed and not restore_paths:
+            results.append(
+                {
+                    "path": "",
+                    "restored": False,
+                    "skipped": False,
+                    "reason": "verification_status_scan_failed",
+                    "error_type": verification_error_type,
+                }
+            )
+        if not results and not verification_scan_failed:
+            return {}
+        attempted_count = len(restore_paths)
+        restored_count = sum(
+            1
+            for item in results
+            if not item.get("skipped", False)
+            and item.get("restored", False)
+        )
+        skipped_count = sum(
+            1 for item in results if item.get("skipped", False)
+        )
+        return emit_receipt(
+            results=results,
+            known_dirty_count=len(results),
+            attempted_count=attempted_count,
+            restored_count=restored_count,
+            skipped_count=skipped_count,
+            scan_failed=verification_scan_failed,
+            scan_failure_stage=(
+                "verification" if verification_scan_failed else ""
+            ),
+            scan_error_type=verification_error_type,
+        )
+
+    @staticmethod
+    def _validation_generated_artifact_restore_failure_result(
+        receipt: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Project a cleanup receipt into a preservation-safe failure."""
+
+        return {
+            "attempted": False,
+            "passed": False,
+            "returncode": PROPOSAL_VALIDATION_FAILURE_RETURN_CODE,
+            "results": [],
+            "reason": "validation_generated_artifact_restore_failed",
+            "error": "validation_generated_artifact_restore_failed",
+            "generated_dirty_restore": dict(receipt),
+        }
+
+    def _restore_post_validation_generated_artifacts(
+        self,
+        workspace_path: Path,
+        *,
+        proposal_validation: Any,
+    ) -> dict[str, Any]:
+        """Restore safe validation side effects after proposal validation."""
+
+        proposal = getattr(proposal_validation, "proposal", None)
+        candidate_paths = tuple(
+            str(path).strip("/")
+            for entry in tuple(
+                getattr(proposal, "candidate_diff", ()) or ()
+            )
+            for path in (
+                getattr(entry, "old_path", ""),
+                getattr(entry, "new_path", ""),
+            )
+            if str(path).strip("/")
+        )
+        return self._restore_validation_generated_artifacts(
+            workspace_path,
+            excluded_paths=candidate_paths,
+            reason="post_validation_generated_artifact",
+        )
+
+    def _restore_and_verify_post_validation_candidate(
+        self,
+        workspace_path: Path,
+        task: PortalTask,
+        *,
+        baseline_ref: str,
+        proposal_validation: Any,
+        validation_result: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Restore safe validation output, then certify candidate identity."""
+
+        result = dict(validation_result)
+        if result.get("passed", False):
+            generated_restore = (
+                self._restore_post_validation_generated_artifacts(
+                    workspace_path,
+                    proposal_validation=proposal_validation,
+                )
+            )
+            if generated_restore:
+                result["generated_dirty_restore"] = generated_restore
+                if int(generated_restore.get("failed_count") or 0):
+                    return {
+                        **result,
+                        "passed": False,
+                        "returncode": PROPOSAL_VALIDATION_FAILURE_RETURN_CODE,
+                        "reason": (
+                            "validation_generated_artifact_restore_failed"
+                        ),
+                        "error": (
+                            "validation_generated_artifact_restore_failed"
+                        ),
+                    }
+        return self._verify_post_validation_candidate_binding(
+            workspace_path,
+            task,
+            baseline_ref=baseline_ref,
+            proposal_validation=proposal_validation,
+            validation_result=result,
+        )
 
     def _verify_post_validation_candidate_binding(
         self,
@@ -19047,6 +19642,86 @@ class PortalImplementationDaemon:
                 continue
             if path_text:
                 paths.add(path_text)
+        return paths
+
+    def _strict_dirty_worktree_paths(self, cwd: Path) -> set[str]:
+        """Return exact dirty paths or raise when Git cannot certify status.
+
+        The validation-artifact cleanup path is security-sensitive: treating
+        a failed status command as an empty worktree could falsely certify a
+        restore. Porcelain-v1's NUL form also avoids newline, quoting, and
+        ``" -> "`` ambiguities in unusual but valid path names.
+        """
+
+        result = subprocess.run(
+            [
+                "git",
+                "status",
+                "--porcelain=v1",
+                "-z",
+                "--untracked-files=all",
+            ],
+            cwd=cwd,
+            capture_output=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            raise RuntimeError(
+                "git status failed while scanning validation artifacts "
+                f"(returncode={result.returncode})"
+            )
+
+        raw_stdout = result.stdout
+        if isinstance(raw_stdout, str):
+            raw = raw_stdout.encode("utf-8", errors="surrogateescape")
+        else:
+            raw = bytes(raw_stdout or b"")
+        if not raw:
+            return set()
+        if not raw.endswith(b"\0"):
+            raise RuntimeError(
+                "git status returned a truncated validation-artifact scan"
+            )
+
+        fields = raw[:-1].split(b"\0")
+        paths: set[str] = set()
+        index = 0
+        while index < len(fields):
+            record = fields[index]
+            index += 1
+            if len(record) < 4 or record[2:3] != b" ":
+                raise RuntimeError(
+                    "git status returned malformed validation-artifact data"
+                )
+            status = record[:2]
+            relative = record[3:].decode(
+                "utf-8",
+                errors="surrogateescape",
+            )
+            if not self._repo_relative_path_safe(relative):
+                raise RuntimeError(
+                    "git status returned an unsafe validation-artifact path"
+                )
+            paths.add(relative)
+
+            # With ``-z``, a rename/copy is encoded as two adjacent path
+            # fields without an arrow. Include both sides so a generated
+            # source or destination cannot evade cleanup accounting.
+            if b"R" in status or b"C" in status:
+                if index >= len(fields):
+                    raise RuntimeError(
+                        "git status returned a truncated rename record"
+                    )
+                original = fields[index].decode(
+                    "utf-8",
+                    errors="surrogateescape",
+                )
+                index += 1
+                if not self._repo_relative_path_safe(original):
+                    raise RuntimeError(
+                        "git status returned an unsafe rename path"
+                    )
+                paths.add(original)
         return paths
 
     def _branch_changed_paths(self, branch_name: str, *, base_ref: str | None = None) -> set[str]:
