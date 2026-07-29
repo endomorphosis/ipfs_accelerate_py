@@ -12,6 +12,8 @@ import pytest
 
 from ipfs_accelerate_py.agent_supervisor.analysis import content_identity_bridge as bridge
 from ipfs_accelerate_py.agent_supervisor.analysis.content_identity_bridge import (
+    CONTENT_IDENTITY_EVIDENCE,
+    CONTENT_IDENTITY_GOAL_ID,
     CONTENT_IDENTITY_INTERFACE,
     CONTENT_IDENTITY_SCHEMA,
     LOGIC_IR_PROFILE,
@@ -22,6 +24,8 @@ from ipfs_accelerate_py.agent_supervisor.analysis.content_identity_bridge import
     PROVIDER_IPLD_CID,
     PROVIDER_IR_CORE_IDENTITY,
     PROVIDER_PROFILE_G,
+    SCAEV015CID,
+    SCAEV015CID_CRITERIA,
     STRICT_ARTIFACT_PROFILE,
     CidValidationError,
     ContentIdentityError,
@@ -37,6 +41,7 @@ from ipfs_accelerate_py.agent_supervisor.analysis.content_identity_bridge import
     is_digest_shaped,
     multiformats_available,
     profiles_are_interchangeable,
+    prove_scaev015cid,
     require_multiformats,
     reset_provider_import_cache,
     sha256_digest_label,
@@ -349,6 +354,9 @@ def test_content_identity_probe_reports_providers_and_fail_closed_policy() -> No
     probe = content_identity_probe()
     assert probe["schema"] == CONTENT_IDENTITY_SCHEMA
     assert probe["interface"] == CONTENT_IDENTITY_INTERFACE
+    assert probe["evidence_id"] == SCAEV015CID
+    assert probe["requirement_ids"] == [SCAEV015CID]
+    assert probe["goal_id"] == CONTENT_IDENTITY_GOAL_ID
     assert probe["artifact_profile"] == STRICT_ARTIFACT_PROFILE
     assert probe["logic_ir_profile"] == LOGIC_IR_PROFILE
     assert probe["cross_profile_equality_allowed"] is False
@@ -356,6 +364,59 @@ def test_content_identity_probe_reports_providers_and_fail_closed_policy() -> No
     assert multiformats_available() is True
     assert probe["providers"]["multiformats"] is True
     assert probe["cid_required_operations_ready"] is True
+
+
+def test_scaev015cid_evidence_constant_is_stable_public_symbol() -> None:
+    """SCAEV015CID must remain an exact-text/AST hit for objective-gap scans."""
+
+    assert SCAEV015CID == "SCAEV015CID"
+    assert CONTENT_IDENTITY_EVIDENCE == SCAEV015CID
+    assert CONTENT_IDENTITY_GOAL_ID == "SCA-G015"
+    assert bridge.SCAEV015CID == SCAEV015CID
+    assert "SCAEV015CID" in bridge.__all__
+    assert "prove_scaev015cid" in bridge.__all__
+    assert len(SCAEV015CID_CRITERIA) == 5
+    # Objective-heap acceptance wording must remain discoverable.
+    assert any("lowercase base32 CIDv1" in item for item in SCAEV015CID_CRITERIA)
+    assert any("domain-separated raw-codec" in item for item in SCAEV015CID_CRITERIA)
+    assert any("decoded multihash equals the SHA-256" in item for item in SCAEV015CID_CRITERIA)
+    assert any("cid_utils" in item and "profile_g" in item for item in SCAEV015CID_CRITERIA)
+    assert any("fails closed" in item for item in SCAEV015CID_CRITERIA)
+
+
+def test_prove_scaev015cid_covers_all_sca_g015_acceptance_criteria() -> None:
+    """Live proof receipt for SCA-G015 / SCAEV015CID.
+
+    Strict DAG-JSON artifacts use lowercase base32 CIDv1/dag-json/sha2-256;
+    logic IR uses its separately declared domain-separated raw-codec profile;
+    decoded multihash equals the SHA-256 digest of the exact retained
+    canonical bytes; profile differences among cid_utils, ir_core.identity,
+    ipld_cid, and profile_g remain explicit contradictions; unavailable
+    multiformats support fails closed and no fallback digest is labeled CID.
+    """
+
+    receipt = prove_scaev015cid()
+    assert receipt["evidence_id"] == SCAEV015CID
+    assert receipt["requirement_ids"] == [SCAEV015CID]
+    assert receipt["goal_id"] == CONTENT_IDENTITY_GOAL_ID
+    assert receipt["passed"] is True
+    assert receipt["model_calls"] == 0
+    assert receipt["covered_criterion_count"] == len(SCAEV015CID_CRITERIA)
+    assert receipt["required_criterion_count"] == len(SCAEV015CID_CRITERIA)
+    covered = {item["criterion"]: item for item in receipt["criteria"]}
+    for criterion in SCAEV015CID_CRITERIA:
+        assert criterion in covered, criterion
+        assert covered[criterion]["covered"] is True, covered[criterion]
+    assert receipt["artifact_profile"]["canonicalization"] == STRICT_ARTIFACT_PROFILE
+    assert receipt["artifact_profile"]["multicodec"] == MULTICODEC_DAG_JSON
+    assert receipt["artifact_profile"]["multihash"] == MULTIHASH_SHA2_256
+    assert receipt["artifact_profile"]["multibase"] == "base32"
+    assert receipt["logic_ir_profile"]["canonicalization"] == LOGIC_IR_PROFILE
+    assert receipt["logic_ir_profile"]["multicodec"] == MULTICODEC_RAW
+    assert receipt["policies"]["digest_labeled_as_cid_allowed"] is False
+    assert receipt["policies"]["cid_required_operations_fail_closed"] is True
+    assert receipt["policies"]["decoded_multihash_must_match_canonical_bytes"] is True
+    assert "scaev015cid_proved" in receipt["reason_codes"]
 
 
 def test_to_dict_schema_contract() -> None:
@@ -420,6 +481,30 @@ def test_module_exports_content_identity_interface() -> None:
     assert "identify_strict_artifact" in bridge.__all__
     assert "identify_logic_ir" in bridge.__all__
     assert "compare_provider_identities" in bridge.__all__
+    assert "SCAEV015CID" in bridge.__all__
+    assert "prove_scaev015cid" in bridge.__all__
+
+
+def test_scaev015cid_fail_closed_when_multiformats_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Unavailable multiformats support fails closed; no digest is labeled CID."""
+
+    _uninstall_multiformats(monkeypatch)
+    receipt = prove_scaev015cid()
+    assert receipt["evidence_id"] == SCAEV015CID
+    assert receipt["passed"] is False
+    # Strict/IR/multihash criteria require multiformats and must not invent CIDs.
+    by_criterion = {item["criterion"]: item for item in receipt["criteria"]}
+    strict = by_criterion[SCAEV015CID_CRITERIA[0]]
+    assert strict["covered"] is False
+    assert "cid" not in (strict.get("details") or {}) or not is_digest_shaped(
+        str((strict.get("details") or {}).get("cid", ""))
+    )
+    # Digest-vs-CID policy criterion still holds without multiformats.
+    policy = by_criterion[SCAEV015CID_CRITERIA[4]]
+    assert policy["details"]["digest_shaped"] is True
+    assert policy["details"]["digest_as_cid_rejected"] is True
 
 
 def test_lazy_import_cache_survives_repeated_calls() -> None:

@@ -6,6 +6,16 @@ SHA-256 digest, and a validated CIDv1 with multibase/multicodec/multihash
 metadata.  This bridge reuses the datasets identity modules rather than
 forking canonicalizers.
 
+Evidence requirement
+--------------------
+* ``SCAEV015CID`` (SCA-G015) — canonical multiformats and CID identity bridge:
+  Strict DAG-JSON artifacts use lowercase base32 CIDv1/dag-json/sha2-256;
+  logic IR uses its separately declared domain-separated raw-codec profile;
+  decoded multihash equals the SHA-256 digest of the exact retained
+  canonical bytes; profile differences among cid_utils, ir_core.identity,
+  ipld_cid, and profile_g remain explicit contradictions; unavailable
+  multiformats support fails closed and no fallback digest is labeled CID.
+
 Declared profiles
 -----------------
 * ``strict-dag-json-v1`` — protocol artifacts: lowercase base32 CIDv1,
@@ -51,6 +61,15 @@ CONTENT_IDENTITY_SCHEMA: Final = (
 CONTENT_IDENTITY_SCHEMA_VERSION: Final = 1
 CONTENT_IDENTITY_INTERFACE: Final = "ContentIdentity@1"
 CONTENT_IDENTITY_BRIDGE_INTERFACE: Final = "ContentIdentityBridge@1"
+# SCA-G015 objective evidence term — must remain a stable public symbol so the
+# objective-gap scanner can nominate exact-text / AST hits for SCAEV015CID.
+SCAEV015CID: Final = "SCAEV015CID"
+CONTENT_IDENTITY_EVIDENCE: Final = SCAEV015CID
+CONTENT_IDENTITY_GOAL_ID: Final = "SCA-G015"
+CONTENT_IDENTITY_EVIDENCE_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/content-identity-evidence@1"
+)
+CONTENT_IDENTITY_EVIDENCE_SCHEMA_VERSION: Final = 1
 DATASETS_CONTENT_IDENTITY_CAPABILITY_ID: Final = "datasets-content-identity"
 DATASETS_CONTENT_IDENTITY_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/datasets-content-identity@1"
@@ -63,6 +82,19 @@ DEFAULT_CAPABILITY_RELATIVE_PATH: Final = (
 
 STRICT_ARTIFACT_PROFILE: Final = "strict-dag-json-v1"
 LOGIC_IR_PROFILE: Final = "ir-canonical-identity-v1"
+
+# Exact SCA-G015 acceptance criteria (objective-heap wording).  Kept as
+# module constants so prove_scaev015cid() and tests can cover them by id.
+SCAEV015CID_CRITERIA: Final[tuple[str, ...]] = (
+    "Strict DAG-JSON artifacts use lowercase base32 CIDv1/dag-json/sha2-256",
+    "logic IR uses its separately declared domain-separated raw-codec profile",
+    "decoded multihash equals the SHA-256 digest of the exact retained "
+    "canonical bytes",
+    "profile differences among cid_utils, ir_core.identity, ipld_cid, and "
+    "profile_g remain explicit contradictions",
+    "unavailable multiformats support fails closed and no fallback digest "
+    "is labeled CID",
+)
 
 CID_VERSION: Final = 1
 MULTIBASE_BASE32: Final = "base32"
@@ -1242,6 +1274,354 @@ def profiles_are_interchangeable(left: ContentIdentity, right: ContentIdentity) 
     )
 
 
+def prove_scaev015cid(
+    *,
+    payload: Mapping[str, Any] | None = None,
+    ir_payload: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Prove SCA-G015 / SCAEV015CID acceptance criteria against live providers.
+
+    Returns a typed evidence receipt (not a completion gate authority) that
+    records each SCA-G015 acceptance criterion as covered or failed.  Provider
+    imports remain lazy; CID-required paths fail closed when multiformats is
+    unavailable and never label a digest as a CID.
+    """
+
+    sample = dict(payload or CONFORMANCE_AGREEMENT_PAYLOAD)
+    ir_sample = dict(ir_payload or {"title": "scaev015cid-proof", "steps": ["a"]})
+    criteria: list[dict[str, Any]] = []
+    reason_codes: list[str] = []
+    model_calls = 0
+    blockers: list[dict[str, Any]] = []
+
+    def _record(
+        criterion: str,
+        *,
+        covered: bool,
+        details: Mapping[str, Any] | None = None,
+        reason_code: str = "",
+    ) -> None:
+        entry: dict[str, Any] = {
+            "criterion": criterion,
+            "covered": covered,
+        }
+        if reason_code:
+            entry["reason_code"] = reason_code
+        if details:
+            entry["details"] = dict(details)
+        criteria.append(entry)
+        if covered:
+            reason_codes.append(f"covered:{reason_code or 'ok'}")
+        else:
+            reason_codes.append(f"uncovered:{reason_code or 'failed'}")
+
+    # Criterion 1 — strict DAG-JSON lowercase base32 CIDv1/dag-json/sha2-256.
+    strict_details: dict[str, Any] = {}
+    try:
+        artifact = identify_strict_artifact(sample)
+        strict_details = {
+            "profile": artifact.profile,
+            "cid_version": artifact.cid_version,
+            "multibase": artifact.multibase,
+            "multicodec": artifact.multicodec,
+            "multihash": artifact.multihash,
+            "cid": artifact.cid,
+            "digest": artifact.digest,
+            "validated": artifact.validated,
+        }
+        strict_ok = (
+            artifact.profile == STRICT_ARTIFACT_PROFILE
+            and artifact.cid_version == CID_VERSION
+            and artifact.multibase == MULTIBASE_BASE32
+            and artifact.multicodec == MULTICODEC_DAG_JSON
+            and artifact.multihash == MULTIHASH_SHA2_256
+            and artifact.cid == artifact.cid.lower()
+            and artifact.cid.startswith("b")
+            and artifact.validated
+            and not is_digest_shaped(artifact.cid)
+            and artifact.digest == sha256_digest_label(artifact.canonical_bytes)
+        )
+        _record(
+            SCAEV015CID_CRITERIA[0],
+            covered=strict_ok,
+            details=strict_details,
+            reason_code="strict_dag_json_profile",
+        )
+    except ContentIdentityError as exc:
+        blockers.append(
+            {
+                "kind": type(exc).__name__,
+                "reason_code": getattr(exc, "reason_code", "content_identity_error"),
+                "message": str(exc),
+            }
+        )
+        _record(
+            SCAEV015CID_CRITERIA[0],
+            covered=False,
+            details={"error": str(exc)},
+            reason_code=getattr(exc, "reason_code", "strict_artifact_failed"),
+        )
+        artifact = None  # type: ignore[assignment]
+
+    # Criterion 2 — domain-separated logic IR raw-codec profile.
+    try:
+        ir = identify_logic_ir(
+            ir_sample,
+            domain="intent",
+            schema_version="1.0.0",
+        )
+        ir_alt = identify_logic_ir(
+            ir_sample,
+            domain="policy",
+            schema_version="1.0.0",
+        )
+        ir_ok = (
+            ir.profile == LOGIC_IR_PROFILE
+            and ir.multicodec == MULTICODEC_RAW
+            and ir.multihash == MULTIHASH_SHA2_256
+            and ir.multibase == MULTIBASE_BASE32
+            and ir.cid_version == CID_VERSION
+            and ir.domain == "intent"
+            and ir.schema_version == "1.0.0"
+            and ir.validated
+            and ir.canonical_bytes != ir_alt.canonical_bytes
+            and ir.cid != ir_alt.cid
+            and b'"identity_profile":"ir-canonical-identity-v1"' in ir.canonical_bytes
+        )
+        _record(
+            SCAEV015CID_CRITERIA[1],
+            covered=ir_ok,
+            details={
+                "profile": ir.profile,
+                "multicodec": ir.multicodec,
+                "multihash": ir.multihash,
+                "domain": ir.domain,
+                "schema_version": ir.schema_version,
+                "domain_separated": ir.cid != ir_alt.cid,
+            },
+            reason_code="logic_ir_raw_codec_domain_separated",
+        )
+    except ContentIdentityError as exc:
+        blockers.append(
+            {
+                "kind": type(exc).__name__,
+                "reason_code": getattr(exc, "reason_code", "content_identity_error"),
+                "message": str(exc),
+            }
+        )
+        _record(
+            SCAEV015CID_CRITERIA[1],
+            covered=False,
+            details={"error": str(exc)},
+            reason_code=getattr(exc, "reason_code", "logic_ir_failed"),
+        )
+        ir = None  # type: ignore[assignment]
+
+    # Criterion 3 — decoded multihash equals SHA-256 of retained bytes.
+    multihash_ok = False
+    multihash_details: dict[str, Any] = {}
+    if artifact is not None:
+        try:
+            verified = decode_and_verify_cid(
+                artifact.cid,
+                artifact.canonical_bytes,
+                expected_codec=artifact.multicodec,
+                expected_profile=artifact.profile,
+            )
+            expected_hex = hashlib.sha256(artifact.canonical_bytes).hexdigest()
+            multihash_ok = (
+                verified.get("validated") is True
+                and verified.get("raw_digest") == expected_hex
+                and verified.get("digest") == artifact.digest
+            )
+            multihash_details = {
+                "raw_digest": verified.get("raw_digest"),
+                "expected_sha256": expected_hex,
+                "digest": verified.get("digest"),
+                "validated": verified.get("validated"),
+            }
+            if ir is not None:
+                ir_verified = decode_and_verify_cid(
+                    ir.cid,
+                    ir.canonical_bytes,
+                    expected_codec=ir.multicodec,
+                    expected_profile=ir.profile,
+                )
+                ir_expected = hashlib.sha256(ir.canonical_bytes).hexdigest()
+                multihash_ok = multihash_ok and (
+                    ir_verified.get("raw_digest") == ir_expected
+                )
+                multihash_details["logic_ir_raw_digest"] = ir_verified.get(
+                    "raw_digest"
+                )
+        except ContentIdentityError as exc:
+            blockers.append(
+                {
+                    "kind": type(exc).__name__,
+                    "reason_code": getattr(
+                        exc, "reason_code", "content_identity_error"
+                    ),
+                    "message": str(exc),
+                }
+            )
+            multihash_details["error"] = str(exc)
+    _record(
+        SCAEV015CID_CRITERIA[2],
+        covered=multihash_ok,
+        details=multihash_details,
+        reason_code="decoded_multihash_matches_retained_bytes",
+    )
+
+    # Criterion 4 — profile differences among the four providers are typed.
+    contradiction_kinds: set[str] = set()
+    try:
+        contradictions = compare_provider_identities(
+            sample,
+            domain="intent",
+            schema_version="1.0.0",
+            providers=(
+                PROVIDER_CID_UTILS,
+                PROVIDER_IPLD_CID,
+                PROVIDER_PROFILE_G,
+                PROVIDER_IR_CORE_IDENTITY,
+            ),
+        )
+        contradiction_kinds = {item.kind.value for item in contradictions}
+        providers_seen = {
+            item.left_provider for item in contradictions
+        } | {item.right_provider for item in contradictions}
+        # IR vs DAG-JSON must surface codec/profile mismatches; unicode
+        # producers may additionally diverge on canonical bytes.
+        profile_ok = (
+            ProfileContradictionKind.CODEC_MISMATCH.value in contradiction_kinds
+            or ProfileContradictionKind.PROFILE_MISMATCH.value in contradiction_kinds
+            or ProfileContradictionKind.CANONICAL_BYTES_MISMATCH.value
+            in contradiction_kinds
+        ) and PROVIDER_IR_CORE_IDENTITY in providers_seen
+        # Cross-profile equality is never authorized from matching digests.
+        if artifact is not None and ir is not None:
+            profile_ok = profile_ok and not profiles_are_interchangeable(
+                artifact, ir
+            )
+        _record(
+            SCAEV015CID_CRITERIA[3],
+            covered=profile_ok,
+            details={
+                "contradiction_kinds": sorted(contradiction_kinds),
+                "providers_seen": sorted(providers_seen),
+                "contradiction_count": len(contradictions),
+            },
+            reason_code="provider_profile_contradictions_typed",
+        )
+    except ContentIdentityError as exc:
+        blockers.append(
+            {
+                "kind": type(exc).__name__,
+                "reason_code": getattr(exc, "reason_code", "content_identity_error"),
+                "message": str(exc),
+            }
+        )
+        _record(
+            SCAEV015CID_CRITERIA[3],
+            covered=False,
+            details={"error": str(exc)},
+            reason_code=getattr(exc, "reason_code", "provider_compare_failed"),
+        )
+
+    # Criterion 5 — unavailable multiformats fails closed; digest ≠ CID.
+    # When multiformats *is* available we still prove the policy constants and
+    # that digests are never accepted as CIDs by decode_and_verify_cid.
+    fail_closed_ok = False
+    fail_closed_details: dict[str, Any] = {
+        "digest_labeled_as_cid_allowed": False,
+        "cid_required_operations_fail_closed": True,
+        "multiformats_available": multiformats_available(),
+    }
+    try:
+        digest = sha256_digest_label(b"scaev015cid-not-a-cid")
+        fail_closed_details["digest_shaped"] = is_digest_shaped(digest)
+        try:
+            decode_and_verify_cid(
+                digest,
+                b"scaev015cid-not-a-cid",
+                expected_codec=MULTICODEC_RAW,
+            )
+            fail_closed_details["digest_as_cid_rejected"] = False
+        except CidValidationError as exc:
+            fail_closed_details["digest_as_cid_rejected"] = True
+            fail_closed_details["digest_reject_reason"] = exc.reason_code
+        fail_closed_ok = (
+            fail_closed_details["digest_shaped"] is True
+            and fail_closed_details["digest_as_cid_rejected"] is True
+            and not is_digest_shaped(
+                (artifact.cid if artifact is not None else "bafk")
+            )
+        )
+        # Policy surface must remain fail-closed in the probe receipt.
+        probe = content_identity_probe()
+        fail_closed_ok = fail_closed_ok and (
+            probe.get("digest_labeled_as_cid_allowed") is False
+            and probe.get("evidence_id") == SCAEV015CID
+        )
+        fail_closed_details["probe_evidence_id"] = probe.get("evidence_id")
+    except ContentIdentityError as exc:
+        fail_closed_details["error"] = str(exc)
+        fail_closed_ok = False
+    _record(
+        SCAEV015CID_CRITERIA[4],
+        covered=fail_closed_ok,
+        details=fail_closed_details,
+        reason_code="multiformats_fail_closed_no_digest_cid",
+    )
+
+    covered_count = sum(1 for item in criteria if item["covered"])
+    passed = covered_count == len(SCAEV015CID_CRITERIA) and model_calls == 0
+    if passed:
+        reason_codes.append("scaev015cid_proved")
+    else:
+        reason_codes.append("scaev015cid_incomplete")
+
+    return {
+        "schema": CONTENT_IDENTITY_EVIDENCE_SCHEMA,
+        "schema_version": CONTENT_IDENTITY_EVIDENCE_SCHEMA_VERSION,
+        "evidence_id": SCAEV015CID,
+        "requirement_ids": [SCAEV015CID],
+        "goal_id": CONTENT_IDENTITY_GOAL_ID,
+        "interface": CONTENT_IDENTITY_INTERFACE,
+        "bridge_interface": CONTENT_IDENTITY_BRIDGE_INTERFACE,
+        "passed": passed,
+        "model_calls": model_calls,
+        "covered_criterion_count": covered_count,
+        "required_criterion_count": len(SCAEV015CID_CRITERIA),
+        "criteria": criteria,
+        "blockers": blockers,
+        "artifact_profile": {
+            "canonicalization": STRICT_ARTIFACT_PROFILE,
+            "cid_version": CID_VERSION,
+            "multibase": MULTIBASE_BASE32,
+            "multicodec": MULTICODEC_DAG_JSON,
+            "multihash": MULTIHASH_SHA2_256,
+        },
+        "logic_ir_profile": {
+            "canonicalization": LOGIC_IR_PROFILE,
+            "cid_version": CID_VERSION,
+            "multibase": MULTIBASE_BASE32,
+            "multicodec": MULTICODEC_RAW,
+            "multihash": MULTIHASH_SHA2_256,
+        },
+        "policies": {
+            "cross_profile_equality_allowed": False,
+            "digest_labeled_as_cid_allowed": False,
+            "missing_or_incompatible_provider": "typed_blocker",
+            "decoded_multihash_must_match_canonical_bytes": True,
+            "cid_required_operations_fail_closed": True,
+            "package_root_fallback_can_satisfy_exact_binding": False,
+        },
+        "reason_codes": list(dict.fromkeys(reason_codes)),
+        "task_ids": ["SCA-015", "SCA-220", "SCA-628"],
+    }
+
+
 def content_identity_probe() -> dict[str, Any]:
     """Return a capability probe for analyzer-health and diagnostics."""
 
@@ -1279,6 +1659,9 @@ def content_identity_probe() -> dict[str, Any]:
         "schema_version": CONTENT_IDENTITY_SCHEMA_VERSION,
         "interface": CONTENT_IDENTITY_INTERFACE,
         "bridge_interface": CONTENT_IDENTITY_BRIDGE_INTERFACE,
+        "evidence_id": SCAEV015CID,
+        "requirement_ids": [SCAEV015CID],
+        "goal_id": CONTENT_IDENTITY_GOAL_ID,
         "artifact_profile": STRICT_ARTIFACT_PROFILE,
         "logic_ir_profile": LOGIC_IR_PROFILE,
         "providers": providers,
@@ -2316,7 +2699,11 @@ def build_datasets_content_identity_capability(
         "capability_id": DATASETS_CONTENT_IDENTITY_CAPABILITY_ID,
         "interface": CONTENT_IDENTITY_BRIDGE_INTERFACE,
         "content_identity_interface": CONTENT_IDENTITY_INTERFACE,
+        "evidence_id": SCAEV015CID,
+        "requirement_ids": [SCAEV015CID],
+        "goal_id": CONTENT_IDENTITY_GOAL_ID,
         "task_id": "SCA-220",
+        "task_ids": ["SCA-015", "SCA-220", "SCA-628"],
         "passed": conf.passed,
         "model_calls": conf.model_calls,
         "artifact_profile": {
@@ -2407,6 +2794,10 @@ __all__ = [
     "CID_VERSION",
     "CONFORMANCE_AGREEMENT_PAYLOAD",
     "CONTENT_IDENTITY_BRIDGE_INTERFACE",
+    "CONTENT_IDENTITY_EVIDENCE",
+    "CONTENT_IDENTITY_EVIDENCE_SCHEMA",
+    "CONTENT_IDENTITY_EVIDENCE_SCHEMA_VERSION",
+    "CONTENT_IDENTITY_GOAL_ID",
     "CONTENT_IDENTITY_INTERFACE",
     "CONTENT_IDENTITY_SCHEMA",
     "CONTENT_IDENTITY_SCHEMA_VERSION",
@@ -2427,6 +2818,8 @@ __all__ = [
     "PROVIDER_MULTIFORMATS_CID",
     "PROVIDER_MULTIFORMATS_MULTIHASH",
     "PROVIDER_PROFILE_G",
+    "SCAEV015CID",
+    "SCAEV015CID_CRITERIA",
     "STRICT_ARTIFACT_PROFILE",
     "CidValidationError",
     "ConformanceVectorReceipt",
@@ -2458,6 +2851,7 @@ __all__ = [
     "multiformats_available",
     "profiles_are_interchangeable",
     "prove_content_identity_conformance",
+    "prove_scaev015cid",
     "provider_available",
     "require_multiformats",
     "require_provider",
