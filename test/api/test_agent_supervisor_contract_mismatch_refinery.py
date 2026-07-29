@@ -417,8 +417,10 @@ def test_empty_generated_board_is_valid_and_non_authoritative() -> None:
     assert "Generated evidence authoritative: false" in board
 
 
+@pytest.mark.parametrize("snapshot_key", ["snapshot_id", "snapshot_root"])
 def test_cli_derives_snapshot_from_empty_content_addressed_findings(
     tmp_path: Path,
+    snapshot_key: str,
 ) -> None:
     findings = tmp_path / "findings.json"
     output = tmp_path / "generated.todo.md"
@@ -427,7 +429,7 @@ def test_cli_derives_snapshot_from_empty_content_addressed_findings(
             {
                 "schema": "ipfs_accelerate_py/agent-supervisor/"
                 "contract-mismatch-analysis@1",
-                "snapshot_id": "sca-repository-snapshot:sha256:current",
+                snapshot_key: "sca-repository-snapshot:sha256:current",
                 "findings": [],
             }
         ),
