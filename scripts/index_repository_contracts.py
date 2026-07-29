@@ -19,8 +19,12 @@ the TypeScript compiler identity changes.
 from __future__ import annotations
 
 import argparse
+import fcntl
+import hashlib
 import json
 import os
+import re
+import shutil
 import sys
 import tempfile
 from pathlib import Path
@@ -59,6 +63,7 @@ from ipfs_accelerate_py.agent_supervisor.analysis.repository_indexer import (  #
 )
 from ipfs_accelerate_py.agent_supervisor.analysis.repository_snapshot import (  # noqa: E402
     RepositorySnapshotError,
+    build_repository_snapshot,
     default_scope_policy_path,
     load_scope_policy,
 )
@@ -392,13 +397,240 @@ def resolve_handoff_root(
 ) -> Path | None:
     """Locate the SCA data root that owns baseline/ and analyzer_health/."""
 
-    if handoff_root is not None:
-        return Path(handoff_root).expanduser().resolve()
     if not publish_handoff:
         return None
+    if handoff_root is not None:
+        return Path(handoff_root).expanduser().resolve()
     if output_root.name == "baseline":
         return output_root.parent.resolve()
     return output_root.resolve()
+
+
+def validate_authoritative_publication_options(
+    args: argparse.Namespace,
+) -> None:
+    """Reject analysis-only or weakened modes before authoritative publication."""
+
+    if not bool(args.publish_handoff):
+        return
+
+    problems: list[str] = []
+    if not bool(args.require_healthy):
+        problems.append("--require-healthy is mandatory")
+    if bool(args.shadow):
+        problems.append("--shadow is analysis-only")
+    if bool(args.skip_extraction):
+        problems.append("--skip-extraction cannot publish a complete handoff")
+    if int(args.max_parser_failures) > 10:
+        problems.append("--max-parser-failures cannot exceed 10")
+    if float(args.max_parser_failure_ratio) > 0.01:
+        problems.append("--max-parser-failure-ratio cannot exceed 0.01")
+    if not bool(args.invalidate_compiler_unavailable):
+        problems.append("--keep-compiler-unavailable is forbidden")
+    if problems:
+        raise ValueError(
+            "authoritative handoff mode rejected: " + "; ".join(problems)
+        )
+
+
+def _fsync_directory(path: Path) -> None:
+    descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def _ensure_generation_link(path: Path, target: str) -> None:
+    """Install a stable canonical symlink without replacing regular files."""
+
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    if os.path.lexists(path):
+        if not path.is_symlink() or os.readlink(path) != target:
+            raise RepositoryIndexerError(
+                f"authoritative path is not the expected generation link: {path}"
+            )
+        return
+    temporary = path.parent / (
+        f".{path.name}.link-{os.getpid()}-{hashlib.sha256(target.encode()).hexdigest()[:8]}"
+    )
+    try:
+        os.symlink(target, temporary)
+        os.replace(temporary, path)
+        _fsync_directory(path.parent)
+    finally:
+        try:
+            temporary.unlink()
+        except FileNotFoundError:
+            pass
+
+
+def _publish_immutable_generation(
+    *,
+    root: Path,
+    generation_name: str,
+    repository_index_bytes: bytes,
+    health_bytes: bytes,
+    handoff_bytes: bytes,
+) -> None:
+    """Publish one immutable generation, then atomically swap one pointer."""
+
+    if not re.fullmatch(r"[a-z0-9][a-z0-9._-]{15,127}", generation_name):
+        raise RepositoryIndexerError("invalid authoritative generation name")
+
+    root.mkdir(parents=True, exist_ok=True, mode=0o700)
+    generations = root / "generations"
+    generations.mkdir(parents=True, exist_ok=True, mode=0o700)
+    lock_path = root / ".authoritative-handoff.lock"
+    expected = {
+        Path("baseline/repository-index.json"): repository_index_bytes,
+        Path("baseline/current.json"): repository_index_bytes,
+        Path("baseline/handoff.json"): handoff_bytes,
+        Path("analyzer_health/report.json"): health_bytes,
+    }
+
+    with lock_path.open("a+b") as lock_stream:
+        fcntl.flock(lock_stream.fileno(), fcntl.LOCK_EX)
+        staging = Path(
+            tempfile.mkdtemp(prefix=".generation-", dir=generations)
+        )
+        try:
+            for relative, payload in expected.items():
+                _atomic_bytes(staging / relative, payload)
+
+            final_generation = generations / generation_name
+            if final_generation.exists():
+                for relative, payload in expected.items():
+                    try:
+                        existing = (final_generation / relative).read_bytes()
+                    except OSError as exc:
+                        raise RepositoryIndexerError(
+                            "existing authoritative generation is incomplete"
+                        ) from exc
+                    if existing != payload:
+                        raise RepositoryIndexerError(
+                            "authoritative generation identity collision"
+                        )
+                shutil.rmtree(staging)
+            else:
+                os.replace(staging, final_generation)
+                _fsync_directory(generations)
+
+            # These links never change; only `authoritative` is swapped.
+            _ensure_generation_link(
+                root / "baseline" / "repository-index.json",
+                "../authoritative/baseline/repository-index.json",
+            )
+            _ensure_generation_link(
+                root / "baseline" / "current.json",
+                "../authoritative/baseline/current.json",
+            )
+            _ensure_generation_link(
+                root / "baseline" / "handoff.json",
+                "../authoritative/baseline/handoff.json",
+            )
+            _ensure_generation_link(
+                root / "analyzer_health" / "report.json",
+                "../authoritative/analyzer_health/report.json",
+            )
+
+            pointer = root / "authoritative"
+            if os.path.lexists(pointer) and not pointer.is_symlink():
+                raise RepositoryIndexerError(
+                    "authoritative generation pointer is not a symlink"
+                )
+            pointer_target = f"generations/{generation_name}"
+            temporary_pointer = root / (
+                f".authoritative-{os.getpid()}-{generation_name[:12]}"
+            )
+            try:
+                os.symlink(pointer_target, temporary_pointer)
+                os.replace(temporary_pointer, pointer)
+                _fsync_directory(root)
+            finally:
+                try:
+                    temporary_pointer.unlink()
+                except FileNotFoundError:
+                    pass
+        finally:
+            if staging.exists():
+                shutil.rmtree(staging, ignore_errors=True)
+            fcntl.flock(lock_stream.fileno(), fcntl.LOCK_UN)
+
+
+def _validated_publication_evidence(
+    evidence: Mapping[str, Any] | None,
+    *,
+    result: RepositoryIndex,
+) -> dict[str, Any]:
+    """Validate complete deterministic extraction and snapshot freshness."""
+
+    if not isinstance(evidence, Mapping):
+        raise RepositoryIndexerError(
+            "authoritative handoff requires a publication evidence receipt"
+        )
+    receipt = dict(evidence)
+    snapshot_id = str(receipt.get("snapshot_id") or "")
+    fresh_snapshot_id = str(receipt.get("fresh_snapshot_id") or "")
+    if snapshot_id != result.snapshot.snapshot_id:
+        raise RepositoryIndexerError(
+            "publication evidence snapshot does not match repository index"
+        )
+    if fresh_snapshot_id != result.snapshot.snapshot_id:
+        raise RepositoryIndexerError(
+            "repository changed after the indexed snapshot was built"
+        )
+    if not str(receipt.get("baseline_result_id") or ""):
+        raise RepositoryIndexerError(
+            "publication evidence is missing the baseline result identity"
+        )
+    if not str(receipt.get("coverage_root") or ""):
+        raise RepositoryIndexerError(
+            "publication evidence is missing the extracted coverage root"
+        )
+
+    stages = receipt.get("stages")
+    if not isinstance(stages, list):
+        raise RepositoryIndexerError(
+            "publication evidence is missing baseline stage receipts"
+        )
+    stage_by_name = {
+        str(item.get("name") or ""): item
+        for item in stages
+        if isinstance(item, Mapping)
+    }
+    for required in ("repository_index", "extraction", "catalog", "publish"):
+        stage = stage_by_name.get(required)
+        if (
+            stage is None
+            or str(stage.get("completeness") or "") != "complete"
+            or any(
+                str(code).startswith("withheld")
+                or str(code).endswith("_unhealthy")
+                for code in stage.get("reason_codes") or ()
+            )
+        ):
+            raise RepositoryIndexerError(
+                f"authoritative handoff requires complete {required} stage"
+            )
+
+    execution = receipt.get("execution")
+    if not isinstance(execution, Mapping):
+        raise RepositoryIndexerError(
+            "publication evidence is missing deterministic execution receipt"
+        )
+    if any(
+        int(execution.get(key, -1)) != 0
+        for key in ("llm_call_count", "provider_call_count", "model_call_count")
+    ):
+        raise RepositoryIndexerError(
+            "authoritative handoff requires zero model/provider/LLM calls"
+        )
+    if str(execution.get("mode") or "") != "deterministic-symbolic":
+        raise RepositoryIndexerError(
+            "authoritative handoff requires deterministic-symbolic execution"
+        )
+    return receipt
 
 
 def publish_authoritative_handoff(
@@ -412,6 +644,7 @@ def publish_authoritative_handoff(
     provider_call_count: int = 0,
     model_call_count: int = 0,
     invalidation_receipt: Mapping[str, Any] | None = None,
+    publication_evidence: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Atomically publish index + current + analyzer-health bound to one root.
 
@@ -424,17 +657,23 @@ def publish_authoritative_handoff(
         raise ValueError(
             "authoritative handoff forbids non-zero LLM/provider/model calls"
         )
+    evidence = _validated_publication_evidence(
+        publication_evidence,
+        result=result,
+    )
 
-    root = Path(handoff_root)
-    baseline_dir = root / "baseline"
-    health_dir = root / "analyzer_health"
-    baseline_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
-    health_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+    if result.health.status is not AnalyzerHealthStatus.HEALTHY:
+        raise RepositoryIndexerError(
+            "authoritative handoff requires healthy analyzer status"
+        )
+    if not result.safe_for_completion_reasoning:
+        raise RepositoryIndexerError(
+            "authoritative handoff requires safe_for_completion_reasoning"
+        )
 
-    # Publish health before the mutable current pointer. If publication is
-    # interrupted, readers continue to observe the prior complete handoff.
+    rows = [row.to_dict() for row in result.rows]
     health_report = assess_polyglot_ast_health(
-        [row.to_dict() for row in result.rows],
+        rows,
         provider=provider,
         repair_authority=False,
         run_canaries=True,
@@ -443,23 +682,10 @@ def publish_authoritative_handoff(
             Path(result.snapshot.repository_root).parent,
         ],
     )
-    health_path = health_dir / "report.json"
-    health_identity = write_polyglot_ast_health_report(health_report, health_path)
-
-    index_payload = result.to_dict()
-    index_bytes = (
-        json.dumps(
-            index_payload,
-            ensure_ascii=False,
-            sort_keys=True,
-            separators=(",", ":"),
-            allow_nan=False,
-        ).encode("utf-8")
-        + b"\n"
-    )
-    repository_index_path = baseline_dir / "repository-index.json"
-    current_path = baseline_dir / "current.json"
-    _atomic_bytes(repository_index_path, index_bytes)
+    if not health_report.safe_for_completion_reasoning:
+        raise RepositoryIndexerError(
+            "authoritative handoff requires healthy polyglot AST canaries"
+        )
 
     # Prefer the indexer's exact AnalyzerHealthReport for completion gates while
     # still exposing the polyglot receipt on disk for SCA-166 consumers.
@@ -494,19 +720,24 @@ def publish_authoritative_handoff(
         in f"{row.parser_reason} {row.reason_code}".casefold()
     ]
 
+    root = Path(handoff_root)
+    baseline_dir = root / "baseline"
+    health_dir = root / "analyzer_health"
+    repository_index_path = baseline_dir / "repository-index.json"
+    current_path = baseline_dir / "current.json"
+    health_path = health_dir / "report.json"
+
     handoff = {
         "schema": HANDOFF_SCHEMA,
         "evidence_id": HANDOFF_EVIDENCE,
         "index_id": result.index_id,
         "snapshot_id": result.snapshot.snapshot_id,
         "ast_index_id": result.ast_index_id,
-        "coverage_root": result.snapshot.snapshot_id,
+        "coverage_root": str(evidence["coverage_root"]),
         "index_root": result.index_id,
-        "health_root": (
-            health_identity.get("cid") or health_identity.get("digest", "")
-        ),
-        "polyglot_health_digest": health_identity.get("digest", ""),
-        "polyglot_health_cid": health_identity.get("cid", ""),
+        "health_root": "",
+        "polyglot_health_digest": "",
+        "polyglot_health_cid": "",
         "parser_identity": getattr(
             result, "parser_identity", ""
         )
@@ -543,25 +774,83 @@ def publish_authoritative_handoff(
         "provider_call_count": 0,
         "model_call_count": 0,
         "invalidation": dict(invalidation_receipt or {}),
+        "publication_evidence": evidence,
         "artifacts": {
-            "repository_index": str(repository_index_path),
-            "current": str(current_path),
-            "analyzer_health_report": str(health_path),
+            "repository_index": "baseline/repository-index.json",
+            "current": "baseline/current.json",
+            "analyzer_health_report": "analyzer_health/report.json",
         },
         "head_commit_id": result.snapshot.head_commit_id,
         "scope_id": result.snapshot.scope_id,
         "scope_policy_id": result.snapshot.scope_policy_id,
     }
     if untyped:
-        handoff["roots_agree"] = False
-        handoff["safe_for_completion_reasoning"] = False
+        raise RepositoryIndexerError(
+            "authoritative handoff contains untyped parser failures"
+        )
     if compiler_unavailable_remaining:
-        handoff["safe_for_completion_reasoning"] = False
+        raise RepositoryIndexerError(
+            "authoritative handoff retains compiler-unavailable rows"
+        )
 
-    # The mutable current pointer is the commit point for this publication.
-    _atomic_bytes(current_path, index_bytes)
+    index_payload = result.to_dict()
+    index_bytes = (
+        json.dumps(
+            index_payload,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        ).encode("utf-8")
+        + b"\n"
+    )
 
-    # Cross-check that the three durable roots bind the same snapshot/index.
+    # Build and validate the complete handoff away from authoritative paths.
+    with tempfile.TemporaryDirectory(prefix="sca-handoff-") as staging_name:
+        staged_health_path = Path(staging_name) / "report.json"
+        health_identity = write_polyglot_ast_health_report(
+            health_report,
+            staged_health_path,
+        )
+        health_bytes = staged_health_path.read_bytes()
+        staged_health = json.loads(health_bytes)
+        if not isinstance(staged_health, Mapping):
+            raise RepositoryIndexerError(
+                "staged analyzer health report is not a JSON object"
+            )
+
+        handoff["health_root"] = (
+            health_identity.get("cid") or health_identity.get("digest", "")
+        )
+        handoff["polyglot_health_digest"] = health_identity.get("digest", "")
+        handoff["polyglot_health_cid"] = health_identity.get("cid", "")
+        generation_name = "sha256-" + hashlib.sha256(
+            index_bytes + b"\0" + health_bytes
+        ).hexdigest()
+        handoff["generation"] = generation_name
+        handoff["published"] = True
+        handoff_bytes = (
+            json.dumps(
+                handoff,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+                allow_nan=False,
+            ).encode("utf-8")
+            + b"\n"
+        )
+
+    # All files live beneath an immutable generation. One symlink swap is the
+    # only publication commit point, so crashes expose either old or new state.
+    _publish_immutable_generation(
+        root=root,
+        generation_name=generation_name,
+        repository_index_bytes=index_bytes,
+        health_bytes=health_bytes,
+        handoff_bytes=handoff_bytes,
+    )
+
+    # Cross-check that the durable roots still bind the exact staged payloads.
     reloaded_index = _read_json_object(repository_index_path)
     reloaded_current = _read_json_object(current_path)
     reloaded_health = _read_json_object(health_path)
@@ -579,16 +868,22 @@ def publish_authoritative_handoff(
         raise RepositoryIndexerError(
             "handoff artifacts failed snapshot/index root agreement"
         )
-    handoff["published"] = True
-    _atomic_json(baseline_dir / "handoff.json", handoff)
     return handoff
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_arg_parser().parse_args(argv)
-    output_root = Path(args.output_root)
+    requested_output_root = Path(args.output_root)
+    output_root = requested_output_root
     indexer: RepositoryIndexer | None = None
+    publication_staging: tempfile.TemporaryDirectory[str] | None = None
     try:
+        validate_authoritative_publication_options(args)
+        if args.publish_handoff:
+            publication_staging = tempfile.TemporaryDirectory(
+                prefix="sca-authoritative-run-"
+            )
+            output_root = Path(publication_staging.name) / "baseline"
         limits = PolyglotASTLimits(
             max_files=min(args.max_paths, 10_000),
             max_file_bytes=min(
@@ -678,12 +973,40 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
 
         handoff_root = resolve_handoff_root(
-            output_root=output_root,
+            output_root=requested_output_root,
             handoff_root=args.handoff_root,
             publish_handoff=args.publish_handoff,
         )
         handoff: dict[str, Any] | None = None
         if handoff_root is not None:
+            fresh_snapshot = build_repository_snapshot(
+                args.repo_root,
+                scope_config_path=args.scope_config,
+                allow_dirty_analysis=args.allow_dirty,
+                max_paths=args.max_paths,
+                max_file_bytes=args.max_source_bytes,
+                max_total_bytes=args.max_total_snapshot_bytes,
+            )
+            publication_evidence = {
+                "schema": (
+                    "ipfs_accelerate_py/agent-supervisor/"
+                    "sca-authoritative-publication-evidence@1"
+                ),
+                "snapshot_id": baseline.snapshot_id,
+                "fresh_snapshot_id": fresh_snapshot.snapshot_id,
+                "baseline_result_id": baseline.result_id,
+                "coverage_root": str(
+                    baseline.findings.get("coverage_id") or ""
+                ),
+                "stages": [stage.to_dict() for stage in baseline.stages],
+                "execution": {
+                    "mode": "deterministic-symbolic",
+                    "llm_call_count": baseline.llm_call_count,
+                    "provider_call_count": 0,
+                    "model_call_count": 0,
+                    "model_invocation_enabled": False,
+                },
+            }
             handoff = publish_authoritative_handoff(
                 result,
                 handoff_root=handoff_root,
@@ -692,6 +1015,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 typescript_version=typescript_version,
                 llm_call_count=int(getattr(baseline, "llm_call_count", 0) or 0),
                 invalidation_receipt=invalidation_receipt,
+                publication_evidence=publication_evidence,
             )
 
         summary = {
@@ -778,6 +1102,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     finally:
         if indexer is not None:
             indexer.close()
+        if publication_staging is not None:
+            publication_staging.cleanup()
 
 
 if __name__ == "__main__":

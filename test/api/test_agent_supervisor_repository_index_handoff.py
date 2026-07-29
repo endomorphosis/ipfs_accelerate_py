@@ -34,6 +34,7 @@ from ipfs_accelerate_py.agent_supervisor.analysis.polyglot_ast_provider import (
 from ipfs_accelerate_py.agent_supervisor.analysis.repository_indexer import (
     ParserStatus,
     RepositoryIndexer,
+    RepositoryIndexerError,
 )
 from ipfs_accelerate_py.agent_supervisor.analysis.repository_snapshot import (
     CoverageDisposition,
@@ -213,6 +214,53 @@ def _assert_eligible_paths_typed(index: Mapping[str, Any]) -> None:
             assert reason.strip(), f"untyped failure at {row.get('path')}"
 
 
+def _publication_evidence(result) -> dict[str, Any]:
+    return {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "sca-authoritative-publication-evidence@1"
+        ),
+        "snapshot_id": result.snapshot.snapshot_id,
+        "fresh_snapshot_id": result.snapshot.snapshot_id,
+        "baseline_result_id": "fixture-baseline-result",
+        "coverage_root": "fixture-coverage-root",
+        "stages": [
+            {
+                "name": name,
+                "completeness": "complete",
+                "reason_codes": [],
+                "root_id": f"fixture-{name}",
+            }
+            for name in ("repository_index", "extraction", "catalog", "publish")
+        ],
+        "execution": {
+            "mode": "deterministic-symbolic",
+            "llm_call_count": 0,
+            "provider_call_count": 0,
+            "model_call_count": 0,
+            "model_invocation_enabled": False,
+        },
+    }
+
+
+def _authoritative_provider() -> PolyglotASTProvider:
+    typescript_path = (
+        _SUPERPROJECT_ROOT
+        / "swissknife"
+        / "node_modules"
+        / "typescript"
+        / "lib"
+        / "typescript.js"
+    )
+    if not typescript_path.is_file():
+        pytest.skip("reviewed TypeScript 5.9.3 toolchain is unavailable")
+    return PolyglotASTProvider(
+        PolyglotASTLimits(process_timeout_seconds=5.0),
+        typescript_path=str(typescript_path),
+        expected_typescript_version=DEFAULT_TYPESCRIPT_VERSION,
+    )
+
+
 def test_previous_compiler_unavailable_detection(tmp_path: Path) -> None:
     payload = {
         "schema": "ipfs_accelerate_py/agent-supervisor/sca-repository-index@1",
@@ -355,7 +403,7 @@ def test_publish_authoritative_handoff_binds_roots_and_zero_llm(
     )
     result = indexer.build(snapshot, source_loader=_loader(files))
     handoff_root = tmp_path / "sca"
-    provider = PolyglotASTProvider(PolyglotASTLimits(process_timeout_seconds=5.0))
+    provider = _authoritative_provider()
 
     handoff = publish_authoritative_handoff(
         result,
@@ -366,6 +414,7 @@ def test_publish_authoritative_handoff_binds_roots_and_zero_llm(
         llm_call_count=0,
         provider_call_count=0,
         model_call_count=0,
+        publication_evidence=_publication_evidence(result),
     )
 
     assert handoff["schema"] == HANDOFF_SCHEMA
@@ -376,7 +425,9 @@ def test_publish_authoritative_handoff_binds_roots_and_zero_llm(
     assert handoff["roots_agree"] is True
     assert handoff["index_id"] == result.index_id
     assert handoff["snapshot_id"] == result.snapshot.snapshot_id
+    assert handoff["coverage_root"] == "fixture-coverage-root"
     assert handoff["health_root"] not in {"healthy", "partial", "unhealthy"}
+    assert handoff["generation"].startswith("sha256-")
 
     repository_index = json.loads(
         (handoff_root / "baseline" / "repository-index.json").read_text(
@@ -400,14 +451,15 @@ def test_publish_authoritative_handoff_binds_roots_and_zero_llm(
     assert repository_index["ast_index_id"] == current["ast_index_id"]
     assert health["schema"] == POLYGLOT_AST_HEALTH_SCHEMA
     assert health["evidence_id"] == POLYGLOT_AST_HEALTH_EVIDENCE
-    assert "status" in health
+    assert health["status"] == "healthy"
+    assert health["safe_for_completion_reasoning"] is True
+    assert (handoff_root / "authoritative").is_symlink()
+    assert (
+        handoff_root / "baseline" / "repository-index.json"
+    ).is_symlink()
     _assert_eligible_paths_typed(repository_index)
     assert not handoff["untyped_failure_paths"]
-    assert result.health.status in {
-        AnalyzerHealthStatus.HEALTHY,
-        AnalyzerHealthStatus.PARTIAL,
-        AnalyzerHealthStatus.UNHEALTHY,
-    }
+    assert result.health.status is AnalyzerHealthStatus.HEALTHY
 
 
 def test_failed_health_publication_preserves_current_pointer(
@@ -441,9 +493,10 @@ def test_failed_health_publication_preserves_current_pointer(
         publish_authoritative_handoff(
             result,
             handoff_root=handoff_root,
-            provider=PolyglotASTProvider(),
+            provider=_authoritative_provider(),
             typescript_path=None,
             typescript_version="",
+            publication_evidence=_publication_evidence(result),
         )
 
     assert current_path.read_bytes() == b'{"index_id":"prior"}\n'
@@ -469,6 +522,72 @@ def test_publish_handoff_rejects_nonzero_llm_counts(tmp_path: Path) -> None:
         )
 
 
+def test_unhealthy_handoff_preserves_prior_authority(tmp_path: Path) -> None:
+    files = {"broken.py": b"def broken(\n"}
+    snapshot = _snapshot(
+        tmp_path,
+        [
+            _disposition(
+                "broken.py",
+                CoverageKind.SEMANTIC_AST,
+                files["broken.py"],
+            )
+        ],
+    )
+    result = RepositoryIndexer(
+        tmp_path / "idx",
+        health_thresholds=AnalyzerHealthThresholds(
+            max_parser_failures=0,
+            max_parser_failure_ratio=0.0,
+            max_excluded_file_ratio=1.0,
+        ),
+    ).build(snapshot, source_loader=_loader(files))
+    assert result.health.status is AnalyzerHealthStatus.UNHEALTHY
+
+    handoff_root = tmp_path / "sca"
+    current = handoff_root / "baseline" / "current.json"
+    current.parent.mkdir(parents=True)
+    current.write_bytes(b'{"index_id":"prior"}\n')
+    with pytest.raises(
+        RepositoryIndexerError,
+        match="requires healthy analyzer status",
+    ):
+        publish_authoritative_handoff(
+            result,
+            handoff_root=handoff_root,
+            provider=_authoritative_provider(),
+            typescript_path=None,
+            typescript_version="",
+            publication_evidence=_publication_evidence(result),
+        )
+    assert current.read_bytes() == b'{"index_id":"prior"}\n'
+    assert not (handoff_root / "authoritative").exists()
+
+
+def test_stale_snapshot_evidence_publishes_nothing(tmp_path: Path) -> None:
+    files = {"ok.py": b"X = 1\n"}
+    snapshot = _snapshot(
+        tmp_path,
+        [_disposition("ok.py", CoverageKind.SEMANTIC_AST, files["ok.py"])],
+    )
+    result = RepositoryIndexer(tmp_path / "idx").build(
+        snapshot,
+        source_loader=_loader(files),
+    )
+    evidence = _publication_evidence(result)
+    evidence["fresh_snapshot_id"] = "changed-after-scan"
+    with pytest.raises(RepositoryIndexerError, match="changed after"):
+        publish_authoritative_handoff(
+            result,
+            handoff_root=tmp_path / "sca",
+            provider=_authoritative_provider(),
+            typescript_path=None,
+            typescript_version="",
+            publication_evidence=evidence,
+        )
+    assert not (tmp_path / "sca").exists()
+
+
 def test_resolve_handoff_root_from_baseline_output(tmp_path: Path) -> None:
     baseline = tmp_path / "data" / "baseline"
     baseline.mkdir(parents=True)
@@ -483,10 +602,10 @@ def test_resolve_handoff_root_from_baseline_output(tmp_path: Path) -> None:
         handoff_root=tmp_path / "explicit",
         publish_handoff=False,
     )
-    assert explicit == (tmp_path / "explicit").resolve()
+    assert explicit is None
 
 
-def test_cli_publish_handoff_writes_triple_with_zero_llm(tmp_path: Path) -> None:
+def test_cli_rejects_analysis_only_handoff_publication(tmp_path: Path) -> None:
     repository = tmp_path / "fixture"
     repository.mkdir()
     subprocess.run(["git", "init", "-q", str(repository)], check=True)
@@ -536,35 +655,13 @@ def test_cli_publish_handoff_writes_triple_with_zero_llm(tmp_path: Path) -> None
         check=False,
         timeout=60,
     )
-    assert completed.returncode == 0, completed.stderr
-    summary = json.loads(completed.stdout)
-    assert summary["llm_call_count"] == 0
-    assert summary["provider_call_count"] == 0
-    assert summary["model_call_count"] == 0
-    assert summary["handoff"]["published"] is True
-    assert summary["handoff"]["llm_call_count"] == 0
-
-    repository_index = json.loads(
-        (handoff_root / "baseline" / "repository-index.json").read_text(
-            encoding="utf-8"
-        )
-    )
-    current = json.loads(
-        (handoff_root / "baseline" / "current.json").read_text(encoding="utf-8")
-    )
-    health = json.loads(
-        (handoff_root / "analyzer_health" / "report.json").read_text(
-            encoding="utf-8"
-        )
-    )
-    assert repository_index["index_id"] == current["index_id"] == summary["index_id"]
-    assert (
-        repository_index["snapshot"]["snapshot_id"]
-        == current["snapshot"]["snapshot_id"]
-        == summary["snapshot_id"]
-    )
-    assert health["schema"] == POLYGLOT_AST_HEALTH_SCHEMA
-    _assert_eligible_paths_typed(repository_index)
+    assert completed.returncode == 2
+    assert "authoritative handoff mode rejected" in completed.stderr
+    assert "--require-healthy is mandatory" in completed.stderr
+    assert "--shadow is analysis-only" in completed.stderr
+    assert "--skip-extraction cannot publish" in completed.stderr
+    assert not (handoff_root / "baseline" / "current.json").exists()
+    assert not (handoff_root / "authoritative").exists()
 
 
 def test_published_sca_artifacts_agree_when_present() -> None:
@@ -598,8 +695,6 @@ def test_published_sca_artifacts_agree_when_present() -> None:
     assert repository_index.get("ast_index_id") == current.get("ast_index_id")
     _assert_eligible_paths_typed(repository_index)
 
-    # Compiler-unavailable must not dominate a published current index after the
-    # TypeScript 5.9.3 toolchain is bound.
     eligible = _eligible_rows(repository_index)
     unavailable = [
         row
@@ -607,22 +702,13 @@ def test_published_sca_artifacts_agree_when_present() -> None:
         if "compiler_unavailable"
         in f"{row.get('parser_reason', '')} {row.get('reason_code', '')}".casefold()
     ]
-    # Either the tree is fully recovered or remaining unavailable rows are an
-    # explicit typed blocker reflected in health status.
-    if unavailable:
-        assert health.get("status") in {"partial", "unhealthy", "healthy"}
-        assert health.get("completion_blocker") in {True, False}
-        # Never silently healthy while retaining mass compiler-unavailable.
-        if len(unavailable) > max(10, int(0.01 * max(len(eligible), 1))):
-            assert health.get("status") != "healthy" or health.get(
-                "safe_for_completion_reasoning"
-            ) is False
-    else:
-        # Prefer healthy, but partial/unhealthy typed blockers remain valid.
-        assert health.get("status") in {"healthy", "partial", "unhealthy"}
-
+    assert unavailable == []
+    assert health.get("status") == "healthy"
+    assert health.get("safe_for_completion_reasoning") is True
+    assert health.get("completion_blocker") is False
     assert health.get("schema") == POLYGLOT_AST_HEALTH_SCHEMA
     assert health.get("evidence_id") == POLYGLOT_AST_HEALTH_EVIDENCE
+    assert (_SCA_DATA / "authoritative").is_symlink()
     # Zero LLM/provider/model is a handoff invariant for published artifacts.
     for key in ("llm_call_count", "provider_call_count", "model_call_count"):
         if key in health:
