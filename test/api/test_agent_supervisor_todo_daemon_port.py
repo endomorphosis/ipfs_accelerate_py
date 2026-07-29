@@ -4575,6 +4575,13 @@ def test_validation_rebinds_declared_generated_output_at_fixed_point(
         "--cached",
         "--name-only",
     ).splitlines()
+    _git(repo, "reset", "--quiet", "HEAD", "--", "coverage.json")
+    assert "coverage.json" not in _git(
+        repo,
+        "diff",
+        "--cached",
+        "--name-only",
+    ).splitlines()
 
     commit_result = daemon._commit_worktree_changes_unchecked(
         repo,

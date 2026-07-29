@@ -11696,6 +11696,7 @@ class PortalImplementationDaemon:
         self._run_git(["add", "-A"], cwd=worktree_path)
         self._remove_generated_paths_from_index(worktree_path)
         self._restore_uncommitted_submodule_pointers(worktree_path, submodule_results)
+        self._stage_declared_ignored_outputs(worktree_path, task)
         status = self._run_git(["status", "--porcelain"], cwd=worktree_path).stdout.strip()
         staged_status = self._staged_worktree_status(worktree_path)
         if not staged_status:

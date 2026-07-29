@@ -58,12 +58,34 @@ TEST_PATH = (
     "external/ipfs_accelerate/test/api/"
     "test_agent_supervisor_runtime_contract_mismatch_refinery.py"
 )
-BASELINE_ROOT = Path(
-    "data/agent_supervisor/swissknife_contract_assurance/baseline"
+
+
+def _swissknife_superproject_root() -> Path | None:
+    candidates = (Path.cwd().resolve(), *Path(__file__).resolve().parents)
+    for candidate in candidates:
+        if (
+            candidate / "config/swissknife_symbolic_contract_scope.json"
+        ).is_file():
+            return candidate
+    return None
+
+
+REPOSITORY_ROOT = _swissknife_superproject_root()
+PUBLISHED_ROOT = (
+    REPOSITORY_ROOT or Path("/__missing_swissknife_superproject__")
 )
-GENERATED_BOARD = Path(
-    "data/agent_supervisor/swissknife_contract_assurance/generated/"
+BASELINE_ROOT = (
+    PUBLISHED_ROOT
+    / "data/agent_supervisor/swissknife_contract_assurance/baseline"
+)
+GENERATED_BOARD = (
+    PUBLISHED_ROOT
+    / "data/agent_supervisor/swissknife_contract_assurance/generated/"
     "ipfs_accelerate_contract_repairs.todo.md"
+)
+requires_published_swissknife_evidence = pytest.mark.skipif(
+    REPOSITORY_ROOT is None,
+    reason="published evidence requires a Swissknife superproject checkout",
 )
 
 
@@ -606,6 +628,7 @@ def test_functional_entry_point_matches_class_api() -> None:
     assert via_fn.tasks == via_cls.tasks
 
 
+@requires_published_swissknife_evidence
 def test_baseline_runtime_artifacts_are_seeded_and_non_authoritative() -> None:
     """Committed SCA-178 artifacts must exist and stay non-authoritative."""
 
