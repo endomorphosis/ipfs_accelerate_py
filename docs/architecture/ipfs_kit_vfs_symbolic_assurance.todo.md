@@ -688,7 +688,7 @@ compact references and bounded spans only.
 
 ## VFS-035 Benchmark symbolic-first coverage, reuse, context, and resources
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P1
 - Track: autonomous-refill
