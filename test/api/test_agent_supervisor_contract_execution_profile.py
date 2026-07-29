@@ -24,10 +24,19 @@ POLICY_PATH = (
     / "policy"
     / "analyzer-profile-v1.json"
 )
+RESOURCE_BOUNDS_PATH = (
+    REPOSITORY_ROOT
+    / "data"
+    / "datasets_contract_analysis"
+    / "policy"
+    / "resource-bounds-v1.json"
+)
 
 
 def _profile() -> AnalysisExecutionProfile:
-    return AnalysisExecutionProfile.load(POLICY_PATH)
+    return AnalysisExecutionProfile.load(
+        POLICY_PATH, repository_root=REPOSITORY_ROOT
+    )
 
 
 def _matching_snapshot(
@@ -125,6 +134,54 @@ def test_resource_profile_enforces_every_objective_dimension_and_fails_closed() 
         profile.validate_usage({"unbounded_magic": 1})
     with pytest.raises(ExecutionProfileError, match="non-negative"):
         profile.validate_usage({"files": -1})
+
+
+def test_standalone_resource_evidence_is_closed_and_exactly_bound() -> None:
+    profile = _profile()
+    payload = json.loads(RESOURCE_BOUNDS_PATH.read_text(encoding="utf-8"))
+
+    assert payload == profile.to_dict()["resource_bounds"]
+    assert (
+        profile.validate_resource_bounds_evidence(
+            repository_root=REPOSITORY_ROOT
+        )
+        == profile.resources
+    )
+
+
+@pytest.mark.parametrize(
+    ("mutation", "error"),
+    [
+        ({"max_memory_bytes": 1}, "exactly match"),
+        ({"class": "unreviewed"}, "class must match"),
+        ({"unbounded_fallback": True}, "unsupported fields"),
+    ],
+)
+def test_resource_evidence_drift_is_rejected(
+    tmp_path: Path, mutation: dict[str, object], error: str
+) -> None:
+    profile = _profile()
+    evidence = tmp_path / profile.resource_bounds_evidence
+    evidence.parent.mkdir(parents=True)
+    payload = json.loads(RESOURCE_BOUNDS_PATH.read_text(encoding="utf-8"))
+    payload.update(mutation)
+    evidence.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(ExecutionProfileError, match=error):
+        profile.validate_resource_bounds_evidence(repository_root=tmp_path)
+
+
+def test_resource_evidence_symlink_cannot_escape_repository(tmp_path: Path) -> None:
+    profile = _profile()
+    repository = tmp_path / "repo"
+    evidence = repository / profile.resource_bounds_evidence
+    outside = tmp_path / "outside"
+    evidence.parent.mkdir(parents=True)
+    outside.mkdir()
+    evidence.symlink_to(outside / "resource-bounds.json")
+
+    with pytest.raises(ExecutionProfileError, match="escapes the repository"):
+        profile.validate_resource_bounds_evidence(repository_root=repository)
 
 
 def test_matching_attested_capabilities_are_accepted_without_tool_execution(

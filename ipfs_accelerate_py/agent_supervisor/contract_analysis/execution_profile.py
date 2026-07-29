@@ -599,9 +599,14 @@ class AnalysisExecutionProfile:
             if not str(getattr(self, name)).strip():
                 raise ExecutionProfileError(f"{name} must be non-empty")
         evidence = Path(self.resource_bounds_evidence)
-        if evidence.is_absolute() or ".." in evidence.parts:
+        if (
+            not self.resource_bounds_evidence.strip()
+            or evidence == Path(".")
+            or evidence.is_absolute()
+            or ".." in evidence.parts
+        ):
             raise ExecutionProfileError(
-                "resource_bounds_evidence must be repository-relative"
+                "resource_bounds_evidence must be a repository-relative file"
             )
         tool_names = [tool.name for tool in self.tools]
         lock_paths = [lock.path for lock in self.locks]
@@ -674,8 +679,18 @@ class AnalysisExecutionProfile:
         return cls.from_dict(payload)
 
     @classmethod
-    def load(cls, path: str | os.PathLike[str]) -> "AnalysisExecutionProfile":
-        return cls.from_json(Path(path).read_text(encoding="utf-8"))
+    def load(
+        cls,
+        path: str | os.PathLike[str],
+        *,
+        repository_root: str | os.PathLike[str] | None = None,
+    ) -> "AnalysisExecutionProfile":
+        profile = cls.from_json(Path(path).read_text(encoding="utf-8"))
+        if repository_root is not None:
+            profile.validate_resource_bounds_evidence(
+                repository_root=repository_root
+            )
+        return profile
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -698,6 +713,45 @@ class AnalysisExecutionProfile:
     @property
     def content_identity(self) -> str:
         return _content_identity(self.to_dict())
+
+    def validate_resource_bounds_evidence(
+        self, *, repository_root: str | os.PathLike[str]
+    ) -> ResourceBudget:
+        """Load and verify the reviewed standalone resource policy.
+
+        The analyzer profile embeds the limits used at runtime and names the
+        objective evidence file.  Requiring the sidecar to decode to the exact
+        same closed-schema object prevents either copy from drifting silently.
+        """
+
+        repository = _real_path(repository_root)
+        evidence = _real_path(repository / self.resource_bounds_evidence)
+        if not _is_within(evidence, (repository,)):
+            raise ExecutionProfileError(
+                "resource_bounds_evidence escapes the repository root"
+            )
+        try:
+            payload = json.loads(evidence.read_text(encoding="utf-8"))
+        except OSError as exc:
+            raise ExecutionProfileError(
+                "resource_bounds_evidence is unavailable"
+            ) from exc
+        except json.JSONDecodeError as exc:
+            raise ExecutionProfileError(
+                "resource_bounds_evidence is not valid JSON"
+            ) from exc
+
+        budget = ResourceBudget.from_dict(payload)
+        if str(payload["class"]) != self.resource_class:
+            raise ExecutionProfileError(
+                "resource_bounds_evidence.class must match profile.resource_class"
+            )
+        expected = self.resources.to_dict(resource_class=self.resource_class)
+        if payload != expected or budget != self.resources:
+            raise ExecutionProfileError(
+                "resource_bounds_evidence must exactly match profile.resource_bounds"
+            )
+        return budget
 
     def validate(
         self,
@@ -783,10 +837,14 @@ class AnalysisExecutionProfile:
         return self.resources.validate_usage(usage, proof_required=proof_required)
 
 
-def load_execution_profile(path: str | os.PathLike[str]) -> AnalysisExecutionProfile:
+def load_execution_profile(
+    path: str | os.PathLike[str],
+    *,
+    repository_root: str | os.PathLike[str] | None = None,
+) -> AnalysisExecutionProfile:
     """Load and strictly validate a reviewed analyzer execution profile."""
 
-    return AnalysisExecutionProfile.load(path)
+    return AnalysisExecutionProfile.load(path, repository_root=repository_root)
 
 
 __all__ = [
