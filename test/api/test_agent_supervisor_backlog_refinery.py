@@ -2675,6 +2675,64 @@ def test_backlog_refinery_retires_dependency_repair_and_releases_lost_finding(
     assert "- Status: completed" in repair_block
 
 
+def test_backlog_refinery_releases_legacy_dependency_finding_without_fingerprint(
+    tmp_path,
+):
+    repo = _seed_repo(tmp_path)
+    todo_path = repo / "todo.md"
+    strategy_path = repo / "state" / "strategy.json"
+    todo_path.write_text(
+        """# Agent Todos
+
+## AUTO-001 Ready source
+
+- Status: todo
+- Completion: manual
+- Priority: P0
+- Track: runtime
+- Depends on:
+- Outputs: src/runtime.py
+- Validation: test -f todo.md
+- Acceptance: Dependency metadata is currently valid.
+""",
+        encoding="utf-8",
+    )
+    strategy_path.parent.mkdir(parents=True, exist_ok=True)
+    strategy_path.write_text(
+        json.dumps(
+            {
+                "blocked_tasks": ["AUTO-001"],
+                "dependency_guardrail_findings": [
+                    {
+                        "source_task_id": "AUTO-001",
+                        "follow_up_task_id": "AUTO-999",
+                        "guardrail_kind": "dependency_guardrail",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    releases = release_completed_guardrail_blocks(
+        todo_path=todo_path,
+        strategy_path=strategy_path,
+        task_prefix="AUTO-",
+    )
+
+    assert releases == [
+        {
+            "source_task_id": "AUTO-001",
+            "follow_up_task_id": "AUTO-999",
+            "guardrail_kind": "dependency_guardrail",
+            "reason": "dependency_metadata_resolved",
+        }
+    ]
+    strategy = json.loads(strategy_path.read_text(encoding="utf-8"))
+    assert strategy["blocked_tasks"] == []
+    assert strategy["dependency_guardrail_findings"] == []
+
+
 def test_backlog_refinery_keeps_block_when_dependency_guardrail_still_active(tmp_path):
     repo = _seed_repo(tmp_path)
     todo_path = repo / "todo.md"

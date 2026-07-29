@@ -5941,7 +5941,15 @@ def release_completed_guardrail_blocks(
             source_task_id = str(raw_record.get("source_task_id") or "")
             follow_up_task_id = str(raw_record.get("follow_up_task_id") or "")
             fingerprint = str(raw_record.get("fingerprint") or "")
-            if fingerprint and fingerprint not in active_dependency_fingerprints:
+            source_resolved = (
+                bool(source_task_id)
+                and source_task_id not in active_dependency_sources
+            )
+            fingerprint_resolved = (
+                bool(fingerprint)
+                and fingerprint not in active_dependency_fingerprints
+            )
+            if source_resolved or fingerprint_resolved:
                 if source_task_id in active_dependency_sources:
                     retained_dependency_findings.append(raw_record)
                     continue
