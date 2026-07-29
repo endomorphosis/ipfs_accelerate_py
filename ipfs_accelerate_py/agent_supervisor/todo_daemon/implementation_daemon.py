@@ -22552,6 +22552,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--merge-queue-dir",
+        type=Path,
+        default=None,
+        help="Shared merge queue directory. Defaults to the target-branch queue root.",
+    )
+    parser.add_argument(
         "--worktree-submodule-path",
         action="append",
         default=[],
@@ -22656,6 +22662,7 @@ def main(argv: list[str] | None = None) -> None:
         use_ephemeral_worktree=args.implement and not args.no_ephemeral_worktree,
         worktree_root=args.worktree_root,
         merge_target_branch=args.merge_target_branch,
+        merge_queue_dir=args.merge_queue_dir,
         worktree_submodule_paths=args.worktree_submodule_path or None,
         implementation_protected_paths=args.implementation_protected_path,
         objective_path=args.objective_path,

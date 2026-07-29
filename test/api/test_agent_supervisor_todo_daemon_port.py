@@ -6958,6 +6958,35 @@ def test_configured_daemon_builder_preserves_shard_and_cleanup_args(tmp_path):
     assert daemon.task_shard_index == 2
 
 
+def test_implementation_daemon_main_accepts_shared_merge_queue_dir(
+    tmp_path, monkeypatch
+):
+    merge_queue_dir = tmp_path / "shared-merge-queue"
+    captured = {}
+
+    class StubDaemon:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+        def run_once(self):
+            return {}
+
+        def close_event_runtime(self):
+            return None
+
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "PortalImplementationDaemon",
+        StubDaemon,
+    )
+
+    implementation_daemon_module.main(
+        ["--once", "--merge-queue-dir", str(merge_queue_dir)]
+    )
+
+    assert captured["merge_queue_dir"] == merge_queue_dir
+
+
 def test_daemon_refill_callbacks_honor_cli_scan_overrides(tmp_path):
     parsed = argparse.Namespace(
         todo_path=tmp_path / "tasks.todo.md",
