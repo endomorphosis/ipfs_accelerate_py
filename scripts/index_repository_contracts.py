@@ -27,6 +27,7 @@ from ipfs_accelerate_py.agent_supervisor.analysis.polyglot_ast_provider import (
 from ipfs_accelerate_py.agent_supervisor.analysis.repository_indexer import (  # noqa: E402
     DEFAULT_MAX_COMPACT_ROW_BYTES,
     DEFAULT_MAX_INDEX_PATHS,
+    DEFAULT_MAX_PARSER_SOURCE_BYTES,
     DEFAULT_MAX_SOURCE_BYTES,
     RepositoryIndexer,
     RepositoryIndexerError,
@@ -121,6 +122,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "--max-source-bytes", type=int, default=DEFAULT_MAX_SOURCE_BYTES
     )
     parser.add_argument(
+        "--max-parser-source-bytes",
+        type=int,
+        default=DEFAULT_MAX_PARSER_SOURCE_BYTES,
+    )
+    parser.add_argument(
         "--max-total-snapshot-bytes",
         type=int,
         default=2 * 1024 * 1024 * 1024,
@@ -149,7 +155,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         limits = PolyglotASTLimits(
             max_files=min(args.max_paths, 10_000),
-            max_file_bytes=args.max_source_bytes,
+            max_file_bytes=min(
+                args.max_source_bytes,
+                args.max_parser_source_bytes,
+            ),
             max_total_bytes=max(args.max_source_bytes, 256 * 1024 * 1024),
             max_output_bytes=args.parser_output_bytes,
             process_timeout_seconds=args.parser_timeout_seconds,
