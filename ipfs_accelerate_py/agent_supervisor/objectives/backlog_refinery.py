@@ -5283,7 +5283,11 @@ def validation_retry_task_block(
 """
 
 
-def retry_task_execution_metadata(source_task: Any) -> str:
+def retry_task_execution_metadata(
+    source_task: Any,
+    *,
+    predicted_files: str | None = None,
+) -> str:
     """Preserve reviewed execution and write-scope bounds on repair work."""
 
     raw_metadata = getattr(source_task, "metadata", {}) or {}
@@ -5294,6 +5298,8 @@ def retry_task_execution_metadata(source_task: Any) -> str:
         for key, value in raw_metadata.items()
         if str(value).strip()
     }
+    if predicted_files is not None:
+        metadata["predicted files"] = str(predicted_files).strip()
     lines: list[str] = []
     inherited_fields = (
         ("provider role", "Provider role"),
@@ -5421,7 +5427,14 @@ def merge_retry_task_block(
     if discovery_output_path not in outputs:
         outputs.append(discovery_output_path)
     validation_command = f"test -f {shlex.quote(str(discovery_path))}"
-    execution_metadata = retry_task_execution_metadata(source_task)
+    # Merge repair work coordinates an already committed implementation. Its
+    # durable write scope is the discovery output; inheriting the source
+    # implementation paths makes strict parallel-board validation treat the
+    # strategy-blocked source and its repair as concurrent writers.
+    execution_metadata = retry_task_execution_metadata(
+        source_task,
+        predicted_files=discovery_output_path,
+    )
     return f"""## {task_id} Resolve merge retry-budget failure for {source_task.task_id}
 
 - Status: todo

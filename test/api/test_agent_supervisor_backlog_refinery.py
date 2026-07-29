@@ -3090,6 +3090,8 @@ def test_backlog_refinery_retry_budget_blocks_merge_loop(tmp_path):
 - Depends on:
 - Outputs: src/runtime.py
 - Validation: test -f src/runtime.py
+- Parallel lane: runtime-merge
+- Predicted files: src/runtime.py
 - Acceptance: Merge the generated runtime feature.
 """,
         encoding="utf-8",
@@ -3127,6 +3129,13 @@ def test_backlog_refinery_retry_budget_blocks_merge_loop(tmp_path):
     todo_text = todo_path.read_text(encoding="utf-8")
     assert "## AUTO-002 Resolve merge retry-budget failure for AUTO-001" in todo_text
     assert "ipfs-accelerate-agent-merge-resolver" in todo_text
+    repair_text = todo_text.split(
+        "## AUTO-002 Resolve merge retry-budget failure for AUTO-001",
+        1,
+    )[1]
+    assert "- Parallel lane: runtime-merge" in repair_text
+    assert "- Predicted files: data/agent_supervisor/discovery" in repair_text
+    assert "- Predicted files: src/runtime.py" not in repair_text
     strategy = json.loads(strategy_path.read_text(encoding="utf-8"))
     assert strategy["blocked_tasks"] == ["AUTO-001"]
 
