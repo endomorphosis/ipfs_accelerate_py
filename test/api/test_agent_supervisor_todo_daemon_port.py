@@ -45,6 +45,15 @@ from ipfs_accelerate_py.agent_supervisor.todo_vector_index import (
 )
 from ipfs_accelerate_py.agent_supervisor.objective_tracker import fibonacci_priority, run_goal_validation
 from ipfs_accelerate_py.agent_supervisor.validation_commands import split_validation_commands
+from ipfs_accelerate_py.agent_supervisor.validation_runtime import (
+    VALIDATION_PYTHON_INTERPRETER_SHA256_ENV,
+    VALIDATION_PYTHON_INTERPRETER_STAT_ENV,
+    VALIDATION_PYTHON_LAUNCHER_MODE_ENV,
+    VALIDATION_PYTHON_LAUNCHER_POLICY_SHA256_ENV,
+    VALIDATION_PYTHON_LAUNCHER_SHA256_ENV,
+    build_validation_environment,
+    validation_environment_for_runner,
+)
 from ipfs_accelerate_py.agent_supervisor.backlog_refinery import (
     dependency_guardrail_records,
     reconciliation_guardrail_plan,
@@ -18366,14 +18375,30 @@ def test_validation_command_runner_classifies_playwright_host_preflight_failure(
         "Playwright host dependency preflight failed on Linux.\n"
         "browser bundle is not installed under /var/cache/ms-playwright\n"
     )
+    calls = []
+
+    def fake_run(*args, **_kwargs):
+        calls.append(args[0])
+        if len(calls) == 1:
+            return subprocess.CompletedProcess(
+                args=args[0],
+                returncode=0,
+                stdout="",
+            )
+        return subprocess.CompletedProcess(
+            args=args[0],
+            returncode=1,
+            stdout=output,
+        )
+
     monkeypatch.setattr(
         implementation_daemon_module.subprocess,
         "run",
-        lambda *_args, **_kwargs: subprocess.CompletedProcess(
-            args=["npx", "playwright", "test"],
-            returncode=1,
-            stdout=output,
-        ),
+        fake_run,
+    )
+    environment = validation_environment_for_runner(
+        build_validation_environment(),
+        TodoImplementationDaemon._validation_command_runner,
     )
 
     result = TodoImplementationDaemon._validation_command_runner(
@@ -18383,15 +18408,32 @@ def test_validation_command_runner_classifies_playwright_host_preflight_failure(
         ),
         workspace_path=tmp_path,
         timeout_seconds=10,
-        environment={"PATH": os.environ["PATH"]},
+        environment=environment,
     )
 
+    assert len(calls) == 2
     assert result["returncode"] == 1
     assert result["infrastructure_failure"] is True
     assert (
         result["error"]
         == "validation_environment_playwright_browsers_missing"
     )
+    assert result["validation_python_launcher"] == {
+        "content_sha256": environment[
+            VALIDATION_PYTHON_LAUNCHER_SHA256_ENV
+        ],
+        "interpreter_sha256": environment[
+            VALIDATION_PYTHON_INTERPRETER_SHA256_ENV
+        ],
+        "interpreter_stat": environment[
+            VALIDATION_PYTHON_INTERPRETER_STAT_ENV
+        ],
+        "mode": environment[VALIDATION_PYTHON_LAUNCHER_MODE_ENV],
+        "policy_sha256": environment[
+            VALIDATION_PYTHON_LAUNCHER_POLICY_SHA256_ENV
+        ],
+        "sealed": True,
+    }
 
 
 def test_reconciliation_validation_log_paths_are_invocation_bound(

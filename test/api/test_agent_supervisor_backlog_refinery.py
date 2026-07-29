@@ -2978,6 +2978,56 @@ def test_summarize_test_failure_parses_playwright_identifiers_and_paths():
     ) == "wallet_interface/ui/tests/world-id-ux.spec.ts"
 
 
+def test_summarize_test_failure_ignores_passed_and_skipped_playwright_results():
+    summary = summarize_test_failure(
+        "\n".join(
+            [
+                "Running 20 tests using 1 worker",
+                "",
+                "  ✓   1 [Desktop Chrome] › "
+                "tests/world-id-ux.spec.ts:264:1 › "
+                "review matrix covers World ID IDKit UX evidence (172ms)",
+                "  -  16 [Desktop Chrome] › "
+                "tests/world-id.spec.ts:686:1 › "
+                "World ID panel renders correctly on mobile viewport",
+                "  -  17 [Desktop Chrome] › "
+                "tests/world-id.spec.ts:731:1 › "
+                "World ID panel elements are accessible on mobile",
+                "  ✓  20 [Desktop Chrome] › "
+                "tests/world-id.spec.ts:850:1 › "
+                "World ID disclosure panel lists public claims (1.6s)",
+                "",
+                "  2 skipped",
+                "  18 passed (45.3s)",
+                "",
+                "Running 3 tests using 1 worker",
+                "",
+                "  ✘  1 [Desktop Chrome] › "
+                "tests/world-id-fullstack.spec.ts:487:1 › "
+                "World ID guards stay safe with a live wallet API (225ms)",
+                "  ✓  3 [Desktop Chrome] › "
+                "tests/world-id-fullstack.spec.ts:602:1 › "
+                "World ID QR fixtures render sanitized metadata (13ms)",
+                "",
+                "  1) [Desktop Chrome] › "
+                "tests/world-id-fullstack.spec.ts:487:1 › "
+                "World ID guards stay safe with a live wallet API",
+                "",
+                "    Error: wallet API exited early with 1",
+            ]
+        )
+    )
+
+    assert summary["failed_tests"] == [
+        "[Desktop Chrome] › tests/world-id-fullstack.spec.ts:487:1 › "
+        "World ID guards stay safe with a live wallet API",
+    ]
+    assert summary["failed_test_paths"] == [
+        "tests/world-id-fullstack.spec.ts",
+    ]
+    assert "world-id-ux.spec.ts" not in summary["failure_head"]
+
+
 def test_playwright_retry_focus_falls_back_for_unqualified_or_unsafe_paths():
     broad_command = (
         "npm --prefix wallet_interface/ui test -- --runInBand"

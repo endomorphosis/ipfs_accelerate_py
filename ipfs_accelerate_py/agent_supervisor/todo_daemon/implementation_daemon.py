@@ -101,6 +101,10 @@ from ..validation_commands import (
 )
 from ..validation_runtime import (
     VALIDATION_PLAYWRIGHT_BROWSERS_PATH_ENV,
+    ValidationPythonLauncherReceipt,
+    ValidationRuntimeError,
+    sealed_validation_python_runner,
+    validation_python_launcher_environment,
     validation_shell_command,
 )
 from ..validation_scheduler import (
@@ -15075,6 +15079,7 @@ class PortalImplementationDaemon:
         return result
 
     @staticmethod
+    @sealed_validation_python_runner
     def _validation_command_runner(
         *,
         spec: Any,
@@ -15093,6 +15098,23 @@ class PortalImplementationDaemon:
         """
 
         started_at = utc_now()
+        launcher_receipt: ValidationPythonLauncherReceipt | None = None
+        try:
+            command_argv = validation_shell_command(str(spec.command))
+        except ValidationRuntimeError as exc:
+            return {
+                "command": str(spec.command),
+                "raw_command": str(spec.raw_command or spec.command),
+                "started_at": started_at,
+                "finished_at": utc_now(),
+                "returncode": 78,
+                "output": f"{type(exc).__name__}: {exc}\n",
+                "error": "validation_command_policy_rejected",
+                "reason": (
+                    "validation_shell_command_policy_violation"
+                ),
+                "infrastructure_failure": False,
+            }
         with tempfile.TemporaryDirectory(
             prefix="ipfs-accelerate-validation-home-"
         ) as temporary_home:
@@ -15118,17 +15140,123 @@ class PortalImplementationDaemon:
                     parents=True,
                     exist_ok=True,
                 )
-            completed = subprocess.run(
-                validation_shell_command(str(spec.command)),
-                cwd=workspace_path,
-                text=True,
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                timeout=timeout_seconds,
-                check=False,
-                env=child_environment,
-            )
+            try:
+                with validation_python_launcher_environment(
+                    child_environment
+                ) as (launcher_environment, launcher_receipt):
+                    launcher_evidence = {
+                        "content_sha256": (
+                            launcher_receipt.content_sha256
+                        ),
+                        "interpreter_sha256": (
+                            launcher_receipt.interpreter_sha256
+                        ),
+                        "interpreter_stat": (
+                            launcher_receipt.interpreter_stat
+                        ),
+                        "mode": launcher_receipt.mode,
+                        "policy_sha256": (
+                            launcher_receipt.policy_sha256
+                        ),
+                        "sealed": launcher_receipt.sealed,
+                    }
+                    try:
+                        launcher_probe = subprocess.run(
+                            [
+                                launcher_environment["PYTHON"],
+                                "-I",
+                                "-c",
+                                "raise SystemExit(0)",
+                            ],
+                            cwd=workspace_path,
+                            text=True,
+                            stdin=subprocess.DEVNULL,
+                            stdout=subprocess.PIPE,
+                            stderr=subprocess.STDOUT,
+                            timeout=max(
+                                1.0,
+                                min(10.0, float(timeout_seconds)),
+                            ),
+                            check=False,
+                            env=launcher_environment,
+                        )
+                    except (OSError, subprocess.TimeoutExpired) as exc:
+                        return {
+                            "command": str(spec.command),
+                            "raw_command": str(
+                                spec.raw_command or spec.command
+                            ),
+                            "started_at": started_at,
+                            "finished_at": utc_now(),
+                            "returncode": 75,
+                            "output": (
+                                f"{type(exc).__name__}: {exc}\n"
+                            ),
+                            "error": (
+                                "validation_environment_python_launcher_"
+                                "exec_unavailable"
+                            ),
+                            "reason": (
+                                "sealed_validation_python_launcher_"
+                                "child_probe_failed"
+                            ),
+                            "infrastructure_failure": True,
+                            "validation_python_launcher": (
+                                launcher_evidence
+                            ),
+                        }
+                    if launcher_probe.returncode != 0:
+                        return {
+                            "command": str(spec.command),
+                            "raw_command": str(
+                                spec.raw_command or spec.command
+                            ),
+                            "started_at": started_at,
+                            "finished_at": utc_now(),
+                            "returncode": 75,
+                            "output": launcher_probe.stdout or "",
+                            "error": (
+                                "validation_environment_python_launcher_"
+                                "exec_unavailable"
+                            ),
+                            "reason": (
+                                "sealed_validation_python_launcher_"
+                                "child_probe_failed"
+                            ),
+                            "infrastructure_failure": True,
+                            "validation_python_launcher": (
+                                launcher_evidence
+                            ),
+                        }
+                    completed = subprocess.run(
+                        command_argv,
+                        cwd=workspace_path,
+                        text=True,
+                        stdin=subprocess.DEVNULL,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.STDOUT,
+                        timeout=timeout_seconds,
+                        check=False,
+                        env=launcher_environment,
+                    )
+            except ValidationRuntimeError as exc:
+                return {
+                    "command": str(spec.command),
+                    "raw_command": str(
+                        spec.raw_command or spec.command
+                    ),
+                    "started_at": started_at,
+                    "finished_at": utc_now(),
+                    "returncode": 75,
+                    "output": f"{type(exc).__name__}: {exc}\n",
+                    "error": (
+                        "validation_environment_python_launcher_unavailable"
+                    ),
+                    "reason": (
+                        "sealed_validation_python_launcher_unavailable"
+                    ),
+                    "infrastructure_failure": True,
+                }
         output = completed.stdout or ""
         result = {
             "command": str(spec.command),
@@ -15138,6 +15266,17 @@ class PortalImplementationDaemon:
             "returncode": int(completed.returncode),
             "output": output,
         }
+        if launcher_receipt is not None:
+            result["validation_python_launcher"] = {
+                "content_sha256": launcher_receipt.content_sha256,
+                "interpreter_sha256": (
+                    launcher_receipt.interpreter_sha256
+                ),
+                "interpreter_stat": launcher_receipt.interpreter_stat,
+                "mode": launcher_receipt.mode,
+                "policy_sha256": launcher_receipt.policy_sha256,
+                "sealed": launcher_receipt.sealed,
+            }
         if (
             completed.returncode != 0
             and PLAYWRIGHT_HOST_PREFLIGHT_FAILURE_MARKER in output

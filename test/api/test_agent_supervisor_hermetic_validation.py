@@ -28,11 +28,23 @@ from ipfs_accelerate_py.agent_supervisor.validation_scheduler import (
     ValidationTechnique,
     build_impact_selected_validation_dag,
     classify_validation_attempts,
+    hermetic_validation_runner,
     validation_benchmark,
 )
 
 
 TREE_ID = "tree:hermetic-validation"
+
+
+def _hermetic_result(
+    runtime_context: HermeticValidationRuntime,
+    **values: object,
+) -> dict[str, object]:
+    return {
+        **values,
+        "runtime_id": runtime_context.runtime_id,
+        "cancellation_id": runtime_context.cancellation_id,
+    }
 
 
 def _index() -> CodeImpactIndex:
@@ -260,6 +272,7 @@ def test_complete_dag_stabilizes_flakes_and_detects_transitive_seed(
     calls: list[tuple[str, int]] = []
     runtime_ids: dict[str, str] = {}
 
+    @hermetic_validation_runner
     def runner(*, spec, runtime_context, attempt_number, **_kwargs):
         assert isinstance(runtime_context, HermeticValidationRuntime)
         assert runtime_context.repository_tree_id == TREE_ID
@@ -267,25 +280,39 @@ def test_complete_dag_stabilizes_flakes_and_detects_transitive_seed(
         runtime_ids.setdefault(spec.validation_id, runtime_context.runtime_id)
         assert runtime_ids[spec.validation_id] == runtime_context.runtime_id
         if spec.validation_id == "syntax":
-            return {"returncode": 2, "output": "syntax failed"}
+            return _hermetic_result(
+                runtime_context,
+                returncode=2,
+                output="syntax failed",
+            )
         if spec.validation_id == "integration":
-            return {
-                "returncode": 7,
-                "output": "consumer exposed seeded defect",
-                "seeded_defect_id": "seed:transitive-provider",
-            }
+            return _hermetic_result(
+                runtime_context,
+                returncode=7,
+                output="consumer exposed seeded defect",
+                seeded_defect_id="seed:transitive-provider",
+            )
         if spec.validation_id == "differential":
-            return {
-                "returncode": 0 if attempt_number == 1 else 9,
-                "output": f"differential attempt {attempt_number}",
-            }
+            return _hermetic_result(
+                runtime_context,
+                returncode=0 if attempt_number == 1 else 9,
+                output=f"differential attempt {attempt_number}",
+            )
         if spec.validation_id == "metamorphic":
             raise subprocess.TimeoutExpired(spec.command, 1)
         if spec.validation_id == "mutation":
             raise RuntimeError("sandbox service unavailable")
         if spec.validation_id == "runtime":
-            return {"returncode": 0, "inconclusive": True}
-        return {"returncode": 0, "output": "passed"}
+            return _hermetic_result(
+                runtime_context,
+                returncode=0,
+                inconclusive=True,
+            )
+        return _hermetic_result(
+            runtime_context,
+            returncode=0,
+            output="passed",
+        )
 
     report = ValidationScheduler(
         max_workers=4,
@@ -349,12 +376,21 @@ def test_exact_deterministic_diagnostic_is_reused_without_authority(
 ) -> None:
     integration_calls = 0
 
-    def runner(*, spec, **_kwargs):
+    @hermetic_validation_runner
+    def runner(*, spec, runtime_context, **_kwargs):
         nonlocal integration_calls
         if spec.validation_id == "integration":
             integration_calls += 1
-            return {"returncode": 7, "output": "exact stable diagnostic"}
-        return {"returncode": 0, "output": "passed"}
+            return _hermetic_result(
+                runtime_context,
+                returncode=7,
+                output="exact stable diagnostic",
+            )
+        return _hermetic_result(
+            runtime_context,
+            returncode=0,
+            output="passed",
+        )
 
     scheduler = ValidationScheduler(
         cache_dir=tmp_path / "cache",

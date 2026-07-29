@@ -44,12 +44,16 @@ _ANSI_CONTROL_SEQUENCE_RE = re.compile(
     r"\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\))"
 )
 _PLAYWRIGHT_FAILURE_RE = re.compile(
+    r"^(?:(?:[✘✗×]\s+\d+)|(?:\d+\)))\s+"
     r"(?P<identifier>"
     r"\[[^\]\r\n]+\]\s+›\s+"
     r"(?P<path>[^:\r\n]+?\.[cm]?[jt]sx?)"
     r":\d+:\d+"
     r"(?:\s+›\s+[^\r\n]+)?"
     r")"
+)
+_PLAYWRIGHT_DURATION_SUFFIX_RE = re.compile(
+    r"\s+\(\d+(?:\.\d+)?(?:ms|s|m)\)$"
 )
 
 
@@ -135,6 +139,7 @@ def summarize_test_failure(stdout: Any) -> dict[str, Any]:
         if match is None:
             continue
         identifier = " ".join(match.group("identifier").split())
+        identifier = _PLAYWRIGHT_DURATION_SUFFIX_RE.sub("", identifier)
         path = match.group("path").strip().replace("\\", "/")
         while path.startswith("./"):
             path = path[2:]
