@@ -108,7 +108,7 @@ compact references and bounded spans only.
 
 ## VFS-006 Adapt TypeScript, TSX, and JavaScript evidence into canonical AST blob records
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: corpus-index
