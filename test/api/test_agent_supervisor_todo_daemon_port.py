@@ -11009,6 +11009,101 @@ def test_implementation_daemon_defers_merge_reconciliation_when_main_checkout_di
     assert events[-1]["reason"] == "main_checkout_dirty"
 
 
+def test_implementation_daemon_preserves_nonconflicting_git_sync_recovery_note(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-b", "main"], cwd=repo, text=True, capture_output=True, check=True)
+    subprocess.run(["git", "config", "user.email", "agent@example.invalid"], cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.name", "Agent"], cwd=repo, check=True)
+    (repo / "README.md").write_text("clean\n", encoding="utf-8")
+    subprocess.run(["git", "add", "README.md"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-m", "Initial"], cwd=repo, text=True, capture_output=True, check=True)
+    subprocess.run(["git", "checkout", "-b", "implementation/accel-002"], cwd=repo, check=True)
+    (repo / "README.md").write_text("implemented\n", encoding="utf-8")
+    subprocess.run(["git", "commit", "-am", "Implement candidate"], cwd=repo, check=True)
+    implementation_commit = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=repo,
+        text=True,
+        capture_output=True,
+        check=True,
+    ).stdout.strip()
+    subprocess.run(["git", "checkout", "main"], cwd=repo, check=True)
+    recovery_note = repo / ".git-sync-recovery-20260727-202941.md"
+    recovery_note.write_text("operator recovery information\n", encoding="utf-8")
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+    )
+    candidates = [
+        {
+            "task_id": "ACCEL-002",
+            "branch": "implementation/accel-002",
+            "implementation_commit": implementation_commit,
+        }
+    ]
+
+    blocking, nonblocking = daemon._reconciliation_blocking_dirty_paths(
+        candidates,
+        target_branch="main",
+    )
+
+    assert blocking == []
+    assert nonblocking == [recovery_note.name]
+    assert recovery_note.read_text(encoding="utf-8") == "operator recovery information\n"
+
+
+def test_implementation_daemon_blocks_git_sync_recovery_note_tracked_by_candidate(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-b", "main"], cwd=repo, text=True, capture_output=True, check=True)
+    subprocess.run(["git", "config", "user.email", "agent@example.invalid"], cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.name", "Agent"], cwd=repo, check=True)
+    (repo / "README.md").write_text("clean\n", encoding="utf-8")
+    subprocess.run(["git", "add", "README.md"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-m", "Initial"], cwd=repo, text=True, capture_output=True, check=True)
+    subprocess.run(["git", "checkout", "-b", "implementation/accel-002"], cwd=repo, check=True)
+    recovery_note = repo / ".git-sync-recovery-20260727-202941.md"
+    recovery_note.write_text("candidate content\n", encoding="utf-8")
+    subprocess.run(["git", "add", recovery_note.name], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-m", "Track candidate recovery note"], cwd=repo, check=True)
+    implementation_commit = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=repo,
+        text=True,
+        capture_output=True,
+        check=True,
+    ).stdout.strip()
+    subprocess.run(["git", "checkout", "main"], cwd=repo, check=True)
+    recovery_note.write_text("operator recovery information\n", encoding="utf-8")
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+    )
+    candidates = [
+        {
+            "task_id": "ACCEL-002",
+            "branch": "implementation/accel-002",
+            "implementation_commit": implementation_commit,
+        }
+    ]
+
+    blocking, nonblocking = daemon._reconciliation_blocking_dirty_paths(
+        candidates,
+        target_branch="main",
+    )
+
+    assert blocking == [recovery_note.name]
+    assert nonblocking == []
+    assert recovery_note.read_text(encoding="utf-8") == "operator recovery information\n"
+
+
 def test_implementation_daemon_abandons_stale_failed_merge_candidates(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()

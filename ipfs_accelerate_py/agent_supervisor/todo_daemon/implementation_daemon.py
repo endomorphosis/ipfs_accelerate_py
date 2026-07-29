@@ -248,6 +248,9 @@ TRANSIENT_MERGE_RETRY_MAX_AGE_WHEN_DISABLED_SECONDS = 900.0
 IMPLEMENTATION_RUNNER_PROCESS_PATTERN = re.compile(
     r"(?:^|[\s/])(codex|copilot|goose|grok)(?:\s|$)"
 )
+GIT_SYNC_RECOVERY_NOTE_PATTERN = re.compile(
+    r"\.git-sync-recovery-\d{8}-\d{6}(?:-\d+)?\.md"
+)
 PROVIDER_CAPACITY_BACKOFF_ENV = "IPFS_ACCELERATE_AGENT_PROVIDER_CAPACITY_BACKOFF_SECONDS"
 DEFAULT_PROVIDER_CAPACITY_BACKOFF_SECONDS = 300.0
 PROVIDER_CAPACITY_LOG_TAIL_BYTES = 128 * 1024
@@ -18971,6 +18974,57 @@ class PortalImplementationDaemon:
                 return False
         return compared > 0
 
+    def _dirty_git_sync_recovery_note_is_untracked_for_candidates(
+        self,
+        relative: str,
+        candidates: Sequence[dict[str, Any]],
+        *,
+        target_branch: str,
+    ) -> bool:
+        """Prove a preserved root recovery note cannot conflict with a merge.
+
+        ``git-sync`` writes timestamped, untracked recovery notes when it has
+        operator information to preserve.  Those notes must not be deleted,
+        but an unrelated note should not stall every validated candidate.  A
+        note is nonblocking only when its exact root-level name matches the
+        producer contract and no target or candidate tree tracks that path.
+        """
+
+        if not GIT_SYNC_RECOVERY_NOTE_PATTERN.fullmatch(relative):
+            return False
+        refs = [target_branch]
+        for event in candidates:
+            branch = str(event.get("branch") or "")
+            implementation_commit = str(event.get("implementation_commit") or "")
+            candidate_ref = (
+                branch
+                if branch and self._git_ref_exists(branch)
+                else implementation_commit
+            )
+            if not candidate_ref or not self._git_ref_exists(candidate_ref):
+                return False
+            refs.append(candidate_ref)
+        if len(refs) <= 1:
+            return False
+        for ref in refs:
+            if not self._git_ref_exists(ref):
+                return False
+            result = subprocess.run(
+                ["git", "ls-tree", "-r", "--name-only", ref, "--", relative],
+                cwd=self.repo_root,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            if result.returncode != 0:
+                return False
+            if any(
+                path == relative or path.startswith(f"{relative}/")
+                for path in result.stdout.splitlines()
+            ):
+                return False
+        return True
+
     def _reconciliation_blocking_dirty_paths(
         self,
         candidates: Sequence[dict[str, Any]],
@@ -18986,6 +19040,13 @@ class PortalImplementationDaemon:
             except (OSError, ValueError):
                 pass
             if state_relative and self._path_matches_prefix(relative, state_relative):
+                nonblocking.append(relative)
+                continue
+            if self._dirty_git_sync_recovery_note_is_untracked_for_candidates(
+                relative,
+                candidates,
+                target_branch=target_branch,
+            ):
                 nonblocking.append(relative)
                 continue
             if self._dirty_gitlink_is_unchanged_for_candidates(
