@@ -368,7 +368,7 @@ compact references and bounded spans only.
 
 ## VFS-019 Translate supported contracts and call slices through ipfs_datasets_py IR
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: formal-proof
