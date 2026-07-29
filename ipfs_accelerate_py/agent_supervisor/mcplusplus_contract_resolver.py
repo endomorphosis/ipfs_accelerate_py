@@ -1,6 +1,6 @@
-"""Resolve SwissKnife MCP++ calls to package registrations (VFS-017).
+"""Resolve SwissKnife MCP++ calls to package registrations (VFS-017 / VFS-G060).
 
-This module traces claimed MCP++ call paths:
+This module performs **static** inventory-bound call-path resolution only:
 
 ```text
 caller
@@ -12,6 +12,17 @@ caller
   -> package implementation
   -> result / error mapping back to the caller
 ```
+
+Static resolution is deliberately split from hermetic runtime conformance
+(VFS-G061 / ``mcplusplus_runtime_witness``):
+
+* A ``proved`` path means every hop is ``resolved_static`` under inventory
+  evidence. It is **not** a hermetic runtime witness and never grants
+  ``runtime_witnessed`` authority.
+* Runtime request/result/error/capability/transport observations are deferred
+  to the child goal ``VFS-G061`` and evidence ``vfs/mcplusplus-runtime-witness@1``.
+* This module never opens network, never dispatches adapters, and never emits
+  runtime receipts.
 
 Resolution is fail-closed and evidence-bound:
 
@@ -38,6 +49,7 @@ from enum import Enum
 from types import MappingProxyType
 from typing import Any, Iterable, Mapping, Sequence
 
+from .program_assurance_contracts import ClaimLevel
 from .program_graph import (
     ProgramEdgeKind,
     ProgramGraph,
@@ -77,12 +89,27 @@ MCPLUSPLUS_ARTIFACT_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/mcplusplus-inventory-artifact@1"
 )
 
-# Evidence kinds consumed by downstream goals (VFS-G060).
+# Evidence kinds produced by this static resolver (VFS-G060).
 EVIDENCE_CALL_PATH = "vfs/mcplusplus-call-path@1"
 EVIDENCE_MANIFEST_PARITY = "vfs/mcplusplus-manifest-parity@1"
+# Runtime evidence is owned by the hermetic child goal — never emitted here.
+EVIDENCE_RUNTIME_WITNESS = "vfs/mcplusplus-runtime-witness@1"
+STATIC_EVIDENCE_KINDS: tuple[str, ...] = (
+    EVIDENCE_CALL_PATH,
+    EVIDENCE_MANIFEST_PARITY,
+)
+EXCLUDED_RUNTIME_EVIDENCE_KINDS: tuple[str, ...] = (EVIDENCE_RUNTIME_WITNESS,)
+
+# Objective-heap alignment: static parent goal vs hermetic runtime child.
+STATIC_RESOLUTION_GOAL_ID = "VFS-G060"
+HERMETIC_RUNTIME_CHILD_GOAL_ID = "VFS-G061"
+STATIC_RESOLUTION_CLAIM_LEVEL = ClaimLevel.RESOLVED_STATIC
+HERMETIC_RUNTIME_CLAIM_LEVEL = ClaimLevel.RUNTIME_WITNESSED
 
 RESOLVER_VERSION = "mcplusplus-contract-resolver@1"
 RESOLVER_PRODUCER = "mcplusplus-contract-resolver@1"
+RESOLUTION_LAYER_STATIC = "static"
+RESOLUTION_LAYER_RUNTIME = "runtime"
 
 DEFAULT_MAX_PATHS = 50_000
 DEFAULT_MAX_HOPS = 32
@@ -323,7 +350,11 @@ class ReasonCode(str, Enum):
 
 
 class PathVerdict(str, Enum):
-    """Overall verdict for one traced MCP++ call path."""
+    """Overall verdict for one traced MCP++ call path.
+
+    ``PROVED`` means statically proved under inventory evidence only. It never
+    means hermetic runtime conformance (that is VFS-G061).
+    """
 
     PROVED = "proved"
     CANDIDATE = "candidate"
@@ -332,6 +363,19 @@ class PathVerdict(str, Enum):
     REJECTED = "rejected"
     UNKNOWN = "unknown"
     UNSUPPORTED = "unsupported"
+
+
+class ResolutionLayer(str, Enum):
+    """Assurance layer of an MCP++ resolution product.
+
+    Static resolution (this module) and hermetic runtime conformance
+    (``mcplusplus_runtime_witness``) are closed, non-interchangeable layers.
+    """
+
+    STATIC = RESOLUTION_LAYER_STATIC
+    # Runtime is named only so forgeries can be rejected fail-closed; this
+    # module never constructs runtime-layer results.
+    RUNTIME = RESOLUTION_LAYER_RUNTIME
 
 
 # Deterministic confidence table. Values are fixed; never learned.
@@ -409,6 +453,105 @@ _STAGE_TO_REASON: Mapping[PathStage, ReasonCode] = MappingProxyType(
         PathStage.RESULT_ERROR_MAPPING: ReasonCode.RESULT_MAP_MATCH,
     }
 )
+
+
+def static_resolution_boundary() -> Mapping[str, Any]:
+    """Machine-readable split between static resolution and hermetic runtime.
+
+    Static call-path resolution (VFS-G060) and hermetic runtime conformance
+    (VFS-G061) share inventory vocabulary but never share claim authority.
+    Runtime witnesses may *supplement* static resolution; static results never
+    claim runtime or replace hermetic observations.
+    """
+
+    return MappingProxyType(
+        {
+            "resolution_layer": ResolutionLayer.STATIC.value,
+            "claim_level": STATIC_RESOLUTION_CLAIM_LEVEL.value,
+            "claims_runtime_conformance": False,
+            "claims_hermetic_runtime": False,
+            "static_goal_id": STATIC_RESOLUTION_GOAL_ID,
+            "defers_runtime_conformance_to_goal": HERMETIC_RUNTIME_CHILD_GOAL_ID,
+            "defers_runtime_claim_level": HERMETIC_RUNTIME_CLAIM_LEVEL.value,
+            "defers_runtime_evidence": EVIDENCE_RUNTIME_WITNESS,
+            "evidence_kinds": list(STATIC_EVIDENCE_KINDS),
+            "excluded_evidence_kinds": list(EXCLUDED_RUNTIME_EVIDENCE_KINDS),
+            "resolver_version": RESOLVER_VERSION,
+            "opens_network": False,
+            "dispatches_adapters": False,
+            "emits_runtime_receipts": False,
+        }
+    )
+
+
+def _reject_runtime_layer_claim(
+    payload: Mapping[str, Any],
+    *,
+    artifact_name: str,
+) -> None:
+    """Fail closed when a static artifact forges runtime authority."""
+
+    layer = payload.get("resolution_layer")
+    if layer is not None and str(layer).strip() not in ("", ResolutionLayer.STATIC.value):
+        raise MCPlusPlusResolverError(
+            f"{artifact_name} resolution_layer must be "
+            f"{ResolutionLayer.STATIC.value!r} (got {layer!r}); "
+            "hermetic runtime conformance is VFS-G061"
+        )
+
+    claims_runtime = payload.get("claims_runtime_conformance")
+    if claims_runtime is True or (
+        isinstance(claims_runtime, str)
+        and claims_runtime.strip().lower() in {"true", "1", "yes"}
+    ):
+        raise MCPlusPlusResolverError(
+            f"{artifact_name} cannot claim runtime conformance; "
+            "use mcplusplus_runtime_witness / VFS-G061"
+        )
+
+    is_runtime = payload.get("is_runtime_witnessed")
+    if is_runtime is True or (
+        isinstance(is_runtime, str)
+        and is_runtime.strip().lower() in {"true", "1", "yes"}
+    ):
+        raise MCPlusPlusResolverError(
+            f"{artifact_name} cannot set is_runtime_witnessed; "
+            "static resolution never carries runtime authority"
+        )
+
+    claim_level = payload.get("claim_level")
+    if claim_level is not None:
+        text = str(claim_level).strip()
+        if text == HERMETIC_RUNTIME_CLAIM_LEVEL.value:
+            raise MCPlusPlusResolverError(
+                f"{artifact_name} cannot assert claim_level "
+                f"{HERMETIC_RUNTIME_CLAIM_LEVEL.value!r}"
+            )
+        if text and text not in {
+            ClaimLevel.OBSERVED_SYNTAX.value,
+            STATIC_RESOLUTION_CLAIM_LEVEL.value,
+        }:
+            # Allow only static-compatible claim levels on this product surface.
+            raise MCPlusPlusResolverError(
+                f"{artifact_name} claim_level {text!r} is not admitted for "
+                "static MCP++ resolution"
+            )
+
+    kinds = payload.get("evidence_kinds")
+    if kinds is not None:
+        for item in kinds:
+            if str(item) in EXCLUDED_RUNTIME_EVIDENCE_KINDS:
+                raise MCPlusPlusResolverError(
+                    f"{artifact_name} cannot include runtime evidence kind "
+                    f"{item!r}"
+                )
+
+    evidence_kind = payload.get("evidence_kind")
+    if evidence_kind is not None and str(evidence_kind) in EXCLUDED_RUNTIME_EVIDENCE_KINDS:
+        raise MCPlusPlusResolverError(
+            f"{artifact_name} cannot use runtime evidence kind "
+            f"{evidence_kind!r}"
+        )
 
 
 def _text(value: Any, name: str, *, required: bool = True) -> str:
@@ -1493,7 +1636,33 @@ class MCPlusPlusCallPath:
 
     @property
     def is_proved(self) -> bool:
+        """True when every hop is statically resolved (not runtime-witnessed)."""
+
         return self.verdict is PathVerdict.PROVED
+
+    @property
+    def is_statically_proved(self) -> bool:
+        """Alias emphasizing that proof is inventory-static only."""
+
+        return self.is_proved
+
+    @property
+    def is_runtime_witnessed(self) -> bool:
+        """Static paths never carry hermetic runtime authority."""
+
+        return False
+
+    @property
+    def claim_level(self) -> ClaimLevel:
+        """Claim level for a proved static path; never ``runtime_witnessed``."""
+
+        if self.is_proved:
+            return STATIC_RESOLUTION_CLAIM_LEVEL
+        return ClaimLevel.OBSERVED_SYNTAX
+
+    @property
+    def resolution_layer(self) -> ResolutionLayer:
+        return ResolutionLayer.STATIC
 
     @property
     def has_frontier(self) -> bool:
@@ -1550,14 +1719,20 @@ class MCPlusPlusCallPath:
             **self._identity_payload(),
             "path_id": self.path_id,
             "is_proved": self.is_proved,
+            "is_statically_proved": self.is_statically_proved,
+            "is_runtime_witnessed": self.is_runtime_witnessed,
             "has_frontier": self.has_frontier,
             "evidence_kind": EVIDENCE_CALL_PATH,
+            "claim_level": self.claim_level.value,
+            "resolution_layer": self.resolution_layer.value,
+            "claims_runtime_conformance": False,
         }
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "MCPlusPlusCallPath":
         if not isinstance(payload, Mapping):
             raise MCPlusPlusResolverError("call path payload must be a mapping")
+        _reject_runtime_layer_claim(payload, artifact_name="call path")
         return cls(
             path_name=str(payload.get("path_name") or ""),
             forest_id=str(payload.get("forest_id") or ""),
@@ -1578,7 +1753,11 @@ class MCPlusPlusCallPath:
 
 @dataclass(frozen=True)
 class MCPlusPlusResolutionResult:
-    """Deterministic batch of MCP++ path resolutions and witnesses."""
+    """Deterministic batch of static MCP++ path resolutions and witnesses.
+
+    Results are always on the static resolution layer. Hermetic runtime
+    conformance is never claimed here; it is deferred to VFS-G061.
+    """
 
     forest_id: str
     resolver_version: str
@@ -1612,6 +1791,16 @@ class MCPlusPlusResolutionResult:
         )
         if len(self.paths) > DEFAULT_MAX_PATHS:
             raise MCPlusPlusResolverBoundsError("too many paths")
+        for path in self.paths:
+            if path.is_runtime_witnessed:
+                raise MCPlusPlusResolverError(
+                    "static resolution result cannot include runtime-witnessed "
+                    f"path {path.path_name!r}"
+                )
+            if path.resolution_layer is not ResolutionLayer.STATIC:
+                raise MCPlusPlusResolverError(
+                    "static resolution result requires static-layer paths"
+                )
         drift = tuple(
             item
             if isinstance(item, ManifestDriftWitness)
@@ -1648,6 +1837,24 @@ class MCPlusPlusResolutionResult:
     def result_id(self) -> str:
         return "mpres-" + content_identity(self._identity_payload())
 
+    @property
+    def resolution_layer(self) -> ResolutionLayer:
+        return ResolutionLayer.STATIC
+
+    @property
+    def claim_level(self) -> ClaimLevel:
+        """Highest claim level this result may assert (static only)."""
+
+        return STATIC_RESOLUTION_CLAIM_LEVEL
+
+    @property
+    def claims_runtime_conformance(self) -> bool:
+        return False
+
+    @property
+    def defers_runtime_to_goal(self) -> str:
+        return HERMETIC_RUNTIME_CHILD_GOAL_ID
+
     def paths_for_tool(self, tool_name: str) -> tuple[MCPlusPlusCallPath, ...]:
         aliases = set(tool_name_aliases(tool_name))
         return tuple(
@@ -1659,6 +1866,11 @@ class MCPlusPlusResolutionResult:
 
     def proved_paths(self) -> tuple[MCPlusPlusCallPath, ...]:
         return tuple(path for path in self.paths if path.is_proved)
+
+    def statically_proved_paths(self) -> tuple[MCPlusPlusCallPath, ...]:
+        """Proved under inventory-static evidence only (never runtime)."""
+
+        return self.proved_paths()
 
     def stats(self) -> Mapping[str, Any]:
         by_verdict: dict[str, int] = {}
@@ -1673,11 +1885,14 @@ class MCPlusPlusResolutionResult:
             {
                 "path_count": len(self.paths),
                 "proved_count": len(self.proved_paths()),
+                "statically_proved_count": len(self.statically_proved_paths()),
+                "runtime_witnessed_count": 0,
                 "drift_count": len(self.drift_witnesses),
                 "frontier_count": len(self.frontiers),
                 "by_verdict": dict(sorted(by_verdict.items())),
                 "by_reason": dict(sorted(by_reason.items())),
                 "truncated": self.truncated,
+                "resolution_layer": self.resolution_layer.value,
             }
         )
 
@@ -1695,17 +1910,38 @@ class MCPlusPlusResolutionResult:
         }
 
     def to_dict(self) -> dict[str, Any]:
+        boundary = static_resolution_boundary()
         return {
             **self._identity_payload(),
             "result_id": self.result_id,
             "stats": dict(self.stats()),
-            "evidence_kinds": [EVIDENCE_CALL_PATH, EVIDENCE_MANIFEST_PARITY],
+            "evidence_kinds": list(STATIC_EVIDENCE_KINDS),
+            "resolution_layer": self.resolution_layer.value,
+            "claim_level": self.claim_level.value,
+            "claims_runtime_conformance": self.claims_runtime_conformance,
+            "defers_runtime_to_goal": self.defers_runtime_to_goal,
+            "static_runtime_boundary": dict(boundary),
         }
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "MCPlusPlusResolutionResult":
         if not isinstance(payload, Mapping):
             raise MCPlusPlusResolverError("result payload must be a mapping")
+        _reject_runtime_layer_claim(payload, artifact_name="resolution result")
+        kinds = payload.get("evidence_kinds")
+        if kinds is not None:
+            kind_list = [str(item) for item in kinds]
+            for excluded in EXCLUDED_RUNTIME_EVIDENCE_KINDS:
+                if excluded in kind_list:
+                    raise MCPlusPlusResolverError(
+                        "static resolution result cannot claim runtime evidence "
+                        f"{excluded}"
+                    )
+            for required in STATIC_EVIDENCE_KINDS:
+                if required not in kind_list:
+                    raise MCPlusPlusResolverError(
+                        f"static resolution result missing evidence kind {required}"
+                    )
         return cls(
             forest_id=str(payload.get("forest_id") or ""),
             resolver_version=str(payload.get("resolver_version") or ""),
@@ -3811,7 +4047,11 @@ __all__ = [
     "DriftKind",
     "EVIDENCE_CALL_PATH",
     "EVIDENCE_MANIFEST_PARITY",
+    "EVIDENCE_RUNTIME_WITNESS",
+    "EXCLUDED_RUNTIME_EVIDENCE_KINDS",
     "FrontierItem",
+    "HERMETIC_RUNTIME_CHILD_GOAL_ID",
+    "HERMETIC_RUNTIME_CLAIM_LEVEL",
     "InventoryArtifact",
     "MCPLUSPLUS_ARTIFACT_SCHEMA",
     "MCPLUSPLUS_CALL_PATH_SCHEMA",
@@ -3836,9 +4076,15 @@ __all__ = [
     "PathHop",
     "PathStage",
     "PathVerdict",
+    "RESOLUTION_LAYER_RUNTIME",
+    "RESOLUTION_LAYER_STATIC",
     "RESOLVER_PRODUCER",
     "RESOLVER_VERSION",
     "ReasonCode",
+    "ResolutionLayer",
+    "STATIC_EVIDENCE_KINDS",
+    "STATIC_RESOLUTION_CLAIM_LEVEL",
+    "STATIC_RESOLUTION_GOAL_ID",
     "TransportKind",
     "classify_non_invocation",
     "confidence_for",
@@ -3851,5 +4097,6 @@ __all__ = [
     "resolve_mcplusplus_paths",
     "schema_fingerprint",
     "split_hierarchical_alias",
+    "static_resolution_boundary",
     "tool_name_aliases",
 ]
