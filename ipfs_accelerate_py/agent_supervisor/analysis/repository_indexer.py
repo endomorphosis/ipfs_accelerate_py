@@ -977,18 +977,25 @@ class RepositoryIndexer:
         self,
         disposition: CoverageDisposition,
         candidates: Sequence[RepositoryIndexRow],
+        *,
+        language: str,
     ) -> tuple[RepositoryIndexRow, ASTBlobRecord] | None:
         for old in candidates:
             if (
                 old.content_digest != disposition.content_digest
                 or old.parser_identity != self.parser_identity
+                or old.language != language
                 or old.source_ref is None
                 or old.ast_ref is None
                 or not self.cas.verify(old.source_ref)
             ):
                 continue
             record = self._load_ast_reference(old.ast_ref)
-            if record is None or record.record_id != old.ast_record_id:
+            if (
+                record is None
+                or record.record_id != old.ast_record_id
+                or record.language != language
+            ):
                 continue
             status = (
                 ParserStatus.PARSE_FAILURE
@@ -1268,21 +1275,6 @@ class RepositoryIndexer:
                     rows.append(row)
                     continue
 
-                candidates = old_by_digest.get(
-                    disposition.content_digest, ()
-                )
-                reused_pair = self._reuse_row(disposition, candidates)
-                if reused_pair is not None:
-                    row, record = reused_pair
-                    rows.append(row)
-                    records[disposition.path] = record
-                    reused += 1
-                    renamed += not any(
-                        old.path == disposition.path for old in candidates
-                    )
-                    failures += bool(record.parse_error)
-                    continue
-
                 language = self._language(disposition)
                 if not language:
                     rows.append(
@@ -1302,6 +1294,25 @@ class RepositoryIndexer:
                         )
                     )
                     unsupported += 1
+                    continue
+
+                candidates = old_by_digest.get(
+                    disposition.content_digest, ()
+                )
+                reused_pair = self._reuse_row(
+                    disposition,
+                    candidates,
+                    language=language,
+                )
+                if reused_pair is not None:
+                    row, record = reused_pair
+                    rows.append(row)
+                    records[disposition.path] = record
+                    reused += 1
+                    renamed += not any(
+                        old.path == disposition.path for old in candidates
+                    )
+                    failures += bool(record.parse_error)
                     continue
 
                 cached = self._cached_record(

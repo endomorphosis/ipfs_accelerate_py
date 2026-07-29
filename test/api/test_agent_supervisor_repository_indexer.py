@@ -261,6 +261,38 @@ def test_complete_body_free_index_is_bounded_reused_and_deterministic(
     assert "return request" not in cache_text
 
 
+def test_same_content_reuse_stays_bound_to_parser_language(
+    tmp_path: Path,
+) -> None:
+    payload = b"value = 1\n"
+    files = {
+        "src/example.js": payload,
+        "src/example.py": payload,
+    }
+    snapshot = _snapshot(
+        tmp_path / "source",
+        [
+            _disposition(
+                path,
+                CoverageKind.SEMANTIC_AST,
+                body,
+            )
+            for path, body in files.items()
+        ],
+    )
+    indexer = RepositoryIndexer(tmp_path / "index")
+
+    cold = indexer.build(snapshot, source_loader=_loader(files))
+    warm = indexer.build(snapshot, source_loader=_loader(files))
+
+    assert cold.index_id == warm.index_id
+    assert cold.invalidations == warm.invalidations == ()
+    assert cold.row_for_path("src/example.js").language == "javascript"
+    assert cold.row_for_path("src/example.py").language == "python"
+    assert warm.row_for_path("src/example.js").language == "javascript"
+    assert warm.row_for_path("src/example.py").language == "python"
+
+
 def test_rename_reuse_and_exact_change_delete_invalidations(
     tmp_path: Path,
 ) -> None:
