@@ -8,10 +8,16 @@ The policy deliberately separates two execution modes:
   exactly-bound, independent Codex reviewer.
 
 Task-declared context bounds are protocol limits, not hints.  They are checked
-before any local operation or provider invocation.  Provider quota exhaustion,
-malformed responses, and failures defer the task; an implementation proposal
-is never silently promoted to a completed result when review did not run.
-Display labels are audit metadata only and are never used for dispatch.
+before any local operation or provider invocation.  Provider prompt bytes and
+tokens for each model request are re-measured against the same hard limits.
+Provider quota exhaustion, malformed responses, and failures defer the task; an
+implementation proposal is never silently promoted to a completed result when
+review did not run.  Provider output is proposal-only: receipts always deny
+completion and proof authority, and display labels are audit metadata only and
+are never used for dispatch.
+
+Evidence obligation SCAEV167ROUTE (SCA-G167 / SCA-188): symbolic-only execution
+mode routing and bounded Grok/Codex provider enforcement.
 """
 
 from __future__ import annotations
@@ -41,6 +47,21 @@ TASK_EXECUTION_RECEIPT_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/task-execution-receipt@1"
 )
 
+# Objective-evidence term for SCA-G167: exact-text matches in implementation
+# and validation sources prove the route/enforcement obligation is covered.
+SCAEV167ROUTE: Final = "SCAEV167ROUTE"
+SCAEV167ROUTE_EVIDENCE: Final = SCAEV167ROUTE
+SCAEV167ROUTE_COVERAGE: Final = (
+    "deterministic-only-typed-allowlist-zero-provider-calls",
+    "task-context-bytes-tokens-hard-limits",
+    "provider-prompt-bytes-tokens-hard-limits",
+    "exact-grok-codex-executable-identity",
+    "independent-sequential-review-order",
+    "quota-failure-defer-without-promotion-or-fallback",
+    "display-labels-never-select-or-upgrade",
+    "proposal-only-admission-no-completion-or-proof-authority",
+)
+
 MAX_TASK_CONTEXT_BYTES: Final = 64 * 1_024
 MAX_TASK_CONTEXT_TOKENS: Final = 4_096
 MAX_TASK_PROVIDER_RESPONSE_BYTES: Final = 256 * 1_024
@@ -63,6 +84,8 @@ class ExecutionReason(str, Enum):
     COMPLETED = "completed"
     INVALID_REQUEST = "invalid_request"
     CONTEXT_LIMIT_EXCEEDED = "task_context_limit_exceeded"
+    PROVIDER_PROMPT_TOO_LARGE = "provider_prompt_too_large"
+    PROVIDER_PROMPT_TOKEN_BUDGET = "provider_prompt_token_budget_exceeded"
     LOCAL_OPERATION_NOT_ALLOWED = "local_operation_not_allowed"
     LOCAL_OPERATION_FAILED = "local_operation_failed"
     PROVIDER_NOT_CONFIGURED = "provider_not_configured"
@@ -74,6 +97,7 @@ class ExecutionReason(str, Enum):
     CODEX_FAILED = "codex_failed"
     PROVIDER_RESPONSE_INVALID = "provider_response_invalid"
     PROVIDER_RESPONSE_TOO_LARGE = "provider_response_too_large"
+    PROVIDER_RESULT_NOT_ADMITTED = "provider_result_not_admitted"
 
 
 class LocalOperationType(str, Enum):
@@ -303,6 +327,10 @@ class ExecutionAttempt:
     invoked: bool
     status: str
     reason_code: str
+    prompt_bytes: int = 0
+    prompt_tokens: int = 0
+    response_bytes: int = 0
+    admitted: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -313,6 +341,10 @@ class ExecutionAttempt:
             "invoked": self.invoked,
             "status": self.status,
             "reason_code": self.reason_code,
+            "prompt_bytes": self.prompt_bytes,
+            "prompt_tokens": self.prompt_tokens,
+            "response_bytes": self.response_bytes,
+            "admitted": self.admitted,
         }
 
 
@@ -330,15 +362,34 @@ class TaskExecutionReceipt:
     result: Any = None
     grok_implementation: Mapping[str, Any] | None = None
     codex_review: Mapping[str, Any] | None = None
+    context_byte_limit: int = 0
+    context_token_limit: int = 0
+    max_provider_response_bytes: int = 0
+    prompt_bytes: int = 0
+    prompt_tokens: int = 0
 
     @property
     def deferred(self) -> bool:
         return self.status is ExecutionStatus.DEFERRED
 
+    @property
+    def provider_result_admitted(self) -> bool:
+        """True only when a model-assisted run completed independent review."""
+
+        return (
+            self.status is ExecutionStatus.SUCCEEDED
+            and self.mode is ExecutionMode.GROK_CODEX
+            and self.codex_review is not None
+        )
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "schema": TASK_EXECUTION_RECEIPT_SCHEMA,
             "interface": TASK_EXECUTION_POLICY_INTERFACE,
+            "evidence": {
+                "requirement_ids": [SCAEV167ROUTE],
+                "coverage": list(SCAEV167ROUTE_COVERAGE),
+            },
             "task_id": self.task_id,
             "mode": self.mode.value,
             "status": self.status.value,
@@ -346,11 +397,32 @@ class TaskExecutionReceipt:
             "context_usage": {
                 "bytes": self.context_bytes,
                 "tokens": self.context_tokens,
+                "byte_limit": self.context_byte_limit,
+                "token_limit": self.context_token_limit,
+            },
+            "prompt_usage": {
+                "bytes": self.prompt_bytes,
+                "tokens": self.prompt_tokens,
+                "byte_limit": self.context_byte_limit,
+                "token_limit": self.context_token_limit,
+            },
+            "bounds": {
+                "max_context_bytes": self.context_byte_limit,
+                "max_context_tokens": self.context_token_limit,
+                "max_provider_response_bytes": self.max_provider_response_bytes,
             },
             "isolation_audit": {
                 "llm_call_count": self.model_call_count,
                 "model_call_count": self.model_call_count,
                 "provider_call_count": self.provider_call_count,
+            },
+            "admission": {
+                "proposal_only": True,
+                "repository_write_allowed": False,
+                "completion_authoritative": False,
+                "proof_authoritative": False,
+                "provider_result_admitted": self.provider_result_admitted,
+                "labels_may_select_provider": False,
             },
             "attempts": [attempt.to_dict() for attempt in self.attempts],
             "result": _thaw_json(self.result),
@@ -478,17 +550,34 @@ class TaskExecutionPolicy:
                 reason=ExecutionReason.CONTEXT_LIMIT_EXCEEDED,
                 context_bytes=context_bytes,
                 context_tokens=context_tokens,
+                context_byte_limit=byte_limit,
+                context_token_limit=token_limit,
             )
 
         if request.mode is ExecutionMode.DETERMINISTIC_ONLY:
-            return self._execute_local(request, context_bytes, context_tokens)
-        return self._execute_models(request, context_bytes, context_tokens)
+            return self._execute_local(
+                request,
+                context_bytes,
+                context_tokens,
+                byte_limit=byte_limit,
+                token_limit=token_limit,
+            )
+        return self._execute_models(
+            request,
+            context_bytes,
+            context_tokens,
+            byte_limit=byte_limit,
+            token_limit=token_limit,
+        )
 
     def _execute_local(
         self,
         request: TaskExecutionRequest,
         context_bytes: int,
         context_tokens: int,
+        *,
+        byte_limit: int,
+        token_limit: int,
     ) -> TaskExecutionReceipt:
         results: list[Any] = []
         attempts: list[ExecutionAttempt] = []
@@ -504,6 +593,7 @@ class TaskExecutionPolicy:
                         invoked=False,
                         status=ExecutionStatus.REJECTED.value,
                         reason_code=ExecutionReason.LOCAL_OPERATION_NOT_ALLOWED.value,
+                        admitted=False,
                     )
                 )
                 return self._receipt(
@@ -512,6 +602,8 @@ class TaskExecutionPolicy:
                     reason=ExecutionReason.LOCAL_OPERATION_NOT_ALLOWED,
                     context_bytes=context_bytes,
                     context_tokens=context_tokens,
+                    context_byte_limit=byte_limit,
+                    context_token_limit=token_limit,
                     attempts=attempts,
                 )
             try:
@@ -529,6 +621,7 @@ class TaskExecutionPolicy:
                         invoked=True,
                         status=ExecutionStatus.DEFERRED.value,
                         reason_code=ExecutionReason.LOCAL_OPERATION_FAILED.value,
+                        admitted=False,
                     )
                 )
                 return self._receipt(
@@ -537,6 +630,8 @@ class TaskExecutionPolicy:
                     reason=ExecutionReason.LOCAL_OPERATION_FAILED,
                     context_bytes=context_bytes,
                     context_tokens=context_tokens,
+                    context_byte_limit=byte_limit,
+                    context_token_limit=token_limit,
                     attempts=attempts,
                 )
             results.append(value)
@@ -549,6 +644,7 @@ class TaskExecutionPolicy:
                     invoked=True,
                     status=ExecutionStatus.SUCCEEDED.value,
                     reason_code=ExecutionReason.COMPLETED.value,
+                    admitted=True,
                 )
             )
 
@@ -558,6 +654,8 @@ class TaskExecutionPolicy:
             reason=ExecutionReason.COMPLETED,
             context_bytes=context_bytes,
             context_tokens=context_tokens,
+            context_byte_limit=byte_limit,
+            context_token_limit=token_limit,
             attempts=attempts,
             result=results,
         )
@@ -567,6 +665,9 @@ class TaskExecutionPolicy:
         request: TaskExecutionRequest,
         context_bytes: int,
         context_tokens: int,
+        *,
+        byte_limit: int,
+        token_limit: int,
     ) -> TaskExecutionReceipt:
         if request.local_operations:
             return self._receipt(
@@ -575,6 +676,8 @@ class TaskExecutionPolicy:
                 reason=ExecutionReason.INVALID_REQUEST,
                 context_bytes=context_bytes,
                 context_tokens=context_tokens,
+                context_byte_limit=byte_limit,
+                context_token_limit=token_limit,
             )
         if self.grok is None or self.codex is None:
             return self._receipt(
@@ -583,6 +686,8 @@ class TaskExecutionPolicy:
                 reason=ExecutionReason.PROVIDER_NOT_CONFIGURED,
                 context_bytes=context_bytes,
                 context_tokens=context_tokens,
+                context_byte_limit=byte_limit,
+                context_token_limit=token_limit,
             )
         if (
             request.grok_executable_id != self.grok.executable_id
@@ -594,6 +699,8 @@ class TaskExecutionPolicy:
                 reason=ExecutionReason.EXECUTABLE_BINDING_MISMATCH,
                 context_bytes=context_bytes,
                 context_tokens=context_tokens,
+                context_byte_limit=byte_limit,
+                context_token_limit=token_limit,
             )
         if (
             self.grok.executable_id == self.codex.executable_id
@@ -605,9 +712,15 @@ class TaskExecutionPolicy:
                 reason=ExecutionReason.PROVIDERS_NOT_INDEPENDENT,
                 context_bytes=context_bytes,
                 context_tokens=context_tokens,
+                context_byte_limit=byte_limit,
+                context_token_limit=token_limit,
             )
 
         attempts: list[ExecutionAttempt] = []
+        # Prompt envelopes are bounded by the policy ceilings; task context is
+        # already constrained by the tighter min(policy, request metadata).
+        prompt_byte_limit = self.max_context_bytes
+        prompt_token_limit = self.max_context_tokens
         grok_request = ModelExecutionRequest(
             role=ProviderRole.GROK_IMPLEMENT,
             executable_id=self.grok.executable_id,
@@ -616,15 +729,22 @@ class TaskExecutionPolicy:
             context_metadata=request.context_metadata,
         )
         grok_result, grok_reason = self._invoke_provider(
-            self.grok, self.grok_quota, grok_request, attempts
+            self.grok,
+            self.grok_quota,
+            grok_request,
+            attempts,
+            prompt_byte_limit=prompt_byte_limit,
+            prompt_token_limit=prompt_token_limit,
         )
         if grok_result is None:
             return self._receipt(
                 request,
-                status=ExecutionStatus.DEFERRED,
+                status=self._terminal_status_for_reason(grok_reason),
                 reason=grok_reason,
                 context_bytes=context_bytes,
                 context_tokens=context_tokens,
+                context_byte_limit=byte_limit,
+                context_token_limit=token_limit,
                 attempts=attempts,
             )
 
@@ -637,15 +757,22 @@ class TaskExecutionPolicy:
             grok_implementation=grok_result,
         )
         codex_result, codex_reason = self._invoke_provider(
-            self.codex, self.codex_quota, codex_request, attempts
+            self.codex,
+            self.codex_quota,
+            codex_request,
+            attempts,
+            prompt_byte_limit=prompt_byte_limit,
+            prompt_token_limit=prompt_token_limit,
         )
         if codex_result is None:
             return self._receipt(
                 request,
-                status=ExecutionStatus.DEFERRED,
+                status=self._terminal_status_for_reason(codex_reason),
                 reason=codex_reason,
                 context_bytes=context_bytes,
                 context_tokens=context_tokens,
+                context_byte_limit=byte_limit,
+                context_token_limit=token_limit,
                 attempts=attempts,
                 grok_implementation=grok_result,
             )
@@ -657,11 +784,57 @@ class TaskExecutionPolicy:
             reason=ExecutionReason.COMPLETED,
             context_bytes=context_bytes,
             context_tokens=context_tokens,
+            context_byte_limit=byte_limit,
+            context_token_limit=token_limit,
             attempts=attempts,
             result=result,
             grok_implementation=grok_result,
             codex_review=codex_result,
         )
+
+    @staticmethod
+    def _terminal_status_for_reason(reason: ExecutionReason) -> ExecutionStatus:
+        """Map provider-stage failures to reject vs defer terminal status."""
+
+        if reason in {
+            ExecutionReason.PROVIDER_PROMPT_TOO_LARGE,
+            ExecutionReason.PROVIDER_PROMPT_TOKEN_BUDGET,
+            ExecutionReason.EXECUTABLE_BINDING_MISMATCH,
+            ExecutionReason.PROVIDERS_NOT_INDEPENDENT,
+            ExecutionReason.INVALID_REQUEST,
+            ExecutionReason.CONTEXT_LIMIT_EXCEEDED,
+            ExecutionReason.LOCAL_OPERATION_NOT_ALLOWED,
+        }:
+            return ExecutionStatus.REJECTED
+        return ExecutionStatus.DEFERRED
+
+    def _measure_prompt(
+        self,
+        request: ModelExecutionRequest,
+        *,
+        prompt_byte_limit: int,
+        prompt_token_limit: int,
+    ) -> tuple[int, int, ExecutionReason | None]:
+        """Return prompt size and an optional hard-limit violation reason."""
+
+        prompt_data = _canonical_bytes(request.to_dict())
+        prompt_bytes = len(prompt_data)
+        prompt_tokens = self.token_counter(prompt_data)
+        if (
+            isinstance(prompt_tokens, bool)
+            or not isinstance(prompt_tokens, int)
+            or prompt_tokens < 0
+        ):
+            raise ValueError("token_counter must return a non-negative integer")
+        if prompt_bytes > prompt_byte_limit:
+            return prompt_bytes, prompt_tokens, ExecutionReason.PROVIDER_PROMPT_TOO_LARGE
+        if prompt_tokens > prompt_token_limit:
+            return (
+                prompt_bytes,
+                prompt_tokens,
+                ExecutionReason.PROVIDER_PROMPT_TOKEN_BUDGET,
+            )
+        return prompt_bytes, prompt_tokens, None
 
     def _invoke_provider(
         self,
@@ -669,6 +842,9 @@ class TaskExecutionPolicy:
         quota: ProviderQuotaLatch,
         request: ModelExecutionRequest,
         attempts: list[ExecutionAttempt],
+        *,
+        prompt_byte_limit: int,
+        prompt_token_limit: int,
     ) -> tuple[Mapping[str, Any] | None, ExecutionReason]:
         quota_reason = (
             ExecutionReason.GROK_QUOTA_EXHAUSTED
@@ -680,10 +856,33 @@ class TaskExecutionPolicy:
             if executable.role is ProviderRole.GROK_IMPLEMENT
             else ExecutionReason.CODEX_FAILED
         )
+        prompt_bytes, prompt_tokens, prompt_reason = self._measure_prompt(
+            request,
+            prompt_byte_limit=prompt_byte_limit,
+            prompt_token_limit=prompt_token_limit,
+        )
+        if prompt_reason is not None:
+            attempts.append(
+                self._provider_attempt(
+                    executable,
+                    invoked=False,
+                    status=ExecutionStatus.REJECTED,
+                    reason=prompt_reason,
+                    prompt_bytes=prompt_bytes,
+                    prompt_tokens=prompt_tokens,
+                )
+            )
+            return None, prompt_reason
+
         if not quota.acquire():
             attempts.append(
                 self._provider_attempt(
-                    executable, invoked=False, status=ExecutionStatus.DEFERRED, reason=quota_reason
+                    executable,
+                    invoked=False,
+                    status=ExecutionStatus.DEFERRED,
+                    reason=quota_reason,
+                    prompt_bytes=prompt_bytes,
+                    prompt_tokens=prompt_tokens,
                 )
             )
             return None, quota_reason
@@ -694,14 +893,24 @@ class TaskExecutionPolicy:
             quota.latch(exc.reason_code)
             attempts.append(
                 self._provider_attempt(
-                    executable, invoked=True, status=ExecutionStatus.DEFERRED, reason=quota_reason
+                    executable,
+                    invoked=True,
+                    status=ExecutionStatus.DEFERRED,
+                    reason=quota_reason,
+                    prompt_bytes=prompt_bytes,
+                    prompt_tokens=prompt_tokens,
                 )
             )
             return None, quota_reason
         except Exception:
             attempts.append(
                 self._provider_attempt(
-                    executable, invoked=True, status=ExecutionStatus.DEFERRED, reason=failure_reason
+                    executable,
+                    invoked=True,
+                    status=ExecutionStatus.DEFERRED,
+                    reason=failure_reason,
+                    prompt_bytes=prompt_bytes,
+                    prompt_tokens=prompt_tokens,
                 )
             )
             return None, failure_reason
@@ -713,12 +922,15 @@ class TaskExecutionPolicy:
                     invoked=True,
                     status=ExecutionStatus.DEFERRED,
                     reason=ExecutionReason.PROVIDER_RESPONSE_INVALID,
+                    prompt_bytes=prompt_bytes,
+                    prompt_tokens=prompt_tokens,
                 )
             )
             return None, ExecutionReason.PROVIDER_RESPONSE_INVALID
         try:
             detached = _plain_json(response, path="$.provider_response")
-            response_bytes = _canonical_bytes(detached)
+            response_data = _canonical_bytes(detached)
+            response_size = len(response_data)
         except (TypeError, ValueError):
             attempts.append(
                 self._provider_attempt(
@@ -726,16 +938,21 @@ class TaskExecutionPolicy:
                     invoked=True,
                     status=ExecutionStatus.DEFERRED,
                     reason=ExecutionReason.PROVIDER_RESPONSE_INVALID,
+                    prompt_bytes=prompt_bytes,
+                    prompt_tokens=prompt_tokens,
                 )
             )
             return None, ExecutionReason.PROVIDER_RESPONSE_INVALID
-        if len(response_bytes) > self.max_provider_response_bytes:
+        if response_size > self.max_provider_response_bytes:
             attempts.append(
                 self._provider_attempt(
                     executable,
                     invoked=True,
                     status=ExecutionStatus.DEFERRED,
                     reason=ExecutionReason.PROVIDER_RESPONSE_TOO_LARGE,
+                    prompt_bytes=prompt_bytes,
+                    prompt_tokens=prompt_tokens,
+                    response_bytes=response_size,
                 )
             )
             return None, ExecutionReason.PROVIDER_RESPONSE_TOO_LARGE
@@ -743,10 +960,29 @@ class TaskExecutionPolicy:
             quota.latch("provider_reported_quota_exhausted")
             attempts.append(
                 self._provider_attempt(
-                    executable, invoked=True, status=ExecutionStatus.DEFERRED, reason=quota_reason
+                    executable,
+                    invoked=True,
+                    status=ExecutionStatus.DEFERRED,
+                    reason=quota_reason,
+                    prompt_bytes=prompt_bytes,
+                    prompt_tokens=prompt_tokens,
+                    response_bytes=response_size,
                 )
             )
             return None, quota_reason
+        if self._response_claims_authority(detached):
+            attempts.append(
+                self._provider_attempt(
+                    executable,
+                    invoked=True,
+                    status=ExecutionStatus.DEFERRED,
+                    reason=ExecutionReason.PROVIDER_RESULT_NOT_ADMITTED,
+                    prompt_bytes=prompt_bytes,
+                    prompt_tokens=prompt_tokens,
+                    response_bytes=response_size,
+                )
+            )
+            return None, ExecutionReason.PROVIDER_RESULT_NOT_ADMITTED
 
         frozen = _freeze_json(detached)
         attempts.append(
@@ -755,6 +991,10 @@ class TaskExecutionPolicy:
                 invoked=True,
                 status=ExecutionStatus.SUCCEEDED,
                 reason=ExecutionReason.COMPLETED,
+                prompt_bytes=prompt_bytes,
+                prompt_tokens=prompt_tokens,
+                response_bytes=response_size,
+                admitted=True,
             )
         )
         return frozen, ExecutionReason.COMPLETED
@@ -768,12 +1008,36 @@ class TaskExecutionPolicy:
         )
 
     @staticmethod
+    def _response_claims_authority(response: Mapping[str, Any]) -> bool:
+        """Reject provider payloads that claim completion or proof authority."""
+
+        if response.get("completion_authoritative") is True:
+            return True
+        if response.get("proof_authoritative") is True:
+            return True
+        authority = response.get("authority")
+        if isinstance(authority, Mapping):
+            if authority.get("completion_authoritative") is True:
+                return True
+            if authority.get("proof_authoritative") is True:
+                return True
+            if authority.get("repository_write_allowed") is True:
+                return True
+            if authority.get("proposal_only") is False:
+                return True
+        return False
+
+    @staticmethod
     def _provider_attempt(
         executable: ProviderExecutable,
         *,
         invoked: bool,
         status: ExecutionStatus,
         reason: ExecutionReason,
+        prompt_bytes: int = 0,
+        prompt_tokens: int = 0,
+        response_bytes: int = 0,
+        admitted: bool = False,
     ) -> ExecutionAttempt:
         return ExecutionAttempt(
             stage=executable.role.value,
@@ -783,16 +1047,22 @@ class TaskExecutionPolicy:
             invoked=invoked,
             status=status.value,
             reason_code=reason.value,
+            prompt_bytes=prompt_bytes,
+            prompt_tokens=prompt_tokens,
+            response_bytes=response_bytes,
+            admitted=admitted,
         )
 
-    @staticmethod
     def _receipt(
+        self,
         request: TaskExecutionRequest,
         *,
         status: ExecutionStatus,
         reason: ExecutionReason,
         context_bytes: int,
         context_tokens: int,
+        context_byte_limit: int,
+        context_token_limit: int,
         attempts: Sequence[ExecutionAttempt] = (),
         result: Any = None,
         grok_implementation: Mapping[str, Any] | None = None,
@@ -809,6 +1079,8 @@ class TaskExecutionPolicy:
                 ProviderRole.CODEX_REVIEW.value,
             }
         )
+        prompt_bytes = sum(attempt.prompt_bytes for attempt in attempts_tuple)
+        prompt_tokens = sum(attempt.prompt_tokens for attempt in attempts_tuple)
         return TaskExecutionReceipt(
             task_id=request.task_id,
             mode=request.mode,
@@ -822,6 +1094,11 @@ class TaskExecutionPolicy:
             result=_freeze_json(_plain_json(result)) if result is not None else None,
             grok_implementation=grok_implementation,
             codex_review=codex_review,
+            context_byte_limit=context_byte_limit,
+            context_token_limit=context_token_limit,
+            max_provider_response_bytes=self.max_provider_response_bytes,
+            prompt_bytes=prompt_bytes,
+            prompt_tokens=prompt_tokens,
         )
 
 
