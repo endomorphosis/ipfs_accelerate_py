@@ -99,7 +99,10 @@ from ..validation_commands import (
     normalize_validation_command_text,
     split_validation_commands,
 )
-from ..validation_runtime import validation_shell_command
+from ..validation_runtime import (
+    VALIDATION_PLAYWRIGHT_BROWSERS_PATH_ENV,
+    validation_shell_command,
+)
 from ..validation_scheduler import (
     ValidationScheduler,
     build_declared_validation_plan_graph,
@@ -276,6 +279,13 @@ DEFAULT_IMPLEMENTATION_PROPOSAL_OUTPUT_BYTES = 2_500_000
 DEFAULT_IMPLEMENTATION_PROPOSAL_FILE_BYTES = 1_000_000
 MAX_IMPLEMENTATION_PROPOSAL_MATERIALIZED_BYTES = 16_000_000
 MAX_IMPLEMENTATION_PROPOSAL_SERIALIZED_BYTES = 24_000_000
+RECONCILIATION_VALIDATION_LOG_TAIL_BYTES = 128 * 1024
+PLAYWRIGHT_HOST_PREFLIGHT_FAILURE_MARKER = (
+    "Playwright host dependency preflight failed on Linux."
+)
+PLAYWRIGHT_BROWSER_MISSING_MARKER = (
+    "browser bundle is not installed under"
+)
 PROPOSAL_ARTIFACT_ENVELOPE_METADATA_KEY = "proposal artifact envelope"
 PROPOSAL_ARTIFACT_ENVELOPE_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/task-artifact-envelope@1"
@@ -13583,10 +13593,10 @@ class PortalImplementationDaemon:
         return tuple(sorted(consumed))
 
     @staticmethod
-    def _retryable_reconciliation_validation_failure(
+    def _terminal_reconciliation_security_failure(
         validation_result: Mapping[str, Any],
     ) -> bool:
-        """Identify environment/process failures that a later replay may fix."""
+        """Give security and candidate-identity failures terminal precedence."""
 
         terminal_security_reasons = {
             "candidate_changed_during_validation",
@@ -13601,25 +13611,41 @@ class PortalImplementationDaemon:
             reason in terminal_security_reasons
             or bool(validation_result.get("protected_path_violation"))
         ):
-            return False
+            return True
         candidate_binding = validation_result.get("candidate_binding")
         if (
             isinstance(candidate_binding, Mapping)
             and candidate_binding.get("verified") is False
         ):
-            return False
+            return True
         proposal_gate = validation_result.get("proposal_gate")
         if (
             isinstance(proposal_gate, Mapping)
             and proposal_gate.get("accepted") is False
         ):
+            raw_reason_codes = proposal_gate.get("reason_codes") or ()
+            if isinstance(raw_reason_codes, str):
+                raw_reason_codes = (raw_reason_codes,)
             reason_codes = {
                 str(code).strip()
-                for code in (proposal_gate.get("reason_codes") or ())
+                for code in raw_reason_codes
                 if str(code).strip()
             }
             if reason_codes != {"stale_proposal_replay"}:
-                return False
+                return True
+        return False
+
+    @classmethod
+    def _retryable_reconciliation_validation_failure(
+        cls,
+        validation_result: Mapping[str, Any],
+    ) -> bool:
+        """Identify environment/process failures that a later replay may fix."""
+
+        if cls._terminal_reconciliation_security_failure(
+            validation_result
+        ):
+            return False
 
         retryable_returncodes = {
             124,  # command timeout
@@ -13630,6 +13656,26 @@ class PortalImplementationDaemon:
             143,  # terminated
         }
         raw_returncodes = [validation_result.get("returncode")]
+        retryable_outcomes = {
+            "infrastructure_failure",
+            "timeout",
+            "timed_out",
+        }
+        if (
+            validation_result.get("infrastructure_failure") is True
+            or str(validation_result.get("outcome") or "").strip()
+            in retryable_outcomes
+            or str(validation_result.get("classification") or "").strip()
+            in retryable_outcomes
+            or str(validation_result.get("error") or "").startswith(
+                (
+                    "hermetic_runtime_",
+                    "resource_admission_",
+                    "validation_environment_",
+                )
+            )
+        ):
+            return True
         command_results = validation_result.get("results")
         if isinstance(command_results, Sequence) and not isinstance(
             command_results,
@@ -13640,6 +13686,23 @@ class PortalImplementationDaemon:
                     continue
                 if command_result.get("timed_out") is True:
                     return True
+                if (
+                    command_result.get("infrastructure_failure") is True
+                    or str(command_result.get("outcome") or "").strip()
+                    in retryable_outcomes
+                    or str(
+                        command_result.get("classification") or ""
+                    ).strip()
+                    in retryable_outcomes
+                    or str(command_result.get("error") or "").startswith(
+                        (
+                            "hermetic_runtime_",
+                            "resource_admission_",
+                            "validation_environment_",
+                        )
+                    )
+                ):
+                    return True
                 raw_returncodes.append(command_result.get("returncode"))
         for raw_returncode in raw_returncodes:
             try:
@@ -13649,6 +13712,89 @@ class PortalImplementationDaemon:
             if returncode < 0 or returncode in retryable_returncodes:
                 return True
         return False
+
+    def _retryable_reconciliation_event_failure(
+        self,
+        event: Mapping[str, Any],
+    ) -> bool:
+        """Classify structured or safely logged recovery environment failures."""
+
+        validation_result = event.get("validation_result")
+        if not isinstance(validation_result, Mapping):
+            return False
+        if self._terminal_reconciliation_security_failure(
+            validation_result
+        ):
+            return False
+        if self._retryable_reconciliation_validation_failure(
+            validation_result
+        ):
+            return True
+
+        # Older events predate structured infrastructure-failure propagation.
+        # Permit a bounded retrospective retry only when an operator-approved
+        # Playwright cache now exists and this daemon's own validation log
+        # records the exact missing-browser preflight diagnostic.
+        if (
+            str(validation_result.get("reason") or "")
+            != "declared_validation_failed"
+            or str(validation_result.get("error") or "")
+            != "validation_command_failed"
+        ):
+            return False
+        proposal_gate = validation_result.get("proposal_gate")
+        if (
+            not isinstance(proposal_gate, Mapping)
+            or proposal_gate.get("accepted") is not True
+        ):
+            return False
+        approved_browsers = str(
+            os.environ.get(
+                VALIDATION_PLAYWRIGHT_BROWSERS_PATH_ENV,
+                "",
+            )
+            or ""
+        ).strip()
+        if not approved_browsers:
+            return False
+        try:
+            approved_path = Path(approved_browsers).resolve(strict=True)
+        except OSError:
+            return False
+        if not approved_path.is_dir():
+            return False
+
+        raw_log_path = str(event.get("log_path") or "").strip()
+        if not raw_log_path:
+            return False
+        try:
+            log_root = self.implementation_log_dir.resolve(strict=True)
+            log_path = Path(raw_log_path).resolve(strict=True)
+            if (
+                not log_path.is_file()
+                or not log_path.is_relative_to(log_root)
+            ):
+                return False
+            with log_path.open("rb") as handle:
+                handle.seek(0, os.SEEK_END)
+                size = handle.tell()
+                handle.seek(
+                    max(
+                        0,
+                        size
+                        - RECONCILIATION_VALIDATION_LOG_TAIL_BYTES,
+                    )
+                )
+                log_tail = handle.read().decode(
+                    "utf-8",
+                    errors="replace",
+                )
+        except OSError:
+            return False
+        return (
+            PLAYWRIGHT_HOST_PREFLIGHT_FAILURE_MARKER in log_tail
+            and PLAYWRIGHT_BROWSER_MISSING_MARKER in log_tail
+        )
 
     def _retryable_reconciliation_proposal_ids(
         self,
@@ -13689,9 +13835,7 @@ class PortalImplementationDaemon:
             }
             if (
                 proposal_gate.get("accepted") is True
-                and self._retryable_reconciliation_validation_failure(
-                    validation_result
-                )
+                and self._retryable_reconciliation_event_failure(event)
             ):
                 retryable.add(proposal_id)
             elif reason_codes == {"stale_proposal_replay"}:
@@ -14882,14 +15026,29 @@ class PortalImplementationDaemon:
                 check=False,
                 env=child_environment,
             )
-        return {
+        output = completed.stdout or ""
+        result = {
             "command": str(spec.command),
             "raw_command": str(spec.raw_command or spec.command),
             "started_at": started_at,
             "finished_at": utc_now(),
             "returncode": int(completed.returncode),
-            "output": completed.stdout or "",
+            "output": output,
         }
+        if (
+            completed.returncode != 0
+            and PLAYWRIGHT_HOST_PREFLIGHT_FAILURE_MARKER in output
+            and PLAYWRIGHT_BROWSER_MISSING_MARKER in output
+        ):
+            result.update(
+                {
+                    "error": (
+                        "validation_environment_playwright_browsers_missing"
+                    ),
+                    "infrastructure_failure": True,
+                }
+            )
+        return result
 
     @staticmethod
     def _normalize_validation_command(command: str) -> tuple[str, list[str]]:

@@ -4815,6 +4815,24 @@ class PortalImplementationSupervisor:
             replay_control_rejection = bool(
                 proposal_reason_codes == {"stale_proposal_replay"}
             )
+            retryable_event_failure = getattr(
+                daemon,
+                "_retryable_reconciliation_event_failure",
+                None,
+            )
+            if callable(retryable_event_failure):
+                retryable_environment_failure = bool(
+                    retryable_event_failure(event)
+                )
+            else:
+                retryable_environment_failure = bool(
+                    PortalImplementationDaemon
+                    ._retryable_reconciliation_validation_failure(
+                        validation_result
+                        if isinstance(validation_result, Mapping)
+                        else {}
+                    )
+                )
             terminal_semantic_rejection = bool(
                 event_type
                 == "worktree_reconciliation_validation_finished"
@@ -4833,12 +4851,7 @@ class PortalImplementationSupervisor:
                 }
                 and not validation_result.get("error_type")
                 and not replay_control_rejection
-                and not (
-                    PortalImplementationDaemon
-                    ._retryable_reconciliation_validation_failure(
-                        validation_result
-                    )
-                )
+                and not retryable_environment_failure
             )
             if recovery_key and (
                 completed_reconciliation

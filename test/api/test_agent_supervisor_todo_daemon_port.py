@@ -18358,6 +18358,173 @@ def test_implementation_supervisor_keeps_failed_recovered_candidate_unmerged(
     )
 
 
+def test_validation_command_runner_classifies_playwright_host_preflight_failure(
+    tmp_path,
+    monkeypatch,
+):
+    output = (
+        "Playwright host dependency preflight failed on Linux.\n"
+        "browser bundle is not installed under /var/cache/ms-playwright\n"
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module.subprocess,
+        "run",
+        lambda *_args, **_kwargs: subprocess.CompletedProcess(
+            args=["npx", "playwright", "test"],
+            returncode=1,
+            stdout=output,
+        ),
+    )
+
+    result = TodoImplementationDaemon._validation_command_runner(
+        spec=SimpleNamespace(
+            command="npx playwright test",
+            raw_command="npx playwright test",
+        ),
+        workspace_path=tmp_path,
+        timeout_seconds=10,
+        environment={"PATH": os.environ["PATH"]},
+    )
+
+    assert result["returncode"] == 1
+    assert result["infrastructure_failure"] is True
+    assert (
+        result["error"]
+        == "validation_environment_playwright_browsers_missing"
+    )
+
+
+def test_reconciliation_playwright_log_retry_requires_approved_browser_directory(
+    tmp_path,
+    monkeypatch,
+):
+    state_dir = tmp_path / "state"
+    log_dir = state_dir / "implementation_logs"
+    log_dir.mkdir(parents=True)
+    log_path = log_dir / "accel-011-reconciliation-validation.log"
+    log_path.write_text(
+        "Playwright host dependency preflight failed on Linux.\n"
+        "browser bundle is not installed under /var/cache/ms-playwright\n",
+        encoding="utf-8",
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=tmp_path / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=tmp_path,
+        implementation_log_dir=log_dir,
+    )
+    event = {
+        "type": "worktree_reconciliation_validation_finished",
+        "task_id": "ACCEL-011",
+        "recovery_key": "playwright-browser-cache",
+        "provider_dispatched": False,
+        "attempt_consumed": False,
+        "log_path": str(log_path),
+        "validation_result": {
+            "attempted": True,
+            "passed": False,
+            "returncode": 1,
+            "reason": "declared_validation_failed",
+            "error": "validation_command_failed",
+            "proposal_gate": {
+                "attempted": True,
+                "accepted": True,
+                "proposal_id": "proposal-playwright-browser-cache",
+                "reason_codes": [],
+            },
+            "results": [
+                {
+                    "command": "npx playwright test",
+                    "returncode": 1,
+                }
+            ],
+        },
+    }
+    variable = (
+        "IPFS_ACCELERATE_AGENT_VALIDATION_PLAYWRIGHT_BROWSERS_PATH"
+    )
+    monkeypatch.delenv(variable, raising=False)
+
+    assert daemon._retryable_reconciliation_event_failure(event) is False
+
+    monkeypatch.setenv(variable, str(tmp_path / "missing-browsers"))
+    assert daemon._retryable_reconciliation_event_failure(event) is False
+
+    browser_dir = tmp_path / "browsers"
+    browser_dir.mkdir()
+    monkeypatch.setenv(variable, str(browser_dir))
+    assert daemon._retryable_reconciliation_event_failure(event) is True
+
+    outside_log = tmp_path / "outside-validation.log"
+    outside_log.write_text(log_path.read_text(encoding="utf-8"), encoding="utf-8")
+    event["log_path"] = str(outside_log)
+    assert daemon._retryable_reconciliation_event_failure(event) is False
+
+
+def test_reconciliation_security_failure_overrides_playwright_log_retry(
+    tmp_path,
+    monkeypatch,
+):
+    state_dir = tmp_path / "state"
+    log_dir = state_dir / "implementation_logs"
+    log_dir.mkdir(parents=True)
+    log_path = log_dir / "accel-011-security-validation.log"
+    log_path.write_text(
+        "Playwright host dependency preflight failed on Linux.\n"
+        "browser bundle is not installed under /var/cache/ms-playwright\n",
+        encoding="utf-8",
+    )
+    browser_dir = tmp_path / "browsers"
+    browser_dir.mkdir()
+    monkeypatch.setenv(
+        "IPFS_ACCELERATE_AGENT_VALIDATION_PLAYWRIGHT_BROWSERS_PATH",
+        str(browser_dir),
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=tmp_path / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=tmp_path,
+        implementation_log_dir=log_dir,
+    )
+    event = {
+        "type": "worktree_reconciliation_validation_finished",
+        "task_id": "ACCEL-011",
+        "recovery_key": "playwright-security-precedence",
+        "provider_dispatched": False,
+        "attempt_consumed": False,
+        "log_path": str(log_path),
+        "validation_result": {
+            "attempted": True,
+            "passed": False,
+            "returncode": 1,
+            "reason": "declared_validation_failed",
+            "error": "validation_command_failed",
+            "candidate_binding": {
+                "verified": False,
+                "reason": "candidate_fingerprint_changed",
+            },
+            "proposal_gate": {
+                "attempted": True,
+                "accepted": True,
+                "proposal_id": "proposal-playwright-security-precedence",
+                "reason_codes": [],
+            },
+            "results": [
+                {
+                    "command": "npx playwright test",
+                    "returncode": 1,
+                }
+            ],
+        },
+    }
+
+    assert daemon._retryable_reconciliation_event_failure(event) is False
+
+
 def test_implementation_supervisor_retries_reconciliation_when_validation_executable_is_missing(
     tmp_path,
 ):
