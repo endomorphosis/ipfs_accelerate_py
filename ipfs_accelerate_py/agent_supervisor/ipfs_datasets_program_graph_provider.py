@@ -11,11 +11,13 @@ Canonical construction (``vfs/program-graph@1``) and optional GraphRAG ranking
 returns compact references and ranking reasons only; GraphRAG output cannot
 create completion or proof authority.
 
-Objective validation repair for VFS-G040 re-anchors the synthetic discovery
-term ``objective validation repair`` on this ranking surface without granting
-GraphRAG completion or proof authority.  Separate canonical graph
-construction from optional GraphRAG ranking: construction lives in
-:mod:`program_graph`; this module ranks only.
+Objective validation repair for VFS-G040 / VFS-G144 re-anchors the synthetic
+discovery term ``objective validation repair`` on this ranking surface without
+granting GraphRAG completion or proof authority.  VFS-G144 owns the repair
+obligation; the goal packet with VFS-G041 shares construction identity so
+call-slice indexes may optimize without rewriting graph content addresses.
+Separate canonical graph construction from optional GraphRAG ranking:
+construction lives in :mod:`program_graph`; this module ranks only.
 
 Properties:
 
@@ -55,13 +57,16 @@ from .program_graph import (
     DEFAULT_MAX_CHUNK_EDGES,
     DEFAULT_MAX_CHUNK_NODES,
     OBJECTIVE_GOAL_ID,
+    OBJECTIVE_GOAL_PACKET_IDS,
     OBJECTIVE_VALIDATION_REPAIR_EVIDENCE,
+    OBJECTIVE_VALIDATION_REPAIR_GOAL_ID,
     PROGRAM_GRAPH_EVIDENCE,
     GraphChunk,
     ProgramGraph,
     ProgramGraphEdge,
     ProgramGraphError,
     ProgramGraphNode,
+    all_program_graph_evidence_terms,
     canonical_program_json,
     objective_validation_repair_evidence_terms,
     program_graph_evidence_terms,
@@ -87,6 +92,8 @@ GRAPHRAG_PROJECTION_EVIDENCE: Final[str] = "vfs/graphrag-projection@1"
 # Never part of ranking result identity or authority claims.
 assert OBJECTIVE_VALIDATION_REPAIR_EVIDENCE == "objective validation repair"
 assert OBJECTIVE_GOAL_ID == "VFS-G040"
+assert OBJECTIVE_VALIDATION_REPAIR_GOAL_ID == "VFS-G144"
+assert OBJECTIVE_GOAL_PACKET_IDS == ("VFS-G041", "VFS-G144")
 
 PROVIDER_CAPABILITY_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/"
@@ -425,18 +432,20 @@ def covered_evidence_terms() -> tuple[str, ...]:
     The synthetic ``objective validation repair`` term is intentionally
     omitted from this domain list; use
     :func:`objective_validation_repair_evidence_terms` (or
-    :func:`all_covered_evidence_terms`) for the validation gate.
+    :func:`all_covered_evidence_terms`) for the VFS-G144 validation gate.
     """
 
     return program_graph_evidence_terms() + graphrag_projection_evidence_terms()
 
 
 def all_covered_evidence_terms() -> tuple[str, ...]:
-    """Return domain VFS-G040 terms plus the objective validation repair gate.
+    """Return domain VFS-G040 terms plus the VFS-G144 objective validation repair gate.
 
     Order: canonical construction, optional GraphRAG ranking, then the
     synthetic objective validation repair discovery key.  Ranking still
-    cannot create completion or proof authority.
+    cannot create completion or proof authority.  Construction-only discovery
+    (without ranking) is available via
+    :func:`all_program_graph_evidence_terms`.
     """
 
     return covered_evidence_terms() + objective_validation_repair_evidence_terms()
@@ -2925,7 +2934,9 @@ __all__ = [
     "IPFS_DATASETS_PROGRAM_GRAPH_PROVIDER_ID",
     "IPFS_DATASETS_PROGRAM_GRAPH_PROVIDER_VERSION",
     "OBJECTIVE_GOAL_ID",
+    "OBJECTIVE_GOAL_PACKET_IDS",
     "OBJECTIVE_VALIDATION_REPAIR_EVIDENCE",
+    "OBJECTIVE_VALIDATION_REPAIR_GOAL_ID",
     "PROVIDER_CAPABILITY_SCHEMA",
     "PROVIDER_CHUNK_SCHEMA",
     "PROVIDER_PROJECTION_SCHEMA",
@@ -2941,6 +2952,7 @@ __all__ = [
     "IpfsDatasetsProgramGraphProvider",
     "ProjectedChunk",
     "all_covered_evidence_terms",
+    "all_program_graph_evidence_terms",
     "covered_evidence_terms",
     "graphrag_projection_evidence_terms",
     "objective_validation_repair_evidence_terms",

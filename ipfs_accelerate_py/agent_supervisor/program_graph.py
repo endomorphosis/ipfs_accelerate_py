@@ -13,11 +13,15 @@ is intentionally separate from optional GraphRAG ranking
 may rank neighborhoods later; they cannot mint authoritative program-graph
 records, completion authority, or proof authority.
 
-Objective validation repair for VFS-G040 anchors the synthetic discovery term
-``objective validation repair`` so supervisor scans re-find the validation
-gate after the domain evidence surfaces (``vfs/program-graph@1``,
-``vfs/graphrag-projection@1``) are already present.  That term never becomes
-graph identity or completion authority.
+Objective validation repair for VFS-G040 / VFS-G144 anchors the synthetic
+discovery term ``objective validation repair`` so supervisor scans re-find
+the validation gate after the domain evidence surfaces
+(``vfs/program-graph@1``, ``vfs/graphrag-projection@1``) are already present.
+That term never becomes graph identity or completion authority.  VFS-G144 is
+the child validation-gate goal that owns the repair obligation; the goal
+packet with VFS-G041 (minimal call-slice queries) shares construction
+identity preservation so query indexes may optimize without rewriting
+``graph_id`` / node / edge content addresses.
 
 Composition policy (VFS-008 / VFS-G040): compose the semantic-dependency and
 code-evidence graph contracts without mutating GraphRAG or contract
@@ -64,10 +68,16 @@ PROGRAM_GRAPH_FRONTIER_SCHEMA = (
 # Canonical construction lives here; optional GraphRAG ranking is a separate
 # evidence surface (vfs/graphrag-projection@1) and must not author these records.
 PROGRAM_GRAPH_EVIDENCE: Final[str] = "vfs/program-graph@1"
-# Synthetic objective-heap evidence term for VFS-G040 validation-gate work.
-# Exact-text discovery key only — never part of graph_id identity payload.
+# Synthetic objective-heap evidence term for VFS-G040 / VFS-G144 validation-gate
+# work.  Exact-text discovery key only — never part of graph_id identity payload.
 OBJECTIVE_VALIDATION_REPAIR_EVIDENCE: Final[str] = "objective validation repair"
+# Domain parent goal that owns construction + ranking surfaces.
 OBJECTIVE_GOAL_ID: Final[str] = "VFS-G040"
+# Child validation-gate goal that owns the synthetic repair obligation
+# (goal_packet/program_graph/... with VFS-G041 call-slice queries).
+OBJECTIVE_VALIDATION_REPAIR_GOAL_ID: Final[str] = "VFS-G144"
+# Shared goal-packet surface: call-slice queries + validation repair.
+OBJECTIVE_GOAL_PACKET_IDS: Final[tuple[str, ...]] = ("VFS-G041", "VFS-G144")
 
 DEFAULT_MAX_GRAPH_NODES = 250_000
 DEFAULT_MAX_GRAPH_EDGES = 1_000_000
@@ -1696,22 +1706,37 @@ def program_graph_evidence_terms() -> tuple[str, ...]:
 
     The synthetic ``objective validation repair`` term is intentionally
     omitted here so graph envelope ``evidence`` stays domain-only; use
-    :func:`objective_validation_repair_evidence_terms` for the validation gate.
+    :func:`objective_validation_repair_evidence_terms` (or
+    :func:`all_program_graph_evidence_terms`) for the VFS-G144 validation gate.
     """
 
     return (PROGRAM_GRAPH_EVIDENCE,)
 
 
 def objective_validation_repair_evidence_terms() -> tuple[str, ...]:
-    """Return the synthetic VFS-G040 validation-gate evidence term.
+    """Return the synthetic VFS-G144 validation-gate evidence term.
 
     Exact-text discovery key for objective validation repair.  Never mixes
     into content-addressed graph identity, completion authority, or proof
     authority.  Canonical construction remains separate from optional
-    GraphRAG ranking.
+    GraphRAG ranking.  Owned by :data:`OBJECTIVE_VALIDATION_REPAIR_GOAL_ID`
+    (``VFS-G144``) under parent :data:`OBJECTIVE_GOAL_ID` (``VFS-G040``).
     """
 
     return (OBJECTIVE_VALIDATION_REPAIR_EVIDENCE,)
+
+
+def all_program_graph_evidence_terms() -> tuple[str, ...]:
+    """Return construction domain term plus the objective validation repair gate.
+
+    Domain ``vfs/program-graph@1`` comes first; the synthetic objective
+    validation repair discovery key is appended last and never enters
+    ``graph_id`` identity.  Optional GraphRAG ranking
+    (``vfs/graphrag-projection@1``) remains on the provider surface via
+    :func:`~ipfs_accelerate_py.agent_supervisor.ipfs_datasets_program_graph_provider.all_covered_evidence_terms`.
+    """
+
+    return program_graph_evidence_terms() + objective_validation_repair_evidence_terms()
 
 
 def all_program_node_kinds() -> tuple[ProgramNodeKind, ...]:
@@ -1741,7 +1766,9 @@ __all__ = [
     "GraphIndex",
     "IllegalCycleError",
     "OBJECTIVE_GOAL_ID",
+    "OBJECTIVE_GOAL_PACKET_IDS",
     "OBJECTIVE_VALIDATION_REPAIR_EVIDENCE",
+    "OBJECTIVE_VALIDATION_REPAIR_GOAL_ID",
     "PROGRAM_GRAPH_CHUNK_SCHEMA",
     "PROGRAM_GRAPH_COMPLETENESS_SCHEMA",
     "PROGRAM_GRAPH_EDGE_SCHEMA",
@@ -1761,6 +1788,7 @@ __all__ = [
     "ResolverStatus",
     "SourceSpan",
     "all_program_edge_kinds",
+    "all_program_graph_evidence_terms",
     "all_program_node_kinds",
     "build_program_graph",
     "canonical_program_json",
