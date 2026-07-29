@@ -176,8 +176,11 @@ ready = sorted(
     for task in tasks
     if task.status == "todo" and set(task.depends_on).issubset(completed)
 )
-if len(ready) < 4:
-    raise SystemExit(f"expected at least four ready tasks, found {ready}")
+if not ready and len(completed) < len(tasks):
+    raise SystemExit(
+        "expected at least one ready task while incomplete work remains; "
+        f"completed={sorted(completed)}"
+    )
 
 scheduler = json.loads(scheduler_path.read_text(encoding="utf-8"))
 if scheduler.get("task_prefix") != "RPR-":
