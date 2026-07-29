@@ -6,6 +6,12 @@ real parser (the TypeScript compiler API via :class:`PolyglotASTProvider`),
 never a regex/heuristic stand-in.  Reviewed per-language thresholds either
 pass or the resulting health report remains a completion blocker.
 
+SCA-231 extends recovery with deterministic parser-failure triage: remaining
+typed failures are content-addressed by parser identity, normalized reason,
+and path family; reviewed exclusions cannot hide MCP/runtime surfaces; and
+analyzer repairs ship with positive/negative fixtures.  Health thresholds
+(max 10 failures / 1 percent for JS/TS) are never weakened by triage.
+
 Source bodies are accepted only as transient canary inputs.  They are never
 retained on health objects, never serialized into reports, and therefore never
 enter model context through this module.
@@ -284,7 +290,11 @@ class PathDispositionRecord:
 
 @dataclass(frozen=True)
 class FailureCluster:
-    """Aggregate of bounded failures sharing language/reason/parser identity."""
+    """Aggregate of bounded failures sharing language/reason/parser identity.
+
+    When ``path_family`` is non-empty the content-addressed cluster identity
+    also binds the path family (SCA-231 triage-compatible clustering).
+    """
 
     language: str
     reason_code: str
@@ -292,6 +302,7 @@ class FailureCluster:
     count: int
     sample_disposition_ids: tuple[str, ...] = ()
     sample_paths: tuple[str, ...] = ()
+    path_family: str = ""
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "language", _normalize_language(self.language))
@@ -317,20 +328,23 @@ class FailureCluster:
             "sample_paths",
             tuple(str(item) for item in self.sample_paths if str(item)),
         )
+        object.__setattr__(
+            self, "path_family", str(self.path_family or "").strip()
+        )
 
     @property
     def cluster_id(self) -> str:
-        return _identity(
-            "failure-cluster",
-            {
-                "language": self.language,
-                "reason_code": self.reason_code,
-                "parser_identity": self.parser_identity,
-            },
-        )
+        payload: dict[str, Any] = {
+            "language": self.language,
+            "reason_code": self.reason_code,
+            "parser_identity": self.parser_identity,
+        }
+        if self.path_family:
+            payload["path_family"] = self.path_family
+        return _identity("failure-cluster", payload)
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        payload = {
             "cluster_id": self.cluster_id,
             "language": self.language,
             "reason_code": self.reason_code,
@@ -339,6 +353,9 @@ class FailureCluster:
             "sample_disposition_ids": list(self.sample_disposition_ids),
             "sample_paths": list(self.sample_paths),
         }
+        if self.path_family:
+            payload["path_family"] = self.path_family
+        return payload
 
 
 @dataclass(frozen=True)
@@ -929,30 +946,92 @@ def classify_path_dispositions(
     return tuple(records)
 
 
+def path_family_for_health(path: str) -> str:
+    """Deterministic path-family key aligned with SCA-231 triage clustering.
+
+    Implemented locally so health clustering does not hard-import the triage
+    module at cold import time (keeps SCA-166 cold-import guarantees).
+    """
+
+    text = str(path or "").strip().replace("\\", "/")
+    while text.startswith("./"):
+        text = text[2:]
+    parts = [part for part in text.split("/") if part]
+    if not parts:
+        return ""
+    name = parts[-1]
+    if (
+        len(parts) >= 4
+        and parts[0] == "ipfs_accelerate_js"
+        and parts[1] == "test"
+        and parts[2] == "unit"
+        and name.startswith("test_hf_")
+    ):
+        return "ipfs_accelerate_js/test/unit/test_hf_*"
+    if (
+        len(parts) >= 3
+        and parts[0] == "ipfs_accelerate_js"
+        and parts[1] == "test"
+        and parts[2] == "browser"
+    ):
+        return "ipfs_accelerate_js/test/browser/*"
+    if (
+        len(parts) >= 3
+        and parts[0] == "ipfs_accelerate_js"
+        and parts[1] == "test"
+        and parts[2] == "unit"
+    ):
+        return "ipfs_accelerate_js/test/unit/*"
+    if parts[0] == "web" and len(parts) >= 2 and parts[1] == "legacy-archive":
+        return "web/legacy-archive/*"
+    if parts[0] == "docs" and len(parts) >= 2 and parts[1] == "ast_exports":
+        return "docs/ast_exports/*"
+    if parts[0] == "benchmark-results":
+        return "benchmark-results/*"
+    if parts[0] == "test" and len(parts) >= 2:
+        return f"test/{parts[1]}/*"
+    if len(parts) >= 2:
+        return f"{parts[0]}/{parts[1]}/*"
+    return f"{parts[0]}/*"
+
+
 def cluster_failures(
     dispositions: Sequence[PathDispositionRecord],
     *,
     max_samples: int = _DEFAULT_MAX_FAILURE_SAMPLES,
     max_clusters: int = _DEFAULT_MAX_CLUSTERS,
+    include_path_family: bool = False,
 ) -> tuple[FailureCluster, ...]:
-    """Cluster bounded failures by language / reason / parser identity."""
+    """Cluster bounded failures by language / reason / parser identity.
+
+    When ``include_path_family`` is true, path family is bound into the
+    cluster key and content identity (SCA-231).  Default remains the SCA-166
+    language/reason/parser identity for backward compatibility.
+    """
 
     if max_samples < 0 or max_clusters < 0:
         raise PolyglotASTHealthError(
             "cluster sample limits must be non-negative",
             reason_code="invalid_cluster_limits",
         )
-    buckets: dict[tuple[str, str, str], list[PathDispositionRecord]] = {}
+    buckets: dict[tuple[str, str, str, str], list[PathDispositionRecord]] = {}
     for item in dispositions:
         if item.outcome is not PathParseOutcome.BOUNDED_FAILURE:
             continue
-        key = (item.language, item.reason_code, item.parser_identity)
+        family = path_family_for_health(item.path) if include_path_family else ""
+        key = (item.language, item.reason_code, item.parser_identity, family)
         buckets.setdefault(key, []).append(item)
 
     clusters: list[FailureCluster] = []
-    for (language, reason_code, parser_identity), members in sorted(
+    for (language, reason_code, parser_identity, path_family), members in sorted(
         buckets.items(),
-        key=lambda pair: (-len(pair[1]), pair[0][0], pair[0][1], pair[0][2]),
+        key=lambda pair: (
+            -len(pair[1]),
+            pair[0][0],
+            pair[0][1],
+            pair[0][2],
+            pair[0][3],
+        ),
     ):
         if len(clusters) >= max_clusters:
             break
@@ -967,6 +1046,7 @@ def cluster_failures(
                     item.disposition_id for item in samples
                 ),
                 sample_paths=tuple(item.path for item in samples),
+                path_family=path_family,
             )
         )
     return tuple(clusters)
@@ -1394,12 +1474,16 @@ def assess_polyglot_ast_health(
     repair_authority: bool = True,
     search_roots: Sequence[str | os.PathLike[str]] | None = None,
     max_disposition_samples: int = 0,
+    include_path_family_clusters: bool = False,
 ) -> PolyglotASTHealthReport:
     """Classify path outcomes, cluster failures, canary, and gate completion.
 
     When ``max_disposition_samples`` is 0, every disposition is retained.  Set
     a positive bound only for extremely large ledgers where the caller already
     has the full path inventory elsewhere; the metrics still use the full set.
+
+    ``include_path_family_clusters`` enables SCA-231 path-family binding on
+    failure clusters without changing language health thresholds.
     """
 
     dispositions = classify_path_dispositions(rows)
@@ -1541,7 +1625,9 @@ def assess_polyglot_ast_health(
         item for item in language_reports if item.eligible_count > 0
     ]
 
-    clusters = cluster_failures(dispositions)
+    clusters = cluster_failures(
+        dispositions, include_path_family=include_path_family_clusters
+    )
     unhealthy_reasons: list[str] = []
     partial_reasons: list[str] = []
     for report in language_reports:
@@ -1764,10 +1850,25 @@ def build_health_report_from_coverage(
     run_canaries: bool = True,
     max_disposition_samples: int = _DEFAULT_MAX_PATH_SAMPLES,
     search_roots: Sequence[str | os.PathLike[str]] | None = None,
+    include_path_family_clusters: bool = False,
+    apply_parser_failure_triage: bool = False,
 ) -> PolyglotASTHealthReport:
-    """Assess a coverage/index ledger and optionally persist the receipt."""
+    """Assess a coverage/index ledger and optionally persist the receipt.
+
+    When ``apply_parser_failure_triage`` is true, SCA-231 reviewed exclusions
+    are applied before health evaluation.  Thresholds are never weakened.
+    """
 
     rows = load_coverage_rows(coverage_path)
+    if apply_parser_failure_triage:
+        # Lazy import keeps cold import free of triage module side effects.
+        from .parser_failure_triage import (
+            apply_triage_to_rows,
+            triage_parser_failures,
+        )
+
+        triage = triage_parser_failures(rows)
+        rows = apply_triage_to_rows(rows, triage.assignments)
     report = assess_polyglot_ast_health(
         rows,
         provider=provider,
@@ -1775,6 +1876,7 @@ def build_health_report_from_coverage(
         run_canaries=run_canaries,
         max_disposition_samples=max_disposition_samples,
         search_roots=search_roots,
+        include_path_family_clusters=include_path_family_clusters,
     )
     if output_path is not None:
         write_polyglot_ast_health_report(report, output_path)
@@ -1807,6 +1909,7 @@ __all__ = [
     "evaluate_language_health",
     "js_ts_uses_real_parser",
     "load_coverage_rows",
+    "path_family_for_health",
     "repair_polyglot_parser_authority",
     "report_contains_source_body",
     "run_polyglot_ast_canaries",
