@@ -36,6 +36,7 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.taskboard_store import (
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     PortalImplementationDaemon,
+    PortalTaskState,
 )
 
 
@@ -700,6 +701,73 @@ def test_idle_populated_board_does_not_rewrite_typed_task_identities(
     assert second["write_count"] == 0
     assert second["projection_delta"] == {}
     assert {path: _file_identity(path) for path in durable_paths} == before
+
+
+def test_expired_ready_task_cooldown_wakes_unchanged_runtime(
+    tmp_path: Path,
+) -> None:
+    board = tmp_path / "tasks.todo.md"
+    board.write_text(
+        """# Retry board
+
+## PORTAL-001 Retry after transient maintenance
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: runtime
+- Depends on:
+- Outputs: src/retry.py
+- Validation:
+- Acceptance: The ready task is selected after its cooldown expires.
+""",
+        encoding="utf-8",
+    )
+    daemon = PortalImplementationDaemon(
+        todo_path=board,
+        state_path=tmp_path / "runtime" / "state.json",
+        strategy_path=tmp_path / "runtime" / "strategy.json",
+        events_path=tmp_path / "runtime" / "events.jsonl",
+        repo_root=tmp_path,
+        task_header_prefix="## PORTAL-",
+        worktree_pool_enabled=False,
+        validation_cache_dir=tmp_path / "runtime" / "validation-cache",
+        merge_queue_dir=tmp_path / "runtime" / "merge-queue",
+    )
+
+    first = daemon.run_once()
+    state = PortalTaskState.load(daemon.state_path)
+    state.active_task_id = ""
+    state.active_task_key = ""
+    state.active_task_cid = ""
+    state.implementation_in_progress = False
+    state.save(daemon.state_path)
+    daemon.task_queue.defer(
+        "PORTAL-001",
+        30,
+        reason="implementation_protected_path_maintenance_active",
+    )
+    daemon.task_queue.save()
+    daemon._runtime_last_source_digest = daemon._runtime_source_head()[0]
+
+    cooling_down = daemon.run_once()
+
+    assert cooling_down["unchanged"] is True
+    assert cooling_down["implementation_result"] is None
+    assert cooling_down["task_selection_retry_task_ids"] == ["PORTAL-001"]
+    assert 0 < cooling_down["next_wake_after_seconds"] <= 30
+
+    queue_key = daemon.task_queue.resolve_key("PORTAL-001")
+    daemon.task_queue.entries[queue_key].cooldown_until = time.time() - 1
+    daemon.task_queue.save()
+    daemon._runtime_last_source_digest = daemon._runtime_source_head()[0]
+
+    retried = daemon.run_once()
+
+    assert first["active_task_id"] == "PORTAL-001"
+    assert retried["unchanged"] is False
+    assert retried["active_task_id"] == "PORTAL-001"
+    assert "task_selection_retry_at" not in retried
 
 
 def test_ephemeral_merge_consumer_lease_is_not_a_runtime_wake_source(

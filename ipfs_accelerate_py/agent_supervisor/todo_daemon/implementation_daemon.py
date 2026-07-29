@@ -5374,15 +5374,7 @@ class PortalImplementationDaemon:
                 "requirement_id": EVENT_DRIVEN_RUNTIME_REQUIREMENT_ID,
             }
         )
-        provider_backoff = self._active_provider_capacity_backoff()
-        if provider_backoff:
-            result["provider_capacity_retry_at"] = provider_backoff["retry_at"]
-            result["next_wake_after_seconds"] = provider_backoff[
-                "retry_after_seconds"
-            ]
-        else:
-            result.pop("provider_capacity_retry_at", None)
-            result.pop("next_wake_after_seconds", None)
+        self._attach_runtime_retry_schedule(result)
         self._acknowledge_runtime_events()
         return result
 
@@ -5599,7 +5591,19 @@ class PortalImplementationDaemon:
                 provider_retry_schedule
                 and not provider_retry_schedule.get("active", False)
             )
-            if not provider_retry_due:
+            task_retry_schedule = self._selectable_task_retry_schedule()
+            task_retry_due = bool(
+                task_retry_schedule
+                and not task_retry_schedule.get("active", False)
+            )
+            provider_retry_active = bool(
+                provider_retry_schedule
+                and provider_retry_schedule.get("active", False)
+            )
+            runtime_retry_due = provider_retry_due or (
+                not provider_retry_active and task_retry_due
+            )
+            if not runtime_retry_due:
                 return self._unchanged_runtime_result(
                     source_digest=source_digest,
                     wake_kinds=wake_kinds,
@@ -6247,12 +6251,7 @@ class PortalImplementationDaemon:
             "wake_kinds": sorted(wake_kinds),
             "requirement_id": EVENT_DRIVEN_RUNTIME_REQUIREMENT_ID,
         }
-        provider_backoff = self._active_provider_capacity_backoff()
-        if provider_backoff:
-            result["provider_capacity_retry_at"] = provider_backoff["retry_at"]
-            result["next_wake_after_seconds"] = provider_backoff[
-                "retry_after_seconds"
-            ]
+        self._attach_runtime_retry_schedule(result)
         task_source_identity = self._task_source_identity_record()
         if task_source_identity is not None:
             result["task_source_identity"] = task_source_identity
@@ -6390,6 +6389,77 @@ class PortalImplementationDaemon:
     def _active_provider_capacity_backoff(self) -> dict[str, Any]:
         schedule = self._provider_capacity_backoff_schedule()
         return schedule if schedule.get("active", False) else {}
+
+    def _selectable_task_retry_schedule(self) -> dict[str, Any]:
+        """Return the earliest cooldown for durable ready work in this lane."""
+
+        state = PortalTaskState.load(self.state_path)
+        if state.active_task_id or state.implementation_in_progress:
+            return {}
+        task_ids = list(dict.fromkeys(state.selectable_ready_task_ids))
+        if not task_ids:
+            return {}
+
+        now = time.time()
+        due_task_ids: list[str] = []
+        future_deadlines: list[float] = []
+        for task_id in task_ids:
+            canonical_ref = self.task_queue.resolve_key(task_id)
+            entry = self.task_queue.entries.get(canonical_ref)
+            if entry is None or entry.cooldown_until <= now:
+                due_task_ids.append(task_id)
+                continue
+            future_deadlines.append(entry.cooldown_until)
+
+        if due_task_ids:
+            return {
+                "active": False,
+                "retry_after_seconds": 0.0,
+                "task_ids": due_task_ids[:20],
+                "task_count": len(due_task_ids),
+            }
+        if not future_deadlines:
+            return {}
+
+        retry_timestamp = min(future_deadlines)
+        return {
+            "active": True,
+            "retry_at": datetime.fromtimestamp(
+                retry_timestamp,
+                tz=timezone.utc,
+            ).isoformat(),
+            "retry_after_seconds": max(0.0, retry_timestamp - now),
+            "task_ids": task_ids[:20],
+            "task_count": len(task_ids),
+        }
+
+    def _attach_runtime_retry_schedule(self, result: dict[str, Any]) -> None:
+        """Attach the earliest provider or task-selection wake deadline."""
+
+        for key in (
+            "provider_capacity_retry_at",
+            "task_selection_retry_at",
+            "task_selection_retry_task_ids",
+            "task_selection_retry_task_count",
+            "next_wake_after_seconds",
+        ):
+            result.pop(key, None)
+
+        retry_after_seconds: list[float] = []
+        provider_backoff = self._active_provider_capacity_backoff()
+        if provider_backoff:
+            result["provider_capacity_retry_at"] = provider_backoff["retry_at"]
+            retry_after_seconds.append(provider_backoff["retry_after_seconds"])
+
+        task_retry = self._selectable_task_retry_schedule()
+        if task_retry.get("active", False):
+            result["task_selection_retry_at"] = task_retry["retry_at"]
+            result["task_selection_retry_task_ids"] = task_retry["task_ids"]
+            result["task_selection_retry_task_count"] = task_retry["task_count"]
+            retry_after_seconds.append(task_retry["retry_after_seconds"])
+
+        if retry_after_seconds:
+            result["next_wake_after_seconds"] = min(retry_after_seconds)
 
     def _record_provider_capacity_deferral(
         self,
