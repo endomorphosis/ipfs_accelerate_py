@@ -1427,7 +1427,11 @@ class PortalImplementationSupervisor:
         update_maintenance_phase("generated_dirty_repair")
         generated_dirty_repair = self.repair_generated_dirty_checkouts()
         update_maintenance_phase("worktree_reconciliation")
-        worktree_reconciliation = self.reconcile_backlogged_worktrees()
+        worktree_reconciliation = self.reconcile_backlogged_worktrees(
+            preacquired_implementation_lock=(
+                implementation_maintenance_lease
+            ),
+        )
         update_maintenance_phase("worktree_reconciliation_replay")
         worktree_reconciliation_replay = (
             self.recover_already_merged_reconciliation_candidates(
@@ -3172,7 +3176,11 @@ class PortalImplementationSupervisor:
             self._record_event("stale_worktree_detection", result)
         return result
 
-    def reconcile_backlogged_worktrees(self) -> dict[str, Any]:
+    def reconcile_backlogged_worktrees(
+        self,
+        *,
+        preacquired_implementation_lock: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
         """Retry clean inactive implementation worktrees before cleanup."""
 
         if not self.config.worktree_reconciliation_enabled:
@@ -3686,6 +3694,9 @@ class PortalImplementationSupervisor:
                         baseline_ref=baseline_ref,
                         candidate_commit=head,
                         recovery_key=recovery_key,
+                        preacquired_implementation_lock=(
+                            preacquired_implementation_lock
+                        ),
                     )
                 )
                 merge_result = dict(

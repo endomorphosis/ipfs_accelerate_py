@@ -1597,9 +1597,15 @@ def test_supervisor_maintenance_lease_is_visible_and_removed_on_success(
     lock_path = tmp_path / "state" / "implementation.lock"
     observed: dict[str, object] = {}
 
-    def maintenance_body(_update_phase, *, include_refill: bool):
+    def maintenance_body(
+        _update_phase,
+        *,
+        include_refill: bool,
+        implementation_maintenance_lease=None,
+    ):
         observed.update(json.loads(lock_path.read_text(encoding="utf-8")))
         assert include_refill is False
+        assert implementation_maintenance_lease == observed
         assert _daemon(tmp_path)._implementation_lock_owner_is_active(observed)
         return {"stuck": False, "completed_count": 0}
 
@@ -1629,11 +1635,16 @@ def test_supervisor_maintenance_lease_is_removed_on_exception(
     supervisor = _supervisor(tmp_path)
     lock_path = tmp_path / "state" / "implementation.lock"
 
-    def failing_maintenance(_update_phase, *, include_refill: bool):
+    def failing_maintenance(
+        _update_phase,
+        *,
+        include_refill: bool,
+        implementation_maintenance_lease=None,
+    ):
         assert include_refill is False
-        assert json.loads(lock_path.read_text(encoding="utf-8"))[
-            "lease_role"
-        ] == "supervisor_maintenance"
+        metadata = json.loads(lock_path.read_text(encoding="utf-8"))
+        assert implementation_maintenance_lease == metadata
+        assert metadata["lease_role"] == "supervisor_maintenance"
         raise RuntimeError("maintenance failed")
 
     monkeypatch.setattr(
@@ -1660,9 +1671,15 @@ def test_supervisor_maintenance_lease_uses_effective_state_path_parent(
     effective_lock_path = effective_state_path.parent / "implementation.lock"
     configured_lock_path = tmp_path / "state" / "implementation.lock"
 
-    def maintenance_body(_update_phase, *, include_refill: bool):
+    def maintenance_body(
+        _update_phase,
+        *,
+        include_refill: bool,
+        implementation_maintenance_lease=None,
+    ):
         assert include_refill is False
         metadata = json.loads(effective_lock_path.read_text(encoding="utf-8"))
+        assert implementation_maintenance_lease == metadata
         assert metadata["state_path"] == str(effective_state_path.resolve())
         assert _daemon(
             tmp_path,

@@ -10207,7 +10207,7 @@ def test_implementation_supervisor_check_records_worktree_summary_counts(tmp_pat
     monkeypatch.setattr(
         supervisor,
         "reconcile_backlogged_worktrees",
-        lambda: {
+        lambda **_kwargs: {
             "candidate_count": 5,
             "processed_count": 3,
             "reconciled_count": 1,
@@ -12451,7 +12451,7 @@ def test_implementation_supervisor_recovers_missing_inflight_before_worktree_rec
     )
     supervisor._list_process_commands = lambda: []  # type: ignore[method-assign]
 
-    def assert_state_recovered_before_reconcile():
+    def assert_state_recovered_before_reconcile(**_kwargs):
         recovered = TodoTaskState.load(state_path)
         assert recovered.implementation_in_progress is False
         assert recovered.active_worktree_path == ""
@@ -19392,6 +19392,124 @@ def test_implementation_supervisor_validates_current_task_before_recovered_merge
         and event["provider_dispatched"] is False
         for event in managed_events
     )
+    assert _git(repo, "status", "--short") == ""
+
+
+def test_implementation_supervisor_run_once_reconciles_candidate_under_maintenance_lease(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        _reconciled_candidate_task_board(
+            task_id="ACCEL-010L",
+            validation="python -m py_compile feature.py",
+        ),
+        encoding="utf-8",
+    )
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    (repo / ".gitignore").write_text(
+        "__pycache__/\n*.pyc\n",
+        encoding="utf-8",
+    )
+    _git(repo, "add", ".gitignore", "README.md", "todo.md")
+    _git(repo, "commit", "-m", "base")
+
+    branch_name = (
+        "implementation/accel-010l-a1b2c3d4e5f6-attempt-1-123"
+    )
+    _git(repo, "checkout", "-b", branch_name)
+    (repo / "feature.py").write_text(
+        'VALUE = "feature"\n',
+        encoding="utf-8",
+    )
+    _git(repo, "add", "feature.py")
+    _git(repo, "commit", "-m", "feature")
+    candidate_commit = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "main")
+
+    state_dir = tmp_path / "state"
+    worktree_root = tmp_path / "worktrees"
+    worktree_path = worktree_root / "candidate"
+    _git(repo, "worktree", "add", str(worktree_path), branch_name)
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=todo_path,
+            state_path=state_dir / "task_state.json",
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "supervisor_events.jsonl",
+            state_dir=state_dir,
+            state_prefix="accel",
+            task_prefix="## ACCEL-",
+            repo_root=repo,
+            worktree_root=worktree_root,
+            merge_target_branch="main",
+            implementation_protected_paths=("README.md",),
+        )
+    )
+    maintenance_lock_path = state_dir / "implementation.lock"
+    observed_leases: dict[str, dict] = {}
+    reconcile = supervisor.reconcile_backlogged_worktrees
+
+    def reconcile_under_outer_lease(
+        *,
+        preacquired_implementation_lock=None,
+    ):
+        assert preacquired_implementation_lock is not None
+        observed_leases["argument"] = dict(
+            preacquired_implementation_lock
+        )
+        observed_leases["before"] = json.loads(
+            maintenance_lock_path.read_text(encoding="utf-8")
+        )
+        result = reconcile(
+            preacquired_implementation_lock=(
+                preacquired_implementation_lock
+            ),
+        )
+        observed_leases["after"] = json.loads(
+            maintenance_lock_path.read_text(encoding="utf-8")
+        )
+        return result
+
+    monkeypatch.setattr(
+        supervisor,
+        "reconcile_backlogged_worktrees",
+        reconcile_under_outer_lease,
+    )
+
+    run_result = supervisor.run_once(include_refill=False)
+    result = run_result["worktree_reconciliation"]
+
+    assert result["reconciled_count"] == 1, json.dumps(
+        result,
+        indent=2,
+        sort_keys=True,
+    )
+    assert observed_leases["argument"]["lease_role"] == (
+        "supervisor_maintenance"
+    )
+    assert (
+        observed_leases["argument"]
+        == observed_leases["before"]
+        == observed_leases["after"]
+    )
+    assert not maintenance_lock_path.exists()
+    recovered = result["processed"][0]["recovery_result"]
+    assert recovered["implementation_commit"] == candidate_commit
+    assert recovered["returncode"] == 0
+    assert recovered["validation_result"]["passed"] is True
+    assert recovered["validation_result"]["proposal_gate"]["accepted"] is True
+    assert "- Status: completed" in todo_path.read_text(encoding="utf-8")
+    assert (repo / "feature.py").read_text(
+        encoding="utf-8"
+    ) == 'VALUE = "feature"\n'
     assert _git(repo, "status", "--short") == ""
 
 
