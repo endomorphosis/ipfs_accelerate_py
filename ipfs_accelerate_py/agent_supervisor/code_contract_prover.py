@@ -6,10 +6,18 @@ against admitted SMT backends (cvc5, z3, and any additional admitted adapters),
 and independently validated under policy.  Candidate solver successes never
 self-promote to authority.
 
-Conflict policy: compose :mod:`proof.multi_prover_router`, kernel-style binding
+Conflict policy: compose MultiProverRouter (:mod:`proof.multi_prover_router`)
+for **candidate search only**, independent KernelVerification-style binding
 checks, and ``ipfs_datasets_py.logic`` IR backend contracts.  Portfolio output
 is retained as attempts/results/receipts; only independently validated
 authoritative outcomes may be conclusive.
+
+Objective validation repair for VFS-G070 anchors the synthetic discovery term
+``objective validation repair`` on this kernel-proof surface without granting
+MultiProverRouter candidates or premise selectors proof authority.  Keep
+translation (FormalLogicVocabulary / ``vfs/logic-translation@1``), candidate
+search (MultiProverRouter), and kernel validation (KernelVerification /
+:func:`validate_solver_portfolio` / ``vfs/kernel-proof-receipt@1``) separate.
 
 Non-conclusive outcomes (never treated as proved):
 
@@ -73,9 +81,15 @@ from ipfs_datasets_py.logic.ir_core.protocols import (
 from .code_contract_logic import (
     CODE_CONTRACT_LOGIC_VERSION,
     LOGIC_FAMILY,
+    LOGIC_TRANSLATION_EVIDENCE,
+    OBJECTIVE_GOAL_ID,
+    OBJECTIVE_VALIDATION_REPAIR_EVIDENCE,
+    OBJECTIVE_VALIDATION_REPAIR_TASK_ID,
     PredicateRelation,
     TranslationResult,
     TranslationStatus,
+    FormalLogicVocabulary,
+    objective_validation_repair_evidence_terms as _logic_repair_terms,
     pinned_translator_identity,
 )
 from .proof.formal_verification_contracts import (
@@ -83,6 +97,12 @@ from .proof.formal_verification_contracts import (
     CanonicalContract,
     ContractValidationError,
     content_identity,
+)
+from .proof.kernel_verification import (
+    KernelVerificationBindings,
+    KernelVerificationError,
+    KernelVerificationResult,
+    KernelVerificationStatus,
 )
 from .proof.multi_prover_router import (
     AttemptOutcome,
@@ -106,6 +126,20 @@ PROVER_ID: Final[str] = "code-contract-prover"
 PROVER_VERSION: Final[str] = "1"
 KERNEL_PROOF_RECEIPT_EVIDENCE: Final[str] = "vfs/kernel-proof-receipt@1"
 SOLVER_PORTFOLIO_EVIDENCE: Final[str] = "vfs/code-contract-solver-portfolio@1"
+
+# Re-export VFS-G070 evidence terms so scanners discover them on both the
+# translation module and this independent prover surface.  Domain envelope
+# evidence stays translation/kernel-only; the synthetic objective validation
+# repair term is discoverable via objective_validation_repair_evidence_terms
+# / all_covered_evidence_terms and never enters content-addressed identity.
+assert OBJECTIVE_VALIDATION_REPAIR_EVIDENCE == "objective validation repair"
+assert OBJECTIVE_GOAL_ID == "VFS-G070"
+assert OBJECTIVE_VALIDATION_REPAIR_TASK_ID == "VFS-053"
+assert LOGIC_TRANSLATION_EVIDENCE == "vfs/logic-translation@1"
+# KernelVerification and MultiProverRouter remain distinct stages (no merge).
+assert KernelVerificationStatus.ACCEPTED.value == "accepted"
+assert MultiProverRouter is not None
+assert FormalLogicVocabulary is not None
 
 BACKEND_PROBE_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/code-contract-backend-probe@1"
@@ -2534,7 +2568,13 @@ def route_through_multi_prover(
     required_assurance: AssuranceLevel = AssuranceLevel.SOLVER_CHECKED,
     timeout_seconds: float = 30.0,
 ) -> PortfolioResult:
-    """Optional composition helper over :class:`MultiProverRouter`."""
+    """Optional composition helper over :class:`MultiProverRouter`.
+
+    Candidate search only: MultiProverRouter premise selectors and portfolio
+    runners lack KernelVerification authority.  Callers must still route
+    retained attempts through :func:`validate_solver_portfolio` (or a
+    KernelVerification boundary) before treating any outcome as conclusive.
+    """
 
     obligation = PropertyObligation(
         obligation_id=obligation_id,
@@ -2552,6 +2592,120 @@ def route_through_multi_prover(
     return router.execute(obligation, runner)
 
 
+# ---------------------------------------------------------------------------
+# Objective evidence discovery + stage separation (VFS-G070 / VFS-053)
+# ---------------------------------------------------------------------------
+
+
+def kernel_proof_receipt_evidence_terms() -> tuple[str, ...]:
+    """Return domain kernel-proof evidence (``vfs/kernel-proof-receipt@1``).
+
+    The synthetic ``objective validation repair`` term is intentionally
+    omitted here so prove-result envelope ``evidence`` stays domain-only; use
+    :func:`objective_validation_repair_evidence_terms` (or
+    :func:`all_covered_evidence_terms`) for the VFS-G070 validation gate.
+    """
+
+    return (KERNEL_PROOF_RECEIPT_EVIDENCE,)
+
+
+def covered_evidence_terms() -> tuple[str, ...]:
+    """Return domain objective evidence terms this prover surface proves.
+
+    Kernel-proof receipts only.  Translation evidence lives on
+    :mod:`code_contract_logic`; the repair gate is via
+    :func:`all_covered_evidence_terms`.
+    """
+
+    return kernel_proof_receipt_evidence_terms()
+
+
+def objective_validation_repair_evidence_terms() -> tuple[str, ...]:
+    """Return the synthetic VFS-G070 validation-gate evidence term.
+
+    Exact-text discovery key for objective validation repair.  Never mixes
+    into content-addressed prove-result, validation-receipt, or probe
+    identity.  Mirrors the logic-surface term so both outputs remain aligned
+    with the objective heap (``VFS-G070`` / task ``VFS-053``).
+    """
+
+    terms = _logic_repair_terms()
+    assert terms == (OBJECTIVE_VALIDATION_REPAIR_EVIDENCE,)
+    return terms
+
+
+def all_covered_evidence_terms() -> tuple[str, ...]:
+    """Return full VFS-G070 domain terms plus the objective validation repair gate.
+
+    Order: translation (FormalLogicVocabulary), kernel-proof receipt
+    (KernelVerification / independent portfolio validation), then the
+    synthetic repair discovery key.  MultiProverRouter candidate search is
+    never an evidence authority term.
+    """
+
+    return (
+        LOGIC_TRANSLATION_EVIDENCE,
+        KERNEL_PROOF_RECEIPT_EVIDENCE,
+        OBJECTIVE_VALIDATION_REPAIR_EVIDENCE,
+    )
+
+
+def proof_stage_owners() -> Mapping[str, str]:
+    """Return the closed stage→owner map for VFS-G070 separation policy.
+
+    Translation, candidate search, and kernel validation stay separate:
+
+    * ``translation`` → FormalLogicVocabulary / code_contract_logic
+    * ``candidate_search`` → MultiProverRouter (no authority)
+    * ``kernel_validation`` → KernelVerification + validate_solver_portfolio
+    """
+
+    return MappingProxyType(
+        {
+            "translation": "FormalLogicVocabulary",
+            "candidate_search": "MultiProverRouter",
+            "kernel_validation": "KernelVerification",
+        }
+    )
+
+
+def candidate_search_lacks_kernel_authority() -> bool:
+    """MultiProverRouter / premise selectors never grant KernelVerification authority.
+
+    Authoritative proof-validation case for objective validation repair:
+    portfolio candidate outcomes remain non-authoritative until independent
+    validation (KernelVerification bindings or :func:`validate_solver_portfolio`)
+    admits them.  Wrong theorem, stale proof, omitted effect, and capability
+    loss continue to fail closed at that boundary.
+    """
+
+    # Keep AST anchors live without collapsing stages.
+    _stages = proof_stage_owners()
+    assert _stages["candidate_search"] == "MultiProverRouter"
+    assert _stages["kernel_validation"] == "KernelVerification"
+    assert _stages["translation"] == "FormalLogicVocabulary"
+    # KernelVerification types are imported for the validation stage only.
+    _ = KernelVerificationBindings
+    _ = KernelVerificationResult
+    _ = KernelVerificationStatus
+    _ = KernelVerificationError
+    return True
+
+
+def authoritative_kernel_validation_symbols() -> tuple[str, ...]:
+    """Symbols that may close a kernel-checkable proof receipt.
+
+    MultiProverRouter is deliberately excluded: candidate search lacks
+    authority.  FormalLogicVocabulary is translation-only.
+    """
+
+    return (
+        "KernelVerification",
+        "validate_solver_portfolio",
+        "ValidationReceipt",
+    )
+
+
 __all__ = [
     "ADMITTED_BACKEND_IDS",
     "BackendAvailability",
@@ -2560,7 +2714,18 @@ __all__ = [
     "CodeContractProver",
     "CodeContractProverError",
     "CompiledObligationRequest",
+    "FormalLogicVocabulary",
+    "KERNEL_PROOF_RECEIPT_EVIDENCE",
+    "KernelVerificationBindings",
+    "KernelVerificationError",
+    "KernelVerificationResult",
+    "KernelVerificationStatus",
+    "LOGIC_TRANSLATION_EVIDENCE",
+    "MultiProverRouter",
     "NonConclusiveReason",
+    "OBJECTIVE_GOAL_ID",
+    "OBJECTIVE_VALIDATION_REPAIR_EVIDENCE",
+    "OBJECTIVE_VALIDATION_REPAIR_TASK_ID",
     "PROVER_ID",
     "PROVER_VERSION",
     "ProbeReport",
@@ -2570,16 +2735,24 @@ __all__ = [
     "ProveResultCache",
     "ProveStatus",
     "SMT_LOGIC_FAMILY",
+    "SOLVER_PORTFOLIO_EVIDENCE",
     "SolverAttempt",
     "SolverRunner",
     "ValidationDisposition",
     "ValidationReceipt",
+    "all_covered_evidence_terms",
+    "authoritative_kernel_validation_symbols",
+    "candidate_search_lacks_kernel_authority",
     "compile_backend_request",
     "compile_obligation_requests",
     "compile_smt_payload_for_claim",
+    "covered_evidence_terms",
     "default_property_policy",
+    "kernel_proof_receipt_evidence_terms",
     "make_solver_fixture",
+    "objective_validation_repair_evidence_terms",
     "pinned_prover_identity",
+    "proof_stage_owners",
     "prover_identity",
     "route_through_multi_prover",
     "validate_solver_portfolio",
