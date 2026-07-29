@@ -1,1 +1,0 @@
-# Template generators module

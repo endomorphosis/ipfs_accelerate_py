@@ -1,2 +1,0 @@
-aiohttp>=3.8.0  # For async HTTP requests
-python-dateutil>=2.8.2  # For date handling
