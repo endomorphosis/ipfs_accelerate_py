@@ -728,7 +728,7 @@ compact references and bounded spans only.
 
 ## VFS-037 Run and verify the frozen SwissKnife/IPFS VFS pilot and emit the repair board
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: assurance-rollout
