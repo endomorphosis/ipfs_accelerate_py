@@ -1423,11 +1423,17 @@ def build_repository_snapshot(
         When false, only clean HEAD/index tracked paths are inventoried and
         dirty overlays are rejected if present.
     include_provider_scopes:
-        Reserved for multi-root inventory.  Provider roots are recorded in the
-        policy identity but are not expanded as source authority by default.
+        When true, still keeps the primary SwissKnife ledger distinct.  Provider
+        package roots are never flattened into this snapshot's path namespace;
+        use :func:`build_multi_root_repository_snapshot` to inventory them as
+        independent content-addressed roots.  The flag only records that the
+        caller requested multi-root expansion in the returned snapshot metadata
+        via the policy-bound ``provider_scopes`` identity.
     """
 
-    del include_provider_scopes  # reserved; policy still binds provider scopes
+    # Provider roots remain separate namespaces (SCA-G043).  This flag is
+    # accepted so callers can express multi-root intent without merging paths.
+    _ = bool(include_provider_scopes)
 
     if max_paths < 1 or max_file_bytes < 1 or max_total_bytes < 1:
         raise ValueError("resource bounds must be positive")
@@ -1827,12 +1833,1439 @@ def snapshot_analyzer_health_inventory(
     return snapshot.coverage_inventory()
 
 
+# ---------------------------------------------------------------------------
+# Multi-root provider package source inventory (SCA-G043 / MultiRoot@1)
+# ---------------------------------------------------------------------------
+
+MULTI_ROOT_REPOSITORY_SNAPSHOT_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/sca-multi-root-repository-snapshot@1"
+)
+MULTI_ROOT_REPOSITORY_SNAPSHOT_INTERFACE = "MultiRootRepositorySnapshot@1"
+PROVIDER_ROOT_OBSERVATION_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/sca-provider-root-observation@1"
+)
+PROVIDER_PACKAGE_SPEC_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/sca-provider-package-spec@1"
+)
+PROVIDER_ROOT_CONTRADICTION_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/sca-provider-root-contradiction@1"
+)
+
+class ProviderRootStatus(str, Enum):
+    """Explicit health of one configured provider package root."""
+
+    PRESENT = "present"
+    MISSING = "missing"
+    DIRTY = "dirty"
+    VERSION_DIVERGENT = "version_divergent"
+    MOVED = "moved"
+    OPAQUE_GITLINK = "opaque_gitlink"
+    UNREADABLE = "unreadable"
+
+
+class ProviderRootContradictionKind(str, Enum):
+    """Typed contradictions that block exhaustive multi-root parity."""
+
+    MISSING = "missing"
+    DIRTY = "dirty"
+    VERSION_DIVERGENT = "version_divergent"
+    MOVED = "moved"
+    OPAQUE_GITLINK = "opaque_gitlink"
+    UNREADABLE = "unreadable"
+    PARTIAL_HEALTH = "partial_health"
+
+
+@dataclass(frozen=True)
+class ProviderPackageSpec:
+    """Reviewed mapping from a Python package name to a checkout path."""
+
+    package: str
+    scope_path: str
+    package_dirname: str = ""
+
+    def __post_init__(self) -> None:
+        package = str(self.package or "").strip()
+        if not package or "/" in package or "\\" in package or ".." in package:
+            raise ScopePolicyError(f"invalid provider package name: {self.package!r}")
+        scope = repo_path(self.scope_path, allow_root=False)
+        dirname = str(self.package_dirname or package).strip()
+        if not dirname or "/" in dirname or "\\" in dirname or ".." in dirname:
+            raise ScopePolicyError(
+                f"invalid provider package directory: {self.package_dirname!r}"
+            )
+        object.__setattr__(self, "package", package)
+        object.__setattr__(self, "scope_path", scope)
+        object.__setattr__(self, "package_dirname", dirname)
+
+    @property
+    def package_relpath(self) -> str:
+        return f"{self.scope_path}/{self.package_dirname}"
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": PROVIDER_PACKAGE_SPEC_SCHEMA,
+            "package": self.package,
+            "scope_path": self.scope_path,
+            "package_dirname": self.package_dirname,
+            "package_relpath": self.package_relpath,
+        }
+
+
+DEFAULT_PROVIDER_PACKAGE_SPECS = (
+    ProviderPackageSpec(
+        package="ipfs_accelerate_py",
+        scope_path="external/ipfs_accelerate",
+        package_dirname="ipfs_accelerate_py",
+    ),
+    ProviderPackageSpec(
+        package="ipfs_kit_py",
+        scope_path="external/ipfs_kit",
+        package_dirname="ipfs_kit_py",
+    ),
+    ProviderPackageSpec(
+        package="ipfs_datasets_py",
+        scope_path="external/ipfs_datasets",
+        package_dirname="ipfs_datasets_py",
+    ),
+)
+
+
+@dataclass(frozen=True)
+class ProviderRootContradiction:
+    """One explicit multi-root contradiction (never silently dropped)."""
+
+    kind: ProviderRootContradictionKind
+    package: str
+    scope_path: str
+    detail: str = ""
+    gitlink_commit_id: str = ""
+    head_commit_id: str = ""
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self, "kind", ProviderRootContradictionKind(self.kind)
+        )
+        object.__setattr__(self, "package", str(self.package or "").strip())
+        object.__setattr__(
+            self, "scope_path", repo_path(self.scope_path, allow_root=True)
+        )
+        object.__setattr__(self, "detail", str(self.detail or "").strip())
+
+    @property
+    def contradiction_id(self) -> str:
+        return _identity(
+            "sca-provider-root-contradiction",
+            {
+                "schema": PROVIDER_ROOT_CONTRADICTION_SCHEMA,
+                "kind": self.kind.value,
+                "package": self.package,
+                "scope_path": self.scope_path,
+                "detail": self.detail,
+                "gitlink_commit_id": self.gitlink_commit_id,
+                "head_commit_id": self.head_commit_id,
+            },
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": PROVIDER_ROOT_CONTRADICTION_SCHEMA,
+            "contradiction_id": self.contradiction_id,
+            "kind": self.kind.value,
+            "package": self.package,
+            "scope_path": self.scope_path,
+            "detail": self.detail,
+            "gitlink_commit_id": self.gitlink_commit_id,
+            "head_commit_id": self.head_commit_id,
+        }
+
+
+@dataclass(frozen=True)
+class ProviderRootObservation:
+    """Independent origin/commit/tree/dirty/path ledger for one provider root."""
+
+    package: str
+    scope_path: str
+    package_dirname: str
+    status: ProviderRootStatus
+    present: bool
+    indexed: bool
+    opaque_gitlink: bool
+    origin_url: str = ""
+    gitlink_commit_id: str = ""
+    head_commit_id: str = ""
+    head_tree_id: str = ""
+    index_tree_id: str = ""
+    dirty: bool = False
+    version_divergent: bool = False
+    moved: bool = False
+    package_root: str = ""
+    git_worktree_root: str = ""
+    snapshot: RepositorySnapshot | None = None
+    contradictions: tuple[ProviderRootContradiction, ...] = ()
+    reason_code: str = ""
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "package", str(self.package or "").strip())
+        object.__setattr__(
+            self, "scope_path", repo_path(self.scope_path, allow_root=False)
+        )
+        object.__setattr__(
+            self,
+            "package_dirname",
+            str(self.package_dirname or self.package).strip(),
+        )
+        object.__setattr__(self, "status", ProviderRootStatus(self.status))
+        object.__setattr__(
+            self,
+            "contradictions",
+            tuple(
+                sorted(
+                    self.contradictions,
+                    key=lambda item: (item.kind.value, item.detail),
+                )
+            ),
+        )
+        if self.indexed and self.opaque_gitlink:
+            raise RepositoryStateError(
+                f"provider root {self.package} cannot be both indexed and opaque"
+            )
+        if self.indexed and self.snapshot is None:
+            raise RepositoryStateError(
+                f"indexed provider root {self.package} requires a snapshot ledger"
+            )
+        if self.opaque_gitlink and self.snapshot is not None:
+            raise RepositoryStateError(
+                f"opaque gitlink root {self.package} must not carry source snapshot"
+            )
+
+    @property
+    def observation_id(self) -> str:
+        snapshot_id = self.snapshot.snapshot_id if self.snapshot is not None else ""
+        return _identity(
+            "sca-provider-root-observation",
+            {
+                "schema": PROVIDER_ROOT_OBSERVATION_SCHEMA,
+                "package": self.package,
+                "scope_path": self.scope_path,
+                "package_dirname": self.package_dirname,
+                "status": self.status.value,
+                "present": bool(self.present),
+                "indexed": bool(self.indexed),
+                "opaque_gitlink": bool(self.opaque_gitlink),
+                "origin_url": self.origin_url,
+                "gitlink_commit_id": self.gitlink_commit_id,
+                "head_commit_id": self.head_commit_id,
+                "head_tree_id": self.head_tree_id,
+                "index_tree_id": self.index_tree_id,
+                "dirty": bool(self.dirty),
+                "version_divergent": bool(self.version_divergent),
+                "moved": bool(self.moved),
+                "snapshot_id": snapshot_id,
+                "reason_code": self.reason_code,
+                "contradictions": [item.to_dict() for item in self.contradictions],
+            },
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": PROVIDER_ROOT_OBSERVATION_SCHEMA,
+            "observation_id": self.observation_id,
+            "package": self.package,
+            "scope_path": self.scope_path,
+            "package_dirname": self.package_dirname,
+            "status": self.status.value,
+            "present": bool(self.present),
+            "indexed": bool(self.indexed),
+            "opaque_gitlink": bool(self.opaque_gitlink),
+            "origin_url": self.origin_url,
+            "gitlink_commit_id": self.gitlink_commit_id,
+            "head_commit_id": self.head_commit_id,
+            "head_tree_id": self.head_tree_id,
+            "index_tree_id": self.index_tree_id,
+            "dirty": bool(self.dirty),
+            "version_divergent": bool(self.version_divergent),
+            "moved": bool(self.moved),
+            "package_root": self.package_root,
+            "git_worktree_root": self.git_worktree_root,
+            "snapshot_id": (
+                self.snapshot.snapshot_id if self.snapshot is not None else ""
+            ),
+            "snapshot": (
+                self.snapshot.to_dict() if self.snapshot is not None else None
+            ),
+            "contradictions": [item.to_dict() for item in self.contradictions],
+            "reason_code": self.reason_code,
+            "stats": (
+                self.snapshot.stats.to_dict() if self.snapshot is not None else {}
+            ),
+        }
+
+    def compact_dict(self) -> dict[str, Any]:
+        """Body-free summary suitable for baseline provider-index artifacts."""
+
+        payload = self.to_dict()
+        payload.pop("snapshot", None)
+        return payload
+
+
+@dataclass(frozen=True)
+class MultiRootRepositorySnapshot:
+    """Primary SwissKnife ledger plus independent provider package roots.
+
+    Path namespaces are never flattened: each provider package retains its own
+    :class:`RepositorySnapshot` ledger.  Missing, dirty, moved, or
+    version-divergent roots remain explicit contradictions.
+    """
+
+    superproject_root: str
+    scope_policy_id: str
+    scope_id: str
+    primary_snapshot: RepositorySnapshot | None
+    providers: tuple[ProviderRootObservation, ...]
+    contradictions: tuple[ProviderRootContradiction, ...]
+    schema_version: int = 1
+
+    def __post_init__(self) -> None:
+        packages = [item.package for item in self.providers]
+        if len(packages) != len(set(packages)):
+            raise CoverageIncompleteError(
+                "provider root observations must be unique per package"
+            )
+        object.__setattr__(
+            self,
+            "providers",
+            tuple(sorted(self.providers, key=lambda item: item.package)),
+        )
+        object.__setattr__(
+            self,
+            "contradictions",
+            tuple(
+                sorted(
+                    self.contradictions,
+                    key=lambda item: (
+                        item.package,
+                        item.kind.value,
+                        item.detail,
+                    ),
+                )
+            ),
+        )
+        if int(self.schema_version) != 1:
+            raise RepositoryStateError(
+                "unsupported multi-root repository snapshot version"
+            )
+
+    @property
+    def multi_root_id(self) -> str:
+        return _identity(
+            "sca-multi-root-repository-snapshot",
+            self._content_dict(),
+        )
+
+    @property
+    def all_providers_indexed(self) -> bool:
+        return bool(self.providers) and all(
+            item.indexed and not item.opaque_gitlink for item in self.providers
+        )
+
+    @property
+    def has_blocking_contradictions(self) -> bool:
+        return bool(self.contradictions) or any(
+            item.contradictions for item in self.providers
+        )
+
+    def provider_for_package(self, package: str) -> ProviderRootObservation | None:
+        name = str(package or "").strip()
+        for item in self.providers:
+            if item.package == name:
+                return item
+        return None
+
+    def _content_dict(self) -> dict[str, Any]:
+        return {
+            "schema": MULTI_ROOT_REPOSITORY_SNAPSHOT_SCHEMA,
+            "schema_version": self.schema_version,
+            "interface": MULTI_ROOT_REPOSITORY_SNAPSHOT_INTERFACE,
+            "scope_policy_id": self.scope_policy_id,
+            "scope_id": self.scope_id,
+            "primary_snapshot_id": (
+                self.primary_snapshot.snapshot_id
+                if self.primary_snapshot is not None
+                else ""
+            ),
+            "primary_root": (
+                self.primary_snapshot.primary_root
+                if self.primary_snapshot is not None
+                else ""
+            ),
+            "providers": [item.compact_dict() for item in self.providers],
+            "contradictions": [item.to_dict() for item in self.contradictions],
+        }
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            **self._content_dict(),
+            "multi_root_id": self.multi_root_id,
+            "superproject_root": self.superproject_root,
+            "primary_snapshot": (
+                self.primary_snapshot.to_dict()
+                if self.primary_snapshot is not None
+                else None
+            ),
+            "providers": [item.to_dict() for item in self.providers],
+            "all_providers_indexed": self.all_providers_indexed,
+            "has_blocking_contradictions": self.has_blocking_contradictions,
+        }
+
+    def compact_dict(self) -> dict[str, Any]:
+        """Baseline-friendly projection without nested source ledgers."""
+
+        return {
+            **self._content_dict(),
+            "multi_root_id": self.multi_root_id,
+            "superproject_root": self.superproject_root,
+            "all_providers_indexed": self.all_providers_indexed,
+            "has_blocking_contradictions": self.has_blocking_contradictions,
+            "providers": [item.compact_dict() for item in self.providers],
+        }
+
+
+def _provider_scope_policy(base: ScopePolicy | None = None) -> ScopePolicy:
+    """Scope policy used when inventorying one provider package worktree."""
+
+    if base is not None:
+        return ScopePolicy(
+            scope_id=base.scope_id,
+            primary_repository=base.primary_repository,
+            primary_root=".",
+            provider_scopes=base.provider_scopes,
+            skip_prefixes=base.skip_prefixes,
+            skip_directory_names=base.skip_directory_names,
+            dependency_directory_names=base.dependency_directory_names,
+            dependency_lock_files=base.dependency_lock_files,
+            dependency_manifest_files=base.dependency_manifest_files,
+            semantic_extensions=base.semantic_extensions,
+            structured_extensions=base.structured_extensions,
+            text_extensions=base.text_extensions,
+            binary_extensions=base.binary_extensions,
+            generated_suffixes=base.generated_suffixes,
+            generated_path_parts=base.generated_path_parts,
+            allow_dirty_analysis=base.allow_dirty_analysis,
+            allowlisted_untracked_suffixes=base.allowlisted_untracked_suffixes,
+            allowlisted_untracked_exact_names=base.allowlisted_untracked_exact_names,
+            silent_exclusions_allowed=base.silent_exclusions_allowed,
+            tracked_coverage_required=base.tracked_coverage_required,
+            working_tree_overlay_mode=base.working_tree_overlay_mode,
+            schema_version=base.schema_version,
+            raw=dict(base.raw),
+        )
+    return scope_policy_from_mapping(
+        {
+            "schema": SCOPE_POLICY_SCHEMA,
+            "schemaVersion": 1,
+            "scopeId": "sca-provider-package-scope-v1",
+            "primaryRepository": "provider-package",
+            "primaryRoot": ".",
+            "providerScopes": [],
+            "skipPrefixes": [
+                "node_modules",
+                "tmp",
+                ".git",
+                "__pycache__",
+                ".pytest_cache",
+                "dist",
+                "build",
+                ".tox",
+                ".mypy_cache",
+            ],
+            "skipDirectoryNames": [
+                ".git",
+                "node_modules",
+                "__pycache__",
+                ".pytest_cache",
+                ".mypy_cache",
+                ".tox",
+                "dist",
+                "build",
+                "egg-info",
+            ],
+            "dependencyDirectoryNames": ["node_modules"],
+            "dependencyLockFiles": [
+                "package-lock.json",
+                "yarn.lock",
+                "pnpm-lock.yaml",
+                "poetry.lock",
+            ],
+            "dependencyManifestFiles": ["package.json", "pyproject.toml"],
+            "workingTreeOverlay": {
+                "mode": "tracked_plus_allowlisted_untracked_source",
+                "allowDirtyAnalysis": True,
+                "allowlistedUntrackedSuffixes": [
+                    ".py",
+                    ".ts",
+                    ".js",
+                    ".json",
+                    ".md",
+                    ".toml",
+                ],
+                "allowlistedUntrackedExactNames": [
+                    "package.json",
+                    "pyproject.toml",
+                ],
+            },
+            "dispositionRules": {
+                "semanticExtensions": [
+                    ".py",
+                    ".ts",
+                    ".tsx",
+                    ".js",
+                    ".jsx",
+                    ".mjs",
+                    ".cjs",
+                ],
+                "structuredExtensions": [".json", ".yaml", ".yml", ".toml"],
+                "textExtensions": [".md", ".txt", ".sh", ".css", ".rst"],
+                "binaryExtensions": [".png", ".wasm", ".zip", ".so", ".pyc"],
+                "generatedSuffixes": [".map", ".d.ts"],
+                "generatedPathParts": ["dist", "build", "egg-info"],
+            },
+            "silentExclusionsAllowed": False,
+            "trackedCoverageRequired": 1.0,
+        }
+    )
+
+
+def _git_origin_url(root: Path) -> str:
+    output = _run_git(
+        root, ("remote", "get-url", "origin"), allow_failure=True
+    )
+    try:
+        return output.decode("utf-8", "replace").strip()
+    except UnicodeDecodeError:
+        return ""
+
+
+def _superproject_gitlink_commit(
+    superproject: Path, scope_path: str
+) -> str:
+    """Return the superproject index/HEAD gitlink commit for ``scope_path``."""
+
+    if not (superproject / ".git").exists() and not (
+        superproject / ".git"
+    ).is_file():
+        # Superproject may be a bare fixture without git; try ls-tree only when
+        # the root is a worktree.
+        try:
+            discovered = _run_git(
+                superproject, ("rev-parse", "--is-inside-work-tree"),
+                allow_failure=True,
+            )
+            if discovered.strip() != b"true":
+                return ""
+        except RepositoryStateError:
+            return ""
+
+    staged = _run_git(
+        superproject,
+        ("ls-files", "--stage", "-z", "--", scope_path),
+        allow_failure=True,
+    )
+    for record in staged.split(b"\0"):
+        if not record:
+            continue
+        try:
+            metadata, raw_path = record.split(b"\t", 1)
+            mode, object_id, _stage = metadata.decode("ascii").split()
+            path = raw_path.decode("utf-8")
+        except (ValueError, UnicodeDecodeError):
+            continue
+        if path == scope_path and mode == "160000":
+            return object_id.lower()
+
+    head = _run_git(
+        superproject,
+        ("ls-tree", "-z", "HEAD", "--", scope_path),
+        allow_failure=True,
+    )
+    for record in head.split(b"\0"):
+        if not record:
+            continue
+        try:
+            metadata, raw_path = record.split(b"\t", 1)
+            mode, kind, object_id = metadata.decode("ascii").split()
+            path = raw_path.decode("utf-8")
+        except (ValueError, UnicodeDecodeError):
+            continue
+        if path == scope_path and (mode == "160000" or kind == "commit"):
+            return object_id.lower()
+    return ""
+
+
+def _rewrite_disposition_path(
+    disposition: CoverageDisposition, *, strip_prefix: str
+) -> CoverageDisposition:
+    """Rewrite a disposition path relative to a package prefix."""
+
+    prefix = strip_prefix.rstrip("/")
+    path = disposition.path
+    if path == prefix:
+        raise RepositoryStateError(
+            f"cannot re-root package directory entry as a file: {path}"
+        )
+    if not path.startswith(prefix + "/"):
+        raise RepositoryPathEscapeError(
+            f"disposition path {path!r} is outside package prefix {prefix!r}"
+        )
+    rewritten = path[len(prefix) + 1 :]
+    rename_from = disposition.rename_from
+    if rename_from:
+        if rename_from == prefix:
+            rename_from = ""
+        elif rename_from.startswith(prefix + "/"):
+            rename_from = rename_from[len(prefix) + 1 :]
+        else:
+            # Rename crossed the package boundary; retain opaque marker.
+            rename_from = f"outside-package:{rename_from}"
+    return CoverageDisposition(
+        path=rewritten,
+        kind=disposition.kind,
+        git_status=disposition.git_status,
+        entry_kind=disposition.entry_kind,
+        reason_code=disposition.reason_code,
+        policy_rule=disposition.policy_rule,
+        content_digest=disposition.content_digest,
+        git_mode=disposition.git_mode,
+        git_object_id=disposition.git_object_id,
+        rename_from=rename_from,
+        tracked=disposition.tracked,
+        overlay=disposition.overlay,
+        dependency_identity_id=disposition.dependency_identity_id,
+        schema_version=disposition.schema_version,
+    )
+
+
+def _filter_git_map_by_prefix(
+    entries: Mapping[str, Any], prefix: str
+) -> dict[str, Any]:
+    """Keep map keys under ``prefix/`` and rewrite them to package-relative paths."""
+
+    if prefix in {".", ""}:
+        return dict(entries)
+    root = prefix.rstrip("/")
+    result: dict[str, Any] = {}
+    for path, value in entries.items():
+        if path == root:
+            continue
+        if path.startswith(root + "/"):
+            result[path[len(root) + 1 :]] = value
+    return result
+
+
+def build_provider_package_snapshot(
+    package_root: str | os.PathLike[str],
+    *,
+    git_worktree_root: str | os.PathLike[str] | None = None,
+    scope_policy: ScopePolicy | Mapping[str, Any] | None = None,
+    allow_dirty_analysis: bool | None = None,
+    max_paths: int = DEFAULT_MAX_PATHS,
+    max_file_bytes: int = DEFAULT_MAX_FILE_BYTES,
+    max_total_bytes: int = DEFAULT_MAX_TOTAL_BYTES,
+) -> RepositorySnapshot:
+    """Snapshot one provider package directory as its own path namespace.
+
+    The package directory is inventoried through the enclosing Git worktree so
+    commit/tree identity remains exact, while disposition paths are rewritten
+    to be package-relative.  Nested gitlinks inside the package remain explicit
+    dependency identities and are not expanded as source.
+    """
+
+    package_path = Path(package_root)
+    try:
+        package_path = package_path.resolve(strict=True)
+    except OSError as exc:
+        raise RepositoryStateError(
+            f"provider package root is unreadable: {package_root}"
+        ) from exc
+    if not package_path.is_dir():
+        raise RepositoryStateError(
+            f"provider package root is not a directory: {package_root}"
+        )
+
+    if git_worktree_root is None:
+        discovered = _run_git(
+            package_path, ("rev-parse", "--show-toplevel")
+        )
+        git_root = Path(discovered.decode("utf-8").strip()).resolve(strict=True)
+    else:
+        git_root = Path(git_worktree_root).resolve(strict=True)
+
+    try:
+        package_rel = package_path.relative_to(git_root).as_posix()
+    except ValueError as exc:
+        raise RepositoryPathEscapeError(
+            "provider package root escapes its git worktree"
+        ) from exc
+
+    policy = (
+        scope_policy
+        if isinstance(scope_policy, ScopePolicy)
+        else (
+            scope_policy_from_mapping(scope_policy)
+            if isinstance(scope_policy, Mapping)
+            else _provider_scope_policy()
+        )
+    )
+    policy = _provider_scope_policy(policy)
+
+    if package_rel in {".", ""}:
+        return build_repository_snapshot(
+            git_root,
+            scope_policy=policy,
+            allow_dirty_analysis=allow_dirty_analysis,
+            max_paths=max_paths,
+            max_file_bytes=max_file_bytes,
+            max_total_bytes=max_total_bytes,
+            include_provider_scopes=False,
+        )
+
+    # Path-scoped inventory: only the package prefix is materialised so large
+    # provider repositories never force an unrelated whole-tree scan.
+    dirty_enabled = (
+        policy.allow_dirty_analysis
+        if allow_dirty_analysis is None
+        else bool(allow_dirty_analysis)
+    )
+    git_directory = (
+        _run_git(git_root, ("rev-parse", "--absolute-git-dir"))
+        .decode("utf-8", "strict")
+        .strip()
+    )
+    head_commit = (
+        _run_git(git_root, ("rev-parse", "--verify", "HEAD"), allow_failure=True)
+        .decode("ascii", "strict")
+        .strip()
+        .lower()
+    )
+    head_tree = (
+        _run_git(
+            git_root, ("rev-parse", "--verify", "HEAD^{tree}"), allow_failure=True
+        )
+        .decode("ascii", "strict")
+        .strip()
+        .lower()
+    )
+    index_tree = (
+        _run_git(git_root, ("write-tree",))
+        .decode("ascii", "strict")
+        .strip()
+        .lower()
+    )
+
+    prefix = package_rel
+    head = _filter_git_map_by_prefix(
+        _parse_ls_tree(git_root, "HEAD") if head_commit else {}, prefix
+    )
+    index = _filter_git_map_by_prefix(_parse_index_entries(git_root), prefix)
+    status_full = _parse_status_porcelain(git_root)
+    if not dirty_enabled and status_full:
+        raise RepositoryStateError(
+            "dirty working tree is not allowed when allow_dirty_analysis is false"
+        )
+    status = (
+        _filter_git_map_by_prefix(status_full, prefix) if dirty_enabled else {}
+    )
+
+    tracked_paths = sorted(set(head) | set(index))
+    if len(tracked_paths) > max_paths:
+        raise RepositoryStateError(
+            f"provider package inventory exceeds {max_paths} paths"
+        )
+    if not tracked_paths and not status:
+        raise RepositoryStateError(
+            f"provider package path has no inventoried sources: {prefix}"
+        )
+
+    rename_from_map: dict[str, str] = {
+        path: meta["rename_from"]
+        for path, meta in status.items()
+        if meta.get("rename_from")
+    }
+    worktree_cache: dict[str, _WorktreeEntry] = {}
+    hashed_bytes = 0
+
+    def worktree_entry(path: str) -> _WorktreeEntry | None:
+        nonlocal hashed_bytes
+        if path in worktree_cache:
+            return worktree_cache[path]
+        # Read from the package root using package-relative paths.
+        candidate = package_path.joinpath(*PurePosixPath(path).parts)
+        if not candidate.exists() and not candidate.is_symlink():
+            return None
+        entry = _stable_worktree_entry(
+            package_path, path, max_file_bytes=max_file_bytes
+        )
+        hashed_bytes += entry.size_bytes
+        if hashed_bytes > max_total_bytes:
+            raise RepositoryStateError(
+                f"inventory exceeds {max_total_bytes} hashed bytes"
+            )
+        worktree_cache[path] = entry
+        return entry
+
+    blob_digest_cache: dict[str, str] = {}
+
+    def object_digest(object_id: str) -> str:
+        if object_id in blob_digest_cache:
+            return blob_digest_cache[object_id]
+        digest = _git_blob_digest(git_root, object_id)
+        blob_digest_cache[object_id] = digest
+        return digest
+
+    dispositions: list[CoverageDisposition] = []
+    dependency_identities: list[DependencyIdentity] = []
+    gitlinks: list[GitlinkRecord] = []
+    effective_skip_prefixes = primary_relative_prefixes(
+        policy.skip_prefixes,
+        primary_root=".",
+        primary_repository=policy.primary_repository,
+    )
+
+    def remember_dependency(identity: DependencyIdentity) -> str:
+        dependency_identities.append(identity)
+        return identity.identity_id
+
+    for path in tracked_paths:
+        head_item = head.get(path)
+        index_item = index.get(path)
+        status_meta = status.get(path, {})
+        xy = status_meta.get("xy", "  ")
+        rename_from = rename_from_map.get(path, status_meta.get("rename_from", ""))
+        entry_kind = (
+            (index_item or head_item).kind
+            if (index_item or head_item) is not None
+            else EntryKind.REGULAR
+        )
+        git_mode = (index_item or head_item).mode if (index_item or head_item) else ""
+        git_object_id = (
+            (index_item or head_item).object_id if (index_item or head_item) else ""
+        )
+        in_head = head_item is not None
+        in_index = index_item is not None
+        wt = None
+        if dirty_enabled and entry_kind is not EntryKind.GITLINK:
+            if path in status or not in_head or not in_index or xy.strip():
+                wt = worktree_entry(path)
+        in_worktree = wt is not None
+        if not dirty_enabled:
+            in_worktree = in_index or in_head
+        if path not in status and in_head and in_index and head_item == index_item:
+            git_status = GitStatus.CLEAN
+        else:
+            git_status = _status_from_xy(
+                xy,
+                rename_from=rename_from,
+                in_head=in_head,
+                in_index=in_index,
+                in_worktree=in_worktree or (not dirty_enabled and in_index),
+            )
+            if path not in status and in_head and in_index and head_item != index_item:
+                git_status = GitStatus.STAGED
+            if path not in status and in_head and not in_index:
+                git_status = GitStatus.DELETED
+            if path not in status and not in_head and in_index:
+                git_status = GitStatus.STAGED
+
+        kind, reason_code, policy_rule = classify_coverage_kind(
+            path,
+            policy=policy,
+            entry_kind=entry_kind,
+            skip_prefixes=effective_skip_prefixes,
+        )
+        content_digest = ""
+        dependency_identity_id = ""
+        if entry_kind is EntryKind.GITLINK:
+            commit_id = git_object_id or (
+                head_item.object_id if head_item else ""
+            )
+            gitlink = GitlinkRecord(
+                path=path,
+                commit_id=commit_id,
+                mode=git_mode or "160000",
+                head_object_id=head_item.object_id if head_item else "",
+                index_object_id=index_item.object_id if index_item else "",
+            )
+            gitlinks.append(gitlink)
+            content_digest = f"gitlink:{commit_id}"
+            dependency_identity_id = remember_dependency(
+                DependencyIdentity(
+                    kind=DependencyIdentityKind.GITLINK,
+                    path=path,
+                    digest=content_digest,
+                    git_object_id=commit_id,
+                    reason_code="gitlink_submodule",
+                )
+            )
+        else:
+            if wt is not None:
+                content_digest = wt.digest
+                git_mode = wt.mode or git_mode
+            elif git_object_id and entry_kind is not EntryKind.GITLINK:
+                content_digest = object_digest(git_object_id)
+            elif head_item is not None:
+                content_digest = object_digest(head_item.object_id)
+                git_object_id = head_item.object_id
+            if kind is CoverageKind.DEPENDENCY_TOOL_IDENTITY:
+                dep_kind = DependencyIdentityKind.LOCKFILE
+                if reason_code == "dependency_manifest":
+                    dep_kind = DependencyIdentityKind.MANIFEST
+                elif reason_code == "dependency_directory":
+                    dep_kind = DependencyIdentityKind.DIRECTORY_MARKER
+                dependency_identity_id = remember_dependency(
+                    DependencyIdentity(
+                        kind=dep_kind,
+                        path=path,
+                        digest=content_digest or f"git:{git_object_id}",
+                        git_object_id=git_object_id,
+                        reason_code=reason_code,
+                    )
+                )
+        dispositions.append(
+            CoverageDisposition(
+                path=path,
+                kind=kind,
+                git_status=git_status,
+                entry_kind=entry_kind,
+                reason_code=reason_code,
+                policy_rule=policy_rule,
+                content_digest=content_digest,
+                git_mode=git_mode,
+                git_object_id=git_object_id,
+                rename_from=rename_from,
+                tracked=True,
+                overlay=git_status is not GitStatus.CLEAN,
+                dependency_identity_id=dependency_identity_id,
+            )
+        )
+
+    if dirty_enabled:
+        for path, meta in sorted(status.items()):
+            if path in head or path in index:
+                continue
+            if not policy.untracked_allowed(path):
+                skip_prefix = _path_has_prefix(path, effective_skip_prefixes)
+                skip_dir = _path_has_directory_name(
+                    path, sorted(policy.skip_directory_names)
+                )
+                if skip_prefix is None and skip_dir is None:
+                    continue
+                dispositions.append(
+                    CoverageDisposition(
+                        path=path,
+                        kind=CoverageKind.EXCLUDED,
+                        git_status=GitStatus.UNTRACKED,
+                        entry_kind=EntryKind.REGULAR,
+                        reason_code=(
+                            "excluded_prefix" if skip_prefix else "excluded_directory"
+                        ),
+                        policy_rule=(
+                            f"skip_prefixes:{skip_prefix}"
+                            if skip_prefix
+                            else f"skip_directory_names:{skip_dir}"
+                        ),
+                        tracked=False,
+                        overlay=True,
+                    )
+                )
+                continue
+            wt = worktree_entry(path)
+            if wt is None:
+                continue
+            kind, reason_code, policy_rule = classify_coverage_kind(
+                path,
+                policy=policy,
+                entry_kind=wt.kind,
+                skip_prefixes=effective_skip_prefixes,
+            )
+            dispositions.append(
+                CoverageDisposition(
+                    path=path,
+                    kind=kind,
+                    git_status=GitStatus.UNTRACKED,
+                    entry_kind=wt.kind,
+                    reason_code=reason_code,
+                    policy_rule=policy_rule,
+                    content_digest=wt.digest,
+                    git_mode=wt.mode,
+                    tracked=False,
+                    overlay=True,
+                )
+            )
+
+    by_path: dict[str, CoverageDisposition] = {}
+    for item in dispositions:
+        if item.path in by_path:
+            raise CoverageIncompleteError(
+                f"duplicate disposition for path {item.path}"
+            )
+        by_path[item.path] = item
+    ordered = tuple(by_path[path] for path in sorted(by_path))
+    tracked = [item for item in ordered if item.tracked]
+    if len(tracked) != len(tracked_paths):
+        missing = sorted(set(tracked_paths) - {item.path for item in tracked})
+        raise CoverageIncompleteError(
+            f"tracked paths missing dispositions: {missing[:10]}"
+        )
+    stats = RepositorySnapshotStats(
+        tracked_path_count=len(tracked),
+        disposition_count=len(ordered),
+        overlay_path_count=sum(1 for item in ordered if item.overlay),
+        excluded_path_count=sum(
+            1 for item in ordered if item.kind is CoverageKind.EXCLUDED
+        ),
+        dependency_identity_count=len(dependency_identities),
+        gitlink_count=len(gitlinks),
+        dirty_path_count=sum(
+            1 for item in ordered if item.git_status is not GitStatus.CLEAN
+        ),
+        deleted_path_count=sum(
+            1
+            for item in ordered
+            if item.git_status
+            in {GitStatus.DELETED, GitStatus.STAGED_DELETION}
+        ),
+        untracked_path_count=sum(
+            1 for item in ordered if item.git_status is GitStatus.UNTRACKED
+        ),
+        semantic_path_count=sum(
+            1 for item in ordered if item.kind is CoverageKind.SEMANTIC_AST
+        ),
+        unsupported_path_count=sum(
+            1 for item in ordered if item.kind is CoverageKind.UNSUPPORTED
+        ),
+        hashed_bytes=hashed_bytes,
+    )
+    snapshot = RepositorySnapshot(
+        primary_root=".",
+        head_commit_id=head_commit,
+        head_tree_id=head_tree,
+        index_tree_id=index_tree,
+        scope_policy_id=policy.policy_id,
+        scope_id=policy.scope_id,
+        dispositions=ordered,
+        dependency_identities=tuple(dependency_identities),
+        gitlinks=tuple(gitlinks),
+        stats=stats,
+        repository_root=str(package_path),
+        git_directory=git_directory,
+        allow_dirty_analysis=dirty_enabled,
+    )
+    snapshot.assert_exhaustive_tracked_coverage()
+    return snapshot
+
+
+def observe_provider_package_root(
+    superproject_root: str | os.PathLike[str],
+    spec: ProviderPackageSpec,
+    *,
+    scope_policy: ScopePolicy | Mapping[str, Any] | None = None,
+    allow_dirty_analysis: bool | None = None,
+    max_paths: int = DEFAULT_MAX_PATHS,
+    max_file_bytes: int = DEFAULT_MAX_FILE_BYTES,
+    max_total_bytes: int = DEFAULT_MAX_TOTAL_BYTES,
+    inventory: bool = True,
+) -> ProviderRootObservation:
+    """Observe one configured provider package as an independent root."""
+
+    super_root = Path(superproject_root)
+    try:
+        super_root = super_root.resolve(strict=True)
+    except OSError as exc:
+        raise RepositoryStateError(
+            f"superproject root is unreadable: {superproject_root}"
+        ) from exc
+
+    policy = (
+        scope_policy
+        if isinstance(scope_policy, ScopePolicy)
+        else (
+            scope_policy_from_mapping(scope_policy)
+            if isinstance(scope_policy, Mapping)
+            else None
+        )
+    )
+    if policy is None:
+        config = default_scope_policy_path(super_root)
+        policy = load_scope_policy(config) if config.is_file() else None
+
+    gitlink_commit = _superproject_gitlink_commit(super_root, spec.scope_path)
+    scope_checkout = super_root.joinpath(*PurePosixPath(spec.scope_path).parts)
+    package_path = scope_checkout.joinpath(spec.package_dirname)
+
+    contradictions: list[ProviderRootContradiction] = []
+    origin_url = ""
+    head_commit = ""
+    head_tree = ""
+    index_tree = ""
+    dirty = False
+    version_divergent = False
+    moved = False
+    present = False
+    indexed = False
+    opaque = False
+    snapshot: RepositorySnapshot | None = None
+    git_worktree = ""
+    reason_code = ""
+    status = ProviderRootStatus.MISSING
+
+    if not scope_checkout.exists():
+        contradictions.append(
+            ProviderRootContradiction(
+                kind=ProviderRootContradictionKind.MISSING,
+                package=spec.package,
+                scope_path=spec.scope_path,
+                detail="provider scope checkout is missing",
+                gitlink_commit_id=gitlink_commit,
+            )
+        )
+        if gitlink_commit:
+            opaque = True
+            status = ProviderRootStatus.OPAQUE_GITLINK
+            reason_code = "missing_checkout_opaque_gitlink"
+            contradictions.append(
+                ProviderRootContradiction(
+                    kind=ProviderRootContradictionKind.OPAQUE_GITLINK,
+                    package=spec.package,
+                    scope_path=spec.scope_path,
+                    detail="gitlink commit is recorded without source checkout",
+                    gitlink_commit_id=gitlink_commit,
+                )
+            )
+        else:
+            status = ProviderRootStatus.MISSING
+            reason_code = "missing_scope_checkout"
+    elif not package_path.is_dir():
+        present = scope_checkout.is_dir()
+        # Checkout may exist but the package directory moved.
+        moved = True
+        status = ProviderRootStatus.MOVED
+        reason_code = "package_directory_missing_or_moved"
+        contradictions.append(
+            ProviderRootContradiction(
+                kind=ProviderRootContradictionKind.MOVED,
+                package=spec.package,
+                scope_path=spec.scope_path,
+                detail=(
+                    f"package directory {spec.package_dirname!r} is absent under "
+                    f"{spec.scope_path}"
+                ),
+                gitlink_commit_id=gitlink_commit,
+            )
+        )
+        if gitlink_commit and not package_path.exists():
+            opaque = True
+            contradictions.append(
+                ProviderRootContradiction(
+                    kind=ProviderRootContradictionKind.OPAQUE_GITLINK,
+                    package=spec.package,
+                    scope_path=spec.scope_path,
+                    detail="cannot index package source; gitlink remains opaque",
+                    gitlink_commit_id=gitlink_commit,
+                )
+            )
+    else:
+        present = True
+        try:
+            discovered = _run_git(
+                scope_checkout if scope_checkout.is_dir() else package_path,
+                ("rev-parse", "--show-toplevel"),
+            )
+            git_worktree = (
+                Path(discovered.decode("utf-8").strip()).resolve(strict=True)
+            )
+            origin_url = _git_origin_url(git_worktree)
+            head_commit = (
+                _run_git(
+                    git_worktree,
+                    ("rev-parse", "--verify", "HEAD"),
+                    allow_failure=True,
+                )
+                .decode("ascii", "strict")
+                .strip()
+                .lower()
+            )
+            head_tree = (
+                _run_git(
+                    git_worktree,
+                    ("rev-parse", "--verify", "HEAD^{tree}"),
+                    allow_failure=True,
+                )
+                .decode("ascii", "strict")
+                .strip()
+                .lower()
+            )
+            index_tree = (
+                _run_git(git_worktree, ("write-tree",))
+                .decode("ascii", "strict")
+                .strip()
+                .lower()
+            )
+            status_map = _parse_status_porcelain(git_worktree)
+            dirty = bool(status_map)
+            if (
+                gitlink_commit
+                and head_commit
+                and gitlink_commit != head_commit
+            ):
+                version_divergent = True
+            if inventory:
+                snapshot = build_provider_package_snapshot(
+                    package_path,
+                    git_worktree_root=git_worktree,
+                    scope_policy=policy,
+                    allow_dirty_analysis=(
+                        policy.allow_dirty_analysis
+                        if allow_dirty_analysis is None and policy is not None
+                        else allow_dirty_analysis
+                    ),
+                    max_paths=max_paths,
+                    max_file_bytes=max_file_bytes,
+                    max_total_bytes=max_total_bytes,
+                )
+                indexed = True
+                opaque = False
+                # Package-level dirty if any package-relative path is dirty.
+                dirty = dirty or any(
+                    item.git_status is not GitStatus.CLEAN
+                    for item in snapshot.dispositions
+                )
+            else:
+                indexed = False
+                opaque = False
+                reason_code = "inventory_skipped"
+            if version_divergent:
+                status = ProviderRootStatus.VERSION_DIVERGENT
+                contradictions.append(
+                    ProviderRootContradiction(
+                        kind=ProviderRootContradictionKind.VERSION_DIVERGENT,
+                        package=spec.package,
+                        scope_path=spec.scope_path,
+                        detail=(
+                            "superproject gitlink commit differs from checkout HEAD"
+                        ),
+                        gitlink_commit_id=gitlink_commit,
+                        head_commit_id=head_commit,
+                    )
+                )
+            elif dirty:
+                status = ProviderRootStatus.DIRTY
+                contradictions.append(
+                    ProviderRootContradiction(
+                        kind=ProviderRootContradictionKind.DIRTY,
+                        package=spec.package,
+                        scope_path=spec.scope_path,
+                        detail="provider checkout or package overlay is dirty",
+                        gitlink_commit_id=gitlink_commit,
+                        head_commit_id=head_commit,
+                    )
+                )
+            else:
+                status = ProviderRootStatus.PRESENT
+                reason_code = reason_code or "provider_package_indexed"
+            git_worktree = str(git_worktree)
+        except (RepositorySnapshotError, OSError, UnicodeDecodeError) as exc:
+            status = ProviderRootStatus.UNREADABLE
+            reason_code = "provider_root_unreadable"
+            indexed = False
+            if gitlink_commit:
+                opaque = True
+            contradictions.append(
+                ProviderRootContradiction(
+                    kind=ProviderRootContradictionKind.UNREADABLE,
+                    package=spec.package,
+                    scope_path=spec.scope_path,
+                    detail=str(exc),
+                    gitlink_commit_id=gitlink_commit,
+                )
+            )
+            if opaque:
+                contradictions.append(
+                    ProviderRootContradiction(
+                        kind=ProviderRootContradictionKind.OPAQUE_GITLINK,
+                        package=spec.package,
+                        scope_path=spec.scope_path,
+                        detail="unreadable checkout leaves gitlink opaque",
+                        gitlink_commit_id=gitlink_commit,
+                    )
+                )
+
+    return ProviderRootObservation(
+        package=spec.package,
+        scope_path=spec.scope_path,
+        package_dirname=spec.package_dirname,
+        status=status,
+        present=present,
+        indexed=indexed,
+        opaque_gitlink=opaque,
+        origin_url=origin_url,
+        gitlink_commit_id=gitlink_commit,
+        head_commit_id=head_commit,
+        head_tree_id=head_tree,
+        index_tree_id=index_tree,
+        dirty=dirty,
+        version_divergent=version_divergent,
+        moved=moved,
+        package_root=str(package_path) if package_path.exists() else "",
+        git_worktree_root=str(git_worktree) if git_worktree else "",
+        snapshot=snapshot,
+        contradictions=tuple(contradictions),
+        reason_code=reason_code,
+    )
+
+
+def build_multi_root_repository_snapshot(
+    superproject_root: str | os.PathLike[str],
+    *,
+    scope_policy: ScopePolicy | Mapping[str, Any] | None = None,
+    scope_config_path: str | os.PathLike[str] | None = None,
+    provider_packages: Sequence[ProviderPackageSpec | Mapping[str, Any]]
+    | None = None,
+    include_primary_snapshot: bool = False,
+    allow_dirty_analysis: bool | None = None,
+    max_paths: int = DEFAULT_MAX_PATHS,
+    max_file_bytes: int = DEFAULT_MAX_FILE_BYTES,
+    max_total_bytes: int = DEFAULT_MAX_TOTAL_BYTES,
+    inventory_providers: bool = True,
+) -> MultiRootRepositorySnapshot:
+    """Build independent provider package roots instead of opaque Gitlinks.
+
+    The SwissKnife primary snapshot remains optional and distinct.  Provider
+    package sources under ``ipfs_accelerate_py``, ``ipfs_kit_py``, and
+    ``ipfs_datasets_py`` are inventoried as separate content-addressed path
+    ledgers.  Missing, dirty, moved, or version-divergent roots stay explicit.
+    """
+
+    super_root = Path(superproject_root)
+    try:
+        super_root = super_root.resolve(strict=True)
+    except OSError as exc:
+        raise RepositoryStateError(
+            f"superproject root is unreadable: {superproject_root}"
+        ) from exc
+
+    if scope_policy is None:
+        config_path = (
+            Path(scope_config_path)
+            if scope_config_path is not None
+            else default_scope_policy_path(super_root)
+        )
+        if config_path.is_file():
+            policy = load_scope_policy(config_path)
+        else:
+            policy = _provider_scope_policy()
+    elif isinstance(scope_policy, ScopePolicy):
+        policy = scope_policy
+    else:
+        policy = scope_policy_from_mapping(scope_policy)
+
+    specs: list[ProviderPackageSpec] = []
+    if provider_packages is None:
+        # Prefer reviewed providerScopes when they match known packages.
+        known = {item.scope_path: item for item in DEFAULT_PROVIDER_PACKAGE_SPECS}
+        if policy.provider_scopes:
+            for scope in policy.provider_scopes:
+                if scope in known:
+                    specs.append(known[scope])
+            # Always include the three package sources even if a scope is only
+            # partially listed; Mcp-Plus-Plus is not a Python package root.
+            if not specs:
+                specs = list(DEFAULT_PROVIDER_PACKAGE_SPECS)
+            else:
+                present_packages = {item.package for item in specs}
+                for item in DEFAULT_PROVIDER_PACKAGE_SPECS:
+                    if item.package not in present_packages and item.scope_path in set(
+                        policy.provider_scopes
+                    ):
+                        specs.append(item)
+                # If policy lists the three external scopes, ensure all three.
+                for item in DEFAULT_PROVIDER_PACKAGE_SPECS:
+                    if item.scope_path in set(policy.provider_scopes) and item.package not in {
+                        s.package for s in specs
+                    }:
+                        specs.append(item)
+        else:
+            specs = list(DEFAULT_PROVIDER_PACKAGE_SPECS)
+    else:
+        for item in provider_packages:
+            if isinstance(item, ProviderPackageSpec):
+                specs.append(item)
+            elif isinstance(item, Mapping):
+                specs.append(
+                    ProviderPackageSpec(
+                        package=str(item.get("package") or ""),
+                        scope_path=str(item.get("scope_path") or item.get("scopePath") or ""),
+                        package_dirname=str(
+                            item.get("package_dirname")
+                            or item.get("packageDirname")
+                            or item.get("package")
+                            or ""
+                        ),
+                    )
+                )
+            else:
+                raise ScopePolicyError(
+                    "provider_packages entries must be ProviderPackageSpec or mappings"
+                )
+
+    # Deterministic package order.
+    specs = sorted(specs, key=lambda item: item.package)
+    if not specs:
+        raise ScopePolicyError("at least one provider package root is required")
+
+    primary: RepositorySnapshot | None = None
+    if include_primary_snapshot:
+        primary = build_repository_snapshot(
+            super_root,
+            scope_policy=policy,
+            allow_dirty_analysis=allow_dirty_analysis,
+            max_paths=max_paths,
+            max_file_bytes=max_file_bytes,
+            max_total_bytes=max_total_bytes,
+            include_provider_scopes=False,
+        )
+
+    observations: list[ProviderRootObservation] = []
+    contradictions: list[ProviderRootContradiction] = []
+    for spec in specs:
+        observation = observe_provider_package_root(
+            super_root,
+            spec,
+            scope_policy=policy,
+            allow_dirty_analysis=allow_dirty_analysis,
+            max_paths=max_paths,
+            max_file_bytes=max_file_bytes,
+            max_total_bytes=max_total_bytes,
+            inventory=inventory_providers,
+        )
+        observations.append(observation)
+        contradictions.extend(observation.contradictions)
+
+    return MultiRootRepositorySnapshot(
+        superproject_root=str(super_root),
+        scope_policy_id=policy.policy_id,
+        scope_id=policy.scope_id,
+        primary_snapshot=primary,
+        providers=tuple(observations),
+        contradictions=tuple(contradictions),
+    )
+
+
 __all__ = [
     "COVERAGE_DISPOSITION_SCHEMA",
     "COVERAGE_DISPOSITION_SCHEMA_VERSION",
     "CoverageDisposition",
     "CoverageIncompleteError",
     "CoverageKind",
+    "DEFAULT_PROVIDER_PACKAGE_SPECS",
     "DEFAULT_SCOPE_CONFIG_RELATIVE",
     "DEPENDENCY_IDENTITY_SCHEMA",
     "DependencyIdentity",
@@ -1841,6 +3274,17 @@ __all__ = [
     "GITLINK_RECORD_SCHEMA",
     "GitStatus",
     "GitlinkRecord",
+    "MULTI_ROOT_REPOSITORY_SNAPSHOT_INTERFACE",
+    "MULTI_ROOT_REPOSITORY_SNAPSHOT_SCHEMA",
+    "MultiRootRepositorySnapshot",
+    "PROVIDER_PACKAGE_SPEC_SCHEMA",
+    "PROVIDER_ROOT_CONTRADICTION_SCHEMA",
+    "PROVIDER_ROOT_OBSERVATION_SCHEMA",
+    "ProviderPackageSpec",
+    "ProviderRootContradiction",
+    "ProviderRootContradictionKind",
+    "ProviderRootObservation",
+    "ProviderRootStatus",
     "REPOSITORY_SNAPSHOT_SCHEMA",
     "REPOSITORY_SNAPSHOT_SCHEMA_VERSION",
     "RepositoryPathEscapeError",
@@ -1852,10 +3296,13 @@ __all__ = [
     "ScopePolicy",
     "ScopePolicyError",
     "SymlinkEscapeError",
+    "build_multi_root_repository_snapshot",
+    "build_provider_package_snapshot",
     "build_repository_snapshot",
     "classify_coverage_kind",
     "default_scope_policy_path",
     "load_scope_policy",
+    "observe_provider_package_root",
     "primary_relative_prefixes",
     "repo_path",
     "scope_policy_from_mapping",

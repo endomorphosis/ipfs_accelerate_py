@@ -71,9 +71,16 @@ from .repository_snapshot import (
     EntryKind,
     GitStatus,
     GitlinkRecord,
+    MultiRootRepositorySnapshot,
+    ProviderPackageSpec,
+    ProviderRootContradiction,
+    ProviderRootContradictionKind,
+    ProviderRootObservation,
+    ProviderRootStatus,
     RepositorySnapshot,
     RepositorySnapshotStats,
     ScopePolicy,
+    build_multi_root_repository_snapshot,
     build_repository_snapshot,
 )
 
@@ -1818,13 +1825,677 @@ def build_repository_index(
     return indexer.build(snapshot, source_loader=source_loader)
 
 
+# ---------------------------------------------------------------------------
+# Multi-root provider package index (SCA-G043)
+# ---------------------------------------------------------------------------
+
+MULTI_ROOT_REPOSITORY_INDEX_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/sca-multi-root-repository-index@1"
+)
+PROVIDER_INDEX_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/sca-provider-index@1"
+)
+CROSS_ROOT_SYMBOL_IDENTITY_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/sca-cross-root-symbol-identity@1"
+)
+PROVIDER_INDEX_BASELINE_RELATIVE: Final = (
+    "data/agent_supervisor/swissknife_contract_assurance/baseline/provider-index.json"
+)
+
+
+class CrossRootSymbolJoinError(RepositoryIndexerError, ValueError):
+    """Cross-root symbol join failed closed (inexact or ambiguous identity)."""
+
+
+@dataclass(frozen=True)
+class CrossRootSymbolIdentity:
+    """Exact package/module/function identity for cross-root joins.
+
+    Joins never use path equality alone: two symbols may only be considered
+    the same when package, module, and function names match exactly.
+    """
+
+    package: str
+    module: str
+    function: str
+    path: str = ""
+    root_id: str = ""
+
+    def __post_init__(self) -> None:
+        package = str(self.package or "").strip()
+        module = str(self.module or "").strip()
+        function = str(self.function or "").strip()
+        if not package or not module or not function:
+            raise CrossRootSymbolJoinError(
+                "cross-root symbol identity requires package, module, and function"
+            )
+        if any(
+            part != part.strip() or not part
+            for part in (package, module, function)
+        ):
+            raise CrossRootSymbolJoinError(
+                "cross-root symbol fields must be non-empty stripped strings"
+            )
+        if "/" in package or "\\" in package or ".." in package:
+            raise CrossRootSymbolJoinError(
+                f"invalid package identity: {package!r}"
+            )
+        object.__setattr__(self, "package", package)
+        object.__setattr__(self, "module", module)
+        object.__setattr__(self, "function", function)
+        if self.path:
+            object.__setattr__(self, "path", _normalize_path(self.path))
+        object.__setattr__(self, "root_id", str(self.root_id or "").strip())
+
+    @property
+    def qualified_name(self) -> str:
+        return f"{self.package}:{self.module}.{self.function}"
+
+    @property
+    def identity_id(self) -> str:
+        return _identity(
+            "sca-cross-root-symbol",
+            {
+                "schema": CROSS_ROOT_SYMBOL_IDENTITY_SCHEMA,
+                "package": self.package,
+                "module": self.module,
+                "function": self.function,
+            },
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": CROSS_ROOT_SYMBOL_IDENTITY_SCHEMA,
+            "identity_id": self.identity_id,
+            "package": self.package,
+            "module": self.module,
+            "function": self.function,
+            "qualified_name": self.qualified_name,
+            "path": self.path,
+            "root_id": self.root_id,
+        }
+
+
+def make_cross_root_symbol(
+    *,
+    package: str,
+    module: str,
+    function: str,
+    path: str = "",
+    root_id: str = "",
+) -> CrossRootSymbolIdentity:
+    """Construct one exact package/module/function identity."""
+
+    return CrossRootSymbolIdentity(
+        package=package,
+        module=module,
+        function=function,
+        path=path,
+        root_id=root_id,
+    )
+
+
+def join_cross_root_symbols(
+    *identities: CrossRootSymbolIdentity,
+) -> CrossRootSymbolIdentity:
+    """Join symbols only when package, module, and function match exactly.
+
+    Path and root metadata may differ (they name distinct roots).  Partial or
+    ambiguous identities fail closed.
+    """
+
+    if not identities:
+        raise CrossRootSymbolJoinError("cross-root join requires at least one identity")
+    for item in identities:
+        if not isinstance(item, CrossRootSymbolIdentity):
+            raise CrossRootSymbolJoinError(
+                "cross-root join accepts only CrossRootSymbolIdentity values"
+            )
+    head = identities[0]
+    for item in identities[1:]:
+        if (
+            item.package != head.package
+            or item.module != head.module
+            or item.function != head.function
+        ):
+            raise CrossRootSymbolJoinError(
+                "cross-root join requires exact package/module/function equality; "
+                f"got {head.qualified_name!r} vs {item.qualified_name!r}"
+            )
+    # Preserve the first path/root as the canonical join witness; others may
+    # differ by root without affecting the exact identity.
+    return head
+
+
+def module_name_for_package_path(package: str, path: str) -> str:
+    """Derive a Python module name from a package-relative source path."""
+
+    normalized = _normalize_path(path)
+    pure = PurePosixPath(normalized)
+    if pure.suffix != ".py":
+        raise CrossRootSymbolJoinError(
+            f"module identity requires a .py path, got {path!r}"
+        )
+    parts = list(pure.with_suffix("").parts)
+    if not parts:
+        raise CrossRootSymbolJoinError(f"empty module path: {path!r}")
+    if parts[-1] == "__init__":
+        parts = parts[:-1]
+    if not parts:
+        return package
+    return package + "." + ".".join(parts)
+
+
+def extract_package_function_symbols(
+    package: str,
+    path: str,
+    source: bytes | str,
+    *,
+    root_id: str = "",
+) -> tuple[CrossRootSymbolIdentity, ...]:
+    """Extract top-level and nested function identities from one Python source."""
+
+    import ast
+
+    text = source.decode("utf-8") if isinstance(source, (bytes, bytearray)) else str(source)
+    try:
+        tree = ast.parse(text, filename=path)
+    except SyntaxError as exc:
+        raise CrossRootSymbolJoinError(
+            f"cannot extract symbols from {path}: {exc}"
+        ) from exc
+    module = module_name_for_package_path(package, path)
+    found: list[CrossRootSymbolIdentity] = []
+
+    class _Collector(ast.NodeVisitor):
+        def __init__(self) -> None:
+            self.scope: list[str] = []
+
+        def _visit_function(
+            self, node: ast.FunctionDef | ast.AsyncFunctionDef
+        ) -> None:
+            symbol = ".".join((*self.scope, node.name))
+            found.append(
+                CrossRootSymbolIdentity(
+                    package=package,
+                    module=module,
+                    function=symbol,
+                    path=path,
+                    root_id=root_id,
+                )
+            )
+            self.scope.append(node.name)
+            self.generic_visit(node)
+            self.scope.pop()
+
+        def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+            self._visit_function(node)
+
+        def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
+            self._visit_function(node)
+
+        def visit_ClassDef(self, node: ast.ClassDef) -> None:
+            self.scope.append(node.name)
+            self.generic_visit(node)
+            self.scope.pop()
+
+    _Collector().visit(tree)
+    return tuple(
+        sorted(
+            found,
+            key=lambda item: (item.module, item.function, item.path),
+        )
+    )
+
+
+@dataclass(frozen=True)
+class ProviderRootIndex:
+    """One independently indexed provider package root."""
+
+    observation: ProviderRootObservation
+    index: RepositoryIndex | None
+    symbols: tuple[CrossRootSymbolIdentity, ...] = ()
+    health: AnalyzerHealthReport | None = None
+
+    def __post_init__(self) -> None:
+        if self.observation.indexed and self.index is None:
+            raise RepositoryIndexIntegrityError(
+                f"indexed provider {self.observation.package} lacks a repository index"
+            )
+        if self.index is not None and self.observation.snapshot is not None:
+            if self.index.snapshot.snapshot_id != self.observation.snapshot.snapshot_id:
+                raise RepositoryIndexIntegrityError(
+                    f"provider index snapshot mismatch for {self.observation.package}"
+                )
+        health = self.health
+        if health is None and self.index is not None:
+            health = self.index.health
+        object.__setattr__(self, "health", health)
+        object.__setattr__(
+            self,
+            "symbols",
+            tuple(
+                sorted(
+                    self.symbols,
+                    key=lambda item: (item.module, item.function, item.path),
+                )
+            ),
+        )
+
+    @property
+    def package(self) -> str:
+        return self.observation.package
+
+    @property
+    def indexed(self) -> bool:
+        return bool(self.observation.indexed and self.index is not None)
+
+    @property
+    def opaque_gitlink(self) -> bool:
+        return bool(self.observation.opaque_gitlink)
+
+    @property
+    def healthy(self) -> bool:
+        return bool(
+            self.health is not None
+            and self.health.status is AnalyzerHealthStatus.HEALTHY
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "package": self.package,
+            "observation": self.observation.compact_dict(),
+            "index_id": self.index.index_id if self.index is not None else "",
+            "snapshot_id": (
+                self.observation.snapshot.snapshot_id
+                if self.observation.snapshot is not None
+                else ""
+            ),
+            "health": self.health.to_dict() if self.health is not None else None,
+            "symbol_count": len(self.symbols),
+            "symbols": [item.to_dict() for item in self.symbols],
+            "indexed": self.indexed,
+            "opaque_gitlink": self.opaque_gitlink,
+            "healthy": self.healthy,
+            "build_stats": (
+                self.index.build_stats.to_dict() if self.index is not None else {}
+            ),
+        }
+
+    def compact_dict(self) -> dict[str, Any]:
+        payload = self.to_dict()
+        payload.pop("symbols", None)
+        return payload
+
+
+@dataclass(frozen=True)
+class MultiRootRepositoryIndex:
+    """Independent provider package indexes with exact cross-root join policy."""
+
+    multi_root_snapshot: MultiRootRepositorySnapshot
+    providers: tuple[ProviderRootIndex, ...]
+    contradictions: tuple[ProviderRootContradiction, ...]
+
+    def __post_init__(self) -> None:
+        packages = [item.package for item in self.providers]
+        if len(packages) != len(set(packages)):
+            raise RepositoryIndexIntegrityError(
+                "multi-root provider indexes must be unique per package"
+            )
+        object.__setattr__(
+            self,
+            "providers",
+            tuple(sorted(self.providers, key=lambda item: item.package)),
+        )
+        object.__setattr__(
+            self,
+            "contradictions",
+            tuple(
+                sorted(
+                    self.contradictions,
+                    key=lambda item: (
+                        item.package,
+                        item.kind.value,
+                        item.detail,
+                    ),
+                )
+            ),
+        )
+
+    @property
+    def multi_root_id(self) -> str:
+        return _identity(
+            "sca-multi-root-repository-index",
+            self._content_dict(),
+        )
+
+    @property
+    def all_providers_indexed(self) -> bool:
+        return bool(self.providers) and all(item.indexed for item in self.providers)
+
+    @property
+    def all_providers_healthy(self) -> bool:
+        return bool(self.providers) and all(item.healthy for item in self.providers)
+
+    @property
+    def any_opaque_gitlink(self) -> bool:
+        return any(item.opaque_gitlink for item in self.providers)
+
+    @property
+    def exhaustive_parity_allowed(self) -> bool:
+        """Exhaustive multi-root parity requires every provider healthy and indexed.
+
+        Partial provider health, opaque gitlinks, or root contradictions block
+        exhaustive parity claims fail-closed.
+        """
+
+        if not self.providers:
+            return False
+        if self.contradictions:
+            return False
+        if self.any_opaque_gitlink:
+            return False
+        if not self.all_providers_indexed:
+            return False
+        if not self.all_providers_healthy:
+            return False
+        if self.multi_root_snapshot.has_blocking_contradictions:
+            return False
+        return True
+
+    def provider_for_package(self, package: str) -> ProviderRootIndex | None:
+        name = str(package or "").strip()
+        for item in self.providers:
+            if item.package == name:
+                return item
+        return None
+
+    def symbols_for_package(self, package: str) -> tuple[CrossRootSymbolIdentity, ...]:
+        root = self.provider_for_package(package)
+        return root.symbols if root is not None else ()
+
+    def join_symbols(
+        self, *identities: CrossRootSymbolIdentity
+    ) -> CrossRootSymbolIdentity:
+        """Exact package/module/function join across provider roots."""
+
+        return join_cross_root_symbols(*identities)
+
+    def _content_dict(self) -> dict[str, Any]:
+        return {
+            "schema": MULTI_ROOT_REPOSITORY_INDEX_SCHEMA,
+            "indexer_version": REPOSITORY_INDEXER_VERSION,
+            "multi_root_snapshot_id": self.multi_root_snapshot.multi_root_id,
+            "providers": [item.compact_dict() for item in self.providers],
+            "contradictions": [item.to_dict() for item in self.contradictions],
+            "cross_root_join_policy": "package_module_function_exact",
+            "bodies_in_cas": True,
+            "exhaustive_parity_allowed": self.exhaustive_parity_allowed,
+            "all_providers_indexed": self.all_providers_indexed,
+            "all_providers_healthy": self.all_providers_healthy,
+            "any_opaque_gitlink": self.any_opaque_gitlink,
+        }
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            **self._content_dict(),
+            "multi_root_id": self.multi_root_id,
+            "multi_root_snapshot": self.multi_root_snapshot.compact_dict(),
+            "providers": [item.to_dict() for item in self.providers],
+        }
+
+    def to_provider_index_baseline(self) -> dict[str, Any]:
+        """Compact baseline document for ``provider-index.json``."""
+
+        return {
+            "schema": PROVIDER_INDEX_SCHEMA,
+            "schema_version": 1,
+            "interface": "MultiRootRepositorySnapshot@1",
+            "indexer_version": REPOSITORY_INDEXER_VERSION,
+            "multi_root_id": self.multi_root_id,
+            "multi_root_snapshot_id": self.multi_root_snapshot.multi_root_id,
+            "scope_id": self.multi_root_snapshot.scope_id,
+            "scope_policy_id": self.multi_root_snapshot.scope_policy_id,
+            "cross_root_join_policy": "package_module_function_exact",
+            "bodies_in_cas": True,
+            "primary_snapshot_distinct": True,
+            "exhaustive_parity_allowed": self.exhaustive_parity_allowed,
+            "all_providers_indexed": self.all_providers_indexed,
+            "all_providers_healthy": self.all_providers_healthy,
+            "any_opaque_gitlink": self.any_opaque_gitlink,
+            "has_blocking_contradictions": (
+                self.multi_root_snapshot.has_blocking_contradictions
+                or bool(self.contradictions)
+            ),
+            "providers": [
+                {
+                    "package": item.package,
+                    "scope_path": item.observation.scope_path,
+                    "status": item.observation.status.value,
+                    "indexed": item.indexed,
+                    "opaque_gitlink": item.opaque_gitlink,
+                    "origin_url": item.observation.origin_url,
+                    "gitlink_commit_id": item.observation.gitlink_commit_id,
+                    "head_commit_id": item.observation.head_commit_id,
+                    "head_tree_id": item.observation.head_tree_id,
+                    "index_tree_id": item.observation.index_tree_id,
+                    "dirty": item.observation.dirty,
+                    "version_divergent": item.observation.version_divergent,
+                    "moved": item.observation.moved,
+                    "snapshot_id": (
+                        item.observation.snapshot.snapshot_id
+                        if item.observation.snapshot is not None
+                        else ""
+                    ),
+                    "index_id": item.index.index_id if item.index is not None else "",
+                    "health_status": (
+                        item.health.status.value if item.health is not None else ""
+                    ),
+                    "tracked_path_count": (
+                        item.observation.snapshot.stats.tracked_path_count
+                        if item.observation.snapshot is not None
+                        else 0
+                    ),
+                    "semantic_path_count": (
+                        item.observation.snapshot.stats.semantic_path_count
+                        if item.observation.snapshot is not None
+                        else 0
+                    ),
+                    "symbol_count": len(item.symbols),
+                    "reason_code": item.observation.reason_code,
+                    "contradictions": [
+                        c.to_dict() for c in item.observation.contradictions
+                    ],
+                }
+                for item in self.providers
+            ],
+            "contradictions": [item.to_dict() for item in self.contradictions],
+        }
+
+
+def build_multi_root_repository_index(
+    superproject_root: Path | str,
+    *,
+    index_root: Path | str,
+    scope_policy: ScopePolicy | Mapping[str, Any] | None = None,
+    scope_config_path: Path | str | None = None,
+    provider_packages: Sequence[ProviderPackageSpec | Mapping[str, Any]]
+    | None = None,
+    provider: PolyglotASTProvider | None = None,
+    health_thresholds: AnalyzerHealthThresholds
+    | Mapping[str, Any]
+    | None = None,
+    include_primary_snapshot: bool = False,
+    allow_dirty_analysis: bool | None = None,
+    max_paths: int | None = None,
+    max_symbol_files_per_package: int = 512,
+    extract_symbols: bool = True,
+    multi_root_snapshot: MultiRootRepositorySnapshot | None = None,
+) -> MultiRootRepositoryIndex:
+    """Index configured provider package roots as independent CAS-backed trees.
+
+    Source and AST bodies remain in each root's CAS.  Cross-root joins use only
+    exact package/module/function identities.  Partial provider health or
+    opaque gitlink roots block exhaustive parity.
+    """
+
+    root = Path(index_root)
+    root.mkdir(parents=True, exist_ok=True, mode=0o700)
+
+    snapshot = multi_root_snapshot or build_multi_root_repository_snapshot(
+        superproject_root,
+        scope_policy=scope_policy,
+        scope_config_path=scope_config_path,
+        provider_packages=provider_packages,
+        include_primary_snapshot=include_primary_snapshot,
+        allow_dirty_analysis=allow_dirty_analysis,
+        max_paths=max_paths or DEFAULT_MAX_INDEX_PATHS,
+        inventory_providers=True,
+    )
+
+    provider_indexes: list[ProviderRootIndex] = []
+    contradictions: list[ProviderRootContradiction] = list(snapshot.contradictions)
+
+    for observation in snapshot.providers:
+        package_index_root = root / "providers" / observation.package
+        package_index_root.mkdir(parents=True, exist_ok=True, mode=0o700)
+        if not observation.indexed or observation.snapshot is None:
+            if observation.opaque_gitlink:
+                contradictions.append(
+                    ProviderRootContradiction(
+                        kind=ProviderRootContradictionKind.OPAQUE_GITLINK,
+                        package=observation.package,
+                        scope_path=observation.scope_path,
+                        detail="provider source was not indexed; gitlink remains opaque",
+                        gitlink_commit_id=observation.gitlink_commit_id,
+                        head_commit_id=observation.head_commit_id,
+                    )
+                )
+            provider_indexes.append(
+                ProviderRootIndex(
+                    observation=observation,
+                    index=None,
+                    symbols=(),
+                    health=None,
+                )
+            )
+            continue
+
+        indexer = RepositoryIndexer(
+            package_index_root,
+            provider=provider,
+            health_thresholds=health_thresholds,
+            max_paths=max_paths or DEFAULT_MAX_INDEX_PATHS,
+        )
+        try:
+            index = indexer.build(observation.snapshot, publish=True)
+        finally:
+            indexer.close()
+
+        symbols: list[CrossRootSymbolIdentity] = []
+        if extract_symbols:
+            # Re-open CAS via a reader indexer to pull source bodies only for
+            # symbol extraction; bodies are never embedded in rows or baseline.
+            reader = RepositoryIndexer(
+                package_index_root,
+                provider=provider,
+                health_thresholds=health_thresholds,
+            )
+            try:
+                current = reader.load_current()
+                extracted = 0
+                for row in current.rows:
+                    if extracted >= max_symbol_files_per_package:
+                        break
+                    if not row.path.endswith(".py"):
+                        continue
+                    if row.source_ref is None:
+                        continue
+                    try:
+                        source = reader.cas.read(row.source_ref)
+                    except Exception:
+                        continue
+                    try:
+                        symbols.extend(
+                            extract_package_function_symbols(
+                                observation.package,
+                                row.path,
+                                source,
+                                root_id=observation.observation_id,
+                            )
+                        )
+                    except CrossRootSymbolJoinError:
+                        continue
+                    extracted += 1
+            finally:
+                reader.close()
+
+        health = index.health
+        if health.status is not AnalyzerHealthStatus.HEALTHY:
+            contradictions.append(
+                ProviderRootContradiction(
+                    kind=ProviderRootContradictionKind.PARTIAL_HEALTH,
+                    package=observation.package,
+                    scope_path=observation.scope_path,
+                    detail=(
+                        f"provider analyzer health is {health.status.value}: "
+                        + ",".join(health.reasons[:5])
+                    ),
+                    gitlink_commit_id=observation.gitlink_commit_id,
+                    head_commit_id=observation.head_commit_id,
+                )
+            )
+
+        provider_indexes.append(
+            ProviderRootIndex(
+                observation=observation,
+                index=index,
+                symbols=tuple(symbols),
+                health=health,
+            )
+        )
+
+    # Deduplicate contradictions by identity.
+    unique: dict[str, ProviderRootContradiction] = {}
+    for item in contradictions:
+        unique[item.contradiction_id] = item
+
+    return MultiRootRepositoryIndex(
+        multi_root_snapshot=snapshot,
+        providers=tuple(provider_indexes),
+        contradictions=tuple(unique.values()),
+    )
+
+
+def write_provider_index_baseline(
+    multi_root_index: MultiRootRepositoryIndex,
+    destination: Path | str,
+) -> Path:
+    """Atomically publish the compact provider-index baseline document."""
+
+    path = Path(destination)
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    payload = multi_root_index.to_provider_index_baseline()
+    encoded = canonical_repository_index_bytes(payload) + b"\n"
+    _atomic_write(path, encoded, replace=True)
+    return path
+
+
 __all__ = [
+    "CROSS_ROOT_SYMBOL_IDENTITY_SCHEMA",
+    "CrossRootSymbolIdentity",
+    "CrossRootSymbolJoinError",
     "DEFAULT_MAX_COMPACT_ROW_BYTES",
     "DEFAULT_MAX_INDEX_PATHS",
     "DEFAULT_MAX_PARSER_SOURCE_BYTES",
     "DEFAULT_MAX_SOURCE_BYTES",
     "HARD_MAX_COMPACT_ROW_BYTES",
+    "MULTI_ROOT_REPOSITORY_INDEX_SCHEMA",
+    "MultiRootRepositoryIndex",
+    "PROVIDER_INDEX_BASELINE_RELATIVE",
+    "PROVIDER_INDEX_SCHEMA",
     "ParserStatus",
+    "ProviderRootIndex",
     "REPOSITORY_INDEXER_VERSION",
     "REPOSITORY_INDEX_CACHE_SCHEMA",
     "REPOSITORY_INDEX_ROW_SCHEMA",
@@ -1841,6 +2512,12 @@ __all__ = [
     "RepositoryIndexer",
     "RepositoryIndexerError",
     "SourceLoader",
+    "build_multi_root_repository_index",
     "build_repository_index",
     "canonical_repository_index_bytes",
+    "extract_package_function_symbols",
+    "join_cross_root_symbols",
+    "make_cross_root_symbol",
+    "module_name_for_package_path",
+    "write_provider_index_baseline",
 ]
