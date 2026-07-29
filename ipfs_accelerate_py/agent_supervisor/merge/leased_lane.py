@@ -35,6 +35,13 @@ logger = logging.getLogger(__name__)
 
 FENCED_EXIT_CODE = 75
 START_FAILED_EXIT_CODE = 70
+_DUCKDB_LOCK_RETRY_INITIAL_SECONDS = 0.05
+_DUCKDB_LOCK_RETRY_MAX_SECONDS = 0.5
+_LEASE_EXPIRY_SAFETY_MARGIN_MS = 1_000
+_DUCKDB_LOCK_ERROR_MARKERS = (
+    "could not set lock",
+    "conflicting lock",
+)
 
 LaneDisposition = Literal[
     "completed",
@@ -90,6 +97,21 @@ class LeasedLaneResult:
 
 def _now_ms() -> int:
     return int(time.time() * 1000)
+
+
+def _is_transient_duckdb_lock_error(exc: Exception) -> bool:
+    """Return whether ``exc`` is the narrow retryable DuckDB lock conflict."""
+
+    if isinstance(exc, LeaseError):
+        return False
+    exception_type = type(exc)
+    if (
+        exception_type.__module__ not in {"duckdb", "_duckdb"}
+        or exception_type.__name__ not in {"IOException", "OperationalError"}
+    ):
+        return False
+    message = str(exc).casefold()
+    return all(marker in message for marker in _DUCKDB_LOCK_ERROR_MARKERS)
 
 
 def _resource_measurements(
@@ -1015,58 +1037,106 @@ def run_leased_lane_result(
                     )
                     _terminate_child(process, fence_descendants=True)
                     break
-                try:
-                    now = _now_ms()
-                    if grant.lease_expires_at_ms - now <= renew_window_ms:
-                        grant = coordinator.renew(grant, requested_lease_ms=lease_ms, now_ms=now)
-                    coordinator.heartbeat(
-                        grant,
-                        capacity_millionths=capacity_millionths,
-                        now_ms=now,
-                        resource_class=resource_class,
-                        provider_id=provider_id,
-                        **_resource_measurements(
-                            resource_sampler,
-                            active_phase=_active_phase(phase_state_path, "executing"),
-                            occupied_workers=1,
-                        ),
-                    )
-                except LeaseError as exc:
-                    logger.error("Fencing daemon lane after lease loss: %s", exc)
-                    _terminate_child(process, fence_descendants=True)
-                    return LeasedLaneResult(
-                        task_cid=grant.task_cid,
-                        claim_cid=grant.claim_cid,
-                        claimant_did=grant.claimant_did,
-                        fencing_token=grant.fencing_token,
-                        disposition="fenced",
-                        exit_code=FENCED_EXIT_CODE,
-                        child_exit_code=process.returncode,
-                        started_at_ms=started_at_ms,
-                        finished_at_ms=_now_ms(),
-                        error=str(exc),
-                    )
-                except Exception as exc:
-                    # Losing access to the coordination store is equivalent
-                    # to losing proof of authority. Stop execution first; a
-                    # best-effort release then makes recovery immediate when
-                    # the store failure was transient.
-                    logger.exception("Fencing daemon lane after coordination failure")
-                    _terminate_child(process, fence_descendants=True)
-                    released = _release_after_bookkeeping_failure(coordinator, grant)
-                    return LeasedLaneResult(
-                        task_cid=grant.task_cid,
-                        claim_cid=grant.claim_cid,
-                        claimant_did=grant.claimant_did,
-                        fencing_token=grant.fencing_token,
-                        disposition="failed",
-                        exit_code=START_FAILED_EXIT_CODE,
-                        child_exit_code=process.returncode,
-                        started_at_ms=started_at_ms,
-                        finished_at_ms=_now_ms(),
-                        lease_released=released,
-                        error=f"coordination failure: {exc}",
-                    )
+                lock_retry_delay = _DUCKDB_LOCK_RETRY_INITIAL_SECONDS
+                previous_lock_error: Exception | None = None
+                while True:
+                    try:
+                        now = _now_ms()
+                        retry_deadline_ms = (
+                            grant.lease_expires_at_ms
+                            - _LEASE_EXPIRY_SAFETY_MARGIN_MS
+                        )
+                        if previous_lock_error is not None and now >= retry_deadline_ms:
+                            raise previous_lock_error
+                        if grant.lease_expires_at_ms - now <= renew_window_ms:
+                            # Let the coordinator sample time after it acquires
+                            # its database lock. Passing this pre-operation
+                            # timestamp could renew an already expired grant
+                            # after a long lock wait.
+                            grant = coordinator.renew(
+                                grant,
+                                requested_lease_ms=lease_ms,
+                            )
+                        coordinator.heartbeat(
+                            grant,
+                            capacity_millionths=capacity_millionths,
+                            resource_class=resource_class,
+                            provider_id=provider_id,
+                            **_resource_measurements(
+                                resource_sampler,
+                                active_phase=_active_phase(phase_state_path, "executing"),
+                                occupied_workers=1,
+                            ),
+                        )
+                        break
+                    except LeaseError as exc:
+                        logger.error("Fencing daemon lane after lease loss: %s", exc)
+                        _terminate_child(process, fence_descendants=True)
+                        return LeasedLaneResult(
+                            task_cid=grant.task_cid,
+                            claim_cid=grant.claim_cid,
+                            claimant_did=grant.claimant_did,
+                            fencing_token=grant.fencing_token,
+                            disposition="fenced",
+                            exit_code=FENCED_EXIT_CODE,
+                            child_exit_code=process.returncode,
+                            started_at_ms=started_at_ms,
+                            finished_at_ms=_now_ms(),
+                            error=str(exc),
+                        )
+                    except Exception as exc:
+                        retry_now_ms = _now_ms()
+                        retry_deadline_ms = (
+                            grant.lease_expires_at_ms
+                            - _LEASE_EXPIRY_SAFETY_MARGIN_MS
+                        )
+                        retry_seconds = min(
+                            lock_retry_delay,
+                            max(0.0, (retry_deadline_ms - retry_now_ms) / 1_000),
+                        )
+                        if (
+                            _is_transient_duckdb_lock_error(exc)
+                            and retry_seconds > 0
+                        ):
+                            previous_lock_error = exc
+                            logger.warning(
+                                "Retrying lease maintenance for %s after transient "
+                                "DuckDB lock contention (%.3fs backoff)",
+                                grant.task_cid,
+                                retry_seconds,
+                            )
+                            stop_event.wait(retry_seconds)
+                            if stopping_signal is not None:
+                                _terminate_child(process, fence_descendants=True)
+                                break
+                            if process.poll() is not None:
+                                break
+                            lock_retry_delay = min(
+                                _DUCKDB_LOCK_RETRY_MAX_SECONDS,
+                                lock_retry_delay * 2,
+                            )
+                            continue
+
+                        # Losing access to the coordination store is equivalent
+                        # to losing proof of authority. Stop execution first; a
+                        # best-effort release then makes recovery immediate when
+                        # the store failure was transient.
+                        logger.exception("Fencing daemon lane after coordination failure")
+                        _terminate_child(process, fence_descendants=True)
+                        released = _release_after_bookkeeping_failure(coordinator, grant)
+                        return LeasedLaneResult(
+                            task_cid=grant.task_cid,
+                            claim_cid=grant.claim_cid,
+                            claimant_did=grant.claimant_did,
+                            fencing_token=grant.fencing_token,
+                            disposition="failed",
+                            exit_code=START_FAILED_EXIT_CODE,
+                            child_exit_code=process.returncode,
+                            started_at_ms=started_at_ms,
+                            finished_at_ms=_now_ms(),
+                            lease_released=released,
+                            error=f"coordination failure: {exc}",
+                        )
 
             # A short-lived supervisor can publish its final phase state and
             # exit between polling iterations. Read once more before
