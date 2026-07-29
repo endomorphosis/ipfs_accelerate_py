@@ -2893,6 +2893,7 @@ class PortalImplementationDaemon:
             author_email == "implementation-daemon@example.invalid"
             and (
                 subject.endswith(": mark todo completed")
+                or subject.endswith(": reopen dependency-ready tasks")
                 or subject.endswith(": update generated submodule pointer")
             )
         )
@@ -7430,6 +7431,191 @@ class PortalImplementationDaemon:
             except OSError:
                 logger.warning("Failed to remove implementation task claim lock %s", task_claim_path)
 
+    def _todo_board_is_implementation_protected(self) -> bool:
+        """Return whether the markdown board is an exact protected path."""
+
+        try:
+            relative = (
+                self.todo_path.resolve()
+                .relative_to(self.repo_root.resolve())
+                .as_posix()
+            )
+        except (OSError, RuntimeError, ValueError):
+            return False
+        return relative in set(self.implementation_protected_paths)
+
+    def _dirty_implementation_protected_paths(
+        self,
+        paths: Sequence[Path],
+    ) -> tuple[str, ...]:
+        """Return protected files or ancestor gitlinks that are not clean."""
+
+        root = self.repo_root.resolve()
+        protected = set(self.implementation_protected_paths)
+        dirty: list[str] = []
+        for configured_path in paths:
+            path = (
+                configured_path
+                if configured_path.is_absolute()
+                else root / configured_path
+            )
+            try:
+                relative = path.resolve().relative_to(root).as_posix()
+            except (OSError, RuntimeError, ValueError):
+                continue
+            if relative not in protected:
+                continue
+
+            current_repo = self._git_toplevel_for_path(path.parent)
+            if current_repo is None:
+                if relative not in dirty:
+                    dirty.append(relative)
+                continue
+            current_target = path.resolve()
+            seen_repositories: set[Path] = set()
+            while current_repo not in seen_repositories:
+                current_repo = current_repo.resolve()
+                seen_repositories.add(current_repo)
+                current_relative = self._relative_to_repo(
+                    current_repo,
+                    current_target,
+                )
+                if not current_relative:
+                    if relative not in dirty:
+                        dirty.append(relative)
+                    break
+                try:
+                    status = subprocess.run(
+                        [
+                            "git",
+                            "status",
+                            "--porcelain",
+                            "--untracked-files=all",
+                            "--",
+                            current_relative,
+                        ],
+                        cwd=current_repo,
+                        text=True,
+                        capture_output=True,
+                        check=False,
+                    )
+                except OSError:
+                    status = None
+                try:
+                    display_path = (
+                        current_target.resolve()
+                        .relative_to(root)
+                        .as_posix()
+                    )
+                except (OSError, RuntimeError, ValueError):
+                    display_path = relative
+                # A failed cleanliness proof is itself dirty for lease-release
+                # purposes.  This prevents a missing Git binary or disappearing
+                # checkout from opening the protected-board fence.
+                if (
+                    status is None
+                    or status.returncode != 0
+                    or bool(status.stdout.strip())
+                ) and display_path not in dirty:
+                    dirty.append(display_path)
+                if current_repo == root:
+                    break
+                parent = self._parent_git_toplevel_for_repo(current_repo)
+                if parent is None:
+                    if relative not in dirty:
+                        dirty.append(relative)
+                    break
+                current_target = current_repo
+                current_repo = parent
+        return tuple(dirty)
+
+    @staticmethod
+    def _generated_file_commit_result_trusted(
+        commit_result: Mapping[str, Any],
+    ) -> bool:
+        """Return whether a generated update has a durable commit outcome."""
+
+        clean_noop_reasons = {"no_changes", "no_staged_changes"}
+        own_commit_trusted = bool(
+            commit_result.get("committed")
+        ) or str(commit_result.get("reason") or "") in clean_noop_reasons
+        if not own_commit_trusted:
+            return False
+        parent_results = commit_result.get("parent_gitlink_commits")
+        if not isinstance(parent_results, list):
+            return True
+        return all(
+            isinstance(item, Mapping)
+            and (
+                bool(item.get("committed"))
+                or str(item.get("reason") or "") in clean_noop_reasons
+            )
+            for item in parent_results
+        )
+
+    def _protected_todo_commit_postcondition(
+        self,
+        result: dict[str, Any],
+        commit_result: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Require a clean, trusted protected board before lease release."""
+
+        if not self._todo_board_is_implementation_protected():
+            return result
+        dirty_paths = self._dirty_implementation_protected_paths(
+            (self.todo_path,)
+        )
+        commit_trusted = self._generated_file_commit_result_trusted(
+            commit_result
+        )
+        trusted = commit_trusted and not dirty_paths
+        result["protected_board_postcondition"] = {
+            "checked": True,
+            "clean": not dirty_paths,
+            "trusted": trusted,
+            "dirty_paths": list(dirty_paths),
+            "commit_reason": str(commit_result.get("reason") or ""),
+        }
+        result["durable"] = trusted
+        if trusted:
+            return result
+
+        prior_reason = str(result.get("reason") or "")
+        if prior_reason:
+            result["mutation_reason"] = prior_reason
+        result["reason"] = (
+            "protected_board_commit_incomplete"
+            if dirty_paths
+            else "protected_board_commit_untrusted"
+        )
+        if not dirty_paths:
+            return result
+
+        current = self._current_checkout_mutation_lease()
+        if current is None:
+            result["checkout_mutation_release_blocked"] = True
+            result["checkout_mutation_recovery_required"] = True
+            return result
+        existing_paths = tuple(
+            Path(str(item))
+            for item in getattr(
+                self._checkout_mutation_context,
+                "retained_protected_paths",
+                (),
+            )
+            if str(item)
+        )
+        retained_paths = tuple(
+            dict.fromkeys((*existing_paths, self.todo_path.resolve()))
+        )
+        self._checkout_mutation_context.retain_until_protected_clean = True
+        self._checkout_mutation_context.retained_protected_paths = (
+            retained_paths
+        )
+        result["checkout_mutation_lease_retained"] = True
+        result["checkout_mutation_recovery_required"] = True
+        return result
+
     def _mark_tasks_ready_in_todo(
         self,
         task_ids: Sequence[str],
@@ -7445,7 +7631,18 @@ class PortalImplementationDaemon:
         )
         if (
             self.task_source is None
-            and self._current_checkout_mutation_lease() is None
+            and (
+                self._current_checkout_mutation_lease() is None
+                or int(
+                    getattr(
+                        self._checkout_mutation_context,
+                        "transaction_depth",
+                        0,
+                    )
+                    or 0
+                )
+                == 0
+            )
         ):
             return self._run_checkout_mutation_transaction(
                 task_id=stable_task_ids[0] if stable_task_ids else "",
@@ -7570,14 +7767,31 @@ class PortalImplementationDaemon:
             "updated_task_ids": sorted(updated_task_ids),
             "already_ready_task_ids": sorted(already_ready_task_ids),
         }
-        if updated_task_ids:
+        protected_board_dirty = bool(
+            already_ready_task_ids
+            and self._todo_board_is_implementation_protected()
+            and self._dirty_implementation_protected_paths(
+                (self.todo_path,)
+            )
+        )
+        if updated_task_ids or protected_board_dirty:
+            commit_task_id = (
+                sorted(updated_task_ids)[0]
+                if updated_task_ids
+                else sorted(already_ready_task_ids)[0]
+            )
             commit_result = self._commit_generated_file_update(
                 self.todo_path,
-                task_id=updated_task_ids[0],
-                subject=f"{updated_task_ids[0]}: reopen dependency-ready tasks",
+                task_id=commit_task_id,
+                subject=f"{commit_task_id}: reopen dependency-ready tasks",
             )
             if commit_result:
                 result["commit_result"] = commit_result
+            self._protected_todo_commit_postcondition(
+                result,
+                commit_result,
+            )
+        if updated_task_ids or protected_board_dirty:
             self._record_event("dependency_blocked_tasks_reopened", result)
         return result
 
@@ -7918,8 +8132,20 @@ class PortalImplementationDaemon:
                 task_id=primary_task_id,
                 subject=f"{primary_task_id}: mark todo completed",
             )
-            if commit_result and commit_result.get("reason") != "no_changes":
+            reconciled_commit = bool(
+                commit_result
+                and (
+                    commit_result.get("reason") != "no_changes"
+                    or commit_result.get("parent_gitlink_commits")
+                )
+            )
+            if reconciled_commit:
                 result["commit_result"] = commit_result
+            self._protected_todo_commit_postcondition(
+                result,
+                commit_result,
+            )
+            if reconciled_commit:
                 self._record_event("todo_status_reconciled", result)
             return result
         tmp_path = todo_path.with_name(f".{todo_path.name}.tmp")
@@ -7961,6 +8187,10 @@ class PortalImplementationDaemon:
             result["bundle_work_order"] = bundle_work_order
         if commit_result:
             result["commit_result"] = commit_result
+        self._protected_todo_commit_postcondition(
+            result,
+            commit_result,
+        )
         self._record_event("todo_status_updated", result)
         return result
 
@@ -7973,12 +8203,37 @@ class PortalImplementationDaemon:
     ) -> dict[str, Any]:
         """Commit a daemon-owned generated file under one checkout lease."""
 
-        if self._current_checkout_mutation_lease() is not None:
-            return self._commit_generated_file_update_locked(
+        current = self._current_checkout_mutation_lease()
+        if current is not None:
+            result = self._commit_generated_file_update_locked(
                 path,
                 task_id=task_id,
                 subject=subject,
             )
+            if (
+                bool(
+                    getattr(
+                        self._checkout_mutation_context,
+                        "retain_until_protected_clean",
+                        False,
+                    )
+                )
+                and int(
+                    getattr(
+                        self._checkout_mutation_context,
+                        "transaction_depth",
+                        0,
+                    )
+                    or 0
+                )
+                == 0
+            ):
+                return self._finish_retained_checkout_mutation_recovery(
+                    current,
+                    result,
+                    operation="commit_generated_file_update",
+                )
+            return result
         return self._run_checkout_mutation_transaction(
             task_id=task_id,
             operation="commit_generated_file_update",
@@ -8021,7 +8276,9 @@ class PortalImplementationDaemon:
 
         result = self._commit_specific_path(repo, relative, subject=subject)
         parent_results: list[dict[str, Any]] = []
-        if result.get("committed"):
+        if result.get("committed") or str(
+            result.get("reason") or ""
+        ) in {"no_changes", "no_staged_changes"}:
             parent_results = self._commit_parent_gitlink_updates(
                 repo,
                 task_id=task_id,
@@ -12763,6 +13020,14 @@ class PortalImplementationDaemon:
     ) -> dict[str, Any]:
         """Preserve candidate work interrupted by an external policy update."""
 
+        if protected_path_violation.get("verification_deferred"):
+            return self._retain_verification_deferred_worktree(
+                worktree_path,
+                branch_name,
+                task,
+                attempt,
+                protected_path_violation,
+            )
         workspace_mutated = any(
             str(item.get("scope") or "") == "workspace"
             for item in protected_path_violation.get("mutations", [])
@@ -12825,6 +13090,129 @@ class PortalImplementationDaemon:
             evidence_field="protected_path_violation",
             baseline_ref=baseline_ref,
         )
+
+    def _retain_verification_deferred_worktree(
+        self,
+        worktree_path: Path,
+        branch_name: str,
+        task: PortalTask,
+        attempt: int,
+        protected_path_violation: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Park an inconclusive attempt without mutating shared Git state.
+
+        A verification deferral means another process still owns (or may have
+        replaced) the repository checkout lease.  Committing the candidate,
+        creating a rescue ref, removing the worktree, or deleting its branch in
+        this state would race that owner.  Keep the physical worktree intact and
+        close only this daemon's lifecycle claim.  The terminal record remains
+        durable so a later lock-owning reconciliation pass can rescue or clean
+        the retained workspace, while the restored attempt can run again.
+        """
+
+        lifecycle_record = self._active_worktree_lifecycle
+        try:
+            loaded_record = self.worktree_lifecycle.load_workspace(
+                worktree_path
+            )
+        except WorktreeLifecycleError as exc:
+            loaded_record = None
+            lifecycle_load_error = str(exc)[-500:]
+        else:
+            lifecycle_load_error = ""
+        lifecycle_result: dict[str, Any]
+        if lifecycle_record is None:
+            lifecycle_result = {
+                "terminal": False,
+                "reason": "no_lifecycle_record",
+            }
+            if lifecycle_load_error:
+                lifecycle_result["error"] = lifecycle_load_error
+        elif loaded_record is None:
+            lifecycle_result = {
+                "terminal": False,
+                "reason": "lifecycle_record_unavailable",
+            }
+            if lifecycle_load_error:
+                lifecycle_result["error"] = lifecycle_load_error
+        elif (
+            loaded_record.lease_id != lifecycle_record.lease_id
+            or loaded_record.fence != lifecycle_record.fence
+        ):
+            lifecycle_result = {
+                "terminal": False,
+                "reason": "lifecycle_owner_or_fence_changed",
+                "failure_kind": LifecycleFailureKind.LIFECYCLE_RACE.value,
+                "expected_lease_id": lifecycle_record.lease_id,
+                "observed_lease_id": loaded_record.lease_id,
+                "expected_fence": lifecycle_record.fence,
+                "observed_fence": loaded_record.fence,
+            }
+        elif loaded_record.is_terminal:
+            lifecycle_result = {
+                "terminal": True,
+                "reason": "already_terminal",
+                "state": loaded_record.state.value,
+                "fence": loaded_record.fence,
+                "lease_id": loaded_record.lease_id,
+            }
+        else:
+            try:
+                terminal = self.worktree_lifecycle.mark_terminal(
+                    loaded_record.workspace_path,
+                    lease_id=loaded_record.lease_id,
+                    expected_fence=loaded_record.fence,
+                    reason=(
+                        "verification_deferred_checkout_lease_unavailable"
+                    ),
+                )
+                lifecycle_result = {
+                    "terminal": True,
+                    "reason": terminal.terminal_reason,
+                    "state": terminal.state.value,
+                    "fence": terminal.fence,
+                    "lease_id": terminal.lease_id,
+                }
+            except (
+                FenceMismatchError,
+                OwnershipError,
+                WorktreeLifecycleError,
+            ) as exc:
+                lifecycle_result = {
+                    "terminal": False,
+                    "reason": "lifecycle_terminal_transition_failed",
+                    "error": str(exc)[-500:],
+                    "failure_kind": LifecycleFailureKind.LIFECYCLE_RACE.value,
+                }
+        self._active_worktree_lifecycle = None
+        retained = worktree_path.exists()
+        result = {
+            "task_id": task.task_id,
+            "attempt": attempt,
+            "branch": branch_name,
+            "worktree_path": str(worktree_path),
+            "preserved": False,
+            "retained": retained,
+            "reason": "verification_deferred_checkout_lease_active",
+            "rescue_branch": "",
+            "implementation_commit": "",
+            "commit_result": {
+                "committed": False,
+                "reason": "verification_deferred_checkout_lease_active",
+            },
+            "cleanup_result": {
+                "cleaned": False,
+                "reason": "verification_deferred_checkout_lease_active",
+                "retained": retained,
+            },
+            "lifecycle": lifecycle_result,
+            "protected_path_violation": dict(protected_path_violation),
+        }
+        self._record_event(
+            "protected_path_verification_deferred_worktree_retained",
+            result,
+        )
+        return result
 
     def _preserve_interrupted_worktree(
         self,
@@ -19998,6 +20386,63 @@ class PortalImplementationDaemon:
         )
         return lease if isinstance(lease, CheckoutMutationLease) else None
 
+    def _retained_checkout_mutation_paths(self) -> tuple[Path, ...]:
+        return tuple(
+            Path(str(item))
+            for item in getattr(
+                self._checkout_mutation_context,
+                "retained_protected_paths",
+                (),
+            )
+            if str(item)
+        )
+
+    def _finish_retained_checkout_mutation_recovery(
+        self,
+        lease: CheckoutMutationLease,
+        result: Mapping[str, Any],
+        *,
+        operation: str,
+    ) -> dict[str, Any]:
+        """Release a retained lease only after its protected paths are clean."""
+
+        payload = dict(result)
+        retained_paths = self._retained_checkout_mutation_paths()
+        dirty_paths = self._dirty_implementation_protected_paths(
+            retained_paths
+        )
+        if dirty_paths:
+            payload["checkout_mutation_lease_retained"] = True
+            payload["checkout_mutation_recovery_required"] = True
+            payload["dirty_protected_paths"] = list(dirty_paths)
+            return payload
+
+        self._checkout_mutation_context.retain_until_protected_clean = False
+        self._checkout_mutation_context.retained_protected_paths = ()
+        self._checkout_mutation_context.lease = None
+        released = self._release_checkout_mutation_lease(lease)
+        if not released:
+            return {
+                **payload,
+                "checkout_mutation_release_failed": True,
+                "reason": "checkout_mutation_lease_lost",
+                "lock_path": str(lease.lock_path),
+            }
+        payload["checkout_mutation_lease_recovered"] = True
+        payload["checkout_mutation_lease_retained"] = False
+        self._record_event(
+            "checkout_mutation_lease_recovered",
+            {
+                "operation": operation,
+                "lock_path": str(lease.lock_path),
+                "lease_id": lease.lease_id,
+                "protected_paths": [
+                    str(path) for path in retained_paths
+                ],
+            },
+        )
+        return payload
+
     def _run_checkout_mutation_transaction(
         self,
         *,
@@ -20013,6 +20458,75 @@ class PortalImplementationDaemon:
 
         current = self._current_checkout_mutation_lease()
         if current is not None:
+            transaction_depth = int(
+                getattr(
+                    self._checkout_mutation_context,
+                    "transaction_depth",
+                    0,
+                )
+                or 0
+            )
+            retaining = bool(
+                getattr(
+                    self._checkout_mutation_context,
+                    "retain_until_protected_clean",
+                    False,
+                )
+            )
+            if transaction_depth > 0:
+                return callback()
+            if retaining:
+                dirty_paths = self._dirty_implementation_protected_paths(
+                    self._retained_checkout_mutation_paths()
+                )
+                if not dirty_paths:
+                    released = (
+                        self._finish_retained_checkout_mutation_recovery(
+                            current,
+                            {},
+                            operation=operation,
+                        )
+                    )
+                    if released.get(
+                        "checkout_mutation_release_failed"
+                    ):
+                        return {
+                            **dict(failure_fields or {}),
+                            **released,
+                        }
+                    return self._run_checkout_mutation_transaction(
+                        task_id=task_id,
+                        attempt=attempt,
+                        branch=branch,
+                        operation=operation,
+                        callback=callback,
+                        failure_fields=failure_fields,
+                        extra=extra,
+                    )
+                if operation not in {
+                    "commit_generated_file_update",
+                    "mark_tasks_completed",
+                    "reopen_dependency_blocked_tasks",
+                }:
+                    return {
+                        **dict(failure_fields or {}),
+                        "reason": (
+                            "checkout_mutation_protected_recovery_required"
+                        ),
+                        "lock_path": str(current.lock_path),
+                        "checkout_mutation_lease_retained": True,
+                        "dirty_protected_paths": list(dirty_paths),
+                    }
+                self._checkout_mutation_context.transaction_depth = 1
+                try:
+                    result = callback()
+                finally:
+                    self._checkout_mutation_context.transaction_depth = 0
+                return self._finish_retained_checkout_mutation_recovery(
+                    current,
+                    result,
+                    operation=operation,
+                )
             return callback()
         lease, reason, existing, _waited = (
             self._acquire_checkout_mutation_lease(
@@ -20041,12 +20555,53 @@ class PortalImplementationDaemon:
                 )
             return result
         self._checkout_mutation_context.lease = lease
+        self._checkout_mutation_context.transaction_depth = 1
+        self._checkout_mutation_context.retain_until_protected_clean = False
+        self._checkout_mutation_context.retained_protected_paths = ()
         result: dict[str, Any] | None = None
+        retained = False
+        released = True
         try:
             result = callback()
         finally:
-            self._checkout_mutation_context.lease = None
-            released = self._release_checkout_mutation_lease(lease)
+            self._checkout_mutation_context.transaction_depth = 0
+            retained = bool(
+                getattr(
+                    self._checkout_mutation_context,
+                    "retain_until_protected_clean",
+                    False,
+                )
+            )
+            if retained:
+                retained_paths = self._retained_checkout_mutation_paths()
+                dirty_paths = self._dirty_implementation_protected_paths(
+                    retained_paths
+                )
+                if result is not None:
+                    result["checkout_mutation_lease_retained"] = True
+                    result["checkout_mutation_recovery_required"] = True
+                    result["dirty_protected_paths"] = list(dirty_paths)
+                self._record_event(
+                    "checkout_mutation_lease_retained",
+                    {
+                        "operation": operation,
+                        "lock_path": str(lease.lock_path),
+                        "lease_id": lease.lease_id,
+                        "reason": (
+                            "protected_generated_outputs_remain_dirty"
+                        ),
+                        "protected_paths": [
+                            str(path) for path in retained_paths
+                        ],
+                        "dirty_paths": list(dirty_paths),
+                    },
+                )
+            else:
+                self._checkout_mutation_context.lease = None
+                self._checkout_mutation_context.retained_protected_paths = ()
+                released = self._release_checkout_mutation_lease(lease)
+        if retained:
+            return dict(result or {})
         if not released:
             return {
                 **dict(result or {}),

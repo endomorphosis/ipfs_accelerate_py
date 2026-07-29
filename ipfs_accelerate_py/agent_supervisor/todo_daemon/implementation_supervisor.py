@@ -19,7 +19,9 @@ from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 from ..merge.checkout_lock import (
+    BACKLOG_REFINERY_AUTHOR_EMAIL,
     CheckoutMutationLease,
+    GENERATED_PROTECTED_BOARD_COMMIT_MARKER,
     acquire_checkout_mutation_lease as acquire_atomic_checkout_mutation_lease,
     checkout_lock_metadata,
     checkout_lock_owner_is_active,
@@ -2098,10 +2100,23 @@ class PortalImplementationSupervisor:
             return result
 
         try:
+            # The pre-lock observation is admission evidence only.  A peer
+            # may finish or change the merge before this supervisor acquires
+            # the checkout lease, so all repair decisions must use a fresh
+            # state sampled while the checkout is exclusively owned.
+            locked_merge_head = self._git_merge_head(repo_root)
+            locked_unmerged_paths = self._git_unmerged_paths(repo_root)
+            if not locked_merge_head and not locked_unmerged_paths:
+                return {
+                    "attempted": False,
+                    "repaired": False,
+                    "reason": "clean",
+                    "path": str(repo_root),
+                }
             return self._repair_main_checkout_merge_state_locked(
                 repo_root,
-                merge_head=merge_head,
-                unmerged_paths=unmerged_paths,
+                merge_head=locked_merge_head,
+                unmerged_paths=locked_unmerged_paths,
             )
         finally:
             self._release_supervisor_checkout_lease(
@@ -2365,21 +2380,27 @@ class PortalImplementationSupervisor:
                         False,
                     )
                 )
-                and not self._dirty_implementation_protected_paths(
-                    tuple(
-                        self.config.repo_root / relative
-                        for relative in self.config.implementation_protected_paths
-                    )
-                )
             ):
-                self._checkout_mutation_context.retain_until_protected_clean = (
-                    False
+                release_guard = getattr(
+                    self._checkout_mutation_context,
+                    "generated_protected_release_guard",
+                    None,
                 )
-                self._checkout_mutation_context.lease = None
-                self._release_supervisor_checkout_lease(
-                    current_lease,
-                    operation=operation,
+                release_verdict = self._generated_protected_release_guard(
+                    release_guard,
                 )
+                if release_verdict.get("release_allowed"):
+                    self._checkout_mutation_context.retain_until_protected_clean = (
+                        False
+                    )
+                    self._checkout_mutation_context.generated_protected_release_guard = (
+                        None
+                    )
+                    self._checkout_mutation_context.lease = None
+                    self._release_supervisor_checkout_lease(
+                        current_lease,
+                        operation=operation,
+                    )
             return result
         lock_path = self._repo_merge_lock_path()
         lock_metadata = self._supervisor_checkout_lock_metadata(
@@ -2411,32 +2432,80 @@ class PortalImplementationSupervisor:
 
         self._checkout_mutation_context.lease = lease
         self._checkout_mutation_context.retain_until_protected_clean = False
+        release_guard = self._generated_protected_release_guard_snapshot()
+        self._checkout_mutation_context.generated_protected_release_guard = (
+            release_guard
+        )
         try:
-            return callback()
-        finally:
-            if bool(
-                getattr(
-                    self._checkout_mutation_context,
-                    "retain_until_protected_clean",
-                    False,
-                )
-            ):
-                self._record_event(
-                    "checkout_mutation_lease_retained",
-                    {
-                        "operation": operation,
-                        "producer": producer,
-                        "lock_path": str(lease.lock_path),
-                        "lease_id": lease.lease_id,
-                        "reason": "protected_generated_outputs_remain_dirty",
-                    },
-                )
-            else:
-                self._checkout_mutation_context.lease = None
-                self._release_supervisor_checkout_lease(
-                    lease,
-                    operation=operation,
-                )
+            result = callback()
+        except BaseException:
+            self._finalize_generated_board_lease(
+                lease,
+                operation=operation,
+                producer=producer,
+                release_guard=release_guard,
+            )
+            raise
+        release_verdict = self._finalize_generated_board_lease(
+            lease,
+            operation=operation,
+            producer=producer,
+            release_guard=release_guard,
+        )
+        if not release_verdict.get("release_allowed"):
+            raise RuntimeError(
+                "generated-board producer left protected outputs unsafe for "
+                f"lease release: {release_verdict.get('reason') or 'unknown'}"
+            )
+        return result
+
+    def _finalize_generated_board_lease(
+        self,
+        lease: CheckoutMutationLease,
+        *,
+        operation: str,
+        producer: str,
+        release_guard: Mapping[str, Any] | None,
+    ) -> dict[str, Any]:
+        release_verdict = self._generated_protected_release_guard(
+            release_guard,
+        )
+        retain_requested = bool(
+            getattr(
+                self._checkout_mutation_context,
+                "retain_until_protected_clean",
+                False,
+            )
+        )
+        if retain_requested or not release_verdict.get("release_allowed"):
+            self._checkout_mutation_context.retain_until_protected_clean = True
+            self._checkout_mutation_context.generated_protected_release_guard = (
+                dict(release_guard or {})
+            )
+            self._record_event(
+                "checkout_mutation_lease_retained",
+                {
+                    "operation": operation,
+                    "producer": producer,
+                    "lock_path": str(lease.lock_path),
+                    "lease_id": lease.lease_id,
+                    "reason": str(
+                        release_verdict.get("reason")
+                        or "protected_generated_outputs_remain_dirty"
+                    ),
+                    "release_guard": release_verdict,
+                },
+            )
+            return release_verdict
+
+        self._checkout_mutation_context.retain_until_protected_clean = False
+        self._checkout_mutation_context.generated_protected_release_guard = None
+        self._checkout_mutation_context.lease = None
+        self._release_supervisor_checkout_lease(
+            lease,
+            operation=operation,
+        )
+        return release_verdict
 
     def _current_supervisor_checkout_lease(
         self,
@@ -2505,6 +2574,209 @@ class PortalImplementationSupervisor:
             if relative and relative not in dirty:
                 dirty.append(relative)
         return tuple(dirty)
+
+    def _generated_protected_release_guard_snapshot(
+        self,
+    ) -> dict[str, Any]:
+        protected_paths = tuple(self.config.implementation_protected_paths)
+        if not protected_paths:
+            return {}
+        return {
+            "before_head": self._git_output(
+                self.config.repo_root,
+                ["rev-parse", "--verify", "HEAD^{commit}"],
+            ),
+            "protected_paths": protected_paths,
+        }
+
+    @staticmethod
+    def _trusted_generated_protected_commit(
+        author_email: str,
+        subject: str,
+    ) -> bool:
+        return bool(
+            author_email == BACKLOG_REFINERY_AUTHOR_EMAIL
+            and subject.endswith(GENERATED_PROTECTED_BOARD_COMMIT_MARKER)
+        )
+
+    def _generated_protected_release_guard(
+        self,
+        snapshot: Mapping[str, Any] | None,
+    ) -> dict[str, Any]:
+        """Prove protected generated outputs are clean and trusted."""
+
+        if not snapshot:
+            return {"release_allowed": True, "reason": "no_protected_paths"}
+        protected_paths = tuple(
+            str(path).strip()
+            for path in snapshot.get("protected_paths", ())
+            if str(path).strip()
+        )
+        if not protected_paths:
+            return {"release_allowed": True, "reason": "no_protected_paths"}
+        protected_files = tuple(
+            self.config.repo_root / relative for relative in protected_paths
+        )
+        dirty_paths = self._dirty_implementation_protected_paths(
+            protected_files
+        )
+        if dirty_paths:
+            return {
+                "release_allowed": False,
+                "reason": "protected_generated_outputs_dirty",
+                "dirty_paths": list(dirty_paths),
+            }
+
+        before_head = str(snapshot.get("before_head") or "")
+        after_head = self._git_output(
+            self.config.repo_root,
+            ["rev-parse", "--verify", "HEAD^{commit}"],
+        )
+        if not before_head and not after_head:
+            return {
+                "release_allowed": True,
+                "reason": "protected_outputs_clean_unborn_repository",
+            }
+        if not after_head:
+            return {
+                "release_allowed": False,
+                "reason": "protected_generated_history_unavailable",
+                "before_head": before_head,
+            }
+        if before_head == after_head:
+            return {
+                "release_allowed": True,
+                "reason": "protected_outputs_clean_history_unchanged",
+                "before_head": before_head,
+                "after_head": after_head,
+            }
+
+        if before_head:
+            ancestry = subprocess.run(
+                ["git", "merge-base", "--is-ancestor", before_head, after_head],
+                cwd=self.config.repo_root,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            if ancestry.returncode != 0:
+                return {
+                    "release_allowed": False,
+                    "reason": "protected_generated_history_rewritten",
+                    "before_head": before_head,
+                    "after_head": after_head,
+                }
+            revision = f"{before_head}..{after_head}"
+        else:
+            revision = after_head
+
+        history = subprocess.run(
+            [
+                "git",
+                "log",
+                "--format=%H%x09%ae%x09%s",
+                revision,
+                "--",
+                *protected_paths,
+            ],
+            cwd=self.config.repo_root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if history.returncode != 0:
+            return {
+                "release_allowed": False,
+                "reason": "protected_generated_history_query_failed",
+                "before_head": before_head,
+                "after_head": after_head,
+            }
+
+        commits: list[dict[str, Any]] = []
+        untrusted_commits: list[str] = []
+        for line in history.stdout.splitlines():
+            parts = line.split("\t", 2)
+            if len(parts) != 3:
+                return {
+                    "release_allowed": False,
+                    "reason": "protected_generated_history_malformed",
+                    "before_head": before_head,
+                    "after_head": after_head,
+                }
+            commit, author_email, subject = parts
+            trusted = self._trusted_generated_protected_commit(
+                author_email,
+                subject,
+            )
+            commits.append(
+                {
+                    "commit": commit,
+                    "author_email": author_email,
+                    "subject": subject,
+                    "trusted_generator": trusted,
+                }
+            )
+            if not trusted:
+                untrusted_commits.append(commit)
+        if untrusted_commits:
+            return {
+                "release_allowed": False,
+                "reason": "protected_generated_history_untrusted",
+                "before_head": before_head,
+                "after_head": after_head,
+                "commits": commits,
+                "untrusted_commits": untrusted_commits,
+            }
+
+        if before_head and not commits:
+            changed = subprocess.run(
+                [
+                    "git",
+                    "diff",
+                    "--quiet",
+                    before_head,
+                    after_head,
+                    "--",
+                    *protected_paths,
+                ],
+                cwd=self.config.repo_root,
+                check=False,
+            )
+            if changed.returncode != 0:
+                return {
+                    "release_allowed": False,
+                    "reason": "protected_generated_history_missing_commit",
+                    "before_head": before_head,
+                    "after_head": after_head,
+                }
+
+        confirmed_head = self._git_output(
+            self.config.repo_root,
+            ["rev-parse", "--verify", "HEAD^{commit}"],
+        )
+        confirmed_dirty = self._dirty_implementation_protected_paths(
+            protected_files
+        )
+        if confirmed_head != after_head or confirmed_dirty:
+            return {
+                "release_allowed": False,
+                "reason": "protected_generated_release_state_changed",
+                "before_head": before_head,
+                "after_head": after_head,
+                "confirmed_head": confirmed_head,
+                "dirty_paths": list(confirmed_dirty),
+            }
+        return {
+            "release_allowed": True,
+            "reason": (
+                "protected_generated_history_trusted"
+                if commits
+                else "protected_outputs_clean_unrelated_history"
+            ),
+            "before_head": before_head,
+            "after_head": after_head,
+            "commits": commits,
+        }
 
     def _run_protected_refill_mutation(
         self,

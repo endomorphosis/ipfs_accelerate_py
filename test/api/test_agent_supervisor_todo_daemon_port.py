@@ -16903,6 +16903,55 @@ def test_implementation_supervisor_aborts_interrupted_main_checkout_merge(tmp_pa
     assert target.read_text(encoding="utf-8") == "main\n"
 
 
+def test_implementation_supervisor_refreshes_merge_state_after_checkout_lease(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    state_dir = repo / "state"
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=repo / "todo.md",
+            state_path=state_dir / "task_state.json",
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "events.jsonl",
+            state_dir=state_dir,
+            repo_root=repo,
+        )
+    )
+    merge_heads = iter(["stale-merge-head", ""])
+    unmerged_paths = iter([["conflict.txt"], []])
+    monkeypatch.setattr(
+        supervisor,
+        "_git_merge_head",
+        lambda _repo: next(merge_heads),
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_git_unmerged_paths",
+        lambda _repo: next(unmerged_paths),
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_repair_main_checkout_merge_state_locked",
+        lambda *_args, **_kwargs: pytest.fail(
+            "clean state refreshed under the lease must not be repaired"
+        ),
+    )
+
+    result = supervisor.repair_main_checkout_merge_state()
+
+    assert result == {
+        "attempted": False,
+        "repaired": False,
+        "reason": "clean",
+        "path": str(repo),
+    }
+    assert not supervisor._repo_merge_lock_path().exists()
+
+
 def test_implementation_supervisor_aborts_interrupted_main_checkout_merge_with_reset_fallback(
     tmp_path,
     monkeypatch,
@@ -17489,6 +17538,285 @@ def test_implementation_daemon_board_write_and_commit_share_one_checkout_lease(
     assert acquired == [("mark_tasks_completed", released[0])]
     assert not checkout_mutation_lock_path(repo).exists()
     assert _git(repo, "status", "--porcelain") == ""
+
+
+def test_implementation_daemon_retains_dirty_protected_completion_lease_until_recovery(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Todos
+
+## ACCEL-001 Complete generated status
+
+- Status: todo
+- Priority: P1
+- Track: ops
+""",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "todo.md")
+    _git(
+        repo,
+        "-c",
+        "user.name=Test User",
+        "-c",
+        "user.email=test@example.invalid",
+        "commit",
+        "-m",
+        "seed todo",
+    )
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implementation_protected_paths=("todo.md",),
+    )
+    original_commit = daemon._commit_generated_file_update_locked
+
+    def fail_generated_commit(path, *, task_id, subject):
+        assert daemon._current_checkout_mutation_lease() is not None
+        return {
+            "committed": False,
+            "reason": "git_commit_failed",
+            "path": str(path),
+        }
+
+    monkeypatch.setattr(
+        daemon,
+        "_commit_generated_file_update_locked",
+        fail_generated_commit,
+    )
+
+    failed = daemon._mark_task_completed_in_todo("ACCEL-001")
+
+    retained_lease = daemon._current_checkout_mutation_lease()
+    assert failed["updated"] is True
+    assert failed["reason"] == "protected_board_commit_incomplete"
+    assert failed["durable"] is False
+    assert failed["checkout_mutation_lease_retained"] is True
+    assert retained_lease is not None
+    assert checkout_mutation_lock_path(repo).exists()
+    assert "todo.md" in _git(repo, "status", "--porcelain", "--", "todo.md")
+    unexpected_mutations: list[str] = []
+    blocked = daemon._run_checkout_mutation_transaction(
+        task_id="OTHER-1",
+        operation="merge_branch_to_main",
+        callback=lambda: (
+            unexpected_mutations.append("called") or {"merged": True}
+        ),
+        failure_fields={"merged": False},
+    )
+    assert blocked["merged"] is False
+    assert blocked["reason"] == (
+        "checkout_mutation_protected_recovery_required"
+    )
+    assert unexpected_mutations == []
+
+    monkeypatch.setattr(
+        daemon,
+        "_commit_generated_file_update_locked",
+        original_commit,
+    )
+    recovered = daemon._mark_task_completed_in_todo("ACCEL-001")
+
+    assert recovered["updated"] is False
+    assert recovered["reason"] == "already_completed"
+    assert recovered["durable"] is True
+    assert recovered["commit_result"]["committed"] is True
+    assert recovered["checkout_mutation_lease_recovered"] is True
+    assert recovered["checkout_mutation_lease_retained"] is False
+    assert daemon._current_checkout_mutation_lease() is None
+    assert not checkout_mutation_lock_path(repo).exists()
+    assert _git(repo, "status", "--porcelain") == ""
+
+
+def test_implementation_daemon_retains_dirty_protected_reopen_lease_until_recovery(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Todos
+
+## ACCEL-002 Reopen dependency-ready task
+
+- Status: blocked
+- Priority: P1
+- Track: ops
+""",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "todo.md")
+    _git(
+        repo,
+        "-c",
+        "user.name=Test User",
+        "-c",
+        "user.email=test@example.invalid",
+        "commit",
+        "-m",
+        "seed todo",
+    )
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implementation_protected_paths=("todo.md",),
+    )
+    original_commit = daemon._commit_generated_file_update_locked
+
+    def fail_generated_commit(path, *, task_id, subject):
+        assert daemon._current_checkout_mutation_lease() is not None
+        return {
+            "committed": False,
+            "reason": "git_commit_failed",
+            "path": str(path),
+        }
+
+    monkeypatch.setattr(
+        daemon,
+        "_commit_generated_file_update_locked",
+        fail_generated_commit,
+    )
+
+    failed = daemon._mark_tasks_ready_in_todo(
+        ["ACCEL-002"],
+        reason="dependencies_satisfied",
+    )
+
+    assert failed["updated"] is True
+    assert failed["reason"] == "protected_board_commit_incomplete"
+    assert failed["durable"] is False
+    assert failed["checkout_mutation_lease_retained"] is True
+    assert daemon._current_checkout_mutation_lease() is not None
+    assert checkout_mutation_lock_path(repo).exists()
+    assert "todo.md" in _git(repo, "status", "--porcelain", "--", "todo.md")
+
+    monkeypatch.setattr(
+        daemon,
+        "_commit_generated_file_update_locked",
+        original_commit,
+    )
+    recovered = daemon._mark_tasks_ready_in_todo(
+        ["ACCEL-002"],
+        reason="dependencies_satisfied",
+    )
+
+    assert recovered["updated"] is False
+    assert recovered["already_ready_task_ids"] == ["ACCEL-002"]
+    assert recovered["durable"] is True
+    assert recovered["commit_result"]["committed"] is True
+    assert recovered["checkout_mutation_lease_recovered"] is True
+    assert recovered["checkout_mutation_lease_retained"] is False
+    assert daemon._current_checkout_mutation_lease() is None
+    assert not checkout_mutation_lock_path(repo).exists()
+    assert _git(repo, "status", "--porcelain") == ""
+    author, subject = _git(
+        repo,
+        "log",
+        "-1",
+        "--pretty=%ae%x00%s",
+    ).split("\x00", 1)
+    assert daemon._trusted_protected_path_commit(author, subject) is True
+
+
+def test_implementation_daemon_retains_lease_until_protected_board_gitlink_recovers(
+    tmp_path,
+    monkeypatch,
+):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    todo_path = submodule / "docs" / "generated.todo.md"
+    todo_path.parent.mkdir()
+    todo_path.write_text(
+        """# Todos
+
+## ACCEL-003 Complete nested generated status
+
+- Status: todo
+- Priority: P1
+- Track: ops
+""",
+        encoding="utf-8",
+    )
+    _git(submodule, "add", "docs/generated.todo.md")
+    _git(submodule, "commit", "-m", "seed nested todo")
+    _git(repo, "add", "libs/child")
+    _git(repo, "commit", "-m", "record nested todo")
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implementation_protected_paths=(
+            "libs/child/docs/generated.todo.md",
+        ),
+    )
+    original_parent_updates = daemon._commit_parent_gitlink_updates
+    monkeypatch.setattr(
+        daemon,
+        "_commit_parent_gitlink_updates",
+        lambda _repo, *, task_id: [
+            {
+                "committed": False,
+                "reason": "git_commit_failed",
+                "path": "libs/child",
+            }
+        ],
+    )
+
+    failed = daemon._mark_task_completed_in_todo("ACCEL-003")
+
+    assert failed["commit_result"]["committed"] is True
+    assert failed["reason"] == "protected_board_commit_incomplete"
+    assert failed["checkout_mutation_lease_retained"] is True
+    assert "libs/child" in failed["dirty_protected_paths"]
+    assert checkout_mutation_lock_path(repo).exists()
+    assert "libs/child" in _git(
+        repo,
+        "status",
+        "--porcelain",
+        "--",
+        "libs/child",
+    )
+
+    monkeypatch.setattr(
+        daemon,
+        "_commit_parent_gitlink_updates",
+        original_parent_updates,
+    )
+    recovered = daemon._mark_task_completed_in_todo("ACCEL-003")
+
+    assert recovered["updated"] is False
+    assert recovered["commit_result"]["reason"] == "no_changes"
+    assert recovered["commit_result"]["parent_gitlink_commits"][0][
+        "committed"
+    ] is True
+    assert recovered["durable"] is True
+    assert recovered["checkout_mutation_lease_recovered"] is True
+    assert not checkout_mutation_lock_path(repo).exists()
+    assert _git(repo, "status", "--porcelain") == ""
+    assert _git(submodule, "status", "--porcelain") == ""
 
 
 def test_implementation_daemon_clears_stale_same_state_merge_lock_for_generated_commit(tmp_path):
