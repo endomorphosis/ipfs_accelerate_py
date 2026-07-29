@@ -6408,7 +6408,24 @@ def test_implementation_supervisor_signal_cleans_managed_daemon_before_exit(
     monkeypatch.setattr(
         supervisor,
         "_terminate_managed_daemon_tree",
-        lambda: cleanup_calls.append(True) or {"pid": 4321, "terminated": True},
+        lambda: cleanup_calls.append(True)
+        or {
+            "pid": 4321,
+            "terminated": True,
+            "quiesced": True,
+            "remaining_pid": None,
+        },
+    )
+    reconciliation_calls = []
+    monkeypatch.setattr(
+        supervisor,
+        "_reconcile_interrupted_implementation_after_shutdown",
+        lambda: reconciliation_calls.append(True)
+        or {
+            "reconciled": True,
+            "blocked": False,
+            "reason": "quiesced_active_attempt_reconciled",
+        },
     )
     monkeypatch.setattr(
         supervisor,
@@ -6421,12 +6438,23 @@ def test_implementation_supervisor_signal_cleans_managed_daemon_before_exit(
 
     assert exc_info.value.code == 128 + signal.SIGTERM
     assert cleanup_calls == [True]
+    assert reconciliation_calls == [True]
     assert recorded == [
         (
             "supervisor_signal_shutdown",
             {
                 "signal": signal.SIGTERM,
-                "managed_daemon_cleanup": {"pid": 4321, "terminated": True},
+                "managed_daemon_cleanup": {
+                    "pid": 4321,
+                    "terminated": True,
+                    "quiesced": True,
+                    "remaining_pid": None,
+                },
+                "interrupted_implementation_reconciliation": {
+                    "reconciled": True,
+                    "blocked": False,
+                    "reason": "quiesced_active_attempt_reconciled",
+                },
             },
         )
     ]

@@ -4166,6 +4166,135 @@ class PortalImplementationDaemon:
         )
         return result
 
+    def reconcile_quiesced_active_attempt(self) -> dict[str, Any]:
+        """Finalize an interrupted attempt after proving no worker owns it.
+
+        Supervisor shutdown can terminate the daemon between provider exit and
+        the normal fence/state cleanup. This recovery is deliberately ordered:
+        prove the implementation is quiescent, reconcile the protected-path
+        identity, and only then clear stale execution state. A live owner,
+        malformed lease, or protected-path mutation remains fail closed.
+        """
+
+        live_implementation = self._find_live_inflight_implementation()
+        if live_implementation is not None:
+            result = {
+                "reconciled": False,
+                "blocked": True,
+                "reason": "implementation_worker_still_active",
+                "task_id": str(live_implementation.get("task_id") or ""),
+                "attempt": int(live_implementation.get("attempt") or 0),
+                "worktree_path": str(
+                    live_implementation.get("worktree_path") or ""
+                ),
+            }
+            self._record_event(
+                "implementation_shutdown_reconciliation_blocked",
+                result,
+            )
+            return result
+
+        lock_path = self._implementation_lock_path()
+        lock = load_json_dict(lock_path)
+        if lock_path.exists() and lock is None:
+            result = {
+                "reconciled": False,
+                "blocked": True,
+                "reason": "implementation_lock_malformed",
+                "lock_path": str(lock_path),
+            }
+            self._record_event(
+                "implementation_shutdown_reconciliation_blocked",
+                result,
+            )
+            return result
+        if lock is not None and self._implementation_lock_owner_is_active(lock):
+            result = {
+                "reconciled": False,
+                "blocked": True,
+                "reason": "implementation_lock_owner_still_active",
+                "lock_path": str(lock_path),
+                "owner_pid": int(lock.get("pid") or 0),
+                "task_id": str(lock.get("task_id") or ""),
+                "attempt": int(lock.get("attempt") or 0),
+            }
+            self._record_event(
+                "implementation_shutdown_reconciliation_blocked",
+                result,
+            )
+            return result
+
+        protected_path_reconciliation = (
+            self._reconcile_implementation_protected_path_fence()
+        )
+        if protected_path_reconciliation.get("blocked", False):
+            result = {
+                "reconciled": False,
+                "blocked": True,
+                "reason": "protected_path_reconciliation_blocked",
+                "protected_path_reconciliation": (
+                    protected_path_reconciliation
+                ),
+            }
+            self._record_event(
+                "implementation_shutdown_reconciliation_blocked",
+                result,
+            )
+            return result
+
+        state = PortalTaskState.load(self.state_path)
+        task_id = state.active_task_id or state.last_implementation_task_id
+        attempt = int(state.active_attempt or 0)
+        had_active_state = bool(
+            state.implementation_in_progress
+            or state.active_task_id
+            or state.active_task_cid
+            or state.active_attempt
+            or state.active_worktree_path
+            or state.active_branch
+        )
+        attempt_recovery: dict[str, Any] = {}
+        if had_active_state:
+            attempt_recovery = consume_stale_active_attempt(state)
+            self._clear_active_execution_state(state, clear_task=True)
+            reconciled_at = utc_now()
+            state.heartbeat_at = reconciled_at
+            state.last_progress_at = reconciled_at
+            state.save(self.state_path)
+        else:
+            reconciled_at = utc_now()
+
+        stale_lock_cleared = False
+        if lock_path.exists():
+            stale_lock_cleared = self._clear_stale_lock(
+                lock_path,
+                lock_kind="implementation",
+                metadata=lock,
+            )
+
+        result = {
+            "reconciled": True,
+            "blocked": False,
+            "reason": (
+                "quiesced_active_attempt_reconciled"
+                if had_active_state
+                else "already_quiesced"
+            ),
+            "reconciled_at": reconciled_at,
+            "task_id": task_id,
+            "attempt": attempt,
+            "attempt_recovery": attempt_recovery,
+            "protected_path_reconciliation": (
+                protected_path_reconciliation
+            ),
+            "stale_lock_cleared": stale_lock_cleared,
+        }
+        self._record_event(
+            "implementation_shutdown_reconciled",
+            result,
+        )
+        return result
+
     def _identity_for_task(self, task: PortalTask) -> TaskIdentity:
         metadata = dict(task.metadata)
         if task.canonical_task_key:

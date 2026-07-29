@@ -1787,10 +1787,19 @@ class PortalImplementationSupervisor:
         finally:
             if stop_signal is not None:
                 cleanup = self._terminate_managed_daemon_tree()
+                interrupted_reconciliation = (
+                    self._reconcile_interrupted_implementation_after_shutdown()
+                )
                 try:
                     self._record_event(
                         "supervisor_signal_shutdown",
-                        {"signal": stop_signal, "managed_daemon_cleanup": cleanup},
+                        {
+                            "signal": stop_signal,
+                            "managed_daemon_cleanup": cleanup,
+                            "interrupted_implementation_reconciliation": (
+                                interrupted_reconciliation
+                            ),
+                        },
                     )
                 except OSError:
                     logger.exception("Could not record supervisor signal shutdown")
@@ -3693,12 +3702,36 @@ class PortalImplementationSupervisor:
             merge_target_branch=self.config.merge_target_branch,
             merge_queue_dir=self.config.merge_queue_dir,
             worktree_submodule_paths=self.config.worktree_submodule_paths,
+            implementation_protected_paths=(
+                self.config.implementation_protected_paths
+            ),
             objective_path=self.config.objective_path,
             objective_bundle_dir=self.config.objective_bundle_dir,
             generated_status_paths=self.config.generated_dirty_repair_paths,
             llm_merge_resolver_command=self.config.llm_merge_resolver_command,
             llm_merge_resolver_timeout_seconds=self.config.llm_merge_resolver_timeout_seconds,
         )
+
+    def _reconcile_interrupted_implementation_after_shutdown(
+        self,
+    ) -> dict[str, Any]:
+        """Close an interrupted attempt only after proving it is quiescent."""
+
+        try:
+            daemon = self._build_worktree_reconciliation_daemon()
+            return daemon.reconcile_quiesced_active_attempt()
+        except Exception as exc:
+            logger.exception(
+                "Could not reconcile interrupted implementation during "
+                "supervisor shutdown"
+            )
+            return {
+                "reconciled": False,
+                "blocked": True,
+                "reason": "shutdown_attempt_reconciliation_failed",
+                "error_type": type(exc).__name__,
+                "error": str(exc),
+            }
 
     def _reconciliation_guardrail_discovery_dir(self) -> Path:
         return (
@@ -7087,8 +7120,14 @@ class PortalImplementationSupervisor:
 
         terminated = bool(
             pid is not None
-            and terminate_pid_tree(pid, grace_seconds=max(0.0, float(grace_seconds)))
+            and terminate_pid_tree(
+                pid,
+                grace_seconds=max(0.0, float(grace_seconds)),
+                freeze_first=True,
+                require_gone=True,
+            )
         )
+        remaining_pid = self._find_matching_managed_daemon_pid()
         try:
             if pid_path.is_file():
                 pid_path.unlink()
@@ -7097,6 +7136,8 @@ class PortalImplementationSupervisor:
         return {
             "pid": pid,
             "terminated": terminated,
+            "quiesced": remaining_pid is None,
+            "remaining_pid": remaining_pid,
             "pid_path": str(pid_path),
         }
 

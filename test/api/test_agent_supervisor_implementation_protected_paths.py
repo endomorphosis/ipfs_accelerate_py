@@ -161,6 +161,32 @@ def _protected_git_worktree_daemon(
     return daemon, repo, workspace, protected
 
 
+def _persist_active_attempt_state(
+    daemon: PortalImplementationDaemon,
+    *,
+    task: PortalTask,
+    workspace: Path,
+    attempt: int = 1,
+) -> PortalTaskState:
+    identity = daemon._identity_for_task(task)
+    state = PortalTaskState()
+    state.implementation_in_progress = True
+    state.active_task_id = task.task_id
+    state.active_task_key = identity.canonical_task_key
+    state.active_task_cid = identity.canonical_task_cid
+    state.active_task_title = task.title
+    state.active_task_track = task.track
+    state.active_attempt = attempt
+    state.active_phase = "implementing"
+    state.active_worktree_path = str(workspace)
+    state.active_branch = "lane"
+    state.last_implementation_task_id = task.task_id
+    state.last_implementation_task_key = identity.canonical_task_key
+    state.last_implementation_task_cid = identity.canonical_task_cid
+    state.save(daemon.state_path)
+    return state
+
+
 def test_normalize_implementation_protected_paths_is_exact_and_fail_closed(
     tmp_path: Path,
 ) -> None:
@@ -780,6 +806,127 @@ def test_crash_reconciliation_rejects_missing_ephemeral_workspace_when_shared_ch
     assert result["reason"] == "implementation_protected_path_mutated"
     assert result["incident"]["protected_paths"] == [POLICY_PATH]
     assert daemon._implementation_protected_incident_path().exists()
+
+
+def test_quiesced_shutdown_reconciles_fence_before_operator_board_revision(
+    tmp_path: Path,
+) -> None:
+    daemon, _repo, workspace, protected = _protected_git_worktree_daemon(
+        tmp_path
+    )
+    task = _task(outputs=["src/example.py"])
+    daemon._require_implementation_protected_snapshot(
+        task=task,
+        attempt=1,
+        workspace_path=workspace,
+    )
+    _persist_active_attempt_state(
+        daemon,
+        task=task,
+        workspace=workspace,
+    )
+
+    result = daemon.reconcile_quiesced_active_attempt()
+
+    assert result["reconciled"] is True
+    assert result["blocked"] is False
+    assert result["reason"] == "quiesced_active_attempt_reconciled"
+    assert (
+        result["protected_path_reconciliation"]["reason"]
+        == "crash_reconciliation_unchanged"
+    )
+    assert not daemon._implementation_protected_active_snapshot_path().exists()
+    assert not daemon._implementation_protected_incident_path().exists()
+    state = PortalTaskState.load(daemon.state_path)
+    assert state.implementation_in_progress is False
+    assert state.active_task_id == ""
+    assert state.active_task_cid == ""
+    assert state.active_attempt == 0
+    assert state.active_worktree_path == ""
+
+    protected.write_text("operator board revision after clean stop\n", encoding="utf-8")
+    restart = daemon._reconcile_implementation_protected_path_fence()
+
+    assert restart == {"blocked": False, "reason": "no_active_snapshot"}
+    assert not daemon._implementation_protected_incident_path().exists()
+
+
+def test_quiesced_shutdown_preserves_real_protected_path_incident(
+    tmp_path: Path,
+) -> None:
+    daemon, _repo, workspace, protected = _protected_git_worktree_daemon(
+        tmp_path
+    )
+    task = _task(outputs=["src/example.py"])
+    daemon._require_implementation_protected_snapshot(
+        task=task,
+        attempt=1,
+        workspace_path=workspace,
+    )
+    _persist_active_attempt_state(
+        daemon,
+        task=task,
+        workspace=workspace,
+    )
+    protected.write_text("implementation-time mutation\n", encoding="utf-8")
+
+    result = daemon.reconcile_quiesced_active_attempt()
+
+    assert result["reconciled"] is False
+    assert result["blocked"] is True
+    assert result["reason"] == "protected_path_reconciliation_blocked"
+    assert (
+        result["protected_path_reconciliation"]["reason"]
+        == "implementation_protected_path_mutated"
+    )
+    assert daemon._implementation_protected_active_snapshot_path().exists()
+    assert daemon._implementation_protected_incident_path().exists()
+    state = PortalTaskState.load(daemon.state_path)
+    assert state.implementation_in_progress is True
+    assert state.active_task_id == task.task_id
+
+
+def test_quiesced_shutdown_refuses_live_implementation_lock(
+    tmp_path: Path,
+) -> None:
+    daemon, _repo, workspace, _protected = _protected_git_worktree_daemon(
+        tmp_path
+    )
+    task = _task(outputs=["src/example.py"])
+    daemon._require_implementation_protected_snapshot(
+        task=task,
+        attempt=1,
+        workspace_path=workspace,
+    )
+    _persist_active_attempt_state(
+        daemon,
+        task=task,
+        workspace=workspace,
+    )
+    lock_path = daemon._implementation_lock_path()
+    lock_path.write_text(
+        json.dumps(
+            {
+                "kind": "implementation",
+                "pid": os.getpid(),
+                "state_dir": str(daemon.state_path.parent.resolve()),
+                "task_id": task.task_id,
+                "attempt": 1,
+            },
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    result = daemon.reconcile_quiesced_active_attempt()
+
+    assert result["reconciled"] is False
+    assert result["blocked"] is True
+    assert result["reason"] == "implementation_lock_owner_still_active"
+    assert daemon._implementation_protected_active_snapshot_path().exists()
+    assert not daemon._implementation_protected_incident_path().exists()
+    assert PortalTaskState.load(daemon.state_path).implementation_in_progress
 
 
 def test_ephemeral_snapshot_rejects_checkout_without_git_identity(
