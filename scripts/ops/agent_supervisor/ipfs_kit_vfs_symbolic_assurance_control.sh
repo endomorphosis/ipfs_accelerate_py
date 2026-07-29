@@ -284,6 +284,11 @@ launch_lane() {
     args+=(
       "--objective-refill-scan"
       "--objective-path" "${OBJECTIVE_ABS}"
+      "--auto-commit-generated-dirty"
+      "--generated-dirty-commit-subject" "VFS supervisor: persist generated objective and todo outputs"
+      "--generated-dirty-path" "${OBJECTIVE_ABS}"
+      "--generated-dirty-path" "${TODO_ABS}"
+      "--generated-dirty-max-paths" "2"
       "--objective-graph-path" "${PROJECTION_DIR}/objective_graph.json"
       "--objective-bundle-dir" "${PROJECTION_DIR}/bundles"
       "--objective-dataset-dir" "${PROJECTION_DIR}/datasets"
