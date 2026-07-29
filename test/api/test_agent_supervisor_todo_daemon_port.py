@@ -6034,6 +6034,77 @@ def test_implementation_daemon_retries_submodule_after_parent_commit_already_lan
     assert not checkpoint_path.exists()
 
 
+def test_implementation_daemon_reconciles_rewritten_branch_already_landed(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "base.txt").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "base.txt")
+    _git(repo, "commit", "-m", "base")
+
+    branch = "implementation/auto-117"
+    _git(repo, "checkout", "-b", branch)
+    (repo / "feature.txt").write_text("feature\n", encoding="utf-8")
+    _git(repo, "add", "feature.txt")
+    _git(repo, "commit", "-m", "AUTO-117: feature")
+    original_implementation_commit = _git(repo, "rev-parse", "HEAD")
+
+    _git(repo, "checkout", "main")
+    (repo / "concurrent.txt").write_text("concurrent\n", encoding="utf-8")
+    _git(repo, "add", "concurrent.txt")
+    _git(repo, "commit", "-m", "concurrent target change")
+    _git(repo, "checkout", branch)
+    _git(repo, "rebase", "main")
+    rewritten_commit = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "main")
+    _git(repo, "merge", "--no-ff", "--no-edit", branch)
+
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        "## AUTO-117 Accept rewritten merge\n\n"
+        "- Status: todo\n"
+        "- Completion: manual\n",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "todo.md")
+    _git(repo, "commit", "-m", "add task board")
+    state_dir = tmp_path / "supervisor-state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="AUTO-",
+    )
+    daemon._record_event(
+        "implementation_finished",
+        {
+            "task_id": "AUTO-117",
+            "attempt": 1,
+            "branch": branch,
+            "implementation_commit": original_implementation_commit,
+            "merge_result": {
+                "attempted": True,
+                "merged": False,
+                "reason": "merge_retry_failed",
+            },
+        },
+    )
+
+    reconciliation = daemon._reconcile_failed_merges()
+
+    assert reconciliation[-1]["resolved"] is True
+    assert reconciliation[-1]["reason"] == "implementation_branch_already_merged"
+    assert reconciliation[-1]["landed_ref_source"] == "branch"
+    assert _git(repo, "merge-base", "--is-ancestor", rewritten_commit, "main") == ""
+    assert not daemon._git_ref_is_ancestor(original_implementation_commit, "main")
+    assert "- Status: completed" in todo_path.read_text(encoding="utf-8")
+
+
 def test_todo_daemon_runtime_is_ported_to_accelerate_package():
     assert TodoDaemonRunner.__module__ == "ipfs_accelerate_py.agent_supervisor.todo_daemon.runner"
     assert TodoImplementationDaemon.__module__ == (

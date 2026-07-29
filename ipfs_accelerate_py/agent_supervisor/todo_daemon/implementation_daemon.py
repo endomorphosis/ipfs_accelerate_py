@@ -17451,7 +17451,20 @@ class PortalImplementationDaemon:
                 priority="P2",
                 track="ops",
             )
+            branch_exists = bool(branch and self._git_ref_exists(branch))
+            landed_ref_source = ""
             if self._git_ref_is_ancestor(implementation_commit, target_branch):
+                landed_ref_source = "implementation_commit"
+            elif (
+                branch_exists
+                and self._git_ref_is_ancestor(branch, target_branch)
+            ):
+                # A resolver may rebase or otherwise rewrite the daemon-owned
+                # branch before landing it. The immutable pre-resolution
+                # implementation commit will then not be an ancestor even
+                # though the rewritten branch has already reached the target.
+                landed_ref_source = "branch"
+            if landed_ref_source:
                 # The parent commit can land before its daemon-owned submodule
                 # branches finish merging.  Do not interpret parent ancestry as
                 # proof that nested work is complete: resume the durable
@@ -17478,11 +17491,16 @@ class PortalImplementationDaemon:
                     "attempt": attempt,
                     "branch": branch,
                     "implementation_commit": implementation_commit,
+                    "landed_ref_source": landed_ref_source,
                     "resolved": resolved,
                     "reason": (
                         "submodule_merge_retry_failed"
                         if failed_submodules
-                        else "implementation_commit_already_merged"
+                        else (
+                            "implementation_commit_already_merged"
+                            if landed_ref_source == "implementation_commit"
+                            else "implementation_branch_already_merged"
+                        )
                         if cleanup_cleaned
                         else "cleanup_retry_failed"
                     ),
@@ -17494,7 +17512,6 @@ class PortalImplementationDaemon:
                 self._record_event("merge_reconciled", result)
                 results.append(result)
                 continue
-            branch_exists = bool(branch and self._git_ref_exists(branch))
             merge_ref = branch if branch_exists else ""
             merge_ref_source = "branch" if branch_exists else ""
             if not merge_ref and self._git_ref_exists(implementation_commit):
