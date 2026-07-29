@@ -1288,6 +1288,49 @@ def test_validation_prunes_unchanged_start_context_after_daemon_restart(tmp_path
     assert cleanup["cleaned"] is True
 
 
+def test_validation_restores_known_generated_review_artifact_only(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Agent Test")
+    _git(repo, "config", "user.email", "agent@example.test")
+    generated_review = (
+        repo
+        / "artifacts"
+        / "world-id-idkit-ui-review"
+        / "desktop-chrome"
+        / "proof-center.png"
+    )
+    release_evidence = repo / "artifacts" / "release-evidence" / "receipt.json"
+    generated_review.parent.mkdir(parents=True)
+    release_evidence.parent.mkdir(parents=True)
+    generated_review.write_bytes(b"baseline screenshot")
+    release_evidence.write_text('{"status":"baseline"}\n', encoding="utf-8")
+    _git(repo, "add", "artifacts")
+    _git(repo, "commit", "-m", "baseline artifacts")
+
+    generated_review.write_bytes(b"validation screenshot")
+    release_evidence.write_text('{"status":"candidate"}\n', encoding="utf-8")
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+    )
+
+    daemon._prepare_worktree_for_validation(repo)
+
+    assert generated_review.read_bytes() == b"baseline screenshot"
+    assert release_evidence.read_text(encoding="utf-8") == (
+        '{"status":"candidate"}\n'
+    )
+    assert _git(repo, "status", "--short") == (
+        "M artifacts/release-evidence/receipt.json"
+    )
+
+
 def test_implementation_daemon_shares_repository_gc_state_across_lanes(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()

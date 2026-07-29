@@ -610,6 +610,7 @@ EPHEMERAL_WORKTREE_PATHS = (
     "wallet_interface/ui/artifacts/ui-review",
     "wallet_interface/ui/artifacts/ui-screenshots",
     "wallet_interface/ui/artifacts/ui-screenshots/latest",
+    "artifacts/world-id-idkit-ui-review",
 )
 GENERATED_WORKTREE_DIR_NAMES = {
     "__pycache__",
@@ -10242,6 +10243,10 @@ class PortalImplementationDaemon:
     ) -> None:
         self._initialize_worktree_submodules(worktree_path, branch_name=branch_name)
         self._link_shared_worktree_paths(worktree_path)
+        # Provider-side validation may have already populated known generated
+        # evidence paths. Remove those deterministic side effects before the
+        # proposal is collected so they cannot consume task mutation scope.
+        self._restore_ephemeral_worktree_paths_for_commit(worktree_path)
         # Untracked source context is snapshotted when the worktree lease starts.
         # Re-reading the primary checkout here can attribute files created by a
         # concurrent user or lane to this implementation after its agent exits.
