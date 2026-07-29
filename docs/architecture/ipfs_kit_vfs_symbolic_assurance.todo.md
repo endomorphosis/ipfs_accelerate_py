@@ -268,7 +268,7 @@ compact references and bounded spans only.
 
 ## VFS-014 Define a versioned expected/observed program contract IR
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: contract-ir
@@ -732,7 +732,7 @@ compact references and bounded spans only.
 - Completion: manual
 - Priority: P0
 - Track: assurance-rollout
-- Depends on: VFS-036
+- Depends on: VFS-003, VFS-036
 - Goal id: VFS-G131
 - Outputs: ipfs_accelerate_py/agent_supervisor/vfs_symbolic_pilot.py, docs/architecture/ipfs_kit_vfs_symbolic_assurance.findings.todo.md, test/api/test_agent_supervisor_vfs_symbolic_pilot.py
 - Validation: python -m pytest test/api/test_agent_supervisor_vfs_symbolic_pilot.py -q; python -m ipfs_accelerate_py.agent_supervisor.vfs_symbolic_pilot --verify
