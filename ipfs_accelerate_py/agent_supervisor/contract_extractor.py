@@ -1,4 +1,4 @@
-"""Deterministic multi-source program-contract extractor (VFS-015).
+"""Deterministic multi-source program-contract extractor (VFS-015 / VFS-G050).
 
 Consumes compact, artifact-referenced source units and emits versioned
 :class:`~ipfs_accelerate_py.agent_supervisor.program_contracts.ExpectedProgramContract`
@@ -18,6 +18,15 @@ never silently promoted to authoritative expectations.  Conflicting
 equal-precedence clauses are reported rather than resolved.  Large source
 bodies remain outside this module; units carry compact facts, spans, CIDs, and
 extraction-rule identifiers only.
+
+Extraction is deliberately independent from satisfaction checking
+(:mod:`contract_checker`).  This module never imports the checker; observed
+implementation behavior cannot define its own expectation (no circular
+oracles).  Objective validation repair for VFS-G050 anchors the synthetic
+discovery term ``objective validation repair`` so scans re-find the
+validation gate after domain evidence (``vfs/contract-ir@1``,
+``vfs/contract-source-precedence@1``) is present — without granting that term
+contract identity or completion authority.
 """
 
 from __future__ import annotations
@@ -38,6 +47,8 @@ from .program_contracts import (
     MAX_COLLECTION_ITEMS,
     MAX_CONFLICTS,
     MAX_UNSUPPORTED,
+    OBJECTIVE_GOAL_ID,
+    OBJECTIVE_VALIDATION_REPAIR_EVIDENCE,
     SOURCE_PRECEDENCE,
     Applicability,
     Assumption,
@@ -86,8 +97,10 @@ from .program_contracts import (
     TypeConstructor,
     TypeShape,
     UnsupportedSemantics,
+    all_program_contract_evidence_terms,
     canonical_program_contract_json_bytes,
     may_define_expectation,
+    objective_validation_repair_evidence_terms,
     program_contract_content_identity,
     program_contract_evidence_terms,
     source_precedence_rank,
@@ -110,10 +123,15 @@ SCHEMA_VERSION: Final[int] = CONTRACT_EXTRACTOR_VERSION
 # both the IR module and this independent extractor surface.  Extraction
 # never imports contract_checker; satisfaction checking never feeds back
 # into expected-contract compilation (no circular oracles).
+# Domain envelope evidence stays IR/precedence-only; the synthetic objective
+# validation repair term is discoverable via objective_validation_repair_evidence_terms
+# / all_covered_evidence_terms and never enters content-addressed identity.
 CONTRACT_EXTRACTOR_EVIDENCE: Final[tuple[str, ...]] = (
     CONTRACT_IR_EVIDENCE,
     CONTRACT_SOURCE_PRECEDENCE_EVIDENCE,
 )
+assert OBJECTIVE_VALIDATION_REPAIR_EVIDENCE == "objective validation repair"
+assert OBJECTIVE_GOAL_ID == "VFS-G050"
 
 CONTRACT_SOURCE_UNIT_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/contract-source-unit@1"
@@ -2849,8 +2867,11 @@ def extract_contracts(
     (:mod:`contract_checker`).  It compiles reviewed expectations and
     separate observations under closed source precedence, emits conflicts
     rather than resolving them, and never imports or invokes a checker.
-    Evidence terms covered: ``vfs/contract-ir@1`` and
-    ``vfs/contract-source-precedence@1``.
+    Domain evidence terms covered: ``vfs/contract-ir@1`` and
+    ``vfs/contract-source-precedence@1``.  The synthetic objective validation
+    repair discovery key is available via
+    :func:`objective_validation_repair_evidence_terms` and never enters
+    extraction result identity.
 
     Parameters
     ----------
@@ -3465,14 +3486,30 @@ def all_artifact_classes() -> tuple[SourceArtifactClass, ...]:
 
 
 def covered_evidence_terms() -> tuple[str, ...]:
-    """Return the objective evidence terms this extractor proves.
+    """Return the domain objective evidence terms this extractor proves.
 
     Mirrors :func:`program_contract_evidence_terms` so both IR and extractor
     surfaces name ``vfs/contract-ir@1`` and
     ``vfs/contract-source-precedence@1`` for discovery scans.
+
+    The synthetic ``objective validation repair`` term is intentionally
+    omitted here so extraction envelope ``evidence`` stays domain-only; use
+    :func:`objective_validation_repair_evidence_terms` (or
+    :func:`all_covered_evidence_terms`) for the validation gate.
     """
 
     return program_contract_evidence_terms()
+
+
+def all_covered_evidence_terms() -> tuple[str, ...]:
+    """Return domain VFS-G050 terms plus the objective validation repair gate.
+
+    Domain IR/precedence terms come first; the synthetic objective validation
+    repair discovery key is appended last.  Ranking and identity payloads
+    continue to use :func:`covered_evidence_terms` only.
+    """
+
+    return all_program_contract_evidence_terms()
 
 
 def reject_observation_as_expectation_source(
@@ -3499,6 +3536,8 @@ __all__ = [
     "CONTRACT_EXTRACTOR_EVIDENCE",
     "CONTRACT_IR_EVIDENCE",
     "CONTRACT_SOURCE_PRECEDENCE_EVIDENCE",
+    "OBJECTIVE_VALIDATION_REPAIR_EVIDENCE",
+    "OBJECTIVE_GOAL_ID",
     "ContractExtractorError",
     "ContractExtractorBoundsError",
     "MissingReferenceError",
@@ -3524,6 +3563,9 @@ __all__ = [
     "all_extraction_rules",
     "all_artifact_classes",
     "covered_evidence_terms",
+    "all_covered_evidence_terms",
+    "objective_validation_repair_evidence_terms",
+    "all_program_contract_evidence_terms",
     "reject_observation_as_expectation_source",
     "source_precedence_rank",
     "may_define_expectation",
