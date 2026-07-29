@@ -6489,6 +6489,14 @@ class PortalImplementationDaemon:
             else:
                 prompt = self._build_implementation_prompt(task, attempt)
         except ImplementationRetryDeferred as exc:
+            canonical_task_cid = self._canonical_ref(task)
+            if exc.backoff_seconds > 0:
+                self.task_queue.defer(
+                    canonical_task_cid,
+                    exc.backoff_seconds,
+                    reason=exc.reason,
+                )
+                self.task_queue.save()
             result = {
                 "skipped": True,
                 "reason": exc.reason.replace(" ", "_"),
@@ -6511,7 +6519,6 @@ class PortalImplementationDaemon:
                 # canonical attempt so a concurrent state update cannot be
                 # overwritten by the deferring daemon.
                 current = PortalTaskState.load(self.state_path)
-                canonical_task_cid = self._canonical_ref(task)
                 owns_idle_projection = (
                     current.active_task_id == task.task_id
                     and current.active_task_cid == canonical_task_cid
@@ -22538,8 +22545,7 @@ class PortalImplementationDaemon:
         # Filter out tasks in cooldown from persistent queue
         cooled_ready = [t for t in ready if not self.task_queue.is_cooled_down(self._canonical_ref(t))]
         if not cooled_ready:
-            # All ready tasks are in cooldown - use the one with shortest remaining cooldown
-            cooled_ready = ready
+            return None
         ready = cooled_ready
         ready_task_ids = {task.task_id for task in ready}
         vector_context = self._todo_vector_selection_context(tasks, ready_task_ids)

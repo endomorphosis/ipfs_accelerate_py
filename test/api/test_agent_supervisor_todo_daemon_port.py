@@ -1278,6 +1278,64 @@ def test_deterministic_only_task_cannot_dispatch_a_model(tmp_path):
         daemon._build_implementation_prompt(task, attempt=1)
 
 
+def test_deterministic_only_deferral_persists_selection_cooldown(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Todos
+
+## SCA-120 Run symbolic baseline
+
+- Status: todo
+- Completion: manual
+- Priority: P0
+- Track: baseline
+- Outputs: data/baseline.json
+- Provider role: deterministic-only
+- Acceptance: Run the approved typed local operation without a model.
+""",
+        encoding="utf-8",
+    )
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## SCA-",
+    )
+    task = parse_task_file(todo_path, task_header_prefix="## SCA-")[0]
+
+    result = daemon._run_implementation(task, TodoTaskState())
+
+    assert result["skipped"] is True
+    assert result["reason"] == "deterministic-only_task_requires_typed_local_operation"
+    assert result["backoff_seconds"] == 300
+    assert daemon.task_queue.is_cooled_down(daemon._canonical_ref(task)) is True
+
+    restarted = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## SCA-",
+    )
+    assert restarted.task_queue.is_cooled_down(restarted._canonical_ref(task)) is True
+    assert (
+        restarted._select_next_task(
+            [task],
+            {task.task_id: "ready"},
+            {},
+            {},
+            {},
+        )
+        is None
+    )
+
+
 def test_strict_execution_metadata_policy_defers_unbounded_task(
     tmp_path,
     monkeypatch,
@@ -12432,6 +12490,9 @@ def test_implementation_supervisor_records_retry_budget_guardrail(tmp_path):
 - Validation: test -f src/runtime.py
 - Provider role: grok-implement, codex-review
 - Context budget tokens: 2048
+- Parallel lane: runtime-repair
+- Predicted files: src/runtime.py, test/test_runtime.py
+- Conflict policy: serialize
 - Acceptance: Fix the repeated implementation blocker.
 """,
         encoding="utf-8",
@@ -12471,6 +12532,9 @@ def test_implementation_supervisor_records_retry_budget_guardrail(tmp_path):
     assert "## AUTO-002 Resolve implementation retry-budget failure for AUTO-001" in todo_text
     assert "- Provider role: grok-implement, codex-review" in todo_text
     assert "- Context budget tokens: 2048" in todo_text
+    assert "- Parallel lane: runtime-repair" in todo_text
+    assert "- Predicted files: src/runtime.py, test/test_runtime.py" in todo_text
+    assert "- Conflict policy: serialize" in todo_text
     strategy = json.loads((state_dir / "auto_strategy.json").read_text(encoding="utf-8"))
     assert strategy["blocked_tasks"] == ["AUTO-001"]
     supervisor_events = [
