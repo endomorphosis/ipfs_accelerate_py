@@ -568,7 +568,7 @@ compact references and bounded spans only.
 
 ## VFS-029 Implement the append-only content-addressed contract finding ledger
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: finding-generation
