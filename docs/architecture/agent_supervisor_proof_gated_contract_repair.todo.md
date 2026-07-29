@@ -367,7 +367,7 @@ task IDs on this board.
 
 ## RPR-011 Prove implementation-site admissibility
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
