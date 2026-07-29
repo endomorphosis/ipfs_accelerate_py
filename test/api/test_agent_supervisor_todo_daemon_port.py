@@ -4317,6 +4317,155 @@ def test_post_validation_candidate_binding_rejects_late_source_change(
     assert changed["candidate_binding"]["verified"] is False
 
 
+def test_validation_rebinds_declared_generated_output_at_fixed_point(
+    tmp_path: Path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "summary.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "summary.md")
+    _git(repo, "commit", "-m", "base")
+    baseline = _git(repo, "rev-parse", "HEAD")
+    (repo / "summary.md").write_text("candidate\n", encoding="utf-8")
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=[],
+    )
+    task = PortalTask(
+        task_id="AUTO-123",
+        title="Generate deterministic evidence",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="analysis",
+        outputs=["summary.md", "coverage.json"],
+        validation=["python -m generate_coverage"],
+        acceptance="The generated evidence is stable and source-bound.",
+    )
+    calls = 0
+
+    def run_validation(*_args, **_kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            (repo / "coverage.json").write_text(
+                '{"coverage":1}\n',
+                encoding="utf-8",
+            )
+        return {
+            "attempted": True,
+            "passed": True,
+            "returncode": 0,
+            "results": [],
+        }
+
+    monkeypatch.setattr(
+        daemon,
+        "_run_validation_commands",
+        run_validation,
+    )
+
+    result = daemon._run_validation_with_candidate_binding(
+        repo,
+        task,
+        state_dir / "implementation.log",
+        baseline_ref=baseline,
+    )
+
+    assert calls == 2
+    assert result["passed"] is True
+    assert result["candidate_binding"]["verified"] is True
+    assert result["candidate_rebind"]["accepted"] is True
+    assert result["candidate_rebind"]["stabilized"] is True
+    assert result["candidate_rebind"]["changed_paths"] == [
+        "coverage.json",
+        "summary.md",
+    ]
+
+
+def test_validation_rebind_rejects_generated_change_outside_task_scope(
+    tmp_path: Path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    (repo / "summary.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "README.md", "summary.md")
+    _git(repo, "commit", "-m", "base")
+    baseline = _git(repo, "rev-parse", "HEAD")
+    (repo / "summary.md").write_text("candidate\n", encoding="utf-8")
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=[],
+    )
+    task = PortalTask(
+        task_id="AUTO-123",
+        title="Reject out-of-scope validation changes",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="analysis",
+        outputs=["summary.md"],
+        validation=["python -m generate_coverage"],
+        acceptance="Validation cannot mutate undeclared source.",
+    )
+    calls = 0
+
+    def run_validation(*_args, **_kwargs):
+        nonlocal calls
+        calls += 1
+        (repo / "README.md").write_text(
+            "changed by validation\n",
+            encoding="utf-8",
+        )
+        return {
+            "attempted": True,
+            "passed": True,
+            "returncode": 0,
+            "results": [],
+        }
+
+    monkeypatch.setattr(
+        daemon,
+        "_run_validation_commands",
+        run_validation,
+    )
+
+    result = daemon._run_validation_with_candidate_binding(
+        repo,
+        task,
+        state_dir / "implementation.log",
+        baseline_ref=baseline,
+    )
+
+    assert calls == 1
+    assert result["passed"] is False
+    assert result["reason"] == "candidate_changed_during_validation"
+    assert result["candidate_rebind"]["accepted"] is False
+    assert result["candidate_rebind"]["stabilized"] is False
+    assert "path_outside_scope" in result["candidate_rebind"]["reason_codes"]
+
+
 def test_implementation_proposal_accepts_exact_task_declared_and_chain(
     tmp_path: Path,
 ):

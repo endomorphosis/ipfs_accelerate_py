@@ -9010,25 +9010,13 @@ class PortalImplementationDaemon:
                     cleanup_result = self._cleanup_merged_worktree(worktree_path, branch_name)
                 else:
                     self._prepare_worktree_for_validation(worktree_path, task=task, branch_name=branch_name)
-                    proposal_validation = self._validate_implementation_patch(
-                        worktree_path,
-                        task,
-                        baseline_ref=baseline_ref,
-                    )
-                    validation_result = self._run_validation_commands(
-                        worktree_path,
-                        task,
-                        log_path,
-                        state=state,
-                        proposal_validation=proposal_validation,
-                    )
                     validation_result = (
-                        self._verify_post_validation_candidate_binding(
+                        self._run_validation_with_candidate_binding(
                             worktree_path,
                             task,
+                            log_path,
+                            state=state,
                             baseline_ref=baseline_ref,
-                            proposal_validation=proposal_validation,
-                            validation_result=validation_result,
                         )
                     )
                 protected_path_violation = (
@@ -9260,25 +9248,13 @@ class PortalImplementationDaemon:
                         task=task,
                         branch_name=branch_name,
                     )
-                    proposal_validation = self._validate_implementation_patch(
-                        worktree_path,
-                        task,
-                        baseline_ref=baseline_ref,
-                    )
-                    validation_result = self._run_validation_commands(
-                        worktree_path,
-                        task,
-                        log_path,
-                        state=state,
-                        proposal_validation=proposal_validation,
-                    )
                     validation_result = (
-                        self._verify_post_validation_candidate_binding(
+                        self._run_validation_with_candidate_binding(
                             worktree_path,
                             task,
+                            log_path,
+                            state=state,
                             baseline_ref=baseline_ref,
-                            proposal_validation=proposal_validation,
-                            validation_result=validation_result,
                         )
                     )
                     protected_path_violation = (
@@ -13530,6 +13506,104 @@ class PortalImplementationDaemon:
             "returncode": PROPOSAL_VALIDATION_FAILURE_RETURN_CODE,
             "reason": "candidate_changed_during_validation",
             "error": "proposal_candidate_binding_failed",
+        }
+
+    def _run_validation_with_candidate_binding(
+        self,
+        workspace_path: Path,
+        task: PortalTask,
+        log_path: Path,
+        *,
+        state: PortalTaskState | None = None,
+        baseline_ref: str,
+    ) -> dict[str, Any]:
+        """Validate the exact final candidate, including generated outputs.
+
+        A declared validation command may materialize task-owned evidence.
+        Rebind that candidate once and rerun validation so only a stable,
+        proposal-authorized fixed point can proceed to commit.
+        """
+
+        proposal_validation = self._validate_implementation_patch(
+            workspace_path,
+            task,
+            baseline_ref=baseline_ref,
+        )
+        result = self._run_validation_commands(
+            workspace_path,
+            task,
+            log_path,
+            state=state,
+            proposal_validation=proposal_validation,
+        )
+        result = self._verify_post_validation_candidate_binding(
+            workspace_path,
+            task,
+            baseline_ref=baseline_ref,
+            proposal_validation=proposal_validation,
+            validation_result=result,
+        )
+        if result.get("reason") != "candidate_changed_during_validation":
+            return result
+
+        rebound_validation = self._validate_implementation_patch(
+            workspace_path,
+            task,
+            baseline_ref=baseline_ref,
+        )
+        compact_rebound = self._compact_proposal_validation(
+            rebound_validation,
+        )
+        accepted = bool(getattr(rebound_validation, "accepted", False))
+        rebind = {
+            "attempted": True,
+            "accepted": accepted,
+            "stabilized": False,
+            "proposal_id": str(compact_rebound.get("proposal_id") or ""),
+            "receipt_id": str(compact_rebound.get("receipt_id") or ""),
+            "changed_paths": list(compact_rebound.get("changed_paths") or []),
+            "reason_codes": list(compact_rebound.get("reason_codes") or []),
+        }
+        self._record_event(
+            (
+                "implementation_candidate_rebound"
+                if accepted
+                else "implementation_candidate_rebind_rejected"
+            ),
+            {
+                "task_id": task.task_id,
+                **rebind,
+            },
+        )
+        if not accepted:
+            return {
+                **result,
+                "candidate_rebind": rebind,
+            }
+
+        rebound_result = self._run_validation_commands(
+            workspace_path,
+            task,
+            log_path,
+            state=state,
+            proposal_validation=rebound_validation,
+        )
+        rebound_result = self._verify_post_validation_candidate_binding(
+            workspace_path,
+            task,
+            baseline_ref=baseline_ref,
+            proposal_validation=rebound_validation,
+            validation_result=rebound_result,
+        )
+        final_binding = rebound_result.get("candidate_binding")
+        rebind["stabilized"] = bool(
+            rebound_result.get("passed")
+            and isinstance(final_binding, Mapping)
+            and final_binding.get("verified")
+        )
+        return {
+            **rebound_result,
+            "candidate_rebind": rebind,
         }
 
     def _run_validation_commands(
