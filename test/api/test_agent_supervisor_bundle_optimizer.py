@@ -35,7 +35,9 @@ from ipfs_accelerate_py.agent_supervisor.objectives.goal_completion import (
 )
 from ipfs_accelerate_py.agent_supervisor.core.conflict_graph import (
     ConflictWaveProjection,
+    build_task_work_contract,
     project_conflict_free_wave,
+    rehydrate_task_work_contract_projection,
 )
 from ipfs_accelerate_py.agent_supervisor.task_sources.todo_vector_index import (
     TodoIndexRecord,
@@ -1237,6 +1239,43 @@ def test_bundle_supervisor_projects_optimizer_slices_and_comparison():
     assert (
         optimization["comparison"]["current_planner"]["model_call_count"] == 1
     )
+
+
+def test_bundle_supervisor_rebuilds_contract_for_derived_planning_projection():
+    source = _task("SUPERVISOR-PROJECTED")
+    contract = build_task_work_contract(source)
+    projected = {
+        **source,
+        "work_contract": contract._material(),
+        "work_contract_id": contract.work_contract_id,
+        "task_work_contract": contract.to_dict(),
+        "task_work_contract_id": contract.task_work_contract_id,
+        # Dependency planning adds canonical CIDs after admission, so the
+        # source contract no longer describes this execution projection.
+        "dependency_task_cids": ["cid-upstream"],
+    }
+    rehydrated = rehydrate_task_work_contract_projection(projected)
+
+    [optimized] = optimize_bundle_payloads(
+        [
+            {
+                "bundle_key": "objective/projected",
+                "parallel_lane": "projected",
+                "tasks": [projected],
+            }
+        ]
+    )
+
+    assert optimized["bundle_optimization"]["applied"] is True
+    assert rehydrated["dependency_task_cids"] == []
+    assert (
+        build_task_work_contract(rehydrated).task_work_contract_id
+        == contract.task_work_contract_id
+    )
+    assert optimized["execution_slice_task_cids"] == [
+        source["canonical_task_cid"]
+    ]
+    assert projected["work_contract_id"] == contract.work_contract_id
 
 
 def test_bundle_supervisor_optimizer_cannot_resurrect_completed_members():
