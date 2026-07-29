@@ -128,7 +128,7 @@ compact references and bounded spans only.
 
 ## VFS-007 Adapt Python, JSON/Schema, Markdown, and manifest evidence into the same index
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: corpus-index
