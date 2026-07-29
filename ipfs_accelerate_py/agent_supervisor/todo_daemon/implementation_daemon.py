@@ -3945,6 +3945,37 @@ class PortalImplementationDaemon:
                     },
                 )
             return {}
+        # Align live fence with auto-clear policy: seed/prune thrash against
+        # ephemeral worktree copies is not an operator-protected mutation when
+        # the shared checkout still holds the authoritative files.
+        protected_set = set(self.implementation_protected_paths)
+        remaining_mutations: list[dict[str, Any]] = []
+        clearable_mutations: list[dict[str, Any]] = []
+        for mutation in mutations:
+            class_code = self._protected_mutation_is_auto_clearable_stall(
+                mutation,
+                protected=protected_set,
+            )
+            if class_code:
+                clearable_mutations.append(
+                    {**mutation, "auto_clearable_class": class_code}
+                )
+            else:
+                remaining_mutations.append(mutation)
+        if clearable_mutations and not remaining_mutations:
+            resolved_task_id = task.task_id if task is not None else task_id
+            self._record_event(
+                "implementation_protected_path_benign_thrash_accepted",
+                {
+                    "task_id": resolved_task_id,
+                    "attempt": attempt,
+                    "workspace_path": str(workspace_path),
+                    "mutations": clearable_mutations,
+                    "reason": "auto_clearable_stall_class_accepted_live",
+                },
+            )
+            return {}
+        mutations = remaining_mutations
         resolved_task_id = task.task_id if task is not None else task_id
         concurrent_update = self._authorized_concurrent_protected_path_update(
             workspace_path=workspace_path,
@@ -10991,7 +11022,13 @@ class PortalImplementationDaemon:
         *,
         task: PortalTask | None = None,
     ) -> list[str]:
-        """Remove lease-start context that the implementation did not change."""
+        """Remove lease-start context that the implementation did not change.
+
+        Only untracked seed material may be unlinked.  Paths that are
+        git-tracked on the task branch are left in place: overwriting them at
+        seed time and deleting them at prune time poisons both the candidate
+        diff (false deletes) and the protected-path fence.
+        """
 
         snapshots = self._load_seeded_worktree_context(worktree_path)
         if not snapshots:
@@ -11004,6 +11041,18 @@ class PortalImplementationDaemon:
             target = worktree_path / relative
             observed_identity = self._seeded_worktree_context_identity(target)
             if observed_identity == expected_identity:
+                tracked = subprocess.run(
+                    ["git", "ls-files", "--error-unmatch", "--", relative],
+                    cwd=worktree_path,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    check=False,
+                )
+                if tracked.returncode == 0:
+                    # Tracked on the task branch: retain even if seed identity
+                    # still matches.  Seed context is untracked-only material.
+                    retained.append(relative)
+                    continue
                 target.unlink(missing_ok=True)
                 removed.append(relative)
                 parent = target.parent
@@ -11060,6 +11109,18 @@ class PortalImplementationDaemon:
                 continue
             target = worktree_path / relative
             if target.exists() or target.is_symlink():
+                tracked = subprocess.run(
+                    ["git", "ls-files", "--error-unmatch", "--", relative],
+                    cwd=worktree_path,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    check=False,
+                )
+                if tracked.returncode == 0:
+                    # Never overwrite a path already tracked on the task branch.
+                    # Primary-checkout untracked context is only for paths the
+                    # ephemeral worktree does not already own.
+                    continue
                 if not overwrite_existing:
                     continue
                 if target.is_dir():

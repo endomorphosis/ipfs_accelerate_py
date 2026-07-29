@@ -17513,6 +17513,62 @@ def test_implementation_supervisor_defers_worktree_reconciliation_when_main_dirt
     assert not (repo / "feature.txt").exists()
 
 
+def test_implementation_supervisor_reconciles_configured_target_while_main_dirty(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    marker = repo / "README.md"
+    marker.write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "base")
+    _git(repo, "branch", "integration")
+    branch_name = "implementation/accel-011-attempt-1-456"
+    _git(repo, "checkout", "-b", branch_name, "integration")
+    feature = repo / "feature.txt"
+    feature.write_text("feature\n", encoding="utf-8")
+    _git(repo, "add", "feature.txt")
+    _git(repo, "commit", "-m", "feature branch")
+    _git(repo, "checkout", "main")
+    dirty = repo / "dirty.txt"
+    dirty.write_text("user work\n", encoding="utf-8")
+    worktree_root = repo / "worktrees"
+    worktree_path = worktree_root / "accel-011-attempt-1-456"
+    _git(repo, "worktree", "add", str(worktree_path), branch_name)
+
+    state_dir = repo / "state"
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=repo / "todo.md",
+            state_path=state_dir / "task_state.json",
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "events.jsonl",
+            state_dir=state_dir,
+            repo_root=repo,
+            worktree_root=worktree_root,
+            merge_target_branch="integration",
+        )
+    )
+
+    result = supervisor.reconcile_backlogged_worktrees()
+
+    assert result["target_ref"] == "integration"
+    assert result["candidate_count"] == 1
+    assert result["processed_count"] == 1
+    assert result["reconciled_count"] == 1
+    assert result["main_checkout_is_merge_target"] is False
+    assert result["main_checkout_dirty"] is False
+    assert result["current_checkout_dirty"] is True
+    assert "dirty.txt" in result["main_dirty_evidence"]["status_paths"]
+    assert result["main_dirty_evidence"]["ignored_for_reconciliation"] is True
+    assert dirty.read_text(encoding="utf-8") == "user work\n"
+    assert not feature.exists()
+    assert _git(repo, "show", "integration:feature.txt") == "feature"
+    assert not worktree_path.exists()
+
+
 def test_implementation_supervisor_ignores_generated_objective_heap_dirty_main(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()

@@ -3122,7 +3122,8 @@ class PortalImplementationSupervisor:
         active_worktree_owners = self._shared_active_worktree_owners(
             worktree_root
         )
-        target_ref = self._git_current_branch(repo_root) or "HEAD"
+        current_branch = self._git_current_branch(repo_root)
+        target_ref = self.config.merge_target_branch or current_branch or "HEAD"
         target_signature = self._git_ref_commit(repo_root, target_ref) or target_ref
         raw_main_status = self._main_status_for_worktree_reconciliation(repo_root, worktree_root)
         raw_main_dirty_evidence = (
@@ -3134,6 +3135,18 @@ class PortalImplementationSupervisor:
             raw_main_status,
             raw_main_dirty_evidence,
         )
+        main_checkout_is_merge_target = (
+            not self.config.merge_target_branch
+            or current_branch == target_ref
+        )
+        blocking_main_status = main_status if main_checkout_is_merge_target else []
+        if main_status and not main_checkout_is_merge_target:
+            main_dirty_evidence = {
+                **main_dirty_evidence,
+                "ignored_for_reconciliation": True,
+                "current_branch": current_branch or "HEAD",
+                "configured_merge_target": target_ref,
+            }
         max_merges = max(0, int(self.config.worktree_reconciliation_max_merges))
         dry_run = bool(self.config.worktree_reconciliation_dry_run)
         scan_cache = self._load_worktree_scan_cache()
@@ -3185,12 +3198,18 @@ class PortalImplementationSupervisor:
                         skipped.append({**payload, "cached": True})
                         scan_cache_hit_count += 1
                         continue
-                elif classification == "candidate" and (dry_run or main_status):
+                elif classification == "candidate" and (dry_run or blocking_main_status):
                     candidate = {**payload, "cached": True}
                     candidates.append(candidate)
                     scan_cache_hit_count += 1
                     if not dry_run:
-                        skipped.append({**candidate, "reason": "main_checkout_dirty", "status_short": main_status[:20]})
+                        skipped.append(
+                            {
+                                **candidate,
+                                "reason": "main_checkout_dirty",
+                                "status_short": blocking_main_status[:20],
+                            }
+                        )
                     continue
                 else:
                     skipped.append({**payload, "cached": True})
@@ -3296,8 +3315,14 @@ class PortalImplementationSupervisor:
             )
             if dry_run:
                 continue
-            if main_status:
-                skipped.append({**candidate, "reason": "main_checkout_dirty", "status_short": main_status[:20]})
+            if blocking_main_status:
+                skipped.append(
+                    {
+                        **candidate,
+                        "reason": "main_checkout_dirty",
+                        "status_short": blocking_main_status[:20],
+                    }
+                )
                 continue
             if sum(1 for item in processed if item.get("merged")) >= max_merges:
                 skipped.append({**candidate, "reason": "reconciliation_limit_reached"})
@@ -3359,9 +3384,12 @@ class PortalImplementationSupervisor:
             "target_signature": target_signature,
             "dry_run": dry_run,
             "max_merges": max_merges,
-            "main_checkout_dirty": bool(main_status),
-            "main_status_short": main_status[:20],
+            "main_checkout_dirty": bool(blocking_main_status),
+            "main_status_short": blocking_main_status[:20],
             "main_dirty_evidence": main_dirty_evidence,
+            "main_checkout_is_merge_target": main_checkout_is_merge_target,
+            "current_checkout_dirty": bool(main_status),
+            "current_checkout_status_short": main_status[:20],
             "raw_main_checkout_dirty": bool(raw_main_status),
             "raw_main_status_short": raw_main_status[:20],
             "raw_main_dirty_evidence": raw_main_dirty_evidence,
