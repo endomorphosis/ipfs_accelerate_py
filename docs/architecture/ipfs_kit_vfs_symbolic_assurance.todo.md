@@ -1528,7 +1528,7 @@ compact references and bounded spans only.
 
 ## VFS-050 Close objective gap: Materialize a second repair taskboard from admitted findings
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
