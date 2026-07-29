@@ -348,7 +348,7 @@ compact references and bounded spans only.
 
 ## VFS-018 Add hermetic MCP++ runtime contract witnesses
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P1
 - Track: mcp-interop
