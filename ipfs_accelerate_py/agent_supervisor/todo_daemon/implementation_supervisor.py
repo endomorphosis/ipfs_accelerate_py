@@ -1376,6 +1376,7 @@ class PortalImplementationSupervisor:
             return self._run_once_with_maintenance_under_lease(
                 update_maintenance_phase,
                 include_refill=include_refill,
+                implementation_maintenance_lease=None,
             )
         lease, lease_guard = self._acquire_implementation_maintenance_lease()
         if lease is None:
@@ -1390,6 +1391,7 @@ class PortalImplementationSupervisor:
             return self._run_once_with_maintenance_under_lease(
                 update_maintenance_phase,
                 include_refill=include_refill,
+                implementation_maintenance_lease=lease,
             )
         finally:
             self._release_implementation_maintenance_lease(lease)
@@ -1399,6 +1401,7 @@ class PortalImplementationSupervisor:
         update_maintenance_phase,
         *,
         include_refill: bool = True,
+        implementation_maintenance_lease: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         update_maintenance_phase("event_log_repair")
         event_log_repair = self.ensure_event_log_file()
@@ -1427,7 +1430,11 @@ class PortalImplementationSupervisor:
         worktree_reconciliation = self.reconcile_backlogged_worktrees()
         update_maintenance_phase("worktree_reconciliation_replay")
         worktree_reconciliation_replay = (
-            self.recover_already_merged_reconciliation_candidates()
+            self.recover_already_merged_reconciliation_candidates(
+                preacquired_implementation_lock=(
+                    implementation_maintenance_lease
+                ),
+            )
         )
         update_maintenance_phase("worktree_cleanup")
         worktree_cleanup = self.cleanup_backlogged_worktrees()
@@ -3578,6 +3585,8 @@ class PortalImplementationSupervisor:
 
     def recover_already_merged_reconciliation_candidates(
         self,
+        *,
+        preacquired_implementation_lock: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Replay legacy raw merges through current proposal/completion gates.
 
@@ -4055,6 +4064,9 @@ class PortalImplementationSupervisor:
                         changed_submodule_paths=(),
                         recovery_key=recovery_key,
                         preacquired_task_claim=claim_metadata,
+                        preacquired_implementation_lock=(
+                            preacquired_implementation_lock
+                        ),
                     )
                 )
                 recovery_returncode = recovery_result.get("returncode")
@@ -8750,6 +8762,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--fail-on-reconciliation-error",
+        action="store_true",
+        help=(
+            "With --once, return a non-zero exit status unless historical "
+            "reconciliation replay is fully settled. This lets launchers "
+            "fail closed before starting implementation providers."
+        ),
+    )
+    parser.add_argument(
         "--no-worktree-reconciliation",
         dest="worktree_reconciliation_enabled",
         action="store_false",
@@ -9431,7 +9452,78 @@ def supervisor_config_from_args(
     )
 
 
-def main(argv: list[str] | None = None) -> None:
+def _reconciliation_preflight_failure_reason(
+    result: Mapping[str, Any],
+) -> str:
+    """Return why a strict one-shot reconciliation pass is not settled."""
+
+    if result.get("maintenance_blocked") is True:
+        return str(result.get("reason") or "maintenance_blocked")
+
+    replay = result.get("worktree_reconciliation_replay")
+    if not isinstance(replay, Mapping):
+        return "reconciliation_replay_result_missing"
+
+    reason = str(replay.get("reason") or "")
+    allowed_reasons = {
+        "no_pending_reconciliation_replays",
+        "reconciliation_replays_processed",
+    }
+    if reason not in allowed_reasons:
+        return f"reconciliation_replay_unverified:{reason or 'missing_reason'}"
+
+    counts: dict[str, int] = {}
+    for field_name in (
+        "pending_count",
+        "processed_count",
+        "completed_count",
+        "failed_count",
+        "deferred_count",
+    ):
+        value = replay.get(field_name)
+        try:
+            count = int(value)
+        except (TypeError, ValueError):
+            return f"reconciliation_replay_invalid_{field_name}"
+        if count < 0:
+            return f"reconciliation_replay_invalid_{field_name}"
+        counts[field_name] = count
+
+    results = replay.get("results")
+    if not isinstance(results, list):
+        return "reconciliation_replay_results_missing"
+    if counts["failed_count"] > 0:
+        return "reconciliation_replay_failed"
+    if counts["deferred_count"] > 0:
+        return "reconciliation_replay_deferred"
+    if counts["pending_count"] != len(results):
+        return "reconciliation_replay_pending"
+    if counts["processed_count"] != len(results):
+        return "reconciliation_replay_unprocessed"
+
+    completed_results = 0
+    for item in results:
+        if not isinstance(item, Mapping) or item.get("settled") is not True:
+            return "reconciliation_replay_unsettled"
+        completed = item.get("completed") is True
+        queued = item.get("queued") is True
+        if not completed and not queued:
+            return "reconciliation_replay_settlement_unproven"
+        if completed:
+            completed_results += 1
+    if counts["completed_count"] != completed_results:
+        return "reconciliation_replay_completion_count_mismatch"
+
+    if reason == "no_pending_reconciliation_replays":
+        if results or any(counts.values()):
+            return "reconciliation_replay_no_pending_count_mismatch"
+        return ""
+    if not results:
+        return "reconciliation_replay_processed_without_results"
+    return ""
+
+
+def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     logging.basicConfig(
         level=getattr(logging, args.log_level),
@@ -9441,12 +9533,23 @@ def main(argv: list[str] | None = None) -> None:
     if args.once:
         result = supervisor.run_once()
         logger.info("Portal implementation supervisor check complete: %s", result)
-        return
+        if args.fail_on_reconciliation_error:
+            failure_reason = _reconciliation_preflight_failure_reason(
+                result
+            )
+            if failure_reason:
+                logger.error(
+                    "Strict reconciliation preflight did not settle: %s",
+                    failure_reason,
+                )
+                return 1
+        return 0
     supervisor.run_forever()
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
 
 
 TodoSupervisorConfig = PortalSupervisorConfig

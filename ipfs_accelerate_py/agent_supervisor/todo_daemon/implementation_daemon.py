@@ -9035,6 +9035,7 @@ class PortalImplementationDaemon:
         changed_submodule_paths: Sequence[str] | None = None,
         recovery_key: str = "",
         preacquired_task_claim: Mapping[str, Any] | None = None,
+        preacquired_implementation_lock: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Adopt one orphaned candidate through the normal validation train.
 
@@ -9120,22 +9121,58 @@ class PortalImplementationDaemon:
         implementation_lock_path = self._implementation_lock_path()
         implementation_lock_metadata: dict[str, Any] = {}
         acquired_implementation_lock = False
+        borrowed_implementation_lock = False
         try:
-            implementation_lock_metadata = (
-                self._build_implementation_lock_metadata(
-                    task,
-                    attempt,
-                    started_at,
+            if preacquired_implementation_lock is not None:
+                implementation_lock_metadata = dict(
+                    preacquired_implementation_lock
                 )
-            )
-            (
-                acquired_implementation_lock,
-                implementation_lock_reason,
-                existing_implementation_lock,
-            ) = self._try_acquire_implementation_lock(
-                implementation_lock_path,
-                implementation_lock_metadata,
-            )
+                existing_implementation_lock = load_json_dict(
+                    implementation_lock_path
+                )
+                borrowed_implementation_lock = bool(
+                    existing_implementation_lock is not None
+                    and str(
+                        existing_implementation_lock.get("lease_id")
+                        or ""
+                    )
+                    == str(
+                        implementation_lock_metadata.get("lease_id")
+                        or ""
+                    )
+                    and str(
+                        existing_implementation_lock.get("lease_role")
+                        or ""
+                    )
+                    == "supervisor_maintenance"
+                    and self._implementation_lock_owner_is_active(
+                        existing_implementation_lock
+                    )
+                )
+                acquired_implementation_lock = (
+                    borrowed_implementation_lock
+                )
+                implementation_lock_reason = (
+                    "preacquired"
+                    if borrowed_implementation_lock
+                    else "preacquired_lock_mismatch"
+                )
+            else:
+                implementation_lock_metadata = (
+                    self._build_implementation_lock_metadata(
+                        task,
+                        attempt,
+                        started_at,
+                    )
+                )
+                (
+                    acquired_implementation_lock,
+                    implementation_lock_reason,
+                    existing_implementation_lock,
+                ) = self._try_acquire_implementation_lock(
+                    implementation_lock_path,
+                    implementation_lock_metadata,
+                )
         except BaseException:
             self._release_implementation_task_claim(
                 task_claim_path,
@@ -9197,10 +9234,11 @@ class PortalImplementationDaemon:
         try:
             state = PortalTaskState.load(self.state_path)
         except Exception as exc:
-            self._release_implementation_lock(
-                implementation_lock_path,
-                implementation_lock_metadata,
-            )
+            if not borrowed_implementation_lock:
+                self._release_implementation_lock(
+                    implementation_lock_path,
+                    implementation_lock_metadata,
+                )
             self._release_implementation_task_claim(
                 task_claim_path,
                 task_claim_metadata,
@@ -9620,9 +9658,12 @@ class PortalImplementationDaemon:
                     )
                     terminal_event_recorded = True
             finally:
-                if not self._release_implementation_lock(
-                    implementation_lock_path,
-                    implementation_lock_metadata,
+                if (
+                    not borrowed_implementation_lock
+                    and not self._release_implementation_lock(
+                        implementation_lock_path,
+                        implementation_lock_metadata,
+                    )
                 ):
                     logger.warning(
                         "Refusing to remove reconciled-candidate "
@@ -11479,11 +11520,14 @@ class PortalImplementationDaemon:
         branch_name: str = "",
     ) -> None:
         self._initialize_worktree_submodules(worktree_path, branch_name=branch_name)
-        self._link_shared_worktree_paths(worktree_path)
         # Provider-side validation may have already populated known generated
         # evidence paths. Remove those deterministic side effects before the
         # proposal is collected so they cannot consume task mutation scope.
+        # Shared dependency links are then restored for the validation run;
+        # removing generated paths after linking would delete node_modules and
+        # make an otherwise valid replay fail with missing local executables.
         self._restore_ephemeral_worktree_paths_for_commit(worktree_path)
+        self._link_shared_worktree_paths(worktree_path)
         # Untracked source context is snapshotted when the worktree lease starts.
         # Re-reading the primary checkout here can attribute files created by a
         # concurrent user or lane to this implementation after its agent exits.

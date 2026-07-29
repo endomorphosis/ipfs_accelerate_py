@@ -133,6 +133,9 @@ from ipfs_accelerate_py.agent_supervisor import git_gc as git_gc_module
 from ipfs_accelerate_py.agent_supervisor import implementation_supervisor_runner
 from ipfs_accelerate_py.agent_supervisor.git_gc import GitGarbageCollector
 from ipfs_accelerate_py.agent_supervisor.todo_daemon import implementation_daemon as implementation_daemon_module
+from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
+    implementation_supervisor as implementation_supervisor_module,
+)
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     PortalTask,
     TodoTaskState,
@@ -1467,6 +1470,57 @@ def test_implementation_daemon_links_shared_dependencies_only_in_managed_worktre
     outside.mkdir()
     daemon._link_shared_worktree_paths(outside)
     assert not (outside / "swissknife" / "node_modules").exists()
+
+
+def test_prepare_worktree_for_validation_restores_shared_wallet_ui_dependencies(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Agent Test")
+    _git(repo, "config", "user.email", "agent@example.test")
+    package_json = repo / "wallet_interface" / "ui" / "package.json"
+    package_json.parent.mkdir(parents=True)
+    package_json.write_text('{"scripts":{"build":"tsc"}}\n', encoding="utf-8")
+    (repo / ".gitignore").write_text(
+        "wallet_interface/ui/node_modules\n",
+        encoding="utf-8",
+    )
+    _git(repo, "add", ".gitignore", "wallet_interface/ui/package.json")
+    _git(repo, "commit", "-m", "baseline")
+
+    source = repo / "wallet_interface" / "ui" / "node_modules"
+    tsc = source / ".bin" / "tsc"
+    tsc.parent.mkdir(parents=True)
+    tsc.write_text("#!/bin/sh\n", encoding="utf-8")
+    worktree_root = tmp_path / "worktrees"
+    worktree = worktree_root / "task-attempt"
+    worktree_root.mkdir()
+    _git(repo, "worktree", "add", "-b", "implementation/test", str(worktree))
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+        use_ephemeral_worktree=True,
+        worktree_root=worktree_root,
+        worktree_pool_enabled=False,
+        merge_target_branch="main",
+    )
+
+    daemon._prepare_worktree_for_validation(
+        worktree,
+        branch_name="implementation/test",
+    )
+
+    target = worktree / "wallet_interface" / "ui" / "node_modules"
+    assert target.is_symlink()
+    assert target.resolve() == source.resolve()
+    assert (target / ".bin" / "tsc").read_text(encoding="utf-8") == "#!/bin/sh\n"
+    assert _git(worktree, "status", "--short", "--untracked-files=all") == ""
 
 
 def test_implementation_daemon_never_nests_shared_dependency_links_inside_their_source(tmp_path):
@@ -3312,6 +3366,257 @@ def test_supervisor_reconciliation_only_can_keep_resolver_when_allowed(tmp_path)
 
     assert config.reconciliation_only is True
     assert config.llm_merge_resolver_command == "codex exec -"
+
+
+def test_supervisor_fail_on_reconciliation_error_flag_is_opt_in():
+    defaults = parse_implementation_supervisor_args([])
+    enabled = parse_implementation_supervisor_args(
+        ["--fail-on-reconciliation-error"]
+    )
+
+    assert defaults.fail_on_reconciliation_error is False
+    assert enabled.fail_on_reconciliation_error is True
+
+
+@pytest.mark.parametrize(
+    ("run_result", "expected_exit_code"),
+    [
+        pytest.param(
+            {
+                "maintenance_blocked": True,
+                "reason": "implementation_protected_path_attempt_active",
+            },
+            1,
+            id="maintenance-blocked",
+        ),
+        pytest.param(
+            {
+                "maintenance_blocked": False,
+                "worktree_reconciliation_replay": {
+                    "attempted": True,
+                    "reason": "reconciliation_replays_processed",
+                    "pending_count": 1,
+                    "processed_count": 1,
+                    "completed_count": 0,
+                    "failed_count": 1,
+                    "deferred_count": 0,
+                    "results": [
+                        {
+                            "attempted": True,
+                            "completed": False,
+                            "settled": False,
+                        }
+                    ],
+                },
+            },
+            1,
+            id="replay-failed",
+        ),
+        pytest.param(
+            {
+                "maintenance_blocked": False,
+                "worktree_reconciliation_replay": {
+                    "attempted": False,
+                    "reason": "reconciliation_replays_processed",
+                    "pending_count": 1,
+                    "processed_count": 0,
+                    "completed_count": 0,
+                    "failed_count": 0,
+                    "deferred_count": 1,
+                    "results": [
+                        {
+                            "attempted": False,
+                            "completed": False,
+                            "settled": False,
+                        }
+                    ],
+                },
+            },
+            1,
+            id="replay-deferred",
+        ),
+        pytest.param(
+            {
+                "maintenance_blocked": False,
+                "worktree_reconciliation_replay": {
+                    "attempted": True,
+                    "reason": "reconciliation_replays_processed",
+                    "pending_count": 1,
+                    "processed_count": 1,
+                    "completed_count": 0,
+                    "failed_count": 0,
+                    "deferred_count": 0,
+                    "results": [
+                        {
+                            "attempted": True,
+                            "completed": False,
+                            "settled": False,
+                        }
+                    ],
+                },
+            },
+            1,
+            id="replay-attempted-but-unsettled",
+        ),
+        pytest.param(
+            {"maintenance_blocked": False},
+            1,
+            id="replay-result-missing",
+        ),
+        pytest.param(
+            {
+                "maintenance_blocked": False,
+                "worktree_reconciliation_replay": {
+                    "attempted": False,
+                    "reason": "task_board_unavailable",
+                },
+            },
+            1,
+            id="replay-task-board-unavailable",
+        ),
+        pytest.param(
+            {
+                "maintenance_blocked": False,
+                "worktree_reconciliation_replay": {
+                    "attempted": False,
+                    "reason": "worktree_reconciliation_disabled",
+                },
+            },
+            1,
+            id="replay-disabled",
+        ),
+        pytest.param(
+            {
+                "maintenance_blocked": False,
+                "worktree_reconciliation_replay": {
+                    "attempted": True,
+                    "reason": "reconciliation_replays_processed",
+                    "pending_count": 2,
+                    "processed_count": 1,
+                    "completed_count": 1,
+                    "failed_count": 0,
+                    "deferred_count": 0,
+                    "results": [
+                        {
+                            "attempted": True,
+                            "completed": True,
+                            "settled": True,
+                        }
+                    ],
+                },
+            },
+            1,
+            id="replay-partially-processed",
+        ),
+        pytest.param(
+            {
+                "maintenance_blocked": False,
+                "worktree_reconciliation_replay": {
+                    "attempted": True,
+                    "reason": "reconciliation_replays_processed",
+                    "pending_count": 1,
+                    "processed_count": 1,
+                    "completed_count": 1,
+                    "failed_count": 0,
+                    "deferred_count": 0,
+                    "results": [
+                        {
+                            "attempted": True,
+                            "completed": True,
+                            "settled": True,
+                        }
+                    ],
+                },
+            },
+            0,
+            id="replay-completed",
+        ),
+        pytest.param(
+            {
+                "maintenance_blocked": False,
+                "worktree_reconciliation_replay": {
+                    "attempted": True,
+                    "reason": "reconciliation_replays_processed",
+                    "pending_count": 1,
+                    "processed_count": 1,
+                    "completed_count": 0,
+                    "failed_count": 0,
+                    "deferred_count": 0,
+                    "results": [
+                        {
+                            "attempted": True,
+                            "completed": False,
+                            "queued": True,
+                            "settled": True,
+                        }
+                    ],
+                },
+            },
+            0,
+            id="replay-queued-and-settled",
+        ),
+        pytest.param(
+            {
+                "maintenance_blocked": False,
+                "worktree_reconciliation_replay": {
+                    "attempted": False,
+                    "reason": "no_pending_reconciliation_replays",
+                    "pending_count": 0,
+                    "processed_count": 0,
+                    "completed_count": 0,
+                    "failed_count": 0,
+                    "deferred_count": 0,
+                    "results": [],
+                },
+            },
+            0,
+            id="no-pending-replay",
+        ),
+    ],
+)
+def test_supervisor_once_can_fail_closed_on_reconciliation_result(
+    monkeypatch,
+    run_result,
+    expected_exit_code,
+):
+    observed: dict[str, object] = {}
+
+    class StubSupervisor:
+        def __init__(self, config):
+            observed["config"] = config
+
+        def run_once(self, **_kwargs):
+            observed["run_once_called"] = True
+            return run_result
+
+        def run_forever(self):
+            raise AssertionError("--once must not start the supervisor loop")
+
+    sentinel_config = object()
+    monkeypatch.setattr(
+        implementation_supervisor_module,
+        "supervisor_config_from_args",
+        lambda _args, *, repo_root: sentinel_config,
+    )
+    monkeypatch.setattr(
+        implementation_supervisor_module,
+        "PortalImplementationSupervisor",
+        StubSupervisor,
+    )
+
+    exit_code = implementation_supervisor_module.main(
+        [
+            "--once",
+            "--reconciliation-only",
+            "--fail-on-reconciliation-error",
+        ]
+    )
+
+    assert exit_code == expected_exit_code
+    assert observed == {
+        "config": sentinel_config,
+        "run_once_called": True,
+    }
 
 
 def test_multi_supervisor_runner_parses_and_runs_short_track(tmp_path):
@@ -18053,8 +18358,9 @@ def test_implementation_supervisor_keeps_failed_recovered_candidate_unmerged(
     )
 
 
-def test_implementation_supervisor_replays_exact_historical_merge_through_train(
+def test_implementation_supervisor_run_once_replays_historical_merge_under_maintenance_lease(
     tmp_path,
+    monkeypatch,
 ):
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -18203,14 +18509,59 @@ def test_implementation_supervisor_replays_exact_historical_merge_through_train(
             repo_root=repo,
             worktree_root=worktree_root,
             merge_target_branch="main",
+            implementation_protected_paths=("README.md",),
         )
     )
 
-    result = (
-        supervisor.recover_already_merged_reconciliation_candidates()
+    maintenance_lock_path = state_dir / "implementation.lock"
+    observed_leases: dict[str, dict] = {}
+    recover = (
+        supervisor.recover_already_merged_reconciliation_candidates
     )
 
-    assert result["completed_count"] == 1
+    def recover_under_outer_lease(
+        *,
+        preacquired_implementation_lock=None,
+    ):
+        assert preacquired_implementation_lock is not None
+        observed_leases["argument"] = dict(
+            preacquired_implementation_lock
+        )
+        observed_leases["before"] = json.loads(
+            maintenance_lock_path.read_text(encoding="utf-8")
+        )
+        result = recover(
+            preacquired_implementation_lock=(
+                preacquired_implementation_lock
+            ),
+        )
+        observed_leases["after"] = json.loads(
+            maintenance_lock_path.read_text(encoding="utf-8")
+        )
+        return result
+
+    monkeypatch.setattr(
+        supervisor,
+        "recover_already_merged_reconciliation_candidates",
+        recover_under_outer_lease,
+    )
+    run_result = supervisor.run_once(include_refill=False)
+    result = run_result["worktree_reconciliation_replay"]
+
+    assert result["completed_count"] == 1, json.dumps(
+        result,
+        indent=2,
+        sort_keys=True,
+    )
+    assert observed_leases["argument"]["lease_role"] == (
+        "supervisor_maintenance"
+    )
+    assert (
+        observed_leases["argument"]
+        == observed_leases["before"]
+        == observed_leases["after"]
+    )
+    assert not maintenance_lock_path.exists()
     replay = result["results"][0]
     assert replay["baseline_ref"] == proposal_baseline_ref
     assert replay["integration_baseline_ref"] == baseline_ref
@@ -18238,9 +18589,7 @@ def test_implementation_supervisor_replays_exact_historical_merge_through_train(
         and event["attempt_consumed"] is False
         for event in managed_events
     )
-    replay_again = (
-        supervisor.recover_already_merged_reconciliation_candidates()
-    )
+    replay_again = recover()
     assert replay_again["processed_count"] == 0
     assert _git(repo, "status", "--short") == ""
 
