@@ -18394,6 +18394,42 @@ def test_validation_command_runner_classifies_playwright_host_preflight_failure(
     )
 
 
+def test_reconciliation_validation_log_paths_are_invocation_bound(
+    tmp_path,
+):
+    log_dir = tmp_path / "state" / "implementation_logs"
+    daemon = TodoImplementationDaemon(
+        todo_path=tmp_path / "todo.md",
+        state_path=tmp_path / "state" / "task_state.json",
+        strategy_path=tmp_path / "state" / "strategy.json",
+        events_path=tmp_path / "state" / "events.jsonl",
+        repo_root=tmp_path,
+        implementation_log_dir=log_dir,
+    )
+    common = {
+        "task_id": "ACCEL-011",
+        "candidate_commit": "a" * 40,
+        "recovery_key": "same-recovery",
+        "branch_name": "implementation/accel-011-candidate",
+    }
+
+    first_path = daemon._reconciliation_validation_log_path(
+        **common,
+        started_at="2026-07-29T11:00:00.000001+00:00",
+    )
+    first_path.parent.mkdir(parents=True)
+    first_path.write_text("first replay evidence\n", encoding="utf-8")
+    second_path = daemon._reconciliation_validation_log_path(
+        **common,
+        started_at="2026-07-29T11:00:00.000002+00:00",
+    )
+    second_path.write_text("second replay evidence\n", encoding="utf-8")
+
+    assert first_path != second_path
+    assert first_path.read_text(encoding="utf-8") == "first replay evidence\n"
+    assert second_path.read_text(encoding="utf-8") == "second replay evidence\n"
+
+
 def test_reconciliation_playwright_log_retry_requires_approved_browser_directory(
     tmp_path,
     monkeypatch,
@@ -18523,6 +18559,98 @@ def test_reconciliation_security_failure_overrides_playwright_log_retry(
     }
 
     assert daemon._retryable_reconciliation_event_failure(event) is False
+
+
+def test_explicit_legacy_environment_retry_binding_is_exact_and_security_terminal(
+    tmp_path,
+    monkeypatch,
+):
+    daemon = TodoImplementationDaemon(
+        todo_path=tmp_path / "todo.md",
+        state_path=tmp_path / "state" / "task_state.json",
+        strategy_path=tmp_path / "state" / "strategy.json",
+        events_path=tmp_path / "state" / "events.jsonl",
+        repo_root=tmp_path,
+    )
+    task_id = "ACCEL-011"
+    recovery_key = "legacy-playwright-recovery"
+    proposal_id = "proposal-legacy-playwright"
+    diagnostic_signature = (
+        "01c6f70fbe05a361b6734183125ca4aeae49e5c0d1e84659803cb35e7a41eb05"
+    )
+    event = {
+        "type": "worktree_reconciliation_validation_finished",
+        "task_id": task_id,
+        "recovery_key": recovery_key,
+        "provider_dispatched": False,
+        "attempt_consumed": False,
+        "validation_result": {
+            "attempted": True,
+            "passed": False,
+            "returncode": 1,
+            "reason": "declared_validation_failed",
+            "error": "validation_command_failed",
+            "proposal_gate": {
+                "attempted": True,
+                "accepted": True,
+                "proposal_id": proposal_id,
+                "reason_codes": [],
+            },
+            "results": [
+                {
+                    "command": "npx playwright test",
+                    "returncode": 1,
+                    "diagnostic_signature": diagnostic_signature,
+                }
+            ],
+        },
+    }
+    variable = (
+        "IPFS_ACCELERATE_AGENT_RECONCILIATION_ENVIRONMENT_RETRY_BINDINGS"
+    )
+    binding_fields = (
+        task_id,
+        recovery_key,
+        proposal_id,
+        diagnostic_signature,
+    )
+    monkeypatch.setenv(variable, "|".join(binding_fields))
+
+    assert daemon._retryable_reconciliation_event_failure(event) is True
+
+    for index, replacement in enumerate(
+        (
+            "ACCEL-OTHER",
+            "other-recovery",
+            "proposal-other",
+            "f" * 64,
+        )
+    ):
+        mismatched = list(binding_fields)
+        mismatched[index] = replacement
+        monkeypatch.setenv(variable, "|".join(mismatched))
+        assert daemon._retryable_reconciliation_event_failure(event) is False
+
+    monkeypatch.setenv(variable, "|".join(binding_fields))
+    validation_result = event["validation_result"]
+    for terminal_evidence in (
+        {
+            "candidate_binding": {
+                "verified": False,
+                "reason": "candidate_fingerprint_changed",
+            }
+        },
+        {
+            "protected_path_violation": {
+                "reason": "implementation_protected_path_mutated",
+                "changed_paths": ["docs/planning/TODO.md"],
+            }
+        },
+    ):
+        validation_result.update(terminal_evidence)
+        assert daemon._retryable_reconciliation_event_failure(event) is False
+        for key in terminal_evidence:
+            validation_result.pop(key)
 
 
 def test_implementation_supervisor_retries_reconciliation_when_validation_executable_is_missing(

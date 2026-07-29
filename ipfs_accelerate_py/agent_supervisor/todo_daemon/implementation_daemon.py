@@ -286,6 +286,9 @@ PLAYWRIGHT_HOST_PREFLIGHT_FAILURE_MARKER = (
 PLAYWRIGHT_BROWSER_MISSING_MARKER = (
     "browser bundle is not installed under"
 )
+RECONCILIATION_ENVIRONMENT_RETRY_BINDINGS_ENV = (
+    "IPFS_ACCELERATE_AGENT_RECONCILIATION_ENVIRONMENT_RETRY_BINDINGS"
+)
 PROPOSAL_ARTIFACT_ENVELOPE_METADATA_KEY = "proposal artifact envelope"
 PROPOSAL_ARTIFACT_ENVELOPE_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/task-artifact-envelope@1"
@@ -9034,6 +9037,39 @@ class PortalImplementationDaemon:
                 )
         return merge_result
 
+    def _reconciliation_validation_log_path(
+        self,
+        *,
+        task_id: str,
+        candidate_commit: str,
+        recovery_key: str,
+        branch_name: str,
+        started_at: str,
+    ) -> Path:
+        """Return an invocation-bound path that never truncates prior proof."""
+
+        safe_task_id = re.sub(
+            r"[^a-z0-9._-]+",
+            "-",
+            task_id.lower(),
+        ).strip("-") or "task"
+        invocation_payload = "\0".join(
+            (
+                task_id,
+                candidate_commit,
+                recovery_key,
+                branch_name,
+                started_at,
+            )
+        )
+        invocation_id = hashlib.sha256(
+            invocation_payload.encode("utf-8")
+        ).hexdigest()[:16]
+        return self.implementation_log_dir / (
+            f"{safe_task_id}-reconciliation-validation-"
+            f"{candidate_commit[:12]}-{invocation_id}.log"
+        )
+
     def reconcile_validated_worktree_candidate(
         self,
         *,
@@ -9223,9 +9259,12 @@ class PortalImplementationDaemon:
             )
             return result
 
-        log_path = self.implementation_log_dir / (
-            f"{task.task_id.lower()}-reconciliation-validation-"
-            f"{candidate_commit[:12]}.log"
+        log_path = self._reconciliation_validation_log_path(
+            task_id=task.task_id,
+            candidate_commit=candidate_commit,
+            recovery_key=recovery_key,
+            branch_name=branch_name,
+            started_at=started_at,
         )
         validation_result: dict[str, Any] = {
             "attempted": False,
@@ -13713,6 +13752,58 @@ class PortalImplementationDaemon:
                 return True
         return False
 
+    @staticmethod
+    def _explicit_reconciliation_environment_retry(
+        event: Mapping[str, Any],
+        validation_result: Mapping[str, Any],
+    ) -> bool:
+        """Match an operator-approved legacy failure to its exact identity."""
+
+        raw_bindings = str(
+            os.environ.get(
+                RECONCILIATION_ENVIRONMENT_RETRY_BINDINGS_ENV,
+                "",
+            )
+            or ""
+        ).strip()
+        if not raw_bindings:
+            return False
+        proposal_gate = validation_result.get("proposal_gate")
+        if (
+            not isinstance(proposal_gate, Mapping)
+            or proposal_gate.get("accepted") is not True
+        ):
+            return False
+        signatures = {
+            str(result.get("diagnostic_signature") or "").strip()
+            for result in (validation_result.get("results") or ())
+            if isinstance(result, Mapping)
+            and re.fullmatch(
+                r"[0-9a-f]{64}",
+                str(result.get("diagnostic_signature") or "").strip(),
+            )
+        }
+        if not signatures:
+            return False
+        event_identity = (
+            str(event.get("task_id") or "").strip(),
+            str(event.get("recovery_key") or "").strip(),
+            str(proposal_gate.get("proposal_id") or "").strip(),
+        )
+        for raw_binding in re.split(r"[\s,]+", raw_bindings):
+            binding = raw_binding.strip()
+            if not binding:
+                continue
+            parts = tuple(part.strip() for part in binding.split("|"))
+            if (
+                len(parts) == 4
+                and parts[:3] == event_identity
+                and re.fullmatch(r"[0-9a-f]{64}", parts[3])
+                and parts[3] in signatures
+            ):
+                return True
+        return False
+
     def _retryable_reconciliation_event_failure(
         self,
         event: Mapping[str, Any],
@@ -13722,12 +13813,24 @@ class PortalImplementationDaemon:
         validation_result = event.get("validation_result")
         if not isinstance(validation_result, Mapping):
             return False
+        if (
+            event.get("type")
+            != "worktree_reconciliation_validation_finished"
+            or event.get("provider_dispatched") is not False
+            or event.get("attempt_consumed") is not False
+        ):
+            return False
         if self._terminal_reconciliation_security_failure(
             validation_result
         ):
             return False
         if self._retryable_reconciliation_validation_failure(
             validation_result
+        ):
+            return True
+        if self._explicit_reconciliation_environment_retry(
+            event,
+            validation_result,
         ):
             return True
 
