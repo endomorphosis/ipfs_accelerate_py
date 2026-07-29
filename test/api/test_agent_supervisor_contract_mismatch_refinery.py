@@ -28,6 +28,7 @@ from ipfs_accelerate_py.agent_supervisor.objectives.contract_mismatch_refinery i
     ContractMismatchRefineryPolicy,
     ContractMismatchRefineryReason,
     ContractRepairTask,
+    build_contract_mismatch_triage,
     deterministic_repair_task_id,
     main,
     parse_contract_repair_board,
@@ -461,6 +462,94 @@ def test_cli_rejects_missing_or_conflicting_inferred_snapshot(
     )
     with pytest.raises(SystemExit, match="2"):
         main(["--findings", str(conflicting), "--output", str(output)])
+
+
+def test_cli_triages_explicitly_unsupported_baseline_finding(
+    tmp_path: Path,
+) -> None:
+    findings = tmp_path / "findings.json"
+    output = tmp_path / "generated.todo.md"
+    triage_output = tmp_path / "triage.json"
+    snapshot_id = "sca-repository-snapshot:sha256:current"
+    source_record = {
+        "affected_paths": ["swissknife"],
+        "contract_id": "contract:analyzer-health",
+        "counterexample": {"kind": "repository_index_missing"},
+        "finding_id": "sha256:unsupported",
+        "reason_code": "repository_index_missing",
+        "snapshot_root": snapshot_id,
+        "state": "unsupported",
+    }
+    findings.write_text(
+        json.dumps(
+            {
+                "schema": "ipfs_accelerate_py/agent-supervisor/"
+                "sca-baseline-contract-findings@1",
+                "snapshot_root": snapshot_id,
+                "findings": [source_record],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert (
+        main(
+            [
+                "--findings",
+                str(findings),
+                "--output",
+                str(output),
+                "--triage-output",
+                str(triage_output),
+                "--now-epoch",
+                "100",
+            ]
+        )
+        == 0
+    )
+    assert parse_contract_repair_board(
+        output.read_text(encoding="utf-8")
+    ).tasks == ()
+    expected_result = ContractMismatchRefinery().refine(
+        (source_record,),
+        current_snapshot_id=snapshot_id,
+        now_epoch=100,
+    )
+    triage = json.loads(triage_output.read_text(encoding="utf-8"))
+    assert triage == build_contract_mismatch_triage(
+        expected_result,
+        current_snapshot_id=snapshot_id,
+        owner="external/ipfs_accelerate",
+        source_records=(source_record,),
+    )
+    assert triage["reason_counts"] == {"unsupported_finding": 1}
+    assert triage["generated_count"] == 0
+    assert triage["completion_authoritative"] is False
+    assert triage["llm_call_count"] == 0
+
+
+def test_cli_does_not_downgrade_actionable_non_packet_to_unsupported(
+    tmp_path: Path,
+) -> None:
+    findings = tmp_path / "findings.json"
+    output = tmp_path / "generated.todo.md"
+    findings.write_text(
+        json.dumps(
+            {
+                "snapshot_root": "sca-repository-snapshot:sha256:current",
+                "findings": [
+                    {
+                        "finding_id": "sha256:refuted",
+                        "state": "refuted",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(SystemExit, match="2"):
+        main(["--findings", str(findings), "--output", str(output)])
 
 
 def test_emitted_board_is_consumable_by_existing_markdown_task_source(
