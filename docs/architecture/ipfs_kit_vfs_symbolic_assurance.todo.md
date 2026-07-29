@@ -148,7 +148,7 @@ compact references and bounded spans only.
 
 ## VFS-008 Build the canonical cross-repository program evidence graph
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: program-graph
