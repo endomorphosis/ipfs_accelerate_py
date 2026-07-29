@@ -285,6 +285,58 @@ def test_operator_only_snapshots_exact_prepared_output_into_worktree(
     )
 
 
+def test_operator_only_normalizes_stdout_suppression_before_proposal_gate(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, daemon = _daemon(tmp_path, monkeypatch)
+    relative = "state/operator-receipt.json"
+    prepared = repo / relative
+    prepared.parent.mkdir(parents=True, exist_ok=True)
+    prepared.write_text('{"decision":"clear"}\n', encoding="utf-8")
+    task = PortalTask(
+        task_id="SCA-OP-002",
+        title="Validate an operator-prepared JSON receipt",
+        status="ready",
+        completion="manual",
+        priority="P0",
+        track="operator-recovery",
+        outputs=[relative],
+        validation=[
+            f"{shlex.quote(sys.executable)} -m json.tool "
+            f"{shlex.quote(relative)} >/dev/null"
+        ],
+        acceptance="The reviewed receipt is stable and valid.",
+        metadata={
+            "Provider role": "operator-only",
+            "Context budget tokens": "0",
+        },
+    )
+
+    normalized, notes = daemon._normalize_validation_command(
+        task.validation[0]
+    )
+
+    assert normalized.endswith(relative)
+    assert notes == [
+        "removed trailing stdout suppression from validation command"
+    ]
+
+    result = daemon._run_implementation(task, TodoTaskState())
+
+    assert result["returncode"] == 0
+    assert result["validation_result"]["passed"] is True
+    assert result["validation_result"]["proposal_gate"]["accepted"] is True
+    receipt = json.loads(
+        Path(result["task_execution_receipt_path"]).read_text(encoding="utf-8")
+    )
+    assert receipt["isolation_audit"] == {
+        "llm_call_count": 0,
+        "model_call_count": 0,
+        "provider_call_count": 0,
+    }
+
+
 def test_deterministic_task_reports_declared_validation_failure_without_model(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

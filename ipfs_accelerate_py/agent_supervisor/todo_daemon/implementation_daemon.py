@@ -14379,7 +14379,10 @@ class PortalImplementationDaemon:
         )
         validation_steps_list: list[ProposalValidationStep] = []
         malformed_validation_command = False
-        for command in task.validation:
+        for raw_command in task.validation:
+            command = str(raw_command)
+            if self._task_uses_typed_local_execution(task):
+                command, _notes = self._normalize_validation_command(command)
             try:
                 command_argv = tuple(shlex.split(command))
             except ValueError:
@@ -15865,6 +15868,10 @@ class PortalImplementationDaemon:
                 if updated != normalized:
                     normalized = updated
                     notes.append(f"removed unsupported TypeScript flag {flag}")
+        updated = re.sub(r"\s+(?:1\s*)?>\s*/dev/null\s*$", "", normalized)
+        if updated != normalized:
+            normalized = updated
+            notes.append("removed trailing stdout suppression from validation command")
         return normalized, notes
 
     def _with_worktree_validation_pythonpath(
