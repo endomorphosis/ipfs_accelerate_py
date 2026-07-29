@@ -10785,13 +10785,16 @@ class PortalImplementationDaemon:
         return result
 
     def _git_current_branch(self, cwd: Path) -> str:
-        result = subprocess.run(
-            ["git", "branch", "--show-current"],
-            cwd=cwd,
-            text=True,
-            capture_output=True,
-            check=False,
-        )
+        try:
+            result = subprocess.run(
+                ["git", "branch", "--show-current"],
+                cwd=cwd,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+        except OSError:
+            return ""
         if result.returncode != 0:
             return ""
         return result.stdout.strip()
@@ -10799,13 +10802,16 @@ class PortalImplementationDaemon:
     def _git_ref_exists_in_repo(self, cwd: Path, ref: str) -> bool:
         if not ref:
             return False
-        result = subprocess.run(
-            ["git", "cat-file", "-e", f"{ref}^{{commit}}"],
-            cwd=cwd,
-            text=True,
-            capture_output=True,
-            check=False,
-        )
+        try:
+            result = subprocess.run(
+                ["git", "cat-file", "-e", f"{ref}^{{commit}}"],
+                cwd=cwd,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+        except OSError:
+            return False
         return result.returncode == 0
 
     def _worktree_declares_submodule(self, worktree_path: Path, relative: str) -> bool:
@@ -18617,13 +18623,16 @@ class PortalImplementationDaemon:
     def _git_ref_exists(self, ref: str) -> bool:
         if not ref:
             return False
-        result = subprocess.run(
-            ["git", "rev-parse", "--verify", "--quiet", ref],
-            cwd=self.repo_root,
-            text=True,
-            capture_output=True,
-            check=False,
-        )
+        try:
+            result = subprocess.run(
+                ["git", "rev-parse", "--verify", "--quiet", ref],
+                cwd=self.repo_root,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+        except OSError:
+            return False
         return result.returncode == 0
 
     def _implementation_lock_path(self) -> Path:
