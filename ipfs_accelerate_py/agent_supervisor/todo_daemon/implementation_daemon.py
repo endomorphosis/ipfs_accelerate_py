@@ -5615,6 +5615,19 @@ class PortalImplementationDaemon:
             resolved_statuses,
         )
         active_task_claims = self._active_implementation_task_claims(tasks)
+        active_resource_claims = (
+            self._active_implementation_resource_claims(tasks)
+        )
+        resource_reserved_task_ids = {
+            task.task_id
+            for task in execution_tasks
+            if any(
+                resource_path in active_resource_claims
+                for resource_path in self._task_implementation_resource_paths(
+                    task
+                )
+            )
+        }
         external_task_reservations = self._external_task_reservations(tasks)
         for task_id, reservation in external_task_reservations.items():
             active_task_claims.setdefault(task_id, reservation)
@@ -5625,6 +5638,7 @@ class PortalImplementationDaemon:
                 task.task_id in representative_task_ids
                 and self._task_belongs_to_shard(task.task_id)
                 and task.task_id not in active_task_claims
+                and task.task_id not in resource_reserved_task_ids
             )
         ]
         if self.task_shard_count > 1 and not any(
@@ -5636,6 +5650,7 @@ class PortalImplementationDaemon:
                 if (
                     task.task_id in representative_task_ids
                     and task.task_id not in active_task_claims
+                    and task.task_id not in resource_reserved_task_ids
                     and resolved_statuses.get(task.task_id) == "ready"
                 )
             ]
@@ -5685,6 +5700,14 @@ class PortalImplementationDaemon:
         selection_scope = self._selection_scope(selectable_tasks, resolved_statuses, strategy)
         if selected is None and attempt_limit_idle_reason:
             selection_scope["selection_idle_reason"] = attempt_limit_idle_reason
+        elif selected is None and any(
+            resolved_statuses.get(task.task_id) == "ready"
+            and task.task_id in resource_reserved_task_ids
+            for task in execution_tasks
+        ):
+            selection_scope["selection_idle_reason"] = (
+                "all_selectable_ready_tasks_deferred_by_resource_claim"
+            )
         state = PortalTaskState.load(self.state_path)
         state.heartbeat_at = previous.heartbeat_at
         if newly_completed or not state.last_progress_at:
@@ -5841,11 +5864,15 @@ class PortalImplementationDaemon:
             implementation_result
             and implementation_result.get("reason") == "provider_capacity_backoff"
         )
-        provider_capacity_deferral_result = bool(
+        stable_admission_deferral_result = bool(
             implementation_result
             and implementation_result.get("deferred", False)
             and implementation_result.get("reason")
-            in {"provider_capacity_exhausted", "provider_capacity_backoff"}
+            in {
+                "provider_capacity_exhausted",
+                "provider_capacity_backoff",
+                "resource_claim_lock_exists",
+            }
         )
         if state_written or (
             implementation_result is not None and not provider_backoff_result
@@ -5920,6 +5947,18 @@ class PortalImplementationDaemon:
             "state_file_repair": state_file_repair,
             "merged_status_repair": merged_status_repair,
             "active_task_claims": sorted(active_task_claims),
+            "active_resource_claims": {
+                resource_path: {
+                    "task_id": str(metadata.get("task_id") or ""),
+                    "state_dir": str(metadata.get("state_dir") or ""),
+                }
+                for resource_path, metadata in sorted(
+                    active_resource_claims.items()
+                )
+            },
+            "resource_reserved_task_ids": sorted(
+                resource_reserved_task_ids
+            ),
             "external_reserved_task_ids": sorted(external_task_reservations),
             "assumed_completed_task_ids": sorted(self.assumed_completed_task_ids),
             "execution_slice_task_ids": sorted(self.execution_slice_task_ids),
@@ -5949,7 +5988,7 @@ class PortalImplementationDaemon:
         # not acknowledge that source head until a follow-up pass reconciles
         # those effects into the task projection.
         if state_written and (
-            implementation_result is None or provider_capacity_deferral_result
+            implementation_result is None or stable_admission_deferral_result
         ):
             checkpoint_result = self._save_runtime_checkpoint(
                 source_digest=final_source_digest,
@@ -5961,7 +6000,7 @@ class PortalImplementationDaemon:
             result["write_count"] += int(checkpoint_result["write_count"])
         self._runtime_last_source_digest = (
             final_source_digest
-            if implementation_result is None or provider_capacity_deferral_result
+            if implementation_result is None or stable_admission_deferral_result
             else ""
         )
         self._runtime_last_result = self._runtime_result_projection(result)
@@ -22478,6 +22517,36 @@ class PortalImplementationDaemon:
             metadata = active_claims_by_cid.get(self._canonical_ref(item))
             if metadata is not None:
                 active_claims.setdefault(item.task_id, metadata)
+        return active_claims
+
+    def _active_implementation_resource_claims(
+        self,
+        tasks: Sequence[PortalTask],
+    ) -> dict[str, dict[str, Any]]:
+        """Return live shared-resource claims without mutating their leases."""
+
+        active_claims: dict[str, dict[str, Any]] = {}
+        resource_paths = {
+            resource_path
+            for task in tasks
+            for resource_path in self._task_implementation_resource_paths(
+                task
+            )
+        }
+        for resource_path in sorted(resource_paths):
+            claim_path = self._implementation_resource_claim_path(
+                resource_path
+            )
+            if not claim_path.exists():
+                continue
+            metadata = load_json_dict(claim_path)
+            if (
+                metadata is not None
+                and self._implementation_resource_claim_owner_is_active(
+                    metadata
+                )
+            ):
+                active_claims[resource_path] = metadata
         return active_claims
 
     def _merge_lock_owner_is_active(self, metadata: dict[str, Any]) -> bool:

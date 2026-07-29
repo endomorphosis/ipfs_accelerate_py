@@ -9647,6 +9647,116 @@ def test_implementation_daemon_defers_cross_lane_submodule_resource_collision(
     )
 
 
+def test_resource_claim_deferral_passes_do_not_grow_state_or_events(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Agent Todos
+
+## ACCEL-002 Modify alpha registry
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on:
+- Outputs: modules/alpha/src/registry.py
+- Validation:
+- Acceptance: Update the alpha registry after its shared resource is available.
+""",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "process_command_line",
+        lambda _pid: f"python -m pytest {Path(sys.argv[0]).name}",
+    )
+    common = {
+        "todo_path": todo_path,
+        "repo_root": repo,
+        "task_header_prefix": "## ACCEL-",
+        "implement": True,
+        "worktree_submodule_paths": ("modules/alpha",),
+    }
+    holder = TodoImplementationDaemon(
+        **common,
+        state_path=repo / "lane-a" / "state.json",
+        strategy_path=repo / "lane-a" / "strategy.json",
+        events_path=repo / "lane-a" / "events.jsonl",
+    )
+    contender = TodoImplementationDaemon(
+        **common,
+        state_path=repo / "lane-b" / "state.json",
+        strategy_path=repo / "lane-b" / "strategy.json",
+        events_path=repo / "lane-b" / "events.jsonl",
+    )
+    holder_task = PortalTask(
+        task_id="ACCEL-001",
+        title="Modify alpha model",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="ops",
+        outputs=["modules/alpha/src/model.py"],
+    )
+    contender._ensure_runtime_wake_coordinator()
+    holder_claims, unavailable, reason, _existing = (
+        holder._acquire_implementation_resource_claims(
+            holder_task,
+            attempt=1,
+            started_at="2026-01-01T00:00:00+00:00",
+        )
+    )
+    assert unavailable == ""
+    assert reason == "acquired"
+
+    lease_event = contender.wait_for_wake(timeout=1.0)[0]
+    assert "lease" in {
+        str(getattr(kind, "value", kind))
+        for kind in lease_event.kinds
+    }
+    first = contender.run_once()
+    state_after_deferral = contender.state_path.read_bytes()
+    events_after_deferral = contender.events_path.read_bytes()
+
+    assert first["implementation_result"] is None
+    assert first["active_task_id"] == ""
+    assert first["resource_reserved_task_ids"] == ["ACCEL-002"]
+    assert first["selection_idle_reason"] == (
+        "all_selectable_ready_tasks_deferred_by_resource_claim"
+    )
+    assert {
+        entry.attempt_count
+        for entry in contender.task_queue.entries.values()
+    } == {0}
+    assert TodoTaskState.load(
+        contender.state_path
+    ).implementation_attempts == {}
+
+    initialization_event = contender.wait_for_wake(timeout=0.05)[0]
+    assert "lease" not in {
+        str(getattr(kind, "value", kind))
+        for kind in initialization_event.kinds
+    }
+    second = contender.run_once()
+
+    assert second["implementation_result"] is None
+    assert second["write_count"] == 0
+    assert {
+        entry.attempt_count
+        for entry in contender.task_queue.entries.values()
+    } == {0}
+    assert contender.state_path.read_bytes() == state_after_deferral
+    assert contender.events_path.read_bytes() == events_after_deferral
+
+    contender.close_event_runtime()
+    assert holder._release_implementation_resource_claims(holder_claims)
+
+
 def test_implementation_resource_claims_preserve_disjoint_submodule_parallelism(
     tmp_path,
     monkeypatch,
