@@ -235,6 +235,10 @@ WORKTREE_LIFECYCLE_LEASE_SECONDS_ENV = (
 WORKTREE_LIFECYCLE_STARTUP_GRACE_ENV = (
     "IPFS_ACCELERATE_AGENT_WORKTREE_LIFECYCLE_STARTUP_GRACE_SECONDS"
 )
+WORKTREE_LIFECYCLE_RECLAIM_DEAD_ON_STARTUP_ENV = (
+    "IPFS_ACCELERATE_AGENT_RECLAIM_DEAD_WORKTREE_LEASES_ON_STARTUP"
+)
+WORKTREE_LIFECYCLE_RACE_BACKOFF_SECONDS = 30
 TASK_ATTEMPT_LIMIT_IDLE_REASON = (
     "all_selectable_ready_tasks_reached_max_task_attempts"
 )
@@ -2279,6 +2283,23 @@ class PortalImplementationDaemon:
                 else DEFAULT_STARTUP_GRACE_SECONDS
             ),
         )
+        self.worktree_lifecycle_restart_recovery = []
+        if _env_bool(
+            WORKTREE_LIFECYCLE_RECLAIM_DEAD_ON_STARTUP_ENV,
+            False,
+        ):
+            self.worktree_lifecycle_restart_recovery = (
+                self.worktree_lifecycle.reclaim_dead_owners_for_controlled_restart(
+                    expected_state_dir=self.state_path.parent.resolve(),
+                )
+            )
+            if self.worktree_lifecycle_restart_recovery:
+                logger.warning(
+                    "Controlled restart fenced %d dead worktree lifecycle "
+                    "owner(s) for state directory %s",
+                    len(self.worktree_lifecycle_restart_recovery),
+                    self.state_path.parent.resolve(),
+                )
         # Active attempt's fenced workspace claim (if any).  Cleanup paths
         # pass this lease so the owner can dispose its own worktree while
         # peer lanes remain fenced out of nonterminal claims.
@@ -6670,6 +6691,50 @@ class PortalImplementationDaemon:
                     log_path=log_path,
                     prompt=prompt,
                 )
+                if ephemeral_result.get("lifecycle_race"):
+                    canonical_task_cid = self._canonical_ref(task)
+                    self.task_queue.defer(
+                        canonical_task_cid,
+                        WORKTREE_LIFECYCLE_RACE_BACKOFF_SECONDS,
+                        reason=str(
+                            ephemeral_result.get("reason")
+                            or "worktree_lifecycle_race"
+                        ),
+                    )
+                    self.task_queue.save()
+                    self._restore_task_attempt(
+                        state,
+                        task,
+                        max(0, attempt - 1),
+                    )
+                    if not state.implementation_in_progress:
+                        self._clear_active_execution_state(
+                            state,
+                            clear_task=True,
+                        )
+                    state.save(self.state_path)
+                    ephemeral_result.update(
+                        {
+                            "deferred": True,
+                            "backoff_seconds": (
+                                WORKTREE_LIFECYCLE_RACE_BACKOFF_SECONDS
+                            ),
+                        }
+                    )
+                    self._record_event(
+                        "implementation_retry_deferred",
+                        {
+                            "task_id": task.task_id,
+                            "attempt": attempt,
+                            "reason": str(ephemeral_result.get("reason") or ""),
+                            "failure_kind": LifecycleFailureKind.LIFECYCLE_RACE.value,
+                            "backoff_seconds": (
+                                WORKTREE_LIFECYCLE_RACE_BACKOFF_SECONDS
+                            ),
+                            "provider_call_allowed": False,
+                            "attempt_consumed": False,
+                        },
+                    )
                 ephemeral_result["context_receipt_path"] = str(
                     context_receipt_path
                 )
@@ -9017,6 +9082,8 @@ class PortalImplementationDaemon:
         checkpoint_dir = self._ensure_implementation_checkpoint_dir(task)
         timeout_policy = self._implementation_timeout_policy(task)
         lifecycle_record: WorkspaceLifecycleRecord | None = None
+        implementation_started = False
+        lifecycle_race_exception = False
 
         try:
             # Publish a preparing lifecycle claim *before* the cleanup-visible
@@ -9110,16 +9177,10 @@ class PortalImplementationDaemon:
                     )
                     self._active_worktree_lifecycle = lifecycle_record
                 except (FenceMismatchError, OwnershipError, WorktreeLifecycleError) as exc:
-                    return lifecycle_race_result(
-                        reason="worktree_lifecycle_active_transition_failed",
-                        task_id=task.task_id,
-                        attempt=attempt,
-                        extra={
-                            "error": str(exc)[-1000:],
-                            "worktree_path": str(worktree_path),
-                            "branch": branch_name,
-                        },
-                    )
+                    raise WorktreeLifecycleError(
+                        "worktree lifecycle active transition failed: "
+                        f"{str(exc)[-1000:]}"
+                    ) from exc
             self._mark_implementation_started(
                 state,
                 task=task,
@@ -9129,6 +9190,7 @@ class PortalImplementationDaemon:
                 worktree_path=worktree_path,
                 branch_name=branch_name,
             )
+            implementation_started = True
             self._record_event(
                 "implementation_started",
                 {
@@ -9784,6 +9846,10 @@ class PortalImplementationDaemon:
                 )
         except Exception as exc:
             returncode = 1
+            lifecycle_race_exception = (
+                isinstance(exc, WorktreeLifecycleError)
+                and not implementation_started
+            )
             if protected_path_snapshot is not None and not protected_path_violation:
                 protected_path_violation = (
                     self._finalize_implementation_protected_path_fence(
@@ -9839,6 +9905,13 @@ class PortalImplementationDaemon:
                         exception_result=exception_result,
                     )
                 exception_result["cleanup_result"] = cleanup_result
+                if lifecycle_race_exception and lifecycle_record is not None:
+                    exception_result["lifecycle_finalize_result"] = (
+                        self._finalize_worktree_lifecycle(
+                            Path(lifecycle_record.workspace_path),
+                            reason="lifecycle_race_before_provider",
+                        )
+                    )
             except Exception as cleanup_exc:
                 exception_result["cleanup_error"] = str(cleanup_exc)[-1000:]
             self._record_event(
@@ -9872,7 +9945,9 @@ class PortalImplementationDaemon:
         protected_path_external_deferral = bool(protected_path_violation) and (
             protected_mutation_scopes == {"shared_checkout"}
         )
-        attempt_consumed = not protected_path_external_deferral
+        attempt_consumed = not (
+            protected_path_external_deferral or lifecycle_race_exception
+        )
         if attempt_consumed:
             self._record_task_attempt(state, task, attempt)
         else:
@@ -10013,6 +10088,21 @@ class PortalImplementationDaemon:
             result["reason"] = "implementation_protected_path_mutated"
             result["protected_path_violation"] = protected_path_violation
             result["deferred"] = protected_path_external_deferral
+        if lifecycle_race_exception:
+            result.update(
+                lifecycle_race_result(
+                    reason="worktree_lifecycle_transition_failed",
+                    task_id=task.task_id,
+                    attempt=attempt,
+                    extra={
+                        "error": str(exception_result.get("message") or "")[
+                            -1000:
+                        ],
+                        "worktree_path": str(worktree_path),
+                        "branch": branch_name,
+                    },
+                )
+            )
         result["cache_hit"] = result["workspace_setup"]["cache_hit"]
         result["setup_duration_seconds"] = result["workspace_setup"]["setup_duration_seconds"]
         result["saved_duration_seconds"] = result["workspace_setup"]["saved_duration_seconds"]

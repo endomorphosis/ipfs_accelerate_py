@@ -7090,6 +7090,158 @@ def test_implementation_daemon_fences_preparing_worktree_from_peer_merged_cleanu
     assert FENCED_WORKTREE_LIFECYCLE_REQUIREMENT_ID
 
 
+def test_implementation_daemon_reclaims_dead_same_lane_owner_on_opt_in_restart(
+    tmp_path,
+    monkeypatch,
+):
+    from ipfs_accelerate_py.agent_supervisor.worktree_lifecycle import (
+        ProcessBirthIdentity,
+        WorkspaceLifecycleState,
+        WorktreeLifecycleStore,
+    )
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    state_dir = repo / "state"
+    workspace = repo / "worktrees" / "stale"
+    store = WorktreeLifecycleStore(repo_root=repo)
+    store.begin_preparing(
+        task_id="ACCEL-RESTART",
+        canonical_task_cid="cid:accel-restart",
+        attempt=1,
+        lane_id="lane-1",
+        workspace_path=workspace,
+        branch="implementation/accel-restart",
+        merge_target="main",
+        state_dir=str(state_dir.resolve()),
+        owner=ProcessBirthIdentity(
+            pid=2**30 - 11,
+            start_time_ticks=1,
+            boot_id="dead-boot",
+        ),
+    )
+    monkeypatch.setenv(
+        "IPFS_ACCELERATE_AGENT_RECLAIM_DEAD_WORKTREE_LEASES_ON_STARTUP",
+        "1",
+    )
+
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+    )
+
+    assert len(daemon.worktree_lifecycle_restart_recovery) == 1
+    recovered = daemon.worktree_lifecycle.load_workspace(workspace)
+    assert recovered is not None
+    assert recovered.state is WorkspaceLifecycleState.TERMINAL
+    assert recovered.terminal_reason == "controlled_restart_dead_owner"
+
+
+def test_ephemeral_lifecycle_race_defers_without_consuming_attempt(
+    tmp_path,
+    monkeypatch,
+):
+    from ipfs_accelerate_py.agent_supervisor.worktree_lifecycle import (
+        DuplicateAttemptError,
+        LifecycleFailureKind,
+        WorkspaceLifecycleState,
+    )
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "base")
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+        implementation_command="provider-must-not-run",
+        use_ephemeral_worktree=True,
+        worktree_root=repo / "worktrees",
+        worktree_pool_enabled=False,
+    )
+    task = PortalTask(
+        task_id="ACCEL-001",
+        title="Retry lifecycle setup",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="ops",
+        validation=["true"],
+    )
+    canonical_task_cid = daemon._canonical_ref(task)
+    state = TodoTaskState(
+        implementation_attempts={task.task_id: 1},
+        implementation_attempts_by_cid={canonical_task_cid: 1},
+    )
+
+    def fake_seed(worktree_path, _branch_name, *, task=None):
+        worktree_path.mkdir(parents=True)
+        return "baseline"
+
+    monkeypatch.setattr(daemon, "_build_implementation_prompt", lambda *_args: "")
+    monkeypatch.setattr(
+        daemon,
+        "_persist_implementation_context_receipt",
+        lambda *_args, **_kwargs: state_dir / "context.json",
+    )
+    monkeypatch.setattr(daemon, "_create_seeded_worktree", fake_seed)
+    monkeypatch.setattr(
+        daemon,
+        "_sync_worktree_lifecycle_workspace",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            DuplicateAttemptError("target lease has not expired")
+        ),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_cleanup_failed_setup_worktree",
+        lambda *_args, **_kwargs: {
+            "cleaned": False,
+            "reason": "lifecycle_fenced",
+        },
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "run_process_group_stream",
+        lambda *_args, **_kwargs: pytest.fail("provider must not run"),
+    )
+
+    result = daemon._run_implementation(task, state)
+    persisted = TodoTaskState.load(daemon.state_path)
+
+    assert result["lifecycle_race"] is True
+    assert result["failure_kind"] == LifecycleFailureKind.LIFECYCLE_RACE.value
+    assert result["provider_call_allowed"] is False
+    assert result["attempt_consumed"] is False
+    assert result["deferred"] is True
+    assert result["backoff_seconds"] == 30
+    assert persisted.implementation_attempts[task.task_id] == 1
+    assert persisted.implementation_attempts_by_cid[canonical_task_cid] == 1
+    assert daemon.task_queue.is_cooled_down(canonical_task_cid)
+    records = list(daemon.worktree_lifecycle.iter_records())
+    assert not any(
+        record.state is not WorkspaceLifecycleState.TERMINAL
+        for record in records
+    )
+
+
 def test_implementation_daemon_runs_validation_non_interactively(tmp_path, monkeypatch):
     repo = tmp_path / "repo"
     repo.mkdir()
