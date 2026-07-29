@@ -305,7 +305,7 @@ task IDs on this board.
 
 ## RPR-009 Compile substitution, equivalence, adapter, and placement obligations
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
