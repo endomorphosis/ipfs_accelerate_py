@@ -7385,6 +7385,49 @@ def test_implementation_daemon_submodule_gitlink_reconciliation_uses_verified_re
     assert diagnostic["latest"]["conflicts"][0]["selected_commit"] == selected
 
 
+@pytest.mark.parametrize("missing_stage", ["2", "3"])
+def test_implementation_daemon_submodule_gitlink_resolution_fails_closed_when_candidate_unavailable(
+    tmp_path,
+    missing_stage,
+):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    available = _git(submodule, "rev-parse", "HEAD")
+    unavailable = "f" * 40
+    stages = {
+        "1": available,
+        "2": available,
+        "3": available,
+        missing_stage: unavailable,
+    }
+    state_dir = tmp_path / "supervisor-state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=["libs/child"],
+    )
+
+    result = daemon._submodule_gitlink_resolution(
+        "libs/child",
+        stages,
+        task=PortalTask(
+            task_id="AUTO-MISSING",
+            title="Reject incomplete gitlink ancestry",
+            status="todo",
+            completion="manual",
+            priority="P0",
+            track="ops",
+        ),
+    )
+
+    assert result["selected_commit"] == ""
+    assert result["selection_reason"] == ""
+    assert result["missing_candidates"] == [unavailable]
+    assert result["reason"] == "gitlink_candidate_unavailable"
+
+
 def test_implementation_daemon_anchors_relative_recovery_worktrees_to_repo_root(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()

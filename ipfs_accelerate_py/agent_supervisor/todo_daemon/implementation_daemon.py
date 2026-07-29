@@ -19244,20 +19244,6 @@ class PortalImplementationDaemon:
         ]
         if missing_candidates:
             diagnostic["missing_candidates"] = missing_candidates
-            available_candidates = [
-                candidate
-                for candidate in (ours, theirs)
-                if candidate and candidate not in missing_candidates
-            ]
-            if len(available_candidates) == 1:
-                diagnostic.update(
-                    {
-                        "selected_commit": available_candidates[0],
-                        "selection_reason": "only_verified_available_candidate",
-                        "reason": "selected_verified_available_candidate",
-                    }
-                )
-                return diagnostic
             diagnostic["reason"] = "gitlink_candidate_unavailable"
             return diagnostic
 
