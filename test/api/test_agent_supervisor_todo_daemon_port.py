@@ -7720,7 +7720,7 @@ def test_implementation_daemon_uses_shared_merge_receipts_across_lanes(tmp_path)
     assert result["shared_active_merge_task_ids"] == ["ACCEL-002"]
     assert parse_task_file(todo_path, "## ACCEL-")[0].status == "completed"
     assert state.task_statuses["ACCEL-001"] == "completed"
-    assert state.task_statuses["ACCEL-002"] == "waiting"
+    assert state.task_statuses["ACCEL-002"] == "merge-queued"
     assert state.task_statuses["ACCEL-003"] == "ready"
 
 
@@ -9186,7 +9186,8 @@ def test_implementation_supervisor_repoints_mismatched_managed_pid_to_matching_d
     )
     matching_command = (
         f"python {daemon_script} --state-dir {state_dir} --state-prefix portal "
-        f"--todo-path {todo_path} --implement"
+        f"--todo-path {todo_path} --implement "
+        "--task-shard-count 1 --task-shard-index 0"
     )
 
     monkeypatch.setattr(supervisor_module, "process_is_running", lambda pid: int(pid) in {111, 222})

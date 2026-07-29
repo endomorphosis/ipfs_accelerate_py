@@ -21827,6 +21827,11 @@ class PortalImplementationDaemon:
                 f"same path is available as ${IMPLEMENTATION_CHECKPOINT_DIR_ENV}."
             ),
         )
+        admission_policy = str(
+            self._implementation_prompt_policy_appendix(task) or ""
+        ).strip()
+        if admission_policy:
+            rules = (*rules, admission_policy)
         if completion_scope is None:
             rules = (
                 *rules,
@@ -22259,9 +22264,6 @@ class PortalImplementationDaemon:
                 )
                 # One-shot: do not keep replaying after the attempt starts.
                 self._implementation_seed_failure_guidance.pop(key, None)
-        policy = str(self._implementation_prompt_policy_appendix(task) or "").strip()
-        if policy:
-            rendered = f"{rendered.rstrip()}\n\n{policy}\n"
         return rendered
 
     def _build_recommended_actions(self, task: PortalTask) -> list[str]:
