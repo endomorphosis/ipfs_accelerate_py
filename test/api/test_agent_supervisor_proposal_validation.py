@@ -1040,6 +1040,72 @@ def test_in_scope_sensitive_test_source_still_rejects_secret_content(
     assert ProposalFindingCode.SECRET_CHANGE_FORBIDDEN in _finding_codes(result)
 
 
+@pytest.mark.parametrize(
+    "canary",
+    (
+        "literal-secret-value",
+        "super-secret-value",
+        "env://WALLET_RPC_TOKEN",
+    ),
+)
+def test_in_scope_security_test_accepts_explicit_synthetic_secret_canary(
+    canary: str,
+) -> None:
+    path = "tests/security/test_wallet_processor_secrets.py"
+    before = (
+        "def test_inline_secret_is_rejected():\n"
+        "    options = {}\n"
+        "    assert options == {}\n"
+    )
+    after = (
+        "def test_inline_secret_is_rejected():\n"
+        f'    options = {{"api_key": "{canary}"}}\n'
+        f'    assert options["api_key"] == "{canary}"\n'
+    )
+
+    result = validate_implementation_proposal(
+        _proposal(_entry(path, before=before, after=after)),
+        policy=_policy(
+            allowed_paths=(path,),
+            task_owned_paths=(path,),
+        ),
+    )
+
+    assert result.accepted
+    assert ProposalFindingCode.SECRET_CHANGE_FORBIDDEN not in _finding_codes(result)
+
+
+@pytest.mark.parametrize(
+    "canary",
+    (
+        "literal-secret-value",
+        "super-secret-value",
+        "env://WALLET_RPC_TOKEN",
+    ),
+)
+def test_production_source_still_rejects_synthetic_secret_canary(
+    canary: str,
+) -> None:
+    path = "ipfs_accelerate_py/agent_supervisor/canary.py"
+
+    result = validate_implementation_proposal(
+        _proposal(
+            _entry(
+                path,
+                before="OPTIONS = {}\n",
+                after=f'OPTIONS = {{"api_key": "{canary}"}}\n',
+            )
+        ),
+        policy=_policy(
+            allowed_paths=(path,),
+            task_owned_paths=(path,),
+        ),
+    )
+
+    assert not result.accepted
+    assert ProposalFindingCode.SECRET_CHANGE_FORBIDDEN in _finding_codes(result)
+
+
 def test_unrelated_change_with_preexisting_secret_like_content_is_accepted() -> None:
     before = 'api_key = _coalesce_env("EXAMPLE_API_KEY")\nVALUE = 1\n'
     after = 'api_key = _coalesce_env("EXAMPLE_API_KEY")\nVALUE = 2\n'

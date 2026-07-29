@@ -57,6 +57,65 @@ def test_guide_rescue_for_incomplete_expected_outputs() -> None:
     assert compact["receipt_id"] == review.receipt_id
 
 
+def test_directory_output_is_satisfied_by_changed_descendants() -> None:
+    review = review_implementation_failure(
+        task_id="WALPROC-029",
+        attempt=1,
+        expected_outputs=(
+            "ipfs_datasets_py/ipfs_datasets_py/mcp_server/tools/wallet_processor_tools",
+            "ipfs_datasets_py/tests/mcp/test_wallet_processor_tools.py",
+        ),
+        changed_paths=(
+            "ipfs_datasets_py/ipfs_datasets_py/mcp_server/tools/wallet_processor_tools/__init__.py",
+            "ipfs_datasets_py/ipfs_datasets_py/mcp_server/tools/wallet_processor_tools/ingest.py",
+            "ipfs_datasets_py/tests/mcp/test_wallet_processor_tools.py",
+        ),
+        validation_result={
+            "attempted": True,
+            "passed": False,
+            "returncode": 1,
+            "reason": "validation_failed",
+            "failed_commands": [
+                "python -m pytest "
+                "ipfs_datasets_py/tests/mcp/test_wallet_processor_tools.py -q"
+            ],
+        },
+    )
+
+    assert review.missing_expected_outputs == ()
+    assert (
+        FailureReviewReason.INCOMPLETE_EXPECTED_OUTPUTS.value
+        not in review.reason_codes
+    )
+
+
+def test_directory_output_does_not_admit_prefix_siblings() -> None:
+    review = review_implementation_failure(
+        task_id="WALPROC-029",
+        attempt=1,
+        expected_outputs=(
+            "ipfs_datasets_py/ipfs_datasets_py/mcp_server/tools/wallet_processor_tools",
+        ),
+        changed_paths=(
+            "ipfs_datasets_py/ipfs_datasets_py/mcp_server/tools/wallet_processor_tools_extra.py",
+        ),
+        validation_result={
+            "attempted": False,
+            "passed": False,
+            "returncode": 78,
+            "reason": "proposal_gate_failed",
+        },
+    )
+
+    assert review.missing_expected_outputs == (
+        "ipfs_datasets_py/ipfs_datasets_py/mcp_server/tools/wallet_processor_tools",
+    )
+    assert (
+        FailureReviewReason.INCOMPLETE_EXPECTED_OUTPUTS.value
+        in review.reason_codes
+    )
+
+
 def test_guide_rescue_for_out_of_scope_refactor_paths() -> None:
     review = review_implementation_failure(
         task_id="EVAL-002",

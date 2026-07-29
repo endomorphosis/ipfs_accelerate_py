@@ -264,17 +264,22 @@ def _missing_expected_outputs(
     workspace_path: Path | None,
 ) -> tuple[str, ...]:
     expected = _normalized_paths(expected_outputs)
-    changed = set(_normalized_paths(changed_paths))
+    changed = _normalized_paths(changed_paths)
     missing: list[str] = []
     for path in expected:
-        if path in changed:
+        boundary = path.rstrip("/") + "/"
+        if any(
+            changed_path == path or changed_path.startswith(boundary)
+            for changed_path in changed
+        ):
             continue
         if workspace_path is None:
             missing.append(path)
             continue
-        # Unchanged existing expected outputs are still "missing work" when the
-        # task requires producing them, but they are called out separately so
-        # rescue guidance can say "create or update" rather than "out of scope".
+        # Output declarations are proposal-authority boundaries: a directory
+        # output is fulfilled by changed descendants, while an unchanged
+        # existing output remains missing work. Keep the boundary separator so
+        # a sibling with the same textual prefix cannot satisfy the output.
         missing.append(path)
     return tuple(missing)
 
