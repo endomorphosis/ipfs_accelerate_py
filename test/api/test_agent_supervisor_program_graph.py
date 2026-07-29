@@ -5,8 +5,9 @@ and, via the ranking provider import, ``vfs/graphrag-projection@1`` (optional
 GraphRAG ranking only).  Construction and ranking remain separate surfaces.
 
 Also anchors the synthetic objective validation repair discovery term so
-supervisor exact-text scans re-find the VFS-G040 validation gate without
-mixing that meta term into content-addressed graph identity.
+supervisor exact-text scans re-find the VFS-G144 validation gate (parent
+VFS-G040; goal packet with VFS-G041) without mixing that meta term into
+content-addressed graph identity.
 """
 
 from __future__ import annotations
@@ -24,6 +25,8 @@ from ipfs_accelerate_py.agent_supervisor.ipfs_datasets_program_graph_provider im
     graphrag_projection_evidence_terms,
 )
 from ipfs_accelerate_py.agent_supervisor.program_graph import (
+    DEFAULT_MAX_CHUNK_EDGES,
+    DEFAULT_MAX_CHUNK_NODES,
     DanglingEdgeError,
     ForgedIdentityError,
     GraphChunk,
@@ -31,7 +34,9 @@ from ipfs_accelerate_py.agent_supervisor.program_graph import (
     GraphIndex,
     IllegalCycleError,
     OBJECTIVE_GOAL_ID,
+    OBJECTIVE_GOAL_PACKET_IDS,
     OBJECTIVE_VALIDATION_REPAIR_EVIDENCE,
+    OBJECTIVE_VALIDATION_REPAIR_GOAL_ID,
     PROGRAM_GRAPH_EVIDENCE,
     PROGRAM_GRAPH_SCHEMA,
     ProgramEdgeKind,
@@ -41,6 +46,7 @@ from ipfs_accelerate_py.agent_supervisor.program_graph import (
     ResolverStatus,
     SourceSpan,
     all_program_edge_kinds,
+    all_program_graph_evidence_terms,
     all_program_node_kinds,
     build_program_graph,
     make_edge,
@@ -876,17 +882,21 @@ def test_canonical_construction_separated_from_optional_graphrag_ranking() -> No
 
 
 def test_objective_validation_repair_evidence_term_discoverable() -> None:
-    """VFS-G040 objective validation repair: exact-text discovery key present.
+    """VFS-G144 objective validation repair: exact-text discovery key present.
 
     Anchors the synthetic phrase ``objective validation repair`` so objective
     scans re-find the validation gate.  Domain evidence stays separate:
     construction (``vfs/program-graph@1``) vs optional ranking
     (``vfs/graphrag-projection@1``).  The repair term never enters graph_id
-    identity or ranking result authority.
+    identity or ranking result authority.  Parent domain goal remains
+    VFS-G040; the repair obligation is owned by VFS-G144 in the goal packet
+    with VFS-G041.
     """
 
     assert OBJECTIVE_VALIDATION_REPAIR_EVIDENCE == "objective validation repair"
     assert OBJECTIVE_GOAL_ID == "VFS-G040"
+    assert OBJECTIVE_VALIDATION_REPAIR_GOAL_ID == "VFS-G144"
+    assert OBJECTIVE_GOAL_PACKET_IDS == ("VFS-G041", "VFS-G144")
     assert objective_validation_repair_evidence_terms() == (
         "objective validation repair",
     )
@@ -898,12 +908,19 @@ def test_objective_validation_repair_evidence_term_discoverable() -> None:
         "vfs/graphrag-projection@1",
     )
     assert "objective validation repair" not in covered_evidence_terms()
-    # Full discovery set includes the validation-gate meta term last.
+    # Construction-only full set (no ranking surface).
+    assert all_program_graph_evidence_terms() == (
+        "vfs/program-graph@1",
+        "objective validation repair",
+    )
+    # Full discovery set includes ranking then the validation-gate meta term.
     assert all_covered_evidence_terms() == (
         "vfs/program-graph@1",
         "vfs/graphrag-projection@1",
         "objective validation repair",
     )
+    assert OBJECTIVE_VALIDATION_REPAIR_EVIDENCE in all_covered_evidence_terms()
+    assert OBJECTIVE_VALIDATION_REPAIR_EVIDENCE in all_program_graph_evidence_terms()
 
     graph = _fixture_graph()
     payload = graph.to_dict()
@@ -927,3 +944,92 @@ def test_objective_validation_repair_evidence_term_discoverable() -> None:
         # Separate canonical construction from optional GraphRAG ranking.
         assert body["canonical_construction"] is False
         assert body["evidence_program_graph"] == "vfs/program-graph@1"
+
+
+def test_vfs_g144_acceptance_provenance_chunks_ranking_and_non_authority() -> None:
+    """VFS-G144 acceptance: provenance, bounded chunks, ranking, degrade, no authority.
+
+    Proves the full acceptance subset for the objective validation repair
+    child of VFS-G040, and that construction identity stays stable for the
+    VFS-G041 call-slice packet partner (query indexes must not rewrite
+    ``graph_id`` / node / edge content addresses).
+    """
+
+    assert OBJECTIVE_VALIDATION_REPAIR_GOAL_ID == "VFS-G144"
+    assert "VFS-G041" in OBJECTIVE_GOAL_PACKET_IDS
+    assert "VFS-G144" in OBJECTIVE_GOAL_PACKET_IDS
+    assert "objective validation repair" in all_covered_evidence_terms()
+
+    graph = _fixture_graph()
+    original_id = graph.graph_id
+    original_records = graph.canonical_records()
+
+    # Node and edge provenance is content bound.
+    for node in graph.nodes:
+        assert node.binding.blob_cid
+        assert node.binding.producer == PRODUCER
+        assert node.binding.forest_id == FOREST_ID
+        assert node.node_id.startswith("pnode-")
+        assert isinstance(node.binding.resolver_status, ResolverStatus)
+    for edge in graph.edges:
+        assert edge.binding.blob_cid
+        assert edge.edge_id.startswith("pedge-")
+        assert edge.binding.forest_id == FOREST_ID
+        assert isinstance(edge.binding.resolver_status, ResolverStatus)
+
+    # Graph chunks are deterministic and bounded.
+    chunks = graph.chunk_all_components(
+        max_nodes=DEFAULT_MAX_CHUNK_NODES,
+        max_edges=DEFAULT_MAX_CHUNK_EDGES,
+    )
+    assert chunks
+    for chunk in chunks:
+        assert len(chunk.nodes) <= DEFAULT_MAX_CHUNK_NODES
+        assert len(chunk.edges) <= DEFAULT_MAX_CHUNK_EDGES
+        assert chunk.chunk_id.startswith("pchunk-")
+        assert chunk.forest_id == FOREST_ID
+    # Deterministic re-chunk yields the same identities.
+    chunks_again = graph.chunk_all_components(
+        max_nodes=DEFAULT_MAX_CHUNK_NODES,
+        max_edges=DEFAULT_MAX_CHUNK_EDGES,
+    )
+    assert [c.chunk_id for c in chunks] == [c.chunk_id for c in chunks_again]
+    assert [c.chunk_key for c in chunks] == [c.chunk_key for c in chunks_again]
+
+    def _unavailable(_name: str) -> Any:
+        raise ModuleNotFoundError("ipfs_datasets_py unavailable in test")
+
+    # Provider absence degrades explicitly to local ranking fallback.
+    provider = IpfsDatasetsProgramGraphProvider(importer=_unavailable)
+    capability = provider.capabilities()
+    assert capability is not None
+    projection, result = provider.project_and_query(graph, "pkg.mod.entry")
+
+    # Retrieval returns compact references and ranking reasons.
+    assert result.references
+    for ref in result.references:
+        body = ref.to_dict()
+        assert "source_body" not in body
+        assert "source_code" not in body
+        assert "completion" not in body
+        assert any(
+            key in body for key in ("ranking_reason", "score", "reasons", "node_id")
+        )
+
+    # GraphRAG output cannot create completion or proof authority.
+    for body in (projection.to_dict(), result.to_dict()):
+        assert body["ranking_only"] is True
+        assert body["completion_authority"] is False
+        assert body["mutation_authority"] is False
+        assert body["creates_proofs"] is False
+        assert body["creates_findings"] is False
+        assert body["non_authoritative"] is True
+        assert body["safe_for_completion_reasoning"] is False
+        assert body["safe_for_proof_authority"] is False
+        assert "objective validation repair" not in str(body.get("evidence"))
+
+    # Construction identity preserved for VFS-G041 query-index consumers.
+    assert graph.graph_id == original_id
+    assert graph.canonical_records() == original_records
+    assert result.result_id != graph.graph_id
+    assert not result.result_id.startswith("pgraph-")
