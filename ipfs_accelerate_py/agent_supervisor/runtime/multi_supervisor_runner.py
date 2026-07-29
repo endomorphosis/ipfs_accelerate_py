@@ -758,6 +758,7 @@ def implementation_supervisor_common_args(
     codebase_scan_cooldown_seconds: int = 900,
     codebase_refill_timeout_seconds: int = 600,
     llm_merge_resolver_timeout_seconds: int = 1800,
+    strict_task_sharding: bool = False,
 ) -> list[str]:
     """Return standard common args for long-running implementation supervisors."""
 
@@ -801,6 +802,8 @@ def implementation_supervisor_common_args(
         args.extend(["--implementation-command", implementation_command])
     if effective_llm_merge_resolver_command:
         args.extend(["--llm-merge-resolver-command", effective_llm_merge_resolver_command])
+    if strict_task_sharding:
+        args.append("--strict-task-sharding")
     return args
 
 
@@ -1355,6 +1358,14 @@ def build_arg_parser() -> argparse.ArgumentParser:
             "Each lane gets isolated state/worktree paths and task-shard args; merges remain serialized."
         ),
     )
+    parser.add_argument(
+        "--implementation-supervisor-strict-task-sharding",
+        action="store_true",
+        help=(
+            "Disable cross-shard ready-task fallback in every implementation-supervisor "
+            "lane, preventing lanes from borrowing the same retry work."
+        ),
+    )
     parser.add_argument("--detach", action="store_true")
     return parser
 
@@ -1440,8 +1451,26 @@ def common_args_from_parsed_args(args: argparse.Namespace) -> list[str]:
                 codebase_scan_cooldown_seconds=args.implementation_supervisor_codebase_scan_cooldown_seconds,
                 codebase_refill_timeout_seconds=args.implementation_supervisor_codebase_refill_timeout_seconds,
                 llm_merge_resolver_timeout_seconds=args.implementation_supervisor_llm_merge_resolver_timeout_seconds,
+                strict_task_sharding=bool(
+                    getattr(
+                        args,
+                        "implementation_supervisor_strict_task_sharding",
+                        False,
+                    )
+                ),
             )
         )
+    if (
+        bool(
+            getattr(
+                args,
+                "implementation_supervisor_strict_task_sharding",
+                False,
+            )
+        )
+        and "--strict-task-sharding" not in common_args
+    ):
+        common_args.append("--strict-task-sharding")
     common_args.extend(args.common_arg)
     return common_args
 
