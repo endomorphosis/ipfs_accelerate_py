@@ -408,7 +408,7 @@ compact references and bounded spans only.
 
 ## VFS-021 Compile minimal dependency-complete proof and counterexample contexts
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P1
 - Track: formal-proof
