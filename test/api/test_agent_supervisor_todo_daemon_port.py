@@ -11,6 +11,7 @@ import subprocess
 import sys
 import time
 from contextlib import contextmanager
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
@@ -156,6 +157,8 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
     parse_args as parse_implementation_daemon_args,
     pending_retry_budget_repair_sources,
     retry_budget_repair_validation_paths,
+    task_declared_output_paths,
+    task_evidence_output_paths,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
     ObjectiveCompletionArtifactRefreshError,
@@ -5343,6 +5346,76 @@ def test_implementation_proposal_accepts_exact_task_declared_and_chain(
         "benchmarks/check.py",
         "--offline",
     )
+
+
+def test_implementation_proposal_accepts_only_typed_path_evidence_authority(
+    tmp_path: Path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "base")
+    baseline = _git(repo, "rev-parse", "HEAD")
+    manifest_path = (
+        "data/datasets_contract_analysis/manifests/coverage.json"
+    )
+    manifest = repo / manifest_path
+    manifest.parent.mkdir(parents=True)
+    manifest.write_text('{"coverage": []}\n', encoding="utf-8")
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=[],
+    )
+    common_metadata = {
+        "missing evidence": manifest_path,
+        "evidence subset": manifest_path,
+    }
+    typed_task = PortalTask(
+        task_id="DSCON-003",
+        title="Write repository coverage evidence",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="datasets-contract-analysis",
+        outputs=["README.md"],
+        validation=["git diff --check"],
+        metadata={
+            **common_metadata,
+            "evidence outputs": manifest_path,
+        },
+    )
+    prose_only_task = replace(
+        typed_task,
+        metadata=common_metadata,
+    )
+
+    accepted = daemon._validate_implementation_patch(
+        repo,
+        typed_task,
+        baseline_ref=baseline,
+    )
+    denied = daemon._validate_implementation_patch(
+        repo,
+        prose_only_task,
+        baseline_ref=baseline,
+    )
+
+    assert accepted.accepted is True
+    assert accepted.proposal.changed_paths == (manifest_path,)
+    assert denied.accepted is False
+    assert "path_outside_scope" in {
+        finding.code.value for finding in denied.findings
+    }
 
 
 def test_stale_submodule_rebase_skips_branch_already_merged_without_switching_checkout(
@@ -14753,7 +14826,10 @@ def test_completion_gap_prompt_authorizes_only_exact_predicted_files(
     assert edit_policy["validation_may_read_other_paths"] is True
     assert edit_policy["operator_directive"] == ""
     assert capsule["scope"]["allowed_edit_paths"] == edit_policy["allowed_paths"]
-    assert capsule["scope"]["expected_outputs"] == task.outputs
+    assert capsule["scope"]["expected_outputs"] == [
+        "docs/runtime.md",
+        "src/completion_check.py",
+    ]
 
 
 def test_completion_gap_without_precise_targets_is_not_executed(tmp_path):
@@ -14833,6 +14909,163 @@ def test_general_task_prompt_is_not_narrowed_by_completion_gap_guard(tmp_path):
 
     assert "Strict completion-gap edit authorization" not in prompt
     assert "touching as many files as needed" in prompt
+
+
+def test_general_task_authorizes_identity_bound_evidence_outputs(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text("# Todos\n", encoding="utf-8")
+    state_dir = repo / "state"
+    manifests = (
+        "data/datasets_contract_analysis/manifests/repository-root.json",
+        "data/datasets_contract_analysis/manifests/coverage.json",
+    )
+    task = PortalTask(
+        task_id="DSCON-003",
+        title="Build deterministic repository inventory",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="datasets-contract-analysis",
+        outputs=["ipfs_datasets_py/processors/datasets/repository.py"],
+        validation=["git diff --check"],
+        metadata={
+            "evidence outputs": ", ".join(manifests),
+            "missing evidence": ", ".join(manifests),
+            "evidence subset": ", ".join(manifests),
+            "evidence inputs": (
+                "data/datasets_contract_analysis/agent_supervisor/discovery"
+            ),
+        },
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## DSCON-",
+    )
+
+    assert task_evidence_output_paths(task) == manifests
+    assert task_declared_output_paths(task) == (
+        "ipfs_datasets_py/processors/datasets/repository.py",
+        *manifests,
+    )
+    assert daemon._proposal_scope_paths(task) == tuple(
+        sorted(task_declared_output_paths(task))
+    )
+    capsule = json.loads(daemon._build_implementation_prompt(task, attempt=1))
+    assert capsule["authority"]["edit_policy"]["mode"] == (
+        "task_output_and_evidence_exact"
+    )
+    assert capsule["authority"]["edit_policy"]["allowed_paths"] == list(
+        task_declared_output_paths(task)
+    )
+    assert capsule["scope"]["expected_outputs"] == list(
+        task_declared_output_paths(task)
+    )
+    assert capsule["scope"]["evidence_output_paths"] == list(manifests)
+
+
+@pytest.mark.parametrize(
+    "metadata",
+    [
+        {
+            "missing evidence": "data/manifests/coverage.json",
+            "evidence subset": "data/manifests/coverage.json",
+        },
+        {
+            "evidence outputs": "data/manifests/coverage.json",
+            "missing evidence": "data/manifests/coverage.json",
+            "evidence subset": "operator approval",
+        },
+        {
+            "evidence outputs": (
+                "data/manifests/coverage.json, ../outside.json"
+            ),
+            "missing evidence": (
+                "data/manifests/coverage.json, ../outside.json"
+            ),
+            "evidence subset": (
+                "data/manifests/coverage.json, ../outside.json"
+            ),
+        },
+        {
+            "evidence outputs": "data/discovery/forged.json",
+            "missing evidence": "data/discovery/forged.json",
+            "evidence subset": "data/discovery/forged.json",
+            "evidence inputs": "data/discovery",
+        },
+        {
+            "evidence outputs": (
+                "data/manifests/coverage.json, "
+                "data/manifests/coverage.json"
+            ),
+            "missing evidence": "data/manifests/coverage.json",
+            "evidence subset": "data/manifests/coverage.json",
+        },
+    ],
+)
+def test_evidence_output_authority_fails_closed(metadata):
+    task = PortalTask(
+        task_id="DSCON-003",
+        title="Reject forged evidence scope",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="datasets-contract-analysis",
+        outputs=["src/repository.py"],
+        metadata=metadata,
+    )
+
+    assert task_evidence_output_paths(task) == ()
+    assert task_declared_output_paths(task) == ("src/repository.py",)
+
+
+def test_completion_gap_does_not_authorize_typed_evidence_outputs(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text("# Todos\n", encoding="utf-8")
+    state_dir = repo / "state"
+    evidence_path = "data/manifests/coverage.json"
+    task = PortalTask(
+        task_id="ACCEL-001",
+        title="Keep completion repair scope exact",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="docs",
+        outputs=["docs/runtime.md"],
+        metadata={
+            "merge role": "completion_gate_gap",
+            "predicted files": "docs/runtime.md",
+            "evidence outputs": evidence_path,
+            "missing evidence": evidence_path,
+            "evidence subset": evidence_path,
+        },
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+    )
+
+    capsule = json.loads(daemon._build_implementation_prompt(task, attempt=1))
+
+    assert capsule["authority"]["edit_policy"]["allowed_paths"] == [
+        "docs/runtime.md"
+    ]
+    assert capsule["authority"]["edit_policy"]["read_only_outputs"] == [
+        evidence_path
+    ]
+    assert capsule["scope"]["expected_outputs"] == ["docs/runtime.md"]
+    assert capsule["scope"]["evidence_output_paths"] == []
 
 
 def test_implementation_protected_paths_are_normalized_and_unsafe_values_rejected(
@@ -14938,6 +15171,51 @@ def test_task_declaring_operator_protected_file_is_skipped_before_launch(tmp_pat
         "task_id": "ACCEL-001",
         "attempt": 1,
         "protected_paths": ["implementation_plan/policies/approval.json"],
+    }
+
+
+def test_typed_evidence_output_cannot_override_operator_protected_path(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    protected_path = "data/manifests/coverage.json"
+    todo_path = repo / "todo.md"
+    todo_path.write_text("# Todos\n", encoding="utf-8")
+    state_dir = repo / "state"
+    task = PortalTask(
+        task_id="DSCON-003",
+        title="Attempt protected evidence output",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="datasets-contract-analysis",
+        outputs=["src/coverage.py"],
+        metadata={
+            "evidence outputs": protected_path,
+            "missing evidence": protected_path,
+            "evidence subset": protected_path,
+        },
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## DSCON-",
+        implementation_command="must-not-run",
+        implementation_protected_paths=[protected_path],
+    )
+
+    result = daemon._run_implementation(task, TodoTaskState())
+
+    assert result == {
+        "skipped": True,
+        "reason": "implementation_protected_path_declared",
+        "task_id": "DSCON-003",
+        "attempt": 1,
+        "protected_paths": [protected_path],
     }
 
 

@@ -27,6 +27,11 @@ from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
 from .dataset_store import DatasetArtifact, ObjectiveDatasetStore
+from .evidence_output_scope import (
+    EVIDENCE_OUTPUTS_METADATA_KEY,
+    evidence_output_path_is_excluded,
+    normalize_evidence_output_path,
+)
 from .scan_receipts import (
     RefillScanResult,
     ScanTerminalReason,
@@ -1919,6 +1924,10 @@ class ObjectiveFinding:
 
     def to_dict(self) -> dict[str, Any]:
         payload = asdict(self)
+        evidence_outputs = objective_finding_evidence_output_paths(
+            self,
+            excluded_paths=(DEFAULT_DISCOVERY_OUTPUT_PATH,),
+        )
         # Interchange aliases let the quality gate consume findings without
         # importing this module (which would create a planning-layer cycle).
         payload["acceptance_criteria"] = list(
@@ -1929,6 +1938,7 @@ class ObjectiveFinding:
         )
         payload["validation_commands"] = [self.validation] if self.validation else []
         payload["predicted_paths"] = list(self.predicted_files or self.outputs)
+        payload["evidence_outputs"] = evidence_outputs
         payload["semantic_identity"] = (
             self.semantic_identity
             or self.dedupe_key
@@ -1967,6 +1977,7 @@ class ObjectiveTaskRecord:
     finding: ObjectiveFinding
     discovery_path: Path
     depends_on: tuple[str, ...] = ()
+    evidence_outputs: tuple[str, ...] | None = None
 
 
 @dataclass(frozen=True)
@@ -7839,6 +7850,51 @@ def _unique_strings(values: Iterable[str]) -> list[str]:
     return list(dict.fromkeys(str(value).strip() for value in values if str(value).strip()))
 
 
+def objective_finding_evidence_output_paths(
+    finding: ObjectiveFinding,
+    *,
+    excluded_paths: Iterable[str | os.PathLike[str]] = (),
+) -> list[str]:
+    """Project exact missing path evidence into bounded edit authority.
+
+    Evidence prose remains read-only.  A requirement is projected only when it
+    is in both the finding's missing set and execution subset, the evidence
+    policy classifies it as a path, and it is a canonical file path outside the
+    objective/discovery control plane.  Paths already present in ``Outputs`` do
+    not need a second declaration.
+    """
+
+    missing = {
+        str(value).strip()
+        for value in finding.missing_evidence
+        if str(value).strip()
+    }
+    evidence_subset = finding.evidence_subset or finding.missing_evidence
+    declared_outputs = {
+        normalized
+        for value in finding.outputs
+        if (normalized := normalize_evidence_output_path(value))
+    }
+    excluded = (finding.objective_path, *tuple(excluded_paths))
+    projected: list[str] = []
+    for requirement in evidence_subset:
+        raw_requirement = str(requirement).strip()
+        if raw_requirement not in missing:
+            continue
+        path = normalize_evidence_output_path(raw_requirement)
+        if (
+            not path
+            or path in declared_outputs
+            or EvidenceSourcePolicy.requirement_kind(raw_requirement)
+            is not EvidenceRequirementKind.PATH
+            or evidence_output_path_is_excluded(path, excluded)
+        ):
+            continue
+        if path not in projected:
+            projected.append(path)
+    return projected
+
+
 def _completion_goal_bindings(value: Any) -> dict[str, list[str]]:
     """Normalize explicit packet completion authority.
 
@@ -9370,7 +9426,11 @@ Rejection reasons: {", ".join(finding.rejection_reasons) or "none (accepted)"}
     return path
 
 
-def _objective_finding_task_contract(finding: ObjectiveFinding) -> dict[str, Any]:
+def _objective_finding_task_contract(
+    finding: ObjectiveFinding,
+    *,
+    evidence_outputs: Sequence[str] | None = None,
+) -> dict[str, Any]:
     """Return stable execution-contract material for one objective finding.
 
     Discovery locations and objective-heap paths are provenance, so they are
@@ -9397,8 +9457,24 @@ def _objective_finding_task_contract(finding: ObjectiveFinding) -> dict[str, Any
     status, is_schedulable, review_only = objective_finding_execution_state(
         finding
     )
-    return {
-        "schema": "ipfs_accelerate_py/agent-supervisor/objective-finding-task-contract@1",
+    if evidence_outputs is None:
+        evidence_outputs = objective_finding_evidence_output_paths(
+            finding,
+            excluded_paths=(DEFAULT_DISCOVERY_OUTPUT_PATH,),
+        )
+    normalized_evidence_outputs = sorted(
+        {
+            normalized
+            for value in evidence_outputs
+            if (normalized := normalize_evidence_output_path(value))
+        }
+    )
+    contract_version = 2 if normalized_evidence_outputs else 1
+    contract = {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            f"objective-finding-task-contract@{contract_version}"
+        ),
         "finding_fingerprint": text(finding.fingerprint),
         "goal_id": text(finding.goal_id),
         "title": text(finding.title),
@@ -9419,12 +9495,23 @@ def _objective_finding_task_contract(finding: ObjectiveFinding) -> dict[str, Any
         "is_schedulable": is_schedulable,
         "review_only": review_only,
     }
+    if normalized_evidence_outputs:
+        contract["evidence_outputs"] = normalized_evidence_outputs
+    return contract
 
 
-def objective_finding_task_identity(task_id: str, finding: ObjectiveFinding) -> TaskIdentity:
+def objective_finding_task_identity(
+    task_id: str,
+    finding: ObjectiveFinding,
+    *,
+    evidence_outputs: Sequence[str] | None = None,
+) -> TaskIdentity:
     """Return the revision-bound work identity for an objective finding."""
 
-    contract = _objective_finding_task_contract(finding)
+    contract = _objective_finding_task_contract(
+        finding,
+        evidence_outputs=evidence_outputs,
+    )
     contract_fingerprint = sha256(
         json.dumps(
             contract,
@@ -9433,25 +9520,56 @@ def objective_finding_task_identity(task_id: str, finding: ObjectiveFinding) -> 
             ensure_ascii=False,
         ).encode("utf-8")
     ).hexdigest()
+    contract_version = 2 if contract.get("evidence_outputs") else 1
 
     return canonical_task_identity(
         {
             "task_id": task_id,
-            "dedupe_key": f"objective-finding-contract/v1/{contract_fingerprint}",
+            "dedupe_key": (
+                "objective-finding-contract/"
+                f"v{contract_version}/{contract_fingerprint}"
+            ),
         },
         board_namespace="objective-graph",
         source_path=finding.objective_path,
     )
 
 
-def objective_finding_conflict_record(task_id: str, finding: ObjectiveFinding) -> dict[str, Any]:
+def objective_finding_conflict_record(
+    task_id: str,
+    finding: ObjectiveFinding,
+    *,
+    evidence_outputs: Sequence[str] | None = None,
+) -> dict[str, Any]:
     """Return canonical transition, identity, and conflict metadata."""
 
-    identity = objective_finding_task_identity(task_id, finding)
+    if evidence_outputs is None:
+        evidence_outputs = objective_finding_evidence_output_paths(
+            finding,
+            excluded_paths=(DEFAULT_DISCOVERY_OUTPUT_PATH,),
+        )
+    evidence_outputs = sorted(
+        {
+            normalized
+            for value in evidence_outputs
+            if (normalized := normalize_evidence_output_path(value))
+        }
+    )
+    identity = objective_finding_task_identity(
+        task_id,
+        finding,
+        evidence_outputs=evidence_outputs,
+    )
     status, is_schedulable, review_only = objective_finding_execution_state(
         finding
     )
-    predicted_files = _unique_strings([*(finding.predicted_files or finding.outputs), *finding.outputs])
+    predicted_files = _unique_strings(
+        [
+            *(finding.predicted_files or finding.outputs),
+            *finding.outputs,
+            *evidence_outputs,
+        ]
+    )
     evidence_subset = _unique_strings(finding.evidence_subset or finding.missing_evidence)
     acceptance_subset = _unique_strings(finding.acceptance_subset or evidence_subset)
     preconditions = _unique_strings(
@@ -9488,6 +9606,7 @@ def objective_finding_conflict_record(task_id: str, finding: ObjectiveFinding) -
         "preconditions": preconditions,
         "effects": effects,
         "evidence_subset": evidence_subset,
+        "evidence_outputs": evidence_outputs,
         "depends_on": _unique_strings(finding.dependencies),
         "dependency_task_ids": _unique_strings(finding.dependencies),
         "conflicts": _unique_strings(finding.conflicts),
@@ -9507,7 +9626,7 @@ def objective_finding_conflict_record(task_id: str, finding: ObjectiveFinding) -
         "predicted_files": predicted_files,
         "files": predicted_files,
         "changed_paths": _unique_strings(finding.changed_paths),
-        "outputs": _unique_strings(finding.outputs),
+        "outputs": _unique_strings([*finding.outputs, *evidence_outputs]),
         "ast_symbols": _unique_strings(finding.ast_symbols or split_terms(finding.ast_query)),
         "interfaces": _unique_strings(finding.interfaces),
         "submodules": _unique_strings(finding.submodules),
@@ -9600,6 +9719,7 @@ def render_task_block(
     depends_on: Sequence[str] = (),
     bundle_shard: str = "",
     discovery_output_path: str = DEFAULT_DISCOVERY_OUTPUT_PATH,
+    evidence_outputs: Sequence[str] | None = None,
 ) -> str:
     manual_review_required = objective_finding_requires_manual_review(finding)
     task_status, task_is_schedulable, task_review_only = (
@@ -9621,6 +9741,18 @@ def render_task_block(
         if str(item).strip()
     ]
     unique_outputs = list(dict.fromkeys(outputs))
+    if evidence_outputs is None:
+        evidence_outputs = objective_finding_evidence_output_paths(
+            finding,
+            excluded_paths=(discovery_output_path,),
+        )
+    unique_evidence_outputs = _unique_strings(evidence_outputs)
+    evidence_outputs_line = (
+        f"\n- {EVIDENCE_OUTPUTS_METADATA_KEY.capitalize()}: "
+        + ", ".join(unique_evidence_outputs)
+        if unique_evidence_outputs
+        else ""
+    )
     missing = ", ".join(finding.missing_evidence)
     refinement = finding.refinement or "Refine the objective heap if the gap needs smaller child goals."
     parents = ", ".join(finding.parent_goal_ids) or "none"
@@ -9631,7 +9763,11 @@ def render_task_block(
         if finding.goal_packet_key and packet_goals
         else ""
     )
-    identity = objective_finding_task_identity(task_id, finding)
+    identity = objective_finding_task_identity(
+        task_id,
+        finding,
+        evidence_outputs=unique_evidence_outputs,
+    )
     dependency_ids = _unique_strings([*depends_on, *finding.dependencies])
     evidence_subset = _unique_strings(
         finding.evidence_subset or finding.missing_evidence
@@ -9690,7 +9826,7 @@ def render_task_block(
 - Priority: {finding.priority}
 - Track: {finding.track}
 - Depends on: {", ".join(dependency_ids)}
-- Outputs: {", ".join(unique_outputs)}
+- Outputs: {", ".join(unique_outputs)}{evidence_outputs_line}
 - Validation: {finding.validation}
 - Evidence inputs: {discovery_output_path}
 - Discovery evidence: {discovery_path}
@@ -9768,22 +9904,45 @@ def write_bundle_shards(
     for record in records:
         groups.setdefault(record.finding.bundle_key, []).append(record)
 
+    def record_evidence_outputs(record: ObjectiveTaskRecord) -> tuple[str, ...]:
+        if record.evidence_outputs is not None:
+            return tuple(record.evidence_outputs)
+        return tuple(
+            objective_finding_evidence_output_paths(
+                record.finding,
+                excluded_paths=(DEFAULT_DISCOVERY_OUTPUT_PATH,),
+            )
+        )
+
     generated_planning_graph = materialize_task_planning_graph(
         [
             {
-                **objective_finding_conflict_record(record.task_id, record.finding),
+                **objective_finding_conflict_record(
+                    record.task_id,
+                    record.finding,
+                    evidence_outputs=record_evidence_outputs(record),
+                ),
                 "task_id": record.task_id,
                 "depends_on": _unique_strings(
                     [*record.depends_on, *record.finding.dependencies]
                 ),
-                "canonical_task_cid": objective_finding_task_identity(record.task_id, record.finding).canonical_task_cid,
+                "canonical_task_cid": objective_finding_task_identity(
+                    record.task_id,
+                    record.finding,
+                    evidence_outputs=record_evidence_outputs(record),
+                ).canonical_task_cid,
                 "goal_id": record.finding.goal_id,
                 "parent_goal_ids": record.finding.parent_goal_ids,
                 "completion_authority": record.finding.completion_authority,
                 "external_authority_blockers": record.finding.external_authority_blockers,
                 "priority": record.finding.priority,
                 "objective_heap_index": record.finding.objective_heap_index,
-                "outputs": record.finding.outputs,
+                "outputs": _unique_strings(
+                    [
+                        *record.finding.outputs,
+                        *record_evidence_outputs(record),
+                    ]
+                ),
                 "work_item_count": record.finding.work_item_count or len(record.finding.missing_evidence),
                 "status": objective_finding_execution_state(record.finding)[0],
                 "is_schedulable": objective_finding_execution_state(record.finding)[1],
@@ -9843,11 +10002,20 @@ def write_bundle_shards(
                 if isinstance(item, Mapping) and str(item.get("task_id") or ""):
                     task_map[str(item["task_id"])] = dict(item)
         for record in bundle_records:
-            identity = objective_finding_task_identity(record.task_id, record.finding)
+            evidence_outputs = record_evidence_outputs(record)
+            identity = objective_finding_task_identity(
+                record.task_id,
+                record.finding,
+                evidence_outputs=evidence_outputs,
+            )
             schedule_record = generated_schedule.get(identity.canonical_task_cid)
             existing_task = task_map.get(record.task_id, {})
             task_payload = {
-                **objective_finding_conflict_record(record.task_id, record.finding),
+                **objective_finding_conflict_record(
+                    record.task_id,
+                    record.finding,
+                    evidence_outputs=evidence_outputs,
+                ),
                 "task_id": record.task_id,
                 "canonical_task_key": identity.canonical_task_key,
                 "canonical_task_cid": identity.canonical_task_cid,
@@ -10168,7 +10336,15 @@ def generate_objective_todos(
                 task_prefix=task_prefix,
                 reserved_task_ids=reserved_task_ids,
             )
-            identity = objective_finding_task_identity(task_id, finding)
+            evidence_outputs = objective_finding_evidence_output_paths(
+                finding,
+                excluded_paths=(discovery_output_path,),
+            )
+            identity = objective_finding_task_identity(
+                task_id,
+                finding,
+                evidence_outputs=evidence_outputs,
+            )
             obligation_segments = finding_obligation_segments(finding)
             segments_covered = bool(obligation_segments) and all(
                 requirements.issubset(
@@ -10245,6 +10421,7 @@ def generate_objective_todos(
                 discovery_path=discovery_path,
                 bundle_shard=shard_relative,
                 discovery_output_path=discovery_output_path,
+                evidence_outputs=evidence_outputs,
             )
             todo_text = todo_text.rstrip() + "\n\n" + task_block.strip() + "\n"
             materialized_task_ids.add(task_id)
@@ -10256,6 +10433,7 @@ def generate_objective_todos(
                     finding=projected_finding,
                     discovery_path=discovery_path,
                     depends_on=tuple(projected_dependencies),
+                    evidence_outputs=tuple(evidence_outputs),
                 )
             )
 

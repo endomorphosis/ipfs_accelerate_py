@@ -63,6 +63,12 @@ from ..event_log import (
     repair_jsonl_event_log,
     unique_backup_path,
 )
+from ..evidence_output_scope import (
+    EVIDENCE_OUTPUTS_METADATA_KEY,
+    evidence_output_path_is_excluded,
+    normalize_evidence_output_path,
+    split_evidence_output_values,
+)
 from ..merge_conflict_repair import (
     resolve_append_only_markdown_conflicts,
     resolve_launch_readiness_conflicts,
@@ -1205,7 +1211,7 @@ def implied_validation_test_output_paths(
 
     declared_outputs = {
         normalize_retry_validation_path(path)
-        for path in getattr(task, "outputs", ()) or ()
+        for path in task_declared_output_paths(task)
     }
     protected_aliases: set[str] = set()
     paths: list[str] = []
@@ -1479,6 +1485,89 @@ class PortalTask:
     board_namespace: str = "default"
 
 
+def _task_evidence_output_paths_from_metadata(
+    metadata: Mapping[str, Any],
+) -> tuple[str, ...]:
+    """Return identity-bound evidence file outputs, or no authority.
+
+    The explicit field is necessary but insufficient: every value must be a
+    canonical file path repeated in both the task's missing-evidence contract
+    and its execution evidence subset.  One malformed, duplicate, forged, or
+    control-plane path invalidates the complete typed field.
+    """
+
+    normalized_metadata = {
+        str(key).strip().lower().replace("_", " "): str(value or "").strip()
+        for key, value in metadata.items()
+    }
+    raw_field = normalized_metadata.get(EVIDENCE_OUTPUTS_METADATA_KEY, "")
+    candidates = split_evidence_output_values(raw_field)
+    if not candidates:
+        return ()
+
+    normalized_candidates = tuple(
+        normalize_evidence_output_path(value) for value in candidates
+    )
+    if (
+        any(not path for path in normalized_candidates)
+        or len(set(normalized_candidates)) != len(normalized_candidates)
+    ):
+        return ()
+
+    def requirement_paths(field_name: str) -> set[str]:
+        return {
+            path
+            for value in split_csv(normalized_metadata.get(field_name, ""))
+            if (path := normalize_evidence_output_path(value))
+        }
+
+    missing_paths = requirement_paths("missing evidence")
+    subset_paths = requirement_paths("evidence subset")
+    if (
+        not missing_paths
+        or not subset_paths
+        or not set(normalized_candidates).issubset(missing_paths)
+        or not set(normalized_candidates).issubset(subset_paths)
+    ):
+        return ()
+
+    excluded_paths: list[str] = []
+    for field_name in (
+        "objective heap",
+        "evidence inputs",
+        "discovery evidence",
+        "bundle shard",
+    ):
+        excluded_paths.extend(
+            split_csv(normalized_metadata.get(field_name, ""))
+        )
+    if any(
+        evidence_output_path_is_excluded(path, excluded_paths)
+        for path in normalized_candidates
+    ):
+        return ()
+    return normalized_candidates
+
+
+def task_evidence_output_paths(task: PortalTask) -> tuple[str, ...]:
+    """Return validated typed evidence outputs for one parsed task."""
+
+    return _task_evidence_output_paths_from_metadata(task.metadata)
+
+
+def task_declared_output_paths(task: PortalTask) -> tuple[str, ...]:
+    """Return ordinary outputs plus validated typed evidence outputs."""
+
+    return tuple(
+        dict.fromkeys(
+            [
+                *(str(path).strip() for path in task.outputs if str(path).strip()),
+                *task_evidence_output_paths(task),
+            ]
+        )
+    )
+
+
 @dataclass(frozen=True)
 class ImplementationTimeoutPolicy:
     """One task's bounded implementation lease and progress-idle deadline."""
@@ -1591,7 +1680,7 @@ def task_implementation_protected_path_conflicts(
         for key, value in task.metadata.items()
     }
     declarations = [
-        *task.outputs,
+        *task_declared_output_paths(task),
         *split_csv(metadata.get("predicted files", "")),
         *split_csv(metadata.get("predicted outputs", "")),
     ]
@@ -1983,11 +2072,14 @@ def parse_task_text(
         if not metadata:
             metadata["blocked reason"] = "empty task metadata"
         default_status = "blocked" if metadata.get("blocked reason") == "empty task metadata" else "todo"
+        outputs = split_csv(metadata.get("outputs", ""))
+        evidence_outputs = _task_evidence_output_paths_from_metadata(metadata)
+        identity_outputs = list(dict.fromkeys([*outputs, *evidence_outputs]))
         identity = canonical_task_identity(
             {
                 "task_id": current_id,
                 "title": current_title,
-                "outputs": split_csv(metadata.get("outputs", "")),
+                "outputs": identity_outputs,
                 "acceptance": str(metadata.get("acceptance", "")).strip(),
                 "metadata": metadata,
             },
@@ -2003,7 +2095,7 @@ def parse_task_text(
                 priority=str(metadata.get("priority", "P2")).strip().upper(),
                 track=str(metadata.get("track", "ops")).strip().lower(),
                 depends_on=split_csv(metadata.get("depends on", "")),
-                outputs=split_csv(metadata.get("outputs", "")),
+                outputs=outputs,
                 validation=split_validation_commands(metadata.get("validation", "")),
                 acceptance=str(metadata.get("acceptance", "")).strip(),
                 source_line=current_line,
@@ -4352,7 +4444,7 @@ class PortalImplementationDaemon:
             {
                 "task_id": task.task_id,
                 "title": task.title,
-                "outputs": task.outputs,
+                "outputs": task_declared_output_paths(task),
                 "acceptance": task.acceptance,
                 "metadata": metadata,
             },
@@ -5371,7 +5463,12 @@ class PortalImplementationDaemon:
         task_artifacts: dict[str, list[str]] = {}
 
         for task in tasks:
-            existing_outputs = [item for item in task.outputs if (self.repo_root / item).exists()]
+            declared_outputs = task_declared_output_paths(task)
+            existing_outputs = [
+                item
+                for item in declared_outputs
+                if (self.repo_root / item).exists()
+            ]
             task_artifacts[task.task_id] = existing_outputs
             if self._has_unresolved_merge_failure(task, previous):
                 unresolved_merge_failure_task_ids.add(task.task_id)
@@ -5379,8 +5476,8 @@ class PortalImplementationDaemon:
             transient_merge_deferral = task.task_id in transient_merge_deferral_task_ids
             artifact_complete = (
                 task.completion == "artifact"
-                and bool(task.outputs)
-                and len(existing_outputs) == len(task.outputs)
+                and bool(declared_outputs)
+                and len(existing_outputs) == len(declared_outputs)
                 and not unresolved_merge_failure
                 and not transient_merge_deferral
             )
@@ -6279,6 +6376,7 @@ class PortalImplementationDaemon:
                 {
                     "task_id": task.task_id,
                     "attempt": attempt,
+                    "outputs": list(task_declared_output_paths(task)),
                     "command": command,
                     "log_path": str(log_path),
                     "checkpoint_directory": str(checkpoint_dir),
@@ -9863,6 +9961,7 @@ class PortalImplementationDaemon:
                 {
                     "task_id": task.task_id,
                     "attempt": attempt,
+                    "outputs": list(task_declared_output_paths(task)),
                     "command": command,
                     "log_path": str(log_path),
                     "worktree_path": str(worktree_path),
@@ -13093,7 +13192,7 @@ class PortalImplementationDaemon:
     def _proposal_scope_paths(task: PortalTask) -> tuple[str, ...]:
         """Return exact repository paths owned by a task's output declaration."""
 
-        raw_paths: list[str] = list(task.outputs)
+        raw_paths: list[str] = list(task_declared_output_paths(task))
         for metadata_name in ("predicted files", "allowed paths"):
             raw_paths.extend(split_csv(task.metadata.get(metadata_name, "")))
         normalized: set[str] = set()
@@ -13860,7 +13959,7 @@ class PortalImplementationDaemon:
             set(changed_paths) != set(artifact_paths)
             or len(changed_paths) != len(artifact_paths)
             or not set(artifact_paths).issubset(
-                {str(path) for path in task.outputs}
+                set(task_declared_output_paths(task))
             )
         ):
             return defaults
@@ -15216,10 +15315,19 @@ class PortalImplementationDaemon:
                 except Exception:
                     scope_payload = None
 
+        completion_scope = completion_gap_edit_scope(
+            task,
+            repo_root=self.repo_root,
+        )
+        expected_outputs = (
+            tuple(completion_scope)
+            if completion_scope is not None
+            else task_declared_output_paths(task)
+        )
         review = review_implementation_failure(
             task_id=task.task_id,
             attempt=int(attempt),
-            expected_outputs=tuple(task.outputs),
+            expected_outputs=expected_outputs,
             validation_commands=tuple(task.validation),
             validation_result=result,
             workspace_path=workspace_path,
@@ -20914,7 +21022,7 @@ class PortalImplementationDaemon:
         """
         if not inflight_submodules:
             return None
-        for output in task.outputs:
+        for output in task_declared_output_paths(task):
             for sm_path in inflight_submodules:
                 if output.startswith(sm_path + "/") or output == sm_path:
                     return sm_path
@@ -22565,6 +22673,13 @@ class PortalImplementationDaemon:
             task,
             repo_root=self.repo_root,
         )
+        declared_output_paths = task_declared_output_paths(task)
+        evidence_output_paths = task_evidence_output_paths(task)
+        expected_output_paths = (
+            tuple(completion_scope)
+            if completion_scope is not None
+            else declared_output_paths
+        )
         retry_repair_source_id, retry_repair_failure_kind = (
             retry_budget_repair_source(task)
         )
@@ -22606,7 +22721,7 @@ class PortalImplementationDaemon:
             rules = (
                 *rules,
                 "For retry-budget repairs, use the persisted failure evidence and declared validation targets to distinguish a task-owned regression from inherited validation debt.",
-                "Reported validation-failure paths are diagnostic and read-only unless the exact path is also declared in Outputs: preserve correct production policy and never weaken assertions merely to make the gate pass.",
+                "Reported validation-failure paths are diagnostic and read-only unless the exact path is also declared in Outputs or Evidence outputs: preserve correct production policy and never weaken assertions merely to make the gate pass.",
             )
         if implied_validation_paths:
             rules = (
@@ -22615,7 +22730,7 @@ class PortalImplementationDaemon:
             )
         if (
             completion_scope is None
-            and len(task.outputs) > 3
+            and len(declared_output_paths) > 3
             and not _env_bool(DISABLE_SUBAGENTS_ENV, False)
         ):
             rules = (
@@ -22626,7 +22741,7 @@ class PortalImplementationDaemon:
         base_allowed_edit_paths = tuple(
             completion_scope
             if completion_scope is not None
-            else task.outputs
+            else declared_output_paths
         )
         allowed_edit_paths = tuple(
             dict.fromkeys(
@@ -22646,7 +22761,9 @@ class PortalImplementationDaemon:
             if path not in protected_edit_paths
         )
         read_only_outputs = tuple(
-            path for path in task.outputs if path not in allowed_edit_paths
+            path
+            for path in declared_output_paths
+            if path not in allowed_edit_paths
         )
         protected_policy_text = (
             "Operator-protected repository files (read-only; overrides every "
@@ -22665,6 +22782,8 @@ class PortalImplementationDaemon:
                 if retry_repair_source_id
                 else "task_outputs_with_implied_validation_tests"
                 if implied_validation_paths
+                else "task_output_and_evidence_exact"
+                if evidence_output_paths
                 else "task_output_exact"
             ),
             "allowed_paths": allowed_edit_paths,
@@ -22823,7 +22942,12 @@ class PortalImplementationDaemon:
             },
             scope={
                 "depends_on": tuple(task.depends_on),
-                "expected_outputs": tuple(task.outputs),
+                "expected_outputs": expected_output_paths,
+                "evidence_output_paths": (
+                    evidence_output_paths
+                    if completion_scope is None
+                    else ()
+                ),
                 "allowed_edit_paths": allowed_edit_paths,
                 "protected_edit_paths": protected_edit_paths,
                 "retry_repair_source_task_id": retry_repair_source_id,
@@ -22997,7 +23121,10 @@ class PortalImplementationDaemon:
         return rendered
 
     def _build_recommended_actions(self, task: PortalTask) -> list[str]:
-        actions = [f"Implement outputs for {task.task_id}: {', '.join(task.outputs)}"]
+        actions = [
+            "Implement outputs for "
+            f"{task.task_id}: {', '.join(task_declared_output_paths(task))}"
+        ]
         for command in task.validation:
             actions.append(f"Validate with: {command}")
         if task.acceptance:
@@ -23353,7 +23480,8 @@ class PortalImplementationDaemon:
             filtered_ready = []
             for task in ready:
                 degraded_sub = self.degradation_state.should_skip_task(
-                    task.outputs, getattr(task, "inputs", None)
+                    task_declared_output_paths(task),
+                    getattr(task, "inputs", None),
                 )
                 if degraded_sub:
                     degraded_skipped.append(task.task_id)

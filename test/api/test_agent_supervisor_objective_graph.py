@@ -54,6 +54,7 @@ from ipfs_accelerate_py.agent_supervisor.objective_graph import (
     materialize_task_planning_graph,
     objective_fingerprint,
     objective_finding_conflict_record,
+    objective_finding_evidence_output_paths,
     objective_finding_task_identity,
     tracked_files,
     write_bundle_shards,
@@ -2597,6 +2598,169 @@ def test_generate_objective_todos_writes_bundle_shards_and_payloads(tmp_path):
     assert task_ids == ["queued-1"]
     assert submitted[0]["task_type"] == "codex.todo_bundle"
     assert submitted[0]["payload"]["bundle_key"] == "objective/ops/root"
+
+
+def test_generate_objective_todos_projects_dscon_path_evidence_as_typed_outputs(
+    tmp_path,
+):
+    repo, objective_path, todo_path = _seed_repo(tmp_path)
+    discovery_dir = (
+        repo
+        / "data"
+        / "datasets_contract_analysis"
+        / "agent_supervisor"
+        / "discovery"
+    )
+    bundle_dir = (
+        repo
+        / "data"
+        / "datasets_contract_analysis"
+        / "agent_supervisor"
+        / "objective_bundles"
+    )
+    manifests = [
+        "data/datasets_contract_analysis/manifests/repository-root.json",
+        "data/datasets_contract_analysis/manifests/coverage.json",
+    ]
+    outputs = [
+        "ipfs_datasets_py/processors/datasets/repository.py",
+        "ipfs_datasets_py/processors/datasets/coverage.py",
+        "test/datasets/test_repository_coverage.py",
+    ]
+    finding = ObjectiveFinding(
+        fingerprint="dscon-g020-repository-inventory",
+        goal_id="DSCON-G020",
+        title="Inventory repository coverage",
+        summary="Close objective gap: Inventory repository coverage",
+        priority="P0",
+        track="datasets-contract-analysis",
+        missing_evidence=[
+            *manifests,
+            "operator approval",
+            "123456789012345678901234567890",
+            "https://example.invalid/receipt.json",
+            "../outside.json",
+            "data/*/forged.json",
+            "objective-heap.md",
+            (
+                "data/datasets_contract_analysis/agent_supervisor/"
+                "discovery/forged.json"
+            ),
+        ],
+        present_evidence={},
+        evidence_methods=[],
+        objective_path="objective-heap.md",
+        outputs=outputs,
+        validation="python -m pytest -q test/datasets/test_repository_coverage.py",
+        evidence_subset=[
+            *manifests,
+            "operator approval",
+            "123456789012345678901234567890",
+            "https://example.invalid/receipt.json",
+            "../outside.json",
+            "data/*/forged.json",
+            "objective-heap.md",
+            (
+                "data/datasets_contract_analysis/agent_supervisor/"
+                "discovery/forged.json"
+            ),
+        ],
+        bundle_key="objective/datasets/repository-inventory",
+    )
+
+    records = generate_objective_todos(
+        repo_root=repo,
+        objective_path=objective_path,
+        todo_path=todo_path,
+        discovery_dir=discovery_dir,
+        bundle_dir=bundle_dir,
+        task_prefix="DSCON-",
+        precomputed_findings=[finding],
+        persist_ast_dataset=False,
+        write_todo_vector_index=False,
+        discovery_output_path=(
+            "data/datasets_contract_analysis/agent_supervisor/discovery"
+        ),
+    )
+
+    assert len(records) == 1
+    assert records[0].evidence_outputs == tuple(manifests)
+    generated_block = todo_path.read_text(encoding="utf-8").split(
+        "## DSCON-001 ",
+        1,
+    )[1]
+    assert f"- Outputs: {', '.join(outputs)}" in generated_block
+    assert f"- Evidence outputs: {', '.join(manifests)}" in generated_block
+    index = json.loads(
+        (bundle_dir / "index.json").read_text(encoding="utf-8")
+    )
+    task = index["bundles"][
+        "objective/datasets/repository-inventory"
+    ]["tasks"][0]
+    assert task["evidence_outputs"] == sorted(manifests)
+    assert task["outputs"] == [*outputs, *sorted(manifests)]
+    assert set(task["files"]) == {*outputs, *manifests}
+    assert "objective-heap.md" not in task["files"]
+    assert not any(
+        "agent_supervisor/discovery" in path for path in task["files"]
+    )
+
+    assert (
+        objective_finding_task_identity("DSCON-001", finding).canonical_task_cid
+        != objective_finding_task_identity(
+            "DSCON-001",
+            finding,
+            evidence_outputs=[],
+        ).canonical_task_cid
+    )
+
+
+@pytest.mark.parametrize(
+    "unsafe_requirement",
+    [
+        "operator approval",
+        "123456789012345678901234567890",
+        "https://example.invalid/proof.json",
+        "/absolute/proof.json",
+        r"C:\proof.json",
+        "../proof.json",
+        "./proof.json",
+        "data/proof.json/",
+        "data//proof.json",
+        "data/*/proof.json",
+        "data/\nproof.json",
+        ".git/config.json",
+        "operator/approval",
+    ],
+)
+def test_objective_evidence_output_projection_rejects_noncanonical_authority(
+    unsafe_requirement,
+):
+    finding = ObjectiveFinding(
+        fingerprint="unsafe-path-evidence",
+        goal_id="DSCON-G020",
+        title="Reject unsafe path evidence",
+        summary="Reject unsafe path evidence",
+        priority="P0",
+        track="datasets-contract-analysis",
+        missing_evidence=[
+            "data/manifests/coverage.json",
+            unsafe_requirement,
+        ],
+        present_evidence={},
+        evidence_methods=[],
+        objective_path="docs/objectives.md",
+        outputs=["src/coverage.py"],
+        validation="true",
+        evidence_subset=[
+            "data/manifests/coverage.json",
+            unsafe_requirement,
+        ],
+    )
+
+    assert objective_finding_evidence_output_paths(finding) == [
+        "data/manifests/coverage.json"
+    ]
 
 
 def test_generate_objective_todos_projects_goal_dependencies_to_task_ids(tmp_path):
