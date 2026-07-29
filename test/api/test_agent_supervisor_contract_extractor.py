@@ -5,7 +5,10 @@ from __future__ import annotations
 import pytest
 
 from ipfs_accelerate_py.agent_supervisor.contract_extractor import (
+    CONTRACT_EXTRACTOR_EVIDENCE,
     CONTRACT_EXTRACTOR_VERSION,
+    CONTRACT_IR_EVIDENCE,
+    CONTRACT_SOURCE_PRECEDENCE_EVIDENCE,
     DEFAULT_POLICY_REVISION,
     ContentKind,
     ContractExtractionResult,
@@ -19,6 +22,7 @@ from ipfs_accelerate_py.agent_supervisor.contract_extractor import (
     classify_artifact_path,
     confidence_for,
     contract_source_unit_from_mapping,
+    covered_evidence_terms,
     expectation_source_kinds,
     extract_contracts,
     extraction_rule_for,
@@ -30,12 +34,17 @@ from ipfs_accelerate_py.agent_supervisor.contract_extractor import (
     type_shape_from_name,
 )
 from ipfs_accelerate_py.agent_supervisor.program_contracts import (
+    CONTRACT_IR_EVIDENCE as IR_EVIDENCE,
+    CONTRACT_SOURCE_PRECEDENCE_EVIDENCE as PRECEDENCE_EVIDENCE,
     SOURCE_PRECEDENCE,
+    AuthorizationMode,
     CapabilityMode,
     CircularExpectationError,
     ConfidenceClass,
     ConflictKind,
     ContractSourceKind,
+    DegradationMode,
+    IdempotenceMode,
     Optionality,
     ParameterKind,
     ProgramContractRole,
@@ -44,6 +53,7 @@ from ipfs_accelerate_py.agent_supervisor.program_contracts import (
     SyncMode,
     TypeConstructor,
     may_define_expectation,
+    program_contract_evidence_terms,
     source_precedence_rank,
 )
 
@@ -1095,3 +1105,216 @@ def test_path_classification_helper_used_for_locator_defaults() -> None:
     result = extract_contracts([unit], repository_id=REPO, tree_id=TREE)
     assert result.expected == ()
     assert result.skipped[0].reason is SkipReason.MOCK
+
+
+# ---------------------------------------------------------------------------
+# VFS-G050 evidence terms and gap cases (source precedence + conflict IR)
+# ---------------------------------------------------------------------------
+
+
+def test_evidence_terms_cover_contract_ir_and_source_precedence() -> None:
+    """Prove vfs/contract-ir@1 and vfs/contract-source-precedence@1 on IR + extractor."""
+
+    assert CONTRACT_IR_EVIDENCE == "vfs/contract-ir@1"
+    assert CONTRACT_SOURCE_PRECEDENCE_EVIDENCE == "vfs/contract-source-precedence@1"
+    assert IR_EVIDENCE == CONTRACT_IR_EVIDENCE
+    assert PRECEDENCE_EVIDENCE == CONTRACT_SOURCE_PRECEDENCE_EVIDENCE
+    assert covered_evidence_terms() == (
+        "vfs/contract-ir@1",
+        "vfs/contract-source-precedence@1",
+    )
+    assert program_contract_evidence_terms() == covered_evidence_terms()
+    assert CONTRACT_EXTRACTOR_EVIDENCE == covered_evidence_terms()
+
+    result = extract_contracts([_mcp_read()], repository_id=REPO, tree_id=TREE)
+    record = result.to_record()
+    assert record["evidence"] == list(covered_evidence_terms())
+    assert record["evidence_contract_ir"] == "vfs/contract-ir@1"
+    assert record["evidence_source_precedence"] == "vfs/contract-source-precedence@1"
+
+    expected_record = result.expected[0].to_record()
+    assert "vfs/contract-ir@1" in expected_record["evidence"]
+    assert "vfs/contract-source-precedence@1" in expected_record["evidence"]
+
+    bundle_record = result.to_bundle().to_record()
+    assert bundle_record["evidence_contract_ir"] == CONTRACT_IR_EVIDENCE
+    assert (
+        bundle_record["evidence_source_precedence"]
+        == CONTRACT_SOURCE_PRECEDENCE_EVIDENCE
+    )
+
+
+def test_extraction_independent_from_satisfaction_checking() -> None:
+    """Contract extraction must not import or invoke satisfaction checking."""
+
+    import ipfs_accelerate_py.agent_supervisor.contract_extractor as extractor_mod
+    import ipfs_accelerate_py.agent_supervisor.program_contracts as ir_mod
+
+    # Neither IR nor extractor binds the satisfaction-checking module.
+    assert "contract_checker" not in extractor_mod.__dict__
+    assert "contract_checker" not in ir_mod.__dict__
+    assert "contract_checker" not in getattr(extractor_mod, "__all__", ())
+    assert "contract_checker" not in getattr(ir_mod, "__all__", ())
+
+    result = extract_contracts(
+        [_mcp_read(), _observation_read()],
+        repository_id=REPO,
+        tree_id=TREE,
+    )
+    # Extraction alone yields both roles without any check/match verdict.
+    assert len(result.expected) == 1
+    assert len(result.observed) == 1
+    record = result.to_record()
+    assert "verdict" not in record
+    assert "check_result" not in record
+    assert "counterexample" not in record
+    # Roles stay separated: observation cannot define expectation.
+    with pytest.raises(CircularExpectationError):
+        result.observed[0].as_expectation_source()
+
+
+def test_equal_precedence_authorization_and_fallback_conflict() -> None:
+    """Equal-rank IDL sources that disagree on auth/degradation emit conflicts."""
+
+    left = make_mcp_tool_unit(
+        artifact_id="artifact:idl-auth-a",
+        name="vfs.write",
+        input_schema={
+            "type": "object",
+            "properties": {"path": {"type": "string"}},
+            "required": ["path"],
+        },
+        output_schema={"type": "boolean"},
+        repository_id=REPO,
+        tree_id=TREE,
+        surface="mcp++",
+        locator="tools/list#vfs.write#a",
+        span_start=1,
+        span_end=20,
+        authorization={"mode": "path_scope", "scopes": ["repo:write"]},
+        idempotence="non_idempotent",
+        atomicity="atomic",
+        fallback={"mode": "fail_closed", "description": "reject when unauthorized"},
+        ordering="unordered",
+        resource_bounds={"max_payload_bytes": 1_048_576, "max_calls": 1},
+    )
+    right = make_mcp_tool_unit(
+        artifact_id="artifact:idl-auth-b",
+        name="vfs.write",
+        input_schema={
+            "type": "object",
+            "properties": {"path": {"type": "string"}},
+            "required": ["path"],
+        },
+        output_schema={"type": "boolean"},
+        repository_id=REPO,
+        tree_id=TREE,
+        surface="mcp++",
+        locator="tools/list#vfs.write#b",
+        span_start=30,
+        span_end=50,
+        authorization={"mode": "capability", "scopes": ["admin"]},
+        idempotence="idempotent",
+        atomicity="transactional",
+        fallback={
+            "mode": "degraded_success",
+            "description": "local cache write when remote fails",
+            "fallback_interface": "vfs.write.local",
+        },
+        ordering="total",
+        resource_bounds={"max_payload_bytes": 4096, "max_calls": 100},
+    )
+    result = extract_contracts([left, right], repository_id=REPO, tree_id=TREE)
+    assert len(result.expected) == 1
+    expected = result.expected[0]
+    assert expected.has_conflicts
+    aspects = {conflict.aspect for conflict in expected.conflicts}
+    # At least one semantic gap aspect beyond plain outputs must surface.
+    assert aspects & {
+        SemanticAspect.AUTHORIZATION,
+        SemanticAspect.IDEMPOTENCE,
+        SemanticAspect.ATOMICITY,
+        SemanticAspect.FALLBACK_DEGRADATION,
+        SemanticAspect.ORDERING,
+        SemanticAspect.RESOURCE_BOUNDS,
+    }
+    assert all(conflict.resolved is False for conflict in expected.conflicts)
+    # Dominant source is still reviewed interface (equal rank keeps one value).
+    assert expected.primary_source_kind is ContractSourceKind.REVIEWED_INTERFACE
+    record = result.to_record()
+    assert "vfs/contract-source-precedence@1" in record["evidence"]
+
+
+def test_semantic_fields_authorization_idempotence_atomicity_degradation() -> None:
+    """Inputs, outputs, errors, effects, auth, idempotence, ordering, atomicity,
+    resources, and degradation are represented on the expected IR."""
+
+    unit = make_mcp_tool_unit(
+        artifact_id="artifact:idl-full-semantics",
+        name="vfs.mutate",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "path": {"type": "string"},
+                "data": {"type": "string"},
+            },
+            "required": ["path", "data"],
+        },
+        output_schema={"type": "object", "properties": {"ok": {"type": "boolean"}}},
+        errors=[{"name": "Denied", "code": "AUTH_DENIED", "retriable": False}],
+        async_mode=True,
+        capabilities=[{"name": "vfs.mutate", "mode": "required"}],
+        description="Mutate path with fail-closed degradation",
+        repository_id=REPO,
+        tree_id=TREE,
+        surface="mcp++",
+        locator="tools/list#vfs.mutate",
+        span_start=1,
+        span_end=40,
+        side_effects=[
+            {"kind": "filesystem", "polarity": "allowed", "target": "path"},
+            {"kind": "write", "polarity": "required"},
+        ],
+        authorization={"mode": "path_scope", "scopes": ["repo:write"]},
+        idempotence="non_idempotent",
+        ordering="causal",
+        atomicity="atomic",
+        consistency="strong",
+        resource_bounds={"max_payload_bytes": 65_536, "max_wall_time_ms": 5_000},
+        fallback={
+            "mode": "fail_closed",
+            "description": "no silent write degradation",
+        },
+    )
+    result = extract_contracts([unit], repository_id=REPO, tree_id=TREE)
+    expected = result.expected[0]
+    assert expected.inputs
+    assert expected.returns is not None
+    assert expected.errors
+    assert expected.sync_async is not None
+    assert expected.sync_async.mode is SyncMode.ASYNC
+    assert expected.side_effects
+    assert expected.authorization is not None
+    assert expected.authorization.mode is AuthorizationMode.PATH_SCOPE
+    assert expected.idempotence is not None
+    assert expected.idempotence.mode is IdempotenceMode.NON_IDEMPOTENT
+    assert expected.ordering is not None
+    assert expected.atomicity is not None
+    assert expected.consistency is not None
+    assert expected.resource_bounds is not None
+    assert expected.fallback is not None
+    assert expected.fallback.mode is DegradationMode.FAIL_CLOSED
+    # Aspect support must mark source precedence and core fields supported.
+    assert (
+        expected.aspect_support(SemanticAspect.SOURCE_PRECEDENCE)
+        is SupportStatus.SUPPORTED
+    )
+    assert (
+        expected.aspect_support(SemanticAspect.AUTHORIZATION)
+        is SupportStatus.SUPPORTED
+    )
+    assert (
+        expected.aspect_support(SemanticAspect.FALLBACK_DEGRADATION)
+        is SupportStatus.SUPPORTED
+    )
+    assert expected.to_record()["evidence_contract_ir"] == "vfs/contract-ir@1"

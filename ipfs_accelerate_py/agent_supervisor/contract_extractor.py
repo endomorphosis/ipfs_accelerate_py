@@ -31,6 +31,8 @@ from enum import Enum
 from typing import Any, ClassVar, Final, Iterator
 
 from .program_contracts import (
+    CONTRACT_IR_EVIDENCE,
+    CONTRACT_SOURCE_PRECEDENCE_EVIDENCE,
     CONTRACT_VERSION,
     MAX_CLAUSE_BYTES,
     MAX_COLLECTION_ITEMS,
@@ -87,6 +89,7 @@ from .program_contracts import (
     canonical_program_contract_json_bytes,
     may_define_expectation,
     program_contract_content_identity,
+    program_contract_evidence_terms,
     source_precedence_rank,
 )
 from .proof.formal_verification_contracts import (
@@ -102,6 +105,15 @@ from .proof.formal_verification_contracts import (
 
 CONTRACT_EXTRACTOR_VERSION: Final[int] = 1
 SCHEMA_VERSION: Final[int] = CONTRACT_EXTRACTOR_VERSION
+
+# Re-export VFS-G050 evidence terms so scanners and callers discover them on
+# both the IR module and this independent extractor surface.  Extraction
+# never imports contract_checker; satisfaction checking never feeds back
+# into expected-contract compilation (no circular oracles).
+CONTRACT_EXTRACTOR_EVIDENCE: Final[tuple[str, ...]] = (
+    CONTRACT_IR_EVIDENCE,
+    CONTRACT_SOURCE_PRECEDENCE_EVIDENCE,
+)
 
 CONTRACT_SOURCE_UNIT_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/contract-source-unit@1"
@@ -1317,6 +1329,9 @@ class ContractExtractionResult(CanonicalContract):
             "extraction_id": self.extraction_id,
             "has_conflicts": self.has_conflicts,
             "bundle_id": self.to_bundle().bundle_id,
+            "evidence": list(CONTRACT_EXTRACTOR_EVIDENCE),
+            "evidence_contract_ir": CONTRACT_IR_EVIDENCE,
+            "evidence_source_precedence": CONTRACT_SOURCE_PRECEDENCE_EVIDENCE,
         }
 
 
@@ -2830,6 +2845,13 @@ def extract_contracts(
 ) -> ContractExtractionResult:
     """Extract expected and observed contracts from source units.
 
+    This function is deliberately independent from satisfaction checking
+    (:mod:`contract_checker`).  It compiles reviewed expectations and
+    separate observations under closed source precedence, emits conflicts
+    rather than resolving them, and never imports or invokes a checker.
+    Evidence terms covered: ``vfs/contract-ir@1`` and
+    ``vfs/contract-source-precedence@1``.
+
     Parameters
     ----------
     units:
@@ -3442,6 +3464,17 @@ def all_artifact_classes() -> tuple[SourceArtifactClass, ...]:
     return tuple(SourceArtifactClass)
 
 
+def covered_evidence_terms() -> tuple[str, ...]:
+    """Return the objective evidence terms this extractor proves.
+
+    Mirrors :func:`program_contract_evidence_terms` so both IR and extractor
+    surfaces name ``vfs/contract-ir@1`` and
+    ``vfs/contract-source-precedence@1`` for discovery scans.
+    """
+
+    return program_contract_evidence_terms()
+
+
 def reject_observation_as_expectation_source(
     unit: ContractSourceUnit,
 ) -> None:
@@ -3463,6 +3496,9 @@ __all__ = [
     "SCHEMA_VERSION",
     "DEFAULT_POLICY_REVISION",
     "MAX_SOURCE_UNITS",
+    "CONTRACT_EXTRACTOR_EVIDENCE",
+    "CONTRACT_IR_EVIDENCE",
+    "CONTRACT_SOURCE_PRECEDENCE_EVIDENCE",
     "ContractExtractorError",
     "ContractExtractorBoundsError",
     "MissingReferenceError",
@@ -3487,9 +3523,11 @@ __all__ = [
     "expectation_source_kinds",
     "all_extraction_rules",
     "all_artifact_classes",
+    "covered_evidence_terms",
     "reject_observation_as_expectation_source",
     "source_precedence_rank",
     "may_define_expectation",
     "program_contract_content_identity",
+    "program_contract_evidence_terms",
     "content_identity",
 ]
