@@ -429,7 +429,7 @@ task IDs on this board.
 
 ## RPR-013 Admit one exact repair target or abstain
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
