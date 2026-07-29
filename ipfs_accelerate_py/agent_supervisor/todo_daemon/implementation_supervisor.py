@@ -1455,7 +1455,10 @@ class PortalImplementationSupervisor:
             worktree_cleanup,
         )
         update_maintenance_phase("guardrail_releases")
-        guardrail_releases = self.release_completed_guardrail_blocks()
+        guardrail_releases = self.release_completed_guardrail_blocks(
+            worktree_reconciliation,
+            worktree_cleanup,
+        )
         state = PortalTaskState.load(self.config.state_path)
         now_ts = time.time()
         stuck, reason = self.is_stuck(state, now_ts=now_ts)
@@ -6566,7 +6569,11 @@ class PortalImplementationSupervisor:
         self._record_event("strategy_file_repaired", result)
         return result
 
-    def release_completed_guardrail_blocks(self) -> list[dict[str, Any]]:
+    def release_completed_guardrail_blocks(
+        self,
+        reconciliation_result: Mapping[str, Any] | None = None,
+        cleanup_result: Mapping[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
         """Remove strategy blocks once their generated repair task is completed."""
 
         if not self.config.todo_path.exists() or not self.config.strategy_path.exists():
@@ -6586,6 +6593,8 @@ class PortalImplementationSupervisor:
             callback=lambda: release_completed_guardrail_blocks(
                 todo_path=self.config.todo_path,
                 strategy_path=self.config.strategy_path,
+                reconciliation_result=reconciliation_result,
+                cleanup_result=cleanup_result,
                 task_prefix=task_id_prefix(self.config.task_prefix),
                 commit_outputs=commit_outputs,
                 repo_root=self.config.repo_root,

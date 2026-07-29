@@ -4657,6 +4657,20 @@ def reconciliation_guardrail_task_block(
 
 
 def reconciliation_record_matches_block(block: str, record: Mapping[str, Any]) -> bool:
+    status_match = re.search(
+        r"^-\s*Status:\s*(\S+)\s*$",
+        block,
+        flags=re.IGNORECASE | re.MULTILINE,
+    )
+    if status_match is not None and status_match.group(1).casefold().replace("-", "_") in {
+        "complete",
+        "completed",
+        "done",
+        "succeeded",
+    }:
+        # A resolved guardrail remains on the append-only board as evidence,
+        # but it must not suppress or absorb a later regression.
+        return False
     fingerprint = str(record.get("fingerprint") or "")
     dedupe_key = str(record.get("dedupe_key") or "")
     kind = str(record.get("kind") or "")
@@ -4684,6 +4698,114 @@ def reconciliation_record_matches_block(block: str, record: Mapping[str, Any]) -
     ):
         return True
     return False
+
+
+def reconciliation_guardrail_blocks(
+    todo_text: str,
+    *,
+    task_prefix: str = DEFAULT_TASK_ID_PREFIX,
+    include_completed: bool = False,
+) -> list[dict[str, str]]:
+    """Return active, supervisor-owned reconciliation guardrail cards.
+
+    Retirement is intentionally limited to cards carrying the exact generated
+    blocked-reason and reconciliation dedupe namespace.  Similar hand-authored
+    tasks remain outside automatic completion authority.
+    """
+
+    records: list[dict[str, str]] = []
+    heading_pattern = task_id_pattern(task_prefix)
+    for _start, _end, block in task_blocks_with_spans(todo_text):
+        heading = heading_pattern.match(block)
+        if heading is None:
+            continue
+        blocked_reason = re.search(
+            r"^-\s*Blocked reason:\s*(\S+)\s*$",
+            block,
+            flags=re.IGNORECASE | re.MULTILINE,
+        )
+        dedupe_key = re.search(
+            r"^-\s*Dedupe key:\s*(\S+)\s*$",
+            block,
+            flags=re.IGNORECASE | re.MULTILINE,
+        )
+        status = re.search(
+            r"^-\s*Status:\s*(\S+)\s*$",
+            block,
+            flags=re.IGNORECASE | re.MULTILINE,
+        )
+        if (
+            blocked_reason is None
+            or blocked_reason.group(1).casefold()
+            != "operator_reconciliation_required"
+            or dedupe_key is None
+            or not dedupe_key.group(1).startswith(
+                "reconciliation_guardrail:"
+            )
+        ):
+            continue
+        normalized_status = (
+            status.group(1).casefold().replace("-", "_")
+            if status is not None
+            else ""
+        )
+        if not include_completed and normalized_status in {
+            "complete",
+            "completed",
+            "done",
+            "succeeded",
+        }:
+            continue
+        fingerprint = re.search(
+            r"^-\s*Fingerprint:\s*(\S+)\s*$",
+            block,
+            flags=re.IGNORECASE | re.MULTILINE,
+        )
+        records.append(
+            {
+                "task_id": heading.group(1),
+                "status": normalized_status,
+                "dedupe_key": dedupe_key.group(1),
+                "fingerprint": (
+                    fingerprint.group(1)
+                    if fingerprint is not None
+                    else ""
+                ),
+            }
+        )
+    return records
+
+
+def resolved_reconciliation_guardrail_keys(
+    *,
+    reconciliation_result: Mapping[str, Any] | None = None,
+    cleanup_result: Mapping[str, Any] | None = None,
+) -> set[str]:
+    """Return guardrail identities backed by a conclusive clean rescan.
+
+    A missing/disabled scan, unavailable checkout status, any effective dirty
+    status (including staged or unknown status), and all cleanup/preflight
+    guardrails currently fail closed.  The main-checkout proof deliberately
+    accepts raw lowercase submodule-content dirt only after the reconciliation
+    classifier has removed it from ``main_status_short`` and explicitly
+    reported the effective checkout as clean.
+    """
+
+    del cleanup_result  # Reserved for future kind-specific completion proofs.
+    reconciliation = (
+        dict(reconciliation_result)
+        if isinstance(reconciliation_result, Mapping)
+        else {}
+    )
+    if (
+        reconciliation.get("attempted") is True
+        and reconciliation.get("main_checkout_status_available") is True
+        and reconciliation.get("main_checkout_dirty") is False
+        and isinstance(reconciliation.get("main_status_short"), list)
+        and not reconciliation.get("main_status_short")
+    ):
+        return {"reconciliation_guardrail:main_checkout_dirty"}
+    return set()
 
 
 def reconciliation_guardrail_refresh_is_noise(block: str, record: Mapping[str, Any]) -> bool:
@@ -5928,23 +6050,21 @@ def record_reconciliation_guardrail_findings(
         for item in strategy.get("reconciliation_guardrail_seen_fingerprints", [])
         if str(item).strip()
     }
+    active_guardrail_blocks = [
+        block
+        for _start, _end, block in task_blocks_with_spans(todo_text)
+        if not re.search(
+            r"^-\s*Status:\s*(?:complete|completed|done|succeeded)\s*$",
+            block,
+            flags=re.IGNORECASE | re.MULTILINE,
+        )
+    ]
 
     def already_present(record: Mapping[str, Any]) -> bool:
-        fingerprint = str(record.get("fingerprint") or "")
-        dedupe_key = str(record.get("dedupe_key") or "")
-        if fingerprint and fingerprint in todo_text:
-            return True
-        if dedupe_key and dedupe_key in todo_text:
-            return True
-        kind = str(record.get("kind") or "")
-        reason = str(record.get("reason") or "")
-        if kind == "main_checkout_dirty" and "Resolve dirty main checkout blocking" in todo_text:
-            return True
-        if kind == "dirty_backlogged_worktree" and f"dirty backlogged worktrees blocked by {reason}" in todo_text:
-            return True
-        if kind == "preflight_merge_conflict" and "preflight-conflicting backlogged worktree merges" in todo_text:
-            return True
-        return False
+        return any(
+            reconciliation_record_matches_block(block, record)
+            for block in active_guardrail_blocks
+        )
 
     filter_repo_root = (repo_root or todo_path.parent).resolve()
     generated_paths, generated_prefixes = generated_guardrail_status_filters(
@@ -6199,6 +6319,8 @@ def release_completed_guardrail_blocks(
     *,
     todo_path: Path,
     strategy_path: Path,
+    reconciliation_result: Mapping[str, Any] | None = None,
+    cleanup_result: Mapping[str, Any] | None = None,
     task_prefix: str = DEFAULT_TASK_ID_PREFIX,
     commit_outputs: bool = False,
     repo_root: Path | None = None,
@@ -6249,6 +6371,162 @@ def release_completed_guardrail_blocks(
         strategy["last_objective_packet_dependency_repairs"] = list(
             packet_dependency_repairs
         )
+
+    current_reconciliation_records = reconciliation_guardrail_records(
+        reconciliation_result=reconciliation_result,
+        cleanup_result=cleanup_result,
+    )
+    active_reconciliation_keys = {
+        str(record.get("dedupe_key") or "")
+        for record in current_reconciliation_records
+        if str(record.get("dedupe_key") or "").strip()
+    }
+    resolved_reconciliation_keys = (
+        resolved_reconciliation_guardrail_keys(
+            reconciliation_result=reconciliation_result,
+            cleanup_result=cleanup_result,
+        )
+        - active_reconciliation_keys
+    )
+    resolved_reconciliation_cards = [
+        card
+        for card in reconciliation_guardrail_blocks(
+            todo_text,
+            task_prefix=task_prefix,
+            include_completed=True,
+        )
+        if card["dedupe_key"] in resolved_reconciliation_keys
+    ]
+    if resolved_reconciliation_cards:
+        terminal_statuses = {
+            "complete",
+            "completed",
+            "done",
+            "succeeded",
+        }
+        active_reconciliation_cards = [
+            card
+            for card in resolved_reconciliation_cards
+            if card["status"] not in terminal_statuses
+        ]
+        retired_ids = [
+            card["task_id"] for card in active_reconciliation_cards
+        ]
+        todo_text, retired_task_ids = mark_task_statuses_in_todo_text(
+            todo_text,
+            retired_ids,
+            task_prefix=task_prefix,
+            status="completed",
+        )
+        if retired_task_ids:
+            todo_path.write_text(todo_text, encoding="utf-8")
+            todo_changed = True
+            statuses.update(
+                {task_id: "completed" for task_id in retired_task_ids}
+            )
+        retired_set = set(retired_task_ids)
+        already_completed_set = {
+            card["task_id"]
+            for card in resolved_reconciliation_cards
+            if card["status"] in terminal_statuses
+        }
+        authoritative_resolved_ids = (
+            retired_set | already_completed_set
+        )
+        resolved_cards_by_id = {
+            card["task_id"]: card
+            for card in resolved_reconciliation_cards
+            if card["task_id"] in authoritative_resolved_ids
+        }
+        stale_projection_ids: set[str] = set()
+        resolved_fingerprints = {
+            card["fingerprint"]
+            for card in resolved_cards_by_id.values()
+            if card["fingerprint"]
+        }
+        raw_reconciliation_findings = strategy.get(
+            "reconciliation_guardrail_findings"
+        )
+        if isinstance(raw_reconciliation_findings, list):
+            retained_reconciliation_findings: list[Any] = []
+            for finding in raw_reconciliation_findings:
+                finding_task_id = (
+                    str(finding.get("follow_up_task_id") or "")
+                    if isinstance(finding, Mapping)
+                    else ""
+                )
+                if finding_task_id in authoritative_resolved_ids:
+                    stale_projection_ids.add(finding_task_id)
+                    fingerprint = str(
+                        finding.get("fingerprint") or ""
+                    )
+                    if fingerprint:
+                        resolved_fingerprints.add(fingerprint)
+                    continue
+                retained_reconciliation_findings.append(finding)
+            strategy["reconciliation_guardrail_findings"] = (
+                retained_reconciliation_findings
+            )
+        seen_fingerprints = strategy.get(
+            "reconciliation_guardrail_seen_fingerprints"
+        )
+        if isinstance(seen_fingerprints, list):
+            present_seen = {
+                str(fingerprint) for fingerprint in seen_fingerprints
+            }
+            for task_id, card in resolved_cards_by_id.items():
+                if card["fingerprint"] in present_seen:
+                    stale_projection_ids.add(task_id)
+            strategy["reconciliation_guardrail_seen_fingerprints"] = [
+                str(fingerprint)
+                for fingerprint in seen_fingerprints
+                if str(fingerprint) not in resolved_fingerprints
+            ]
+        stale_projection_ids.update(
+            task_id
+            for task_id in blocked_tasks
+            if task_id in authoritative_resolved_ids
+        )
+        blocked_tasks = [
+            task_id
+            for task_id in blocked_tasks
+            if task_id not in authoritative_resolved_ids
+        ]
+        if retired_task_ids:
+            strategy[
+                "last_resolved_reconciliation_guardrail_task_ids"
+            ] = retired_task_ids
+            releases.extend(
+                {
+                    "source_task_id": card["task_id"],
+                    "follow_up_task_id": "",
+                    "guardrail_kind": "reconciliation_guardrail",
+                    "reason": "reconciliation_finding_resolved",
+                    "dedupe_key": card["dedupe_key"],
+                }
+                for card in resolved_reconciliation_cards
+                if card["task_id"] in retired_set
+            )
+        projection_repair_ids = sorted(
+            stale_projection_ids - retired_set
+        )
+        if projection_repair_ids:
+            strategy[
+                "last_repaired_reconciliation_guardrail_projection_ids"
+            ] = projection_repair_ids
+            releases.extend(
+                {
+                    "source_task_id": task_id,
+                    "follow_up_task_id": "",
+                    "guardrail_kind": "reconciliation_guardrail",
+                    "reason": "resolved_reconciliation_projection_repaired",
+                    "dedupe_key": resolved_cards_by_id[task_id][
+                        "dedupe_key"
+                    ],
+                }
+                for task_id in projection_repair_ids
+            )
+
     deduplicated_blocked_tasks = list(dict.fromkeys(blocked_tasks))
     if len(deduplicated_blocked_tasks) != len(blocked_tasks):
         duplicate_ids = sorted(

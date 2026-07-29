@@ -2986,6 +2986,241 @@ def test_backlog_refinery_keeps_block_when_dependency_guardrail_still_active(tmp
     assert strategy["dependency_guardrail_findings"][0]["source_task_id"] == "AUTO-001"
 
 
+def test_backlog_refinery_retires_clean_reconciliation_guardrail_and_refiles_regression(
+    tmp_path,
+):
+    repo = _seed_repo(tmp_path)
+    todo_path = repo / "todo.md"
+    strategy_path = repo / "state" / "strategy.json"
+    discovery_dir = repo / "data" / "agent_supervisor" / "discovery"
+    todo_path.write_text("# Agent Todos\n", encoding="utf-8")
+    dirty_result = {
+        "attempted": True,
+        "main_checkout_status_available": True,
+        "main_checkout_dirty": True,
+        "main_status_short": [" M src/runtime.py"],
+        "candidate_count": 1,
+        "candidates": [
+            {
+                "branch": "implementation/auto-001-attempt-1",
+                "path": "/tmp/worktrees/auto-001",
+                "target_ref": "main",
+            }
+        ],
+    }
+
+    first = backlog_refinery.record_reconciliation_guardrail_findings(
+        todo_path=todo_path,
+        strategy_path=strategy_path,
+        discovery_dir=discovery_dir,
+        reconciliation_result=dirty_result,
+        task_prefix="AUTO-",
+        repo_root=repo,
+    )
+    assert [finding["follow_up_task_id"] for finding in first] == [
+        "AUTO-001"
+    ]
+
+    releases = release_completed_guardrail_blocks(
+        todo_path=todo_path,
+        strategy_path=strategy_path,
+        reconciliation_result={
+            "attempted": True,
+            "main_checkout_status_available": True,
+            "main_checkout_dirty": False,
+            "main_status_short": [],
+            "raw_main_checkout_dirty": True,
+            "raw_main_status_short": [" m ipfs_datasets_py"],
+            "main_dirty_evidence": {
+                "nonblocking_submodule_content_status": [
+                    {
+                        "path": "ipfs_datasets_py",
+                        "candidate_commit": "candidate",
+                    }
+                ],
+            },
+            "candidate_count": 1,
+        },
+        cleanup_result={"attempted": True},
+        task_prefix="AUTO-",
+    )
+
+    assert releases == [
+        {
+            "source_task_id": "AUTO-001",
+            "follow_up_task_id": "",
+            "guardrail_kind": "reconciliation_guardrail",
+            "reason": "reconciliation_finding_resolved",
+            "dedupe_key": "reconciliation_guardrail:main_checkout_dirty",
+        }
+    ]
+    todo_text = todo_path.read_text(encoding="utf-8")
+    assert "- Status: completed" in todo_text.split("## AUTO-001", 1)[1]
+    strategy = json.loads(strategy_path.read_text(encoding="utf-8"))
+    assert strategy["blocked_tasks"] == []
+    assert strategy["reconciliation_guardrail_findings"] == []
+    assert strategy["reconciliation_guardrail_seen_fingerprints"] == []
+    assert strategy[
+        "last_resolved_reconciliation_guardrail_task_ids"
+    ] == ["AUTO-001"]
+
+    # A crash between the protected board write and lane-local strategy write
+    # must be replayable without reopening or duplicating the completed card.
+    strategy["blocked_tasks"] = ["AUTO-001"]
+    strategy["reconciliation_guardrail_findings"] = [first[0]]
+    strategy["reconciliation_guardrail_seen_fingerprints"] = [
+        first[0]["fingerprint"]
+    ]
+    strategy_path.write_text(json.dumps(strategy), encoding="utf-8")
+    projection_repair = release_completed_guardrail_blocks(
+        todo_path=todo_path,
+        strategy_path=strategy_path,
+        reconciliation_result={
+            "attempted": True,
+            "main_checkout_status_available": True,
+            "main_checkout_dirty": False,
+            "main_status_short": [],
+            "candidate_count": 0,
+        },
+        task_prefix="AUTO-",
+    )
+    assert projection_repair == [
+        {
+            "source_task_id": "AUTO-001",
+            "follow_up_task_id": "",
+            "guardrail_kind": "reconciliation_guardrail",
+            "reason": "resolved_reconciliation_projection_repaired",
+            "dedupe_key": "reconciliation_guardrail:main_checkout_dirty",
+        }
+    ]
+    strategy = json.loads(strategy_path.read_text(encoding="utf-8"))
+    assert strategy["blocked_tasks"] == []
+    assert strategy["reconciliation_guardrail_findings"] == []
+    assert strategy["reconciliation_guardrail_seen_fingerprints"] == []
+
+    second = backlog_refinery.record_reconciliation_guardrail_findings(
+        todo_path=todo_path,
+        strategy_path=strategy_path,
+        discovery_dir=discovery_dir,
+        reconciliation_result=dirty_result,
+        task_prefix="AUTO-",
+        repo_root=repo,
+    )
+    assert [finding["follow_up_task_id"] for finding in second] == [
+        "AUTO-002"
+    ]
+    todo_text = todo_path.read_text(encoding="utf-8")
+    assert todo_text.count(
+        "Dedupe key: reconciliation_guardrail:main_checkout_dirty"
+    ) == 2
+    assert "- Status: blocked" in todo_text.split("## AUTO-002", 1)[1]
+
+
+def test_backlog_refinery_reconciliation_guardrail_retirement_fails_closed(
+    tmp_path,
+):
+    repo = _seed_repo(tmp_path)
+    todo_path = repo / "todo.md"
+    strategy_path = repo / "state" / "strategy.json"
+    todo_path.write_text(
+        """# Agent Todos
+
+## AUTO-001 Resolve dirty main checkout blocking 1 worktree merges
+
+- Status: blocked
+- Completion: manual
+- Is schedulable: false
+- Review only: true
+- Blocked reason: operator_reconciliation_required
+- Priority: P1
+- Track: ops
+- Fingerprint: dirty-fingerprint
+- Dedupe key: reconciliation_guardrail:main_checkout_dirty
+- Depends on:
+- Outputs: discovery, todo.md
+- Validation: test -f todo.md
+- Acceptance: Keep this guardrail until a conclusive clean scan.
+""",
+        encoding="utf-8",
+    )
+    strategy_path.parent.mkdir(parents=True, exist_ok=True)
+    strategy_path.write_text(
+        json.dumps(
+            {
+                "blocked_tasks": ["AUTO-001"],
+                "reconciliation_guardrail_seen_fingerprints": [
+                    "dirty-fingerprint"
+                ],
+                "reconciliation_guardrail_findings": [
+                    {
+                        "follow_up_task_id": "AUTO-001",
+                        "fingerprint": "dirty-fingerprint",
+                        "kind": "main_checkout_dirty",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    unavailable = release_completed_guardrail_blocks(
+        todo_path=todo_path,
+        strategy_path=strategy_path,
+        reconciliation_result={
+            "attempted": True,
+            "main_checkout_status_available": False,
+            "main_checkout_dirty": True,
+            "main_status_short": [],
+            "candidate_count": 1,
+        },
+        task_prefix="AUTO-",
+    )
+    staged = release_completed_guardrail_blocks(
+        todo_path=todo_path,
+        strategy_path=strategy_path,
+        reconciliation_result={
+            "attempted": True,
+            "main_checkout_status_available": True,
+            "main_checkout_dirty": True,
+            "main_status_short": ["M  src/runtime.py"],
+            "candidate_count": 1,
+            "candidates": [
+                {
+                    "branch": "implementation/auto-001-attempt-1",
+                    "path": "/tmp/worktrees/auto-001",
+                }
+            ],
+        },
+        task_prefix="AUTO-",
+    )
+    inconsistent = release_completed_guardrail_blocks(
+        todo_path=todo_path,
+        strategy_path=strategy_path,
+        reconciliation_result={
+            "attempted": True,
+            "main_checkout_status_available": True,
+            "main_checkout_dirty": False,
+            "main_status_short": [" m unknown-submodule"],
+            "candidate_count": 1,
+        },
+        task_prefix="AUTO-",
+    )
+
+    assert unavailable == []
+    assert staged == []
+    assert inconsistent == []
+    assert "- Status: blocked" in todo_path.read_text(encoding="utf-8")
+    strategy = json.loads(strategy_path.read_text(encoding="utf-8"))
+    assert strategy["blocked_tasks"] == ["AUTO-001"]
+    assert strategy["reconciliation_guardrail_findings"] == [
+        {
+            "follow_up_task_id": "AUTO-001",
+            "fingerprint": "dirty-fingerprint",
+            "kind": "main_checkout_dirty",
+        }
+    ]
+
+
 def test_backlog_refinery_preserves_reconciliation_resolution_sections(tmp_path):
     path = tmp_path / "discovery" / "reconciliation.md"
     path.parent.mkdir(parents=True)
