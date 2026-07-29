@@ -13,6 +13,7 @@ the reusable pieces close to the accelerator daemon runtime:
 from __future__ import annotations
 
 import argparse
+import ast
 import json
 import logging
 import os
@@ -196,7 +197,7 @@ SELF_IMPROVEMENT_SUCCESSOR_RECORD_SCHEMA = (
 SELF_IMPROVEMENT_SUCCESSOR_RECORDS_KEY = (
     "self_improvement_successor_admission_records"
 )
-CODEBASE_SCAN_ANALYZER_VERSION = "codebase-annotation-analyzer/v1"
+CODEBASE_SCAN_ANALYZER_VERSION = "codebase-annotation-analyzer/v2"
 CODEBASE_AUDIT_SCANNER_VERSION = "codebase-audit/v1"
 CODEBASE_SCAN_REASON_SAMPLE_LIMIT = 10
 CODEBASE_SCAN_MAX_FILE_BYTES = int(os.environ.get("IPFS_ACCELERATE_AGENT_CODEBASE_SCAN_MAX_FILE_BYTES", "262144"))
@@ -3072,18 +3073,68 @@ def annotation_followup_marker(line: str) -> str:
 
 
 def codebase_parser_path(relative_path: str) -> str:
-    """Return the versioned v1 parser path selected for a relative path."""
+    """Return the current versioned parser path for a relative path."""
 
     return "markdown_fenced" if Path(relative_path).suffix.lower() in {".md", ".rst"} else "line_source"
 
 
+def _python_swallowed_exception_lines(source: str) -> frozenset[int]:
+    """Return real broad handlers whose direct body discards the failure.
+
+    The v1 line matcher treated string literals, comments, and detector
+    fixtures containing ``except Exception`` as executable handlers.  Besides
+    producing false positives, that made autonomous refill scan its own
+    evidence catalogs and generate an unbounded repair loop.  Python sources
+    are now classified from their AST; a syntax error fails closed to no
+    swallowed-exception claims rather than falling back to lexical guessing.
+    """
+
+    try:
+        tree = ast.parse(source)
+    except (SyntaxError, ValueError):
+        return frozenset()
+
+    result: set[int] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.ExceptHandler):
+            continue
+        broad = node.type is None or (
+            isinstance(node.type, ast.Name) and node.type.id == "Exception"
+        )
+        if not broad:
+            continue
+        discards = any(
+            isinstance(statement, ast.Pass)
+            or (
+                isinstance(statement, ast.Return)
+                and (
+                    statement.value is None
+                    or (
+                        isinstance(statement.value, ast.Constant)
+                        and statement.value.value is None
+                    )
+                )
+            )
+            for statement in node.body
+        )
+        if discards:
+            result.add(int(node.lineno))
+    return frozenset(result)
+
+
 def scan_findings_in_source(source: str, *, root_relative: str) -> list[CodebaseFinding]:
-    """Run the real v1 matcher over an in-memory source fixture."""
+    """Run the current semantic matcher over an in-memory source fixture."""
 
     lines = str(source).splitlines()
     findings: list[CodebaseFinding] = []
     in_fenced_block = False
     scan_fences = codebase_parser_path(root_relative) == "markdown_fenced"
+    python_source = Path(root_relative).suffix.lower() == ".py"
+    python_swallowed_lines = (
+        _python_swallowed_exception_lines(source)
+        if python_source
+        else frozenset()
+    )
     for index, line in enumerate(lines, start=1):
         stripped = line.strip()
         if scan_fences and (stripped.startswith("```") or stripped.startswith("~~~")):
@@ -3100,9 +3151,16 @@ def scan_findings_in_source(source: str, *, root_relative: str) -> list[Codebase
             kind = "annotated_followup"
             priority = "P2" if annotation_marker in {"fixme", "hack", "xxx"} else "P3"
             summary = f"Resolve code annotation in {root_relative}:{index}"
-        elif re.search(r"\bexcept\s*:\s*$", stripped) or re.search(r"\bexcept\s+Exception\b", stripped):
+        elif (
+            index in python_swallowed_lines
+            if python_source
+            else (
+                re.search(r"\bexcept\s*:\s*$", stripped) is not None
+                or re.search(r"\bexcept\s+Exception\b", stripped) is not None
+            )
+        ):
             window = "\n".join(lines[index : min(len(lines), index + 3)]).lower()
-            if "pass" in window or "return none" in window:
+            if python_source or "pass" in window or "return none" in window:
                 kind = "swallowed_exception"
                 priority = "P1"
                 summary = f"Review swallowed exception path in {root_relative}:{index}"

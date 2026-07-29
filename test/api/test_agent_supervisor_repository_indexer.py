@@ -13,8 +13,8 @@ from ipfs_accelerate_py.agent_supervisor.analysis.analyzer_health import (
     AnalyzerHealthStatus,
     AnalyzerHealthThresholds,
 )
-from ipfs_accelerate_py.agent_supervisor.analysis.contract_mismatch_analyzer import (
-    MismatchAnalysis,
+from ipfs_accelerate_py.agent_supervisor.analysis.contract_assurance_baseline import (
+    BASELINE_FINDINGS_SCHEMA,
 )
 from ipfs_accelerate_py.agent_supervisor.analysis.polyglot_ast_provider import (
     PolyglotASTProvider,
@@ -35,6 +35,7 @@ from ipfs_accelerate_py.agent_supervisor.analysis.repository_snapshot import (
     RepositorySnapshot,
     RepositorySnapshotStats,
 )
+from scripts.index_repository_contracts import _resolve_typescript_path
 
 
 def _digest(payload: bytes) -> str:
@@ -610,6 +611,46 @@ def _scope_policy() -> dict:
     }
 
 
+def test_cli_typescript_discovery_is_bounded_to_reviewed_primary_root(
+    tmp_path: Path,
+) -> None:
+    repository = tmp_path / "superproject"
+    compiler = (
+        repository
+        / "swissknife"
+        / "node_modules"
+        / "typescript"
+        / "lib"
+        / "typescript.js"
+    )
+    compiler.parent.mkdir(parents=True)
+    compiler.write_text("// fixture compiler path\n", encoding="utf-8")
+    unrelated = (
+        repository
+        / "provider"
+        / "node_modules"
+        / "typescript"
+        / "lib"
+        / "typescript.js"
+    )
+    unrelated.parent.mkdir(parents=True)
+    unrelated.write_text("// must not be selected\n", encoding="utf-8")
+    policy = _scope_policy()
+    policy["primaryRepository"] = "swissknife"
+    policy["primaryRoot"] = "swissknife"
+    scope = tmp_path / "scope.json"
+    scope.write_text(json.dumps(policy), encoding="utf-8")
+
+    resolved = _resolve_typescript_path(
+        repo_root=repository,
+        scope_config=scope,
+        explicit=None,
+    )
+
+    assert resolved == str(compiler.resolve())
+    assert Path(resolved).is_absolute()
+
+
 def test_cli_indexes_real_git_snapshot_and_writes_all_evidence(
     tmp_path: Path,
 ) -> None:
@@ -686,12 +727,13 @@ def test_cli_indexes_real_git_snapshot_and_writes_all_evidence(
         "README.md",
         "service.py",
     }
-    analysis = MismatchAnalysis.from_json(
+    findings = json.loads(
         (output / "contract_findings.json").read_text(encoding="utf-8")
     )
-    assert analysis.snapshot_id == summary["snapshot_id"]
-    assert analysis.findings == ()
-    assert "contract_claim_pipeline_not_run" in analysis.reason_codes
+    assert findings["schema"] == BASELINE_FINDINGS_SCHEMA
+    assert findings["snapshot_root"] == summary["snapshot_id"]
+    assert findings["generation"]["llm_call_count"] == 0
+    assert findings["claims"]["no_drift"] is False
     markdown = (output / "summary.md").read_text(encoding="utf-8")
     assert f"`{summary['snapshot_id']}`" in markdown
     assert "- Model calls: `0`" in markdown

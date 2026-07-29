@@ -22,6 +22,7 @@ import os
 import tempfile
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
+from decimal import Decimal, InvalidOperation
 from enum import Enum
 from pathlib import Path
 from types import MappingProxyType
@@ -193,6 +194,45 @@ def _plain(value: Any, *, depth: int = 0) -> Any:
     raise ContractAssuranceBaselineError(
         f"unsupported baseline value type: {type(value).__name__}"
     )
+
+
+def _canonical_measurement(value: Any, *, depth: int = 0) -> Any:
+    """Project operational floats into deterministic decimal evidence.
+
+    Analyzer reports use Python floats for ratios and policy thresholds.
+    Baseline identities intentionally reject binary floating-point values, so
+    this boundary turns finite measurements into exact decimal strings while
+    preserving integer counters and all other canonical JSON value types.
+    """
+
+    if depth > 32:
+        raise ContractAssuranceBaselineError("measurement exceeds nesting bound")
+    if isinstance(value, float):
+        try:
+            decimal = Decimal(str(value))
+        except InvalidOperation as exc:
+            raise ContractAssuranceBaselineError(
+                "measurement is not a valid decimal"
+            ) from exc
+        if not decimal.is_finite():
+            raise ContractAssuranceBaselineError(
+                "non-finite measurement is not baseline evidence"
+            )
+        if decimal == 0:
+            return "0"
+        text = format(decimal, "f")
+        return text.rstrip("0").rstrip(".") if "." in text else text
+    if isinstance(value, Mapping):
+        return {
+            str(key): _canonical_measurement(item, depth=depth + 1)
+            for key, item in sorted(value.items(), key=lambda pair: str(pair[0]))
+        }
+    if isinstance(value, (list, tuple)):
+        return [
+            _canonical_measurement(item, depth=depth + 1)
+            for item in value
+        ]
+    return _plain(value, depth=depth)
 
 
 def _canonical_bytes(value: Any) -> bytes:
@@ -509,8 +549,8 @@ def _coverage_from_index(index: RepositoryIndex) -> dict[str, Any]:
         "head_tree_id": index.snapshot.head_tree_id,
         "index_tree_id": index.snapshot.index_tree_id,
         "is_clean": index.snapshot.is_clean,
-        "health": index.health.to_dict(),
-        "stats": index.build_stats.to_dict(),
+        "health": _canonical_measurement(index.health.to_dict()),
+        "stats": _canonical_measurement(index.build_stats.to_dict()),
         "rows": [
             {
                 "path": row.path,
@@ -570,7 +610,7 @@ def _health_projection(
             "thresholds": {},
         }
 
-    health = index.health.to_dict()
+    health = _canonical_measurement(index.health.to_dict())
     status = index.health.status
     reasons = list(index.health.reasons)
     primary_reason = reasons[0] if reasons else (

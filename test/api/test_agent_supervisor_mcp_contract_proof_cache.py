@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib
 import json
 import threading
 import time
@@ -10,6 +11,9 @@ from pathlib import Path
 
 import pytest
 
+from ipfs_accelerate_py.agent_supervisor.analysis import (
+    content_identity_bridge,
+)
 from ipfs_accelerate_py.agent_supervisor.analysis.content_identity_bridge import (
     LOGIC_IR_PROFILE,
     MULTICODEC_RAW,
@@ -178,6 +182,26 @@ def test_identity_retains_and_revalidates_canonical_bytes_against_cid() -> None:
     with pytest.raises(ProofCacheValidationError) as error:
         replace(binding, canonical_bytes=binding.canonical_bytes + b" ")
     assert error.value.reason_code == ProofCacheReason.POISONED.value
+
+
+def test_identity_binding_uses_live_bridge_after_module_reload() -> None:
+    reloaded = importlib.reload(content_identity_bridge)
+    identity = reloaded.identify_strict_artifact(
+        {"component": "reload-boundary", "version": 1}
+    )
+
+    binding = IdentityBinding.from_identity(
+        identity,
+        logical_id="reload-boundary-1",
+    )
+    assert IdentityBinding.from_dict(binding.to_dict()) == binding
+
+    with pytest.raises(ProofCacheValidationError) as poisoned:
+        IdentityBinding.from_identity(
+            replace(identity, cid="not-a-cid"),
+            logical_id="reload-boundary-poisoned",
+        )
+    assert poisoned.value.reason_code == ProofCacheReason.POISONED.value
 
 
 def test_key_binds_every_semantic_dimension_and_is_order_invariant() -> None:

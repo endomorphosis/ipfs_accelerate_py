@@ -1248,6 +1248,76 @@ def test_backlog_refinery_annotation_scan_ignores_literal_status_strings(tmp_pat
     ]
 
 
+def test_backlog_refinery_python_scan_ignores_swallowed_exception_literals(
+    tmp_path,
+):
+    repo = _seed_repo(tmp_path)
+    source = repo / "src" / "runtime.py"
+    source.parent.mkdir()
+    source.write_text(
+        '''"""The phrase except Exception: pass is documentation, not code."""
+
+CATALOG = {
+    "handlerBody": "except Exception: pass  # inventory evidence",
+    "snippet": "except Exception:\\n    return None",
+}
+
+def real_handler():
+    try:
+        work()
+    except Exception:
+        pass
+''',
+        encoding="utf-8",
+    )
+    _git(repo, "add", "src/runtime.py")
+    _git(repo, "commit", "-m", "seed semantic scan target")
+
+    findings = scan_codebase_findings(repo, max_findings=10)
+
+    swallowed = [
+        finding
+        for finding in findings
+        if finding.kind == "swallowed_exception"
+    ]
+    assert [(finding.root_relative_path, finding.line_number) for finding in swallowed] == [
+        ("src/runtime.py", 11)
+    ]
+
+
+def test_backlog_refinery_python_scan_detects_bare_and_return_none_handlers(
+    tmp_path,
+):
+    repo = _seed_repo(tmp_path)
+    source = repo / "src" / "runtime.py"
+    source.parent.mkdir()
+    source.write_text(
+        """def bare_handler():
+    try:
+        work()
+    except:
+        return None
+
+def explicit_handler():
+    try:
+        work()
+    except Exception:
+        return
+""",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "src/runtime.py")
+    _git(repo, "commit", "-m", "seed broad handlers")
+
+    findings = scan_codebase_findings(repo, max_findings=10)
+
+    assert [
+        (finding.root_relative_path, finding.line_number)
+        for finding in findings
+        if finding.kind == "swallowed_exception"
+    ] == [("src/runtime.py", 4), ("src/runtime.py", 10)]
+
+
 def test_backlog_refinery_annotation_scan_ignores_long_cli_option_names(tmp_path):
     repo = _seed_repo(tmp_path)
     source = repo / "docs" / "runbook.md"

@@ -22,6 +22,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Final
 
+from ..analysis import content_identity_bridge as _content_identity_bridge
 from ..analysis.content_identity_bridge import (
     CID_VERSION,
     LOGIC_IR_PROFILE,
@@ -30,10 +31,6 @@ from ..analysis.content_identity_bridge import (
     MULTICODEC_RAW,
     MULTIHASH_SHA2_256,
     STRICT_ARTIFACT_PROFILE,
-    CidValidationError,
-    ContentIdentity,
-    ContentIdentityError,
-    decode_and_verify_cid,
     sha256_digest_label,
 )
 from .formal_verification_cache import (
@@ -208,7 +205,7 @@ class IdentityBinding:
                 reason_code=ProofCacheReason.POISONED.value,
             )
         try:
-            decode_and_verify_cid(
+            _content_identity_bridge.decode_and_verify_cid(
                 self.cid,
                 retained,
                 expected_codec=expected_codec,
@@ -217,7 +214,10 @@ class IdentityBinding:
                 expected_version=self.cid_version,
                 expected_multihash=self.multihash,
             )
-        except (CidValidationError, ContentIdentityError) as exc:
+        except (
+            _content_identity_bridge.CidValidationError,
+            _content_identity_bridge.ContentIdentityError,
+        ) as exc:
             raise ProofCacheValidationError(
                 f"CID/preimage validation failed: {exc}",
                 reason_code=ProofCacheReason.POISONED.value,
@@ -225,9 +225,12 @@ class IdentityBinding:
 
     @classmethod
     def from_identity(
-        cls, identity: ContentIdentity, *, logical_id: str
+        cls,
+        identity: _content_identity_bridge.ContentIdentity,
+        *,
+        logical_id: str,
     ) -> "IdentityBinding":
-        if not isinstance(identity, ContentIdentity):
+        if not isinstance(identity, _content_identity_bridge.ContentIdentity):
             raise TypeError("identity must be a ContentIdentity")
         return cls(
             logical_id=logical_id,
