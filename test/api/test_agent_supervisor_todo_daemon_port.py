@@ -118,6 +118,11 @@ from ipfs_accelerate_py.agent_supervisor.implementation_daemon_runner import (
     build_portal_implementation_daemon_from_args,
 )
 from ipfs_accelerate_py.agent_supervisor import implementation_daemon_runner
+from ipfs_accelerate_py.agent_supervisor.checkout_lock import (
+    BACKLOG_REFINERY_AUTHOR_EMAIL,
+    GENERATED_PROTECTED_BOARD_COMMIT_MARKER,
+    checkout_mutation_lock_path,
+)
 from ipfs_accelerate_py.agent_supervisor.implementation_supervisor_runner import (
     CodebaseRefillDefaults,
     ImplementationSupervisorDefaults,
@@ -9613,6 +9618,87 @@ def test_implementation_supervisor_repairs_generated_dirty_after_stuck_recovery(
     assert repair_calls == [1, 2]
     assert result["generated_dirty_repair"]["call_index"] == 1
     assert result["post_stuck_generated_dirty_repair"]["call_index"] == 2
+
+
+def test_generated_dirty_repair_owns_checkout_lock_and_defers_foreign_owner(
+    tmp_path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    todo_path = repo / "docs" / "generated.todo.md"
+    todo_path.parent.mkdir()
+    todo_path.write_text("# Generated board\n", encoding="utf-8")
+    _git(repo, "add", "docs/generated.todo.md")
+    _git(
+        repo,
+        "-c",
+        "user.name=Test User",
+        "-c",
+        "user.email=test@example.invalid",
+        "commit",
+        "-m",
+        "seed generated board",
+    )
+
+    state_dir = tmp_path / "state"
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=todo_path,
+            state_path=state_dir / "task_state.json",
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "events.jsonl",
+            state_dir=state_dir,
+            repo_root=repo,
+            generated_dirty_repair_enabled=True,
+            generated_dirty_repair_commit_subject=(
+                "Agent: persist generated board"
+            ),
+            generated_dirty_repair_paths=(todo_path,),
+            implementation_protected_paths=("docs/generated.todo.md",),
+        )
+    )
+
+    todo_path.write_text(
+        "# Generated board\n\n## AUTO-001 Repair\n",
+        encoding="utf-8",
+    )
+    repaired = supervisor.repair_generated_dirty_checkouts()
+
+    assert repaired["committed_count"] == 1
+    assert repaired["selected_path_count"] == 1
+    assert not checkout_mutation_lock_path(repo).exists()
+    assert _git(repo, "log", "-1", "--pretty=%ae") == (
+        BACKLOG_REFINERY_AUTHOR_EMAIL
+    )
+    assert _git(repo, "log", "-1", "--pretty=%s").endswith(
+        GENERATED_PROTECTED_BOARD_COMMIT_MARKER
+    )
+    assert _git(repo, "status", "--porcelain", "--untracked-files=all") == ""
+
+    todo_path.write_text(
+        "# Generated board\n\n## AUTO-002 Deferred\n",
+        encoding="utf-8",
+    )
+    lock_path = checkout_mutation_lock_path(repo)
+    lock_path.write_text(
+        json.dumps(
+            {
+                "kind": "merge",
+                "pid": os.getpid(),
+                "owner_script": "",
+                "repo_root": str(repo.resolve()),
+                "operation": "foreign_checkout_mutation",
+            }
+        ),
+        encoding="utf-8",
+    )
+    deferred = supervisor.repair_generated_dirty_checkouts()
+
+    assert deferred["attempted"] is False
+    assert deferred["reason"] == "checkout_mutation_lock_unavailable"
+    assert "docs/generated.todo.md" in _git(repo, "status", "--short")
 
 
 def test_implementation_supervisor_repairs_implementation_without_worker(tmp_path):

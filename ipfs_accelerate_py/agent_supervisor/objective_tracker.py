@@ -70,6 +70,7 @@ from .objective_graph import (
 )
 from .validation_commands import split_validation_commands
 from .formal_verification_contracts import content_identity
+from .checkout_lock import objective_admission_lock_path
 from .validation_runtime import (
     build_validation_environment,
     validation_shell_command,
@@ -2526,9 +2527,7 @@ def _write_generated_objective_candidate(
 
     from .duckdb_state import exclusive_file_lock
 
-    lock_path = objective_path.with_name(
-        f".{objective_path.name}.admission.lock"
-    )
+    lock_path = objective_admission_lock_path(objective_path)
     with exclusive_file_lock(lock_path, timeout_seconds=30.0):
         current_text = (
             objective_path.read_text(encoding="utf-8")
@@ -3319,9 +3318,7 @@ def objective_materialization_tree_identity(
 ) -> RepositoryTreeIdentity:
     """Return a tree fence which ignores only this transaction's own files."""
 
-    lock_path = objective_path.with_name(
-        f".{objective_path.name}.admission.lock"
-    )
+    lock_path = objective_admission_lock_path(objective_path)
     return _control_tree_identity(
         repo_root,
         excluded_paths=(
@@ -3924,7 +3921,7 @@ def commit_objective_goal_materialization(
     repo_root = repo_root.resolve()
     if objective_path == journal_path:
         raise ValueError("journal_path must be separate from objective_path")
-    lock_path = objective_path.with_name(f".{objective_path.name}.admission.lock")
+    lock_path = objective_admission_lock_path(objective_path)
 
     from .duckdb_state import exclusive_file_lock
 
