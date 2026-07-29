@@ -10,9 +10,25 @@ from ipfs_accelerate_py.agent_supervisor.vfs_contract_pack import (
     CONTRACT_PACK_AUTHORIZES_REPAIR,
     CONTRACT_PACK_IS_COMPLETION_EVIDENCE,
     CONTRACT_PACK_IS_CORRECTNESS_EVIDENCE,
+    DRIFT_INVENTORY_AUTHORIZES_REPAIR,
+    DRIFT_INVENTORY_IS_COMPLETION_EVIDENCE,
+    DRIFT_INVENTORY_IS_CORRECTNESS_EVIDENCE,
+    DRIFT_INVENTORY_VARIANT_PRESENCE_IS_DEFECT,
+    VFS_CANONICAL_OPERATION_MATRIX_SCHEMA,
+    VFS_CONTRACT_PACK_GOAL_ID,
+    VFS_CONTRACT_PACK_SCHEMA,
+    VFS_CONTRACT_PACK_VERSION,
+    VFS_DRIFT_INVENTORY_GOAL_ID,
+    VFS_DRIFT_INVENTORY_OBJECTIVE_REVISION,
+    VFS_DRIFT_INVENTORY_SCHEMA,
+    VFS_DRIFT_INVENTORY_SOURCE_REVISION,
+    VFS_DRIFT_INVENTORY_TASK_ID,
     CanonicalVfsContractPack,
     ContractSourceKind,
     DataMode,
+    DriftAssessment,
+    DriftFindingKind,
+    DriftSurfaceKind,
     ExecutionMode,
     ExpectationIssue,
     ExpectationState,
@@ -21,19 +37,19 @@ from ipfs_accelerate_py.agent_supervisor.vfs_contract_pack import (
     OperationSupport,
     PublicSurface,
     SourceContract,
-    VFS_CANONICAL_OPERATION_MATRIX_SCHEMA,
-    VFS_CONTRACT_PACK_GOAL_ID,
-    VFS_CONTRACT_PACK_SCHEMA,
-    VFS_CONTRACT_PACK_VERSION,
     VfsContractPack,
     VfsContractPackError,
     VfsErrorCode,
     VfsInvariantKind,
     VfsOperation,
     assert_vfs_contract_pack_complete,
+    assert_vfs_drift_inventory_complete,
     build_vfs_contract_pack,
+    build_vfs_drift_inventory,
     canonical_vfs_contract_pack,
+    canonical_vfs_drift_inventory,
     publish_vfs_contract_pack,
+    publish_vfs_drift_inventory,
 )
 
 
@@ -70,6 +86,183 @@ def test_pack_identity_authority_and_serialization_are_deterministic() -> None:
     assert pack.to_record() == build_vfs_contract_pack().to_record()
     assert json.loads(pack.to_json()) == record
     assert isinstance(pack, CanonicalVfsContractPack)
+
+
+def test_drift_inventory_identity_tracks_the_objective_heap() -> None:
+    inventory = build_vfs_drift_inventory()
+    record = inventory.to_record()
+
+    assert inventory.schema == VFS_DRIFT_INVENTORY_SCHEMA == "vfs/drift-inventory@1"
+    assert inventory.goal_id == VFS_DRIFT_INVENTORY_GOAL_ID == "VFS-G090"
+    assert inventory.task_id == VFS_DRIFT_INVENTORY_TASK_ID == "VFS-045"
+    assert (
+        inventory.objective_revision
+        == VFS_DRIFT_INVENTORY_OBJECTIVE_REVISION
+        == "baguqeerahsnzkm2u6e6qvh6hnjyrwwwhyf6usdlocisaibw5zyk4ujektotq"
+    )
+    assert (
+        inventory.source_revision
+        == VFS_DRIFT_INVENTORY_SOURCE_REVISION
+        == "git:f6a574375febbcf9a46fcd24bbc7bc5cfb551de5"
+    )
+    assert inventory.contract_pack_id == build_vfs_contract_pack().content_id
+    assert record["evidence_kinds"] == ["vfs/drift-inventory@1"]
+    assert record["authority"] == {
+        "completion_evidence": False,
+        "correctness_evidence": False,
+        "authorizes_repair": False,
+        "variant_presence_is_defect": False,
+    }
+    assert not DRIFT_INVENTORY_IS_COMPLETION_EVIDENCE
+    assert not DRIFT_INVENTORY_IS_CORRECTNESS_EVIDENCE
+    assert not DRIFT_INVENTORY_AUTHORIZES_REPAIR
+    assert not DRIFT_INVENTORY_VARIANT_PRESENCE_IS_DEFECT
+    assert inventory.content_id == _canonical_digest(record)
+    assert inventory.to_record() == build_vfs_drift_inventory().to_record()
+    assert inventory.to_record() == canonical_vfs_drift_inventory().to_record()
+    assert json.loads(inventory.to_json()) == record
+
+
+def test_drift_inventory_covers_surface_families_and_canonical_operations() -> None:
+    pack = build_vfs_contract_pack()
+    inventory = build_vfs_drift_inventory(pack)
+    evidence = {item.evidence_id: item for item in inventory.evidence}
+    sources = {item.source_id: item for item in pack.sources}
+
+    assert {
+        surface_kind
+        for finding in inventory.findings
+        for surface_kind in finding.surface_kinds
+    } == set(DriftSurfaceKind)
+    assert {
+        operation
+        for finding in inventory.findings
+        for operation in finding.canonical_operations
+    } == set(VfsOperation)
+    assert {item.locator for item in inventory.evidence} >= {
+        "ipfs_kit_py/ipfs_kit_py/ipfs_fsspec.py",
+        "ipfs_kit_py/ipfs_kit_py/vfs_manager.py",
+        "ipfs_kit_py/ipfs_kit_py/bucket_vfs_manager.py",
+        "ipfs_kit_py/ipfs_kit_py/filesystem_journal.py",
+        "ipfs_kit_py/ipfs_kit_py/vfs_version_tracker.py",
+        "ipfs_kit_py/ipfs_kit_py/iroh_vfs.py",
+    }
+    assert all(
+        item.reviewed and item.available and not item.expectation_authority
+        for item in inventory.evidence
+    )
+
+    for finding in inventory.findings:
+        assert finding.evidence_ids
+        assert all(evidence_id in evidence for evidence_id in finding.evidence_ids)
+        assert finding.canonical_operations
+        assert all(
+            pack.operation_contract(operation).state is ExpectationState.RESOLVED
+            for operation in finding.canonical_operations
+        )
+        assert all(
+            sources[source_id].expectation_authority
+            for source_id in finding.source_contract_ids
+        )
+
+    core = next(
+        item
+        for item in inventory.findings
+        if item.finding_id == "finding:vfs-core-fsspec"
+    )
+    assert set(core.canonical_operations) == set(VfsOperation)
+    assert {"VFSCore", "IPFSFSSpecFileSystem"}.issubset(
+        evidence["evidence:vfs-core-fsspec"].observed_symbols
+    )
+
+
+def test_inventory_findings_are_separate_from_repair_decisions() -> None:
+    inventory = build_vfs_drift_inventory()
+    record = inventory.to_record()
+
+    assert record["inventory_findings"]
+    assert record["repair_decisions"] == []
+    assert inventory.repair_decisions == ()
+    assert all(item.defect_label is None for item in inventory.findings)
+    assert all(item.repair_decision is None for item in inventory.findings)
+
+    variants = [
+        item
+        for item in inventory.findings
+        if item.kind is DriftFindingKind.VARIANT_PRESENCE
+    ]
+    assert variants
+    assert all(item.variant_presence_only for item in variants)
+    assert all(item.assessment is DriftAssessment.OBSERVED for item in variants)
+    duplicate = next(
+        item
+        for item in inventory.findings
+        if item.kind is DriftFindingKind.DUPLICATE_CANDIDATE
+    )
+    assert duplicate.assessment is DriftAssessment.UNRESOLVED
+    assert duplicate.defect_label is None
+
+    manifest = next(
+        item
+        for item in inventory.findings
+        if item.kind is DriftFindingKind.MANIFEST_DRIFT
+    )
+    assert manifest.assessment is DriftAssessment.DRIFT
+    assert set(manifest.evidence_ids) == {
+        "evidence:mcp-vfs-tools",
+        "evidence:mcp-js-tools-manifest",
+    }
+    placeholder = next(
+        item
+        for item in inventory.findings
+        if item.kind is DriftFindingKind.CONTRACT_DRIFT
+    )
+    assert placeholder.assessment is DriftAssessment.DRIFT
+
+    with pytest.raises(VfsContractPackError, match="cannot contain repair"):
+        replace(inventory.findings[0], repair_decision="replace the module")
+    with pytest.raises(VfsContractPackError, match="cannot assign a defect"):
+        replace(variants[0], defect_label="broken")
+    with pytest.raises(VfsContractPackError, match="must remain an observation"):
+        replace(variants[0], assessment=DriftAssessment.DRIFT)
+
+
+def test_drift_inventory_fails_closed_on_incomplete_or_unreviewed_mapping() -> None:
+    pack = build_vfs_contract_pack()
+    inventory = build_vfs_drift_inventory(pack)
+
+    without_manifest = tuple(
+        item
+        for item in inventory.findings
+        if item.kind is not DriftFindingKind.MANIFEST_DRIFT
+    )
+    with pytest.raises(VfsContractPackError):
+        replace(inventory, findings=without_manifest)
+
+    bad_evidence = replace(
+        inventory.findings[0],
+        evidence_ids=("evidence:not-in-inventory",),
+    )
+    with pytest.raises(VfsContractPackError, match="evidence coverage differs"):
+        replace(
+            inventory,
+            findings=(bad_evidence,) + inventory.findings[1:],
+        )
+
+    wrong_pack = replace(inventory, contract_pack_id="sha256:" + "0" * 64)
+    with pytest.raises(VfsContractPackError, match="does not match"):
+        assert_vfs_drift_inventory_complete(wrong_pack, pack)
+
+    unreviewed_mapping = replace(
+        inventory.findings[0],
+        source_contract_ids=("source:missing-backend-atomicity-contract",),
+    )
+    unreviewed_inventory = replace(
+        inventory,
+        findings=(unreviewed_mapping,) + inventory.findings[1:],
+    )
+    with pytest.raises(VfsContractPackError, match="lacks reviewed mapping authority"):
+        assert_vfs_drift_inventory_complete(unreviewed_inventory, pack)
 
 
 def test_operation_and_invariant_vocabularies_are_complete() -> None:
@@ -374,3 +567,15 @@ def test_alias_validation_and_atomic_publication(tmp_path) -> None:
     first_bytes = destination.read_bytes()
     assert publish_vfs_contract_pack(destination, pack) == destination.resolve()
     assert destination.read_bytes() == first_bytes
+
+    inventory = canonical_vfs_drift_inventory()
+    inventory_destination = tmp_path / "nested" / "vfs-drift-inventory.json"
+    inventory_published = publish_vfs_drift_inventory(
+        inventory_destination, inventory
+    )
+    assert inventory_published == inventory_destination.resolve()
+    assert (
+        json.loads(inventory_destination.read_text(encoding="utf-8"))
+        == inventory.to_record()
+    )
+    assert not list(inventory_destination.parent.glob("*.tmp"))
