@@ -1008,7 +1008,7 @@ compact references and bounded spans only.
 
 ## VFS-042 Close objective gap: Prove whether SwissKnife MCP++ calls reach the intended IPFS implementation
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
