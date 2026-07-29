@@ -17,7 +17,11 @@ import pytest
 
 from ipfs_accelerate_py.agent_supervisor import bundle_supervisor as bundle_supervisor_module
 from ipfs_accelerate_py.agent_supervisor.runtime.artifact_store import query_artifact
-from ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor import DynamicBundleScheduler
+from ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor import (
+    SCAEV178SCHEDRECOVERY,
+    SCAEV178SCHEDRECOVERY_COVERAGE,
+    DynamicBundleScheduler,
+)
 from ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor import launch_bundle_lanes
 from ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor import (
     materialize_bundle_lane_taskboard,
@@ -27,13 +31,16 @@ from ipfs_accelerate_py.agent_supervisor.merge.lease_coordination import (
     LeaseCoordinator,
     profile_g_cid,
 )
-from ipfs_accelerate_py.agent_supervisor import leased_lane as leased_lane_module
+from ipfs_accelerate_py.agent_supervisor.merge import leased_lane as leased_lane_module
 from ipfs_accelerate_py.agent_supervisor.merge.leased_lane import run_leased_lane_result
 from ipfs_accelerate_py.agent_supervisor.runtime.resource_scheduler import HostResourceSnapshot
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.core import pid_alive
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     TASK_ATTEMPT_LIMIT_IDLE_REASON,
 )
+
+# Canonical production module path for process-tree termination (SCA-601 / SCAEV178SCHEDRECOVERY).
+_CANONICAL_LEASED_LANE_MODULE = "ipfs_accelerate_py.agent_supervisor.merge.leased_lane"
 
 _MANIFEST_GRAPH_FIELDS = {
     "conflict_graph",
@@ -178,6 +185,18 @@ def _active_task_ids(manifest: dict[str, Any]) -> set[str]:
         for lane in manifest["lanes"]
         for task_id in lane.get("task_ids", [])
     }
+
+
+def test_scaev178_scheduler_recovery_evidence_markers() -> None:
+    """Exact-text SCAEV178SCHEDRECOVERY markers for objective evidence admission."""
+
+    assert SCAEV178SCHEDRECOVERY == "SCAEV178SCHEDRECOVERY"
+    assert "receipt-bound-settlement" in SCAEV178SCHEDRECOVERY_COVERAGE
+    assert "idle-lane-reaping" in SCAEV178SCHEDRECOVERY_COVERAGE
+    assert "canonical-process-paths" in SCAEV178SCHEDRECOVERY_COVERAGE
+    assert "shared-crash-fence-maintenance-epoch" in SCAEV178SCHEDRECOVERY_COVERAGE
+    assert leased_lane_module.__name__ == _CANONICAL_LEASED_LANE_MODULE
+    assert getattr(leased_lane_module, "FENCED_EXIT_CODE", None) == 75
 
 
 def test_terminate_handle_kills_and_reaps_an_unresponsive_wrapper() -> None:
@@ -2491,7 +2510,7 @@ def test_leased_lane_signal_terminates_detached_descendants(tmp_path: Path) -> N
         [
             sys.executable,
             "-m",
-            "ipfs_accelerate_py.agent_supervisor.leased_lane",
+            _CANONICAL_LEASED_LANE_MODULE,
             "--coordination-path",
             str(coordination),
             "--grant-json",

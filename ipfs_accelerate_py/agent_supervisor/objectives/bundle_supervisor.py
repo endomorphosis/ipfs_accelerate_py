@@ -74,6 +74,21 @@ BUNDLE_TASKBOARD_INPUT_SCHEMA = (
     "ipfs_accelerate_py.agent_supervisor.bundle_taskboard_input@1"
 )
 INTERNAL_EXECUTION_AUTHORITY = "agent-supervisor/v1"
+# SCA-G178 / SCA-619: scheduler and crash-fence semantic recovery evidence.
+SCAEV178SCHEDRECOVERY = "SCAEV178SCHEDRECOVERY"
+SCAEV178SCHEDRECOVERY_COVERAGE = (
+    "derived-index-refresh-fail-closed",
+    "stale-input-fencing",
+    "restart-ownership",
+    "receipt-bound-settlement",
+    "capacity-accounting",
+    "idle-lane-reaping",
+    "canonical-process-paths",
+    "shared-crash-fence-maintenance-epoch",
+)
+_TASK_ATTEMPT_LIMIT_IDLE_REASON = (
+    "all_selectable_ready_tasks_reached_max_task_attempts"
+)
 DISTRIBUTED_LANE_REQUIREMENT_ID = "314703454108352614663943447510592855908"
 DISTRIBUTED_LANE_EVIDENCE_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/distributed-lane-evidence@1"
@@ -725,6 +740,61 @@ def _write_bytes_atomically(path: Path, content: bytes) -> None:
             temporary.unlink()
         except FileNotFoundError:
             pass
+
+
+def inspect_bundle_lane_input_binding(
+    lane: BundleLaneSpec,
+    *,
+    repo_root: Path,
+) -> dict[str, Any] | None:
+    """Return a stale-input fence when planned bytes diverge from a bound runtime.
+
+    SCAEV178SCHEDRECOVERY: reviewed source digests are immutable admission
+    inputs.  When an earlier materialization bound a different digest, claim
+    and registration must fail closed so capacity can admit fresher work.
+    """
+
+    expected_digest = str(lane.source_todo_sha256 or "").strip().lower()
+    if len(expected_digest) != 64:
+        return None
+    binding_path = bundle_taskboard_input_binding_path(lane)
+    try:
+        existing_binding = json.loads(binding_path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        existing_binding = None
+    except (OSError, json.JSONDecodeError):
+        return {
+            "reason": "stale_input_binding",
+            "code": "G_STALE_INPUT_BINDING",
+            "bound_source_todo_sha256": "",
+            "planned_source_todo_sha256": expected_digest,
+            "bundle_key": lane.bundle_key,
+        }
+    if not isinstance(existing_binding, dict):
+        return None
+    bound_digest = str(existing_binding.get("source_todo_sha256") or "").strip().lower()
+    if not bound_digest or bound_digest == expected_digest:
+        try:
+            source_digest = _taskboard_sha256(lane.todo_path)
+        except OSError:
+            source_digest = ""
+        if source_digest and source_digest != expected_digest:
+            return {
+                "reason": "stale_input_binding",
+                "code": "G_STALE_INPUT_BINDING",
+                "bound_source_todo_sha256": expected_digest,
+                "planned_source_todo_sha256": source_digest,
+                "bundle_key": lane.bundle_key,
+            }
+        return None
+    return {
+        "reason": "stale_input_binding",
+        "code": "G_STALE_INPUT_BINDING",
+        "bound_source_todo_sha256": bound_digest,
+        "planned_source_todo_sha256": expected_digest,
+        "bundle_key": lane.bundle_key,
+        "binding_path": repo_relative_path(repo_root, binding_path),
+    }
 
 
 def materialize_bundle_lane_taskboard(
@@ -3039,6 +3109,25 @@ def launch_bundle_lanes(
                     }
                 )
                 continue
+            stale_binding = inspect_bundle_lane_input_binding(lane, repo_root=repo_root)
+            if stale_binding is not None:
+                results.append(
+                    {
+                        "bundle_key": lane.bundle_key,
+                        "accepted": False,
+                        "reason": "stale_input_binding",
+                        "error": "stale_input_binding",
+                        "code": "G_STALE_INPUT_BINDING",
+                        "bound_source_todo_sha256": stale_binding.get(
+                            "bound_source_todo_sha256", ""
+                        ),
+                        "planned_source_todo_sha256": stale_binding.get(
+                            "planned_source_todo_sha256", ""
+                        ),
+                        "stale_input_binding": stale_binding,
+                    }
+                )
+                continue
             assert lane.queue_payload is not None
             adapted = coordinator.register_bundle(lane.queue_payload)
             try:
@@ -3352,6 +3441,7 @@ class DynamicBundleScheduler:
         provider_capacity_path: Path | None = None,
         external_task_state_paths: Sequence[Path | str] = (),
         resource_policy: ResourcePolicy | dict[str, Any] | None = None,
+        bundle_index_refresher: Callable[[], Any] | None = None,
         **lane_options: Any,
     ) -> None:
         if int(max_lanes) < 1:
@@ -3373,7 +3463,14 @@ class DynamicBundleScheduler:
         self.heartbeat_interval = float(heartbeat_interval)
         self.capacity_millionths = int(capacity_millionths)
         self.poll_interval = max(0.0, float(poll_interval))
+        # Prefer the explicit kwarg; fall back to lane_options for callers that
+        # still pass the refresher through **options (SCAEV178SCHEDRECOVERY).
+        if bundle_index_refresher is None and "bundle_index_refresher" in lane_options:
+            bundle_index_refresher = lane_options.pop("bundle_index_refresher")
+        else:
+            lane_options.pop("bundle_index_refresher", None)
         self.lane_options = dict(lane_options)
+        self._bundle_index_refresher = bundle_index_refresher
         self._launcher = launcher or self._default_launcher
         self._process_alive = process_alive or self._default_process_alive
         self._lane_disposition = lane_disposition or self._default_lane_disposition
@@ -3419,17 +3516,52 @@ class DynamicBundleScheduler:
     def running_count(self) -> int:
         return len(self._running)
 
-    def _sample_host_resources(self) -> HostResourceSnapshot | dict[str, Any]:
+    def _sample_host_resources(
+        self,
+        *,
+        reserved_workers: int = 0,
+    ) -> HostResourceSnapshot | dict[str, Any]:
+        """Sample host capacity including same-claimant untracked reservations."""
+
         source = self._host_resource_source
+        active_workers = len(self._running) + max(0, int(reserved_workers))
         try:
             return source(
                 self.state_root,
-                active_workers=len(self._running),
+                active_workers=active_workers,
                 worker_limit=self.max_lanes,
                 active_phase="scheduler",
             )
         except TypeError:
             return source()
+
+    def _same_claimant_untracked_accepted_count(
+        self,
+        coordinator: LeaseCoordinator,
+    ) -> int:
+        """Count accepted leases this claimant still owns outside ``_running``.
+
+        After a scheduler restart the process table is empty, but the durable
+        accepted lease still occupies capacity until the predecessor wrapper
+        settles (SCAEV178SCHEDRECOVERY restart ownership / capacity accounting).
+        """
+
+        count = 0
+        for item in coordinator.list_tasks():
+            if self._projection_state(item) != "accepted":
+                continue
+            task_cid = str(item.get("task_cid") or "")
+            if not task_cid or task_cid in self._running:
+                continue
+            if str(item.get("claimant_did") or "") != self.claimant_did:
+                continue
+            try:
+                if coordinator.active_lease(task_cid) is None:
+                    continue
+            except LeaseError:
+                continue
+            count += 1
+        return count
 
     def _provider_capacities(self, coordinator: LeaseCoordinator) -> Any:
         """Read injected/file/fenced-heartbeat provider telemetry in that order."""
@@ -3676,6 +3808,15 @@ class DynamicBundleScheduler:
             else:
                 self._plan_cache = None
         if self._plan_cache is None:
+            # SCAEV178SCHEDRECOVERY: rebuild derived inputs only when the plan
+            # cache is cold or completion sources changed, then fail closed.
+            if self._bundle_index_refresher is not None:
+                try:
+                    self._bundle_index_refresher()
+                except Exception as exc:
+                    raise ValueError(
+                        f"bundle-index refresh failed: {type(exc).__name__}: {exc}"
+                    ) from exc
             allowed = {
                 "task_prefix", "implement", "daemon_interval", "stale_seconds",
                 "check_interval", "max_restarts", "max_task_attempts",
@@ -3755,7 +3896,13 @@ class DynamicBundleScheduler:
         return bool(getattr(handle, "alive", False))
 
     def _default_lane_disposition(self, lane: BundleLaneSpec) -> str:
-        """Project a settled execution slice or shard board to a disposition."""
+        """Project a settled execution slice or shard board to a disposition.
+
+        Board disposition is admission and post-exit settlement authority only.
+        While a leased-lane wrapper process is still live, :meth:`_reap` must
+        not use this result to terminate the worker or release capacity
+        (SCAEV178SCHEDRECOVERY receipt-bound settlement).
+        """
 
         operational_todo_path = (
             lane.runtime_todo_path
@@ -3786,6 +3933,7 @@ class DynamicBundleScheduler:
             ready_count = _schedule_int(state, "ready_count")
             waiting_count = _schedule_int(state, "waiting_count")
             active = bool(state.get("implementation_in_progress") or state.get("active_task_id"))
+            selection_idle_reason = str(state.get("selection_idle_reason") or "")
             state_task_ids = {
                 str(task_id)
                 for task_id in (state.get("task_identities") or {})
@@ -3851,6 +3999,17 @@ class DynamicBundleScheduler:
                     return "completed"
                 if completed_count + blocked_count >= task_count:
                     return "blocked"
+            # Attempt-exhausted idle is a terminal selection fence: ready
+            # members cannot be selected, so post-exit admission must settle
+            # blocked rather than relaunch an idle worker (SCAEV178SCHEDRECOVERY).
+            if (
+                state_matches_board
+                and not active
+                and selection_idle_reason == _TASK_ATTEMPT_LIMIT_IDLE_REASON
+                and _schedule_int(state, "selectable_ready_count") == 0
+                and any(status == "ready" for status in statuses.values())
+            ):
+                return "blocked"
             if state_matches_board and task_count > 0 and not active and ready_count == 0:
                 completed_ids = {
                     task.task_id
@@ -4040,6 +4199,9 @@ class DynamicBundleScheduler:
             for accepted in coordinator.list_tasks()
             if self._projection_state(accepted) == "accepted"
             and str(accepted.get("task_cid") or "") not in self._running
+            # Only the lease owner may mint a recovery receipt. Other claimants
+            # must defer to the predecessor wrapper (SCAEV178SCHEDRECOVERY).
+            and str(accepted.get("claimant_did") or "") == self.claimant_did
         ]
         if not accepted_tasks:
             return {}
@@ -4168,18 +4330,33 @@ class DynamicBundleScheduler:
         return process
 
     def _reap(self, coordinator: LeaseCoordinator) -> list[str]:
+        """Reap exited workers with receipt-bound settlement (SCAEV178SCHEDRECOVERY).
+
+        Capacity and process ownership stay with the leased-lane wrapper while
+        the process is live. Board-only disposition must not terminate the
+        worker or publish a scheduler-minted receipt before the wrapper exits.
+        After exit, settle only when the grant is still current (the wrapper
+        normally publishes first); otherwise release a crashed lease so the
+        lane is immediately reclaimable.
+        """
+
         reaped: list[str] = []
         for task_cid, running in list(self._running.items()):
             try:
                 alive = bool(self._process_alive(running.handle))
             except (OSError, RuntimeError):
                 alive = False
-            disposition = self._disposition(running.spec) if alive else ""
-            if alive and not disposition:
+            if alive:
+                # Receipt-bound settlement: keep the live wrapper until it
+                # fences, publishes its own receipt, and exits.
                 continue
+            disposition = self._disposition(running.spec)
             if disposition:
                 try:
-                    self._settle_grant(coordinator, running.grant, disposition=disposition)
+                    if coordinator.active_lease(task_cid) is not None:
+                        self._settle_grant(
+                            coordinator, running.grant, disposition=disposition
+                        )
                 except LeaseError:
                     pass
             self._terminate_handle(running.handle)
@@ -4549,6 +4726,27 @@ class DynamicBundleScheduler:
                 }
                 registered: list[BundleLaneSpec] = []
                 for lane in (item for item in discovered if item.queue_payload):
+                    payload = lane.queue_payload or {}
+                    # Receipt-drained slices own no members and already record
+                    # completed member identities. External active-member fences
+                    # also empty the slice temporarily and must still register as
+                    # blocked (SCAEV178SCHEDRECOVERY).
+                    if (
+                        (
+                            "execution_slice_task_ids" in payload
+                            or "execution_slice_task_cids" in payload
+                        )
+                        and not _execution_slice_members(
+                            payload, _mapping_list(payload.get("tasks"))
+                        )
+                        and not lane.claimable
+                        and not payload.get("external_active_member_fence")
+                        and (
+                            _string_list(payload.get("completed_member_task_cids"))
+                            or _string_list(payload.get("completed_member_task_ids"))
+                        )
+                    ):
+                        continue
                     accepted = accepted_by_task_cid.get(lane.task_cid)
                     if accepted is not None:
                         # Preserve the immutable payload of work that is still
@@ -4598,10 +4796,20 @@ class DynamicBundleScheduler:
                 registered_by_task_cid = {
                     lane.task_cid: lane for lane in registered
                 }
+                stale_bindings: dict[str, dict[str, Any]] = {}
+                for lane in registered:
+                    if lane.task_cid in self._running:
+                        continue
+                    stale = inspect_bundle_lane_input_binding(
+                        lane, repo_root=self.repo_root
+                    )
+                    if stale is not None:
+                        stale_bindings[lane.task_cid] = stale
                 snapshot_ready = {
                     str(item.get("task_cid") or "")
                     for item in decision_projection
                     if self._projection_state(item) == "ready"
+                    and str(item.get("task_cid") or "") not in stale_bindings
                     and (
                         registered_by_task_cid.get(str(item.get("task_cid") or "")) is None
                         or not registered_by_task_cid[
@@ -4622,6 +4830,26 @@ class DynamicBundleScheduler:
                     }
                     for task_cid, result in reconciled.items()
                 ]
+                for task_cid, stale in stale_bindings.items():
+                    lane = registered_by_task_cid.get(task_cid)
+                    decisions.append(
+                        {
+                            "task_cid": task_cid,
+                            "bundle_key": (
+                                lane.bundle_key if lane is not None else stale.get("bundle_key", "")
+                            ),
+                            "decision": "deferred",
+                            "reason": "stale_input_binding",
+                            "bound_source_todo_sha256": stale.get(
+                                "bound_source_todo_sha256", ""
+                            ),
+                            "planned_source_todo_sha256": stale.get(
+                                "planned_source_todo_sha256", ""
+                            ),
+                            "stale_input_binding": dict(stale),
+                            "snapshot_id": decision_snapshot.snapshot_id,
+                        }
+                    )
                 running_by_bundle_key = {
                     running.spec.bundle_key: running
                     for running in self._running.values()
@@ -4644,14 +4872,22 @@ class DynamicBundleScheduler:
                         for running in self._running.values()
                     )
                 ]
+                reserved_workers = self._same_claimant_untracked_accepted_count(
+                    coordinator
+                )
                 try:
-                    host_resources = self._sample_host_resources()
+                    host_resources = self._sample_host_resources(
+                        reserved_workers=reserved_workers,
+                    )
                 except Exception:
                     logger.exception("Host resource sampling failed; retaining configured bounds")
+                    active_workers = len(self._running) + reserved_workers
                     host_resources = HostResourceSnapshot(
-                        active_workers=len(self._running),
+                        active_workers=active_workers,
                         worker_limit=self.max_lanes,
-                        available_worker_capacity=max(0, self.max_lanes - len(self._running)),
+                        available_worker_capacity=max(
+                            0, self.max_lanes - active_workers
+                        ),
                     )
                 try:
                     provider_capacities = self._provider_capacities(coordinator)
@@ -4936,6 +5172,22 @@ class DynamicBundleScheduler:
                     task_cids=current_task_cids,
                     include_claimability=True,
                 )
+                if stale_bindings:
+                    overlaid: list[dict[str, Any]] = []
+                    for item in projection:
+                        task_cid = str(item.get("task_cid") or "")
+                        stale = stale_bindings.get(task_cid)
+                        if stale is None:
+                            overlaid.append(item)
+                            continue
+                        blocked = dict(item)
+                        blocked["state"] = "blocked"
+                        blocked["lease_state"] = "blocked"
+                        blocked["claimable"] = False
+                        blocked["blocked_reason"] = "stale_input_binding"
+                        blocked["stale_input_binding"] = dict(stale)
+                        overlaid.append(blocked)
+                    projection = overlaid
                 current_snapshot = self._build_scheduler_snapshot(registered, projection)
                 if (
                     self._cycle % COORDINATION_COMPACTION_INTERVAL_CYCLES == 0

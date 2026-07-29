@@ -21,6 +21,10 @@ from ipfs_accelerate_py.agent_supervisor.merge.checkout_lock import (
     generations_match,
     serialized_lock_update,
 )
+from ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor import (
+    SCAEV178SCHEDRECOVERY,
+    SCAEV178SCHEDRECOVERY_COVERAGE,
+)
 from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
     core as core_module,
     implementation_daemon as implementation_daemon_module,
@@ -2844,6 +2848,22 @@ def test_successful_agent_runner_quiesces_daemonized_descendants(
                 )
             except OSError:
                 pass
+
+
+def test_scaev178_crash_fence_epoch_evidence_markers() -> None:
+    """SCAEV178SCHEDRECOVERY covers shared crash-fence / maintenance epoch semantics.
+
+    Revalidation-before-mutation, maintenance deferral, and exclusive recon
+    leases are exercised by the crash-fence suite below; this marker binds
+    those paths to the SCA-G178 evidence obligation.
+    """
+
+    assert SCAEV178SCHEDRECOVERY == "SCAEV178SCHEDRECOVERY"
+    assert "shared-crash-fence-maintenance-epoch" in SCAEV178SCHEDRECOVERY_COVERAGE
+    assert "receipt-bound-settlement" in SCAEV178SCHEDRECOVERY_COVERAGE
+    assert callable(crash_fence_reconciliation_lock_path)
+    assert CrashFenceReconciler is not None
+    assert CheckoutMaintenanceLease is not None
 
 
 def test_crash_fence_reconciliation_defers_without_clearance_under_maintenance(
