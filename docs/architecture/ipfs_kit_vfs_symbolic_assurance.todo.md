@@ -708,7 +708,7 @@ compact references and bounded spans only.
 
 ## VFS-036 Add adversarial end-to-end assurance, control parity, recovery, and rollback gates
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: assurance-rollout
