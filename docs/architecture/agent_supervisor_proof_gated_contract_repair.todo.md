@@ -398,7 +398,7 @@ task IDs on this board.
 
 ## RPR-012 Hard-gate and rerank eligible candidates
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
