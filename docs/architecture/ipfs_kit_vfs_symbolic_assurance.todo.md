@@ -388,7 +388,7 @@ compact references and bounded spans only.
 
 ## VFS-020 Route code-contract obligations through capability-probed solvers and authoritative checks
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: formal-proof
