@@ -336,7 +336,7 @@ task IDs on this board.
 
 ## RPR-010 Prove, refute, and reconstruct candidate obligations
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
