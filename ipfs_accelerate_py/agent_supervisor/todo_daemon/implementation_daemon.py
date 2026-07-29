@@ -1331,6 +1331,20 @@ def classify_provider_capacity_failure(text: str) -> dict[str, Any]:
 
 
 @dataclass(frozen=True)
+class _SubmoduleMergeSnapshot:
+    source: Path
+    parent_repo: Path
+    relative: str
+    source_ref: str
+    source_head: str
+    source_status: bytes
+    parent_head: str
+    parent_status: bytes
+    parent_index: bytes
+    parent_gitlink: str
+
+
+@dataclass(frozen=True)
 class ImplementationDiagnosticReceipt:
     """Content-addressed, replay-safe diagnosis for one failed attempt."""
 
@@ -18277,6 +18291,611 @@ class PortalImplementationDaemon:
             return diff.returncode == 1
         return True
 
+    @staticmethod
+    def _submodule_transaction_status(repo: Path) -> subprocess.CompletedProcess[bytes]:
+        return subprocess.run(
+            [
+                "git",
+                "status",
+                "--porcelain=v1",
+                "-z",
+                "--untracked-files=all",
+                "--ignore-submodules=none",
+            ],
+            cwd=repo,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+
+    @staticmethod
+    def _stage_zero_gitlink(record: bytes, relative: str) -> str:
+        entries = [entry for entry in record.split(b"\0") if entry]
+        if len(entries) != 1:
+            return ""
+        metadata, separator, raw_path = entries[0].partition(b"\t")
+        try:
+            fields = metadata.decode("ascii").split()
+            path = raw_path.decode("utf-8", errors="surrogateescape")
+        except UnicodeError:
+            return ""
+        if (
+            not separator
+            or len(fields) != 3
+            or fields[0] != "160000"
+            or fields[2] != "0"
+            or path != relative
+        ):
+            return ""
+        return fields[1] if re.fullmatch(r"[0-9a-fA-F]{40,64}", fields[1]) else ""
+
+    def _capture_submodule_merge_snapshot(
+        self,
+        *,
+        parent_repo: Path,
+        source: Path,
+        relative: str,
+    ) -> tuple[_SubmoduleMergeSnapshot | None, str]:
+        if (
+            not self._repo_relative_path_safe(relative)
+            or (parent_repo / relative).resolve() != source.resolve()
+        ):
+            return None, "submodule_transaction_scope_invalid"
+        symbolic = subprocess.run(
+            ["git", "symbolic-ref", "--quiet", "HEAD"],
+            cwd=source,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        source_head = subprocess.run(
+            ["git", "rev-parse", "--verify", "HEAD^{commit}"],
+            cwd=source,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        parent_head = subprocess.run(
+            ["git", "rev-parse", "--verify", "HEAD^{commit}"],
+            cwd=parent_repo,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        source_status = self._submodule_transaction_status(source)
+        parent_status = self._submodule_transaction_status(parent_repo)
+        parent_index = subprocess.run(
+            ["git", "ls-files", "--stage", "-z", "--", relative],
+            cwd=parent_repo,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+        if symbolic.returncode not in (0, 1):
+            return None, "submodule_symbolic_head_unavailable"
+        source_ref = symbolic.stdout.strip() if symbolic.returncode == 0 else ""
+        if source_ref and not source_ref.startswith("refs/heads/"):
+            return None, "submodule_symbolic_head_not_local_branch"
+        gitlink = self._stage_zero_gitlink(parent_index.stdout, relative)
+        commands = (source_head, parent_head, source_status, parent_status, parent_index)
+        if any(command.returncode != 0 for command in commands) or not gitlink:
+            return None, "submodule_transaction_snapshot_unavailable"
+        return (
+            _SubmoduleMergeSnapshot(
+                source=source.resolve(),
+                parent_repo=parent_repo.resolve(),
+                relative=relative,
+                source_ref=source_ref,
+                source_head=source_head.stdout.strip(),
+                source_status=source_status.stdout,
+                parent_head=parent_head.stdout.strip(),
+                parent_status=parent_status.stdout,
+                parent_index=parent_index.stdout,
+                parent_gitlink=gitlink,
+            ),
+            "",
+        )
+
+    def _restore_submodule_merge_snapshot(
+        self,
+        snapshot: _SubmoduleMergeSnapshot,
+        *,
+        full_relative: str,
+    ) -> dict[str, Any]:
+        failures: list[str] = []
+        if self._git_merge_head_in_repo(snapshot.source):
+            abort = subprocess.run(
+                ["git", "merge", "--abort"],
+                cwd=snapshot.source,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            if abort.returncode != 0:
+                failures.append("merge_abort_failed")
+
+        parent_head = subprocess.run(
+            ["git", "rev-parse", "--verify", "HEAD^{commit}"],
+            cwd=snapshot.parent_repo,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        parent_unchanged = (
+            parent_head.returncode == 0
+            and parent_head.stdout.strip() == snapshot.parent_head
+        )
+        if not parent_unchanged:
+            failures.append("parent_head_changed")
+
+        if snapshot.source_ref:
+            target = subprocess.run(
+                ["git", "rev-parse", "--verify", f"{snapshot.source_ref}^{{commit}}"],
+                cwd=snapshot.source,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            target_safe = (
+                target.returncode == 0
+                and target.stdout.strip() == snapshot.source_head
+            )
+            checkout_target = snapshot.source_ref.removeprefix("refs/heads/")
+            checkout_args = ["checkout", "--no-recurse-submodules", checkout_target]
+        else:
+            target = subprocess.run(
+                ["git", "cat-file", "-e", f"{snapshot.source_head}^{{commit}}"],
+                cwd=snapshot.source,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            target_safe = target.returncode == 0
+            checkout_args = [
+                "checkout",
+                "--no-recurse-submodules",
+                "--detach",
+                snapshot.source_head,
+            ]
+        if not target_safe:
+            failures.append("original_submodule_ref_changed")
+        elif "merge_abort_failed" not in failures:
+            restore = subprocess.run(
+                ["git", "-c", "submodule.recurse=false", *checkout_args],
+                cwd=snapshot.source,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            if restore.returncode != 0:
+                failures.append("submodule_checkout_restore_failed")
+
+        current_index = subprocess.run(
+            ["git", "ls-files", "--stage", "-z", "--", snapshot.relative],
+            cwd=snapshot.parent_repo,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+        if current_index.stdout != snapshot.parent_index:
+            current_gitlink = self._stage_zero_gitlink(
+                current_index.stdout, snapshot.relative
+            )
+            if not parent_unchanged or not current_gitlink:
+                failures.append("parent_index_restore_not_safe")
+            else:
+                restore_index = subprocess.run(
+                    [
+                        "git",
+                        "update-index",
+                        "--add",
+                        "--cacheinfo",
+                        f"160000,{snapshot.parent_gitlink},{snapshot.relative}",
+                    ],
+                    cwd=snapshot.parent_repo,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+                if restore_index.returncode != 0:
+                    failures.append("parent_index_restore_failed")
+
+        symbolic = subprocess.run(
+            ["git", "symbolic-ref", "--quiet", "HEAD"],
+            cwd=snapshot.source,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        source_head = subprocess.run(
+            ["git", "rev-parse", "--verify", "HEAD^{commit}"],
+            cwd=snapshot.source,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        source_status = self._submodule_transaction_status(snapshot.source)
+        parent_status = self._submodule_transaction_status(snapshot.parent_repo)
+        parent_index = subprocess.run(
+            ["git", "ls-files", "--stage", "-z", "--", snapshot.relative],
+            cwd=snapshot.parent_repo,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+        checks = {
+            "source_ref": (
+                symbolic.returncode in (0, 1)
+                and (symbolic.stdout.strip() if symbolic.returncode == 0 else "")
+                == snapshot.source_ref
+            ),
+            "source_head": (
+                source_head.returncode == 0
+                and source_head.stdout.strip() == snapshot.source_head
+            ),
+            "source_status": (
+                source_status.returncode == 0
+                and source_status.stdout == snapshot.source_status
+            ),
+            "parent_head": parent_unchanged,
+            "parent_index": (
+                parent_index.returncode == 0
+                and parent_index.stdout == snapshot.parent_index
+            ),
+            "parent_status": (
+                parent_status.returncode == 0
+                and parent_status.stdout == snapshot.parent_status
+            ),
+        }
+        failures.extend(f"{name}_mismatch" for name, ok in checks.items() if not ok)
+        result = {
+            "attempted": True,
+            "restored": not failures,
+            "path": full_relative,
+            "source_ref": snapshot.source_ref,
+            "source_head": snapshot.source_head,
+            "parent_gitlink": snapshot.parent_gitlink,
+            "checks": checks,
+            "failures": list(dict.fromkeys(failures)),
+            "source_status_before_sha256": hashlib.sha256(
+                snapshot.source_status
+            ).hexdigest(),
+            "source_status_after_sha256": hashlib.sha256(
+                source_status.stdout
+            ).hexdigest(),
+            "parent_status_before_sha256": hashlib.sha256(
+                snapshot.parent_status
+            ).hexdigest(),
+            "parent_status_after_sha256": hashlib.sha256(
+                parent_status.stdout
+            ).hexdigest(),
+        }
+        self._record_event(
+            "submodule_merge_transaction_restored"
+            if result["restored"]
+            else "submodule_merge_transaction_guardrail",
+            result,
+        )
+        return result
+
+    def _persist_submodule_merge_rollback_guardrail(
+        self,
+        *,
+        task: PortalTask,
+        attempt: int,
+        rollback: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        path = self.state_path.with_name("submodule-merge-rollback-guardrail.json")
+        payload = {
+            "schema_version": 1,
+            "active": True,
+            "updated_at": utc_now(),
+            "task_id": task.task_id,
+            "attempt": int(attempt),
+            "rollback": dict(rollback),
+        }
+        try:
+            write_json_atomic(path, payload)
+            write_error = ""
+        except OSError as exc:
+            write_error = str(exc)[-1000:]
+        result = {
+            "active": True,
+            "reason": "submodule_merge_rollback_unverified",
+            "diagnostic_path": str(path),
+        }
+        if write_error:
+            result["diagnostic_write_error"] = write_error
+        self._record_event(
+            "submodule_merge_rollback_guardrail",
+            {**payload, **result},
+        )
+        return result
+
+    def _merge_submodule_checkout_transaction(
+        self,
+        *,
+        parent_repo: Path,
+        source: Path,
+        relative: str,
+        full_relative: str,
+        submodule_branch: str,
+        default_branch: str,
+        task: PortalTask,
+        attempt: int,
+        preserved_dirty_paths: Sequence[str],
+    ) -> dict[str, Any]:
+        snapshot, capture_error = self._capture_submodule_merge_snapshot(
+            parent_repo=parent_repo,
+            source=source,
+            relative=relative,
+        )
+        if snapshot is None:
+            rollback = {
+                "attempted": False,
+                "restored": False,
+                "path": full_relative,
+                "failures": [capture_error],
+            }
+            return {
+                "path": full_relative,
+                "branch": submodule_branch,
+                "default_branch": default_branch,
+                "merged": False,
+                "returncode": 2,
+                "reason": "submodule_merge_snapshot_unavailable",
+                "commit": "",
+                "transaction_rollback": rollback,
+                "rollback_guardrail": self._persist_submodule_merge_rollback_guardrail(
+                    task=task,
+                    attempt=attempt,
+                    rollback=rollback,
+                ),
+            }
+
+        result: dict[str, Any] = {}
+        merged = False
+        merge_command: list[str] = []
+        try:
+            if self._git_current_branch(source) != default_branch:
+                checkout_command = [
+                    "git",
+                    "-c",
+                    "submodule.recurse=false",
+                    "checkout",
+                    "--no-recurse-submodules",
+                    default_branch,
+                ]
+                checkout = subprocess.run(
+                    checkout_command,
+                    cwd=source,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+                if checkout.returncode != 0:
+                    resolver = self._invoke_llm_merge_resolver_for_failed_merge(
+                        workspace=source,
+                        task=task,
+                        attempt=attempt,
+                        branch_name=submodule_branch,
+                        target_branch=default_branch,
+                        merge_command=checkout_command,
+                        merge_stdout=checkout.stdout,
+                        merge_stderr=checkout.stderr,
+                        reason="submodule_default_branch_checkout_failed",
+                    )
+                    if (
+                        resolver.get("applied", False)
+                        and self._git_current_branch(source) != default_branch
+                    ):
+                        checkout = subprocess.run(
+                            checkout_command,
+                            cwd=source,
+                            text=True,
+                            capture_output=True,
+                            check=False,
+                        )
+                    if self._git_current_branch(source) != default_branch:
+                        result.update(
+                            {
+                                "path": full_relative,
+                                "branch": submodule_branch,
+                                "default_branch": default_branch,
+                                "merged": False,
+                                "returncode": checkout.returncode,
+                                "reason": "default_branch_checkout_failed",
+                                "stdout": checkout.stdout[-4000:],
+                                "stderr": checkout.stderr[-4000:],
+                                "llm_merge_resolver": resolver,
+                            }
+                        )
+                        return result
+                    self._record_event(
+                        "submodule_checkout_blocker_resolved",
+                        {
+                            "task_id": task.task_id,
+                            "attempt": attempt,
+                            "path": full_relative,
+                            "branch": submodule_branch,
+                            "default_branch": default_branch,
+                            "llm_merge_resolver": resolver,
+                        },
+                    )
+
+            merge_command = ["git", "merge", "--ff-only", submodule_branch]
+            merge = subprocess.run(
+                merge_command,
+                cwd=source,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            ff_only_result = {
+                "returncode": merge.returncode,
+                "stdout": merge.stdout[-4000:],
+                "stderr": merge.stderr[-4000:],
+            }
+            merge_abort_result: dict[str, Any] = {}
+            resolver: dict[str, Any] = {}
+            resolver_commit: dict[str, Any] = {}
+            gitlink_repair: dict[str, Any] = {}
+            if merge.returncode != 0:
+                merge_command = [
+                    "git",
+                    "merge",
+                    "--no-ff",
+                    "--no-edit",
+                    submodule_branch,
+                ]
+                merge = subprocess.run(
+                    merge_command,
+                    cwd=source,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+                if merge.returncode != 0:
+                    gitlink_repair = self._repair_submodule_gitlink_merge_conflicts(
+                        source,
+                        task=task,
+                        attempt=attempt,
+                        parent_relative=full_relative,
+                    )
+                    if gitlink_repair.get("repaired", False):
+                        merge = subprocess.CompletedProcess(
+                            merge_command, 0, merge.stdout, merge.stderr
+                        )
+                    elif gitlink_repair.get("reason") != "no_gitlink_conflicts":
+                        merge_abort_result = self._abort_failed_merge(source)
+                    else:
+                        resolver = self._invoke_llm_merge_resolver_for_failed_merge(
+                            workspace=source,
+                            task=task,
+                            attempt=attempt,
+                            branch_name=submodule_branch,
+                            target_branch=default_branch,
+                            merge_command=merge_command,
+                            merge_stdout=merge.stdout,
+                            merge_stderr=merge.stderr,
+                            reason="submodule_merge_conflict",
+                        )
+                        if resolver.get("applied", False):
+                            resolver_commit = self._commit_llm_resolved_merge(source)
+                            if resolver_commit.get("completed", False):
+                                merge = subprocess.CompletedProcess(
+                                    merge_command, 0, merge.stdout, merge.stderr
+                                )
+                            elif (
+                                resolver_commit.get("reason") == "no_merge_in_progress"
+                                and self._branch_merged_in_workspace(
+                                    source, submodule_branch
+                                )
+                            ):
+                                resolver_commit.update(
+                                    completed=True,
+                                    reason="resolver_committed_merge",
+                                    commit=self._run_git(
+                                        ["rev-parse", "HEAD"], cwd=source
+                                    ).stdout.strip(),
+                                )
+                                merge = subprocess.CompletedProcess(
+                                    merge_command, 0, merge.stdout, merge.stderr
+                                )
+                            else:
+                                merge_abort_result = self._abort_failed_merge(source)
+                        else:
+                            merge_abort_result = self._abort_failed_merge(source)
+
+            merged = merge.returncode == 0
+            result.update(
+                {
+                    "path": full_relative,
+                    "branch": submodule_branch,
+                    "default_branch": default_branch,
+                    "merged": merged,
+                    "returncode": merge.returncode,
+                    "command": merge_command,
+                    "stdout": merge.stdout[-4000:],
+                    "stderr": merge.stderr[-4000:],
+                    "commit": "",
+                    "ff_only_result": ff_only_result,
+                }
+            )
+            if merge_abort_result:
+                result["merge_abort_result"] = merge_abort_result
+            if resolver:
+                result["llm_merge_resolver"] = resolver
+            if resolver_commit:
+                result["llm_merge_commit_result"] = resolver_commit
+            if gitlink_repair:
+                result["nested_gitlink_repair"] = gitlink_repair
+            if preserved_dirty_paths:
+                result["preserved_dirty_paths"] = list(preserved_dirty_paths)
+            if merged:
+                result["commit"] = self._run_git(
+                    ["rev-parse", "HEAD"], cwd=source
+                ).stdout.strip()
+                validation = self._validate_merged_submodule_state(
+                    source, full_relative
+                )
+                if not validation.get("valid"):
+                    result["post_merge_validation"] = validation
+                    self._record_event(
+                        "submodule_post_merge_validation_failed",
+                        {
+                            "task_id": task.task_id,
+                            "path": full_relative,
+                            "validation": validation,
+                        },
+                    )
+            return result
+        except Exception as exc:
+            result.update(
+                {
+                    "path": full_relative,
+                    "branch": submodule_branch,
+                    "default_branch": default_branch,
+                    "merged": merged,
+                    "returncode": 0 if merged else 2,
+                    "command": merge_command,
+                    "reason": (
+                        "submodule_post_merge_diagnostics_failed"
+                        if merged
+                        else "submodule_merge_exception"
+                    ),
+                    "exception": f"{type(exc).__name__}: {exc}"[-2000:],
+                }
+            )
+            return result
+        finally:
+            if not merged:
+                try:
+                    rollback = self._restore_submodule_merge_snapshot(
+                        snapshot,
+                        full_relative=full_relative,
+                    )
+                except Exception as exc:
+                    rollback = {
+                        "attempted": True,
+                        "restored": False,
+                        "path": full_relative,
+                        "failures": [
+                            f"rollback_exception:{type(exc).__name__}:{exc}"[-2000:]
+                        ],
+                    }
+                result["transaction_rollback"] = rollback
+                if not rollback["restored"]:
+                    result["original_failure_reason"] = str(result.get("reason") or "")
+                    result["reason"] = "submodule_merge_rollback_unverified"
+                    result["rollback_guardrail"] = (
+                        self._persist_submodule_merge_rollback_guardrail(
+                            task=task,
+                            attempt=attempt,
+                            rollback=rollback,
+                        )
+                    )
+
     def _merge_submodule_branches_to_main_in_repo(
         self,
         *,
@@ -18484,166 +19103,21 @@ class PortalImplementationDaemon:
                     results.append(result)
                     checkpoint.record_submodule(full_relative, result)
                     continue
-            if self._git_current_branch(source) != default_branch:
-                checkout = subprocess.run(
-                    ["git", "checkout", default_branch],
-                    cwd=source,
-                    text=True,
-                    capture_output=True,
-                    check=False,
-                )
-                if checkout.returncode != 0:
-                    llm_merge_resolver = self._invoke_llm_merge_resolver_for_failed_merge(
-                        workspace=source,
-                        task=task,
-                        attempt=attempt,
-                        branch_name=submodule_branch,
-                        target_branch=default_branch,
-                        merge_command=["git", "checkout", default_branch],
-                        merge_stdout=checkout.stdout,
-                        merge_stderr=checkout.stderr,
-                        reason="submodule_default_branch_checkout_failed",
-                    )
-                    if llm_merge_resolver.get("applied", False) and self._git_current_branch(source) != default_branch:
-                        checkout = subprocess.run(
-                            ["git", "checkout", default_branch],
-                            cwd=source,
-                            text=True,
-                            capture_output=True,
-                            check=False,
-                        )
-                    if self._git_current_branch(source) == default_branch:
-                        self._record_event(
-                            "submodule_checkout_blocker_resolved",
-                            {
-                                "task_id": task.task_id,
-                                "attempt": attempt,
-                                "path": full_relative,
-                                "branch": submodule_branch,
-                                "default_branch": default_branch,
-                                "llm_merge_resolver": llm_merge_resolver,
-                            },
-                        )
-                    else:
-                        result = {
-                            "path": full_relative,
-                            "branch": submodule_branch,
-                            "default_branch": default_branch,
-                            "merged": False,
-                            "returncode": checkout.returncode,
-                            "reason": "default_branch_checkout_failed",
-                            "stdout": checkout.stdout[-4000:],
-                            "stderr": checkout.stderr[-4000:],
-                            "llm_merge_resolver": llm_merge_resolver,
-                        }
-                        results.append(result)
-                        checkpoint.record_submodule(full_relative, result)
-                        continue
-            merge_command = ["git", "merge", "--ff-only", submodule_branch]
-            merge = subprocess.run(
-                merge_command,
-                cwd=source,
-                text=True,
-                capture_output=True,
-                check=False,
+            result = self._merge_submodule_checkout_transaction(
+                parent_repo=repo_path,
+                source=source,
+                relative=relative,
+                full_relative=full_relative,
+                submodule_branch=submodule_branch,
+                default_branch=default_branch,
+                task=task,
+                attempt=attempt,
+                preserved_dirty_paths=preserved_dirty_paths,
             )
-            merge_abort_result: dict[str, Any] = {}
-            llm_merge_resolver: dict[str, Any] = {}
-            llm_merge_commit_result: dict[str, Any] = {}
-            nested_gitlink_repair: dict[str, Any] = {}
-            ff_only_result = {
-                "returncode": merge.returncode,
-                "stdout": merge.stdout[-4000:],
-                "stderr": merge.stderr[-4000:],
-            }
-            if merge.returncode != 0:
-                merge_command = ["git", "merge", "--no-ff", "--no-edit", submodule_branch]
-                merge = subprocess.run(
-                    merge_command,
-                    cwd=source,
-                    text=True,
-                    capture_output=True,
-                    check=False,
-                )
-                if merge.returncode != 0:
-                    nested_gitlink_repair = self._repair_submodule_gitlink_merge_conflicts(
-                        source,
-                        task=task,
-                        attempt=attempt,
-                        parent_relative=full_relative,
-                    )
-                    if nested_gitlink_repair.get("repaired", False):
-                        merge = subprocess.CompletedProcess(merge_command, 0, merge.stdout, merge.stderr)
-                    elif nested_gitlink_repair.get("reason") != "no_gitlink_conflicts":
-                        merge_abort_result = self._abort_failed_merge(source)
-                    else:
-                        llm_merge_resolver = self._invoke_llm_merge_resolver_for_failed_merge(
-                            workspace=source,
-                            task=task,
-                            attempt=attempt,
-                            branch_name=submodule_branch,
-                            target_branch=default_branch,
-                            merge_command=merge_command,
-                            merge_stdout=merge.stdout,
-                            merge_stderr=merge.stderr,
-                            reason="submodule_merge_conflict",
-                        )
-                        if llm_merge_resolver.get("applied", False):
-                            llm_merge_commit_result = self._commit_llm_resolved_merge(source)
-                            if llm_merge_commit_result.get("completed", False):
-                                merge = subprocess.CompletedProcess(merge_command, 0, merge.stdout, merge.stderr)
-                            elif (
-                                llm_merge_commit_result.get("reason") == "no_merge_in_progress"
-                                and self._branch_merged_in_workspace(source, submodule_branch)
-                            ):
-                                llm_merge_commit_result = {
-                                    **llm_merge_commit_result,
-                                    "completed": True,
-                                    "reason": "resolver_committed_merge",
-                                    "commit": self._run_git(["rev-parse", "HEAD"], cwd=source).stdout.strip(),
-                                }
-                                merge = subprocess.CompletedProcess(merge_command, 0, merge.stdout, merge.stderr)
-                            else:
-                                merge_abort_result = self._abort_failed_merge(source)
-                        else:
-                            merge_abort_result = self._abort_failed_merge(source)
-            result = {
-                "path": full_relative,
-                "branch": submodule_branch,
-                "default_branch": default_branch,
-                "merged": merge.returncode == 0,
-                "returncode": merge.returncode,
-                "command": merge_command,
-                "stdout": merge.stdout[-4000:],
-                "stderr": merge.stderr[-4000:],
-                "commit": "",
-                "ff_only_result": ff_only_result,
-            }
-            if merge_abort_result:
-                result["merge_abort_result"] = merge_abort_result
-            if llm_merge_resolver:
-                result["llm_merge_resolver"] = llm_merge_resolver
-            if llm_merge_commit_result:
-                result["llm_merge_commit_result"] = llm_merge_commit_result
-            if nested_gitlink_repair:
-                result["nested_gitlink_repair"] = nested_gitlink_repair
-            if preserved_dirty_paths:
-                result["preserved_dirty_paths"] = preserved_dirty_paths
-            if merge.returncode == 0:
-                result["commit"] = self._run_git(["rev-parse", "HEAD"], cwd=source).stdout.strip()
-                # Post-merge validation: ensure submodule is in a healthy state
-                validation = self._validate_merged_submodule_state(source, full_relative)
-                if not validation.get("valid"):
-                    result["post_merge_validation"] = validation
-                    self._record_event("submodule_post_merge_validation_failed", {
-                        "task_id": task.task_id,
-                        "path": full_relative,
-                        "validation": validation,
-                    })
             results.append(result)
             # Record in checkpoint for crash recovery
             checkpoint.record_submodule(full_relative, result)
-            if merge.returncode == 0:
+            if result.get("merged", False):
                 results.extend(
                     self._merge_submodule_branches_to_main_in_repo(
                         repo_path=source,

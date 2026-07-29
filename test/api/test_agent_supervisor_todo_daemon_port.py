@@ -7385,6 +7385,121 @@ def test_implementation_daemon_merges_submodule_with_nonoverlapping_dirty_paths(
     assert (submodule / "child.txt").read_text(encoding="utf-8") == "preserved local dirt\n"
 
 
+@pytest.mark.parametrize("detached_shared_checkout", [False, True])
+def test_failed_submodule_merge_restores_shared_checkout_index_and_nested_dirt(
+    tmp_path: Path,
+    monkeypatch,
+    detached_shared_checkout: bool,
+):
+    repo, child, leaf = _seed_parent_with_nested_submodules(tmp_path)
+    state_dir = tmp_path / "supervisor-state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=["libs/child"],
+    )
+    parent_branch = "implementation/auto-rollback"
+    task_branch = daemon._submodule_worktree_branch_name(
+        parent_branch, "libs/child"
+    )
+    base = _git(child, "rev-parse", "HEAD")
+
+    _git(child, "checkout", "-b", task_branch, base)
+    (child / "child.txt").write_text("task side\n", encoding="utf-8")
+    _git(child, "commit", "-am", "task-side conflict")
+    _git(child, "checkout", "main")
+    (child / "child.txt").write_text("main side\n", encoding="utf-8")
+    _git(child, "commit", "-am", "main-side conflict")
+    main_head = _git(child, "rev-parse", "HEAD")
+
+    shared_branch = "supervisor/live-checkout"
+    _git(child, "checkout", "-b", shared_branch)
+    (child / "supervisor.txt").write_text("shared state\n", encoding="utf-8")
+    _git(child, "add", "supervisor.txt")
+    _git(child, "commit", "-m", "supervisor checkout state")
+    shared_head = _git(child, "rev-parse", "HEAD")
+    if detached_shared_checkout:
+        _git(child, "checkout", "--detach", shared_head)
+    _git(repo, "add", "libs/child")
+
+    _git(leaf, "checkout", "-b", "supervisor/dirty-leaf")
+    leaf_head = _git(leaf, "rev-parse", "HEAD")
+    (leaf / "leaf.txt").write_text("pre-existing nested dirt\n", encoding="utf-8")
+    leaf_status_before = daemon._submodule_transaction_status(leaf).stdout
+    child_status_before = daemon._submodule_transaction_status(child).stdout
+    parent_status_before = daemon._submodule_transaction_status(repo).stdout
+    parent_index_before = subprocess.run(
+        ["git", "ls-files", "--stage", "-z", "--", "libs/child"],
+        cwd=repo,
+        stdout=subprocess.PIPE,
+        check=True,
+    ).stdout
+    original_abort = daemon._abort_failed_merge
+
+    def abort_with_exposed_parent_index_drift(cwd: Path):
+        abort_result = original_abort(cwd)
+        subprocess.run(
+            [
+                "git",
+                "update-index",
+                "--add",
+                "--cacheinfo",
+                f"160000,{main_head},libs/child",
+            ],
+            cwd=repo,
+            check=True,
+        )
+        return abort_result
+
+    monkeypatch.setattr(
+        daemon,
+        "_abort_failed_merge",
+        abort_with_exposed_parent_index_drift,
+    )
+
+    results = daemon._merge_submodule_branches_to_main(
+        parent_branch,
+        task=PortalTask(
+            task_id="AUTO-ROLLBACK",
+            title="Preserve shared checkout after child conflict",
+            status="todo",
+            completion="manual",
+            priority="P0",
+            track="ops",
+        ),
+        attempt=1,
+        changed_submodule_paths={"libs/child"},
+    )
+
+    result = results[0]
+    assert result["merged"] is False
+    assert result["transaction_rollback"]["restored"] is True
+    assert result["transaction_rollback"]["failures"] == []
+    assert _git(child, "branch", "--show-current") == (
+        "" if detached_shared_checkout else shared_branch
+    )
+    assert _git(child, "rev-parse", "HEAD") == shared_head
+    assert _git(child, "rev-parse", "main") == main_head
+    assert daemon._submodule_transaction_status(child).stdout == child_status_before
+    assert subprocess.run(
+        ["git", "ls-files", "--stage", "-z", "--", "libs/child"],
+        cwd=repo,
+        stdout=subprocess.PIPE,
+        check=True,
+    ).stdout == parent_index_before
+    assert daemon._submodule_transaction_status(repo).stdout == parent_status_before
+    assert _git(leaf, "branch", "--show-current") == "supervisor/dirty-leaf"
+    assert _git(leaf, "rev-parse", "HEAD") == leaf_head
+    assert daemon._submodule_transaction_status(leaf).stdout == leaf_status_before
+    assert (leaf / "leaf.txt").read_text(encoding="utf-8") == (
+        "pre-existing nested dirt\n"
+    )
+    assert not (state_dir / "submodule-merge-rollback-guardrail.json").exists()
+
+
 def test_implementation_daemon_records_merged_root_submodule_gitlink(tmp_path):
     repo, submodule = _seed_parent_with_submodule(tmp_path)
     (submodule / "merged.txt").write_text("merged child work\n", encoding="utf-8")
