@@ -9,6 +9,9 @@ from collections.abc import Mapping
 import pytest
 
 from ipfs_accelerate_py.agent_supervisor.program_analysis_zkp import (
+    PROGRAM_ZKP_EVIDENCE_TRACE_STATEMENT,
+    PROGRAM_ZKP_EVIDENCE_VERIFICATION_RECEIPT,
+    PROGRAM_ZKP_G080_EVIDENCE_TERMS,
     PUBLIC_COMMITMENT_KEYS,
     PUBLIC_INPUT_CODEC_ID,
     PUBLIC_INPUT_CODEC_VERSION,
@@ -304,6 +307,67 @@ def test_statement_is_non_authoritative_and_non_semantic() -> None:
     assert ProgramZkpStatement.from_dict(statement.to_dict()) == statement
 
 
+def test_vfs_g080_evidence_terms_are_published_on_statement_and_receipt() -> None:
+    """Cover vfs/zk-trace-statement@1 and vfs/zk-verification-receipt@1."""
+
+    assert PROGRAM_ZKP_G080_EVIDENCE_TERMS == (
+        "vfs/zk-trace-statement@1",
+        "vfs/zk-verification-receipt@1",
+    )
+    assert PROGRAM_ZKP_EVIDENCE_TRACE_STATEMENT == "vfs/zk-trace-statement@1"
+    assert (
+        PROGRAM_ZKP_EVIDENCE_VERIFICATION_RECEIPT == "vfs/zk-verification-receipt@1"
+    )
+
+    statement = _request().statement
+    receipt = _receipt()
+
+    assert statement.evidence == PROGRAM_ZKP_EVIDENCE_TRACE_STATEMENT
+    assert receipt.evidence == PROGRAM_ZKP_EVIDENCE_VERIFICATION_RECEIPT
+    assert statement.backend_mode is ProgramZkpBackendMode.SHADOW
+    assert receipt.backend_mode is ProgramZkpBackendMode.SHADOW
+
+    statement_payload = statement.to_public_artifact()
+    receipt_payload = receipt.to_public_artifact()
+    assert statement_payload["evidence"] == "vfs/zk-trace-statement@1"
+    assert receipt_payload["evidence"] == "vfs/zk-verification-receipt@1"
+    assert receipt_payload["statement_evidence"] == "vfs/zk-trace-statement@1"
+    # Bound circuit / key / codec / ceremony identities remain public.
+    for key in (
+        "circuit_id",
+        "proving_key_id",
+        "verifying_key_id",
+        "ceremony_id",
+        "public_input_codec_id",
+        "public_input_codec_version",
+    ):
+        assert statement_payload[key]
+        assert statement_payload[key] == getattr(statement.public_inputs, key)
+    # Round-trip preserves evidence and identity.
+    assert ProgramZkpStatement.from_dict(statement_payload).evidence == (
+        PROGRAM_ZKP_EVIDENCE_TRACE_STATEMENT
+    )
+    assert type(receipt).from_dict(receipt_payload).evidence == (
+        PROGRAM_ZKP_EVIDENCE_VERIFICATION_RECEIPT
+    )
+
+
+def test_statement_rejects_forged_evidence_identity() -> None:
+    statement = _request().statement
+    forged = dict(statement.to_dict())
+    forged["evidence"] = "vfs/zk-capability-conformance@1"
+    with pytest.raises(ProgramZkpTamperError, match="statement evidence"):
+        ProgramZkpStatement.from_dict(forged)
+
+
+def test_receipt_rejects_forged_evidence_identity() -> None:
+    receipt = _receipt()
+    forged = dict(receipt.to_dict())
+    forged["evidence"] = "vfs/zk-trace-statement@1"
+    with pytest.raises(ProgramZkpTamperError, match="receipt evidence"):
+        type(receipt).from_dict(forged)
+
+
 def test_statement_rejects_semantic_proof_flag() -> None:
     inputs = _public_inputs()
     trace = build_canonical_program_zkp_trace(inputs)
@@ -483,6 +547,20 @@ def test_replay_rejects_codec_version_drift() -> None:
             circuit_id=inputs.circuit_id,
             ceremony_id=inputs.ceremony_id,
             public_input_codec_version="2",
+        )
+
+
+def test_replay_rejects_stale_proving_key_via_public_input_digest() -> None:
+    """Stale proving-key identity drifts the public-input digest and fails replay."""
+
+    receipt = _receipt()
+    stale_pk = _public_inputs(proving_key_id="pk:program-contract-trace@1:stale")
+    with pytest.raises(ProgramZkpReplayError, match="public-input digest"):
+        receipt.require_replay(
+            public_inputs=stale_pk,
+            verifying_key_id=stale_pk.verifying_key_id,
+            circuit_id=stale_pk.circuit_id,
+            ceremony_id=stale_pk.ceremony_id,
         )
 
 
