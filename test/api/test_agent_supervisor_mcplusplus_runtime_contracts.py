@@ -1,4 +1,12 @@
-"""Hermetic MCP++ runtime contract witnesses (VFS-018 / VFS-G061)."""
+"""Hermetic MCP++ runtime contract witnesses (VFS-018 / VFS-G061).
+
+Also covers VFS-058 objective validation repair: exact-text discovery of
+``objective validation repair``, separation of domain
+``vfs/mcplusplus-runtime-witness@1`` from the synthetic validation gate,
+production vs mock authority, shared HTTP/mcp+p2p admission, and typed
+non-authoritative failure outcomes.  Network remains disabled unless an exact
+fixture and egress policy permit it.
+"""
 
 from __future__ import annotations
 
@@ -15,6 +23,9 @@ from ipfs_accelerate_py.agent_supervisor.mcplusplus_runtime_witness import (
     EVIDENCE_RUNTIME_WITNESS,
     MCPLUSPLUS_RUNTIME_RECEIPT_SCHEMA,
     MCPLUSPLUS_RUNTIME_WITNESS_SCHEMA,
+    OBJECTIVE_GOAL_ID,
+    OBJECTIVE_VALIDATION_REPAIR_EVIDENCE,
+    OBJECTIVE_VALIDATION_REPAIR_TASK_ID,
     WITNESS_VERSION,
     AdapterSpec,
     BackendAvailability,
@@ -33,13 +44,20 @@ from ipfs_accelerate_py.agent_supervisor.mcplusplus_runtime_witness import (
     ValidationVerdict,
     WitnessOutcome,
     WitnessPhase,
+    admitted_shared_transport_profiles,
+    all_covered_evidence_terms,
+    covered_evidence_terms,
     default_mock_adapters,
     default_production_adapters,
     make_call_request,
     make_runtime,
+    objective_validation_repair_evidence_terms,
+    production_dispatch_distinguished_from_mocks,
     receipt_content_identity,
     replay_receipt,
     run_witness_subprocess,
+    runtime_witness_evidence_terms,
+    typed_non_authoritative_failure_outcomes,
     validate_against_schema,
 )
 from ipfs_accelerate_py.agent_supervisor.program_assurance_contracts import (
@@ -78,6 +96,173 @@ def test_evidence_kind_and_version_constants() -> None:
     assert WITNESS_VERSION == "mcplusplus-runtime-witness@1"
     assert CONTRACT_VERSION == 1
     assert DEFAULT_TIMEOUT_MS == 5_000
+
+
+def test_objective_validation_repair_evidence_term_discoverable() -> None:
+    """VFS-G061 objective validation repair: exact-text discovery key present.
+
+    Anchors the synthetic phrase ``objective validation repair`` so objective
+    scans re-find the validation gate.  Domain evidence stays separate
+    (``vfs/mcplusplus-runtime-witness@1``).  The repair term never enters
+    witness/receipt identity, production authority, formal-proof claims, or
+    static-completeness claims.  Owned by VFS-G061 via repair task VFS-058.
+    """
+
+    assert OBJECTIVE_VALIDATION_REPAIR_EVIDENCE == "objective validation repair"
+    assert OBJECTIVE_GOAL_ID == "VFS-G061"
+    assert OBJECTIVE_VALIDATION_REPAIR_TASK_ID == "VFS-058"
+    assert objective_validation_repair_evidence_terms() == (
+        "objective validation repair",
+    )
+    # Domain envelope evidence remains runtime-witness only.
+    assert runtime_witness_evidence_terms() == (
+        "vfs/mcplusplus-runtime-witness@1",
+    )
+    assert "objective validation repair" not in runtime_witness_evidence_terms()
+    assert covered_evidence_terms() == ("vfs/mcplusplus-runtime-witness@1",)
+    assert "objective validation repair" not in covered_evidence_terms()
+    # Full discovery set includes the validation-gate meta term last.
+    assert all_covered_evidence_terms() == (
+        "vfs/mcplusplus-runtime-witness@1",
+        "objective validation repair",
+    )
+    assert OBJECTIVE_VALIDATION_REPAIR_EVIDENCE in all_covered_evidence_terms()
+
+    runtime = make_runtime(forest_id=FOREST)
+    witness = runtime.call(make_call_request("echo", {"message": "repair"}))
+    payload = witness.to_dict()
+    # Witness identity envelope never absorbs the synthetic repair term.
+    assert payload["evidence_kind"] == EVIDENCE_RUNTIME_WITNESS
+    assert "objective validation repair" not in payload["evidence_kind"]
+    assert payload.get("evidence_objective_validation_repair") is None
+    assert witness.static_completeness_claimed is False
+    assert witness.formal_proof_claimed is False
+    assert witness.network_enabled is False
+
+    receipt = runtime.run_suite(
+        (
+            make_call_request("echo", {"message": "a"}),
+            make_call_request("mock.always_ok", {}),
+        )
+    )
+    receipt_body = receipt.to_dict()
+    assert receipt_body["evidence_kind"] == EVIDENCE_RUNTIME_WITNESS
+    assert "objective validation repair" not in receipt_body["evidence_kind"]
+    assert receipt.replaces_static_completeness is False
+    assert receipt.replaces_formal_proof is False
+    assert receipt.supplements_static_resolution is True
+    assert receipt.supplements_formal_proof is True
+
+
+def test_vfs_g061_acceptance_production_transports_and_non_authority(
+    runtime: HermeticMCPlusPlusRuntime,
+) -> None:
+    """VFS-G061 acceptance: production vs mock, shared transports, typed failures.
+
+    Proves the full acceptance subset for objective validation repair on the
+    hermetic MCP++ runtime surface, including the network-disabled refinement.
+    """
+
+    assert OBJECTIVE_GOAL_ID == "VFS-G061"
+    assert OBJECTIVE_VALIDATION_REPAIR_TASK_ID == "VFS-058"
+    assert "objective validation repair" in all_covered_evidence_terms()
+    assert production_dispatch_distinguished_from_mocks() is True
+    assert admitted_shared_transport_profiles() == (
+        TransportKind.HTTP.value,
+        TransportKind.MCP_P2P.value,
+    )
+
+    # Real adapter dispatch is distinguished from mocks.
+    production = runtime.call(make_call_request("echo", {"message": "prod"}))
+    mock = runtime.call(make_call_request("mock.always_ok", {"x": 1}))
+    assert production.observation.implementation_kind is ImplementationKind.PRODUCTION
+    assert production.observation.grants_runtime_authority is True
+    assert production.is_production_witness is True
+    assert mock.observation.implementation_kind is ImplementationKind.MOCK
+    assert mock.observation.grants_runtime_authority is False
+    assert mock.is_production_witness is False
+    assert production.evidence_kind == EVIDENCE_RUNTIME_WITNESS
+    assert mock.evidence_kind == EVIDENCE_RUNTIME_WITNESS
+    assert "objective validation repair" not in production.evidence_kind
+
+    # HTTP and mcp+p2p use the same admitted contract where declared.
+    w_http = runtime.call(
+        make_call_request(
+            "vfs.stat",
+            {"path": "/docs/readme.md"},
+            transport=TransportKind.HTTP.value,
+        )
+    )
+    w_p2p = runtime.call(
+        make_call_request(
+            "vfs.stat",
+            {"path": "/docs/readme.md"},
+            transport=TransportKind.MCP_P2P.value,
+            requested_profiles=("mcp++/basic", "mcp++/p2p-transport"),
+        )
+    )
+    assert w_http.observation.outcome is WitnessOutcome.PASSED
+    assert w_p2p.observation.outcome is WitnessOutcome.PASSED
+    assert w_http.observation.adapter_id == w_p2p.observation.adapter_id
+    assert w_http.transport == TransportKind.HTTP.value
+    assert w_p2p.transport == TransportKind.MCP_P2P.value
+
+    # Failures and unavailable services are typed, bounded, non-authoritative.
+    failures = typed_non_authoritative_failure_outcomes()
+    for required in (
+        "malformed_call",
+        "missing_tool",
+        "schema_violation",
+        "unavailable_backend",
+        "cancelled",
+        "profile_mismatch",
+        "stale_manifest",
+        "timed_out",
+        "transport_rejected",
+        "dispatch_error",
+        "inconclusive",
+    ):
+        assert required in failures
+    assert "passed" not in failures
+
+    matrix = runtime.run_suite(
+        [
+            CallRequest(tool_name=""),
+            make_call_request("no.such.tool", {}),
+            make_call_request("echo", {}),
+            make_call_request("unavailable.probe", {}),
+            make_call_request("echo", {"message": "c"}, cancel=True),
+            make_call_request(
+                "echo",
+                {"message": "p"},
+                requested_profiles=("mcp++/risk-scheduling",),
+            ),
+            make_call_request(
+                "echo",
+                {"message": "s"},
+                expected_manifest_cid="baguqeerastale",
+            ),
+            make_call_request("echo", {"message": "t"}, force_timeout=True),
+        ]
+    )
+    for witness in matrix.witnesses:
+        outcome = witness.observation.outcome
+        assert outcome is not WitnessOutcome.PASSED
+        assert outcome.value in failures
+        assert witness.observation.grants_runtime_authority is False
+        assert outcome.is_authoritative is False
+        assert witness.static_completeness_claimed is False
+        assert witness.formal_proof_claimed is False
+        assert "objective validation repair" not in witness.evidence_kind
+
+    # Network remains disabled unless exact fixture + egress policy permit it.
+    assert runtime.network_enabled is False
+    with pytest.raises(RuntimeWitnessError, match="network"):
+        HermeticMCPlusPlusRuntime(
+            forest_id=FOREST,
+            network_enabled=True,
+            adapters=default_production_adapters(),
+        )
 
 
 def test_default_adapters_distinguish_production_and_mock() -> None:
