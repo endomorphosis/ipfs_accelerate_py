@@ -17465,11 +17465,35 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     return result
                 self._run_git(["worktree", "remove", "--force", str(checked_out_path)], cwd=self.repo_root)
                 continue
+            # Target is checked out outside the managed merge-worktree root
+            # (common for shared agent/main worktrees). Reuse a clean checkout
+            # so parallel lanes can merge instead of looping on
+            # main_branch_checked_out_elsewhere (SCA-615 / SCA-632).
+            dirty_paths = sorted(self._dirty_worktree_paths(checked_out_path))
+            generated_restore = self._restore_generated_dirty_paths(
+                checked_out_path,
+                dirty_paths,
+                reason="main_external_checkout_dirty",
+            )
+            if generated_restore:
+                dirty_paths = sorted(self._dirty_worktree_paths(checked_out_path))
+            if dirty_paths:
+                result = {
+                    "available": False,
+                    "reason": "main_branch_checked_out_elsewhere",
+                    "target_branch": target_branch,
+                    "worktree_path": str(checked_out_path),
+                    "dirty_paths": dirty_paths,
+                }
+                if generated_restore:
+                    result["generated_dirty_restore"] = generated_restore
+                return result
             return {
-                "available": False,
-                "reason": "main_branch_checked_out_elsewhere",
+                "available": True,
+                "path": str(checked_out_path),
+                "ephemeral": False,
                 "target_branch": target_branch,
-                "worktree_path": str(checked_out_path),
+                "reused_external_checkout": True,
             }
 
         merge_root.mkdir(parents=True, exist_ok=True)
