@@ -1,0 +1,3156 @@
+{
+  "active_goal_count": 20,
+  "completed_goal_count": 0,
+  "generated_at": "2026-07-29T01:59:15.111944+00:00",
+  "goal_count": 20,
+  "goals": [
+    {
+      "bundle": "cvefixes-security-ir/external",
+      "evidence": [
+        "data/agent_supervisor/cvefixes_security_ir/external/hf_publication_receipt.json"
+      ],
+      "fib_priority": 5,
+      "goal_id": "CVESIR-G095",
+      "parents": [
+        "CVESIR-G000"
+      ],
+      "refinement_depth": "1",
+      "status": "provisionally_complete",
+      "title": "Publish and pin the derived Hugging Face dataset",
+      "track": "external-publication"
+    },
+    {
+      "bundle": "cvefixes-security-ir/release",
+      "evidence": [
+        "ipfs_datasets_py/scripts/ops/security_ir/publish_cvefixes_security_ir.py",
+        "ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_publish_command.py"
+      ],
+      "fib_priority": 8,
+      "goal_id": "CVESIR-G090",
+      "parents": [
+        "CVESIR-G000"
+      ],
+      "refinement_depth": "1",
+      "status": "active",
+      "title": "Idempotent publish and remote verification command",
+      "track": "publication-tooling"
+    },
+    {
+      "bundle": "cvefixes-security-ir/graphrag",
+      "evidence": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/retrieval.py",
+        "ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_retrieval.py"
+      ],
+      "fib_priority": 13,
+      "goal_id": "CVESIR-G060",
+      "parents": [
+        "CVESIR-G000"
+      ],
+      "refinement_depth": "1",
+      "status": "active",
+      "title": "Bounded lexical, vector, and graph retrieval",
+      "track": "retrieval"
+    },
+    {
+      "bundle": "cvefixes-security-ir/release",
+      "evidence": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/hf_release.py",
+        "ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_hf_release.py"
+      ],
+      "fib_priority": 13,
+      "goal_id": "CVESIR-G080",
+      "parents": [
+        "CVESIR-G000"
+      ],
+      "refinement_depth": "1",
+      "status": "active",
+      "title": "Reproducible Hugging Face release builder",
+      "track": "release"
+    },
+    {
+      "bundle": "cvefixes-security-ir/security-ir",
+      "evidence": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/hf_source.py",
+        "ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_hf_source.py"
+      ],
+      "fib_priority": 13,
+      "goal_id": "CVESIR-G130",
+      "parents": [
+        "CVESIR-G000"
+      ],
+      "refinement_depth": "1",
+      "status": "active",
+      "title": "Pinned Hugging Face Security IR source adapter",
+      "track": "hf-integration"
+    },
+    {
+      "bundle": "cvefixes-security-ir/enforcement",
+      "evidence": [
+        "ipfs_accelerate_py/agent_supervisor/cve_security_receipts.py",
+        "test/api/test_agent_supervisor_cve_security_receipts.py"
+      ],
+      "fib_priority": 13,
+      "goal_id": "CVESIR-G170",
+      "parents": [
+        "CVESIR-G000"
+      ],
+      "refinement_depth": "1",
+      "status": "active",
+      "title": "Bounded security decision receipts and observability",
+      "track": "receipts"
+    },
+    {
+      "bundle": "cvefixes-security-ir/graphrag",
+      "evidence": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/graph.py",
+        "ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_graph.py"
+      ],
+      "fib_priority": 21,
+      "goal_id": "CVESIR-G050",
+      "parents": [
+        "CVESIR-G000"
+      ],
+      "refinement_depth": "1",
+      "status": "active",
+      "title": "Typed GraphRAG graph builder",
+      "track": "graph"
+    },
+    {
+      "bundle": "cvefixes-security-ir/release",
+      "evidence": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/evaluation.py",
+        "ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_evaluation.py"
+      ],
+      "fib_priority": 21,
+      "goal_id": "CVESIR-G070",
+      "parents": [
+        "CVESIR-G000"
+      ],
+      "refinement_depth": "1",
+      "status": "active",
+      "title": "Leakage-safe evaluation and promotion gates",
+      "track": "evaluation"
+    },
+    {
+      "bundle": "cvefixes-security-ir/security-ir",
+      "evidence": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/formalize.py",
+        "ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_formalize.py"
+      ],
+      "fib_priority": 21,
+      "goal_id": "CVESIR-G120",
+      "parents": [
+        "CVESIR-G000"
+      ],
+      "refinement_depth": "1",
+      "status": "active",
+      "title": "Forbidden-logic formalization views",
+      "track": "formalization"
+    },
+    {
+      "bundle": "cvefixes-security-ir/integration",
+      "evidence": [
+        "test/api/test_agent_supervisor_cve_security_e2e.py",
+        "docs/guides/CVEFIXES_SECURITY_IR_OPERATOR_GUIDE.md"
+      ],
+      "fib_priority": 21,
+      "goal_id": "CVESIR-G180",
+      "parents": [
+        "CVESIR-G000"
+      ],
+      "refinement_depth": "1",
+      "status": "active",
+      "title": "End-to-end conformance, rollback, and operator rollout",
+      "track": "rollout"
+    },
+    {
+      "bundle": "cvefixes-security-ir/source",
+      "evidence": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/release_policy.py",
+        "ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_release_policy.py"
+      ],
+      "fib_priority": 34,
+      "goal_id": "CVESIR-G030",
+      "parents": [
+        "CVESIR-G000"
+      ],
+      "refinement_depth": "1",
+      "status": "active",
+      "title": "Licensing, privacy, poisoning, and release policy",
+      "track": "governance"
+    },
+    {
+      "bundle": "cvefixes-security-ir/graphrag",
+      "evidence": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/projector.py",
+        "ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_projector.py"
+      ],
+      "fib_priority": 34,
+      "goal_id": "CVESIR-G040",
+      "parents": [
+        "CVESIR-G000"
+      ],
+      "refinement_depth": "1",
+      "status": "active",
+      "title": "Vulnerable/fixed semantic projector",
+      "track": "projection"
+    },
+    {
+      "bundle": "cvefixes-security-ir/security-ir",
+      "evidence": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/vocabulary.py",
+        "ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_vocabulary.py"
+      ],
+      "fib_priority": 34,
+      "goal_id": "CVESIR-G100",
+      "parents": [
+        "CVESIR-G000"
+      ],
+      "refinement_depth": "1",
+      "status": "active",
+      "title": "CVE/CWE Security IR vocabulary",
+      "track": "security-vocabulary"
+    },
+    {
+      "bundle": "cvefixes-security-ir/security-ir",
+      "evidence": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/adapter.py",
+        "ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_adapter.py"
+      ],
+      "fib_priority": 34,
+      "goal_id": "CVESIR-G110",
+      "parents": [
+        "CVESIR-G000"
+      ],
+      "refinement_depth": "1",
+      "status": "active",
+      "title": "CVE candidates to canonical Security IR adapter",
+      "track": "security-adapter"
+    },
+    {
+      "bundle": "cvefixes-security-ir/supervisor",
+      "evidence": [
+        "ipfs_accelerate_py/agent_supervisor/cve_security_gate.py",
+        "test/api/test_agent_supervisor_cve_security_gate.py"
+      ],
+      "fib_priority": 34,
+      "goal_id": "CVESIR-G150",
+      "parents": [
+        "CVESIR-G000"
+      ],
+      "refinement_depth": "1",
+      "status": "active",
+      "title": "Intent/code facts to exact SecurityAuthorizationRequest",
+      "track": "comparison"
+    },
+    {
+      "bundle": "cvefixes-security-ir/enforcement",
+      "evidence": [
+        "test/api/test_agent_supervisor_cve_security_enforcement.py"
+      ],
+      "fib_priority": 34,
+      "goal_id": "CVESIR-G160",
+      "parents": [
+        "CVESIR-G000"
+      ],
+      "refinement_depth": "1",
+      "status": "active",
+      "title": "Decision-runtime, permit, and merge enforcement",
+      "track": "enforcement"
+    },
+    {
+      "bundle": "cvefixes-security-ir/source",
+      "evidence": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/source_snapshot.py",
+        "ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_source_snapshot.py"
+      ],
+      "fib_priority": 55,
+      "goal_id": "CVESIR-G010",
+      "parents": [
+        "CVESIR-G000"
+      ],
+      "refinement_depth": "1",
+      "status": "active",
+      "title": "Pinned CVEfixes source snapshot and safe row adapter",
+      "track": "source"
+    },
+    {
+      "bundle": "cvefixes-security-ir/schema",
+      "evidence": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/schemas.py",
+        "ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_schemas.py"
+      ],
+      "fib_priority": 55,
+      "goal_id": "CVESIR-G020",
+      "parents": [
+        "CVESIR-G000"
+      ],
+      "refinement_depth": "1",
+      "status": "active",
+      "title": "Canonical derived dataset schemas and identities",
+      "track": "schema"
+    },
+    {
+      "bundle": "cvefixes-security-ir/supervisor",
+      "evidence": [
+        "ipfs_accelerate_py/agent_supervisor/code_security_facts.py",
+        "test/api/test_agent_supervisor_code_security_facts.py"
+      ],
+      "fib_priority": 55,
+      "goal_id": "CVESIR-G140",
+      "parents": [
+        "CVESIR-G000"
+      ],
+      "refinement_depth": "1",
+      "status": "active",
+      "title": "Generated-code security fact contract and extractors",
+      "track": "code-facts"
+    },
+    {
+      "bundle": "cvefixes-security-ir/integration",
+      "evidence": [
+        "docs/architecture/cvefixes_security_ir_completion_receipt.json"
+      ],
+      "fib_priority": 89,
+      "goal_id": "CVESIR-G000",
+      "parents": [],
+      "refinement_depth": "0",
+      "status": "active",
+      "title": "Pinned CVE security reasoning and enforcement loop",
+      "track": "integration"
+    }
+  ],
+  "graph": {
+    "children": {
+      "CVESIR-G000": [
+        "CVESIR-G010",
+        "CVESIR-G020",
+        "CVESIR-G030",
+        "CVESIR-G040",
+        "CVESIR-G050",
+        "CVESIR-G060",
+        "CVESIR-G070",
+        "CVESIR-G080",
+        "CVESIR-G090",
+        "CVESIR-G095",
+        "CVESIR-G100",
+        "CVESIR-G110",
+        "CVESIR-G120",
+        "CVESIR-G130",
+        "CVESIR-G140",
+        "CVESIR-G150",
+        "CVESIR-G160",
+        "CVESIR-G170",
+        "CVESIR-G180"
+      ]
+    },
+    "depths": {
+      "CVESIR-G000": 0,
+      "CVESIR-G010": 1,
+      "CVESIR-G020": 1,
+      "CVESIR-G030": 1,
+      "CVESIR-G040": 1,
+      "CVESIR-G050": 1,
+      "CVESIR-G060": 1,
+      "CVESIR-G070": 1,
+      "CVESIR-G080": 1,
+      "CVESIR-G090": 1,
+      "CVESIR-G095": 1,
+      "CVESIR-G100": 1,
+      "CVESIR-G110": 1,
+      "CVESIR-G120": 1,
+      "CVESIR-G130": 1,
+      "CVESIR-G140": 1,
+      "CVESIR-G150": 1,
+      "CVESIR-G160": 1,
+      "CVESIR-G170": 1,
+      "CVESIR-G180": 1
+    },
+    "edges": [
+      {
+        "from": "CVESIR-G000",
+        "kind": "refines",
+        "to": "CVESIR-G010"
+      },
+      {
+        "from": "CVESIR-G000",
+        "kind": "refines",
+        "to": "CVESIR-G020"
+      },
+      {
+        "from": "CVESIR-G000",
+        "kind": "refines",
+        "to": "CVESIR-G030"
+      },
+      {
+        "from": "CVESIR-G000",
+        "kind": "refines",
+        "to": "CVESIR-G040"
+      },
+      {
+        "from": "CVESIR-G000",
+        "kind": "refines",
+        "to": "CVESIR-G050"
+      },
+      {
+        "from": "CVESIR-G000",
+        "kind": "refines",
+        "to": "CVESIR-G060"
+      },
+      {
+        "from": "CVESIR-G000",
+        "kind": "refines",
+        "to": "CVESIR-G070"
+      },
+      {
+        "from": "CVESIR-G000",
+        "kind": "refines",
+        "to": "CVESIR-G080"
+      },
+      {
+        "from": "CVESIR-G000",
+        "kind": "refines",
+        "to": "CVESIR-G090"
+      },
+      {
+        "from": "CVESIR-G000",
+        "kind": "refines",
+        "to": "CVESIR-G095"
+      },
+      {
+        "from": "CVESIR-G000",
+        "kind": "refines",
+        "to": "CVESIR-G100"
+      },
+      {
+        "from": "CVESIR-G000",
+        "kind": "refines",
+        "to": "CVESIR-G110"
+      },
+      {
+        "from": "CVESIR-G000",
+        "kind": "refines",
+        "to": "CVESIR-G120"
+      },
+      {
+        "from": "CVESIR-G000",
+        "kind": "refines",
+        "to": "CVESIR-G130"
+      },
+      {
+        "from": "CVESIR-G000",
+        "kind": "refines",
+        "to": "CVESIR-G140"
+      },
+      {
+        "from": "CVESIR-G000",
+        "kind": "refines",
+        "to": "CVESIR-G150"
+      },
+      {
+        "from": "CVESIR-G000",
+        "kind": "refines",
+        "to": "CVESIR-G160"
+      },
+      {
+        "from": "CVESIR-G000",
+        "kind": "refines",
+        "to": "CVESIR-G170"
+      },
+      {
+        "from": "CVESIR-G000",
+        "kind": "refines",
+        "to": "CVESIR-G180"
+      }
+    ],
+    "evidence_edges": [
+      {
+        "from": "CVESIR-G000",
+        "kind": "requires_evidence",
+        "to": "evidence:7c55a6f908b15071"
+      },
+      {
+        "from": "CVESIR-G010",
+        "kind": "requires_evidence",
+        "to": "evidence:ab4a5b64139637e5"
+      },
+      {
+        "from": "CVESIR-G010",
+        "kind": "requires_evidence",
+        "to": "evidence:f15172c3ecc4e4e3"
+      },
+      {
+        "from": "CVESIR-G020",
+        "kind": "requires_evidence",
+        "to": "evidence:a2f831a60b15fefa"
+      },
+      {
+        "from": "CVESIR-G020",
+        "kind": "requires_evidence",
+        "to": "evidence:1185479a2866c19c"
+      },
+      {
+        "from": "CVESIR-G030",
+        "kind": "requires_evidence",
+        "to": "evidence:bc79f37f5d272dcd"
+      },
+      {
+        "from": "CVESIR-G030",
+        "kind": "requires_evidence",
+        "to": "evidence:8a5606432c4e5f2f"
+      },
+      {
+        "from": "CVESIR-G040",
+        "kind": "requires_evidence",
+        "to": "evidence:f63f2691d709f9af"
+      },
+      {
+        "from": "CVESIR-G040",
+        "kind": "requires_evidence",
+        "to": "evidence:91ba96fba8d146fa"
+      },
+      {
+        "from": "CVESIR-G050",
+        "kind": "requires_evidence",
+        "to": "evidence:ce2ff4c37f2e2ad7"
+      },
+      {
+        "from": "CVESIR-G050",
+        "kind": "requires_evidence",
+        "to": "evidence:5b3ce8163e1028d4"
+      },
+      {
+        "from": "CVESIR-G060",
+        "kind": "requires_evidence",
+        "to": "evidence:9e65d1ca12a9c024"
+      },
+      {
+        "from": "CVESIR-G060",
+        "kind": "requires_evidence",
+        "to": "evidence:f6a2060ce9e43948"
+      },
+      {
+        "from": "CVESIR-G070",
+        "kind": "requires_evidence",
+        "to": "evidence:cc20a9514d98d1d6"
+      },
+      {
+        "from": "CVESIR-G070",
+        "kind": "requires_evidence",
+        "to": "evidence:a7a294fa65aa7897"
+      },
+      {
+        "from": "CVESIR-G080",
+        "kind": "requires_evidence",
+        "to": "evidence:bdfcb447d0db128d"
+      },
+      {
+        "from": "CVESIR-G080",
+        "kind": "requires_evidence",
+        "to": "evidence:46fc21d3123e5db6"
+      },
+      {
+        "from": "CVESIR-G090",
+        "kind": "requires_evidence",
+        "to": "evidence:fe80df7c42665671"
+      },
+      {
+        "from": "CVESIR-G090",
+        "kind": "requires_evidence",
+        "to": "evidence:adde18217de0c723"
+      },
+      {
+        "from": "CVESIR-G095",
+        "kind": "requires_evidence",
+        "to": "evidence:8b92bc00b19c6ad6"
+      },
+      {
+        "from": "CVESIR-G100",
+        "kind": "requires_evidence",
+        "to": "evidence:13e478dc701a4981"
+      },
+      {
+        "from": "CVESIR-G100",
+        "kind": "requires_evidence",
+        "to": "evidence:073860388f98cb3b"
+      },
+      {
+        "from": "CVESIR-G110",
+        "kind": "requires_evidence",
+        "to": "evidence:c6be40d716a5f596"
+      },
+      {
+        "from": "CVESIR-G110",
+        "kind": "requires_evidence",
+        "to": "evidence:2df8e15de6730058"
+      },
+      {
+        "from": "CVESIR-G120",
+        "kind": "requires_evidence",
+        "to": "evidence:12263456d7cabf57"
+      },
+      {
+        "from": "CVESIR-G120",
+        "kind": "requires_evidence",
+        "to": "evidence:bee6dd027043d2b9"
+      },
+      {
+        "from": "CVESIR-G130",
+        "kind": "requires_evidence",
+        "to": "evidence:fe69e28cdbadc8ea"
+      },
+      {
+        "from": "CVESIR-G130",
+        "kind": "requires_evidence",
+        "to": "evidence:618317b58a61d1e9"
+      },
+      {
+        "from": "CVESIR-G140",
+        "kind": "requires_evidence",
+        "to": "evidence:2c1fb2871dc613ff"
+      },
+      {
+        "from": "CVESIR-G140",
+        "kind": "requires_evidence",
+        "to": "evidence:83c7db326b077879"
+      },
+      {
+        "from": "CVESIR-G150",
+        "kind": "requires_evidence",
+        "to": "evidence:bcc3466f20ca203e"
+      },
+      {
+        "from": "CVESIR-G150",
+        "kind": "requires_evidence",
+        "to": "evidence:2988069e0e62b8c0"
+      },
+      {
+        "from": "CVESIR-G160",
+        "kind": "requires_evidence",
+        "to": "evidence:5b013a3496debb21"
+      },
+      {
+        "from": "CVESIR-G170",
+        "kind": "requires_evidence",
+        "to": "evidence:cbdcdf11c2d12a69"
+      },
+      {
+        "from": "CVESIR-G170",
+        "kind": "requires_evidence",
+        "to": "evidence:c07fa9ee576e8f75"
+      },
+      {
+        "from": "CVESIR-G180",
+        "kind": "requires_evidence",
+        "to": "evidence:cf95f47d5586cd12"
+      },
+      {
+        "from": "CVESIR-G180",
+        "kind": "requires_evidence",
+        "to": "evidence:1e1c399a6d172218"
+      }
+    ],
+    "evidence_nodes": [
+      {
+        "acceptance_criterion": "docs/architecture/cvefixes_security_ir_completion_receipt.json",
+        "goal_id": "CVESIR-G000",
+        "id": "evidence:7c55a6f908b15071"
+      },
+      {
+        "acceptance_criterion": "ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/source_snapshot.py",
+        "goal_id": "CVESIR-G010",
+        "id": "evidence:ab4a5b64139637e5"
+      },
+      {
+        "acceptance_criterion": "ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_source_snapshot.py",
+        "goal_id": "CVESIR-G010",
+        "id": "evidence:f15172c3ecc4e4e3"
+      },
+      {
+        "acceptance_criterion": "ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/schemas.py",
+        "goal_id": "CVESIR-G020",
+        "id": "evidence:a2f831a60b15fefa"
+      },
+      {
+        "acceptance_criterion": "ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_schemas.py",
+        "goal_id": "CVESIR-G020",
+        "id": "evidence:1185479a2866c19c"
+      },
+      {
+        "acceptance_criterion": "ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/release_policy.py",
+        "goal_id": "CVESIR-G030",
+        "id": "evidence:bc79f37f5d272dcd"
+      },
+      {
+        "acceptance_criterion": "ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_release_policy.py",
+        "goal_id": "CVESIR-G030",
+        "id": "evidence:8a5606432c4e5f2f"
+      },
+      {
+        "acceptance_criterion": "ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/projector.py",
+        "goal_id": "CVESIR-G040",
+        "id": "evidence:f63f2691d709f9af"
+      },
+      {
+        "acceptance_criterion": "ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_projector.py",
+        "goal_id": "CVESIR-G040",
+        "id": "evidence:91ba96fba8d146fa"
+      },
+      {
+        "acceptance_criterion": "ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/graph.py",
+        "goal_id": "CVESIR-G050",
+        "id": "evidence:ce2ff4c37f2e2ad7"
+      },
+      {
+        "acceptance_criterion": "ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_graph.py",
+        "goal_id": "CVESIR-G050",
+        "id": "evidence:5b3ce8163e1028d4"
+      },
+      {
+        "acceptance_criterion": "ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/retrieval.py",
+        "goal_id": "CVESIR-G060",
+        "id": "evidence:9e65d1ca12a9c024"
+      },
+      {
+        "acceptance_criterion": "ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_retrieval.py",
+        "goal_id": "CVESIR-G060",
+        "id": "evidence:f6a2060ce9e43948"
+      },
+      {
+        "acceptance_criterion": "ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/evaluation.py",
+        "goal_id": "CVESIR-G070",
+        "id": "evidence:cc20a9514d98d1d6"
+      },
+      {
+        "acceptance_criterion": "ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_evaluation.py",
+        "goal_id": "CVESIR-G070",
+        "id": "evidence:a7a294fa65aa7897"
+      },
+      {
+        "acceptance_criterion": "ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/hf_release.py",
+        "goal_id": "CVESIR-G080",
+        "id": "evidence:bdfcb447d0db128d"
+      },
+      {
+        "acceptance_criterion": "ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_hf_release.py",
+        "goal_id": "CVESIR-G080",
+        "id": "evidence:46fc21d3123e5db6"
+      },
+      {
+        "acceptance_criterion": "ipfs_datasets_py/scripts/ops/security_ir/publish_cvefixes_security_ir.py",
+        "goal_id": "CVESIR-G090",
+        "id": "evidence:fe80df7c42665671"
+      },
+      {
+        "acceptance_criterion": "ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_publish_command.py",
+        "goal_id": "CVESIR-G090",
+        "id": "evidence:adde18217de0c723"
+      },
+      {
+        "acceptance_criterion": "data/agent_supervisor/cvefixes_security_ir/external/hf_publication_receipt.json",
+        "goal_id": "CVESIR-G095",
+        "id": "evidence:8b92bc00b19c6ad6"
+      },
+      {
+        "acceptance_criterion": "ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/vocabulary.py",
+        "goal_id": "CVESIR-G100",
+        "id": "evidence:13e478dc701a4981"
+      },
+      {
+        "acceptance_criterion": "ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_vocabulary.py",
+        "goal_id": "CVESIR-G100",
+        "id": "evidence:073860388f98cb3b"
+      },
+      {
+        "acceptance_criterion": "ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/adapter.py",
+        "goal_id": "CVESIR-G110",
+        "id": "evidence:c6be40d716a5f596"
+      },
+      {
+        "acceptance_criterion": "ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_adapter.py",
+        "goal_id": "CVESIR-G110",
+        "id": "evidence:2df8e15de6730058"
+      },
+      {
+        "acceptance_criterion": "ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/formalize.py",
+        "goal_id": "CVESIR-G120",
+        "id": "evidence:12263456d7cabf57"
+      },
+      {
+        "acceptance_criterion": "ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_formalize.py",
+        "goal_id": "CVESIR-G120",
+        "id": "evidence:bee6dd027043d2b9"
+      },
+      {
+        "acceptance_criterion": "ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/hf_source.py",
+        "goal_id": "CVESIR-G130",
+        "id": "evidence:fe69e28cdbadc8ea"
+      },
+      {
+        "acceptance_criterion": "ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_hf_source.py",
+        "goal_id": "CVESIR-G130",
+        "id": "evidence:618317b58a61d1e9"
+      },
+      {
+        "acceptance_criterion": "ipfs_accelerate_py/agent_supervisor/code_security_facts.py",
+        "goal_id": "CVESIR-G140",
+        "id": "evidence:2c1fb2871dc613ff"
+      },
+      {
+        "acceptance_criterion": "test/api/test_agent_supervisor_code_security_facts.py",
+        "goal_id": "CVESIR-G140",
+        "id": "evidence:83c7db326b077879"
+      },
+      {
+        "acceptance_criterion": "ipfs_accelerate_py/agent_supervisor/cve_security_gate.py",
+        "goal_id": "CVESIR-G150",
+        "id": "evidence:bcc3466f20ca203e"
+      },
+      {
+        "acceptance_criterion": "test/api/test_agent_supervisor_cve_security_gate.py",
+        "goal_id": "CVESIR-G150",
+        "id": "evidence:2988069e0e62b8c0"
+      },
+      {
+        "acceptance_criterion": "test/api/test_agent_supervisor_cve_security_enforcement.py",
+        "goal_id": "CVESIR-G160",
+        "id": "evidence:5b013a3496debb21"
+      },
+      {
+        "acceptance_criterion": "ipfs_accelerate_py/agent_supervisor/cve_security_receipts.py",
+        "goal_id": "CVESIR-G170",
+        "id": "evidence:cbdcdf11c2d12a69"
+      },
+      {
+        "acceptance_criterion": "test/api/test_agent_supervisor_cve_security_receipts.py",
+        "goal_id": "CVESIR-G170",
+        "id": "evidence:c07fa9ee576e8f75"
+      },
+      {
+        "acceptance_criterion": "test/api/test_agent_supervisor_cve_security_e2e.py",
+        "goal_id": "CVESIR-G180",
+        "id": "evidence:cf95f47d5586cd12"
+      },
+      {
+        "acceptance_criterion": "docs/guides/CVEFIXES_SECURITY_IR_OPERATOR_GUIDE.md",
+        "goal_id": "CVESIR-G180",
+        "id": "evidence:1e1c399a6d172218"
+      }
+    ],
+    "lifecycle": {
+      "nonterminal_goal_ids": [
+        "CVESIR-G000",
+        "CVESIR-G010",
+        "CVESIR-G020",
+        "CVESIR-G030",
+        "CVESIR-G040",
+        "CVESIR-G050",
+        "CVESIR-G060",
+        "CVESIR-G070",
+        "CVESIR-G080",
+        "CVESIR-G090",
+        "CVESIR-G095",
+        "CVESIR-G100",
+        "CVESIR-G110",
+        "CVESIR-G120",
+        "CVESIR-G130",
+        "CVESIR-G140",
+        "CVESIR-G150",
+        "CVESIR-G160",
+        "CVESIR-G170",
+        "CVESIR-G180"
+      ],
+      "schedulable_goal_ids": [
+        "CVESIR-G000",
+        "CVESIR-G010",
+        "CVESIR-G020",
+        "CVESIR-G030",
+        "CVESIR-G040",
+        "CVESIR-G050",
+        "CVESIR-G060",
+        "CVESIR-G070",
+        "CVESIR-G080",
+        "CVESIR-G090",
+        "CVESIR-G095",
+        "CVESIR-G100",
+        "CVESIR-G110",
+        "CVESIR-G120",
+        "CVESIR-G130",
+        "CVESIR-G140",
+        "CVESIR-G150",
+        "CVESIR-G160",
+        "CVESIR-G170",
+        "CVESIR-G180"
+      ],
+      "state_counts": {
+        "active": 19,
+        "provisionally_complete": 1
+      },
+      "terminal_goal_ids": []
+    },
+    "node_details": {
+      "CVESIR-G000": {
+        "completion_evidence": {
+          "acceptance_criterion": "Receipt binds the source revision, derived Hub revision, release root, Security IR root, current tree, evaluation summary, and passing end-to-end gates; no candidate result is represented as authority."
+        },
+        "goal_id": "CVESIR-G000",
+        "lifecycle_state": "active",
+        "parents": [],
+        "required_evidence": [
+          "docs/architecture/cvefixes_security_ir_completion_receipt.json"
+        ],
+        "schedulable": true,
+        "status": "active",
+        "terminal": false,
+        "title": "Pinned CVE security reasoning and enforcement loop"
+      },
+      "CVESIR-G010": {
+        "completion_evidence": {
+          "acceptance_criterion": "Pin and shard hashes are verified; rows are bounded and inert; serialized descriptions are parsed without eval; malformed and drifted inputs fail closed; tokens never enter artifacts."
+        },
+        "goal_id": "CVESIR-G010",
+        "lifecycle_state": "active",
+        "parents": [
+          "CVESIR-G000"
+        ],
+        "required_evidence": [
+          "ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/source_snapshot.py",
+          "ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_source_snapshot.py"
+        ],
+        "schedulable": true,
+        "status": "active",
+        "terminal": false,
+        "title": "Pinned CVEfixes source snapshot and safe row adapter"
+      },
+      "CVESIR-G020": {
+        "completion_evidence": {
+          "acceptance_criterion": "Canonical round-trip and CID stability pass; parent/source/config identities are mandatory; NaN, unknown fields, duplicate IDs, and authority broadening fail closed."
+        },
+        "goal_id": "CVESIR-G020",
+        "lifecycle_state": "active",
+        "parents": [
+          "CVESIR-G000"
+        ],
+        "required_evidence": [
+          "ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/schemas.py",
+          "ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_schemas.py"
+        ],
+        "schedulable": true,
+        "status": "active",
+        "terminal": false,
+        "title": "Canonical derived dataset schemas and identities"
+      },
+      "CVESIR-G030": {
+        "completion_evidence": {
+          "acceptance_criterion": "Default public profile excludes unrestricted full bodies; provenance is retained; source instructions remain inert; detected secrets, unsafe paths, unreviewed licenses, and policy drift block release."
+        },
+        "goal_id": "CVESIR-G030",
+        "lifecycle_state": "active",
+        "parents": [
+          "CVESIR-G000"
+        ],
+        "required_evidence": [
+          "ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/release_policy.py",
+          "ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_release_policy.py"
+        ],
+        "schedulable": true,
+        "status": "active",
+        "terminal": false,
+        "title": "Licensing, privacy, poisoning, and release policy"
+      },
+      "CVESIR-G040": {
+        "completion_evidence": {
+          "acceptance_criterion": "Pairing and provenance are loss-aware; deterministic facts are distinct from model candidates; fixed code is negative evidence; unsupported languages and ambiguous hunks are retained rather than fabricated or dropped."
+        },
+        "goal_id": "CVESIR-G040",
+        "lifecycle_state": "active",
+        "parents": [
+          "CVESIR-G000"
+        ],
+        "required_evidence": [
+          "ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/projector.py",
+          "ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_projector.py"
+        ],
+        "schedulable": true,
+        "status": "active",
+        "terminal": false,
+        "title": "Vulnerable/fixed semantic projector"
+      },
+      "CVESIR-G050": {
+        "completion_evidence": {
+          "acceptance_criterion": "Node and edge types/directions validate; all edges bind sources and endpoints; similarity edges are marked non-authoritative; graph rebuild is deterministic and detects tampering."
+        },
+        "goal_id": "CVESIR-G050",
+        "lifecycle_state": "active",
+        "parents": [
+          "CVESIR-G000"
+        ],
+        "required_evidence": [
+          "ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/graph.py",
+          "ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_graph.py"
+        ],
+        "schedulable": true,
+        "status": "active",
+        "terminal": false,
+        "title": "Typed GraphRAG graph builder"
+      },
+      "CVESIR-G060": {
+        "completion_evidence": {
+          "acceptance_criterion": "Queries cap shards/nodes/results; filters cannot broaden authority; indexes bind model/config/graph roots; tampering and split crossing fail closed; retrieval never returns a grant."
+        },
+        "goal_id": "CVESIR-G060",
+        "lifecycle_state": "active",
+        "parents": [
+          "CVESIR-G000"
+        ],
+        "required_evidence": [
+          "ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/retrieval.py",
+          "ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_retrieval.py"
+        ],
+        "schedulable": true,
+        "status": "active",
+        "terminal": false,
+        "title": "Bounded lexical, vector, and graph retrieval"
+      },
+      "CVESIR-G070": {
+        "completion_evidence": {
+          "acceptance_criterion": "Leakage checks cover repo, commit, body hash, and near duplicates; metrics are stratified; fixed negatives cannot inherit vulnerable labels; thresholds are measured; failed gates cannot promote candidates."
+        },
+        "goal_id": "CVESIR-G070",
+        "lifecycle_state": "active",
+        "parents": [
+          "CVESIR-G000"
+        ],
+        "required_evidence": [
+          "ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/evaluation.py",
+          "ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_evaluation.py"
+        ],
+        "schedulable": true,
+        "status": "active",
+        "terminal": false,
+        "title": "Leakage-safe evaluation and promotion gates"
+      },
+      "CVESIR-G080": {
+        "completion_evidence": {
+          "acceptance_criterion": "Bounded shards and schemas validate; card documents source/license/limitations; release root is stable; validate-only requires no credentials; no secrets/caches/internal bodies enter staging."
+        },
+        "goal_id": "CVESIR-G080",
+        "lifecycle_state": "active",
+        "parents": [
+          "CVESIR-G000"
+        ],
+        "required_evidence": [
+          "ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/hf_release.py",
+          "ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_hf_release.py"
+        ],
+        "schedulable": true,
+        "status": "active",
+        "terminal": false,
+        "title": "Reproducible Hugging Face release builder"
+      },
+      "CVESIR-G090": {
+        "completion_evidence": {
+          "acceptance_criterion": "Dry-run is default; target/source/release tuple is idempotent; credentials never persist; remote revision and shard/schema verification are mandatory before a receipt is proposed."
+        },
+        "goal_id": "CVESIR-G090",
+        "lifecycle_state": "active",
+        "parents": [
+          "CVESIR-G000"
+        ],
+        "required_evidence": [
+          "ipfs_datasets_py/scripts/ops/security_ir/publish_cvefixes_security_ir.py",
+          "ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_publish_command.py"
+        ],
+        "schedulable": true,
+        "status": "active",
+        "terminal": false,
+        "title": "Idempotent publish and remote verification command"
+      },
+      "CVESIR-G095": {
+        "completion_evidence": {
+          "acceptance_criterion": "Receipt binds authenticated principal, target repo, source revision, derived release root, Hub commit, remote manifest/shards/schema, timestamp, and verification result without containing credentials."
+        },
+        "goal_id": "CVESIR-G095",
+        "lifecycle_state": "provisionally_complete",
+        "parents": [
+          "CVESIR-G000"
+        ],
+        "required_evidence": [
+          "data/agent_supervisor/cvefixes_security_ir/external/hf_publication_receipt.json"
+        ],
+        "schedulable": true,
+        "status": "provisionally_complete",
+        "terminal": false,
+        "title": "Publish and pin the derived Hugging Face dataset"
+      },
+      "CVESIR-G100": {
+        "completion_evidence": {
+          "acceptance_criterion": "Terms are typed/versioned/canonical; unknown and wildcard-broadened terms fail closed; CWE is classification rather than sufficient policy authority; aliases cannot merge distinct scopes."
+        },
+        "goal_id": "CVESIR-G100",
+        "lifecycle_state": "active",
+        "parents": [
+          "CVESIR-G000"
+        ],
+        "required_evidence": [
+          "ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/vocabulary.py",
+          "ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_vocabulary.py"
+        ],
+        "schedulable": true,
+        "status": "active",
+        "terminal": false,
+        "title": "CVE/CWE Security IR vocabulary"
+      },
+      "CVESIR-G110": {
+        "completion_evidence": {
+          "acceptance_criterion": "Mapping is loss-aware and round-trippable; source and review state are mandatory; candidates cannot claim authoritative result state; wildcard/generalized scopes require explicit review."
+        },
+        "goal_id": "CVESIR-G110",
+        "lifecycle_state": "active",
+        "parents": [
+          "CVESIR-G000"
+        ],
+        "required_evidence": [
+          "ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/adapter.py",
+          "ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_adapter.py"
+        ],
+        "schedulable": true,
+        "status": "active",
+        "terminal": false,
+        "title": "CVE candidates to canonical Security IR adapter"
+      },
+      "CVESIR-G120": {
+        "completion_evidence": {
+          "acceptance_criterion": "Typed symbols bind exact scope; deny maps to prohibition; unsupported semantics emit diagnostics; formulas and obligations are non-authoritative; vulnerable/fixed controls demonstrate polarity."
+        },
+        "goal_id": "CVESIR-G120",
+        "lifecycle_state": "active",
+        "parents": [
+          "CVESIR-G000"
+        ],
+        "required_evidence": [
+          "ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/formalize.py",
+          "ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_formalize.py"
+        ],
+        "schedulable": true,
+        "status": "active",
+        "terminal": false,
+        "title": "Forbidden-logic formalization views"
+      },
+      "CVESIR-G130": {
+        "completion_evidence": {
+          "acceptance_criterion": "Floating revisions, manifest drift, missing shards, row tampering, unknown schema, and candidate-as-authority fail closed; offline cache preserves revision identity."
+        },
+        "goal_id": "CVESIR-G130",
+        "lifecycle_state": "active",
+        "parents": [
+          "CVESIR-G000"
+        ],
+        "required_evidence": [
+          "ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/hf_source.py",
+          "ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_hf_source.py"
+        ],
+        "schedulable": true,
+        "status": "active",
+        "terminal": false,
+        "title": "Pinned Hugging Face Security IR source adapter"
+      },
+      "CVESIR-G140": {
+        "completion_evidence": {
+          "acceptance_criterion": "Facts bind tree/blob/diff/AST identities; only changed scope is attributed; unsupported/ambiguous extraction is explicit; source strings cannot inject facts; extractors never grant authority."
+        },
+        "goal_id": "CVESIR-G140",
+        "lifecycle_state": "active",
+        "parents": [
+          "CVESIR-G000"
+        ],
+        "required_evidence": [
+          "ipfs_accelerate_py/agent_supervisor/code_security_facts.py",
+          "test/api/test_agent_supervisor_code_security_facts.py"
+        ],
+        "schedulable": true,
+        "status": "active",
+        "terminal": false,
+        "title": "Generated-code security fact contract and extractors"
+      },
+      "CVESIR-G150": {
+        "completion_evidence": {
+          "acceptance_criterion": "Every request binds principal/action/tool/target/data_flow/effect/state/authority and Security IR root; intent pass cannot mask code fail; ambiguous mappings are unknown; exact matching follows existing adapter contracts."
+        },
+        "goal_id": "CVESIR-G150",
+        "lifecycle_state": "active",
+        "parents": [
+          "CVESIR-G000"
+        ],
+        "required_evidence": [
+          "ipfs_accelerate_py/agent_supervisor/cve_security_gate.py",
+          "test/api/test_agent_supervisor_cve_security_gate.py"
+        ],
+        "schedulable": true,
+        "status": "active",
+        "terminal": false,
+        "title": "Intent/code facts to exact SecurityAuthorizationRequest"
+      },
+      "CVESIR-G160": {
+        "completion_evidence": {
+          "acceptance_criterion": "Deny/conflict/unknown/stale reject; allow requires existing authority; generated undeclared effects reject; root or tree drift invalidates receipts; no permit or merge path bypasses the gate."
+        },
+        "goal_id": "CVESIR-G160",
+        "lifecycle_state": "active",
+        "parents": [
+          "CVESIR-G000"
+        ],
+        "required_evidence": [
+          "test/api/test_agent_supervisor_cve_security_enforcement.py"
+        ],
+        "schedulable": true,
+        "status": "active",
+        "terminal": false,
+        "title": "Decision-runtime, permit, and merge enforcement"
+      },
+      "CVESIR-G170": {
+        "completion_evidence": {
+          "acceptance_criterion": "Receipts are canonical, bounded, redacted, stage/tree/root-bound, and distinguish evidence from authority; cache keys invalidate on every declared dependency."
+        },
+        "goal_id": "CVESIR-G170",
+        "lifecycle_state": "active",
+        "parents": [
+          "CVESIR-G000"
+        ],
+        "required_evidence": [
+          "ipfs_accelerate_py/agent_supervisor/cve_security_receipts.py",
+          "test/api/test_agent_supervisor_cve_security_receipts.py"
+        ],
+        "schedulable": true,
+        "status": "active",
+        "terminal": false,
+        "title": "Bounded security decision receipts and observability"
+      },
+      "CVESIR-G180": {
+        "completion_evidence": {
+          "acceptance_criterion": "Hermetic fixture passes all cases; live-Hub smoke is opt-in; shadow/assist/enforce/rollback modes are documented; rollback pins prior Security IR root without weakening checks."
+        },
+        "goal_id": "CVESIR-G180",
+        "lifecycle_state": "active",
+        "parents": [
+          "CVESIR-G000"
+        ],
+        "required_evidence": [
+          "test/api/test_agent_supervisor_cve_security_e2e.py",
+          "docs/guides/CVEFIXES_SECURITY_IR_OPERATOR_GUIDE.md"
+        ],
+        "schedulable": true,
+        "status": "active",
+        "terminal": false,
+        "title": "End-to-end conformance, rollback, and operator rollout"
+      }
+    },
+    "nodes": [
+      "CVESIR-G000",
+      "CVESIR-G010",
+      "CVESIR-G020",
+      "CVESIR-G030",
+      "CVESIR-G040",
+      "CVESIR-G050",
+      "CVESIR-G060",
+      "CVESIR-G070",
+      "CVESIR-G080",
+      "CVESIR-G090",
+      "CVESIR-G095",
+      "CVESIR-G100",
+      "CVESIR-G110",
+      "CVESIR-G120",
+      "CVESIR-G130",
+      "CVESIR-G140",
+      "CVESIR-G150",
+      "CVESIR-G160",
+      "CVESIR-G170",
+      "CVESIR-G180"
+    ],
+    "roots": [
+      "CVESIR-G000"
+    ],
+    "schedulable_goal_ids": [
+      "CVESIR-G000",
+      "CVESIR-G010",
+      "CVESIR-G020",
+      "CVESIR-G030",
+      "CVESIR-G040",
+      "CVESIR-G050",
+      "CVESIR-G060",
+      "CVESIR-G070",
+      "CVESIR-G080",
+      "CVESIR-G090",
+      "CVESIR-G095",
+      "CVESIR-G100",
+      "CVESIR-G110",
+      "CVESIR-G120",
+      "CVESIR-G130",
+      "CVESIR-G140",
+      "CVESIR-G150",
+      "CVESIR-G160",
+      "CVESIR-G170",
+      "CVESIR-G180"
+    ],
+    "state_counts": {
+      "active": 19,
+      "provisionally_complete": 1
+    },
+    "terminal_goal_ids": []
+  },
+  "heap_schedule": [
+    {
+      "fib_priority": 5,
+      "goal_id": "CVESIR-G095",
+      "graph_depth": 1,
+      "heap_index": 0,
+      "output_count": 1,
+      "parents": [
+        "CVESIR-G000"
+      ],
+      "priority": "P0",
+      "priority_rank": 0,
+      "required_evidence_count": 1,
+      "sort_key": [
+        5,
+        0,
+        -6,
+        1,
+        "CVESIR-G095"
+      ],
+      "status": "provisionally_complete",
+      "title": "Publish and pin the derived Hugging Face dataset",
+      "track": "external-publication",
+      "work_surface_score": 6
+    },
+    {
+      "fib_priority": 8,
+      "goal_id": "CVESIR-G090",
+      "graph_depth": 1,
+      "heap_index": 1,
+      "output_count": 2,
+      "parents": [
+        "CVESIR-G000"
+      ],
+      "priority": "P1",
+      "priority_rank": 1,
+      "required_evidence_count": 2,
+      "sort_key": [
+        8,
+        1,
+        -12,
+        1,
+        "CVESIR-G090"
+      ],
+      "status": "active",
+      "title": "Idempotent publish and remote verification command",
+      "track": "publication-tooling",
+      "work_surface_score": 12
+    },
+    {
+      "fib_priority": 13,
+      "goal_id": "CVESIR-G080",
+      "graph_depth": 1,
+      "heap_index": 2,
+      "output_count": 2,
+      "parents": [
+        "CVESIR-G000"
+      ],
+      "priority": "P0",
+      "priority_rank": 0,
+      "required_evidence_count": 2,
+      "sort_key": [
+        13,
+        0,
+        -12,
+        1,
+        "CVESIR-G080"
+      ],
+      "status": "active",
+      "title": "Reproducible Hugging Face release builder",
+      "track": "release",
+      "work_surface_score": 12
+    },
+    {
+      "fib_priority": 13,
+      "goal_id": "CVESIR-G130",
+      "graph_depth": 1,
+      "heap_index": 3,
+      "output_count": 2,
+      "parents": [
+        "CVESIR-G000"
+      ],
+      "priority": "P0",
+      "priority_rank": 0,
+      "required_evidence_count": 2,
+      "sort_key": [
+        13,
+        0,
+        -12,
+        1,
+        "CVESIR-G130"
+      ],
+      "status": "active",
+      "title": "Pinned Hugging Face Security IR source adapter",
+      "track": "hf-integration",
+      "work_surface_score": 12
+    },
+    {
+      "fib_priority": 13,
+      "goal_id": "CVESIR-G060",
+      "graph_depth": 1,
+      "heap_index": 4,
+      "output_count": 2,
+      "parents": [
+        "CVESIR-G000"
+      ],
+      "priority": "P1",
+      "priority_rank": 1,
+      "required_evidence_count": 2,
+      "sort_key": [
+        13,
+        1,
+        -12,
+        1,
+        "CVESIR-G060"
+      ],
+      "status": "active",
+      "title": "Bounded lexical, vector, and graph retrieval",
+      "track": "retrieval",
+      "work_surface_score": 12
+    },
+    {
+      "fib_priority": 13,
+      "goal_id": "CVESIR-G170",
+      "graph_depth": 1,
+      "heap_index": 5,
+      "output_count": 2,
+      "parents": [
+        "CVESIR-G000"
+      ],
+      "priority": "P1",
+      "priority_rank": 1,
+      "required_evidence_count": 2,
+      "sort_key": [
+        13,
+        1,
+        -12,
+        1,
+        "CVESIR-G170"
+      ],
+      "status": "active",
+      "title": "Bounded security decision receipts and observability",
+      "track": "receipts",
+      "work_surface_score": 12
+    },
+    {
+      "fib_priority": 21,
+      "goal_id": "CVESIR-G050",
+      "graph_depth": 1,
+      "heap_index": 6,
+      "output_count": 2,
+      "parents": [
+        "CVESIR-G000"
+      ],
+      "priority": "P0",
+      "priority_rank": 0,
+      "required_evidence_count": 2,
+      "sort_key": [
+        21,
+        0,
+        -12,
+        1,
+        "CVESIR-G050"
+      ],
+      "status": "active",
+      "title": "Typed GraphRAG graph builder",
+      "track": "graph",
+      "work_surface_score": 12
+    },
+    {
+      "fib_priority": 21,
+      "goal_id": "CVESIR-G070",
+      "graph_depth": 1,
+      "heap_index": 7,
+      "output_count": 2,
+      "parents": [
+        "CVESIR-G000"
+      ],
+      "priority": "P0",
+      "priority_rank": 0,
+      "required_evidence_count": 2,
+      "sort_key": [
+        21,
+        0,
+        -12,
+        1,
+        "CVESIR-G070"
+      ],
+      "status": "active",
+      "title": "Leakage-safe evaluation and promotion gates",
+      "track": "evaluation",
+      "work_surface_score": 12
+    },
+    {
+      "fib_priority": 21,
+      "goal_id": "CVESIR-G120",
+      "graph_depth": 1,
+      "heap_index": 8,
+      "output_count": 2,
+      "parents": [
+        "CVESIR-G000"
+      ],
+      "priority": "P0",
+      "priority_rank": 0,
+      "required_evidence_count": 2,
+      "sort_key": [
+        21,
+        0,
+        -12,
+        1,
+        "CVESIR-G120"
+      ],
+      "status": "active",
+      "title": "Forbidden-logic formalization views",
+      "track": "formalization",
+      "work_surface_score": 12
+    },
+    {
+      "fib_priority": 21,
+      "goal_id": "CVESIR-G180",
+      "graph_depth": 1,
+      "heap_index": 9,
+      "output_count": 2,
+      "parents": [
+        "CVESIR-G000"
+      ],
+      "priority": "P0",
+      "priority_rank": 0,
+      "required_evidence_count": 2,
+      "sort_key": [
+        21,
+        0,
+        -12,
+        1,
+        "CVESIR-G180"
+      ],
+      "status": "active",
+      "title": "End-to-end conformance, rollback, and operator rollout",
+      "track": "rollout",
+      "work_surface_score": 12
+    },
+    {
+      "fib_priority": 34,
+      "goal_id": "CVESIR-G030",
+      "graph_depth": 1,
+      "heap_index": 10,
+      "output_count": 2,
+      "parents": [
+        "CVESIR-G000"
+      ],
+      "priority": "P0",
+      "priority_rank": 0,
+      "required_evidence_count": 2,
+      "sort_key": [
+        34,
+        0,
+        -12,
+        1,
+        "CVESIR-G030"
+      ],
+      "status": "active",
+      "title": "Licensing, privacy, poisoning, and release policy",
+      "track": "governance",
+      "work_surface_score": 12
+    },
+    {
+      "fib_priority": 34,
+      "goal_id": "CVESIR-G040",
+      "graph_depth": 1,
+      "heap_index": 11,
+      "output_count": 2,
+      "parents": [
+        "CVESIR-G000"
+      ],
+      "priority": "P0",
+      "priority_rank": 0,
+      "required_evidence_count": 2,
+      "sort_key": [
+        34,
+        0,
+        -12,
+        1,
+        "CVESIR-G040"
+      ],
+      "status": "active",
+      "title": "Vulnerable/fixed semantic projector",
+      "track": "projection",
+      "work_surface_score": 12
+    },
+    {
+      "fib_priority": 34,
+      "goal_id": "CVESIR-G100",
+      "graph_depth": 1,
+      "heap_index": 12,
+      "output_count": 2,
+      "parents": [
+        "CVESIR-G000"
+      ],
+      "priority": "P0",
+      "priority_rank": 0,
+      "required_evidence_count": 2,
+      "sort_key": [
+        34,
+        0,
+        -12,
+        1,
+        "CVESIR-G100"
+      ],
+      "status": "active",
+      "title": "CVE/CWE Security IR vocabulary",
+      "track": "security-vocabulary",
+      "work_surface_score": 12
+    },
+    {
+      "fib_priority": 34,
+      "goal_id": "CVESIR-G110",
+      "graph_depth": 1,
+      "heap_index": 13,
+      "output_count": 2,
+      "parents": [
+        "CVESIR-G000"
+      ],
+      "priority": "P0",
+      "priority_rank": 0,
+      "required_evidence_count": 2,
+      "sort_key": [
+        34,
+        0,
+        -12,
+        1,
+        "CVESIR-G110"
+      ],
+      "status": "active",
+      "title": "CVE candidates to canonical Security IR adapter",
+      "track": "security-adapter",
+      "work_surface_score": 12
+    },
+    {
+      "fib_priority": 34,
+      "goal_id": "CVESIR-G150",
+      "graph_depth": 1,
+      "heap_index": 14,
+      "output_count": 2,
+      "parents": [
+        "CVESIR-G000"
+      ],
+      "priority": "P0",
+      "priority_rank": 0,
+      "required_evidence_count": 2,
+      "sort_key": [
+        34,
+        0,
+        -12,
+        1,
+        "CVESIR-G150"
+      ],
+      "status": "active",
+      "title": "Intent/code facts to exact SecurityAuthorizationRequest",
+      "track": "comparison",
+      "work_surface_score": 12
+    },
+    {
+      "fib_priority": 34,
+      "goal_id": "CVESIR-G160",
+      "graph_depth": 1,
+      "heap_index": 15,
+      "output_count": 4,
+      "parents": [
+        "CVESIR-G000"
+      ],
+      "priority": "P0",
+      "priority_rank": 0,
+      "required_evidence_count": 1,
+      "sort_key": [
+        34,
+        0,
+        -12,
+        1,
+        "CVESIR-G160"
+      ],
+      "status": "active",
+      "title": "Decision-runtime, permit, and merge enforcement",
+      "track": "enforcement",
+      "work_surface_score": 12
+    },
+    {
+      "fib_priority": 55,
+      "goal_id": "CVESIR-G010",
+      "graph_depth": 1,
+      "heap_index": 16,
+      "output_count": 2,
+      "parents": [
+        "CVESIR-G000"
+      ],
+      "priority": "P0",
+      "priority_rank": 0,
+      "required_evidence_count": 2,
+      "sort_key": [
+        55,
+        0,
+        -12,
+        1,
+        "CVESIR-G010"
+      ],
+      "status": "active",
+      "title": "Pinned CVEfixes source snapshot and safe row adapter",
+      "track": "source",
+      "work_surface_score": 12
+    },
+    {
+      "fib_priority": 55,
+      "goal_id": "CVESIR-G020",
+      "graph_depth": 1,
+      "heap_index": 17,
+      "output_count": 2,
+      "parents": [
+        "CVESIR-G000"
+      ],
+      "priority": "P0",
+      "priority_rank": 0,
+      "required_evidence_count": 2,
+      "sort_key": [
+        55,
+        0,
+        -12,
+        1,
+        "CVESIR-G020"
+      ],
+      "status": "active",
+      "title": "Canonical derived dataset schemas and identities",
+      "track": "schema",
+      "work_surface_score": 12
+    },
+    {
+      "fib_priority": 55,
+      "goal_id": "CVESIR-G140",
+      "graph_depth": 1,
+      "heap_index": 18,
+      "output_count": 2,
+      "parents": [
+        "CVESIR-G000"
+      ],
+      "priority": "P0",
+      "priority_rank": 0,
+      "required_evidence_count": 2,
+      "sort_key": [
+        55,
+        0,
+        -12,
+        1,
+        "CVESIR-G140"
+      ],
+      "status": "active",
+      "title": "Generated-code security fact contract and extractors",
+      "track": "code-facts",
+      "work_surface_score": 12
+    },
+    {
+      "fib_priority": 89,
+      "goal_id": "CVESIR-G000",
+      "graph_depth": 0,
+      "heap_index": 19,
+      "output_count": 1,
+      "parents": [],
+      "priority": "P0",
+      "priority_rank": 0,
+      "required_evidence_count": 1,
+      "sort_key": [
+        89,
+        0,
+        -6,
+        0,
+        "CVESIR-G000"
+      ],
+      "status": "active",
+      "title": "Pinned CVE security reasoning and enforcement loop",
+      "track": "integration",
+      "work_surface_score": 6
+    }
+  ],
+  "objective_path": "/home/barberb/lift_coding/hallucinate_app/ipfs_accelerate_py/docs/architecture/cvefixes_security_ir.objectives.md",
+  "schema": "ipfs_accelerate_py.agent_supervisor.objective_graph",
+  "thought_graph": {
+    "edge_count": 97,
+    "edges": [
+      {
+        "from": "goal:CVESIR-G000",
+        "kind": "requires_evidence",
+        "to": "evidence:7c55a6f908b1"
+      },
+      {
+        "from": "goal:CVESIR-G000",
+        "kind": "validated_by",
+        "to": "validation:fa7d67a75800"
+      },
+      {
+        "from": "goal:CVESIR-G000",
+        "kind": "touches_surface",
+        "to": "code_surface:7c55a6f908b1"
+      },
+      {
+        "from": "goal:CVESIR-G010",
+        "kind": "requires_evidence",
+        "to": "evidence:ab4a5b641396"
+      },
+      {
+        "from": "goal:CVESIR-G010",
+        "kind": "requires_evidence",
+        "to": "evidence:f15172c3ecc4"
+      },
+      {
+        "from": "goal:CVESIR-G010",
+        "kind": "validated_by",
+        "to": "validation:f40bbb330a59"
+      },
+      {
+        "from": "goal:CVESIR-G010",
+        "kind": "touches_surface",
+        "to": "code_surface:ab4a5b641396"
+      },
+      {
+        "from": "goal:CVESIR-G010",
+        "kind": "touches_surface",
+        "to": "code_surface:f15172c3ecc4"
+      },
+      {
+        "from": "goal:CVESIR-G020",
+        "kind": "requires_evidence",
+        "to": "evidence:a2f831a60b15"
+      },
+      {
+        "from": "goal:CVESIR-G020",
+        "kind": "requires_evidence",
+        "to": "evidence:1185479a2866"
+      },
+      {
+        "from": "goal:CVESIR-G020",
+        "kind": "validated_by",
+        "to": "validation:55a7a43231c9"
+      },
+      {
+        "from": "goal:CVESIR-G020",
+        "kind": "touches_surface",
+        "to": "code_surface:a2f831a60b15"
+      },
+      {
+        "from": "goal:CVESIR-G020",
+        "kind": "touches_surface",
+        "to": "code_surface:1185479a2866"
+      },
+      {
+        "from": "goal:CVESIR-G030",
+        "kind": "requires_evidence",
+        "to": "evidence:bc79f37f5d27"
+      },
+      {
+        "from": "goal:CVESIR-G030",
+        "kind": "requires_evidence",
+        "to": "evidence:8a5606432c4e"
+      },
+      {
+        "from": "goal:CVESIR-G030",
+        "kind": "validated_by",
+        "to": "validation:642496614f4b"
+      },
+      {
+        "from": "goal:CVESIR-G030",
+        "kind": "touches_surface",
+        "to": "code_surface:bc79f37f5d27"
+      },
+      {
+        "from": "goal:CVESIR-G030",
+        "kind": "touches_surface",
+        "to": "code_surface:8a5606432c4e"
+      },
+      {
+        "from": "goal:CVESIR-G040",
+        "kind": "requires_evidence",
+        "to": "evidence:f63f2691d709"
+      },
+      {
+        "from": "goal:CVESIR-G040",
+        "kind": "requires_evidence",
+        "to": "evidence:91ba96fba8d1"
+      },
+      {
+        "from": "goal:CVESIR-G040",
+        "kind": "validated_by",
+        "to": "validation:2bca188dfc80"
+      },
+      {
+        "from": "goal:CVESIR-G040",
+        "kind": "touches_surface",
+        "to": "code_surface:f63f2691d709"
+      },
+      {
+        "from": "goal:CVESIR-G040",
+        "kind": "touches_surface",
+        "to": "code_surface:91ba96fba8d1"
+      },
+      {
+        "from": "goal:CVESIR-G050",
+        "kind": "requires_evidence",
+        "to": "evidence:ce2ff4c37f2e"
+      },
+      {
+        "from": "goal:CVESIR-G050",
+        "kind": "requires_evidence",
+        "to": "evidence:5b3ce8163e10"
+      },
+      {
+        "from": "goal:CVESIR-G050",
+        "kind": "validated_by",
+        "to": "validation:19322c4beada"
+      },
+      {
+        "from": "goal:CVESIR-G050",
+        "kind": "touches_surface",
+        "to": "code_surface:ce2ff4c37f2e"
+      },
+      {
+        "from": "goal:CVESIR-G050",
+        "kind": "touches_surface",
+        "to": "code_surface:5b3ce8163e10"
+      },
+      {
+        "from": "goal:CVESIR-G060",
+        "kind": "requires_evidence",
+        "to": "evidence:9e65d1ca12a9"
+      },
+      {
+        "from": "goal:CVESIR-G060",
+        "kind": "requires_evidence",
+        "to": "evidence:f6a2060ce9e4"
+      },
+      {
+        "from": "goal:CVESIR-G060",
+        "kind": "validated_by",
+        "to": "validation:bee60bca4552"
+      },
+      {
+        "from": "goal:CVESIR-G060",
+        "kind": "touches_surface",
+        "to": "code_surface:9e65d1ca12a9"
+      },
+      {
+        "from": "goal:CVESIR-G060",
+        "kind": "touches_surface",
+        "to": "code_surface:f6a2060ce9e4"
+      },
+      {
+        "from": "goal:CVESIR-G070",
+        "kind": "requires_evidence",
+        "to": "evidence:cc20a9514d98"
+      },
+      {
+        "from": "goal:CVESIR-G070",
+        "kind": "requires_evidence",
+        "to": "evidence:a7a294fa65aa"
+      },
+      {
+        "from": "goal:CVESIR-G070",
+        "kind": "validated_by",
+        "to": "validation:8da2bf8821d3"
+      },
+      {
+        "from": "goal:CVESIR-G070",
+        "kind": "touches_surface",
+        "to": "code_surface:cc20a9514d98"
+      },
+      {
+        "from": "goal:CVESIR-G070",
+        "kind": "touches_surface",
+        "to": "code_surface:a7a294fa65aa"
+      },
+      {
+        "from": "goal:CVESIR-G080",
+        "kind": "requires_evidence",
+        "to": "evidence:bdfcb447d0db"
+      },
+      {
+        "from": "goal:CVESIR-G080",
+        "kind": "requires_evidence",
+        "to": "evidence:46fc21d3123e"
+      },
+      {
+        "from": "goal:CVESIR-G080",
+        "kind": "validated_by",
+        "to": "validation:8c3e2d6752c3"
+      },
+      {
+        "from": "goal:CVESIR-G080",
+        "kind": "touches_surface",
+        "to": "code_surface:bdfcb447d0db"
+      },
+      {
+        "from": "goal:CVESIR-G080",
+        "kind": "touches_surface",
+        "to": "code_surface:46fc21d3123e"
+      },
+      {
+        "from": "goal:CVESIR-G090",
+        "kind": "requires_evidence",
+        "to": "evidence:fe80df7c4266"
+      },
+      {
+        "from": "goal:CVESIR-G090",
+        "kind": "requires_evidence",
+        "to": "evidence:adde18217de0"
+      },
+      {
+        "from": "goal:CVESIR-G090",
+        "kind": "validated_by",
+        "to": "validation:85f2ec12b729"
+      },
+      {
+        "from": "goal:CVESIR-G090",
+        "kind": "touches_surface",
+        "to": "code_surface:fe80df7c4266"
+      },
+      {
+        "from": "goal:CVESIR-G090",
+        "kind": "touches_surface",
+        "to": "code_surface:adde18217de0"
+      },
+      {
+        "from": "goal:CVESIR-G095",
+        "kind": "requires_evidence",
+        "to": "evidence:8b92bc00b19c"
+      },
+      {
+        "from": "goal:CVESIR-G095",
+        "kind": "validated_by",
+        "to": "validation:3676540ccd43"
+      },
+      {
+        "from": "goal:CVESIR-G095",
+        "kind": "touches_surface",
+        "to": "code_surface:8b92bc00b19c"
+      },
+      {
+        "from": "goal:CVESIR-G100",
+        "kind": "requires_evidence",
+        "to": "evidence:13e478dc701a"
+      },
+      {
+        "from": "goal:CVESIR-G100",
+        "kind": "requires_evidence",
+        "to": "evidence:073860388f98"
+      },
+      {
+        "from": "goal:CVESIR-G100",
+        "kind": "validated_by",
+        "to": "validation:02181fc0da92"
+      },
+      {
+        "from": "goal:CVESIR-G100",
+        "kind": "touches_surface",
+        "to": "code_surface:13e478dc701a"
+      },
+      {
+        "from": "goal:CVESIR-G100",
+        "kind": "touches_surface",
+        "to": "code_surface:073860388f98"
+      },
+      {
+        "from": "goal:CVESIR-G110",
+        "kind": "requires_evidence",
+        "to": "evidence:c6be40d716a5"
+      },
+      {
+        "from": "goal:CVESIR-G110",
+        "kind": "requires_evidence",
+        "to": "evidence:2df8e15de673"
+      },
+      {
+        "from": "goal:CVESIR-G110",
+        "kind": "validated_by",
+        "to": "validation:fc900695e229"
+      },
+      {
+        "from": "goal:CVESIR-G110",
+        "kind": "touches_surface",
+        "to": "code_surface:c6be40d716a5"
+      },
+      {
+        "from": "goal:CVESIR-G110",
+        "kind": "touches_surface",
+        "to": "code_surface:2df8e15de673"
+      },
+      {
+        "from": "goal:CVESIR-G120",
+        "kind": "requires_evidence",
+        "to": "evidence:12263456d7ca"
+      },
+      {
+        "from": "goal:CVESIR-G120",
+        "kind": "requires_evidence",
+        "to": "evidence:bee6dd027043"
+      },
+      {
+        "from": "goal:CVESIR-G120",
+        "kind": "validated_by",
+        "to": "validation:b7dfdc1ba990"
+      },
+      {
+        "from": "goal:CVESIR-G120",
+        "kind": "touches_surface",
+        "to": "code_surface:12263456d7ca"
+      },
+      {
+        "from": "goal:CVESIR-G120",
+        "kind": "touches_surface",
+        "to": "code_surface:bee6dd027043"
+      },
+      {
+        "from": "goal:CVESIR-G130",
+        "kind": "requires_evidence",
+        "to": "evidence:fe69e28cdbad"
+      },
+      {
+        "from": "goal:CVESIR-G130",
+        "kind": "requires_evidence",
+        "to": "evidence:618317b58a61"
+      },
+      {
+        "from": "goal:CVESIR-G130",
+        "kind": "validated_by",
+        "to": "validation:8b3f8d6b5c53"
+      },
+      {
+        "from": "goal:CVESIR-G130",
+        "kind": "touches_surface",
+        "to": "code_surface:fe69e28cdbad"
+      },
+      {
+        "from": "goal:CVESIR-G130",
+        "kind": "touches_surface",
+        "to": "code_surface:618317b58a61"
+      },
+      {
+        "from": "goal:CVESIR-G140",
+        "kind": "requires_evidence",
+        "to": "evidence:2c1fb2871dc6"
+      },
+      {
+        "from": "goal:CVESIR-G140",
+        "kind": "requires_evidence",
+        "to": "evidence:83c7db326b07"
+      },
+      {
+        "from": "goal:CVESIR-G140",
+        "kind": "validated_by",
+        "to": "validation:4e2a01102c1c"
+      },
+      {
+        "from": "goal:CVESIR-G140",
+        "kind": "touches_surface",
+        "to": "code_surface:2c1fb2871dc6"
+      },
+      {
+        "from": "goal:CVESIR-G140",
+        "kind": "touches_surface",
+        "to": "code_surface:83c7db326b07"
+      },
+      {
+        "from": "goal:CVESIR-G150",
+        "kind": "requires_evidence",
+        "to": "evidence:bcc3466f20ca"
+      },
+      {
+        "from": "goal:CVESIR-G150",
+        "kind": "requires_evidence",
+        "to": "evidence:2988069e0e62"
+      },
+      {
+        "from": "goal:CVESIR-G150",
+        "kind": "validated_by",
+        "to": "validation:da5977434436"
+      },
+      {
+        "from": "goal:CVESIR-G150",
+        "kind": "touches_surface",
+        "to": "code_surface:bcc3466f20ca"
+      },
+      {
+        "from": "goal:CVESIR-G150",
+        "kind": "touches_surface",
+        "to": "code_surface:2988069e0e62"
+      },
+      {
+        "from": "goal:CVESIR-G160",
+        "kind": "requires_evidence",
+        "to": "evidence:5b013a3496de"
+      },
+      {
+        "from": "goal:CVESIR-G160",
+        "kind": "validated_by",
+        "to": "validation:0f6be8fa22de"
+      },
+      {
+        "from": "goal:CVESIR-G160",
+        "kind": "touches_surface",
+        "to": "code_surface:fae4e33b6591"
+      },
+      {
+        "from": "goal:CVESIR-G160",
+        "kind": "touches_surface",
+        "to": "code_surface:9157ddb7f1dc"
+      },
+      {
+        "from": "goal:CVESIR-G160",
+        "kind": "touches_surface",
+        "to": "code_surface:5d7f1d9d77ca"
+      },
+      {
+        "from": "goal:CVESIR-G160",
+        "kind": "touches_surface",
+        "to": "code_surface:5b013a3496de"
+      },
+      {
+        "from": "goal:CVESIR-G170",
+        "kind": "requires_evidence",
+        "to": "evidence:cbdcdf11c2d1"
+      },
+      {
+        "from": "goal:CVESIR-G170",
+        "kind": "requires_evidence",
+        "to": "evidence:c07fa9ee576e"
+      },
+      {
+        "from": "goal:CVESIR-G170",
+        "kind": "validated_by",
+        "to": "validation:8826462a2ba0"
+      },
+      {
+        "from": "goal:CVESIR-G170",
+        "kind": "touches_surface",
+        "to": "code_surface:cbdcdf11c2d1"
+      },
+      {
+        "from": "goal:CVESIR-G170",
+        "kind": "touches_surface",
+        "to": "code_surface:c07fa9ee576e"
+      },
+      {
+        "from": "goal:CVESIR-G180",
+        "kind": "requires_evidence",
+        "to": "evidence:cf95f47d5586"
+      },
+      {
+        "from": "goal:CVESIR-G180",
+        "kind": "requires_evidence",
+        "to": "evidence:1e1c399a6d17"
+      },
+      {
+        "from": "goal:CVESIR-G180",
+        "kind": "validated_by",
+        "to": "validation:2888089fba50"
+      },
+      {
+        "from": "goal:CVESIR-G180",
+        "kind": "touches_surface",
+        "to": "code_surface:cf95f47d5586"
+      },
+      {
+        "from": "goal:CVESIR-G180",
+        "kind": "touches_surface",
+        "to": "code_surface:1e1c399a6d17"
+      }
+    ],
+    "node_count": 117,
+    "nodes": [
+      {
+        "goal_id": "CVESIR-G100",
+        "id": "code_surface:073860388f98",
+        "kind": "code_surface",
+        "path": "ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_vocabulary.py",
+        "thought": "Inspect or modify `ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_vocabulary.py` as part of this objective."
+      },
+      {
+        "goal_id": "CVESIR-G020",
+        "id": "code_surface:1185479a2866",
+        "kind": "code_surface",
+        "path": "ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_schemas.py",
+        "thought": "Inspect or modify `ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_schemas.py` as part of this objective."
+      },
+      {
+        "goal_id": "CVESIR-G120",
+        "id": "code_surface:12263456d7ca",
+        "kind": "code_surface",
+        "path": "ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/formalize.py",
+        "thought": "Inspect or modify `ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/formalize.py` as part of this objective."
+      },
+      {
+        "goal_id": "CVESIR-G100",
+        "id": "code_surface:13e478dc701a",
+        "kind": "code_surface",
+        "path": "ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/vocabulary.py",
+        "thought": "Inspect or modify `ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/vocabulary.py` as part of this objective."
+      },
+      {
+        "goal_id": "CVESIR-G180",
+        "id": "code_surface:1e1c399a6d17",
+        "kind": "code_surface",
+        "path": "docs/guides/CVEFIXES_SECURITY_IR_OPERATOR_GUIDE.md",
+        "thought": "Inspect or modify `docs/guides/CVEFIXES_SECURITY_IR_OPERATOR_GUIDE.md` as part of this objective."
+      },
+      {
+        "goal_id": "CVESIR-G150",
+        "id": "code_surface:2988069e0e62",
+        "kind": "code_surface",
+        "path": "test/api/test_agent_supervisor_cve_security_gate.py",
+        "thought": "Inspect or modify `test/api/test_agent_supervisor_cve_security_gate.py` as part of this objective."
+      },
+      {
+        "goal_id": "CVESIR-G140",
+        "id": "code_surface:2c1fb2871dc6",
+        "kind": "code_surface",
+        "path": "ipfs_accelerate_py/agent_supervisor/code_security_facts.py",
+        "thought": "Inspect or modify `ipfs_accelerate_py/agent_supervisor/code_security_facts.py` as part of this objective."
+      },
+      {
+        "goal_id": "CVESIR-G110",
+        "id": "code_surface:2df8e15de673",
+        "kind": "code_surface",
+        "path": "ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_adapter.py",
+        "thought": "Inspect or modify `ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_adapter.py` as part of this objective."
+      },
+      {
+        "goal_id": "CVESIR-G080",
+        "id": "code_surface:46fc21d3123e",
+        "kind": "code_surface",
+        "path": "ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_hf_release.py",
+        "thought": "Inspect or modify `ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_hf_release.py` as part of this objective."
+      },
+      {
+        "goal_id": "CVESIR-G160",
+        "id": "code_surface:5b013a3496de",
+        "kind": "code_surface",
+        "path": "test/api/test_agent_supervisor_cve_security_enforcement.py",
+        "thought": "Inspect or modify `test/api/test_agent_supervisor_cve_security_enforcement.py` as part of this objective."
+      },
+      {
+        "goal_id": "CVESIR-G050",
+        "id": "code_surface:5b3ce8163e10",
+        "kind": "code_surface",
+        "path": "ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_graph.py",
+        "thought": "Inspect or modify `ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_graph.py` as part of this objective."
+      },
+      {
+        "goal_id": "CVESIR-G160",
+        "id": "code_surface:5d7f1d9d77ca",
+        "kind": "code_surface",
+        "path": "ipfs_accelerate_py/agent_supervisor/execution_permit.py",
+        "thought": "Inspect or modify `ipfs_accelerate_py/agent_supervisor/execution_permit.py` as part of this objective."
+      },
+      {
+        "goal_id": "CVESIR-G130",
+        "id": "code_surface:618317b58a61",
+        "kind": "code_surface",
+        "path": "ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_hf_source.py",
+        "thought": "Inspect or modify `ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_hf_source.py` as part of this objective."
+      },
+      {
+        "goal_id": "CVESIR-G000",
+        "id": "code_surface:7c55a6f908b1",
+        "kind": "code_surface",
+        "path": "docs/architecture/cvefixes_security_ir_completion_receipt.json",
+        "thought": "Inspect or modify `docs/architecture/cvefixes_security_ir_completion_receipt.json` as part of this objective."
+      },
+      {
+        "goal_id": "CVESIR-G140",
+        "id": "code_surface:83c7db326b07",
+        "kind": "code_surface",
+        "path": "test/api/test_agent_supervisor_code_security_facts.py",
+        "thought": "Inspect or modify `test/api/test_agent_supervisor_code_security_facts.py` as part of this objective."
+      },
+      {
+        "goal_id": "CVESIR-G030",
+        "id": "code_surface:8a5606432c4e",
+        "kind": "code_surface",
+        "path": "ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_release_policy.py",
+        "thought": "Inspect or modify `ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_release_policy.py` as part of this objective."
+      },
+      {
+        "goal_id": "CVESIR-G095",
+        "id": "code_surface:8b92bc00b19c",
+        "kind": "code_surface",
+        "path": "data/agent_supervisor/cvefixes_security_ir/external/hf_publication_receipt.json",
+        "thought": "Inspect or modify `data/agent_supervisor/cvefixes_security_ir/external/hf_publication_receipt.json` as part of this objective."
+      },
+      {
+        "goal_id": "CVESIR-G160",
+        "id": "code_surface:9157ddb7f1dc",
+        "kind": "code_surface",
+        "path": "ipfs_accelerate_py/agent_supervisor/ir_constraint_compiler.py",
+        "thought": "Inspect or modify `ipfs_accelerate_py/agent_supervisor/ir_constraint_compiler.py` as part of this objective."
+      },
+      {
+        "goal_id": "CVESIR-G040",
+        "id": "code_surface:91ba96fba8d1",
+        "kind": "code_surface",
+        "path": "ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_projector.py",
+        "thought": "Inspect or modify `ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_projector.py` as part of this objective."
+      },
+      {
+        "goal_id": "CVESIR-G060",
+        "id": "code_surface:9e65d1ca12a9",
+        "kind": "code_surface",
+        "path": "ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/retrieval.py",
+        "thought": "Inspect or modify `ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/retrieval.py` as part of this objective."
+      },
+      {
+        "goal_id": "CVESIR-G020",
+        "id": "code_surface:a2f831a60b15",
+        "kind": "code_surface",
+        "path": "ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/schemas.py",
+        "thought": "Inspect or modify `ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/schemas.py` as part of this objective."
+      },
+      {
+        "goal_id": "CVESIR-G070",
+        "id": "code_surface:a7a294fa65aa",
+        "kind": "code_surface",
+        "path": "ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_evaluation.py",
+        "thought": "Inspect or modify `ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_evaluation.py` as part of this objective."
+      },
+      {
+        "goal_id": "CVESIR-G010",
+        "id": "code_surface:ab4a5b641396",
+        "kind": "code_surface",
+        "path": "ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/source_snapshot.py",
+        "thought": "Inspect or modify `ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/source_snapshot.py` as part of this objective."
+      },
+      {
+        "goal_id": "CVESIR-G090",
+        "id": "code_surface:adde18217de0",
+        "kind": "code_surface",
+        "path": "ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_publish_command.py",
+        "thought": "Inspect or modify `ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_publish_command.py` as part of this objective."
+      },
+      {
+        "goal_id": "CVESIR-G030",
+        "id": "code_surface:bc79f37f5d27",
+        "kind": "code_surface",
+        "path": "ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/release_policy.py",
+        "thought": "Inspect or modify `ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/release_policy.py` as part of this objective."
+      },
+      {
+        "goal_id": "CVESIR-G150",
+        "id": "code_surface:bcc3466f20ca",
+        "kind": "code_surface",
+        "path": "ipfs_accelerate_py/agent_supervisor/cve_security_gate.py",
+        "thought": "Inspect or modify `ipfs_accelerate_py/agent_supervisor/cve_security_gate.py` as part of this objective."
+      },
+      {
+        "goal_id": "CVESIR-G080",
+        "id": "code_surface:bdfcb447d0db",
+        "kind": "code_surface",
+        "path": "ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/hf_release.py",
+        "thought": "Inspect or modify `ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/hf_release.py` as part of this objective."
+      },
+      {
+        "goal_id": "CVESIR-G120",
+        "id": "code_surface:bee6dd027043",
+        "kind": "code_surface",
+        "path": "ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_formalize.py",
+        "thought": "Inspect or modify `ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_formalize.py` as part of this objective."
+      },
+      {
+        "goal_id": "CVESIR-G170",
+        "id": "code_surface:c07fa9ee576e",
+        "kind": "code_surface",
+        "path": "test/api/test_agent_supervisor_cve_security_receipts.py",
+        "thought": "Inspect or modify `test/api/test_agent_supervisor_cve_security_receipts.py` as part of this objective."
+      },
+      {
+        "goal_id": "CVESIR-G110",
+        "id": "code_surface:c6be40d716a5",
+        "kind": "code_surface",
+        "path": "ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/adapter.py",
+        "thought": "Inspect or modify `ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/adapter.py` as part of this objective."
+      },
+      {
+        "goal_id": "CVESIR-G170",
+        "id": "code_surface:cbdcdf11c2d1",
+        "kind": "code_surface",
+        "path": "ipfs_accelerate_py/agent_supervisor/cve_security_receipts.py",
+        "thought": "Inspect or modify `ipfs_accelerate_py/agent_supervisor/cve_security_receipts.py` as part of this objective."
+      },
+      {
+        "goal_id": "CVESIR-G070",
+        "id": "code_surface:cc20a9514d98",
+        "kind": "code_surface",
+        "path": "ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/evaluation.py",
+        "thought": "Inspect or modify `ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/evaluation.py` as part of this objective."
+      },
+      {
+        "goal_id": "CVESIR-G050",
+        "id": "code_surface:ce2ff4c37f2e",
+        "kind": "code_surface",
+        "path": "ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/graph.py",
+        "thought": "Inspect or modify `ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/graph.py` as part of this objective."
+      },
+      {
+        "goal_id": "CVESIR-G180",
+        "id": "code_surface:cf95f47d5586",
+        "kind": "code_surface",
+        "path": "test/api/test_agent_supervisor_cve_security_e2e.py",
+        "thought": "Inspect or modify `test/api/test_agent_supervisor_cve_security_e2e.py` as part of this objective."
+      },
+      {
+        "goal_id": "CVESIR-G010",
+        "id": "code_surface:f15172c3ecc4",
+        "kind": "code_surface",
+        "path": "ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_source_snapshot.py",
+        "thought": "Inspect or modify `ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_source_snapshot.py` as part of this objective."
+      },
+      {
+        "goal_id": "CVESIR-G040",
+        "id": "code_surface:f63f2691d709",
+        "kind": "code_surface",
+        "path": "ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/projector.py",
+        "thought": "Inspect or modify `ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/projector.py` as part of this objective."
+      },
+      {
+        "goal_id": "CVESIR-G060",
+        "id": "code_surface:f6a2060ce9e4",
+        "kind": "code_surface",
+        "path": "ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_retrieval.py",
+        "thought": "Inspect or modify `ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_retrieval.py` as part of this objective."
+      },
+      {
+        "goal_id": "CVESIR-G160",
+        "id": "code_surface:fae4e33b6591",
+        "kind": "code_surface",
+        "path": "ipfs_accelerate_py/agent_supervisor/security_constraint_adapter.py",
+        "thought": "Inspect or modify `ipfs_accelerate_py/agent_supervisor/security_constraint_adapter.py` as part of this objective."
+      },
+      {
+        "goal_id": "CVESIR-G130",
+        "id": "code_surface:fe69e28cdbad",
+        "kind": "code_surface",
+        "path": "ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/hf_source.py",
+        "thought": "Inspect or modify `ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/hf_source.py` as part of this objective."
+      },
+      {
+        "goal_id": "CVESIR-G090",
+        "id": "code_surface:fe80df7c4266",
+        "kind": "code_surface",
+        "path": "ipfs_datasets_py/scripts/ops/security_ir/publish_cvefixes_security_ir.py",
+        "thought": "Inspect or modify `ipfs_datasets_py/scripts/ops/security_ir/publish_cvefixes_security_ir.py` as part of this objective."
+      },
+      {
+        "goal_id": "CVESIR-G100",
+        "id": "evidence:073860388f98",
+        "kind": "evidence_requirement",
+        "term": "ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_vocabulary.py",
+        "thought": "Find or create repository evidence proving `ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_vocabulary.py`."
+      },
+      {
+        "goal_id": "CVESIR-G020",
+        "id": "evidence:1185479a2866",
+        "kind": "evidence_requirement",
+        "term": "ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_schemas.py",
+        "thought": "Find or create repository evidence proving `ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_schemas.py`."
+      },
+      {
+        "goal_id": "CVESIR-G120",
+        "id": "evidence:12263456d7ca",
+        "kind": "evidence_requirement",
+        "term": "ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/formalize.py",
+        "thought": "Find or create repository evidence proving `ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/formalize.py`."
+      },
+      {
+        "goal_id": "CVESIR-G100",
+        "id": "evidence:13e478dc701a",
+        "kind": "evidence_requirement",
+        "term": "ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/vocabulary.py",
+        "thought": "Find or create repository evidence proving `ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/vocabulary.py`."
+      },
+      {
+        "goal_id": "CVESIR-G180",
+        "id": "evidence:1e1c399a6d17",
+        "kind": "evidence_requirement",
+        "term": "docs/guides/CVEFIXES_SECURITY_IR_OPERATOR_GUIDE.md",
+        "thought": "Find or create repository evidence proving `docs/guides/CVEFIXES_SECURITY_IR_OPERATOR_GUIDE.md`."
+      },
+      {
+        "goal_id": "CVESIR-G150",
+        "id": "evidence:2988069e0e62",
+        "kind": "evidence_requirement",
+        "term": "test/api/test_agent_supervisor_cve_security_gate.py",
+        "thought": "Find or create repository evidence proving `test/api/test_agent_supervisor_cve_security_gate.py`."
+      },
+      {
+        "goal_id": "CVESIR-G140",
+        "id": "evidence:2c1fb2871dc6",
+        "kind": "evidence_requirement",
+        "term": "ipfs_accelerate_py/agent_supervisor/code_security_facts.py",
+        "thought": "Find or create repository evidence proving `ipfs_accelerate_py/agent_supervisor/code_security_facts.py`."
+      },
+      {
+        "goal_id": "CVESIR-G110",
+        "id": "evidence:2df8e15de673",
+        "kind": "evidence_requirement",
+        "term": "ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_adapter.py",
+        "thought": "Find or create repository evidence proving `ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_adapter.py`."
+      },
+      {
+        "goal_id": "CVESIR-G080",
+        "id": "evidence:46fc21d3123e",
+        "kind": "evidence_requirement",
+        "term": "ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_hf_release.py",
+        "thought": "Find or create repository evidence proving `ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_hf_release.py`."
+      },
+      {
+        "goal_id": "CVESIR-G160",
+        "id": "evidence:5b013a3496de",
+        "kind": "evidence_requirement",
+        "term": "test/api/test_agent_supervisor_cve_security_enforcement.py",
+        "thought": "Find or create repository evidence proving `test/api/test_agent_supervisor_cve_security_enforcement.py`."
+      },
+      {
+        "goal_id": "CVESIR-G050",
+        "id": "evidence:5b3ce8163e10",
+        "kind": "evidence_requirement",
+        "term": "ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_graph.py",
+        "thought": "Find or create repository evidence proving `ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_graph.py`."
+      },
+      {
+        "goal_id": "CVESIR-G130",
+        "id": "evidence:618317b58a61",
+        "kind": "evidence_requirement",
+        "term": "ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_hf_source.py",
+        "thought": "Find or create repository evidence proving `ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_hf_source.py`."
+      },
+      {
+        "goal_id": "CVESIR-G000",
+        "id": "evidence:7c55a6f908b1",
+        "kind": "evidence_requirement",
+        "term": "docs/architecture/cvefixes_security_ir_completion_receipt.json",
+        "thought": "Find or create repository evidence proving `docs/architecture/cvefixes_security_ir_completion_receipt.json`."
+      },
+      {
+        "goal_id": "CVESIR-G140",
+        "id": "evidence:83c7db326b07",
+        "kind": "evidence_requirement",
+        "term": "test/api/test_agent_supervisor_code_security_facts.py",
+        "thought": "Find or create repository evidence proving `test/api/test_agent_supervisor_code_security_facts.py`."
+      },
+      {
+        "goal_id": "CVESIR-G030",
+        "id": "evidence:8a5606432c4e",
+        "kind": "evidence_requirement",
+        "term": "ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_release_policy.py",
+        "thought": "Find or create repository evidence proving `ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_release_policy.py`."
+      },
+      {
+        "goal_id": "CVESIR-G095",
+        "id": "evidence:8b92bc00b19c",
+        "kind": "evidence_requirement",
+        "term": "data/agent_supervisor/cvefixes_security_ir/external/hf_publication_receipt.json",
+        "thought": "Find or create repository evidence proving `data/agent_supervisor/cvefixes_security_ir/external/hf_publication_receipt.json`."
+      },
+      {
+        "goal_id": "CVESIR-G040",
+        "id": "evidence:91ba96fba8d1",
+        "kind": "evidence_requirement",
+        "term": "ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_projector.py",
+        "thought": "Find or create repository evidence proving `ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_projector.py`."
+      },
+      {
+        "goal_id": "CVESIR-G060",
+        "id": "evidence:9e65d1ca12a9",
+        "kind": "evidence_requirement",
+        "term": "ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/retrieval.py",
+        "thought": "Find or create repository evidence proving `ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/retrieval.py`."
+      },
+      {
+        "goal_id": "CVESIR-G020",
+        "id": "evidence:a2f831a60b15",
+        "kind": "evidence_requirement",
+        "term": "ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/schemas.py",
+        "thought": "Find or create repository evidence proving `ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/schemas.py`."
+      },
+      {
+        "goal_id": "CVESIR-G070",
+        "id": "evidence:a7a294fa65aa",
+        "kind": "evidence_requirement",
+        "term": "ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_evaluation.py",
+        "thought": "Find or create repository evidence proving `ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_evaluation.py`."
+      },
+      {
+        "goal_id": "CVESIR-G010",
+        "id": "evidence:ab4a5b641396",
+        "kind": "evidence_requirement",
+        "term": "ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/source_snapshot.py",
+        "thought": "Find or create repository evidence proving `ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/source_snapshot.py`."
+      },
+      {
+        "goal_id": "CVESIR-G090",
+        "id": "evidence:adde18217de0",
+        "kind": "evidence_requirement",
+        "term": "ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_publish_command.py",
+        "thought": "Find or create repository evidence proving `ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_publish_command.py`."
+      },
+      {
+        "goal_id": "CVESIR-G030",
+        "id": "evidence:bc79f37f5d27",
+        "kind": "evidence_requirement",
+        "term": "ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/release_policy.py",
+        "thought": "Find or create repository evidence proving `ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/release_policy.py`."
+      },
+      {
+        "goal_id": "CVESIR-G150",
+        "id": "evidence:bcc3466f20ca",
+        "kind": "evidence_requirement",
+        "term": "ipfs_accelerate_py/agent_supervisor/cve_security_gate.py",
+        "thought": "Find or create repository evidence proving `ipfs_accelerate_py/agent_supervisor/cve_security_gate.py`."
+      },
+      {
+        "goal_id": "CVESIR-G080",
+        "id": "evidence:bdfcb447d0db",
+        "kind": "evidence_requirement",
+        "term": "ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/hf_release.py",
+        "thought": "Find or create repository evidence proving `ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/hf_release.py`."
+      },
+      {
+        "goal_id": "CVESIR-G120",
+        "id": "evidence:bee6dd027043",
+        "kind": "evidence_requirement",
+        "term": "ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_formalize.py",
+        "thought": "Find or create repository evidence proving `ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_formalize.py`."
+      },
+      {
+        "goal_id": "CVESIR-G170",
+        "id": "evidence:c07fa9ee576e",
+        "kind": "evidence_requirement",
+        "term": "test/api/test_agent_supervisor_cve_security_receipts.py",
+        "thought": "Find or create repository evidence proving `test/api/test_agent_supervisor_cve_security_receipts.py`."
+      },
+      {
+        "goal_id": "CVESIR-G110",
+        "id": "evidence:c6be40d716a5",
+        "kind": "evidence_requirement",
+        "term": "ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/adapter.py",
+        "thought": "Find or create repository evidence proving `ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/adapter.py`."
+      },
+      {
+        "goal_id": "CVESIR-G170",
+        "id": "evidence:cbdcdf11c2d1",
+        "kind": "evidence_requirement",
+        "term": "ipfs_accelerate_py/agent_supervisor/cve_security_receipts.py",
+        "thought": "Find or create repository evidence proving `ipfs_accelerate_py/agent_supervisor/cve_security_receipts.py`."
+      },
+      {
+        "goal_id": "CVESIR-G070",
+        "id": "evidence:cc20a9514d98",
+        "kind": "evidence_requirement",
+        "term": "ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/evaluation.py",
+        "thought": "Find or create repository evidence proving `ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/evaluation.py`."
+      },
+      {
+        "goal_id": "CVESIR-G050",
+        "id": "evidence:ce2ff4c37f2e",
+        "kind": "evidence_requirement",
+        "term": "ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/graph.py",
+        "thought": "Find or create repository evidence proving `ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/graph.py`."
+      },
+      {
+        "goal_id": "CVESIR-G180",
+        "id": "evidence:cf95f47d5586",
+        "kind": "evidence_requirement",
+        "term": "test/api/test_agent_supervisor_cve_security_e2e.py",
+        "thought": "Find or create repository evidence proving `test/api/test_agent_supervisor_cve_security_e2e.py`."
+      },
+      {
+        "goal_id": "CVESIR-G010",
+        "id": "evidence:f15172c3ecc4",
+        "kind": "evidence_requirement",
+        "term": "ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_source_snapshot.py",
+        "thought": "Find or create repository evidence proving `ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_source_snapshot.py`."
+      },
+      {
+        "goal_id": "CVESIR-G040",
+        "id": "evidence:f63f2691d709",
+        "kind": "evidence_requirement",
+        "term": "ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/projector.py",
+        "thought": "Find or create repository evidence proving `ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/projector.py`."
+      },
+      {
+        "goal_id": "CVESIR-G060",
+        "id": "evidence:f6a2060ce9e4",
+        "kind": "evidence_requirement",
+        "term": "ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_retrieval.py",
+        "thought": "Find or create repository evidence proving `ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_retrieval.py`."
+      },
+      {
+        "goal_id": "CVESIR-G130",
+        "id": "evidence:fe69e28cdbad",
+        "kind": "evidence_requirement",
+        "term": "ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/hf_source.py",
+        "thought": "Find or create repository evidence proving `ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/hf_source.py`."
+      },
+      {
+        "goal_id": "CVESIR-G090",
+        "id": "evidence:fe80df7c4266",
+        "kind": "evidence_requirement",
+        "term": "ipfs_datasets_py/scripts/ops/security_ir/publish_cvefixes_security_ir.py",
+        "thought": "Find or create repository evidence proving `ipfs_datasets_py/scripts/ops/security_ir/publish_cvefixes_security_ir.py`."
+      },
+      {
+        "goal_id": "CVESIR-G000",
+        "id": "goal:CVESIR-G000",
+        "kind": "goal",
+        "priority": "P0",
+        "status": "active",
+        "thought": "Complete the pinned source-to-Hub-to-Security-IR-to-supervisor loop with current publication and enforcement receipts.",
+        "title": "Pinned CVE security reasoning and enforcement loop",
+        "track": "integration"
+      },
+      {
+        "goal_id": "CVESIR-G010",
+        "id": "goal:CVESIR-G010",
+        "kind": "goal",
+        "priority": "P0",
+        "status": "active",
+        "thought": "Implement a read-only source profile pinned to hitoshura25/cvefixes revision d4f5c4ea65329d9ccbb8a3b3149e5d06eda5edb2, three Parquet shards, 12,987 rows, and the reviewed 23-column contract.",
+        "title": "Pinned CVEfixes source snapshot and safe row adapter",
+        "track": "source"
+      },
+      {
+        "goal_id": "CVESIR-G020",
+        "id": "goal:CVESIR-G020",
+        "kind": "goal",
+        "priority": "P0",
+        "status": "active",
+        "thought": "Define immutable schemas and canonical IDs for source records, code units, graph nodes/edges, policy candidates, formal views, evaluations, and release manifests.",
+        "title": "Canonical derived dataset schemas and identities",
+        "track": "schema"
+      },
+      {
+        "goal_id": "CVESIR-G030",
+        "id": "goal:CVESIR-G030",
+        "kind": "goal",
+        "priority": "P0",
+        "status": "active",
+        "thought": "Define public/internal body profiles, license provenance, PII/secret scanning, prompt-injection treatment, redaction receipts, and publication admission.",
+        "title": "Licensing, privacy, poisoning, and release policy",
+        "track": "governance"
+      },
+      {
+        "goal_id": "CVESIR-G040",
+        "id": "goal:CVESIR-G040",
+        "kind": "goal",
+        "priority": "P0",
+        "status": "active",
+        "thought": "Project rows to file/hunk/symbol code units, paired vulnerable/fixed facts, preconditions, actions, effects, mitigations, and explicit unsupported diagnostics.",
+        "title": "Vulnerable/fixed semantic projector",
+        "track": "projection"
+      },
+      {
+        "goal_id": "CVESIR-G050",
+        "id": "goal:CVESIR-G050",
+        "kind": "goal",
+        "priority": "P0",
+        "status": "active",
+        "thought": "Build the reviewed node/edge ontology, integrity-bound graph tables, adjacency indexes, and deterministic graph root.",
+        "title": "Typed GraphRAG graph builder",
+        "track": "graph"
+      },
+      {
+        "goal_id": "CVESIR-G060",
+        "id": "goal:CVESIR-G060",
+        "kind": "goal",
+        "priority": "P1",
+        "status": "active",
+        "thought": "Add bounded hybrid retrieval over CWE, language, code facts, actions, effects, policies, and graph neighborhoods with partition and authority filters.",
+        "title": "Bounded lexical, vector, and graph retrieval",
+        "track": "retrieval"
+      },
+      {
+        "goal_id": "CVESIR-G070",
+        "id": "goal:CVESIR-G070",
+        "kind": "goal",
+        "priority": "P0",
+        "status": "active",
+        "thought": "Implement repository/CVE/body-isolated splits, vulnerable-positive/fixed-negative metrics, calibration, adversarial injection tests, and explicit review/promotion decisions.",
+        "title": "Leakage-safe evaluation and promotion gates",
+        "track": "evaluation"
+      },
+      {
+        "goal_id": "CVESIR-G080",
+        "id": "goal:CVESIR-G080",
+        "kind": "goal",
+        "priority": "P0",
+        "status": "active",
+        "thought": "Build deterministic Parquet configs, dataset card, manifest, evaluation report, and bounded query client for sofiyapervane/cvefixes-security-ir-graphrag.",
+        "title": "Reproducible Hugging Face release builder",
+        "track": "release"
+      },
+      {
+        "goal_id": "CVESIR-G090",
+        "id": "goal:CVESIR-G090",
+        "kind": "goal",
+        "priority": "P1",
+        "status": "active",
+        "thought": "Provide an authenticated, secret-safe, idempotent upload command and remote Dataset Viewer verification that emits a proposed publication receipt.",
+        "title": "Idempotent publish and remote verification command",
+        "track": "publication-tooling"
+      },
+      {
+        "goal_id": "CVESIR-G095",
+        "id": "goal:CVESIR-G095",
+        "kind": "goal",
+        "priority": "P0",
+        "status": "provisionally_complete",
+        "thought": "Upload the validated release to sofiyapervane/cvefixes-security-ir-graphrag, resolve the immutable Hub commit, and verify it through the Dataset Viewer.",
+        "title": "Publish and pin the derived Hugging Face dataset",
+        "track": "external-publication"
+      },
+      {
+        "goal_id": "CVESIR-G100",
+        "id": "goal:CVESIR-G100",
+        "kind": "goal",
+        "priority": "P0",
+        "status": "active",
+        "thought": "Define versioned CVE/CWE action, precondition, effect, mitigation, language, and scope vocabulary compatible with Security IR policy attributes.",
+        "title": "CVE/CWE Security IR vocabulary",
+        "track": "security-vocabulary"
+      },
+      {
+        "goal_id": "CVESIR-G110",
+        "id": "goal:CVESIR-G110",
+        "kind": "goal",
+        "priority": "P0",
+        "status": "active",
+        "thought": "Convert grounded candidate/reviewed records into canonical SecuritySource, Resource, Policy(DENY), ThreatAssumption, SecurityClaim, and optional StateMachine declarations without importing results into declarations.",
+        "title": "CVE candidates to canonical Security IR adapter",
+        "track": "security-adapter"
+      },
+      {
+        "goal_id": "CVESIR-G120",
+        "id": "goal:CVESIR-G120",
+        "kind": "goal",
+        "priority": "P0",
+        "status": "active",
+        "thought": "Produce typed deontic prohibitions, threat premises, transition views, claims, and proof obligations through the existing Security IR formalization adapter.",
+        "title": "Forbidden-logic formalization views",
+        "track": "formalization"
+      },
+      {
+        "goal_id": "CVESIR-G130",
+        "id": "goal:CVESIR-G130",
+        "kind": "goal",
+        "priority": "P0",
+        "status": "active",
+        "thought": "Load the derived dataset by exact repo and revision, verify its manifest/shards/row identities, and expose bounded canonical Security IR declarations and policy lookup.",
+        "title": "Pinned Hugging Face Security IR source adapter",
+        "track": "hf-integration"
+      },
+      {
+        "goal_id": "CVESIR-G140",
+        "id": "goal:CVESIR-G140",
+        "kind": "goal",
+        "priority": "P0",
+        "status": "active",
+        "thought": "Define canonical code-security facts and deterministic changed-diff extractors for actions, targets, data flow, effects, capabilities, guards, language, and source scope.",
+        "title": "Generated-code security fact contract and extractors",
+        "track": "code-facts"
+      },
+      {
+        "goal_id": "CVESIR-G150",
+        "id": "goal:CVESIR-G150",
+        "kind": "goal",
+        "priority": "P0",
+        "status": "active",
+        "thought": "Map pinned Intent IR and generated code facts independently to exact security requests and correlate undeclared, broadened, or contradictory effects.",
+        "title": "Intent/code facts to exact SecurityAuthorizationRequest",
+        "track": "comparison"
+      },
+      {
+        "goal_id": "CVESIR-G160",
+        "id": "goal:CVESIR-G160",
+        "kind": "goal",
+        "priority": "P0",
+        "status": "active",
+        "thought": "Wire the CVE security gate into plan admission, pre-execution permits, post-generation validation, merge admission, and merged-tree revalidation.",
+        "title": "Decision-runtime, permit, and merge enforcement",
+        "track": "enforcement"
+      },
+      {
+        "goal_id": "CVESIR-G170",
+        "id": "goal:CVESIR-G170",
+        "kind": "goal",
+        "priority": "P1",
+        "status": "active",
+        "thought": "Emit explainable bounded receipts linking intent/code facts, matching policies, CVE/CWE/source CIDs, roots, reason codes, counterexamples, and enforcement stage.",
+        "title": "Bounded security decision receipts and observability",
+        "track": "receipts"
+      },
+      {
+        "goal_id": "CVESIR-G180",
+        "id": "goal:CVESIR-G180",
+        "kind": "goal",
+        "priority": "P0",
+        "status": "active",
+        "thought": "Prove end-to-end vulnerable/fixed, intent-only, code-only, deny, allow, unknown, conflict, stale, injection, rollback, and pinned-release behavior and document operations.",
+        "title": "End-to-end conformance, rollback, and operator rollout",
+        "track": "rollout"
+      },
+      {
+        "command": "python -m pytest ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_vocabulary.py -q",
+        "goal_id": "CVESIR-G100",
+        "id": "validation:02181fc0da92",
+        "kind": "validation_strategy",
+        "thought": "Run this validation before closing the goal."
+      },
+      {
+        "command": "python -m pytest test/api/test_agent_supervisor_security_constraints.py test/api/test_agent_supervisor_ir_constraint_compiler.py test/api/test_agent_supervisor_cve_security_enforcement.py -q",
+        "goal_id": "CVESIR-G160",
+        "id": "validation:0f6be8fa22de",
+        "kind": "validation_strategy",
+        "thought": "Run this validation before closing the goal."
+      },
+      {
+        "command": "python -m pytest ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_graph.py -q",
+        "goal_id": "CVESIR-G050",
+        "id": "validation:19322c4beada",
+        "kind": "validation_strategy",
+        "thought": "Run this validation before closing the goal."
+      },
+      {
+        "command": "python -m pytest test/api/test_agent_supervisor_cve_security_e2e.py -q",
+        "goal_id": "CVESIR-G180",
+        "id": "validation:2888089fba50",
+        "kind": "validation_strategy",
+        "thought": "Run this validation before closing the goal."
+      },
+      {
+        "command": "python -m pytest ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_projector.py -q",
+        "goal_id": "CVESIR-G040",
+        "id": "validation:2bca188dfc80",
+        "kind": "validation_strategy",
+        "thought": "Run this validation before closing the goal."
+      },
+      {
+        "command": "python ipfs_datasets_py/scripts/ops/security_ir/publish_cvefixes_security_ir.py --verify-receipt data/agent_supervisor/cvefixes_security_ir/external/hf_publication_receipt.json",
+        "goal_id": "CVESIR-G095",
+        "id": "validation:3676540ccd43",
+        "kind": "validation_strategy",
+        "thought": "Run this validation before closing the goal."
+      },
+      {
+        "command": "python -m pytest test/api/test_agent_supervisor_code_security_facts.py -q",
+        "goal_id": "CVESIR-G140",
+        "id": "validation:4e2a01102c1c",
+        "kind": "validation_strategy",
+        "thought": "Run this validation before closing the goal."
+      },
+      {
+        "command": "python -m pytest ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_schemas.py -q",
+        "goal_id": "CVESIR-G020",
+        "id": "validation:55a7a43231c9",
+        "kind": "validation_strategy",
+        "thought": "Run this validation before closing the goal."
+      },
+      {
+        "command": "python -m pytest ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_release_policy.py -q",
+        "goal_id": "CVESIR-G030",
+        "id": "validation:642496614f4b",
+        "kind": "validation_strategy",
+        "thought": "Run this validation before closing the goal."
+      },
+      {
+        "command": "python -m pytest ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_publish_command.py -q",
+        "goal_id": "CVESIR-G090",
+        "id": "validation:85f2ec12b729",
+        "kind": "validation_strategy",
+        "thought": "Run this validation before closing the goal."
+      },
+      {
+        "command": "python -m pytest test/api/test_agent_supervisor_cve_security_receipts.py -q",
+        "goal_id": "CVESIR-G170",
+        "id": "validation:8826462a2ba0",
+        "kind": "validation_strategy",
+        "thought": "Run this validation before closing the goal."
+      },
+      {
+        "command": "python -m pytest ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_hf_source.py -q",
+        "goal_id": "CVESIR-G130",
+        "id": "validation:8b3f8d6b5c53",
+        "kind": "validation_strategy",
+        "thought": "Run this validation before closing the goal."
+      },
+      {
+        "command": "python -m pytest ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_hf_release.py -q",
+        "goal_id": "CVESIR-G080",
+        "id": "validation:8c3e2d6752c3",
+        "kind": "validation_strategy",
+        "thought": "Run this validation before closing the goal."
+      },
+      {
+        "command": "python -m pytest ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_evaluation.py -q",
+        "goal_id": "CVESIR-G070",
+        "id": "validation:8da2bf8821d3",
+        "kind": "validation_strategy",
+        "thought": "Run this validation before closing the goal."
+      },
+      {
+        "command": "python -m pytest ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_formalize.py -q",
+        "goal_id": "CVESIR-G120",
+        "id": "validation:b7dfdc1ba990",
+        "kind": "validation_strategy",
+        "thought": "Run this validation before closing the goal."
+      },
+      {
+        "command": "python -m pytest ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_retrieval.py -q",
+        "goal_id": "CVESIR-G060",
+        "id": "validation:bee60bca4552",
+        "kind": "validation_strategy",
+        "thought": "Run this validation before closing the goal."
+      },
+      {
+        "command": "python -m pytest test/api/test_agent_supervisor_cve_security_gate.py -q",
+        "goal_id": "CVESIR-G150",
+        "id": "validation:da5977434436",
+        "kind": "validation_strategy",
+        "thought": "Run this validation before closing the goal."
+      },
+      {
+        "command": "python -m pytest ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_source_snapshot.py -q",
+        "goal_id": "CVESIR-G010",
+        "id": "validation:f40bbb330a59",
+        "kind": "validation_strategy",
+        "thought": "Run this validation before closing the goal."
+      },
+      {
+        "command": "python -m pytest test/api/test_agent_supervisor_cve_security_e2e.py -q",
+        "goal_id": "CVESIR-G000",
+        "id": "validation:fa7d67a75800",
+        "kind": "validation_strategy",
+        "thought": "Run this validation before closing the goal."
+      },
+      {
+        "command": "python -m pytest ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_adapter.py -q",
+        "goal_id": "CVESIR-G110",
+        "id": "validation:fc900695e229",
+        "kind": "validation_strategy",
+        "thought": "Run this validation before closing the goal."
+      }
+    ],
+    "schema": "ipfs_accelerate_py.agent_supervisor.objective_thought_graph"
+  }
+}
