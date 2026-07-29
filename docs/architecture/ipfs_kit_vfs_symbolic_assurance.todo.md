@@ -328,7 +328,7 @@ compact references and bounded spans only.
 
 ## VFS-017 Resolve SwissKnife MCP++ calls to actual package registrations and implementations
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: mcp-interop
