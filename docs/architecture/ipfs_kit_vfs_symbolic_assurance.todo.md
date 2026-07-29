@@ -308,7 +308,7 @@ compact references and bounded spans only.
 
 ## VFS-016 Implement symbolic contract comparison and counterexample generation
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: contract-ir
