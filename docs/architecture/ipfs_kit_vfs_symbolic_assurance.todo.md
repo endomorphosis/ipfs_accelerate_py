@@ -712,7 +712,7 @@ compact references and bounded spans only.
 - Completion: manual
 - Priority: P0
 - Track: assurance-rollout
-- Depends on: VFS-018, VFS-024, VFS-028, VFS-030, VFS-034, VFS-035
+- Depends on: VFS-018, VFS-024, VFS-027, VFS-028, VFS-030, VFS-033, VFS-034, VFS-035
 - Goal id: VFS-G130
 - Outputs: ipfs_accelerate_py/agent_supervisor/vfs_symbolic_rollout.py, test/api/test_vfs_symbolic_assurance_e2e.py
 - Validation: python -m pytest test/api/test_vfs_symbolic_assurance_e2e.py -q
