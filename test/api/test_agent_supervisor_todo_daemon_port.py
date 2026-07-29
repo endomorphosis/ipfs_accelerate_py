@@ -5803,6 +5803,80 @@ def test_implementation_daemon_preserves_nested_tmp_and_allows_unchanged_dirty_s
     assert (submodule / "child.txt").read_text(encoding="utf-8") == "unrelated user dirt\n"
 
 
+def test_implementation_daemon_allows_candidate_submodule_advance_with_unchanged_nested_dirt(
+    tmp_path,
+):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    nested_source = tmp_path / "nested-source"
+    nested_source.mkdir()
+    _git(nested_source, "init")
+    _git(nested_source, "checkout", "-b", "main")
+    _git(nested_source, "config", "user.name", "Test User")
+    _git(nested_source, "config", "user.email", "test@example.invalid")
+    (nested_source / "nested.txt").write_text("base\n", encoding="utf-8")
+    _git(nested_source, "add", "nested.txt")
+    _git(nested_source, "commit", "-m", "nested base")
+
+    _git(
+        submodule,
+        "-c",
+        "protocol.file.allow=always",
+        "submodule",
+        "add",
+        str(nested_source),
+        "nested/tool",
+    )
+    _git(submodule, "add", ".gitmodules", "nested/tool")
+    _git(submodule, "commit", "-m", "add nested tool")
+    _git(repo, "add", "libs/child")
+    _git(repo, "commit", "-m", "record nested tool")
+
+    _git(submodule, "checkout", "-b", "implementation/auto-126-submodule-libs-child")
+    (submodule / "candidate.txt").write_text("candidate\n", encoding="utf-8")
+    _git(submodule, "add", "candidate.txt")
+    _git(submodule, "commit", "-m", "AUTO-126: candidate child work")
+    _git(repo, "checkout", "-b", "implementation/auto-126")
+    _git(repo, "add", "libs/child")
+    _git(repo, "commit", "-m", "AUTO-126: advance child gitlink")
+    implementation_commit = _git(repo, "rev-parse", "HEAD")
+
+    _git(repo, "checkout", "main")
+    _git(submodule, "checkout", "main")
+    nested_checkout = submodule / "nested" / "tool"
+    (nested_checkout / "nested.txt").write_text(
+        "unrelated user dirt\n",
+        encoding="utf-8",
+    )
+
+    state_dir = tmp_path / "supervisor-state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=["libs/child"],
+    )
+    candidates = [
+        {
+            "task_id": "AUTO-126",
+            "branch": "implementation/auto-126",
+            "implementation_commit": implementation_commit,
+        }
+    ]
+
+    blocking, nonblocking = daemon._reconciliation_blocking_dirty_paths(
+        candidates,
+        target_branch="main",
+    )
+
+    assert blocking == []
+    assert nonblocking == ["libs/child"]
+    assert (nested_checkout / "nested.txt").read_text(encoding="utf-8") == (
+        "unrelated user dirt\n"
+    )
+
+
 def test_implementation_daemon_failed_merge_reconciliation_remains_retryable(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()

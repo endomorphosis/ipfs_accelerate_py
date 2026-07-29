@@ -17179,12 +17179,20 @@ class PortalImplementationDaemon:
             )
         return preserved
 
-    def _gitlink_commit_at_ref(self, ref: str, relative: str) -> str:
-        if not ref or not self._repo_relative_path_safe(relative):
+    @staticmethod
+    def _gitlink_commit_at_repo_ref(
+        repo_root: Path,
+        ref: str,
+        relative: str,
+    ) -> str:
+        if (
+            not ref
+            or not TodoImplementationDaemon._repo_relative_path_safe(relative)
+        ):
             return ""
         result = subprocess.run(
             ["git", "ls-tree", ref, "--", relative],
-            cwd=self.repo_root,
+            cwd=repo_root,
             text=True,
             capture_output=True,
             check=False,
@@ -17197,6 +17205,9 @@ class PortalImplementationDaemon:
             if separator and path == relative and len(fields) >= 3 and fields[0] == "160000":
                 return fields[2]
         return ""
+
+    def _gitlink_commit_at_ref(self, ref: str, relative: str) -> str:
+        return self._gitlink_commit_at_repo_ref(self.repo_root, ref, relative)
 
     def _dirty_gitlink_is_unchanged_for_candidates(
         self,
@@ -17214,7 +17225,11 @@ class PortalImplementationDaemon:
         for event in candidates:
             branch = str(event.get("branch") or "")
             implementation_commit = str(event.get("implementation_commit") or "")
-            merge_ref = branch if branch and self._git_ref_exists(branch) else implementation_commit
+            merge_ref = (
+                branch
+                if branch and self._git_ref_exists(branch)
+                else implementation_commit
+            )
             candidate_commit = self._gitlink_commit_at_ref(merge_ref, relative)
             if not candidate_commit:
                 return False
@@ -17222,6 +17237,75 @@ class PortalImplementationDaemon:
             if candidate_commit != target_commit:
                 return False
         return compared > 0
+
+    def _dirty_gitlink_has_only_unchanged_nested_gitlinks(
+        self,
+        relative: str,
+        candidates: Sequence[dict[str, Any]],
+        *,
+        target_branch: str,
+    ) -> bool:
+        """Prove that a changed candidate gitlink does not touch nested dirt.
+
+        A configured submodule can contain unrelated dirty nested submodules
+        while a pending candidate advances the outer gitlink for ordinary
+        files.  Treating the outer path as globally dirty deadlocks merge
+        reconciliation even when every dirty nested gitlink is identical in
+        the target and candidate trees.  This proof stays fail closed for a
+        detached outer checkout, ordinary file dirt, missing refs, or any
+        nested gitlink changed by a candidate.
+        """
+
+        if not self._repo_relative_path_safe(relative):
+            return False
+        submodule_root = self.repo_root / relative
+        target_commit = self._gitlink_commit_at_ref(target_branch, relative)
+        if not target_commit or not submodule_root.is_dir():
+            return False
+        head = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=submodule_root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if head.returncode != 0 or head.stdout.strip() != target_commit:
+            return False
+
+        candidate_commits: list[str] = []
+        for event in candidates:
+            branch = str(event.get("branch") or "")
+            implementation_commit = str(event.get("implementation_commit") or "")
+            merge_ref = branch if branch and self._git_ref_exists(branch) else implementation_commit
+            candidate_commit = self._gitlink_commit_at_ref(merge_ref, relative)
+            if not candidate_commit:
+                return False
+            candidate_commits.append(candidate_commit)
+        if not candidate_commits:
+            return False
+
+        dirty_nested_paths = sorted(self._dirty_worktree_paths(submodule_root))
+        if not dirty_nested_paths:
+            return False
+        for nested_relative in dirty_nested_paths:
+            target_nested_commit = self._gitlink_commit_at_repo_ref(
+                submodule_root,
+                target_commit,
+                nested_relative,
+            )
+            if not target_nested_commit:
+                return False
+            for candidate_commit in candidate_commits:
+                if (
+                    self._gitlink_commit_at_repo_ref(
+                        submodule_root,
+                        candidate_commit,
+                        nested_relative,
+                    )
+                    != target_nested_commit
+                ):
+                    return False
+        return True
 
     def _reconciliation_blocking_dirty_paths(
         self,
@@ -17241,6 +17325,10 @@ class PortalImplementationDaemon:
                 nonblocking.append(relative)
                 continue
             if self._dirty_gitlink_is_unchanged_for_candidates(
+                relative,
+                candidates,
+                target_branch=target_branch,
+            ) or self._dirty_gitlink_has_only_unchanged_nested_gitlinks(
                 relative,
                 candidates,
                 target_branch=target_branch,
