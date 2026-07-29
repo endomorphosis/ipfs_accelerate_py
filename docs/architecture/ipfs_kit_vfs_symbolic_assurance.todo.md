@@ -488,7 +488,7 @@ compact references and bounded spans only.
 
 ## VFS-025 Inventory and classify all IPFS Kit VFS surfaces and variants
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: vfs-drift
