@@ -4,6 +4,11 @@ This module is deliberately a policy and validation layer.  It never installs a
 missing tool, invokes a package manager, reads credential values, or enables the
 network.  A launcher supplies a :class:`CapabilitySnapshot`; this module checks
 that fact against a reviewed :class:`AnalysisExecutionProfile`.
+
+DSCON-G050 / DSCON-064 objective validation repair: the reviewed analyzer profile
+and resource-bounds evidence are verified together by
+:func:`verify_objective_validation_repair`.  Tool availability is a capability
+fact, never a reason to auto-install during analysis.
 """
 
 from __future__ import annotations
@@ -22,6 +27,59 @@ from typing import Any, Iterable, Mapping, Sequence
 PROFILE_SCHEMA = "datasets_contract_analysis/analyzer-profile@1"
 RESOURCE_BOUNDS_SCHEMA = "datasets_contract_analysis/resource-bounds@1"
 IDENTITY_PATTERN = re.compile(r"^sha256:[0-9a-f]{64}$")
+
+# DSCON-G050 objective validation repair contract (forced validation gate).
+GOAL_ID = "DSCON-G050"
+VALIDATION_TASK_ID = "DSCON-064"
+OBJECTIVE_VALIDATION_EVIDENCE = "objective validation repair"
+OBJECTIVE_VALIDATION_COMMAND = (
+    "python -m pytest -q "
+    "ipfs_accelerate_py/test/api/test_agent_supervisor_contract_execution_profile.py"
+)
+OBJECTIVE_VALIDATED_ARTIFACTS = (
+    "ipfs_accelerate_py/ipfs_accelerate_py/agent_supervisor/"
+    "contract_analysis/execution_profile.py",
+    "data/datasets_contract_analysis/policy/analyzer-profile-v1.json",
+    "data/datasets_contract_analysis/policy/resource-bounds-v1.json",
+    "ipfs_accelerate_py/test/api/"
+    "test_agent_supervisor_contract_execution_profile.py",
+)
+REQUIRED_TOOL_ROLES = frozenset(
+    {
+        "python",
+        "node",
+        "parser",
+        "typescript",
+        "solver",
+        "proof",
+    }
+)
+REQUIRED_RESOURCE_DIMENSIONS = frozenset(
+    {
+        "max_blob_bytes",
+        "max_files",
+        "max_ast_nodes",
+        "max_edges",
+        "max_scc_nodes",
+        "max_recursion_depth",
+        "max_timeout_ms",
+        "max_memory_bytes",
+        "max_proof_bytes",
+        "max_receipt_bytes",
+        "max_findings",
+        "max_tasks",
+        "max_prompt_bytes",
+        "max_prompt_tokens",
+    }
+)
+REQUIRED_SANDBOX_DENIALS = frozenset(
+    {
+        "network",
+        "auto_install",
+        "home_cache",
+        "credentials",
+    }
+)
 
 _CREDENTIAL_NAMES = frozenset(
     {
@@ -593,6 +651,7 @@ class AnalysisExecutionProfile:
     locks: tuple[LockIdentity, ...]
     resources: ResourceBudget
     sandbox: SandboxPolicy
+    objective_validation_repair: Mapping[str, Any] | None = None
 
     def __post_init__(self) -> None:
         for name in ("profile_id", "goal_id", "resource_class"):
@@ -614,16 +673,8 @@ class AnalysisExecutionProfile:
             raise ExecutionProfileError("tools must have unique names")
         if not self.locks or len(lock_paths) != len(set(lock_paths)):
             raise ExecutionProfileError("locks must have unique paths")
-        required_roles = {
-            "python",
-            "node",
-            "parser",
-            "typescript",
-            "solver",
-            "proof",
-        }
         present_roles = {role for tool in self.tools for role in tool.roles}
-        missing_roles = sorted(required_roles - present_roles)
+        missing_roles = sorted(REQUIRED_TOOL_ROLES - present_roles)
         if missing_roles:
             raise ExecutionProfileError(f"profile is missing tool roles: {missing_roles}")
 
@@ -639,9 +690,11 @@ class AnalysisExecutionProfile:
             "locks",
             "resource_bounds",
             "sandbox",
+            "objective_validation_repair",
         }
+        required = fields - {"objective_validation_repair"}
         payload = _closed_mapping(
-            value, name="profile", allowed=fields, required=fields
+            value, name="profile", allowed=fields, required=required
         )
         if payload["schema"] != PROFILE_SCHEMA:
             raise ExecutionProfileError("unsupported analyzer-profile schema")
@@ -659,6 +712,9 @@ class AnalysisExecutionProfile:
             raise ExecutionProfileError(
                 "resource_bounds.class must match profile.resource_class"
             )
+        repair = payload.get("objective_validation_repair")
+        if repair is not None:
+            repair = _parse_objective_validation_repair(repair)
         return cls(
             profile_id=str(payload["profile_id"]).strip(),
             goal_id=str(payload["goal_id"]).strip(),
@@ -668,6 +724,7 @@ class AnalysisExecutionProfile:
             locks=tuple(LockIdentity.from_dict(item) for item in payload["locks"]),
             resources=resources,
             sandbox=SandboxPolicy.from_dict(payload["sandbox"]),
+            objective_validation_repair=repair,
         )
 
     @classmethod
@@ -693,7 +750,7 @@ class AnalysisExecutionProfile:
         return profile
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        payload = {
             "schema": PROFILE_SCHEMA,
             "profile_id": self.profile_id,
             "goal_id": self.goal_id,
@@ -706,6 +763,11 @@ class AnalysisExecutionProfile:
             ),
             "sandbox": self.sandbox.to_dict(),
         }
+        if self.objective_validation_repair is not None:
+            payload["objective_validation_repair"] = dict(
+                self.objective_validation_repair
+            )
+        return payload
 
     def to_json(self) -> str:
         return _canonical_bytes(self.to_dict()).decode("utf-8")
@@ -837,6 +899,202 @@ class AnalysisExecutionProfile:
         return self.resources.validate_usage(usage, proof_required=proof_required)
 
 
+
+def _parse_objective_validation_repair(value: Any) -> Mapping[str, Any]:
+    """Validate the optional closed objective validation repair metadata block."""
+
+    payload = _closed_mapping(
+        value,
+        name="objective_validation_repair",
+        allowed={
+            "evidence_term",
+            "goal_id",
+            "task_id",
+            "command",
+            "validated_artifacts",
+            "fail_closed",
+        },
+        required={
+            "evidence_term",
+            "goal_id",
+            "task_id",
+            "command",
+            "validated_artifacts",
+            "fail_closed",
+        },
+    )
+    if payload["evidence_term"] != OBJECTIVE_VALIDATION_EVIDENCE:
+        raise ExecutionProfileError(
+            "objective_validation_repair.evidence_term must be "
+            f"{OBJECTIVE_VALIDATION_EVIDENCE!r}"
+        )
+    if str(payload["goal_id"]).strip() != GOAL_ID:
+        raise ExecutionProfileError(
+            f"objective_validation_repair.goal_id must be {GOAL_ID}"
+        )
+    if str(payload["task_id"]).strip() != VALIDATION_TASK_ID:
+        raise ExecutionProfileError(
+            f"objective_validation_repair.task_id must be {VALIDATION_TASK_ID}"
+        )
+    if str(payload["command"]).strip() != OBJECTIVE_VALIDATION_COMMAND:
+        raise ExecutionProfileError(
+            "objective_validation_repair.command must match the goal validation"
+        )
+    if payload["fail_closed"] is not True:
+        raise ExecutionProfileError(
+            "objective_validation_repair.fail_closed must be true"
+        )
+    artifacts = _strings(
+        payload["validated_artifacts"],
+        "objective_validation_repair.validated_artifacts",
+    )
+    if not artifacts:
+        raise ExecutionProfileError(
+            "objective_validation_repair.validated_artifacts must be non-empty"
+        )
+    return MappingProxyType(
+        {
+            "evidence_term": OBJECTIVE_VALIDATION_EVIDENCE,
+            "goal_id": GOAL_ID,
+            "task_id": VALIDATION_TASK_ID,
+            "command": OBJECTIVE_VALIDATION_COMMAND,
+            "validated_artifacts": list(artifacts),
+            "fail_closed": True,
+        }
+    )
+
+
+def objective_validation_repair_contract() -> dict[str, Any]:
+    """Return the DSCON-G050 objective validation repair evidence contract.
+
+    The forced validation gate names the synthetic evidence term
+    ``objective validation repair``.  This contract binds the goal, validation
+    command, and authorized artifacts that prove hermetic toolchain, budget, and
+    sandbox coverage.
+    """
+
+    return {
+        "evidence_term": OBJECTIVE_VALIDATION_EVIDENCE,
+        "goal_id": GOAL_ID,
+        "task_id": VALIDATION_TASK_ID,
+        "command": OBJECTIVE_VALIDATION_COMMAND,
+        "validated_artifacts": list(OBJECTIVE_VALIDATED_ARTIFACTS),
+        "required_tool_roles": sorted(REQUIRED_TOOL_ROLES),
+        "required_resource_dimensions": sorted(REQUIRED_RESOURCE_DIMENSIONS),
+        "required_sandbox_denials": sorted(REQUIRED_SANDBOX_DENIALS),
+        "fail_closed": True,
+        "auto_install": "deny",
+        "refinement": (
+            "Tool availability is a capability fact, never a reason to "
+            "auto-install during analysis."
+        ),
+    }
+
+
+def verify_objective_validation_repair(
+    path: str | os.PathLike[str],
+    *,
+    repository_root: str | os.PathLike[str],
+) -> AnalysisExecutionProfile:
+    """Load the reviewed profile and prove every DSCON-G050 acceptance dimension.
+
+    Acceptance: profiles bind tool and lock identities; enforce blob, file,
+    AST-node, edge, SCC, recursion, timeout, memory, proof, receipt, finding,
+    task, and prompt limits; reject network, auto-install, home-cache,
+    credential, and write-root escape; resource exhaustion yields incomplete or
+    unknown rather than pass.  Missing tools are capability facts only.
+    """
+
+    profile = AnalysisExecutionProfile.load(path, repository_root=repository_root)
+    if profile.goal_id != GOAL_ID:
+        raise ExecutionProfileError(
+            f"objective validation repair requires goal_id {GOAL_ID}"
+        )
+
+    present_roles = {role for tool in profile.tools for role in tool.roles}
+    missing_roles = sorted(REQUIRED_TOOL_ROLES - present_roles)
+    if missing_roles:
+        raise ExecutionProfileError(
+            f"objective validation repair missing tool roles: {missing_roles}"
+        )
+    if any(not tool.identity.startswith("sha256:") for tool in profile.tools):
+        raise ExecutionProfileError(
+            "objective validation repair requires sha256 tool identities"
+        )
+    if any(not lock.identity.startswith("sha256:") for lock in profile.locks):
+        raise ExecutionProfileError(
+            "objective validation repair requires sha256 lock identities"
+        )
+
+    bounds = profile.resources.to_dict(resource_class=profile.resource_class)
+    missing_dims = sorted(REQUIRED_RESOURCE_DIMENSIONS - set(bounds))
+    if missing_dims:
+        raise ExecutionProfileError(
+            f"objective validation repair missing resource dimensions: {missing_dims}"
+        )
+    for name in REQUIRED_RESOURCE_DIMENSIONS:
+        _positive_integer(bounds[name], f"resource_bounds.{name}")
+
+    for name in REQUIRED_SANDBOX_DENIALS:
+        if getattr(profile.sandbox, name) != "deny":
+            raise ExecutionProfileError(
+                f"objective validation repair requires sandbox.{name} == 'deny'"
+            )
+
+    # Exhaustion must never report pass; proof-required maps to unknown.
+    for field_name in sorted(REQUIRED_RESOURCE_DIMENSIONS):
+        usage_name = field_name.removeprefix("max_")
+        over = {usage_name: getattr(profile.resources, field_name) + 1}
+        incomplete = profile.validate_usage(over)
+        if incomplete.ok or incomplete.disposition != "incomplete":
+            raise ExecutionProfileError(
+                f"resource exhaustion for {field_name} must yield incomplete"
+            )
+        unknown = profile.validate_usage(over, proof_required=True)
+        if unknown.disposition != "unknown" or unknown.complete:
+            raise ExecutionProfileError(
+                f"proof-required exhaustion for {field_name} must yield unknown"
+            )
+
+    # Capability facts: missing required tools never request auto-install.
+    snapshot = CapabilitySnapshot(
+        tool_identities={},
+        lock_identities={},
+        unavailable_tools=tuple(tool.name for tool in profile.tools),
+    )
+    capability = profile.validate(
+        snapshot, repository_root=repository_root, proof_required=True
+    )
+    if not capability.safe:
+        raise ExecutionProfileError(
+            "missing tools must remain safe capability facts"
+        )
+    if capability.disposition not in {"incomplete", "unknown"}:
+        raise ExecutionProfileError(
+            "missing tools must yield incomplete or unknown, never pass"
+        )
+    if any("auto_install" in item for item in capability.unavailable_capabilities):
+        raise ExecutionProfileError(
+            "missing tools must never request auto-install"
+        )
+    if profile.sandbox.auto_install != "deny":
+        raise ExecutionProfileError("auto_install must remain deny")
+
+    profile.validate_resource_bounds_evidence(repository_root=repository_root)
+    if profile.objective_validation_repair is None:
+        raise ExecutionProfileError(
+            "objective validation repair metadata is required on the reviewed profile"
+        )
+    if (
+        profile.objective_validation_repair["evidence_term"]
+        != OBJECTIVE_VALIDATION_EVIDENCE
+    ):
+        raise ExecutionProfileError(
+            "profile objective_validation_repair evidence_term mismatch"
+        )
+    return profile
+
+
 def load_execution_profile(
     path: str | os.PathLike[str],
     *,
@@ -851,12 +1109,22 @@ __all__ = [
     "AnalysisExecutionProfile",
     "CapabilitySnapshot",
     "ExecutionProfileError",
+    "GOAL_ID",
     "HermeticValidation",
     "LockIdentity",
+    "OBJECTIVE_VALIDATED_ARTIFACTS",
+    "OBJECTIVE_VALIDATION_COMMAND",
+    "OBJECTIVE_VALIDATION_EVIDENCE",
     "PROFILE_SCHEMA",
+    "REQUIRED_RESOURCE_DIMENSIONS",
+    "REQUIRED_SANDBOX_DENIALS",
+    "REQUIRED_TOOL_ROLES",
     "RESOURCE_BOUNDS_SCHEMA",
     "ResourceBudget",
     "SandboxPolicy",
     "ToolIdentity",
+    "VALIDATION_TASK_ID",
     "load_execution_profile",
+    "objective_validation_repair_contract",
+    "verify_objective_validation_repair",
 ]

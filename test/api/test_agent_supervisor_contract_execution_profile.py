@@ -7,12 +7,22 @@ from pathlib import Path
 import pytest
 
 from ipfs_accelerate_py.agent_supervisor.contract_analysis.execution_profile import (
+    GOAL_ID,
+    OBJECTIVE_VALIDATED_ARTIFACTS,
+    OBJECTIVE_VALIDATION_COMMAND,
+    OBJECTIVE_VALIDATION_EVIDENCE,
+    PROFILE_SCHEMA,
+    REQUIRED_RESOURCE_DIMENSIONS,
+    REQUIRED_SANDBOX_DENIALS,
+    REQUIRED_TOOL_ROLES,
+    RESOURCE_BOUNDS_SCHEMA,
     AnalysisExecutionProfile,
     CapabilitySnapshot,
     ExecutionProfileError,
-    PROFILE_SCHEMA,
-    RESOURCE_BOUNDS_SCHEMA,
     ResourceBudget,
+    VALIDATION_TASK_ID,
+    objective_validation_repair_contract,
+    verify_objective_validation_repair,
 )
 
 
@@ -56,8 +66,13 @@ def _matching_snapshot(
 def test_reviewed_policy_is_strict_canonical_and_binds_every_required_identity() -> None:
     profile = _profile()
 
-    assert profile.goal_id == "DSCON-G050"
+    assert profile.goal_id == GOAL_ID
     assert profile.to_dict()["schema"] == PROFILE_SCHEMA
+    assert profile.objective_validation_repair is not None
+    assert (
+        profile.objective_validation_repair["evidence_term"]
+        == OBJECTIVE_VALIDATION_EVIDENCE
+    )
     assert profile.to_dict()["resource_bounds"]["schema"] == RESOURCE_BOUNDS_SCHEMA
     assert (
         profile.resource_bounds_evidence
@@ -381,3 +396,91 @@ def test_closed_profile_decoder_rejects_unknown_fields_and_unbounded_limits() ->
     payload["sandbox"]["network"] = "allow"
     with pytest.raises(ExecutionProfileError, match="must be 'deny'"):
         AnalysisExecutionProfile.from_dict(payload)
+
+
+def test_objective_validation_repair_proves_every_acceptance_dimension() -> None:
+    """DSCON-064 objective validation repair for DSCON-G050.
+
+    objective validation repair
+    """
+
+    profile = verify_objective_validation_repair(
+        POLICY_PATH, repository_root=REPOSITORY_ROOT
+    )
+    contract = objective_validation_repair_contract()
+
+    assert contract["evidence_term"] == OBJECTIVE_VALIDATION_EVIDENCE
+    assert contract["goal_id"] == GOAL_ID
+    assert contract["task_id"] == VALIDATION_TASK_ID
+    assert contract["command"] == OBJECTIVE_VALIDATION_COMMAND
+    assert profile.goal_id == GOAL_ID
+    assert REQUIRED_TOOL_ROLES.issubset(
+        {role for tool in profile.tools for role in tool.roles}
+    )
+    assert REQUIRED_RESOURCE_DIMENSIONS.issubset(
+        profile.to_dict()["resource_bounds"]
+    )
+    for name in REQUIRED_SANDBOX_DENIALS:
+        assert getattr(profile.sandbox, name) == "deny"
+    assert profile.objective_validation_repair == {
+        "evidence_term": OBJECTIVE_VALIDATION_EVIDENCE,
+        "goal_id": GOAL_ID,
+        "task_id": VALIDATION_TASK_ID,
+        "command": OBJECTIVE_VALIDATION_COMMAND,
+        "validated_artifacts": list(
+            profile.objective_validation_repair["validated_artifacts"]
+        ),
+        "fail_closed": True,
+    }
+
+
+def test_objective_validation_repair_is_discoverable_in_authorized_artifacts() -> None:
+    """Exact-text evidence for the synthetic validation-gate term.
+
+    objective validation repair
+    """
+
+    phrase = OBJECTIVE_VALIDATION_EVIDENCE
+    assert phrase == "objective validation repair"
+
+    module_path = (
+        REPOSITORY_ROOT
+        / "ipfs_accelerate_py"
+        / "ipfs_accelerate_py"
+        / "agent_supervisor"
+        / "contract_analysis"
+        / "execution_profile.py"
+    )
+    test_path = Path(__file__).resolve()
+    for relative in OBJECTIVE_VALIDATED_ARTIFACTS:
+        candidate = REPOSITORY_ROOT / relative
+        assert candidate.is_file(), f"missing validated artifact: {relative}"
+        if candidate.suffix in {".py", ".json", ".md"}:
+            text = candidate.read_text(encoding="utf-8")
+            # Resource bounds stay a pure limit object; other artifacts carry the term.
+            if candidate.name == "resource-bounds-v1.json":
+                continue
+            assert phrase in text, f"missing {phrase!r} in {relative}"
+
+    assert phrase in module_path.read_text(encoding="utf-8")
+    assert phrase in test_path.read_text(encoding="utf-8")
+    assert phrase in POLICY_PATH.read_text(encoding="utf-8")
+
+
+def test_objective_validation_repair_metadata_is_closed_and_bound() -> None:
+    payload = json.loads(POLICY_PATH.read_text(encoding="utf-8"))
+    payload["objective_validation_repair"] = {
+        **payload["objective_validation_repair"],
+        "evidence_term": "not the gate",
+    }
+    with pytest.raises(ExecutionProfileError, match="evidence_term"):
+        AnalysisExecutionProfile.from_dict(payload)
+
+    payload = json.loads(POLICY_PATH.read_text(encoding="utf-8"))
+    payload["objective_validation_repair"] = {
+        **payload["objective_validation_repair"],
+        "extra_field": True,
+    }
+    with pytest.raises(ExecutionProfileError, match="unsupported fields"):
+        AnalysisExecutionProfile.from_dict(payload)
+
