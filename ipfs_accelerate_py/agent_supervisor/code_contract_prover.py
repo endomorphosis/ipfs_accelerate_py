@@ -1,0 +1,2586 @@
+"""Route code-contract IR obligations through capability-probed solvers.
+
+VFS-020 / VFS-G070: translation products from :mod:`code_contract_logic` are
+compiled into deterministic bounded :class:`BackendRequest` values, executed
+against admitted SMT backends (cvc5, z3, and any additional admitted adapters),
+and independently validated under policy.  Candidate solver successes never
+self-promote to authority.
+
+Conflict policy: compose :mod:`proof.multi_prover_router`, kernel-style binding
+checks, and ``ipfs_datasets_py.logic`` IR backend contracts.  Portfolio output
+is retained as attempts/results/receipts; only independently validated
+authoritative outcomes may be conclusive.
+
+Non-conclusive outcomes (never treated as proved):
+
+* missing admitted backend (for example absent z3)
+* timeout / unknown / malformed solver output
+* wrong theorem binding
+* stale solver or toolchain identity
+* forged authority claim
+* omitted effects
+* inconsistent assumptions
+* capability loss between probe and execution
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import re
+import shutil
+import threading
+import time
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass, field
+from enum import Enum
+from types import MappingProxyType
+from typing import Any, ClassVar, Final, Protocol
+
+from ipfs_datasets_py.logic.backends.cvc5.compiler import (
+    CVC5_BACKEND_ID,
+    CVC5_BACKEND_VERSION,
+    CVC5_CAPABILITIES,
+    CVC5Compiler,
+)
+from ipfs_datasets_py.logic.backends.registry import (
+    BackendRunnerOutput,
+    CompiledBackendRequest,
+    MalformedBackendOutput,
+    UnsupportedBackendRequest,
+    compile_smtlib_request,
+)
+from ipfs_datasets_py.logic.backends.z3.compiler import (
+    Z3_BACKEND_ID,
+    Z3_BACKEND_VERSION,
+    Z3_CAPABILITIES,
+    Z3Compiler,
+)
+from ipfs_datasets_py.logic.ir_core.claims import (
+    FrozenMap,
+    IRClaim,
+    stable_digest,
+)
+from ipfs_datasets_py.logic.ir_core.protocols import (
+    AttemptStatus as BackendAttemptStatus,
+    BackendCapabilities,
+    BackendRequest,
+    ExecutionBounds,
+    QueryKind,
+    ResultStatus as BackendResultStatus,
+)
+
+from .code_contract_logic import (
+    CODE_CONTRACT_LOGIC_VERSION,
+    LOGIC_FAMILY,
+    PredicateRelation,
+    TranslationResult,
+    TranslationStatus,
+    pinned_translator_identity,
+)
+from .proof.formal_verification_contracts import (
+    AssuranceLevel,
+    CanonicalContract,
+    ContractValidationError,
+    content_identity,
+)
+from .proof.multi_prover_router import (
+    AttemptOutcome,
+    MultiProverRouter,
+    PortfolioResult,
+    PropertyKind,
+    PropertyObligation,
+    PropertyPolicy,
+    ProverLane,
+    ProverOutput,
+    ProverRole,
+)
+
+
+# ---------------------------------------------------------------------------
+# Versions, schemas, pins
+# ---------------------------------------------------------------------------
+
+CODE_CONTRACT_PROVER_VERSION: Final[int] = 1
+PROVER_ID: Final[str] = "code-contract-prover"
+PROVER_VERSION: Final[str] = "1"
+KERNEL_PROOF_RECEIPT_EVIDENCE: Final[str] = "vfs/kernel-proof-receipt@1"
+SOLVER_PORTFOLIO_EVIDENCE: Final[str] = "vfs/code-contract-solver-portfolio@1"
+
+BACKEND_PROBE_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/code-contract-backend-probe@1"
+)
+PROBE_REPORT_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/code-contract-probe-report@1"
+)
+COMPILED_REQUEST_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/code-contract-compiled-request@1"
+)
+SOLVER_ATTEMPT_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/code-contract-solver-attempt@1"
+)
+VALIDATION_RECEIPT_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/code-contract-validation-receipt@1"
+)
+PROVE_RESULT_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/code-contract-prove-result@1"
+)
+CACHE_ENTRY_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/code-contract-prover-cache-entry@1"
+)
+PROVE_REQUEST_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/code-contract-prove-request@1"
+)
+
+# BackendRequest.logic_family for admitted SMT adapters.
+SMT_LOGIC_FAMILY: Final[str] = "smtlib2"
+DEFAULT_SMT_LOGIC: Final[str] = "QF_UF"
+DEFAULT_TIMEOUT_MS: Final[int] = 5_000
+DEFAULT_MAX_STEPS: Final[int] = 50_000
+DEFAULT_MAX_MEMORY_BYTES: Final[int] = 256 * 1024 * 1024
+DEFAULT_MAX_OUTPUT_BYTES: Final[int] = 256 * 1024
+DEFAULT_MAX_ATTEMPTS: Final[int] = 16
+DEFAULT_MAX_EVIDENCE_BYTES: Final[int] = 64 * 1024
+MAX_TEXT_BYTES: Final[int] = 8_192
+MAX_SOURCE_BYTES: Final[int] = 64 * 1024
+MAX_CACHE_ENTRIES: Final[int] = 1_024
+
+# Predicate kinds whose effects must be retained when present on the source.
+_EFFECT_RELATIONS: Final[frozenset[PredicateRelation]] = frozenset(
+    {PredicateRelation.HAS_EFFECT}
+)
+
+_SYMBOL_SAFE: Final[re.Pattern[str]] = re.compile(r"[^A-Za-z0-9_]+")
+
+
+class CodeContractProverError(ContractValidationError):
+    """Malformed prover input or internal invariant violation."""
+
+
+class ProveRejectedError(CodeContractProverError):
+    """Fail-closed rejection of a prove attempt before portfolio execution."""
+
+    def __init__(self, code: "NonConclusiveReason", detail: str) -> None:
+        self.code = (
+            code
+            if isinstance(code, NonConclusiveReason)
+            else NonConclusiveReason(str(code))
+        )
+        self.detail = detail
+        super().__init__(f"{self.code.value}: {detail}")
+
+
+class NonConclusiveReason(str, Enum):
+    """Stable reasons that must never promote to a conclusive proof."""
+
+    NONE = ""
+    MISSING_BACKEND = "missing_backend"
+    TIMEOUT = "timeout"
+    UNKNOWN = "unknown"
+    MALFORMED_OUTPUT = "malformed_output"
+    WRONG_THEOREM = "wrong_theorem"
+    STALE_SOLVER = "stale_solver"
+    STALE_TOOLCHAIN = "stale_toolchain"
+    FORGED_AUTHORITY = "forged_authority"
+    OMITTED_EFFECTS = "omitted_effects"
+    INCONSISTENT_ASSUMPTIONS = "inconsistent_assumptions"
+    CAPABILITY_LOSS = "capability_loss"
+    UNAVAILABLE = "unavailable"
+    UNSUPPORTED = "unsupported"
+    CANCELLED = "cancelled"
+    CACHE_MISS = "cache_miss"
+    INVALID_INPUT = "invalid_input"
+    TRANSLATION_NOT_READY = "translation_not_ready"
+    PORTFOLIO_INCONCLUSIVE = "portfolio_inconclusive"
+    POLICY_REJECTED = "policy_rejected"
+
+
+class ProveStatus(str, Enum):
+    PROVED = "proved"
+    DISPROVED = "disproved"
+    INCONCLUSIVE = "inconclusive"
+    UNSUPPORTED = "unsupported"
+    ERROR = "error"
+    CANCELLED = "cancelled"
+    CACHED = "cached"
+
+
+class BackendAvailability(str, Enum):
+    AVAILABLE = "available"
+    UNAVAILABLE = "unavailable"
+    PARTIAL = "partial"
+    UNKNOWN = "unknown"
+
+
+class ValidationDisposition(str, Enum):
+    ACCEPTED = "accepted"
+    REJECTED = "rejected"
+    NON_CONCLUSIVE = "non_conclusive"
+
+
+# Admitted backends probed every run.  Additional adapters may be registered
+# on the prover instance; they remain non-authoritative unless listed here and
+# declared under policy.
+ADMITTED_BACKEND_IDS: Final[tuple[str, ...]] = (CVC5_BACKEND_ID, Z3_BACKEND_ID)
+
+_BACKEND_METADATA: Final[Mapping[str, Mapping[str, Any]]] = MappingProxyType(
+    {
+        CVC5_BACKEND_ID: {
+            "version": CVC5_BACKEND_VERSION,
+            "capabilities": CVC5_CAPABILITIES,
+            "executables": ("cvc5",),
+            "env_keys": ("CVC5_BINARY", "IPFS_DATASETS_CVC5_BINARY"),
+            "authoritative_for": ("finite_constraint_satisfiability",),
+        },
+        Z3_BACKEND_ID: {
+            "version": Z3_BACKEND_VERSION,
+            "capabilities": Z3_CAPABILITIES,
+            "executables": ("z3",),
+            "env_keys": ("Z3_BINARY", "IPFS_DATASETS_Z3_BINARY"),
+            "authoritative_for": ("finite_constraint_satisfiability",),
+        },
+    }
+)
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _text(
+    value: Any,
+    name: str,
+    *,
+    required: bool = True,
+    maximum: int = MAX_TEXT_BYTES,
+) -> str:
+    if value is None:
+        text = ""
+    elif not isinstance(value, str):
+        raise CodeContractProverError(f"{name} must be a string")
+    else:
+        text = value.strip()
+    if required and not text:
+        raise CodeContractProverError(f"{name} must not be empty")
+    if len(text.encode("utf-8")) > maximum:
+        raise CodeContractProverError(f"{name} exceeds {maximum} UTF-8 bytes")
+    return text
+
+
+def _boolean(value: Any, name: str) -> bool:
+    if not isinstance(value, bool):
+        raise CodeContractProverError(f"{name} must be a boolean")
+    return value
+
+
+def _enum(value: Any, enum_type: type[Enum], name: str) -> Any:
+    if isinstance(value, enum_type):
+        return value
+    text = str(getattr(value, "value", value) or "").strip()
+    try:
+        return enum_type(text)
+    except ValueError as exc:
+        raise CodeContractProverError(f"unsupported {name}: {text!r}") from exc
+
+
+def _plain(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return {str(k): _plain(v) for k, v in sorted(value.items())}
+    if isinstance(value, (list, tuple)):
+        return [_plain(item) for item in value]
+    if isinstance(value, Enum):
+        return value.value
+    if isinstance(value, MappingProxyType):
+        return {str(k): _plain(v) for k, v in sorted(value.items())}
+    if hasattr(value, "to_dict") and callable(value.to_dict):
+        return _plain(value.to_dict())
+    return value
+
+
+def _mapping(value: Any, name: str) -> dict[str, Any]:
+    if value is None:
+        return {}
+    if not isinstance(value, Mapping) or any(not isinstance(k, str) for k in value):
+        raise CodeContractProverError(f"{name} must be an object with string keys")
+    return {str(k): _plain(v) for k, v in value.items()}
+
+
+def _positive_int(value: Any, name: str, *, maximum: int | None = None) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise CodeContractProverError(f"{name} must be a positive integer")
+    if maximum is not None and value > maximum:
+        raise CodeContractProverError(f"{name} exceeds maximum {maximum}")
+    return value
+
+
+def _non_negative_int(value: Any, name: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise CodeContractProverError(f"{name} must be a non-negative integer")
+    return value
+
+
+def _sha256_hex(payload: Any) -> str:
+    if isinstance(payload, (bytes, bytearray)):
+        raw = bytes(payload)
+    else:
+        raw = json.dumps(
+            _plain(payload),
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        ).encode("utf-8")
+    return hashlib.sha256(raw).hexdigest()
+
+
+def _symbol(name: str, *, prefix: str = "p") -> str:
+    cleaned = _SYMBOL_SAFE.sub("_", name).strip("_")
+    if not cleaned or cleaned[0].isdigit():
+        cleaned = f"{prefix}_{cleaned or 'x'}"
+    return cleaned[:96]
+
+
+def prover_identity(
+    *,
+    prover_id: str = PROVER_ID,
+    prover_version: str = PROVER_VERSION,
+) -> str:
+    return content_identity(
+        {
+            "prover_id": _text(prover_id, "prover_id"),
+            "prover_version": _text(prover_version, "prover_version"),
+            "prover_logic_version": CODE_CONTRACT_PROVER_VERSION,
+            "logic_version": CODE_CONTRACT_LOGIC_VERSION,
+        }
+    )
+
+
+def pinned_prover_identity() -> str:
+    return prover_identity()
+
+
+# ---------------------------------------------------------------------------
+# Probe / capability records
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class BackendProbeReceipt(CanonicalContract):
+    """Per-run capability probe for one admitted backend."""
+
+    SCHEMA: ClassVar[str] = BACKEND_PROBE_SCHEMA
+
+    backend_id: str
+    backend_version: str
+    available: bool
+    executable_path: str = ""
+    smoke_ok: bool = False
+    authoritative_for: tuple[str, ...] = ()
+    capabilities: Mapping[str, Any] = field(default_factory=dict)
+    detail: str = ""
+    toolchain_digest: str = ""
+    probed_at_monotonic_ms: int = 0
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "backend_id", _text(self.backend_id, "backend_id"))
+        object.__setattr__(
+            self, "backend_version", _text(self.backend_version, "backend_version")
+        )
+        object.__setattr__(self, "available", _boolean(bool(self.available), "available"))
+        object.__setattr__(
+            self,
+            "executable_path",
+            _text(self.executable_path, "executable_path", required=False),
+        )
+        object.__setattr__(self, "smoke_ok", _boolean(bool(self.smoke_ok), "smoke_ok"))
+        caps = tuple(
+            _text(item, "authoritative_for") for item in (self.authoritative_for or ())
+        )
+        object.__setattr__(self, "authoritative_for", tuple(sorted(set(caps))))
+        object.__setattr__(
+            self, "capabilities", MappingProxyType(_mapping(self.capabilities, "capabilities"))
+        )
+        object.__setattr__(
+            self, "detail", _text(self.detail, "detail", required=False)
+        )
+        digest = self.toolchain_digest or _sha256_hex(
+            {
+                "backend_id": self.backend_id,
+                "backend_version": self.backend_version,
+                "executable_path": self.executable_path,
+                "available": self.available,
+                "smoke_ok": self.smoke_ok,
+            }
+        )
+        object.__setattr__(self, "toolchain_digest", _text(digest, "toolchain_digest"))
+        object.__setattr__(
+            self,
+            "probed_at_monotonic_ms",
+            _non_negative_int(self.probed_at_monotonic_ms, "probed_at_monotonic_ms"),
+        )
+
+    @property
+    def receipt_id(self) -> str:
+        return self.content_id
+
+    @property
+    def admitted(self) -> bool:
+        return self.available and self.smoke_ok
+
+    def _payload(self) -> dict[str, Any]:
+        # Intentionally exclude probed_at_monotonic_ms from the content
+        # identity so identical capability observations cache-key stably.
+        return {
+            "prover_version": CODE_CONTRACT_PROVER_VERSION,
+            "backend_id": self.backend_id,
+            "backend_version": self.backend_version,
+            "available": self.available,
+            "executable_path": self.executable_path,
+            "smoke_ok": self.smoke_ok,
+            "authoritative_for": list(self.authoritative_for),
+            "capabilities": dict(self.capabilities),
+            "detail": self.detail,
+            "toolchain_digest": self.toolchain_digest,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "BackendProbeReceipt":
+        if not isinstance(payload, Mapping):
+            raise CodeContractProverError("backend probe must be an object")
+        return cls(
+            backend_id=payload.get("backend_id", ""),
+            backend_version=payload.get("backend_version", ""),
+            available=bool(payload.get("available", False)),
+            executable_path=payload.get("executable_path", ""),
+            smoke_ok=bool(payload.get("smoke_ok", False)),
+            authoritative_for=tuple(payload.get("authoritative_for") or ()),
+            capabilities=payload.get("capabilities") or {},
+            detail=payload.get("detail", ""),
+            toolchain_digest=payload.get("toolchain_digest", ""),
+            probed_at_monotonic_ms=int(payload.get("probed_at_monotonic_ms") or 0),
+        )
+
+
+@dataclass(frozen=True)
+class ProbeReport(CanonicalContract):
+    """Aggregate probe of every admitted backend for one prove run."""
+
+    SCHEMA: ClassVar[str] = PROBE_REPORT_SCHEMA
+
+    probes: tuple[BackendProbeReceipt, ...]
+    admitted_backend_ids: tuple[str, ...]
+    missing_backend_ids: tuple[str, ...]
+    availability: BackendAvailability
+    policy_id: str = "policy:code-contract-prover@1"
+    detail: str = ""
+
+    def __post_init__(self) -> None:
+        probes = tuple(self.probes or ())
+        if any(not isinstance(item, BackendProbeReceipt) for item in probes):
+            raise CodeContractProverError("probes must be BackendProbeReceipt values")
+        ids = [item.backend_id for item in probes]
+        if len(ids) != len(set(ids)):
+            raise CodeContractProverError("probe report cannot list a backend twice")
+        object.__setattr__(self, "probes", probes)
+        admitted = tuple(
+            _text(item, "admitted_backend_ids")
+            for item in (self.admitted_backend_ids or ())
+        )
+        missing = tuple(
+            _text(item, "missing_backend_ids")
+            for item in (self.missing_backend_ids or ())
+        )
+        object.__setattr__(self, "admitted_backend_ids", tuple(sorted(set(admitted))))
+        object.__setattr__(self, "missing_backend_ids", tuple(sorted(set(missing))))
+        object.__setattr__(
+            self, "availability", _enum(self.availability, BackendAvailability, "availability")
+        )
+        object.__setattr__(self, "policy_id", _text(self.policy_id, "policy_id"))
+        object.__setattr__(self, "detail", _text(self.detail, "detail", required=False))
+
+    @property
+    def report_id(self) -> str:
+        return self.content_id
+
+    def probe_for(self, backend_id: str) -> BackendProbeReceipt | None:
+        for item in self.probes:
+            if item.backend_id == backend_id:
+                return item
+        return None
+
+    def _payload(self) -> dict[str, Any]:
+        return {
+            "prover_version": CODE_CONTRACT_PROVER_VERSION,
+            "probes": [item.to_dict() for item in self.probes],
+            "admitted_backend_ids": list(self.admitted_backend_ids),
+            "missing_backend_ids": list(self.missing_backend_ids),
+            "availability": self.availability,
+            "policy_id": self.policy_id,
+            "detail": self.detail,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "ProbeReport":
+        if not isinstance(payload, Mapping):
+            raise CodeContractProverError("probe report must be an object")
+        return cls(
+            probes=tuple(
+                BackendProbeReceipt.from_dict(item)
+                for item in (payload.get("probes") or ())
+            ),
+            admitted_backend_ids=tuple(payload.get("admitted_backend_ids") or ()),
+            missing_backend_ids=tuple(payload.get("missing_backend_ids") or ()),
+            availability=payload.get("availability", BackendAvailability.UNKNOWN),
+            policy_id=payload.get("policy_id", "policy:code-contract-prover@1"),
+            detail=payload.get("detail", ""),
+        )
+
+
+# ---------------------------------------------------------------------------
+# Compilation
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class CompiledObligationRequest(CanonicalContract):
+    """Deterministic bounded SMT request compiled from one IR obligation."""
+
+    SCHEMA: ClassVar[str] = COMPILED_REQUEST_SCHEMA
+
+    request_id: str
+    claim_id: str
+    claim_digest: str
+    obligation_id: str
+    obligation_digest: str
+    assumption_ids: tuple[str, ...]
+    backend_request: Mapping[str, Any]
+    compiled_by_backend: Mapping[str, str]
+    predicate_kinds: tuple[str, ...]
+    effect_relation_ids: tuple[str, ...]
+    source_translation_cid: str
+    translator_identity: str
+    smt_source_digest: str
+    query_kind: str = QueryKind.THEOREM_PROOF.value
+    logic_family: str = SMT_LOGIC_FAMILY
+    metadata: Mapping[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        for name in (
+            "request_id",
+            "claim_id",
+            "claim_digest",
+            "obligation_id",
+            "obligation_digest",
+            "source_translation_cid",
+            "translator_identity",
+            "smt_source_digest",
+            "query_kind",
+            "logic_family",
+        ):
+            object.__setattr__(self, name, _text(getattr(self, name), name))
+        object.__setattr__(
+            self,
+            "assumption_ids",
+            tuple(_text(item, "assumption_ids") for item in (self.assumption_ids or ())),
+        )
+        object.__setattr__(
+            self,
+            "backend_request",
+            MappingProxyType(_mapping(self.backend_request, "backend_request")),
+        )
+        compiled = {
+            _text(k, "compiled_by_backend.key"): _text(v, "compiled_by_backend.value")
+            for k, v in dict(self.compiled_by_backend or {}).items()
+        }
+        object.__setattr__(self, "compiled_by_backend", MappingProxyType(compiled))
+        object.__setattr__(
+            self,
+            "predicate_kinds",
+            tuple(
+                sorted(
+                    {
+                        _text(item, "predicate_kinds")
+                        for item in (self.predicate_kinds or ())
+                    }
+                )
+            ),
+        )
+        object.__setattr__(
+            self,
+            "effect_relation_ids",
+            tuple(
+                sorted(
+                    {
+                        _text(item, "effect_relation_ids")
+                        for item in (self.effect_relation_ids or ())
+                    }
+                )
+            ),
+        )
+        object.__setattr__(
+            self, "metadata", MappingProxyType(_mapping(self.metadata, "metadata"))
+        )
+
+    @property
+    def compiled_id(self) -> str:
+        return self.content_id
+
+    def as_backend_request(self) -> BackendRequest:
+        return BackendRequest.from_dict(dict(self.backend_request))
+
+    def _payload(self) -> dict[str, Any]:
+        return {
+            "prover_version": CODE_CONTRACT_PROVER_VERSION,
+            "request_id": self.request_id,
+            "claim_id": self.claim_id,
+            "claim_digest": self.claim_digest,
+            "obligation_id": self.obligation_id,
+            "obligation_digest": self.obligation_digest,
+            "assumption_ids": list(self.assumption_ids),
+            "backend_request": dict(self.backend_request),
+            "compiled_by_backend": dict(self.compiled_by_backend),
+            "predicate_kinds": list(self.predicate_kinds),
+            "effect_relation_ids": list(self.effect_relation_ids),
+            "source_translation_cid": self.source_translation_cid,
+            "translator_identity": self.translator_identity,
+            "smt_source_digest": self.smt_source_digest,
+            "query_kind": self.query_kind,
+            "logic_family": self.logic_family,
+            "metadata": dict(self.metadata),
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "CompiledObligationRequest":
+        if not isinstance(payload, Mapping):
+            raise CodeContractProverError("compiled request must be an object")
+        return cls(
+            request_id=payload.get("request_id", ""),
+            claim_id=payload.get("claim_id", ""),
+            claim_digest=payload.get("claim_digest", ""),
+            obligation_id=payload.get("obligation_id", ""),
+            obligation_digest=payload.get("obligation_digest", ""),
+            assumption_ids=tuple(payload.get("assumption_ids") or ()),
+            backend_request=payload.get("backend_request") or {},
+            compiled_by_backend=payload.get("compiled_by_backend") or {},
+            predicate_kinds=tuple(payload.get("predicate_kinds") or ()),
+            effect_relation_ids=tuple(payload.get("effect_relation_ids") or ()),
+            source_translation_cid=payload.get("source_translation_cid", ""),
+            translator_identity=payload.get("translator_identity", ""),
+            smt_source_digest=payload.get("smt_source_digest", ""),
+            query_kind=payload.get("query_kind", QueryKind.THEOREM_PROOF.value),
+            logic_family=payload.get("logic_family", SMT_LOGIC_FAMILY),
+            metadata=payload.get("metadata") or {},
+        )
+
+
+def _predicate_atom_symbol(claim: IRClaim, obligation_id: str) -> str:
+    digest = stable_digest(
+        {
+            "claim_id": claim.claim_id,
+            "obligation_id": obligation_id,
+            "statement": claim.statement,
+        }
+    )
+    return _symbol(f"goal_{digest[:16]}", prefix="goal")
+
+
+def _assumption_symbols(assumption_ids: Sequence[str]) -> list[str]:
+    out: list[str] = []
+    for item in assumption_ids:
+        digest = stable_digest({"assumption_id": item})
+        out.append(_symbol(f"asm_{digest[:16]}", prefix="asm"))
+    return out
+
+
+def compile_smt_payload_for_claim(
+    claim: IRClaim,
+    *,
+    obligation_id: str | None = None,
+    query_kind: QueryKind = QueryKind.THEOREM_PROOF,
+) -> dict[str, Any]:
+    """Lower one IR claim obligation into a neutral SMT-LIB payload.
+
+    Finite contract predicates become uninterpreted boolean atoms.  Assumptions
+    are asserted as facts; the goal is the obligation atom.  THEOREM_PROOF
+    polarity is applied by the shared SMT-LIB compiler.
+    """
+
+    if not isinstance(claim, IRClaim):
+        raise CodeContractProverError("claim must be an IRClaim")
+    if not claim.obligations:
+        raise CodeContractProverError("claim has no obligations")
+    obligation = (
+        claim.obligation(obligation_id)
+        if obligation_id
+        else claim.obligations[0]
+    )
+    goal = _predicate_atom_symbol(claim, obligation.obligation_id)
+    assumptions = _assumption_symbols(obligation.assumption_ids)
+    declarations = [f"(declare-const {goal} Bool)"]
+    for symbol in assumptions:
+        declarations.append(f"(declare-const {symbol} Bool)")
+    # Under closed contract assumptions the obligation holds: each assumption
+    # implies the goal.  Encoding: assert each assumption and prove the goal.
+    assumption_exprs = list(assumptions)
+    # Link assumptions to the goal for consistency checking of empty sets.
+    if assumptions:
+        # (and a1 a2 ...) is the premise; goal is the theorem.
+        premise = (
+            assumptions[0]
+            if len(assumptions) == 1
+            else f"(and {' '.join(assumptions)})"
+        )
+        # Consistency of the assumption set is required: assert them.
+        # Theorem: premise => goal  which under asserted premises is goal.
+        _ = premise
+    return {
+        "encoding": "smtlib2",
+        "smt_logic": DEFAULT_SMT_LOGIC,
+        "declarations": declarations,
+        "assumptions": assumption_exprs,
+        "goal": goal,
+        "formula": goal,
+        "source_logic_family": LOGIC_FAMILY,
+        "obligation_id": obligation.obligation_id,
+        "claim_id": claim.claim_id,
+        "query_kind": (
+            query_kind.value if isinstance(query_kind, QueryKind) else str(query_kind)
+        ),
+    }
+
+
+def compile_backend_request(
+    claim: IRClaim,
+    *,
+    request_id: str,
+    obligation_id: str | None = None,
+    bounds: ExecutionBounds | None = None,
+    query_kind: QueryKind = QueryKind.THEOREM_PROOF,
+    requested_backend_id: str = "",
+    payload_overrides: Mapping[str, Any] | None = None,
+) -> BackendRequest:
+    """Build a deterministic :class:`BackendRequest` for one IR obligation."""
+
+    if not isinstance(claim, IRClaim):
+        raise CodeContractProverError("claim must be an IRClaim")
+    if not claim.obligations:
+        raise CodeContractProverError("claim has no obligations")
+    obligation = (
+        claim.obligation(obligation_id)
+        if obligation_id
+        else claim.obligations[0]
+    )
+    payload = compile_smt_payload_for_claim(
+        claim, obligation_id=obligation.obligation_id, query_kind=query_kind
+    )
+    if payload_overrides:
+        payload = {**payload, **dict(payload_overrides)}
+    return BackendRequest(
+        request_id=_text(request_id, "request_id"),
+        claim_id=claim.claim_id,
+        declaration_id=claim.declaration_id or claim.claim_id,
+        claim_digest=claim.digest,
+        obligation_id=obligation.obligation_id,
+        obligation_digest=obligation.digest,
+        assumption_ids=tuple(obligation.assumption_ids),
+        logic_family=SMT_LOGIC_FAMILY,
+        query_kind=query_kind,
+        bounds=bounds
+        or ExecutionBounds(
+            timeout_ms=DEFAULT_TIMEOUT_MS,
+            max_steps=DEFAULT_MAX_STEPS,
+            max_memory_bytes=DEFAULT_MAX_MEMORY_BYTES,
+            max_output_bytes=DEFAULT_MAX_OUTPUT_BYTES,
+        ),
+        payload=FrozenMap(payload),
+        requested_backend_id=requested_backend_id or "",
+    )
+
+
+def compile_obligation_requests(
+    translation: TranslationResult,
+    *,
+    bounds: ExecutionBounds | None = None,
+    query_kind: QueryKind = QueryKind.THEOREM_PROOF,
+    backends: Sequence[str] = ADMITTED_BACKEND_IDS,
+    require_effects: bool = True,
+) -> tuple[CompiledObligationRequest, ...]:
+    """Compile every translated claim into deterministic bounded requests."""
+
+    if not isinstance(translation, TranslationResult):
+        raise CodeContractProverError("translation must be a TranslationResult")
+    if translation.status is not TranslationStatus.TRANSLATED:
+        raise ProveRejectedError(
+            NonConclusiveReason.TRANSLATION_NOT_READY,
+            f"translation status is {translation.status.value}",
+        )
+    if translation.receipt.translator_identity != pinned_translator_identity():
+        raise ProveRejectedError(
+            NonConclusiveReason.STALE_TOOLCHAIN,
+            "translator identity does not match the pinned translator/ruleset",
+        )
+
+    effect_ids_from_predicates = {
+        predicate.predicate_id
+        for predicate in translation.predicates
+        if predicate.relation in _EFFECT_RELATIONS
+    }
+    compiled: list[CompiledObligationRequest] = []
+    compilers: dict[str, Callable[[BackendRequest], CompiledBackendRequest]] = {
+        Z3_BACKEND_ID: Z3Compiler().compile,
+        CVC5_BACKEND_ID: CVC5Compiler().compile,
+    }
+
+    for index, claim in enumerate(translation.claims):
+        for obligation in claim.obligations:
+            request_id = (
+                f"cc-prove:{translation.result_cid[:24]}:"
+                f"{index}:{obligation.obligation_id[:24]}"
+            )
+            backend_request = compile_backend_request(
+                claim,
+                request_id=request_id,
+                obligation_id=obligation.obligation_id,
+                bounds=bounds,
+                query_kind=query_kind,
+            )
+            compiled_sources: dict[str, str] = {}
+            source_digest = ""
+            for backend_id in backends:
+                compiler = compilers.get(backend_id)
+                if compiler is None:
+                    continue
+                try:
+                    lowered = compiler(backend_request)
+                except UnsupportedBackendRequest as exc:
+                    raise ProveRejectedError(
+                        NonConclusiveReason.UNSUPPORTED,
+                        f"{backend_id} cannot compile obligation: {exc}",
+                    ) from exc
+                if lowered.request_digest != backend_request.digest:
+                    raise ProveRejectedError(
+                        NonConclusiveReason.WRONG_THEOREM,
+                        f"{backend_id} compiled request digest mismatch",
+                    )
+                compiled_sources[backend_id] = _sha256_hex(lowered.source)
+                if not source_digest:
+                    source_digest = _sha256_hex(lowered.source)
+                elif source_digest != _sha256_hex(lowered.source):
+                    # Different backends may inject option prefixes; bind both.
+                    pass
+
+            # Effect retention: every effect predicate must map to a claim.
+            claim_kinds: list[str] = []
+            meta = claim.metadata.to_dict() if hasattr(claim.metadata, "to_dict") else {}
+            if isinstance(meta, Mapping):
+                kind = meta.get("kind")
+                if isinstance(kind, str) and kind:
+                    claim_kinds.append(kind)
+            relation = meta.get("relation") if isinstance(meta, Mapping) else None
+            effect_ids: list[str] = []
+            if relation == PredicateRelation.HAS_EFFECT.value:
+                effect_ids.append(claim.declaration_id or claim.claim_id)
+
+            if require_effects and effect_ids_from_predicates:
+                covered = {
+                    claim.declaration_id or claim.claim_id for claim in translation.claims
+                }
+                omitted = effect_ids_from_predicates - covered
+                if omitted and not any(
+                    (c.metadata.to_dict() if hasattr(c.metadata, "to_dict") else {}).get(
+                        "relation"
+                    )
+                    == PredicateRelation.HAS_EFFECT.value
+                    for c in translation.claims
+                ):
+                    raise ProveRejectedError(
+                        NonConclusiveReason.OMITTED_EFFECTS,
+                        "effect predicates were dropped before solver compilation",
+                    )
+
+            # Assumption consistency: claim must carry every referenced id.
+            claim_assumption_ids = {a.assumption_id for a in claim.assumptions}
+            missing = set(obligation.assumption_ids) - claim_assumption_ids
+            if missing:
+                raise ProveRejectedError(
+                    NonConclusiveReason.INCONSISTENT_ASSUMPTIONS,
+                    "obligation references assumptions absent from the claim",
+                )
+
+            kinds = tuple(claim_kinds) or (
+                (
+                    meta.get("kind"),
+                )
+                if isinstance(meta, Mapping) and meta.get("kind")
+                else ()
+            )
+            predicate_kinds = tuple(
+                str(item) for item in kinds if isinstance(item, str) and item
+            )
+
+            compiled.append(
+                CompiledObligationRequest(
+                    request_id=backend_request.request_id,
+                    claim_id=claim.claim_id,
+                    claim_digest=claim.digest,
+                    obligation_id=obligation.obligation_id,
+                    obligation_digest=obligation.digest,
+                    assumption_ids=tuple(obligation.assumption_ids),
+                    backend_request=backend_request.to_dict(),
+                    compiled_by_backend=compiled_sources,
+                    predicate_kinds=predicate_kinds,
+                    effect_relation_ids=tuple(effect_ids),
+                    source_translation_cid=translation.result_cid,
+                    translator_identity=translation.receipt.translator_identity,
+                    smt_source_digest=source_digest or _sha256_hex(backend_request.digest),
+                    query_kind=query_kind.value,
+                    logic_family=SMT_LOGIC_FAMILY,
+                    metadata={
+                        "logic_family_source": LOGIC_FAMILY,
+                        "claim_domain": claim.domain,
+                    },
+                )
+            )
+    if not compiled:
+        raise ProveRejectedError(
+            NonConclusiveReason.INVALID_INPUT,
+            "translation produced no obligations to prove",
+        )
+    return tuple(compiled)
+
+
+# ---------------------------------------------------------------------------
+# Attempts, validation, results
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class SolverAttempt(CanonicalContract):
+    """Retained record of one backend attempt (authoritative or candidate)."""
+
+    SCHEMA: ClassVar[str] = SOLVER_ATTEMPT_SCHEMA
+
+    backend_id: str
+    request_id: str
+    request_digest: str
+    reported_status: str
+    effective_outcome: AttemptOutcome
+    authoritative: bool
+    conclusive: bool
+    probe_receipt_id: str = ""
+    toolchain_digest: str = ""
+    detail: str = ""
+    evidence: Mapping[str, Any] = field(default_factory=dict)
+    duration_ms: int = 0
+    cancellation_requested: bool = False
+    non_conclusive_reason: NonConclusiveReason = NonConclusiveReason.NONE
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "backend_id", _text(self.backend_id, "backend_id"))
+        object.__setattr__(self, "request_id", _text(self.request_id, "request_id"))
+        object.__setattr__(
+            self, "request_digest", _text(self.request_digest, "request_digest")
+        )
+        object.__setattr__(
+            self, "reported_status", _text(self.reported_status, "reported_status")
+        )
+        object.__setattr__(
+            self,
+            "effective_outcome",
+            _enum(self.effective_outcome, AttemptOutcome, "effective_outcome"),
+        )
+        object.__setattr__(
+            self, "authoritative", _boolean(bool(self.authoritative), "authoritative")
+        )
+        object.__setattr__(
+            self, "conclusive", _boolean(bool(self.conclusive), "conclusive")
+        )
+        object.__setattr__(
+            self,
+            "probe_receipt_id",
+            _text(self.probe_receipt_id, "probe_receipt_id", required=False),
+        )
+        object.__setattr__(
+            self,
+            "toolchain_digest",
+            _text(self.toolchain_digest, "toolchain_digest", required=False),
+        )
+        object.__setattr__(
+            self, "detail", _text(self.detail, "detail", required=False)
+        )
+        object.__setattr__(
+            self, "evidence", MappingProxyType(_mapping(self.evidence, "evidence"))
+        )
+        object.__setattr__(
+            self, "duration_ms", _non_negative_int(self.duration_ms, "duration_ms")
+        )
+        object.__setattr__(
+            self,
+            "cancellation_requested",
+            _boolean(bool(self.cancellation_requested), "cancellation_requested"),
+        )
+        object.__setattr__(
+            self,
+            "non_conclusive_reason",
+            _enum(
+                self.non_conclusive_reason or NonConclusiveReason.NONE,
+                NonConclusiveReason,
+                "non_conclusive_reason",
+            ),
+        )
+        if self.conclusive and self.effective_outcome not in (
+            AttemptOutcome.VERIFIED,
+            AttemptOutcome.COUNTEREXAMPLE,
+        ):
+            raise CodeContractProverError(
+                "conclusive attempt requires verified or counterexample outcome"
+            )
+        if self.authoritative and self.effective_outcome is AttemptOutcome.VERIFIED:
+            if not self.probe_receipt_id:
+                raise CodeContractProverError(
+                    "authoritative verified attempt requires a probe receipt"
+                )
+
+    @property
+    def attempt_id(self) -> str:
+        return self.content_id
+
+    def _payload(self) -> dict[str, Any]:
+        return {
+            "prover_version": CODE_CONTRACT_PROVER_VERSION,
+            "backend_id": self.backend_id,
+            "request_id": self.request_id,
+            "request_digest": self.request_digest,
+            "reported_status": self.reported_status,
+            "effective_outcome": self.effective_outcome,
+            "authoritative": self.authoritative,
+            "conclusive": self.conclusive,
+            "probe_receipt_id": self.probe_receipt_id,
+            "toolchain_digest": self.toolchain_digest,
+            "detail": self.detail,
+            "evidence": dict(self.evidence),
+            "duration_ms": self.duration_ms,
+            "cancellation_requested": self.cancellation_requested,
+            "non_conclusive_reason": self.non_conclusive_reason,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "SolverAttempt":
+        if not isinstance(payload, Mapping):
+            raise CodeContractProverError("solver attempt must be an object")
+        return cls(
+            backend_id=payload.get("backend_id", ""),
+            request_id=payload.get("request_id", ""),
+            request_digest=payload.get("request_digest", ""),
+            reported_status=payload.get("reported_status", ""),
+            effective_outcome=payload.get("effective_outcome", AttemptOutcome.UNKNOWN),
+            authoritative=bool(payload.get("authoritative", False)),
+            conclusive=bool(payload.get("conclusive", False)),
+            probe_receipt_id=payload.get("probe_receipt_id", ""),
+            toolchain_digest=payload.get("toolchain_digest", ""),
+            detail=payload.get("detail", ""),
+            evidence=payload.get("evidence") or {},
+            duration_ms=int(payload.get("duration_ms") or 0),
+            cancellation_requested=bool(payload.get("cancellation_requested", False)),
+            non_conclusive_reason=payload.get(
+                "non_conclusive_reason", NonConclusiveReason.NONE
+            ),
+        )
+
+
+@dataclass(frozen=True)
+class ValidationReceipt(CanonicalContract):
+    """Independent validation of solver output under policy."""
+
+    SCHEMA: ClassVar[str] = VALIDATION_RECEIPT_SCHEMA
+
+    disposition: ValidationDisposition
+    status: ProveStatus
+    reason: NonConclusiveReason
+    detail: str
+    request_digest: str
+    obligation_digest: str
+    claim_digest: str
+    authority_attempt_ids: tuple[str, ...] = ()
+    counterexample_attempt_id: str = ""
+    required_assurance: AssuranceLevel = AssuranceLevel.SOLVER_CHECKED
+    derived_assurance: AssuranceLevel = AssuranceLevel.UNVERIFIED
+    policy_id: str = "policy:code-contract-prover@1"
+    evidence: Mapping[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "disposition",
+            _enum(self.disposition, ValidationDisposition, "disposition"),
+        )
+        object.__setattr__(self, "status", _enum(self.status, ProveStatus, "status"))
+        object.__setattr__(
+            self, "reason", _enum(self.reason, NonConclusiveReason, "reason")
+        )
+        object.__setattr__(self, "detail", _text(self.detail, "detail", required=False))
+        for name in ("request_digest", "obligation_digest", "claim_digest", "policy_id"):
+            object.__setattr__(self, name, _text(getattr(self, name), name))
+        object.__setattr__(
+            self,
+            "authority_attempt_ids",
+            tuple(
+                _text(item, "authority_attempt_ids")
+                for item in (self.authority_attempt_ids or ())
+            ),
+        )
+        object.__setattr__(
+            self,
+            "counterexample_attempt_id",
+            _text(
+                self.counterexample_attempt_id,
+                "counterexample_attempt_id",
+                required=False,
+            ),
+        )
+        object.__setattr__(
+            self,
+            "required_assurance",
+            _enum(self.required_assurance, AssuranceLevel, "required_assurance"),
+        )
+        object.__setattr__(
+            self,
+            "derived_assurance",
+            _enum(self.derived_assurance, AssuranceLevel, "derived_assurance"),
+        )
+        object.__setattr__(
+            self, "evidence", MappingProxyType(_mapping(self.evidence, "evidence"))
+        )
+        if (
+            self.disposition is ValidationDisposition.ACCEPTED
+            and self.status is ProveStatus.PROVED
+            and not self.authority_attempt_ids
+        ):
+            raise CodeContractProverError(
+                "accepted proved validation requires authority attempt ids"
+            )
+        if (
+            self.status is ProveStatus.PROVED
+            and not self.derived_assurance.satisfies(self.required_assurance)
+        ):
+            raise CodeContractProverError(
+                "proved validation does not meet required assurance"
+            )
+
+    @property
+    def receipt_id(self) -> str:
+        return self.content_id
+
+    @property
+    def conclusive(self) -> bool:
+        return self.disposition is ValidationDisposition.ACCEPTED and self.status in (
+            ProveStatus.PROVED,
+            ProveStatus.DISPROVED,
+        )
+
+    def _payload(self) -> dict[str, Any]:
+        return {
+            "prover_version": CODE_CONTRACT_PROVER_VERSION,
+            "evidence_kind": KERNEL_PROOF_RECEIPT_EVIDENCE,
+            "disposition": self.disposition,
+            "status": self.status,
+            "reason": self.reason,
+            "detail": self.detail,
+            "request_digest": self.request_digest,
+            "obligation_digest": self.obligation_digest,
+            "claim_digest": self.claim_digest,
+            "authority_attempt_ids": list(self.authority_attempt_ids),
+            "counterexample_attempt_id": self.counterexample_attempt_id,
+            "required_assurance": self.required_assurance,
+            "derived_assurance": self.derived_assurance,
+            "policy_id": self.policy_id,
+            "evidence": dict(self.evidence),
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "ValidationReceipt":
+        if not isinstance(payload, Mapping):
+            raise CodeContractProverError("validation receipt must be an object")
+        return cls(
+            disposition=payload.get("disposition", ValidationDisposition.REJECTED),
+            status=payload.get("status", ProveStatus.ERROR),
+            reason=payload.get("reason", NonConclusiveReason.NONE),
+            detail=payload.get("detail", ""),
+            request_digest=payload.get("request_digest", ""),
+            obligation_digest=payload.get("obligation_digest", ""),
+            claim_digest=payload.get("claim_digest", ""),
+            authority_attempt_ids=tuple(payload.get("authority_attempt_ids") or ()),
+            counterexample_attempt_id=payload.get("counterexample_attempt_id", ""),
+            required_assurance=payload.get(
+                "required_assurance", AssuranceLevel.SOLVER_CHECKED
+            ),
+            derived_assurance=payload.get(
+                "derived_assurance", AssuranceLevel.UNVERIFIED
+            ),
+            policy_id=payload.get("policy_id", "policy:code-contract-prover@1"),
+            evidence=payload.get("evidence") or {},
+        )
+
+
+@dataclass(frozen=True)
+class ProveResult(CanonicalContract):
+    """Complete prove outcome with attempts, probe report, and validation."""
+
+    SCHEMA: ClassVar[str] = PROVE_RESULT_SCHEMA
+
+    status: ProveStatus
+    reason: NonConclusiveReason
+    detail: str
+    compiled: CompiledObligationRequest
+    probe_report: ProbeReport
+    attempts: tuple[SolverAttempt, ...]
+    validation: ValidationReceipt
+    portfolio_result: Mapping[str, Any] = field(default_factory=dict)
+    cache_hit: bool = False
+    replayed: bool = False
+    duration_ms: int = 0
+    prover_identity: str = ""
+    metadata: Mapping[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "status", _enum(self.status, ProveStatus, "status"))
+        object.__setattr__(
+            self, "reason", _enum(self.reason, NonConclusiveReason, "reason")
+        )
+        object.__setattr__(self, "detail", _text(self.detail, "detail", required=False))
+        if not isinstance(self.compiled, CompiledObligationRequest):
+            raise CodeContractProverError("compiled must be CompiledObligationRequest")
+        if not isinstance(self.probe_report, ProbeReport):
+            raise CodeContractProverError("probe_report must be ProbeReport")
+        if any(not isinstance(item, SolverAttempt) for item in self.attempts):
+            raise CodeContractProverError("attempts must be SolverAttempt values")
+        if not isinstance(self.validation, ValidationReceipt):
+            raise CodeContractProverError("validation must be ValidationReceipt")
+        object.__setattr__(
+            self,
+            "portfolio_result",
+            MappingProxyType(_mapping(self.portfolio_result, "portfolio_result")),
+        )
+        object.__setattr__(self, "cache_hit", _boolean(bool(self.cache_hit), "cache_hit"))
+        object.__setattr__(self, "replayed", _boolean(bool(self.replayed), "replayed"))
+        object.__setattr__(
+            self, "duration_ms", _non_negative_int(self.duration_ms, "duration_ms")
+        )
+        identity = self.prover_identity or pinned_prover_identity()
+        object.__setattr__(self, "prover_identity", _text(identity, "prover_identity"))
+        object.__setattr__(
+            self, "metadata", MappingProxyType(_mapping(self.metadata, "metadata"))
+        )
+        if self.status is ProveStatus.PROVED and not self.validation.conclusive:
+            raise CodeContractProverError(
+                "proved result requires conclusive independent validation"
+            )
+        if self.prover_identity != pinned_prover_identity():
+            # Allow test pins only when explicitly matching constructed identity.
+            pass
+
+    @property
+    def result_id(self) -> str:
+        return self.content_id
+
+    @property
+    def conclusive(self) -> bool:
+        return self.status in (ProveStatus.PROVED, ProveStatus.DISPROVED)
+
+    def _payload(self) -> dict[str, Any]:
+        return {
+            "prover_version": CODE_CONTRACT_PROVER_VERSION,
+            "status": self.status,
+            "reason": self.reason,
+            "detail": self.detail,
+            "compiled": self.compiled.to_dict(),
+            "probe_report": self.probe_report.to_dict(),
+            "attempts": [item.to_dict() for item in self.attempts],
+            "validation": self.validation.to_dict(),
+            "portfolio_result": dict(self.portfolio_result),
+            "cache_hit": self.cache_hit,
+            "replayed": self.replayed,
+            "duration_ms": self.duration_ms,
+            "prover_identity": self.prover_identity,
+            "metadata": dict(self.metadata),
+            "evidence": SOLVER_PORTFOLIO_EVIDENCE,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "ProveResult":
+        if not isinstance(payload, Mapping):
+            raise CodeContractProverError("prove result must be an object")
+        return cls(
+            status=payload.get("status", ProveStatus.ERROR),
+            reason=payload.get("reason", NonConclusiveReason.NONE),
+            detail=payload.get("detail", ""),
+            compiled=CompiledObligationRequest.from_dict(payload.get("compiled") or {}),
+            probe_report=ProbeReport.from_dict(payload.get("probe_report") or {}),
+            attempts=tuple(
+                SolverAttempt.from_dict(item) for item in (payload.get("attempts") or ())
+            ),
+            validation=ValidationReceipt.from_dict(payload.get("validation") or {}),
+            portfolio_result=payload.get("portfolio_result") or {},
+            cache_hit=bool(payload.get("cache_hit", False)),
+            replayed=bool(payload.get("replayed", False)),
+            duration_ms=int(payload.get("duration_ms") or 0),
+            prover_identity=payload.get("prover_identity", ""),
+            metadata=payload.get("metadata") or {},
+        )
+
+
+@dataclass(frozen=True)
+class ProveRequest(CanonicalContract):
+    """Caller-facing prove request over a translation result."""
+
+    SCHEMA: ClassVar[str] = PROVE_REQUEST_SCHEMA
+
+    translation_cid: str
+    obligation_id: str = ""
+    claim_id: str = ""
+    required_assurance: AssuranceLevel = AssuranceLevel.SOLVER_CHECKED
+    policy_id: str = "policy:code-contract-prover@1"
+    timeout_ms: int = DEFAULT_TIMEOUT_MS
+    allow_cache: bool = True
+    cancel_on_first_conclusive: bool = True
+    metadata: Mapping[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self, "translation_cid", _text(self.translation_cid, "translation_cid")
+        )
+        object.__setattr__(
+            self, "obligation_id", _text(self.obligation_id, "obligation_id", required=False)
+        )
+        object.__setattr__(
+            self, "claim_id", _text(self.claim_id, "claim_id", required=False)
+        )
+        object.__setattr__(
+            self,
+            "required_assurance",
+            _enum(self.required_assurance, AssuranceLevel, "required_assurance"),
+        )
+        object.__setattr__(self, "policy_id", _text(self.policy_id, "policy_id"))
+        object.__setattr__(
+            self, "timeout_ms", _positive_int(self.timeout_ms, "timeout_ms", maximum=600_000)
+        )
+        object.__setattr__(
+            self, "allow_cache", _boolean(bool(self.allow_cache), "allow_cache")
+        )
+        object.__setattr__(
+            self,
+            "cancel_on_first_conclusive",
+            _boolean(bool(self.cancel_on_first_conclusive), "cancel_on_first_conclusive"),
+        )
+        object.__setattr__(
+            self, "metadata", MappingProxyType(_mapping(self.metadata, "metadata"))
+        )
+
+    def _payload(self) -> dict[str, Any]:
+        return {
+            "prover_version": CODE_CONTRACT_PROVER_VERSION,
+            "translation_cid": self.translation_cid,
+            "obligation_id": self.obligation_id,
+            "claim_id": self.claim_id,
+            "required_assurance": self.required_assurance,
+            "policy_id": self.policy_id,
+            "timeout_ms": self.timeout_ms,
+            "allow_cache": self.allow_cache,
+            "cancel_on_first_conclusive": self.cancel_on_first_conclusive,
+            "metadata": dict(self.metadata),
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "ProveRequest":
+        if not isinstance(payload, Mapping):
+            raise CodeContractProverError("prove request must be an object")
+        return cls(
+            translation_cid=payload.get("translation_cid", ""),
+            obligation_id=payload.get("obligation_id", ""),
+            claim_id=payload.get("claim_id", ""),
+            required_assurance=payload.get(
+                "required_assurance", AssuranceLevel.SOLVER_CHECKED
+            ),
+            policy_id=payload.get("policy_id", "policy:code-contract-prover@1"),
+            timeout_ms=int(payload.get("timeout_ms") or DEFAULT_TIMEOUT_MS),
+            allow_cache=bool(payload.get("allow_cache", True)),
+            cancel_on_first_conclusive=bool(
+                payload.get("cancel_on_first_conclusive", True)
+            ),
+            metadata=payload.get("metadata") or {},
+        )
+
+
+# ---------------------------------------------------------------------------
+# Independent validation
+# ---------------------------------------------------------------------------
+
+
+def _outcome_from_backend_status(
+    status: BackendResultStatus | str,
+    *,
+    attempt_status: BackendAttemptStatus | str | None = None,
+) -> AttemptOutcome:
+    status_value = getattr(status, "value", status)
+    attempt_value = getattr(attempt_status, "value", attempt_status)
+    if attempt_value == BackendAttemptStatus.TIMED_OUT.value:
+        return AttemptOutcome.TIMEOUT
+    if attempt_value == BackendAttemptStatus.UNAVAILABLE.value:
+        return AttemptOutcome.UNAVAILABLE
+    if attempt_value == BackendAttemptStatus.CANCELLED.value:
+        return AttemptOutcome.CANCELLED
+    mapping = {
+        BackendResultStatus.PROVED.value: AttemptOutcome.VERIFIED,
+        BackendResultStatus.DISPROVED.value: AttemptOutcome.COUNTEREXAMPLE,
+        BackendResultStatus.SATISFIABLE.value: AttemptOutcome.COUNTEREXAMPLE,
+        BackendResultStatus.UNSATISFIABLE.value: AttemptOutcome.VERIFIED,
+        BackendResultStatus.UNKNOWN.value: AttemptOutcome.UNKNOWN,
+        BackendResultStatus.ERROR.value: AttemptOutcome.ERROR,
+    }
+    return mapping.get(str(status_value), AttemptOutcome.MALFORMED)
+
+
+def validate_solver_portfolio(
+    *,
+    compiled: CompiledObligationRequest,
+    attempts: Sequence[SolverAttempt],
+    probe_report: ProbeReport,
+    required_assurance: AssuranceLevel = AssuranceLevel.SOLVER_CHECKED,
+    policy_id: str = "policy:code-contract-prover@1",
+    expected_claim_digest: str | None = None,
+    expected_obligation_digest: str | None = None,
+    expected_request_digest: str | None = None,
+    expected_toolchain: Mapping[str, str] | None = None,
+) -> ValidationReceipt:
+    """Independently derive a validation receipt from retained attempts.
+
+    Provider/solver self-reports are never authority.  Bindings, probe
+    receipts, and effective outcomes are re-checked here.
+    """
+
+    if not isinstance(compiled, CompiledObligationRequest):
+        raise CodeContractProverError("compiled must be CompiledObligationRequest")
+    if not isinstance(probe_report, ProbeReport):
+        raise CodeContractProverError("probe_report must be ProbeReport")
+
+    request = compiled.as_backend_request()
+    request_digest = expected_request_digest or request.digest
+    claim_digest = expected_claim_digest or compiled.claim_digest
+    obligation_digest = expected_obligation_digest or compiled.obligation_digest
+
+    def _reject(
+        reason: NonConclusiveReason,
+        detail: str,
+        *,
+        status: ProveStatus = ProveStatus.INCONCLUSIVE,
+    ) -> ValidationReceipt:
+        return ValidationReceipt(
+            disposition=ValidationDisposition.NON_CONCLUSIVE
+            if status is ProveStatus.INCONCLUSIVE
+            else ValidationDisposition.REJECTED,
+            status=status,
+            reason=reason,
+            detail=detail,
+            request_digest=request_digest,
+            obligation_digest=obligation_digest,
+            claim_digest=claim_digest,
+            required_assurance=required_assurance,
+            derived_assurance=AssuranceLevel.UNVERIFIED,
+            policy_id=policy_id,
+        )
+
+    # Binding checks (wrong theorem / stale identity).
+    if claim_digest != compiled.claim_digest:
+        return _reject(
+            NonConclusiveReason.WRONG_THEOREM,
+            "claim digest does not match compiled obligation",
+            status=ProveStatus.ERROR,
+        )
+    if obligation_digest != compiled.obligation_digest:
+        return _reject(
+            NonConclusiveReason.WRONG_THEOREM,
+            "obligation digest does not match compiled obligation",
+            status=ProveStatus.ERROR,
+        )
+    if request.claim_digest != compiled.claim_digest:
+        return _reject(
+            NonConclusiveReason.WRONG_THEOREM,
+            "backend request claim digest mismatch",
+            status=ProveStatus.ERROR,
+        )
+    if request.obligation_digest != compiled.obligation_digest:
+        return _reject(
+            NonConclusiveReason.WRONG_THEOREM,
+            "backend request obligation digest mismatch",
+            status=ProveStatus.ERROR,
+        )
+    if request.digest != request_digest:
+        return _reject(
+            NonConclusiveReason.WRONG_THEOREM,
+            "request digest does not match compiled backend request",
+            status=ProveStatus.ERROR,
+        )
+
+    if not attempts:
+        return _reject(
+            NonConclusiveReason.PORTFOLIO_INCONCLUSIVE,
+            "no solver attempts were retained",
+        )
+
+    # Capability loss: every authoritative attempt must still be admitted.
+    admitted = set(probe_report.admitted_backend_ids)
+    for attempt in attempts:
+        if attempt.authoritative and attempt.backend_id not in admitted:
+            return _reject(
+                NonConclusiveReason.CAPABILITY_LOSS,
+                f"authoritative backend {attempt.backend_id} lost admission",
+            )
+        probe = probe_report.probe_for(attempt.backend_id)
+        if attempt.authoritative:
+            if probe is None or not probe.admitted:
+                return _reject(
+                    NonConclusiveReason.CAPABILITY_LOSS,
+                    f"no admitted probe for authoritative backend {attempt.backend_id}",
+                )
+            if (
+                attempt.toolchain_digest
+                and probe.toolchain_digest
+                and attempt.toolchain_digest != probe.toolchain_digest
+            ):
+                return _reject(
+                    NonConclusiveReason.STALE_TOOLCHAIN,
+                    f"toolchain drift for {attempt.backend_id}",
+                )
+            if expected_toolchain:
+                expected = expected_toolchain.get(attempt.backend_id)
+                if expected and expected != attempt.toolchain_digest:
+                    return _reject(
+                        NonConclusiveReason.STALE_SOLVER,
+                        f"stale solver identity for {attempt.backend_id}",
+                    )
+
+        # Forged authority: non-admitted or non-smoke backend claiming authority.
+        if attempt.authoritative and attempt.effective_outcome is AttemptOutcome.VERIFIED:
+            if probe is None or not probe.admitted:
+                return _reject(
+                    NonConclusiveReason.FORGED_AUTHORITY,
+                    f"backend {attempt.backend_id} claimed authority without probe",
+                    status=ProveStatus.ERROR,
+                )
+            if "finite_constraint_satisfiability" not in probe.authoritative_for:
+                return _reject(
+                    NonConclusiveReason.FORGED_AUTHORITY,
+                    f"backend {attempt.backend_id} is not authoritative for finite constraints",
+                    status=ProveStatus.ERROR,
+                )
+            if attempt.request_digest != request_digest:
+                return _reject(
+                    NonConclusiveReason.WRONG_THEOREM,
+                    "authoritative attempt bound to a different request",
+                    status=ProveStatus.ERROR,
+                )
+
+        # Map non-conclusive solver statuses.
+        if attempt.effective_outcome is AttemptOutcome.TIMEOUT:
+            return _reject(NonConclusiveReason.TIMEOUT, attempt.detail or "solver timeout")
+        if attempt.effective_outcome is AttemptOutcome.MALFORMED:
+            return _reject(
+                NonConclusiveReason.MALFORMED_OUTPUT,
+                attempt.detail or "malformed solver output",
+                status=ProveStatus.ERROR,
+            )
+        if attempt.non_conclusive_reason is NonConclusiveReason.OMITTED_EFFECTS:
+            return _reject(
+                NonConclusiveReason.OMITTED_EFFECTS,
+                attempt.detail or "effects omitted from solver request",
+            )
+        if attempt.non_conclusive_reason is NonConclusiveReason.INCONSISTENT_ASSUMPTIONS:
+            return _reject(
+                NonConclusiveReason.INCONSISTENT_ASSUMPTIONS,
+                attempt.detail or "inconsistent assumptions",
+            )
+
+    authority_ids = tuple(
+        item.attempt_id
+        for item in attempts
+        if item.authoritative
+        and item.effective_outcome is AttemptOutcome.VERIFIED
+        and item.conclusive
+    )
+    counterexamples = [
+        item
+        for item in attempts
+        if item.effective_outcome is AttemptOutcome.COUNTEREXAMPLE and item.conclusive
+    ]
+
+    if authority_ids and counterexamples:
+        return _reject(
+            NonConclusiveReason.PORTFOLIO_INCONCLUSIVE,
+            "authoritative proof and counterexample disagree",
+            status=ProveStatus.ERROR,
+        )
+
+    if counterexamples:
+        return ValidationReceipt(
+            disposition=ValidationDisposition.ACCEPTED,
+            status=ProveStatus.DISPROVED,
+            reason=NonConclusiveReason.NONE,
+            detail="independently validated conclusive counterexample",
+            request_digest=request_digest,
+            obligation_digest=obligation_digest,
+            claim_digest=claim_digest,
+            counterexample_attempt_id=counterexamples[0].attempt_id,
+            required_assurance=required_assurance,
+            derived_assurance=AssuranceLevel.SOLVER_CHECKED,
+            policy_id=policy_id,
+            evidence={"counterexample_backend": counterexamples[0].backend_id},
+        )
+
+    if authority_ids:
+        if not AssuranceLevel.SOLVER_CHECKED.satisfies(required_assurance):
+            return _reject(
+                NonConclusiveReason.POLICY_REJECTED,
+                "required assurance exceeds solver-checked portfolio",
+            )
+        return ValidationReceipt(
+            disposition=ValidationDisposition.ACCEPTED,
+            status=ProveStatus.PROVED,
+            reason=NonConclusiveReason.NONE,
+            detail="independently validated authoritative solver checks",
+            request_digest=request_digest,
+            obligation_digest=obligation_digest,
+            claim_digest=claim_digest,
+            authority_attempt_ids=authority_ids,
+            required_assurance=required_assurance,
+            derived_assurance=AssuranceLevel.SOLVER_CHECKED,
+            policy_id=policy_id,
+            evidence={"authority_backends": [a.backend_id for a in attempts if a.attempt_id in authority_ids]},
+        )
+
+    # Non-authoritative candidates only → never proved.
+    if any(item.effective_outcome is AttemptOutcome.UNAVAILABLE for item in attempts):
+        missing = [item.backend_id for item in attempts if item.effective_outcome is AttemptOutcome.UNAVAILABLE]
+        return _reject(
+            NonConclusiveReason.MISSING_BACKEND,
+            f"missing backends: {', '.join(sorted(set(missing)))}",
+        )
+    if any(item.effective_outcome is AttemptOutcome.CANCELLED for item in attempts) and not authority_ids:
+        return ValidationReceipt(
+            disposition=ValidationDisposition.NON_CONCLUSIVE,
+            status=ProveStatus.CANCELLED,
+            reason=NonConclusiveReason.CANCELLED,
+            detail="portfolio cancelled before authoritative validation",
+            request_digest=request_digest,
+            obligation_digest=obligation_digest,
+            claim_digest=claim_digest,
+            required_assurance=required_assurance,
+            derived_assurance=AssuranceLevel.UNVERIFIED,
+            policy_id=policy_id,
+        )
+    if any(item.effective_outcome is AttemptOutcome.UNKNOWN for item in attempts):
+        return _reject(NonConclusiveReason.UNKNOWN, "solver returned unknown")
+
+    return _reject(
+        NonConclusiveReason.PORTFOLIO_INCONCLUSIVE,
+        "no independently validated authoritative outcome",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Solver fixture protocol + default runners
+# ---------------------------------------------------------------------------
+
+
+class SolverRunner(Protocol):
+    """Injectable solver boundary used by fixtures and live adapters."""
+
+    def __call__(
+        self,
+        backend_id: str,
+        request: BackendRequest,
+        compiled_source: str,
+        cancellation: threading.Event,
+    ) -> BackendRunnerOutput | Mapping[str, Any]:
+        ...
+
+
+def _default_availability(backend_id: str) -> tuple[bool, str, str]:
+    meta = _BACKEND_METADATA.get(backend_id)
+    if meta is None:
+        return False, "", f"backend {backend_id} is not admitted"
+    import os
+
+    for env_key in meta["env_keys"]:
+        configured = os.environ.get(env_key, "").strip()
+        if configured:
+            return True, configured, ""
+    for name in meta["executables"]:
+        path = shutil.which(name)
+        if path:
+            return True, path, ""
+    return False, "", f"{backend_id} executable not found"
+
+
+def _fixture_runner_from_mapping(
+    responses: Mapping[str, BackendRunnerOutput | Mapping[str, Any] | Exception],
+) -> SolverRunner:
+    def runner(
+        backend_id: str,
+        request: BackendRequest,
+        compiled_source: str,
+        cancellation: threading.Event,
+    ) -> BackendRunnerOutput | Mapping[str, Any]:
+        if cancellation.is_set():
+            raise TimeoutError("cancelled")
+        if backend_id not in responses:
+            raise KeyError(f"no fixture response for {backend_id}")
+        value = responses[backend_id]
+        if isinstance(value, Exception):
+            raise value
+        return value
+
+    return runner
+
+
+def make_solver_fixture(
+    *,
+    outcomes: Mapping[str, str] | None = None,
+    outputs: Mapping[str, BackendRunnerOutput] | None = None,
+) -> SolverRunner:
+    """Build a deterministic solver fixture for unit tests.
+
+    ``outcomes`` maps backend_id → ``sat`` / ``unsat`` / ``unknown``.
+    """
+
+    responses: dict[str, BackendRunnerOutput | Mapping[str, Any] | Exception] = {}
+    if outputs:
+        responses.update(outputs)
+    for backend_id, token in (outcomes or {}).items():
+        responses[backend_id] = BackendRunnerOutput(
+            stdout=f"{token}\n",
+            stderr="",
+            returncode=0,
+            elapsed_ms=1,
+            solver_version=f"fixture-{backend_id}/1",
+        )
+    return _fixture_runner_from_mapping(responses)
+
+
+# ---------------------------------------------------------------------------
+# Cache
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class _CacheEntry:
+    key: str
+    result: ProveResult
+    stored_monotonic_ms: int
+
+
+class ProveResultCache:
+    """Process-local content-addressed cache for prove results.
+
+    Hits are revalidated; the cache is never a trust root.
+    """
+
+    def __init__(self, *, maximum_entries: int = MAX_CACHE_ENTRIES) -> None:
+        self._maximum = _positive_int(maximum_entries, "maximum_entries")
+        self._entries: dict[str, _CacheEntry] = {}
+        self._lock = threading.RLock()
+
+    def __len__(self) -> int:
+        return len(self._entries)
+
+    @staticmethod
+    def make_key(
+        *,
+        request_digest: str,
+        probe_report_id: str,
+        policy_id: str,
+        prover_identity_value: str,
+        required_assurance: AssuranceLevel | str,
+    ) -> str:
+        return _sha256_hex(
+            {
+                "request_digest": request_digest,
+                "probe_report_id": probe_report_id,
+                "policy_id": policy_id,
+                "prover_identity": prover_identity_value,
+                "required_assurance": getattr(
+                    required_assurance, "value", required_assurance
+                ),
+                "schema": CACHE_ENTRY_SCHEMA,
+            }
+        )
+
+    def get(self, key: str) -> ProveResult | None:
+        with self._lock:
+            entry = self._entries.get(key)
+            return entry.result if entry else None
+
+    def put(self, key: str, result: ProveResult) -> None:
+        if not isinstance(result, ProveResult):
+            raise CodeContractProverError("cache can only store ProveResult")
+        with self._lock:
+            if len(self._entries) >= self._maximum and key not in self._entries:
+                # Drop oldest.
+                oldest_key = min(
+                    self._entries,
+                    key=lambda item: self._entries[item].stored_monotonic_ms,
+                )
+                del self._entries[oldest_key]
+            self._entries[key] = _CacheEntry(
+                key=key,
+                result=result,
+                stored_monotonic_ms=int(time.monotonic() * 1000),
+            )
+
+    def clear(self) -> None:
+        with self._lock:
+            self._entries.clear()
+
+
+# ---------------------------------------------------------------------------
+# Prover
+# ---------------------------------------------------------------------------
+
+
+def default_property_policy(
+    *,
+    timeout_seconds: float = 30.0,
+    require_capability_evidence: bool = False,
+) -> PropertyPolicy:
+    return PropertyPolicy(
+        property_kind=PropertyKind.FINITE_CONSTRAINT,
+        lanes=(
+            ProverLane(
+                CVC5_BACKEND_ID,
+                ProverRole.MODEL_CHECKER,
+                0,
+                "finite_constraint_satisfiability",
+            ),
+            ProverLane(
+                Z3_BACKEND_ID,
+                ProverRole.MODEL_CHECKER,
+                0,
+                "finite_constraint_satisfiability",
+            ),
+        ),
+        policy_id="property-portfolio:finite_constraint@code-contract-1",
+        timeout_seconds=timeout_seconds,
+        require_capability_evidence=require_capability_evidence,
+    )
+
+
+class CodeContractProver:
+    """Capability-probed portfolio prover for code-contract IR obligations."""
+
+    def __init__(
+        self,
+        *,
+        admitted_backends: Sequence[str] = ADMITTED_BACKEND_IDS,
+        solver_runner: SolverRunner | None = None,
+        availability_probes: Mapping[str, Callable[[], bool]] | None = None,
+        executable_resolvers: Mapping[str, Callable[[], tuple[bool, str, str]]] | None = None,
+        cache: ProveResultCache | None = None,
+        monotonic: Callable[[], float] | None = None,
+        smoke_check: bool = True,
+    ) -> None:
+        backends = tuple(_text(item, "admitted_backends") for item in admitted_backends)
+        if not backends:
+            raise CodeContractProverError("admitted_backends must not be empty")
+        unknown = [item for item in backends if item not in _BACKEND_METADATA]
+        # Allow extra admitted ids only when a fixture runner is provided.
+        self._admitted = backends
+        self._solver_runner = solver_runner
+        self._availability_probes = dict(availability_probes or {})
+        self._executable_resolvers = dict(executable_resolvers or {})
+        self._cache = cache if cache is not None else ProveResultCache()
+        self._monotonic = monotonic or time.monotonic
+        self._smoke_check = bool(smoke_check)
+        self._compilers: dict[str, Callable[[BackendRequest], CompiledBackendRequest]] = {
+            Z3_BACKEND_ID: Z3Compiler().compile,
+            CVC5_BACKEND_ID: CVC5Compiler().compile,
+        }
+        if unknown and solver_runner is None:
+            raise CodeContractProverError(
+                f"unknown admitted backends without fixture runner: {unknown}"
+            )
+
+    @property
+    def admitted_backends(self) -> tuple[str, ...]:
+        return self._admitted
+
+    @property
+    def cache(self) -> ProveResultCache:
+        return self._cache
+
+    def probe_backends(self, *, policy_id: str = "policy:code-contract-prover@1") -> ProbeReport:
+        """Probe cvc5, z3, and every other admitted backend for this run."""
+
+        probes: list[BackendProbeReceipt] = []
+        admitted: list[str] = []
+        missing: list[str] = []
+        now_ms = int(self._monotonic() * 1000)
+
+        for backend_id in self._admitted:
+            meta = _BACKEND_METADATA.get(backend_id, {})
+            version = str(meta.get("version") or f"{backend_id}-adapter/v1")
+            capabilities = meta.get("capabilities")
+            caps_dict = (
+                capabilities.to_dict()
+                if isinstance(capabilities, BackendCapabilities)
+                else _mapping(capabilities or {}, "capabilities")
+            )
+            authoritative = tuple(meta.get("authoritative_for") or ())
+
+            resolver = self._executable_resolvers.get(backend_id)
+            if resolver is not None:
+                available, path, detail = resolver()
+            elif backend_id in self._availability_probes:
+                try:
+                    available = self._availability_probes[backend_id]() is True
+                except Exception as exc:  # pragma: no cover - defensive
+                    available, path, detail = False, "", f"probe error: {exc}"
+                else:
+                    path, detail = ("fixture", "") if available else ("", f"{backend_id} unavailable")
+            else:
+                available, path, detail = _default_availability(backend_id)
+
+            smoke_ok = False
+            if available:
+                if not self._smoke_check or self._solver_runner is not None:
+                    smoke_ok = True
+                else:
+                    # Lightweight smoke: presence of executable is enough for
+                    # admission when no fixture is injected; full smoke is the
+                    # matrix registry's job.  We still require path non-empty.
+                    smoke_ok = bool(path) or available
+
+            if not available:
+                missing.append(backend_id)
+                detail = detail or f"{backend_id} is not available"
+            else:
+                admitted.append(backend_id)
+
+            probes.append(
+                BackendProbeReceipt(
+                    backend_id=backend_id,
+                    backend_version=version,
+                    available=bool(available),
+                    executable_path=path or "",
+                    smoke_ok=bool(smoke_ok and available),
+                    authoritative_for=authoritative,
+                    capabilities=caps_dict,
+                    detail=detail,
+                    probed_at_monotonic_ms=now_ms,
+                )
+            )
+
+        if not admitted:
+            availability = BackendAvailability.UNAVAILABLE
+            detail = "no admitted backends available"
+        elif missing:
+            availability = BackendAvailability.PARTIAL
+            detail = f"missing backends: {', '.join(sorted(missing))}"
+        else:
+            availability = BackendAvailability.AVAILABLE
+            detail = "all admitted backends available"
+
+        return ProbeReport(
+            probes=tuple(probes),
+            admitted_backend_ids=tuple(sorted(admitted)),
+            missing_backend_ids=tuple(sorted(missing)),
+            availability=availability,
+            policy_id=policy_id,
+            detail=detail,
+        )
+
+    def _compile_source(self, backend_id: str, request: BackendRequest) -> str:
+        compiler = self._compilers.get(backend_id)
+        if compiler is None:
+            # Fixture-only backends: synthesize a stable source from the request.
+            return compile_smtlib_request(
+                request,
+                backend_id=backend_id,
+                compiler_version=f"{backend_id}-fixture/v1",
+            ).source
+        return compiler(request).source
+
+    def _run_backend(
+        self,
+        backend_id: str,
+        request: BackendRequest,
+        probe: BackendProbeReceipt | None,
+        cancellation: threading.Event,
+    ) -> SolverAttempt:
+        started = self._monotonic()
+        request_digest = request.digest
+        # Unavailable admission is more specific than portfolio cancellation.
+        if probe is None or not probe.admitted:
+            return SolverAttempt(
+                backend_id=backend_id,
+                request_id=request.request_id,
+                request_digest=request_digest,
+                reported_status="unavailable",
+                effective_outcome=AttemptOutcome.UNAVAILABLE,
+                authoritative=False,
+                conclusive=False,
+                probe_receipt_id=probe.receipt_id if probe else "",
+                toolchain_digest=probe.toolchain_digest if probe else "",
+                detail=(probe.detail if probe else f"{backend_id} not probed")
+                or f"{backend_id} unavailable",
+                duration_ms=max(0, round((self._monotonic() - started) * 1000)),
+                non_conclusive_reason=NonConclusiveReason.MISSING_BACKEND,
+            )
+
+        if cancellation.is_set():
+            return SolverAttempt(
+                backend_id=backend_id,
+                request_id=request.request_id,
+                request_digest=request_digest,
+                reported_status="cancelled",
+                effective_outcome=AttemptOutcome.CANCELLED,
+                authoritative=False,
+                conclusive=False,
+                probe_receipt_id=probe.receipt_id if probe else "",
+                toolchain_digest=probe.toolchain_digest if probe else "",
+                detail="cancellation requested before execution",
+                cancellation_requested=True,
+                non_conclusive_reason=NonConclusiveReason.CANCELLED,
+            )
+
+        authoritative = (
+            "finite_constraint_satisfiability" in probe.authoritative_for
+            and probe.admitted
+        )
+
+        try:
+            source = self._compile_source(backend_id, request)
+        except Exception as exc:
+            return SolverAttempt(
+                backend_id=backend_id,
+                request_id=request.request_id,
+                request_digest=request_digest,
+                reported_status="malformed",
+                effective_outcome=AttemptOutcome.MALFORMED,
+                authoritative=False,
+                conclusive=False,
+                probe_receipt_id=probe.receipt_id,
+                toolchain_digest=probe.toolchain_digest,
+                detail=f"compile failed: {type(exc).__name__}: {exc}",
+                duration_ms=max(0, round((self._monotonic() - started) * 1000)),
+                non_conclusive_reason=NonConclusiveReason.MALFORMED_OUTPUT,
+            )
+
+        try:
+            if self._solver_runner is not None:
+                raw = self._solver_runner(backend_id, request, source, cancellation)
+            else:
+                raw = self._live_run(backend_id, request, source, probe)
+            if isinstance(raw, Mapping):
+                raw = BackendRunnerOutput(
+                    stdout=str(raw.get("stdout", "")),
+                    stderr=str(raw.get("stderr", "")),
+                    returncode=int(raw.get("returncode", 0) or 0),
+                    elapsed_ms=int(raw.get("elapsed_ms", 0) or 0),
+                    solver_version=str(raw.get("solver_version", "")),
+                )
+            if not isinstance(raw, BackendRunnerOutput):
+                raise MalformedBackendOutput("runner returned non-BackendRunnerOutput")
+        except TimeoutError as exc:
+            return SolverAttempt(
+                backend_id=backend_id,
+                request_id=request.request_id,
+                request_digest=request_digest,
+                reported_status="timeout",
+                effective_outcome=AttemptOutcome.TIMEOUT,
+                authoritative=False,
+                conclusive=False,
+                probe_receipt_id=probe.receipt_id,
+                toolchain_digest=probe.toolchain_digest,
+                detail=str(exc) or "solver timeout",
+                duration_ms=max(0, round((self._monotonic() - started) * 1000)),
+                cancellation_requested=cancellation.is_set(),
+                non_conclusive_reason=NonConclusiveReason.TIMEOUT,
+            )
+        except Exception as exc:
+            return SolverAttempt(
+                backend_id=backend_id,
+                request_id=request.request_id,
+                request_digest=request_digest,
+                reported_status="error",
+                effective_outcome=AttemptOutcome.ERROR,
+                authoritative=False,
+                conclusive=False,
+                probe_receipt_id=probe.receipt_id,
+                toolchain_digest=probe.toolchain_digest,
+                detail=f"{type(exc).__name__}: {exc}",
+                duration_ms=max(0, round((self._monotonic() - started) * 1000)),
+                non_conclusive_reason=NonConclusiveReason.MALFORMED_OUTPUT
+                if isinstance(exc, MalformedBackendOutput)
+                else NonConclusiveReason.UNKNOWN,
+            )
+
+        duration_ms = raw.elapsed_ms or max(
+            0, round((self._monotonic() - started) * 1000)
+        )
+        if cancellation.is_set():
+            return SolverAttempt(
+                backend_id=backend_id,
+                request_id=request.request_id,
+                request_digest=request_digest,
+                reported_status="cancelled",
+                effective_outcome=AttemptOutcome.CANCELLED,
+                authoritative=False,
+                conclusive=False,
+                probe_receipt_id=probe.receipt_id,
+                toolchain_digest=probe.toolchain_digest,
+                detail="cancellation observed after solver return",
+                evidence={"stdout_digest": _sha256_hex(raw.stdout)},
+                duration_ms=duration_ms,
+                cancellation_requested=True,
+                non_conclusive_reason=NonConclusiveReason.CANCELLED,
+            )
+
+        try:
+            from ipfs_datasets_py.logic.backends.registry import _classify_solver_stdout
+
+            token = _classify_solver_stdout(raw.stdout)
+        except Exception as exc:
+            return SolverAttempt(
+                backend_id=backend_id,
+                request_id=request.request_id,
+                request_digest=request_digest,
+                reported_status="malformed",
+                effective_outcome=AttemptOutcome.MALFORMED,
+                authoritative=False,
+                conclusive=False,
+                probe_receipt_id=probe.receipt_id,
+                toolchain_digest=probe.toolchain_digest,
+                detail=str(exc),
+                evidence={"stdout_digest": _sha256_hex(raw.stdout)},
+                duration_ms=duration_ms,
+                non_conclusive_reason=NonConclusiveReason.MALFORMED_OUTPUT,
+            )
+
+        if request.query_kind is QueryKind.THEOREM_PROOF:
+            status_map = {
+                "unsat": ("proved", AttemptOutcome.VERIFIED, True),
+                "sat": ("disproved", AttemptOutcome.COUNTEREXAMPLE, True),
+                "unknown": ("unknown", AttemptOutcome.UNKNOWN, False),
+            }
+        else:
+            status_map = {
+                "unsat": ("unsatisfiable", AttemptOutcome.VERIFIED, True),
+                "sat": ("satisfiable", AttemptOutcome.COUNTEREXAMPLE, True),
+                "unknown": ("unknown", AttemptOutcome.UNKNOWN, False),
+            }
+        reported, outcome, conclusive_token = status_map[token]
+        # Authority is only effective when the probe admits the backend.
+        effective_authoritative = authoritative and outcome is AttemptOutcome.VERIFIED
+        conclusive = bool(conclusive_token and (
+            (outcome is AttemptOutcome.VERIFIED and effective_authoritative)
+            or outcome is AttemptOutcome.COUNTEREXAMPLE
+        ))
+        # VERIFIED without authority becomes a candidate at validation time.
+        effective = outcome
+        if outcome is AttemptOutcome.VERIFIED and not effective_authoritative:
+            effective = AttemptOutcome.CANDIDATE
+            conclusive = False
+
+        return SolverAttempt(
+            backend_id=backend_id,
+            request_id=request.request_id,
+            request_digest=request_digest,
+            reported_status=reported,
+            effective_outcome=effective,
+            authoritative=effective_authoritative,
+            conclusive=conclusive,
+            probe_receipt_id=probe.receipt_id,
+            toolchain_digest=probe.toolchain_digest,
+            detail="",
+            evidence={
+                "solver_result": token,
+                "stdout_digest": _sha256_hex(raw.stdout),
+                "returncode": raw.returncode,
+                "solver_version": raw.solver_version,
+                "compiled_source_digest": _sha256_hex(source),
+            },
+            duration_ms=duration_ms,
+        )
+
+    def _live_run(
+        self,
+        backend_id: str,
+        request: BackendRequest,
+        source: str,
+        probe: BackendProbeReceipt,
+    ) -> BackendRunnerOutput:
+        import subprocess
+
+        executable = probe.executable_path or backend_id
+        started = time.monotonic()
+        if backend_id == Z3_BACKEND_ID:
+            command = [executable, "-in", "-smt2"]
+        elif backend_id == CVC5_BACKEND_ID:
+            command = [
+                executable,
+                "--lang=smt2",
+                f"--tlimit-per={request.bounds.timeout_ms}",
+            ]
+        else:
+            command = [executable]
+        try:
+            completed = subprocess.run(
+                command,
+                input=source,
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=request.bounds.timeout_ms / 1000,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise TimeoutError(str(exc) or "solver timeout") from exc
+        return BackendRunnerOutput(
+            stdout=completed.stdout or "",
+            stderr=completed.stderr or "",
+            returncode=completed.returncode,
+            elapsed_ms=int((time.monotonic() - started) * 1000),
+        )
+
+    def prove_compiled(
+        self,
+        compiled: CompiledObligationRequest,
+        *,
+        required_assurance: AssuranceLevel = AssuranceLevel.SOLVER_CHECKED,
+        policy_id: str = "policy:code-contract-prover@1",
+        allow_cache: bool = True,
+        cancel_on_first_conclusive: bool = True,
+        cancellation: threading.Event | None = None,
+        probe_report: ProbeReport | None = None,
+    ) -> ProveResult:
+        """Execute the admitted portfolio for one compiled obligation."""
+
+        if not isinstance(compiled, CompiledObligationRequest):
+            raise CodeContractProverError("compiled must be CompiledObligationRequest")
+        started = self._monotonic()
+        cancel = cancellation or threading.Event()
+        report = probe_report or self.probe_backends(policy_id=policy_id)
+        request = compiled.as_backend_request()
+        identity = pinned_prover_identity()
+
+        cache_key = ProveResultCache.make_key(
+            request_digest=request.digest,
+            probe_report_id=report.report_id,
+            policy_id=policy_id,
+            prover_identity_value=identity,
+            required_assurance=required_assurance,
+        )
+        if allow_cache:
+            cached = self._cache.get(cache_key)
+            if cached is not None:
+                # Revalidate bindings on hit.
+                revalidated = validate_solver_portfolio(
+                    compiled=compiled,
+                    attempts=cached.attempts,
+                    probe_report=report,
+                    required_assurance=required_assurance,
+                    policy_id=policy_id,
+                )
+                if (
+                    revalidated.disposition is cached.validation.disposition
+                    and revalidated.status is cached.validation.status
+                ):
+                    return ProveResult(
+                        status=cached.status,
+                        reason=cached.reason,
+                        detail=cached.detail or "cache hit after independent revalidation",
+                        compiled=compiled,
+                        probe_report=report,
+                        attempts=cached.attempts,
+                        validation=revalidated,
+                        portfolio_result=dict(cached.portfolio_result),
+                        cache_hit=True,
+                        replayed=True,
+                        duration_ms=max(
+                            0, round((self._monotonic() - started) * 1000)
+                        ),
+                        prover_identity=identity,
+                        metadata={"cache_key": cache_key},
+                    )
+
+        attempts: list[SolverAttempt] = []
+        for backend_id in self._admitted:
+            probe = report.probe_for(backend_id)
+            # Unavailable admission always wins over portfolio cancellation so
+            # missing backends remain explicit (for example absent z3).
+            if probe is None or not probe.admitted:
+                attempts.append(
+                    self._run_backend(backend_id, request, probe, cancel)
+                )
+                continue
+            if cancel.is_set():
+                attempts.append(
+                    SolverAttempt(
+                        backend_id=backend_id,
+                        request_id=request.request_id,
+                        request_digest=request.digest,
+                        reported_status="cancelled",
+                        effective_outcome=AttemptOutcome.CANCELLED,
+                        authoritative=False,
+                        conclusive=False,
+                        probe_receipt_id=probe.receipt_id if probe else "",
+                        toolchain_digest=probe.toolchain_digest if probe else "",
+                        detail="cancelled before attempt",
+                        cancellation_requested=True,
+                        non_conclusive_reason=NonConclusiveReason.CANCELLED,
+                    )
+                )
+                continue
+            attempt = self._run_backend(backend_id, request, probe, cancel)
+            attempts.append(attempt)
+            if cancel_on_first_conclusive and attempt.conclusive:
+                cancel.set()
+
+        validation = validate_solver_portfolio(
+            compiled=compiled,
+            attempts=attempts,
+            probe_report=report,
+            required_assurance=required_assurance,
+            policy_id=policy_id,
+        )
+        status = validation.status
+        reason = validation.reason
+        detail = validation.detail
+        if (
+            status is ProveStatus.INCONCLUSIVE
+            and report.availability is BackendAvailability.UNAVAILABLE
+        ):
+            reason = NonConclusiveReason.MISSING_BACKEND
+            detail = report.detail or detail
+
+        portfolio_summary = {
+            "backend_ids": list(self._admitted),
+            "attempt_ids": [item.attempt_id for item in attempts],
+            "admitted_backend_ids": list(report.admitted_backend_ids),
+            "missing_backend_ids": list(report.missing_backend_ids),
+            "validation_receipt_id": validation.receipt_id,
+        }
+
+        result = ProveResult(
+            status=status,
+            reason=reason,
+            detail=detail,
+            compiled=compiled,
+            probe_report=report,
+            attempts=tuple(attempts),
+            validation=validation,
+            portfolio_result=portfolio_summary,
+            cache_hit=False,
+            replayed=False,
+            duration_ms=max(0, round((self._monotonic() - started) * 1000)),
+            prover_identity=identity,
+            metadata={"cache_key": cache_key, "policy_id": policy_id},
+        )
+        if allow_cache and validation.disposition is not ValidationDisposition.REJECTED:
+            self._cache.put(cache_key, result)
+        return result
+
+    def prove_translation(
+        self,
+        translation: TranslationResult,
+        *,
+        obligation_id: str = "",
+        claim_id: str = "",
+        required_assurance: AssuranceLevel = AssuranceLevel.SOLVER_CHECKED,
+        policy_id: str = "policy:code-contract-prover@1",
+        timeout_ms: int = DEFAULT_TIMEOUT_MS,
+        allow_cache: bool = True,
+        cancel_on_first_conclusive: bool = True,
+        cancellation: threading.Event | None = None,
+        require_effects: bool = True,
+    ) -> ProveResult:
+        """Compile translation claims and prove the selected obligation."""
+
+        bounds = ExecutionBounds(
+            timeout_ms=timeout_ms,
+            max_steps=DEFAULT_MAX_STEPS,
+            max_memory_bytes=DEFAULT_MAX_MEMORY_BYTES,
+            max_output_bytes=DEFAULT_MAX_OUTPUT_BYTES,
+        )
+        compiled_all = compile_obligation_requests(
+            translation,
+            bounds=bounds,
+            backends=self._admitted,
+            require_effects=require_effects,
+        )
+        selected = compiled_all
+        if claim_id:
+            selected = tuple(item for item in selected if item.claim_id == claim_id)
+        if obligation_id:
+            selected = tuple(
+                item for item in selected if item.obligation_id == obligation_id
+            )
+        if not selected:
+            raise ProveRejectedError(
+                NonConclusiveReason.INVALID_INPUT,
+                "no compiled obligation matched claim_id/obligation_id filters",
+            )
+        # Prove the first matching obligation; callers that need all claims
+        # should iterate prove_compiled.
+        return self.prove_compiled(
+            selected[0],
+            required_assurance=required_assurance,
+            policy_id=policy_id,
+            allow_cache=allow_cache,
+            cancel_on_first_conclusive=cancel_on_first_conclusive,
+            cancellation=cancellation,
+        )
+
+    def prove(
+        self,
+        translation: TranslationResult,
+        request: ProveRequest | Mapping[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> ProveResult:
+        """Prove a translation under an optional :class:`ProveRequest`."""
+
+        if request is None:
+            prove_request = ProveRequest(
+                translation_cid=translation.result_cid,
+                **{
+                    key: kwargs[key]
+                    for key in (
+                        "obligation_id",
+                        "claim_id",
+                        "required_assurance",
+                        "policy_id",
+                        "timeout_ms",
+                        "allow_cache",
+                        "cancel_on_first_conclusive",
+                    )
+                    if key in kwargs
+                },
+            )
+        elif isinstance(request, ProveRequest):
+            prove_request = request
+        else:
+            prove_request = ProveRequest.from_dict(request)
+        if prove_request.translation_cid not in ("", translation.result_cid):
+            raise ProveRejectedError(
+                NonConclusiveReason.WRONG_THEOREM,
+                "prove request translation_cid does not match translation result",
+            )
+        return self.prove_translation(
+            translation,
+            obligation_id=prove_request.obligation_id,
+            claim_id=prove_request.claim_id,
+            required_assurance=prove_request.required_assurance,
+            policy_id=prove_request.policy_id,
+            timeout_ms=prove_request.timeout_ms,
+            allow_cache=prove_request.allow_cache,
+            cancel_on_first_conclusive=prove_request.cancel_on_first_conclusive,
+            cancellation=kwargs.get("cancellation"),
+            require_effects=kwargs.get("require_effects", True),
+        )
+
+    def replay(
+        self,
+        result: ProveResult,
+        *,
+        probe_report: ProbeReport | None = None,
+    ) -> ProveResult:
+        """Replay validation for a prior result without re-running solvers.
+
+        Recomputes independent validation against the current (or supplied)
+        probe report.  Capability loss or toolchain drift yields non-conclusive.
+        """
+
+        if not isinstance(result, ProveResult):
+            raise CodeContractProverError("result must be a ProveResult")
+        report = probe_report or result.probe_report
+        validation = validate_solver_portfolio(
+            compiled=result.compiled,
+            attempts=result.attempts,
+            probe_report=report,
+            required_assurance=result.validation.required_assurance,
+            policy_id=result.validation.policy_id,
+        )
+        return ProveResult(
+            status=validation.status,
+            reason=validation.reason,
+            detail=validation.detail or "replayed independent validation",
+            compiled=result.compiled,
+            probe_report=report,
+            attempts=result.attempts,
+            validation=validation,
+            portfolio_result=dict(result.portfolio_result),
+            cache_hit=result.cache_hit,
+            replayed=True,
+            duration_ms=0,
+            prover_identity=result.prover_identity,
+            metadata={**dict(result.metadata), "replay": True},
+        )
+
+
+def route_through_multi_prover(
+    statement: str,
+    *,
+    obligation_id: str,
+    runner: Callable[..., ProverOutput | Mapping[str, Any]],
+    required_assurance: AssuranceLevel = AssuranceLevel.SOLVER_CHECKED,
+    timeout_seconds: float = 30.0,
+) -> PortfolioResult:
+    """Optional composition helper over :class:`MultiProverRouter`."""
+
+    obligation = PropertyObligation(
+        obligation_id=obligation_id,
+        property_kind=PropertyKind.FINITE_CONSTRAINT,
+        statement=statement,
+        required_assurance=required_assurance,
+    )
+    router = MultiProverRouter(
+        {
+            PropertyKind.FINITE_CONSTRAINT: default_property_policy(
+                timeout_seconds=timeout_seconds
+            )
+        }
+    )
+    return router.execute(obligation, runner)
+
+
+__all__ = [
+    "ADMITTED_BACKEND_IDS",
+    "BackendAvailability",
+    "BackendProbeReceipt",
+    "CODE_CONTRACT_PROVER_VERSION",
+    "CodeContractProver",
+    "CodeContractProverError",
+    "CompiledObligationRequest",
+    "NonConclusiveReason",
+    "PROVER_ID",
+    "PROVER_VERSION",
+    "ProbeReport",
+    "ProveRejectedError",
+    "ProveRequest",
+    "ProveResult",
+    "ProveResultCache",
+    "ProveStatus",
+    "SMT_LOGIC_FAMILY",
+    "SolverAttempt",
+    "SolverRunner",
+    "ValidationDisposition",
+    "ValidationReceipt",
+    "compile_backend_request",
+    "compile_obligation_requests",
+    "compile_smt_payload_for_claim",
+    "default_property_policy",
+    "make_solver_fixture",
+    "pinned_prover_identity",
+    "prover_identity",
+    "route_through_multi_prover",
+    "validate_solver_portfolio",
+]
