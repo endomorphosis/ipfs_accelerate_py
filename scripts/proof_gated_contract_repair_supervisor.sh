@@ -282,10 +282,8 @@ preflight() {
   )
   "${PYTHON_BIN}" - "${PREFLIGHT_ROOT}/rpr_task_state.json" <<'PY'
 import json
-import os
 import pathlib
 import sys
-import time
 
 path = pathlib.Path(sys.argv[1])
 payload = json.loads(path.read_text(encoding="utf-8"))
@@ -301,9 +299,10 @@ if blocked:
     raise SystemExit(f"preflight found blocked tasks: {blocked}")
 if reason and ready_count:
     raise SystemExit(f"unexpected selection idle reason with ready work: {reason}")
-age = time.time() - path.stat().st_mtime
-if age > 120:
-    raise SystemExit(f"preflight task state is stale: {age:.1f}s")
+# The event-driven daemon intentionally does not rewrite an unchanged,
+# content-addressed projection. Successful completion of the --once process
+# above plus validation of the current parsed graph is the freshness proof;
+# file mtime is not.
 print(
     json.dumps(
         {
