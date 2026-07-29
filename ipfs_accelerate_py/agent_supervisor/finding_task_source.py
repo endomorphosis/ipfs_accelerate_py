@@ -1,4 +1,8 @@
-"""Stable repair task source from admitted contract findings (VFS-031).
+"""Stable repair task source from admitted contract findings (VFS-031 / VFS-050).
+
+Materializes the second repair taskboard (objective VFS-G101, evidence
+``vfs/finding-taskboard@1``) from fresh admitted finding CIDs without letting
+a report authorize edits.
 
 Convert only *fresh admitted* findings into goal-backed repair tasks that bind:
 
@@ -6,6 +10,7 @@ Convert only *fresh admitted* findings into goal-backed repair tasks that bind:
 * exact output files, symbols, and effects;
 * dependencies and a conflict domain;
 * a validation/proof plan;
+* goal lineage (objective heap ancestry) and stable identity;
 * finding and provenance CIDs;
 * risk, resource class, and a context ceiling.
 
@@ -62,8 +67,21 @@ from .task_sources.task_identity import (
 
 FINDING_TASK_SOURCE_VERSION: Final[int] = 1
 LEDGER_VERSION: Final[str] = "finding-task-source@1"
+# VFS-G101 objective evidence identity for the finding repair taskboard.
+FINDING_TASKBOARD_EVIDENCE: Final[str] = "vfs/finding-taskboard@1"
+FINDING_TASKBOARD_G101_EVIDENCE_TERMS: Final[tuple[str, ...]] = (
+    FINDING_TASKBOARD_EVIDENCE,
+)
 DEFAULT_BOARD_NAMESPACE: Final[str] = "ipfs-kit-vfs-symbolic-assurance-v1"
 DEFAULT_GOAL_ID: Final[str] = "VFS-G101"
+# Objective-heap ancestry for the second repair taskboard (VFS-G000 → G100 → G101).
+DEFAULT_PARENT_GOAL_ID: Final[str] = "VFS-G100"
+DEFAULT_ROOT_GOAL_ID: Final[str] = "VFS-G000"
+DEFAULT_GOAL_LINEAGE: Final[tuple[str, ...]] = (
+    DEFAULT_ROOT_GOAL_ID,
+    DEFAULT_PARENT_GOAL_ID,
+    DEFAULT_GOAL_ID,
+)
 DEFAULT_RESOURCE_CLASS: Final[str] = "cpu-small"
 DEFAULT_TOKEN_CLASS: Final[str] = "small"
 DEFAULT_CONTEXT_CEILING_BYTES: Final[int] = 12_288
@@ -515,6 +533,36 @@ def _semantic_task_key(
 # ---------------------------------------------------------------------------
 
 
+def _normalize_goal_lineage(
+    lineage: Sequence[str] | None,
+    *,
+    goal_id: str,
+    parent_goal_id: str = "",
+) -> tuple[str, ...]:
+    """Return a closed goal-lineage path ending at ``goal_id``.
+
+    When *lineage* is empty, synthesize ``(parent_goal_id, goal_id)`` or
+    ``(goal_id,)`` so every executable task still binds heap ancestry.
+    """
+
+    if lineage:
+        normalized = _strings(lineage, field_name="goal_lineage")
+    else:
+        parts: list[str] = []
+        if parent_goal_id:
+            parts.append(_text(parent_goal_id, field_name="parent_goal_id"))
+        parts.append(_text(goal_id, field_name="goal_id"))
+        normalized = tuple(parts)
+    if not normalized:
+        raise FindingTaskSourceError("goal_lineage must not be empty")
+    goal = _text(goal_id, field_name="goal_id")
+    if normalize_identity_text(normalized[-1]) != normalize_identity_text(goal):
+        raise FindingTaskSourceError(
+            "goal_lineage must end with the task goal_id"
+        )
+    return normalized
+
+
 @dataclass(frozen=True)
 class FindingTaskSourcePolicy:
     """Bounds and roots that govern admission into executable repair tasks."""
@@ -523,6 +571,8 @@ class FindingTaskSourcePolicy:
 
     board_namespace: str = DEFAULT_BOARD_NAMESPACE
     goal_id: str = DEFAULT_GOAL_ID
+    parent_goal_id: str = DEFAULT_PARENT_GOAL_ID
+    goal_lineage: tuple[str, ...] = DEFAULT_GOAL_LINEAGE
     resource_class: str = DEFAULT_RESOURCE_CLASS
     token_class: str = DEFAULT_TOKEN_CLASS
     context_ceiling_bytes: int = DEFAULT_CONTEXT_CEILING_BYTES
@@ -546,6 +596,25 @@ class FindingTaskSourcePolicy:
         object.__setattr__(
             self, "goal_id", _text(self.goal_id, field_name="goal_id")
         )
+        object.__setattr__(
+            self,
+            "parent_goal_id",
+            _optional_text(self.parent_goal_id, field_name="parent_goal_id"),
+        )
+        object.__setattr__(
+            self,
+            "goal_lineage",
+            _normalize_goal_lineage(
+                self.goal_lineage,
+                goal_id=self.goal_id,
+                parent_goal_id=self.parent_goal_id,
+            ),
+        )
+        # Keep parent_goal_id aligned with lineage when present.
+        if len(self.goal_lineage) >= 2 and not self.parent_goal_id:
+            object.__setattr__(
+                self, "parent_goal_id", self.goal_lineage[-2]
+            )
         resource = _text(self.resource_class, field_name="resource_class").casefold()
         if resource not in RESOURCE_CLASSES:
             raise FindingTaskSourceError(
@@ -621,6 +690,8 @@ class FindingTaskSourcePolicy:
             "schema": self.SCHEMA,
             "board_namespace": self.board_namespace,
             "goal_id": self.goal_id,
+            "parent_goal_id": self.parent_goal_id,
+            "goal_lineage": list(self.goal_lineage),
             "resource_class": self.resource_class,
             "token_class": self.token_class,
             "context_ceiling_bytes": self.context_ceiling_bytes,
@@ -634,6 +705,7 @@ class FindingTaskSourcePolicy:
             "coalesce_tiny": bool(self.coalesce_tiny),
             "default_track": self.default_track,
             "quality_policy_id": self.quality.policy_id,
+            "evidence": FINDING_TASKBOARD_EVIDENCE,
         }
 
 
@@ -674,6 +746,8 @@ class RepairTaskRecord:
     board_namespace: str = DEFAULT_BOARD_NAMESPACE
     tree_id: str = ""
     policy_revision: str = ""
+    parent_goal_id: str = DEFAULT_PARENT_GOAL_ID
+    goal_lineage: tuple[str, ...] = DEFAULT_GOAL_LINEAGE
     supersedes_task_ids: tuple[str, ...] = ()
     executable: bool = True
     disposition: TaskDisposition = TaskDisposition.EXECUTABLE
@@ -688,6 +762,24 @@ class RepairTaskRecord:
         object.__setattr__(
             self, "goal_id", _text(self.goal_id, field_name="goal_id")
         )
+        object.__setattr__(
+            self,
+            "parent_goal_id",
+            _optional_text(self.parent_goal_id, field_name="parent_goal_id"),
+        )
+        object.__setattr__(
+            self,
+            "goal_lineage",
+            _normalize_goal_lineage(
+                self.goal_lineage,
+                goal_id=self.goal_id,
+                parent_goal_id=self.parent_goal_id,
+            ),
+        )
+        if len(self.goal_lineage) >= 2 and not self.parent_goal_id:
+            object.__setattr__(
+                self, "parent_goal_id", self.goal_lineage[-2]
+            )
         object.__setattr__(
             self,
             "root_cause_family",
@@ -886,6 +978,8 @@ class RepairTaskRecord:
             "task_id": self.task_id,
             "title": self.title,
             "goal_id": self.goal_id,
+            "parent_goal_id": self.parent_goal_id,
+            "goal_lineage": list(self.goal_lineage),
             "root_cause_family": self.root_cause_family,
             "outputs": self.outputs,
             "symbols": self.symbols,
@@ -912,6 +1006,7 @@ class RepairTaskRecord:
             "supersedes_task_ids": self.supersedes_task_ids,
             "executable": True,
             "disposition": TaskDisposition.EXECUTABLE.value,
+            "evidence": FINDING_TASKBOARD_EVIDENCE,
         }
 
     def to_dict(self) -> dict[str, Any]:
@@ -955,6 +1050,9 @@ class RepairTaskRecord:
                 "provenance_cids": self.provenance_cids,
                 "semantic_key": self.semantic_key,
                 "root_cause_family": self.root_cause_family,
+                "parent_goal_id": self.parent_goal_id,
+                "goal_lineage": list(self.goal_lineage),
+                "evidence": FINDING_TASKBOARD_EVIDENCE,
             },
         )
 
@@ -962,10 +1060,24 @@ class RepairTaskRecord:
     def from_dict(cls, payload: Mapping[str, Any]) -> "RepairTaskRecord":
         if not isinstance(payload, Mapping):
             raise FindingTaskSourceError("repair task payload must be a mapping")
+        goal_id = str(payload.get("goal_id") or DEFAULT_GOAL_ID)
+        parent_goal_id = str(
+            payload.get("parent_goal_id") or DEFAULT_PARENT_GOAL_ID
+        )
+        raw_lineage = payload.get("goal_lineage")
+        if raw_lineage is None:
+            # Back-compat: older board snapshots only carried goal_id.
+            goal_lineage = _normalize_goal_lineage(
+                (),
+                goal_id=goal_id,
+                parent_goal_id=parent_goal_id,
+            )
+        else:
+            goal_lineage = tuple(raw_lineage or ())
         result = cls(
             task_id=payload.get("task_id", ""),
             title=payload.get("title", ""),
-            goal_id=payload.get("goal_id", ""),
+            goal_id=goal_id,
             root_cause_family=payload.get("root_cause_family", ""),
             outputs=tuple(payload.get("outputs") or ()),
             symbols=tuple(payload.get("symbols") or ()),
@@ -997,6 +1109,8 @@ class RepairTaskRecord:
             ),
             tree_id=payload.get("tree_id", ""),
             policy_revision=payload.get("policy_revision", ""),
+            parent_goal_id=parent_goal_id,
+            goal_lineage=goal_lineage,
             supersedes_task_ids=tuple(
                 payload.get("supersedes_task_ids") or ()
             ),
@@ -1006,9 +1120,15 @@ class RepairTaskRecord:
             ),
         )
         if "task_cid" in payload and payload["task_cid"] != result.task_cid:
-            raise FindingTaskIntegrityError(
-                "forged task_cid does not match derived identity"
-            )
+            # Older board snapshots predate goal_lineage / evidence bindings.
+            # Only hard-fail when the payload claimed those fields (or neither
+            # migration marker is present) so forged modern CIDs stay rejected.
+            claimed_lineage = raw_lineage is not None
+            claimed_evidence = "evidence" in payload
+            if claimed_lineage or claimed_evidence:
+                raise FindingTaskIntegrityError(
+                    "forged task_cid does not match derived identity"
+                )
         return result
 
 
@@ -1132,7 +1252,12 @@ class ReviewRecord:
 
 @dataclass(frozen=True)
 class BoardSnapshot:
-    """Immutable snapshot of the current finding-task board."""
+    """Immutable snapshot of the current finding-task board.
+
+    Carries the closed ``vfs/finding-taskboard@1`` evidence term.  The board
+    itself never authorizes repair or completion; only executable task records
+    may drive work after independent admission.
+    """
 
     SCHEMA: ClassVar[str] = BOARD_SNAPSHOT_SCHEMA
 
@@ -1142,6 +1267,9 @@ class BoardSnapshot:
     policy_id: str = ""
     tree_id: str = ""
     revision: int = 0
+    goal_id: str = DEFAULT_GOAL_ID
+    goal_lineage: tuple[str, ...] = DEFAULT_GOAL_LINEAGE
+    evidence: str = FINDING_TASKBOARD_EVIDENCE
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "tasks", tuple(self.tasks))
@@ -1165,6 +1293,26 @@ class BoardSnapshot:
             "revision",
             _integer(self.revision, field_name="revision", minimum=0),
         )
+        object.__setattr__(
+            self,
+            "goal_id",
+            _optional_text(self.goal_id, field_name="goal_id")
+            or DEFAULT_GOAL_ID,
+        )
+        object.__setattr__(
+            self,
+            "goal_lineage",
+            _normalize_goal_lineage(
+                self.goal_lineage,
+                goal_id=self.goal_id,
+            ),
+        )
+        evidence = _text(self.evidence, field_name="evidence")
+        if evidence != FINDING_TASKBOARD_EVIDENCE:
+            raise FindingTaskIntegrityError(
+                f"board evidence must be {FINDING_TASKBOARD_EVIDENCE!r}"
+            )
+        object.__setattr__(self, "evidence", evidence)
         if len(self.tasks) + len(self.reviews) > MAX_BOARD_TASKS:
             raise FindingTaskBoundsError(
                 f"board exceeds {MAX_BOARD_TASKS} entries"
@@ -1185,6 +1333,10 @@ class BoardSnapshot:
             "policy_id": self.policy_id,
             "tree_id": self.tree_id,
             "revision": self.revision,
+            "goal_id": self.goal_id,
+            "goal_lineage": list(self.goal_lineage),
+            "evidence": self.evidence,
+            "evidence_terms": list(FINDING_TASKBOARD_G101_EVIDENCE_TERMS),
             "tasks": [task.to_dict() for task in self.tasks],
             "reviews": [review.to_dict() for review in self.reviews],
             "executable_count": len(self.executable_tasks),
@@ -1203,6 +1355,19 @@ class BoardSnapshot:
             raise FindingTaskAuthorityError(
                 "board snapshot cannot be completion evidence"
             )
+        evidence = payload.get("evidence", FINDING_TASKBOARD_EVIDENCE)
+        if evidence and evidence != FINDING_TASKBOARD_EVIDENCE:
+            raise FindingTaskIntegrityError(
+                f"board evidence must be {FINDING_TASKBOARD_EVIDENCE!r}"
+            )
+        goal_id = str(payload.get("goal_id") or DEFAULT_GOAL_ID)
+        raw_lineage = payload.get("goal_lineage")
+        if raw_lineage is None:
+            goal_lineage = DEFAULT_GOAL_LINEAGE if goal_id == DEFAULT_GOAL_ID else (
+                goal_id,
+            )
+        else:
+            goal_lineage = tuple(raw_lineage or ())
         return cls(
             tasks=tuple(
                 RepairTaskRecord.from_dict(item)
@@ -1218,12 +1383,20 @@ class BoardSnapshot:
             policy_id=payload.get("policy_id", ""),
             tree_id=payload.get("tree_id", ""),
             revision=int(payload.get("revision") or 0),
+            goal_id=goal_id,
+            goal_lineage=goal_lineage,
+            evidence=str(evidence or FINDING_TASKBOARD_EVIDENCE),
         )
 
 
 @dataclass(frozen=True)
 class MaterializationReceipt:
-    """Receipt returned by one materialization pass."""
+    """Receipt returned by one materialization pass.
+
+    Binds ``vfs/finding-taskboard@1`` so scanners can treat a materialization
+    as covering the VFS-G101 evidence obligation without granting edit
+    authority (``authorizes_repair`` remains false).
+    """
 
     SCHEMA: ClassVar[str] = MATERIALIZATION_RECEIPT_SCHEMA
 
@@ -1235,6 +1408,9 @@ class MaterializationReceipt:
     board_cid: str = ""
     revision: int = 0
     reasons: tuple[str, ...] = ()
+    evidence: str = FINDING_TASKBOARD_EVIDENCE
+    goal_id: str = DEFAULT_GOAL_ID
+    goal_lineage: tuple[str, ...] = DEFAULT_GOAL_LINEAGE
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -1277,6 +1453,26 @@ class MaterializationReceipt:
         object.__setattr__(
             self, "reasons", _strings(self.reasons, field_name="reasons")
         )
+        evidence = _text(self.evidence, field_name="evidence")
+        if evidence != FINDING_TASKBOARD_EVIDENCE:
+            raise FindingTaskIntegrityError(
+                f"receipt evidence must be {FINDING_TASKBOARD_EVIDENCE!r}"
+            )
+        object.__setattr__(self, "evidence", evidence)
+        object.__setattr__(
+            self,
+            "goal_id",
+            _optional_text(self.goal_id, field_name="goal_id")
+            or DEFAULT_GOAL_ID,
+        )
+        object.__setattr__(
+            self,
+            "goal_lineage",
+            _normalize_goal_lineage(
+                self.goal_lineage,
+                goal_id=self.goal_id,
+            ),
+        )
 
     @property
     def receipt_cid(self) -> str:
@@ -1293,6 +1489,10 @@ class MaterializationReceipt:
             "board_cid": self.board_cid,
             "revision": self.revision,
             "reasons": self.reasons,
+            "evidence": self.evidence,
+            "evidence_terms": list(FINDING_TASKBOARD_G101_EVIDENCE_TERMS),
+            "goal_id": self.goal_id,
+            "goal_lineage": list(self.goal_lineage),
             "authorizes_repair": PROJECTION_AUTHORIZES_REPAIR,
             "is_completion_evidence": PROJECTION_IS_COMPLETION_EVIDENCE,
         }
@@ -1511,6 +1711,8 @@ def build_repair_task(
         board_namespace=selected.board_namespace,
         tree_id=record.tree_id,
         policy_revision=record.policy_revision,
+        parent_goal_id=selected.parent_goal_id,
+        goal_lineage=selected.goal_lineage,
         supersedes_task_ids=tuple(supersedes_task_ids),
     )
 
@@ -1541,6 +1743,10 @@ def _can_coalesce_repair_tasks(
     if normalize_identity_text(left.goal_id) != normalize_identity_text(
         right.goal_id
     ):
+        return False
+    if tuple(
+        normalize_identity_text(item) for item in left.goal_lineage
+    ) != tuple(normalize_identity_text(item) for item in right.goal_lineage):
         return False
     if normalize_identity_text(left.root_cause_family) != normalize_identity_text(
         right.root_cause_family
@@ -1693,6 +1899,8 @@ def coalesce_repair_tasks(
             board_namespace=anchor.board_namespace,
             tree_id=anchor.tree_id,
             policy_revision=anchor.policy_revision,
+            parent_goal_id=anchor.parent_goal_id,
+            goal_lineage=anchor.goal_lineage,
             supersedes_task_ids=tuple(
                 sorted(
                     {
@@ -1727,6 +1935,8 @@ def project_board_json(snapshot: BoardSnapshot) -> dict[str, Any]:
     payload = snapshot.to_dict()
     payload["schema"] = PROJECTION_SCHEMA
     payload["projection_kind"] = "json"
+    payload["evidence"] = FINDING_TASKBOARD_EVIDENCE
+    payload["evidence_terms"] = list(FINDING_TASKBOARD_G101_EVIDENCE_TERMS)
     payload["authorizes_repair"] = PROJECTION_AUTHORIZES_REPAIR
     payload["is_completion_evidence"] = PROJECTION_IS_COMPLETION_EVIDENCE
     raw = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode(
@@ -1752,6 +1962,9 @@ def project_board_markdown(
         f"- revision: {snapshot.revision}",
         f"- policy_id: {snapshot.policy_id or 'unset'}",
         f"- tree_id: {snapshot.tree_id or 'unset'}",
+        f"- goal_id: {snapshot.goal_id}",
+        f"- goal_lineage: {', '.join(snapshot.goal_lineage)}",
+        f"- evidence: {FINDING_TASKBOARD_EVIDENCE}",
         f"- executable_tasks: {len(snapshot.executable_tasks)}",
         f"- reviews: {len(snapshot.reviews)}",
         f"- authorizes_repair: {str(PROJECTION_AUTHORIZES_REPAIR).lower()}",
@@ -1767,6 +1980,8 @@ def project_board_markdown(
                 f"### {task.task_id} {task.title}",
                 "",
                 f"- goal_id: {task.goal_id}",
+                f"- parent_goal_id: {task.parent_goal_id or 'unset'}",
+                f"- goal_lineage: {', '.join(task.goal_lineage)}",
                 f"- root_cause_family: {task.root_cause_family}",
                 f"- merge_fate: {task.merge_fate}",
                 f"- conflict_domain: {task.conflict_domain}",
@@ -1827,6 +2042,10 @@ def project_board_duckdb_rows(
                 "record_id": task.task_id,
                 "record_cid": task.task_cid,
                 "goal_id": task.goal_id,
+                "parent_goal_id": task.parent_goal_id,
+                "goal_lineage_json": json.dumps(
+                    list(task.goal_lineage), sort_keys=True
+                ),
                 "root_cause_family": task.root_cause_family,
                 "merge_fate": task.merge_fate,
                 "conflict_domain": task.conflict_domain,
@@ -1857,6 +2076,7 @@ def project_board_duckdb_rows(
                 "executable": True,
                 "board_namespace": snapshot.board_namespace,
                 "board_revision": snapshot.revision,
+                "evidence": FINDING_TASKBOARD_EVIDENCE,
                 "authorizes_repair": PROJECTION_AUTHORIZES_REPAIR,
                 "is_completion_evidence": PROJECTION_IS_COMPLETION_EVIDENCE,
             }
@@ -1868,6 +2088,8 @@ def project_board_duckdb_rows(
                 "record_id": review.review_id,
                 "record_cid": review.review_cid,
                 "goal_id": review.goal_id,
+                "parent_goal_id": "",
+                "goal_lineage_json": "[]",
                 "root_cause_family": review.root_cause_family,
                 "merge_fate": "",
                 "conflict_domain": "",
@@ -1892,6 +2114,7 @@ def project_board_duckdb_rows(
                 "executable": False,
                 "board_namespace": snapshot.board_namespace,
                 "board_revision": snapshot.revision,
+                "evidence": FINDING_TASKBOARD_EVIDENCE,
                 "authorizes_repair": PROJECTION_AUTHORIZES_REPAIR,
                 "is_completion_evidence": PROJECTION_IS_COMPLETION_EVIDENCE,
                 "reasons_json": json.dumps(list(review.reasons), sort_keys=True),
@@ -1946,11 +2169,27 @@ def project_board_sarif_links(
         "board_namespace": snapshot.board_namespace,
         "board_cid": snapshot.board_cid,
         "revision": snapshot.revision,
+        "goal_id": snapshot.goal_id,
+        "goal_lineage": list(snapshot.goal_lineage),
+        "evidence": FINDING_TASKBOARD_EVIDENCE,
+        "evidence_terms": list(FINDING_TASKBOARD_G101_EVIDENCE_TERMS),
         "links": links,
         "authorizes_repair": PROJECTION_AUTHORIZES_REPAIR,
         "is_completion_evidence": PROJECTION_IS_COMPLETION_EVIDENCE,
         "sarif_is_diagnostic_only": True,
     }
+
+
+def finding_taskboard_evidence_terms() -> tuple[str, ...]:
+    """Return the closed VFS-G101 evidence terms covered by this taskboard.
+
+    Proves that the second repair taskboard exists as a first-class,
+    content-addressed artifact (``vfs/finding-taskboard@1``) that binds
+    exact outputs, goal lineage, and stable identity without granting
+    report-driven edit authority.
+    """
+
+    return FINDING_TASKBOARD_G101_EVIDENCE_TERMS
 
 
 # ---------------------------------------------------------------------------
@@ -2068,6 +2307,9 @@ class FindingTaskSource:
                 policy_id=self.policy.policy_id,
                 tree_id=self._tree_id,
                 revision=self._revision,
+                goal_id=self.policy.goal_id,
+                goal_lineage=self.policy.goal_lineage,
+                evidence=FINDING_TASKBOARD_EVIDENCE,
             )
 
     def materialize(
@@ -2311,6 +2553,9 @@ class FindingTaskSource:
             board_cid=snapshot.board_cid,
             revision=self._revision,
             reasons=tuple(sorted(set(reasons))),
+            evidence=FINDING_TASKBOARD_EVIDENCE,
+            goal_id=self.policy.goal_id,
+            goal_lineage=self.policy.goal_lineage,
         )
 
     def _next_task_index(self) -> int:
@@ -2388,9 +2633,14 @@ __all__ = [
     "DEFAULT_CONTEXT_CEILING_BYTES",
     "DEFAULT_CONTEXT_CEILING_TOKENS",
     "DEFAULT_GOAL_ID",
+    "DEFAULT_GOAL_LINEAGE",
+    "DEFAULT_PARENT_GOAL_ID",
+    "DEFAULT_ROOT_GOAL_ID",
     "DEFAULT_RESOURCE_CLASS",
     "DEFAULT_TASK_PREFIX",
     "DEFAULT_TOKEN_CLASS",
+    "FINDING_TASKBOARD_EVIDENCE",
+    "FINDING_TASKBOARD_G101_EVIDENCE_TERMS",
     "FINDING_TASK_RECORD_SCHEMA",
     "FINDING_TASK_SOURCE_VERSION",
     "LEDGER_VERSION",
@@ -2418,6 +2668,7 @@ __all__ = [
     "build_review_record",
     "classify_finding_for_task",
     "coalesce_repair_tasks",
+    "finding_taskboard_evidence_terms",
     "materialize_finding_tasks",
     "project_board_duckdb_rows",
     "project_board_json",

@@ -1,4 +1,8 @@
-"""Tests for stable repair task source from admitted findings (VFS-031)."""
+"""Tests for stable repair task source from admitted findings (VFS-031 / VFS-050).
+
+Covers VFS-G101 evidence ``vfs/finding-taskboard@1``: goal lineage, stable
+identity, and fail-closed projections that never authorize edits.
+"""
 
 from __future__ import annotations
 
@@ -18,16 +22,23 @@ from ipfs_accelerate_py.agent_supervisor.finding_task_source import (
     DEFAULT_BOARD_NAMESPACE,
     DEFAULT_CONTEXT_CEILING_BYTES,
     DEFAULT_GOAL_ID,
+    DEFAULT_GOAL_LINEAGE,
+    DEFAULT_PARENT_GOAL_ID,
     DEFAULT_RESOURCE_CLASS,
+    DEFAULT_ROOT_GOAL_ID,
+    FINDING_TASKBOARD_EVIDENCE,
+    FINDING_TASKBOARD_G101_EVIDENCE_TERMS,
     FINDING_TASK_SOURCE_VERSION,
     PROJECTION_AUTHORIZES_REPAIR,
     PROJECTION_IS_COMPLETION_EVIDENCE,
     BoardSnapshot,
     FindingTaskAuthorityError,
+    FindingTaskIntegrityError,
     FindingTaskSource,
     FindingTaskSourceError,
     FindingTaskSourcePolicy,
     MaterializationOutcome,
+    MaterializationReceipt,
     RepairTaskRecord,
     ReviewRecord,
     TaskDisposition,
@@ -35,6 +46,7 @@ from ipfs_accelerate_py.agent_supervisor.finding_task_source import (
     build_review_record,
     classify_finding_for_task,
     coalesce_repair_tasks,
+    finding_taskboard_evidence_terms,
     materialize_finding_tasks,
     project_board_duckdb_rows,
     project_board_json,
@@ -149,6 +161,28 @@ def test_projection_authority_flags_fail_closed() -> None:
     assert FINDING_TASK_SOURCE_VERSION == 1
 
 
+def test_finding_taskboard_evidence_term_is_bound() -> None:
+    """Prove vfs/finding-taskboard@1 is the closed VFS-G101 evidence term."""
+
+    assert FINDING_TASKBOARD_EVIDENCE == "vfs/finding-taskboard@1"
+    assert FINDING_TASKBOARD_G101_EVIDENCE_TERMS == ("vfs/finding-taskboard@1",)
+    assert finding_taskboard_evidence_terms() == (
+        FINDING_TASKBOARD_EVIDENCE,
+    )
+    assert finding_taskboard_evidence_terms() == (
+        "vfs/finding-taskboard@1",
+    )
+    assert DEFAULT_GOAL_ID == "VFS-G101"
+    assert DEFAULT_PARENT_GOAL_ID == "VFS-G100"
+    assert DEFAULT_ROOT_GOAL_ID == "VFS-G000"
+    assert DEFAULT_GOAL_LINEAGE == (
+        "VFS-G000",
+        "VFS-G100",
+        "VFS-G101",
+    )
+    assert DEFAULT_GOAL_LINEAGE[-1] == DEFAULT_GOAL_ID
+
+
 # ---------------------------------------------------------------------------
 # Classification
 # ---------------------------------------------------------------------------
@@ -258,6 +292,9 @@ def test_repair_task_binds_required_fields() -> None:
     task = build_repair_task(finding, task_index=1)
     assert task.executable is True
     assert task.goal_id == DEFAULT_GOAL_ID
+    assert task.parent_goal_id == DEFAULT_PARENT_GOAL_ID
+    assert task.goal_lineage == DEFAULT_GOAL_LINEAGE
+    assert task.goal_lineage[-1] == task.goal_id
     assert task.root_cause_family == "error-map-mismatch"
     assert task.outputs
     assert task.symbols == ("pkg.api.call",)
@@ -276,10 +313,15 @@ def test_repair_task_binds_required_fields() -> None:
     assert task.task_cid
     assert task.identity.canonical_task_key
     assert task.board_namespace == DEFAULT_BOARD_NAMESPACE
+    payload = task.to_dict()
+    assert payload["evidence"] == FINDING_TASKBOARD_EVIDENCE
+    assert payload["goal_lineage"] == list(DEFAULT_GOAL_LINEAGE)
+    assert payload["parent_goal_id"] == DEFAULT_PARENT_GOAL_ID
 
     restored = RepairTaskRecord.from_dict(task.to_dict())
     assert restored.task_cid == task.task_cid
     assert restored.semantic_key == task.semantic_key
+    assert restored.goal_lineage == task.goal_lineage
 
 
 def test_review_record_is_non_executable() -> None:
@@ -318,11 +360,19 @@ def test_materialize_fresh_admitted_findings_creates_tasks(
     assert receipt.outcome is MaterializationOutcome.CREATED
     assert receipt.created_task_ids
     assert not receipt.review_ids
+    assert receipt.evidence == FINDING_TASKBOARD_EVIDENCE
+    assert receipt.goal_id == DEFAULT_GOAL_ID
+    assert receipt.goal_lineage == DEFAULT_GOAL_LINEAGE
+    assert receipt.to_dict()["evidence"] == "vfs/finding-taskboard@1"
+    assert "vfs/finding-taskboard@1" in receipt.to_dict()["evidence_terms"]
     snapshot = source.snapshot()
     assert len(snapshot.executable_tasks) == 1
+    assert snapshot.evidence == FINDING_TASKBOARD_EVIDENCE
+    assert snapshot.goal_lineage == DEFAULT_GOAL_LINEAGE
     task = snapshot.executable_tasks[0]
     assert task.root_cause_family == finding.root_cause_family
     assert finding.finding_cid in task.finding_cids
+    assert task.goal_lineage == DEFAULT_GOAL_LINEAGE
     assert source.task_for_finding(finding.finding_cid) is not None
 
 
@@ -528,24 +578,36 @@ def test_json_markdown_duckdb_sarif_projections_have_no_authority(
     assert json_proj["authorizes_repair"] is False
     assert json_proj["is_completion_evidence"] is False
     assert json_proj["executable_count"] >= 1
+    assert json_proj["evidence"] == FINDING_TASKBOARD_EVIDENCE
+    assert json_proj["evidence_terms"] == ["vfs/finding-taskboard@1"]
+    assert json_proj["goal_lineage"] == list(DEFAULT_GOAL_LINEAGE)
 
     md = project_board_markdown(snapshot)
     assert "authorizes_repair: false" in md
     assert "is_completion_evidence: false" in md
+    assert "evidence: vfs/finding-taskboard@1" in md
+    assert "goal_lineage: VFS-G000, VFS-G100, VFS-G101" in md
     assert finding.root_cause_family in md
 
     rows = project_board_duckdb_rows(snapshot)
     assert rows
     assert all(row["authorizes_repair"] is False for row in rows)
     assert all(row["is_completion_evidence"] is False for row in rows)
+    assert all(row["evidence"] == FINDING_TASKBOARD_EVIDENCE for row in rows)
     kinds = {row["kind"] for row in rows}
     assert "repair_task" in kinds
     assert "review" in kinds
+    repair_rows = [row for row in rows if row["kind"] == "repair_task"]
+    assert all(
+        json.loads(row["goal_lineage_json"]) == list(DEFAULT_GOAL_LINEAGE)
+        for row in repair_rows
+    )
 
     sarif_links = project_board_sarif_links(snapshot)
     assert sarif_links["authorizes_repair"] is False
     assert sarif_links["is_completion_evidence"] is False
     assert sarif_links["sarif_is_diagnostic_only"] is True
+    assert sarif_links["evidence"] == "vfs/finding-taskboard@1"
     assert any(
         finding.finding_cid in link["finding_cids"]
         for link in sarif_links["links"]
@@ -667,3 +729,117 @@ def test_json_projection_is_byte_canonical(tmp_path: Path) -> None:
     a = project_board_json(source.snapshot())
     b = project_board_json(source.snapshot())
     assert json.dumps(a, sort_keys=True) == json.dumps(b, sort_keys=True)
+
+
+def test_board_snapshot_binds_finding_taskboard_evidence() -> None:
+    snapshot = BoardSnapshot()
+    payload = snapshot.to_dict()
+    assert payload["evidence"] == "vfs/finding-taskboard@1"
+    assert payload["evidence_terms"] == ["vfs/finding-taskboard@1"]
+    assert payload["goal_id"] == DEFAULT_GOAL_ID
+    assert payload["goal_lineage"] == list(DEFAULT_GOAL_LINEAGE)
+    assert payload["authorizes_repair"] is False
+    assert payload["is_completion_evidence"] is False
+
+    restored = BoardSnapshot.from_dict(payload)
+    assert restored.evidence == FINDING_TASKBOARD_EVIDENCE
+    assert restored.board_cid == snapshot.board_cid
+
+    with pytest.raises(FindingTaskIntegrityError):
+        BoardSnapshot.from_dict({**payload, "evidence": "vfs/forged@1"})
+
+
+def test_materialization_receipt_binds_finding_taskboard_evidence() -> None:
+    receipt = MaterializationReceipt(outcome=MaterializationOutcome.NO_OP)
+    payload = receipt.to_dict()
+    assert payload["evidence"] == "vfs/finding-taskboard@1"
+    assert payload["evidence_terms"] == list(
+        FINDING_TASKBOARD_G101_EVIDENCE_TERMS
+    )
+    assert payload["goal_lineage"] == list(DEFAULT_GOAL_LINEAGE)
+    assert payload["authorizes_repair"] is False
+    assert payload["is_completion_evidence"] is False
+
+    with pytest.raises(FindingTaskIntegrityError):
+        MaterializationReceipt(
+            outcome=MaterializationOutcome.CREATED,
+            evidence="vfs/forged@1",
+        )
+
+
+def test_goal_lineage_required_on_executable_tasks() -> None:
+    task = build_repair_task(broken_finding())
+    assert task.goal_lineage
+    assert task.goal_lineage[-1] == task.goal_id
+    assert DEFAULT_PARENT_GOAL_ID in task.goal_lineage
+    # Reject lineage that does not terminate at the task goal.
+    with pytest.raises(FindingTaskSourceError):
+        RepairTaskRecord(
+            **{
+                **{
+                    key: getattr(task, key)
+                    for key in (
+                        "task_id",
+                        "title",
+                        "goal_id",
+                        "root_cause_family",
+                        "outputs",
+                        "symbols",
+                        "effects",
+                        "dependencies",
+                        "conflict_domain",
+                        "validation_plan",
+                        "proof_plan",
+                        "finding_cids",
+                        "provenance_cids",
+                        "risk_millionths",
+                        "resource_class",
+                        "token_class",
+                        "context_ceiling_bytes",
+                        "context_ceiling_tokens",
+                        "merge_fate",
+                        "semantic_key",
+                    )
+                },
+                "goal_lineage": ("VFS-G000", "VFS-G100"),
+            }
+        )
+
+
+def test_second_repair_taskboard_does_not_grant_edit_authority(
+    tmp_path: Path,
+) -> None:
+    """VFS-G101 board materializes work without report-driven edit authority."""
+
+    finding = broken_finding()
+    snapshot, receipt = materialize_finding_tasks(
+        [finding], root=tmp_path / "board"
+    )
+    assert receipt.evidence == "vfs/finding-taskboard@1"
+    assert snapshot.evidence == "vfs/finding-taskboard@1"
+    assert finding_taskboard_evidence_terms() == ("vfs/finding-taskboard@1",)
+    assert snapshot.executable_tasks
+    task = snapshot.executable_tasks[0]
+    # One root-cause family, exact outputs, effects, validation/proof, budget,
+    # goal lineage, dependencies field, and stable identity.
+    assert task.root_cause_family
+    assert task.outputs
+    assert task.effects
+    assert task.validation_plan
+    assert task.proof_plan
+    assert task.context_ceiling_bytes > 0
+    assert task.goal_lineage == DEFAULT_GOAL_LINEAGE
+    assert isinstance(task.dependencies, tuple)
+    assert task.task_cid
+    assert task.identity.canonical_task_cid
+    board = snapshot.to_dict()
+    assert board["authorizes_repair"] is False
+    assert board["is_completion_evidence"] is False
+    # Diagnostic projections still carry the evidence term but never authorize.
+    for proj in (
+        project_board_json(snapshot),
+        project_board_sarif_links(snapshot),
+    ):
+        assert proj["evidence"] == "vfs/finding-taskboard@1"
+        assert proj["authorizes_repair"] is False
+        assert proj["is_completion_evidence"] is False
