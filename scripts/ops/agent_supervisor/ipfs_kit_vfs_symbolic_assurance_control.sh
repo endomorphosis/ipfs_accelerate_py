@@ -37,11 +37,14 @@ choose_python() {
   local candidate
   if [[ -n "${IPFS_ACCELERATE_AGENT_PYTHON:-}" ]]; then
     candidate="${IPFS_ACCELERATE_AGENT_PYTHON}"
-    if [[ -x "${candidate}" ]]; then
+    if [[ -x "${candidate}" ]] && \
+      PYTHONDONTWRITEBYTECODE=1 "${candidate}" -c 'import duckdb' \
+        >/dev/null 2>&1
+    then
       printf '%s\n' "${candidate}"
       return 0
     fi
-    echo "Configured IPFS_ACCELERATE_AGENT_PYTHON is not executable: ${candidate}" >&2
+    echo "Configured IPFS_ACCELERATE_AGENT_PYTHON cannot import DuckDB: ${candidate}" >&2
     return 2
   fi
   for candidate in \
@@ -49,12 +52,24 @@ choose_python() {
     "${REPO_ROOT}/../.venv/bin/python" \
     "${REPO_ROOT}/../../.venv/bin/python"
   do
-    if [[ -x "${candidate}" ]]; then
+    if [[ -x "${candidate}" ]] && \
+      PYTHONDONTWRITEBYTECODE=1 "${candidate}" -c 'import duckdb' \
+        >/dev/null 2>&1
+    then
       printf '%s\n' "${candidate}"
       return 0
     fi
   done
-  command -v python3
+  candidate="$(command -v python3)"
+  if [[ -x "${candidate}" ]] && \
+    PYTHONDONTWRITEBYTECODE=1 "${candidate}" -c 'import duckdb' \
+      >/dev/null 2>&1
+  then
+    printf '%s\n' "${candidate}"
+    return 0
+  fi
+  echo "No Python interpreter with a working DuckDB extension was found" >&2
+  return 2
 }
 
 readonly PYTHON_BIN="$(choose_python)"
@@ -169,6 +184,8 @@ provider_preflight() {
     "${PYTHON_BIN}" - <<'PY'
 import json
 import shutil
+import sys
+import duckdb
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     _grok_binary,
     _grok_cli_available,
@@ -176,8 +193,10 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
 
 result = {
     "codex": shutil.which("codex") or "",
+    "duckdb": duckdb.__version__,
     "grok": _grok_binary() or "",
     "grok_authenticated": bool(_grok_cli_available()),
+    "python": sys.executable,
 }
 print(json.dumps(result, indent=2, sort_keys=True))
 if not result["codex"] or not result["grok"] or not result["grok_authenticated"]:
@@ -314,7 +333,8 @@ launch_lane() {
       "${args[@]}" \
       --log-level INFO \
       > "${LOG_DIR}/${lane}_supervisor.log" 2>&1 \
-      < /dev/null &
+      < /dev/null \
+      9>&- &
     printf '%s\n' "$!" > "${pid_path}"
   )
 }
@@ -325,6 +345,8 @@ verify_lane_started() {
   local status_path
   local daemon_pid
   local attempt
+  local healthy_observations=0
+  local status
   pid="$(lane_pid "${lane}")"
   status_path="$(status_file_for_lane "${lane}")"
   for attempt in $(seq 1 55); do
@@ -334,7 +356,7 @@ verify_lane_started() {
       return 1
     fi
     if [[ -s "${status_path}" ]]; then
-      daemon_pid="$(
+      read -r status daemon_pid < <(
         "${PYTHON_BIN}" - "${status_path}" <<'PY'
 import json
 import sys
@@ -344,12 +366,21 @@ try:
     value = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
 except (OSError, ValueError):
     value = {}
-print(value.get("daemon_pid") or "")
+print(value.get("status") or "", value.get("daemon_pid") or "")
 PY
-      )"
-      if [[ "${daemon_pid}" =~ ^[1-9][0-9]*$ ]] && kill -0 "${daemon_pid}" 2>/dev/null; then
-        echo "${lane} supervisor PID ${pid}, managed daemon PID ${daemon_pid}"
-        return 0
+      )
+      if [[ "${status}" == "running" ]] && \
+        [[ "${daemon_pid}" =~ ^[1-9][0-9]*$ ]] && \
+        kill -0 "${daemon_pid}" 2>/dev/null && \
+        [[ -s "${STATE_DIR}/${lane}_task_state.json" ]]
+      then
+        healthy_observations=$((healthy_observations + 1))
+        if (( healthy_observations >= 3 )); then
+          echo "${lane} supervisor PID ${pid}, managed daemon PID ${daemon_pid}"
+          return 0
+        fi
+      else
+        healthy_observations=0
       fi
     fi
     sleep 1
@@ -415,14 +446,22 @@ for lane in ("vfs_grok", "vfs_codex"):
         status = json.loads(status_path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         status = {}
+    daemon_pid = status.get("daemon_pid")
+    daemon_alive = False
+    if isinstance(daemon_pid, int) and daemon_pid > 0:
+        try:
+            os.kill(daemon_pid, 0)
+            daemon_alive = True
+        except OSError:
+            pass
     result["lanes"][lane] = {
         "supervisor_pid": supervisor_pid or None,
         "supervisor_alive": supervisor_alive,
         "status_path": str(status_path),
         "status": status.get("status"),
         "updated_at": status.get("updated_at"),
-        "daemon_pid": status.get("daemon_pid"),
-        "daemon_pid_alive": status.get("daemon_pid_alive"),
+        "daemon_pid": daemon_pid,
+        "daemon_pid_alive": daemon_alive,
         "active_task_id": status.get("active_task_id"),
         "last_agentic_maintenance_phase": status.get(
             "last_agentic_maintenance_phase"
