@@ -15529,6 +15529,34 @@ def test_implementation_daemon_uses_grok_window_and_bounded_reserve_env(
     assert resolution.reserved_output_tokens == 2_048
     assert resolution.reserved_tool_tokens == 1_024
     assert resolution.effective_input_limit == 4_096
+    authority = result.capsule.authority["implementation_context_budget"]
+    assert authority["source"] == "task_metadata"
+    assert authority["task_max_input_tokens"] == 4_096
+
+
+def test_implementation_context_budget_rehydrates_budget_protocol(
+    tmp_path,
+):
+    configured = ContextBudget(max_input_tokens=1_234)
+
+    class BudgetProxy:
+        def to_dict(self):
+            return configured.to_dict()
+
+    daemon = TodoImplementationDaemon(
+        todo_path=tmp_path / "todo.md",
+        state_path=tmp_path / "state" / "task_state.json",
+        strategy_path=tmp_path / "state" / "strategy.json",
+        events_path=tmp_path / "state" / "events.jsonl",
+        repo_root=tmp_path,
+        task_header_prefix="## ACCEL-",
+        implementation_context_budget=BudgetProxy(),
+    )
+
+    result = daemon._base_implementation_context_budget()
+
+    assert isinstance(result, implementation_daemon_module.ContextBudget)
+    assert result.max_input_tokens == 1_234
 
 
 def test_retry_repair_context_authorizes_declared_validation_targets(tmp_path):

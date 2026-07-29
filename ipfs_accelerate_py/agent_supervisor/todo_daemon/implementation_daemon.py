@@ -5924,10 +5924,9 @@ class PortalImplementationDaemon:
                 resolved_statuses[task.task_id] = "blocked"
                 continue
             if task.task_id in shared_active_merge_task_ids:
-                # Work owned by another lane is externally reserved. Keep the
-                # local projection waiting; ``merge-queued`` is reserved for
-                # this daemon's own validated candidate below.
-                resolved_statuses[task.task_id] = "waiting"
+                # Pending or processing on the shared merge train remains
+                # merge-queued in every lane's projection.
+                resolved_statuses[task.task_id] = "merge-queued"
                 continue
             if task.task_id in transient_merge_deferral_task_ids:
                 resolved_statuses[task.task_id] = "waiting"
@@ -21647,6 +21646,8 @@ class PortalImplementationDaemon:
             )
         if isinstance(configured, ContextBudget):
             return configured
+        if hasattr(configured, "to_dict"):
+            configured = configured.to_dict()
         return ContextBudget.from_dict(configured)
 
     def _configured_implementation_provider_context_window(
@@ -23184,13 +23185,18 @@ class PortalImplementationDaemon:
         provider_window, configured_budget, prompt_byte_limit = (
             self._implementation_provider_context_window_for_task(task)
         )
+        task_context_token_limit = self._task_context_token_limit(task)
         context_budget_authority = {
             "source": (
                 "task_metadata"
-                if prompt_byte_limit is not None
+                if (
+                    prompt_byte_limit is not None
+                    or task_context_token_limit is not None
+                )
                 else "supervisor_default"
             ),
             "max_provider_input_bytes": prompt_byte_limit,
+            "task_max_input_tokens": task_context_token_limit,
             "provider_context_window": provider_window,
             "supervisor_max_input_tokens": (
                 configured_budget.max_input_tokens
