@@ -328,6 +328,7 @@ def _seed_repo(tmp_path: Path) -> tuple[Path, Path, Path]:
 - Evidence: VoiceCommandSurface.route_click, missing_gesture_policy
 - Outputs: src, tests
 - Validation: test -f objective-heap.md
+- Acceptance: The glasses control bridge proof is current and validated.
 - Gap task: Add the missing gesture policy proof.
 """,
         encoding="utf-8",
@@ -11826,6 +11827,7 @@ def test_implementation_supervisor_defers_codebase_scan_when_objective_refills(t
 - Evidence: missing_runtime_integration_contract
 - Outputs: src/runtime.py, tests
 - Validation: test -f objective-heap.md
+- Acceptance: The runtime integration contract is current and validated.
 """,
         encoding="utf-8",
     )
@@ -12512,6 +12514,7 @@ def test_implementation_supervisor_refines_objective_goals_before_generating_tod
 - Evidence: RuntimeBridge.dispatch, missing_runtime_contract
 - Outputs: src/runtime_bridge.py, tests
 - Validation: test -f objective-heap.md
+- Acceptance: Runtime bridge dispatch has a current validated contract proof.
 - Gap task: Add the missing runtime contract proof.
 """,
         encoding="utf-8",
@@ -15059,6 +15062,7 @@ def test_objective_daemon_creates_tracking_document_and_graph(tmp_path):
         "validation_strategy",
     }
     assert "missing_meta_display_bridge" in objective_path.read_text(encoding="utf-8")
+    assert "- Acceptance:" in objective_path.read_text(encoding="utf-8")
     assert "## ACCEL-001 Close objective gap" in todo_path.read_text(encoding="utf-8")
 
 
@@ -15395,6 +15399,7 @@ def test_objective_daemon_seeds_interoperability_goals_from_submodules(tmp_path)
     assert "- Package manifests:" in objective_text
     assert "- Interface descriptors:" in objective_text
     assert "- MCP descriptors:" in objective_text
+    assert "- Acceptance:" in objective_text
     assert "tests/integration/test_hallucinate_app_swissknife_interop.py" in objective_text
     assert "hallucinate_app/interfaces/control_surface.idl" in objective_text
     assert "swissknife/mcp/orb_descriptor.json" in objective_text
