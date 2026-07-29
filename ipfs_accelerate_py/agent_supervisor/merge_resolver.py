@@ -1091,10 +1091,13 @@ def build_merge_prompt(
         "Keep changes scoped to the task and conflict resolution.",
         "Run the task validation after resolving the conflict.",
         "Commit the merge resolution in the owning repository or submodule.",
-        "For submodule gitlink conflicts (mode 160000), prefer the newer commit reference; "
-        "after resolving, run 'git submodule update --init --recursive' for affected paths.",
-        "If a conflict involves recursive submodule references, resolve the innermost submodule first, "
-        "then work outward to avoid circular dependency issues.",
+        "For submodule gitlink conflicts (mode 160000), prefer the newer commit reference and restore "
+        "only each exact affected gitlink from its immediate parent repository with "
+        "'git -c submodule.recurse=false submodule update --init -- <exact-path>'; never run a "
+        "recursive or repository-wide submodule update.",
+        "Do not initialize nested submodules merely because an ancestor gitlink is affected. Initialize "
+        "a nested gitlink only when that exact nested path is itself conflicted or explicitly declared "
+        "in the merge event, resolving declared nested gitlinks innermost first and working outward.",
         completion_rule,
     ]
     if extra_rules:

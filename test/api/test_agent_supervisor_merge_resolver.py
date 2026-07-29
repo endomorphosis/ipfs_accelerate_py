@@ -6,6 +6,7 @@ from pathlib import Path
 
 from ipfs_accelerate_py.agent_supervisor.merge_resolver import (
     active_merge_matches_payload,
+    build_merge_prompt,
     latest_failed_merge_event,
     resolver_payload,
     validate_resolved_paths,
@@ -85,6 +86,40 @@ def test_resolver_payload_targets_recorded_merge_workspace(tmp_path: Path) -> No
     assert payload["implementation_commit"] == "abc123"
     assert len(payload["conflict_fingerprint"]) == 64
     assert f"Repository: {merge_workspace.resolve()}" in payload["prompt"]
+
+
+def test_merge_prompt_restores_only_exact_affected_gitlinks_without_recursion(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+
+    prompt = build_merge_prompt(
+        event={
+            "type": "merge_finished",
+            "task_id": "REF-GITLINK",
+            "merge_result": {
+                "attempted": True,
+                "merged": False,
+                "reason": "submodule_gitlink_conflict",
+                "dirty_paths": ["vendor/affected"],
+            },
+        },
+        repo_root=repo,
+    )
+
+    assert (
+        "git -c submodule.recurse=false submodule update --init -- <exact-path>"
+        in prompt
+    )
+    assert "git submodule update --init --recursive" not in prompt
+    assert "never run a recursive or repository-wide submodule update" in prompt
+    assert (
+        "only when that exact nested path is itself conflicted or explicitly declared"
+        in prompt
+    )
+    assert "innermost first and working outward" in prompt
 
 
 def test_active_merge_must_match_recorded_branch_identity(tmp_path: Path) -> None:
