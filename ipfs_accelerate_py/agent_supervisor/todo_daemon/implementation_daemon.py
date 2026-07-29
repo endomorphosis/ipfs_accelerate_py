@@ -14173,6 +14173,123 @@ class PortalImplementationDaemon:
             "error": "proposal_candidate_binding_failed",
         }
 
+    def _run_clean_candidate_validation(
+        self,
+        workspace_path: Path,
+        task: PortalTask,
+        log_path: Path,
+        *,
+        state: PortalTaskState | None,
+        baseline_ref: str,
+    ) -> dict[str, Any] | None:
+        """Validate an unchanged candidate before the empty-patch gate.
+
+        A provider may discover that the merge target already satisfies a
+        retried task. In that case there is no patch for proposal validation to
+        authorize, but the task's declared validation must still run uncached.
+        Returning ``None`` delegates ordinary changed candidates and collection
+        failures to the strict proposal path.
+        """
+
+        if not task.validation:
+            return None
+        try:
+            self._stage_declared_ignored_outputs(workspace_path, task)
+            entries, submodule_expansions = (
+                self._collect_proposal_candidate_diff(
+                    workspace_path,
+                    baseline_ref=baseline_ref,
+                    scope_paths=self._proposal_scope_paths(task),
+                )
+            )
+        except (OSError, RuntimeError, ValueError):
+            return None
+        if entries or submodule_expansions:
+            return None
+
+        result = self._run_validation_commands(
+            workspace_path,
+            task,
+            log_path,
+            state=state,
+            force_uncached=True,
+        )
+        proposal_gate = {
+            "attempted": False,
+            "accepted": True,
+            "reason": "validated_no_change_candidate",
+            "changed_paths": [],
+            "reason_codes": [],
+        }
+        result["proposal_gate"] = proposal_gate
+        if not result.get("passed", False):
+            return result
+        if not result.get("attempted", False):
+            return {
+                **result,
+                "passed": False,
+                "returncode": PROPOSAL_VALIDATION_FAILURE_RETURN_CODE,
+                "reason": "no_change_validation_not_executed",
+            }
+
+        collection_error = ""
+        current_expansions: tuple[dict[str, Any], ...] = ()
+        try:
+            self._stage_declared_ignored_outputs(workspace_path, task)
+            current_entries, current_expansions = (
+                self._collect_proposal_candidate_diff(
+                    workspace_path,
+                    baseline_ref=baseline_ref,
+                    scope_paths=self._proposal_scope_paths(task),
+                )
+            )
+        except (OSError, RuntimeError, ValueError) as exc:
+            current_entries = ()
+            collection_error = type(exc).__name__
+
+        expected_fingerprint = self._proposal_candidate_fingerprint(())
+        current_fingerprint = (
+            self._proposal_candidate_fingerprint(current_entries)
+            if not collection_error
+            else ""
+        )
+        verified = bool(
+            not collection_error
+            and not current_entries
+            and not current_expansions
+            and current_fingerprint == expected_fingerprint
+        )
+        binding = {
+            "verified": verified,
+            "expected_fingerprint": expected_fingerprint,
+            "current_fingerprint": current_fingerprint,
+            "reason": "validated_no_change_candidate",
+        }
+        if collection_error:
+            binding["collection_error"] = collection_error
+        self._record_event(
+            (
+                "implementation_candidate_binding_verified"
+                if verified
+                else "implementation_candidate_binding_rejected"
+            ),
+            {
+                "task_id": task.task_id,
+                **binding,
+            },
+        )
+        if verified:
+            result["candidate_binding"] = binding
+            return result
+        return {
+            **result,
+            "passed": False,
+            "returncode": PROPOSAL_VALIDATION_FAILURE_RETURN_CODE,
+            "reason": "candidate_changed_during_validation",
+            "error": "proposal_candidate_binding_failed",
+            "candidate_binding": binding,
+        }
+
     def _run_validation_with_candidate_binding(
         self,
         workspace_path: Path,
@@ -14190,26 +14307,36 @@ class PortalImplementationDaemon:
         proposal-authorized fixed point can proceed to commit.
         """
 
+        result: dict[str, Any] | None = None
         if proposal_validation is None:
-            proposal_validation = self._validate_implementation_patch(
+            result = self._run_clean_candidate_validation(
+                workspace_path,
+                task,
+                log_path,
+                state=state,
+                baseline_ref=baseline_ref,
+            )
+        if result is None:
+            if proposal_validation is None:
+                proposal_validation = self._validate_implementation_patch(
+                    workspace_path,
+                    task,
+                    baseline_ref=baseline_ref,
+                )
+            result = self._run_validation_commands(
+                workspace_path,
+                task,
+                log_path,
+                state=state,
+                proposal_validation=proposal_validation,
+            )
+            result = self._verify_post_validation_candidate_binding(
                 workspace_path,
                 task,
                 baseline_ref=baseline_ref,
+                proposal_validation=proposal_validation,
+                validation_result=result,
             )
-        result = self._run_validation_commands(
-            workspace_path,
-            task,
-            log_path,
-            state=state,
-            proposal_validation=proposal_validation,
-        )
-        result = self._verify_post_validation_candidate_binding(
-            workspace_path,
-            task,
-            baseline_ref=baseline_ref,
-            proposal_validation=proposal_validation,
-            validation_result=result,
-        )
         if result.get("reason") != "candidate_changed_during_validation":
             return result
 
