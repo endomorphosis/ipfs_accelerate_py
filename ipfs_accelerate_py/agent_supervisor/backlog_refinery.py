@@ -2318,9 +2318,9 @@ def _commit_selected_dirty_paths(repo: Path, paths: Sequence[str], *, subject: s
         [
             "git",
             "-c",
-            "user.name=Agent Supervisor",
+            "user.name=Accelerator Backlog Refinery",
             "-c",
-            "user.email=agent-supervisor@example.invalid",
+            f"user.email={BACKLOG_REFINERY_AUTHOR_EMAIL}",
             "commit",
             "-m",
             subject,
@@ -5589,11 +5589,25 @@ def record_dependency_guardrail_findings(
     strategy = load_strategy(strategy_path)
     blocked_tasks = [str(item) for item in strategy.get("blocked_tasks", []) if str(item).strip()]
     seen = {str(item) for item in strategy.get("dependency_guardrail_seen_fingerprints", []) if str(item).strip()}
+    open_dependency_repair_sources: set[str] = set()
+    for task in tasks:
+        match = re.match(
+            r"^Resolve dependency guardrail for (\S+)\s*$",
+            str(getattr(task, "title", "") or "").strip(),
+        )
+        if match is None:
+            continue
+        if (
+            str(getattr(task, "status", "") or "").lower()
+            in {"complete", "completed", "done", "succeeded"}
+        ):
+            continue
+        open_dependency_repair_sources.add(match.group(1))
     records = [
         record
         for record in dependency_guardrail_records(tasks)
-        if str(record.get("fingerprint") or "") not in seen
-        and f"dependency guardrail for {record.get('source_task_id')}" not in todo_text
+        if str(record.get("source_task_id") or "")
+        not in open_dependency_repair_sources
     ][:max_findings]
     if not records:
         return []
@@ -5643,7 +5657,26 @@ def record_dependency_guardrail_findings(
         seen | {str(record.get("fingerprint") or "") for record in records if record.get("fingerprint")}
     )
     strategy["last_dependency_guardrail_at"] = utc_now()
-    strategy["dependency_guardrail_findings"] = findings
+    prior_findings = [
+        dict(item)
+        for item in strategy.get("dependency_guardrail_findings", [])
+        if isinstance(item, Mapping)
+    ]
+    findings_by_identity: dict[str, dict[str, Any]] = {}
+    for item in [*prior_findings, *findings]:
+        identity = str(item.get("fingerprint") or "").strip()
+        if not identity:
+            identity = "|".join(
+                [
+                    str(item.get("source_task_id") or "").strip(),
+                    str(item.get("follow_up_task_id") or "").strip(),
+                ]
+            )
+        if identity:
+            findings_by_identity[identity] = item
+    strategy["dependency_guardrail_findings"] = list(
+        findings_by_identity.values()
+    )
     write_json(strategy_path, strategy)
     if commit_outputs:
         generated_paths.insert(0, todo_path)
@@ -5814,6 +5847,9 @@ def release_completed_guardrail_blocks(
     todo_path: Path,
     strategy_path: Path,
     task_prefix: str = DEFAULT_TASK_ID_PREFIX,
+    commit_outputs: bool = False,
+    repo_root: Path | None = None,
+    commit_subject: str = "Agent: retire resolved guardrail tasks",
 ) -> list[dict[str, Any]]:
     """Unblock source tasks after guardrail repair or stale strategy state clears."""
 
@@ -5843,6 +5879,7 @@ def release_completed_guardrail_blocks(
     }
     strategy = load_strategy(strategy_path)
     blocked_tasks = [str(item) for item in strategy.get("blocked_tasks", []) if str(item).strip()]
+    todo_changed = False
 
     releases: list[dict[str, Any]] = []
     deduplicated_blocked_tasks = list(dict.fromkeys(blocked_tasks))
@@ -5878,6 +5915,21 @@ def release_completed_guardrail_blocks(
         for record in active_dependency_records
         if str(record.get("source_task_id") or "").strip()
     }
+    resolved_dependency_repair_tasks: dict[str, str] = {}
+    for task in tasks:
+        match = re.match(
+            r"^Resolve dependency guardrail for (\S+)\s*$",
+            str(getattr(task, "title", "") or "").strip(),
+        )
+        if match is None:
+            continue
+        source_task_id = match.group(1)
+        if (
+            str(getattr(task, "status", "") or "").lower()
+            not in {"complete", "completed", "done", "succeeded"}
+            and source_task_id not in active_dependency_sources
+        ):
+            resolved_dependency_repair_tasks[task.task_id] = source_task_id
     raw_dependency_findings = strategy.get("dependency_guardrail_findings")
     if isinstance(raw_dependency_findings, list):
         retained_dependency_findings: list[Any] = []
@@ -5915,6 +5967,7 @@ def release_completed_guardrail_blocks(
         ("dependency_guardrail", strategy.get("dependency_guardrail_findings")),
     )
     active_guardrail_sources: set[str] = set()
+    active_retry_budget_sources: set[str] = set()
     for guardrail_kind, raw_records in guardrail_groups:
         if not isinstance(raw_records, list):
             continue
@@ -5926,6 +5979,8 @@ def release_completed_guardrail_blocks(
             if not source_task_id or not follow_up_task_id:
                 continue
             active_guardrail_sources.add(source_task_id)
+            if guardrail_kind == "retry_budget":
+                active_retry_budget_sources.add(source_task_id)
             if source_task_id not in blocked_tasks:
                 continue
             if statuses.get(follow_up_task_id) != "completed":
@@ -6058,8 +6113,68 @@ def release_completed_guardrail_blocks(
         )
         if retired_task_ids:
             todo_path.write_text(todo_text, encoding="utf-8")
+            todo_changed = True
             statuses.update({task_id: "completed" for task_id in retired_task_ids})
             strategy["last_recursive_retry_repair_retired_task_ids"] = retired_task_ids
+
+    if resolved_dependency_repair_tasks:
+        todo_text, retired_task_ids = mark_task_statuses_in_todo_text(
+            todo_text,
+            list(resolved_dependency_repair_tasks),
+            task_prefix=task_prefix,
+            status="completed",
+        )
+        if retired_task_ids:
+            todo_path.write_text(todo_text, encoding="utf-8")
+            todo_changed = True
+            statuses.update({task_id: "completed" for task_id in retired_task_ids})
+            strategy["last_resolved_dependency_guardrail_task_ids"] = (
+                retired_task_ids
+            )
+            strategy["dependency_guardrail_seen_fingerprints"] = sorted(
+                active_dependency_fingerprints
+            )
+            janitor_owned_sources = {
+                str(receipt.get("task_id") or "")
+                for receipt in strategy.get("objective_task_janitor_receipts", [])
+                if isinstance(receipt, Mapping)
+                and str(receipt.get("action") or "") == "block"
+                and str(receipt.get("task_id") or "")
+            }
+            quarantined_sources = {
+                str(record.get("task_id") or "")
+                for record in strategy.get("autonomous_unstall_quarantines", [])
+                if isinstance(record, Mapping)
+                and str(record.get("task_id") or "")
+            }
+            retired_dependency_sources = {
+                resolved_dependency_repair_tasks[task_id]
+                for task_id in retired_task_ids
+                if task_id in resolved_dependency_repair_tasks
+            }
+            releasable_dependency_sources = (
+                retired_dependency_sources
+                - active_retry_budget_sources
+                - pending_retry_repair_sources
+                - janitor_owned_sources
+                - quarantined_sources
+            )
+            if releasable_dependency_sources:
+                blocked_tasks = [
+                    task_id
+                    for task_id in blocked_tasks
+                    if task_id not in releasable_dependency_sources
+                ]
+            releases.extend(
+                {
+                    "source_task_id": source_task_id,
+                    "follow_up_task_id": task_id,
+                    "guardrail_kind": "dependency_guardrail",
+                    "reason": "resolved_repair_task_retired",
+                }
+                for task_id, source_task_id in resolved_dependency_repair_tasks.items()
+                if task_id in retired_task_ids
+            )
 
     if not releases:
         return []
@@ -6067,6 +6182,15 @@ def release_completed_guardrail_blocks(
     strategy["last_guardrail_unblock_at"] = utc_now()
     strategy["guardrail_unblock_releases"] = releases
     write_json(strategy_path, strategy)
+    if commit_outputs and todo_changed:
+        commit_results = commit_generated_outputs(
+            [todo_path],
+            repo_root=repo_root or todo_path.parent,
+            subject=commit_subject,
+        )
+        if commit_results:
+            strategy["last_guardrail_unblock_commit_results"] = commit_results
+            write_json(strategy_path, strategy)
     return releases
 
 

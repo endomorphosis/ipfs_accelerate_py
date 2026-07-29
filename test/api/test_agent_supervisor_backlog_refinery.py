@@ -43,6 +43,9 @@ from ipfs_accelerate_py.agent_supervisor.backlog_refinery import (
 )
 from ipfs_accelerate_py.agent_supervisor.objective_graph import parse_goal_heap
 from ipfs_accelerate_py.agent_supervisor.dataset_store import ObjectiveDatasetStore
+from ipfs_accelerate_py.agent_supervisor.checkout_lock import (
+    BACKLOG_REFINERY_AUTHOR_EMAIL,
+)
 from ipfs_accelerate_py.agent_supervisor.wrapper_utils import agent_supervisor_namespace_paths
 from ipfs_accelerate_py.agent_supervisor.scan_receipts import (
     REFILL_SCAN_RESULT_SCHEMA_VERSION,
@@ -295,6 +298,8 @@ def test_commit_generated_dirty_outputs_commits_nested_repo_and_parent_gitlink(t
     assert result["selected_path_count"] == 3
     assert _git(nested, "log", "-1", "--pretty=%s") == "Agent: commit generated outputs"
     assert _git(repo, "log", "-1", "--pretty=%s") == "Agent: commit generated outputs"
+    assert _git(nested, "log", "-1", "--pretty=%ae") == BACKLOG_REFINERY_AUTHOR_EMAIL
+    assert _git(repo, "log", "-1", "--pretty=%ae") == BACKLOG_REFINERY_AUTHOR_EMAIL
     root_status = _git(repo, "status", "--short")
     assert "unknown.txt" in root_status
     assert "hallucinate_app" not in root_status
@@ -1888,6 +1893,135 @@ def test_backlog_refinery_dependency_guardrail_detects_dependency_cycle(tmp_path
     assert strategy["blocked_tasks"] == ["AUTO-001"]
 
 
+def test_backlog_refinery_dependency_guardrail_preserves_prior_batches(tmp_path):
+    repo = _seed_repo(tmp_path)
+    todo_path = repo / "todo.md"
+    strategy_path = repo / "state" / "strategy.json"
+    discovery_dir = repo / "data" / "agent_supervisor" / "discovery"
+    todo_path.write_text(
+        """# Agent Todos
+
+## AUTO-001 First missing prerequisite
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on: AUTO-901
+- Outputs: src/first.py
+- Validation: test -f todo.md
+- Acceptance: First blocked task.
+
+## AUTO-002 Second missing prerequisite
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on: AUTO-902
+- Outputs: src/second.py
+- Validation: test -f todo.md
+- Acceptance: Second blocked task.
+""",
+        encoding="utf-8",
+    )
+
+    first = record_dependency_guardrail_findings(
+        todo_path=todo_path,
+        strategy_path=strategy_path,
+        discovery_dir=discovery_dir,
+        task_prefix="AUTO-",
+        max_findings=1,
+        repo_root=repo,
+    )
+    second = record_dependency_guardrail_findings(
+        todo_path=todo_path,
+        strategy_path=strategy_path,
+        discovery_dir=discovery_dir,
+        task_prefix="AUTO-",
+        max_findings=1,
+        repo_root=repo,
+    )
+
+    assert [item["source_task_id"] for item in first] == ["AUTO-001"]
+    assert [item["source_task_id"] for item in second] == ["AUTO-002"]
+    strategy = json.loads(strategy_path.read_text(encoding="utf-8"))
+    assert {
+        item["source_task_id"]
+        for item in strategy["dependency_guardrail_findings"]
+    } == {"AUTO-001", "AUTO-002"}
+    assert strategy["blocked_tasks"] == ["AUTO-001", "AUTO-002"]
+
+
+def test_backlog_refinery_dependency_guardrail_can_refile_after_resolution(
+    tmp_path,
+):
+    repo = _seed_repo(tmp_path)
+    todo_path = repo / "todo.md"
+    strategy_path = repo / "state" / "strategy.json"
+    discovery_dir = repo / "data" / "agent_supervisor" / "discovery"
+    todo_path.write_text(
+        """# Agent Todos
+
+## AUTO-001 Regressing dependency
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on: AUTO-999
+- Outputs: src/runtime.py
+- Validation: test -f todo.md
+- Acceptance: Missing dependency is repaired.
+""",
+        encoding="utf-8",
+    )
+
+    first = record_dependency_guardrail_findings(
+        todo_path=todo_path,
+        strategy_path=strategy_path,
+        discovery_dir=discovery_dir,
+        task_prefix="AUTO-",
+        repo_root=repo,
+    )
+    assert [item["follow_up_task_id"] for item in first] == ["AUTO-002"]
+
+    todo_path.write_text(
+        todo_path.read_text(encoding="utf-8").replace(
+            "- Depends on: AUTO-999",
+            "- Depends on:",
+            1,
+        ),
+        encoding="utf-8",
+    )
+    release_completed_guardrail_blocks(
+        todo_path=todo_path,
+        strategy_path=strategy_path,
+        task_prefix="AUTO-",
+    )
+
+    todo_path.write_text(
+        todo_path.read_text(encoding="utf-8").replace(
+            "- Depends on:",
+            "- Depends on: AUTO-999",
+            1,
+        ),
+        encoding="utf-8",
+    )
+    second = record_dependency_guardrail_findings(
+        todo_path=todo_path,
+        strategy_path=strategy_path,
+        discovery_dir=discovery_dir,
+        task_prefix="AUTO-",
+        repo_root=repo,
+    )
+
+    assert [item["follow_up_task_id"] for item in second] == ["AUTO-003"]
+    strategy = json.loads(strategy_path.read_text(encoding="utf-8"))
+    assert strategy["blocked_tasks"] == ["AUTO-001"]
+    assert len(strategy["dependency_guardrail_findings"]) == 1
+
+
 def test_backlog_refinery_dependency_guardrail_detects_duplicate_task_ids(tmp_path):
     repo = _seed_repo(tmp_path)
     todo_path = repo / "todo.md"
@@ -2455,11 +2589,90 @@ def test_backlog_refinery_releases_stale_dependency_guardrail_after_metadata_rep
             "follow_up_task_id": "AUTO-002",
             "guardrail_kind": "dependency_guardrail",
             "reason": "dependency_metadata_resolved",
+        },
+        {
+            "source_task_id": "AUTO-001",
+            "follow_up_task_id": "AUTO-002",
+            "guardrail_kind": "dependency_guardrail",
+            "reason": "resolved_repair_task_retired",
         }
     ]
     strategy = json.loads(strategy_path.read_text(encoding="utf-8"))
     assert strategy["blocked_tasks"] == []
     assert strategy["dependency_guardrail_findings"] == []
+    assert strategy["last_resolved_dependency_guardrail_task_ids"] == [
+        "AUTO-002"
+    ]
+    repair_block = todo_path.read_text(encoding="utf-8").split(
+        "## AUTO-002", 1
+    )[1]
+    assert "- Status: completed" in repair_block
+
+
+def test_backlog_refinery_retires_dependency_repair_and_releases_lost_finding(
+    tmp_path,
+):
+    repo = _seed_repo(tmp_path)
+    todo_path = repo / "todo.md"
+    strategy_path = repo / "state" / "strategy.json"
+    todo_path.write_text(
+        """# Agent Todos
+
+## AUTO-001 Ready source
+
+- Status: todo
+- Completion: manual
+- Priority: P0
+- Track: runtime
+- Depends on:
+- Outputs: src/runtime.py
+- Validation: test -f todo.md
+- Acceptance: Dependency metadata is currently valid.
+
+## AUTO-002 Resolve dependency guardrail for AUTO-001
+
+- Status: todo
+- Completion: manual
+- Priority: P0
+- Track: runtime
+- Depends on:
+- Outputs: todo.md
+- Validation: test -f todo.md
+- Acceptance: Repair an earlier dependency finding.
+""",
+        encoding="utf-8",
+    )
+    strategy_path.parent.mkdir(parents=True, exist_ok=True)
+    strategy_path.write_text(
+        json.dumps(
+            {
+                "blocked_tasks": ["AUTO-001"],
+                "dependency_guardrail_findings": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    releases = release_completed_guardrail_blocks(
+        todo_path=todo_path,
+        strategy_path=strategy_path,
+        task_prefix="AUTO-",
+    )
+
+    assert releases == [
+        {
+            "source_task_id": "AUTO-001",
+            "follow_up_task_id": "AUTO-002",
+            "guardrail_kind": "dependency_guardrail",
+            "reason": "resolved_repair_task_retired",
+        }
+    ]
+    strategy = json.loads(strategy_path.read_text(encoding="utf-8"))
+    assert strategy["blocked_tasks"] == []
+    repair_block = todo_path.read_text(encoding="utf-8").split(
+        "## AUTO-002", 1
+    )[1]
+    assert "- Status: completed" in repair_block
 
 
 def test_backlog_refinery_keeps_block_when_dependency_guardrail_still_active(tmp_path):

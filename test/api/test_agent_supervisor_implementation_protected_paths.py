@@ -1291,6 +1291,87 @@ def test_supervisor_commits_generated_updates_to_protected_todo_board(
     )
 
 
+def test_supervisor_commits_resolved_guardrail_retirement_to_protected_board(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    todo_path = repo / "tasks.todo.md"
+    todo_path.write_text(
+        """# Tasks
+
+## EX-001 Ready source
+
+- Status: todo
+- Depends on:
+- Outputs: src/example.py
+
+## EX-002 Resolve dependency guardrail for EX-001
+
+- Status: todo
+- Depends on:
+- Outputs: tasks.todo.md
+""",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "tasks.todo.md")
+    _git(
+        repo,
+        "-c",
+        "user.name=Fixture",
+        "-c",
+        "user.email=fixture@example.invalid",
+        "commit",
+        "-m",
+        "initial",
+    )
+    args = parse_implementation_supervisor_args(
+        [
+            "--todo-path",
+            str(todo_path),
+            "--state-dir",
+            str(repo / "state"),
+            "--task-prefix",
+            "## EX-",
+            "--implementation-protected-path",
+            "tasks.todo.md",
+        ]
+    )
+    supervisor = PortalImplementationSupervisor(
+        supervisor_config_from_args(args, repo_root=repo)
+    )
+    supervisor.config.strategy_path.parent.mkdir(parents=True, exist_ok=True)
+    supervisor.config.strategy_path.write_text(
+        json.dumps(
+            {
+                "blocked_tasks": ["EX-001"],
+                "dependency_guardrail_findings": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    releases = supervisor.release_completed_guardrail_blocks()
+
+    assert releases == [
+        {
+            "source_task_id": "EX-001",
+            "follow_up_task_id": "EX-002",
+            "guardrail_kind": "dependency_guardrail",
+            "reason": "resolved_repair_task_retired",
+        }
+    ]
+    assert "- Status: completed" in todo_path.read_text(encoding="utf-8").split(
+        "## EX-002", 1
+    )[1]
+    assert _git(repo, "status", "--porcelain", "--", "tasks.todo.md") == ""
+    assert _git(repo, "log", "-1", "--pretty=%ae") == BACKLOG_REFINERY_AUTHOR_EMAIL
+    assert _git(repo, "log", "-1", "--pretty=%s").endswith(
+        "[agent-supervisor:generated-protected-board]"
+    )
+
+
 def test_supervisor_blocks_maintenance_while_protected_snapshot_is_active(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

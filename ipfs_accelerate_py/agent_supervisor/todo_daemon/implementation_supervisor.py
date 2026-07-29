@@ -3519,12 +3519,15 @@ class PortalImplementationSupervisor:
             commit_generated_dirty_outputs,
         )
 
+        commit_subject = generated_protected_board_commit_subject(
+            self.config.generated_dirty_repair_commit_subject
+        )
         result = commit_generated_dirty_outputs(
             repo_root=self.config.repo_root,
             generated_paths=generated_paths,
             generated_prefixes=generated_prefixes,
             candidate_git_roots=candidate_git_roots,
-            subject=self.config.generated_dirty_repair_commit_subject,
+            subject=commit_subject,
             include_clean_submodule_gitlinks=self.config.generated_dirty_repair_include_submodule_gitlinks,
             max_paths=self.config.generated_dirty_repair_max_paths,
             stale_git_lock_seconds=self.config.generated_dirty_repair_stale_lock_seconds,
@@ -4791,10 +4794,21 @@ class PortalImplementationSupervisor:
             task_id_prefix,
         )
 
-        releases = release_completed_guardrail_blocks(
-            todo_path=self.config.todo_path,
-            strategy_path=self.config.strategy_path,
-            task_prefix=task_id_prefix(self.config.task_prefix),
+        commit_outputs, commit_subject = self._generated_board_commit_policy(
+            configured_commit_outputs=False,
+            configured_subject="Agent: retire resolved guardrail tasks",
+        )
+        releases = self._run_generated_board_producer(
+            producer="guardrail-release",
+            commit_outputs=commit_outputs,
+            callback=lambda: release_completed_guardrail_blocks(
+                todo_path=self.config.todo_path,
+                strategy_path=self.config.strategy_path,
+                task_prefix=task_id_prefix(self.config.task_prefix),
+                commit_outputs=commit_outputs,
+                repo_root=self.config.repo_root,
+                commit_subject=commit_subject,
+            ),
         )
         if releases:
             self._record_event(
