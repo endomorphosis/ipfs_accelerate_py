@@ -6480,6 +6480,11 @@ class PortalImplementationDaemon:
         log_path = self.implementation_log_dir / f"{task.task_id.lower()}-attempt-{attempt}.log"
         try:
             if deterministic_only:
+                if not task.validation:
+                    raise ImplementationRetryDeferred(
+                        "deterministic-only task requires typed local operation",
+                        backoff_seconds=300,
+                    )
                 if self._implementation_cancel_requested():
                     raise ImplementationRetryDeferred(
                         "implementation dispatch cancelled"
