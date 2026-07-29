@@ -628,7 +628,7 @@ compact references and bounded spans only.
 
 ## VFS-032 Compile compact CID-addressed repair and delta-retry packets
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: low-context-repair
