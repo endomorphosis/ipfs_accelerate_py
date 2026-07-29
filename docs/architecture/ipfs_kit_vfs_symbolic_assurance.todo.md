@@ -468,7 +468,7 @@ compact references and bounded spans only.
 
 ## VFS-024 Enforce production ZK capability, setup, ceremony, and verifier conformance
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: zero-knowledge
