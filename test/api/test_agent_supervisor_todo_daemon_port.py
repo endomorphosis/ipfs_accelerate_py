@@ -1203,6 +1203,80 @@ def test_implementation_daemon_skips_unauthenticated_copilot_fallback(tmp_path, 
     assert "agents.max_depth=2" in command
 
 
+def test_task_provider_role_overrides_static_lane_provider(tmp_path, monkeypatch):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text("# Todos\n", encoding="utf-8")
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+    )
+    task = PortalTask(
+        task_id="SCA-168",
+        title="Bind repository authority",
+        status="ready",
+        completion="manual",
+        priority="P0",
+        track="snapshot-authority",
+        outputs=["src/repository_authority.py"],
+        metadata={"Provider role": "grok-implement, codex-review"},
+    )
+    monkeypatch.setenv(
+        implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV,
+        "codex",
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_cli_available",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_binary",
+        lambda: "/usr/local/bin/grok",
+    )
+
+    command = daemon._build_implementation_command(repo, task=task)
+
+    assert command[0] == sys.executable
+    assert command[1].endswith("grok_cli_runner.py")
+    assert command[command.index("--grok-bin") + 1] == "/usr/local/bin/grok"
+
+
+def test_deterministic_only_task_cannot_dispatch_a_model(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+    )
+    task = PortalTask(
+        task_id="SCA-120",
+        title="Run symbolic baseline",
+        status="ready",
+        completion="manual",
+        priority="P0",
+        track="baseline",
+        outputs=["data/baseline.json"],
+        metadata={"Provider role": "deterministic-only"},
+    )
+
+    with pytest.raises(RuntimeError, match="model dispatch is forbidden"):
+        daemon._build_implementation_command(repo, task=task)
+    with pytest.raises(
+        implementation_daemon_module.ImplementationRetryDeferred,
+        match="typed local operation",
+    ):
+        daemon._build_implementation_prompt(task, attempt=1)
+
+
 def test_implementation_daemon_does_not_seed_modified_tracked_context(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -13886,6 +13960,7 @@ def test_implementation_daemon_records_stage_specific_context_reserves(tmp_path)
         validation=["pytest tests/test_context.py"],
         acceptance="Preserve implementation authority.",
         canonical_task_cid="task:accel-001",
+        metadata={"Context budget tokens": "1500"},
     )
 
     result = daemon._compile_implementation_context(task, attempt=2)
@@ -13899,7 +13974,7 @@ def test_implementation_daemon_records_stage_specific_context_reserves(tmp_path)
     resolution = result.receipt.budget_resolution
     assert resolution.reserved_output_tokens == 300
     assert resolution.reserved_tool_tokens == 100
-    assert resolution.effective_input_limit == 2_000
+    assert resolution.effective_input_limit == 1_500
     assert result.receipt.estimator_name == "provider_tokenizer"
     receipt_path = daemon._persist_implementation_context_receipt(
         task,

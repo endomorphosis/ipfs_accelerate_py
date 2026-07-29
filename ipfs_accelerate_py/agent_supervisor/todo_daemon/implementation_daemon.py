@@ -6583,7 +6583,10 @@ class PortalImplementationDaemon:
                 ).stdout.strip()
             except (OSError, RuntimeError):
                 baseline_ref = ""
-            command = self._build_implementation_command(workspace_path)
+            command = self._build_implementation_command(
+                workspace_path,
+                task=task,
+            )
             protected_path_snapshot = self._require_implementation_protected_snapshot(
                 task=task,
                 attempt=attempt,
@@ -8923,7 +8926,10 @@ class PortalImplementationDaemon:
                 )
             workspace_setup = self._worktree_setup_result(worktree_path)
             workspace_setup["prior_attempt_seed"] = dict(seed_apply)
-            command = self._build_implementation_command(worktree_path)
+            command = self._build_implementation_command(
+                worktree_path,
+                task=task,
+            )
             protected_path_snapshot = self._require_implementation_protected_snapshot(
                 task=task,
                 attempt=attempt,
@@ -19547,17 +19553,89 @@ class PortalImplementationDaemon:
             raise RuntimeError(f"git {' '.join(args)} failed: {result.stderr.strip()}")
         return result
 
-    def _build_implementation_command(self, workspace_path: Path) -> list[str]:
+    def _task_declared_implementation_provider(
+        self,
+        task: PortalTask | None,
+    ) -> str:
+        """Return a task-owned provider override, or an empty string.
+
+        Lane assignments are capacity hints. A task's reviewed ``Provider
+        role`` is the execution contract and therefore takes precedence.
+        """
+
+        if task is None:
+            return ""
+        raw_role = self._task_metadata_value(task, "provider role")
+        roles = {
+            item.strip().lower()
+            for item in re.split(r"[,;]", raw_role)
+            if item.strip()
+        }
+        if "deterministic-only" in roles:
+            if len(roles) != 1:
+                raise RuntimeError(
+                    "deterministic-only cannot be combined with model provider roles"
+                )
+            return "deterministic-only"
+
+        grok_roles = {"grok-implement", "grok-draft"}
+        codex_roles = {"codex-implement", "codex-draft"}
+        wants_grok = bool(roles & grok_roles)
+        wants_codex = bool(roles & codex_roles)
+        if wants_grok and wants_codex:
+            raise RuntimeError(
+                "task declares more than one implementation provider"
+            )
+        if wants_grok:
+            return "grok"
+        if wants_codex:
+            return "codex"
+        return ""
+
+    def _task_context_token_limit(self, task: PortalTask) -> int | None:
+        raw_limit = self._task_metadata_value(task, "context budget tokens")
+        if not raw_limit:
+            return None
+        try:
+            limit = int(raw_limit)
+        except ValueError as exc:
+            raise ImplementationRetryDeferred(
+                "invalid task context budget tokens",
+                backoff_seconds=300,
+            ) from exc
+        if limit < 1:
+            raise ImplementationRetryDeferred(
+                "invalid task context budget tokens",
+                backoff_seconds=300,
+            )
+        return limit
+
+    def _build_implementation_command(
+        self,
+        workspace_path: Path,
+        *,
+        task: PortalTask | None = None,
+    ) -> list[str]:
         workspace_path = workspace_path.resolve()
-        if self.implementation_command:
+        declared_provider = self._task_declared_implementation_provider(task)
+        if declared_provider == "deterministic-only":
+            raise RuntimeError(
+                "deterministic-only task requires a supervisor-owned typed "
+                "local operation; model dispatch is forbidden"
+            )
+        if self.implementation_command and not declared_provider:
             return shlex.split(self.implementation_command)
         env_command = os.environ.get("IMPLEMENTATION_DAEMON_COMMAND", "").strip()
-        if env_command:
+        if env_command and not declared_provider:
             return shlex.split(env_command)
 
-        provider = (
+        configured_provider = (
             os.environ.get(IMPLEMENTATION_PROVIDER_ENV, "").strip().lower()
             or "auto"
+        )
+        provider = (
+            declared_provider
+            or configured_provider
         )
         grok_ready = _grok_cli_available()
         goose_meta_ready = _goose_meta_spark_available()
@@ -21131,9 +21209,13 @@ class PortalImplementationDaemon:
                 ),
             )
         configured_budget = self.implementation_context_budget
+        task_context_limit = self._task_context_token_limit(task)
         if configured_budget is None:
             configured_budget = ContextBudget(
-                max_input_tokens=DEFAULT_IMPLEMENTATION_CONTEXT_INPUT_TOKENS,
+                max_input_tokens=(
+                    task_context_limit
+                    or DEFAULT_IMPLEMENTATION_CONTEXT_INPUT_TOKENS
+                ),
                 reserved_output_tokens=(
                     DEFAULT_IMPLEMENTATION_CONTEXT_OUTPUT_RESERVE
                 ),
@@ -21152,6 +21234,12 @@ class PortalImplementationDaemon:
         # even when both types share the same qualname and fields.
         if hasattr(configured_budget, "to_dict"):
             configured_budget = configured_budget.to_dict()
+        if task_context_limit is not None:
+            configured_budget = dict(configured_budget)
+            configured_budget["max_input_tokens"] = min(
+                int(configured_budget["max_input_tokens"]),
+                task_context_limit,
+            )
         provider_window = self.implementation_provider_context_window
         if provider_window is None:
             raw_window = os.environ.get(
@@ -21344,6 +21432,11 @@ class PortalImplementationDaemon:
     def _build_implementation_prompt(self, task: PortalTask, attempt: int) -> str:
         if self._implementation_cancel_requested():
             raise ImplementationRetryDeferred("implementation dispatch cancelled")
+        if self._task_declared_implementation_provider(task) == "deterministic-only":
+            raise ImplementationRetryDeferred(
+                "deterministic-only task requires typed local operation",
+                backoff_seconds=300,
+            )
         rendered = ""
         if attempt > 1:
             if attempt - 1 > self.implementation_max_repair_rounds:
