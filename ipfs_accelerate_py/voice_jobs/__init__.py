@@ -8,6 +8,7 @@ from .executor import (
     execute_voice_asr_job,
     execute_voice_audio_validation_job,
     execute_voice_tts_job,
+    validate_generated_audio_bytes,
 )
 from .regeneration import (
     REGENERATION_DISPATCH_SCHEMA_VERSION,
@@ -36,4 +37,5 @@ __all__ = [
     "execute_voice_asr_job",
     "execute_voice_audio_validation_job",
     "execute_voice_tts_job",
+    "validate_generated_audio_bytes",
 ]

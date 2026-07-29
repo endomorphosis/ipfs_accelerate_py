@@ -48,6 +48,7 @@ from ipfs_accelerate_py.voice_jobs.executor import (
     execute_voice_asr_job,
     execute_voice_audio_validation_job,
     execute_voice_tts_job,
+    validate_generated_audio_bytes,
 )
 
 
@@ -138,6 +139,7 @@ def _resolver(
     max_input_bytes: int = 1_000_000,
     max_decoded_bytes: int = 1_000_000,
     max_duration_ms: int = 60_000,
+    max_tts_trailing_silence_ms: int | None = 1_000,
     allowed_schemes: frozenset[str] = frozenset({"artifact", "file", "ipfs"}),
     fetcher: Any = None,
     source_task_resolver: Any = None,
@@ -151,6 +153,7 @@ def _resolver(
             max_input_bytes=max_input_bytes,
             max_decoded_bytes=max_decoded_bytes,
             max_duration_ms=max_duration_ms,
+            max_tts_trailing_silence_ms=max_tts_trailing_silence_ms,
         ),
         fetcher=fetcher,
         source_task_resolver=source_task_resolver,
@@ -524,6 +527,133 @@ def test_audio_validation_emits_contiguous_trailing_silence(
         result["quality_metrics"]["trailing_silence_ms"]
         == expected_trailing_silence_ms
     )
+
+
+def test_tts_artifact_policy_rejects_excessive_trailing_silence(
+    tmp_path: Path,
+) -> None:
+    audio = _pcm16_wav_bytes(
+        (1_000, 0, 0),
+        sample_rate=1_000,
+    )
+    resolver = _resolver(
+        tmp_path,
+        max_tts_trailing_silence_ms=1,
+    )
+
+    with pytest.raises(
+        VoiceJobExecutionError,
+        match="^audio_trailing_silence_exceeded$",
+    ):
+        execute_voice_tts_job(
+            VoiceTTSJob(
+                spoken_text="A response with a padded tail.",
+                locale="en-US",
+                provider="fixture-tts",
+                model_name="fixture-model",
+                voice="abby",
+                provider_version="fixture-1",
+                lineage=_lineage(),
+            ),
+            resolver=resolver,
+            text_to_speech_fn=lambda _text, **_kwargs: audio,
+        )
+
+    assert not list((tmp_path / "artifacts").glob("**/*"))
+
+
+def test_generated_audio_trailing_silence_gate_accepts_boundary() -> None:
+    audio = _pcm16_wav_bytes(
+        (1_000, 0),
+        sample_rate=1_000,
+    )
+
+    metrics = validate_generated_audio_bytes(
+        audio,
+        policy=ArtifactPolicy(max_tts_trailing_silence_ms=1),
+    )
+
+    assert metrics["trailing_silence_ms"] == 1
+
+
+def test_generated_audio_trailing_silence_gate_is_retryable() -> None:
+    audio = _pcm16_wav_bytes(
+        (1_000, 0, 0),
+        sample_rate=1_000,
+    )
+
+    with pytest.raises(VoiceJobExecutionError) as captured:
+        validate_generated_audio_bytes(
+            audio,
+            policy=ArtifactPolicy(max_tts_trailing_silence_ms=1),
+        )
+
+    assert captured.value.code == "audio_trailing_silence_exceeded"
+    assert captured.value.retryable is True
+
+
+def test_tts_trailing_silence_policy_does_not_reject_asr_source(
+    tmp_path: Path,
+) -> None:
+    audio = _pcm16_wav_bytes(
+        (1_000, 0, 0),
+        sample_rate=1_000,
+    )
+    descriptor = _external_audio_descriptor(
+        audio,
+        name="padded-asr-source.wav",
+    )
+    resolver = _resolver(
+        tmp_path,
+        max_tts_trailing_silence_ms=1,
+        fetcher=lambda _uri, _limit: audio,
+    )
+
+    result = execute_voice_asr_job(
+        VoiceASRJob(
+            locale="en-US",
+            provider="fixture-asr",
+            model_name="fixture-model",
+            provider_version="fixture-1",
+            lineage=_lineage(),
+            source_audio=descriptor,
+        ),
+        resolver=resolver,
+        speech_to_text_fn=lambda _audio, **_kwargs: "hello",
+    )
+
+    assert result["status"] == "completed"
+    assert result["quality_metrics"]["trailing_silence_ms"] == 2
+
+
+def test_audio_validation_job_enforces_trailing_silence_policy(
+    tmp_path: Path,
+) -> None:
+    audio = _pcm16_wav_bytes(
+        (1_000, 0, 0),
+        sample_rate=1_000,
+    )
+    descriptor = _external_audio_descriptor(
+        audio,
+        name="padded-tail.wav",
+    )
+    resolver = _resolver(tmp_path, fetcher=lambda _uri, _limit: audio)
+
+    with pytest.raises(
+        VoiceJobExecutionError,
+        match="^audio_trailing_silence_above_policy$",
+    ):
+        execute_voice_audio_validation_job(
+            VoiceAudioValidationJob(
+                model_name="fixture-quality",
+                lineage=_lineage(),
+                source_audio=descriptor,
+                validation_policy={
+                    "maximum_trailing_silence_ms": 1,
+                },
+            ),
+            resolver=resolver,
+        )
 
 
 def test_non_wav_ffmpeg_decoder_is_shell_free_and_bounded(

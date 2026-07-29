@@ -13,7 +13,10 @@ import requests
 
 import ipfs_accelerate_py
 from ipfs_accelerate_py.hf_space_inference import (
+    BatchProcessor,
+    BatchState,
     HFBucketBackend,
+    HFBucketBackendError,
     HFSpaceClient,
     RefreshableGradioFile,
     is_hf_space_transport_error,
@@ -52,6 +55,7 @@ def _indextts_config() -> dict[str, object]:
 def test_package_exports_compatibility_client() -> None:
     assert ipfs_accelerate_py.HFSpaceClient is HFSpaceClient
     assert ipfs_accelerate_py.HFBucketBackend is HFBucketBackend
+    assert ipfs_accelerate_py.HFBucketBackendError is HFBucketBackendError
     assert ipfs_accelerate_py.RefreshableGradioFile is RefreshableGradioFile
 
 
@@ -379,6 +383,126 @@ def test_bucket_missing_object_and_recursive_listing(
     ]
 
 
+def test_bucket_exists_requires_exact_path_not_prefix_collision(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.hf_space_inference.subprocess.run",
+        lambda command, **_kwargs: subprocess.CompletedProcess(
+            command,
+            0,
+            stdout=json.dumps(
+                [
+                    {
+                        "type": "file",
+                        "path": "run/audio/response-longer.mp3",
+                    },
+                    {
+                        "type": "directory",
+                        "path": "run/audio/response.mp3",
+                    },
+                ]
+            ),
+            stderr="",
+        ),
+    )
+    backend = HFBucketBackend("hf://buckets/Publicus/abby-voice/run")
+
+    assert backend.exists("audio/response.mp3") is False
+
+
+def test_bucket_exists_accepts_exact_full_uri_entry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.hf_space_inference.subprocess.run",
+        lambda command, **_kwargs: subprocess.CompletedProcess(
+            command,
+            0,
+            stdout=json.dumps(
+                [
+                    {
+                        "type": "blob",
+                        "path": (
+                            "hf://buckets/Publicus/abby-voice/"
+                            "run/audio/response.mp3"
+                        ),
+                    },
+                ]
+            ),
+            stderr="",
+        ),
+    )
+    backend = HFBucketBackend("hf://buckets/Publicus/abby-voice/run")
+
+    assert backend.exists("audio/response.mp3") is True
+
+
+def test_bucket_listing_failure_is_not_reported_as_cache_miss(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fake_run(
+        command: list[str],
+        **_kwargs: object,
+    ) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(
+            command,
+            1,
+            stdout="",
+            stderr="authentication failed",
+        )
+
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.hf_space_inference.subprocess.run",
+        fake_run,
+    )
+    backend = HFBucketBackend("hf://buckets/Publicus/abby-voice/run")
+
+    with pytest.raises(
+        HFBucketBackendError,
+        match="exit code 1: authentication failed",
+    ):
+        backend.exists("audio/response.mp3")
+
+
+def test_bucket_invalid_listing_payload_fails_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.hf_space_inference.subprocess.run",
+        lambda command, **_kwargs: subprocess.CompletedProcess(
+            command,
+            0,
+            stdout="not-json",
+            stderr="",
+        ),
+    )
+    backend = HFBucketBackend("hf://buckets/Publicus/abby-voice/run")
+
+    with pytest.raises(HFBucketBackendError, match="invalid JSON"):
+        backend.list_files("audio")
+
+
+@pytest.mark.parametrize("payload", [["audio/file.mp3"], [None]])
+def test_bucket_non_object_listing_entries_fail_closed(
+    monkeypatch: pytest.MonkeyPatch,
+    payload: list[object],
+) -> None:
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.hf_space_inference.subprocess.run",
+        lambda command, **_kwargs: subprocess.CompletedProcess(
+            command,
+            0,
+            stdout=json.dumps(payload),
+            stderr="",
+        ),
+    )
+    backend = HFBucketBackend("hf://buckets/Publicus/abby-voice/run")
+
+    with pytest.raises(HFBucketBackendError, match="entries are not objects"):
+        backend.list_files("audio")
+
+
 def test_bucket_upload_uses_buckets_cp_without_touching_network(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -400,3 +524,201 @@ def test_bucket_upload_uses_buckets_cp_without_touching_network(
     assert backend.put_file(source, "audio/response.mp3") is True
     assert calls[0][:3] == ["hf", "buckets", "cp"]
     assert calls[0][-1].endswith("/audio/response.mp3")
+
+
+def test_bucket_download_uses_bounded_temporary_file(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[list[str]] = []
+
+    def fake_run(
+        command: list[str],
+        **_kwargs: object,
+    ) -> subprocess.CompletedProcess[str]:
+        calls.append(command)
+        Path(command[-1]).write_bytes(b"audio")
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            stdout="",
+            stderr="",
+        )
+
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.hf_space_inference.subprocess.run",
+        fake_run,
+    )
+    backend = HFBucketBackend("hf://buckets/Publicus/abby-voice/run")
+
+    assert backend.get_file("audio/response.mp3", max_bytes=5) == b"audio"
+    assert calls[0][:3] == ["hf", "buckets", "cp"]
+    assert calls[0][3].endswith("/run/audio/response.mp3")
+    assert not Path(calls[0][-1]).exists()
+
+
+def test_bucket_download_rejects_oversized_object(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fake_run(
+        command: list[str],
+        **_kwargs: object,
+    ) -> subprocess.CompletedProcess[str]:
+        Path(command[-1]).write_bytes(b"too-large")
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            stdout="",
+            stderr="",
+        )
+
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.hf_space_inference.subprocess.run",
+        fake_run,
+    )
+    backend = HFBucketBackend("hf://buckets/Publicus/abby-voice/run")
+
+    with pytest.raises(HFBucketBackendError, match="download limit"):
+        backend.get_file("audio/response.mp3", max_bytes=3)
+
+
+def _batch_processor(state_file: Path) -> BatchProcessor:
+    return BatchProcessor(
+        Mock(spec=HFSpaceClient),
+        Mock(),
+        state_file,
+        batch_size=4,
+    )
+
+
+def test_batch_checkpoint_is_atomically_saved_and_loaded(
+    tmp_path: Path,
+) -> None:
+    state_file = tmp_path / "state.json"
+    processor = _batch_processor(state_file)
+
+    processor.save_state(
+        BatchState(
+            total_items=10,
+            next_offset=4,
+            batch_size=4,
+            batches_completed=1,
+            failures=0,
+            last_batch_id="batch-1",
+        )
+    )
+
+    assert state_file.read_bytes().endswith(b"\n")
+    assert not list(tmp_path.glob(".state.json.*.tmp"))
+    loaded = processor.load_state()
+    assert loaded.total_items == 10
+    assert loaded.next_offset == 4
+    assert loaded.batches_completed == 1
+    assert loaded.last_batch_id == "batch-1"
+    assert loaded.updated_at
+
+
+def test_batch_checkpoint_corruption_fails_closed(
+    tmp_path: Path,
+) -> None:
+    state_file = tmp_path / "state.json"
+    state_file.write_text('{"nextOffset":', encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="Invalid batch checkpoint"):
+        _batch_processor(state_file).load_state()
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {},
+        {
+            "schemaVersion": 99,
+            "updatedAt": "",
+            "totalItems": 10,
+            "nextOffset": 4,
+            "batchSize": 4,
+            "batchesCompleted": 1,
+            "failures": 0,
+            "lastBatchId": "",
+        },
+        {
+            "schemaVersion": 1,
+            "updatedAt": "",
+            "totalItems": 10.9,
+            "nextOffset": 4,
+            "batchSize": 4,
+            "batchesCompleted": 1,
+            "failures": 0,
+            "lastBatchId": "",
+        },
+        {
+            "schemaVersion": 1,
+            "updatedAt": "",
+            "totalItems": 10,
+            "nextOffset": 4,
+            "batchSize": 4,
+            "batchesCompleted": True,
+            "failures": 0,
+            "lastBatchId": "",
+        },
+    ],
+)
+def test_batch_checkpoint_rejects_ambiguous_or_coerced_fields(
+    tmp_path: Path,
+    payload: Mapping[str, object],
+) -> None:
+    state_file = tmp_path / "state.json"
+    state_file.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="Invalid batch checkpoint"):
+        _batch_processor(state_file).load_state()
+
+
+def test_batch_checkpoint_replace_failure_preserves_previous_state(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    state_file = tmp_path / "state.json"
+    previous = b'{"schemaVersion":1,"sentinel":true}\n'
+    state_file.write_bytes(previous)
+
+    def fail_replace(_source: Path, _destination: Path) -> None:
+        raise OSError("simulated interruption")
+
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.hf_space_inference.os.replace",
+        fail_replace,
+    )
+
+    with pytest.raises(OSError, match="simulated interruption"):
+        _batch_processor(state_file).save_state(
+            BatchState(total_items=10, next_offset=4, batch_size=4)
+        )
+
+    assert state_file.read_bytes() == previous
+    assert not list(tmp_path.glob(".state.json.*.tmp"))
+
+
+def test_batch_checkpoint_invalid_save_preserves_previous_state(
+    tmp_path: Path,
+) -> None:
+    state_file = tmp_path / "state.json"
+    processor = _batch_processor(state_file)
+    processor.save_state(
+        BatchState(total_items=10, next_offset=4, batch_size=4)
+    )
+    previous = state_file.read_bytes()
+
+    with pytest.raises(ValueError, match="outside valid bounds"):
+        processor.save_state(
+            BatchState(
+                total_items=1,
+                next_offset=2,
+                batch_size=0,
+                batches_completed=-1,
+                failures=-1,
+            )
+        )
+
+    assert state_file.read_bytes() == previous
+    assert processor.load_state().next_offset == 4

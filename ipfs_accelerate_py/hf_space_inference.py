@@ -18,6 +18,7 @@ import json
 import mimetypes
 import os
 import subprocess
+import tempfile
 import threading
 import time
 import uuid
@@ -37,6 +38,48 @@ ResultT = TypeVar("ResultT")
 
 def _utc_now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _atomic_write_json(path: Path, payload: Mapping[str, Any]) -> None:
+    """Durably replace one JSON document without exposing a partial file."""
+
+    destination = Path(path)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{destination.name}.",
+        suffix=".tmp",
+        dir=destination.parent,
+    )
+    temporary_path = Path(temporary_name)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            json.dump(
+                payload,
+                handle,
+                ensure_ascii=False,
+                sort_keys=True,
+                indent=2,
+                allow_nan=False,
+            )
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary_path, destination)
+        directory_descriptor: int | None = None
+        try:
+            directory_descriptor = os.open(
+                destination.parent,
+                os.O_RDONLY | getattr(os, "O_DIRECTORY", 0),
+            )
+            os.fsync(directory_descriptor)
+        except OSError:
+            # Some supported platforms do not permit directory fsync.
+            pass
+        finally:
+            if directory_descriptor is not None:
+                os.close(directory_descriptor)
+    finally:
+        temporary_path.unlink(missing_ok=True)
 
 
 def normalize_api_name(value: str) -> str:
@@ -316,6 +359,10 @@ class LocalFileSystemBackend(OutputBackend):
         )
 
 
+class HFBucketBackendError(RuntimeError):
+    """Raised when bucket availability cannot be distinguished from absence."""
+
+
 class HFBucketBackend(OutputBackend):
     """Hugging Face bucket adapter backed by the current ``hf`` CLI.
 
@@ -361,6 +408,31 @@ class HFBucketBackend(OutputBackend):
             return self.bucket_uri
         return f"{self.bucket_uri}/{candidate.lstrip('/')}".rstrip("/")
 
+    @staticmethod
+    def _object_path(value: str) -> str:
+        """Normalize a CLI path or bucket URI to its bucket-relative path."""
+
+        candidate = urllib_parse.unquote(
+            str(value or "").strip()
+        ).replace("\\", "/")
+        if candidate.startswith("hf://"):
+            parsed = urllib_parse.urlsplit(candidate)
+            if parsed.scheme != "hf" or parsed.netloc != "buckets":
+                return ""
+            # Bucket URIs are hf://buckets/{namespace}/{bucket}/{object}.
+            parts = parsed.path.strip("/").split("/")
+            if len(parts) < 3:
+                return ""
+            candidate = "/".join(parts[2:])
+        parts = [
+            part
+            for part in candidate.strip("/").split("/")
+            if part and part != "."
+        ]
+        if ".." in parts:
+            return ""
+        return "/".join(parts)
+
     def _run(
         self,
         arguments: Sequence[str],
@@ -383,20 +455,33 @@ class HFBucketBackend(OutputBackend):
             return []
         try:
             parsed = json.loads(payload)
-        except (TypeError, ValueError):
-            return []
+        except (TypeError, ValueError) as error:
+            raise HFBucketBackendError(
+                "Hugging Face bucket listing returned invalid JSON"
+            ) from error
         if isinstance(parsed, list):
-            return [entry for entry in parsed if isinstance(entry, Mapping)]
+            if any(not isinstance(entry, Mapping) for entry in parsed):
+                raise HFBucketBackendError(
+                    "Hugging Face bucket listing entries are not objects"
+                )
+            return list(parsed)
         if isinstance(parsed, Mapping):
             for key in ("items", "files", "entries"):
                 entries = parsed.get(key)
                 if isinstance(entries, list):
-                    return [
-                        entry for entry in entries if isinstance(entry, Mapping)
-                    ]
+                    if any(
+                        not isinstance(entry, Mapping)
+                        for entry in entries
+                    ):
+                        raise HFBucketBackendError(
+                            "Hugging Face bucket listing entries are not objects"
+                        )
+                    return list(entries)
             if parsed.get("path"):
                 return [parsed]
-        return []
+        raise HFBucketBackendError(
+            "Hugging Face bucket listing returned an unsupported payload"
+        )
 
     def _list_entries(self, remote_path: str, *, recursive: bool) -> list[Mapping[str, Any]]:
         arguments = [
@@ -409,10 +494,21 @@ class HFBucketBackend(OutputBackend):
             arguments.append("--recursive")
         try:
             completed = self._run(arguments)
-        except (OSError, subprocess.SubprocessError):
-            return []
+        except (OSError, subprocess.SubprocessError) as error:
+            raise HFBucketBackendError(
+                "Hugging Face bucket listing was unavailable"
+            ) from error
         if completed.returncode != 0:
-            return []
+            detail = str(
+                getattr(completed, "stderr", "")
+                or getattr(completed, "stdout", "")
+                or ""
+            ).strip()
+            suffix = f": {detail[:500]}" if detail else ""
+            raise HFBucketBackendError(
+                "Hugging Face bucket listing failed with exit code "
+                f"{completed.returncode}{suffix}"
+            )
         if not isinstance(completed.stdout, str):
             # Some legacy callers inject a minimal CompletedProcess-like test
             # double containing only ``returncode``.  A real text-mode
@@ -433,8 +529,72 @@ class HFBucketBackend(OutputBackend):
             return False
         return completed.returncode == 0
 
+    def get_file(
+        self,
+        remote_path: str,
+        *,
+        max_bytes: int = 32 * 1024 * 1024,
+    ) -> bytes:
+        """Download one bucket object with an explicit post-copy size bound."""
+
+        if type(max_bytes) is not int or max_bytes <= 0:
+            raise ValueError("max_bytes must be positive")
+        with tempfile.TemporaryDirectory(prefix="hf-bucket-download-") as directory:
+            destination = Path(directory) / "artifact"
+            try:
+                completed = self._run(
+                    [
+                        "buckets",
+                        "cp",
+                        self._target_uri(remote_path),
+                        str(destination),
+                    ],
+                    timeout_seconds=max(180.0, self.timeout_seconds),
+                )
+            except (OSError, subprocess.SubprocessError) as error:
+                raise HFBucketBackendError(
+                    "Hugging Face bucket download was unavailable"
+                ) from error
+            if completed.returncode != 0:
+                detail = str(
+                    getattr(completed, "stderr", "")
+                    or getattr(completed, "stdout", "")
+                    or ""
+                ).strip()
+                suffix = f": {detail[:500]}" if detail else ""
+                raise HFBucketBackendError(
+                    "Hugging Face bucket download failed with exit code "
+                    f"{completed.returncode}{suffix}"
+                )
+            try:
+                with destination.open("rb") as handle:
+                    content = handle.read(max_bytes + 1)
+            except OSError as error:
+                raise HFBucketBackendError(
+                    "Hugging Face bucket download produced no readable file"
+                ) from error
+            if len(content) > max_bytes:
+                raise HFBucketBackendError(
+                    "Hugging Face bucket object exceeds the download limit"
+                )
+            return content
+
     def exists(self, remote_path: str) -> bool:
-        return bool(self._list_entries(remote_path, recursive=False))
+        expected_path = self._object_path(self._target_uri(remote_path))
+        if not expected_path:
+            return False
+        for entry in self._list_entries(remote_path, recursive=False):
+            if str(entry.get("type") or "file").lower() not in {
+                "file",
+                "blob",
+            }:
+                continue
+            entry_path = self._object_path(
+                str(entry.get("path") or entry.get("name") or "")
+            )
+            if entry_path == expected_path:
+                return True
+        return False
 
     def list_files(self, prefix: str) -> list[str]:
         files: list[str] = []
@@ -987,6 +1147,34 @@ class BatchState:
     last_batch_id: str = ""
     stop_reason: str = ""
 
+    def validate(self) -> None:
+        """Reject state that cannot be safely round-tripped."""
+
+        integer_fields = (
+            "schema_version",
+            "total_items",
+            "next_offset",
+            "batch_size",
+            "batches_completed",
+            "failures",
+        )
+        if any(type(getattr(self, name)) is not int for name in integer_fields):
+            raise ValueError("checkpoint integer fields must be integers")
+        if self.schema_version != 1:
+            raise ValueError("unsupported checkpoint schemaVersion")
+        if (
+            self.total_items < 0
+            or self.next_offset < 0
+            or self.next_offset > self.total_items
+            or self.batch_size <= 0
+            or self.batches_completed < 0
+            or self.failures < 0
+        ):
+            raise ValueError("checkpoint fields are outside valid bounds")
+        for name in ("updated_at", "last_batch_id", "stop_reason"):
+            if not isinstance(getattr(self, name), str):
+                raise ValueError(f"checkpoint {name} must be a string")
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "schemaVersion": self.schema_version,
@@ -1020,7 +1208,7 @@ class BatchState:
 
 
 class BatchProcessor:
-    """Retrying, checkpoint-compatible generic Space batch processor."""
+    """Retrying generic Space processor with a package-owned checkpoint."""
 
     def __init__(
         self,
@@ -1058,15 +1246,56 @@ class BatchProcessor:
             payload = json.loads(
                 self.state_file.read_text(encoding="utf-8")
             )
-            if isinstance(payload, Mapping):
-                state = BatchState.from_dict(payload)
-                if state.batch_size > 0:
-                    return state
-        except (OSError, TypeError, ValueError):
-            pass
-        return BatchState(batch_size=self.batch_size)
+            if not isinstance(payload, Mapping):
+                raise ValueError("top level is not an object")
+            required_fields = frozenset(
+                {
+                    "schemaVersion",
+                    "updatedAt",
+                    "totalItems",
+                    "nextOffset",
+                    "batchSize",
+                    "batchesCompleted",
+                    "failures",
+                    "lastBatchId",
+                }
+            )
+            missing_fields = sorted(required_fields - payload.keys())
+            if missing_fields:
+                raise ValueError(
+                    "checkpoint is missing required fields: "
+                    + ", ".join(missing_fields)
+                )
+            integer_fields = (
+                "schemaVersion",
+                "totalItems",
+                "nextOffset",
+                "batchSize",
+                "batchesCompleted",
+                "failures",
+            )
+            if any(type(payload.get(name)) is not int for name in integer_fields):
+                raise ValueError("checkpoint integer fields must be integers")
+            if payload.get("schemaVersion") != 1:
+                raise ValueError("unsupported checkpoint schemaVersion")
+            for name in ("updatedAt", "lastBatchId"):
+                if not isinstance(payload.get(name), str):
+                    raise ValueError(f"checkpoint {name} must be a string")
+            if "stopReason" in payload and not isinstance(
+                payload.get("stopReason"),
+                str,
+            ):
+                raise ValueError("checkpoint stopReason must be a string")
+            state = BatchState.from_dict(payload)
+            state.validate()
+            return state
+        except (OSError, TypeError, ValueError) as error:
+            raise RuntimeError(
+                f"Invalid batch checkpoint: {self.state_file}"
+            ) from error
 
     def save_state(self, state: BatchState) -> None:
+        state.validate()
         self.state_file.parent.mkdir(parents=True, exist_ok=True)
         checkpoint = BatchState(
             schema_version=state.schema_version,
@@ -1079,10 +1308,7 @@ class BatchProcessor:
             last_batch_id=state.last_batch_id,
             stop_reason=state.stop_reason,
         )
-        self.state_file.write_text(
-            json.dumps(checkpoint.to_dict(), indent=2),
-            encoding="utf-8",
-        )
+        _atomic_write_json(self.state_file, checkpoint.to_dict())
 
     def calculate_retry_backoff(self, attempt: int) -> float:
         return min(
@@ -1154,6 +1380,7 @@ __all__ = [
     "EndpointContract",
     "OutputBackend",
     "LocalFileSystemBackend",
+    "HFBucketBackendError",
     "HFBucketBackend",
     "HFSpaceClient",
     "RefreshableGradioFile",

@@ -27,6 +27,8 @@ Environment variables:
 - `IPFS_ACCELERATE_PY_ABBY_WHISPER_BASE_URL`: Abby Whisper HTTP model base URL
 - `IPFS_ACCELERATE_PY_ABBY_*_TOKEN`: optional remote-provider credentials
 - `IPFS_ACCELERATE_PY_ABBY_*_TIMEOUT_SECONDS`: bounded provider timeouts
+- `IPFS_ACCELERATE_PY_VOICE_MAX_TTS_TRAILING_SILENCE_MS`: generated-audio
+  tail limit (default 1000; set to ``off`` to disable)
 
 Additional optional providers (opt-in by selecting provider):
 - `openai`: OpenAI TTS + Whisper ASR
@@ -88,6 +90,11 @@ from .model_catalog import (
     redact_secrets,
 )
 from .router_deps import RouterDeps, get_default_router_deps
+from .voice_jobs.executor import (
+    ArtifactPolicy as VoiceArtifactPolicy,
+    VoiceJobExecutionError,
+    validate_generated_audio_bytes,
+)
 from .voice_audio_resolver import (
     PrecomputedAudioResolution,
     PrecomputedVoiceAudioResolver,
@@ -3861,6 +3868,66 @@ def _audio_format(audio: Optional[bytes], requested: Optional[str]) -> Optional[
     return "bin"
 
 
+def _voice_tts_artifact_policy() -> VoiceArtifactPolicy:
+    raw = os.environ.get(
+        "IPFS_ACCELERATE_PY_VOICE_MAX_TTS_TRAILING_SILENCE_MS",
+        "1000",
+    ).strip()
+    if raw.casefold() in {"none", "off", "disabled"}:
+        maximum: Optional[int] = None
+    else:
+        try:
+            maximum = int(raw)
+        except ValueError as error:
+            raise ValueError(
+                "IPFS_ACCELERATE_PY_VOICE_MAX_TTS_TRAILING_SILENCE_MS "
+                "must be a non-negative integer or one of: none, off, disabled"
+            ) from error
+        if maximum < 0:
+            raise ValueError(
+                "IPFS_ACCELERATE_PY_VOICE_MAX_TTS_TRAILING_SILENCE_MS "
+                "must be non-negative"
+            )
+    return VoiceArtifactPolicy(max_tts_trailing_silence_ms=maximum)
+
+
+def _validate_router_tts_audio(
+    audio: bytes,
+    requested_format: Optional[str],
+) -> Mapping[str, int]:
+    """Validate provider/precomputed TTS bytes at the shared router boundary."""
+
+    if audio.startswith(b"RIFF") and audio[8:12] == b"WAVE":
+        codec = "wav"
+        media_type = "audio/wav"
+    elif audio.startswith(b"ID3") or audio[:2] in {
+        b"\xff\xfb",
+        b"\xff\xf3",
+        b"\xff\xf2",
+    }:
+        codec = "mp3"
+        media_type = "audio/mpeg"
+    elif audio.startswith(b"OggS"):
+        codec = "ogg"
+        media_type = "audio/ogg"
+    elif audio.startswith(b"fLaC"):
+        codec = "flac"
+        media_type = "audio/flac"
+    else:
+        codec = str(requested_format or "wav").strip().lower().lstrip(".")
+        media_type = (
+            "audio/mpeg"
+            if codec in {"mp3", "mpeg"}
+            else f"audio/{codec}"
+        )
+    return validate_generated_audio_bytes(
+        audio,
+        media_type=media_type,
+        uri=f"router-output.{codec}",
+        policy=_voice_tts_artifact_policy(),
+    )
+
+
 def _synthesis_identity_from_request(request: VoiceTurnRequest) -> SynthesisIdentity:
     """Derive the full synthesis identity used by the exact audio resolver."""
 
@@ -4231,6 +4298,10 @@ def process_voice_turn(
                 template_id=plan.template_id if plan is not None else None,
             )
             if precomputed_resolution.hit:
+                quality_metrics = _validate_router_tts_audio(
+                    precomputed_resolution.audio or b"",
+                    request.output_format,
+                )
                 output_audio = precomputed_resolution.audio
                 used_tts_provider = "precomputed"
                 traces.append(
@@ -4241,6 +4312,10 @@ def process_voice_turn(
                         provider="precomputed",
                         details={
                             "audio_size_bytes": len(output_audio or b""),
+                            "trailing_silence_ms": quality_metrics.get(
+                                "trailing_silence_ms",
+                                0,
+                            ),
                             "precomputed": True,
                             "runtime_resolution": True,
                             "resolver_reason": precomputed_resolution.reason,
@@ -4342,6 +4417,10 @@ def process_voice_turn(
                 if not isinstance(raw_audio, bytes) or not raw_audio:
                     _close_awaitable_result(raw_audio)
                     raise TypeError("synthesize returned no non-empty audio bytes")
+                quality_metrics = _validate_router_tts_audio(
+                    raw_audio,
+                    request.output_format,
+                )
                 output_audio = raw_audio
                 used_tts_provider = provider_name
                 traces.append(
@@ -4353,6 +4432,10 @@ def process_voice_turn(
                         details={
                             **attempt_details,
                             "audio_size_bytes": len(raw_audio),
+                            "trailing_silence_ms": quality_metrics.get(
+                                "trailing_silence_ms",
+                                0,
+                            ),
                             "precomputed": False,
                             **_provider_receipt_details(provider_object),
                         },
@@ -5455,6 +5538,7 @@ def _tts_cache_lookup(
         getter = getattr(deps, "get_cached_or_remote", None)
         cached = getter(cache_key) if callable(getter) else deps.get_cached(cache_key)
         if isinstance(cached, bytes) and cached:
+            _validate_router_tts_audio(cached, output_format)
             if output_path:
                 with open(output_path, "wb") as fh:
                     fh.write(cached)
@@ -5609,6 +5693,7 @@ def _legacy_text_to_speech(
             raise RuntimeError(
                 f"Voice provider synthesize() returned {type(audio_bytes).__name__}, expected bytes"
             )
+        _validate_router_tts_audio(audio_bytes, output_format)
         _tts_cache_store(
             deps=deps,
             provider_identity=_provider_instance_cache_identity(
@@ -5636,6 +5721,13 @@ def _legacy_text_to_speech(
                     output_format=output_format,
                     **kwargs,
                 )
+                if not isinstance(audio_bytes, bytes):
+                    _close_awaitable_result(audio_bytes)
+                    raise RuntimeError(
+                        "Hugging Face voice provider synthesize() returned "
+                        f"{type(audio_bytes).__name__}, expected bytes"
+                    )
+                _validate_router_tts_audio(audio_bytes, output_format)
                 return _write_output_path(audio_bytes, output_path)
         raise
 
@@ -6090,6 +6182,23 @@ def _text_to_speech_with_usage_admission(
                 success=False,
                 error_class=ErrorSafetyClass.SEMANTIC,
                 reason_codes=("output_validation_failed", "non_bytes"),
+                side_effecting=False,
+            )
+        try:
+            _validate_router_tts_audio(audio_bytes, output_format)
+        except VoiceJobExecutionError as exc:
+            invoke_error_holder["error"] = exc
+            return InvokeOutcome(
+                success=False,
+                error_class=(
+                    ErrorSafetyClass.TRANSIENT
+                    if exc.retryable
+                    else ErrorSafetyClass.SEMANTIC
+                ),
+                reason_codes=(
+                    "output_validation_failed",
+                    exc.code,
+                ),
                 side_effecting=False,
             )
 

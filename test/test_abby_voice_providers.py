@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import io
 import json
+import wave
 from pathlib import Path
 from typing import List, Mapping, Optional, Sequence, Tuple
 
@@ -33,7 +35,17 @@ from ipfs_accelerate_py.voice_router import (
     register_voice_provider,
 )
 
-WAV_AUDIO = b"RIFF\x14\x00\x00\x00WAVEfmt abby-audio"
+def _fixture_wav() -> bytes:
+    output = io.BytesIO()
+    with wave.open(output, "wb") as audio:
+        audio.setnchannels(1)
+        audio.setsampwidth(2)
+        audio.setframerate(8_000)
+        audio.writeframes((1_000).to_bytes(2, "little", signed=True))
+    return output.getvalue()
+
+
+WAV_AUDIO = _fixture_wav()
 
 
 class RecordingTransport:

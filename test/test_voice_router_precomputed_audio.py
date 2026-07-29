@@ -15,8 +15,10 @@ data/abby_voice/agent_supervisor/discovery/2026-07-26-abby-voice-auto-019-object
 
 from __future__ import annotations
 
+import io
 import json
 import sys
+import wave
 from dataclasses import dataclass, field
 from hashlib import sha256
 from pathlib import Path
@@ -68,7 +70,17 @@ from ipfs_datasets_py.voice.schema import (  # noqa: E402
 )
 
 
-PRECOMPUTED_AUDIO_BYTES = b"RIFF....WAVE-precomputed-abby"
+def _fixture_wav(sample: int = 1_000) -> bytes:
+    output = io.BytesIO()
+    with wave.open(output, "wb") as audio:
+        audio.setnchannels(1)
+        audio.setsampwidth(2)
+        audio.setframerate(8_000)
+        audio.writeframes(sample.to_bytes(2, "little", signed=True))
+    return output.getvalue()
+
+
+PRECOMPUTED_AUDIO_BYTES = _fixture_wav()
 PRECOMPUTED_AUDIO_SHA = sha256(PRECOMPUTED_AUDIO_BYTES).hexdigest()
 SPOKEN_PHONE_A = "Community Food Network can help. Call 503-555-0111."
 SPOKEN_PHONE_B = "Community Food Network can help. Call 503-555-0199."
@@ -89,7 +101,7 @@ SYNTHESIS = SynthesisIdentity(
 @dataclass
 class FakeSpeech:
     transcript: str = "I need food help"
-    audio: bytes = b"RIFF-live-tts"
+    audio: bytes = _fixture_wav(2_000)
     calls: list[tuple[str, str]] = field(default_factory=list)
     fail_tts: bool = False
 
@@ -520,7 +532,7 @@ def test_runtime_resolution_falls_through_to_live_tts_on_miss() -> None:
     )
 
     assert result.status == "completed"
-    assert result.audio == b"RIFF-live-tts"
+    assert result.audio == speech.audio
     assert result.provenance.tts_provider != "precomputed"
     assert any(call[0] == "synthesize" for call in speech.calls)
     precomputed_traces = [
@@ -614,7 +626,7 @@ def test_end_to_end_release_loader_to_runtime_resolution(tmp_path: Path) -> None
         audio_resolver=resolver,
     )
 
-    assert result.audio in (PRECOMPUTED_AUDIO_BYTES, b"RIFF-live-tts")
+    assert result.audio in (PRECOMPUTED_AUDIO_BYTES, _fixture_wav(2_000))
     assert result.provenance.template_id is not None or result.response_text
     # If exact spoken text was produced, precomputed path must win.
     if result.response_text == SPOKEN_PHONE_A:
@@ -646,7 +658,7 @@ def test_stale_slot_runtime_path_falls_through_without_serving_stale_audio() -> 
     )
 
     assert result.response_text == SPOKEN_PHONE_B
-    assert result.audio == b"RIFF-live-tts"
+    assert result.audio == speech.audio
     assert result.provenance.tts_provider != "precomputed"
     precomputed_traces = [
         trace

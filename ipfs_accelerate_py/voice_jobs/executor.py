@@ -80,6 +80,7 @@ class ArtifactPolicy:
     decoder_timeout_seconds: float = 30.0
     silence_peak_threshold_bp: int = 100
     clipping_peak_threshold_bp: int = 9_900
+    max_tts_trailing_silence_ms: int | None = 1_000
 
     def __post_init__(self) -> None:
         output_root = Path(self.output_root).expanduser().resolve()
@@ -110,6 +111,14 @@ class ArtifactPolicy:
         if self.silence_peak_threshold_bp > self.clipping_peak_threshold_bp:
             raise ValueError(
                 "silence_peak_threshold_bp must not exceed clipping_peak_threshold_bp"
+            )
+        if self.max_tts_trailing_silence_ms is not None and (
+            isinstance(self.max_tts_trailing_silence_ms, bool)
+            or not isinstance(self.max_tts_trailing_silence_ms, int)
+            or self.max_tts_trailing_silence_ms < 0
+        ):
+            raise ValueError(
+                "max_tts_trailing_silence_ms must be a non-negative integer or None"
             )
         object.__setattr__(self, "output_root", output_root)
         object.__setattr__(self, "allowed_file_roots", roots)
@@ -722,6 +731,39 @@ def _audio_metrics(
     return {"encoded_bytes": len(data), **metrics}
 
 
+def validate_generated_audio_bytes(
+    data: bytes,
+    *,
+    media_type: str = "audio/wav",
+    uri: str = "output.wav",
+    policy: ArtifactPolicy | None = None,
+    audio_decoder_fn: AudioDecoder | None = None,
+) -> dict[str, int]:
+    """Validate generated TTS audio before it is durably published.
+
+    The trailing-silence gate is TTS-specific so source audio sent to ASR is
+    still measurable without being rejected by a synthesis quality policy.
+    """
+
+    active_policy = policy or ArtifactPolicy()
+    metrics = _audio_metrics(
+        data,
+        {"media_type": media_type, "uri": uri},
+        active_policy,
+        audio_decoder_fn=audio_decoder_fn,
+    )
+    maximum = active_policy.max_tts_trailing_silence_ms
+    if (
+        maximum is not None
+        and metrics.get("trailing_silence_ms", 0) > maximum
+    ):
+        raise VoiceJobExecutionError(
+            "audio_trailing_silence_exceeded",
+            retryable=True,
+        )
+    return metrics
+
+
 def execute_voice_tts_job(
     job: Mapping[str, Any] | Any,
     *,
@@ -772,10 +814,11 @@ def execute_voice_tts_job(
         raise VoiceJobExecutionError("voice_provider_invalid_audio")
     codec = str(payload.get("codec") or payload.get("output_format") or "wav").lower()
     media_type = "audio/mpeg" if codec in {"mp3", "mpeg"} else f"audio/{codec}"
-    metrics = _audio_metrics(
+    metrics = validate_generated_audio_bytes(
         audio,
-        {"media_type": media_type, "uri": f"output.{codec}"},
-        active_resolver.policy,
+        media_type=media_type,
+        uri=f"output.{codec}",
+        policy=active_resolver.policy,
         audio_decoder_fn=audio_decoder_fn,
     )
     artifact = active_resolver.persist(audio, suffix=codec, media_type=media_type)
@@ -879,11 +922,25 @@ def execute_voice_audio_validation_job(
     if isinstance(policy, Mapping):
         minimum = policy.get("minimum_duration_ms")
         maximum = policy.get("maximum_duration_ms")
+        maximum_trailing_silence = policy.get(
+            "maximum_trailing_silence_ms"
+        )
         duration = metrics.get("duration_ms")
         if isinstance(minimum, int) and duration is not None and duration < minimum:
             raise VoiceJobExecutionError("audio_duration_below_policy")
         if isinstance(maximum, int) and duration is not None and duration > maximum:
             raise VoiceJobExecutionError("audio_duration_above_policy")
+        trailing_silence = metrics.get("trailing_silence_ms")
+        if (
+            isinstance(maximum_trailing_silence, int)
+            and not isinstance(maximum_trailing_silence, bool)
+            and maximum_trailing_silence >= 0
+            and trailing_silence is not None
+            and trailing_silence > maximum_trailing_silence
+        ):
+            raise VoiceJobExecutionError(
+                "audio_trailing_silence_above_policy"
+            )
     return _result(
         canonical_job,
         artifact=dict(descriptor),
@@ -947,4 +1004,5 @@ __all__ = [
     "execute_voice_asr_job",
     "execute_voice_audio_validation_job",
     "execute_voice_tts_job",
+    "validate_generated_audio_bytes",
 ]
