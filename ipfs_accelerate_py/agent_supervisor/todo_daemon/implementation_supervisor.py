@@ -5273,7 +5273,7 @@ class PortalImplementationSupervisor:
         ]
         if len(merge_bases) != 1:
             return ""
-        resolved = TodoImplementationSupervisor._git_ref_commit(
+        resolved = PortalImplementationSupervisor._git_ref_commit(
             repo_root,
             merge_bases[0],
         )
