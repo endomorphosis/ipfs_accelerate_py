@@ -15095,6 +15095,22 @@ class PortalImplementationDaemon:
                 "target_branch": target_branch,
             }
 
+        # ``git rebase ... <branch>`` temporarily checks that branch out in the
+        # invoking worktree.  A dirty shared checkout may then refuse the
+        # restore step and leave the operator's checkout attached to an
+        # implementation branch with a stale index.  Preserve all operator
+        # state and let the isolated merge worktree handle the gitlink ancestry
+        # instead.
+        dirty_paths = sorted(self._dirty_worktree_paths(self.repo_root))
+        if dirty_paths:
+            return {
+                "attempted": False,
+                "reason": "shared_checkout_dirty_preserved",
+                "branch": branch_name,
+                "target_branch": target_branch,
+                "dirty_paths": dirty_paths,
+            }
+
         results: list[dict[str, Any]] = []
 
         # Check if branch is behind target on submodule paths

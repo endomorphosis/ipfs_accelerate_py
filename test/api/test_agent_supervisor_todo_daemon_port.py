@@ -4768,6 +4768,44 @@ def test_stale_submodule_rebase_restores_canonical_checkout(tmp_path: Path):
     assert _git(repo, "merge-base", "--is-ancestor", "main", branch_name) == ""
 
 
+def test_stale_submodule_rebase_preserves_dirty_canonical_checkout(tmp_path: Path):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    branch_name = "implementation/rebase-with-dirty-checkout"
+    _git(repo, "checkout", "-b", branch_name)
+    (repo / "feature.txt").write_text("feature\n", encoding="utf-8")
+    _git(repo, "add", "feature.txt")
+    _git(repo, "commit", "-m", "implementation feature")
+    branch_commit = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "main")
+
+    (submodule / "later.txt").write_text("later\n", encoding="utf-8")
+    _git(submodule, "add", "later.txt")
+    _git(submodule, "commit", "-m", "advance child")
+    _git(repo, "add", "libs/child")
+    _git(repo, "commit", "-m", "advance child on main")
+    operator_note = repo / "operator-note.txt"
+    operator_note.write_text("preserve me\n", encoding="utf-8")
+
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=["libs/child"],
+    )
+
+    result = daemon._rebase_stale_submodule_pointers(branch_name, "main")
+
+    assert result["attempted"] is False
+    assert result["reason"] == "shared_checkout_dirty_preserved"
+    assert result["dirty_paths"] == ["operator-note.txt"]
+    assert _git(repo, "branch", "--show-current") == "main"
+    assert _git(repo, "rev-parse", branch_name) == branch_commit
+    assert operator_note.read_text(encoding="utf-8") == "preserve me\n"
+
+
 def test_implementation_daemon_recreates_missing_registered_submodule_worktree(
     tmp_path: Path,
 ):
