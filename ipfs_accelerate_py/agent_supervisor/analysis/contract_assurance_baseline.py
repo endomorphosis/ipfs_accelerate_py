@@ -51,6 +51,12 @@ from .mcp_invocation_trace import McpInvocationTrace, McpInvocationTracer
 from .repository_indexer import RepositoryIndex
 from .repository_snapshot import RepositorySnapshot
 from .runtime_component_catalog import RuntimeComponentCatalog
+from .runtime_contract_evidence_compiler import (
+    AnchorResolutionState,
+    RuntimeContractEvidenceCompilation,
+    RuntimeContractEvidenceCompiler,
+    compile_runtime_contract_evidence,
+)
 from .swissknife_contract_extractor import (
     SwissKnifeContractExtraction,
     SwissKnifeContractExtractor,
@@ -1291,54 +1297,13 @@ def materialize_contract_assurance_baseline(
             )
         )
 
-    # --- Stage: invocation traces ------------------------------------------
+    # --- Stage: invocation traces + endpoint evidence (SCA-217) ------------
     traces: list[McpInvocationTrace] = []
     trace_reasons: list[str] = []
-    if (
-        run_traces
-        and graph is not None
-        and catalog is not None
-        and graph.complete
-        and _index_healthy(repository_index)
-    ):
-        # Construct the tracer to prove the graph is path-queryable; without
-        # reviewed endpoint anchors the stage remains withheld.
-        _ = McpInvocationTracer(graph)
-        trace_reasons.append("endpoint_anchors_not_supplied")
-        stages.append(
-            BaselineStageReceipt(
-                name=BaselineStageName.INVOCATION_TRACE,
-                completeness=StageCompleteness.WITHHELD,
-                reason_codes=tuple(trace_reasons),
-                details={"trace_count": 0, "tracer_bound": True},
-            )
-        )
-    else:
-        if not run_traces:
-            trace_reasons.append("trace_stage_disabled")
-        if graph is None:
-            trace_reasons.append("graph_unavailable")
-        elif not graph.complete:
-            trace_reasons.append("graph_incomplete")
-        if not _index_healthy(repository_index):
-            trace_reasons.append("analyzer_unhealthy")
-        stages.append(
-            BaselineStageReceipt(
-                name=BaselineStageName.INVOCATION_TRACE,
-                completeness=StageCompleteness.WITHHELD,
-                reason_codes=tuple(sorted(set(trace_reasons))),
-            )
-        )
-
-    # --- Stage: proof / cache ----------------------------------------------
-    proof_attempted = 0
-    proof_proved = 0
-    proof_refuted = 0
-    analyses: list[McpContractAnalysis] = []
-    analysis_by_contract: dict[str, McpContractAnalysis] = {}
-    measurement_complete = False
-    health_partial = not _index_healthy(repository_index)
-
+    evidence_compilation: RuntimeContractEvidenceCompilation | None = None
+    evidence_findings: list[dict[str, Any]] = []
+    # Caller-supplied observed contracts win; otherwise the evidence compiler
+    # projects observed package contracts from reviewed catalog/index facts.
     observed_map: dict[str, Mapping[str, Any]] = {}
     if isinstance(observed_contracts, Mapping):
         observed_map = {
@@ -1350,29 +1315,208 @@ def materialize_contract_assurance_baseline(
             if op:
                 observed_map[op] = item
 
+    if catalog is not None and (
+        run_traces or not observed_map
+    ):
+        try:
+            evidence_compilation = compile_runtime_contract_evidence(
+                catalog,
+                snapshot_id=snapshot_id,
+                graph=graph if run_traces else None,
+                extraction=extraction,
+                runtime_catalog=runtime_catalog,
+                run_traces=bool(
+                    run_traces
+                    and graph is not None
+                    and graph.complete
+                ),
+            )
+        except Exception as exc:  # noqa: BLE001 - typed stage failure
+            trace_reasons.extend(
+                ("evidence_compilation_failed", type(exc).__name__)
+            )
+            evidence_compilation = None
+
+    if evidence_compilation is not None:
+        if not observed_map:
+            observed_map = {
+                key: dict(value)
+                for key, value in evidence_compilation.observed_contract_map.items()
+            }
+        for finding in evidence_compilation.findings:
+            evidence_findings.append(finding.to_dict())
+        traces.extend(evidence_compilation.traces)
+
+    if run_traces and catalog is not None and graph is not None and graph.complete:
+        # Always bind the tracer so the graph remains path-queryable even when
+        # every anchor is typed-unknown.
+        _ = McpInvocationTracer(graph)
+        if evidence_compilation is None:
+            # Compilation failed above — stage failed closed with findings.
+            stages.append(
+                BaselineStageReceipt(
+                    name=BaselineStageName.INVOCATION_TRACE,
+                    completeness=StageCompleteness.FAILED,
+                    reason_codes=tuple(sorted(set(trace_reasons))),
+                    details={"trace_count": 0, "tracer_bound": True},
+                )
+            )
+        else:
+            unresolved = [
+                anchor
+                for anchor in evidence_compilation.anchors
+                if anchor.resolution_state is not AnchorResolutionState.RESOLVED
+            ]
+            if evidence_compilation.complete and traces:
+                completeness = StageCompleteness.COMPLETE
+            elif evidence_compilation.anchors:
+                # Missing/ambiguous anchors become typed unknown findings, not
+                # a withheld empty-success stage.
+                completeness = StageCompleteness.PARTIAL
+                if unresolved:
+                    trace_reasons.append("endpoint_anchors_partial")
+                if evidence_compilation.findings:
+                    trace_reasons.append("typed_unknown_anchor_findings")
+                if not traces and any(
+                    anchor.is_traceable for anchor in evidence_compilation.anchors
+                ):
+                    trace_reasons.append("traces_empty_for_traceable_anchors")
+                elif not traces:
+                    trace_reasons.append("no_traceable_anchors")
+            else:
+                completeness = StageCompleteness.PARTIAL
+                trace_reasons.append("no_reviewed_runtime_operations")
+            trace_reasons.extend(evidence_compilation.reason_codes)
+            stages.append(
+                BaselineStageReceipt(
+                    name=BaselineStageName.INVOCATION_TRACE,
+                    completeness=completeness,
+                    reason_codes=tuple(sorted(set(trace_reasons))),
+                    root_id=evidence_compilation.compilation_id,
+                    details={
+                        "trace_count": len(traces),
+                        "anchor_count": len(evidence_compilation.anchors),
+                        "resolved_anchor_count": sum(
+                            1
+                            for anchor in evidence_compilation.anchors
+                            if anchor.resolution_state
+                            is AnchorResolutionState.RESOLVED
+                        ),
+                        "observed_contract_count": len(
+                            evidence_compilation.observed_contracts
+                        ),
+                        "finding_count": len(evidence_compilation.findings),
+                        "tracer_bound": True,
+                        "mcp_plus_plus_path_class": "mcp_plus_plus",
+                        "direct_path_class": "direct",
+                    },
+                )
+            )
+    else:
+        if not run_traces:
+            trace_reasons.append("trace_stage_disabled")
+        if graph is None:
+            trace_reasons.append("graph_unavailable")
+        elif not graph.complete:
+            trace_reasons.append("graph_incomplete")
+        if catalog is None:
+            trace_reasons.append("catalog_unavailable")
+        if not _index_healthy(repository_index) and repository_index is not None:
+            trace_reasons.append("analyzer_unhealthy")
+        # When anchors compiled but traces were not runnable, still surface the
+        # compiled evidence rather than claiming empty success.
+        if evidence_compilation is not None and evidence_compilation.anchors:
+            stages.append(
+                BaselineStageReceipt(
+                    name=BaselineStageName.INVOCATION_TRACE,
+                    completeness=StageCompleteness.PARTIAL,
+                    reason_codes=tuple(sorted(set(trace_reasons))),
+                    root_id=evidence_compilation.compilation_id,
+                    details={
+                        "trace_count": len(traces),
+                        "anchor_count": len(evidence_compilation.anchors),
+                        "observed_contract_count": len(
+                            evidence_compilation.observed_contracts
+                        ),
+                        "finding_count": len(evidence_compilation.findings),
+                        "tracer_bound": graph is not None,
+                    },
+                )
+            )
+        else:
+            stages.append(
+                BaselineStageReceipt(
+                    name=BaselineStageName.INVOCATION_TRACE,
+                    completeness=StageCompleteness.WITHHELD,
+                    reason_codes=tuple(sorted(set(trace_reasons))),
+                )
+            )
+
+    # --- Stage: proof / cache ----------------------------------------------
+    proof_attempted = 0
+    proof_proved = 0
+    proof_refuted = 0
+    analyses: list[McpContractAnalysis] = []
+    analysis_by_contract: dict[str, McpContractAnalysis] = {}
+    measurement_complete = False
+    health_partial = not _index_healthy(repository_index)
+
+    # Index observed contracts by operation_id, tool name, package:tool, and
+    # bound contract_ids so catalog subjects join without name-only synthesis.
+    observed_index: dict[str, Mapping[str, Any]] = dict(observed_map)
+    for key, value in list(observed_map.items()):
+        tool = str(value.get("tool_name") or value.get("name") or "")
+        package = str(value.get("package_id") or "")
+        if tool:
+            observed_index.setdefault(tool, value)
+        if package and tool:
+            observed_index.setdefault(f"{package}:{tool}", value)
+        for contract_id in value.get("contract_ids") or ():
+            observed_index.setdefault(str(contract_id), value)
+    traces_by_operation = {trace.operation_id: trace for trace in traces}
+
     if (
         run_parity
         and catalog is not None
-        and observed_map
+        and observed_index
         and not health_partial
     ):
         analyzer = McpContractAnalyzer()
         for contract in catalog.contracts:
             subject = contract.tool_name or contract.subject
-            observed = observed_map.get(subject) or observed_map.get(
-                contract.contract_id
+            package_tool = (
+                f"{contract.package_id}:{contract.tool_name}"
+                if contract.package_id and contract.tool_name
+                else ""
+            )
+            observed = (
+                observed_index.get(subject)
+                or observed_index.get(contract.contract_id)
+                or observed_index.get(package_tool)
+                or observed_index.get(contract.tool_name)
             )
             if observed is None:
                 continue
+            operation_id = str(
+                observed.get("operation_id")
+                or package_tool
+                or subject
+            )
             expected = {
-                "operation_id": subject,
+                "operation_id": operation_id,
                 "complete": True,
                 "contract_id": contract.contract_id,
                 "claim_family": contract.claim_family.value,
                 "package_id": contract.package_id,
             }
+            # Align observed operation_id with the expected analyzer key.
+            observed_payload = dict(observed)
+            observed_payload["operation_id"] = operation_id
+            trace = traces_by_operation.get(operation_id)
             try:
-                analysis = analyzer.analyze(expected, observed)
+                analysis = analyzer.analyze(
+                    expected, observed_payload, trace=trace
+                )
             except Exception:  # noqa: BLE001
                 continue
             analyses.append(analysis)
@@ -1382,8 +1526,16 @@ def materialize_contract_assurance_baseline(
                 proof_proved += 1
             elif analysis.state is ParityState.REFUTED:
                 proof_refuted += 1
-        measurement_complete = proof_attempted > 0 and proof_attempted == len(
-            catalog.contracts
+        # Measurement is complete only when every tool-bearing reviewed contract
+        # has an observed counterpart; interface-only contracts are optional.
+        tool_contracts = [
+            item
+            for item in catalog.contracts
+            if item.tool_name
+        ]
+        measured_targets = tool_contracts or list(catalog.contracts)
+        measurement_complete = proof_attempted > 0 and proof_attempted >= len(
+            measured_targets
         )
         stages.append(
             BaselineStageReceipt(
@@ -1607,6 +1759,20 @@ def materialize_contract_assurance_baseline(
     )
     if health_finding:
         finding_rows.append(health_finding)
+    for evidence_row in evidence_findings:
+        finding_rows.append(
+            {
+                "finding_id": evidence_row.get("finding_id", ""),
+                "contract_id": evidence_row.get("operation_id", ""),
+                "state": TerminalContractStatus.UNKNOWN.value,
+                "lifecycle": "open",
+                "snapshot_root": snapshot_id,
+                "reason_code": evidence_row.get("reason_code", ""),
+                "kind": evidence_row.get("kind", ""),
+                "severity": "medium",
+                "terminal": True,
+            }
+        )
     findings_root = _sha256_label(finding_rows)
 
     proof_reason = "ok"
@@ -1644,6 +1810,17 @@ def materialize_contract_assurance_baseline(
             extraction.extraction_id if extraction is not None else ""
         ),
         "catalog_root": catalog.catalog_id if catalog is not None else "",
+        "evidence_compilation_root": (
+            evidence_compilation.compilation_id
+            if evidence_compilation is not None
+            else ""
+        ),
+        "endpoint_anchor_count": (
+            len(evidence_compilation.anchors)
+            if evidence_compilation is not None
+            else 0
+        ),
+        "invocation_trace_count": len(traces),
         "contracts_root": contracts_root,
         "findings_root": findings_root,
         "scope_policy_root": scope_policy_root,
@@ -1806,4 +1983,6 @@ __all__ = [
     "materialize_baseline_from_repository_index",
     "materialize_contract_assurance_baseline",
     "publish_baseline_artifacts",
+    "compile_runtime_contract_evidence",
+    "RuntimeContractEvidenceCompiler",
 ]
