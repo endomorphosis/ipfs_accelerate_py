@@ -1,20 +1,22 @@
 """Content-bound adapters for mixed program and contract evidence.
 
 The canonical cache/index record remains :class:`conflict_graph.ASTBlobRecord`.
-This module does not introduce a second AST schema.  It adapts Python and
-non-code contract formats to that record and retains richer, typed facts in a
-small sidecar.  The sidecar is deliberately observational: import aliases,
-member dispatch, monkey patches, and dynamic calls are marked ambiguous rather
-than promoted to resolved call-graph edges.
+This module does not introduce a second AST schema.  It adapts Python,
+JavaScript/TypeScript, and non-code contract formats to that record and retains
+richer, typed facts in a small sidecar.  The sidecar is deliberately
+observational: import aliases, member dispatch, monkey patches, and dynamic
+calls are marked ambiguous rather than promoted to resolved call-graph edges.
 
-Supported inputs are Python, JSON/JSON Schema/MCP manifests, and Markdown.
-Unsupported and malformed inputs are returned as explicit adapter results so
-an exhaustive corpus scan can account for every admitted file.
+Supported inputs are Python, JavaScript/JSX, TypeScript/TSX, JSON/JSON
+Schema/MCP manifests, and Markdown. Unsupported and malformed inputs are
+returned as explicit adapter results so an exhaustive corpus scan can account
+for every admitted file.
 """
 
 from __future__ import annotations
 
 import ast
+import bisect
 import hashlib
 import json
 import re
@@ -40,12 +42,17 @@ PROGRAM_EVIDENCE_INDEX_SCHEMA = (
 PYTHON_ADAPTER_VERSION = f"stdlib-ast-{sys.version_info.major}.{sys.version_info.minor}"
 JSON_ADAPTER_VERSION = "stdlib-json-1"
 MARKDOWN_ADAPTER_VERSION = "deterministic-lines-1"
+JAVASCRIPT_ADAPTER_VERSION = "deterministic-ecmascript-tokens-1"
 DEFAULT_MAX_SOURCE_BYTES = 2 * 1024 * 1024
 DEFAULT_MAX_FACTS = 20_000
 
 _PYTHON_SUFFIXES = frozenset({".py", ".pyi"})
 _JSON_SUFFIXES = frozenset({".json", ".jsonschema"})
 _MARKDOWN_SUFFIXES = frozenset({".md", ".markdown", ".mdown", ".mkd"})
+_JAVASCRIPT_SUFFIXES = frozenset({".js", ".mjs", ".cjs"})
+_JSX_SUFFIXES = frozenset({".jsx"})
+_TYPESCRIPT_SUFFIXES = frozenset({".ts", ".mts", ".cts"})
+_TSX_SUFFIXES = frozenset({".tsx"})
 _NORMATIVE_WORD_RE = re.compile(
     r"\b(MUST(?:\s+NOT)?|SHALL(?:\s+NOT)?|SHOULD(?:\s+NOT)?|MAY|REQUIRED)\b",
     re.IGNORECASE,
@@ -794,6 +801,1263 @@ def adapt_python_source(
     )
 
 
+@dataclass(frozen=True)
+class _ECMAScriptToken:
+    kind: str
+    value: str
+    start: int
+    end: int
+    span: SourceSpan
+
+
+_ECMASCRIPT_PUNCTUATORS = (
+    "===",
+    "!==",
+    ">>>",
+    "**=",
+    "=>",
+    "?.",
+    "??",
+    "&&",
+    "||",
+    "==",
+    "!=",
+    "<=",
+    ">=",
+    "++",
+    "--",
+    "**",
+    "+=",
+    "-=",
+    "*=",
+    "/=",
+    "%=",
+    "<<",
+    ">>",
+    "...",
+)
+_ECMASCRIPT_DEFINITION_KINDS = {
+    "class": "class_definition",
+    "function": "function_definition",
+    "interface": "interface_definition",
+    "type": "type_definition",
+    "enum": "enum_definition",
+    "namespace": "namespace_definition",
+    "module": "namespace_definition",
+}
+_ECMASCRIPT_REGISTRATION_NAMES = frozenset(
+    {
+        "addEventListener",
+        "on",
+        "once",
+        "register",
+        "registerHandler",
+        "registerTool",
+        "setHandler",
+        "setRequestHandler",
+        "subscribe",
+        "tool",
+    }
+)
+_ECMASCRIPT_MCP_STRING_RE = re.compile(
+    r"(?:^|[./:_-])(?:mcp|tool|tools|prompt|prompts|resource|resources|server)"
+    r"(?:$|[./:_-])",
+    re.IGNORECASE,
+)
+
+
+def _ecmascript_lex(
+    source: str,
+) -> tuple[tuple[_ECMAScriptToken, ...], tuple[AdapterDiagnostic, ...]]:
+    """Return a conservative token stream without pretending to resolve JS."""
+
+    line_starts = [0]
+    for match in re.finditer("\n", source):
+        line_starts.append(match.end())
+
+    def span(start: int, end: int) -> SourceSpan:
+        start_line = bisect.bisect_right(line_starts, start)
+        end_offset = max(start, end - 1)
+        end_line = bisect.bisect_right(line_starts, end_offset)
+        return SourceSpan(
+            start_line,
+            start - line_starts[start_line - 1],
+            end_line,
+            end - line_starts[end_line - 1],
+        )
+
+    tokens: list[_ECMAScriptToken] = []
+    diagnostics: list[AdapterDiagnostic] = []
+    index = 0
+    length = len(source)
+    while index < length:
+        char = source[index]
+        if char.isspace():
+            index += 1
+            continue
+        if source.startswith("//", index):
+            end = source.find("\n", index + 2)
+            index = length if end < 0 else end
+            continue
+        if source.startswith("/*", index):
+            end = source.find("*/", index + 2)
+            if end < 0:
+                diagnostics.append(
+                    AdapterDiagnostic(
+                        code="ecmascript_unterminated_comment",
+                        message="unterminated block comment",
+                        span=span(index, length),
+                        details={"parser": JAVASCRIPT_ADAPTER_VERSION},
+                    )
+                )
+                break
+            index = end + 2
+            continue
+        if char in {"'", '"', "`"}:
+            quote = char
+            start = index
+            index += 1
+            escaped = False
+            terminated = False
+            while index < length:
+                current = source[index]
+                if escaped:
+                    escaped = False
+                    index += 1
+                    continue
+                if current == "\\":
+                    escaped = True
+                    index += 1
+                    continue
+                if current == quote:
+                    index += 1
+                    terminated = True
+                    break
+                if current in "\r\n" and quote != "`":
+                    break
+                index += 1
+            if not terminated:
+                diagnostics.append(
+                    AdapterDiagnostic(
+                        code="ecmascript_unterminated_literal",
+                        message="unterminated string or template literal",
+                        span=span(start, index),
+                        details={"parser": JAVASCRIPT_ADAPTER_VERSION},
+                    )
+                )
+            value = source[start:index]
+            tokens.append(
+                _ECMAScriptToken(
+                    "template" if quote == "`" else "string",
+                    value,
+                    start,
+                    index,
+                    span(start, index),
+                )
+            )
+            continue
+        identifier = re.match(r"[A-Za-z_$][\w$]*", source[index:])
+        if identifier:
+            end = index + len(identifier.group(0))
+            tokens.append(
+                _ECMAScriptToken(
+                    "identifier",
+                    identifier.group(0),
+                    index,
+                    end,
+                    span(index, end),
+                )
+            )
+            index = end
+            continue
+        number = re.match(
+            r"(?:0[xX][0-9A-Fa-f]+|0[bB][01]+|(?:\d+\.\d*|\.\d+|\d+)"
+            r"(?:[eE][+-]?\d+)?)n?",
+            source[index:],
+        )
+        if number:
+            end = index + len(number.group(0))
+            tokens.append(
+                _ECMAScriptToken(
+                    "number", number.group(0), index, end, span(index, end)
+                )
+            )
+            index = end
+            continue
+        punctuator = next(
+            (
+                candidate
+                for candidate in _ECMASCRIPT_PUNCTUATORS
+                if source.startswith(candidate, index)
+            ),
+            char,
+        )
+        end = index + len(punctuator)
+        tokens.append(
+            _ECMAScriptToken("punctuator", punctuator, index, end, span(index, end))
+        )
+        index = end
+    return tuple(tokens), tuple(diagnostics)
+
+
+def _mask_ecmascript_noncode(
+    source: str,
+    *,
+    mask_strings: bool,
+) -> str:
+    """Blank comments and optionally literals while retaining source offsets."""
+
+    masked = list(source)
+
+    def blank(start: int, end: int) -> None:
+        for offset in range(start, end):
+            if masked[offset] not in "\r\n":
+                masked[offset] = " "
+
+    index = 0
+    length = len(source)
+    while index < length:
+        if source.startswith("//", index):
+            end = source.find("\n", index + 2)
+            end = length if end < 0 else end
+            blank(index, end)
+            index = end
+            continue
+        if source.startswith("/*", index):
+            end = source.find("*/", index + 2)
+            end = length if end < 0 else end + 2
+            blank(index, end)
+            index = end
+            continue
+        quote = source[index]
+        if quote not in {"'", '"', "`"}:
+            index += 1
+            continue
+        start = index
+        index += 1
+        escaped = False
+        while index < length:
+            current = source[index]
+            if escaped:
+                escaped = False
+                index += 1
+                continue
+            if current == "\\":
+                escaped = True
+                index += 1
+                continue
+            index += 1
+            if current == quote:
+                break
+            if current in "\r\n" and quote != "`":
+                break
+        if mask_strings:
+            blank(start, index)
+    return "".join(masked)
+
+
+def _ecmascript_matches(
+    tokens: Sequence[_ECMAScriptToken],
+) -> tuple[dict[int, int], tuple[AdapterDiagnostic, ...]]:
+    matching: dict[int, int] = {}
+    stack: list[tuple[str, int]] = []
+    closing = {")": "(", "]": "[", "}": "{"}
+    diagnostics: list[AdapterDiagnostic] = []
+    for index, token in enumerate(tokens):
+        if token.value in {"(", "[", "{"}:
+            stack.append((token.value, index))
+        elif token.value in closing:
+            if not stack or stack[-1][0] != closing[token.value]:
+                diagnostics.append(
+                    AdapterDiagnostic(
+                        code="ecmascript_unexpected_closer",
+                        message=f"unexpected closing token {token.value!r}",
+                        span=token.span,
+                        details={"parser": JAVASCRIPT_ADAPTER_VERSION},
+                    )
+                )
+                continue
+            _, opening_index = stack.pop()
+            matching[opening_index] = index
+            matching[index] = opening_index
+    for opening, index in stack:
+        diagnostics.append(
+            AdapterDiagnostic(
+                code="ecmascript_unclosed_delimiter",
+                message=f"unclosed delimiter {opening!r}",
+                span=tokens[index].span,
+                details={"parser": JAVASCRIPT_ADAPTER_VERSION},
+            )
+        )
+    return matching, tuple(diagnostics)
+
+
+def _ecmascript_owner(
+    offset: int, definitions: Sequence[tuple[int, int, str]]
+) -> str:
+    containing = [
+        (end - start, name)
+        for start, end, name in definitions
+        if start <= offset <= end
+    ]
+    return min(containing)[1] if containing else "<module>"
+
+
+def _ecmascript_record(
+    *,
+    source: str,
+    facts: Sequence[ProgramEvidenceFact],
+    source_hash: str,
+    blob_identity: str,
+    language: str,
+    parse_error: str,
+) -> ASTBlobRecord:
+    definitions = tuple(
+        fact
+        for fact in facts
+        if fact.kind.endswith("_definition") or fact.kind in {"method_definition"}
+    )
+    names: list[str] = []
+    hashes: dict[str, str] = {}
+    lines: dict[str, tuple[int, int]] = {}
+    occurrences: dict[str, int] = {}
+    source_lines = source.splitlines(keepends=True)
+    for fact in definitions:
+        base = fact.name if fact.owner in {"", "<module>"} else f"{fact.owner}.{fact.name}"
+        occurrences[base] = occurrences.get(base, 0) + 1
+        name = base if occurrences[base] == 1 else f"{base}#{occurrences[base]}"
+        names.append(name)
+        start_line = max(1, fact.span.line_start)
+        end_line = max(start_line, fact.span.line_end)
+        text = "".join(source_lines[start_line - 1 : end_line])
+        hashes[name] = _semantic_hash(
+            {
+                "kind": fact.kind,
+                "name": fact.name,
+                "owner": fact.owner,
+                "span": fact.span.to_dict(),
+                "source": text,
+            }
+        )
+        lines[name] = (start_line, end_line)
+    imports = tuple(
+        f"{fact.name} <- {fact.target}"
+        for fact in facts
+        if fact.kind in {"import", "dynamic_import"}
+    )
+    calls = tuple(
+        f"{fact.owner} -> {fact.name}"
+        for fact in facts
+        if fact.kind in {"call", "new_expression"}
+    )
+    interfaces = tuple(
+        f"{fact.kind}:{fact.owner}:{fact.name}:{fact.target}"
+        for fact in facts
+        if fact.kind
+        in {
+            "callback",
+            "decorator",
+            "export",
+            "jsx_element",
+            "registration",
+            "re_export",
+            "string_literal",
+            "type_annotation",
+            "type_reference",
+            "unsupported_node",
+        }
+    )
+    return ASTBlobRecord(
+        blob_identity=blob_identity,
+        source_sha256=source_hash,
+        qualified_symbols=tuple(names),
+        imports=imports,
+        calls=calls,
+        state_transitions=(),
+        interfaces=interfaces,
+        symbol_hashes=hashes,
+        symbol_lines=lines,
+        parse_error=parse_error,
+        language=language,
+    )
+
+
+def _strip_ecmascript_string(value: str) -> str:
+    if len(value) >= 2 and value[0] in {"'", '"', "`"}:
+        return value[1:-1]
+    return value
+
+
+def _ecmascript_facts(
+    source: str,
+    *,
+    language: str,
+    generated: bool,
+) -> tuple[
+    tuple[ProgramEvidenceFact, ...],
+    tuple[AdapterDiagnostic, ...],
+]:
+    tokens, lexical_diagnostics = _ecmascript_lex(source)
+    matching, delimiter_diagnostics = _ecmascript_matches(tokens)
+    code_source = _mask_ecmascript_noncode(source, mask_strings=True)
+    comment_masked_source = _mask_ecmascript_noncode(
+        source, mask_strings=False
+    )
+    token_starts = {(token.start, token.value) for token in tokens}
+    diagnostics = list((*lexical_diagnostics, *delimiter_diagnostics))
+    facts: list[ProgramEvidenceFact] = []
+    line_starts = [0, *(match.end() for match in re.finditer("\n", source))]
+
+    def span(start: int, end: int) -> SourceSpan:
+        start_line = bisect.bisect_right(line_starts, start)
+        end_offset = max(start, end - 1)
+        end_line = bisect.bisect_right(line_starts, end_offset)
+        return SourceSpan(
+            start_line,
+            start - line_starts[start_line - 1],
+            end_line,
+            end - line_starts[end_line - 1],
+        )
+
+    definitions: list[tuple[int, int, str]] = []
+    class_scopes: list[tuple[int, int, int, int, str]] = []
+    declaration_parens: set[int] = set()
+    definition_facts: list[ProgramEvidenceFact] = []
+    definition_re = re.compile(
+        r"(?m)(?P<prefix>(?:(?:export|default|declare|abstract|async)\s+)*)"
+        r"(?P<kind>class|function|interface|type|enum|namespace|module)\s+"
+        r"(?P<name>[A-Za-z_$][\w$]*)"
+    )
+    for match in definition_re.finditer(code_source):
+        kind = match.group("kind")
+        # ``type`` is also a modifier inside import/export binding lists.  Keep
+        # those bindings as import/re-export evidence rather than inventing a
+        # declaration for them.
+        if kind == "type":
+            statement_start = code_source.rfind(";", 0, match.start()) + 1
+            statement_prefix = code_source[statement_start : match.start()]
+            if re.match(
+                r"\s*(?:import|export)\b", statement_prefix, re.DOTALL
+            ):
+                continue
+        name = match.group("name")
+        end = match.end()
+        token_index = next(
+            (
+                index
+                for index, token in enumerate(tokens)
+                if token.start >= match.end()
+            ),
+            len(tokens),
+        )
+        body_open = next(
+            (
+                index
+                for index in range(token_index, min(len(tokens), token_index + 80))
+                if tokens[index].value == "{"
+            ),
+            None,
+        )
+        if body_open is not None and body_open in matching:
+            end = tokens[matching[body_open]].end
+        elif kind == "type":
+            semicolon = code_source.find(";", match.end())
+            end = len(source) if semicolon < 0 else semicolon + 1
+        owner = _ecmascript_owner(match.start(), definitions)
+        fact_kind = _ECMASCRIPT_DEFINITION_KINDS[kind]
+        if kind == "function" and "async" in match.group("prefix").split():
+            fact_kind = "async_function_definition"
+        fact = ProgramEvidenceFact(
+            kind=fact_kind,
+            name=name,
+            owner=owner,
+            relationship="defines",
+            span=span(match.start(), end),
+            generated=generated,
+            details={
+                "declared_kind": kind,
+                "exported": "export" in match.group("prefix").split(),
+                "default_export": "default" in match.group("prefix").split(),
+            },
+        )
+        facts.append(fact)
+        definition_facts.append(fact)
+        definitions.append((match.start(), end, name))
+        if body_open is not None and body_open in matching:
+            if kind == "class":
+                class_scopes.append(
+                    (
+                        tokens[body_open].start,
+                        tokens[matching[body_open]].end,
+                        body_open,
+                        matching[body_open],
+                        name,
+                    )
+                )
+            if kind == "function":
+                opening_paren = next(
+                    (
+                        index
+                        for index in range(token_index, body_open)
+                        if tokens[index].value == "("
+                    ),
+                    None,
+                )
+                if opening_paren is not None:
+                    declaration_parens.add(opening_paren)
+        if "export" in match.group("prefix").split():
+            facts.append(
+                ProgramEvidenceFact(
+                    kind="export",
+                    name="default"
+                    if "default" in match.group("prefix").split()
+                    else name,
+                    owner="<module>",
+                    target=name,
+                    relationship="exports",
+                    span=span(match.start(), match.end()),
+                    generated=generated,
+                    details={
+                        "declaration": True,
+                        "default": "default"
+                        in match.group("prefix").split(),
+                    },
+                )
+            )
+
+    method_re = re.compile(
+        r"(?m)^[ \t]*"
+        r"(?:(?:public|private|protected|static|readonly|abstract|override|"
+        r"async|declare|get|set)\s+)*"
+        r"(?P<name>constructor|[A-Za-z_$][\w$]*)"
+        r"\s*(?:<[^>\n]+>\s*)?\("
+    )
+    for match in method_re.finditer(code_source):
+        opening_paren = next(
+            (
+                index
+                for index, token in enumerate(tokens)
+                if token.value == "("
+                and match.start("name") < token.start < match.end()
+            ),
+            None,
+        )
+        if opening_paren is None or opening_paren not in matching:
+            continue
+        containing_class = next(
+            (
+                item
+                for item in class_scopes
+                if item[0] < tokens[opening_paren].start < item[1]
+            ),
+            None,
+        )
+        if containing_class is None:
+            continue
+        _, _, class_open, _, class_name = containing_class
+        enclosing_braces = [
+            opening
+            for opening, closing in matching.items()
+            if opening < closing
+            and tokens[opening].value == "{"
+            and opening < opening_paren < closing
+        ]
+        if not enclosing_braces or max(enclosing_braces) != class_open:
+            continue
+        close_paren = matching[opening_paren]
+        method_end = tokens[close_paren].end
+        body_open = None
+        for index in range(
+            close_paren + 1, min(len(tokens), close_paren + 80)
+        ):
+            if tokens[index].value == "{":
+                body_open = index
+                method_end = (
+                    tokens[matching[index]].end
+                    if index in matching
+                    else tokens[index].end
+                )
+                break
+            if tokens[index].value == ";":
+                method_end = tokens[index].end
+                break
+            if tokens[index].value == "=>":
+                break
+        if body_open is None and (
+            close_paren + 1 >= len(tokens)
+            or tokens[close_paren + 1].value not in {":", ";"}
+        ):
+            continue
+        name = match.group("name")
+        facts.append(
+            ProgramEvidenceFact(
+                kind="method_definition",
+                name=name,
+                owner=class_name,
+                relationship="defines",
+                span=span(match.start(), method_end),
+                generated=generated,
+                details={
+                    "async": bool(
+                        re.search(r"\basync\b", match.group(0))
+                    ),
+                    "constructor": name == "constructor",
+                },
+            )
+        )
+        definition_facts.append(facts[-1])
+        declaration_parens.add(opening_paren)
+        if body_open is not None and body_open in matching:
+            definitions.append((match.start(), method_end, f"{class_name}.{name}"))
+
+    variable_re = re.compile(
+        r"(?m)(?P<prefix>\bexport\s+(?:default\s+)?)?"
+        r"\b(?P<kind>const|let|var)\s+"
+        r"(?P<name>[A-Za-z_$][\w$]*)"
+        r"(?P<type>\s*\??\s*:\s*[^=;,\n]+)?"
+    )
+    for match in variable_re.finditer(code_source):
+        name = match.group("name")
+        statement_end = code_source.find(";", match.end())
+        if statement_end < 0:
+            statement_end = code_source.find("\n", match.end())
+        if statement_end < 0:
+            statement_end = len(source)
+        statement = code_source[match.start() : statement_end]
+        fact_kind = (
+            "arrow_function_definition"
+            if "=>" in statement
+            else "variable_definition"
+        )
+        owner = _ecmascript_owner(match.start(), definitions)
+        fact = ProgramEvidenceFact(
+            kind=fact_kind,
+            name=name,
+            owner=owner,
+            relationship="defines",
+            span=span(match.start(), statement_end),
+            generated=generated,
+            details={
+                "declaration": match.group("kind"),
+                "async": fact_kind == "arrow_function_definition"
+                and bool(re.search(r"=\s*async\b", statement)),
+            },
+        )
+        facts.append(fact)
+        definition_facts.append(fact)
+        if fact_kind == "arrow_function_definition":
+            definitions.append((match.start(), statement_end, name))
+        if match.group("prefix"):
+            facts.append(
+                ProgramEvidenceFact(
+                    kind="export",
+                    name="default"
+                    if "default" in match.group("prefix").split()
+                    else name,
+                    owner="<module>",
+                    target=name,
+                    relationship="exports",
+                    span=span(match.start(), match.end()),
+                    generated=generated,
+                    details={
+                        "declaration": True,
+                        "default": "default"
+                        in match.group("prefix").split(),
+                    },
+                )
+            )
+        if match.group("type"):
+            target = match.group("type").split(":", 1)[1].strip()
+            facts.append(
+                ProgramEvidenceFact(
+                    kind="type_annotation",
+                    name=name,
+                    owner=owner,
+                    target=target,
+                    relationship="variable_type",
+                    span=span(match.start("type"), match.end("type")),
+                    generated=generated,
+                )
+            )
+
+    name_counts: dict[str, int] = {}
+    for fact in definition_facts:
+        key = f"{fact.owner}:{fact.name}"
+        name_counts[key] = name_counts.get(key, 0) + 1
+    collisions = {name for name, count in name_counts.items() if count > 1}
+    if collisions:
+        facts = [
+            replace(fact, ambiguous=True)
+            if (
+                fact.kind.endswith("_definition")
+                and f"{fact.owner}:{fact.name}" in collisions
+            )
+            else fact
+            for fact in facts
+        ]
+        for collision in sorted(collisions):
+            diagnostics.append(
+                AdapterDiagnostic(
+                    code="ecmascript_name_collision",
+                    message=f"multiple definitions observed for {collision!r}",
+                    severity="warning",
+                    details={
+                        "name": collision,
+                        "parser": JAVASCRIPT_ADAPTER_VERSION,
+                    },
+                )
+            )
+
+    aliases: dict[str, str] = {}
+    static_import_re = re.compile(
+        r"^[ \t]*import[ \t]+(?!\()(?P<clause>[^;]*?)\s+from\s+"
+        r"(?P<module>['\"][^'\"]+['\"])[ \t]*;?",
+        re.MULTILINE,
+    )
+    side_effect_import_re = re.compile(
+        r"(?m)^[ \t]*import[ \t]+(?P<module>['\"][^'\"]+['\"])[ \t]*;?"
+    )
+    for match in static_import_re.finditer(comment_masked_source):
+        keyword_start = comment_masked_source.find(
+            "import", match.start(), match.end()
+        )
+        if (keyword_start, "import") not in token_starts:
+            continue
+        module = _strip_ecmascript_string(match.group("module"))
+        clause = match.group("clause").strip()
+        type_only_clause = clause.startswith("type ")
+        if type_only_clause:
+            clause = clause[5:].strip()
+        bindings: list[tuple[str, str, bool]] = []
+        default_match = re.match(r"([A-Za-z_$][\w$]*)", clause)
+        if default_match and not clause.startswith(("{", "*")):
+            bindings.append(("default", default_match.group(1), type_only_clause))
+        star_match = re.search(r"\*\s+as\s+([A-Za-z_$][\w$]*)", clause)
+        if star_match:
+            bindings.append(("*", star_match.group(1), type_only_clause))
+        named_match = re.search(r"\{(?P<names>.*?)\}", clause, re.DOTALL)
+        if named_match:
+            for item in named_match.group("names").split(","):
+                item = item.strip()
+                if not item:
+                    continue
+                item_type_only = type_only_clause or item.startswith("type ")
+                if item.startswith("type "):
+                    item = item[5:].strip()
+                parts = re.split(r"\s+as\s+", item)
+                imported = parts[0].strip()
+                local = parts[-1].strip()
+                if re.fullmatch(r"[A-Za-z_$][\w$]*", local):
+                    bindings.append((imported, local, item_type_only))
+        for imported, local, type_only in bindings:
+            aliases[local] = f"{module}:{imported}"
+            facts.append(
+                ProgramEvidenceFact(
+                    kind="import",
+                    name=local,
+                    owner="<module>",
+                    target=f"{module}:{imported}",
+                    relationship="imports_type" if type_only else "imports",
+                    span=span(match.start(), match.end()),
+                    generated=generated,
+                    details={
+                        "module": module,
+                        "source": module,
+                        "imported": imported,
+                        "local": local,
+                        "type_only": type_only,
+                    },
+                )
+            )
+    for match in side_effect_import_re.finditer(comment_masked_source):
+        keyword_start = comment_masked_source.find(
+            "import", match.start(), match.end()
+        )
+        if (keyword_start, "import") not in token_starts:
+            continue
+        module = _strip_ecmascript_string(match.group("module"))
+        facts.append(
+            ProgramEvidenceFact(
+                kind="import",
+                name=module,
+                owner="<module>",
+                target=module,
+                relationship="imports_for_side_effect",
+                span=span(match.start(), match.end()),
+                generated=generated,
+                details={
+                    "module": module,
+                    "source": module,
+                    "side_effect_only": True,
+                },
+            )
+        )
+
+    export_re = re.compile(
+        r"(?m)^\s*export\s+"
+        r"(?P<body>(?:type\s+)?(?:\*(?:\s+as\s+[A-Za-z_$][\w$]*)?"
+        r"|\{[^}]*\}|default\b[^;\n]*))"
+        r"(?:\s+from\s+(?P<module>['\"][^'\"]+['\"]))?"
+    )
+    for match in export_re.finditer(comment_masked_source):
+        keyword_start = comment_masked_source.find(
+            "export", match.start(), match.end()
+        )
+        if (keyword_start, "export") not in token_starts:
+            continue
+        body = match.group("body").strip()
+        module_token = match.group("module") or ""
+        module = _strip_ecmascript_string(module_token)
+        declaration_type_only = body.startswith("type ")
+        names: list[tuple[str, str, bool]] = []
+        if body.startswith("*"):
+            alias = re.search(r"\bas\s+([A-Za-z_$][\w$]*)", body)
+            names.append(("*", alias.group(1) if alias else "*", False))
+        elif body.startswith("{") or body.startswith("type {"):
+            content = body[body.find("{") + 1 : body.rfind("}")]
+            for item in content.split(","):
+                item_type_only = declaration_type_only or bool(
+                    re.match(r"^\s*type\b", item)
+                )
+                item = re.sub(r"^\s*type\s+", "", item).strip()
+                if item:
+                    parts = re.split(r"\s+as\s+", item)
+                    names.append(
+                        (
+                            parts[0].strip(),
+                            parts[-1].strip(),
+                            item_type_only,
+                        )
+                    )
+        else:
+            names.append(("default", "default", False))
+        for original, exported, type_only in names:
+            facts.append(
+                ProgramEvidenceFact(
+                    kind="re_export" if module else "export",
+                    name=exported,
+                    owner="<module>",
+                    target=f"{module}:{original}" if module else original,
+                    relationship="re_exports" if module else "exports",
+                    span=span(match.start(), match.end()),
+                    generated=generated,
+                    details={
+                        "module": module,
+                        "source": module,
+                        "original": original,
+                        "imported": original,
+                        "exported": exported,
+                        "type_only": type_only,
+                    },
+                )
+            )
+
+    decorator_re = re.compile(
+        r"(?m)^[ \t]*@(?P<name>[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)"
+    )
+    for match in decorator_re.finditer(code_source):
+        decorated = next(
+            (
+                fact.name
+                for fact in definition_facts
+                if fact.span.line_start > span(match.start(), match.end()).line_end
+            ),
+            "",
+        )
+        facts.append(
+            ProgramEvidenceFact(
+                kind="decorator",
+                name=match.group("name"),
+                owner=decorated or "<unknown>",
+                target=decorated,
+                relationship="decorates",
+                ambiguous=not bool(decorated),
+                span=span(match.start(), match.end()),
+                generated=generated,
+            )
+        )
+
+    for index, token in enumerate(tokens):
+        if token.value == "(" and index:
+            previous = tokens[index - 1].value
+            if previous in {"if", "for", "while", "switch", "catch", "function"}:
+                declaration_parens.add(index)
+            elif index > 1 and tokens[index - 2].value == "function":
+                declaration_parens.add(index)
+
+    for index, token in enumerate(tokens):
+        if token.value != "(" or index in declaration_parens:
+            continue
+        close_index = matching.get(index)
+        if close_index is None:
+            continue
+        if (
+            close_index + 1 < len(tokens)
+            and tokens[close_index + 1].value == "=>"
+        ):
+            continue
+        callee_end = index - 1
+        if callee_end < 0:
+            continue
+        callee_start = callee_end
+        while callee_start > 0:
+            previous = tokens[callee_start - 1]
+            if previous.value in {".", "?."} or (
+                previous.kind == "identifier"
+                and tokens[callee_start].value in {".", "?."}
+            ):
+                callee_start -= 1
+                continue
+            break
+        callee_tokens = tokens[callee_start:index]
+        if not callee_tokens or callee_tokens[-1].kind != "identifier":
+            continue
+        raw_callee = "".join(item.value for item in callee_tokens)
+        callee = raw_callee.replace("?.", ".")
+        if callee in {
+            "if",
+            "for",
+            "while",
+            "switch",
+            "catch",
+            "function",
+            "super",
+        }:
+            continue
+        is_new = callee_start > 0 and tokens[callee_start - 1].value == "new"
+        is_awaited = callee_start > 0 and tokens[callee_start - 1].value == "await"
+        call_start = (
+            tokens[callee_start - 1].start
+            if is_new or is_awaited
+            else tokens[callee_start].start
+        )
+        owner = _ecmascript_owner(token.start, definitions)
+        root = callee.split(".", 1)[0]
+        alias_target = aliases.get(root, "")
+        resolved_name = (
+            alias_target.rsplit(":", 1)[-1] if alias_target else ""
+        )
+        call_fact = ProgramEvidenceFact(
+            kind="new_expression" if is_new else "call",
+            name=callee,
+            owner=owner,
+            target=alias_target,
+            relationship="constructs" if is_new else "calls_candidate",
+            ambiguous=True,
+            span=span(call_start, tokens[close_index].end),
+            generated=generated,
+            details={
+                "awaited": is_awaited,
+                "optional": "?." in raw_callee,
+                "optional_chain": "?." in raw_callee,
+                "raw_callee": raw_callee,
+                "import_alias_target": alias_target,
+                "resolved_name": resolved_name,
+            },
+        )
+        facts.append(call_fact)
+        if callee == "import":
+            first_argument = tokens[index + 1] if index + 1 < close_index else None
+            literal = (
+                _strip_ecmascript_string(first_argument.value)
+                if first_argument is not None
+                and first_argument.kind in {"string", "template"}
+                else ""
+            )
+            facts.append(
+                ProgramEvidenceFact(
+                    kind="dynamic_import",
+                    name=literal or "<dynamic>",
+                    owner=owner,
+                    target=literal,
+                    relationship="imports_dynamically",
+                    ambiguous=not bool(literal),
+                    span=call_fact.span,
+                    generated=generated,
+                    details={
+                        "awaited": is_awaited,
+                        "literal": bool(literal),
+                        "source": literal,
+                    },
+                )
+            )
+        tail = callee.rsplit(".", 1)[-1]
+        arguments = code_source[token.end : tokens[close_index].start]
+        has_callback = "=>" in arguments or re.search(
+            r"\b(?:async\s+)?function\b", arguments
+        )
+        callback_kind = (
+            "async_arrow"
+            if re.search(r"\basync\b[^=]*=>", arguments, re.DOTALL)
+            else "arrow"
+            if "=>" in arguments
+            else "async_function"
+            if re.search(r"\basync\s+function\b", arguments)
+            else "function"
+            if re.search(r"\bfunction\b", arguments)
+            else ""
+        )
+        if has_callback:
+            facts.append(
+                ProgramEvidenceFact(
+                    kind="callback",
+                    name=callee,
+                    owner=owner,
+                    target=callee,
+                    relationship="passed_to",
+                    ambiguous=True,
+                    span=span(token.end, tokens[close_index].start),
+                    generated=generated,
+                    details={
+                        "async": callback_kind.startswith("async_"),
+                        "callback_kind": callback_kind,
+                    },
+                )
+            )
+        if tail in _ECMASCRIPT_REGISTRATION_NAMES:
+            registration = ""
+            for argument in tokens[index + 1 : close_index]:
+                if argument.kind in {"string", "template"}:
+                    registration = _strip_ecmascript_string(argument.value)
+                    break
+            facts.append(
+                ProgramEvidenceFact(
+                    kind="registration",
+                    name=callee,
+                    owner=owner,
+                    target=callee,
+                    relationship="registers_callback"
+                    if has_callback
+                    else "registers_handler",
+                    ambiguous=True,
+                    span=call_fact.span,
+                    generated=generated,
+                    details={
+                        "callback_kind": callback_kind,
+                        "has_callback": has_callback,
+                        "registration": registration,
+                    },
+                )
+            )
+            for argument in tokens[index + 1 : close_index]:
+                if argument.kind not in {"string", "template"}:
+                    continue
+                literal = _strip_ecmascript_string(argument.value)
+                facts.append(
+                    ProgramEvidenceFact(
+                        kind="string_literal",
+                        name=literal,
+                        owner=owner,
+                        target=callee,
+                        relationship="registration_key",
+                        ambiguous=argument.kind == "template" and "${" in argument.value,
+                        span=argument.span,
+                        generated=generated,
+                        details={"mcp_relevant": True, "value": literal},
+                    )
+                )
+
+    if language in {"typescript", "tsx"}:
+        annotation_re = re.compile(
+            r"(?P<name>[A-Za-z_$][\w$]*)\s*\??\s*:\s*"
+            r"(?P<type>[A-Za-z_$][\w$]*(?:\s*<[^;\n=,)>{}]+>)?(?:\[\])?)"
+        )
+        for match in annotation_re.finditer(code_source):
+            facts.append(
+                ProgramEvidenceFact(
+                    kind="type_annotation",
+                    name=match.group("name"),
+                    owner=_ecmascript_owner(match.start(), definitions),
+                    target=match.group("type").strip(),
+                    relationship="has_type",
+                    span=span(match.start(), match.end()),
+                    generated=generated,
+                )
+            )
+    heritage_re = re.compile(
+        r"\b(?:class|interface)\s+(?P<name>[A-Za-z_$][\w$]*)\s+"
+        r"(?P<relation>extends|implements)\s+(?P<types>[^{]+)"
+    )
+    for match in heritage_re.finditer(code_source):
+        for target in match.group("types").split(","):
+            target = target.strip()
+            if target:
+                facts.append(
+                    ProgramEvidenceFact(
+                        kind="type_reference",
+                        name=match.group("name"),
+                        owner=match.group("name"),
+                        target=target,
+                        relationship=match.group("relation"),
+                        span=span(match.start("types"), match.end("types")),
+                        generated=generated,
+                    )
+                )
+
+    if language in {"jsx", "tsx"}:
+        for match in re.finditer(
+            r"<(?P<name>[A-Za-z][\w.-]*)(?:\s|/?>)", code_source
+        ):
+            facts.append(
+                ProgramEvidenceFact(
+                    kind="jsx_element",
+                    name=match.group("name"),
+                    owner=_ecmascript_owner(match.start(), definitions),
+                    relationship="renders",
+                    ambiguous=match.group("name")[0].isupper(),
+                    span=span(match.start(), match.end()),
+                    generated=generated,
+                )
+            )
+
+    registration_spans = [
+        fact.span for fact in facts if fact.kind == "registration"
+    ]
+    for token in tokens:
+        if token.kind not in {"string", "template"}:
+            continue
+        literal = _strip_ecmascript_string(token.value)
+        if not _ECMASCRIPT_MCP_STRING_RE.search(literal):
+            continue
+        if any(
+            item.line_start <= token.span.line_start <= item.line_end
+            for item in registration_spans
+        ):
+            continue
+        facts.append(
+            ProgramEvidenceFact(
+                kind="string_literal",
+                name=literal,
+                owner=_ecmascript_owner(token.start, definitions),
+                relationship="mcp_relevant_literal",
+                ambiguous=token.kind == "template" and "${" in token.value,
+                span=token.span,
+                generated=generated,
+                details={"mcp_relevant": True, "value": literal},
+            )
+        )
+
+    for token in tokens:
+        if token.kind == "identifier" and token.value in {"debugger", "with"}:
+            facts.append(
+                ProgramEvidenceFact(
+                    kind="unsupported_node",
+                    name=token.value,
+                    owner=_ecmascript_owner(token.start, definitions),
+                    relationship="preserved_unmodeled_syntax",
+                    ambiguous=True,
+                    span=token.span,
+                    generated=generated,
+                    details={"parser": JAVASCRIPT_ADAPTER_VERSION},
+                )
+            )
+            diagnostics.append(
+                AdapterDiagnostic(
+                    code="ecmascript_unsupported_node",
+                    message=f"syntax node {token.value!r} is preserved but not modeled",
+                    severity="warning",
+                    span=token.span,
+                    details={
+                        "node": token.value,
+                        "parser": JAVASCRIPT_ADAPTER_VERSION,
+                    },
+                )
+            )
+
+    for match in re.finditer(
+        r"\b(?:const|let|var)\s+[A-Za-z_$][\w$]*\s*=\s*(?=;|$)",
+        code_source,
+        re.MULTILINE,
+    ):
+        initializer_start = code_source.find("=", match.start(), match.end()) + 1
+        if any(
+            initializer_start <= token.start < match.end()
+            for token in tokens
+        ):
+            continue
+        diagnostics.append(
+            AdapterDiagnostic(
+                code="ecmascript_missing_initializer",
+                message="variable initializer expression is missing",
+                span=span(match.start(), match.end()),
+                details={"parser": JAVASCRIPT_ADAPTER_VERSION},
+            )
+        )
+
+    return _deduplicate_facts(facts), tuple(diagnostics)
+
+
+def adapt_ecmascript_source(
+    source: str,
+    *,
+    path: str = "",
+    language: str = "",
+    blob_identity: str = "",
+    previous: ProgramASTAdapterResult | ASTBlobRecord | None = None,
+    generated: bool = False,
+) -> ProgramASTAdapterResult:
+    """Adapt JavaScript/TypeScript syntax into content-bound evidence."""
+
+    source_hash = _source_sha256(source)
+    blob = str(blob_identity or source_hash)
+    normalized_language = detect_program_language(path, language)
+    if normalized_language == "unknown" and not language:
+        normalized_language = "javascript"
+    if normalized_language not in {"javascript", "jsx", "typescript", "tsx"}:
+        raise ValueError(f"unsupported ECMAScript language {normalized_language!r}")
+    if isinstance(previous, ProgramASTAdapterResult):
+        if (
+            previous.language == normalized_language
+            and previous.source_sha256 == source_hash
+            and previous.blob_identity == blob
+        ):
+            return replace(previous, path=path, generated=generated, reused=True)
+        previous_record = previous.ast_record
+    else:
+        previous_record = previous
+
+    facts, diagnostics = _ecmascript_facts(
+        source,
+        language=normalized_language,
+        generated=generated,
+    )
+    errors = tuple(item for item in diagnostics if item.severity == "error")
+    parse_error = "; ".join(
+        f"{item.code}: {item.message}" for item in errors
+    )
+    if (
+        isinstance(previous_record, ASTBlobRecord)
+        and previous_record.language == normalized_language
+        and previous_record.source_sha256 == source_hash
+        and previous_record.blob_identity == blob
+    ):
+        record = previous_record
+        reused = True
+    else:
+        record = _ecmascript_record(
+            source=source,
+            facts=facts,
+            source_hash=source_hash,
+            blob_identity=blob,
+            language=normalized_language,
+            parse_error=parse_error,
+        )
+        reused = False
+    return ProgramASTAdapterResult(
+        path=path,
+        language=normalized_language,
+        status="malformed" if errors else "success",
+        source_sha256=source_hash,
+        blob_identity=blob,
+        parser=JAVASCRIPT_ADAPTER_VERSION,
+        ast_record=record,
+        facts=facts,
+        diagnostics=diagnostics,
+        generated=generated,
+        reused=reused,
+    )
+
+
 class _JSONObject(list[tuple[str, Any]]):
     """Pair-preserving JSON object used to detect duplicate member names."""
 
@@ -1482,6 +2746,18 @@ def detect_program_language(path: str, language: str = "") -> str:
     aliases = {
         "py": "python",
         "python3": "python",
+        "js": "javascript",
+        "node": "javascript",
+        "nodejs": "javascript",
+        "mjs": "javascript",
+        "cjs": "javascript",
+        "javascriptreact": "jsx",
+        "js-react": "jsx",
+        "ts": "typescript",
+        "mts": "typescript",
+        "cts": "typescript",
+        "typescriptreact": "tsx",
+        "ts-react": "tsx",
         "jsonschema": "json",
         "json-schema": "json",
         "schema": "json",
@@ -1496,6 +2772,14 @@ def detect_program_language(path: str, language: str = "") -> str:
     suffix = PurePosixPath(str(path).casefold()).suffix
     if suffix in _PYTHON_SUFFIXES:
         return "python"
+    if suffix in _JAVASCRIPT_SUFFIXES:
+        return "javascript"
+    if suffix in _JSX_SUFFIXES:
+        return "jsx"
+    if suffix in _TYPESCRIPT_SUFFIXES:
+        return "typescript"
+    if suffix in _TSX_SUFFIXES:
+        return "tsx"
     if suffix in _JSON_SUFFIXES:
         return "json"
     if suffix in _MARKDOWN_SUFFIXES:
@@ -1555,6 +2839,15 @@ def adapt_program_source(
             previous=previous,
             generated=generated,
         )
+    elif detected in {"javascript", "jsx", "typescript", "tsx"}:
+        result = adapt_ecmascript_source(
+            source,
+            path=path,
+            language=detected,
+            blob_identity=blob,
+            previous=previous,
+            generated=generated,
+        )
     elif detected == "json":
         result = adapt_json_source(
             source,
@@ -1603,7 +2896,10 @@ def adapt_program_source(
     # The canonical record is rebuilt from the retained non-code facts.  Python
     # keeps its complete canonical AST record; its sidecar alone is bounded.
     record = result.ast_record
-    if result.language != "python" and record is not None:
+    if (
+        result.language not in {"python", "javascript", "jsx", "typescript", "tsx"}
+        and record is not None
+    ):
         record = _record_from_noncode_facts(
             facts=retained,
             source_hash=result.source_sha256,
@@ -1720,6 +3016,7 @@ __all__ = [
     "DEFAULT_MAX_FACTS",
     "DEFAULT_MAX_SOURCE_BYTES",
     "JSON_ADAPTER_VERSION",
+    "JAVASCRIPT_ADAPTER_VERSION",
     "MARKDOWN_ADAPTER_VERSION",
     "PROGRAM_AST_ADAPTER_SCHEMA",
     "PROGRAM_EVIDENCE_FACT_SCHEMA",
@@ -1732,6 +3029,7 @@ __all__ = [
     "SourceDocument",
     "SourceSpan",
     "adapt_json_source",
+    "adapt_ecmascript_source",
     "adapt_markdown_source",
     "adapt_program_source",
     "adapt_python_source",
