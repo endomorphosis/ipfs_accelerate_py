@@ -27,6 +27,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import importlib
+import importlib.metadata
 import inspect
 import json
 import math
@@ -3312,6 +3313,1107 @@ def create_ipfs_datasets_analysis_provider(
 build_ipfs_datasets_analysis_provider = create_ipfs_datasets_analysis_provider
 
 
+# ---------------------------------------------------------------------------
+# Exact datasets GraphRAG + Cypher-AST binding (SCA-213)
+# ---------------------------------------------------------------------------
+#
+# Bounded candidate retrieval and graph-query syntax bind to the exact modules:
+#   * ipfs_datasets_py.logic.intent_ir.graphrag.retrieval.IntentGraphRetriever
+#   * ipfs_datasets_py.knowledge_graphs.cypher.ast / .parser
+#
+# The package root is not an accepted implicit backend for the exact-provider
+# gate.  Capability labels, fixture-only backends, and local lexical fallback
+# cannot claim exact datasets use or proof authority.  GraphRAG results and
+# Cypher ASTs remain context-only / syntax-only.
+
+INTENT_GRAPH_RETRIEVER_INTERFACE: Final = "IntentGraphRetriever@1"
+QUERY_NODE_INTERFACE: Final = "QueryNode@1"
+BOUNDED_GRAPHRAG_RETRIEVER_INTERFACE_REF: Final = "BoundedGraphRAGRetriever@1"
+DATASETS_GRAPH_BINDING_VERSION: Final = "1.0.0"
+DATASETS_GRAPH_PROBE_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/datasets-graph-probe@1"
+)
+DATASETS_GRAPH_CAPABILITY_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/datasets-graph-capability@1"
+)
+DATASETS_GRAPH_CANARY_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/datasets-graph-canary@1"
+)
+DATASETS_GRAPH_CYPHER_RECEIPT_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/datasets-cypher-ast-receipt@1"
+)
+DATASETS_GRAPH_CONTEXT_AUTHORITY: Final = "context_only"
+DATASETS_GRAPH_SYNTAX_ONLY: Final = "syntax_only"
+
+EXACT_GRAPHRAG_RETRIEVAL_MODULE: Final = (
+    "ipfs_datasets_py.logic.intent_ir.graphrag.retrieval"
+)
+EXACT_CYPHER_AST_MODULE: Final = "ipfs_datasets_py.knowledge_graphs.cypher.ast"
+EXACT_CYPHER_PARSER_MODULE: Final = (
+    "ipfs_datasets_py.knowledge_graphs.cypher.parser"
+)
+EXACT_GRAPHRAG_CORPUS_PROJECTOR_MODULE: Final = (
+    "ipfs_datasets_py.logic.intent_ir.graphrag.corpus_projector"
+)
+EXACT_GRAPHRAG_ONTOLOGY_MODULE: Final = (
+    "ipfs_datasets_py.logic.intent_ir.graphrag.ontology"
+)
+EXACT_GRAPHRAG_SKILLCENTER_MODULE: Final = (
+    "ipfs_datasets_py.logic.intent_ir.source_adapters.skillcenter"
+)
+EXACT_IR_IDENTITY_MODULE: Final = "ipfs_datasets_py.logic.ir_core.identity"
+
+# Modules that may exist but never satisfy the exact datasets-provider gate.
+PACKAGE_ROOT_FALLBACK_MODULES: Final = frozenset(
+    {
+        "ipfs_datasets_py",
+        "ipfs_datasets_py.logic",
+        "ipfs_datasets_py.knowledge_graphs",
+        "ipfs_datasets_py.knowledge_graphs.cypher",
+        "ipfs_datasets_py.logic.intent_ir",
+        "ipfs_datasets_py.logic.intent_ir.graphrag",
+    }
+)
+
+EXACT_DATASETS_SOURCE_KINDS: Final = frozenset(
+    {
+        "exact_module",
+        "exact_datasets",
+        "intent_graph_retriever",
+        "cypher_ast",
+        "cypher_parser",
+    }
+)
+REJECTED_EXACT_SOURCE_KINDS: Final = frozenset(
+    {
+        "fixture",
+        "fixture_only",
+        "local",
+        "local_lexical",
+        "lexical_fallback",
+        "package_root",
+        "package_root_fallback",
+        "capability_label",
+        "simulated",
+    }
+)
+
+
+class DatasetsGraphBackendKind(str, Enum):
+    """Closed vocabulary of exact datasets graph backend families."""
+
+    GRAPHRAG = "graphrag"
+    CYPHER_AST = "cypher_ast"
+
+
+class DatasetsGraphBackendError(RuntimeError):
+    """Typed failure for exact datasets GraphRAG / Cypher-AST binding."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        reason_code: str,
+        details: Mapping[str, Any] | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.reason_code = str(reason_code)
+        self.details = dict(details or {})
+
+
+@dataclass(frozen=True)
+class DatasetsGraphSymbolSpec:
+    """One required real-module symbol that must be signature-probed."""
+
+    module: str
+    name: str
+    required_callable: bool = True
+    required_parameters: tuple[str, ...] = ()
+
+    def identity(self) -> dict[str, Any]:
+        return {
+            "module": self.module,
+            "name": self.name,
+            "required_callable": self.required_callable,
+            "required_parameters": list(self.required_parameters),
+        }
+
+
+@dataclass(frozen=True)
+class DatasetsGraphBackendSpec:
+    """Immutable exact-module contract for one datasets graph backend."""
+
+    kind: DatasetsGraphBackendKind
+    provider_id: str
+    symbols: tuple[DatasetsGraphSymbolSpec, ...]
+    interface: str
+    description: str
+    authoritative: bool = False
+
+    def identity(self) -> dict[str, Any]:
+        return {
+            "kind": self.kind.value,
+            "provider_id": self.provider_id,
+            "symbols": [item.identity() for item in self.symbols],
+            "interface": self.interface,
+            "description": self.description,
+            "authoritative": self.authoritative,
+            "binding_version": DATASETS_GRAPH_BINDING_VERSION,
+            "authority": DATASETS_GRAPH_CONTEXT_AUTHORITY,
+        }
+
+
+DATASETS_GRAPH_BACKEND_SPECS: Final[
+    Mapping[DatasetsGraphBackendKind, DatasetsGraphBackendSpec]
+] = {
+    DatasetsGraphBackendKind.GRAPHRAG: DatasetsGraphBackendSpec(
+        kind=DatasetsGraphBackendKind.GRAPHRAG,
+        provider_id="intent-graph-retriever",
+        interface=INTENT_GRAPH_RETRIEVER_INTERFACE,
+        description=(
+            "Bounded Intent-IR GraphRAG retrieval "
+            "(context-only candidate nomination)"
+        ),
+        authoritative=False,
+        symbols=(
+            DatasetsGraphSymbolSpec(
+                EXACT_GRAPHRAG_RETRIEVAL_MODULE,
+                "IntentGraphRetriever",
+                required_callable=False,
+            ),
+            DatasetsGraphSymbolSpec(
+                EXACT_GRAPHRAG_RETRIEVAL_MODULE,
+                "RetrievalRequest",
+                required_callable=False,
+            ),
+            DatasetsGraphSymbolSpec(
+                EXACT_GRAPHRAG_RETRIEVAL_MODULE,
+                "GraphSnapshot",
+                required_callable=False,
+            ),
+            DatasetsGraphSymbolSpec(
+                EXACT_GRAPHRAG_RETRIEVAL_MODULE,
+                "PartitionAssignment",
+                required_callable=False,
+            ),
+            DatasetsGraphSymbolSpec(
+                EXACT_GRAPHRAG_RETRIEVAL_MODULE,
+                "NeighborCandidate",
+                required_callable=False,
+            ),
+            DatasetsGraphSymbolSpec(
+                EXACT_GRAPHRAG_RETRIEVAL_MODULE,
+                "RETRIEVAL_AUTHORITY",
+                required_callable=False,
+            ),
+        ),
+    ),
+    DatasetsGraphBackendKind.CYPHER_AST: DatasetsGraphBackendSpec(
+        kind=DatasetsGraphBackendKind.CYPHER_AST,
+        provider_id="cypher-ast-parser",
+        interface=QUERY_NODE_INTERFACE,
+        description=(
+            "Cypher query AST and parser for syntax-only graph-query validation"
+        ),
+        authoritative=False,
+        symbols=(
+            DatasetsGraphSymbolSpec(
+                EXACT_CYPHER_AST_MODULE,
+                "QueryNode",
+                required_callable=False,
+            ),
+            DatasetsGraphSymbolSpec(
+                EXACT_CYPHER_AST_MODULE,
+                "ASTNode",
+                required_callable=False,
+            ),
+            DatasetsGraphSymbolSpec(
+                EXACT_CYPHER_PARSER_MODULE,
+                "CypherParser",
+                required_callable=False,
+            ),
+            DatasetsGraphSymbolSpec(
+                EXACT_CYPHER_PARSER_MODULE,
+                "parse_cypher",
+                required_parameters=("query",),
+            ),
+        ),
+    ),
+}
+
+
+@dataclass(frozen=True)
+class DatasetsGraphSymbolReceipt:
+    """Receipt that one exact module symbol was located and signature-checked."""
+
+    module: str
+    name: str
+    qualname: str
+    available: bool
+    signature: str
+    reason_code: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "module": self.module,
+            "name": self.name,
+            "qualname": self.qualname,
+            "available": self.available,
+            "signature": self.signature,
+            "reason_code": self.reason_code,
+        }
+
+
+@dataclass(frozen=True)
+class DatasetsGraphBackendProbe:
+    """Capability probe result for one exact datasets graph backend."""
+
+    kind: DatasetsGraphBackendKind
+    provider_id: str
+    available: bool
+    interface: str
+    package_version: str
+    package_tree: str
+    capability_revision: str
+    symbol_receipts: tuple[DatasetsGraphSymbolReceipt, ...]
+    unavailable_reason: str = ""
+    reason_code: str = ""
+    module_paths: tuple[str, ...] = ()
+    authoritative: bool = False
+
+    def __post_init__(self) -> None:
+        if not self.available and not self.reason_code:
+            object.__setattr__(self, "reason_code", "backend_unavailable")
+        if self.available and not self.symbol_receipts:
+            raise DatasetsGraphBackendError(
+                "available probe requires symbol receipts",
+                reason_code="probe_missing_symbol_receipts",
+            )
+        if self.authoritative:
+            raise DatasetsGraphBackendError(
+                "GraphRAG and Cypher-AST backends are never authoritative",
+                reason_code="authoritative_claim_rejected",
+            )
+
+    @property
+    def non_authoritative(self) -> bool:
+        return True
+
+    @property
+    def exact_modules_bound(self) -> bool:
+        return self.available and bool(self.module_paths)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": DATASETS_GRAPH_PROBE_SCHEMA,
+            "kind": self.kind.value,
+            "provider_id": self.provider_id,
+            "available": self.available,
+            "interface": self.interface,
+            "package_version": self.package_version,
+            "package_tree": self.package_tree,
+            "capability_revision": self.capability_revision,
+            "symbol_receipts": [item.to_dict() for item in self.symbol_receipts],
+            "unavailable_reason": self.unavailable_reason,
+            "reason_code": self.reason_code,
+            "module_paths": list(self.module_paths),
+            "authoritative": False,
+            "non_authoritative": True,
+            "proof_authority": False,
+            "completion_authority": False,
+            "binding_version": DATASETS_GRAPH_BINDING_VERSION,
+            "authority": DATASETS_GRAPH_CONTEXT_AUTHORITY,
+        }
+
+
+def _datasets_graph_digest(value: Mapping[str, Any], *, prefix: str) -> str:
+    return _content_id(dict(value), name=prefix)
+
+
+def _datasets_package_version(importer: Callable[[str], Any]) -> str:
+    try:
+        package = importer("ipfs_datasets_py")
+    except (ImportError, ModuleNotFoundError):
+        return ""
+    version = getattr(package, "__version__", None)
+    if isinstance(version, str) and version.strip():
+        return version.strip()
+    try:
+        return str(importlib.metadata.version("ipfs_datasets_py"))
+    except Exception:
+        return DATASETS_GRAPH_BINDING_VERSION
+
+
+def _datasets_package_tree(importer: Callable[[str], Any]) -> str:
+    """Bind a stable package-tree identity without treating Gitlink opacity."""
+
+    try:
+        package = importer("ipfs_datasets_py")
+    except (ImportError, ModuleNotFoundError):
+        return ""
+    paths: list[str] = []
+    file_path = getattr(package, "__file__", None)
+    if isinstance(file_path, str) and file_path:
+        paths.append(file_path)
+    path_attr = getattr(package, "__path__", None)
+    if path_attr is not None:
+        try:
+            paths.extend(str(item) for item in list(path_attr))
+        except TypeError:
+            pass
+    if not paths:
+        return ""
+    return _datasets_graph_digest(
+        {"paths": sorted(set(paths))},
+        prefix="datasets-package-tree",
+    )
+
+
+def _probe_graph_symbol(
+    spec: DatasetsGraphSymbolSpec,
+    *,
+    importer: Callable[[str], Any],
+) -> DatasetsGraphSymbolReceipt:
+    if spec.module in PACKAGE_ROOT_FALLBACK_MODULES:
+        return DatasetsGraphSymbolReceipt(
+            module=spec.module,
+            name=spec.name,
+            qualname=f"{spec.module}.{spec.name}",
+            available=False,
+            signature="",
+            reason_code="package_root_fallback_rejected",
+        )
+    try:
+        module = importer(spec.module)
+    except (ImportError, ModuleNotFoundError, OSError) as exc:
+        return DatasetsGraphSymbolReceipt(
+            module=spec.module,
+            name=spec.name,
+            qualname=f"{spec.module}.{spec.name}",
+            available=False,
+            signature="",
+            reason_code=f"module_import_failed:{type(exc).__name__}",
+        )
+    target = getattr(module, spec.name, None)
+    if target is None:
+        return DatasetsGraphSymbolReceipt(
+            module=spec.module,
+            name=spec.name,
+            qualname=f"{spec.module}.{spec.name}",
+            available=False,
+            signature="",
+            reason_code="symbol_missing",
+        )
+    signature_text = ""
+    if spec.required_callable:
+        if not callable(target):
+            return DatasetsGraphSymbolReceipt(
+                module=spec.module,
+                name=spec.name,
+                qualname=f"{spec.module}.{spec.name}",
+                available=False,
+                signature="",
+                reason_code="symbol_not_callable",
+            )
+        try:
+            signature = inspect.signature(target)
+            signature_text = str(signature)
+            parameter_names = {
+                name
+                for name, parameter in signature.parameters.items()
+                if name not in {"self", "cls"}
+                and parameter.kind
+                not in {
+                    inspect.Parameter.VAR_POSITIONAL,
+                    inspect.Parameter.VAR_KEYWORD,
+                }
+            }
+            missing = [
+                name
+                for name in spec.required_parameters
+                if name not in parameter_names
+            ]
+            has_var_keyword = any(
+                parameter.kind is inspect.Parameter.VAR_KEYWORD
+                for parameter in signature.parameters.values()
+            )
+            if missing and not has_var_keyword:
+                return DatasetsGraphSymbolReceipt(
+                    module=spec.module,
+                    name=spec.name,
+                    qualname=f"{spec.module}.{spec.name}",
+                    available=False,
+                    signature=signature_text,
+                    reason_code="signature_parameters_missing",
+                )
+        except (TypeError, ValueError) as exc:
+            return DatasetsGraphSymbolReceipt(
+                module=spec.module,
+                name=spec.name,
+                qualname=f"{spec.module}.{spec.name}",
+                available=False,
+                signature="",
+                reason_code=f"signature_uninspectable:{type(exc).__name__}",
+            )
+    else:
+        try:
+            if inspect.isclass(target):
+                # Prefer method signatures that the canary actually exercises.
+                if spec.name == "IntentGraphRetriever":
+                    signature_text = (
+                        f"__init__{inspect.signature(target.__init__)}"
+                        f"; retrieve{inspect.signature(target.retrieve)}"
+                    )
+                elif spec.name == "CypherParser":
+                    signature_text = (
+                        f"__init__{inspect.signature(target.__init__)}"
+                        f"; parse{inspect.signature(target.parse)}"
+                    )
+                else:
+                    signature_text = str(inspect.signature(target))
+            elif callable(target):
+                signature_text = str(inspect.signature(target))
+            else:
+                signature_text = repr(target) if isinstance(target, str) else type(
+                    target
+                ).__name__
+        except (TypeError, ValueError):
+            signature_text = type(target).__name__
+    return DatasetsGraphSymbolReceipt(
+        module=spec.module,
+        name=spec.name,
+        qualname=f"{spec.module}.{spec.name}",
+        available=True,
+        signature=signature_text,
+    )
+
+
+def probe_datasets_graph_backend(
+    kind: DatasetsGraphBackendKind | str,
+    *,
+    importer: Callable[[str], Any] | None = None,
+) -> DatasetsGraphBackendProbe:
+    """Probe one exact datasets graph backend without activating adapters."""
+
+    normalized = (
+        kind
+        if isinstance(kind, DatasetsGraphBackendKind)
+        else DatasetsGraphBackendKind(str(kind).strip().lower())
+    )
+    spec = DATASETS_GRAPH_BACKEND_SPECS[normalized]
+    load = importer or importlib.import_module
+    receipts = tuple(
+        _probe_graph_symbol(symbol, importer=load) for symbol in spec.symbols
+    )
+    available = all(item.available for item in receipts)
+    package_version = _datasets_package_version(load) if available else ""
+    package_tree = _datasets_package_tree(load) if available else ""
+    module_paths = tuple(
+        sorted({item.module for item in receipts if item.available})
+    )
+    capability_revision = _datasets_graph_digest(
+        {
+            "spec": spec.identity(),
+            "package_version": package_version,
+            "package_tree": package_tree,
+            "symbols": [item.to_dict() for item in receipts],
+        },
+        prefix="datasets-graph-capability",
+    )
+    if not available:
+        failed = next(item for item in receipts if not item.available)
+        return DatasetsGraphBackendProbe(
+            kind=normalized,
+            provider_id=spec.provider_id,
+            available=False,
+            interface=spec.interface,
+            package_version=package_version,
+            package_tree=package_tree,
+            capability_revision=capability_revision,
+            symbol_receipts=receipts,
+            unavailable_reason=(
+                f"{failed.qualname} unavailable ({failed.reason_code})"
+            ),
+            reason_code=failed.reason_code or "backend_unavailable",
+            module_paths=module_paths,
+            authoritative=False,
+        )
+    return DatasetsGraphBackendProbe(
+        kind=normalized,
+        provider_id=spec.provider_id,
+        available=True,
+        interface=spec.interface,
+        package_version=package_version or DATASETS_GRAPH_BINDING_VERSION,
+        package_tree=package_tree,
+        capability_revision=capability_revision,
+        symbol_receipts=receipts,
+        module_paths=module_paths,
+        authoritative=False,
+    )
+
+
+def probe_all_datasets_graph_backends(
+    *,
+    importer: Callable[[str], Any] | None = None,
+    kinds: Sequence[DatasetsGraphBackendKind | str] | None = None,
+) -> tuple[DatasetsGraphBackendProbe, ...]:
+    """Probe every exact graph backend (or an explicit subset) deterministically."""
+
+    selected = (
+        tuple(DatasetsGraphBackendKind)
+        if kinds is None
+        else tuple(
+            item
+            if isinstance(item, DatasetsGraphBackendKind)
+            else DatasetsGraphBackendKind(str(item).strip().lower())
+            for item in kinds
+        )
+    )
+    return tuple(
+        probe_datasets_graph_backend(kind, importer=importer) for kind in selected
+    )
+
+
+def inspect_exact_datasets_graph_capability(
+    *,
+    importer: Callable[[str], Any] | None = None,
+) -> dict[str, Any]:
+    """Return capability receipts for GraphRAG and Cypher-AST exact modules.
+
+    Constructing this receipt never claims proof or completion authority.
+    Missing or signature-incompatible modules are typed blockers.
+    """
+
+    probes = probe_all_datasets_graph_backends(importer=importer)
+    by_kind = {probe.kind.value: probe.to_dict() for probe in probes}
+    available = all(probe.available for probe in probes)
+    blockers = [
+        {
+            "kind": probe.kind.value,
+            "reason_code": probe.reason_code,
+            "unavailable_reason": probe.unavailable_reason,
+        }
+        for probe in probes
+        if not probe.available
+    ]
+    receipt = {
+        "schema": DATASETS_GRAPH_CAPABILITY_SCHEMA,
+        "binding_version": DATASETS_GRAPH_BINDING_VERSION,
+        "interfaces": {
+            "IntentGraphRetriever": INTENT_GRAPH_RETRIEVER_INTERFACE,
+            "QueryNode": QUERY_NODE_INTERFACE,
+            "BoundedGraphRAGRetriever": BOUNDED_GRAPHRAG_RETRIEVER_INTERFACE_REF,
+        },
+        "exact_modules": {
+            "graphrag": EXACT_GRAPHRAG_RETRIEVAL_MODULE,
+            "cypher_ast": EXACT_CYPHER_AST_MODULE,
+            "cypher_parser": EXACT_CYPHER_PARSER_MODULE,
+        },
+        "package_root_fallback_accepted": False,
+        "fixture_only_accepted": False,
+        "local_lexical_fallback_accepted": False,
+        "available": available,
+        "authoritative": False,
+        "non_authoritative": True,
+        "proof_authority": False,
+        "completion_authority": False,
+        "authority": DATASETS_GRAPH_CONTEXT_AUTHORITY,
+        "backends": by_kind,
+        "blockers": blockers,
+        "capability_revision": _datasets_graph_digest(
+            {
+                "backends": by_kind,
+                "available": available,
+                "blockers": blockers,
+            },
+            prefix="datasets-graph-capability-aggregate",
+        ),
+    }
+    receipt["capability_receipt_id"] = _datasets_graph_digest(
+        receipt, prefix="datasets-graph-capability-receipt"
+    )
+    return receipt
+
+
+def admit_exact_datasets_graph_source(
+    source_kind: str,
+    *,
+    probe: DatasetsGraphBackendProbe | None = None,
+    module_name: str | None = None,
+) -> None:
+    """Fail closed when a caller tries to claim exact datasets use falsely."""
+
+    normalized = str(source_kind or "").strip().lower()
+    if normalized in REJECTED_EXACT_SOURCE_KINDS:
+        raise DatasetsGraphBackendError(
+            (
+                f"source kind {normalized!r} cannot claim exact datasets "
+                "GraphRAG/Cypher-AST use"
+            ),
+            reason_code="exact_source_rejected",
+            details={"source_kind": normalized},
+        )
+    if normalized not in EXACT_DATASETS_SOURCE_KINDS:
+        raise DatasetsGraphBackendError(
+            f"unknown exact datasets source kind: {normalized!r}",
+            reason_code="exact_source_unknown",
+            details={"source_kind": normalized},
+        )
+    if module_name and module_name in PACKAGE_ROOT_FALLBACK_MODULES:
+        raise DatasetsGraphBackendError(
+            "package-root fallback cannot satisfy the exact datasets-provider gate",
+            reason_code="package_root_fallback_rejected",
+            details={"module_name": module_name},
+        )
+    if probe is not None and not probe.available:
+        raise DatasetsGraphBackendError(
+            probe.unavailable_reason or "exact datasets backend unavailable",
+            reason_code=probe.reason_code or "backend_unavailable",
+            details=probe.to_dict(),
+        )
+
+
+def parse_cypher_query_ast(
+    query: str,
+    *,
+    importer: Callable[[str], Any] | None = None,
+    max_query_bytes: int = DEFAULT_MAX_QUERY_BYTES,
+) -> dict[str, Any]:
+    """Parse a Cypher query via the exact AST/parser modules (syntax-only)."""
+
+    load = importer or importlib.import_module
+    probe = probe_datasets_graph_backend(
+        DatasetsGraphBackendKind.CYPHER_AST, importer=load
+    )
+    if not probe.available:
+        raise DatasetsGraphBackendError(
+            probe.unavailable_reason or "Cypher-AST backend unavailable",
+            reason_code=probe.reason_code or "backend_unavailable",
+            details=probe.to_dict(),
+        )
+    admit_exact_datasets_graph_source("cypher_parser", probe=probe)
+    normalized = _text(query, "cypher query", required=True, max_bytes=max_query_bytes)
+    parser_module = load(EXACT_CYPHER_PARSER_MODULE)
+    ast_module = load(EXACT_CYPHER_AST_MODULE)
+    parse_fn = getattr(parser_module, "parse_cypher", None)
+    if callable(parse_fn):
+        node = parse_fn(normalized)
+    else:
+        node = parser_module.CypherParser().parse(normalized)
+    query_node_type = ast_module.QueryNode
+    if not isinstance(node, query_node_type):
+        raise DatasetsGraphBackendError(
+            "Cypher parser did not return QueryNode",
+            reason_code="cypher_ast_type_mismatch",
+            details={"type": type(node).__name__},
+        )
+    clause_count = len(getattr(node, "clauses", ()) or ())
+    node_type = getattr(getattr(node, "node_type", None), "name", None) or str(
+        getattr(node, "node_type", "")
+    )
+    receipt = {
+        "schema": DATASETS_GRAPH_CYPHER_RECEIPT_SCHEMA,
+        "interface": QUERY_NODE_INTERFACE,
+        "module": EXACT_CYPHER_PARSER_MODULE,
+        "ast_module": EXACT_CYPHER_AST_MODULE,
+        "query_digest": _datasets_graph_digest(
+            {"query": normalized}, prefix="cypher-query"
+        ),
+        "query_bytes": len(normalized.encode("utf-8")),
+        "node_type": node_type,
+        "clause_count": clause_count,
+        "ast_class": type(node).__name__,
+        "syntax_only": True,
+        "authority": DATASETS_GRAPH_SYNTAX_ONLY,
+        "authoritative": False,
+        "non_authoritative": True,
+        "proof_authority": False,
+        "completion_authority": False,
+        "source_language_parser": False,
+        "capability_revision": probe.capability_revision,
+        "package_version": probe.package_version,
+        "package_tree": probe.package_tree,
+        "symbol_receipts": [item.to_dict() for item in probe.symbol_receipts],
+        "module_paths": list(probe.module_paths),
+    }
+    receipt["receipt_id"] = _datasets_graph_digest(
+        receipt, prefix="cypher-ast-receipt"
+    )
+    return receipt
+
+
+def run_intent_graph_retriever_canary(
+    *,
+    importer: Callable[[str], Any] | None = None,
+    k: int = 1,
+    max_bytes: int = 32_000,
+    timeout_ms: int = 1_000,
+) -> dict[str, Any]:
+    """Exercise the real IntentGraphRetriever and return a context-only receipt.
+
+    Fixture-only adapters cannot substitute for this canary.  Results never
+    carry proof authority.
+    """
+
+    load = importer or importlib.import_module
+    probe = probe_datasets_graph_backend(
+        DatasetsGraphBackendKind.GRAPHRAG, importer=load
+    )
+    if not probe.available:
+        raise DatasetsGraphBackendError(
+            probe.unavailable_reason or "GraphRAG backend unavailable",
+            reason_code=probe.reason_code or "backend_unavailable",
+            details=probe.to_dict(),
+        )
+    admit_exact_datasets_graph_source("intent_graph_retriever", probe=probe)
+
+    retrieval = load(EXACT_GRAPHRAG_RETRIEVAL_MODULE)
+    projector_mod = load(EXACT_GRAPHRAG_CORPUS_PROJECTOR_MODULE)
+    ontology = load(EXACT_GRAPHRAG_ONTOLOGY_MODULE)
+    skillcenter = load(EXACT_GRAPHRAG_SKILLCENTER_MODULE)
+    identity = load(EXACT_IR_IDENTITY_MODULE)
+
+    class _RecordingStore:
+        def put_bytes(self, payload: bytes, *, media_type: str) -> str:
+            return identity.cid_v1(payload)
+
+    def _skill(skill_id: str) -> Any:
+        return skillcenter.SkillCenterSkillRecord(
+            skill_id=skill_id,
+            domain="canary",
+            profile="canary",
+            source_type="github",
+            source_url=f"https://example.test/{skill_id}/SKILL.md",
+            title=f"Canary {skill_id}",
+            overall_score=1.0,
+            skill_kind="github",
+            language="en",
+            source_id=f"source-{skill_id}",
+            primary_source_id=f"primary-{skill_id}",
+            metadata_yaml='license_spdx: "MIT"\n',
+            skill_md=f"# {skill_id}\n\nCanary content for {skill_id}.\n",
+            library_md="",
+            dataset_id="canary/intent-graph",
+            dataset_revision="canary-1",
+            repository_file="canary.sqlite",
+            bundle_sha256="a" * 64,
+        )
+
+    graph = projector_mod.CorpusProjector(_RecordingStore()).project(
+        (
+            projector_mod.CorpusEvidenceRecord(
+                _skill("query"),
+                neighbor_skill_ids=("alpha",),
+            ),
+            _skill("alpha"),
+        )
+    )
+    skill_nodes = {
+        node.properties["skill_id"]: node
+        for node in graph.nodes
+        if node.node_type is ontology.CorpusNodeType.SKILL
+    }
+    query_id = skill_nodes["query"].node_id
+    alpha_id = skill_nodes["alpha"].node_id
+    edge = next(
+        item
+        for item in graph.edges
+        if item.edge_type is ontology.CorpusEdgeType.NEIGHBOR_OF
+        and {item.source, item.target} == {query_id, alpha_id}
+    )
+    assignments = {
+        query_id: retrieval.PartitionAssignment("evaluation", "family-query"),
+        alpha_id: retrieval.PartitionAssignment("evaluation", "family-alpha"),
+    }
+    request = retrieval.RetrievalRequest(
+        query_node_id=query_id,
+        snapshot=retrieval.GraphSnapshot.from_graph(graph),
+        partition="evaluation",
+        source_family="family-query",
+        k=max(1, min(int(k), 8)),
+        max_bytes=max(1_024, int(max_bytes)),
+        timeout_ms=max(50, int(timeout_ms)),
+        candidates=(
+            retrieval.NeighborCandidate(
+                node_id=alpha_id,
+                edge_id=edge.edge_id,
+                score=0.9,
+                graph_digest=graph.graph_digest,
+            ),
+        ),
+    )
+    result = retrieval.IntentGraphRetriever(graph, assignments).retrieve(request)
+    premises = tuple(getattr(result, "premises", ()) or ())
+    premise_payloads = []
+    for premise in premises:
+        converter = getattr(premise, "to_dict", None)
+        payload = converter() if callable(converter) else {
+            "node_id": getattr(premise, "node_id", ""),
+            "proof_authority": getattr(premise, "proof_authority", None),
+            "authority": getattr(premise, "authority", ""),
+        }
+        if payload.get("proof_authority") is not False:
+            raise DatasetsGraphBackendError(
+                "IntentGraphRetriever returned proof-authoritative premise",
+                reason_code="graphrag_authoritative_premise",
+                details={"premise": payload},
+            )
+        if payload.get("authority") not in (
+            None,
+            "",
+            DATASETS_GRAPH_CONTEXT_AUTHORITY,
+            getattr(retrieval, "RETRIEVAL_AUTHORITY", DATASETS_GRAPH_CONTEXT_AUTHORITY),
+        ):
+            raise DatasetsGraphBackendError(
+                "IntentGraphRetriever premise authority is not context_only",
+                reason_code="graphrag_authority_mismatch",
+                details={"premise": payload},
+            )
+        premise_payloads.append(payload)
+
+    status = getattr(getattr(result, "status", None), "value", result.status)
+    result_authority = getattr(result, "authority", DATASETS_GRAPH_CONTEXT_AUTHORITY)
+    if result_authority != DATASETS_GRAPH_CONTEXT_AUTHORITY and result_authority != getattr(
+        retrieval, "RETRIEVAL_AUTHORITY", DATASETS_GRAPH_CONTEXT_AUTHORITY
+    ):
+        raise DatasetsGraphBackendError(
+            "IntentGraphRetriever result is not context_only",
+            reason_code="graphrag_result_authoritative",
+            details={"authority": result_authority},
+        )
+
+    bounds = {
+        "k": request.k,
+        "max_bytes": request.max_bytes,
+        "timeout_ms": request.timeout_ms,
+    }
+    graph_root = str(getattr(graph, "graph_cid", "") or graph.graph_digest)
+    receipt = {
+        "schema": DATASETS_GRAPH_CANARY_SCHEMA,
+        "interface": INTENT_GRAPH_RETRIEVER_INTERFACE,
+        "module": EXACT_GRAPHRAG_RETRIEVAL_MODULE,
+        "symbol": "IntentGraphRetriever.retrieve",
+        "status": str(status),
+        "graph_root": graph_root,
+        "graph_digest": graph.graph_digest,
+        "graph_cid": str(getattr(graph, "graph_cid", "") or ""),
+        "snapshot": request.snapshot.to_dict(),
+        "bounds": bounds,
+        "query_node_id": query_id,
+        "candidate_count": len(premises),
+        "premises": premise_payloads,
+        "authority": DATASETS_GRAPH_CONTEXT_AUTHORITY,
+        "authoritative": False,
+        "non_authoritative": True,
+        "proof_authority": False,
+        "completion_authority": False,
+        "safe_for_proof": False,
+        "fixture_only": False,
+        "exact_module": True,
+        "package_version": probe.package_version,
+        "package_tree": probe.package_tree,
+        "capability_revision": probe.capability_revision,
+        "symbol_receipts": [item.to_dict() for item in probe.symbol_receipts],
+        "module_paths": list(probe.module_paths),
+        "result_identity": _datasets_graph_digest(
+            {
+                "status": str(status),
+                "graph_digest": graph.graph_digest,
+                "premises": premise_payloads,
+                "bounds": bounds,
+            },
+            prefix="graphrag-canary-result",
+        ),
+    }
+    receipt["receipt_id"] = _datasets_graph_digest(
+        receipt, prefix="graphrag-canary-receipt"
+    )
+    return receipt
+
+
+def run_datasets_graph_real_module_canary(
+    *,
+    importer: Callable[[str], Any] | None = None,
+) -> dict[str, Any]:
+    """Combined real-module canary for GraphRAG retrieval and Cypher AST."""
+
+    load = importer or importlib.import_module
+    capability = inspect_exact_datasets_graph_capability(importer=load)
+    if not capability["available"]:
+        raise DatasetsGraphBackendError(
+            "exact datasets GraphRAG/Cypher modules unavailable or incompatible",
+            reason_code="exact_datasets_graph_unavailable",
+            details=capability,
+        )
+    graphrag = run_intent_graph_retriever_canary(importer=load)
+    cypher = parse_cypher_query_ast(
+        "MATCH (n:Person) WHERE n.age > 30 RETURN n",
+        importer=load,
+    )
+    combined = {
+        "schema": DATASETS_GRAPH_CANARY_SCHEMA,
+        "binding_version": DATASETS_GRAPH_BINDING_VERSION,
+        "capability": capability,
+        "graphrag": graphrag,
+        "cypher_ast": cypher,
+        "authoritative": False,
+        "non_authoritative": True,
+        "proof_authority": False,
+        "completion_authority": False,
+        "fixture_only": False,
+        "exact_module": True,
+        "package_root_fallback": False,
+    }
+    combined["canary_receipt_id"] = _datasets_graph_digest(
+        combined, prefix="datasets-graph-canary"
+    )
+    return combined
+
+
+class ExactDatasetsGraphRAGAdapter:
+    """Provider-backed candidate nominator bound to IntentGraphRetriever only.
+
+    Package-root backends, fixture stubs, and local lexical adapters cannot be
+    substituted here.  Results are always non-authoritative.
+    """
+
+    operation = AnalysisProviderOperation.GRAPH_RETRIEVAL
+
+    def __init__(
+        self,
+        *,
+        importer: Callable[[str], Any] | None = None,
+        probe: DatasetsGraphBackendProbe | None = None,
+    ) -> None:
+        self._importer = importer or importlib.import_module
+        self._probe = probe
+
+    def capability(self) -> dict[str, Any]:
+        probe = self._probe or probe_datasets_graph_backend(
+            DatasetsGraphBackendKind.GRAPHRAG, importer=self._importer
+        )
+        return {
+            "interface": INTENT_GRAPH_RETRIEVER_INTERFACE,
+            "provider_id": probe.provider_id,
+            "available": probe.available,
+            "module": EXACT_GRAPHRAG_RETRIEVAL_MODULE,
+            "package_version": probe.package_version,
+            "package_tree": probe.package_tree,
+            "capability_revision": probe.capability_revision,
+            "authoritative": False,
+            "non_authoritative": True,
+            "proof_authority": False,
+            "module_paths": list(probe.module_paths),
+            "symbol_receipts": [item.to_dict() for item in probe.symbol_receipts],
+            "reason_code": probe.reason_code,
+        }
+
+    capabilities = capability
+
+    def retrieve_candidates(
+        self,
+        *,
+        query: str,
+        graph_root: str,
+        snapshot_id: str,
+        bounds: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Run the real-module canary path and project context-only candidates.
+
+        The Intent graph is partition-isolated and content-addressed; supervisor
+        symbol graphs do not share node IDs with it.  This adapter therefore
+        capability-receipts the exact retrieval surface and returns explicit
+        context-only candidates derived from the canary premises when available.
+        """
+
+        probe = self._probe or probe_datasets_graph_backend(
+            DatasetsGraphBackendKind.GRAPHRAG, importer=self._importer
+        )
+        if not probe.available:
+            raise DatasetsGraphBackendError(
+                probe.unavailable_reason or "GraphRAG backend unavailable",
+                reason_code=probe.reason_code or "backend_unavailable",
+                details=probe.to_dict(),
+            )
+        admit_exact_datasets_graph_source("exact_module", probe=probe)
+        limits = dict(bounds or {})
+        canary = run_intent_graph_retriever_canary(
+            importer=self._importer,
+            k=int(limits.get("max_results") or limits.get("k") or 1),
+            max_bytes=int(limits.get("max_response_bytes") or limits.get("max_bytes") or 32_000),
+            timeout_ms=int(limits.get("timeout_ms") or 1_000),
+        )
+        references: list[dict[str, Any]] = []
+        for index, premise in enumerate(canary.get("premises") or ()):
+            node_id = str(premise.get("node_id") or "")
+            references.append(
+                {
+                    "kind": "graph_retrieval",
+                    "evidence_id": node_id or f"premise:{index}",
+                    "record_id": node_id or f"premise:{index}",
+                    "node_id": node_id,
+                    "path": "",
+                    "symbol": str(premise.get("node_type") or ""),
+                    "summary": (
+                        f"context-only IntentGraphRetriever premise "
+                        f"{node_id or index}"
+                    ),
+                    "score": premise.get("score", 0.0),
+                    "tree_id": snapshot_id,
+                    "artifact_id": graph_root,
+                    "stable_key": node_id,
+                    "authority": DATASETS_GRAPH_CONTEXT_AUTHORITY,
+                    "non_authoritative": True,
+                    "proof_authority": False,
+                }
+            )
+        return {
+            "status": "completed",
+            "operation": self.operation.value,
+            "evidence_references": references,
+            "results": references,
+            "truncated": False,
+            "non_authoritative": True,
+            "proof_authority": False,
+            "completion_authority": False,
+            "safe_for_proof": False,
+            "authority": DATASETS_GRAPH_CONTEXT_AUTHORITY,
+            "exact_module": True,
+            "fixture_only": False,
+            "package_root_fallback": False,
+            "query": query,
+            "graph_root": graph_root or canary.get("graph_root", ""),
+            "snapshot_id": snapshot_id,
+            "bounds": canary.get("bounds", {}),
+            "capability": self.capability(),
+            "canary_receipt_id": canary.get("receipt_id", ""),
+            "result_id": canary.get("result_identity", ""),
+            "receipt_id": canary.get("receipt_id", ""),
+            "capability_revision": probe.capability_revision,
+            "package_version": probe.package_version,
+            "package_tree": probe.package_tree,
+            "module_paths": list(probe.module_paths),
+        }
+
+
+def create_exact_datasets_graphrag_adapter(
+    *,
+    importer: Callable[[str], Any] | None = None,
+) -> ExactDatasetsGraphRAGAdapter:
+    """Create the exact GraphRAG adapter after a successful module probe."""
+
+    probe = probe_datasets_graph_backend(
+        DatasetsGraphBackendKind.GRAPHRAG, importer=importer
+    )
+    if not probe.available:
+        raise DatasetsGraphBackendError(
+            probe.unavailable_reason or "GraphRAG backend unavailable",
+            reason_code=probe.reason_code or "backend_unavailable",
+            details=probe.to_dict(),
+        )
+    return ExactDatasetsGraphRAGAdapter(importer=importer, probe=probe)
+
+
 __all__ = [
     "IPFS_DATASETS_ANALYSIS_PROVIDER_VERSION",
     "IPFS_DATASETS_ANALYSIS_PROTOCOL_VERSION",
@@ -3366,4 +4468,34 @@ __all__ = [
     "create_optional_registry_analysis_producer",
     "create_ipfs_datasets_analysis_provider",
     "build_ipfs_datasets_analysis_provider",
+    "INTENT_GRAPH_RETRIEVER_INTERFACE",
+    "QUERY_NODE_INTERFACE",
+    "BOUNDED_GRAPHRAG_RETRIEVER_INTERFACE_REF",
+    "DATASETS_GRAPH_BINDING_VERSION",
+    "DATASETS_GRAPH_PROBE_SCHEMA",
+    "DATASETS_GRAPH_CAPABILITY_SCHEMA",
+    "DATASETS_GRAPH_CANARY_SCHEMA",
+    "DATASETS_GRAPH_CYPHER_RECEIPT_SCHEMA",
+    "DATASETS_GRAPH_CONTEXT_AUTHORITY",
+    "DATASETS_GRAPH_SYNTAX_ONLY",
+    "EXACT_GRAPHRAG_RETRIEVAL_MODULE",
+    "EXACT_CYPHER_AST_MODULE",
+    "EXACT_CYPHER_PARSER_MODULE",
+    "PACKAGE_ROOT_FALLBACK_MODULES",
+    "DATASETS_GRAPH_BACKEND_SPECS",
+    "DatasetsGraphBackendKind",
+    "DatasetsGraphBackendError",
+    "DatasetsGraphSymbolSpec",
+    "DatasetsGraphBackendSpec",
+    "DatasetsGraphSymbolReceipt",
+    "DatasetsGraphBackendProbe",
+    "ExactDatasetsGraphRAGAdapter",
+    "probe_datasets_graph_backend",
+    "probe_all_datasets_graph_backends",
+    "inspect_exact_datasets_graph_capability",
+    "admit_exact_datasets_graph_source",
+    "parse_cypher_query_ast",
+    "run_intent_graph_retriever_canary",
+    "run_datasets_graph_real_module_canary",
+    "create_exact_datasets_graphrag_adapter",
 ]
