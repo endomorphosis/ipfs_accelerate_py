@@ -8,7 +8,7 @@ compact references and bounded spans only.
 
 ## VFS-001 Define program-assurance evidence, claim, finding, and stage-receipt contracts
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: assurance-contracts
