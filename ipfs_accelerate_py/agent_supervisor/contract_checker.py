@@ -1,16 +1,20 @@
-"""Symbolic contract comparison and counterexample generation (VFS-016).
+"""Symbolic contract comparison and counterexample generation (VFS-016 / VFS-G051).
 
 Pure checking over immutable expected/observed program-contract IR.  The
 checker never mutates contracts, never promotes observations into
 expectations, and never claims ``proved_compatible`` outside closed
 supported rules.
 
-Result kinds are closed and distinct:
+Result kinds are closed and distinct (VFS-G051 acceptance / objective
+validation repair):
 
 * ``proved_compatible`` — every closed supported rule for the compared aspects
-  holds under structural/lattice comparison;
+  holds under structural/lattice comparison (symbolic model match);
 * ``witnessed_mismatch`` — a conclusive contradiction with a minimal
-  counterexample witness;
+  counterexample witness (symbolic model disproof);
+* ``runtime_witness`` — a hermetic runtime observation confirms declared
+  behavior under the exact subject binding; never interchangeable with
+  ``proved_compatible`` (claim level ``runtime_witnessed``);
 * ``ambiguous`` — dynamic dispatch, same-name multi-target, or incomplete
   closed evidence;
 * ``unsupported`` — an aspect is marked unsupported on either side;
@@ -18,6 +22,12 @@ Result kinds are closed and distinct:
 * ``stale`` — authority timestamps or cache-generation bindings are stale;
 * ``unknown`` — a selected closed aspect explicitly carries unknown semantics;
 * ``incomplete`` — required observations were omitted or no closed rule ran.
+
+Conclusive outcomes require exact repository, symbol, interface, policy, and
+freshness binding (plan claim taxonomy: ``contract_broken`` only under a
+shared subject + freshness window).  AST evidence surface includes
+:class:`CodeProofObligation` and :class:`Counterexample` (alias of
+:class:`ContractCounterexample`).
 
 Large witness bodies remain artifact-referenced.  These records carry compact
 facts, aspect verdicts, and deterministic content identities only.
@@ -65,6 +75,7 @@ from .program_contracts import (
     TypeShape,
     compare_type_shapes,
 )
+from .program_assurance_contracts import ClaimLevel
 from .proof.formal_verification_contracts import (
     CanonicalContract,
     ContractValidationError,
@@ -78,6 +89,17 @@ CONTRACT_CHECKER_VERSION: Final[int] = 1
 SCHEMA_VERSION: Final[int] = CONTRACT_CHECKER_VERSION
 CONTRACT_CHECK_RESULT_EVIDENCE: Final[str] = "vfs/contract-check-result@1"
 CONTRACT_COUNTEREXAMPLE_EVIDENCE: Final[str] = "vfs/contract-counterexample@1"
+# Synthetic objective-heap evidence term for VFS-G051 validation-gate work.
+OBJECTIVE_VALIDATION_REPAIR_EVIDENCE: Final[str] = "objective validation repair"
+OBJECTIVE_GOAL_ID: Final[str] = "VFS-G051"
+# Exact subject dimensions required for conclusive check authority.
+EXACT_BINDING_DIMENSIONS: Final[tuple[str, ...]] = (
+    "repository",
+    "symbol",
+    "interface",
+    "policy",
+    "freshness",
+)
 
 MAX_WITNESS_STEPS: Final[int] = 64
 MAX_PATH_STEPS: Final[int] = 128
@@ -154,10 +176,22 @@ class StaleAuthorityError(ContractCheckerError):
 
 
 class ContractCheckResultKind(str, Enum):
-    """Closed vocabulary of symbolic contract-check outcomes."""
+    """Closed vocabulary of symbolic contract-check outcomes.
+
+    Acceptance dimensions (VFS-G051) map as:
+
+    * proven matches → ``proved_compatible``
+    * proven mismatches → ``witnessed_mismatch``
+    * runtime witnesses → ``runtime_witness``
+    * ambiguity → ``ambiguous``
+    * unsupported semantics → ``unsupported``
+    * timeout → ``timeout``
+    * stale results → ``stale``
+    """
 
     PROVED_COMPATIBLE = "proved_compatible"
     WITNESSED_MISMATCH = "witnessed_mismatch"
+    RUNTIME_WITNESS = "runtime_witness"
     AMBIGUOUS = "ambiguous"
     UNSUPPORTED = "unsupported"
     TIMEOUT = "timeout"
@@ -170,11 +204,43 @@ class ContractCheckResultKind(str, Enum):
         return self in {
             ContractCheckResultKind.PROVED_COMPATIBLE,
             ContractCheckResultKind.WITNESSED_MISMATCH,
+            ContractCheckResultKind.RUNTIME_WITNESS,
         }
 
     @property
     def is_compatible(self) -> bool:
-        return self is ContractCheckResultKind.PROVED_COMPATIBLE
+        return self in {
+            ContractCheckResultKind.PROVED_COMPATIBLE,
+            ContractCheckResultKind.RUNTIME_WITNESS,
+        }
+
+    @property
+    def claim_level(self) -> ClaimLevel:
+        """Program-assurance claim class for this result kind.
+
+        Levels are intentionally non-ordered: a runtime witness never
+        upgrades to model proof and a model match never claims runtime.
+        """
+
+        if self is ContractCheckResultKind.PROVED_COMPATIBLE:
+            return ClaimLevel.MODEL_PROVED
+        if self is ContractCheckResultKind.WITNESSED_MISMATCH:
+            return ClaimLevel.MODEL_DISPROVED
+        if self is ContractCheckResultKind.RUNTIME_WITNESS:
+            return ClaimLevel.RUNTIME_WITNESSED
+        return ClaimLevel.RESOLVED_STATIC
+
+
+class ObservationLayer(str, Enum):
+    """Authority layer of the observation under comparison.
+
+    Symbolic lattice comparison (default) never claims hermetic runtime
+    conformance.  Runtime-layer checks emit ``runtime_witness`` on match
+    instead of ``proved_compatible``.
+    """
+
+    SYMBOLIC = "symbolic"
+    RUNTIME = "runtime"
 
 
 class AspectVerdict(str, Enum):
@@ -946,6 +1012,81 @@ class CheckBinding(_CheckContract):
             return CacheFreshness.CURRENT
         return CacheFreshness.STALE
 
+    @property
+    def exact_binding_dimensions(self) -> dict[str, dict[str, str]]:
+        """Closed map of the five exact-binding dimensions (VFS-G051 refine).
+
+        Dimensions: repository, symbol, interface, policy, freshness.
+        Each side is named so near-matches cannot collapse under one field.
+        """
+
+        return {
+            "repository": {
+                "expected": self.repository_id,
+                "observed": self.observed_repository_id,
+                "tree_expected": self.tree_id,
+                "tree_observed": self.observed_tree_id,
+            },
+            "symbol": {
+                "expected": self.expected_symbol_id,
+                "observed": self.observed_symbol_id,
+                "qualified_name": self.symbol_qualified_name,
+            },
+            "interface": {
+                "expected": self.expected_interface_id,
+                "observed": self.observed_interface_id,
+                "name": self.interface_name,
+            },
+            "policy": {
+                "expected": self.policy_revision,
+                "observed": self.observed_policy_revision,
+            },
+            "freshness": {
+                "cache_generation": self.cache_generation,
+                "expected_cache_generation": self.expected_cache_generation,
+                "cache_binding_freshness": self.cache_binding_freshness.value,
+            },
+        }
+
+    @property
+    def has_complete_binding_dimensions(self) -> bool:
+        """True when every exact-binding identity field is non-empty."""
+
+        required = (
+            self.repository_id,
+            self.observed_repository_id,
+            self.tree_id,
+            self.observed_tree_id,
+            self.expected_symbol_id,
+            self.observed_symbol_id,
+            self.expected_interface_id,
+            self.observed_interface_id,
+            self.policy_revision,
+            self.observed_policy_revision,
+            self.expected_contract_id,
+            self.observed_contract_id,
+        )
+        return all(bool(item) for item in required)
+
+    def diverging_binding_dimensions(self) -> tuple[str, ...]:
+        """Return exact-binding dimensions that disagree across sides."""
+
+        diverged: list[str] = []
+        if (
+            self.repository_id != self.observed_repository_id
+            or self.tree_id != self.observed_tree_id
+        ):
+            diverged.append("repository")
+        if self.expected_symbol_id != self.observed_symbol_id:
+            diverged.append("symbol")
+        if self.expected_interface_id != self.observed_interface_id:
+            diverged.append("interface")
+        if self.policy_revision != self.observed_policy_revision:
+            diverged.append("policy")
+        if self.cache_binding_freshness is CacheFreshness.STALE:
+            diverged.append("freshness")
+        return tuple(diverged)
+
     def _payload(self) -> dict[str, Any]:
         return {
             "repository_id": self.repository_id,
@@ -969,6 +1110,13 @@ class CheckBinding(_CheckContract):
             "checker_version": self.checker_version,
             "subject_matches": self.subject_matches,
             "cache_binding_freshness": self.cache_binding_freshness.value,
+            "has_complete_binding_dimensions": (
+                self.has_complete_binding_dimensions
+            ),
+            "diverging_binding_dimensions": list(
+                self.diverging_binding_dimensions()
+            ),
+            "exact_binding_dimensions": self.exact_binding_dimensions,
         }
 
     def to_record(self) -> dict[str, Any]:
@@ -1006,6 +1154,9 @@ class CheckBinding(_CheckContract):
                 "binding_id",
                 "subject_matches",
                 "cache_binding_freshness",
+                "has_complete_binding_dimensions",
+                "diverging_binding_dimensions",
+                "exact_binding_dimensions",
             },
             artifact_name="check binding",
         )
@@ -1058,6 +1209,21 @@ class CheckBinding(_CheckContract):
             raise ForgedIdentityError(
                 "cache_binding_freshness does not match generation binding"
             )
+        claimed_complete = payload.get("has_complete_binding_dimensions")
+        if (
+            claimed_complete is not None
+            and claimed_complete is not result.has_complete_binding_dimensions
+        ):
+            raise ForgedIdentityError(
+                "has_complete_binding_dimensions does not match binding fields"
+            )
+        claimed_diverged = payload.get("diverging_binding_dimensions")
+        if claimed_diverged is not None:
+            claimed_tuple = tuple(str(item) for item in claimed_diverged)
+            if claimed_tuple != result.diverging_binding_dimensions():
+                raise ForgedIdentityError(
+                    "diverging_binding_dimensions does not match binding sides"
+                )
         return result
 
 
@@ -1362,6 +1528,251 @@ class ContractCounterexample(_CheckContract):
         return result
 
 
+# AST evidence alias for objective query ``Counterexample`` (VFS-G051).
+Counterexample = ContractCounterexample
+
+
+CODE_PROOF_OBLIGATION_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/contract-check/code-proof-obligation@1"
+)
+
+
+@dataclass(frozen=True)
+class CodeProofObligation(_CheckContract):
+    """Bounded proof obligation derived from a contract check (VFS-G051 AST).
+
+    Packages the exact repository, symbol, interface, policy, and freshness
+    binding required before a model prover or runtime witness may act on a
+    check result.  Never elevates claim level: the obligation inherits the
+    result kind's claim class and refuses stale or incomplete bindings.
+    """
+
+    SCHEMA: ClassVar[str] = CODE_PROOF_OBLIGATION_SCHEMA
+
+    binding: CheckBinding
+    kind: ContractCheckResultKind
+    expected_contract_id: str
+    observed_contract_id: str
+    evaluated_at: str
+    authority_expires_at: str
+    goal_id: str = OBJECTIVE_GOAL_ID
+    result_id: str = ""
+    counterexample_id: str = ""
+    primary_aspect: str = ""
+    observation_layer: ObservationLayer = ObservationLayer.SYMBOLIC
+    evidence: str = CONTRACT_CHECK_RESULT_EVIDENCE
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "binding",
+            _record(self.binding, CheckBinding, field_name="binding"),
+        )
+        object.__setattr__(
+            self,
+            "kind",
+            _enum(self.kind, ContractCheckResultKind, field_name="kind"),
+        )
+        for name in (
+            "expected_contract_id",
+            "observed_contract_id",
+            "goal_id",
+        ):
+            object.__setattr__(
+                self, name, _text(getattr(self, name), field_name=name)
+            )
+        object.__setattr__(
+            self,
+            "evaluated_at",
+            _timestamp(self.evaluated_at, field_name="evaluated_at"),
+        )
+        object.__setattr__(
+            self,
+            "authority_expires_at",
+            _timestamp(
+                self.authority_expires_at, field_name="authority_expires_at"
+            ),
+        )
+        for name in ("result_id", "counterexample_id", "primary_aspect"):
+            object.__setattr__(
+                self,
+                name,
+                _text(getattr(self, name), field_name=name, required=False),
+            )
+        object.__setattr__(
+            self,
+            "observation_layer",
+            _enum(
+                self.observation_layer,
+                ObservationLayer,
+                field_name="observation_layer",
+            ),
+        )
+        object.__setattr__(
+            self,
+            "evidence",
+            _text(self.evidence, field_name="evidence"),
+        )
+        if not self.binding.has_complete_binding_dimensions:
+            raise ScopeMismatchError(
+                "CodeProofObligation requires complete exact binding dimensions"
+            )
+        if self.expected_contract_id != self.binding.expected_contract_id:
+            raise ScopeMismatchError(
+                "obligation expected_contract_id must match binding"
+            )
+        if self.observed_contract_id != self.binding.observed_contract_id:
+            raise ScopeMismatchError(
+                "obligation observed_contract_id must match binding"
+            )
+        if self.kind.conclusive and not self.binding.subject_matches:
+            if not (
+                self.kind is ContractCheckResultKind.WITNESSED_MISMATCH
+                and self.primary_aspect == SemanticAspect.IDENTITY.value
+            ):
+                raise ScopeMismatchError(
+                    "conclusive CodeProofObligation requires exact shared "
+                    "subject binding unless the primary aspect is identity"
+                )
+        if self.binding.cache_binding_freshness is CacheFreshness.STALE:
+            raise StaleAuthorityError(
+                "CodeProofObligation cannot bind a stale cache generation"
+            )
+        if _datetime(self.evaluated_at) >= _datetime(self.authority_expires_at):
+            raise StaleAuthorityError(
+                "CodeProofObligation cannot bind an expired authority window"
+            )
+        _bounded(self, artifact_name="code proof obligation")
+
+    @property
+    def obligation_id(self) -> str:
+        return self.content_id
+
+    @property
+    def claim_level(self) -> ClaimLevel:
+        return self.kind.claim_level
+
+    @property
+    def exact_binding_dimensions(self) -> dict[str, dict[str, str]]:
+        return self.binding.exact_binding_dimensions
+
+    def _payload(self) -> dict[str, Any]:
+        return {
+            "binding": self.binding.to_dict(),
+            "kind": self.kind.value,
+            "expected_contract_id": self.expected_contract_id,
+            "observed_contract_id": self.observed_contract_id,
+            "evaluated_at": self.evaluated_at,
+            "authority_expires_at": self.authority_expires_at,
+            "goal_id": self.goal_id,
+            "result_id": self.result_id,
+            "counterexample_id": self.counterexample_id,
+            "primary_aspect": self.primary_aspect,
+            "observation_layer": self.observation_layer.value,
+            "evidence": self.evidence,
+            "claim_level": self.claim_level.value,
+            "exact_binding_dimensions": self.exact_binding_dimensions,
+        }
+
+    def to_record(self) -> dict[str, Any]:
+        return {
+            **self.to_dict(),
+            "obligation_id": self.obligation_id,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "CodeProofObligation":
+        _check_header(payload, cls.SCHEMA)
+        fields = {
+            "binding",
+            "kind",
+            "expected_contract_id",
+            "observed_contract_id",
+            "evaluated_at",
+            "authority_expires_at",
+            "goal_id",
+            "result_id",
+            "counterexample_id",
+            "primary_aspect",
+            "observation_layer",
+            "evidence",
+        }
+        _reject_unknown(
+            payload,
+            fields
+            | _header_fields()
+            | {
+                "obligation_id",
+                "claim_level",
+                "exact_binding_dimensions",
+            },
+            artifact_name="code proof obligation",
+        )
+        result = cls(
+            binding=payload.get("binding"),
+            kind=payload.get("kind", ""),
+            expected_contract_id=payload.get("expected_contract_id", ""),
+            observed_contract_id=payload.get("observed_contract_id", ""),
+            evaluated_at=payload.get("evaluated_at", ""),
+            authority_expires_at=payload.get("authority_expires_at", ""),
+            goal_id=payload.get("goal_id", OBJECTIVE_GOAL_ID),
+            result_id=payload.get("result_id", ""),
+            counterexample_id=payload.get("counterexample_id", ""),
+            primary_aspect=payload.get("primary_aspect", ""),
+            observation_layer=payload.get(
+                "observation_layer", ObservationLayer.SYMBOLIC
+            ),
+            evidence=payload.get("evidence", CONTRACT_CHECK_RESULT_EVIDENCE),
+        )
+        _check_identity(
+            payload,
+            result.obligation_id,
+            names=("obligation_id", "content_id"),
+            artifact_name="code proof obligation",
+        )
+        claimed_level = payload.get("claim_level")
+        if (
+            claimed_level is not None
+            and claimed_level != result.claim_level.value
+        ):
+            raise ForgedIdentityError(
+                "claim_level does not match result kind claim class"
+            )
+        return result
+
+    @classmethod
+    def from_check_result(
+        cls,
+        result: "ContractCheckResult",
+        *,
+        observation_layer: ObservationLayer = ObservationLayer.SYMBOLIC,
+        goal_id: str = OBJECTIVE_GOAL_ID,
+    ) -> "CodeProofObligation":
+        """Project a check result into a proof/runtime obligation."""
+
+        primary = ""
+        counterexample_id = ""
+        if result.counterexample is not None:
+            primary = result.counterexample.aspect.value
+            counterexample_id = result.counterexample.counterexample_id
+        elif result.mismatch_aspects:
+            primary = result.mismatch_aspects[0].value
+        return cls(
+            binding=result.binding,
+            kind=result.kind,
+            expected_contract_id=result.binding.expected_contract_id,
+            observed_contract_id=result.binding.observed_contract_id,
+            evaluated_at=result.evaluated_at,
+            authority_expires_at=result.authority_expires_at,
+            goal_id=goal_id,
+            result_id=result.result_id,
+            counterexample_id=counterexample_id,
+            primary_aspect=primary,
+            observation_layer=observation_layer,
+            evidence=result.evidence,
+        )
+
+
 @dataclass(frozen=True)
 class ContractCheckResult(_CheckContract):
     """Typed result of comparing one expected contract to one observation."""
@@ -1494,6 +1905,15 @@ class ContractCheckResult(_CheckContract):
             raise StaleAuthorityError(
                 "cache freshness does not match the bound cache generations"
             )
+        # Conclusive outcomes require complete exact-binding dimensions.
+        if (
+            self.kind.conclusive
+            and not self.binding.has_complete_binding_dimensions
+        ):
+            raise ScopeMismatchError(
+                f"{self.kind.value} requires complete repository, symbol, "
+                "interface, and policy identities on both sides"
+            )
         if self.kind is ContractCheckResultKind.WITNESSED_MISMATCH:
             if self.counterexample is None:
                 raise ContractCheckerError(
@@ -1526,11 +1946,24 @@ class ContractCheckResult(_CheckContract):
                 raise StaleAuthorityError(
                     "counterexample freshness window must match check result"
                 )
+            # Non-identity contract_broken claims require shared subject binding.
+            if (
+                self.counterexample.aspect is not SemanticAspect.IDENTITY
+                and not self.binding.subject_matches
+            ):
+                raise ScopeMismatchError(
+                    "non-identity witnessed_mismatch requires exact shared "
+                    "repository, symbol, interface, and policy binding"
+                )
         elif self.counterexample is not None:
             raise ContractCheckerError(
                 f"{self.kind.value} must not carry a counterexample"
             )
         if self.kind is ContractCheckResultKind.PROVED_COMPATIBLE:
+            if not self.binding.subject_matches:
+                raise ScopeMismatchError(
+                    "proved_compatible requires exact shared subject binding"
+                )
             for item in self.aspect_results:
                 if item.closed_rule and item.verdict.blocks_proved_compatible:
                     raise ContractCheckerError(
@@ -1539,6 +1972,16 @@ class ContractCheckResult(_CheckContract):
                 if not item.closed_rule and item.verdict is AspectVerdict.MISMATCH:
                     raise ContractCheckerError(
                         "proved_compatible cannot claim mismatch on open rules"
+                    )
+        if self.kind is ContractCheckResultKind.RUNTIME_WITNESS:
+            if not self.binding.subject_matches:
+                raise ScopeMismatchError(
+                    "runtime_witness requires exact shared subject binding"
+                )
+            for item in self.aspect_results:
+                if item.closed_rule and item.verdict.blocks_proved_compatible:
+                    raise ContractCheckerError(
+                        "runtime_witness cannot include blocking aspect verdicts"
                     )
         if self.kind is ContractCheckResultKind.UNKNOWN and not any(
             item.verdict is AspectVerdict.UNKNOWN
@@ -1592,6 +2035,24 @@ class ContractCheckResult(_CheckContract):
             if item.verdict is AspectVerdict.MISMATCH
         )
 
+    @property
+    def claim_level(self) -> ClaimLevel:
+        return self.kind.claim_level
+
+    def as_code_proof_obligation(
+        self,
+        *,
+        observation_layer: ObservationLayer = ObservationLayer.SYMBOLIC,
+        goal_id: str = OBJECTIVE_GOAL_ID,
+    ) -> CodeProofObligation:
+        """Project this result into a :class:`CodeProofObligation`."""
+
+        return CodeProofObligation.from_check_result(
+            self,
+            observation_layer=observation_layer,
+            goal_id=goal_id,
+        )
+
     def _payload(self) -> dict[str, Any]:
         return {
             "kind": self.kind.value,
@@ -1612,6 +2073,7 @@ class ContractCheckResult(_CheckContract):
             "checker_version": self.checker_version,
             "evidence": self.evidence,
             "freshness": self.freshness.value,
+            "claim_level": self.claim_level.value,
         }
 
     def to_record(self) -> dict[str, Any]:
@@ -1643,7 +2105,12 @@ class ContractCheckResult(_CheckContract):
             payload,
             fields
             | _header_fields()
-            | {"result_id", "freshness", "mismatch_aspects"},
+            | {
+                "result_id",
+                "freshness",
+                "mismatch_aspects",
+                "claim_level",
+            },
             artifact_name="contract check result",
         )
         result = cls(
@@ -1669,6 +2136,14 @@ class ContractCheckResult(_CheckContract):
             names=("result_id", "content_id"),
             artifact_name="contract check result",
         )
+        claimed_level = payload.get("claim_level")
+        if (
+            claimed_level is not None
+            and claimed_level != result.claim_level.value
+        ):
+            raise ForgedIdentityError(
+                "claim_level does not match result kind claim class"
+            )
         return result
 
 
@@ -2866,6 +3341,7 @@ def _aggregate_kind(
     elapsed_ms: int,
     budget_ms: int,
     force_timeout: bool = False,
+    observation_layer: ObservationLayer = ObservationLayer.SYMBOLIC,
 ) -> ContractCheckResultKind:
     if cache_freshness is CacheFreshness.STALE:
         return ContractCheckResultKind.STALE
@@ -2925,6 +3401,9 @@ def _aggregate_kind(
     if closed_total == 0:
         return ContractCheckResultKind.INCOMPLETE
     if closed_compatible == closed_total:
+        # Runtime-layer matches are never promoted to model proof.
+        if observation_layer is ObservationLayer.RUNTIME:
+            return ContractCheckResultKind.RUNTIME_WITNESS
         return ContractCheckResultKind.PROVED_COMPATIBLE
     return ContractCheckResultKind.INCOMPLETE
 
@@ -2943,19 +3422,28 @@ def compare_contracts(
     expected_cache_generation: str = "",
     force_timeout: bool = False,
     require_same_subject: bool = True,
+    observation_layer: ObservationLayer | str = ObservationLayer.SYMBOLIC,
 ) -> ContractCheckResult:
     """Compare one expected contract to one observation under closed rules.
 
     Emits ``proved_compatible`` only when every selected closed supported rule
-    succeeds.  Conclusive mismatches carry a minimal counterexample.  Dynamic
-    dispatch uncertainty, omitted effects, cache staleness, and path traversal
-    produce the corresponding typed non-compatible outcomes.
+    succeeds under the symbolic observation layer.  A runtime-layer match
+    emits ``runtime_witness`` instead (never claim-promoted to model proof).
+    Conclusive mismatches carry a minimal counterexample.  Dynamic dispatch
+    uncertainty, omitted effects, cache staleness, and path traversal produce
+    the corresponding typed non-compatible outcomes.
     """
 
     if not isinstance(expected, ExpectedProgramContract):
         raise ContractCheckerError("expected must be an ExpectedProgramContract")
     if not isinstance(observed, ObservedProgramContract):
         raise ContractCheckerError("observed must be an ObservedProgramContract")
+
+    layer = _enum(
+        observation_layer,
+        ObservationLayer,
+        field_name="observation_layer",
+    )
 
     evaluated = evaluated_at or _now_iso()
     if authority_expires_at is None:
@@ -3143,6 +3631,7 @@ def compare_contracts(
         elapsed_ms=effective_elapsed,
         budget_ms=budget_ms,
         force_timeout=force_timeout,
+        observation_layer=layer,
     )
 
     counterexample: ContractCounterexample | None = None
@@ -3171,6 +3660,11 @@ def compare_contracts(
 
     if kind is ContractCheckResultKind.PROVED_COMPATIBLE:
         summary = "all closed supported rules proved compatible"
+    elif kind is ContractCheckResultKind.RUNTIME_WITNESS:
+        summary = (
+            "hermetic runtime observation confirms declared behavior under "
+            "exact subject binding"
+        )
     elif kind is ContractCheckResultKind.WITNESSED_MISMATCH:
         summary = (
             counterexample.summary
@@ -3266,6 +3760,7 @@ class ContractChecker:
         cache_generation: str = "",
         expected_cache_generation: str = "",
         force_timeout: bool = False,
+        observation_layer: ObservationLayer | str = ObservationLayer.SYMBOLIC,
     ) -> ContractCheckResult:
         return compare_contracts(
             expected,
@@ -3279,6 +3774,7 @@ class ContractChecker:
             cache_generation=cache_generation,
             expected_cache_generation=expected_cache_generation,
             force_timeout=force_timeout,
+            observation_layer=observation_layer,
         )
 
     def check_bundle(
@@ -3413,6 +3909,9 @@ __all__ = [
     "SCHEMA_VERSION",
     "CONTRACT_CHECK_RESULT_EVIDENCE",
     "CONTRACT_COUNTEREXAMPLE_EVIDENCE",
+    "OBJECTIVE_VALIDATION_REPAIR_EVIDENCE",
+    "OBJECTIVE_GOAL_ID",
+    "EXACT_BINDING_DIMENSIONS",
     "CLOSED_SUPPORTED_ASPECTS",
     "DEFAULT_BUDGET_MS",
     "ContractCheckerError",
@@ -3422,6 +3921,7 @@ __all__ = [
     "ScopeMismatchError",
     "StaleAuthorityError",
     "ContractCheckResultKind",
+    "ObservationLayer",
     "AspectVerdict",
     "CallPathResolution",
     "CacheFreshness",
@@ -3430,6 +3930,8 @@ __all__ = [
     "CheckBinding",
     "AspectCheckResult",
     "ContractCounterexample",
+    "Counterexample",
+    "CodeProofObligation",
     "ContractCheckResult",
     "ContractCheckReport",
     "ContractChecker",

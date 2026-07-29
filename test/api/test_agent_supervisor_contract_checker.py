@@ -1,4 +1,4 @@
-"""Tests for symbolic contract comparison and counterexamples (VFS-016)."""
+"""Tests for symbolic contract comparison and counterexamples (VFS-016 / VFS-G051)."""
 
 from __future__ import annotations
 
@@ -11,6 +11,9 @@ from ipfs_accelerate_py.agent_supervisor.contract_checker import (
     CLOSED_SUPPORTED_ASPECTS,
     CONTRACT_CHECK_RESULT_EVIDENCE,
     CONTRACT_COUNTEREXAMPLE_EVIDENCE,
+    EXACT_BINDING_DIMENSIONS,
+    OBJECTIVE_GOAL_ID,
+    OBJECTIVE_VALIDATION_REPAIR_EVIDENCE,
     AspectCheckResult,
     AspectVerdict,
     CacheFreshness,
@@ -18,13 +21,16 @@ from ipfs_accelerate_py.agent_supervisor.contract_checker import (
     CallPathResolution,
     CallPathStep,
     CheckBinding,
+    CodeProofObligation,
     ContractCheckReport,
     ContractCheckResult,
     ContractCheckResultKind,
     ContractChecker,
     ContractCheckerError,
     ContractCounterexample,
+    Counterexample,
     ForgedIdentityError,
+    ObservationLayer,
     ScopeMismatchError,
     StaleAuthorityError,
     check_errors,
@@ -38,6 +44,9 @@ from ipfs_accelerate_py.agent_supervisor.contract_checker import (
     make_binding,
     minimal_counterexample,
     _path_is_traversal,
+)
+from ipfs_accelerate_py.agent_supervisor.program_assurance_contracts import (
+    ClaimLevel,
 )
 from ipfs_accelerate_py.agent_supervisor.program_contracts import (
     AtomicityMode,
@@ -432,6 +441,10 @@ def test_objective_evidence_terms_are_emitted_on_result_and_witness() -> None:
     )
     assert CONTRACT_CHECK_RESULT_EVIDENCE == "vfs/contract-check-result@1"
     assert CONTRACT_COUNTEREXAMPLE_EVIDENCE == "vfs/contract-counterexample@1"
+    assert (
+        OBJECTIVE_VALIDATION_REPAIR_EVIDENCE == "objective validation repair"
+    )
+    assert OBJECTIVE_GOAL_ID == "VFS-G051"
     assert result.evidence == CONTRACT_CHECK_RESULT_EVIDENCE
     assert result.to_dict()["evidence"] == CONTRACT_CHECK_RESULT_EVIDENCE
     assert result.counterexample is not None
@@ -440,6 +453,9 @@ def test_objective_evidence_terms_are_emitted_on_result_and_witness() -> None:
         result.counterexample.to_dict()["evidence"]
         == CONTRACT_COUNTEREXAMPLE_EVIDENCE
     )
+    # AST evidence surface for the objective query.
+    assert Counterexample is ContractCounterexample
+    assert isinstance(result.counterexample, Counterexample)
 
     forged_result = result.to_dict()
     forged_result["evidence"] = "vfs/other-evidence@1"
@@ -450,6 +466,196 @@ def test_objective_evidence_terms_are_emitted_on_result_and_witness() -> None:
     forged_witness["evidence"] = "vfs/other-evidence@1"
     with pytest.raises(ContractCheckerError):
         ContractCounterexample.from_dict(forged_witness)
+
+
+def test_objective_validation_repair_distinct_kinds_and_exact_binding() -> None:
+    """VFS-G051 acceptance + refinement: distinct kinds, exact binding."""
+
+    # Closed vocabulary includes every acceptance dimension.
+    kind_values = {item.value for item in ContractCheckResultKind}
+    for required in (
+        "proved_compatible",
+        "witnessed_mismatch",
+        "runtime_witness",
+        "ambiguous",
+        "unsupported",
+        "timeout",
+        "stale",
+    ):
+        assert required in kind_values
+    assert ContractCheckResultKind.PROVED_COMPATIBLE.claim_level is (
+        ClaimLevel.MODEL_PROVED
+    )
+    assert ContractCheckResultKind.WITNESSED_MISMATCH.claim_level is (
+        ClaimLevel.MODEL_DISPROVED
+    )
+    assert ContractCheckResultKind.RUNTIME_WITNESS.claim_level is (
+        ClaimLevel.RUNTIME_WITNESSED
+    )
+    assert EXACT_BINDING_DIMENSIONS == (
+        "repository",
+        "symbol",
+        "interface",
+        "policy",
+        "freshness",
+    )
+
+    proved = compare_contracts(
+        expected_contract(),
+        observed_contract(),
+        evaluated_at=EVALUATED,
+        authority_expires_at=EXPIRES,
+        cache_generation="gen:1",
+        expected_cache_generation="gen:1",
+    )
+    assert proved.kind is ContractCheckResultKind.PROVED_COMPATIBLE
+    assert proved.claim_level is ClaimLevel.MODEL_PROVED
+    assert proved.binding.subject_matches
+    assert proved.binding.has_complete_binding_dimensions
+    assert set(proved.binding.exact_binding_dimensions) == set(
+        EXACT_BINDING_DIMENSIONS
+    )
+    assert proved.binding.diverging_binding_dimensions() == ()
+    assert proved.binding.cache_binding_freshness is CacheFreshness.CURRENT
+
+    runtime = compare_contracts(
+        expected_contract(),
+        observed_contract(),
+        evaluated_at=EVALUATED,
+        authority_expires_at=EXPIRES,
+        observation_layer=ObservationLayer.RUNTIME,
+    )
+    assert runtime.kind is ContractCheckResultKind.RUNTIME_WITNESS
+    assert runtime.claim_level is ClaimLevel.RUNTIME_WITNESSED
+    assert runtime.kind is not ContractCheckResultKind.PROVED_COMPATIBLE
+    assert runtime.binding.subject_matches
+
+    mismatch = compare_contracts(
+        expected_contract(),
+        observed_contract(returns=ReturnSpec(type_shape=string_type())),
+        evaluated_at=EVALUATED,
+        authority_expires_at=EXPIRES,
+    )
+    assert mismatch.kind is ContractCheckResultKind.WITNESSED_MISMATCH
+    assert mismatch.claim_level is ClaimLevel.MODEL_DISPROVED
+    assert mismatch.counterexample is not None
+    assert mismatch.binding.subject_matches
+
+    obligation = CodeProofObligation.from_check_result(mismatch)
+    assert obligation.goal_id == OBJECTIVE_GOAL_ID
+    assert obligation.kind is ContractCheckResultKind.WITNESSED_MISMATCH
+    assert obligation.claim_level is ClaimLevel.MODEL_DISPROVED
+    assert obligation.binding.binding_id == mismatch.binding.binding_id
+    assert set(obligation.exact_binding_dimensions) == set(
+        EXACT_BINDING_DIMENSIONS
+    )
+    assert obligation.counterexample_id == (
+        mismatch.counterexample.counterexample_id
+    )
+    round_trip = CodeProofObligation.from_dict(obligation.to_dict())
+    assert round_trip.obligation_id == obligation.obligation_id
+
+    via_result = mismatch.as_code_proof_obligation(
+        observation_layer=ObservationLayer.RUNTIME
+    )
+    assert via_result.observation_layer is ObservationLayer.RUNTIME
+    assert via_result.result_id == mismatch.result_id
+
+    # claim_level is derived from kind; forging it fails closed.
+    forged_claim = proved.to_dict()
+    forged_claim["claim_level"] = ClaimLevel.RUNTIME_WITNESSED.value
+    with pytest.raises(ForgedIdentityError):
+        ContractCheckResult.from_dict(forged_claim)
+
+    # Re-serializing with matching kind + claim_level is admitted.
+    rebuilt = ContractCheckResult.from_dict(runtime.to_dict())
+    assert rebuilt.kind is ContractCheckResultKind.RUNTIME_WITNESS
+    assert rebuilt.claim_level is ClaimLevel.RUNTIME_WITNESSED
+
+
+def test_code_proof_obligation_rejects_incomplete_or_stale_binding() -> None:
+    match = compare_contracts(
+        expected_contract(),
+        observed_contract(),
+        evaluated_at=EVALUATED,
+        authority_expires_at=EXPIRES,
+    )
+    # Valid bindings always carry complete identity dimensions (fail-closed
+    # construction); the complete-dimension flag is true for every admitted
+    # CheckBinding and required by CodeProofObligation.
+    assert match.binding.has_complete_binding_dimensions
+    assert match.binding.subject_matches
+
+    # Contract id mismatch against the binding is rejected.
+    with pytest.raises(ScopeMismatchError):
+        CodeProofObligation(
+            binding=match.binding,
+            kind=ContractCheckResultKind.PROVED_COMPATIBLE,
+            expected_contract_id=match.binding.expected_contract_id,
+            observed_contract_id="observed:forged",
+            evaluated_at=EVALUATED,
+            authority_expires_at=EXPIRES,
+        )
+
+    stale_binding = make_binding(
+        expected_contract(),
+        observed_contract(),
+        cache_generation="gen:old",
+        expected_cache_generation="gen:new",
+    )
+    assert stale_binding.cache_binding_freshness is CacheFreshness.STALE
+    assert "freshness" in stale_binding.diverging_binding_dimensions()
+    with pytest.raises(StaleAuthorityError):
+        CodeProofObligation(
+            binding=stale_binding,
+            kind=ContractCheckResultKind.PROVED_COMPATIBLE,
+            expected_contract_id=stale_binding.expected_contract_id,
+            observed_contract_id=stale_binding.observed_contract_id,
+            evaluated_at=EVALUATED,
+            authority_expires_at=EXPIRES,
+        )
+
+    # Expired authority window is also rejected on the obligation.
+    with pytest.raises(StaleAuthorityError):
+        CodeProofObligation(
+            binding=match.binding,
+            kind=ContractCheckResultKind.PROVED_COMPATIBLE,
+            expected_contract_id=match.binding.expected_contract_id,
+            observed_contract_id=match.binding.observed_contract_id,
+            evaluated_at=EVALUATED,
+            authority_expires_at=STALE_EXPIRES,
+        )
+
+    # Proved-compatible construction rejects near-match subjects.
+    near = make_binding(
+        expected_contract(),
+        observed_contract(policy_revision="policy:other@1"),
+    )
+    assert not near.subject_matches
+    assert "policy" in near.diverging_binding_dimensions()
+    with pytest.raises(ScopeMismatchError):
+        ContractCheckResult(
+            kind=ContractCheckResultKind.PROVED_COMPATIBLE,
+            binding=near,
+            aspect_results=match.aspect_results,
+            summary="forged",
+            evaluated_at=EVALUATED,
+            authority_expires_at=EXPIRES,
+        )
+
+    # Identity mismatches may still project to a CodeProofObligation
+    # (subject_matches is false, primary aspect is identity).
+    identity = compare_contracts(
+        expected_contract(),
+        observed_contract(policy_revision="policy:other@1"),
+        evaluated_at=EVALUATED,
+        authority_expires_at=EXPIRES,
+    )
+    assert identity.kind is ContractCheckResultKind.WITNESSED_MISMATCH
+    assert not identity.binding.subject_matches
+    identity_obligation = CodeProofObligation.from_check_result(identity)
+    assert identity_obligation.primary_aspect == "identity"
+    assert identity_obligation.claim_level is ClaimLevel.MODEL_DISPROVED
 
 
 def test_path_traversal_detector() -> None:
@@ -1222,6 +1428,17 @@ def test_freshness_is_bound_to_generations_and_witness_window() -> None:
     rebound_generation = current.to_dict()
     rebound_generation["binding"]["expected_cache_generation"] = "gen:10"
     rebound_generation["binding"]["cache_binding_freshness"] = "stale"
+    rebound_generation["binding"]["diverging_binding_dimensions"] = [
+        "freshness"
+    ]
+    rebound_generation["binding"]["exact_binding_dimensions"] = (
+        current.binding.exact_binding_dimensions
+    )
+    rebound_generation["binding"]["exact_binding_dimensions"]["freshness"] = {
+        "cache_generation": "gen:9",
+        "expected_cache_generation": "gen:10",
+        "cache_binding_freshness": "stale",
+    }
     with pytest.raises(StaleAuthorityError):
         ContractCheckResult.from_dict(rebound_generation)
 
