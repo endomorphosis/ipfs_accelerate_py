@@ -18358,6 +18358,99 @@ def test_implementation_supervisor_keeps_failed_recovered_candidate_unmerged(
     )
 
 
+def test_implementation_supervisor_retries_reconciliation_when_validation_executable_is_missing(
+    tmp_path,
+):
+    state_dir = tmp_path / "runtime" / "codex"
+    state_dir.mkdir(parents=True)
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=tmp_path / "todo.md",
+            state_path=state_dir / "task_state.json",
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "supervisor_events.jsonl",
+            state_dir=state_dir,
+            state_prefix="accel",
+            task_prefix="## ACCEL-",
+            repo_root=tmp_path,
+            worktree_root=tmp_path / "worktrees",
+            merge_target_branch="main",
+        )
+    )
+    task = SimpleNamespace(task_id="ACCEL-011")
+    missing_executable_key = "missing-validation-executable"
+    semantic_failure_key = "semantic-validation-failure"
+    events = [
+        {
+            "type": "worktree_reconciliation_validation_finished",
+            "task_id": task.task_id,
+            "branch": "implementation/accel-011-missing-executable",
+            "recovery_key": missing_executable_key,
+            "returncode": 127,
+            "validation_result": {
+                "attempted": True,
+                "passed": False,
+                "returncode": 127,
+                "reason": "declared_validation_failed",
+                "error": "validation_command_failed",
+                "failed_command": "npm run build",
+                "results": [
+                    {
+                        "command": "npm run build",
+                        "returncode": 127,
+                    }
+                ],
+            },
+        },
+        {
+            "type": "worktree_reconciliation_validation_finished",
+            "task_id": task.task_id,
+            "branch": "implementation/accel-011-semantic-failure",
+            "recovery_key": semantic_failure_key,
+            "returncode": 1,
+            "validation_result": {
+                "attempted": True,
+                "passed": False,
+                "returncode": 1,
+                "reason": "declared_validation_failed",
+                "error": "validation_command_failed",
+                "failed_command": "python -m pytest -q",
+                "results": [
+                    {
+                        "command": "python -m pytest -q",
+                        "returncode": 1,
+                    }
+                ],
+            },
+        },
+    ]
+
+    class ReconciliationContextDaemon:
+        @staticmethod
+        def _load_tasks():
+            return [task]
+
+        @staticmethod
+        def _register_task_identities(tasks):
+            assert tasks == [task]
+
+        @staticmethod
+        def _iter_events():
+            return iter(events)
+
+    (
+        _tasks_by_id,
+        _task_ids_by_branch,
+        outcome_keys,
+        _provenance_by_branch,
+    ) = supervisor._reconciliation_task_context(
+        ReconciliationContextDaemon()
+    )
+
+    assert semantic_failure_key in outcome_keys
+    assert missing_executable_key not in outcome_keys
+
+
 def test_implementation_supervisor_run_once_replays_historical_merge_under_maintenance_lease(
     tmp_path,
     monkeypatch,

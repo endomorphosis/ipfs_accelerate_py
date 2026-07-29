@@ -4696,6 +4696,41 @@ class PortalImplementationSupervisor:
                 events.append(payload)
         return events
 
+    @staticmethod
+    def _retryable_reconciliation_validation_failure(
+        validation_result: Mapping[str, Any],
+    ) -> bool:
+        """Identify environment/process failures that a later replay may fix."""
+
+        retryable_returncodes = {
+            124,  # command timeout
+            126,  # command found but could not execute
+            127,  # command or local executable not found
+            130,  # interrupted
+            137,  # killed
+            143,  # terminated
+        }
+        raw_returncodes = [validation_result.get("returncode")]
+        command_results = validation_result.get("results")
+        if isinstance(command_results, Sequence) and not isinstance(
+            command_results,
+            (str, bytes, bytearray),
+        ):
+            for command_result in command_results:
+                if not isinstance(command_result, Mapping):
+                    continue
+                if command_result.get("timed_out") is True:
+                    return True
+                raw_returncodes.append(command_result.get("returncode"))
+        for raw_returncode in raw_returncodes:
+            try:
+                returncode = int(raw_returncode)
+            except (TypeError, ValueError):
+                continue
+            if returncode < 0 or returncode in retryable_returncodes:
+                return True
+        return False
+
     def _reconciliation_task_context(
         self,
         daemon: PortalImplementationDaemon,
@@ -4820,6 +4855,9 @@ class PortalImplementationSupervisor:
                     "merge_train_consumer_unavailable",
                 }
                 and not validation_result.get("error_type")
+                and not self._retryable_reconciliation_validation_failure(
+                    validation_result
+                )
             )
             if recovery_key and (
                 completed_reconciliation
