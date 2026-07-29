@@ -28,7 +28,7 @@ compact references and bounded spans only.
 
 ## VFS-002 Implement independently bound repository descriptors and authority forests
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: repository-identity
