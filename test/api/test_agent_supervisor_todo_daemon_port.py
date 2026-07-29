@@ -9591,10 +9591,21 @@ def test_implementation_daemon_defers_cross_lane_submodule_resource_collision(
     assert reason == "acquired"
     assert len(first_claims) == 1
 
+    selected_state = TodoTaskState()
+    selected_state.active_task_id = second_task.task_id
+    selected_state.active_task_cid = second_daemon._canonical_ref(
+        second_task
+    )
+    selected_state.active_task_key = second_daemon._identity_for_task(
+        second_task
+    ).canonical_task_key
+    selected_state.recommended_task_id = second_task.task_id
+    selected_state.save(second_daemon.state_path)
     result = second_daemon._run_implementation(
         second_task,
-        TodoTaskState(),
+        selected_state,
     )
+    persisted_state = TodoTaskState.load(second_daemon.state_path)
 
     assert result["skipped"] is True
     assert result["deferred"] is True
@@ -9603,9 +9614,16 @@ def test_implementation_daemon_defers_cross_lane_submodule_resource_collision(
     assert result["provider_dispatched"] is False
     assert result["resource_kind"] == "submodule"
     assert result["resource_path"] == "modules/alpha"
+    assert result["active_task_cleared"] is True
     assert result["lock_owner_task_id"] == first_task.task_id
     assert result["lock_owner_state_dir"] == str(
         (repo / "lane-a").resolve()
+    )
+    assert persisted_state.active_task_id == ""
+    assert persisted_state.active_task_cid == ""
+    assert persisted_state.recommended_task_id == ""
+    assert persisted_state.selection_idle_reason == (
+        "resource_claim_deferred:modules/alpha"
     )
     assert not second_daemon._implementation_task_claim_path(
         second_task.task_id,

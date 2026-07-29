@@ -6266,6 +6266,24 @@ class PortalImplementationDaemon:
                 "resource_kind": "submodule",
                 "resource_path": unavailable_resource_path,
             }
+            current = PortalTaskState.load(self.state_path)
+            canonical_task_cid = self._canonical_ref(task)
+            owns_idle_projection = (
+                current.active_task_id == task.task_id
+                and current.active_task_cid == canonical_task_cid
+                and not current.implementation_in_progress
+            )
+            if owns_idle_projection:
+                self._clear_active_execution_state(
+                    current,
+                    clear_task=True,
+                )
+                current.selection_idle_reason = (
+                    f"resource_claim_deferred:{unavailable_resource_path}"
+                )
+                current.save(self.state_path)
+                state.__dict__.update(asdict(current))
+            result["active_task_cleared"] = owns_idle_projection
             if existing_resource_claim:
                 result["lock_owner_pid"] = int(
                     existing_resource_claim.get("pid") or 0
