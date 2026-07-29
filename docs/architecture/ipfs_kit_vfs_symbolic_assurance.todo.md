@@ -1203,7 +1203,7 @@ compact references and bounded spans only.
 
 ## VFS-045 Close objective gap: Establish and check the canonical IPFS Kit VFS behavioral contract
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
