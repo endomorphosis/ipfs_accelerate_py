@@ -17,6 +17,9 @@ from types import SimpleNamespace
 
 import pytest
 
+from ipfs_accelerate_py.agent_supervisor.context.context_compiler import (
+    ContextCompileResult,
+)
 from ipfs_accelerate_py.agent_supervisor.context.context_contracts import ContextBudget
 from ipfs_accelerate_py.agent_supervisor.objectives.objective_daemon import (
     build_arg_parser,
@@ -116,6 +119,11 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon_runne
     build_portal_implementation_daemon_from_args,
 )
 from ipfs_accelerate_py.agent_supervisor import implementation_daemon_runner
+from ipfs_accelerate_py.agent_supervisor.merge.checkout_lock import (
+    BACKLOG_REFINERY_AUTHOR_EMAIL,
+    GENERATED_PROTECTED_BOARD_COMMIT_MARKER,
+    checkout_mutation_lock_path,
+)
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor_runner import (
     CodebaseRefillDefaults,
     ImplementationSupervisorDefaults,
@@ -326,6 +334,7 @@ def _seed_repo(tmp_path: Path) -> tuple[Path, Path, Path]:
 - Evidence: VoiceCommandSurface.route_click, missing_gesture_policy
 - Outputs: src, tests
 - Validation: test -f objective-heap.md
+- Acceptance: The glasses control bridge proof is current and validated.
 - Gap task: Add the missing gesture policy proof.
 """,
         encoding="utf-8",
@@ -5013,6 +5022,424 @@ def test_implementation_daemon_recreates_missing_registered_submodule_worktree(
     assert worktree_listing.count(f"worktree {target}") == 1
 
 
+@pytest.mark.parametrize("incomplete_local_source", [False, True])
+def test_implementation_daemon_reuses_primary_submodule_from_linked_worktree(
+    tmp_path: Path,
+    monkeypatch,
+    incomplete_local_source: bool,
+):
+    source_root = tmp_path / "source"
+    source_root.mkdir()
+    parent_source, _ = _seed_parent_with_submodule(source_root)
+
+    outer = tmp_path / "outer"
+    outer.mkdir()
+    _git(outer, "init")
+    _git(outer, "checkout", "-b", "main")
+    _git(outer, "config", "user.name", "Test User")
+    _git(outer, "config", "user.email", "test@example.invalid")
+    _git(
+        outer,
+        "-c",
+        "protocol.file.allow=always",
+        "submodule",
+        "add",
+        str(parent_source),
+        "components/parent",
+    )
+    _git(outer, "commit", "-am", "add managed parent")
+
+    primary = outer / "components" / "parent"
+    _git(
+        primary,
+        "-c",
+        "protocol.file.allow=always",
+        "submodule",
+        "update",
+        "--init",
+        "--",
+        "libs/child",
+    )
+    integration = tmp_path / "integration"
+    _git(primary, "worktree", "add", "-b", "integration", str(integration), "main")
+    assert _git(integration, "config", "--path", "--get", "core.worktree")
+    assert not (integration / "libs" / "child" / ".git").exists()
+    if incomplete_local_source:
+        local_source = integration / "libs" / "child"
+        local_source.mkdir(parents=True, exist_ok=True)
+        _git(local_source, "init")
+        _git(local_source, "checkout", "-b", "main")
+        _git(local_source, "config", "user.name", "Test User")
+        _git(local_source, "config", "user.email", "test@example.invalid")
+        (local_source / "unrelated.txt").write_text("unrelated\n", encoding="utf-8")
+        _git(local_source, "add", "unrelated.txt")
+        _git(local_source, "commit", "-m", "unrelated local source")
+
+    branch_name = "implementation/local-primary-source"
+    worktree = tmp_path / "task-worktree"
+    _git(integration, "worktree", "add", "-b", branch_name, str(worktree), "main")
+    expected_ref = _git(worktree, "rev-parse", "HEAD:libs/child")
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=integration / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=integration,
+        worktree_submodule_paths=["libs/child"],
+    )
+
+    real_run = subprocess.run
+
+    def no_network_submodule_setup(command, *args, **kwargs):
+        normalized = [str(part) for part in command]
+        assert normalized[:2] != ["git", "fetch"]
+        assert normalized[:3] != ["git", "submodule", "update"]
+        return real_run(command, *args, **kwargs)
+
+    monkeypatch.setattr(
+        implementation_daemon_module.subprocess,
+        "run",
+        no_network_submodule_setup,
+    )
+
+    assert daemon._create_local_submodule_worktree(
+        worktree,
+        "libs/child",
+        branch_name=branch_name,
+    )
+    target = worktree / "libs" / "child"
+    assert daemon._is_git_worktree(target)
+    assert _git(target, "rev-parse", "HEAD") == expected_ref
+
+    events = [
+        json.loads(line)
+        for line in (state_dir / "events.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    discovered = next(
+        event for event in events if event["type"] == "local_submodule_source_discovered"
+    )
+    assert Path(discovered["source_root"]) == primary
+    assert Path(discovered["source"]) == primary / "libs" / "child"
+    assert discovered["expected_ref"] == expected_ref
+    assert daemon._discover_local_submodule_source(
+        "libs/child",
+        expected_ref="f" * 40,
+    ) is None
+
+
+def _nested_submodule_guard_daemon(tmp_path: Path) -> tuple[TodoImplementationDaemon, Path]:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / ".gitmodules").write_text(
+        (
+            '[submodule "ipfs_kit_py"]\n'
+            "    path = ipfs_kit_py\n"
+            "    url = https://github.com/endomorphosis/ipfs_kit_py.git\n"
+            '[submodule "ipfs_datasets_py"]\n'
+            "    path = ipfs_datasets_py\n"
+            "    url = https://github.com/endomorphosis/ipfs_datasets_py.git\n"
+        ),
+        encoding="utf-8",
+    )
+    nested = tmp_path / "nested"
+    nested.mkdir()
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=["ipfs_kit_py", "ipfs_datasets_py"],
+    )
+    return daemon, nested
+
+
+def _nested_submodule_guard_events(daemon: TodoImplementationDaemon) -> list[dict[str, object]]:
+    return [
+        json.loads(line)
+        for line in daemon.events_path.read_text(encoding="utf-8").splitlines()
+    ]
+
+
+def test_implementation_daemon_guards_nested_repository_cycle_before_worktree_creation(
+    tmp_path: Path,
+    monkeypatch,
+):
+    daemon, nested = _nested_submodule_guard_daemon(tmp_path)
+    (nested / ".gitmodules").write_text(
+        (
+            '[submodule "ipfs_accelerate_py"]\n'
+            "    path = ipfs_accelerate_py\n"
+            "    url = git@github.com:endomorphosis/ipfs_accelerate_py.git\n"
+        ),
+        encoding="utf-8",
+    )
+    create_calls: list[tuple[Path, str]] = []
+    expected_gitlink_ref = "a" * 40
+    monkeypatch.setattr(
+        daemon,
+        "_create_local_submodule_worktree",
+        lambda worktree, relative, **_kwargs: create_calls.append((worktree, relative)) or True,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_submodule_gitlink_ref",
+        lambda *_args: expected_gitlink_ref,
+    )
+
+    daemon._initialize_nested_worktree_submodules(
+        nested,
+        branch_name="implementation/cycle",
+        parent_relative="ipfs_kit_py",
+        _ancestor_identities=frozenset(
+            {"network:github.com/endomorphosis/ipfs_accelerate_py"}
+        ),
+        _configured_identities=frozenset(),
+    )
+
+    assert create_calls == []
+    guarded = _nested_submodule_guard_events(daemon)
+    assert len(guarded) == 1
+    assert guarded[0]["type"] == "nested_submodule_initialization_guarded"
+    assert guarded[0]["reason"] == "repository_cycle"
+    assert guarded[0]["path"] == "ipfs_kit_py/ipfs_accelerate_py"
+    assert guarded[0]["depth"] == 1
+    assert len(str(guarded[0]["matched_identity_sha256"])) == 64
+    assert guarded[0]["expected_gitlink_ref_available"] is True
+    assert guarded[0]["expected_gitlink_ref_sha256"] == hashlib.sha256(
+        expected_gitlink_ref.encode("utf-8")
+    ).hexdigest()
+
+
+def test_implementation_daemon_skips_nested_copy_of_configured_top_level_dependency(
+    tmp_path: Path,
+    monkeypatch,
+):
+    daemon, nested = _nested_submodule_guard_daemon(tmp_path)
+    (nested / ".gitmodules").write_text(
+        (
+            '[submodule ".tools/ipfs_kit_py"]\n'
+            "    path = .tools/ipfs_kit_py\n"
+            "    url = https://github.com/endomorphosis/ipfs_kit_py\n"
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_create_local_submodule_worktree",
+        lambda *_args, **_kwargs: pytest.fail(
+            "configured duplicate must be guarded before worktree creation"
+        ),
+    )
+
+    daemon._initialize_nested_worktree_submodules(
+        nested,
+        branch_name="implementation/duplicate",
+        parent_relative="ipfs_datasets_py",
+        _ancestor_identities=frozenset(
+            {"network:github.com/endomorphosis/ipfs_datasets_py"}
+        ),
+    )
+
+    guarded = _nested_submodule_guard_events(daemon)
+    assert len(guarded) == 1
+    assert guarded[0]["reason"] == "configured_dependency_duplicate"
+    assert guarded[0]["path"] == "ipfs_datasets_py/.tools/ipfs_kit_py"
+
+
+def test_implementation_daemon_guards_nested_submodule_with_unknown_identity(
+    tmp_path: Path,
+    monkeypatch,
+):
+    daemon, nested = _nested_submodule_guard_daemon(tmp_path)
+    (nested / ".gitmodules").write_text(
+        (
+            '[submodule "unknown"]\n'
+            "    path = dependencies/unknown\n"
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_create_local_submodule_worktree",
+        lambda *_args, **_kwargs: pytest.fail(
+            "an unidentified nested repository must not be materialized"
+        ),
+    )
+
+    daemon._initialize_nested_worktree_submodules(
+        nested,
+        branch_name="implementation/unknown-identity",
+        parent_relative="components/parent",
+        _ancestor_identities=frozenset(),
+        _configured_identities=frozenset(),
+    )
+
+    guarded = _nested_submodule_guard_events(daemon)
+    assert len(guarded) == 1
+    assert guarded[0]["reason"] == "identity_unavailable"
+    assert guarded[0]["path"] == "components/parent/dependencies/unknown"
+    assert guarded[0]["expected_gitlink_ref_available"] is False
+    assert guarded[0]["expected_gitlink_ref_sha256"] == ""
+
+
+def test_implementation_daemon_keeps_acyclic_nested_submodule_recursion(
+    tmp_path: Path,
+    monkeypatch,
+):
+    daemon, nested = _nested_submodule_guard_daemon(tmp_path)
+    (nested / ".gitmodules").write_text(
+        (
+            '[submodule "libs/child"]\n'
+            "    path = libs/child\n"
+            "    url = https://example.invalid/dependencies/child.git\n"
+        ),
+        encoding="utf-8",
+    )
+    target = nested / "libs" / "child"
+    declared_calls: list[Path] = []
+    create_calls: list[tuple[Path, str, str]] = []
+
+    def declared_paths(worktree: Path) -> list[str]:
+        declared_calls.append(worktree)
+        return ["libs/child"] if worktree == nested else []
+
+    def create_local(
+        worktree: Path,
+        relative: str,
+        *,
+        source_relative: str,
+        **_kwargs,
+    ) -> bool:
+        create_calls.append((worktree, relative, source_relative))
+        target.mkdir(parents=True)
+        return True
+
+    monkeypatch.setattr(daemon, "_declared_submodule_paths", declared_paths)
+    monkeypatch.setattr(daemon, "_create_local_submodule_worktree", create_local)
+    monkeypatch.setattr(daemon, "_is_git_worktree", lambda path: path == target)
+    monkeypatch.setattr(
+        daemon,
+        "_submodule_repository_identities",
+        lambda path: (
+            {"network:example.invalid/dependencies/child"}
+            if path == target
+            else set()
+        ),
+    )
+
+    daemon._initialize_nested_worktree_submodules(
+        nested,
+        branch_name="implementation/acyclic",
+        parent_relative="components/parent",
+        _ancestor_identities=frozenset({"network:example.invalid/components/parent"}),
+        _configured_identities=frozenset(),
+    )
+
+    assert create_calls == [
+        (nested, "libs/child", "components/parent/libs/child"),
+    ]
+    assert declared_calls == [nested, target]
+    assert not daemon.events_path.exists()
+
+
+def test_implementation_daemon_guards_nested_submodule_depth_and_path_limits(
+    tmp_path: Path,
+    monkeypatch,
+):
+    daemon, nested = _nested_submodule_guard_daemon(tmp_path)
+    paths = iter(
+        [
+            ["child"],
+            ["x" * (implementation_daemon_module.MAX_NESTED_SUBMODULE_PATH_BYTES + 1)],
+        ]
+    )
+    monkeypatch.setattr(daemon, "_declared_submodule_paths", lambda _path: next(paths))
+    monkeypatch.setattr(
+        daemon,
+        "_create_local_submodule_worktree",
+        lambda *_args, **_kwargs: pytest.fail(
+            "bounded nested path must not create a worktree"
+        ),
+    )
+
+    daemon._initialize_nested_worktree_submodules(
+        nested,
+        branch_name="implementation/depth-bound",
+        parent_relative="parent",
+        _depth=implementation_daemon_module.MAX_NESTED_SUBMODULE_DEPTH,
+        _ancestor_identities=frozenset(),
+        _configured_identities=frozenset(),
+    )
+    daemon._initialize_nested_worktree_submodules(
+        nested,
+        branch_name="implementation/path-bound",
+        parent_relative="parent",
+        _ancestor_identities=frozenset(),
+        _configured_identities=frozenset(),
+    )
+
+    guarded = [
+        event
+        for event in _nested_submodule_guard_events(daemon)
+        if event["type"] == "nested_submodule_initialization_guarded"
+    ]
+    assert [event["reason"] for event in guarded] == [
+        "max_depth_exceeded",
+        "path_limit_exceeded",
+    ]
+    assert guarded[0]["depth"] == implementation_daemon_module.MAX_NESTED_SUBMODULE_DEPTH + 1
+    assert guarded[1]["path_bytes"] > implementation_daemon_module.MAX_NESTED_SUBMODULE_PATH_BYTES
+    assert len(str(guarded[1]["path"]).encode("utf-8")) <= (
+        implementation_daemon_module.MAX_NESTED_SUBMODULE_GUARD_EVENT_TEXT_BYTES
+    )
+    assert len(str(guarded[1]["path_sha256"])) == 64
+
+
+def test_implementation_daemon_bounds_nested_submodule_guard_diagnostics(
+    tmp_path: Path,
+    monkeypatch,
+):
+    daemon, nested = _nested_submodule_guard_daemon(tmp_path)
+    diagnostic_limit = implementation_daemon_module.MAX_NESTED_SUBMODULE_GUARD_EVENTS
+    monkeypatch.setattr(
+        daemon,
+        "_declared_submodule_paths",
+        lambda _path: [f"child-{index}" for index in range(diagnostic_limit + 5)],
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_create_local_submodule_worktree",
+        lambda *_args, **_kwargs: pytest.fail(
+            "depth-guarded nested path must not create a worktree"
+        ),
+    )
+
+    daemon._initialize_nested_worktree_submodules(
+        nested,
+        branch_name="implementation/bounded-events",
+        parent_relative="parent",
+        _depth=implementation_daemon_module.MAX_NESTED_SUBMODULE_DEPTH,
+        _ancestor_identities=frozenset(),
+        _configured_identities=frozenset(),
+    )
+
+    events = _nested_submodule_guard_events(daemon)
+    guarded = [
+        event for event in events
+        if event["type"] == "nested_submodule_initialization_guarded"
+    ]
+    suppressed = [
+        event for event in events
+        if event["type"] == "nested_submodule_initialization_guard_suppressed"
+    ]
+    assert len(guarded) == diagnostic_limit
+    assert len(suppressed) == 1
+    assert suppressed[0]["limit"] == diagnostic_limit
+
+
 def test_implementation_daemon_defers_nested_submodule_with_missing_gitlink(
     tmp_path: Path,
     monkeypatch,
@@ -7065,6 +7492,35 @@ def test_configured_daemon_builder_preserves_shard_and_cleanup_args(tmp_path):
     assert daemon.task_shard_index == 2
 
 
+def test_implementation_daemon_main_accepts_shared_merge_queue_dir(
+    tmp_path, monkeypatch
+):
+    merge_queue_dir = tmp_path / "shared-merge-queue"
+    captured = {}
+
+    class StubDaemon:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+        def run_once(self):
+            return {}
+
+        def close_event_runtime(self):
+            return None
+
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "PortalImplementationDaemon",
+        StubDaemon,
+    )
+
+    implementation_daemon_module.main(
+        ["--once", "--merge-queue-dir", str(merge_queue_dir)]
+    )
+
+    assert captured["merge_queue_dir"] == merge_queue_dir
+
+
 def test_daemon_refill_callbacks_honor_cli_scan_overrides(tmp_path):
     parsed = argparse.Namespace(
         todo_path=tmp_path / "tasks.todo.md",
@@ -8376,10 +8832,7 @@ def test_implementation_daemon_defers_provider_quota_without_consuming_attempt(t
 
     assert first["deferred"] is True
     assert first["reason"] == "provider_capacity_exhausted"
-    # Capacity text matches codex + copilot patterns; the shared "usage limit"
-    # phrase is also owned by the grok classifier, so grok may appear too.
-    assert "codex" in first["providers"]
-    assert "copilot" in first["providers"]
+    assert first["providers"] == ["codex", "copilot", "grok"]
     assert first["attempt_consumed"] is False
     assert persisted.implementation_attempts == {}
     assert daemon._find_live_inflight_implementation() is None
@@ -10043,6 +10496,87 @@ def test_implementation_supervisor_repairs_generated_dirty_after_stuck_recovery(
     assert result["post_stuck_generated_dirty_repair"]["call_index"] == 2
 
 
+def test_generated_dirty_repair_owns_checkout_lock_and_defers_foreign_owner(
+    tmp_path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    todo_path = repo / "docs" / "generated.todo.md"
+    todo_path.parent.mkdir()
+    todo_path.write_text("# Generated board\n", encoding="utf-8")
+    _git(repo, "add", "docs/generated.todo.md")
+    _git(
+        repo,
+        "-c",
+        "user.name=Test User",
+        "-c",
+        "user.email=test@example.invalid",
+        "commit",
+        "-m",
+        "seed generated board",
+    )
+
+    state_dir = tmp_path / "state"
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=todo_path,
+            state_path=state_dir / "task_state.json",
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "events.jsonl",
+            state_dir=state_dir,
+            repo_root=repo,
+            generated_dirty_repair_enabled=True,
+            generated_dirty_repair_commit_subject=(
+                "Agent: persist generated board"
+            ),
+            generated_dirty_repair_paths=(todo_path,),
+            implementation_protected_paths=("docs/generated.todo.md",),
+        )
+    )
+
+    todo_path.write_text(
+        "# Generated board\n\n## AUTO-001 Repair\n",
+        encoding="utf-8",
+    )
+    repaired = supervisor.repair_generated_dirty_checkouts()
+
+    assert repaired["committed_count"] == 1
+    assert repaired["selected_path_count"] == 1
+    assert not checkout_mutation_lock_path(repo).exists()
+    assert _git(repo, "log", "-1", "--pretty=%ae") == (
+        BACKLOG_REFINERY_AUTHOR_EMAIL
+    )
+    assert _git(repo, "log", "-1", "--pretty=%s").endswith(
+        GENERATED_PROTECTED_BOARD_COMMIT_MARKER
+    )
+    assert _git(repo, "status", "--porcelain", "--untracked-files=all") == ""
+
+    todo_path.write_text(
+        "# Generated board\n\n## AUTO-002 Deferred\n",
+        encoding="utf-8",
+    )
+    lock_path = checkout_mutation_lock_path(repo)
+    lock_path.write_text(
+        json.dumps(
+            {
+                "kind": "merge",
+                "pid": os.getpid(),
+                "owner_script": "",
+                "repo_root": str(repo.resolve()),
+                "operation": "foreign_checkout_mutation",
+            }
+        ),
+        encoding="utf-8",
+    )
+    deferred = supervisor.repair_generated_dirty_checkouts()
+
+    assert deferred["attempted"] is False
+    assert deferred["reason"] == "checkout_mutation_lock_unavailable"
+    assert "docs/generated.todo.md" in _git(repo, "status", "--short")
+
+
 def test_implementation_supervisor_repairs_implementation_without_worker(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -10934,6 +11468,7 @@ def test_implementation_supervisor_creates_missing_todo_before_refill(tmp_path):
 - Evidence: RuntimeBridge.dispatch, missing_runtime_contract
 - Outputs: src/runtime_bridge.py, tests
 - Validation: test -f objective-heap.md
+- Acceptance: Runtime bridge dispatch has a current validated contract proof.
 - Gap task: Add the missing runtime contract proof.
 """,
         encoding="utf-8",
@@ -10995,6 +11530,7 @@ def test_implementation_supervisor_repairs_directory_todo_before_refill(tmp_path
 - Evidence: missing_directory_todo_repair
 - Outputs: src/runtime_bridge.py, tests
 - Validation: test -f objective-heap.md
+- Acceptance: Todo board directory repair bootstraps a validated refill task.
 - Gap task: Add the directory todo repair proof.
 """,
         encoding="utf-8",
@@ -12562,6 +13098,7 @@ def test_implementation_supervisor_defers_codebase_scan_when_objective_refills(t
 - Evidence: missing_runtime_integration_contract
 - Outputs: src/runtime.py, tests
 - Validation: test -f objective-heap.md
+- Acceptance: The runtime integration contract is current and validated.
 """,
         encoding="utf-8",
     )
@@ -13258,6 +13795,7 @@ def test_implementation_supervisor_refines_objective_goals_before_generating_tod
 - Evidence: RuntimeBridge.dispatch, missing_runtime_contract
 - Outputs: src/runtime_bridge.py, tests
 - Validation: test -f objective-heap.md
+- Acceptance: Runtime bridge dispatch has a current validated contract proof.
 - Gap task: Add the missing runtime contract proof.
 """,
         encoding="utf-8",
@@ -14722,6 +15260,214 @@ def test_implementation_daemon_records_stage_specific_context_reserves(tmp_path)
     assert "decoded_output" not in receipt_text
 
 
+@pytest.mark.parametrize("byte_limit", (12_288, 16_384))
+def test_task_llm_context_budget_bounds_exact_provider_input(
+    tmp_path,
+    monkeypatch,
+    byte_limit,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text("# Todos\n", encoding="utf-8")
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## VFS-",
+    )
+    task = PortalTask(
+        task_id="VFS-900",
+        title="Compile a bounded repair packet",
+        status="ready",
+        completion="manual",
+        priority="P0",
+        track="symbolic",
+        outputs=["src/repair.py"],
+        validation=["python -m pytest test/test_repair.py -q"],
+        acceptance="Keep the invariant contract and use CID references.",
+        metadata={
+            "llm context budget bytes": str(byte_limit),
+            "missing evidence": "contract:mismatch",
+        },
+        canonical_task_cid=f"task:vfs-900-{byte_limit}",
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_render_todo_vector_context",
+        lambda _task: "symbolic evidence " * 8_000,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_load_todo_vector_context",
+        lambda _task: {},
+    )
+
+    prompt = daemon._build_implementation_prompt(task, attempt=1)
+    result = daemon._last_implementation_context
+
+    assert isinstance(result, ContextCompileResult)
+    assert len(prompt.encode("utf-8")) <= byte_limit
+    assert result.capsule.expansion_references
+    assert all(
+        item.referenced_content_id
+        for item in result.capsule.expansion_references
+    )
+    authority = result.capsule.authority["implementation_context_budget"]
+    assert authority["source"] == "task_metadata"
+    assert authority["max_provider_input_bytes"] == byte_limit
+    assert authority["provider_context_window"] == byte_limit + 24_576
+    assert result.receipt.budget_resolution.effective_input_limit == byte_limit
+
+
+@pytest.mark.parametrize(
+    "raw_budget",
+    (
+        "",
+        " ",
+        "0",
+        "-1",
+        "+12288",
+        "12288.0",
+        "12KiB",
+        "012288",
+        "1048577",
+        True,
+    ),
+)
+def test_malformed_task_llm_context_budget_never_widens_authority(
+    tmp_path,
+    raw_budget,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## VFS-",
+    )
+    task = PortalTask(
+        task_id="VFS-901",
+        title="Reject malformed prompt authority",
+        status="ready",
+        completion="manual",
+        priority="P0",
+        track="symbolic",
+        outputs=["src/repair.py"],
+        validation=[],
+        acceptance="Reject malformed budgets.",
+        metadata={"LLM context budget bytes": raw_budget},
+        canonical_task_cid="task:vfs-901",
+    )
+
+    with pytest.raises(
+        implementation_daemon_module.ImplementationRetryDeferred,
+        match="invalid task LLM context budget bytes",
+    ):
+        daemon._build_implementation_prompt(task, attempt=1)
+
+    assert TodoTaskState.load(daemon.state_path).implementation_attempts == {}
+
+
+def test_task_llm_context_budget_caps_codex_window_without_widening_operator_limits(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text("# Todos\n", encoding="utf-8")
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## VFS-",
+        implementation_context_budget=ContextBudget(
+            max_input_tokens=8_000,
+            reserved_output_tokens=1_000,
+            reserved_tool_tokens=500,
+            max_items=64,
+        ),
+        implementation_provider_context_window=6_000,
+    )
+    task = PortalTask(
+        task_id="VFS-902",
+        title="Retain stricter operator context authority",
+        status="ready",
+        completion="manual",
+        priority="P0",
+        track="symbolic",
+        outputs=["src/repair.py"],
+        validation=[],
+        acceptance="Use the stricter provider ceiling.",
+        metadata={"llm context budget bytes": "16384"},
+        canonical_task_cid="task:vfs-902",
+    )
+    monkeypatch.setenv(
+        "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER",
+        "codex",
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module.shutil,
+        "which",
+        lambda name: "/usr/local/bin/codex" if name == "codex" else None,
+    )
+
+    result = daemon._compile_implementation_context(task, attempt=1)
+    command = daemon._build_implementation_command(repo, task=task)
+
+    resolution = result.receipt.budget_resolution
+    assert resolution.provider_context_window == 6_000
+    assert resolution.effective_input_limit == 4_500
+    assert result.capsule.budget.max_input_tokens == 4_500
+    assert ["-c", "model_context_window=6000"] == command[5:7]
+    assert "model_context_window=200000" not in command
+
+
+def test_too_small_task_llm_context_budget_defers_before_attempt_charge(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## VFS-",
+    )
+    task = PortalTask(
+        task_id="VFS-903",
+        title="Defer an impossible prompt budget",
+        status="ready",
+        completion="manual",
+        priority="P0",
+        track="symbolic",
+        outputs=["src/repair.py"],
+        validation=[],
+        acceptance="Never dispatch an over-budget prompt.",
+        metadata={"llm context budget bytes": "128"},
+        canonical_task_cid="task:vfs-903",
+    )
+
+    with pytest.raises(
+        implementation_daemon_module.ImplementationRetryDeferred,
+        match="implementation context byte budget exhausted",
+    ):
+        daemon._build_implementation_prompt(task, attempt=1)
+
+    assert TodoTaskState.load(daemon.state_path).implementation_attempts == {}
+
+
 def test_implementation_daemon_uses_grok_window_and_bounded_reserve_env(
     tmp_path,
     monkeypatch,
@@ -15724,6 +16470,7 @@ def test_objective_daemon_creates_tracking_document_and_graph(tmp_path):
         "validation_strategy",
     }
     assert "missing_meta_display_bridge" in objective_path.read_text(encoding="utf-8")
+    assert "- Acceptance:" in objective_path.read_text(encoding="utf-8")
     assert "## ACCEL-001 Close objective gap" in todo_path.read_text(encoding="utf-8")
 
 
@@ -16060,6 +16807,7 @@ def test_objective_daemon_seeds_interoperability_goals_from_submodules(tmp_path)
     assert "- Package manifests:" in objective_text
     assert "- Interface descriptors:" in objective_text
     assert "- MCP descriptors:" in objective_text
+    assert "- Acceptance:" in objective_text
     assert "tests/integration/test_hallucinate_app_swissknife_interop.py" in objective_text
     assert "hallucinate_app/interfaces/control_surface.idl" in objective_text
     assert "swissknife/mcp/orb_descriptor.json" in objective_text

@@ -36,7 +36,11 @@ from ..analysis.analyzer_health import (
     classify_analyzer_health,
     run_analyzer_canaries,
 )
-from ..merge.checkout_lock import BACKLOG_REFINERY_AUTHOR_EMAIL
+from ..merge.checkout_lock import (
+    BACKLOG_REFINERY_AUTHOR_EMAIL,
+    checkout_mutation_lock_path,
+    generated_protected_board_commit_subject,
+)
 from ..runtime.event_log import read_jsonl_events
 from .goal_completion import (
     DEFAULT_CLOCK_SKEW_SECONDS,
@@ -1967,15 +1971,36 @@ def generated_dirty_commit_blocker(repo: Path) -> dict[str, Any] | None:
             "merge_head_path": str(merge_head),
         }
 
-    try:
-        from ipfs_accelerate_py.agent_supervisor.merge.checkout_lock import (
-            checkout_mutation_lock_path,
-        )
-    except ImportError:
-        return None
-
     lock_path = checkout_mutation_lock_path(repo)
     if lock_path.exists():
+        try:
+            lock_metadata = json.loads(lock_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError, TypeError):
+            lock_metadata = {}
+        try:
+            lock_pid = int(
+                lock_metadata.get("pid") or 0
+                if isinstance(lock_metadata, Mapping)
+                else 0
+            )
+        except (TypeError, ValueError):
+            lock_pid = 0
+        lock_repo_root = (
+            str(lock_metadata.get("repo_root") or "").strip()
+            if isinstance(lock_metadata, Mapping)
+            else ""
+        )
+        owned_generated_repair = (
+            isinstance(lock_metadata, Mapping)
+            and str(lock_metadata.get("kind") or "") == "merge"
+            and str(lock_metadata.get("operation") or "")
+            == "generated_dirty_repair"
+            and lock_pid == os.getpid()
+            and bool(lock_repo_root)
+            and Path(lock_repo_root).resolve() == repo.resolve()
+        )
+        if owned_generated_repair:
+            return None
         return {
             "repo": str(repo),
             "reason": "checkout_mutation_lock_exists",
@@ -2277,7 +2302,13 @@ def _status_line_is_clean_gitlink_update(repo: Path, line: str) -> tuple[bool, s
     return bool(child_root), child_root
 
 
-def _commit_selected_dirty_paths(repo: Path, paths: Sequence[str], *, subject: str) -> dict[str, Any]:
+def _commit_selected_dirty_paths(
+    repo: Path,
+    paths: Sequence[str],
+    *,
+    subject: str,
+    protected_board_paths: Sequence[str] = (),
+) -> dict[str, Any]:
     selected_paths = [path for path in dict.fromkeys(paths) if repo_relative_path_safe(path)]
     if not selected_paths:
         return {
@@ -2315,16 +2346,41 @@ def _commit_selected_dirty_paths(repo: Path, paths: Sequence[str], *, subject: s
             "repo": str(repo),
             "selected_paths": selected_paths,
         }
+    protected_selected_paths = sorted(
+        set(selected_paths).intersection(
+            {
+                normalize_status_path(path)
+                for path in protected_board_paths
+                if normalize_status_path(path)
+            }
+        )
+    )
+    protected_board_commit = bool(protected_selected_paths)
+    commit_subject = (
+        generated_protected_board_commit_subject(subject)
+        if protected_board_commit
+        else subject
+    )
+    author_name = (
+        "Accelerator Backlog Refinery"
+        if protected_board_commit
+        else "Agent Supervisor"
+    )
+    author_email = (
+        BACKLOG_REFINERY_AUTHOR_EMAIL
+        if protected_board_commit
+        else "agent-supervisor@example.invalid"
+    )
     commit = subprocess.run(
         [
             "git",
             "-c",
-            "user.name=Agent Supervisor",
+            f"user.name={author_name}",
             "-c",
-            "user.email=agent-supervisor@example.invalid",
+            f"user.email={author_email}",
             "commit",
             "-m",
-            subject,
+            commit_subject,
             "--",
             *selected_paths,
         ],
@@ -2342,6 +2398,8 @@ def _commit_selected_dirty_paths(repo: Path, paths: Sequence[str], *, subject: s
             "returncode": commit.returncode,
             "stdout": commit.stdout[-4000:],
             "stderr": commit.stderr[-4000:],
+            "protected_board_paths": protected_selected_paths,
+            "protected_board_commit": protected_board_commit,
         }
     ref = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo, text=True, capture_output=True, check=False)
     return {
@@ -2350,6 +2408,10 @@ def _commit_selected_dirty_paths(repo: Path, paths: Sequence[str], *, subject: s
         "selected_paths": selected_paths,
         "commit": ref.stdout.strip(),
         "stdout": commit.stdout[-4000:],
+        "author_email": author_email,
+        "subject": commit_subject,
+        "protected_board_paths": protected_selected_paths,
+        "protected_board_commit": protected_board_commit,
     }
 
 
@@ -2358,6 +2420,7 @@ def commit_generated_dirty_outputs(
     repo_root: Path,
     generated_paths: Sequence[str] = (),
     generated_prefixes: Sequence[str] = (),
+    protected_paths: Sequence[str] = (),
     candidate_git_roots: Sequence[Path | str] = (),
     subject: str = "Agent: commit generated supervisor outputs",
     include_clean_submodule_gitlinks: bool = True,
@@ -2431,6 +2494,11 @@ def commit_generated_dirty_outputs(
             generated_paths=generated_paths,
             generated_prefixes=generated_prefixes,
         )
+        repo_protected_paths, _ = generated_status_filters_for_git_root(
+            repo_root=repo_root,
+            git_root=git_root,
+            generated_paths=protected_paths,
+        )
         selected: list[str] = []
         selected_reasons: dict[str, str] = {}
         for line in status:
@@ -2495,7 +2563,12 @@ def commit_generated_dirty_outputs(
                 }
             )
             continue
-        result = _commit_selected_dirty_paths(git_root, selected, subject=subject)
+        result = _commit_selected_dirty_paths(
+            git_root,
+            selected,
+            subject=subject,
+            protected_board_paths=repo_protected_paths,
+        )
         result["selected_reasons"] = selected_reasons
         result["status_short_before"] = status[:50]
         selected_path_count += len(selected)

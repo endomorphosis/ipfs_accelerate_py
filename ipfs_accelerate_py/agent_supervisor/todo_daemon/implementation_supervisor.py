@@ -2542,6 +2542,7 @@ class PortalImplementationSupervisor:
         *,
         producer: str,
         commit_outputs: bool,
+        operation: str = "generated_board_update",
         callback,
     ):
         """Serialize a committed generated-board update with checkout mutations."""
@@ -2578,7 +2579,7 @@ class PortalImplementationSupervisor:
                     branch=f"generated-board:{producer}",
                     owner_script=Path(sys.argv[0]).name,
                     extra={
-                        "operation": "generated_board_update",
+                        "operation": operation,
                         "producer": producer,
                         "state_dir": str(self.config.state_dir.resolve()),
                         "state_path": str(self.config.state_path.resolve()),
@@ -3792,16 +3793,33 @@ class PortalImplementationSupervisor:
             commit_generated_dirty_outputs,
         )
 
-        result = commit_generated_dirty_outputs(
-            repo_root=self.config.repo_root,
-            generated_paths=generated_paths,
-            generated_prefixes=generated_prefixes,
-            candidate_git_roots=candidate_git_roots,
-            subject=self.config.generated_dirty_repair_commit_subject,
-            include_clean_submodule_gitlinks=self.config.generated_dirty_repair_include_submodule_gitlinks,
-            max_paths=self.config.generated_dirty_repair_max_paths,
-            stale_git_lock_seconds=self.config.generated_dirty_repair_stale_lock_seconds,
+        result = self._run_generated_board_producer(
+            producer="generated-dirty-repair",
+            commit_outputs=True,
+            operation="generated_dirty_repair",
+            callback=lambda: commit_generated_dirty_outputs(
+                repo_root=self.config.repo_root,
+                generated_paths=generated_paths,
+                generated_prefixes=generated_prefixes,
+                protected_paths=self.config.implementation_protected_paths,
+                candidate_git_roots=candidate_git_roots,
+                subject=self.config.generated_dirty_repair_commit_subject,
+                include_clean_submodule_gitlinks=(
+                    self.config.generated_dirty_repair_include_submodule_gitlinks
+                ),
+                max_paths=self.config.generated_dirty_repair_max_paths,
+                stale_git_lock_seconds=(
+                    self.config.generated_dirty_repair_stale_lock_seconds
+                ),
+            ),
         )
+        if not isinstance(result, Mapping):
+            return {
+                "attempted": False,
+                "reason": "checkout_mutation_lock_unavailable",
+                "lock_path": str(self._repo_merge_lock_path()),
+            }
+        result = dict(result)
         if result.get("committed_count") or result.get("selected_path_count"):
             self._record_event("generated_dirty_checkout_repair", result)
         return result

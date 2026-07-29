@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 
 import ipfs_accelerate_py.agent_supervisor.objectives.objective_graph as objective_graph_module
+import ipfs_accelerate_py.agent_supervisor.objectives.objective_tracker as objective_tracker_module
 from ipfs_accelerate_py.agent_supervisor import (
     build_bundle_task_payloads,
     generate_objective_todos,
@@ -59,6 +60,7 @@ from ipfs_accelerate_py.agent_supervisor.objectives.objective_graph import (
     write_bundle_shards,
 )
 from ipfs_accelerate_py.agent_supervisor.objectives.objective_tracker import (
+    append_launch_readiness_goals,
     append_refinement_goals,
     completion_tree_identity,
     migrate_legacy_objective_goals,
@@ -1167,6 +1169,248 @@ def test_refinement_does_not_repeat_an_ancestor_evidence_obligation(tmp_path):
 
     assert result.appended_goal_ids == []
     assert objective_path.read_text(encoding="utf-8").count("## G1.1") == 1
+
+
+def test_refinement_admits_complete_candidate_with_bound_acceptance(tmp_path):
+    objective_path = tmp_path / "objective.md"
+    objective_path.write_text(
+        """# Goals
+
+## VFS-G000 Root
+
+- Status: active
+- Parent:
+- Evidence: root-proof
+""",
+        encoding="utf-8",
+    )
+    finding = ObjectiveFinding(
+        fingerprint="root-contract-gap",
+        goal_id="VFS-G000",
+        title="Root",
+        summary="Close root contract gap",
+        priority="P0",
+        track="contract",
+        missing_evidence=["vfs/contract-proof@1"],
+        present_evidence={},
+        evidence_methods=[],
+        objective_path=str(objective_path),
+        outputs=["src/vfs.py", "test/test_vfs.py"],
+        validation="python -m pytest test/test_vfs.py -q",
+        acceptance_subset=[
+            "The VFS contract receipt is current and bound to the tested implementation."
+        ],
+    )
+
+    result = append_refinement_goals(objective_path, [finding])
+
+    assert result.appended_goal_ids == ["VFS-G001"]
+    goals = {
+        goal.goal_id: goal
+        for goal in parse_goal_heap(objective_path.read_text(encoding="utf-8"))
+    }
+    assert goals["VFS-G001"].fields["acceptance"] == (
+        "The VFS contract receipt is current and bound to the tested implementation."
+    )
+
+
+def test_refinement_rejects_invalid_rendered_candidate_without_mutation(
+    tmp_path,
+    monkeypatch,
+):
+    objective_path = tmp_path / "objective.md"
+    original = b"""# Goals
+
+## VFS-G000 Root
+
+- Status: active
+- Parent:
+- Evidence: root-proof
+"""
+    objective_path.write_bytes(original)
+    finding = ObjectiveFinding(
+        fingerprint="root-contract-gap",
+        goal_id="VFS-G000",
+        title="Root",
+        summary="Close root contract gap",
+        priority="P0",
+        track="contract",
+        missing_evidence=["vfs/contract-proof@1"],
+        present_evidence={},
+        evidence_methods=[],
+        objective_path=str(objective_path),
+        outputs=["src/vfs.py", "test/test_vfs.py"],
+        validation="python -m pytest test/test_vfs.py -q",
+        acceptance_subset=["The VFS contract receipt is current."],
+    )
+    real_render = objective_tracker_module.render_goal_block
+
+    def render_without_acceptance(**kwargs):
+        rendered = real_render(**kwargs)
+        return "\n".join(
+            line
+            for line in rendered.splitlines()
+            if not line.startswith("- Acceptance:")
+        ) + "\n"
+
+    monkeypatch.setattr(
+        objective_tracker_module,
+        "render_goal_block",
+        render_without_acceptance,
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=r"VFS-G001 is missing fields: .*acceptance",
+    ):
+        append_refinement_goals(objective_path, [finding])
+
+    assert objective_path.read_bytes() == original
+
+
+def test_refinement_atomic_rewrite_failure_preserves_original_bytes(
+    tmp_path,
+    monkeypatch,
+):
+    objective_path = tmp_path / "objective.md"
+    original = b"""# Goals
+
+## VFS-G000 Root
+
+- Status: active
+- Parent:
+- Evidence: root-proof
+"""
+    objective_path.write_bytes(original)
+    finding = ObjectiveFinding(
+        fingerprint="root-contract-gap",
+        goal_id="VFS-G000",
+        title="Root",
+        summary="Close root contract gap",
+        priority="P0",
+        track="contract",
+        missing_evidence=["vfs/contract-proof@1"],
+        present_evidence={},
+        evidence_methods=[],
+        objective_path=str(objective_path),
+        outputs=["src/vfs.py", "test/test_vfs.py"],
+        validation="python -m pytest test/test_vfs.py -q",
+        acceptance_subset=["The VFS contract receipt is current."],
+    )
+
+    def interrupted_rewrite(_path, _text):
+        raise InterruptedError("simulated interruption before atomic rename")
+
+    monkeypatch.setattr(
+        objective_tracker_module,
+        "_atomic_rewrite",
+        interrupted_rewrite,
+    )
+
+    with pytest.raises(InterruptedError, match="simulated interruption"):
+        append_refinement_goals(objective_path, [finding])
+
+    assert objective_path.read_bytes() == original
+
+
+def test_refinement_without_acceptance_subset_fails_closed(tmp_path):
+    objective_path = tmp_path / "objective.md"
+    original = b"""# Goals
+
+## VFS-G000 Root
+
+- Status: active
+- Parent:
+- Evidence: root-proof
+"""
+    objective_path.write_bytes(original)
+    finding = ObjectiveFinding(
+        fingerprint="root-contract-gap",
+        goal_id="VFS-G000",
+        title="Root",
+        summary="Close root contract gap",
+        priority="P0",
+        track="contract",
+        missing_evidence=["vfs/contract-proof@1"],
+        present_evidence={},
+        evidence_methods=[],
+        objective_path=str(objective_path),
+        outputs=["src/vfs.py", "test/test_vfs.py"],
+        validation="python -m pytest test/test_vfs.py -q",
+    )
+
+    with pytest.raises(ValueError, match="has no acceptance subset"):
+        append_refinement_goals(objective_path, [finding])
+
+    assert objective_path.read_bytes() == original
+
+
+def test_objective_gap_scope_limits_forced_refinement_family(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    objective_path = repo / "objective.md"
+    objective_path.write_text(
+        """# Goals
+
+## VFS-G001 First family
+
+- Status: active
+- Parent:
+- Evidence: missing-first-proof
+- Acceptance: First proof is current.
+
+## VFS-G002 Forced family
+
+- Status: active
+- Parent:
+- Evidence: missing-forced-proof
+- Acceptance: Forced proof is current.
+""",
+        encoding="utf-8",
+    )
+
+    findings = scan_objective_gaps(
+        repo,
+        objective_path=objective_path,
+        max_findings=8,
+        force_goal_ids=["VFS-G002"],
+        scope_goal_ids=["VFS-G002"],
+    )
+
+    assert findings
+    assert {finding.goal_id for finding in findings} == {"VFS-G002"}
+
+
+def test_launch_readiness_generated_goals_include_acceptance(tmp_path):
+    objective_path = tmp_path / "objective.md"
+    objective_path.write_text(
+        """# Goals
+
+## VFS-G000 Root
+
+- Status: active
+- Parent:
+- Evidence: root-proof
+""",
+        encoding="utf-8",
+    )
+
+    result = append_launch_readiness_goals(
+        objective_path,
+        repo_root=tmp_path,
+        max_goals=2,
+        goal_prefix="VFS-G",
+    )
+
+    goals = {
+        goal.goal_id: goal
+        for goal in parse_goal_heap(objective_path.read_text(encoding="utf-8"))
+    }
+    assert len(result.appended_goal_ids) == 2
+    assert all(
+        str(goals[goal_id].fields.get("acceptance") or "").strip()
+        for goal_id in result.appended_goal_ids
+    )
 
 
 def test_completion_gate_work_identity_ignores_actionable_prose_churn():

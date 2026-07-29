@@ -30,6 +30,9 @@ PROTECTED_PATH_MAINTENANCE_LOCK_NAME = (
     "implementation-protected-path-maintenance.lock"
 )
 DEFAULT_MERGE_TRAIN_DIRECTORY_NAME = "agent-merge-trains"
+DEFAULT_OBJECTIVE_ADMISSION_LOCK_DIRECTORY_NAME = (
+    "agent-objective-admission-locks"
+)
 BACKLOG_REFINERY_AUTHOR_EMAIL = "accelerator-backlog-refinery@example.invalid"
 GENERATED_PROTECTED_BOARD_COMMIT_MARKER = (
     "[agent-supervisor:generated-protected-board]"
@@ -129,6 +132,64 @@ def checkout_mutation_lock_path(
     """Return a repo-wide lock path for parent checkout mutations."""
 
     return git_common_dir(repo_root) / lock_name
+
+
+def objective_admission_lock_path(objective_path: Path) -> Path:
+    """Return a durable lock outside a Git worktree when one is available.
+
+    Objective admission locks must survive for the lifetime of cooperating
+    processes: unlinking an advisory lock after use creates an inode race.
+    Keeping that persistent coordination file beside a tracked objective,
+    however, makes an otherwise clean integration checkout permanently dirty.
+    A repository's common Git directory is shared by the processes operating
+    on that checkout while remaining outside its status surface.
+
+    Git-less callers retain the historical adjacent-lock fallback.
+    """
+
+    objective = Path(objective_path).resolve()
+    cwd = objective.parent
+    while not cwd.exists() and cwd.parent != cwd:
+        cwd = cwd.parent
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--show-toplevel", "--git-common-dir"],
+            cwd=cwd,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+    except OSError:
+        result = None
+    lines = (
+        [line.strip() for line in (result.stdout or "").splitlines()]
+        if result is not None and result.returncode == 0
+        else []
+    )
+    if len(lines) >= 2:
+        top = Path(lines[0]).resolve()
+        try:
+            objective.relative_to(top)
+        except ValueError:
+            pass
+        else:
+            common_dir = Path(lines[1])
+            if not common_dir.is_absolute():
+                common_dir = (cwd / common_dir).resolve()
+            safe_name = "".join(
+                character
+                if character.isalnum() or character in "-._"
+                else "-"
+                for character in objective.name
+            ).strip("-") or "objective"
+            binding = f"{top}\0{objective}".encode("utf-8")
+            digest = hashlib.sha256(binding).hexdigest()[:20]
+            return (
+                common_dir
+                / DEFAULT_OBJECTIVE_ADMISSION_LOCK_DIRECTORY_NAME
+                / f"{safe_name[:64]}-{digest}.lock"
+            )
+    return objective.with_name(f".{objective.name}.admission.lock")
 
 
 def checkout_repository_id(repo_root: Path) -> str:

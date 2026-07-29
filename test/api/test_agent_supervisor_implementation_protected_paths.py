@@ -2326,7 +2326,7 @@ def test_stale_lock_cleanup_preserves_implementation_lease_protocol_files(
 
     assert implementation_lock_path.exists()
     assert update_guard_path.exists()
-    assert not generic_lock_path.exists()
+    assert generic_lock_path.exists()
     managed = {
         item["lock_path"]
         for item in result["skipped"]
@@ -2335,6 +2335,52 @@ def test_stale_lock_cleanup_preserves_implementation_lease_protocol_files(
     assert managed == {
         str(implementation_lock_path),
         str(update_guard_path),
+    }
+    assert {
+        item["lock_path"]
+        for item in result["skipped"]
+        if item.get("reason") == "persistent_state_flock"
+    } == {str(generic_lock_path)}
+
+
+def test_stale_lock_cleanup_preserves_flocks_and_removes_git_transaction_locks(
+    tmp_path: Path,
+) -> None:
+    daemon = _daemon(tmp_path)
+    state_dir = tmp_path / "state"
+    git_dir = tmp_path / ".git"
+    git_ref_dir = git_dir / "refs" / "heads"
+    state_dir.mkdir(parents=True)
+    git_ref_dir.mkdir(parents=True)
+    event_lock_paths = (
+        state_dir / ".events.jsonl.lock",
+        state_dir / ".portal_supervisor_events.jsonl.lock",
+    )
+    transient_git_lock_paths = (
+        git_dir / "index.lock",
+        git_ref_dir / "main.lock",
+    )
+    persistent_git_flock_path = git_dir / "agent-llm-resolver.lock"
+    for path in (
+        *event_lock_paths,
+        *transient_git_lock_paths,
+        persistent_git_flock_path,
+    ):
+        path.write_text("stale\n", encoding="utf-8")
+        os.utime(path, (1, 1))
+
+    result = daemon._cleanup_stale_locks(max_age_seconds=1)
+
+    assert all(path.exists() for path in event_lock_paths)
+    assert persistent_git_flock_path.exists()
+    assert not any(path.exists() for path in transient_git_lock_paths)
+    assert {
+        item["lock_path"]
+        for item in result["skipped"]
+        if item.get("reason") == "persistent_state_flock"
+    } == {str(path) for path in event_lock_paths}
+    assert {item["lock_path"] for item in result["removed"]} == {
+        str(path) for path in transient_git_lock_paths
     }
 
 

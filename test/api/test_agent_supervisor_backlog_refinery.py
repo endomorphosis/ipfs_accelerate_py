@@ -43,6 +43,10 @@ from ipfs_accelerate_py.agent_supervisor.objectives.backlog_refinery import (
 )
 from ipfs_accelerate_py.agent_supervisor.objectives.objective_graph import parse_goal_heap
 from ipfs_accelerate_py.agent_supervisor.task_sources.dataset_store import ObjectiveDatasetStore
+from ipfs_accelerate_py.agent_supervisor.merge.checkout_lock import (
+    BACKLOG_REFINERY_AUTHOR_EMAIL,
+    GENERATED_PROTECTED_BOARD_COMMIT_MARKER,
+)
 from ipfs_accelerate_py.agent_supervisor.core.wrapper_utils import agent_supervisor_namespace_paths
 from ipfs_accelerate_py.agent_supervisor.objectives.scan_receipts import (
     REFILL_SCAN_RESULT_SCHEMA_VERSION,
@@ -422,6 +426,62 @@ def test_commit_generated_dirty_outputs_defers_during_merge(tmp_path):
     assert any(item.get("reason") == "repo_merge_in_progress" for item in result["skipped"])
     assert "data/discovery/generated.md" in _git(repo, "status", "--short")
     assert _git(repo, "log", "-1", "--pretty=%s") == "seed generated"
+
+
+def test_commit_generated_dirty_outputs_tags_only_selected_protected_paths(
+    tmp_path,
+):
+    repo = _seed_repo(tmp_path)
+    protected = repo / "docs" / "objectives.md"
+    ordinary = repo / "data" / "generated.json"
+    protected.parent.mkdir(parents=True)
+    ordinary.parent.mkdir(parents=True)
+    protected.write_text("objective v1\n", encoding="utf-8")
+    ordinary.write_text("{}\n", encoding="utf-8")
+    _git(repo, "add", "docs/objectives.md", "data/generated.json")
+    _git(repo, "commit", "-m", "seed generated outputs")
+
+    ordinary.write_text('{"generation": 1}\n', encoding="utf-8")
+    unknown = repo / "unknown.txt"
+    unknown.write_text("operator-owned\n", encoding="utf-8")
+    ordinary_result = commit_generated_dirty_outputs(
+        repo_root=repo,
+        generated_paths=("docs/objectives.md", "data/generated.json"),
+        protected_paths=("docs/objectives.md",),
+        subject="Agent: persist generated outputs",
+        include_clean_submodule_gitlinks=False,
+    )
+
+    assert ordinary_result["committed_count"] == 1
+    assert ordinary_result["selected_path_count"] == 1
+    assert _git(repo, "log", "-1", "--pretty=%ae") == (
+        "agent-supervisor@example.invalid"
+    )
+    assert _git(repo, "log", "-1", "--pretty=%s") == (
+        "Agent: persist generated outputs"
+    )
+    assert "unknown.txt" in _git(repo, "status", "--short")
+
+    protected.write_text("objective v2\n", encoding="utf-8")
+    protected_result = commit_generated_dirty_outputs(
+        repo_root=repo,
+        generated_paths=("docs/objectives.md", "data/generated.json"),
+        protected_paths=("docs/objectives.md",),
+        subject="Agent: persist generated outputs",
+        include_clean_submodule_gitlinks=False,
+    )
+
+    assert protected_result["committed_count"] == 1
+    assert protected_result["selected_path_count"] == 1
+    assert _git(repo, "log", "-1", "--pretty=%ae") == (
+        BACKLOG_REFINERY_AUTHOR_EMAIL
+    )
+    protected_subject = _git(repo, "log", "-1", "--pretty=%s")
+    assert protected_subject.endswith(GENERATED_PROTECTED_BOARD_COMMIT_MARKER)
+    assert protected_result["results"][0]["protected_board_paths"] == [
+        "docs/objectives.md"
+    ]
+    assert "unknown.txt" in _git(repo, "status", "--short")
 
 
 def test_namespace_recorder_factories_bind_standard_paths(tmp_path):

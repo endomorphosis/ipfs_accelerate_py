@@ -8452,6 +8452,7 @@ def scan_objective_gaps(
     max_findings: int = 10,
     seen_fingerprints: Iterable[str] = (),
     force_goal_ids: Iterable[str] = (),
+    scope_goal_ids: Iterable[str] = (),
     embedding_min_score: float = DEFAULT_EMBEDDING_MIN_SCORE,
     summary_prefix: str = DEFAULT_OBJECTIVE_TASK_SUMMARY_PREFIX,
     surplus_findings_per_goal: int = DEFAULT_SURPLUS_FINDINGS_PER_GOAL,
@@ -8473,6 +8474,9 @@ def scan_objective_gaps(
     all_goals = parse_goal_heap(objective_path.read_text(encoding="utf-8"))
     forced_goal_ids = {
         str(item).strip() for item in force_goal_ids if str(item).strip()
+    }
+    scoped_goal_ids = {
+        str(item).strip() for item in scope_goal_ids if str(item).strip()
     }
     resolved_scan_excludes = resolve_scan_exclude_paths(
         repo_root,
@@ -8509,6 +8513,7 @@ def scan_objective_gaps(
             )
         )
         and goal.goal_id not in external_blocked_goal_ids
+        and (not scoped_goal_ids or goal.goal_id in scoped_goal_ids)
     ]
     if scan_stats is not None:
         scan_stats.update(
@@ -8517,6 +8522,7 @@ def scan_objective_gaps(
                 "external_authority_blocked_goal_ids": sorted(
                     external_blocked_goal_ids
                 ),
+                "scope_goal_ids": sorted(scoped_goal_ids),
             }
         )
     if not goals:
@@ -8573,6 +8579,7 @@ def scan_objective_gaps(
                     "external_authority_blocked_goal_ids": sorted(
                         external_blocked_goal_ids
                     ),
+                    "scope_goal_ids": sorted(scoped_goal_ids),
                 }
             )
     pipeline_diagnostics: dict[str, Any] = {}

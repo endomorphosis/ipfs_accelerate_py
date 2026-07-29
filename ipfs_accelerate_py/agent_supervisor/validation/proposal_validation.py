@@ -2782,6 +2782,10 @@ _SECRET_PLACEHOLDER_RE = re.compile(
     r"""dummy|fake[_-]?secret"""
     r""")"""
 )
+_NEVER_EXPOSE_SENTINEL_RE = re.compile(
+    r"""(?ix)^(?:should|must)[_-]?never[_-]?"""
+    r"""(?:appear|persist|log|store|commit)$"""
+)
 
 
 def _introduces_secret_content(
@@ -2874,6 +2878,12 @@ def _is_concrete_secret_value(raw_value: str) -> bool:
     if re.fullmatch(r"[A-Z][A-Z0-9_]{11,}", value):
         return False
     if _SECRET_PLACEHOLDER_RE.search(value):
+        return False
+    # Security tests commonly need a deterministic value that proves secret
+    # material is rejected or redacted. Only accept an exact "never expose"
+    # sentinel so a concrete credential containing those words still fails
+    # closed.
+    if _NEVER_EXPOSE_SENTINEL_RE.fullmatch(value):
         return False
     return True
 

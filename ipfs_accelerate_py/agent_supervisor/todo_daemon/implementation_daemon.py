@@ -21,6 +21,7 @@ from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from typing import Any, Callable, Iterable, Mapping, Sequence
+from urllib.parse import unquote, urlsplit
 
 from .. import implementation_timeout as _implementation_timeout
 from ..context.context_compiler import (
@@ -29,13 +30,18 @@ from ..context.context_compiler import (
     ContextCompiler,
     ContextDeltaResult,
     ContextExpansionCancelled,
+    RequiredContextOverflowError,
     RetryContextResult,
     build_text_context_references,
     compile_retry_context,
     render_context_capsule,
     render_retry_context,
 )
-from ..context.context_contracts import ContextBudget, ContextCapsule
+from ..context.context_contracts import (
+    ABSOLUTE_MAX_CONTEXT_BYTES,
+    ContextBudget,
+    ContextCapsule,
+)
 from ..proof.formal_verification_contracts import canonical_json, content_identity
 from ..implementation_timeout import (
     DEFAULT_IMPLEMENTATION_TIMEOUT_SECONDS,
@@ -190,6 +196,11 @@ WORKTREE_POOL_MAX_ENTRIES_ENV = "IPFS_ACCELERATE_AGENT_WORKTREE_POOL_MAX_ENTRIES
 DISABLE_SUBAGENTS_ENV = "IPFS_ACCELERATE_AGENT_DISABLE_SUBAGENTS"
 WORKTREE_CONTEXT_SNAPSHOT_SCHEMA = "agent-supervisor-worktree-context-snapshot-v1"
 DEFAULT_WORKTREE_POOL_MAX_ENTRIES = 4
+MAX_NESTED_SUBMODULE_DEPTH = 8
+MAX_NESTED_SUBMODULE_PATH_BYTES = 1024
+MAX_NESTED_SUBMODULE_PATH_PARTS = 64
+MAX_NESTED_SUBMODULE_GUARD_EVENTS = 32
+MAX_NESTED_SUBMODULE_GUARD_EVENT_TEXT_BYTES = 512
 SHARED_WORKTREE_SOURCE_ROOT_ENV = "IPFS_ACCELERATE_AGENT_SHARED_WORKTREE_SOURCE_ROOT"
 LLM_MERGE_RESOLVER_COMMAND_ENV = "IPFS_ACCELERATE_AGENT_LLM_MERGE_RESOLVER_COMMAND"
 LLM_MERGE_RESOLVER_TIMEOUT_ENV = "IPFS_ACCELERATE_AGENT_LLM_MERGE_RESOLVER_TIMEOUT_SECONDS"
@@ -274,6 +285,7 @@ PROVIDER_CAPACITY_PATTERNS = (
         "grok",
         re.compile(
             r"(?:grok.*(?:rate limit|quota|usage limit|balance exhausted|usage balance)|"
+            r"you(?:'|\u2019)?ve hit your usage limit|"
             r"xai.*(?:429|rate.?limit|402)|"
             r"402\s*payment\s*required|"
             r"payment\s*required|"
@@ -960,7 +972,13 @@ _COPILOT_CONTEXT_TIER_ENV = "IPFS_ACCELERATE_AGENT_COPILOT_CONTEXT_TIER"
 _COPILOT_MAX_CONTINUES_ENV = "IPFS_ACCELERATE_AGENT_COPILOT_MAX_CONTINUES"
 
 
-def _copilot_fallback_command(*, codex: str | None, copilot: str, workspace_path: Path) -> list[str]:
+def _copilot_fallback_command(
+    *,
+    codex: str | None,
+    copilot: str,
+    workspace_path: Path,
+    codex_context_window: int | None = None,
+) -> list[str]:
     """Build a bash command that tries Codex first, falls back to Copilot CLI.
 
     Both tools are invoked with full capability flags:
@@ -969,7 +987,11 @@ def _copilot_fallback_command(*, codex: str | None, copilot: str, workspace_path
     """
     # Codex configuration
     codex_model = os.environ.get(_CODEX_MODEL_ENV, "").strip()
-    codex_context = os.environ.get(_CODEX_CONTEXT_WINDOW_ENV, "200000").strip()
+    codex_context = (
+        str(codex_context_window)
+        if codex_context_window is not None
+        else os.environ.get(_CODEX_CONTEXT_WINDOW_ENV, "200000").strip()
+    )
     codex_reasoning = os.environ.get(_CODEX_REASONING_EFFORT_ENV, "high").strip()
     codex_max_threads = os.environ.get(_CODEX_MAX_THREADS_ENV, "10").strip()
     codex_max_depth = os.environ.get(_CODEX_MAX_DEPTH_ENV, "2").strip()
@@ -5902,8 +5924,10 @@ class PortalImplementationDaemon:
                 resolved_statuses[task.task_id] = "blocked"
                 continue
             if task.task_id in shared_active_merge_task_ids:
-                # Pending/processing on the merge train for this target.
-                resolved_statuses[task.task_id] = "merge-queued"
+                # Work owned by another lane is externally reserved. Keep the
+                # local projection waiting; ``merge-queued`` is reserved for
+                # this daemon's own validated candidate below.
+                resolved_statuses[task.task_id] = "waiting"
                 continue
             if task.task_id in transient_merge_deferral_task_ids:
                 resolved_statuses[task.task_id] = "waiting"
@@ -11013,9 +11037,117 @@ class PortalImplementationDaemon:
         *,
         branch_name: str,
         parent_relative: str,
+        _depth: int = 0,
+        _ancestor_identities: frozenset[str] | None = None,
+        _configured_identities: frozenset[str] | None = None,
+        _guard_state: dict[str, int | bool] | None = None,
     ) -> None:
+        ancestor_identities = _ancestor_identities
+        if ancestor_identities is None:
+            ancestor_identities = frozenset(
+                {
+                    *self._submodule_repository_identities(self.repo_root),
+                    *self._submodule_repository_identities(worktree_path),
+                }
+            )
+        configured_identities = _configured_identities
+        if configured_identities is None:
+            configured_identities = frozenset(
+                identity
+                for relative in self.worktree_submodule_paths
+                for identity in self._nested_submodule_candidate_identities(
+                    self.repo_root,
+                    relative,
+                    source_relative=relative,
+                )
+            )
+        guard_state = _guard_state if _guard_state is not None else {
+            "emitted": 0,
+            "suppression_recorded": False,
+        }
+
         for relative in self._declared_submodule_paths(worktree_path):
             full_relative = f"{parent_relative.rstrip('/')}/{relative}"
+            full_relative_bytes = len(full_relative.encode("utf-8"))
+            full_relative_parts = len(PurePosixPath(full_relative).parts)
+            child_depth = _depth + 1
+            if child_depth > MAX_NESTED_SUBMODULE_DEPTH:
+                self._record_nested_submodule_guard_event(
+                    reason="max_depth_exceeded",
+                    parent_relative=parent_relative,
+                    relative=relative,
+                    full_relative=full_relative,
+                    depth=child_depth,
+                    path_bytes=full_relative_bytes,
+                    guard_state=guard_state,
+                )
+                continue
+            if (
+                full_relative_bytes > MAX_NESTED_SUBMODULE_PATH_BYTES
+                or full_relative_parts > MAX_NESTED_SUBMODULE_PATH_PARTS
+            ):
+                self._record_nested_submodule_guard_event(
+                    reason="path_limit_exceeded",
+                    parent_relative=parent_relative,
+                    relative=relative,
+                    full_relative=full_relative,
+                    depth=child_depth,
+                    path_bytes=full_relative_bytes,
+                    guard_state=guard_state,
+                )
+                continue
+
+            candidate_identities = self._nested_submodule_candidate_identities(
+                worktree_path,
+                relative,
+                source_relative=full_relative,
+            )
+            gitlink_ref = self._submodule_gitlink_ref(worktree_path, relative)
+            if not candidate_identities:
+                self._record_nested_submodule_guard_event(
+                    reason="identity_unavailable",
+                    parent_relative=parent_relative,
+                    relative=relative,
+                    full_relative=full_relative,
+                    depth=child_depth,
+                    path_bytes=full_relative_bytes,
+                    guard_state=guard_state,
+                    expected_gitlink_ref=gitlink_ref,
+                )
+                continue
+            cycle_identities = candidate_identities.intersection(ancestor_identities)
+            if cycle_identities:
+                self._record_nested_submodule_guard_event(
+                    reason="repository_cycle",
+                    parent_relative=parent_relative,
+                    relative=relative,
+                    full_relative=full_relative,
+                    depth=child_depth,
+                    path_bytes=full_relative_bytes,
+                    guard_state=guard_state,
+                    matched_identity=min(cycle_identities),
+                    expected_gitlink_ref=gitlink_ref,
+                )
+                continue
+            duplicate_identities = candidate_identities.intersection(configured_identities)
+            if duplicate_identities:
+                # The same repository is already prepared as an explicitly
+                # configured top-level dependency. Reusing that checkout keeps
+                # nested tool/doc copies out of implementation worktrees and
+                # avoids divergent branches for one logical dependency.
+                self._record_nested_submodule_guard_event(
+                    reason="configured_dependency_duplicate",
+                    parent_relative=parent_relative,
+                    relative=relative,
+                    full_relative=full_relative,
+                    depth=child_depth,
+                    path_bytes=full_relative_bytes,
+                    guard_state=guard_state,
+                    matched_identity=min(duplicate_identities),
+                    expected_gitlink_ref=gitlink_ref,
+                )
+                continue
+
             if self._create_local_submodule_worktree(
                 worktree_path,
                 relative,
@@ -11024,12 +11156,250 @@ class PortalImplementationDaemon:
             ):
                 target = worktree_path / relative
                 if self._is_git_worktree(target):
+                    target_identities = self._submodule_repository_identities(target)
+                    late_cycle_identities = target_identities.intersection(ancestor_identities)
+                    if late_cycle_identities:
+                        # Repository metadata can be absent from .gitmodules or
+                        # an unresolved source. Stop before descending even
+                        # when the stable identity becomes visible only after
+                        # the single requested checkout is prepared.
+                        self._record_nested_submodule_guard_event(
+                            reason="repository_cycle",
+                            parent_relative=parent_relative,
+                            relative=relative,
+                            full_relative=full_relative,
+                            depth=child_depth,
+                            path_bytes=full_relative_bytes,
+                            guard_state=guard_state,
+                            matched_identity=min(late_cycle_identities),
+                            expected_gitlink_ref=gitlink_ref,
+                        )
+                        continue
+                    late_duplicate_identities = target_identities.intersection(
+                        configured_identities
+                    )
+                    if late_duplicate_identities:
+                        self._record_nested_submodule_guard_event(
+                            reason="configured_dependency_duplicate",
+                            parent_relative=parent_relative,
+                            relative=relative,
+                            full_relative=full_relative,
+                            depth=child_depth,
+                            path_bytes=full_relative_bytes,
+                            guard_state=guard_state,
+                            matched_identity=min(late_duplicate_identities),
+                            expected_gitlink_ref=gitlink_ref,
+                        )
+                        continue
                     self._initialize_nested_worktree_submodules(
                         target,
                         branch_name=branch_name,
                         parent_relative=full_relative,
+                        _depth=child_depth,
+                        _ancestor_identities=frozenset(
+                            {
+                                *ancestor_identities,
+                                *candidate_identities,
+                                *target_identities,
+                            }
+                        ),
+                        _configured_identities=configured_identities,
+                        _guard_state=guard_state,
                     )
                 continue
+
+    def _nested_submodule_candidate_identities(
+        self,
+        worktree_path: Path,
+        relative: str,
+        *,
+        source_relative: str,
+    ) -> set[str]:
+        """Return stable local and remote identities for a candidate edge."""
+
+        identities = self._declared_submodule_repository_identities(worktree_path, relative)
+        if self._repo_relative_path_safe(source_relative):
+            source = self.repo_root / source_relative
+            if source.exists() and self._is_git_worktree(source):
+                identities.update(self._submodule_repository_identities(source))
+        return identities
+
+    def _declared_submodule_repository_identities(
+        self,
+        worktree_path: Path,
+        relative: str,
+    ) -> set[str]:
+        """Return normalized repository identities declared for ``relative``."""
+
+        gitmodules = worktree_path / ".gitmodules"
+        if not gitmodules.is_file():
+            return set()
+        result = subprocess.run(
+            [
+                "git",
+                "config",
+                "--file",
+                str(gitmodules),
+                "--get-regexp",
+                r"^submodule\..*\.(path|url)$",
+            ],
+            cwd=worktree_path,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            return set()
+
+        entries: dict[str, dict[str, str]] = {}
+        for line in result.stdout.splitlines():
+            key, separator, value = line.partition(" ")
+            if not separator or not key.startswith("submodule."):
+                continue
+            section_and_field = key.removeprefix("submodule.")
+            section, field_separator, field = section_and_field.rpartition(".")
+            if not field_separator or field not in {"path", "url"}:
+                continue
+            entries.setdefault(section, {})[field] = value.strip()
+
+        identities: set[str] = set()
+        for entry in entries.values():
+            if entry.get("path") != relative:
+                continue
+            normalized = self._normalize_submodule_repository_url(entry.get("url", ""))
+            if normalized:
+                identities.add(normalized)
+        return identities
+
+    def _submodule_repository_identities(self, repo: Path) -> set[str]:
+        """Return content-independent identities that survive linked worktrees."""
+
+        if not self._is_git_worktree(repo):
+            return set()
+        identities: set[str] = set()
+        origin = subprocess.run(
+            ["git", "config", "--get", "remote.origin.url"],
+            cwd=repo,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if origin.returncode == 0:
+            normalized_origin = self._normalize_submodule_repository_url(origin.stdout.strip())
+            if normalized_origin:
+                identities.add(normalized_origin)
+
+        common_dir = self._git_common_dir(repo)
+        if common_dir is not None:
+            identities.add(f"git-common:{common_dir}")
+            # An ordinary repository's common directory is ``<root>/.git``.
+            # Match it to absolute file:// or local-path submodule URLs.
+            if common_dir.name == ".git":
+                identities.add(f"local:{common_dir.parent}")
+        return identities
+
+    @staticmethod
+    def _normalize_submodule_repository_url(raw_url: str) -> str:
+        """Canonicalize common Git URL spellings for cycle comparison."""
+
+        value = raw_url.strip()
+        if not value:
+            return ""
+        if value.startswith("file://"):
+            parsed = urlsplit(value)
+            if parsed.netloc not in {"", "localhost"}:
+                return f"network:{parsed.netloc.lower()}/{parsed.path.strip('/').removesuffix('.git').lower()}"
+            try:
+                return f"local:{Path(unquote(parsed.path)).resolve()}"
+            except OSError:
+                return ""
+        if value.startswith("/"):
+            try:
+                return f"local:{Path(value).resolve()}"
+            except OSError:
+                return ""
+
+        scp_style = re.fullmatch(r"(?:[^@/\s]+@)?([^:/\s]+):(.+)", value)
+        if scp_style and "://" not in value:
+            host, path = scp_style.groups()
+            return f"network:{host.lower()}/{path.strip('/').removesuffix('.git').lower()}"
+
+        parsed = urlsplit(value)
+        if parsed.scheme and parsed.netloc:
+            host = (parsed.hostname or parsed.netloc).lower()
+            path = unquote(parsed.path).strip("/").removesuffix(".git").lower()
+            return f"network:{host}/{path}"
+
+        # Relative Git URLs cannot be resolved safely without the parent
+        # remote. Retain the normalized declaration as a weak identity; the
+        # hard depth/path bounds remain authoritative when it is ambiguous.
+        normalized_relative = posixpath.normpath(value).removesuffix(".git")
+        return f"relative:{normalized_relative}"
+
+    def _record_nested_submodule_guard_event(
+        self,
+        *,
+        reason: str,
+        parent_relative: str,
+        relative: str,
+        full_relative: str,
+        depth: int,
+        path_bytes: int,
+        guard_state: dict[str, int | bool],
+        matched_identity: str = "",
+        expected_gitlink_ref: str = "",
+    ) -> None:
+        """Emit a bounded diagnostic without allowing adversarial log growth."""
+
+        emitted = int(guard_state.get("emitted", 0))
+        if emitted >= MAX_NESTED_SUBMODULE_GUARD_EVENTS:
+            if not bool(guard_state.get("suppression_recorded", False)):
+                self._record_event(
+                    "nested_submodule_initialization_guard_suppressed",
+                    {
+                        "limit": MAX_NESTED_SUBMODULE_GUARD_EVENTS,
+                        "reason": "diagnostic_limit_reached",
+                    },
+                )
+                guard_state["suppression_recorded"] = True
+            return
+        payload = {
+            "reason": reason,
+            "parent_relative": self._bounded_submodule_guard_text(parent_relative),
+            "relative": self._bounded_submodule_guard_text(relative),
+            "path": self._bounded_submodule_guard_text(full_relative),
+            "path_sha256": hashlib.sha256(full_relative.encode("utf-8")).hexdigest(),
+            "depth": depth,
+            "max_depth": MAX_NESTED_SUBMODULE_DEPTH,
+            "path_bytes": path_bytes,
+            "max_path_bytes": MAX_NESTED_SUBMODULE_PATH_BYTES,
+            "path_parts": len(PurePosixPath(full_relative).parts),
+            "max_path_parts": MAX_NESTED_SUBMODULE_PATH_PARTS,
+            "expected_gitlink_ref_available": bool(expected_gitlink_ref),
+            "expected_gitlink_ref_sha256": (
+                hashlib.sha256(expected_gitlink_ref.encode("utf-8")).hexdigest()
+                if expected_gitlink_ref
+                else ""
+            ),
+        }
+        if matched_identity:
+            payload["matched_identity_sha256"] = hashlib.sha256(
+                matched_identity.encode("utf-8")
+            ).hexdigest()
+        self._record_event("nested_submodule_initialization_guarded", payload)
+        guard_state["emitted"] = emitted + 1
+
+    @staticmethod
+    def _bounded_submodule_guard_text(value: str) -> str:
+        encoded = value.encode("utf-8")
+        if len(encoded) <= MAX_NESTED_SUBMODULE_GUARD_EVENT_TEXT_BYTES:
+            return value
+        suffix = "…"
+        suffix_bytes = suffix.encode("utf-8")
+        prefix = encoded[
+            : MAX_NESTED_SUBMODULE_GUARD_EVENT_TEXT_BYTES - len(suffix_bytes)
+        ]
+        return prefix.decode("utf-8", errors="ignore") + suffix
 
     def _create_local_submodule_worktree(
         self,
@@ -11040,10 +11410,27 @@ class PortalImplementationDaemon:
         source_relative: str | None = None,
     ) -> bool:
         source_key = source_relative or relative
-        source = (self.repo_root / source_key).resolve()
-        if not source.exists() or not self._is_git_worktree(source):
+        if not self._repo_relative_path_safe(source_key):
             return False
         gitlink_ref = self._submodule_gitlink_ref(worktree_path, relative)
+        source = (self.repo_root / source_key).resolve()
+        if not source.exists() or not self._is_git_worktree(source):
+            discovered_source = self._discover_local_submodule_source(
+                source_key,
+                expected_ref=gitlink_ref,
+            )
+            if discovered_source is None:
+                return False
+            source = discovered_source
+        elif gitlink_ref and not self._git_ref_exists_in_repo(source, gitlink_ref):
+            # Prefer an already-complete checkout before asking an incomplete
+            # or shallow local dependency to fetch the recorded gitlink.
+            discovered_source = self._discover_local_submodule_source(
+                source_key,
+                expected_ref=gitlink_ref,
+            )
+            if discovered_source is not None:
+                source = discovered_source
         base_ref = self._resolve_submodule_worktree_base_ref(
             source,
             gitlink_ref or "HEAD",
@@ -11132,6 +11519,101 @@ class PortalImplementationDaemon:
             return True
         self._run_git(["worktree", "add", "--detach", str(target), base_ref], cwd=source)
         return True
+
+    def _discover_local_submodule_source(
+        self,
+        source_key: str,
+        *,
+        expected_ref: str,
+    ) -> Path | None:
+        """Find an initialized dependency in another worktree of this repository.
+
+        Linked worktrees do not initialize submodules automatically.  Prefer
+        the primary checkout recorded by the shared Git directory, followed
+        by Git's registered worktrees, and reuse only the exact dependency
+        path when its object database already contains the expected gitlink.
+        Discovery never fetches and never substitutes an unrelated ``HEAD``.
+        """
+
+        if not self._repo_relative_path_safe(source_key) or not expected_ref:
+            return None
+        common_dir = self._git_common_dir(self.repo_root)
+        if common_dir is None:
+            return None
+
+        roots: list[Path] = []
+        config_path = common_dir / "config"
+        primary = subprocess.run(
+            [
+                "git",
+                "config",
+                "--file",
+                str(config_path),
+                "--path",
+                "--get",
+                "core.worktree",
+            ],
+            cwd=self.repo_root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if primary.returncode == 0 and primary.stdout.strip():
+            configured = Path(primary.stdout.strip())
+            roots.append(
+                configured.resolve()
+                if configured.is_absolute()
+                else (common_dir / configured).resolve()
+            )
+
+        listed = subprocess.run(
+            ["git", "worktree", "list", "--porcelain", "-z"],
+            cwd=self.repo_root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if listed.returncode == 0:
+            for record in listed.stdout.split("\0\0"):
+                first = record.split("\0", 1)[0]
+                if first.startswith("worktree "):
+                    roots.append(Path(first.removeprefix("worktree ")).resolve())
+
+        current_root = self.repo_root.resolve()
+        seen: set[Path] = set()
+        for root in roots:
+            if root in seen or root == current_root:
+                continue
+            seen.add(root)
+            if not self._is_git_worktree(root):
+                continue
+            if self._git_common_dir(root) != common_dir:
+                continue
+
+            unresolved_source = root / source_key
+            if unresolved_source.is_symlink():
+                continue
+            try:
+                source = unresolved_source.resolve(strict=True)
+                source.relative_to(root)
+            except (OSError, RuntimeError, ValueError):
+                continue
+            if not self._is_git_worktree(source):
+                continue
+            if not self._git_ref_exists_in_repo(source, expected_ref):
+                continue
+            self._record_event(
+                "local_submodule_source_discovered",
+                {
+                    "repo_root": str(self.repo_root),
+                    "source_root": str(root),
+                    "source": str(source),
+                    "source_key": source_key,
+                    "expected_ref": expected_ref,
+                },
+            )
+            return source
+        return None
 
     def _resolve_submodule_worktree_base_ref(
         self,
@@ -11258,6 +11740,24 @@ class PortalImplementationDaemon:
         if result.returncode != 0 or not result.stdout.strip():
             return None
         return Path(result.stdout.strip()).resolve()
+
+    def _git_common_dir(self, repo: Path) -> Path | None:
+        result = subprocess.run(
+            ["git", "rev-parse", "--git-common-dir"],
+            cwd=repo,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if result.returncode != 0 or not result.stdout.strip():
+            return None
+        common_dir = Path(result.stdout.strip())
+        if not common_dir.is_absolute():
+            common_dir = repo / common_dir
+        try:
+            return common_dir.resolve()
+        except OSError:
+            return None
 
     @staticmethod
     def _submodule_relative_from_config(modules_dir: Path, config_path: Path) -> Path | None:
@@ -18551,10 +19051,14 @@ class PortalImplementationDaemon:
         return result
 
     def _cleanup_stale_locks(self, *, max_age_seconds: float = 0) -> dict[str, Any]:
-        """Remove stale .lock files that persist after crashes/SIGKILL.
+        """Remove stale transient Git locks while preserving flock inodes.
 
-        Lock files older than ``max_age_seconds`` (default 30 minutes) are
-        force-removed to prevent deadlocks in long-running supervisors.
+        Git transaction lock files use pathname existence as their exclusion
+        mechanism and can survive a crashed writer.  State-directory lock
+        files instead back durable leases or ``fcntl.flock`` coordination.
+        The kernel releases those locks when a process exits, so an old inode
+        is harmless; unlinking it can split concurrent writers across the old
+        and a newly created inode.
         """
         if max_age_seconds <= 0:
             max_age_seconds = float(
@@ -18563,41 +19067,53 @@ class PortalImplementationDaemon:
         if max_age_seconds <= 0:
             return {"attempted": False, "reason": "lock_cleanup_disabled"}
 
-        lock_patterns = [
-            self.repo_root / ".git" / "*.lock",
-            self.repo_root / ".git" / "refs" / "**" / "*.lock",
-        ]
-        # Also check state directory for merge resolver locks
+        git_dir = self.repo_root / ".git"
+        transient_git_lock_names = (
+            "index.lock",
+            "HEAD.lock",
+            "config.lock",
+            "packed-refs.lock",
+            "shallow.lock",
+        )
         state_dir = self.state_path.parent if self.state_path else None
 
         now_mono = time.time()
         removed: list[dict[str, Any]] = []
         skipped: list[dict[str, Any]] = []
 
-        import glob as glob_mod
-        lock_files: list[Path] = []
-        for pattern in lock_patterns:
-            lock_files.extend(Path(p) for p in glob_mod.glob(str(pattern), recursive=True))
+        transient_lock_files = [
+            git_dir / name
+            for name in transient_git_lock_names
+            if (git_dir / name).exists()
+        ]
+        if git_dir.is_dir():
+            transient_lock_files.extend(git_dir.glob("refs/**/*.lock"))
+        persistent_state_lock_files: set[Path] = set()
         if state_dir and state_dir.exists():
-            lock_files.extend(state_dir.glob("*.lock"))
+            persistent_state_lock_files.update(state_dir.glob("*.lock"))
 
         implementation_lock_path = self._implementation_lock_path()
         implementation_update_guard_path = implementation_lock_path.with_name(
             f".{implementation_lock_path.name}.update.lock"
         )
-        for lock_path in lock_files:
-            if lock_path in {
-                implementation_lock_path,
-                implementation_update_guard_path,
-            }:
-                # The durable implementation lease is inspected and repaired
-                # only by its serialized acquisition protocol.  The adjacent
-                # update guard is a persistent flock inode and must never be
-                # unlinked, even when its mtime is old.
+        for lock_path in sorted(
+            {*transient_lock_files, *persistent_state_lock_files},
+            key=str,
+        ):
+            if lock_path in persistent_state_lock_files:
+                reason = (
+                    "managed_by_implementation_lease_protocol"
+                    if lock_path
+                    in {
+                        implementation_lock_path,
+                        implementation_update_guard_path,
+                    }
+                    else "persistent_state_flock"
+                )
                 skipped.append(
                     {
                         "lock_path": str(lock_path),
-                        "reason": "managed_by_implementation_lease_protocol",
+                        "reason": reason,
                     }
                 )
                 continue
@@ -20891,28 +21407,7 @@ class PortalImplementationDaemon:
         return limit
 
     def _implementation_context_window(self, task: PortalTask) -> int:
-        if self.implementation_provider_context_window is not None:
-            return self.implementation_provider_context_window
-        provider = self._task_declared_implementation_provider(task)
-        if not provider:
-            provider = (
-                os.environ.get(IMPLEMENTATION_PROVIDER_ENV, "").strip().lower()
-            )
-        environment_name = (
-            _GROK_CONTEXT_WINDOW_ENV
-            if provider in {
-                "grok",
-                "grok_cli",
-                "grok-cli",
-                "xai_cli",
-                "xai-cli",
-                "grok_build",
-                "grok-build",
-            }
-            else _CODEX_CONTEXT_WINDOW_ENV
-        )
-        configured = _env_int(environment_name, 200_000)
-        return configured if configured > 0 else 200_000
+        return self._configured_implementation_provider_context_window(task)
 
     def _build_implementation_command(
         self,
@@ -21018,12 +21513,29 @@ class PortalImplementationDaemon:
 
         codex = shutil.which("codex")
         copilot = shutil.which("copilot")
+        codex_context_window = (
+            self._implementation_provider_context_window_for_task(task)[0]
+            if task is not None
+            else None
+        )
         if copilot and _copilot_has_auth():
-            return _copilot_fallback_command(codex=codex, copilot=copilot, workspace_path=workspace_path)
+            return _copilot_fallback_command(
+                codex=codex,
+                copilot=copilot,
+                workspace_path=workspace_path,
+                codex_context_window=codex_context_window,
+            )
         if codex:
             # Build codex command with full capability flags
             codex_model = os.environ.get(_CODEX_MODEL_ENV, "").strip()
-            codex_context = os.environ.get(_CODEX_CONTEXT_WINDOW_ENV, "200000").strip()
+            codex_context = (
+                str(codex_context_window)
+                if codex_context_window is not None
+                else os.environ.get(
+                    _CODEX_CONTEXT_WINDOW_ENV,
+                    "200000",
+                ).strip()
+            )
             codex_reasoning = os.environ.get(_CODEX_REASONING_EFFORT_ENV, "high").strip()
             codex_max_threads = os.environ.get(_CODEX_MAX_THREADS_ENV, "10").strip()
             codex_max_depth = os.environ.get(_CODEX_MAX_DEPTH_ENV, "2").strip()
@@ -21067,6 +21579,159 @@ class PortalImplementationDaemon:
             if value:
                 return value
         return ""
+
+    def _task_llm_context_budget_bytes(
+        self,
+        task: PortalTask,
+    ) -> int | None:
+        """Return one task's exact provider-input byte ceiling.
+
+        The field is optional for legacy boards. Once present it is authority,
+        not a hint: malformed, duplicate, zero, or over-absolute-limit values
+        fail before provider dispatch instead of falling back to a wider
+        supervisor default.
+        """
+
+        key_name = "llm context budget bytes"
+        matches = [
+            value
+            for key, value in task.metadata.items()
+            if str(key).strip().lower().replace("_", " ") == key_name
+        ]
+        if not matches:
+            return None
+        if len(matches) != 1 or not isinstance(matches[0], str):
+            raise ImplementationRetryDeferred(
+                "invalid task LLM context budget bytes"
+            )
+        raw = matches[0].strip()
+        if not re.fullmatch(r"[1-9][0-9]*", raw):
+            raise ImplementationRetryDeferred(
+                "invalid task LLM context budget bytes"
+            )
+        # Bound digits before int conversion so adversarial metadata cannot
+        # spend unbounded time parsing an integer that cannot be authorized.
+        if len(raw) > len(str(ABSOLUTE_MAX_CONTEXT_BYTES)):
+            raise ImplementationRetryDeferred(
+                "invalid task LLM context budget bytes"
+            )
+        value = int(raw)
+        if value > ABSOLUTE_MAX_CONTEXT_BYTES:
+            raise ImplementationRetryDeferred(
+                "invalid task LLM context budget bytes"
+            )
+        return value
+
+    def _base_implementation_context_budget(self) -> ContextBudget:
+        configured = self.implementation_context_budget
+        if configured is None:
+            return ContextBudget(
+                max_input_tokens=DEFAULT_IMPLEMENTATION_CONTEXT_INPUT_TOKENS,
+                reserved_output_tokens=(
+                    _env_nonnegative_int(
+                        IMPLEMENTATION_CONTEXT_OUTPUT_RESERVE_ENV,
+                        DEFAULT_IMPLEMENTATION_CONTEXT_OUTPUT_RESERVE,
+                    )
+                ),
+                reserved_tool_tokens=(
+                    _env_nonnegative_int(
+                        IMPLEMENTATION_CONTEXT_TOOL_RESERVE_ENV,
+                        DEFAULT_IMPLEMENTATION_CONTEXT_TOOL_RESERVE,
+                    )
+                ),
+                max_items=256,
+                max_item_bytes=16_384,
+                max_serialized_bytes=ABSOLUTE_MAX_CONTEXT_BYTES,
+                max_depth=12,
+                max_text_bytes=8_192,
+            )
+        if isinstance(configured, ContextBudget):
+            return configured
+        return ContextBudget.from_dict(configured)
+
+    def _configured_implementation_provider_context_window(
+        self,
+        task: PortalTask | None = None,
+    ) -> int:
+        configured = self.implementation_provider_context_window
+        if configured is not None:
+            if (
+                isinstance(configured, bool)
+                or not isinstance(configured, int)
+                or configured < 1
+            ):
+                raise ImplementationRetryDeferred(
+                    "invalid implementation provider context window"
+                )
+            return configured
+        provider = self._task_declared_implementation_provider(task)
+        if not provider:
+            provider = (
+                os.environ.get(IMPLEMENTATION_PROVIDER_ENV, "").strip().lower()
+            )
+        environment_name = (
+            _GROK_CONTEXT_WINDOW_ENV
+            if provider in {
+                "grok",
+                "grok_cli",
+                "grok-cli",
+                "xai_cli",
+                "xai-cli",
+                "grok_build",
+                "grok-build",
+            }
+            else _CODEX_CONTEXT_WINDOW_ENV
+        )
+        raw = os.environ.get(environment_name, "200000").strip()
+        if not re.fullmatch(r"[1-9][0-9]*", raw):
+            raise ImplementationRetryDeferred(
+                "invalid implementation provider context window"
+            )
+        return int(raw)
+
+    def _implementation_provider_context_window_for_task(
+        self,
+        task: PortalTask,
+    ) -> tuple[int, ContextBudget, int | None]:
+        budget = self._base_implementation_context_budget()
+        token_limit = self._task_context_token_limit(task)
+        if token_limit is not None:
+            budget = replace(
+                budget,
+                max_input_tokens=min(
+                    budget.max_input_tokens,
+                    token_limit,
+                ),
+            )
+        byte_limit = self._task_llm_context_budget_bytes(task)
+        provider_window = self._configured_implementation_provider_context_window(
+            task
+        )
+        if byte_limit is not None:
+            # Canonical provider input contains ordinary UTF-8 text, so its
+            # byte bound is also a conservative upper bound on input tokens.
+            # Add the existing output/tool reserves because Codex's setting is
+            # a total window, then retain every stricter operator ceiling.
+            task_window = (
+                byte_limit
+                + budget.reserved_output_tokens
+                + budget.reserved_tool_tokens
+            )
+            provider_window = min(provider_window, task_window)
+        return provider_window, budget, byte_limit
+
+    def _require_implementation_prompt_byte_budget(
+        self,
+        task: PortalTask,
+        rendered: str,
+    ) -> int:
+        byte_limit = self._task_llm_context_budget_bytes(task)
+        byte_count = len(rendered.encode("utf-8"))
+        if byte_limit is not None and byte_count > byte_limit:
+            raise ImplementationRetryDeferred(
+                "implementation context byte budget exhausted"
+            )
+        return byte_count
 
     def _resolve_context_path(self, value: Any) -> Path | None:
         text = str(value or "").strip()
@@ -22294,8 +22959,43 @@ class PortalImplementationDaemon:
             chunk_bytes=8_192,
             coverage_ids=diagnostic.unresolved_requirements,
         )
-        configured_budget = (
-            self.implementation_context_budget or parent_capsule.budget
+        provider_window, configured_budget, prompt_byte_limit = (
+            self._implementation_provider_context_window_for_task(task)
+        )
+        # A retry must retain every stricter bound from its immutable parent.
+        configured_budget = ContextBudget(
+            max_input_tokens=min(
+                configured_budget.max_input_tokens,
+                parent_capsule.budget.max_input_tokens,
+            ),
+            reserved_output_tokens=max(
+                configured_budget.reserved_output_tokens,
+                parent_capsule.budget.reserved_output_tokens,
+            ),
+            reserved_tool_tokens=max(
+                configured_budget.reserved_tool_tokens,
+                parent_capsule.budget.reserved_tool_tokens,
+            ),
+            max_items=min(
+                configured_budget.max_items,
+                parent_capsule.budget.max_items,
+            ),
+            max_item_bytes=min(
+                configured_budget.max_item_bytes,
+                parent_capsule.budget.max_item_bytes,
+            ),
+            max_serialized_bytes=min(
+                configured_budget.max_serialized_bytes,
+                parent_capsule.budget.max_serialized_bytes,
+            ),
+            max_depth=min(
+                configured_budget.max_depth,
+                parent_capsule.budget.max_depth,
+            ),
+            max_text_bytes=min(
+                configured_budget.max_text_bytes,
+                parent_capsule.budget.max_text_bytes,
+            ),
         )
         # See _compile_implementation_context: dual-loaded ContextBudget classes
         # break isinstance; rehydrate via mapping for compiler-local types.
@@ -22304,8 +23004,9 @@ class PortalImplementationDaemon:
         compiler = ContextCompiler(
             configured_budget,
             tokenizer=self.implementation_context_tokenizer,
-            provider_context_window=self.implementation_provider_context_window,
+            provider_context_window=provider_window,
             provider_max_input_tokens=self.implementation_provider_max_input_tokens,
+            provider_max_input_bytes=prompt_byte_limit,
         )
         try:
             result = compile_retry_context(
@@ -22329,6 +23030,12 @@ class PortalImplementationDaemon:
         except ContextExpansionCancelled as exc:
             raise ImplementationRetryDeferred(
                 "implementation retry cancelled during compilation"
+            ) from exc
+        except RequiredContextOverflowError as exc:
+            if prompt_byte_limit is None:
+                raise
+            raise ImplementationRetryDeferred(
+                "implementation context byte budget exhausted"
             ) from exc
         self._last_implementation_context = result.delta_result
         self._last_implementation_retry = result
@@ -22474,11 +23181,41 @@ class PortalImplementationDaemon:
             ),
             "operator_directive": protected_policy_text,
         }
+        provider_window, configured_budget, prompt_byte_limit = (
+            self._implementation_provider_context_window_for_task(task)
+        )
+        context_budget_authority = {
+            "source": (
+                "task_metadata"
+                if prompt_byte_limit is not None
+                else "supervisor_default"
+            ),
+            "max_provider_input_bytes": prompt_byte_limit,
+            "provider_context_window": provider_window,
+            "supervisor_max_input_tokens": (
+                configured_budget.max_input_tokens
+            ),
+            "reserved_output_tokens": (
+                configured_budget.reserved_output_tokens
+            ),
+            "reserved_tool_tokens": (
+                configured_budget.reserved_tool_tokens
+            ),
+        }
+        prompt_policy_appendix = str(
+            self._implementation_prompt_policy_appendix(task) or ""
+        ).strip()
         policy_revision = "sha256:" + hashlib.sha256(
             json.dumps(
                 {
                     "generic_prompt_policy": rules,
+                    "implementation_prompt_policy_appendix": (
+                        prompt_policy_appendix
+                    ),
                     "edit_policy": edit_policy,
+                    "implementation_context_budget": (
+                        context_budget_authority
+                    ),
                     "implementation_timeout_policy": (
                         timeout_policy.to_dict()
                     ),
@@ -22517,45 +23254,6 @@ class PortalImplementationDaemon:
                     )
                 ),
             )
-        configured_budget = self.implementation_context_budget
-        task_context_limit = self._task_context_token_limit(task)
-        if configured_budget is None:
-            configured_budget = ContextBudget(
-                max_input_tokens=(
-                    task_context_limit
-                    or DEFAULT_IMPLEMENTATION_CONTEXT_INPUT_TOKENS
-                ),
-                reserved_output_tokens=(
-                    _env_nonnegative_int(
-                        IMPLEMENTATION_CONTEXT_OUTPUT_RESERVE_ENV,
-                        DEFAULT_IMPLEMENTATION_CONTEXT_OUTPUT_RESERVE,
-                    )
-                ),
-                reserved_tool_tokens=(
-                    _env_nonnegative_int(
-                        IMPLEMENTATION_CONTEXT_TOOL_RESERVE_ENV,
-                        DEFAULT_IMPLEMENTATION_CONTEXT_TOOL_RESERVE,
-                    )
-                ),
-                max_items=256,
-                max_item_bytes=16_384,
-                max_serialized_bytes=1_048_576,
-                max_depth=12,
-                max_text_bytes=8_192,
-            )
-        # Pass budget as a mapping so ContextCompiler rehydrates it with its
-        # own ContextBudget class. Flat package-root aliases can dual-load
-        # context_contracts under two sys.modules keys; isinstance then fails
-        # even when both types share the same qualname and fields.
-        if hasattr(configured_budget, "to_dict"):
-            configured_budget = configured_budget.to_dict()
-        if task_context_limit is not None:
-            configured_budget = dict(configured_budget)
-            configured_budget["max_input_tokens"] = min(
-                int(configured_budget["max_input_tokens"]),
-                task_context_limit,
-            )
-        provider_window = self._implementation_context_window(task)
         compiler = ContextCompiler(
             configured_budget,
             tokenizer=self.implementation_context_tokenizer,
@@ -22563,75 +23261,90 @@ class PortalImplementationDaemon:
             provider_max_input_tokens=(
                 self.implementation_provider_max_input_tokens
             ),
+            provider_max_input_bytes=prompt_byte_limit,
         )
         todo_file = self._display_context_path(self.todo_path)
-        result = compiler.compile(
-            repository_id=repository_id,
-            tree_id=tree_id,
-            objective_id=task.task_id,
-            objective_revision=self._canonical_ref(task),
-            policy_id="policy:implementation-daemon",
-            policy_revision=policy_revision,
-            caller="agent-supervisor:implementation-daemon",
-            stage="implementation",
-            goal={
-                "instruction": (
-                    (
-                        "Resolve the bounded "
-                        f"{retry_repair_failure_kind or 'validation'} "
-                        "retry-budget blocker for "
-                        f"{retry_repair_source_id}; prove the declared gate "
-                        "without weakening correct production policy or tests."
-                    )
-                    if retry_repair_source_id
-                    else (
-                        "Implement this backlog task completely and thoroughly "
-                        "as a production-ready change in one pass."
-                    )
-                ),
-                "task_id": task.task_id,
-                "title": task.title,
-                "priority": task.priority,
-                "track": task.track,
-                "attempt": int(attempt),
-            },
-            authority={
-                "todo_file": todo_file,
-                "source_line": int(task.source_line),
-                "generic_prompt_policy": rules,
-                "edit_policy": edit_policy,
-                "implementation_timeout_policy": canonical_json(
-                    timeout_policy.to_dict()
-                ),
-                "durable_checkpoint": {
-                    "directory": str(checkpoint_dir),
-                    "environment_variable": IMPLEMENTATION_CHECKPOINT_DIR_ENV,
-                    "manifest_cid": checkpoint_manifest["manifest_cid"],
-                    "file_count": checkpoint_manifest["file_count"],
+        try:
+            result = compiler.compile(
+                repository_id=repository_id,
+                tree_id=tree_id,
+                objective_id=task.task_id,
+                objective_revision=self._canonical_ref(task),
+                policy_id="policy:implementation-daemon",
+                policy_revision=policy_revision,
+                caller="agent-supervisor:implementation-daemon",
+                stage="implementation",
+                goal={
+                    "instruction": (
+                        (
+                            "Resolve the bounded "
+                            f"{retry_repair_failure_kind or 'validation'} "
+                            "retry-budget blocker for "
+                            f"{retry_repair_source_id}; prove the declared gate "
+                            "without weakening correct production policy or tests."
+                        )
+                        if retry_repair_source_id
+                        else (
+                            "Implement this backlog task completely and thoroughly "
+                            "as a production-ready change in one pass."
+                        )
+                    ),
+                    "task_id": task.task_id,
+                    "title": task.title,
+                    "priority": task.priority,
+                    "track": task.track,
+                    "attempt": int(attempt),
                 },
-                "primary_plan_documents": {
-                    "AGENT-": "docs/AI_AGENT_CHAT_IMPLEMENTATION_PLAN.md",
-                    "PORTAL-": "docs/211_SERVICE_NAVIGATION_PORTAL_PLAN.md",
+                authority={
+                    "todo_file": todo_file,
+                    "source_line": int(task.source_line),
+                    "generic_prompt_policy": rules,
+                    "implementation_prompt_policy_appendix": (
+                        prompt_policy_appendix
+                    ),
+                    "edit_policy": edit_policy,
+                    "implementation_timeout_policy": canonical_json(
+                        timeout_policy.to_dict()
+                    ),
+                    "implementation_context_budget": (
+                        context_budget_authority
+                    ),
+                    "durable_checkpoint": {
+                        "directory": str(checkpoint_dir),
+                        "environment_variable": IMPLEMENTATION_CHECKPOINT_DIR_ENV,
+                        "manifest_cid": checkpoint_manifest["manifest_cid"],
+                        "file_count": checkpoint_manifest["file_count"],
+                    },
+                    "primary_plan_documents": {
+                        "AGENT-": "docs/AI_AGENT_CHAT_IMPLEMENTATION_PLAN.md",
+                        "PORTAL-": "docs/211_SERVICE_NAVIGATION_PORTAL_PLAN.md",
+                    },
+                    "completion_authoritative": False,
                 },
-                "completion_authoritative": False,
-            },
-            scope={
-                "depends_on": tuple(task.depends_on),
-                "expected_outputs": tuple(task.outputs),
-                "allowed_edit_paths": allowed_edit_paths,
-                "protected_edit_paths": protected_edit_paths,
-                "retry_repair_source_task_id": retry_repair_source_id,
-                "retry_repair_failure_kind": retry_repair_failure_kind,
-                "validation_target_paths": retry_validation_paths,
-                "implied_validation_output_paths": implied_validation_paths,
-            },
-            acceptance={
-                "criteria": task.acceptance or "none listed",
-                "validation_commands": tuple(task.validation),
-                "all_expected_outputs_required": True,
-            },
-            evidence=evidence,
-        )
+                scope={
+                    "depends_on": tuple(task.depends_on),
+                    "expected_outputs": tuple(task.outputs),
+                    "allowed_edit_paths": allowed_edit_paths,
+                    "protected_edit_paths": protected_edit_paths,
+                    "retry_repair_source_task_id": retry_repair_source_id,
+                    "retry_repair_failure_kind": retry_repair_failure_kind,
+                    "validation_target_paths": retry_validation_paths,
+                    "implied_validation_output_paths": implied_validation_paths,
+                    "checkpoint_directory": str(checkpoint_dir),
+                },
+                acceptance={
+                    "criteria": task.acceptance or "none listed",
+                    "validation_commands": tuple(task.validation),
+                    "all_expected_outputs_required": True,
+                },
+                evidence=evidence,
+            )
+        except RequiredContextOverflowError as exc:
+            if prompt_byte_limit is None:
+                raise
+            raise ImplementationRetryDeferred(
+                "implementation context byte budget exhausted"
+            ) from exc
         self._last_implementation_context = result
         self._last_implementation_retry = None
         self._implementation_base_contexts[self._canonical_ref(task)] = result
@@ -22644,6 +23357,11 @@ class PortalImplementationDaemon:
                 "policy_revision": policy_revision,
                 "allowed_edit_paths": allowed_edit_paths,
                 "protected_edit_paths": protected_edit_paths,
+                "provider_input_bytes": len(
+                    render_context_capsule(result.capsule).encode("utf-8")
+                ),
+                "provider_input_byte_limit": prompt_byte_limit,
+                "provider_context_window": provider_window,
             },
         )
         return result
@@ -22806,11 +23524,30 @@ class PortalImplementationDaemon:
                         review.get("next_attempt_prompt_addendum") or ""
                     ).strip()
             if addendum:
-                rendered = (
+                candidate = (
                     f"{rendered.rstrip()}\n\n"
                     "## Prior failure review (deterministic)\n"
                     f"{addendum}\n"
                 )
+                byte_limit = self._task_llm_context_budget_bytes(task)
+                if (
+                    byte_limit is None
+                    or len(candidate.encode("utf-8")) <= byte_limit
+                ):
+                    rendered = candidate
+                else:
+                    self._decision_runtime_route(
+                        "implementation_context_addendum_omitted",
+                        {
+                            "task_id": task.task_id,
+                            "attempt": int(attempt),
+                            "reason": "provider_input_byte_budget",
+                            "provider_input_byte_limit": byte_limit,
+                            "candidate_input_bytes": len(
+                                candidate.encode("utf-8")
+                            ),
+                        },
+                    )
             seed_guidance = str(
                 self._implementation_seed_failure_guidance.get(key) or ""
             ).strip()
@@ -22820,8 +23557,11 @@ class PortalImplementationDaemon:
                     "## Prior attempt seed recovery\n"
                     f"{seed_guidance}\n"
                 )
-                # One-shot: do not keep replaying after the attempt starts.
-                self._implementation_seed_failure_guidance.pop(key, None)
+        self._require_implementation_prompt_byte_budget(task, rendered)
+        if attempt > 1 and seed_guidance:
+            # One-shot after the bounded prompt is accepted; failed budget
+            # admission must retain the recovery guidance for diagnosis.
+            self._implementation_seed_failure_guidance.pop(key, None)
         return rendered
 
     def _build_recommended_actions(self, task: PortalTask) -> list[str]:
@@ -23536,6 +24276,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--merge-queue-dir",
+        type=Path,
+        default=None,
+        help="Shared merge queue directory. Defaults to the target-branch queue root.",
+    )
+    parser.add_argument(
         "--worktree-submodule-path",
         action="append",
         default=[],
@@ -23640,6 +24386,7 @@ def main(argv: list[str] | None = None) -> None:
         use_ephemeral_worktree=args.implement and not args.no_ephemeral_worktree,
         worktree_root=args.worktree_root,
         merge_target_branch=args.merge_target_branch,
+        merge_queue_dir=args.merge_queue_dir,
         worktree_submodule_paths=args.worktree_submodule_path or None,
         implementation_protected_paths=args.implementation_protected_path,
         objective_path=args.objective_path,
