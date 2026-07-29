@@ -448,7 +448,7 @@ compact references and bounded spans only.
 
 ## VFS-023 Implement the first bounded program-contract trace circuit and cross-codec vectors
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P1
 - Track: zero-knowledge
