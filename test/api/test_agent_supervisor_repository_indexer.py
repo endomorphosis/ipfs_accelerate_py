@@ -56,16 +56,19 @@ def _disposition(
     status: GitStatus = GitStatus.CLEAN,
     rename_from: str = "",
     tracked: bool = True,
+    entry_kind: EntryKind = EntryKind.REGULAR,
 ) -> CoverageDisposition:
     return CoverageDisposition(
         path=path,
         kind=kind,
         git_status=status,
-        entry_kind=EntryKind.REGULAR,
+        entry_kind=entry_kind,
         reason_code=f"fixture_{kind.value}",
         policy_rule=f"fixture:{kind.value}",
         content_digest=_digest(payload) if payload else "",
-        git_mode="100644",
+        git_mode=(
+            "120000" if entry_kind is EntryKind.SYMLINK else "100644"
+        ),
         git_object_id=hashlib.sha1(path.encode()).hexdigest(),
         rename_from=rename_from,
         tracked=tracked,
@@ -135,6 +138,37 @@ def _blob_path(indexer: RepositoryIndexer, reference: dict) -> Path:
     return indexer.cas.store._blob_path(
         indexer.cas.store._coerce_blob_reference(reference)
     )
+
+
+def test_default_loader_indexes_symlink_identity_without_following_target(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "target.js").write_text(
+        "export const followed = false;\n",
+        encoding="utf-8",
+    )
+    target_text = b"target.js"
+    (source / "link.js").symlink_to(target_text.decode())
+    snapshot = _snapshot(
+        source,
+        [
+            _disposition(
+                "link.js",
+                CoverageKind.SEMANTIC_AST,
+                target_text,
+                entry_kind=EntryKind.SYMLINK,
+            )
+        ],
+    )
+    indexer = RepositoryIndexer(tmp_path / "index")
+
+    result = indexer.build(snapshot)
+
+    row = result.row_for_path("link.js")
+    assert row is not None and row.source_ref
+    assert indexer.cas.read(row.source_ref) == target_text
 
 
 def test_complete_body_free_index_is_bounded_reused_and_deterministic(

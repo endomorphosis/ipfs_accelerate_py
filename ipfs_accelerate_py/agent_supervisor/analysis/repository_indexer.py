@@ -871,9 +871,14 @@ class RepositoryIndexer:
         def load(disposition: CoverageDisposition) -> bytes:
             path = root.joinpath(*PurePosixPath(disposition.path).parts)
             try:
-                before = path.stat()
-                payload = path.read_bytes()
-                after = path.stat()
+                if disposition.entry_kind is EntryKind.SYMLINK:
+                    before = path.lstat()
+                    payload = os.fsencode(os.readlink(path))
+                    after = path.lstat()
+                else:
+                    before = path.stat()
+                    payload = path.read_bytes()
+                    after = path.stat()
             except OSError as exc:
                 raise RepositoryIndexSourceChanged(
                     f"source is unavailable after snapshot: {disposition.path}"
@@ -881,11 +886,13 @@ class RepositoryIndexer:
             if (
                 before.st_dev,
                 before.st_ino,
+                before.st_mode,
                 before.st_size,
                 before.st_mtime_ns,
             ) != (
                 after.st_dev,
                 after.st_ino,
+                after.st_mode,
                 after.st_size,
                 after.st_mtime_ns,
             ):
