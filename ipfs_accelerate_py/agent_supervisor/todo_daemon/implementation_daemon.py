@@ -135,14 +135,26 @@ from .runner import TodoDaemonHooks, TodoDaemonRunner
 from .supervisor_runtime import run_process_group_stream
 from .contract_packet_provider_router import (
     IMPLEMENTATION_PROVIDER_ROUTER_INTERFACE,
+    PRODUCTION_PROVIDER_ROUTE_INTERFACE,
+    PRODUCTION_PROVIDER_ROUTE_SCHEMA,
     PROVIDER_EXECUTION_RECEIPT_INTERFACE,
     AdmissionCallable,
     ImplementationProviderRouter,
     ImplementationRoutingResult,
+    ProductionContractPacket,
+    ProductionReceiptDisposition,
+    ProductionReviewChainBinding,
     ProviderCallable,
+    ProviderReason,
     ProviderRole,
+    ProviderRoutingError,
     ReviewPresence,
+    RouteStatus,
     WriterCallable,
+    bind_applied_patch_to_review_chain,
+    build_production_contract_packet,
+    build_production_provider_route_evaluation,
+    evaluate_production_provider_receipt,
 )
 from .task_execution_policy import (
     MAX_TASK_CONTEXT_BYTES,
@@ -208,6 +220,20 @@ MODEL_ASSISTED_PROVIDER_ROUTE_EVENT = "model_assisted_provider_route"
 MODEL_ASSISTED_PROVIDER_RECEIPT_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/"
     "model-assisted-provider-route-integration@1"
+)
+PRODUCTION_PROVIDER_ROUTE_EVENT = "production_model_assisted_provider_route"
+PRODUCTION_PROVIDER_ROUTE_BINDING_EVENT = (
+    "production_provider_review_chain_bound"
+)
+PRODUCTION_PROVIDER_ROUTE_PENDING_EVENT = (
+    "production_provider_receipt_pending"
+)
+# Env overrides for injectable production providers (tests/operators).
+PRODUCTION_PROVIDER_ROUTE_ENABLED_ENV = (
+    "IPFS_ACCELERATE_AGENT_PRODUCTION_PROVIDER_ROUTE"
+)
+PRODUCTION_PROVIDER_ALLOW_RAW_COMMAND_ENV = (
+    "IPFS_ACCELERATE_AGENT_ALLOW_RAW_MODEL_COMMAND"
 )
 MAX_IMPLEMENTATION_CHECKPOINT_FILES = 16
 MAX_IMPLEMENTATION_CHECKPOINT_BYTES = 512 * 1024 * 1024
@@ -8801,6 +8827,28 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 self.implementation_protected_paths
             ),
         }
+        # SCA-615: when a production review-chain binding is present on the
+        # task/state, attach it so merge consumers bind the applied patch to
+        # the admitted independent review chain identity.
+        production_binding = getattr(
+            self, "_last_production_review_chain_binding", None
+        )
+        if isinstance(production_binding, ProductionReviewChainBinding):
+            if production_binding.task_id == task.task_id:
+                metadata["admitted_review_chain_binding"] = (
+                    production_binding.to_dict()
+                )
+                metadata["provider_review_receipt_id"] = (
+                    production_binding.receipt_id
+                )
+        elif isinstance(production_binding, Mapping):
+            if str(production_binding.get("task_id") or "") == task.task_id:
+                metadata["admitted_review_chain_binding"] = dict(
+                    production_binding
+                )
+                metadata["provider_review_receipt_id"] = str(
+                    production_binding.get("receipt_id") or ""
+                )
         if changed_submodule_paths is not None:
             metadata["changed_submodule_paths"] = sorted(
                 {str(path).strip("/") for path in changed_submodule_paths if str(path).strip("/")}
@@ -9734,9 +9782,16 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 )
             workspace_setup = self._worktree_setup_result(worktree_path)
             workspace_setup["prior_attempt_seed"] = dict(seed_apply)
+            use_production_route = (
+                not deterministic_only
+                and self._production_provider_route_enabled(task)
+            )
+            production_route_payload: dict[str, Any] = {}
+            # SCA-615: production model-assisted work invokes only the typed
+            # packet route.  The raw model CLI command is not built or run.
             command = (
                 []
-                if deterministic_only
+                if deterministic_only or use_production_route
                 else self._build_implementation_command(
                     worktree_path,
                     task=task,
@@ -9789,7 +9844,16 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     "execution_mode": (
                         ExecutionMode.DETERMINISTIC_ONLY.value
                         if deterministic_only
-                        else "model-assisted"
+                        else (
+                            "model-assisted-production-packet-route"
+                            if use_production_route
+                            else "model-assisted"
+                        )
+                    ),
+                    "production_provider_route": use_production_route,
+                    "typed_packet_route_only": use_production_route,
+                    "raw_model_command_invoked": False if use_production_route else (
+                        not deterministic_only
                     ),
                     "worktree_lifecycle": (
                         None
@@ -9813,6 +9877,11 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     log_fh.write(
                         "Execution: typed local declared-validation-plan\n\n"
                     )
+                elif use_production_route:
+                    log_fh.write(
+                        "Execution: production typed packet route "
+                        f"({PRODUCTION_PROVIDER_ROUTE_INTERFACE})\n\n"
+                    )
                 else:
                     log_fh.write(
                         "Command: "
@@ -9824,6 +9893,83 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                         args=(),
                         returncode=0,
                     )
+                elif use_production_route:
+                    # Injected production providers (tests/operators) may be
+                    # attached on the daemon instance; otherwise the router
+                    # fails closed / defers without a raw model command.
+                    production_route_payload = (
+                        self._decision_runtime_mutation(
+                            "production_provider_route",
+                            {
+                                "operation": "production_model_assisted_route",
+                                "task_id": task.task_id,
+                                "attempt": int(attempt),
+                                "workspace_path": str(worktree_path),
+                                "branch": branch_name,
+                                "baseline_ref": baseline_ref,
+                            },
+                            lambda: self.run_production_model_assisted_route(
+                                task,
+                                attempt=attempt,
+                                workspace_path=worktree_path,
+                                baseline_ref=baseline_ref,
+                                apply=True,
+                                grok_provider=getattr(
+                                    self, "_production_grok_provider", None
+                                ),
+                                codex_provider=getattr(
+                                    self, "_production_codex_provider", None
+                                ),
+                                deterministic_provider=getattr(
+                                    self,
+                                    "_production_deterministic_provider",
+                                    None,
+                                ),
+                            ),
+                        )
+                    )
+                    completed = subprocess.CompletedProcess(
+                        args=("production-provider-route",),
+                        returncode=int(
+                            production_route_payload.get("returncode") or 1
+                        ),
+                    )
+                    route_event = dict(
+                        production_route_payload.get("event") or {}
+                    )
+                    log_summary = {
+                        "disposition": str(
+                            getattr(
+                                production_route_payload.get("disposition"),
+                                "value",
+                                production_route_payload.get("disposition")
+                                or "",
+                            )
+                        ),
+                        "disposition_reason": str(
+                            production_route_payload.get("disposition_reason")
+                            or ""
+                        ),
+                        "returncode": int(completed.returncode),
+                        "pending": bool(
+                            production_route_payload.get("pending")
+                        ),
+                        "raw_model_command_invoked": False,
+                        "typed_packet_route_only": True,
+                        "provider_result_admitted": bool(
+                            route_event.get("provider_result_admitted")
+                        ),
+                        "review_presence": str(
+                            route_event.get("review_presence") or ""
+                        ),
+                        "write_performed": bool(
+                            route_event.get("write_performed")
+                        ),
+                        "receipt_id": str(route_event.get("receipt_id") or ""),
+                    }
+                    log_fh.write(json.dumps(log_summary, sort_keys=True))
+                    log_fh.write("\n")
+                    log_fh.flush()
                 else:
                     completed = self._decision_runtime_mutation(
                         "command_invocation",
@@ -16126,6 +16272,583 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             return False
         return False
 
+    def _production_provider_route_enabled(
+        self,
+        task: PortalTask | None = None,
+    ) -> bool:
+        """Whether model-assisted work must use the typed packet route.
+
+        SCA-615 replaces the raw production model command.  Operators may
+        temporarily re-enable the legacy raw command only via an explicit env
+        override; that override is itself recorded as non-production.
+        """
+
+        allow_raw = os.environ.get(
+            PRODUCTION_PROVIDER_ALLOW_RAW_COMMAND_ENV, ""
+        ).strip().lower()
+        if allow_raw in {"1", "true", "yes", "on"}:
+            return False
+        configured = os.environ.get(
+            PRODUCTION_PROVIDER_ROUTE_ENABLED_ENV, "1"
+        ).strip().lower()
+        if configured in {"0", "false", "no", "off"}:
+            return False
+        if task is not None and self._task_uses_typed_local_execution(task):
+            return False
+        return True
+
+    def _current_production_snapshot_id(
+        self,
+        *,
+        workspace_path: Path | None = None,
+        baseline_ref: str = "",
+    ) -> str:
+        """Content-addressed snapshot id for production packet freshness."""
+
+        if baseline_ref:
+            return f"git-commit:{baseline_ref}"
+        cwd = workspace_path or self.repo_root
+        try:
+            head = self._run_git(
+                ["rev-parse", "--verify", "HEAD^{commit}"],
+                cwd=cwd,
+            ).stdout.strip()
+        except (OSError, RuntimeError):
+            head = ""
+        if head:
+            return f"git-commit:{head}"
+        return f"workspace:{cwd.resolve()}"
+
+    def build_production_contract_packet_for_task(
+        self,
+        task: PortalTask,
+        *,
+        snapshot_id: str,
+        attempt: int = 0,
+    ) -> ProductionContractPacket:
+        """Compile a bounded production packet for one model-assisted task.
+
+        The packet carries task/scope/acceptance identity and expansion handles
+        only.  It never embeds repository corpus, full source, or AST bodies.
+        """
+
+        write_paths = [
+            str(path).strip()
+            for path in (task.outputs or ())
+            if str(path).strip()
+        ]
+        if not write_paths:
+            scope = completion_gap_edit_scope(task, repo_root=self.repo_root)
+            write_paths = [str(path).strip() for path in scope if str(path).strip()]
+        if not write_paths:
+            raise ProviderRoutingError(
+                "production model-assisted route requires declared outputs",
+                reason_code=ProviderReason.PACKET_MALFORMED,
+            )
+        extra_goal: dict[str, Any] = {
+            "title": str(task.title or ""),
+            "priority": str(task.priority or ""),
+            "track": str(task.track or ""),
+            "attempt": int(attempt),
+        }
+        return build_production_contract_packet(
+            task_id=task.task_id,
+            snapshot_id=snapshot_id,
+            write_paths=write_paths,
+            read_paths=write_paths,
+            validation_commands=tuple(task.validation or ()),
+            acceptance_criteria=str(task.acceptance or ""),
+            contract_ids=(),
+            obligation_ids=(),
+            expansion_handles=(),
+            packet_id=f"packet:production:{task.task_id}:attempt-{int(attempt)}",
+            extra_goal=extra_goal,
+        )
+
+    def _production_admission_gate(self, proposal: Any) -> dict[str, Any]:
+        """Supervisor-owned proposal admission for production routes.
+
+        Rejects authority claims and empty proposals; never grants completion
+        or proof authority.
+        """
+
+        payload = getattr(proposal, "payload", None)
+        if not isinstance(payload, Mapping):
+            return {
+                "accepted": False,
+                "reason_code": ProviderReason.PROVIDER_RESPONSE_MALFORMED.value,
+            }
+        body: Mapping[str, Any] = payload
+        nested = payload.get("proposal")
+        if isinstance(nested, Mapping) and (
+            "files" in nested or "patch" in nested or "declared_paths" in nested
+        ):
+            body = nested
+        if (
+            payload.get("completion_authoritative") is True
+            or body.get("completion_authoritative") is True
+        ):
+            return {
+                "accepted": False,
+                "reason_code": ProviderReason.PROVIDER_AUTHORITY_CLAIM.value,
+            }
+        if (
+            payload.get("proof_authoritative") is True
+            or body.get("proof_authoritative") is True
+        ):
+            return {
+                "accepted": False,
+                "reason_code": ProviderReason.PROVIDER_AUTHORITY_CLAIM.value,
+            }
+        has_patch = bool(str(body.get("patch") or "").strip())
+        has_files = isinstance(body.get("files"), (list, tuple)) and bool(
+            body.get("files")
+        )
+        has_decision = str(payload.get("decision") or "").strip() != ""
+        role = getattr(proposal, "role", None)
+        role_value = str(getattr(role, "value", role) or "")
+        if role_value == ProviderRole.CODEX_REVIEW.value:
+            if not has_decision and not has_patch and not has_files:
+                return {
+                    "accepted": False,
+                    "reason_code": ProviderReason.PROVIDER_RESPONSE_MALFORMED.value,
+                }
+            return {
+                "accepted": True,
+                "reason_code": f"admitted:{role_value}",
+            }
+        if not has_patch and not has_files:
+            return {
+                "accepted": False,
+                "reason_code": ProviderReason.PROPOSAL_REJECTED.value,
+            }
+        return {
+            "accepted": True,
+            "reason_code": f"admitted:{role_value or 'proposal'}",
+        }
+
+    def _make_production_workspace_writer(
+        self,
+        workspace_path: Path,
+        *,
+        task: PortalTask,
+        expected_lease_id: str,
+    ) -> WriterCallable:
+        """Return a fenced writer that applies only an admitted proposal."""
+
+        allowed = {
+            str(path).strip().lstrip("./")
+            for path in (task.outputs or ())
+            if str(path).strip()
+        }
+        workspace = workspace_path.resolve()
+
+        def writer(proposal: Any, lease_id: str) -> None:
+            if str(lease_id or "") != str(expected_lease_id or ""):
+                raise RuntimeError("writer lease mismatch")
+            if not getattr(proposal, "admitted", False):
+                raise RuntimeError("proposal not admitted")
+            payload = getattr(proposal, "payload", {}) or {}
+            if not isinstance(payload, Mapping):
+                raise RuntimeError("proposal payload malformed")
+            # Provider responses commonly nest the apply body under "proposal".
+            body: Mapping[str, Any] = payload
+            nested = payload.get("proposal")
+            if isinstance(nested, Mapping) and (
+                "files" in nested or "patch" in nested or "declared_paths" in nested
+            ):
+                body = nested
+            declared = body.get("declared_paths")
+            declared_paths = (
+                [str(item).strip().lstrip("./") for item in declared]
+                if isinstance(declared, (list, tuple))
+                else []
+            )
+            files = body.get("files")
+            if isinstance(files, (list, tuple)):
+                for item in files:
+                    if not isinstance(item, Mapping):
+                        raise RuntimeError("file replacement entry malformed")
+                    rel = str(
+                        item.get("path") or item.get("file") or ""
+                    ).strip().lstrip("./")
+                    if not rel:
+                        raise RuntimeError("file replacement path required")
+                    if allowed and rel not in allowed:
+                        raise RuntimeError(f"write path out of task scope: {rel}")
+                    if declared_paths and rel not in declared_paths:
+                        raise RuntimeError(
+                            f"write path not declared on proposal: {rel}"
+                        )
+                    target = (workspace / rel).resolve()
+                    if workspace not in target.parents and target != workspace:
+                        raise RuntimeError(f"path escape: {rel}")
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    content = item.get("content")
+                    if content is None:
+                        content = item.get("new_content")
+                    if content is None:
+                        raise RuntimeError(f"missing content for {rel}")
+                    target.write_text(str(content), encoding="utf-8")
+                return
+            patch = str(body.get("patch") or "").strip()
+            if not patch:
+                raise RuntimeError("admitted proposal has no apply payload")
+            # Bounded unified-diff apply; reject paths outside task scope.
+            proc = subprocess.run(
+                ["git", "apply", "--check", "--whitespace=nowarn", "-"],
+                cwd=workspace,
+                input=patch,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            if proc.returncode != 0:
+                raise RuntimeError(
+                    f"patch check failed: {proc.stderr[-500:] or proc.stdout[-500:]}"
+                )
+            # Enumerate paths from the patch and enforce scope.
+            path_proc = subprocess.run(
+                ["git", "apply", "--numstat", "--whitespace=nowarn", "-"],
+                cwd=workspace,
+                input=patch,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            # Prefer --name-only listing when available.
+            name_proc = subprocess.run(
+                ["git", "apply", "--name-only", "--whitespace=nowarn", "-"],
+                cwd=workspace,
+                input=patch,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            names = [
+                line.strip().lstrip("./")
+                for line in (name_proc.stdout or "").splitlines()
+                if line.strip()
+            ]
+            if not names and path_proc.returncode == 0:
+                for line in (path_proc.stdout or "").splitlines():
+                    parts = line.split("\t")
+                    if len(parts) >= 3:
+                        names.append(parts[-1].strip().lstrip("./"))
+            for rel in names:
+                if allowed and rel not in allowed:
+                    raise RuntimeError(f"patch path out of task scope: {rel}")
+            apply_proc = subprocess.run(
+                ["git", "apply", "--whitespace=nowarn", "-"],
+                cwd=workspace,
+                input=patch,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            if apply_proc.returncode != 0:
+                raise RuntimeError(
+                    "patch apply failed: "
+                    f"{apply_proc.stderr[-500:] or apply_proc.stdout[-500:]}"
+                )
+
+        return writer
+
+    def run_production_model_assisted_route(
+        self,
+        task: PortalTask,
+        *,
+        attempt: int = 0,
+        workspace_path: Path | None = None,
+        baseline_ref: str = "",
+        snapshot_id: str = "",
+        apply: bool = True,
+        writer_lease_id: str = "",
+        grok_provider: ProviderCallable | None = None,
+        codex_provider: ProviderCallable | None = None,
+        deterministic_provider: ProviderCallable | None = None,
+        admission_gate: AdmissionCallable | None = None,
+        writer: WriterCallable | None = None,
+        packet: Any = None,
+        local_only: bool = False,
+        bounds: Any = None,
+        grok_quota: Any = None,
+        codex_quota: Any = None,
+    ) -> dict[str, Any]:
+        """Production-wire bounded Grok proposal and independent Codex review.
+
+        Invokes only the typed packet route.  Grok cannot self-review; Codex
+        receives only the admitted proposal plus a bounded evidence slice; the
+        applied patch binds to the admitted review chain; absent/degraded/stale/
+        cross-task receipts remain pending; no provider receives repository
+        corpus.  Deterministic-only tasks must not call this method.
+        """
+
+        if self._task_uses_typed_local_execution(task):
+            raise RuntimeError(
+                "deterministic-only task must not invoke the production "
+                "model-assisted provider route"
+            )
+        if not self._production_provider_route_enabled(task):
+            raise RuntimeError(
+                ProviderReason.RAW_MODEL_COMMAND_FORBIDDEN.value
+                if not self._production_provider_route_enabled()
+                else "production provider route disabled"
+            )
+
+        current_snapshot = str(snapshot_id or "").strip() or (
+            self._current_production_snapshot_id(
+                workspace_path=workspace_path,
+                baseline_ref=baseline_ref,
+            )
+        )
+        route_packet = packet
+        if route_packet is None:
+            route_packet = self.build_production_contract_packet_for_task(
+                task,
+                snapshot_id=current_snapshot,
+                attempt=attempt,
+            )
+
+        lease = str(writer_lease_id or "").strip()
+        if apply and not lease:
+            lease = (
+                f"lease:production:{task.task_id}:attempt-{int(attempt)}:"
+                f"{content_identity({'snapshot': current_snapshot, 'task': task.task_id})}"
+            )
+
+        effective_writer = writer
+        if apply and effective_writer is None and workspace_path is not None:
+            effective_writer = self._make_production_workspace_writer(
+                workspace_path,
+                task=task,
+                expected_lease_id=lease,
+            )
+        effective_admission = admission_gate or self._production_admission_gate
+
+        # Independence: never pass the same callable as both providers.
+        if (
+            grok_provider is not None
+            and codex_provider is not None
+            and grok_provider is codex_provider
+        ):
+            route_result, event, receipt_path = self.route_model_assisted_contract_packet(
+                route_packet,
+                current_snapshot_id=current_snapshot,
+                task=task,
+                attempt=attempt,
+                grok_provider=grok_provider,
+                codex_provider=codex_provider,
+                deterministic_provider=deterministic_provider,
+                admission_gate=effective_admission,
+                writer=effective_writer,
+                apply=False,
+                writer_lease_id="",
+                local_only=local_only,
+                bounds=bounds,
+                grok_quota=grok_quota,
+                codex_quota=codex_quota,
+            )
+        else:
+            route_result, event, receipt_path = self.route_model_assisted_contract_packet(
+                route_packet,
+                current_snapshot_id=current_snapshot,
+                task=task,
+                attempt=attempt,
+                grok_provider=grok_provider,
+                codex_provider=codex_provider,
+                deterministic_provider=deterministic_provider,
+                admission_gate=effective_admission,
+                writer=effective_writer,
+                apply=apply,
+                writer_lease_id=lease if apply else "",
+                local_only=local_only,
+                bounds=bounds,
+                grok_quota=grok_quota,
+                codex_quota=codex_quota,
+            )
+
+        receipt = route_result.provider_receipt
+        disposition, disposition_reason = evaluate_production_provider_receipt(
+            receipt,
+            expected_task_id=task.task_id,
+            expected_snapshot_id=current_snapshot,
+            current_snapshot_id=current_snapshot,
+        )
+        binding = bind_applied_patch_to_review_chain(
+            route_result,
+            writer_lease_id=lease if route_result.write_performed else "",
+        )
+        if binding is not None:
+            # Durable in-process handoff for merge metadata binding.
+            self._last_production_review_chain_binding = binding
+        pending = disposition is not ProductionReceiptDisposition.ADMITTED
+        production_event = {
+            "schema": PRODUCTION_PROVIDER_ROUTE_SCHEMA,
+            "interface": PRODUCTION_PROVIDER_ROUTE_INTERFACE,
+            "task_id": task.task_id,
+            "attempt": int(attempt),
+            "snapshot_id": current_snapshot,
+            "status": route_result.status.value,
+            "reason_code": route_result.reason_code,
+            "disposition": disposition.value,
+            "disposition_reason": disposition_reason,
+            "provider": event.get("provider") or route_result.provider,
+            "packet": event.get("packet") or {},
+            "review_chain": event.get("review_chain") or [],
+            "provider_receipt": event.get("provider_receipt") or receipt.to_dict(),
+            "provider_result_admitted": route_result.provider_result_admitted,
+            "review_presence": route_result.review_presence,
+            "write_performed": route_result.write_performed,
+            "writer_lease_id": (
+                route_result.writer_lease_id if route_result.write_performed else ""
+            ),
+            "review_chain_binding": binding.to_dict() if binding is not None else None,
+            "completion_authoritative": False,
+            "proof_authoritative": False,
+            "raw_model_command_invoked": False,
+            "typed_packet_route_only": True,
+            "receipt_path": str(receipt_path),
+            "pending": pending,
+        }
+        self._record_event(PRODUCTION_PROVIDER_ROUTE_EVENT, production_event)
+        if binding is not None and route_result.write_performed:
+            self._record_event(
+                PRODUCTION_PROVIDER_ROUTE_BINDING_EVENT,
+                {
+                    **binding.to_dict(),
+                    "task_id": task.task_id,
+                    "attempt": int(attempt),
+                },
+            )
+        if pending:
+            self._record_event(
+                PRODUCTION_PROVIDER_ROUTE_PENDING_EVENT,
+                {
+                    "task_id": task.task_id,
+                    "attempt": int(attempt),
+                    "disposition": disposition.value,
+                    "disposition_reason": disposition_reason,
+                    "completion_authoritative": False,
+                    "pending": True,
+                },
+            )
+
+        return {
+            "route_result": route_result,
+            "event": production_event,
+            "receipt_path": receipt_path,
+            "receipt": receipt,
+            "disposition": disposition,
+            "disposition_reason": disposition_reason,
+            "binding": binding,
+            "pending": pending,
+            "returncode": (
+                0
+                if route_result.status is RouteStatus.SUCCEEDED
+                and route_result.provider_result_admitted
+                and (not apply or route_result.write_performed)
+                else 1
+            ),
+            "raw_model_command_invoked": False,
+            "typed_packet_route_only": True,
+            "model_invocation_observed": bool(
+                route_result.attempts
+                or route_result.implementation_proposal is not None
+            ),
+            "writer_lease_id": lease if route_result.write_performed else "",
+            "snapshot_id": current_snapshot,
+        }
+
+    def production_provider_receipt_allows_merge(
+        self,
+        receipt: Any,
+        *,
+        expected_task_id: str,
+        expected_snapshot_id: str,
+        current_snapshot_id: str = "",
+    ) -> bool:
+        """True only when a production receipt may bind apply/merge.
+
+        Absent, degraded, stale, and cross-task receipts remain pending.
+        """
+
+        disposition, _reason = evaluate_production_provider_receipt(
+            receipt,
+            expected_task_id=expected_task_id,
+            expected_snapshot_id=expected_snapshot_id,
+            current_snapshot_id=current_snapshot_id or expected_snapshot_id,
+        )
+        return disposition is ProductionReceiptDisposition.ADMITTED
+
+    def build_production_provider_route_evaluation_artifact(
+        self,
+        *,
+        route_payload: Mapping[str, Any] | None = None,
+        cases: Sequence[Mapping[str, Any]] = (),
+    ) -> dict[str, Any]:
+        """Build the SCA-615 evaluation record for the production provider route."""
+
+        route_result = None
+        binding = None
+        disposition = None
+        if isinstance(route_payload, Mapping):
+            disposition = route_payload.get("disposition")
+            raw_binding = route_payload.get("review_chain_binding")
+            if isinstance(raw_binding, Mapping) and raw_binding:
+                try:
+                    binding = ProductionReviewChainBinding(
+                        receipt_id=str(raw_binding.get("receipt_id") or ""),
+                        task_id=str(raw_binding.get("task_id") or ""),
+                        packet_id=str(raw_binding.get("packet_id") or ""),
+                        packet_cid=str(raw_binding.get("packet_cid") or ""),
+                        snapshot_id=str(raw_binding.get("snapshot_id") or ""),
+                        review_chain_digest=str(
+                            raw_binding.get("review_chain_digest") or ""
+                        ),
+                        selected_proposal_digest=str(
+                            raw_binding.get("selected_proposal_digest") or ""
+                        ),
+                        implementation_proposal_digest=str(
+                            raw_binding.get("implementation_proposal_digest")
+                            or ""
+                        ),
+                        review_proposal_digest=str(
+                            raw_binding.get("review_proposal_digest") or ""
+                        ),
+                        writer_lease_id=str(
+                            raw_binding.get("writer_lease_id") or ""
+                        ),
+                        write_performed=bool(
+                            raw_binding.get("write_performed")
+                        ),
+                        review_presence=str(
+                            raw_binding.get("review_presence") or ""
+                        ),
+                        provider_result_admitted=bool(
+                            raw_binding.get("provider_result_admitted")
+                        ),
+                        implementation_commit=str(
+                            raw_binding.get("implementation_commit") or ""
+                        ),
+                        merge_commit=str(raw_binding.get("merge_commit") or ""),
+                        disposition=str(
+                            raw_binding.get("disposition")
+                            or ProductionReceiptDisposition.ADMITTED.value
+                        ),
+                    )
+                except TypeError:
+                    binding = None
+        return build_production_provider_route_evaluation(
+            route_result=route_result,
+            binding=binding,
+            receipt_disposition=disposition,
+            deterministic_only_model_calls=0,
+            raw_model_command_invoked=False,
+            corpus_exposed_to_provider=False,
+            cases=cases,
+        )
+
     def _run_validation_commands(
         self,
         workspace_path: Path,
@@ -22251,6 +22974,15 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             raise RuntimeError(
                 f"{declared_provider} task requires a supervisor-owned typed "
                 "local operation; model dispatch is forbidden"
+            )
+        # SCA-615: production model-assisted work must not construct a raw
+        # model CLI command.  The typed packet route is the sole production
+        # implement/review path.
+        if task is not None and self._production_provider_route_enabled(task):
+            raise RuntimeError(
+                "production model-assisted tasks invoke only the typed packet "
+                f"route ({PRODUCTION_PROVIDER_ROUTE_INTERFACE}); raw model "
+                f"command is forbidden ({ProviderReason.RAW_MODEL_COMMAND_FORBIDDEN.value})"
             )
         if self.implementation_command and not declared_provider:
             return shlex.split(self.implementation_command)
