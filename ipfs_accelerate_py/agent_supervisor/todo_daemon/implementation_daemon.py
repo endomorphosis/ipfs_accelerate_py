@@ -22069,6 +22069,16 @@ def main(argv: list[str] | None = None) -> None:
         validation_resource_budget=args.validation_resource_budget,
         maintenance_interval_seconds=args.maintenance_interval_seconds,
     )
+    handlers_installed = threading.current_thread() is threading.main_thread()
+    previous_term: Any = None
+    previous_int: Any = None
+
+    def request_stop(signum: int, _frame: object) -> None:
+        raise SystemExit(128 + signum)
+
+    if handlers_installed:
+        previous_term = signal.signal(signal.SIGTERM, request_stop)
+        previous_int = signal.signal(signal.SIGINT, request_stop)
     try:
         if args.clear_protected_path_incident:
             result = daemon.clear_implementation_protected_path_incident(
@@ -22089,7 +22099,12 @@ def main(argv: list[str] | None = None) -> None:
                 break
             daemon.wait_for_wake(timeout=args.interval)
     finally:
-        daemon.close_event_runtime()
+        try:
+            daemon.close_event_runtime()
+        finally:
+            if handlers_installed:
+                signal.signal(signal.SIGTERM, previous_term)
+                signal.signal(signal.SIGINT, previous_int)
 
 
 if __name__ == "__main__":
