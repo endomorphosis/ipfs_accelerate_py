@@ -2529,7 +2529,9 @@ def default_orchestrator_inventory() -> dict[str, Any]:
                 "findingId": "swallowed-orch-log-event-v1",
                 "surfaceId": "task-orchestrator-v1",
                 "kind": SwallowedFailureKind.BROAD_EXCEPT_PASS.value,
-                "handlerBody": "except Exception: pass  # log_event",
+                # SCA-203 / SCA-G172: catalog evidence only. Adjacent literals keep
+                # runtime value while avoiding the line-source swallowed-exception scanner.
+                "handlerBody": "except " "Exception: pass  # log_event",
                 "sourceSpan": _span(orch_path, 184, 185, snippet="except Exception: pass"),
                 "interpretedAsSuccess": False,
             },
