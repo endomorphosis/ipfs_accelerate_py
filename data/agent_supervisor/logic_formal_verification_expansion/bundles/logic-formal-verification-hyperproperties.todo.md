@@ -1,0 +1,135 @@
+# Objective Bundle: logic-formal-verification/hyperproperties
+
+Source todo: docs/architecture/logic_formal_verification_expansion.todo.md
+Purpose: bundle objective-generated tasks so parallel daemons can work one lane at a time.
+Conflict policy: keep edits inside this bundle when possible; use the LLM merge resolver for semantic conflicts.
+
+## LFV-017 Close objective gap: Add hyperproperty and information-flow semantics
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P1
+- Track: semantics
+- Depends on: LFV-005, LFV-009, LFV-010
+- Outputs: ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/hyperproperties.py, ipfs_datasets_py/tests/unit/logic/software_verification/test_hyperproperties.py
+- Validation: python -m pytest ipfs_datasets_py/tests/unit/logic/software_verification/test_hyperproperties.py -q
+- Evidence inputs: data/agent_supervisor/discovery
+- Discovery evidence: /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/logic_formal_verification_expansion/discovery/2026-07-29-lfv-017-objective-gap-71138bd789ee.md
+- Bundle: logic-formal-verification/hyperproperties
+- Bundle shard: data/agent_supervisor/logic_formal_verification_expansion/bundles/logic-formal-verification-hyperproperties.todo.md
+- Bundle strategy: explicit
+- Graph parents: LFV-G000
+- Graph depth: 1
+- Objective heap index: 16
+- Parallel lane: logic-formal-verification/hyperproperties
+- Conflict policy: Own hyperproperty semantics and tests; do not execute HyperLTL tools or edit the supervisor verifier.
+- Predicted files: ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/hyperproperties.py, ipfs_datasets_py/tests/unit/logic/software_verification/test_hyperproperties.py
+- Changed paths:
+- AST symbols: ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/hyperproperties.py, ipfs_datasets_py/tests/unit/logic/software_verification/test_hyperproperties.py
+- Interfaces: HyperpropertyIR@1
+- Submodules: ipfs_datasets_py
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: LFV-G030
+- Completion authority: local
+- External authority blockers:
+- Canonical task key: task/v1/e41cabf904e9c291f9b0bca465fdbd88d0ea116154c67ebe99fee3f94869c94a
+- Canonical task CID: baguqeera4qokx6ie5hbjd6nqxssgl7n5rdiouelbktdh5puz73r7ssdjzffa
+- Semantic identity: objective-evidence-obligation/v1/593f71c4484356740518563726997a9c27e55a649025f239618cb71fe3b0394c
+- Acceptance subset: Trace cardinality and quantifier order are canonical, observations and declassification are explicit, self-composition declares finite bounds, a bounded witness or clean sample cannot become universal proof.
+- Preconditions: objective goal LFV-G030 is schedulable
+- Effects: satisfy evidence requirement: ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/hyperproperties.py, satisfy evidence requirement: ipfs_datasets_py/tests/unit/logic/software_verification/test_hyperproperties.py
+- Evidence subset: ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/hyperproperties.py, ipfs_datasets_py/tests/unit/logic/software_verification/test_hyperproperties.py
+- Resource class: cpu-medium
+- Token class: medium
+- Estimated tokens: 0
+- Resources: cpu-medium
+- Merge fate: objective/LFV-G030
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/593f71c4484356740518563726997a9c27e55a649025f239618cb71fe3b0394c
+- Missing evidence: ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/hyperproperties.py, ipfs_datasets_py/tests/unit/logic/software_verification/test_hyperproperties.py
+- Embedding query: Represent trace variables, quantifier alternation, observations, low/high labels, declassification, relational pre/postconditions, noninterference, and witness trace bundles.
+- AST query: ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/hyperproperties.py, ipfs_datasets_py/tests/unit/logic/software_verification/test_hyperproperties.py
+- Surplus group: objective/LFV-G030
+- Merge key: bd5d06fee304bb25
+- Merge family: objective/LFV-G030
+- Merge role: aggregate
+- Work item count: 2
+- Work scope: goal_subgoal_multi_evidence_batch
+- Goal packet:
+- Goal packet role:
+- Goal packet goals:
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: aggregate
+- Todo vector key: 30c4eae6c747de87
+- Acceptance: Objective scan filed this gap for LFV-G030. Use evidence in /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/logic_formal_verification_expansion/discovery/2026-07-29-lfv-017-objective-gap-71138bd789ee.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/hyperproperties.py, ipfs_datasets_py/tests/unit/logic/software_verification/test_hyperproperties.py), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
+
+## LFV-026 Close objective gap: Implement HyperLTL, AutoHyper, and MCHyper backends
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P1
+- Track: prover
+- Depends on: LFV-006, LFV-007, LFV-017
+- Outputs: ipfs_datasets_py/ipfs_datasets_py/logic/backends/hyperproperties/adapters.py, ipfs_datasets_py/tests/integration/logic/backends/test_hyperproperty_backends.py
+- Validation: python -m pytest ipfs_datasets_py/tests/integration/logic/backends/test_hyperproperty_backends.py -q
+- Evidence inputs: data/agent_supervisor/discovery
+- Discovery evidence: /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/logic_formal_verification_expansion/discovery/2026-07-29-lfv-026-objective-gap-5bf9924e10e6.md
+- Bundle: logic-formal-verification/hyperproperties
+- Bundle shard: data/agent_supervisor/logic_formal_verification_expansion/bundles/logic-formal-verification-hyperproperties.todo.md
+- Bundle strategy: explicit
+- Graph parents: LFV-G000
+- Graph depth: 1
+- Objective heap index: 25
+- Parallel lane: logic-formal-verification/hyperproperties
+- Conflict policy: Own the new hyperproperty adapter/test; preserve the supervisor fallback and do not represent it as external-tool proof.
+- Predicted files: ipfs_datasets_py/ipfs_datasets_py/logic/backends/hyperproperties/adapters.py, ipfs_datasets_py/tests/integration/logic/backends/test_hyperproperty_backends.py
+- Changed paths:
+- AST symbols: ipfs_datasets_py/ipfs_datasets_py/logic/backends/hyperproperties/adapters.py, ipfs_datasets_py/tests/integration/logic/backends/test_hyperproperty_backends.py
+- Interfaces: HyperLTLBackend@1, AutoHyperBackend@1, MCHyperBackend@1
+- Submodules: ipfs_datasets_py
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: LFV-G048
+- Completion authority: local
+- External authority blockers:
+- Canonical task key: task/v1/f38c32676611fc834d98b2a77b1b1672309f335297d7724c0240b6560286729f
+- Canonical task CID: baguqeera6ogdez3gch6igtmywktxwgywoiyj6m2ss7lxetacic3fmaugokpq
+- Semantic identity: objective-evidence-obligation/v1/cbd90ed7902b015ab785a3236decc7d28b61087986d837c1d53c68afdbd039bd
+- Acceptance subset: Each engine has separate discovery/capabilities, quantifier order and observation maps survive translation, counterexample trace tuples replay, fallback bounds are explicit, absent tools and unsupported alternation return non-success.
+- Preconditions: objective goal LFV-G048 is schedulable
+- Effects: satisfy evidence requirement: ipfs_datasets_py/ipfs_datasets_py/logic/backends/hyperproperties/adapters.py, satisfy evidence requirement: ipfs_datasets_py/tests/integration/logic/backends/test_hyperproperty_backends.py
+- Evidence subset: ipfs_datasets_py/ipfs_datasets_py/logic/backends/hyperproperties/adapters.py, ipfs_datasets_py/tests/integration/logic/backends/test_hyperproperty_backends.py
+- Resource class: cpu-proof-solver
+- Token class: medium
+- Estimated tokens: 0
+- Resources: cpu-proof-solver
+- Merge fate: objective/LFV-G048
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/cbd90ed7902b015ab785a3236decc7d28b61087986d837c1d53c68afdbd039bd
+- Missing evidence: ipfs_datasets_py/ipfs_datasets_py/logic/backends/hyperproperties/adapters.py, ipfs_datasets_py/tests/integration/logic/backends/test_hyperproperty_backends.py
+- Embedding query: Add real external execution paths and typed witness bundles for HyperLTL-family tools while retaining bounded self-composition as a non-authoritative fallback.
+- AST query: ipfs_datasets_py/ipfs_datasets_py/logic/backends/hyperproperties/adapters.py, ipfs_datasets_py/tests/integration/logic/backends/test_hyperproperty_backends.py
+- Surplus group: objective/LFV-G048
+- Merge key: 3770e9585c8aec75
+- Merge family: objective/LFV-G048
+- Merge role: aggregate
+- Work item count: 2
+- Work scope: goal_subgoal_multi_evidence_batch
+- Goal packet:
+- Goal packet role:
+- Goal packet goals:
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: aggregate
+- Todo vector key: dc71e98b4f0ff97c
+- Acceptance: Objective scan filed this gap for LFV-G048. Use evidence in /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/logic_formal_verification_expansion/discovery/2026-07-29-lfv-026-objective-gap-5bf9924e10e6.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (ipfs_datasets_py/ipfs_datasets_py/logic/backends/hyperproperties/adapters.py, ipfs_datasets_py/tests/integration/logic/backends/test_hyperproperty_backends.py), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
