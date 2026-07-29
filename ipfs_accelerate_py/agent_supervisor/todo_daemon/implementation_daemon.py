@@ -53,11 +53,16 @@ from .core import process_args as _shared_process_args
 from .engine import atomic_write_json as _shared_atomic_write_json
 from ..merge.checkout_lock import (
     BACKLOG_REFINERY_AUTHOR_EMAIL,
+    DEFAULT_CHECKOUT_MAINTENANCE_MAX_HOLD_SECONDS,
     GENERATED_PROTECTED_BOARD_COMMIT_MARKER,
     PROTECTED_PATH_MAINTENANCE_LOCK_NAME,
+    CheckoutMaintenanceLease,
     checkout_lock_metadata,
     checkout_mutation_lock_path,
     checkout_repository_id,
+    crash_fence_reconciliation_lock_path,
+    durable_input_generation,
+    generations_match,
     merge_target_queue_dir,
     serialized_lock_update,
 )
@@ -402,9 +407,460 @@ def implementation_task_claim_protected_fence_paths(
     return tuple(present)
 
 
+class CrashFenceReconciler:
+    """Serialize crash-fence absence proofs with scans outside the exclusive lease.
+
+    Protocol:
+    1. If repository-global maintenance is active and a fence exists, defer
+       without inspecting or clearing the snapshot/incident.
+    2. Scan immutable fence inputs and protected-path identities outside any
+       exclusive critical section.
+    3. Enter a short :class:`CheckoutMaintenanceLease` only to revalidate those
+       inputs and apply a fenced mutation (clear or latch).
+    """
+
+    def __init__(
+        self,
+        daemon: "PortalImplementationDaemon",
+        *,
+        max_hold_seconds: float = DEFAULT_CHECKOUT_MAINTENANCE_MAX_HOLD_SECONDS,
+    ) -> None:
+        self._daemon = daemon
+        self.max_hold_seconds = float(max_hold_seconds)
+
+    def reconcile(self) -> dict[str, Any]:
+        daemon = self._daemon
+        incident_path = daemon._implementation_protected_incident_path()
+        active_path = daemon._implementation_protected_active_snapshot_path()
+        fence_present = False
+        try:
+            fence_present = incident_path.exists() or active_path.exists()
+        except OSError:
+            fence_present = True
+
+        maintenance_claim = daemon._active_protected_path_maintenance_claim()
+        if maintenance_claim is not None and fence_present:
+            result = {
+                "blocked": True,
+                "deferred": True,
+                "reason": "crash_reconciliation_deferred_maintenance_active",
+                "maintenance_owner_pid": int(maintenance_claim.get("pid") or 0),
+                "maintenance_owner_state_dir": str(
+                    maintenance_claim.get("state_dir") or ""
+                ),
+                "scan_outside_lease": True,
+                "critical_section_entered": False,
+            }
+            daemon._record_event(
+                "implementation_protected_path_reconciliation_deferred",
+                result,
+            )
+            return result
+
+        # Phase 1: expensive inspection stays outside the exclusive lease.
+        plan = self._scan_outside_lease(
+            incident_path=incident_path,
+            active_path=active_path,
+        )
+        if plan.get("action") in {None, "return"}:
+            result = dict(plan.get("result") or {"blocked": False, "reason": "no_active_snapshot"})
+            result.setdefault("scan_outside_lease", True)
+            result.setdefault("critical_section_entered", False)
+            return result
+
+        # Phase 2: short exclusive critical section with revalidation.
+        lease = CheckoutMaintenanceLease(
+            crash_fence_reconciliation_lock_path(daemon.repo_root),
+            metadata={
+                "kind": "crash-fence-reconciliation",
+                "lease_role": "crash_fence_reconciler",
+                "repo_root": str(daemon.repo_root.resolve()),
+                "state_dir": str(daemon.state_path.parent.resolve()),
+                "pid": os.getpid(),
+                "owner_script": Path(sys.argv[0]).name,
+            },
+            max_hold_seconds=self.max_hold_seconds,
+        )
+        try:
+            with lease.exclusive_section(
+                owner_is_active=lambda metadata: daemon._lock_owner_is_active(
+                    dict(metadata),
+                    expected_kind="crash-fence-reconciliation",
+                )
+            ) as timing:
+                result = self._apply_under_lease(
+                    plan,
+                    incident_path=incident_path,
+                    active_path=active_path,
+                )
+            # Timing is finalized in exclusive_section's finally; attach the
+            # completed proof without changing historical top-level keys.
+            proof = {
+                "scan_outside_lease": True,
+                "critical_section_entered": True,
+                "critical_section": dict(timing),
+                "lease_hold_bounded": bool(timing.get("within_bound")),
+                "max_hold_seconds": float(
+                    timing.get("max_hold_seconds") or self.max_hold_seconds
+                ),
+            }
+            result["reconciliation_proof"] = proof
+            return result
+        except RuntimeError as exc:
+            reason = str(exc)
+            if reason in {
+                "checkout_maintenance_lease_active",
+                "checkout_maintenance_lease_unavailable",
+                "checkout_maintenance_lease_malformed",
+                "checkout_maintenance_lease_cleanup_failed",
+            } or reason.startswith("checkout maintenance lease hold exceeded"):
+                result = {
+                    "blocked": True,
+                    "deferred": True,
+                    "reason": "crash_reconciliation_serialized",
+                    "lease_reason": reason,
+                    "scan_outside_lease": True,
+                    "critical_section_entered": False,
+                }
+                daemon._record_event(
+                    "implementation_protected_path_reconciliation_serialized",
+                    result,
+                )
+                return result
+            raise
+
+    def _scan_outside_lease(
+        self,
+        *,
+        incident_path: Path,
+        active_path: Path,
+    ) -> dict[str, Any]:
+        daemon = self._daemon
+        input_generations = {
+            "incident": durable_input_generation(incident_path),
+            "active_snapshot": durable_input_generation(active_path),
+        }
+
+        if incident_path.exists():
+            incident = load_json_dict(incident_path)
+            if isinstance(incident, Mapping):
+                auto_plan = daemon._plan_auto_clear_ephemeral_protected_path_deletions(
+                    incident
+                )
+                if auto_plan is not None:
+                    return {
+                        "action": "auto_clear",
+                        "input_generations": input_generations,
+                        "auto_plan": auto_plan,
+                        "incident": dict(incident),
+                    }
+            result = {
+                "blocked": True,
+                "reason": "implementation_protected_path_incident_latched",
+                "incident_path": str(incident_path),
+                "incident": incident or {"state": "malformed"},
+            }
+            daemon._record_event(
+                "implementation_protected_path_incident_blocked",
+                result,
+            )
+            return {"action": "return", "result": result}
+
+        if not active_path.exists():
+            return {
+                "action": "return",
+                "result": {"blocked": False, "reason": "no_active_snapshot"},
+            }
+
+        active = load_json_dict(active_path)
+        if active is None:
+            return {
+                "action": "latch_malformed",
+                "input_generations": input_generations,
+                "payload": {
+                    "reason": "implementation_protected_path_snapshot_malformed",
+                    "active_snapshot_path": str(active_path),
+                },
+            }
+
+        task_id = str(active.get("task_id") or "")
+        try:
+            attempt = int(active.get("attempt") or 0)
+        except (TypeError, ValueError):
+            attempt = 0
+        workspace_value = str(active.get("workspace_path") or "")
+        snapshot = active.get("snapshot")
+        missing_ephemeral_workspace = False
+        try:
+            workspace_path = Path(workspace_value).resolve(strict=False)
+            workspace_exists = workspace_path.exists()
+            missing_ephemeral_workspace = bool(
+                active.get("ephemeral_worktree") is True
+                and not workspace_exists
+                and isinstance(snapshot, Mapping)
+                and daemon._missing_ephemeral_workspace_shared_snapshot(
+                    workspace_path,
+                    snapshot,
+                )
+                is not None
+            )
+            workspace_allowed = (
+                workspace_exists or missing_ephemeral_workspace
+            ) and (
+                workspace_path == daemon.repo_root.resolve()
+                or daemon._path_is_under(
+                    workspace_path, daemon.worktree_root.resolve()
+                )
+            )
+        except (OSError, RuntimeError):
+            workspace_path = Path(workspace_value or ".")
+            workspace_allowed = False
+        if (
+            not task_id
+            or attempt <= 0
+            or not workspace_allowed
+            or not isinstance(snapshot, Mapping)
+        ):
+            return {
+                "action": "latch_invalid",
+                "input_generations": input_generations,
+                "payload": {
+                    "reason": "implementation_protected_path_snapshot_invalid",
+                    "task_id": task_id,
+                    "attempt": attempt,
+                    "workspace_path": workspace_value,
+                    "active_snapshot_path": str(active_path),
+                },
+            }
+
+        # Expensive protected-path scan remains outside the exclusive lease.
+        current_snapshot = daemon._implementation_protected_path_snapshot(
+            workspace_path
+        )
+        if daemon._implementation_protected_snapshot_device_renumbered(
+            snapshot,
+            current_snapshot,
+        ):
+            return {
+                "action": "clear_device_renumbered",
+                "input_generations": input_generations,
+                "task_id": task_id,
+                "attempt": attempt,
+                "workspace_path": str(workspace_path),
+            }
+
+        # Missing ephemeral workspaces re-root comparison onto the shared
+        # checkout; scan that root here so the exclusive section never does.
+        violation_after: Mapping[str, Mapping[str, Any]] | None = current_snapshot
+        if missing_ephemeral_workspace:
+            violation_after = daemon._implementation_protected_path_snapshot(
+                daemon.repo_root
+            )
+        violation = daemon._implementation_protected_path_violation(
+            task_id=task_id,
+            attempt=attempt,
+            workspace_path=workspace_path,
+            before=snapshot,
+            after=violation_after,
+            latch=False,
+        )
+        if violation:
+            return {
+                "action": "latch_violation",
+                "input_generations": input_generations,
+                "payload": violation,
+            }
+
+        reconciliation_reason = (
+            "crash_reconciliation_ephemeral_workspace_missing"
+            if missing_ephemeral_workspace
+            else "crash_reconciliation_unchanged"
+        )
+        return {
+            "action": "clear_unchanged",
+            "input_generations": input_generations,
+            "task_id": task_id,
+            "attempt": attempt,
+            "workspace_path": str(workspace_path),
+            "reason": reconciliation_reason,
+        }
+
+    def _revalidate_inputs(
+        self,
+        *,
+        plan: Mapping[str, Any],
+        incident_path: Path,
+        active_path: Path,
+    ) -> dict[str, Any] | None:
+        """Return a deferred result when immutable scan inputs drifted."""
+
+        daemon = self._daemon
+        maintenance_claim = daemon._active_protected_path_maintenance_claim()
+        if maintenance_claim is not None:
+            return {
+                "blocked": True,
+                "deferred": True,
+                "reason": "crash_reconciliation_deferred_maintenance_active",
+                "maintenance_owner_pid": int(maintenance_claim.get("pid") or 0),
+                "maintenance_owner_state_dir": str(
+                    maintenance_claim.get("state_dir") or ""
+                ),
+                "scan_outside_lease": True,
+                "critical_section_entered": True,
+                "revalidation": "maintenance_became_active",
+            }
+        expected = plan.get("input_generations")
+        if not isinstance(expected, Mapping):
+            return {
+                "blocked": True,
+                "deferred": True,
+                "reason": "crash_reconciliation_input_generation_missing",
+                "scan_outside_lease": True,
+                "critical_section_entered": True,
+            }
+        observed = {
+            "incident": durable_input_generation(incident_path),
+            "active_snapshot": durable_input_generation(active_path),
+        }
+        if not generations_match(
+            expected.get("incident"), observed["incident"]
+        ) or not generations_match(
+            expected.get("active_snapshot"), observed["active_snapshot"]
+        ):
+            return {
+                "blocked": True,
+                "deferred": True,
+                "reason": "crash_reconciliation_input_changed",
+                "scan_outside_lease": True,
+                "critical_section_entered": True,
+                "expected_generations": dict(expected),
+                "observed_generations": observed,
+            }
+        return None
+
+    def _apply_under_lease(
+        self,
+        plan: Mapping[str, Any],
+        *,
+        incident_path: Path,
+        active_path: Path,
+    ) -> dict[str, Any]:
+        daemon = self._daemon
+        deferred = self._revalidate_inputs(
+            plan=plan,
+            incident_path=incident_path,
+            active_path=active_path,
+        )
+        if deferred is not None:
+            return dict(deferred)
+
+        action = str(plan.get("action") or "")
+        if action == "auto_clear":
+            auto_plan = plan.get("auto_plan")
+            if not isinstance(auto_plan, Mapping):
+                return {
+                    "blocked": True,
+                    "reason": "implementation_protected_path_incident_latched",
+                    "incident_path": str(incident_path),
+                }
+            return daemon._apply_auto_clear_protected_path_plan(
+                auto_plan,
+                incident_path=incident_path,
+                active_path=active_path,
+            )
+        if action == "latch_malformed":
+            payload = dict(plan.get("payload") or {})
+            incident = daemon._latch_implementation_protected_incident(payload)
+            daemon._record_event(
+                "implementation_protected_path_snapshot_malformed",
+                incident,
+            )
+            return {
+                "blocked": True,
+                "reason": "implementation_protected_path_snapshot_malformed",
+                "incident": incident,
+            }
+        if action == "latch_invalid":
+            payload = dict(plan.get("payload") or {})
+            incident = daemon._latch_implementation_protected_incident(payload)
+            daemon._record_event(
+                "implementation_protected_path_snapshot_invalid",
+                incident,
+            )
+            return {
+                "blocked": True,
+                "reason": "implementation_protected_path_snapshot_invalid",
+                "incident": incident,
+            }
+        if action == "latch_violation":
+            payload = dict(plan.get("payload") or {})
+            incident = daemon._latch_implementation_protected_incident(payload)
+            daemon._record_event(
+                "implementation_protected_path_mutated",
+                payload,
+            )
+            return {
+                "blocked": True,
+                "reason": "implementation_protected_path_mutated",
+                "incident": incident,
+            }
+        if action == "clear_device_renumbered":
+            task_id = str(plan.get("task_id") or "")
+            try:
+                attempt = int(plan.get("attempt") or 0)
+            except (TypeError, ValueError):
+                attempt = 0
+            daemon._clear_implementation_protected_snapshot(
+                task_id=task_id,
+                attempt=attempt,
+                reason="crash_reconciliation_device_renumbered",
+            )
+            result = {
+                "blocked": False,
+                "reason": "crash_reconciliation_device_renumbered",
+                "task_id": task_id,
+                "attempt": attempt,
+            }
+            daemon._record_event(
+                "implementation_protected_path_snapshot_reconciled",
+                result,
+            )
+            return result
+        if action == "clear_unchanged":
+            task_id = str(plan.get("task_id") or "")
+            try:
+                attempt = int(plan.get("attempt") or 0)
+            except (TypeError, ValueError):
+                attempt = 0
+            reason = str(plan.get("reason") or "crash_reconciliation_unchanged")
+            daemon._clear_implementation_protected_snapshot(
+                task_id=task_id,
+                attempt=attempt,
+                reason=reason,
+            )
+            result = {
+                "blocked": False,
+                "reason": reason,
+                "task_id": task_id,
+                "attempt": attempt,
+                "workspace_path": str(plan.get("workspace_path") or ""),
+            }
+            daemon._record_event(
+                "implementation_protected_path_snapshot_reconciled",
+                result,
+            )
+            return result
+        return {
+            "blocked": True,
+            "reason": "crash_reconciliation_unknown_action",
+            "action": action,
+        }
+
+
 EVENT_DRIVEN_RUNTIME_REQUIREMENT_ID = (
     "asi-117:event-driven-delta-checkpoint-runtime"
 )
+
 RUNTIME_CHECKPOINT_SCHEMA = (
     "ipfs_accelerate_py.agent_supervisor.event-driven-runtime-checkpoint@1"
 )
@@ -4106,16 +4562,25 @@ class PortalImplementationDaemon:
                 saw_device_change = True
         return saw_device_change
 
-    def _implementation_protected_path_violation(
+    def _implementation_protected_path_mutations(
         self,
         *,
-        task: PortalTask | None = None,
-        task_id: str = "",
-        attempt: int,
         workspace_path: Path,
         before: Mapping[str, Mapping[str, Any]],
-    ) -> dict[str, Any]:
-        """Fail closed when any protected identity changes after agent execution."""
+        after: Mapping[str, Mapping[str, Any]] | None = None,
+    ) -> tuple[
+        list[dict[str, Any]],
+        Mapping[str, Mapping[str, Any]],
+        Mapping[str, Mapping[str, Any]],
+        Mapping[str, Mapping[str, Any]] | None,
+    ]:
+        """Compare protected identities without latching an incident.
+
+        Returns ``(mutations, comparison_before, comparison_after,
+        missing_ephemeral_before)``. Expensive path scans are the caller's
+        responsibility when ``after`` is supplied so crash-fence reconciliation
+        can keep those scans outside the exclusive lease.
+        """
 
         missing_ephemeral_before = (
             self._missing_ephemeral_workspace_shared_snapshot(
@@ -4127,11 +4592,15 @@ class PortalImplementationDaemon:
         comparison_workspace = (
             self.repo_root if missing_ephemeral_before is not None else workspace_path
         )
-        after = self._implementation_protected_path_snapshot(comparison_workspace)
+        comparison_after: Mapping[str, Mapping[str, Any]] = (
+            after
+            if after is not None
+            else self._implementation_protected_path_snapshot(comparison_workspace)
+        )
         mutations: list[dict[str, Any]] = []
-        for scope in sorted(set(comparison_before) | set(after)):
+        for scope in sorted(set(comparison_before) | set(comparison_after)):
             before_scope = comparison_before.get(scope) or {}
-            after_scope = after.get(scope) or {}
+            after_scope = comparison_after.get(scope) or {}
             before_paths = before_scope.get("paths")
             after_paths = after_scope.get("paths")
             if not isinstance(before_paths, Mapping):
@@ -4165,6 +4634,36 @@ class PortalImplementationDaemon:
                         "after": normalized_after,
                     }
                 )
+        return (
+            mutations,
+            comparison_before,
+            comparison_after,
+            missing_ephemeral_before,
+        )
+
+    def _implementation_protected_path_violation(
+        self,
+        *,
+        task: PortalTask | None = None,
+        task_id: str = "",
+        attempt: int,
+        workspace_path: Path,
+        before: Mapping[str, Mapping[str, Any]],
+        after: Mapping[str, Mapping[str, Any]] | None = None,
+        latch: bool = True,
+    ) -> dict[str, Any]:
+        """Fail closed when any protected identity changes after agent execution."""
+
+        (
+            mutations,
+            comparison_before,
+            comparison_after,
+            missing_ephemeral_before,
+        ) = self._implementation_protected_path_mutations(
+            workspace_path=workspace_path,
+            before=before,
+            after=after,
+        )
         if not mutations:
             if missing_ephemeral_before is not None:
                 self._record_event(
@@ -4181,7 +4680,7 @@ class PortalImplementationDaemon:
         concurrent_update = self._authorized_concurrent_protected_path_update(
             workspace_path=workspace_path,
             before=comparison_before,
-            after=after,
+            after=comparison_after,
             mutations=mutations,
         )
         if concurrent_update:
@@ -4206,8 +4705,9 @@ class PortalImplementationDaemon:
             "mutations": mutations,
             "shared_checkout_restored": False,
         }
-        self._latch_implementation_protected_incident(payload)
-        self._record_event("implementation_protected_path_mutated", payload)
+        if latch:
+            self._latch_implementation_protected_incident(payload)
+            self._record_event("implementation_protected_path_mutated", payload)
         return payload
 
     def _require_implementation_protected_snapshot(
@@ -4399,28 +4899,14 @@ class PortalImplementationDaemon:
 
         return None
 
-    def _auto_clear_ephemeral_protected_path_deletions(
+    def _plan_auto_clear_ephemeral_protected_path_deletions(
         self,
         incident: Mapping[str, Any],
-        *,
-        incident_path: Path,
-        active_path: Path,
     ) -> dict[str, Any] | None:
-        """Auto-clear latched protected-path stalls that are known-benign thrash.
+        """Plan an auto-clear without mutating fence files.
 
-        Safe conditions (all required):
-        - incident is the standard clearable schema and operator-gated
-        - every mutation is independently classified as auto-clearable
-        - shared repo checkout still has each touched path as a regular file
-        - no implementation runner process still owns the workspace path
-        - workspace-scoped deletions/edits are not against the shared repo root
-          as a pseudo-workspace (must be under the managed worktree root, or the
-          workspace may already be gone)
-
-        Auto-clearable mutation classes:
-        - workspace deletions of configured protected paths
-        - content-preserving ``identity_changed`` (nlink/ctime/inode only)
-        - ``content_changed`` on ``*.todo.md`` only (supervisor-owned board)
+        Expensive process-table and path presence checks run here so the
+        exclusive crash-fence lease only revalidates and applies.
         """
 
         if (
@@ -4544,11 +5030,10 @@ class PortalImplementationDaemon:
         else:
             reason = "protected_path_stall_auto_cleared"
 
-        receipt = {
-            "schema": "implementation-protected-path-auto-clearance-v1",
-            "clearance_id": clearance_id,
-            "cleared_at": utc_now(),
+        return {
+            "action": "auto_clear",
             "reason": reason,
+            "clearance_id": clearance_id,
             "task_id": str(incident.get("task_id") or ""),
             "attempt": incident.get("attempt"),
             "workspace_path": str(workspace),
@@ -4556,8 +5041,33 @@ class PortalImplementationDaemon:
             "scopes": sorted(scopes),
             "changes": sorted(changes),
             "class_codes": sorted(class_codes),
-            "shared_protected_paths_present": sorted(set(mutated_paths)),
             "incident_latched_at": str(incident.get("latched_at") or ""),
+        }
+
+    def _apply_auto_clear_protected_path_plan(
+        self,
+        plan: Mapping[str, Any],
+        *,
+        incident_path: Path,
+        active_path: Path,
+    ) -> dict[str, Any]:
+        """Apply a previously planned auto-clear under the exclusive fence."""
+
+        clearance_id = str(plan.get("clearance_id") or "")
+        receipt = {
+            "schema": "implementation-protected-path-auto-clearance-v1",
+            "clearance_id": clearance_id,
+            "cleared_at": utc_now(),
+            "reason": str(plan.get("reason") or ""),
+            "task_id": str(plan.get("task_id") or ""),
+            "attempt": plan.get("attempt"),
+            "workspace_path": str(plan.get("workspace_path") or ""),
+            "mutated_paths": list(plan.get("mutated_paths") or []),
+            "scopes": list(plan.get("scopes") or []),
+            "changes": list(plan.get("changes") or []),
+            "class_codes": list(plan.get("class_codes") or []),
+            "shared_protected_paths_present": list(plan.get("mutated_paths") or []),
+            "incident_latched_at": str(plan.get("incident_latched_at") or ""),
         }
         receipt_path = (
             incident_path.parent
@@ -4593,166 +5103,43 @@ class PortalImplementationDaemon:
         )
         return result
 
+    def _auto_clear_ephemeral_protected_path_deletions(
+        self,
+        incident: Mapping[str, Any],
+        *,
+        incident_path: Path,
+        active_path: Path,
+    ) -> dict[str, Any] | None:
+        """Auto-clear latched protected-path stalls that are known-benign thrash.
+
+        Safe conditions (all required):
+        - incident is the standard clearable schema and operator-gated
+        - every mutation is independently classified as auto-clearable
+        - shared repo checkout still has each touched path as a regular file
+        - no implementation runner process still owns the workspace path
+        - workspace-scoped deletions/edits are not against the shared repo root
+          as a pseudo-workspace (must be under the managed worktree root, or the
+          workspace may already be gone)
+
+        Auto-clearable mutation classes:
+        - workspace deletions of configured protected paths
+        - content-preserving ``identity_changed`` (nlink/ctime/inode only)
+        - ``content_changed`` on ``*.todo.md`` only (supervisor-owned board)
+        """
+
+        plan = self._plan_auto_clear_ephemeral_protected_path_deletions(incident)
+        if plan is None:
+            return None
+        return self._apply_auto_clear_protected_path_plan(
+            plan,
+            incident_path=incident_path,
+            active_path=active_path,
+        )
+
     def _reconcile_implementation_protected_path_fence(self) -> dict[str, Any]:
         """Reconcile a crash-surviving snapshot before any queue consumption."""
 
-        incident_path = self._implementation_protected_incident_path()
-        if incident_path.exists():
-            incident = load_json_dict(incident_path)
-            if isinstance(incident, Mapping):
-                auto = self._auto_clear_ephemeral_protected_path_deletions(
-                    incident,
-                    incident_path=incident_path,
-                    active_path=self._implementation_protected_active_snapshot_path(),
-                )
-                if auto and auto.get("cleared"):
-                    return auto
-            result = {
-                "blocked": True,
-                "reason": "implementation_protected_path_incident_latched",
-                "incident_path": str(incident_path),
-                "incident": incident or {"state": "malformed"},
-            }
-            self._record_event(
-                "implementation_protected_path_incident_blocked",
-                result,
-            )
-            return result
-
-        active_path = self._implementation_protected_active_snapshot_path()
-        if not active_path.exists():
-            return {"blocked": False, "reason": "no_active_snapshot"}
-        active = load_json_dict(active_path)
-        if active is None:
-            incident = self._latch_implementation_protected_incident(
-                {
-                    "reason": "implementation_protected_path_snapshot_malformed",
-                    "active_snapshot_path": str(active_path),
-                }
-            )
-            self._record_event(
-                "implementation_protected_path_snapshot_malformed",
-                incident,
-            )
-            return {
-                "blocked": True,
-                "reason": "implementation_protected_path_snapshot_malformed",
-                "incident": incident,
-            }
-
-        task_id = str(active.get("task_id") or "")
-        try:
-            attempt = int(active.get("attempt") or 0)
-        except (TypeError, ValueError):
-            attempt = 0
-        workspace_value = str(active.get("workspace_path") or "")
-        snapshot = active.get("snapshot")
-        missing_ephemeral_workspace = False
-        try:
-            workspace_path = Path(workspace_value).resolve(strict=False)
-            workspace_exists = workspace_path.exists()
-            missing_ephemeral_workspace = bool(
-                active.get("ephemeral_worktree") is True
-                and not workspace_exists
-                and isinstance(snapshot, Mapping)
-                and self._missing_ephemeral_workspace_shared_snapshot(
-                    workspace_path,
-                    snapshot,
-                )
-                is not None
-            )
-            workspace_allowed = (
-                workspace_exists or missing_ephemeral_workspace
-            ) and (
-                workspace_path == self.repo_root.resolve()
-                or self._path_is_under(workspace_path, self.worktree_root.resolve())
-            )
-        except (OSError, RuntimeError):
-            workspace_path = Path(workspace_value or ".")
-            workspace_allowed = False
-        if (
-            not task_id
-            or attempt <= 0
-            or not workspace_allowed
-            or not isinstance(snapshot, Mapping)
-        ):
-            incident = self._latch_implementation_protected_incident(
-                {
-                    "reason": "implementation_protected_path_snapshot_invalid",
-                    "task_id": task_id,
-                    "attempt": attempt,
-                    "workspace_path": workspace_value,
-                    "active_snapshot_path": str(active_path),
-                }
-            )
-            self._record_event(
-                "implementation_protected_path_snapshot_invalid",
-                incident,
-            )
-            return {
-                "blocked": True,
-                "reason": "implementation_protected_path_snapshot_invalid",
-                "incident": incident,
-            }
-
-        current_snapshot = self._implementation_protected_path_snapshot(
-            workspace_path
-        )
-        if self._implementation_protected_snapshot_device_renumbered(
-            snapshot,
-            current_snapshot,
-        ):
-            self._clear_implementation_protected_snapshot(
-                task_id=task_id,
-                attempt=attempt,
-                reason="crash_reconciliation_device_renumbered",
-            )
-            result = {
-                "blocked": False,
-                "reason": "crash_reconciliation_device_renumbered",
-                "task_id": task_id,
-                "attempt": attempt,
-            }
-            self._record_event(
-                "implementation_protected_path_snapshot_reconciled",
-                result,
-            )
-            return result
-
-        violation = self._implementation_protected_path_violation(
-            task_id=task_id,
-            attempt=attempt,
-            workspace_path=workspace_path,
-            before=snapshot,
-        )
-        if violation:
-            return {
-                "blocked": True,
-                "reason": "implementation_protected_path_mutated",
-                "incident": violation,
-            }
-        reconciliation_reason = (
-            "crash_reconciliation_ephemeral_workspace_missing"
-            if missing_ephemeral_workspace
-            else "crash_reconciliation_unchanged"
-        )
-        self._clear_implementation_protected_snapshot(
-            task_id=task_id,
-            attempt=attempt,
-            reason=reconciliation_reason,
-        )
-        result = {
-            "blocked": False,
-            "reason": reconciliation_reason,
-            "task_id": task_id,
-            "attempt": attempt,
-            "workspace_path": str(workspace_path),
-        }
-        self._record_event(
-            "implementation_protected_path_snapshot_reconciled",
-            result,
-        )
-        return result
+        return CrashFenceReconciler(self).reconcile()
 
     def _identity_for_task(self, task: PortalTask) -> TaskIdentity:
         metadata = dict(task.metadata)
