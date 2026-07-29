@@ -1788,7 +1788,7 @@ compact references and bounded spans only.
 
 ## VFS-054 Close objective gap: Prove objective validation repair for Project a provenance-preserving program and GraphRAG evidence graph
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
