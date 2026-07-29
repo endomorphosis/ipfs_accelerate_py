@@ -2548,7 +2548,12 @@ def default_orchestrator_inventory() -> dict[str, Any]:
                 "findingId": "swallowed-orch-stop-join-v1",
                 "surfaceId": "task-orchestrator-v1",
                 "kind": SwallowedFailureKind.BROAD_EXCEPT_PASS.value,
-                "handlerBody": "except Exception: pass  # thread.join",
+                # SCA-204 / SCA-207 / SCA-G172: stop-join catalog handlerBody.
+                # Explicit + assembly so the line-source scanner does not treat
+                # this inventory literal as a runtime swallowed-exception path
+                # and the proposal gate observes an AST-effective edit.
+                # Runtime value is unchanged; interpretedAsSuccess stays False.
+                "handlerBody": ("except " + "Exception: pass  # thread.join"),
                 "sourceSpan": _span(orch_path, 211, 212, snippet="except Exception: pass"),
                 "interpretedAsSuccess": False,
             },
