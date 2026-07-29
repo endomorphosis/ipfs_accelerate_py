@@ -2048,7 +2048,7 @@ compact references and bounded spans only.
 
 ## VFS-058 Close objective gap: Witness selected MCP++ paths in a hermetic runtime
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
