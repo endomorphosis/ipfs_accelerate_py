@@ -1980,3 +1980,68 @@ compact references and bounded spans only.
 - Candidate kind: aggregate
 - Todo vector key: 850359afad8ab64b
 - Acceptance: Objective scan filed this gap for VFS-G133. Use evidence in /home/barberb/.local/state/ipfs_accelerate_py/ipfs_kit_vfs_symbolic_assurance/projection/discovery/2026-07-29-vfs-056-objective-gap-199adc3743de.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (vfs/exhaustive-index-receipt@1), and keep the supervisor-fed backlog aligned with the objective heap. This task is part of goal_packet/vfs_symbolic_assurance/general/ab6d1ed417d3; implement a complete, cohesive change that fully advances the packet goals (VFS-G133, VFS-G134) and covers all the shared packet evidence in one comprehensive pass. Refine the objective heap if the gap needs smaller child goals.
+
+## VFS-057 Close objective gap packet: VFS-G031, VFS-G141
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: content-addressing
+- Depends on:
+- Outputs: ipfs_accelerate_py/agent_supervisor/program_analysis_cache.py, test/api/test_agent_supervisor_program_analysis_cache.py, ipfs_accelerate_py/agent_supervisor/multiformats_identity.py, test/api/test_agent_supervisor_multiformats_identity.py
+- Validation: python -m pytest test/api/test_agent_supervisor_program_analysis_cache.py test/api/test_agent_supervisor_runtime_cas.py -q
+- Evidence inputs: data/agent_supervisor/ipfs_kit_vfs_symbolic_assurance/objective_gap.json
+- Discovery evidence: /home/barberb/.local/state/ipfs_accelerate_py/ipfs_kit_vfs_symbolic_assurance/projection/discovery/2026-07-29-vfs-057-objective-gap-c978170e627b.md
+- Bundle: vfs-assurance/cas
+- Bundle shard: /home/barberb/.local/state/ipfs_accelerate_py/ipfs_kit_vfs_symbolic_assurance/projection/bundles/vfs-assurance-cas.todo.md
+- Bundle strategy: explicit
+- Graph parents: VFS-G030
+- Graph depth: 2
+- Objective heap index: 7
+- Parallel lane: vfs-assurance/cas
+- Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
+- Predicted files: ipfs_accelerate_py/agent_supervisor/program_analysis_cache.py, test/api/test_agent_supervisor_program_analysis_cache.py, ipfs_accelerate_py/agent_supervisor/multiformats_identity.py, test/api/test_agent_supervisor_multiformats_identity.py
+- Changed paths:
+- AST symbols: RuntimeCAS CacheCoordinator invalidate, vfs/cid-profile@1
+- Interfaces:
+- Submodules:
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: VFS-G031
+- Completion authority: local
+- External authority blockers:
+- Canonical task key: task/v1/e906b99a5d8159b102be05015b568830a7e8ef6838543862c1e8f708c9377087
+- Canonical task CID: baguqeera5edltgs5qfm3cav6auavwvuigct6r33ihbkdqywb5d3qrsjxocdq
+- Semantic identity: objective-evidence-packet/v1/3281c8c15b8b0f7dca8fffdcb3d70a2fe9d7804512de26aa18d52e729c34978c
+- Acceptance subset: Every changed identity dimension has a test, unrelated components remain reusable, concurrent exact misses collapse, failed flights clean up, retained artifacts and compact receipts stay within declared count and byte bounds., CIDv1/base32/dag-json/sha2-256 bytes are cross-package reproducible, existing supervisor IDs retain compatibility mappings, all semantic dependencies and policy versions participate in cache keys, corruption and stale/negative results fail closed.
+- Preconditions: objective goal VFS-G031 is schedulable, objective goal VFS-G141 is schedulable
+- Effects: satisfy evidence requirement: objective validation repair, satisfy evidence requirement: vfs/cid-profile@1
+- Evidence subset: objective validation repair, vfs/cid-profile@1
+- Resource class: cpu-medium
+- Token class: medium
+- Estimated tokens: 0
+- Resources: cpu-medium
+- Merge fate: goal_packet/content_addressing/ipfs_accelerate_py/3aa044ee2899
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-packet/v1/3281c8c15b8b0f7dca8fffdcb3d70a2fe9d7804512de26aa18d52e729c34978c
+- Missing evidence: objective validation repair, vfs/cid-profile@1
+- Embedding query: goal packet goal_packet/content_addressing/ipfs_accelerate_py/3aa044ee2899; transitive cache invalidation single flight quota stale negative; vfs/cid-profile@1; Prove transitive cache invalidation and bounded storage; Prove vfs/cid-profile@1 for Use canonical multiformats identities and dependency-aware content caches
+- AST query: RuntimeCAS CacheCoordinator invalidate, vfs/cid-profile@1
+- Surplus group: goal_packet/content_addressing/ipfs_accelerate_py/3aa044ee2899
+- Merge key: 271e7aa4bcb8edc2
+- Merge family: goal_packet/content_addressing/ipfs_accelerate_py/3aa044ee2899
+- Merge role: packet_aggregate
+- Work item count: 2
+- Work scope: goal_subgoal_packet_aggregate; vector_ast_bundle
+- Goal packet: goal_packet/content_addressing/ipfs_accelerate_py/3aa044ee2899
+- Goal packet role: packet_aggregate
+- Goal packet goals: VFS-G031, VFS-G141
+- Goal packet task count: 3
+- Goal packet work item count: 2
+- Completion goal bindings: {"VFS-G031":["objective validation repair"],"VFS-G141":["vfs/cid-profile@1"]}
+- Completion task bindings: baguqeeradxphsbcj63rsdcu7gyao6l3qi63knmcuqaxzkfdchyath5vp4x4a, baguqeera27diyqgpppeluajvj2sknjnz4xwjmxhudm335xyzakq5ma3l6xtq
+- Candidate kind: goal_packet_aggregate
+- Todo vector key: 47b9dd1c4b7693c2
+- Acceptance: Objective scan filed this gap for VFS-G031. Use evidence in /home/barberb/.local/state/ipfs_accelerate_py/ipfs_kit_vfs_symbolic_assurance/projection/discovery/2026-07-29-vfs-057-objective-gap-c978170e627b.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (objective validation repair, vfs/cid-profile@1), and keep the supervisor-fed backlog aligned with the objective heap. This task is part of goal_packet/content_addressing/ipfs_accelerate_py/3aa044ee2899; implement a complete, cohesive change that fully advances the packet goals (VFS-G031, VFS-G141) and covers all the shared packet evidence in one comprehensive pass. Do not collapse draft, diagnostic, proposal, and authoritative namespaces.
