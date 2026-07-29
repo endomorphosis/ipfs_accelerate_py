@@ -168,7 +168,7 @@ compact references and bounded spans only.
 
 ## VFS-009 Resolve cross-language calls conservatively and retain unknown frontiers
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P0
 - Track: program-graph
