@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -238,6 +239,36 @@ def test_provider_package_sources_are_indexed_not_opaque(
             for item in observation.snapshot.dispositions
         )
         assert observation.snapshot.repository_root.endswith(observation.package)
+
+
+def test_multi_root_identity_is_relocation_invariant(tmp_path: Path) -> None:
+    superproject, _ = _build_superproject(tmp_path)
+    relocated = tmp_path / "relocated-super"
+    shutil.copytree(superproject, relocated, symlinks=True)
+
+    original = build_multi_root_repository_snapshot(
+        superproject,
+        scope_policy=_policy_for_fixture(),
+        include_primary_snapshot=False,
+    )
+    copied = build_multi_root_repository_snapshot(
+        relocated,
+        scope_policy=_policy_for_fixture(),
+        include_primary_snapshot=False,
+    )
+
+    assert original.multi_root_id == copied.multi_root_id
+    assert [
+        item.observation_id for item in original.providers
+    ] == [item.observation_id for item in copied.providers]
+    assert [
+        item.snapshot.snapshot_id for item in original.providers
+    ] == [item.snapshot.snapshot_id for item in copied.providers]
+    compact = original.compact_dict()
+    assert "superproject_root" not in compact
+    for item in compact["providers"]:
+        assert "package_root" not in item
+        assert "git_worktree_root" not in item
 
 
 def test_primary_snapshot_remains_distinct_namespace(tmp_path: Path) -> None:
@@ -492,6 +523,12 @@ def test_multi_root_index_keeps_bodies_in_cas_and_blocks_partial_parity(
         # Symbols extracted for exact cross-root joins.
         assert provider.symbols
         assert any(item.function == "dispatch" for item in provider.symbols)
+        assert provider.symbol_extraction_complete is True
+        assert (
+            provider.symbol_extracted_file_count
+            == provider.symbol_eligible_file_count
+        )
+        assert provider.symbol_failed_file_count == 0
 
     # Join the same logical symbol observed under two root ids.
     accelerate_syms = multi_index.symbols_for_package("ipfs_accelerate_py")
@@ -522,6 +559,56 @@ def test_multi_root_index_keeps_bodies_in_cas_and_blocks_partial_parity(
             multi_index.contradictions
             or multi_index.multi_root_snapshot.has_blocking_contradictions
             or not multi_index.all_providers_healthy
+        )
+
+
+def test_symbol_cap_blocks_exhaustive_parity(tmp_path: Path) -> None:
+    superproject, _ = _build_superproject(tmp_path)
+    multi_index = build_multi_root_repository_index(
+        superproject,
+        index_root=tmp_path / "index-truncated",
+        scope_policy=_policy_for_fixture(),
+        max_symbol_files_per_package=1,
+        extract_symbols=True,
+    )
+
+    assert multi_index.all_providers_indexed is True
+    assert multi_index.all_symbol_extractions_complete is False
+    assert multi_index.exhaustive_parity_allowed is False
+    for provider in multi_index.providers:
+        assert provider.symbol_eligible_file_count == 3
+        assert provider.symbol_extracted_file_count == 1
+        assert provider.symbol_failed_file_count == 0
+        assert provider.symbol_extraction_complete is False
+        assert "symbol_extraction_truncated" in (
+            provider.symbol_extraction_reason_codes
+        )
+    assert any(
+        item.kind is ProviderRootContradictionKind.PARTIAL_HEALTH
+        and "symbol extraction incomplete" in item.detail
+        for item in multi_index.contradictions
+    )
+
+
+def test_disabled_symbol_extraction_blocks_exhaustive_parity(
+    tmp_path: Path,
+) -> None:
+    superproject, _ = _build_superproject(tmp_path)
+    multi_index = build_multi_root_repository_index(
+        superproject,
+        index_root=tmp_path / "index-disabled",
+        scope_policy=_policy_for_fixture(),
+        extract_symbols=False,
+    )
+
+    assert multi_index.all_providers_indexed is True
+    assert multi_index.all_symbol_extractions_complete is False
+    assert multi_index.exhaustive_parity_allowed is False
+    for provider in multi_index.providers:
+        assert provider.symbol_extraction_enabled is False
+        assert provider.symbol_extraction_complete is False
+        assert "symbol_extraction_disabled" in (
+            provider.symbol_extraction_reason_codes
         )
 
 
@@ -580,6 +667,11 @@ def test_provider_index_baseline_is_compact_and_body_free(
         assert "source" not in item
         assert item["tracked_path_count"] >= 1
         assert item["symbol_count"] >= 1
+        assert item["symbol_extraction"]["complete"] is True
+        assert (
+            item["symbol_extraction"]["eligible_file_count"]
+            == item["symbol_extraction"]["extracted_file_count"]
+        )
     # Compact: no embedded source bodies.
     encoded = destination.read_text(encoding="utf-8")
     assert "def dispatch" not in encoded

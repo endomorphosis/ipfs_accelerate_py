@@ -2056,6 +2056,12 @@ class ProviderRootIndex:
     index: RepositoryIndex | None
     symbols: tuple[CrossRootSymbolIdentity, ...] = ()
     health: AnalyzerHealthReport | None = None
+    symbol_eligible_file_count: int = 0
+    symbol_extracted_file_count: int = 0
+    symbol_failed_file_count: int = 0
+    symbol_extraction_enabled: bool = True
+    symbol_extraction_complete: bool = False
+    symbol_extraction_reason_codes: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if self.observation.indexed and self.index is None:
@@ -2081,6 +2087,44 @@ class ProviderRootIndex:
                 )
             ),
         )
+        for name in (
+            "symbol_eligible_file_count",
+            "symbol_extracted_file_count",
+            "symbol_failed_file_count",
+        ):
+            value = int(getattr(self, name))
+            if value < 0:
+                raise RepositoryIndexIntegrityError(
+                    f"{name} must be non-negative"
+                )
+            object.__setattr__(self, name, value)
+        accounted = (
+            self.symbol_extracted_file_count + self.symbol_failed_file_count
+        )
+        if accounted > self.symbol_eligible_file_count:
+            raise RepositoryIndexIntegrityError(
+                "symbol extraction counts exceed eligible Python files"
+            )
+        reasons = tuple(
+            sorted(
+                {
+                    str(item).strip()
+                    for item in self.symbol_extraction_reason_codes
+                    if str(item).strip()
+                }
+            )
+        )
+        object.__setattr__(self, "symbol_extraction_reason_codes", reasons)
+        if self.symbol_extraction_complete and (
+            not self.symbol_extraction_enabled
+            or self.symbol_failed_file_count
+            or self.symbol_extracted_file_count
+            != self.symbol_eligible_file_count
+            or reasons
+        ):
+            raise RepositoryIndexIntegrityError(
+                "complete symbol extraction has incomplete accounting"
+            )
 
     @property
     def package(self) -> str:
@@ -2114,6 +2158,20 @@ class ProviderRootIndex:
             "health": self.health.to_dict() if self.health is not None else None,
             "symbol_count": len(self.symbols),
             "symbols": [item.to_dict() for item in self.symbols],
+            "symbol_extraction": {
+                "enabled": bool(self.symbol_extraction_enabled),
+                "complete": bool(self.symbol_extraction_complete),
+                "eligible_file_count": self.symbol_eligible_file_count,
+                "extracted_file_count": self.symbol_extracted_file_count,
+                "failed_file_count": self.symbol_failed_file_count,
+                "skipped_file_count": max(
+                    0,
+                    self.symbol_eligible_file_count
+                    - self.symbol_extracted_file_count
+                    - self.symbol_failed_file_count,
+                ),
+                "reason_codes": list(self.symbol_extraction_reason_codes),
+            },
             "indexed": self.indexed,
             "opaque_gitlink": self.opaque_gitlink,
             "healthy": self.healthy,
@@ -2178,6 +2236,12 @@ class MultiRootRepositoryIndex:
         return bool(self.providers) and all(item.healthy for item in self.providers)
 
     @property
+    def all_symbol_extractions_complete(self) -> bool:
+        return bool(self.providers) and all(
+            item.symbol_extraction_complete for item in self.providers
+        )
+
+    @property
     def any_opaque_gitlink(self) -> bool:
         return any(item.opaque_gitlink for item in self.providers)
 
@@ -2198,6 +2262,8 @@ class MultiRootRepositoryIndex:
         if not self.all_providers_indexed:
             return False
         if not self.all_providers_healthy:
+            return False
+        if not self.all_symbol_extractions_complete:
             return False
         if self.multi_root_snapshot.has_blocking_contradictions:
             return False
@@ -2233,6 +2299,9 @@ class MultiRootRepositoryIndex:
             "exhaustive_parity_allowed": self.exhaustive_parity_allowed,
             "all_providers_indexed": self.all_providers_indexed,
             "all_providers_healthy": self.all_providers_healthy,
+            "all_symbol_extractions_complete": (
+                self.all_symbol_extractions_complete
+            ),
             "any_opaque_gitlink": self.any_opaque_gitlink,
         }
 
@@ -2262,6 +2331,9 @@ class MultiRootRepositoryIndex:
             "exhaustive_parity_allowed": self.exhaustive_parity_allowed,
             "all_providers_indexed": self.all_providers_indexed,
             "all_providers_healthy": self.all_providers_healthy,
+            "all_symbol_extractions_complete": (
+                self.all_symbol_extractions_complete
+            ),
             "any_opaque_gitlink": self.any_opaque_gitlink,
             "has_blocking_contradictions": (
                 self.multi_root_snapshot.has_blocking_contradictions
@@ -2302,6 +2374,7 @@ class MultiRootRepositoryIndex:
                         else 0
                     ),
                     "symbol_count": len(item.symbols),
+                    "symbol_extraction": item.to_dict()["symbol_extraction"],
                     "reason_code": item.observation.reason_code,
                     "contradictions": [
                         c.to_dict() for c in item.observation.contradictions
@@ -2328,7 +2401,7 @@ def build_multi_root_repository_index(
     include_primary_snapshot: bool = False,
     allow_dirty_analysis: bool | None = None,
     max_paths: int | None = None,
-    max_symbol_files_per_package: int = 512,
+    max_symbol_files_per_package: int = DEFAULT_MAX_INDEX_PATHS,
     extract_symbols: bool = True,
     multi_root_snapshot: MultiRootRepositorySnapshot | None = None,
 ) -> MultiRootRepositoryIndex:
@@ -2341,6 +2414,11 @@ def build_multi_root_repository_index(
 
     root = Path(index_root)
     root.mkdir(parents=True, exist_ok=True, mode=0o700)
+    symbol_file_limit = int(max_symbol_files_per_package)
+    if symbol_file_limit < 0:
+        raise RepositoryIndexBoundsExceeded(
+            "max_symbol_files_per_package must be non-negative"
+        )
 
     snapshot = multi_root_snapshot or build_multi_root_repository_snapshot(
         superproject_root,
@@ -2377,6 +2455,11 @@ def build_multi_root_repository_index(
                     index=None,
                     symbols=(),
                     health=None,
+                    symbol_extraction_enabled=False,
+                    symbol_extraction_complete=False,
+                    symbol_extraction_reason_codes=(
+                        "provider_root_not_indexed",
+                    ),
                 )
             )
             continue
@@ -2393,6 +2476,16 @@ def build_multi_root_repository_index(
             indexer.close()
 
         symbols: list[CrossRootSymbolIdentity] = []
+        python_rows = [
+            row
+            for row in index.rows
+            if row.path.endswith(".py")
+            and row.disposition_kind is CoverageKind.SEMANTIC_AST
+        ]
+        symbol_eligible_file_count = len(python_rows)
+        symbol_extracted_file_count = 0
+        symbol_failed_file_count = 0
+        symbol_reason_codes: set[str] = set()
         if extract_symbols:
             # Re-open CAS via a reader indexer to pull source bodies only for
             # symbol extraction; bodies are never embedded in rows or baseline.
@@ -2402,18 +2495,16 @@ def build_multi_root_repository_index(
                 health_thresholds=health_thresholds,
             )
             try:
-                current = reader.load_current()
-                extracted = 0
-                for row in current.rows:
-                    if extracted >= max_symbol_files_per_package:
-                        break
-                    if not row.path.endswith(".py"):
-                        continue
+                for row in python_rows[:symbol_file_limit]:
                     if row.source_ref is None:
+                        symbol_failed_file_count += 1
+                        symbol_reason_codes.add("symbol_source_ref_missing")
                         continue
                     try:
                         source = reader.cas.read(row.source_ref)
                     except Exception:
+                        symbol_failed_file_count += 1
+                        symbol_reason_codes.add("symbol_source_read_failed")
                         continue
                     try:
                         symbols.extend(
@@ -2425,10 +2516,48 @@ def build_multi_root_repository_index(
                             )
                         )
                     except CrossRootSymbolJoinError:
+                        symbol_failed_file_count += 1
+                        symbol_reason_codes.add("symbol_parse_failed")
                         continue
-                    extracted += 1
+                    symbol_extracted_file_count += 1
             finally:
                 reader.close()
+            if symbol_eligible_file_count > symbol_file_limit:
+                symbol_reason_codes.add("symbol_extraction_truncated")
+        else:
+            symbol_reason_codes.add("symbol_extraction_disabled")
+
+        symbol_extraction_complete = bool(
+            extract_symbols
+            and symbol_extracted_file_count == symbol_eligible_file_count
+            and symbol_failed_file_count == 0
+            and not symbol_reason_codes
+        )
+        if not symbol_extraction_complete:
+            skipped = max(
+                0,
+                symbol_eligible_file_count
+                - symbol_extracted_file_count
+                - symbol_failed_file_count,
+            )
+            contradictions.append(
+                ProviderRootContradiction(
+                    kind=ProviderRootContradictionKind.PARTIAL_HEALTH,
+                    package=observation.package,
+                    scope_path=observation.scope_path,
+                    detail=(
+                        "symbol extraction incomplete: "
+                        f"eligible={symbol_eligible_file_count},"
+                        f"extracted={symbol_extracted_file_count},"
+                        f"failed={symbol_failed_file_count},"
+                        f"skipped={skipped},"
+                        "reasons="
+                        + ",".join(sorted(symbol_reason_codes))
+                    ),
+                    gitlink_commit_id=observation.gitlink_commit_id,
+                    head_commit_id=observation.head_commit_id,
+                )
+            )
 
         health = index.health
         if health.status is not AnalyzerHealthStatus.HEALTHY:
@@ -2452,6 +2581,12 @@ def build_multi_root_repository_index(
                 index=index,
                 symbols=tuple(symbols),
                 health=health,
+                symbol_eligible_file_count=symbol_eligible_file_count,
+                symbol_extracted_file_count=symbol_extracted_file_count,
+                symbol_failed_file_count=symbol_failed_file_count,
+                symbol_extraction_enabled=bool(extract_symbols),
+                symbol_extraction_complete=symbol_extraction_complete,
+                symbol_extraction_reason_codes=tuple(symbol_reason_codes),
             )
         )
 

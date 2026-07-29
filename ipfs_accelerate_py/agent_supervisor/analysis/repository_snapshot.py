@@ -2101,10 +2101,15 @@ class ProviderRootObservation:
         }
 
     def compact_dict(self) -> dict[str, Any]:
-        """Body-free summary suitable for baseline provider-index artifacts."""
+        """Relocation-invariant body-free provider identity projection."""
 
         payload = self.to_dict()
         payload.pop("snapshot", None)
+        # Absolute checkout locations are diagnostic metadata, not content.
+        # Keeping them here makes identical roots hash differently after a
+        # worktree move and poisons proof/cache reuse.
+        payload.pop("package_root", None)
+        payload.pop("git_worktree_root", None)
         return payload
 
 
@@ -2223,7 +2228,6 @@ class MultiRootRepositorySnapshot:
         return {
             **self._content_dict(),
             "multi_root_id": self.multi_root_id,
-            "superproject_root": self.superproject_root,
             "all_providers_indexed": self.all_providers_indexed,
             "has_blocking_contradictions": self.has_blocking_contradictions,
             "providers": [item.compact_dict() for item in self.providers],
