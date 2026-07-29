@@ -791,6 +791,100 @@ def test_daemon_uses_full_pre_merge_scope_and_preserves_result_contract(tmp_path
     assert report["failed_command"] == "git diff --check"
 
 
+def test_daemon_python_validation_imports_configured_worktree_packages(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    _repo(repo)
+    provider_root = repo / "external" / "provider"
+    provider_root.mkdir(parents=True)
+    (provider_root / "sibling_provider.py").write_text(
+        "VALUE = 7\n",
+        encoding="utf-8",
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state.json",
+        strategy_path=repo / "strategy.json",
+        events_path=repo / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=("external/provider",),
+        worktree_pool_enabled=False,
+        validation_cache_dir=repo / "validation-cache",
+        merge_queue_dir=repo / "merge-queue",
+    )
+    task = PortalTask(
+        task_id="REF-044",
+        title="worktree package validation",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="validation",
+        validation=[
+            "python3 -c 'import sibling_provider; "
+            "assert sibling_provider.VALUE == 7'"
+        ],
+    )
+
+    report = daemon._run_validation_commands(
+        repo,
+        task,
+        repo / "validation.log",
+    )
+
+    assert report["passed"] is True
+    assert report["results"][0]["command"].startswith(
+        "PYTHONPATH=external/provider python3 "
+    )
+    assert (
+        "added configured worktree package roots to PYTHONPATH"
+        in (repo / "validation.log").read_text(encoding="utf-8")
+    )
+
+
+def test_daemon_preserves_explicit_validation_pythonpath(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    _repo(repo)
+    (repo / "external" / "provider").mkdir(parents=True)
+    captured: dict[str, object] = {}
+
+    class Scheduler:
+        def run(self, commands, **_kwargs):
+            captured["commands"] = tuple(commands)
+            return {
+                "attempted": True,
+                "passed": True,
+                "returncode": 0,
+                "results": [],
+            }
+
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state.json",
+        strategy_path=repo / "strategy.json",
+        events_path=repo / "events.jsonl",
+        repo_root=repo,
+        validation_scheduler=Scheduler(),  # type: ignore[arg-type]
+        worktree_submodule_paths=("external/provider",),
+    )
+    command = "PYTHONPATH=src python3 -m pytest tests/unit -q"
+    task = PortalTask(
+        task_id="REF-045",
+        title="explicit validation path",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="validation",
+        validation=[command],
+    )
+
+    daemon._run_validation_commands(repo, task, repo / "validation.log")
+
+    assert captured["commands"] == (command,)
+
+
 def test_daemon_binds_task_validation_to_proposal_local_impact_graph(
     tmp_path: Path,
 ) -> None:

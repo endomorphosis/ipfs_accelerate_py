@@ -13572,8 +13572,16 @@ class PortalImplementationDaemon:
         normalization_notes: list[str] = []
         for raw_command in task.validation:
             command, notes = self._normalize_validation_command(raw_command)
+            command, pythonpath_note = (
+                self._with_worktree_validation_pythonpath(
+                    command,
+                    workspace_path,
+                )
+            )
             commands.append(command)
             normalization_notes.extend(notes)
+            if pythonpath_note:
+                normalization_notes.append(pythonpath_note)
 
         # Validation is the last gate before a candidate is committed/enqueued
         # (or before an in-place task is marked complete).  Impact selection is
@@ -13969,6 +13977,41 @@ class PortalImplementationDaemon:
                     normalized = updated
                     notes.append(f"removed unsupported TypeScript flag {flag}")
         return normalized, notes
+
+    def _with_worktree_validation_pythonpath(
+        self,
+        command: str,
+        workspace_path: Path,
+    ) -> tuple[str, str]:
+        """Bind Python validation to configured package roots in the worktree."""
+
+        if "PYTHONPATH=" in command or not re.search(
+            r"(?:^|[\s;&|])(?:[^\s;&|]*/)?(?:python(?:3(?:\.\d+)*)?|pytest)"
+            r"(?=$|[\s;&|])",
+            command,
+        ):
+            return command, ""
+        try:
+            workspace_root = workspace_path.resolve(strict=True)
+        except OSError:
+            return command, ""
+        roots: list[str] = []
+        for relative in self.worktree_submodule_paths:
+            candidate = workspace_root / relative
+            try:
+                resolved = candidate.resolve(strict=True)
+                resolved.relative_to(workspace_root)
+            except (OSError, ValueError):
+                continue
+            if resolved.is_dir():
+                roots.append(Path(relative).as_posix())
+        if not roots:
+            return command, ""
+        pythonpath = shlex.quote(os.pathsep.join(dict.fromkeys(roots)))
+        return (
+            f"PYTHONPATH={pythonpath} {command}",
+            "added configured worktree package roots to PYTHONPATH",
+        )
 
     def _main_branch_name(self) -> str:
         if self.merge_target_branch:
