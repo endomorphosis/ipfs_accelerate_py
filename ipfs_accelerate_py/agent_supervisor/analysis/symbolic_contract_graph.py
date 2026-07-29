@@ -51,6 +51,15 @@ GRAPHRAG_RETRIEVAL_RECEIPT_SCHEMA: Final = (
 BOUNDED_GRAPHRAG_VIEW_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/bounded-graphrag-view@1"
 )
+EXACT_DATASETS_GRAPHRAG_MODULE: Final = (
+    "ipfs_datasets_py.logic.intent_ir.graphrag.retrieval"
+)
+EXACT_DATASETS_CYPHER_AST_MODULE: Final = (
+    "ipfs_datasets_py.knowledge_graphs.cypher.ast"
+)
+EXACT_DATASETS_CYPHER_PARSER_MODULE: Final = (
+    "ipfs_datasets_py.knowledge_graphs.cypher.parser"
+)
 CONTENT_IDENTITY_PROFILE: Final = "strict-dag-json-v1"
 CONTENT_IDENTITY_CANONICALIZATION: Final = "deterministic-dag-json"
 GRAPH_VERSION: Final = "1"
@@ -88,6 +97,25 @@ class IncompleteMandatoryClosureError(SymbolicContractGraphError):
 
 class CandidateRetrievalError(SymbolicContractGraphError):
     """A bounded candidate request could not produce a valid receipt."""
+
+
+class ExactDatasetsGraphProviderError(SymbolicContractGraphError):
+    """Exact datasets GraphRAG/Cypher modules are missing or incompatible.
+
+    Local lexical retrieval remains available separately; this error only
+    blocks claims of exact ``ipfs_datasets_py`` GraphRAG / Cypher-AST use.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        reason_code: str,
+        details: Mapping[str, Any] | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.reason_code = str(reason_code)
+        self.details = dict(details or {})
 
 
 class ContractNodeKind(str, Enum):
@@ -1754,7 +1782,13 @@ def _local_score(query: str, node: ContractGraphNode) -> int:
 
 
 class BoundedGraphRAGRetriever:
-    """Candidate nominator with a lazy optional datasets provider."""
+    """Candidate nominator with a lazy optional datasets provider.
+
+    Local lexical scoring is always available and never claims exact datasets
+    use.  Exact ``IntentGraphRetriever`` / Cypher-AST binding is a separate
+    capability gate: package-root fallback, fixture-only backends, and the
+    local lexical path cannot satisfy it.
+    """
 
     def __init__(
         self,
@@ -1762,6 +1796,7 @@ class BoundedGraphRAGRetriever:
         *,
         provider: Any = None,
         provider_factory: Callable[[], Any] | None = None,
+        exact_datasets_importer: Callable[[str], Any] | None = None,
     ) -> None:
         if not isinstance(graph, SymbolicContractGraph):
             raise TypeError("graph must be a SymbolicContractGraph")
@@ -1769,10 +1804,18 @@ class BoundedGraphRAGRetriever:
         self._provider = provider
         self._provider_factory = provider_factory
         self._provider_loaded = provider is not None
+        self._exact_datasets_importer = exact_datasets_importer
+        self._exact_adapter: Any = None
+        self._exact_adapter_loaded = False
+        self._exact_capability: Mapping[str, Any] | None = None
 
     @property
     def provider_loaded(self) -> bool:
         return self._provider_loaded
+
+    @property
+    def exact_datasets_loaded(self) -> bool:
+        return self._exact_adapter_loaded
 
     def capability(self) -> dict[str, Any]:
         """Return local capability metadata without loading optional code."""
@@ -1780,13 +1823,49 @@ class BoundedGraphRAGRetriever:
         return {
             "interface": BOUNDED_GRAPHRAG_RETRIEVER_INTERFACE,
             "version": "1",
-            "operations": ["local_candidate_retrieval", "graph_retrieval"],
+            "operations": [
+                "local_candidate_retrieval",
+                "graph_retrieval",
+                "exact_datasets_graph_retrieval",
+            ],
             "provider_loaded": self.provider_loaded,
+            "exact_datasets_loaded": self.exact_datasets_loaded,
             "optional_provider_lazy": True,
+            "exact_datasets_lazy": True,
+            "package_root_fallback_accepted": False,
+            "fixture_only_accepted": False,
+            "local_lexical_claims_exact_datasets": False,
+            "exact_modules": {
+                "graphrag": EXACT_DATASETS_GRAPHRAG_MODULE,
+                "cypher_ast": EXACT_DATASETS_CYPHER_AST_MODULE,
+                "cypher_parser": EXACT_DATASETS_CYPHER_PARSER_MODULE,
+            },
             "authority": ContractAuthority.CONTEXT_ONLY.value,
+            "non_authoritative": True,
+            "proof_authority": False,
         }
 
     capabilities = capability
+
+    def _analysis_provider_module(self) -> Any:
+        return importlib.import_module(
+            "ipfs_accelerate_py.agent_supervisor.integrations."
+            "ipfs_datasets_analysis_provider"
+        )
+
+    def exact_datasets_capability(
+        self, *, probe: bool = True
+    ) -> dict[str, Any]:
+        """Return exact GraphRAG/Cypher capability receipts (lazy optional)."""
+
+        if self._exact_capability is not None and not probe:
+            return dict(self._exact_capability)
+        module = self._analysis_provider_module()
+        capability = module.inspect_exact_datasets_graph_capability(
+            importer=self._exact_datasets_importer
+        )
+        self._exact_capability = capability
+        return dict(capability)
 
     def _load_provider(self) -> Any:
         if self._provider_loaded:
@@ -1794,14 +1873,80 @@ class BoundedGraphRAGRetriever:
         if self._provider_factory is not None:
             provider = self._provider_factory()
         else:
-            module = importlib.import_module(
-                "ipfs_accelerate_py.agent_supervisor.integrations."
-                "ipfs_datasets_analysis_provider"
-            )
+            module = self._analysis_provider_module()
+            # Default optional path remains the lazy analysis provider.  Exact
+            # IntentGraphRetriever binding is explicit via use_exact_datasets.
             provider = module.IpfsDatasetsAnalysisProvider()
         self._provider = provider
         self._provider_loaded = True
         return provider
+
+    def _load_exact_datasets_adapter(self) -> Any:
+        if self._exact_adapter_loaded:
+            if self._exact_adapter is None:
+                raise ExactDatasetsGraphProviderError(
+                    "exact datasets GraphRAG adapter previously failed to load",
+                    reason_code="exact_datasets_unavailable",
+                    details=dict(self._exact_capability or {}),
+                )
+            return self._exact_adapter
+        module = self._analysis_provider_module()
+        capability = module.inspect_exact_datasets_graph_capability(
+            importer=self._exact_datasets_importer
+        )
+        self._exact_capability = capability
+        if not capability.get("available"):
+            self._exact_adapter_loaded = True
+            self._exact_adapter = None
+            raise ExactDatasetsGraphProviderError(
+                "exact datasets GraphRAG/Cypher modules unavailable or incompatible",
+                reason_code="exact_datasets_unavailable",
+                details=capability,
+            )
+        try:
+            adapter = module.create_exact_datasets_graphrag_adapter(
+                importer=self._exact_datasets_importer
+            )
+        except module.DatasetsGraphBackendError as exc:
+            self._exact_adapter_loaded = True
+            self._exact_adapter = None
+            raise ExactDatasetsGraphProviderError(
+                str(exc),
+                reason_code=getattr(exc, "reason_code", "exact_datasets_unavailable"),
+                details=getattr(exc, "details", {}) or capability,
+            ) from exc
+        self._exact_adapter = adapter
+        self._exact_adapter_loaded = True
+        return adapter
+
+    def _map_provider_references(
+        self, references: Sequence[Any]
+    ) -> set[str]:
+        by_key = {node.stable_key: node.node_id for node in self.graph.nodes}
+        node_ids = {node.node_id for node in self.graph.nodes}
+        by_path: dict[str, set[str]] = {}
+        by_symbol: dict[str, set[str]] = {}
+        for node in self.graph.nodes:
+            path = str(node.payload.get("path") or "")
+            symbol = str(node.payload.get("symbol") or "")
+            if path:
+                by_path.setdefault(path, set()).add(node.node_id)
+            if symbol:
+                by_symbol.setdefault(symbol, set()).add(node.node_id)
+        nominated: set[str] = set()
+        for raw in references:
+            if not isinstance(raw, Mapping):
+                continue
+            for field_name in ("node_id", "evidence_id", "artifact_id"):
+                candidate = str(raw.get(field_name) or "")
+                if candidate in node_ids:
+                    nominated.add(candidate)
+            key = str(raw.get("stable_key") or "")
+            if key in by_key:
+                nominated.add(by_key[key])
+            nominated.update(by_path.get(str(raw.get("path") or ""), ()))
+            nominated.update(by_symbol.get(str(raw.get("symbol") or ""), ()))
+        return nominated
 
     def _provider_candidates(
         self,
@@ -1846,31 +1991,90 @@ class BoundedGraphRAGRetriever:
                 getattr(result, "result_id", "")
                 or getattr(result, "receipt_id", "")
             )
-        by_key = {node.stable_key: node.node_id for node in self.graph.nodes}
-        node_ids = {node.node_id for node in self.graph.nodes}
-        by_path: dict[str, set[str]] = {}
-        by_symbol: dict[str, set[str]] = {}
-        for node in self.graph.nodes:
-            path = str(node.payload.get("path") or "")
-            symbol = str(node.payload.get("symbol") or "")
-            if path:
-                by_path.setdefault(path, set()).add(node.node_id)
-            if symbol:
-                by_symbol.setdefault(symbol, set()).add(node.node_id)
-        nominated: set[str] = set()
-        for raw in references:
-            if not isinstance(raw, Mapping):
-                continue
-            for field_name in ("node_id", "evidence_id", "artifact_id"):
-                candidate = str(raw.get(field_name) or "")
-                if candidate in node_ids:
-                    nominated.add(candidate)
-            key = str(raw.get("stable_key") or "")
-            if key in by_key:
-                nominated.add(by_key[key])
-            nominated.update(by_path.get(str(raw.get("path") or ""), ()))
-            nominated.update(by_symbol.get(str(raw.get("symbol") or ""), ()))
+        nominated = self._map_provider_references(
+            references if isinstance(references, Sequence) else ()
+        )
+        # Optional package-root style provider never claims exact datasets use.
+        # Keep the backend status string intact for existing receipts; exact
+        # mode uses a separate provider_status vocabulary.
         return nominated, truncated, status, receipt_id
+
+    def _exact_datasets_candidates(
+        self,
+        query: str,
+        bounds: RetrievalBounds,
+    ) -> tuple[set[str], bool, str, str, Mapping[str, Any]]:
+        adapter = self._load_exact_datasets_adapter()
+        result = adapter.retrieve_candidates(
+            query=query,
+            graph_root=self.graph.graph_root,
+            snapshot_id=self.graph.snapshot_id,
+            bounds={
+                "max_results": bounds.max_candidates,
+                "max_bytes": bounds.max_bytes,
+                "timeout_ms": 30_000,
+            },
+        )
+        if not isinstance(result, Mapping):
+            raise ExactDatasetsGraphProviderError(
+                "exact datasets adapter returned a non-object result",
+                reason_code="exact_datasets_malformed_result",
+            )
+        if result.get("exact_module") is not True:
+            raise ExactDatasetsGraphProviderError(
+                "exact datasets adapter did not claim exact module use",
+                reason_code="exact_module_claim_missing",
+                details=dict(result),
+            )
+        if result.get("fixture_only") is True or result.get(
+            "package_root_fallback"
+        ):
+            raise ExactDatasetsGraphProviderError(
+                "fixture-only or package-root results cannot pass the exact gate",
+                reason_code="exact_source_rejected",
+                details=dict(result),
+            )
+        if result.get("non_authoritative") is not True or result.get(
+            "proof_authority"
+        ):
+            raise ExactDatasetsGraphProviderError(
+                "exact GraphRAG results must remain non-authoritative",
+                reason_code="graphrag_authoritative_claim",
+                details=dict(result),
+            )
+        references = result.get("evidence_references") or result.get("results") or ()
+        nominated = self._map_provider_references(
+            references if isinstance(references, Sequence) else ()
+        )
+        truncated = bool(result.get("truncated", False))
+        receipt_id = str(
+            result.get("receipt_id")
+            or result.get("canary_receipt_id")
+            or result.get("result_id")
+            or ""
+        )
+        capability = result.get("capability") if isinstance(
+            result.get("capability"), Mapping
+        ) else {}
+        return (
+            nominated,
+            truncated,
+            "exact_datasets:completed",
+            receipt_id,
+            {
+                "capability": dict(capability),
+                "capability_revision": result.get("capability_revision", ""),
+                "package_version": result.get("package_version", ""),
+                "package_tree": result.get("package_tree", ""),
+                "module_paths": list(result.get("module_paths") or ()),
+                "canary_receipt_id": result.get("canary_receipt_id", ""),
+                "graph_root": result.get("graph_root", self.graph.graph_root),
+                "bounds": dict(result.get("bounds") or {}),
+                "non_authoritative": True,
+                "proof_authority": False,
+                "exact_module": True,
+            },
+        )
 
     def retrieve(
         self,
@@ -1878,7 +2082,15 @@ class BoundedGraphRAGRetriever:
         *,
         bounds: RetrievalBounds | Mapping[str, Any] | None = None,
         use_optional_provider: bool = False,
+        use_exact_datasets: bool = False,
+        require_exact_datasets: bool = False,
     ) -> GraphRAGRetrievalReceipt:
+        if require_exact_datasets:
+            use_exact_datasets = True
+        if use_exact_datasets and use_optional_provider:
+            # Exact IntentGraphRetriever binding supersedes package-root optional.
+            use_optional_provider = False
+
         limits = RetrievalBounds.from_value(bounds)
         normalized_query = " ".join(
             _text(
@@ -1901,7 +2113,38 @@ class BoundedGraphRAGRetriever:
         provider_truncated = False
         provider_status = "not_requested"
         provider_receipt_id = ""
-        if use_optional_provider:
+        exact_meta: Mapping[str, Any] = {}
+        provider_requested = use_optional_provider or use_exact_datasets
+
+        if use_exact_datasets:
+            try:
+                (
+                    provider_ids,
+                    provider_truncated,
+                    provider_status,
+                    provider_receipt_id,
+                    exact_meta,
+                ) = self._exact_datasets_candidates(normalized_query, limits)
+            except ExactDatasetsGraphProviderError as exc:
+                if require_exact_datasets:
+                    raise
+                # Soft exact request degrades without claiming exact success.
+                provider_status = f"exact_blocked:{exc.reason_code}"
+                provider_receipt_id = content_identity(
+                    {
+                        "reason_code": exc.reason_code,
+                        "details": dict(exc.details),
+                    }
+                )
+            except Exception as exc:
+                if require_exact_datasets:
+                    raise ExactDatasetsGraphProviderError(
+                        f"exact datasets retrieval failed: {exc}",
+                        reason_code="exact_datasets_failed",
+                        details={"error_type": type(exc).__name__},
+                    ) from exc
+                provider_status = "exact_degraded:" + type(exc).__name__
+        elif use_optional_provider:
             try:
                 (
                     provider_ids,
@@ -1922,10 +2165,40 @@ class BoundedGraphRAGRetriever:
                 sources.add("local")
             if node.node_id in provider_ids:
                 score += 50
-                sources.add("ipfs_datasets")
+                if use_exact_datasets and provider_status.startswith(
+                    "exact_datasets:"
+                ):
+                    sources.add("ipfs_datasets_exact")
+                else:
+                    sources.add("ipfs_datasets")
             if score:
                 ranked.append((score, node.node_id, sources))
         ranked.sort(key=lambda item: (-item[0], item[1]))
+
+        # Local lexical hits never claim exact datasets use even when an exact
+        # request was made; only provider-nominated nodes carry that source.
+        if use_exact_datasets and not provider_status.startswith(
+            "exact_datasets:"
+        ):
+            # No successful exact nomination: strip any accidental exact labels.
+            ranked = [
+                (
+                    score,
+                    node_id,
+                    frozenset(
+                        source
+                        for source in sources
+                        if source != "ipfs_datasets_exact"
+                    ),
+                )
+                for score, node_id, sources in ranked
+            ]
+            ranked = [
+                (score, node_id, set(sources))
+                for score, node_id, sources in ranked
+                if sources
+            ]
+            ranked.sort(key=lambda item: (-item[0], item[1]))
 
         node_map = {node.node_id: node for node in self.graph.nodes}
         total_matches = len(ranked)
@@ -1934,6 +2207,21 @@ class BoundedGraphRAGRetriever:
         def make_receipt(
             values: Sequence[GraphRAGCandidate], truncated: bool
         ) -> GraphRAGRetrievalReceipt:
+            reason = "bounded_candidates"
+            if truncated:
+                reason = "bounded_candidates_truncated"
+            if use_exact_datasets and provider_status.startswith(
+                "exact_datasets:"
+            ):
+                reason = (
+                    "exact_datasets_bounded_candidates_truncated"
+                    if truncated
+                    else "exact_datasets_bounded_candidates"
+                )
+            elif use_exact_datasets and provider_status.startswith(
+                "exact_blocked:"
+            ):
+                reason = "exact_datasets_blocked_local_fallback"
             return GraphRAGRetrievalReceipt(
                 graph_root=self.graph.graph_root,
                 snapshot_id=self.graph.snapshot_id,
@@ -1943,27 +2231,33 @@ class BoundedGraphRAGRetriever:
                 candidates=tuple(values),
                 total_matches=total_matches,
                 truncated=truncated,
-                provider_requested=use_optional_provider,
-                provider_loaded=self.provider_loaded,
+                provider_requested=provider_requested,
+                provider_loaded=(
+                    self.provider_loaded or self.exact_datasets_loaded
+                ),
                 provider_status=provider_status,
                 provider_receipt_id=provider_receipt_id,
-                reason_code=(
-                    "bounded_candidates_truncated"
-                    if truncated
-                    else "bounded_candidates"
-                ),
+                reason_code=reason,
             )
 
         count_limited = total_matches > limits.max_candidates
         for score, node_id, sources in ranked[: limits.max_candidates]:
             node = node_map[node_id]
+            # Local lexical never masquerades as exact datasets nomination.
+            nominated_by = tuple(sorted(sources))
+            if "local" in nominated_by and "ipfs_datasets_exact" not in nominated_by:
+                nominated_by = tuple(
+                    item
+                    for item in nominated_by
+                    if item != "ipfs_datasets_exact"
+                )
             candidate = GraphRAGCandidate(
                 node_id=node.node_id,
                 stable_key=node.stable_key,
                 kind=node.kind,
                 score=score,
                 rank=len(accepted) + 1,
-                nominated_by=tuple(sources),
+                nominated_by=nominated_by,
             )
             trial = make_receipt(
                 (*accepted, candidate),
@@ -1989,6 +2283,9 @@ class BoundedGraphRAGRetriever:
             raise CandidateRetrievalError(
                 "max_bytes is too small for retrieval receipt metadata"
             )
+        # Exact metadata is retained on the provider receipt id / status only;
+        # GraphRAG remains context-only and never gains proof authority.
+        _ = exact_meta
         return receipt
 
     def view(
@@ -1998,11 +2295,15 @@ class BoundedGraphRAGRetriever:
         retrieval_bounds: RetrievalBounds | Mapping[str, Any] | None = None,
         closure_bounds: ClosureBounds | Mapping[str, Any] | None = None,
         use_optional_provider: bool = False,
+        use_exact_datasets: bool = False,
+        require_exact_datasets: bool = False,
     ) -> BoundedGraphRAGView:
         retrieval = self.retrieve(
             query,
             bounds=retrieval_bounds,
             use_optional_provider=use_optional_provider,
+            use_exact_datasets=use_exact_datasets,
+            require_exact_datasets=require_exact_datasets,
         )
         if not retrieval.candidate_node_ids:
             closure = ContractGraphClosure(
@@ -2816,6 +3117,9 @@ __all__ = [
     "DEFAULT_MAX_CLOSURE_EDGES",
     "DEFAULT_MAX_CLOSURE_NODES",
     "DEFAULT_MAX_RETRIEVAL_BYTES",
+    "EXACT_DATASETS_CYPHER_AST_MODULE",
+    "EXACT_DATASETS_CYPHER_PARSER_MODULE",
+    "EXACT_DATASETS_GRAPHRAG_MODULE",
     "GRAPH_VERSION",
     "GRAPHRAG_RETRIEVAL_RECEIPT_SCHEMA",
     "SYMBOLIC_CONTRACT_CLOSURE_SCHEMA",
@@ -2835,6 +3139,7 @@ __all__ = [
     "ContractGraphNode",
     "ContractNodeKind",
     "ContractProvenance",
+    "ExactDatasetsGraphProviderError",
     "GraphContentIdentity",
     "GraphAuthority",
     "GraphEdge",
