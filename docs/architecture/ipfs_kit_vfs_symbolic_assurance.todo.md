@@ -1073,7 +1073,7 @@ compact references and bounded spans only.
 
 ## VFS-043 Close objective gap: Generate conclusive mismatch witnesses or explicit unknown results
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
