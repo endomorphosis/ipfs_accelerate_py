@@ -1333,7 +1333,7 @@ compact references and bounded spans only.
 
 ## VFS-047 Close objective gap: Extract versioned expected and observed contracts without circular reasoning
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
