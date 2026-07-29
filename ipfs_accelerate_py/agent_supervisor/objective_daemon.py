@@ -4124,11 +4124,16 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
 
     refined_goal_ids: list[str] = []
     if getattr(args, "refine_objective_heap", False) and objective_path.exists():
+        forced_refinement_goal_ids = split_csv(
+            getattr(args, "force_goal_id", []) or []
+        )
         refinement_findings = scan_objective_gaps(
             repo_root,
             objective_path=objective_path,
             max_findings=args.max_findings,
             seen_fingerprints=seen_fingerprints,
+            force_goal_ids=forced_refinement_goal_ids,
+            scope_goal_ids=forced_refinement_goal_ids,
             evidence_repository_tree=evidence_repository_tree,
             scan_exclude_paths=scan_exclude_paths,
             trust_recorded_external_completion=(
