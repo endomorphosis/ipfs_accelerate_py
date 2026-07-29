@@ -234,6 +234,57 @@ def test_operator_only_zero_token_task_validates_prepared_artifact_without_model
     }
 
 
+def test_operator_only_snapshots_exact_prepared_output_into_worktree(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, daemon = _daemon(tmp_path, monkeypatch)
+    relative = "data/operator/recovery-receipt.json"
+    prepared = repo / relative
+    prepared.parent.mkdir(parents=True)
+    prepared.write_text('{"decision":"clear"}\n', encoding="utf-8")
+    worktree = tmp_path / "operator-workspace"
+    worktree.mkdir(parents=True)
+    task = PortalTask(
+        task_id="SCA-OP-001",
+        title="Validate an operator-prepared recovery receipt",
+        status="ready",
+        completion="manual",
+        priority="P0",
+        track="operator-recovery",
+        outputs=[relative],
+        validation=["python -m json.tool " + relative],
+        acceptance="The reviewed receipt is stable and valid.",
+        metadata={
+            "Provider role": "operator-only",
+            "Context budget tokens": "0",
+        },
+    )
+
+    snapshots = daemon._seed_operator_prepared_outputs(worktree, task)
+
+    assert snapshots == (
+        {
+            "path": relative,
+            "sha256": (
+                "8b41437999724e9b670a14f470f1022a2711f2915dd975f3ac8f3ab66bda00f9"
+            ),
+            "size": 21,
+            "mode": prepared.stat().st_mode & 0o777,
+        },
+    )
+    assert (worktree / relative).read_bytes() == prepared.read_bytes()
+    prepared.write_text('{"decision":"retain"}\n', encoding="utf-8")
+    assert (worktree / relative).read_text(encoding="utf-8") == (
+        '{"decision":"clear"}\n'
+    )
+    assert any(
+        event["type"] == "operator_prepared_outputs_seeded"
+        and event["provider_call_allowed"] is False
+        for event in _events(daemon)
+    )
+
+
 def test_deterministic_task_reports_declared_validation_failure_without_model(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

@@ -6833,6 +6833,7 @@ class PortalImplementationDaemon:
         protected_path_violation: dict[str, Any] = {}
         task_execution_receipt_path: Path | None = None
         task_execution_receipt: dict[str, Any] = {}
+        operator_prepared_outputs: tuple[dict[str, Any], ...] = ()
         checkpoint_dir = self._ensure_implementation_checkpoint_dir(task)
         timeout_policy = self._implementation_timeout_policy(task)
 
@@ -9550,6 +9551,12 @@ class PortalImplementationDaemon:
                 else:
                     self._prepare_worktree_for_validation(worktree_path, task=task, branch_name=branch_name)
                     if deterministic_only:
+                        operator_prepared_outputs = (
+                            self._seed_operator_prepared_outputs(
+                                worktree_path,
+                                task,
+                            )
+                        )
                         (
                             validation_result,
                             task_execution_receipt_path,
@@ -9571,6 +9578,11 @@ class PortalImplementationDaemon:
                                 materialization_result=validation_result,
                             )
                         )
+                        if operator_prepared_outputs:
+                            validation_result["operator_prepared_outputs"] = [
+                                dict(item)
+                                for item in operator_prepared_outputs
+                            ]
                     else:
                         validation_result = self._run_validation_with_candidate_binding(
                             worktree_path,
@@ -12225,6 +12237,91 @@ class PortalImplementationDaemon:
                 payload["task_id"] = task.task_id
             self._record_event("worktree_context_seeded", payload)
         return seeded
+
+    def _seed_operator_prepared_outputs(
+        self,
+        worktree_path: Path,
+        task: PortalTask,
+    ) -> tuple[dict[str, Any], ...]:
+        """Snapshot exact operator-reviewed outputs into an isolated worktree."""
+
+        if self._task_declared_implementation_provider(task) != "operator-only":
+            return ()
+        try:
+            repository_root = self.repo_root.resolve(strict=True)
+            workspace_root = worktree_path.resolve(strict=True)
+        except (OSError, RuntimeError) as exc:
+            raise RuntimeError(
+                "cannot resolve operator-only output snapshot roots"
+            ) from exc
+
+        snapshots: list[dict[str, Any]] = []
+        for relative in self._proposal_scope_paths(task):
+            if not self._repo_relative_path_safe(relative):
+                continue
+            if any(
+                self._path_matches_prefix(relative, prefix)
+                for prefix in self.worktree_submodule_paths
+            ):
+                continue
+            source = self.repo_root / relative
+            source_identity = self._seeded_worktree_context_identity(source)
+            if source_identity.get("kind") != "regular_file":
+                continue
+            try:
+                source.resolve(strict=True).relative_to(repository_root)
+            except (OSError, RuntimeError, ValueError) as exc:
+                raise RuntimeError(
+                    f"operator-only output escapes repository: {relative}"
+                ) from exc
+
+            target = worktree_path / relative
+            if target.exists() or target.is_symlink():
+                continue
+            target.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                target.parent.resolve(strict=True).relative_to(workspace_root)
+            except (OSError, RuntimeError, ValueError) as exc:
+                raise RuntimeError(
+                    f"operator-only output escapes worktree: {relative}"
+                ) from exc
+            shutil.copy2(source, target)
+
+            stable_source = self._seeded_worktree_context_identity(source)
+            target_identity = self._seeded_worktree_context_identity(target)
+            identity_fields = ("kind", "mode", "size", "sha256")
+            if any(
+                source_identity.get(field) != stable_source.get(field)
+                or source_identity.get(field) != target_identity.get(field)
+                for field in identity_fields
+            ):
+                try:
+                    target.unlink()
+                except OSError:
+                    pass
+                raise RuntimeError(
+                    f"operator-only output changed during snapshot: {relative}"
+                )
+            snapshots.append(
+                {
+                    "path": relative,
+                    "sha256": str(source_identity["sha256"]),
+                    "size": int(source_identity["size"]),
+                    "mode": int(source_identity["mode"]),
+                }
+            )
+
+        if snapshots:
+            self._record_event(
+                "operator_prepared_outputs_seeded",
+                {
+                    "task_id": task.task_id,
+                    "worktree_path": str(worktree_path),
+                    "outputs": snapshots,
+                    "provider_call_allowed": False,
+                },
+            )
+        return tuple(snapshots)
 
     def _untracked_worktree_context_paths(self) -> list[str]:
         candidates: set[str] = set()
