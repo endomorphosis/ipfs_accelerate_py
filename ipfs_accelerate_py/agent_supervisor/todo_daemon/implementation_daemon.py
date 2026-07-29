@@ -2389,6 +2389,7 @@ class PortalImplementationDaemon:
         self.runtime_checkpoint_store = ProjectionDeltaCheckpointStore(
             self.runtime_checkpoint_path
         )
+        self._runtime_checkpoint_repair: dict[str, Any] = {}
         self._runtime_wake_coordinator: Any | None = None
         self._pending_runtime_wake_events: list[Any] = []
         self._current_runtime_wake_events: list[Any] = []
@@ -5017,7 +5018,11 @@ class PortalImplementationDaemon:
     def _load_runtime_checkpoint(self) -> dict[str, Any]:
         try:
             loaded = self.runtime_checkpoint_store.load()
-        except (OSError, TypeError, ValueError):
+        except (OSError, TypeError, ValueError) as exc:
+            repair = self.runtime_checkpoint_store.quarantine_invalid()
+            if repair.get("quarantined"):
+                repair["trigger_error_type"] = type(exc).__name__
+                self._runtime_checkpoint_repair = repair
             return {}
         if loaded is None:
             return {}
@@ -5072,15 +5077,27 @@ class PortalImplementationDaemon:
         if task_source_identity is not None:
             projection["task_source_identity"] = task_source_identity
         event_cursor = latest_event_cursor(self.events_path)
-        materialized = self.runtime_checkpoint_store.materialize(
-            projection,
-            event_cursor,
-        )
+        try:
+            materialized = self.runtime_checkpoint_store.materialize(
+                projection,
+                event_cursor,
+            )
+        except (OSError, TypeError, ValueError) as exc:
+            repair = self.runtime_checkpoint_store.quarantine_invalid()
+            if not repair.get("quarantined"):
+                raise
+            repair["trigger_error_type"] = type(exc).__name__
+            self._runtime_checkpoint_repair = repair
+            event_cursor = latest_event_cursor(self.events_path)
+            materialized = self.runtime_checkpoint_store.materialize(
+                projection,
+                event_cursor,
+            )
         self._runtime_checkpoint = {
             **projection,
             "cursor": event_cursor.to_record(),
         }
-        return {
+        result = {
             "changed": materialized.changed,
             "write_count": materialized.write_count,
             "checkpoint_id": materialized.checkpoint_id,
@@ -5089,6 +5106,12 @@ class PortalImplementationDaemon:
             "event_cursor": self._runtime_checkpoint["cursor"],
             "state_delta_keys": sorted(projection_delta),
         }
+        if self._runtime_checkpoint_repair:
+            result["checkpoint_repair"] = dict(
+                self._runtime_checkpoint_repair
+            )
+            self._runtime_checkpoint_repair = {}
+        return result
 
     @staticmethod
     def _projection_delta(

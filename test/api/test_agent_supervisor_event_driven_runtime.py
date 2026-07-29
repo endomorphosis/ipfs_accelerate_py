@@ -499,6 +499,111 @@ def test_projection_and_taskboard_stores_make_zero_unchanged_writes(
     assert _file_identity(board) == board_identity
 
 
+def test_projection_store_content_addresses_and_quarantines_invalid_checkpoint(
+    tmp_path: Path,
+) -> None:
+    checkpoint_path = tmp_path / "projection-checkpoint.json"
+    store = ProjectionDeltaCheckpointStore(checkpoint_path)
+    cursor = EventCursor.initial(
+        "runtime-events",
+        snapshot_id="runtime-snapshot",
+    )
+    store.materialize({"ready": 2}, cursor)
+    invalid = checkpoint_path.read_bytes().replace(b'"ready":2', b'"ready":3')
+    checkpoint_path.write_bytes(invalid)
+
+    with pytest.raises(
+        ValueError,
+        match="projection checkpoint identity does not match",
+    ):
+        store.load()
+
+    repair = store.quarantine_invalid()
+
+    assert repair["quarantined"] is True
+    assert repair["reason"] == "projection checkpoint identity does not match"
+    assert repair["content_sha256"].startswith("sha256:")
+    assert checkpoint_path.exists() is False
+    quarantine_path = Path(repair["quarantine_path"])
+    assert quarantine_path.read_bytes() == invalid
+    rebuilt = store.materialize({"ready": 3}, cursor)
+    assert rebuilt.write_count == 1
+    assert store.load() == ({"ready": 3}, cursor)
+
+
+def test_daemon_restart_quarantines_invalid_runtime_checkpoint(
+    tmp_path: Path,
+) -> None:
+    daemon = _drained_daemon(tmp_path)
+    first = daemon.run_once()
+    assert first["reason"] == "no_tasks_found"
+    checkpoint_path = daemon.runtime_checkpoint_path
+    invalid = checkpoint_path.read_bytes().replace(
+        b'"task_count":0',
+        b'"task_count":9',
+        1,
+    )
+    checkpoint_path.write_bytes(invalid)
+
+    restarted = _drained_daemon(tmp_path)
+
+    assert restarted._runtime_checkpoint == {}
+    assert restarted._runtime_checkpoint_repair["quarantined"] is True
+    quarantine_path = Path(
+        restarted._runtime_checkpoint_repair["quarantine_path"]
+    )
+    assert quarantine_path.read_bytes() == invalid
+    restarted.todo_path.write_text(
+        """# Task board
+
+## PORTAL-001 Completed task
+
+- Status: completed
+""",
+        encoding="utf-8",
+    )
+    recovered = restarted.run_once()
+    loaded = restarted.runtime_checkpoint_store.load()
+    assert recovered["completed_count"] == 1
+    assert recovered["delta_checkpoint"]["checkpoint_repair"][
+        "quarantined"
+    ] is True
+    assert loaded is not None
+    assert loaded[0]["result"]["completed_count"] == 1
+
+
+def test_running_daemon_repairs_checkpoint_corrupted_between_passes(
+    tmp_path: Path,
+) -> None:
+    daemon = _drained_daemon(tmp_path)
+    daemon.run_once()
+    checkpoint_path = daemon.runtime_checkpoint_path
+    invalid = checkpoint_path.read_bytes().replace(
+        b'"task_count":0',
+        b'"task_count":9',
+        1,
+    )
+    checkpoint_path.write_bytes(invalid)
+    daemon.todo_path.write_text(
+        """# Task board
+
+## PORTAL-001 Completed task
+
+- Status: completed
+""",
+        encoding="utf-8",
+    )
+
+    recovered = daemon.run_once()
+
+    repair = recovered["delta_checkpoint"]["checkpoint_repair"]
+    assert repair["quarantined"] is True
+    assert Path(repair["quarantine_path"]).read_bytes() == invalid
+    loaded = daemon.runtime_checkpoint_store.load()
+    assert loaded is not None
+    assert loaded[0]["result"]["completed_count"] == 1
+
+
 def test_drained_board_ten_minute_logical_fixture_uses_under_two_percent_cpu_and_writes_nothing(
     tmp_path: Path,
 ) -> None:
