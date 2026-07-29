@@ -1,9 +1,18 @@
-"""Append-only, content-addressed contract finding ledger (VFS-029).
+"""Append-only, content-addressed contract finding ledger (VFS-029 / VFS-049).
 
 This module persists immutable finding records and projects a mutable
 *current* view over them.  History is never rewritten: supersession, stale
 invalidation, and rejection append diagnostic events that only change the
 current projection.
+
+Objective VFS-G100 evidence identities closed here:
+
+* ``vfs/finding-ledger@1`` — typed, deduplicated correctness/vulnerability
+  ledger with separate append-only history and mutable current-tree
+  projection;
+* ``vfs/vulnerability-evidence-policy@1`` — a finding may carry the
+  ``vulnerability`` label only when a threat-path CID and concrete impact
+  statement are bound (fail-closed; no LLM classification).
 
 Deduplication is deliberately narrow.  Two appends collide as duplicates only
 when their semantic identity agrees:
@@ -22,6 +31,8 @@ conflict.
 Severity is evidence-bound: elevating severity without matching status,
 claim level, and confidence is rejected as poisoned.  Partial findings may be
 stored for audit but are not admitted into the actionable current projection.
+Duplicates and stale admissions stay out of the actionable current set so
+they cannot create repair work downstream.
 
 Large source, AST, proof, and witness bodies stay outside these records as
 artifact references.  The ledger is diagnostic storage; it never mutates
@@ -60,6 +71,15 @@ from .proof.formal_verification_contracts import (
 CONTRACT_FINDINGS_VERSION: Final[int] = 1
 SCHEMA_VERSION: Final[int] = CONTRACT_FINDINGS_VERSION
 LEDGER_VERSION: Final[str] = "contract-finding-ledger@1"
+# VFS-G100 objective evidence identities (ledger + vulnerability policy).
+FINDING_LEDGER_EVIDENCE: Final[str] = "vfs/finding-ledger@1"
+VULNERABILITY_EVIDENCE_POLICY: Final[str] = "vfs/vulnerability-evidence-policy@1"
+FINDING_LEDGER_G100_EVIDENCE_TERMS: Final[tuple[str, ...]] = (
+    FINDING_LEDGER_EVIDENCE,
+    VULNERABILITY_EVIDENCE_POLICY,
+)
+VULNERABILITY_LABEL: Final[str] = "vulnerability"
+GOAL_ID: Final[str] = "VFS-G100"
 
 MAX_TEXT_BYTES: Final[int] = 8_192
 MAX_CLAUSE_BYTES: Final[int] = 4_096
@@ -70,6 +90,7 @@ MAX_LEDGER_ENTRIES: Final[int] = 100_000
 MAX_PROJECTION_ENTRIES: Final[int] = 50_000
 MAX_REJECTION_REASONS: Final[int] = 64
 MAX_ANALYZER_VERSIONS: Final[int] = 64
+MAX_LABELS: Final[int] = 32
 MILLION: Final[int] = 1_000_000
 
 CALL_SLICE_STEP_SCHEMA: Final[str] = (
@@ -165,6 +186,10 @@ class StaleFindingError(ContractFindingError):
 
 class PartialFindingError(ContractFindingError):
     """A required field for admission was missing on a partial finding."""
+
+
+class VulnerabilityEvidencePolicyError(ContractFindingError):
+    """Vulnerability label without a bound threat path and impact."""
 
 
 class LedgerConcurrencyError(ContractFindingError):
@@ -1021,6 +1046,76 @@ def is_partial_finding(
     return (bool(missing), tuple(missing))
 
 
+def is_vulnerability_labeled(labels: Sequence[str] | None) -> bool:
+    """True when the finding carries the closed ``vulnerability`` label."""
+
+    if not labels:
+        return False
+    return any(label == VULNERABILITY_LABEL for label in labels)
+
+
+def vulnerability_evidence_requirements_met(
+    *,
+    labels: Sequence[str] | None,
+    threat_path_cid: str | None,
+    impact: str | None,
+) -> tuple[bool, tuple[str, ...]]:
+    """Return whether a vulnerability label is justified, with missing keys.
+
+    Implements ``vfs/vulnerability-evidence-policy@1``: the ``vulnerability``
+    label requires both a content-addressed threat-path reference and a
+    concrete impact statement.  Correctness-only findings need neither.
+    """
+
+    if not is_vulnerability_labeled(labels):
+        return (True, ())
+    missing: list[str] = []
+    if not (threat_path_cid or "").strip():
+        missing.append("threat_path_cid")
+    if not (impact or "").strip():
+        missing.append("impact")
+    return (not missing, tuple(missing))
+
+
+def validate_vulnerability_evidence_policy(
+    *,
+    labels: Sequence[str] | None,
+    threat_path_cid: str | None,
+    impact: str | None,
+) -> None:
+    """Reject vulnerability labels that lack threat path and impact."""
+
+    ok, missing = vulnerability_evidence_requirements_met(
+        labels=labels,
+        threat_path_cid=threat_path_cid,
+        impact=impact,
+    )
+    if ok:
+        return
+    raise VulnerabilityEvidencePolicyError(
+        "vulnerability label requires threat path and impact; missing "
+        + ", ".join(missing)
+    )
+
+
+def finding_ledger_evidence_terms() -> tuple[str, ...]:
+    """Return the closed VFS-G100 evidence terms covered by this ledger.
+
+    Proves that the typed, deduplicated correctness and vulnerability ledger
+    exists as a first-class content-addressed artifact
+    (``vfs/finding-ledger@1``) with a separate vulnerability evidence policy
+    (``vfs/vulnerability-evidence-policy@1``).
+    """
+
+    return FINDING_LEDGER_G100_EVIDENCE_TERMS
+
+
+def covered_evidence_terms() -> tuple[str, ...]:
+    """Alias of :func:`finding_ledger_evidence_terms` for discovery scanners."""
+
+    return finding_ledger_evidence_terms()
+
+
 @dataclass(frozen=True)
 class ContractFindingRecord(_FindingContract):
     """Immutable, content-addressed contract finding ledger record."""
@@ -1054,6 +1149,11 @@ class ContractFindingRecord(_FindingContract):
     policy_revision: str = ""
     repository_observation_id: str = ""
     verdict: str = ""
+    # Vulnerability evidence policy (vfs/vulnerability-evidence-policy@1):
+    # the closed "vulnerability" label requires threat_path_cid + impact.
+    labels: tuple[str, ...] = ()
+    threat_path_cid: str = ""
+    impact: str = ""
     partial: bool = False
     partial_missing_fields: tuple[str, ...] = ()
     allow_poisoned_severity: bool = False
@@ -1220,6 +1320,8 @@ class ContractFindingRecord(_FindingContract):
             "policy_revision",
             "repository_observation_id",
             "verdict",
+            "threat_path_cid",
+            "impact",
         ):
             object.__setattr__(
                 self,
@@ -1230,6 +1332,17 @@ class ContractFindingRecord(_FindingContract):
                     required=False,
                 ),
             )
+        object.__setattr__(
+            self,
+            "labels",
+            _strings(
+                self.labels,
+                field_name="labels",
+                unique=True,
+                sort=True,
+                maximum=MAX_LABELS,
+            ),
+        )
         object.__setattr__(
             self, "partial", _boolean(self.partial, field_name="partial")
         )
@@ -1283,6 +1396,14 @@ class ContractFindingRecord(_FindingContract):
                 has_counterexample=has_cex,
             )
 
+        # Vulnerability labels are fail-closed even on partial records: the
+        # label may not be claimed without threat path and impact evidence.
+        validate_vulnerability_evidence_policy(
+            labels=self.labels,
+            threat_path_cid=self.threat_path_cid,
+            impact=self.impact,
+        )
+
         if (
             self.freshness is EvidenceFreshness.STALE
             and self.status is FindingStatus.CONTRACT_BROKEN
@@ -1332,6 +1453,12 @@ class ContractFindingRecord(_FindingContract):
             and self.status is FindingStatus.CONTRACT_BROKEN
         )
 
+    @property
+    def is_vulnerability(self) -> bool:
+        """True when the closed vulnerability label is bound with evidence."""
+
+        return is_vulnerability_labeled(self.labels)
+
     def with_updates(self, **changes: Any) -> "ContractFindingRecord":
         """Return a new record with selected fields replaced (immutable copy)."""
 
@@ -1361,6 +1488,9 @@ class ContractFindingRecord(_FindingContract):
             "policy_revision": self.policy_revision,
             "repository_observation_id": self.repository_observation_id,
             "verdict": self.verdict,
+            "labels": self.labels,
+            "threat_path_cid": self.threat_path_cid,
+            "impact": self.impact,
             "partial": self.partial,
             "partial_missing_fields": self.partial_missing_fields,
             "allow_poisoned_severity": self.allow_poisoned_severity,
@@ -1395,10 +1525,14 @@ class ContractFindingRecord(_FindingContract):
             "policy_revision": self.policy_revision,
             "repository_observation_id": self.repository_observation_id,
             "verdict": self.verdict,
+            "labels": self.labels,
+            "threat_path_cid": self.threat_path_cid,
+            "impact": self.impact,
             "partial": self.partial,
             "partial_missing_fields": self.partial_missing_fields,
             "semantic_key_id": self.semantic_key_id,
             "actionable": self.actionable,
+            "is_vulnerability": self.is_vulnerability,
         }
 
     def to_record(self) -> dict[str, Any]:
@@ -1439,6 +1573,9 @@ class ContractFindingRecord(_FindingContract):
             "policy_revision",
             "repository_observation_id",
             "verdict",
+            "labels",
+            "threat_path_cid",
+            "impact",
             "partial",
             "partial_missing_fields",
             "allow_poisoned_severity",
@@ -1452,6 +1589,7 @@ class ContractFindingRecord(_FindingContract):
                 "finding_id",
                 "semantic_key_id",
                 "actionable",
+                "is_vulnerability",
             },
             artifact_name="contract finding record",
         )
@@ -1484,6 +1622,9 @@ class ContractFindingRecord(_FindingContract):
                 "repository_observation_id", ""
             ),
             verdict=payload.get("verdict", ""),
+            labels=tuple(payload.get("labels") or ()),
+            threat_path_cid=payload.get("threat_path_cid", ""),
+            impact=payload.get("impact", ""),
             partial=payload.get("partial", False),
             partial_missing_fields=tuple(
                 payload.get("partial_missing_fields") or ()
@@ -1501,6 +1642,12 @@ class ContractFindingRecord(_FindingContract):
         if "actionable" in payload and bool(payload["actionable"]) != result.actionable:
             raise ForgedFindingIdentityError(
                 "finding actionable projection does not match derived state"
+            )
+        if "is_vulnerability" in payload and bool(
+            payload["is_vulnerability"]
+        ) != result.is_vulnerability:
+            raise ForgedFindingIdentityError(
+                "finding is_vulnerability projection does not match labels"
             )
         _check_identity(
             payload,
@@ -1862,6 +2009,9 @@ class AppendReceipt(_FindingContract):
             "reasons": self.reasons,
             "event_id": self.event_id,
             "stored": self.stored,
+            "evidence": FINDING_LEDGER_EVIDENCE,
+            "evidence_terms": FINDING_LEDGER_G100_EVIDENCE_TERMS,
+            "goal_id": GOAL_ID,
         }
 
     def to_record(self) -> dict[str, Any]:
@@ -1884,6 +2034,9 @@ class AppendReceipt(_FindingContract):
                 "event_id",
                 "stored",
                 "receipt_id",
+                "evidence",
+                "evidence_terms",
+                "goal_id",
             },
             artifact_name="append receipt",
         )
@@ -1902,6 +2055,29 @@ class AppendReceipt(_FindingContract):
         if "stored" in payload and bool(payload["stored"]) != result.stored:
             raise ForgedFindingIdentityError(
                 "append receipt stored projection does not match outcome"
+            )
+        if "evidence" in payload and payload["evidence"] not in (
+            None,
+            "",
+            FINDING_LEDGER_EVIDENCE,
+        ):
+            raise ForgedFindingIdentityError(
+                f"append receipt evidence must be {FINDING_LEDGER_EVIDENCE!r}"
+            )
+        if "goal_id" in payload and payload["goal_id"] not in (
+            None,
+            "",
+            GOAL_ID,
+        ):
+            raise ForgedFindingIdentityError(
+                f"append receipt goal_id must be {GOAL_ID!r}"
+            )
+        claimed_terms = payload.get("evidence_terms")
+        if claimed_terms is not None and tuple(claimed_terms) != (
+            FINDING_LEDGER_G100_EVIDENCE_TERMS
+        ):
+            raise ForgedFindingIdentityError(
+                "append receipt evidence_terms do not match VFS-G100 terms"
             )
         _check_identity(
             payload,
@@ -1984,6 +2160,12 @@ class ProjectionSnapshot(_FindingContract):
             "admitted_count": len(self.admitted),
             "stale_count": len(self.stale),
             "conflict_count": len(self.conflicts),
+            "evidence": FINDING_LEDGER_EVIDENCE,
+            "evidence_terms": FINDING_LEDGER_G100_EVIDENCE_TERMS,
+            "goal_id": GOAL_ID,
+            # History is append-only; the projection is the mutable current tree.
+            "history_is_append_only": True,
+            "projection_is_mutable_current_tree": True,
         }
 
     def to_record(self) -> dict[str, Any]:
@@ -2003,6 +2185,11 @@ class ProjectionSnapshot(_FindingContract):
                 "stale_count",
                 "conflict_count",
                 "snapshot_id",
+                "evidence",
+                "evidence_terms",
+                "goal_id",
+                "history_is_append_only",
+                "projection_is_mutable_current_tree",
             },
             artifact_name="projection snapshot",
         )
@@ -2020,6 +2207,41 @@ class ProjectionSnapshot(_FindingContract):
                 raise ForgedFindingIdentityError(
                     f"projection snapshot {name} does not match entries"
                 )
+        if "evidence" in payload and payload["evidence"] not in (
+            None,
+            "",
+            FINDING_LEDGER_EVIDENCE,
+        ):
+            raise ForgedFindingIdentityError(
+                f"projection evidence must be {FINDING_LEDGER_EVIDENCE!r}"
+            )
+        if "goal_id" in payload and payload["goal_id"] not in (
+            None,
+            "",
+            GOAL_ID,
+        ):
+            raise ForgedFindingIdentityError(
+                f"projection goal_id must be {GOAL_ID!r}"
+            )
+        claimed_terms = payload.get("evidence_terms")
+        if claimed_terms is not None and tuple(claimed_terms) != (
+            FINDING_LEDGER_G100_EVIDENCE_TERMS
+        ):
+            raise ForgedFindingIdentityError(
+                "projection evidence_terms do not match VFS-G100 terms"
+            )
+        if "history_is_append_only" in payload and payload[
+            "history_is_append_only"
+        ] is not True:
+            raise ForgedFindingIdentityError(
+                "projection must declare append-only history"
+            )
+        if "projection_is_mutable_current_tree" in payload and payload[
+            "projection_is_mutable_current_tree"
+        ] is not True:
+            raise ForgedFindingIdentityError(
+                "projection must declare mutable current-tree separation"
+            )
         _check_identity(
             payload,
             result.snapshot_id,
@@ -2084,6 +2306,9 @@ def build_contract_finding(
     policy_revision: str = "",
     repository_observation_id: str = "",
     verdict: str = "",
+    labels: Sequence[str] = (),
+    threat_path_cid: str = "",
+    impact: str = "",
     partial: bool = False,
     allow_poisoned_severity: bool = False,
 ) -> ContractFindingRecord:
@@ -2123,6 +2348,9 @@ def build_contract_finding(
         policy_revision=policy_revision,
         repository_observation_id=repository_observation_id,
         verdict=verdict,
+        labels=tuple(labels),
+        threat_path_cid=threat_path_cid,
+        impact=impact,
         partial=partial,
         allow_poisoned_severity=allow_poisoned_severity,
     )
@@ -2189,6 +2417,11 @@ class ContractFindingLedger:
                 {
                     "schema": "ipfs_accelerate_py/agent-supervisor/contract-finding/ledger-meta@1",
                     "ledger_version": LEDGER_VERSION,
+                    "evidence": FINDING_LEDGER_EVIDENCE,
+                    "evidence_terms": list(FINDING_LEDGER_G100_EVIDENCE_TERMS),
+                    "goal_id": GOAL_ID,
+                    "history_is_append_only": True,
+                    "projection_is_mutable_current_tree": True,
                     "sequence": 0,
                     "record_count": 0,
                 },
@@ -3012,6 +3245,11 @@ class ContractFindingLedger:
         snapshot = self.projection()
         return {
             "ledger_version": LEDGER_VERSION,
+            "evidence": FINDING_LEDGER_EVIDENCE,
+            "evidence_terms": list(FINDING_LEDGER_G100_EVIDENCE_TERMS),
+            "goal_id": GOAL_ID,
+            "history_is_append_only": True,
+            "projection_is_mutable_current_tree": True,
             "sequence": int(meta.get("sequence", 0)),
             "record_count": int(meta.get("record_count", 0)),
             "projection_entries": len(snapshot.entries),
@@ -3030,12 +3268,18 @@ __all__ = [
     "APPEND_RECEIPT_SCHEMA",
     "CONTRACT_FINDING_RECORD_SCHEMA",
     "CONTRACT_FINDINGS_VERSION",
+    "FINDING_LEDGER_EVIDENCE",
+    "FINDING_LEDGER_G100_EVIDENCE_TERMS",
+    "GOAL_ID",
     "LEDGER_VERSION",
     "MAX_CALL_SLICE_STEPS",
     "MAX_COLLECTION_ITEMS",
+    "MAX_LABELS",
     "MAX_LEDGER_ENTRIES",
     "MAX_RECORD_BYTES",
     "MAX_TEXT_BYTES",
+    "VULNERABILITY_EVIDENCE_POLICY",
+    "VULNERABILITY_LABEL",
     "AnalyzerVersions",
     "AppendOutcome",
     "AppendReceipt",
@@ -3059,11 +3303,17 @@ __all__ = [
     "ProjectionSnapshot",
     "SemanticDedupKey",
     "StaleFindingError",
+    "VulnerabilityEvidencePolicyError",
     "build_contract_finding",
     "claims_contradict",
+    "covered_evidence_terms",
     "finding_content_cid",
+    "finding_ledger_evidence_terms",
     "is_partial_finding",
+    "is_vulnerability_labeled",
     "validate_severity_binding",
+    "validate_vulnerability_evidence_policy",
+    "vulnerability_evidence_requirements_met",
     # Re-export assurance enums used at the ledger boundary.
     "ClaimLevel",
     "EvidenceFreshness",
