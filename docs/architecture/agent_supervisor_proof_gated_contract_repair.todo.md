@@ -491,7 +491,7 @@ task IDs on this board.
 
 ## RPR-015 Project admitted packets into precise supervisor tasks
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
