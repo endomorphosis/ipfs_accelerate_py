@@ -349,7 +349,7 @@ SECRET_CHANGE_SCOPE_EXAMINATION_SCHEMA = (
 # limit independently and cap the larger local materialization envelope.
 DEFAULT_IMPLEMENTATION_PROPOSAL_PATCH_BYTES = 2_000_000
 DEFAULT_IMPLEMENTATION_PROPOSAL_OUTPUT_BYTES = 2_500_000
-DEFAULT_IMPLEMENTATION_PROPOSAL_FILE_BYTES = 1_000_000
+DEFAULT_IMPLEMENTATION_PROPOSAL_FILE_BYTES = 1_048_576
 MAX_IMPLEMENTATION_PROPOSAL_MATERIALIZED_BYTES = 16_000_000
 MAX_IMPLEMENTATION_PROPOSAL_SERIALIZED_BYTES = 24_000_000
 PROPOSAL_ARTIFACT_ENVELOPE_METADATA_KEY = "proposal artifact envelope"
@@ -14416,6 +14416,10 @@ class PortalImplementationDaemon:
             proposal,
             task=task,
         )
+        local_policy_limits = {
+            "max_file_bytes": DEFAULT_IMPLEMENTATION_PROPOSAL_FILE_BYTES,
+            **local_envelope_limits,
+        }
         policy_version = "strict-proposal-v2+local-envelope-v2"
         policy_allowed_paths = allowed_paths
         if "max_file_bytes" in local_envelope_limits:
@@ -14441,7 +14445,7 @@ class PortalImplementationDaemon:
             require_structured_details=True,
             require_patch_text=True,
             policy_version=policy_version,
-            **local_envelope_limits,
+            **local_policy_limits,
         )
         result = validate_implementation_proposal(proposal, policy=policy)
         finding_codes = tuple(
