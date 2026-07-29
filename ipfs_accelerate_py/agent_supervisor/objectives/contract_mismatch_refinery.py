@@ -49,6 +49,9 @@ CONTRACT_REPAIR_BOARD_SCHEMA: Final = (
 CONTRACT_REPAIR_TASK_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/contract-repair-task@1"
 )
+CONTRACT_MISMATCH_TRIAGE_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/contract-mismatch-triage@1"
+)
 DEFAULT_BOARD_NAMESPACE: Final = "swissknife-symbolic-contract-assurance-v1"
 DEFAULT_GOAL_ID: Final = "SCA-G101"
 DEFAULT_MAX_OPEN_WORK: Final = 48
@@ -95,6 +98,7 @@ class ContractMismatchRefineryReason(str, Enum):
     OPEN_WORK_LIMIT = "open_work_limit"
     FINDING_LIMIT = "finding_limit"
     COOLDOWN = "cooldown"
+    UNSUPPORTED_FINDING = "unsupported_finding"
     MALFORMED_PACKET = "malformed_packet"
     MALFORMED_PATH = "malformed_path"
     OWNER_MISMATCH = "owner_mismatch"
@@ -684,6 +688,65 @@ class ContractMismatchRefineryResult:
         return False
 
 
+def build_contract_mismatch_triage(
+    result: ContractMismatchRefineryResult,
+    *,
+    current_snapshot_id: str,
+    owner: str,
+    source_records: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    """Return sealed, non-authoritative accounting for one refinery run."""
+
+    reason_counts: dict[str, int] = {}
+    decisions: list[dict[str, str]] = []
+    for decision in result.decisions:
+        reason = decision.reason_code.value
+        reason_counts[reason] = reason_counts.get(reason, 0) + 1
+        decisions.append(
+            {
+                "detail": decision.detail,
+                "finding_id": decision.finding_id,
+                "reason_code": reason,
+                "task_id": decision.task_id,
+            }
+        )
+    payload: dict[str, Any] = {
+        "schema": CONTRACT_MISMATCH_TRIAGE_SCHEMA,
+        "interface": CONTRACT_MISMATCH_REFINERY_INTERFACE,
+        "snapshot_id": _one_line(
+            current_snapshot_id, "current_snapshot_id"
+        ),
+        "owner": _one_line(owner, "owner"),
+        "source_record_count": len(source_records),
+        "source_records_id": "sha256:"
+        + sha256(canonical_json_bytes(source_records)).hexdigest(),
+        "generated_count": result.generated_count,
+        "updated_count": result.updated_count,
+        "initial_open_work": result.initial_open_work,
+        "final_open_work": result.final_open_work,
+        "max_open_work": result.max_open_work,
+        "last_refinery_epoch": result.last_refinery_epoch,
+        "reason_counts": dict(sorted(reason_counts.items())),
+        "decisions": sorted(
+            decisions,
+            key=lambda item: (
+                item["finding_id"],
+                item["task_id"],
+                item["reason_code"],
+                item["detail"],
+            ),
+        ),
+        "completion_authoritative": False,
+        "provider_call_count": 0,
+        "model_call_count": 0,
+        "llm_call_count": 0,
+    }
+    payload["triage_id"] = "sha256:" + sha256(
+        canonical_json_bytes(payload)
+    ).hexdigest()
+    return payload
+
+
 @dataclass(frozen=True, slots=True)
 class _ParsedBoard:
     tasks: tuple[ContractRepairTask, ...]
@@ -1098,6 +1161,44 @@ class ContractMismatchRefinery:
         malformed_decisions: list[ContractMismatchRefineryDecision] = []
         for raw in packets:
             try:
+                if (
+                    isinstance(raw, Mapping)
+                    and raw.get("state") == "unsupported"
+                ):
+                    finding_id = _one_line(
+                        raw.get("finding_id"), "finding_id"
+                    )
+                    finding_snapshot_id = _one_line(
+                        raw.get("snapshot_id") or raw.get("snapshot_root"),
+                        "finding snapshot identity",
+                    )
+                    reason_code = _one_line(
+                        raw.get("reason_code"), "reason_code"
+                    )
+                    _one_line(raw.get("contract_id"), "contract_id")
+                    _strings(
+                        raw.get("affected_paths"),
+                        "affected_paths",
+                        required=True,
+                        maximum=HARD_MAX_PATHS,
+                    )
+                    _json_value(raw.get("counterexample"), "counterexample")
+                    malformed_decisions.append(
+                        ContractMismatchRefineryDecision(
+                            finding_id=finding_id,
+                            task_id="",
+                            reason_code=(
+                                ContractMismatchRefineryReason.STALE_FINDING
+                                if finding_snapshot_id != snapshot
+                                else ContractMismatchRefineryReason.UNSUPPORTED_FINDING
+                            ),
+                            detail=(
+                                "explicitly unsupported analyzer finding is "
+                                f"not implementation-ready: {reason_code}"
+                            ),
+                        )
+                    )
+                    continue
                 packet = (
                     raw
                     if isinstance(raw, McpContractEditPacket)
@@ -1423,6 +1524,12 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--output", required=True)
     parser.add_argument(
+        "--triage-output",
+        help=(
+            "Optional path for sealed non-authoritative refinery accounting."
+        ),
+    )
+    parser.add_argument(
         "--snapshot",
         help=(
             "Current repository snapshot identity. When omitted, exactly one "
@@ -1497,6 +1604,23 @@ def main(argv: Sequence[str] | None = None) -> int:
             f"{first.reason_code.value}: {first.detail}"
         )
     write_contract_repair_board(output, result.markdown)
+    if args.triage_output:
+        triage = build_contract_mismatch_triage(
+            result,
+            current_snapshot_id=current_snapshot_id,
+            owner=args.owner,
+            source_records=packet_records,
+        )
+        write_contract_repair_board(
+            args.triage_output,
+            json.dumps(
+                triage,
+                sort_keys=True,
+                indent=2,
+                ensure_ascii=False,
+            )
+            + "\n",
+        )
     return 0
 
 
