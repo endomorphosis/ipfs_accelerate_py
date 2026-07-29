@@ -57,7 +57,7 @@ task IDs on this board.
 
 ## RPR-001 Define bounded contract-repair records
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
