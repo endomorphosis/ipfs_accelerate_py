@@ -999,6 +999,42 @@ def test_operator_clearance_requires_exact_untrusted_commit_and_writes_receipt(
     assert receipt["history"][0]["trusted_generator"] is False
 
 
+def test_operator_clearance_accepts_exact_shared_checkout_rollback(
+    tmp_path: Path,
+) -> None:
+    daemon, _repo, workspace, protected = _protected_git_worktree_daemon(tmp_path)
+    task = _task(outputs=["src/example.py"])
+    before = daemon._require_implementation_protected_snapshot(
+        task=task,
+        attempt=1,
+        workspace_path=workspace,
+    )
+
+    protected.write_text("temporary operator update\n", encoding="utf-8")
+    violation = daemon._implementation_protected_path_violation(
+        task=task,
+        attempt=1,
+        workspace_path=workspace,
+        before=before,
+    )
+    assert violation["reason"] == "implementation_protected_path_mutated"
+
+    protected.write_text("before\n", encoding="utf-8")
+    cleared = daemon.clear_implementation_protected_path_incident(
+        operator_note="Restored the protected controller input exactly.",
+    )
+
+    assert cleared["cleared"] is True
+    assert cleared["reason"] == "operator_confirmed_shared_checkout_rollback"
+    assert cleared["shared_checkout_rollback_confirmed"] is True
+    receipt = json.loads(
+        Path(cleared["receipt_path"]).read_text(encoding="utf-8")
+    )
+    proof = receipt["shared_checkout_rollback_proof"]
+    assert proof["schema"] == "implementation-protected-path-rollback-proof-v1"
+    assert proof["restored_paths"][POLICY_PATH]["sha256"]
+
+
 def test_operator_clearance_rejects_workspace_protected_path_mutation(
     tmp_path: Path,
 ) -> None:

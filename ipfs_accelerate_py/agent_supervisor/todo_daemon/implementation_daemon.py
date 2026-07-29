@@ -3074,7 +3074,10 @@ class PortalImplementationDaemon:
         carry a trusted daemon identity. This operator path requires the exact
         untrusted commits in the protected-path history, while independently
         proving that the implementation workspace did not mutate a protected
-        file and that no implementation process still owns the lane.
+        file and that no implementation process still owns the lane. A
+        content-exact rollback to the recorded shared-checkout baseline is also
+        clearable without manufacturing a Git commit for intentionally
+        untracked controller inputs.
         """
 
         incident_path = self._implementation_protected_incident_path()
@@ -3188,6 +3191,12 @@ class PortalImplementationDaemon:
         if lock_path.exists() and lock is None:
             return denied("implementation_lock_malformed")
 
+        rollback_proof = (
+            self._implementation_protected_shared_checkout_rollback_proof(
+                active=active,
+                incident=incident,
+            )
+        )
         snapshot = active.get("snapshot")
         before_shared = (
             snapshot.get("shared_checkout")
@@ -3219,7 +3228,7 @@ class PortalImplementationDaemon:
                     before_head=before_head,
                     after_head=after_head,
                 )
-        elif not mirrored_workspace_proof:
+        elif not mirrored_workspace_proof and not rollback_proof:
             return denied(
                 "protected_path_history_unavailable",
                 before_head=before_head,
@@ -3235,26 +3244,27 @@ class PortalImplementationDaemon:
         )
         if not protected_paths:
             return denied("protected_paths_missing")
-        status = subprocess.run(
-            [
-                "git",
-                "status",
-                "--porcelain",
-                "--untracked-files=all",
-                "--",
-                *protected_paths,
-            ],
-            cwd=self.repo_root,
-            text=True,
-            capture_output=True,
-            check=False,
-        )
-        if status.returncode != 0 or status.stdout.strip():
-            return denied(
-                "protected_paths_dirty",
-                protected_paths=protected_paths,
-                status=status.stdout.strip(),
+        if not rollback_proof:
+            status = subprocess.run(
+                [
+                    "git",
+                    "status",
+                    "--porcelain",
+                    "--untracked-files=all",
+                    "--",
+                    *protected_paths,
+                ],
+                cwd=self.repo_root,
+                text=True,
+                capture_output=True,
+                check=False,
             )
+            if status.returncode != 0 or status.stdout.strip():
+                return denied(
+                    "protected_paths_dirty",
+                    protected_paths=protected_paths,
+                    status=status.stdout.strip(),
+                )
 
         resolved_approvals: set[str] = set()
         invalid_approvals: list[str] = []
@@ -3361,6 +3371,7 @@ class PortalImplementationDaemon:
             "protected_path_history_unchanged": (
                 protected_path_history_unchanged
             ),
+            "shared_checkout_rollback_proof": rollback_proof,
             "disposed_ephemeral_workspace_proof": disposed_workspace_proof,
             "mirrored_ephemeral_workspace_proof": mirrored_workspace_proof,
         }
@@ -3383,6 +3394,7 @@ class PortalImplementationDaemon:
             "protected_path_history_unchanged": (
                 protected_path_history_unchanged
             ),
+            "shared_checkout_rollback_proof": rollback_proof,
             "disposed_ephemeral_workspace_proof": disposed_workspace_proof,
             "mirrored_ephemeral_workspace_proof": mirrored_workspace_proof,
         }
@@ -3406,7 +3418,9 @@ class PortalImplementationDaemon:
         result = {
             "cleared": True,
             "reason": (
-                (
+                "operator_confirmed_shared_checkout_rollback"
+                if rollback_proof
+                else (
                     "operator_approved_shared_checkout_commits_and_"
                     "mirrored_ephemeral_workspace"
                 )
@@ -3422,6 +3436,7 @@ class PortalImplementationDaemon:
             "task_id": receipt["task_id"],
             "attempt": receipt["attempt"],
             "approved_commits": receipt["approved_commits"],
+            "shared_checkout_rollback_confirmed": bool(rollback_proof),
             "disposed_ephemeral_workspace_approved": bool(
                 disposed_workspace_proof
             ),
@@ -3438,6 +3453,103 @@ class PortalImplementationDaemon:
             result,
         )
         return result
+
+    def _implementation_protected_shared_checkout_rollback_proof(
+        self,
+        *,
+        active: Mapping[str, Any],
+        incident: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Prove every protected input is back at its recorded shared baseline."""
+
+        mutations = incident.get("mutations")
+        if not isinstance(mutations, list) or not mutations:
+            return {}
+        if {
+            str(item.get("scope") or "")
+            for item in mutations
+            if isinstance(item, Mapping)
+        } != {"shared_checkout"}:
+            return {}
+
+        snapshot = active.get("snapshot")
+        shared = (
+            snapshot.get("shared_checkout")
+            if isinstance(snapshot, Mapping)
+            else None
+        )
+        baseline_paths = (
+            shared.get("paths") if isinstance(shared, Mapping) else None
+        )
+        if not isinstance(baseline_paths, Mapping):
+            return {}
+        protected_paths = tuple(
+            str(value)
+            for value in active.get("protected_paths", ())
+            if str(value)
+        )
+        if (
+            not protected_paths
+            or set(protected_paths) != set(self.implementation_protected_paths)
+            or set(map(str, baseline_paths)) != set(protected_paths)
+        ):
+            return {}
+
+        def stable_identity(identity: Mapping[str, Any]) -> dict[str, Any]:
+            return {
+                key: identity.get(key)
+                for key in (
+                    "state",
+                    "kind",
+                    "mode",
+                    "uid",
+                    "gid",
+                    "size",
+                    "sha256",
+                    "symlink_target",
+                )
+                if key in identity
+            }
+
+        restored: dict[str, dict[str, Any]] = {}
+        for relative in sorted(protected_paths):
+            baseline = baseline_paths.get(relative)
+            if not isinstance(baseline, Mapping):
+                return {}
+            current = self._implementation_protected_path_identity(
+                self.repo_root,
+                relative,
+            )
+            if (
+                baseline.get("state") != "present"
+                or current.get("state") != "present"
+                or stable_identity(baseline) != stable_identity(current)
+            ):
+                return {}
+            restored[relative] = stable_identity(current)
+
+        for item in mutations:
+            if not isinstance(item, Mapping):
+                return {}
+            relative = str(item.get("path") or "")
+            before = item.get("before")
+            if (
+                relative not in restored
+                or not isinstance(before, Mapping)
+                or stable_identity(before)
+                != stable_identity(baseline_paths[relative])
+            ):
+                return {}
+
+        baseline_head = str(shared.get("git_head") or "")
+        current_head = self._implementation_protected_git_head(self.repo_root)
+        if not baseline_head or baseline_head != current_head:
+            return {}
+        return {
+            "schema": "implementation-protected-path-rollback-proof-v1",
+            "git_head": current_head,
+            "restored_paths": restored,
+        }
 
     def _mirrored_ephemeral_workspace_clearance_proof(
         self,
