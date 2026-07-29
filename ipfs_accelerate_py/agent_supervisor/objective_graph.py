@@ -8203,17 +8203,11 @@ def add_goal_packet_aggregate_findings(
                 for goal_id in goal_ids
             },
             completion_task_bindings=_unique_strings(
-                canonical_task_identity(
-                    {
-                        "dedupe_key": (
-                            finding.semantic_identity
-                            or finding.dedupe_key
-                            or f"objective-finding:{finding.fingerprint}"
-                        )
-                    },
-                    board_namespace="objective-graph",
-                    source_path=finding.objective_path,
-                ).canonical_task_cid
+                (
+                    finding.semantic_identity
+                    or finding.dedupe_key
+                    or f"objective-finding:{finding.fingerprint}"
+                )
                 for finding in sorted_group
             ),
             predicted_files=_unique_strings(

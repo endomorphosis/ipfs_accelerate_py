@@ -1000,6 +1000,85 @@ def test_in_scope_test_source_is_not_rejected_only_for_sensitive_filename() -> N
     assert ProposalFindingCode.SECRET_CHANGE_FORBIDDEN not in _finding_codes(result)
 
 
+def test_empty_test_package_marker_is_bounded_companion_to_declared_test() -> None:
+    marker = "tests/unit/processors/smart_contracts/__init__.py"
+    declared_test = "tests/unit/processors/smart_contracts/test_loader.py"
+    result = validate_implementation_proposal(
+        _proposal(
+            _entry(
+                marker,
+                before=None,
+                after="",
+                change_kind=DiffChangeKind.ADD,
+                old_path="",
+            )
+        ),
+        policy=_policy(
+            allowed_paths=(declared_test,),
+            task_owned_paths=(declared_test,),
+        ),
+    )
+
+    assert result.accepted
+    assert ProposalFindingCode.PATH_OUTSIDE_SCOPE not in _finding_codes(result)
+
+
+@pytest.mark.parametrize(
+    ("path", "before", "after", "change_kind"),
+    (
+        (
+            "ipfs_accelerate_py/new_package/__init__.py",
+            None,
+            "",
+            DiffChangeKind.ADD,
+        ),
+        (
+            "tests/unit/processors/smart_contracts/__init__.py",
+            None,
+            "ENABLED = True\n",
+            DiffChangeKind.ADD,
+        ),
+        (
+            "tests/unit/processors/smart_contracts/__init__.py",
+            "",
+            "# changed\n",
+            DiffChangeKind.MODIFY,
+        ),
+        (
+            "tests/unit/processors/other/__init__.py",
+            None,
+            "",
+            DiffChangeKind.ADD,
+        ),
+    ),
+)
+def test_package_marker_companion_cannot_widen_task_scope(
+    path: str,
+    before: str | None,
+    after: str,
+    change_kind: DiffChangeKind,
+) -> None:
+    declared_test = "tests/unit/processors/smart_contracts/test_loader.py"
+    result = validate_implementation_proposal(
+        _proposal(
+            _entry(
+                path,
+                before=before,
+                after=after,
+                change_kind=change_kind,
+                old_path="" if change_kind is DiffChangeKind.ADD else path,
+            )
+        ),
+        policy=_policy(
+            allowed_paths=(declared_test,),
+            task_owned_paths=(declared_test,),
+        ),
+    )
+
+    assert not result.accepted
+    assert ProposalFindingCode.PATH_OUTSIDE_SCOPE in _finding_codes(result)
+
+
 @pytest.mark.parametrize(
     "introduced_content",
     [
@@ -1045,6 +1124,7 @@ def test_in_scope_sensitive_test_source_still_rejects_secret_content(
     (
         "literal-secret-value",
         "super-secret-value",
+        "should-not-appear",
         "env://WALLET_RPC_TOKEN",
     ),
 )
@@ -1080,6 +1160,7 @@ def test_in_scope_security_test_accepts_explicit_synthetic_secret_canary(
     (
         "literal-secret-value",
         "super-secret-value",
+        "should-not-appear",
         "env://WALLET_RPC_TOKEN",
     ),
 )

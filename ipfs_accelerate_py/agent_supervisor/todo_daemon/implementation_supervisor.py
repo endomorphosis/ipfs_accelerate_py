@@ -7324,6 +7324,13 @@ class PortalImplementationSupervisor:
             max_blocked_tasks=self.config.objective_task_janitor_max_blocked_tasks,
             max_deprioritized_tasks=self.config.objective_task_janitor_max_deprioritized_tasks,
             max_reopened_goals=self.config.objective_task_janitor_max_reopened_goals,
+            # Missing-work reopening relies on completion reconciliation to
+            # retire goals after their finite task has passed.  When an
+            # operator explicitly disables that reconciliation, forcing every
+            # active goal without an open task regenerates already-completed
+            # work forever.  Keep contradiction-driven reopening enabled, but
+            # let the ordinary low-backlog scan discover genuinely new work.
+            reopen_missing_work_goals=self.config.objective_reconcile_goal_completion,
             contradictions=contradictions,
         )
         if result.get("changed"):
@@ -7344,6 +7351,9 @@ class PortalImplementationSupervisor:
             "materialized_blocked_task_ids": list(materialized.get("blocked_task_ids") or []),
             "materialized_reason_task_ids": list(materialized.get("reason_task_ids") or []),
             "reopened_goal_ids": list(result.get("reopened_goal_ids") or []),
+            "missing_work_reopen_enabled": bool(
+                result.get("missing_work_reopen_enabled")
+            ),
             "contradiction_reopened_goal_ids": list(
                 result.get("contradiction_reopened_goal_ids") or []
             ),

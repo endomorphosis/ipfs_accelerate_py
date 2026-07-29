@@ -7324,6 +7324,86 @@ def test_implementation_daemon_detects_changed_submodule_gitlink_without_error(t
     ) is True
 
 
+def test_merge_anchors_submodule_to_target_gitlink_without_advancing_ambient_main(
+    tmp_path,
+):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    baseline_ref = _git(repo, "rev-parse", "HEAD")
+    target_gitlink = _git(repo, "rev-parse", "HEAD:libs/child")
+    parent_branch = "implementation/auto-target-isolation"
+    submodule_branch = (
+        f"{parent_branch}-submodule-libs-child"
+    )
+
+    _git(submodule, "checkout", "-b", submodule_branch, target_gitlink)
+    (submodule / "task-owned.txt").write_text(
+        "target-scoped task work\n",
+        encoding="utf-8",
+    )
+    _git(submodule, "add", "task-owned.txt")
+    _git(submodule, "commit", "-m", "AUTO-TARGET: child task")
+    task_commit = _git(submodule, "rev-parse", "HEAD")
+    _git(repo, "checkout", "-b", parent_branch)
+    _git(repo, "add", "libs/child")
+    _git(repo, "commit", "-m", "AUTO-TARGET: parent task pointer")
+    _git(repo, "checkout", "main")
+
+    _git(submodule, "checkout", "main")
+    (submodule / "ambient-only.txt").write_text(
+        "unrelated ambient main work\n",
+        encoding="utf-8",
+    )
+    _git(submodule, "add", "ambient-only.txt")
+    _git(submodule, "commit", "-m", "unrelated ambient child main")
+    ambient_main = _git(submodule, "rev-parse", "main")
+    _git(submodule, "checkout", "--detach", target_gitlink)
+    assert _git(repo, "status", "--porcelain") == ""
+
+    state_dir = tmp_path / "supervisor-state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=["libs/child"],
+        merge_target_branch="main",
+    )
+
+    result = daemon._merge_branch_to_main(
+        parent_branch,
+        PortalTask(
+            task_id="AUTO-TARGET",
+            title="Keep child integration scoped to parent target",
+            status="todo",
+            completion="manual",
+            priority="P0",
+            track="ops",
+        ),
+        1,
+        baseline_ref=baseline_ref,
+        changed_submodule_paths={"libs/child"},
+    )
+
+    assert result["merged"] is True
+    child_result = result["submodule_merge_results"][0]
+    assert child_result["isolated_target"] is True
+    assert child_result["target_base_commit"] == target_gitlink
+    integrated_commit = child_result["commit"]
+    assert _git(submodule, "merge-base", "--is-ancestor", target_gitlink, integrated_commit) == ""
+    assert _git(submodule, "merge-base", "--is-ancestor", task_commit, integrated_commit) == ""
+    assert subprocess.run(
+        ["git", "merge-base", "--is-ancestor", ambient_main, integrated_commit],
+        cwd=submodule,
+        capture_output=True,
+        check=False,
+    ).returncode != 0
+    assert _git(submodule, "rev-parse", "main") == ambient_main
+    assert _git(submodule, "rev-parse", "HEAD") == integrated_commit
+    assert _git(repo, "rev-parse", "main:libs/child") == integrated_commit
+    assert _git(repo, "status", "--porcelain") == ""
+
+
 def test_implementation_daemon_treats_nested_configured_path_as_changed(tmp_path):
     repo, _submodule = _seed_parent_with_submodule(tmp_path)
     baseline_ref = _git(repo, "rev-parse", "HEAD")
@@ -7802,6 +7882,7 @@ def test_implementation_daemon_retries_submodule_after_parent_commit_already_lan
     _git(submodule, "commit", "-m", "AUTO-116: child change")
     submodule_commit = _git(submodule, "rev-parse", "HEAD")
     _git(submodule, "checkout", "main")
+    ambient_main = _git(submodule, "rev-parse", "main")
     (submodule / "feature.txt").write_text("temporarily dirty\n", encoding="utf-8")
 
     state_dir = tmp_path / "supervisor-state"
@@ -7849,7 +7930,9 @@ def test_implementation_daemon_retries_submodule_after_parent_commit_already_lan
     assert reconciliation[-1]["resolved"] is True
     assert reconciliation[-1]["reason"] == "implementation_commit_already_merged"
     assert reconciliation[-1]["submodule_merge_results"][0]["merged"] is True
-    assert _git(submodule, "merge-base", "--is-ancestor", submodule_commit, "main") == ""
+    assert _git(submodule, "rev-parse", "main") == ambient_main
+    assert _git(submodule, "rev-parse", "HEAD") == submodule_commit
+    assert _git(repo, "rev-parse", "main:libs/child") == submodule_commit
     assert not checkpoint_path.exists()
 
 
@@ -14613,8 +14696,16 @@ def test_objective_daemon_adds_goal_packet_aggregate_when_capacity_allows(tmp_pa
     assert aggregate["work_item_count"] == 6
     assert aggregate["merge_family"] == aggregate["goal_packet_key"]
     assert aggregate["related_task_ids"]
-    assert index_payload["execution_packets"][0]["goal_packet_work_item_count_max"] == 6
-    assert "goal_packet_aggregate" in index_payload["execution_packets"][0]["candidate_kinds"]
+    packet = index_payload["execution_packets"][0]
+    assert packet["goal_packet_work_item_count_max"] == 6
+    assert "goal_packet_aggregate" in packet["candidate_kinds"]
+    assert "completion_binding_rejection" not in packet
+    assert packet["completion_binding"]["primary_task_id"] == aggregate["task_id"]
+    assert set(packet["completion_binding"]["bound_sibling_task_ids"]) == {
+        record["task_id"]
+        for record in index_payload["records"]
+        if record["candidate_kind"] != "goal_packet_aggregate"
+    }
 
 
 def test_write_todo_vector_index_clusters_related_goal_tasks(tmp_path):
