@@ -1,0 +1,273 @@
+{
+  "schema": "ipfs_accelerate_py/agent-supervisor/contract-repair-fixture-manifest@1",
+  "corpus_id": "contract-repair-adversarial-v1",
+  "description": "Hermetic, declarative broken-contract recipes. Index recall and implementation observations are data, never expectation authority.",
+  "cases": [
+    {
+      "id": "pure-rename",
+      "scenario": "pure_rename",
+      "expected": {"trace_disposition": "likely_refactor", "nomination": "pure_rename", "admission": "requires_independent_proof", "automated_write": "only_after_target_decision", "reason_codes": ["lineage_required", "bidirectional_refinement_required"]},
+      "authority": {"expectation_sources": ["reviewed_spec", "test"], "implementation_observation_authoritative": false, "vector_score_authoritative": false, "requires_independent_proof": true},
+      "artifacts": {
+        "source": {"content_id": "sha256:9dc58423144408a91fa17cef5992894eba3f696bbf53101ee235777c9d1708ff", "content": {"path": "src/client.py", "snippet": "return api.fetch_user(user_id)", "broken_symbol": "fetch_user"}},
+        "spec": {"content_id": "sha256:0c925629db48d36b3b97e2d126f5f9c960ae667a8e076ef0ff8cc314c4891ee1", "content": {"path": "spec/api.md", "requirement": "fetch user by identifier; raises NotFound"}},
+        "test": {"content_id": "sha256:ce679b76f59c60db6075920dc71d2ea17ea428f6bfdc1c25e18cec4a2b64abcd", "content": {"path": "tests/test_client.py", "assertion": "client returns user and preserves NotFound"}},
+        "history": {"content_id": "sha256:0b60610476161086ffbdf3cb7d1b6b1116b227b0a92687efd9ede5be890ec9d7", "content": {"path": "history/rename.json", "lineage": "fetch_user -> get_user", "reviewed": true}},
+        "index": {"content_id": "sha256:7b1e3d328ce0e21c20677327e863dac5338f8b0e493daec5e8f98c7cff904b5e", "content": {"path": "index/symbols.json", "candidate": "src/api.py:get_user", "signals": ["history", "ast"], "semantic_authority": false}},
+        "proof": {"content_id": "sha256:24b200321ea2374a8530a6859e89bcdc71479c6b44faeab910496f5d4dd730b2", "content": {"path": "proof/rename.json", "expectation": "current independent bidirectional refinement receipt", "verdict": "required"}}
+      }
+    },
+    {
+      "id": "module-move",
+      "scenario": "module_move",
+      "expected": {"trace_disposition": "likely_refactor", "nomination": "moved_receiver", "admission": "requires_independent_proof", "automated_write": "only_after_target_decision", "reason_codes": ["module_lineage_required"]},
+      "authority": {"expectation_sources": ["reviewed_spec", "test"], "implementation_observation_authoritative": false, "vector_score_authoritative": false, "requires_independent_proof": true},
+      "artifacts": {
+        "source": {"content_id": "sha256:97e924b38a6ca75475258c192ca5b73004ac0e5690e0634031bf36880fabc983", "content": {"path": "src/worker.py", "snippet": "from legacy.jobs import dispatch; dispatch(job)", "broken_symbol": "legacy.jobs.dispatch"}},
+        "spec": {"content_id": "sha256:dc4728cc78a90d4d36e3292b65ead1c340ceecc0498a1f5250349ca9096fba15", "content": {"path": "spec/jobs.md", "requirement": "dispatch validates tenant before enqueue"}},
+        "test": {"content_id": "sha256:6ac3450a634b7e143060636dde517a5a49245e92f198aa23c01f48e61321732b", "content": {"path": "tests/test_worker.py", "assertion": "tenant validation precedes enqueue"}},
+        "history": {"content_id": "sha256:5514326a3ec7653236e2e9c031f7eb8c67ecde6f4c3f9a2223edbdf8f7452d58", "content": {"path": "history/move.json", "lineage": "legacy/jobs.py -> platform/jobs.py", "reviewed": true}},
+        "index": {"content_id": "sha256:cff9b8b08a25100151325aed7dcf784c3232f59210fc808d4770edbfe4ea3134", "content": {"path": "index/symbols.json", "candidate": "platform/jobs.py:dispatch", "signals": ["history", "import_graph"], "semantic_authority": false}},
+        "proof": {"content_id": "sha256:f201c8ea88ada18b476770306db994e4b7bb692beab22eba148d1435a58f373e", "content": {"path": "proof/move.json", "expectation": "current receiver substitution receipt", "verdict": "required"}}
+      }
+    },
+    {
+      "id": "alias",
+      "scenario": "alias",
+      "expected": {"trace_disposition": "likely_refactor", "nomination": "alias", "admission": "requires_independent_proof", "automated_write": "only_after_target_decision", "reason_codes": ["alias_edge_must_resolve"]},
+      "authority": {"expectation_sources": ["reviewed_spec", "test"], "implementation_observation_authoritative": false, "vector_score_authoritative": false, "requires_independent_proof": true},
+      "artifacts": {
+        "source": {"content_id": "sha256:ae3804076840c87c131343ad1f2c1fc34e7018d2c186bbe4e97cba38636ec2b4", "content": {"path": "src/entry.py", "snippet": "parse(payload)", "broken_symbol": "parse"}},
+        "spec": {"content_id": "sha256:8bbada7f66ada013ea328f3aceb7b9ed157e945e9dd1599c312d885c818bedb2", "content": {"path": "spec/parser.md", "requirement": "strict JSON parsing"}},
+        "test": {"content_id": "sha256:503762943ae71306a575f17f60bf09d63263d120b3748ba0fb5c123f808136e2", "content": {"path": "tests/test_parser.py", "assertion": "invalid JSON raises ParseError"}},
+        "history": {"content_id": "sha256:bafbbaafba2dd4fdb1fb69706017f86aa78258afbb1b221e5d503da94c5540fe", "content": {"path": "history/alias.json", "lineage": "parse -> parse_payload", "reviewed": true}},
+        "index": {"content_id": "sha256:22c0b89c77e7d8fee15e03d4f8e604e41655239373c227b2712dbf6b8f1caf90", "content": {"path": "index/symbols.json", "candidate": "src/parser.py:parse_payload", "signals": ["resolver_alias"], "semantic_authority": false}},
+        "proof": {"content_id": "sha256:17144d7e88a52967c134d965089c4ea5cc24976ffa5bc840580273e0fe655a97", "content": {"path": "proof/alias.json", "expectation": "alias and behavior proof", "verdict": "required"}}
+      }
+    },
+    {
+      "id": "re-export",
+      "scenario": "re_export",
+      "expected": {"trace_disposition": "likely_refactor", "nomination": "re_export", "admission": "requires_independent_proof", "automated_write": "only_after_target_decision", "reason_codes": ["export_edge_must_resolve"]},
+      "authority": {"expectation_sources": ["reviewed_spec", "test"], "implementation_observation_authoritative": false, "vector_score_authoritative": false, "requires_independent_proof": true},
+      "artifacts": {
+        "source": {"content_id": "sha256:644089bba2652d9c2aa4940088b829aca659fb8c50b32ebabf205fb9e0248436", "content": {"path": "src/cli.py", "snippet": "from api import normalize; normalize(value)", "broken_symbol": "api.normalize"}},
+        "spec": {"content_id": "sha256:5800ef3a5ac89712afba1c0022a904612a62413d235716602d82b5fb21d15dee", "content": {"path": "spec/normalize.md", "requirement": "normalized output is NFC"}},
+        "test": {"content_id": "sha256:bb77fc13fd20fce9355503dc65f1522d5acc95b8ad5a982101595804a164ed07", "content": {"path": "tests/test_cli.py", "assertion": "normalization is NFC"}},
+        "history": {"content_id": "sha256:b85a19e0c53bba9b448262deee4be5ae048753d19cac2f4af7a6c6f049f266be", "content": {"path": "history/export.json", "lineage": "api.normalize re-exports text.normalize", "reviewed": true}},
+        "index": {"content_id": "sha256:af9d1287f2d8b83b7c9d3dbe1c4e3ddbdcfb099c5b6bb935e94a91f975bba2e7", "content": {"path": "index/symbols.json", "candidate": "src/text.py:normalize", "signals": ["export_graph"], "semantic_authority": false}},
+        "proof": {"content_id": "sha256:a555d84db5a48f58ffdf80f4c0d67e71a98f35aa44ac8cd1948668c547283511", "content": {"path": "proof/export.json", "expectation": "re-export route and contract proof", "verdict": "required"}}
+      }
+    },
+    {
+      "id": "registration",
+      "scenario": "registration",
+      "expected": {"trace_disposition": "likely_refactor", "nomination": "registered_receiver", "admission": "requires_independent_proof", "automated_write": "only_after_target_decision", "reason_codes": ["registration_evidence_required"]},
+      "authority": {"expectation_sources": ["reviewed_spec", "test"], "implementation_observation_authoritative": false, "vector_score_authoritative": false, "requires_independent_proof": true},
+      "artifacts": {
+        "source": {"content_id": "sha256:450ad5f1fdeea2829abe8379498fe05753f15f4a20780b823d71526c164df0e0", "content": {"path": "src/router.py", "snippet": "registry.run('email', message)", "broken_symbol": "email"}},
+        "spec": {"content_id": "sha256:6afcbdeb0e75a4387e1ab2260f387fbf6107cfd0633e5e62ba5322b9a93214c9", "content": {"path": "spec/router.md", "requirement": "email handler authorizes sender"}},
+        "test": {"content_id": "sha256:c320b51246a8b0ba354888d55a5562297145110f6548f55d979051383c893e26", "content": {"path": "tests/test_router.py", "assertion": "untrusted sender is denied"}},
+        "history": {"content_id": "sha256:14061afde2c3930426fba40aff7af10ea7c3eae8fa528b246064b9b06e39cd72", "content": {"path": "history/registration.json", "lineage": "email handler registration moved", "reviewed": true}},
+        "index": {"content_id": "sha256:0c47f24d9fc242d6d9cc7d21ee47b3acf11a4737c2e435b803cbeb6a6152ec4d", "content": {"path": "index/symbols.json", "candidate": "src/handlers/email.py:handle", "signals": ["registration_graph"], "semantic_authority": false}},
+        "proof": {"content_id": "sha256:87174ea2b829b583fe73d44acf6138d7428418a00aebd6b4dc76d59558094cba", "content": {"path": "proof/registration.json", "expectation": "registration route and authorization proof", "verdict": "required"}}
+      }
+    },
+    {
+      "id": "signature-drift",
+      "scenario": "signature_drift",
+      "expected": {"trace_disposition": "resolved_mismatch", "nomination": "incompatible_receiver", "admission": "abstain", "automated_write": "never", "reason_codes": ["keyword_and_error_contract_drift"]},
+      "authority": {"expectation_sources": ["reviewed_spec", "test"], "implementation_observation_authoritative": false, "vector_score_authoritative": false, "requires_independent_proof": true},
+      "artifacts": {
+        "source": {"content_id": "sha256:e86dbde24f04d74ee326039aef17723191dfdd0c8b2a9bdcf96dfce0f87e75fd", "content": {"path": "src/service.py", "snippet": "save(data, timeout=1)", "broken_symbol": "save"}},
+        "spec": {"content_id": "sha256:54ef8cffdd91a12185beb7c2a8f513ae1ecc32a99456f9bbeaf4bc791c58bd35", "content": {"path": "spec/save.md", "requirement": "timeout keyword and TimeoutError are stable"}},
+        "test": {"content_id": "sha256:d02319f299db660e1b43a7ac22b9174e285f3e994d83ed9c9ed040607c362e37", "content": {"path": "tests/test_service.py", "assertion": "timeout is accepted and TimeoutError propagates"}},
+        "history": {"content_id": "sha256:18a7e48637a799d6aef38ea322b87264a87b77713f309e31c1d01080c3f4abd1", "content": {"path": "history/signature.json", "lineage": "no reviewed compatible change", "reviewed": false}},
+        "index": {"content_id": "sha256:966d0d9f1b56ef4ad7707ab68c9414003ad702ba1f97371f8d2a0842e6c7ec32", "content": {"path": "index/symbols.json", "candidate": "src/store.py:save(data)", "signals": ["same_name"], "semantic_authority": false}},
+        "proof": {"content_id": "sha256:ea7242060058e8efe1ab75061bb0c7ff27f3e41fd5bd0e030d2dd208bac345f4", "content": {"path": "proof/signature.json", "expectation": "counterexample required", "verdict": "incompatible"}}
+      }
+    },
+    {
+      "id": "vector-nearest-incompatible-decoy",
+      "scenario": "vector_nearest_incompatible_decoy",
+      "expected": {"trace_disposition": "resolved_mismatch", "nomination": "retain_with_rejection", "admission": "abstain", "automated_write": "never", "reason_codes": ["vector_non_authoritative", "effect_contract_incompatible"]},
+      "authority": {"expectation_sources": ["reviewed_spec", "test"], "implementation_observation_authoritative": false, "vector_score_authoritative": false, "requires_independent_proof": true},
+      "artifacts": {
+        "source": {"content_id": "sha256:8e87f45d1e33ca654de6011176c211ac8f839be33dacc549aeff41eeeafda2cc", "content": {"path": "src/payments.py", "snippet": "charge(account, amount)", "broken_symbol": "charge"}},
+        "spec": {"content_id": "sha256:ed25f8ed4fcd8228e0e9fe328adcaf6091bde84fcc1aff64c8746e38f03330eb", "content": {"path": "spec/payments.md", "requirement": "charge is idempotent and requires authorization"}},
+        "test": {"content_id": "sha256:cd4cc36f725604406542ac2d0b3c527194fd73f81a57f1a3481274b51b39c0f9", "content": {"path": "tests/test_payments.py", "assertion": "retry does not duplicate charge"}},
+        "history": {"content_id": "sha256:482aa5bbbf095e9e645a4e91dbb3080273057074b424970843a21da1224272ac", "content": {"path": "history/decoy.json", "lineage": "no lineage to candidate", "reviewed": false}},
+        "index": {"content_id": "sha256:5de420503824ea1ed171ec37085e68fc8c051a1ad51a7396d4b9e12277d4101a", "content": {"path": "index/vectors.json", "candidate": "src/marketing.py:charge", "vector_score": 0.999, "signals": ["vector"], "semantic_authority": false, "poisoned": false}},
+        "proof": {"content_id": "sha256:de7980b0431f8e39b797e82a0c60f0c9e401df1b90eabd9cdf5b86b037ba3084", "content": {"path": "proof/decoy.json", "expectation": "idempotence and authorization counterexample", "verdict": "incompatible"}}
+      }
+    },
+    {
+      "id": "adapter-required",
+      "scenario": "adapter_required",
+      "expected": {"trace_disposition": "adapter_required", "nomination": "adapter_site", "admission": "requires_independent_proof", "automated_write": "only_after_target_decision", "reason_codes": ["receiver_requires_argument_translation"]},
+      "authority": {"expectation_sources": ["reviewed_spec", "test"], "implementation_observation_authoritative": false, "vector_score_authoritative": false, "requires_independent_proof": true},
+      "artifacts": {
+        "source": {"content_id": "sha256:59a16f3abb78571661ce9f4eab0a2cf6d9f2c04a1b69955a747de7c621270f20", "content": {"path": "src/consumer.py", "snippet": "send(message, timeout_ms=100)", "broken_symbol": "send"}},
+        "spec": {"content_id": "sha256:836da284eb2bcab78e9cd9ea85660fb64de4fd180f881685cec83fbc4f66c77c", "content": {"path": "spec/send.md", "requirement": "milliseconds timeout and SendError"}},
+        "test": {"content_id": "sha256:09e4ef45b981cf4e6a00a0352b458ea091a6381dee2bda84938b45decef3d542", "content": {"path": "tests/test_consumer.py", "assertion": "timeout conversion preserves deadline"}},
+        "history": {"content_id": "sha256:af1038d03041c02e274eedb3c1524f44d1fece220c254db003563fbefd85eefd", "content": {"path": "history/adapter.json", "lineage": "transport accepts seconds", "reviewed": true}},
+        "index": {"content_id": "sha256:d91cc0f00587c9940633482095d11e9564ddb7beb2b3de3bdb1b99663db4d151", "content": {"path": "index/symbols.json", "candidate": "src/transport.py:send_seconds", "signals": ["ast", "history"], "semantic_authority": false}},
+        "proof": {"content_id": "sha256:13ce77afa858fb4f6e30eb270a3b33cd927d81cb402f2f488fa5b1fc5fb4ba4d", "content": {"path": "proof/adapter.json", "expectation": "adapter preservation proof", "verdict": "required"}}
+      }
+    },
+    {
+      "id": "declaration-without-implementation",
+      "scenario": "declaration_without_implementation",
+      "expected": {"trace_disposition": "missing_local", "nomination": "declaration_only", "admission": "abstain", "automated_write": "never", "reason_codes": ["declaration_is_not_implementation"]},
+      "authority": {"expectation_sources": ["reviewed_spec", "test"], "implementation_observation_authoritative": false, "vector_score_authoritative": false, "requires_independent_proof": true},
+      "artifacts": {
+        "source": {"content_id": "sha256:a830a09bcb7b7304525f15f5e85d1704458979201d8965df1ec026a99a3345d9", "content": {"path": "src/caller.py", "snippet": "render(template)", "broken_symbol": "render"}},
+        "spec": {"content_id": "sha256:d1bcf060ab18d734a54b4544d2832d47a659edcb6aec5215b28fd7da34a18db5", "content": {"path": "spec/render.md", "requirement": "render escapes HTML"}},
+        "test": {"content_id": "sha256:56c6249aed579147baff1e04a3b6b738a608136f066200503cbe3e1ac9871474", "content": {"path": "tests/test_render.py", "assertion": "script tags are escaped"}},
+        "history": {"content_id": "sha256:925dc301e7857dab8374a1c1b5d59fd389fd2d615f165d141c49cf1be7d3ae1b", "content": {"path": "history/declaration.json", "lineage": "protocol declaration only", "reviewed": true}},
+        "index": {"content_id": "sha256:caf3d6144019e68f865463bdc91b1ea1d8f65221f37a439c702f2edad98e662e", "content": {"path": "index/symbols.json", "candidate": "src/protocols.py:render", "signals": ["declaration"], "semantic_authority": false}},
+        "proof": {"content_id": "sha256:9b8abf17f493d3b8e6f090d0c5b2ba74498d50cd7df263279ab9e1325f474fd8", "content": {"path": "proof/declaration.json", "expectation": "implementation evidence absent", "verdict": "unsupported"}}
+      }
+    },
+    {
+      "id": "unique-new-site",
+      "scenario": "unique_new_site",
+      "expected": {"trace_disposition": "missing_local", "nomination": "unique_new_implementation_site", "admission": "requires_independent_proof", "automated_write": "only_after_target_decision", "reason_codes": ["single_writable_owned_anchor"]},
+      "authority": {"expectation_sources": ["reviewed_spec", "test"], "implementation_observation_authoritative": false, "vector_score_authoritative": false, "requires_independent_proof": true},
+      "artifacts": {
+        "source": {"content_id": "sha256:61c1f9303ee1b77ea75a9dcc3501d7342704a6f032c62663ba9e2f0a8e8b8be1", "content": {"path": "src/hooks.py", "snippet": "audit(event)", "broken_symbol": "audit"}},
+        "spec": {"content_id": "sha256:496a5b3ec5118745df6bddcef211b129327d13a6501d3d531802efa8b8b05997", "content": {"path": "spec/audit.md", "requirement": "audit appends immutable event"}},
+        "test": {"content_id": "sha256:c1100e923ac517416455eac2c8aa9a02caa1dbbfdd0e9eca8363ec2b9e43194d", "content": {"path": "tests/test_audit.py", "assertion": "event is durable before success"}},
+        "history": {"content_id": "sha256:942f6cefcd904cbf6701adbfe0bfe3ed56f8c6882508a225cc37c0c0b2eccca7", "content": {"path": "history/new-site.json", "lineage": "new capability", "reviewed": true}},
+        "index": {"content_id": "sha256:5c44ae70f472fd9c34d8bd499273857b30ceb86c4874af401a15572c4101a8fc", "content": {"path": "index/symbols.json", "candidate": "src/audit.py", "signals": ["ownership", "dependency_graph"], "semantic_authority": false}},
+        "proof": {"content_id": "sha256:12ccd7c4653ab0db54bc39f8e6f5997eeb5b37c01781970ba6ada15d8de534ec", "content": {"path": "proof/new-site.json", "expectation": "placement and durability proof", "verdict": "required"}}
+      }
+    },
+    {
+      "id": "multiple-site-abstention",
+      "scenario": "multiple_site_abstention",
+      "expected": {"trace_disposition": "ambiguous", "nomination": "multiple_placement_sites", "admission": "abstain", "automated_write": "never", "reason_codes": ["tie_or_low_margin"]},
+      "authority": {"expectation_sources": ["reviewed_spec", "test"], "implementation_observation_authoritative": false, "vector_score_authoritative": false, "requires_independent_proof": true},
+      "artifacts": {
+        "source": {"content_id": "sha256:065a4132fa04b01835d1d67c034542e723afe746ce118de9141d6e411bfed3e6", "content": {"path": "src/commands.py", "snippet": "notify(event)", "broken_symbol": "notify"}},
+        "spec": {"content_id": "sha256:83b98373971570e45212f37e57125d80486efac820a4ac701cca8176d5e22a0d", "content": {"path": "spec/notify.md", "requirement": "notifications are ordered"}},
+        "test": {"content_id": "sha256:82e39984ace75dcc2250f22d0fa3678b24e73cf05745a4b86fa65a6228831d8a", "content": {"path": "tests/test_notify.py", "assertion": "delivery order is stable"}},
+        "history": {"content_id": "sha256:a64d575bac0d6271cd4144a505776b6b70f4aeb1a4f6ef80f65dd63f79ab4ca1", "content": {"path": "history/ambiguity.json", "lineage": "two owned insertion sites", "reviewed": true}},
+        "index": {"content_id": "sha256:b33227f983906710c6f04764ade6b23580f264fbae2738522ab2b63185a656e5", "content": {"path": "index/symbols.json", "candidates": ["src/email.py", "src/webhook.py"], "signals": ["ownership"], "semantic_authority": false}},
+        "proof": {"content_id": "sha256:70c95627a30b112ebfbb49eaff5570a3e45138a62c6f8fa67be7bb226564650b", "content": {"path": "proof/ambiguity.json", "expectation": "no unique placement proof", "verdict": "inconclusive"}}
+      }
+    },
+    {
+      "id": "dynamic-dispatch",
+      "scenario": "dynamic_dispatch",
+      "expected": {"trace_disposition": "dynamic", "nomination": "unsupported", "admission": "abstain", "automated_write": "never", "reason_codes": ["dynamic_dispatch_unresolved"]},
+      "authority": {"expectation_sources": ["reviewed_spec", "test"], "implementation_observation_authoritative": false, "vector_score_authoritative": false, "requires_independent_proof": true},
+      "artifacts": {
+        "source": {"content_id": "sha256:c0acd9c78447df9e8f8c05d013b0a48ff6afab8b0ad02285a328aecdc0c9ce11", "content": {"path": "src/dynamic.py", "snippet": "getattr(plugin, name)(payload)", "broken_symbol": "getattr"}},
+        "spec": {"content_id": "sha256:271d5989386fe81e3aa9856b7436bf69adb84e1ca676376ed5b5f26ff5b3b04e", "content": {"path": "spec/plugin.md", "requirement": "plugin capability is explicit"}},
+        "test": {"content_id": "sha256:ecb085449a0031f7bd9a4cccbb2b47b30a71ed693a3fb658ffb9a33d97e3cd0b", "content": {"path": "tests/test_plugin.py", "assertion": "unknown plugin is denied"}},
+        "history": {"content_id": "sha256:f39686f96babfa9b2c719611dca93145af05aad921078a70d3013f45f1f466f4", "content": {"path": "history/dynamic.json", "lineage": "not statically resolvable", "reviewed": false}},
+        "index": {"content_id": "sha256:17ac7630c8254aed2b68727cbe917c4cdfd824543eb7957cb820f8a942ed7b5c", "content": {"path": "index/symbols.json", "candidate": "src/plugins.py:run", "signals": ["lexical"], "semantic_authority": false}},
+        "proof": {"content_id": "sha256:96adc309b4bbd924d8059f8b6f3c38aafe3f2dc5fecacd8994eecd8b906a966a", "content": {"path": "proof/dynamic.json", "expectation": "dynamic semantics unsupported", "verdict": "unsupported"}}
+      }
+    },
+    {
+      "id": "reflection",
+      "scenario": "reflection",
+      "expected": {"trace_disposition": "unsupported", "nomination": "unsupported", "admission": "abstain", "automated_write": "never", "reason_codes": ["reflection_semantics_unsupported"]},
+      "authority": {"expectation_sources": ["reviewed_spec", "test"], "implementation_observation_authoritative": false, "vector_score_authoritative": false, "requires_independent_proof": true},
+      "artifacts": {
+        "source": {"content_id": "sha256:a74dd9198a0e7b6ccd468d9518758de8197fdfc7ffb9f7449a65624b17a6da32", "content": {"path": "src/reflect.py", "snippet": "inspect.signature(target)", "broken_symbol": "inspect.signature"}},
+        "spec": {"content_id": "sha256:724972a8c67b8adc8ef9deef16d0433ea52a128f08138ab4464d5ae51e91a747", "content": {"path": "spec/reflect.md", "requirement": "reflection policy must be modeled"}},
+        "test": {"content_id": "sha256:9e4c3ac0ff37c84619d797c46dc09ab22e1197a74408c1fa92a1b142b568f14f", "content": {"path": "tests/test_reflect.py", "assertion": "unmodeled reflection abstains"}},
+        "history": {"content_id": "sha256:21653ddc5f6a50344bdd69f55d2493398d75c49218607e23d92efe68c3cf7e94", "content": {"path": "history/reflection.json", "lineage": "no supported model", "reviewed": false}},
+        "index": {"content_id": "sha256:3418d138e4a9f1053e359c866aaae24da1a4e6b9c5b1dff0283ca718254ca240", "content": {"path": "index/symbols.json", "candidate": "src/reflect.py:target", "signals": ["ast"], "semantic_authority": false}},
+        "proof": {"content_id": "sha256:1316edd81216e38e4218b1c394e54fd6a4db88f0f10ea3e4c3a7af6ee2bc0ed7", "content": {"path": "proof/reflection.json", "expectation": "reflection unsupported", "verdict": "unsupported"}}
+      }
+    },
+    {
+      "id": "ffi",
+      "scenario": "ffi",
+      "expected": {"trace_disposition": "unsupported", "nomination": "unsupported", "admission": "abstain", "automated_write": "never", "reason_codes": ["ffi_boundary_unsupported"]},
+      "authority": {"expectation_sources": ["reviewed_spec", "test"], "implementation_observation_authoritative": false, "vector_score_authoritative": false, "requires_independent_proof": true},
+      "artifacts": {
+        "source": {"content_id": "sha256:929da6f166eae473e171ad8930cfc5bd58a6c07b27a25c3101ae33121d7ac91d", "content": {"path": "src/native.py", "snippet": "native_call(buffer)", "broken_symbol": "native_call"}},
+        "spec": {"content_id": "sha256:008b1479c20dd92a1c99fda346e6d92beff1a1bc85e0c04e2c55498940ad7410", "content": {"path": "spec/native.md", "requirement": "native ABI and ownership must be modeled"}},
+        "test": {"content_id": "sha256:a4c1a2175d87b206b276c466031f071bf5488381a8d178d2f63f611c690c0902", "content": {"path": "tests/test_native.py", "assertion": "unsupported ABI abstains"}},
+        "history": {"content_id": "sha256:d6d237a359b0362ae41bd7801c86d6be0fcdca226804cb64931afee8e3a4dd43", "content": {"path": "history/ffi.json", "lineage": "C extension boundary", "reviewed": false}},
+        "index": {"content_id": "sha256:c88e1c5034ffbfbc995503aba8e14afaaffebf6e42c4c790d73255049926b2ad", "content": {"path": "index/symbols.json", "candidate": "src/native.py:native_call", "signals": ["ast"], "semantic_authority": false}},
+        "proof": {"content_id": "sha256:810212551cf5c22cab8e984179cc656793cf24062fb856b78b01daacc6091559", "content": {"path": "proof/ffi.json", "expectation": "FFI semantics unsupported", "verdict": "unsupported"}}
+      }
+    },
+    {
+      "id": "ownership-lifetime-unsupported",
+      "scenario": "ownership_lifetime_unsupported",
+      "expected": {"trace_disposition": "unsupported", "nomination": "receiver_unknown", "admission": "abstain", "automated_write": "never", "reason_codes": ["ownership_lifetime_unknown"]},
+      "authority": {"expectation_sources": ["reviewed_spec", "test"], "implementation_observation_authoritative": false, "vector_score_authoritative": false, "requires_independent_proof": true},
+      "artifacts": {
+        "source": {"content_id": "sha256:01cc9e217160b014635e354c19c1c083545ba9607ffc89f6842beae787acf1a2", "content": {"path": "src/buffer.py", "snippet": "release(handle)", "broken_symbol": "release"}},
+        "spec": {"content_id": "sha256:3f6907c12e4e5c3a4591336e11ccf3954f104e5383a53a4aa9ab8325422c5731", "content": {"path": "spec/buffer.md", "requirement": "ownership transfer is explicit"}},
+        "test": {"content_id": "sha256:ede6098bf5ffaf42fb2d0eaa45b49b1426b54a7f39580b7951d9cc6fc6bfd2f0", "content": {"path": "tests/test_buffer.py", "assertion": "unknown lifetime does not promote safety"}},
+        "history": {"content_id": "sha256:e9cc73c97fb7b2910bda35c4f346efaae029920ae9b010e6f73fb980243a9b26", "content": {"path": "history/lifetime.json", "lineage": "lifetime contract unavailable", "reviewed": false}},
+        "index": {"content_id": "sha256:61719cb7e872fb6bbb5eb836a1c3a1a1f75212abbb7b210b2692ce24f69fb14c", "content": {"path": "index/symbols.json", "candidate": "src/native.py:release", "signals": ["same_name"], "semantic_authority": false}},
+        "proof": {"content_id": "sha256:c231a79e4e9191a04d8f5f4ff1adfd1e9c95c1de41d80c366234adf45786376d", "content": {"path": "proof/lifetime.json", "expectation": "ownership/lifetime unknown", "verdict": "unsupported"}}
+      }
+    },
+    {
+      "id": "stale-roots",
+      "scenario": "stale_roots",
+      "expected": {"trace_disposition": "likely_refactor", "nomination": "stale_candidate_set", "admission": "abstain", "automated_write": "never", "reason_codes": ["tree_index_proof_root_mismatch"]},
+      "authority": {"expectation_sources": ["reviewed_spec", "test"], "implementation_observation_authoritative": false, "vector_score_authoritative": false, "requires_independent_proof": true},
+      "artifacts": {
+        "source": {"content_id": "sha256:be23e3249f25bf70a004ae3f6726e08bfe459d41ee2ca45b63aa61452c4c2ff6", "content": {"path": "src/current.py", "snippet": "load(key)", "broken_symbol": "load", "tree_root": "tree:current"}},
+        "spec": {"content_id": "sha256:9cd354f0206f59bfc5df821e4dc26fb2d4c02c0e9b32a5cbc6e12b06eaa1fc51", "content": {"path": "spec/load.md", "requirement": "load verifies checksum"}},
+        "test": {"content_id": "sha256:a8258a207231bf016c63584bb1f23abea87c68ccff675898f98bcc86f360c926", "content": {"path": "tests/test_load.py", "assertion": "checksum mismatch fails"}},
+        "history": {"content_id": "sha256:c710fab7ebc6e40d60797adb44f27b1c18b6d8062258e586ad179deb2f035074", "content": {"path": "history/stale.json", "lineage": "reviewed rename", "reviewed": true}},
+        "index": {"content_id": "sha256:639997de21e200af33f48aea1343c4b4059167237d8c20fcab95ef569822053a", "content": {"path": "index/symbols.json", "candidate": "src/store.py:load", "tree_root": "tree:old", "signals": ["history"], "semantic_authority": false}},
+        "proof": {"content_id": "sha256:7b98be5a91a5f1471d5d637af336c35bd4bce099e4f367792149fbab162136fc", "content": {"path": "proof/stale.json", "expectation": "receipt bound to tree:old", "verdict": "stale"}}
+      }
+    },
+    {
+      "id": "read-only-target",
+      "scenario": "read_only_target",
+      "expected": {"trace_disposition": "missing_local", "nomination": "read_only_candidate", "admission": "abstain", "automated_write": "never", "reason_codes": ["write_authority_denied"]},
+      "authority": {"expectation_sources": ["reviewed_spec", "test"], "implementation_observation_authoritative": false, "vector_score_authoritative": false, "requires_independent_proof": true},
+      "artifacts": {
+        "source": {"content_id": "sha256:2c86828769d5221a3bd25ca567ecc91e4060e6f187393c221a88afd3d349b8c1", "content": {"path": "src/consumer.py", "snippet": "format(value)", "broken_symbol": "format"}},
+        "spec": {"content_id": "sha256:ff5ecf2021490e448d7361c99ca84d1c89fb7f590aead8b84e20fe16c06560a9", "content": {"path": "spec/format.md", "requirement": "format never leaks secret fields"}},
+        "test": {"content_id": "sha256:33030970f6293fb6943fd6442e270e5399d4272051011d4f11439a9047f75b15", "content": {"path": "tests/test_format.py", "assertion": "secret fields are redacted"}},
+        "history": {"content_id": "sha256:4b86d8b97d3734eab91b18303836e4c3c1dbdd3c917acb047f712ce7abc4e0fb", "content": {"path": "history/readonly.json", "lineage": "vendor implementation", "reviewed": true}},
+        "index": {"content_id": "sha256:bdc7348d34e292d4beeefe54cab014a94883a5f3fee258611dfdf72693ff1e42", "content": {"path": "index/symbols.json", "candidate": "vendor/format.py", "write_authority": "read_only", "signals": ["history"], "semantic_authority": false}},
+        "proof": {"content_id": "sha256:519e377d0698169ae98dbe7aee2b58ba602fb9cec9ec35d103208d0654eac141", "content": {"path": "proof/readonly.json", "expectation": "write authority is a hard gate", "verdict": "denied"}}
+      }
+    },
+    {
+      "id": "dependency-cycle",
+      "scenario": "dependency_cycle",
+      "expected": {"trace_disposition": "ambiguous", "nomination": "cycle_blocked", "admission": "abstain", "automated_write": "never", "reason_codes": ["dependency_cycle_incomplete_slice"]},
+      "authority": {"expectation_sources": ["reviewed_spec", "test"], "implementation_observation_authoritative": false, "vector_score_authoritative": false, "requires_independent_proof": true},
+      "artifacts": {
+        "source": {"content_id": "sha256:d510cf652a2d5ea37ae2a06c38f56d159ae8fd1c1d87ace4689d96d956dcf282", "content": {"path": "src/a.py", "snippet": "b.resolve(value)", "broken_symbol": "resolve"}},
+        "spec": {"content_id": "sha256:0a3c4491d13f72ccfb8eabdfd5dd94e6c347dde39c0713a494c994caf05eb869", "content": {"path": "spec/resolve.md", "requirement": "resolution has no cyclic initialization"}},
+        "test": {"content_id": "sha256:2df0a7c2a6689efbfecdf5845a9239e6b9cb7b09a9a41f7c2eb741a8f9308b08", "content": {"path": "tests/test_resolve.py", "assertion": "cycle is reported, not repaired"}},
+        "history": {"content_id": "sha256:ba802711aba8a36ae5ac779258841b7aabece343661171be68315c488bfa21c9", "content": {"path": "history/cycle.json", "lineage": "a -> b -> a", "reviewed": true}},
+        "index": {"content_id": "sha256:72011a76af8c2bd423e2826ba950029797cdab0936cf365fcc3bfd461515e648", "content": {"path": "index/graph.json", "candidate": "src/b.py:resolve", "signals": ["dependency_graph"], "graph_complete": false, "semantic_authority": false}},
+        "proof": {"content_id": "sha256:e807935feeabd62522aec9698e16f2afd32eadd37b24601c782495935259c00c", "content": {"path": "proof/cycle.json", "expectation": "dependency-complete slice absent", "verdict": "inconclusive"}}
+      }
+    },
+    {
+      "id": "tombstone",
+      "scenario": "tombstone",
+      "expected": {"trace_disposition": "likely_refactor", "nomination": "tombstoned_candidate", "admission": "abstain", "automated_write": "never", "reason_codes": ["tombstone_excludes_deleted_symbol"]},
+      "authority": {"expectation_sources": ["reviewed_spec", "test"], "implementation_observation_authoritative": false, "vector_score_authoritative": false, "requires_independent_proof": true},
+      "artifacts": {
+        "source": {"content_id": "sha256:1d9a3bb4e978ef7a86469e1ba5be0f8cfbccc1f2f140b518879233a3f3f2c6ec", "content": {"path": "src/caller.py", "snippet": "archive(record)", "broken_symbol": "archive"}},
+        "spec": {"content_id": "sha256:9d117381262dfb6fb2486cafe9bcd51f5c7eec2782dbd0bb316e7f4576da4fd0", "content": {"path": "spec/archive.md", "requirement": "archive retains audit record"}},
+        "test": {"content_id": "sha256:b801a95d210e4da93a840154caa7b7b79dc54487d808aa55ee31b15a49ca99f0", "content": {"path": "tests/test_archive.py", "assertion": "deleted implementation is not selected"}},
+        "history": {"content_id": "sha256:22411170a4fa544f6a42fad4bcb853859cc51df9485384f98ee7bdd5c1bfec6b", "content": {"path": "history/tombstone.json", "lineage": "former archive deleted", "reviewed": true}},
+        "index": {"content_id": "sha256:02f3406c0d6f6301b9349b815e36a79fd341294b268037256d69da4cc2b5d588", "content": {"path": "index/symbols.json", "candidate": "src/old_archive.py:archive", "tombstone": true, "signals": ["history", "vector"], "semantic_authority": false}},
+        "proof": {"content_id": "sha256:5e2f693ae9ec9b481a4acc4dacb516081a5f9a73d5f68dcbc7db5d7605eb860a", "content": {"path": "proof/tombstone.json", "expectation": "tombstone prevents admission", "verdict": "rejected"}}
+      }
+    }
+  ]
+}
