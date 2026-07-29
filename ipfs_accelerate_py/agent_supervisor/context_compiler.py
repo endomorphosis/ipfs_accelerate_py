@@ -4032,6 +4032,7 @@ class ContextCompiler:
         estimator: CalibratedTokenEstimator | None = None,
         provider_context_window: int | None = None,
         provider_max_input_tokens: int | None = None,
+        provider_max_input_bytes: int | None = None,
         reserved_output_tokens: int | None = None,
         reserved_tool_tokens: int | None = None,
         value_policy: EvidenceValuePolicy | Mapping[str, Any] | None = None,
@@ -4062,6 +4063,15 @@ class ContextCompiler:
                 "value_policy must be an EvidenceValuePolicy or mapping"
             )
         self.value_policy = selected_value_policy
+        self.provider_max_input_bytes = (
+            None
+            if provider_max_input_bytes is None
+            else _integer(
+                provider_max_input_bytes,
+                "provider_max_input_bytes",
+                minimum=1,
+            )
+        )
         self.budget_resolution = budget.resolve_input_limit(
             provider_context_window=provider_context_window,
             provider_max_input_tokens=provider_max_input_tokens,
@@ -4140,6 +4150,45 @@ class ContextCompiler:
         ) + sum(_reference_tokens(self.estimator, item) for item in selected)
         return max(canonical_count, component_count)
 
+    @staticmethod
+    def _provider_input_bytes(
+        *,
+        repository_id: str,
+        tree_id: str,
+        objective_id: str,
+        objective_revision: str,
+        policy_id: str,
+        policy_revision: str,
+        caller: str,
+        stage: str,
+        goal: Any,
+        authority: Any,
+        scope: Any,
+        acceptance: Any,
+        evidence: Iterable[ContextReference] = (),
+    ) -> int:
+        """Return the exact canonical UTF-8 size dispatched to a provider."""
+
+        return len(
+            canonical_context_json_bytes(
+                context_provider_input_payload(
+                    repository_id=repository_id,
+                    tree_id=tree_id,
+                    objective_id=objective_id,
+                    objective_revision=objective_revision,
+                    policy_id=policy_id,
+                    policy_revision=policy_revision,
+                    caller=caller,
+                    stage=stage,
+                    goal=goal,
+                    authority=authority,
+                    scope=scope,
+                    acceptance=acceptance,
+                    evidence=tuple(evidence),
+                )
+            )
+        )
+
     def estimate_capsule_input(self, capsule: ContextCapsule) -> int:
         """Independently recompute conservative provider input accounting."""
 
@@ -4183,6 +4232,28 @@ class ContextCompiler:
         if actual > self.effective_input_limit:
             raise ContextCompilationError(
                 "context result exceeds its verified effective input limit"
+            )
+        if (
+            self.provider_max_input_bytes is not None
+            and self._provider_input_bytes(
+                repository_id=result.capsule.repository_id,
+                tree_id=result.capsule.tree_id,
+                objective_id=result.capsule.objective_id,
+                objective_revision=result.capsule.objective_revision,
+                policy_id=result.capsule.policy_id,
+                policy_revision=result.capsule.policy_revision,
+                caller=result.capsule.caller,
+                stage=result.capsule.stage,
+                goal=result.capsule.goal,
+                authority=result.capsule.authority,
+                scope=result.capsule.scope,
+                acceptance=result.capsule.acceptance,
+                evidence=result.capsule.evidence,
+            )
+            > self.provider_max_input_bytes
+        ):
+            raise ContextCompilationError(
+                "context result exceeds its verified provider input-byte limit"
             )
         references = {
             item.reference_id: item
@@ -4665,6 +4736,10 @@ class ContextCompiler:
             **input_arguments,
             evidence=(),
         )
+        base_bytes = self._provider_input_bytes(
+            **input_arguments,
+            evidence=(),
+        )
         selected: list[ContextReference] = []
         decisions: dict[str, EvidenceSelectionDecision] = {}
         diversity_counts: dict[str, int] = {}
@@ -4674,6 +4749,14 @@ class ContextCompiler:
                 "invariant goal/authority/scope/acceptance exceeds "
                 "the effective provider input budget"
             )
+        if (
+            self.provider_max_input_bytes is not None
+            and base_bytes > self.provider_max_input_bytes
+        ):
+            raise RequiredContextOverflowError(
+                "invariant goal/authority/scope/acceptance exceeds "
+                "the provider input-byte budget"
+            )
         for item in sorted(required, key=lambda member: member.reference_id):
             tokens = _reference_tokens(self.estimator, item)
             estimate = self.value_policy.estimate(item, token_cost=tokens)
@@ -4681,9 +4764,17 @@ class ContextCompiler:
                 **input_arguments,
                 evidence=(*selected, item),
             )
+            proposed_bytes = self._provider_input_bytes(
+                **input_arguments,
+                evidence=(*selected, item),
+            )
             if (
                 len(selected) >= self.effective_budget.max_items
                 or proposed > self.effective_input_limit
+                or (
+                    self.provider_max_input_bytes is not None
+                    and proposed_bytes > self.provider_max_input_bytes
+                )
             ):
                 raise RequiredContextOverflowError(
                     f"required evidence {item.reference_id!r} does not fit "
@@ -4750,6 +4841,10 @@ class ContextCompiler:
                 **input_arguments,
                 evidence=(*selected, item),
             )
+            proposed_bytes = self._provider_input_bytes(
+                **input_arguments,
+                evidence=(*selected, item),
+            )
             if estimate.value_score < self.value_policy.minimum_value_score:
                 reason = ExclusionReason.LOW_VALUE
             elif (
@@ -4759,7 +4854,13 @@ class ContextCompiler:
                 reason = ExclusionReason.ITEM_LIMIT
             elif len(selected) >= self.effective_budget.max_items:
                 reason = ExclusionReason.ITEM_LIMIT
-            elif proposed > self.effective_input_limit:
+            elif (
+                proposed > self.effective_input_limit
+                or (
+                    self.provider_max_input_bytes is not None
+                    and proposed_bytes > self.provider_max_input_bytes
+                )
+            ):
                 reason = ExclusionReason.TOKEN_BUDGET
             else:
                 selected.append(item)

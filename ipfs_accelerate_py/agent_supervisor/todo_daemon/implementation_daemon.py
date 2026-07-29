@@ -30,13 +30,18 @@ from ..context_compiler import (
     ContextCompiler,
     ContextDeltaResult,
     ContextExpansionCancelled,
+    RequiredContextOverflowError,
     RetryContextResult,
     build_text_context_references,
     compile_retry_context,
     render_context_capsule,
     render_retry_context,
 )
-from ..context_contracts import ContextBudget, ContextCapsule
+from ..context_contracts import (
+    ABSOLUTE_MAX_CONTEXT_BYTES,
+    ContextBudget,
+    ContextCapsule,
+)
 from ..formal_verification_contracts import canonical_json, content_identity
 from ..implementation_timeout import (
     DEFAULT_IMPLEMENTATION_TIMEOUT_SECONDS,
@@ -874,7 +879,13 @@ _COPILOT_CONTEXT_TIER_ENV = "IPFS_ACCELERATE_AGENT_COPILOT_CONTEXT_TIER"
 _COPILOT_MAX_CONTINUES_ENV = "IPFS_ACCELERATE_AGENT_COPILOT_MAX_CONTINUES"
 
 
-def _copilot_fallback_command(*, codex: str | None, copilot: str, workspace_path: Path) -> list[str]:
+def _copilot_fallback_command(
+    *,
+    codex: str | None,
+    copilot: str,
+    workspace_path: Path,
+    codex_context_window: int | None = None,
+) -> list[str]:
     """Build a bash command that tries Codex first, falls back to Copilot CLI.
 
     Both tools are invoked with full capability flags:
@@ -883,7 +894,11 @@ def _copilot_fallback_command(*, codex: str | None, copilot: str, workspace_path
     """
     # Codex configuration
     codex_model = os.environ.get(_CODEX_MODEL_ENV, "").strip()
-    codex_context = os.environ.get(_CODEX_CONTEXT_WINDOW_ENV, "200000").strip()
+    codex_context = (
+        str(codex_context_window)
+        if codex_context_window is not None
+        else os.environ.get(_CODEX_CONTEXT_WINDOW_ENV, "200000").strip()
+    )
     codex_reasoning = os.environ.get(_CODEX_REASONING_EFFORT_ENV, "high").strip()
     codex_max_threads = os.environ.get(_CODEX_MAX_THREADS_ENV, "10").strip()
     codex_max_depth = os.environ.get(_CODEX_MAX_DEPTH_ENV, "2").strip()
@@ -5992,7 +6007,10 @@ class PortalImplementationDaemon:
                 ).stdout.strip()
             except (OSError, RuntimeError):
                 baseline_ref = ""
-            command = self._build_implementation_command(workspace_path)
+            command = self._build_implementation_command(
+                workspace_path,
+                task=task,
+            )
             protected_path_snapshot = self._require_implementation_protected_snapshot(
                 task=task,
                 attempt=attempt,
@@ -8278,7 +8296,10 @@ class PortalImplementationDaemon:
             # merge metadata is built from it.
             worktree_path = self._effective_pooled_worktree_path(worktree_path)
             workspace_setup = self._worktree_setup_result(worktree_path)
-            command = self._build_implementation_command(worktree_path)
+            command = self._build_implementation_command(
+                worktree_path,
+                task=task,
+            )
             protected_path_snapshot = self._require_implementation_protected_snapshot(
                 task=task,
                 attempt=attempt,
@@ -18431,7 +18452,12 @@ class PortalImplementationDaemon:
             raise RuntimeError(f"git {' '.join(args)} failed: {result.stderr.strip()}")
         return result
 
-    def _build_implementation_command(self, workspace_path: Path) -> list[str]:
+    def _build_implementation_command(
+        self,
+        workspace_path: Path,
+        *,
+        task: PortalTask | None = None,
+    ) -> list[str]:
         workspace_path = workspace_path.resolve()
         if self.implementation_command:
             return shlex.split(self.implementation_command)
@@ -18508,12 +18534,29 @@ class PortalImplementationDaemon:
 
         codex = shutil.which("codex")
         copilot = shutil.which("copilot")
+        codex_context_window = (
+            self._implementation_provider_context_window_for_task(task)[0]
+            if task is not None
+            else None
+        )
         if copilot and _copilot_has_auth():
-            return _copilot_fallback_command(codex=codex, copilot=copilot, workspace_path=workspace_path)
+            return _copilot_fallback_command(
+                codex=codex,
+                copilot=copilot,
+                workspace_path=workspace_path,
+                codex_context_window=codex_context_window,
+            )
         if codex:
             # Build codex command with full capability flags
             codex_model = os.environ.get(_CODEX_MODEL_ENV, "").strip()
-            codex_context = os.environ.get(_CODEX_CONTEXT_WINDOW_ENV, "200000").strip()
+            codex_context = (
+                str(codex_context_window)
+                if codex_context_window is not None
+                else os.environ.get(
+                    _CODEX_CONTEXT_WINDOW_ENV,
+                    "200000",
+                ).strip()
+            )
             codex_reasoning = os.environ.get(_CODEX_REASONING_EFFORT_ENV, "high").strip()
             codex_max_threads = os.environ.get(_CODEX_MAX_THREADS_ENV, "10").strip()
             codex_max_depth = os.environ.get(_CODEX_MAX_DEPTH_ENV, "2").strip()
@@ -18557,6 +18600,124 @@ class PortalImplementationDaemon:
             if value:
                 return value
         return ""
+
+    def _task_llm_context_budget_bytes(
+        self,
+        task: PortalTask,
+    ) -> int | None:
+        """Return one task's exact provider-input byte ceiling.
+
+        The field is optional for legacy boards. Once present it is authority,
+        not a hint: malformed, duplicate, zero, or over-absolute-limit values
+        fail before provider dispatch instead of falling back to a wider
+        supervisor default.
+        """
+
+        key_name = "llm context budget bytes"
+        matches = [
+            value
+            for key, value in task.metadata.items()
+            if str(key).strip().lower().replace("_", " ") == key_name
+        ]
+        if not matches:
+            return None
+        if len(matches) != 1 or not isinstance(matches[0], str):
+            raise ImplementationRetryDeferred(
+                "invalid task LLM context budget bytes"
+            )
+        raw = matches[0].strip()
+        if not re.fullmatch(r"[1-9][0-9]*", raw):
+            raise ImplementationRetryDeferred(
+                "invalid task LLM context budget bytes"
+            )
+        # Bound digits before int conversion so adversarial metadata cannot
+        # spend unbounded time parsing an integer that cannot be authorized.
+        if len(raw) > len(str(ABSOLUTE_MAX_CONTEXT_BYTES)):
+            raise ImplementationRetryDeferred(
+                "invalid task LLM context budget bytes"
+            )
+        value = int(raw)
+        if value > ABSOLUTE_MAX_CONTEXT_BYTES:
+            raise ImplementationRetryDeferred(
+                "invalid task LLM context budget bytes"
+            )
+        return value
+
+    def _base_implementation_context_budget(self) -> ContextBudget:
+        configured = self.implementation_context_budget
+        if configured is None:
+            return ContextBudget(
+                max_input_tokens=DEFAULT_IMPLEMENTATION_CONTEXT_INPUT_TOKENS,
+                reserved_output_tokens=(
+                    DEFAULT_IMPLEMENTATION_CONTEXT_OUTPUT_RESERVE
+                ),
+                reserved_tool_tokens=(
+                    DEFAULT_IMPLEMENTATION_CONTEXT_TOOL_RESERVE
+                ),
+                max_items=256,
+                max_item_bytes=16_384,
+                max_serialized_bytes=ABSOLUTE_MAX_CONTEXT_BYTES,
+                max_depth=12,
+                max_text_bytes=8_192,
+            )
+        if isinstance(configured, ContextBudget):
+            return configured
+        return ContextBudget.from_dict(configured)
+
+    def _configured_implementation_provider_context_window(self) -> int:
+        configured = self.implementation_provider_context_window
+        if configured is not None:
+            if (
+                isinstance(configured, bool)
+                or not isinstance(configured, int)
+                or configured < 1
+            ):
+                raise ImplementationRetryDeferred(
+                    "invalid implementation provider context window"
+                )
+            return configured
+        raw = os.environ.get(
+            _CODEX_CONTEXT_WINDOW_ENV,
+            "200000",
+        ).strip()
+        if not re.fullmatch(r"[1-9][0-9]*", raw):
+            raise ImplementationRetryDeferred(
+                "invalid implementation provider context window"
+            )
+        return int(raw)
+
+    def _implementation_provider_context_window_for_task(
+        self,
+        task: PortalTask,
+    ) -> tuple[int, ContextBudget, int | None]:
+        budget = self._base_implementation_context_budget()
+        byte_limit = self._task_llm_context_budget_bytes(task)
+        provider_window = self._configured_implementation_provider_context_window()
+        if byte_limit is not None:
+            # Canonical provider input contains ordinary UTF-8 text, so its
+            # byte bound is also a conservative upper bound on input tokens.
+            # Add the existing output/tool reserves because Codex's setting is
+            # a total window, then retain every stricter operator ceiling.
+            task_window = (
+                byte_limit
+                + budget.reserved_output_tokens
+                + budget.reserved_tool_tokens
+            )
+            provider_window = min(provider_window, task_window)
+        return provider_window, budget, byte_limit
+
+    def _require_implementation_prompt_byte_budget(
+        self,
+        task: PortalTask,
+        rendered: str,
+    ) -> int:
+        byte_limit = self._task_llm_context_budget_bytes(task)
+        byte_count = len(rendered.encode("utf-8"))
+        if byte_limit is not None and byte_count > byte_limit:
+            raise ImplementationRetryDeferred(
+                "implementation context byte budget exhausted"
+            )
+        return byte_count
 
     def _resolve_context_path(self, value: Any) -> Path | None:
         text = str(value or "").strip()
@@ -19776,14 +19937,50 @@ class PortalImplementationDaemon:
             chunk_bytes=8_192,
             coverage_ids=diagnostic.unresolved_requirements,
         )
-        configured_budget = (
-            self.implementation_context_budget or parent_capsule.budget
+        provider_window, configured_budget, prompt_byte_limit = (
+            self._implementation_provider_context_window_for_task(task)
+        )
+        # A retry must retain every stricter bound from its immutable parent.
+        configured_budget = ContextBudget(
+            max_input_tokens=min(
+                configured_budget.max_input_tokens,
+                parent_capsule.budget.max_input_tokens,
+            ),
+            reserved_output_tokens=max(
+                configured_budget.reserved_output_tokens,
+                parent_capsule.budget.reserved_output_tokens,
+            ),
+            reserved_tool_tokens=max(
+                configured_budget.reserved_tool_tokens,
+                parent_capsule.budget.reserved_tool_tokens,
+            ),
+            max_items=min(
+                configured_budget.max_items,
+                parent_capsule.budget.max_items,
+            ),
+            max_item_bytes=min(
+                configured_budget.max_item_bytes,
+                parent_capsule.budget.max_item_bytes,
+            ),
+            max_serialized_bytes=min(
+                configured_budget.max_serialized_bytes,
+                parent_capsule.budget.max_serialized_bytes,
+            ),
+            max_depth=min(
+                configured_budget.max_depth,
+                parent_capsule.budget.max_depth,
+            ),
+            max_text_bytes=min(
+                configured_budget.max_text_bytes,
+                parent_capsule.budget.max_text_bytes,
+            ),
         )
         compiler = ContextCompiler(
             configured_budget,
             tokenizer=self.implementation_context_tokenizer,
-            provider_context_window=self.implementation_provider_context_window,
+            provider_context_window=provider_window,
             provider_max_input_tokens=self.implementation_provider_max_input_tokens,
+            provider_max_input_bytes=prompt_byte_limit,
         )
         try:
             result = compile_retry_context(
@@ -19807,6 +20004,12 @@ class PortalImplementationDaemon:
         except ContextExpansionCancelled as exc:
             raise ImplementationRetryDeferred(
                 "implementation retry cancelled during compilation"
+            ) from exc
+        except RequiredContextOverflowError as exc:
+            if prompt_byte_limit is None:
+                raise
+            raise ImplementationRetryDeferred(
+                "implementation context byte budget exhausted"
             ) from exc
         self._last_implementation_context = result.delta_result
         self._last_implementation_retry = result
@@ -19947,11 +20150,35 @@ class PortalImplementationDaemon:
             ),
             "operator_directive": protected_policy_text,
         }
+        provider_window, configured_budget, prompt_byte_limit = (
+            self._implementation_provider_context_window_for_task(task)
+        )
+        context_budget_authority = {
+            "source": (
+                "task_metadata"
+                if prompt_byte_limit is not None
+                else "supervisor_default"
+            ),
+            "max_provider_input_bytes": prompt_byte_limit,
+            "provider_context_window": provider_window,
+            "supervisor_max_input_tokens": (
+                configured_budget.max_input_tokens
+            ),
+            "reserved_output_tokens": (
+                configured_budget.reserved_output_tokens
+            ),
+            "reserved_tool_tokens": (
+                configured_budget.reserved_tool_tokens
+            ),
+        }
         policy_revision = "sha256:" + hashlib.sha256(
             json.dumps(
                 {
                     "generic_prompt_policy": rules,
                     "edit_policy": edit_policy,
+                    "implementation_context_budget": (
+                        context_budget_authority
+                    ),
                     "implementation_timeout_policy": (
                         timeout_policy.to_dict()
                     ),
@@ -20007,31 +20234,6 @@ class PortalImplementationDaemon:
                     chunk_bytes=8_192,
                 ),
             )
-        configured_budget = self.implementation_context_budget
-        if configured_budget is None:
-            configured_budget = ContextBudget(
-                max_input_tokens=DEFAULT_IMPLEMENTATION_CONTEXT_INPUT_TOKENS,
-                reserved_output_tokens=(
-                    DEFAULT_IMPLEMENTATION_CONTEXT_OUTPUT_RESERVE
-                ),
-                reserved_tool_tokens=(
-                    DEFAULT_IMPLEMENTATION_CONTEXT_TOOL_RESERVE
-                ),
-                max_items=256,
-                max_item_bytes=16_384,
-                max_serialized_bytes=1_048_576,
-                max_depth=12,
-                max_text_bytes=8_192,
-            )
-        provider_window = self.implementation_provider_context_window
-        if provider_window is None:
-            raw_window = os.environ.get(
-                _CODEX_CONTEXT_WINDOW_ENV, "200000"
-            ).strip()
-            try:
-                provider_window = int(raw_window)
-            except ValueError:
-                provider_window = 200_000
         compiler = ContextCompiler(
             configured_budget,
             tokenizer=self.implementation_context_tokenizer,
@@ -20039,76 +20241,87 @@ class PortalImplementationDaemon:
             provider_max_input_tokens=(
                 self.implementation_provider_max_input_tokens
             ),
+            provider_max_input_bytes=prompt_byte_limit,
         )
         todo_file = self._display_context_path(self.todo_path)
-        result = compiler.compile(
-            repository_id=repository_id,
-            tree_id=tree_id,
-            objective_id=task.task_id,
-            objective_revision=self._canonical_ref(task),
-            policy_id="policy:implementation-daemon",
-            policy_revision=policy_revision,
-            caller="agent-supervisor:implementation-daemon",
-            stage="implementation",
-            goal={
-                "instruction": (
-                    (
-                        "Resolve the bounded "
-                        f"{retry_repair_failure_kind or 'validation'} "
-                        "retry-budget blocker for "
-                        f"{retry_repair_source_id}; prove the declared gate "
-                        "without weakening correct production policy or tests."
-                    )
-                    if retry_repair_source_id
-                    else (
-                        "Implement this backlog task completely and thoroughly "
-                        "as a production-ready change in one pass."
-                    )
-                ),
-                "task_id": task.task_id,
-                "title": task.title,
-                "priority": task.priority,
-                "track": task.track,
-                "attempt": int(attempt),
-            },
-            authority={
-                "todo_file": todo_file,
-                "source_line": int(task.source_line),
-                "generic_prompt_policy": rules,
-                "edit_policy": edit_policy,
-                "implementation_timeout_policy": canonical_json(
-                    timeout_policy.to_dict()
-                ),
-                "durable_checkpoint": {
-                    "directory": str(checkpoint_dir),
-                    "environment_variable": IMPLEMENTATION_CHECKPOINT_DIR_ENV,
-                    "manifest_cid": checkpoint_manifest["manifest_cid"],
-                    "file_count": checkpoint_manifest["file_count"],
+        try:
+            result = compiler.compile(
+                repository_id=repository_id,
+                tree_id=tree_id,
+                objective_id=task.task_id,
+                objective_revision=self._canonical_ref(task),
+                policy_id="policy:implementation-daemon",
+                policy_revision=policy_revision,
+                caller="agent-supervisor:implementation-daemon",
+                stage="implementation",
+                goal={
+                    "instruction": (
+                        (
+                            "Resolve the bounded "
+                            f"{retry_repair_failure_kind or 'validation'} "
+                            "retry-budget blocker for "
+                            f"{retry_repair_source_id}; prove the declared gate "
+                            "without weakening correct production policy or tests."
+                        )
+                        if retry_repair_source_id
+                        else (
+                            "Implement this backlog task completely and thoroughly "
+                            "as a production-ready change in one pass."
+                        )
+                    ),
+                    "task_id": task.task_id,
+                    "title": task.title,
+                    "priority": task.priority,
+                    "track": task.track,
+                    "attempt": int(attempt),
                 },
-                "primary_plan_documents": {
-                    "AGENT-": "docs/AI_AGENT_CHAT_IMPLEMENTATION_PLAN.md",
-                    "PORTAL-": "docs/211_SERVICE_NAVIGATION_PORTAL_PLAN.md",
+                authority={
+                    "todo_file": todo_file,
+                    "source_line": int(task.source_line),
+                    "generic_prompt_policy": rules,
+                    "edit_policy": edit_policy,
+                    "implementation_timeout_policy": canonical_json(
+                        timeout_policy.to_dict()
+                    ),
+                    "implementation_context_budget": (
+                        context_budget_authority
+                    ),
+                    "durable_checkpoint": {
+                        "directory": str(checkpoint_dir),
+                        "environment_variable": IMPLEMENTATION_CHECKPOINT_DIR_ENV,
+                        "manifest_cid": checkpoint_manifest["manifest_cid"],
+                        "file_count": checkpoint_manifest["file_count"],
+                    },
+                    "primary_plan_documents": {
+                        "AGENT-": "docs/AI_AGENT_CHAT_IMPLEMENTATION_PLAN.md",
+                        "PORTAL-": "docs/211_SERVICE_NAVIGATION_PORTAL_PLAN.md",
+                    },
+                    "completion_authoritative": False,
                 },
-                "completion_authoritative": False,
-            },
-            scope={
-                "depends_on": tuple(task.depends_on),
-                "expected_outputs": tuple(task.outputs),
-                "allowed_edit_paths": allowed_edit_paths,
-                "protected_edit_paths": protected_edit_paths,
-                "retry_repair_source_task_id": retry_repair_source_id,
-                "retry_repair_failure_kind": retry_repair_failure_kind,
-                "validation_target_paths": retry_validation_paths,
-                "implied_validation_output_paths": implied_validation_paths,
-                "checkpoint_directory": str(checkpoint_dir),
-            },
-            acceptance={
-                "criteria": task.acceptance or "none listed",
-                "validation_commands": tuple(task.validation),
-                "all_expected_outputs_required": True,
-            },
-            evidence=evidence,
-        )
+                scope={
+                    "depends_on": tuple(task.depends_on),
+                    "expected_outputs": tuple(task.outputs),
+                    "allowed_edit_paths": allowed_edit_paths,
+                    "protected_edit_paths": protected_edit_paths,
+                    "retry_repair_source_task_id": retry_repair_source_id,
+                    "retry_repair_failure_kind": retry_repair_failure_kind,
+                    "validation_target_paths": retry_validation_paths,
+                    "implied_validation_output_paths": implied_validation_paths,
+                    "checkpoint_directory": str(checkpoint_dir),
+                },
+                acceptance={
+                    "criteria": task.acceptance or "none listed",
+                    "validation_commands": tuple(task.validation),
+                    "all_expected_outputs_required": True,
+                },
+                evidence=evidence,
+            )
+        except RequiredContextOverflowError as exc:
+            if prompt_byte_limit is None:
+                raise
+            raise ImplementationRetryDeferred(
+                "implementation context byte budget exhausted"
+            ) from exc
         self._last_implementation_context = result
         self._last_implementation_retry = None
         self._implementation_base_contexts[self._canonical_ref(task)] = result
@@ -20121,6 +20334,11 @@ class PortalImplementationDaemon:
                 "policy_revision": policy_revision,
                 "allowed_edit_paths": allowed_edit_paths,
                 "protected_edit_paths": protected_edit_paths,
+                "provider_input_bytes": len(
+                    render_context_capsule(result.capsule).encode("utf-8")
+                ),
+                "provider_input_byte_limit": prompt_byte_limit,
+                "provider_context_window": provider_window,
             },
         )
         return result
@@ -20259,11 +20477,31 @@ class PortalImplementationDaemon:
                         review.get("next_attempt_prompt_addendum") or ""
                     ).strip()
             if addendum:
-                rendered = (
+                candidate = (
                     f"{rendered.rstrip()}\n\n"
                     "## Prior failure review (deterministic)\n"
                     f"{addendum}\n"
                 )
+                byte_limit = self._task_llm_context_budget_bytes(task)
+                if (
+                    byte_limit is None
+                    or len(candidate.encode("utf-8")) <= byte_limit
+                ):
+                    rendered = candidate
+                else:
+                    self._decision_runtime_route(
+                        "implementation_context_addendum_omitted",
+                        {
+                            "task_id": task.task_id,
+                            "attempt": int(attempt),
+                            "reason": "provider_input_byte_budget",
+                            "provider_input_byte_limit": byte_limit,
+                            "candidate_input_bytes": len(
+                                candidate.encode("utf-8")
+                            ),
+                        },
+                    )
+        self._require_implementation_prompt_byte_budget(task, rendered)
         return rendered
 
     def _build_recommended_actions(self, task: PortalTask) -> list[str]:

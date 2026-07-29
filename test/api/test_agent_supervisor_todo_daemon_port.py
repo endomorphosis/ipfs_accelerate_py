@@ -16,6 +16,9 @@ from types import SimpleNamespace
 
 import pytest
 
+from ipfs_accelerate_py.agent_supervisor.context_compiler import (
+    ContextCompileResult,
+)
 from ipfs_accelerate_py.agent_supervisor.context_contracts import ContextBudget
 from ipfs_accelerate_py.agent_supervisor.objective_daemon import (
     build_arg_parser,
@@ -13489,6 +13492,214 @@ def test_implementation_daemon_records_stage_specific_context_reserves(tmp_path)
     assert "Preserve implementation authority." not in receipt_text
     assert "raw_prompt" not in receipt_text
     assert "decoded_output" not in receipt_text
+
+
+@pytest.mark.parametrize("byte_limit", (12_288, 16_384))
+def test_task_llm_context_budget_bounds_exact_provider_input(
+    tmp_path,
+    monkeypatch,
+    byte_limit,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text("# Todos\n", encoding="utf-8")
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## VFS-",
+    )
+    task = PortalTask(
+        task_id="VFS-900",
+        title="Compile a bounded repair packet",
+        status="ready",
+        completion="manual",
+        priority="P0",
+        track="symbolic",
+        outputs=["src/repair.py"],
+        validation=["python -m pytest test/test_repair.py -q"],
+        acceptance="Keep the invariant contract and use CID references.",
+        metadata={
+            "llm context budget bytes": str(byte_limit),
+            "missing evidence": "contract:mismatch",
+        },
+        canonical_task_cid=f"task:vfs-900-{byte_limit}",
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_render_todo_vector_context",
+        lambda _task: "symbolic evidence " * 8_000,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_load_todo_vector_context",
+        lambda _task: {},
+    )
+
+    prompt = daemon._build_implementation_prompt(task, attempt=1)
+    result = daemon._last_implementation_context
+
+    assert isinstance(result, ContextCompileResult)
+    assert len(prompt.encode("utf-8")) <= byte_limit
+    assert result.capsule.expansion_references
+    assert all(
+        item.referenced_content_id
+        for item in result.capsule.expansion_references
+    )
+    authority = result.capsule.authority["implementation_context_budget"]
+    assert authority["source"] == "task_metadata"
+    assert authority["max_provider_input_bytes"] == byte_limit
+    assert authority["provider_context_window"] == byte_limit + 24_576
+    assert result.receipt.budget_resolution.effective_input_limit == byte_limit
+
+
+@pytest.mark.parametrize(
+    "raw_budget",
+    (
+        "",
+        " ",
+        "0",
+        "-1",
+        "+12288",
+        "12288.0",
+        "12KiB",
+        "012288",
+        "1048577",
+        True,
+    ),
+)
+def test_malformed_task_llm_context_budget_never_widens_authority(
+    tmp_path,
+    raw_budget,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## VFS-",
+    )
+    task = PortalTask(
+        task_id="VFS-901",
+        title="Reject malformed prompt authority",
+        status="ready",
+        completion="manual",
+        priority="P0",
+        track="symbolic",
+        outputs=["src/repair.py"],
+        validation=[],
+        acceptance="Reject malformed budgets.",
+        metadata={"LLM context budget bytes": raw_budget},
+        canonical_task_cid="task:vfs-901",
+    )
+
+    with pytest.raises(
+        implementation_daemon_module.ImplementationRetryDeferred,
+        match="invalid task LLM context budget bytes",
+    ):
+        daemon._build_implementation_prompt(task, attempt=1)
+
+    assert TodoTaskState.load(daemon.state_path).implementation_attempts == {}
+
+
+def test_task_llm_context_budget_caps_codex_window_without_widening_operator_limits(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text("# Todos\n", encoding="utf-8")
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## VFS-",
+        implementation_context_budget=ContextBudget(
+            max_input_tokens=8_000,
+            reserved_output_tokens=1_000,
+            reserved_tool_tokens=500,
+            max_items=64,
+        ),
+        implementation_provider_context_window=6_000,
+    )
+    task = PortalTask(
+        task_id="VFS-902",
+        title="Retain stricter operator context authority",
+        status="ready",
+        completion="manual",
+        priority="P0",
+        track="symbolic",
+        outputs=["src/repair.py"],
+        validation=[],
+        acceptance="Use the stricter provider ceiling.",
+        metadata={"llm context budget bytes": "16384"},
+        canonical_task_cid="task:vfs-902",
+    )
+    monkeypatch.setenv(
+        "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER",
+        "codex",
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module.shutil,
+        "which",
+        lambda name: "/usr/local/bin/codex" if name == "codex" else None,
+    )
+
+    result = daemon._compile_implementation_context(task, attempt=1)
+    command = daemon._build_implementation_command(repo, task=task)
+
+    resolution = result.receipt.budget_resolution
+    assert resolution.provider_context_window == 6_000
+    assert resolution.effective_input_limit == 4_500
+    assert result.capsule.budget.max_input_tokens == 4_500
+    assert ["-c", "model_context_window=6000"] == command[5:7]
+    assert "model_context_window=200000" not in command
+
+
+def test_too_small_task_llm_context_budget_defers_before_attempt_charge(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## VFS-",
+    )
+    task = PortalTask(
+        task_id="VFS-903",
+        title="Defer an impossible prompt budget",
+        status="ready",
+        completion="manual",
+        priority="P0",
+        track="symbolic",
+        outputs=["src/repair.py"],
+        validation=[],
+        acceptance="Never dispatch an over-budget prompt.",
+        metadata={"llm context budget bytes": "128"},
+        canonical_task_cid="task:vfs-903",
+    )
+
+    with pytest.raises(
+        implementation_daemon_module.ImplementationRetryDeferred,
+        match="implementation context byte budget exhausted",
+    ):
+        daemon._build_implementation_prompt(task, attempt=1)
+
+    assert TodoTaskState.load(daemon.state_path).implementation_attempts == {}
 
 
 def test_retry_repair_context_authorizes_declared_validation_targets(tmp_path):
