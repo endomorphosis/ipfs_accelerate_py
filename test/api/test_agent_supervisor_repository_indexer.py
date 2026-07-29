@@ -13,6 +13,9 @@ from ipfs_accelerate_py.agent_supervisor.analysis.analyzer_health import (
     AnalyzerHealthStatus,
     AnalyzerHealthThresholds,
 )
+from ipfs_accelerate_py.agent_supervisor.analysis.contract_mismatch_analyzer import (
+    MismatchAnalysis,
+)
 from ipfs_accelerate_py.agent_supervisor.analysis.polyglot_ast_provider import (
     PolyglotASTProvider,
 )
@@ -667,8 +670,28 @@ def test_cli_indexes_real_git_snapshot_and_writes_all_evidence(
     for name in (
         "current.json",
         "coverage.json",
+        "contract_findings.json",
         "repository-index.json",
         "analyzer-health.json",
         "summary.json",
+        "summary.md",
     ):
         assert (output / name).is_file()
+
+    coverage = json.loads((output / "coverage.json").read_text(encoding="utf-8"))
+    assert coverage["snapshot_id"] == summary["snapshot_id"]
+    assert coverage["index_id"] == summary["index_id"]
+    assert len(coverage["rows"]) == 2
+    assert {row["path"] for row in coverage["rows"]} == {
+        "README.md",
+        "service.py",
+    }
+    analysis = MismatchAnalysis.from_json(
+        (output / "contract_findings.json").read_text(encoding="utf-8")
+    )
+    assert analysis.snapshot_id == summary["snapshot_id"]
+    assert analysis.findings == ()
+    assert "contract_claim_pipeline_not_run" in analysis.reason_codes
+    markdown = (output / "summary.md").read_text(encoding="utf-8")
+    assert f"`{summary['snapshot_id']}`" in markdown
+    assert "- Model calls: `0`" in markdown

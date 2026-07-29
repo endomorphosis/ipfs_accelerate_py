@@ -20,6 +20,9 @@ from ipfs_accelerate_py.agent_supervisor.analysis.analyzer_health import (  # no
     AnalyzerHealthStatus,
     AnalyzerHealthThresholds,
 )
+from ipfs_accelerate_py.agent_supervisor.analysis.contract_mismatch_analyzer import (  # noqa: E402
+    MismatchAnalysis,
+)
 from ipfs_accelerate_py.agent_supervisor.analysis.polyglot_ast_provider import (  # noqa: E402
     PolyglotASTLimits,
     PolyglotASTProvider,
@@ -29,6 +32,7 @@ from ipfs_accelerate_py.agent_supervisor.analysis.repository_indexer import (  #
     DEFAULT_MAX_INDEX_PATHS,
     DEFAULT_MAX_PARSER_SOURCE_BYTES,
     DEFAULT_MAX_SOURCE_BYTES,
+    RepositoryIndex,
     RepositoryIndexer,
     RepositoryIndexerError,
 )
@@ -64,6 +68,122 @@ def _atomic_json(path: Path, value: Any) -> None:
             temporary.unlink()
         except FileNotFoundError:
             pass
+
+
+def _atomic_text(path: Path, value: str) -> None:
+    encoded = value.encode("utf-8")
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
+    )
+    temporary = Path(temporary_name)
+    try:
+        with os.fdopen(descriptor, "wb") as stream:
+            stream.write(encoded)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, path)
+    finally:
+        try:
+            temporary.unlink()
+        except FileNotFoundError:
+            pass
+
+
+def _coverage_report(result: RepositoryIndex) -> dict[str, Any]:
+    """Return a bounded ledger whose row IDs bind the complete index records."""
+
+    return {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "sca-repository-coverage@1"
+        ),
+        "snapshot_id": result.snapshot_id,
+        "index_id": result.index_id,
+        "ast_index_id": result.ast_index_id,
+        "scope_id": result.snapshot.scope_id,
+        "scope_policy_id": result.snapshot.scope_policy_id,
+        "head_commit_id": result.snapshot.head_commit_id,
+        "head_tree_id": result.snapshot.head_tree_id,
+        "index_tree_id": result.snapshot.index_tree_id,
+        "is_clean": result.snapshot.is_clean,
+        "health": result.health.to_dict(),
+        "stats": result.build_stats.to_dict(),
+        "rows": [
+            {
+                "path": row.path,
+                "row_id": row.row_id,
+                "disposition_kind": row.disposition_kind.value,
+                "declared_kind": row.declared_kind.value,
+                "reason_code": row.reason_code,
+                "parser_status": row.parser_status.value,
+                "parser_reason": row.parser_reason,
+                "language": row.language,
+                "tracked": row.tracked,
+                "overlay": row.overlay,
+            }
+            for row in result.rows
+        ],
+    }
+
+
+def _contract_analysis_receipt(result: RepositoryIndex) -> MismatchAnalysis:
+    reason_codes = ["repository_index_only"]
+    if result.health.status is not AnalyzerHealthStatus.HEALTHY:
+        reason_codes.append("contract_analysis_withheld_until_analyzer_healthy")
+        reason_codes.extend(
+            f"analyzer_health:{reason}" for reason in result.health.reasons
+        )
+    else:
+        reason_codes.append("contract_claim_pipeline_not_run")
+    return MismatchAnalysis(
+        snapshot_id=result.snapshot_id,
+        findings=(),
+        reason_codes=tuple(reason_codes),
+    )
+
+
+def _summary_markdown(
+    result: RepositoryIndex,
+    analysis: MismatchAnalysis,
+) -> str:
+    stats = result.build_stats
+    analysis_status = (
+        "withheld: analyzer health is not healthy"
+        if result.health.status is not AnalyzerHealthStatus.HEALTHY
+        else "not run: no contract-claim pipeline was provided"
+    )
+    health_reasons = ", ".join(result.health.reasons) or "none"
+    return "\n".join(
+        (
+            "# SwissKnife Symbolic Contract Baseline",
+            "",
+            f"- Snapshot ID: `{result.snapshot_id}`",
+            f"- Repository index ID: `{result.index_id}`",
+            f"- AST index ID: `{result.ast_index_id}`",
+            f"- Analyzer health: `{result.health.status.value}`",
+            f"- Analyzer health reasons: `{health_reasons}`",
+            (
+                "- Safe for completion reasoning: "
+                f"`{str(result.safe_for_completion_reasoning).lower()}`"
+            ),
+            f"- Tracked paths: `{stats.tracked_path_count}`",
+            f"- Indexed rows: `{stats.row_count}`",
+            f"- Parser-eligible paths: `{stats.eligible_parser_path_count}`",
+            f"- Parser failures: `{stats.parse_failure_count}`",
+            f"- Unsupported parsers: `{stats.unsupported_parser_count}`",
+            f"- Contract analysis: `{analysis_status}`",
+            f"- Contract findings: `{len(analysis.findings)}`",
+            f"- Contract analysis ID: `{analysis.analysis_id}`",
+            "- Model calls: `0`",
+            "",
+            (
+                "An empty findings list is not evidence of contract parity while "
+                "contract analysis is withheld or not run."
+            ),
+            "",
+        )
+    )
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
@@ -212,7 +332,16 @@ def main(argv: Sequence[str] | None = None) -> int:
                 item.to_dict() for item in result.invalidations
             ],
         }
-        _atomic_json(output_root / "coverage.json", result.snapshot.to_dict())
+        analysis = _contract_analysis_receipt(result)
+        _atomic_json(output_root / "coverage.json", _coverage_report(result))
+        _atomic_json(
+            output_root / "contract_findings.json",
+            analysis.to_dict(),
+        )
+        _atomic_text(
+            output_root / "summary.md",
+            _summary_markdown(result, analysis),
+        )
         _atomic_json(output_root / "repository-index.json", result.to_dict())
         _atomic_json(
             output_root / "analyzer-health.json", result.health.to_dict()
