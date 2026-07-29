@@ -71,6 +71,9 @@ from .objective_graph import (
 from .validation_commands import split_validation_commands
 from .formal_verification_contracts import content_identity
 from .goal_quality import (
+    DATASETS_CONTRACT_GOAL_QUALITY_EVIDENCE_PATH,
+    DATASETS_CONTRACT_GOAL_QUALITY_TEST_PATH,
+    DATASETS_CONTRACT_GOAL_QUALITY_VALIDATION_COMMAND,
     DebtSeverity,
     ObjectiveTypedGoals,
     lint_objective_markdown,
@@ -834,6 +837,92 @@ def load_objective_goal_quality_report(
                 f"the current heap ({'; '.join(details)})"
             )
     return report
+
+
+@dataclass(frozen=True)
+class ObjectiveGoalQualityEnsureResult:
+    """Outcome of ensuring a heap-bound goal-quality evidence artifact.
+
+    Validation-repair lanes need a non-empty, deterministic producer action
+    when the durable report is missing or stale.  ``refreshed`` distinguishes
+    a no-op load of an already-current artifact from a rewrite that produces
+    changed evidence for proposal ``changed_paths``.
+    """
+
+    report: ObjectiveGoalQualityReport
+    refreshed: bool
+    evidence_path: str = DATASETS_CONTRACT_GOAL_QUALITY_EVIDENCE_PATH
+    validation_command: str = DATASETS_CONTRACT_GOAL_QUALITY_VALIDATION_COMMAND
+    test_path: str = DATASETS_CONTRACT_GOAL_QUALITY_TEST_PATH
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "report": self.report.to_dict(),
+            "refreshed": bool(self.refreshed),
+            "evidence_path": self.evidence_path,
+            "validation_command": self.validation_command,
+            "test_path": self.test_path,
+            "objective_heap_id": self.report.objective_heap_id,
+            "content_id": self.report.content_id,
+            "quality_record_count": len(self.report.quality_records),
+            "debt_record_count": len(self.report.debt_records),
+        }
+
+
+def _goal_quality_evidence_path_label(report_path: Path) -> str:
+    """Prefer the reviewed relative evidence path when the file sits there."""
+
+    marker = DATASETS_CONTRACT_GOAL_QUALITY_EVIDENCE_PATH
+    posix = report_path.as_posix().replace("\\", "/")
+    if posix == marker or posix.endswith("/" + marker):
+        return marker
+    return posix
+
+
+def ensure_objective_goal_quality_report(
+    objective_path: Path,
+    report_path: Path,
+    *,
+    default_max_breadth: int = 8,
+    force: bool = False,
+) -> ObjectiveGoalQualityEnsureResult:
+    """Load a current report or atomically rewrite missing/stale evidence.
+
+    Fail-closed load remains the default for callers that only read.  Repair
+    and evidence-obligation lanes call this helper so a heap identity drift
+    yields a deterministic rewrite rather than an empty patch and a
+    ``declared_validation_plan_invalid`` configuration failure.
+    """
+
+    if objective_path.resolve() == report_path.resolve():
+        raise ValueError(
+            "goal-quality report path must not overwrite the objective heap"
+        )
+    evidence_path = _goal_quality_evidence_path_label(report_path)
+    if not force and report_path.is_file():
+        try:
+            report = load_objective_goal_quality_report(
+                report_path, objective_path=objective_path
+            )
+        except ValueError:
+            report = None
+        else:
+            return ObjectiveGoalQualityEnsureResult(
+                report=report,
+                refreshed=False,
+                evidence_path=evidence_path,
+            )
+
+    report = write_objective_goal_quality_report(
+        objective_path,
+        report_path,
+        default_max_breadth=default_max_breadth,
+    )
+    return ObjectiveGoalQualityEnsureResult(
+        report=report,
+        refreshed=True,
+        evidence_path=evidence_path,
+    )
 
 
 def build_objective_typed_goals(

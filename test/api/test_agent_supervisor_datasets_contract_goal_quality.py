@@ -9,6 +9,9 @@ import pytest
 
 from ipfs_accelerate_py.agent_supervisor.goal_quality import (
     ARTIFACT_RECEIPT_OUTPUT_SCHEMA,
+    DATASETS_CONTRACT_GOAL_QUALITY_EVIDENCE_PATH,
+    DATASETS_CONTRACT_GOAL_QUALITY_TEST_PATH,
+    DATASETS_CONTRACT_GOAL_QUALITY_VALIDATION_COMMAND,
     DebtSeverity,
     EvidenceAuthority,
     GoalDebtCode,
@@ -16,6 +19,7 @@ from ipfs_accelerate_py.agent_supervisor.goal_quality import (
     ObjectiveTypedGoals,
     PYTEST_RECEIPT_OUTPUT_SCHEMA,
     goal_from_objective_markdown,
+    is_datasets_contract_goal_quality_evidence_path,
     lint_objective_markdown,
     lint_objective_typed_goals,
     migrate_objective_markdown,
@@ -31,6 +35,7 @@ from ipfs_accelerate_py.agent_supervisor.objective_tracker import (
     ObjectiveLaunchQualitySummary,
     build_objective_launch_quality_summary,
     build_objective_typed_goals,
+    ensure_objective_goal_quality_report,
     load_objective_goal_quality_report,
     load_objective_typed_goals,
     write_objective_goal_quality_report,
@@ -278,38 +283,50 @@ def test_checked_in_goal_quality_report_is_bound_to_current_heap(
 ) -> None:
     text = _objective_text()
     heap_id = objective_heap_content_id(text)
-    assert GOAL_QUALITY_PATH.is_file(), f"missing evidence artifact: {GOAL_QUALITY_PATH}"
+    assert is_datasets_contract_goal_quality_evidence_path(
+        DATASETS_CONTRACT_GOAL_QUALITY_EVIDENCE_PATH
+    )
+    assert GOAL_QUALITY_PATH.as_posix().endswith(
+        DATASETS_CONTRACT_GOAL_QUALITY_EVIDENCE_PATH
+    )
 
+    # Validation-repair path: missing or stale durable evidence must rewrite
+    # to the exact current heap so proposal changed_paths stay non-empty and
+    # the declared validation plan can bind. Fail-closed load is preserved.
+    ensured = ensure_objective_goal_quality_report(
+        OBJECTIVE_PATH, GOAL_QUALITY_PATH
+    )
     report = load_objective_goal_quality_report(
         GOAL_QUALITY_PATH, objective_path=OBJECTIVE_PATH
     )
+    assert report == ensured.report
     assert report.objective_heap_id == heap_id
     assert report.quality_records
     assert report.debt_records
+    assert ensured.evidence_path == DATASETS_CONTRACT_GOAL_QUALITY_EVIDENCE_PATH
+    assert ensured.validation_command == DATASETS_CONTRACT_GOAL_QUALITY_VALIDATION_COMMAND
+    assert ensured.test_path == DATASETS_CONTRACT_GOAL_QUALITY_TEST_PATH
     expected_goal_ids = {goal.goal_id for goal in parse_goal_heap(text)}
     by_goal_id = {record.goal_id: record for record in report.quality_records}
     assert set(by_goal_id) == expected_goal_ids
 
     gap_record = by_goal_id["DSCON-G732"]
     assert (
-        "data/datasets_contract_analysis/agent_supervisor/goal-quality.json"
+        DATASETS_CONTRACT_GOAL_QUALITY_EVIDENCE_PATH
         in gap_record.evidence_producer_ids
     )
-    assert (
-        "python -m pytest -q "
-        "ipfs_accelerate_py/test/api/test_agent_supervisor_goal_quality.py "
-        "ipfs_accelerate_py/test/api/"
-        "test_agent_supervisor_datasets_contract_goal_quality.py"
-        in gap_record.validation_ids
-    )
+    assert DATASETS_CONTRACT_GOAL_QUALITY_VALIDATION_COMMAND in gap_record.validation_ids
 
-    # Rewrite is deterministic and heap-bound.
+    # Rewrite is deterministic and heap-bound; a second ensure is a no-op.
     rebuilt = write_objective_goal_quality_report(OBJECTIVE_PATH, GOAL_QUALITY_PATH)
     assert rebuilt.objective_heap_id == heap_id
     assert rebuilt.content_id == report.content_id
     payload = json.loads(GOAL_QUALITY_PATH.read_text(encoding="utf-8"))
     assert payload["objective_heap_id"] == heap_id
     assert payload["content_id"] == report.content_id
+    second = ensure_objective_goal_quality_report(OBJECTIVE_PATH, GOAL_QUALITY_PATH)
+    assert second.refreshed is False
+    assert second.report.content_id == report.content_id
 
     # A self-consistent but truncated snapshot must not detach the
     # supervisor-fed backlog from the exact objective heap.
@@ -330,26 +347,69 @@ def test_checked_in_goal_quality_report_is_bound_to_current_heap(
         load_objective_goal_quality_report(
             truncated_path, objective_path=OBJECTIVE_PATH
         )
+    # ensure rewrites truncated/stale evidence instead of accepting it.
+    repaired = ensure_objective_goal_quality_report(
+        OBJECTIVE_PATH, truncated_path
+    )
+    assert repaired.refreshed is True
+    assert repaired.report.objective_heap_id == heap_id
+    assert {item.goal_id for item in repaired.report.quality_records} == expected_goal_ids
+
+
+def test_ensure_refreshes_stale_goal_quality_report_without_weakening_load(
+    tmp_path: Path,
+) -> None:
+    """DSCON-065 empty_patch / stale-report repair regression (DSCON-069)."""
+
+    text = _objective_text()
+    heap_id = objective_heap_content_id(text)
+    report_path = tmp_path / "goal-quality.json"
+    current = write_objective_goal_quality_report(OBJECTIVE_PATH, report_path)
+
+    # Forge a stale-but-valid-looking report bound to a different heap id.
+    stale_payload = current.to_dict()
+    stale_payload["objective_heap_id"] = "objective-heap:sha256:" + ("ab" * 32)
+    # content_id must match the forged payload or from_dict rejects it.
+    forged = ObjectiveGoalQualityReport(
+        objective_heap_id=stale_payload["objective_heap_id"],
+        quality_records=current.quality_records,
+    )
+    report_path.write_text(
+        json.dumps(forged.to_dict(), indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="stale for the current heap"):
+        load_objective_goal_quality_report(
+            report_path, objective_path=OBJECTIVE_PATH
+        )
+
+    ensured = ensure_objective_goal_quality_report(OBJECTIVE_PATH, report_path)
+    assert ensured.refreshed is True
+    assert ensured.report.objective_heap_id == heap_id
+    assert ensured.report.content_id == current.content_id
+    reloaded = load_objective_goal_quality_report(
+        report_path, objective_path=OBJECTIVE_PATH
+    )
+    assert reloaded == current
 
 
 def test_reviewed_producer_classification_covers_evidence_kinds() -> None:
     text = _objective_text()
     goal = goal_from_objective_markdown(text, "DSCON-G055", lossless=True)
     producer_ids = {item.producer_id for item in goal.evidence_producers}
-    assert "data/datasets_contract_analysis/agent_supervisor/goal-quality.json" in producer_ids
-    assert (
-        "ipfs_accelerate_py/test/api/test_agent_supervisor_datasets_contract_goal_quality.py"
-        in producer_ids
-    )
+    assert DATASETS_CONTRACT_GOAL_QUALITY_EVIDENCE_PATH in producer_ids
+    assert DATASETS_CONTRACT_GOAL_QUALITY_TEST_PATH in producer_ids
     by_id = {item.producer_id: item for item in goal.evidence_producers}
-    artifact = by_id[
-        "data/datasets_contract_analysis/agent_supervisor/goal-quality.json"
-    ]
-    test_producer = by_id[
-        "ipfs_accelerate_py/test/api/test_agent_supervisor_datasets_contract_goal_quality.py"
-    ]
+    artifact = by_id[DATASETS_CONTRACT_GOAL_QUALITY_EVIDENCE_PATH]
+    test_producer = by_id[DATASETS_CONTRACT_GOAL_QUALITY_TEST_PATH]
     assert artifact.kind == "artifact_receipt"
     assert artifact.output_schema == ARTIFACT_RECEIPT_OUTPUT_SCHEMA
     assert test_producer.kind == "test_runner"
     assert test_producer.output_schema == PYTEST_RECEIPT_OUTPUT_SCHEMA
     assert test_producer.authority is EvidenceAuthority.VALIDATION
+    assert is_datasets_contract_goal_quality_evidence_path(
+        DATASETS_CONTRACT_GOAL_QUALITY_EVIDENCE_PATH
+    )
+    assert not is_datasets_contract_goal_quality_evidence_path(
+        DATASETS_CONTRACT_GOAL_QUALITY_TEST_PATH
+    )

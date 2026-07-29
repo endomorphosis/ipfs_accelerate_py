@@ -73,6 +73,22 @@ LEGACY_GOAL_REF_OUTPUT_SCHEMA: Final[str] = (
 )
 PYTEST_RECEIPT_OUTPUT_SCHEMA: Final[str] = "schema:pytest-receipt@1"
 ARTIFACT_RECEIPT_OUTPUT_SCHEMA: Final[str] = "schema:artifact-receipt@1"
+# Durable datasets-contract evidence for lossless typed objective admission
+# (DSCON-G055 / DSCON-G732).  Kept explicit so validation-repair tasks can
+# rebind the producer without inventing completion-gate authority.
+DATASETS_CONTRACT_GOAL_QUALITY_EVIDENCE_PATH: Final[str] = (
+    "data/datasets_contract_analysis/agent_supervisor/goal-quality.json"
+)
+DATASETS_CONTRACT_GOAL_QUALITY_TEST_PATH: Final[str] = (
+    "ipfs_accelerate_py/test/api/"
+    "test_agent_supervisor_datasets_contract_goal_quality.py"
+)
+DATASETS_CONTRACT_GOAL_QUALITY_VALIDATION_COMMAND: Final[str] = (
+    "python -m pytest -q "
+    "ipfs_accelerate_py/test/api/test_agent_supervisor_goal_quality.py "
+    "ipfs_accelerate_py/test/api/"
+    "test_agent_supervisor_datasets_contract_goal_quality.py"
+)
 DEFAULT_TYPED_FRESHNESS_SECONDS: Final[int] = 3_600
 DEFAULT_TYPED_MAX_ROUNDS: Final[int] = 2
 DEFAULT_TYPED_MAX_CHILDREN: Final[int] = 4
@@ -1857,6 +1873,15 @@ def _is_goal_reference(value: str) -> bool:
     )
 
 
+def is_datasets_contract_goal_quality_evidence_path(reference: str) -> bool:
+    """Return True when ``reference`` is the durable goal-quality evidence path."""
+
+    text = str(reference or "").strip().replace("\\", "/")
+    while text.startswith("./"):
+        text = text[2:]
+    return text == DATASETS_CONTRACT_GOAL_QUALITY_EVIDENCE_PATH
+
+
 def _reviewed_legacy_producer(reference: str) -> EvidenceProducer:
     text = reference.strip()
     lower = text.casefold()
@@ -1871,7 +1896,9 @@ def _reviewed_legacy_producer(reference: str) -> EvidenceProducer:
             capability_id="capability:python-pytest",
             independent=True,
         )
-    if lower.endswith((".json", ".md", ".jsonl", ".yaml", ".yml")):
+    if is_datasets_contract_goal_quality_evidence_path(text) or lower.endswith(
+        (".json", ".md", ".jsonl", ".yaml", ".yml")
+    ):
         return EvidenceProducer(
             producer_id=text,
             kind="artifact_receipt",
@@ -2652,6 +2679,9 @@ TypedObjectiveSidecar = ObjectiveTypedGoals
 __all__ = [
     "ACCEPTANCE_CRITERION_SCHEMA",
     "ARTIFACT_RECEIPT_OUTPUT_SCHEMA",
+    "DATASETS_CONTRACT_GOAL_QUALITY_EVIDENCE_PATH",
+    "DATASETS_CONTRACT_GOAL_QUALITY_TEST_PATH",
+    "DATASETS_CONTRACT_GOAL_QUALITY_VALIDATION_COMMAND",
     "DEFAULT_TYPED_FRESHNESS_SECONDS",
     "EVIDENCE_PRODUCER_SCHEMA",
     "FRESHNESS_POLICY_SCHEMA",
@@ -2709,6 +2739,7 @@ __all__ = [
     "canonical_goal_json",
     "evaluate_goal_quality",
     "goal_from_objective_markdown",
+    "is_datasets_contract_goal_quality_evidence_path",
     "lint_goal",
     "lint_objective_markdown",
     "lint_objective_typed_goals",
