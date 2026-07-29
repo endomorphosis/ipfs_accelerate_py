@@ -9683,10 +9683,27 @@ class PortalImplementationDaemon:
         source_relative: str | None = None,
     ) -> bool:
         source_key = source_relative or relative
-        source = (self.repo_root / source_key).resolve()
-        if not source.exists() or not self._is_git_worktree(source):
+        if not self._repo_relative_path_safe(source_key):
             return False
         gitlink_ref = self._submodule_gitlink_ref(worktree_path, relative)
+        source = (self.repo_root / source_key).resolve()
+        if not source.exists() or not self._is_git_worktree(source):
+            discovered_source = self._discover_local_submodule_source(
+                source_key,
+                expected_ref=gitlink_ref,
+            )
+            if discovered_source is None:
+                return False
+            source = discovered_source
+        elif gitlink_ref and not self._git_ref_exists_in_repo(source, gitlink_ref):
+            # Prefer an already-complete checkout before asking an incomplete
+            # or shallow local dependency to fetch the recorded gitlink.
+            discovered_source = self._discover_local_submodule_source(
+                source_key,
+                expected_ref=gitlink_ref,
+            )
+            if discovered_source is not None:
+                source = discovered_source
         base_ref = self._resolve_submodule_worktree_base_ref(
             source,
             gitlink_ref or "HEAD",
@@ -9775,6 +9792,101 @@ class PortalImplementationDaemon:
             return True
         self._run_git(["worktree", "add", "--detach", str(target), base_ref], cwd=source)
         return True
+
+    def _discover_local_submodule_source(
+        self,
+        source_key: str,
+        *,
+        expected_ref: str,
+    ) -> Path | None:
+        """Find an initialized dependency in another worktree of this repository.
+
+        Linked worktrees do not initialize submodules automatically.  Prefer
+        the primary checkout recorded by the shared Git directory, followed
+        by Git's registered worktrees, and reuse only the exact dependency
+        path when its object database already contains the expected gitlink.
+        Discovery never fetches and never substitutes an unrelated ``HEAD``.
+        """
+
+        if not self._repo_relative_path_safe(source_key) or not expected_ref:
+            return None
+        common_dir = self._git_common_dir(self.repo_root)
+        if common_dir is None:
+            return None
+
+        roots: list[Path] = []
+        config_path = common_dir / "config"
+        primary = subprocess.run(
+            [
+                "git",
+                "config",
+                "--file",
+                str(config_path),
+                "--path",
+                "--get",
+                "core.worktree",
+            ],
+            cwd=self.repo_root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if primary.returncode == 0 and primary.stdout.strip():
+            configured = Path(primary.stdout.strip())
+            roots.append(
+                configured.resolve()
+                if configured.is_absolute()
+                else (common_dir / configured).resolve()
+            )
+
+        listed = subprocess.run(
+            ["git", "worktree", "list", "--porcelain", "-z"],
+            cwd=self.repo_root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if listed.returncode == 0:
+            for record in listed.stdout.split("\0\0"):
+                first = record.split("\0", 1)[0]
+                if first.startswith("worktree "):
+                    roots.append(Path(first.removeprefix("worktree ")).resolve())
+
+        current_root = self.repo_root.resolve()
+        seen: set[Path] = set()
+        for root in roots:
+            if root in seen or root == current_root:
+                continue
+            seen.add(root)
+            if not self._is_git_worktree(root):
+                continue
+            if self._git_common_dir(root) != common_dir:
+                continue
+
+            unresolved_source = root / source_key
+            if unresolved_source.is_symlink():
+                continue
+            try:
+                source = unresolved_source.resolve(strict=True)
+                source.relative_to(root)
+            except (OSError, RuntimeError, ValueError):
+                continue
+            if not self._is_git_worktree(source):
+                continue
+            if not self._git_ref_exists_in_repo(source, expected_ref):
+                continue
+            self._record_event(
+                "local_submodule_source_discovered",
+                {
+                    "repo_root": str(self.repo_root),
+                    "source_root": str(root),
+                    "source": str(source),
+                    "source_key": source_key,
+                    "expected_ref": expected_ref,
+                },
+            )
+            return source
+        return None
 
     def _resolve_submodule_worktree_base_ref(
         self,
@@ -9901,6 +10013,24 @@ class PortalImplementationDaemon:
         if result.returncode != 0 or not result.stdout.strip():
             return None
         return Path(result.stdout.strip()).resolve()
+
+    def _git_common_dir(self, repo: Path) -> Path | None:
+        result = subprocess.run(
+            ["git", "rev-parse", "--git-common-dir"],
+            cwd=repo,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if result.returncode != 0 or not result.stdout.strip():
+            return None
+        common_dir = Path(result.stdout.strip())
+        if not common_dir.is_absolute():
+            common_dir = repo / common_dir
+        try:
+            return common_dir.resolve()
+        except OSError:
+            return None
 
     @staticmethod
     def _submodule_relative_from_config(modules_dir: Path, config_path: Path) -> Path | None:
