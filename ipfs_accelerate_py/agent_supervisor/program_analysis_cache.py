@@ -828,6 +828,9 @@ class ProgramAnalysisCacheStats:
     corrupt_count: int = 0
     runtime_artifact_count: int = 0
     blob_count: int = 0
+    artifact_bytes: int = 0
+    max_artifacts: int = 0
+    max_artifact_bytes: int = 0
     component_counts: Mapping[str, int] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
@@ -842,6 +845,9 @@ class ProgramAnalysisCacheStats:
             "corrupt_count": self.corrupt_count,
             "runtime_artifact_count": self.runtime_artifact_count,
             "blob_count": self.blob_count,
+            "artifact_bytes": self.artifact_bytes,
+            "max_artifacts": self.max_artifacts,
+            "max_artifact_bytes": self.max_artifact_bytes,
             "component_counts": dict(self.component_counts),
         }
 
@@ -928,6 +934,8 @@ class ProgramAnalysisCache:
         lock_timeout_seconds: float = DEFAULT_LOCK_TIMEOUT_SECONDS,
         wait_timeout_seconds: float | None = DEFAULT_WAIT_TIMEOUT_SECONDS,
         max_artifact_blob_bytes: int = DEFAULT_MAX_ARTIFACT_BLOB_BYTES,
+        max_artifact_bytes: int | None = None,
+        max_artifacts: int | None = None,
         clock: Callable[[], float] = time.time,
         shared_store: Any | None = None,
     ) -> None:
@@ -969,11 +977,21 @@ class ProgramAnalysisCache:
             clock=clock,
             lock_timeout_seconds=lock_timeout_seconds,
         )
+        artifact_byte_quota = (
+            max(max_bytes, max_artifact_blob_bytes * 4)
+            if max_artifact_bytes is None
+            else max_artifact_bytes
+        )
+        artifact_count_quota = (
+            max(max_entries * 4, 64)
+            if max_artifacts is None
+            else max_artifacts
+        )
         self.artifact_store = BoundedArtifactStore(
             self.path / "artifacts",
             quotas=ArtifactQuotaPolicy(
-                max_bytes=max(max_bytes, max_artifact_blob_bytes * 4),
-                max_blobs=max(max_entries * 4, 64),
+                max_bytes=artifact_byte_quota,
+                max_blobs=artifact_count_quota,
                 max_projections=max(max_entries * 2, 64),
                 max_blob_bytes=max_artifact_blob_bytes,
                 max_receipt_bytes=min(max_receipt_bytes, 262_144),
@@ -1904,6 +1922,8 @@ class ProgramAnalysisCache:
         return removed
 
     def stats(self) -> ProgramAnalysisCacheStats:
+        """Return receipt and large-body usage with their declared bounds."""
+
         base = self.analysis_cache.stats()
         component_counts: dict[str, int] = {
             kind.value: 0 for kind in ProgramAnalysisComponentKind
@@ -1921,11 +1941,17 @@ class ProgramAnalysisCache:
                 )
             if entry.receipt.get(_RUNTIME_ARTIFACT_FIELD):
                 runtime_count += 1
-        blob_count = 0
+        artifact_usage: Mapping[str, Any] = {}
+        artifact_quotas: Mapping[str, Any] = (
+            self.artifact_store.quotas.to_dict()
+        )
         try:
-            blob_count = len(self.artifact_store._manifest.get("blobs", {}))  # noqa: SLF001
+            artifact_usage = self.artifact_store.usage()
         except Exception:  # noqa: BLE001
-            blob_count = 0
+            artifact_usage = {}
+        usage_quotas = artifact_usage.get("quotas")
+        if isinstance(usage_quotas, Mapping):
+            artifact_quotas = usage_quotas
         return ProgramAnalysisCacheStats(
             entry_count=base.entry_count,
             total_bytes=base.total_bytes,
@@ -1936,7 +1962,10 @@ class ProgramAnalysisCache:
             inconclusive_count=base.inconclusive_count,
             corrupt_count=base.corrupt_count,
             runtime_artifact_count=runtime_count,
-            blob_count=blob_count,
+            blob_count=int(artifact_usage.get("blob_count", 0)),
+            artifact_bytes=int(artifact_usage.get("total_bytes", 0)),
+            max_artifacts=int(artifact_quotas.get("max_blobs", 0)),
+            max_artifact_bytes=int(artifact_quotas.get("max_bytes", 0)),
             component_counts=component_counts,
         )
 
@@ -1964,6 +1993,9 @@ class ProgramAnalysisCache:
             default_success_ttl_seconds=self.default_success_ttl_seconds,
             lock_timeout_seconds=self.analysis_cache.lock_timeout_seconds,
             wait_timeout_seconds=self.coordinator.wait_timeout_seconds,
+            max_artifact_blob_bytes=self.artifact_store.quotas.max_blob_bytes,
+            max_artifact_bytes=self.artifact_store.quotas.max_bytes,
+            max_artifacts=self.artifact_store.quotas.max_blobs,
             clock=self._clock,
         )
 

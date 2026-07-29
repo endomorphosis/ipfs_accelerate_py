@@ -290,79 +290,117 @@ def test_authority_namespace_isolation_prevents_draft_upgrade(
     tmp_path: Path,
 ) -> None:
     cache = ProgramAnalysisCache(tmp_path)
-    draft_key = _key(authority=ProgramAnalysisAuthority.DRAFT)
-    auth_key = _key(authority=ProgramAnalysisAuthority.AUTHORITATIVE)
+    keys = {
+        authority: _key(authority=authority)
+        for authority in ProgramAnalysisAuthority
+    }
+    for ordinal, key in enumerate(keys.values(), start=1):
+        assert cache.put(key, _receipt(ordinal=ordinal))
 
-    assert cache.put(draft_key, _receipt(ordinal=1))
-    assert cache.put(auth_key, _receipt(ordinal=2))
+    hits = {authority: cache.lookup(key) for authority, key in keys.items()}
+    assert all(hit.hit for hit in hits.values())
+    assert all(hit.runtime_artifact is not None for hit in hits.values())
+    assert len(
+        {
+            hit.runtime_artifact.artifact_id
+            for hit in hits.values()
+            if hit.runtime_artifact is not None
+        }
+    ) == len(ProgramAnalysisAuthority)
+    for authority, hit in hits.items():
+        assert hit.runtime_artifact is not None
+        assert hit.runtime_artifact.identity.authority is RuntimeAuthority(
+            authority.value
+        )
+        assert hit.is_completion_evidence is (
+            authority is ProgramAnalysisAuthority.AUTHORITATIVE
+        )
 
-    draft_hit = cache.lookup(draft_key)
-    auth_hit = cache.lookup(auth_key)
-    assert draft_hit.hit and auth_hit.hit
-    assert draft_hit.runtime_artifact is not None
-    assert auth_hit.runtime_artifact is not None
-    assert (
-        draft_hit.runtime_artifact.artifact_id
-        != auth_hit.runtime_artifact.artifact_id
-    )
-    assert draft_hit.runtime_artifact.identity.authority is RuntimeAuthority.DRAFT
-    assert (
-        auth_hit.runtime_artifact.identity.authority
-        is RuntimeAuthority.AUTHORITATIVE
-    )
-    assert not draft_hit.is_completion_evidence
-    assert auth_hit.is_completion_evidence
-
-    # Looking up the authoritative key never returns the draft entry.
-    assert cache.lookup(auth_key).receipt is not None
-    assert cache.lookup(auth_key).receipt["receipt_id"] == "inventory-receipt-2"
+    # Exact lookup never upgrades draft, diagnostic, or proposal material.
+    authoritative = hits[ProgramAnalysisAuthority.AUTHORITATIVE]
+    assert authoritative.receipt is not None
+    assert authoritative.receipt["receipt_id"] == "inventory-receipt-1"
 
 
 def test_transitive_invalidation_preserves_unrelated_components(
     tmp_path: Path,
 ) -> None:
     cache = ProgramAnalysisCache(tmp_path)
-    inventory_key = _key(component_kind=ProgramAnalysisComponentKind.INVENTORY)
-    ast_key = _key(component_kind=ProgramAnalysisComponentKind.AST)
-    graph_key = _key(component_kind=ProgramAnalysisComponentKind.GRAPH)
+    keys = {
+        component: _key(component_kind=component)
+        for component in ProgramAnalysisComponentKind
+    }
     unrelated_key = _key(
         component_kind=ProgramAnalysisComponentKind.INVENTORY,
         query_digest="sha256:unrelated-query",
     )
 
-    inv = cache.put(inventory_key, _receipt(component="inventory"))
-    assert inv.stored and inv.runtime_artifact is not None
+    inventory = cache.put(
+        keys[ProgramAnalysisComponentKind.INVENTORY],
+        _receipt(component="inventory"),
+    )
+    assert inventory.stored and inventory.runtime_artifact is not None
     ast = cache.put_component(
-        ast_key,
+        keys[ProgramAnalysisComponentKind.AST],
         _receipt(component="ast"),
-        upstream=(inventory_key,),
+        upstream=(keys[ProgramAnalysisComponentKind.INVENTORY],),
     )
     assert ast.stored and ast.runtime_artifact is not None
     graph = cache.put_component(
-        graph_key,
+        keys[ProgramAnalysisComponentKind.GRAPH],
         _receipt(component="graph"),
-        upstream=(inventory_key, ast_key),
+        upstream=(
+            keys[ProgramAnalysisComponentKind.INVENTORY],
+            keys[ProgramAnalysisComponentKind.AST],
+        ),
     )
-    assert graph.stored
+    assert graph.stored and graph.runtime_artifact is not None
+    contract = cache.put_component(
+        keys[ProgramAnalysisComponentKind.CONTRACT],
+        _receipt(component="contract"),
+        upstream=(keys[ProgramAnalysisComponentKind.GRAPH],),
+    )
+    assert contract.stored and contract.runtime_artifact is not None
+    proof = cache.put_component(
+        keys[ProgramAnalysisComponentKind.PROOF],
+        _receipt(component="proof"),
+        upstream=(keys[ProgramAnalysisComponentKind.CONTRACT],),
+    )
+    assert proof.stored and proof.runtime_artifact is not None
+    runtime = cache.put_component(
+        keys[ProgramAnalysisComponentKind.RUNTIME],
+        _receipt(component="runtime"),
+        upstream=(keys[ProgramAnalysisComponentKind.CONTRACT],),
+    )
+    assert runtime.stored and runtime.runtime_artifact is not None
+    zk = cache.put_component(
+        keys[ProgramAnalysisComponentKind.ZK],
+        _receipt(component="zk"),
+        upstream=(keys[ProgramAnalysisComponentKind.PROOF],),
+    )
+    assert zk.stored and zk.runtime_artifact is not None
     unrelated = cache.put(unrelated_key, _receipt(ordinal=9, component="inventory"))
     assert unrelated.stored
 
-    # Invalidate AST only: graph (dependent) goes; inventory and unrelated stay.
-    result = cache.invalidate_component(ast_key, include_root=True)
-    assert ast.runtime_artifact.artifact_id in set(
-        result["invalidated_artifact_ids"]
+    # Invalidate AST only: every downstream stage goes, while its upstream
+    # inventory and a separate population remain reusable.
+    result = cache.invalidate_component(
+        keys[ProgramAnalysisComponentKind.AST], include_root=True
     )
-    assert graph.runtime_artifact is not None
-    assert graph.runtime_artifact.artifact_id in set(
-        result["invalidated_artifact_ids"]
-    )
-    assert inv.runtime_artifact.artifact_id not in set(
-        result["invalidated_artifact_ids"]
-    )
+    invalidated = set(result["invalidated_artifact_ids"])
+    descendants = (ast, graph, contract, proof, runtime, zk)
+    assert {
+        item.runtime_artifact.artifact_id
+        for item in descendants
+        if item.runtime_artifact is not None
+    }.issubset(invalidated)
+    assert inventory.runtime_artifact.artifact_id not in invalidated
 
-    assert not cache.lookup(ast_key).hit
-    assert not cache.lookup(graph_key).hit
-    assert cache.lookup(inventory_key).hit
+    for component in ProgramAnalysisComponentKind:
+        lookup = cache.lookup(keys[component])
+        assert lookup.hit is (
+            component is ProgramAnalysisComponentKind.INVENTORY
+        )
     assert cache.lookup(unrelated_key).hit
     assert cache.lookup(unrelated_key).is_completion_evidence
 
@@ -573,6 +611,36 @@ def test_quotas_and_gc_bound_retained_entries(tmp_path: Path) -> None:
     assert stats.entry_count <= 3
     assert stats.total_bytes <= 8_000
     assert cache.lookup(latest).hit
+
+
+def test_declared_artifact_quotas_bound_large_bodies_and_survive_restart(
+    tmp_path: Path,
+) -> None:
+    cache = ProgramAnalysisCache(
+        tmp_path,
+        max_entries=16,
+        max_bytes=64_000,
+        max_entry_bytes=16_000,
+        max_receipt_bytes=8_000,
+        max_artifact_blob_bytes=160,
+        max_artifact_bytes=450,
+        max_artifacts=3,
+    )
+    for ordinal in range(10):
+        key = _key(query_digest=f"sha256:artifact-bounded-{ordinal}")
+        body = bytes([ordinal]) * 140
+        assert cache.put(key, _receipt(ordinal=ordinal), blob_bodies=(body,))
+
+    stats = cache.stats()
+    assert stats.blob_count == stats.max_artifacts == 3
+    assert stats.artifact_bytes == 420
+    assert stats.artifact_bytes <= stats.max_artifact_bytes == 450
+
+    restarted_stats = cache.reopen().stats()
+    assert restarted_stats.blob_count == 3
+    assert restarted_stats.artifact_bytes == 420
+    assert restarted_stats.max_artifacts == 3
+    assert restarted_stats.max_artifact_bytes == 450
 
 
 def test_build_key_aliases_and_evidence_constants(tmp_path: Path) -> None:
