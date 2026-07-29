@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.decision_runtime import (
+from ipfs_accelerate_py.agent_supervisor.context.decision_runtime import (
     INCREMENTAL_REVALIDATION_REQUIREMENT_ID,
     DecisionRuntime,
     DecisionRuntimeConfig,
@@ -12,7 +12,7 @@ from ipfs_accelerate_py.agent_supervisor.decision_runtime import (
     RuntimeInvalidationReceipt,
     canonical_dependency_change,
 )
-from ipfs_accelerate_py.agent_supervisor.event_log import (
+from ipfs_accelerate_py.agent_supervisor.runtime.event_log import (
     SemanticChange,
     SemanticChangeIntegrityError,
     SemanticChangeKind,
@@ -21,15 +21,15 @@ from ipfs_accelerate_py.agent_supervisor.event_log import (
     latest_event_cursor,
     read_semantic_change_page,
 )
-from ipfs_accelerate_py.agent_supervisor.proof_scope_index import (
+from ipfs_accelerate_py.agent_supervisor.proof.proof_scope_index import (
     CrossDomainArtifact,
     CrossDomainArtifactKind,
     ProofInputKind,
     ProofScopeIndex,
     ProofScopeKey,
 )
-from ipfs_accelerate_py.agent_supervisor.runtime_cas import RuntimeCAS
-from ipfs_accelerate_py.agent_supervisor.supervisor_recovery import (
+from ipfs_accelerate_py.agent_supervisor.runtime.runtime_cas import RuntimeCAS
+from ipfs_accelerate_py.agent_supervisor.rescue.supervisor_recovery import (
     RecoveryDisposition,
     RecoveryFault,
     SupervisorRecovery,

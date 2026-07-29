@@ -7,40 +7,58 @@ from pathlib import Path
 import pytest
 
 from ipfs_accelerate_py.agent_supervisor import (
+
     BASIS_POINTS,
+
     GoalBenchmarkCategory,
+
     GoalBenchmarkMetrics,
+
     GoalDevelopmentMode,
+
     GoalDevelopmentPolicy,
+
     GoalDevelopmentTemplate,
+
     GoalRolloutGateDecision,
+
     GoalRolloutGatePolicy,
+
     LeanstralGoalDevelopmentInvocation,
+
     LeanstralGoalDevelopmentProvider,
+
     PairedGoalBenchmarkCase,
+
     PairedGoalBenchmarkReport,
+
     REQUIRED_GOAL_BENCHMARK_CATEGORIES,
+
     build_configured_leanstral_goal_lifecycle_supervisor,
+
     build_leanstral_goal_development_context,
+
     build_paired_goal_benchmark_report,
+
     evaluate_goal_rollout_promotion,
+
 )
-from ipfs_accelerate_py.agent_supervisor.formal_logic_vocabulary import (
+from ipfs_accelerate_py.agent_supervisor.proof.formal_logic_vocabulary import (
     LOGIC_VOCABULARY_VERSION,
 )
-from ipfs_accelerate_py.agent_supervisor.formal_verification_contracts import (
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
     ContractValidationError,
     ResourceBudget,
 )
-from ipfs_accelerate_py.agent_supervisor.goal_development_contracts import (
+from ipfs_accelerate_py.agent_supervisor.objectives.goal_development_contracts import (
     GoalDevelopmentRequest,
 )
-from ipfs_accelerate_py.agent_supervisor.objective_graph import (
+from ipfs_accelerate_py.agent_supervisor.objectives.objective_graph import (
     ObjectiveFinding,
     objective_goal_content_id,
     parse_goal_heap,
 )
-from ipfs_accelerate_py.agent_supervisor.objective_tracker import (
+from ipfs_accelerate_py.agent_supervisor.objectives.objective_tracker import (
     append_refinement_goals,
 )
 
@@ -194,6 +212,10 @@ def _baseline_evidence(
         objective_path=str(objective),
         outputs=["src/fixture.py", "test/test_fixture.py"],
         validation="python -m pytest test/test_fixture.py -q",
+        acceptance_subset=[
+            f"Produce current, validated evidence for {item}."
+            for item in visible
+        ],
     )
     result = append_refinement_goals(
         objective,

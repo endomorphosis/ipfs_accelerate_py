@@ -7,13 +7,13 @@ from typing import Any
 import pytest
 
 from ipfs_accelerate_py import cli
-from ipfs_accelerate_py.agent_supervisor.control_cli import (
+from ipfs_accelerate_py.agent_supervisor.control.control_cli import (
     AGENT_CLI_EXIT_FAILED,
     AGENT_CLI_EXIT_INVALID,
     COMMAND_OPERATIONS,
     agent_cli_discovery_manifest,
 )
-from ipfs_accelerate_py.agent_supervisor.control_contracts import (
+from ipfs_accelerate_py.agent_supervisor.control.control_contracts import (
     AuthorizationDecision,
     AuthorizationVerdict,
     ControlBounds,
@@ -31,7 +31,7 @@ from ipfs_accelerate_py.agent_supervisor.control_contracts import (
     OperationResult,
     OperationStatus,
 )
-from ipfs_accelerate_py.agent_supervisor.control_plane import (
+from ipfs_accelerate_py.agent_supervisor.control.control_plane import (
     InMemoryControlStateStore,
     SupervisorControlService,
     capture_control_discovery_runtime_state,

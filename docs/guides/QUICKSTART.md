@@ -137,9 +137,44 @@ anything:
 python -m ipfs_accelerate_py.agent_supervisor.todo_daemon list
 ```
 
+## Goose CLI (optional LLM provider)
+
+Goose is a peer of Codex/Copilot on the LLM router. Safe chat is the default;
+generic discovery does **not** install Goose and stays off until
+`IPFS_ACCELERATE_GOOSE_DISCOVERY=1`. Prefer explicit provider selection.
+
+```python
+from ipfs_accelerate_py import generate_text
+
+# Requires a goose binary (PATH or IPFS_ACCELERATE_GOOSE_PATH) and backend
+# credentials in the environment — never hard-code secrets.
+print(generate_text(
+    "Explain content addressing in one sentence.",
+    provider="goose_cli",
+    model_name="muse-spark-1.1",
+    goose_provider="openai",
+    max_tokens=128,
+))
+```
+
+Authorized agent runs, managed install paths, `GOOSE_PATH_ROOT` isolation, P2P
+enable gates, offline tests, the `IPFS_ACCELERATE_GOOSE_LIVE` smoke gate, and
+rollback steps are documented in the
+[LLM router Goose CLI section](../LLM_ROUTER.md#goose-cli).
+
+Offline contract tests (default; no live provider):
+
+```bash
+python -m pytest \
+  test/test_llm_router_goose.py \
+  test/test_goose_cli_endpoint.py \
+  test/test_goose_p2p_policy.py -q
+```
+
 ## Next steps
 
 - [Getting started](getting-started/README.md)
+- [LLM router and Goose CLI](../LLM_ROUTER.md)
 - [API overview](../api/overview.md)
 - [Architecture overview](../architecture/overview.md)
 - [Hardware guide](hardware/overview.md)

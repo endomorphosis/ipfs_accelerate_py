@@ -4,7 +4,7 @@ import threading
 import time
 from pathlib import Path
 
-from ipfs_accelerate_py.agent_supervisor.formal_verification_contracts import (
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
     AssuranceLevel,
     AttemptStatus,
     EvidenceAuthority,
@@ -19,7 +19,7 @@ from ipfs_accelerate_py.agent_supervisor.formal_verification_contracts import (
     ProofVerdict,
     ResourceBudget,
 )
-from ipfs_accelerate_py.agent_supervisor.formal_verification_policy import (
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_policy import (
     ChangedScope,
     FormalVerificationPolicy,
     MergeProofGateReceipt,
@@ -29,13 +29,13 @@ from ipfs_accelerate_py.agent_supervisor.formal_verification_policy import (
     RiskLevel,
     RolloutMode,
 )
-from ipfs_accelerate_py.agent_supervisor.proof_scheduler import (
+from ipfs_accelerate_py.agent_supervisor.proof.proof_scheduler import (
     ProofNodeState,
     ProofScheduler,
     ProofSchedulerConfig,
     ProofStepResult,
 )
-from ipfs_accelerate_py.agent_supervisor.resource_scheduler import resource_pool
+from ipfs_accelerate_py.agent_supervisor.runtime.resource_scheduler import resource_pool
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     PortalImplementationDaemon,
     PortalTask,
@@ -377,7 +377,7 @@ def test_parallel_daemon_lanes_resume_one_proof_workflow_and_report_truth(
         track="G11",
         validation=[],
         acceptance="proof workflow completes exactly once",
-        board_namespace="proof-e2e",
+        board_namespace="todo.md",
     )
     calls: dict[str, int] = {}
     lock = threading.Lock()
@@ -400,7 +400,11 @@ def test_parallel_daemon_lanes_resume_one_proof_workflow_and_report_truth(
     todo_path.write_text(
         "- [ ] Task checkbox-999: REF-E2E proof-aware implementation\n\n"
         "## REF-E2E proof-aware implementation\n\n"
-        "- Status: todo\n",
+        "- Status: todo\n"
+        "- Completion: manual\n"
+        "- Priority: P0\n"
+        "- Track: G11\n"
+        "- Acceptance: proof workflow completes exactly once\n",
         encoding="utf-8",
     )
     daemons = [

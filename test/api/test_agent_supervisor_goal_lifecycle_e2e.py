@@ -5,26 +5,26 @@ import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
-from ipfs_accelerate_py.agent_supervisor.goal_completion import (
+from ipfs_accelerate_py.agent_supervisor.objectives.goal_completion import (
     CompletionEvidence,
     ContradictionEvidence,
     GoalState,
     evaluate_goal_completion,
     reopen_goal_for_contradictions,
 )
-from ipfs_accelerate_py.agent_supervisor.implementation_supervisor_runner import (
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor_runner import (
     persist_goal_completion_projection,
     persist_supervisor_scan_receipt,
 )
-from ipfs_accelerate_py.agent_supervisor.objective_graph import (
+from ipfs_accelerate_py.agent_supervisor.objectives.objective_graph import (
     generate_objective_todos_result,
     scan_objective_gaps,
 )
-from ipfs_accelerate_py.agent_supervisor.objective_tracker import (
+from ipfs_accelerate_py.agent_supervisor.objectives.objective_tracker import (
     completion_tree_identity,
     migrate_legacy_objective_goals,
 )
-from ipfs_accelerate_py.agent_supervisor.scan_receipts import ScanTerminalReason
+from ipfs_accelerate_py.agent_supervisor.objectives.scan_receipts import ScanTerminalReason
 
 
 CRITERION = "ref212canary9f8e7d"

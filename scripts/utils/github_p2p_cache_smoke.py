@@ -45,7 +45,8 @@ def _ensure_repo_on_syspath() -> None:
     is on `sys.path`.
     """
 
-    repo_root = Path(__file__).resolve().parents[1]
+    # scripts/utils/<this file> -> repo root is parents[2]
+    repo_root = Path(__file__).resolve().parents[2]
     repo_root_str = str(repo_root)
     if repo_root_str not in sys.path:
         sys.path.insert(0, repo_root_str)
@@ -106,6 +107,16 @@ def _run_local_two_node_demo(args: argparse.Namespace) -> int:
         print("Reader initial stats:\n" + _safe_json(stats))
         peer_id = str(stats.get("peer_id") or "")
         if not peer_id:
+            # Raw libp2p cache P2P was retired in favor of MCP++ TaskQueue cache.
+            # Local two-node demos that require a host peer_id cannot run until
+            # the smoke harness is rewritten for the TaskQueue transport.
+            if stats.get("raw_p2p_cache_requested") and not stats.get("raw_p2p_cache_enabled"):
+                print(
+                    "SKIP: legacy raw GitHub cache P2P is disabled "
+                    f"(task_p2p_cache_mode={stats.get('task_p2p_cache_mode')!r}); "
+                    "local-two-node peer_id demo is not applicable."
+                )
+                return 0
             print("ERROR: reader did not report a peer_id; cannot run local demo", file=sys.stderr)
             return 2
 

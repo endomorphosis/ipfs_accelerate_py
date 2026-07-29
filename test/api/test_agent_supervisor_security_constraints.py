@@ -4,15 +4,15 @@ from dataclasses import replace
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.ir_adapters import IRAdapterRegistry
-from ipfs_accelerate_py.agent_supervisor.ir_registry import (
+from ipfs_accelerate_py.agent_supervisor.proof.ir_adapters import IRAdapterRegistry
+from ipfs_accelerate_py.agent_supervisor.proof.ir_registry import (
     IRFamily,
     IRLoadRequest,
     IRLoadStatus,
     IRRegistry,
     deterministic_ir_fixture,
 )
-from ipfs_accelerate_py.agent_supervisor.security_constraint_adapter import (
+from ipfs_accelerate_py.agent_supervisor.proof.security_constraint_adapter import (
     SecurityAuthorizationRequest,
     SecurityCompilationStatus,
     SecurityConstraintError,

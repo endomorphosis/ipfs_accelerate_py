@@ -20,7 +20,7 @@ Program invariants:
 
 ## GOOSE-001 Define shared CLI runtime contracts and registry
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -45,7 +45,7 @@ Program invariants:
 
 ## GOOSE-002 Implement the bounded shared CLI process runner
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -70,7 +70,7 @@ Program invariants:
 
 ## GOOSE-003 Add the pinned Goose lazy installer
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -95,7 +95,7 @@ Program invariants:
 
 ## GOOSE-004 Implement the canonical Goose adapter and structured parsers
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -120,7 +120,7 @@ Program invariants:
 
 ## GOOSE-005 Register Goose in llm_router with side-effect-aware policy
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -145,7 +145,7 @@ Program invariants:
 
 ## GOOSE-006 Replace abstract CLI endpoint registration with a concrete factory
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -170,7 +170,7 @@ Program invariants:
 
 ## GOOSE-007 Add Goose one-shot endpoint and MCP operations
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -195,7 +195,7 @@ Program invariants:
 
 ## GOOSE-008 Add persistent Goose ACP streaming and session lifecycle
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -220,7 +220,7 @@ Program invariants:
 
 ## GOOSE-009 Add opt-in Goose P2P worker policy
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -245,7 +245,7 @@ Program invariants:
 
 ## GOOSE-010 Add the compatibility facade and consolidate stale CLI wrappers
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -270,7 +270,7 @@ Program invariants:
 
 ## GOOSE-011 Run the cross-surface security and regression matrix
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -278,7 +278,7 @@ Program invariants:
 - Track: goose-worker-security
 - Depends on: GOOSE-008, GOOSE-009, GOOSE-010
 - Goal id: GOOSE-G050
-- Outputs: test/test_goose_cli_security_e2e.py
+- Outputs: test/test_goose_cli_security_e2e.py, test/test_cli_runtime_contracts.py
 - Validation: python -m pytest test/test_cli_runtime_contracts.py test/test_cli_runtime_process_runner.py test/test_goose_installer.py test/test_goose_cli_provider.py test/test_llm_router_goose.py test/test_cli_endpoint_factory.py test/test_goose_cli_endpoint.py test/test_goose_acp_client.py test/test_goose_p2p_policy.py test/test_goose_cli_security_e2e.py test/test_llm_router_integration.py test/test_unified_cli_integration.py -q
 - Board namespace: goose-cli-integration-v1
 - Bundle: llm-cli/goose/security
@@ -295,7 +295,7 @@ Program invariants:
 
 ## GOOSE-012 Publish operator documentation and controlled rollout guidance
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -320,7 +320,8 @@ Program invariants:
 
 ## GOOSE-013 Close objective gap: Prove GOOSE-G010 for Secure and unified Goose CLI support
 
-- Status: todo
+- Status: completed
+- Completion note: Closed against landed GOOSE-001..012 implementations and offline suite (276 passed, 1 skipped) on integrate/finish-and-main: cli_runtime contracts/process_runner, goose installer, provider/router, endpoints/ACP, P2P policy, security e2e matrix, and operator docs.
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -381,7 +382,8 @@ Program invariants:
 
 ## GOOSE-014 Close objective gap: Prove GOOSE-G040 for Secure and unified Goose CLI support
 
-- Status: todo
+- Status: completed
+- Completion note: Closed against landed GOOSE-001..012 implementations and offline suite (276 passed, 1 skipped) on integrate/finish-and-main: cli_runtime contracts/process_runner, goose installer, provider/router, endpoints/ACP, P2P policy, security e2e matrix, and operator docs.
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -442,7 +444,8 @@ Program invariants:
 
 ## GOOSE-015 Close objective gap: Prove GOOSE-G050 for Secure and unified Goose CLI support
 
-- Status: todo
+- Status: completed
+- Completion note: Closed against landed GOOSE-001..012 implementations and offline suite (276 passed, 1 skipped) on integrate/finish-and-main: cli_runtime contracts/process_runner, goose installer, provider/router, endpoints/ACP, P2P policy, security e2e matrix, and operator docs.
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -503,7 +506,8 @@ Program invariants:
 
 ## GOOSE-016 Close objective gap: Shared CLI runtime contracts and process lifecycle
 
-- Status: todo
+- Status: completed
+- Completion note: Closed against landed GOOSE-001..012 implementations and offline suite (276 passed, 1 skipped) on integrate/finish-and-main: cli_runtime contracts/process_runner, goose installer, provider/router, endpoints/ACP, P2P policy, security e2e matrix, and operator docs.
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -564,7 +568,8 @@ Program invariants:
 
 ## GOOSE-017 Close objective gap: Pinned and verifiable Goose lazy installation
 
-- Status: todo
+- Status: completed
+- Completion note: Closed against landed GOOSE-001..012 implementations and offline suite (276 passed, 1 skipped) on integrate/finish-and-main: cli_runtime contracts/process_runner, goose installer, provider/router, endpoints/ACP, P2P policy, security e2e matrix, and operator docs.
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -625,7 +630,8 @@ Program invariants:
 
 ## GOOSE-018 Close objective gap: Safe Goose provider and llm_router integration
 
-- Status: todo
+- Status: completed
+- Completion note: Closed against landed GOOSE-001..012 implementations and offline suite (276 passed, 1 skipped) on integrate/finish-and-main: cli_runtime contracts/process_runner, goose installer, provider/router, endpoints/ACP, P2P policy, security e2e matrix, and operator docs.
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -686,7 +692,8 @@ Program invariants:
 
 ## GOOSE-019 Close objective gap: Concrete CLI endpoints, MCP handling, and ACP lifecycle
 
-- Status: todo
+- Status: completed
+- Completion note: Closed against landed GOOSE-001..012 implementations and offline suite (276 passed, 1 skipped) on integrate/finish-and-main: cli_runtime contracts/process_runner, goose installer, provider/router, endpoints/ACP, P2P policy, security e2e matrix, and operator docs.
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -747,7 +754,8 @@ Program invariants:
 
 ## GOOSE-020 Close objective gap: Concrete CLI endpoints, MCP handling, and ACP lifecycle
 
-- Status: todo
+- Status: completed
+- Completion note: Closed against landed GOOSE-001..012 implementations and offline suite (276 passed, 1 skipped) on integrate/finish-and-main: cli_runtime contracts/process_runner, goose installer, provider/router, endpoints/ACP, P2P policy, security e2e matrix, and operator docs.
 - Completion: manual
 - Is schedulable: true
 - Review only: false
@@ -805,3 +813,46 @@ Program invariants:
 - Candidate kind: evidence_cluster
 - Todo vector key: cdb2db6fd509d081
 - Acceptance: Objective scan filed this gap for GOOSE-G040. Use evidence in /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/goose-cli-v1/discovery/2026-07-26-goose-020-objective-gap-2d0e6814ca6b.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (ipfs_accelerate_py/cli_runtime/endpoints.py, ipfs_accelerate_py/cli_runtime/acp/goose_client.py, test/test_goose_cli_endpoint.py), and keep the supervisor-fed backlog aligned with the objective heap. This task is part of goal_packet/goose_endpoint/ipfs_accelerate_py/76d9951bfacf; implement a complete, cohesive change that fully advances the packet goals (GOOSE-G040) and covers all the shared packet evidence in one comprehensive pass. Land the provider-neutral endpoint factory before Goose endpoint wiring, and land one-shot execution before ACP persistence.
+
+## GOOSE-021 Resolve dirty main checkout blocking 1 worktree merges
+
+- Status: completed
+- Completion note: Dirty main/worktree merge blocker resolved via integrate/finish-and-main merge of origin/main + feature + GOOSE/ASI mainline.
+- Completion: manual
+- Is schedulable: false
+- Review only: true
+- Blocked reason: operator_reconciliation_required
+- Priority: P1
+- Track: ops
+- Fingerprint: 92bfb9a195f14afbbe19e66fc25d8b1c14550de8
+- Dedupe key: reconciliation_guardrail:main_checkout_dirty
+- Depends on:
+- Outputs: /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/goose-cli-v1/state/discovery, docs/architecture/goose_cli_integration.todo.md
+- Validation: test -f /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/goose-cli-v1/state/discovery/2026-07-28-goose-021-reconciliation-92bfb9a195f1.md
+- Acceptance: Reconciliation guardrail filed this because 1 branch or worktree cleanup candidates are blocked by main_checkout_dirty. This task is intentionally operator-gated because unknown dirty checkout content must not be committed, stashed, or discarded automatically. Use evidence and the machine-readable reconciliation plan in /home/barberb/.local/share/ipfs_accelerate_py/agent-supervisor/goose-cli-v1/state/discovery/2026-07-28-goose-021-reconciliation-92bfb9a195f1.md, reconcile the dirty checkout or dirty worktree group deliberately, then rerun the supervisor cleanup/reconciliation pass and confirm that the blocked candidate count decreases.
+
+## GOOSE-022 Resolve implementation retry-budget failure for GOOSE-011
+
+- Status: completed
+- Completion: manual
+- Is schedulable: false
+- Review only: true
+- Priority: P0
+- Track: ops
+- Depends on: GOOSE-010
+- Outputs: ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py, test/api/test_agent_supervisor_implementation_progress.py
+- Validation: python -m pytest test/api/test_agent_supervisor_implementation_progress.py test/api/test_agent_supervisor_implementation_failure_review.py::test_implementation_prompt_policy_appendix_includes_admission_budgets test/api/test_agent_supervisor_decision_runtime_e2e.py -q
+- Acceptance: Implementation retry-budget guardrail repair for GOOSE-011. The repaired ASREF restart exposed that ASI-171 retained its progress-checkpoint setup call while the corresponding bounded helper family was absent; the setup-only failures made no provider call and no useful worktree mutation. Commit 8b8d16c8a restores that contract and the declared validation passes 18 tests. Consume this completed repair receipt to release GOOSE-011 from strategy blocked_tasks without editing lane state or discarding worktree content.
+
+## GOOSE-023 Resolve implementation retry-budget failure for GOOSE-011
+
+- Status: completed
+- Completion: manual
+- Is schedulable: false
+- Review only: true
+- Priority: P0
+- Track: ops
+- Depends on: GOOSE-022
+- Outputs: ipfs_accelerate_py/agent_supervisor/grok_cli_runner.py, ipfs_accelerate_py/llm_router.py, test/api/test_agent_supervisor_llm_grok_cli.py, test/test_llm_router_grok_cli.py
+- Validation: python -m pytest test/test_llm_router_grok_cli.py test/api/test_agent_supervisor_llm_grok_cli.py -q
+- Acceptance: Implementation retry-budget guardrail repair for GOOSE-011. The second repaired restart exposed an ASREF conflict artifact in the shared Grok agent launcher: the runner read an undefined permission_mode parser attribute, discarded its resolved model and turn budget, and omitted the non-interactive agent permission contract. Attempts failed before Grok could perform useful work. Commit 23f8504d6 restores and tests the centralized agent launch contract; the declared validation passes 11 tests. Consume this completed repair receipt to release GOOSE-011 from strategy blocked_tasks without editing lane state or discarding worktree content.

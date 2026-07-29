@@ -5,11 +5,11 @@ from dataclasses import replace
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.formal_plan_compiler import (
+from ipfs_accelerate_py.agent_supervisor.planning.formal_plan_compiler import (
     CompilationStatus,
     compile_formal_plan,
 )
-from ipfs_accelerate_py.agent_supervisor.formal_plan_context import (
+from ipfs_accelerate_py.agent_supervisor.planning.formal_plan_context import (
     FORMAL_PLAN_MODEL_RESPONSE_SCHEMA,
     FormalPlanContextBudgetError,
     FormalPlanContextCapsule,
@@ -28,11 +28,11 @@ from ipfs_accelerate_py.agent_supervisor.formal_plan_context import (
     query_formal_plan_graph,
     validate_formal_plan_model_response,
 )
-from ipfs_accelerate_py.agent_supervisor.formal_plan_validator import (
+from ipfs_accelerate_py.agent_supervisor.planning.formal_plan_validator import (
     PlanValidationStatus,
     validate_formal_plan,
 )
-from ipfs_accelerate_py.agent_supervisor.proof_context import (
+from ipfs_accelerate_py.agent_supervisor.proof.proof_context import (
     estimate_context_tokens,
 )
 

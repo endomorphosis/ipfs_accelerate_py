@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.bundle_supervisor import plan_bundle_lanes
-from ipfs_accelerate_py.agent_supervisor.conflict_graph import (
+from ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor import plan_bundle_lanes
+from ipfs_accelerate_py.agent_supervisor.core.conflict_graph import (
     ConflictWeightHistory,
     build_conflict_surface,
     materialize_task_conflict_graph,
@@ -256,7 +256,7 @@ def test_file_isolated_bundle_policy_scopes_generated_ast_terms(
         for name in ("alpha", "beta")
     ]
     monkeypatch.setattr(
-        "ipfs_accelerate_py.agent_supervisor.bundle_supervisor.build_bundle_task_payloads",
+        "ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor.build_bundle_task_payloads",
         lambda _path: payloads,
     )
 
@@ -297,7 +297,7 @@ def test_bundle_lane_prefers_canonical_files_over_broad_planning_paths(
         }
     ]
     monkeypatch.setattr(
-        "ipfs_accelerate_py.agent_supervisor.bundle_supervisor.build_bundle_task_payloads",
+        "ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor.build_bundle_task_payloads",
         lambda _path: payloads,
     )
 
@@ -342,7 +342,7 @@ def test_shared_bookkeeping_paths_do_not_block_disjoint_bundle_files(
         for name in ("alpha", "beta")
     ]
     monkeypatch.setattr(
-        "ipfs_accelerate_py.agent_supervisor.bundle_supervisor.build_bundle_task_payloads",
+        "ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor.build_bundle_task_payloads",
         lambda _path: payloads,
     )
 
@@ -385,7 +385,7 @@ def test_same_canonical_file_still_blocks_bundle_concurrency(
         for name in ("alpha", "beta")
     ]
     monkeypatch.setattr(
-        "ipfs_accelerate_py.agent_supervisor.bundle_supervisor.build_bundle_task_payloads",
+        "ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor.build_bundle_task_payloads",
         lambda _path: payloads,
     )
 
@@ -433,7 +433,7 @@ def test_bundle_ast_symbols_are_file_local_unless_explicitly_global(
         for name in ("alpha", "beta", "global-alpha", "global-beta")
     ]
     monkeypatch.setattr(
-        "ipfs_accelerate_py.agent_supervisor.bundle_supervisor.build_bundle_task_payloads",
+        "ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor.build_bundle_task_payloads",
         lambda _path: payloads,
     )
 
@@ -618,7 +618,7 @@ def test_bundle_lane_planner_projects_blocking_edges_but_honors_overrides(
         },
     ]
     monkeypatch.setattr(
-        "ipfs_accelerate_py.agent_supervisor.bundle_supervisor.build_bundle_task_payloads",
+        "ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor.build_bundle_task_payloads",
         lambda _path: payloads,
     )
 
@@ -698,7 +698,7 @@ def test_bundle_lane_planner_excludes_completed_members_from_conflict_surface(
         },
     ]
     monkeypatch.setattr(
-        "ipfs_accelerate_py.agent_supervisor.bundle_supervisor.build_bundle_task_payloads",
+        "ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor.build_bundle_task_payloads",
         lambda _path: payloads,
     )
 

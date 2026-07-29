@@ -20,8 +20,8 @@ from enum import Enum
 from pathlib import Path, PurePosixPath
 from typing import Any, Iterable, Mapping, Sequence
 
-from .formal_verification_contracts import canonical_json, content_identity
-from .validation_commands import infer_validation_impact_paths
+from .proof.formal_verification_contracts import canonical_json, content_identity
+from .validation.validation_commands import infer_validation_impact_paths
 
 
 FAILURE_REVIEW_SCHEMA = (
@@ -54,6 +54,20 @@ _SCOPE_RELATED_FINDING_CODES = frozenset(
         "path_outside_scope",
     }
 )
+
+# Proposal-gate size / bulk findings that need size-aware rescue guidance.
+# Defaults mirror ProposalValidationPolicy in proposal_validation.py.
+_SIZE_RELATED_FINDING_CODES = frozenset(
+    {
+        "output_too_large",
+        "patch_too_large",
+        "patch_parse_error",
+        "large_file_forbidden",
+    }
+)
+DEFAULT_PROPOSAL_MAX_PATCH_BYTES = 2_000_000
+DEFAULT_PROPOSAL_MAX_OUTPUT_BYTES = 2_500_000
+DEFAULT_PROPOSAL_MAX_FILE_BYTES = 1_000_000
 
 
 class FailureReviewDecision(str, Enum):
@@ -327,6 +341,50 @@ def _is_environment_failure(
     return any(needle in text for needle in needles)
 
 
+def _path_under_or_equal(path: str, declared: str) -> bool:
+    """Return True when ``path`` is ``declared`` or a descendant of it."""
+
+    declared_norm = declared.rstrip("/")
+    if not declared_norm:
+        return False
+    return path == declared_norm or path.startswith(declared_norm + "/")
+
+
+def _path_owned_by_expected(path: str, expected: Sequence[str]) -> bool:
+    """True when path equals or lives under any declared expected output."""
+
+    return any(_path_under_or_equal(path, declared) for declared in expected)
+
+
+def _expected_output_satisfied(
+    declared: str,
+    *,
+    changed: set[str],
+    workspace_path: Path | None,
+) -> bool:
+    """Return True when a declared file or directory output was produced.
+
+    Directory outputs (for example ``tests/fixtures/foo``) are satisfied when
+    any changed path is that directory or a descendant. Exact file outputs
+    require an exact changed path. Workspace presence alone never counts as
+    producing the output — the attempt must still touch declared ownership.
+    """
+
+    declared_norm = declared.rstrip("/")
+    if not declared_norm:
+        return False
+    if declared_norm in changed:
+        return True
+    # Directory ownership: any descendant change satisfies the declared tree.
+    prefix = declared_norm + "/"
+    if any(path.startswith(prefix) for path in changed):
+        return True
+    # Optional: if the declared path itself was listed with a trailing slash
+    # style only via descendants already handled above.
+    _ = workspace_path  # reserved for future hermetic workspace probes
+    return False
+
+
 def _missing_expected_outputs(
     *,
     expected_outputs: Sequence[str],
@@ -337,21 +395,22 @@ def _missing_expected_outputs(
     changed = _normalized_paths(changed_paths)
     missing: list[str] = []
     for path in expected:
-        boundary = path.rstrip("/") + "/"
-        if any(
-            changed_path == path or changed_path.startswith(boundary)
-            for changed_path in changed
+        if _expected_output_satisfied(
+            path,
+            changed=changed,
+            workspace_path=workspace_path,
         ):
             continue
-        if workspace_path is None:
-            missing.append(path)
-            continue
-        # Output declarations are proposal-authority boundaries: a directory
-        # output is fulfilled by changed descendants, while an unchanged
-        # existing output remains missing work. Keep the boundary separator so
-        # a sibling with the same textual prefix cannot satisfy the output.
+        # Unchanged expected outputs remain "missing work" so rescue guidance
+        # can say "create or update" rather than treating them as out of scope.
         missing.append(path)
     return tuple(missing)
+
+
+def _size_related_findings(finding_codes: Sequence[str]) -> tuple[str, ...]:
+    return tuple(
+        code for code in finding_codes if code in _SIZE_RELATED_FINDING_CODES
+    )
 
 
 def _guidance_lines(
@@ -462,6 +521,34 @@ def _guidance_lines(
             "submodule gitlinks (for example `ipfs_accelerate_py/`); do not "
             "delete or weaken tests."
         )
+    size_findings = _size_related_findings(finding_codes)
+    if size_findings:
+        lines.append("")
+        lines.append("### Proposal size / bulk limits")
+        lines.append(
+            "The proposal gate rejected this candidate for size or patch bulk "
+            f"({', '.join(f'`{code}`' for code in size_findings)}). "
+            "Pytest green does **not** bypass admission."
+        )
+        lines.append(
+            "Default admission budgets (strict-proposal-v1): "
+            f"patch ≤ {DEFAULT_PROPOSAL_MAX_PATCH_BYTES} bytes, "
+            f"provider output ≤ {DEFAULT_PROPOSAL_MAX_OUTPUT_BYTES} bytes, "
+            f"single file ≤ {DEFAULT_PROPOSAL_MAX_FILE_BYTES} bytes."
+        )
+        lines.append(
+            "Shrink the candidate **before** re-running the same dump:"
+        )
+        lines.extend(
+            [
+                "- Prefer compact recipes / generators over bulk golden dumps.",
+                "- Rebuild large envelopes at test load time from smaller seeds.",
+                "- Avoid duplicating full formal artifacts per case when one "
+                "shared fixture plus variants suffices.",
+                "- Split only if the task board declares separate Outputs; do "
+                "not invent undeclared modules to dodge size limits.",
+            ]
+        )
     if FailureReviewReason.HARD_DENY_FINDINGS.value in reason_codes:
         lines.append("")
         lines.append("### Hard deny")
@@ -471,14 +558,18 @@ def _guidance_lines(
         )
     lines.append("")
     lines.append("### Next attempt checklist")
-    lines.extend(
-        [
-            "1. Touch only declared Outputs / Predicted files (plus justified companions).",
-            "2. Deliver every listed expected output file.",
-            "3. Keep validation commands passing.",
-            "4. Avoid renames, submodule edits, and undeclared new modules.",
-        ]
-    )
+    checklist = [
+        "1. Touch only declared Outputs / Predicted files (plus justified companions).",
+        "2. Deliver every listed expected output file or directory tree.",
+        "3. Keep validation commands passing.",
+        "4. Avoid renames, submodule edits, and undeclared new modules.",
+    ]
+    if size_findings:
+        checklist.append(
+            "5. Stay under proposal size budgets; use compact fixtures/"
+            "generators instead of re-emitting oversized dumps."
+        )
+    lines.extend(checklist)
     return lines
 
 
@@ -709,12 +800,7 @@ def review_implementation_failure(
     out_of_scope = tuple(
         path
         for path in changed
-        if expected
-        and path not in set(expected)
-        and not any(
-            path == declared or path.startswith(declared.rstrip("/") + "/")
-            for declared in expected
-        )
+        if expected and not _path_owned_by_expected(path, expected)
     )
     failed_commands = _failed_commands_from_validation(validation)
     reason = str(validation.get("reason") or "").strip()
@@ -728,6 +814,7 @@ def review_implementation_failure(
             and "proposal" in reason
         )
     )
+    size_findings = _size_related_findings(finding_codes)
 
     reason_codes: list[str] = []
     hard_denies = tuple(
@@ -769,12 +856,10 @@ def review_implementation_failure(
         reason_codes.append(
             FailureReviewReason.ENVIRONMENT_VALIDATION_UNAVAILABLE.value
         )
-    if out_of_scope or (
-        changed
-        and expected
-        and not set(changed).issubset(set(expected))
-        and len(changed) > len(expected)
-    ):
+    # Large/undeclared refactor only when paths fall outside declared file or
+    # directory ownership. Many files under a declared directory output (for
+    # example tests/fixtures/...) are in-scope, not a refactor.
+    if out_of_scope:
         reason_codes.append(
             FailureReviewReason.LARGE_OR_UNDECLARED_REFACTOR.value
         )
@@ -833,6 +918,16 @@ def review_implementation_failure(
         "Prior attempt failure review "
         f"({decision.value}; reasons: {', '.join(reason_codes)}).",
     ]
+    if size_findings:
+        addendum_lines.append(
+            "Proposal size gate failed ("
+            + ", ".join(size_findings)
+            + f"): keep patch ≤ {DEFAULT_PROPOSAL_MAX_PATCH_BYTES} bytes, "
+            f"output ≤ {DEFAULT_PROPOSAL_MAX_OUTPUT_BYTES} bytes, "
+            f"file ≤ {DEFAULT_PROPOSAL_MAX_FILE_BYTES} bytes. Prefer compact "
+            "recipe/generator fixtures over bulk dumps; pytest green does not "
+            "bypass admission."
+        )
     if missing:
         addendum_lines.append(
             "Still required outputs: " + ", ".join(missing) + "."
@@ -867,8 +962,9 @@ def review_implementation_failure(
             "Re-run and fix: " + " | ".join(failed_commands[:4]) + "."
         )
     addendum_lines.append(
-        "Stay inside declared Outputs/Predicted files; finish all expected "
-        "outputs; avoid renames, submodule edits, and undeclared new modules."
+        "Stay inside declared Outputs/Predicted files (files or directory "
+        "trees); finish all expected outputs; avoid renames, submodule edits, "
+        "and undeclared new modules."
     )
 
     return ImplementationFailureReviewReceipt(

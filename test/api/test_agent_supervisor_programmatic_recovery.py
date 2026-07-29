@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.prompt_workflow import (
+from ipfs_accelerate_py.agent_supervisor.prompt.prompt_workflow import (
     IncidentKind,
     ProgrammaticRecoveryExhaustionReceipt,
     RecordStatus,
@@ -15,11 +15,11 @@ from ipfs_accelerate_py.agent_supervisor.prompt_workflow import (
     RescueOperation,
     prompt_workflow_cid,
 )
-from ipfs_accelerate_py.agent_supervisor.recovery_diagnostics import (
+from ipfs_accelerate_py.agent_supervisor.rescue.recovery_diagnostics import (
     RecoveryDiagnosis,
     diagnose_supervisor_incident,
 )
-from ipfs_accelerate_py.agent_supervisor.supervisor_recovery import (
+from ipfs_accelerate_py.agent_supervisor.rescue.supervisor_recovery import (
     FaultInjector,
     ProgrammaticRecoveryController,
     ProgrammaticRecoveryPolicy,

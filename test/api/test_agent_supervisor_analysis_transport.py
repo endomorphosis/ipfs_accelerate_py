@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.analysis_transport import (
+from ipfs_accelerate_py.agent_supervisor.analysis.analysis_transport import (
     ANALYSIS_TRANSPORT_REQUEST_SCHEMA,
     ANALYSIS_TRANSPORT_RESULT_SCHEMA,
     AnalysisCancellationToken,

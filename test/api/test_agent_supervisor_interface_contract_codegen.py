@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.interface_contract_codegen import (
+from ipfs_accelerate_py.agent_supervisor.proof.interface_contract_codegen import (
     ActionContractCodegenConfig,
     ActionContractSyncSpec,
     ActionContractSyncTarget,

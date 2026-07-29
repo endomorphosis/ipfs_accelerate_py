@@ -6,7 +6,7 @@ from collections.abc import Mapping
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.formal_verification_contracts import (
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
     AssuranceLevel,
     ContractValidationError,
     EvidenceAuthority,
@@ -19,7 +19,7 @@ from ipfs_accelerate_py.agent_supervisor.formal_verification_contracts import (
     ResourceBudget,
     assess_assurance,
 )
-from ipfs_accelerate_py.agent_supervisor.proof_attestation import (
+from ipfs_accelerate_py.agent_supervisor.proof.proof_attestation import (
     AttestationBackendMode,
     AttestationGate,
     AttestationTrust,

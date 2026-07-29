@@ -5,14 +5,14 @@ from dataclasses import replace
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.context_compiler import (
+from ipfs_accelerate_py.agent_supervisor.context.context_compiler import (
     ContentAddressedContextStore,
     DecisionContextCompiler,
     compile_decision_context_retry,
     expand_decision_context,
     reconstruct_decision_context,
 )
-from ipfs_accelerate_py.agent_supervisor.decision_context import (
+from ipfs_accelerate_py.agent_supervisor.context.decision_context import (
     DecisionContextBindingError,
     DecisionContextChangeKind,
     DecisionContextChangedDependency,
@@ -25,10 +25,10 @@ from ipfs_accelerate_py.agent_supervisor.decision_context import (
     DecisionContextRetryCapsule,
     DecisionContextRetryError,
 )
-from ipfs_accelerate_py.agent_supervisor.proof_directed_retrieval import (
+from ipfs_accelerate_py.agent_supervisor.proof.proof_directed_retrieval import (
     retrieve_proof_directed,
 )
-from ipfs_accelerate_py.agent_supervisor.semantic_dependency_graph import (
+from ipfs_accelerate_py.agent_supervisor.analysis.semantic_dependency_graph import (
     SemanticDependencyGraph,
 )
 from test.api.test_agent_supervisor_decision_context import (

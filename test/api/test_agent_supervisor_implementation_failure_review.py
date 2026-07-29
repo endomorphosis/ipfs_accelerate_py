@@ -462,3 +462,158 @@ def test_daemon_normalize_failure_keeps_review_projection() -> None:
     assert normalized["validation"]["failure_review"]["decision"] == (
         "guide_rescue"
     )
+
+
+def test_directory_outputs_satisfied_by_descendant_changes() -> None:
+    """Directory Outputs: are produced when any descendant path changes.
+
+    LIG-016 style tasks declare ``tests/fixtures/...`` as a directory output.
+    Filling that tree must not report incomplete_expected_outputs or treat the
+    many in-scope fixture files as a large undeclared refactor.
+    """
+
+    review = review_implementation_failure(
+        task_id="LIG-016",
+        attempt=2,
+        expected_outputs=(
+            "tests/fixtures/logic/admissibility",
+            "tests/integration/logic/test_intent_admissibility_gate.py",
+        ),
+        changed_paths=(
+            "tests/fixtures/logic/admissibility/manifest.json",
+            "tests/fixtures/logic/admissibility/cases/benign_skill/case.json",
+            "tests/fixtures/logic/admissibility/cases/benign_skill/lineage.json",
+            "tests/fixtures/logic/admissibility/cases/legal_hard_reject/case.json",
+            "tests/integration/logic/test_intent_admissibility_gate.py",
+        ),
+        validation_result={
+            "passed": False,
+            "returncode": 78,
+            "reason": "proposal_gate_failed",
+            "error": "proposal_validation_failed",
+            "proposal_gate": {
+                "reason_codes": [
+                    "output_too_large",
+                    "patch_too_large",
+                    "patch_parse_error",
+                ],
+                "changed_paths": [
+                    "tests/fixtures/logic/admissibility/manifest.json",
+                    "tests/fixtures/logic/admissibility/cases/benign_skill/case.json",
+                    "tests/fixtures/logic/admissibility/cases/benign_skill/lineage.json",
+                    "tests/fixtures/logic/admissibility/cases/legal_hard_reject/case.json",
+                    "tests/integration/logic/test_intent_admissibility_gate.py",
+                ],
+            },
+        },
+        proposal_accepted=False,
+    )
+
+    assert review.decision is FailureReviewDecision.GUIDE_RESCUE
+    assert review.missing_expected_outputs == ()
+    assert (
+        FailureReviewReason.INCOMPLETE_EXPECTED_OUTPUTS.value
+        not in review.reason_codes
+    )
+    assert (
+        FailureReviewReason.LARGE_OR_UNDECLARED_REFACTOR.value
+        not in review.reason_codes
+    )
+    assert (
+        FailureReviewReason.PROPOSAL_GATE_FAILED.value in review.reason_codes
+    )
+    assert "output_too_large" in review.finding_codes
+    assert "patch_too_large" in review.finding_codes
+    assert "Proposal size" in review.guidance_markdown
+    assert "compact" in review.guidance_markdown.lower()
+    assert "2_000_000" in review.next_attempt_prompt_addendum.replace(",", "") or (
+        "2000000" in review.next_attempt_prompt_addendum
+    )
+    assert "recipe/generator" in review.next_attempt_prompt_addendum
+    assert "Still required outputs" not in review.next_attempt_prompt_addendum
+
+
+def test_directory_output_still_missing_without_descendant_changes() -> None:
+    review = review_implementation_failure(
+        task_id="LIG-016",
+        attempt=1,
+        expected_outputs=(
+            "tests/fixtures/logic/admissibility",
+            "tests/integration/logic/test_intent_admissibility_gate.py",
+        ),
+        changed_paths=(
+            "tests/integration/logic/test_intent_admissibility_gate.py",
+        ),
+        validation_result={
+            "passed": False,
+            "returncode": 1,
+            "reason": "validation_failed",
+        },
+    )
+
+    assert (
+        FailureReviewReason.INCOMPLETE_EXPECTED_OUTPUTS.value
+        in review.reason_codes
+    )
+    assert "tests/fixtures/logic/admissibility" in review.missing_expected_outputs
+    assert "Still required outputs" in review.next_attempt_prompt_addendum
+
+
+def test_implementation_prompt_policy_appendix_includes_admission_budgets() -> None:
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+        PortalImplementationDaemon,
+        PortalTask,
+    )
+
+    task = PortalTask(
+        task_id="LIG-016",
+        title="Integration test for end-to-end admissibility",
+        status="pending",
+        completion="manual",
+        priority="P0",
+        track="gate",
+        outputs=[
+            "tests/fixtures/logic/admissibility",
+            "tests/integration/logic/test_intent_admissibility_gate.py",
+        ],
+        validation=[
+            "python -m pytest tests/integration/logic/test_intent_admissibility_gate.py -q"
+        ],
+        acceptance="Full lineage CIDs asserted; no network required.",
+    )
+    daemon = object.__new__(PortalImplementationDaemon)
+    appendix = PortalImplementationDaemon._implementation_prompt_policy_appendix(
+        daemon, task
+    )
+    assert "Admission policy" in appendix
+    assert "directory trees" in appendix
+    assert "2000000" in appendix
+    assert "2500000" in appendix
+    assert "1000000" in appendix
+    assert "tests/fixtures/logic/admissibility" in appendix
+    assert "compact recipes" in appendix
+
+
+def test_size_guidance_when_only_size_findings() -> None:
+    review = review_implementation_failure(
+        task_id="LIG-016",
+        attempt=1,
+        expected_outputs=("tests/fixtures/logic/admissibility/manifest.json",),
+        changed_paths=("tests/fixtures/logic/admissibility/manifest.json",),
+        validation_result={
+            "passed": False,
+            "returncode": 78,
+            "reason": "proposal_gate_failed",
+            "error": "proposal_validation_failed",
+            "proposal_gate": {
+                "reason_codes": ["large_file_forbidden"],
+            },
+        },
+        proposal_accepted=False,
+    )
+
+    assert review.decision is FailureReviewDecision.GUIDE_RESCUE
+    assert review.missing_expected_outputs == ()
+    assert "large_file_forbidden" in review.finding_codes
+    assert "Proposal size / bulk limits" in review.guidance_markdown
+    assert "large_file_forbidden" in review.next_attempt_prompt_addendum

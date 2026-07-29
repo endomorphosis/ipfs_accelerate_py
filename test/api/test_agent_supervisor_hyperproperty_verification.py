@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.hyperproperty_verification import (
+from ipfs_accelerate_py.agent_supervisor.proof.hyperproperty_verification import (
     AutoHyperAdapter,
     BoundedSelfCompositionChecker,
     ConformanceStatus,
@@ -29,7 +29,7 @@ from ipfs_accelerate_py.agent_supervisor.hyperproperty_verification import (
     model_for,
     probe_hyperproperty_engines,
 )
-from ipfs_accelerate_py.agent_supervisor.prover_matrix_registry import (
+from ipfs_accelerate_py.agent_supervisor.proof.prover_matrix_registry import (
     CommandRequest,
     CommandResult,
 )

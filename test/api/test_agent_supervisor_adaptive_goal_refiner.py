@@ -7,12 +7,12 @@ from datetime import datetime, timezone
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.analyzer_health import (
+from ipfs_accelerate_py.agent_supervisor.analysis.analyzer_health import (
     AnalyzerHealthReport,
     AnalyzerHealthStatus,
     AnalyzerHealthThresholds,
 )
-from ipfs_accelerate_py.agent_supervisor.adaptive_goal_refiner import (
+from ipfs_accelerate_py.agent_supervisor.objectives.adaptive_goal_refiner import (
     ADAPTIVE_GOAL_REFINER_VERSION,
     ADAPTIVE_REFINEMENT_RECEIPT_VERSION,
     NEW_EVIDENCE_REFINEMENT_REQUIREMENT_ID,
@@ -38,7 +38,7 @@ from ipfs_accelerate_py.agent_supervisor.adaptive_goal_refiner import (
     RefinementSignalKind,
     UnchangedFailureBackoffEvidence,
 )
-from ipfs_accelerate_py.agent_supervisor.adaptive_planner import (
+from ipfs_accelerate_py.agent_supervisor.planning.adaptive_planner import (
     AUTHORITY_NON_COMPENSATION_REQUIREMENT_ID,
     EVIDENCE_AWARE_PLANNING_ACCEPTANCE_CRITERIA,
     EVIDENCE_AWARE_PLANNING_CHILD_GOAL_IDS,
@@ -51,46 +51,46 @@ from ipfs_accelerate_py.agent_supervisor.adaptive_planner import (
     deterministic_hard_gate_receipts,
     plan_adaptively,
 )
-from ipfs_accelerate_py.agent_supervisor.formal_planning_contracts import (
+from ipfs_accelerate_py.agent_supervisor.planning.formal_planning_contracts import (
     Actor,
     ActorKind,
     FormalWorkPlan,
     Goal,
     PlanTask,
 )
-from ipfs_accelerate_py.agent_supervisor.formal_replanner import (
+from ipfs_accelerate_py.agent_supervisor.planning.formal_replanner import (
     ResponsiveReplanDecision,
     ReplanStopReason,
     UNCHANGED_FAILURE_BACKOFF_EVIDENCE_ID,
 )
-from ipfs_accelerate_py.agent_supervisor.goal_refinement_verification import (
+from ipfs_accelerate_py.agent_supervisor.objectives.goal_refinement_verification import (
     FrozenRefinementContext,
 )
-from ipfs_accelerate_py.agent_supervisor.goal_completion import (
+from ipfs_accelerate_py.agent_supervisor.objectives.goal_completion import (
     CompletionEvidence,
     GoalState,
 )
-from ipfs_accelerate_py.agent_supervisor.plan_evaluator import (
+from ipfs_accelerate_py.agent_supervisor.planning.plan_evaluator import (
     EvidenceAwarePlanCandidate,
     EvidenceAwarePlanPolicy,
     PlanBranch,
     PlanEvaluationDimension,
 )
-from ipfs_accelerate_py.agent_supervisor.task_proposal_router import (
+from ipfs_accelerate_py.agent_supervisor.planning.task_proposal_router import (
     AdaptiveCandidateProviderKind,
 )
-from ipfs_accelerate_py.agent_supervisor.objective_tracker import (
+from ipfs_accelerate_py.agent_supervisor.objectives.objective_tracker import (
     ObjectiveGoalQualityReport,
     build_objective_goal_quality_report,
     load_objective_goal_quality_report,
     write_objective_goal_quality_report,
 )
-from ipfs_accelerate_py.agent_supervisor.goal_coverage import (
+from ipfs_accelerate_py.agent_supervisor.objectives.goal_coverage import (
     AcceptanceCoverage,
     CoverageStatus,
     GoalCoverageMap,
 )
-from ipfs_accelerate_py.agent_supervisor.scan_receipts import (
+from ipfs_accelerate_py.agent_supervisor.objectives.scan_receipts import (
     ExhaustionBinding,
     evaluate_exhaustion_quorum,
 )

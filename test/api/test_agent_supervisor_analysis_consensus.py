@@ -8,8 +8,8 @@ from pathlib import Path
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.analysis_cache import AnalysisCache
-from ipfs_accelerate_py.agent_supervisor.analysis_consensus import (
+from ipfs_accelerate_py.agent_supervisor.analysis.analysis_cache import AnalysisCache
+from ipfs_accelerate_py.agent_supervisor.analysis.analysis_consensus import (
     AnalysisClaimProvenance,
     AnalysisClaimStatus,
     AnalysisConsensusClaim,
@@ -22,7 +22,7 @@ from ipfs_accelerate_py.agent_supervisor.analysis_consensus import (
     DeterministicDisagreementPolicy,
     build_analysis_consensus_receipt,
 )
-from ipfs_accelerate_py.agent_supervisor.analysis_pipeline import (
+from ipfs_accelerate_py.agent_supervisor.analysis.analysis_pipeline import (
     AnalysisPipeline,
     AnalysisPipelinePolicy,
     AnalysisPipelineRequest,

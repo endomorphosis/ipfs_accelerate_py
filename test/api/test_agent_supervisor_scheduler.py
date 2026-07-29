@@ -16,20 +16,20 @@ from typing import Any
 import pytest
 
 from ipfs_accelerate_py.agent_supervisor import bundle_supervisor as bundle_supervisor_module
-from ipfs_accelerate_py.agent_supervisor.artifact_store import query_artifact
-from ipfs_accelerate_py.agent_supervisor.bundle_supervisor import DynamicBundleScheduler
-from ipfs_accelerate_py.agent_supervisor.bundle_supervisor import launch_bundle_lanes
-from ipfs_accelerate_py.agent_supervisor.bundle_supervisor import (
+from ipfs_accelerate_py.agent_supervisor.runtime.artifact_store import query_artifact
+from ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor import DynamicBundleScheduler
+from ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor import launch_bundle_lanes
+from ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor import (
     materialize_bundle_lane_taskboard,
 )
-from ipfs_accelerate_py.agent_supervisor.event_log import append_jsonl_event
-from ipfs_accelerate_py.agent_supervisor.lease_coordination import (
+from ipfs_accelerate_py.agent_supervisor.runtime.event_log import append_jsonl_event
+from ipfs_accelerate_py.agent_supervisor.merge.lease_coordination import (
     LeaseCoordinator,
     profile_g_cid,
 )
 from ipfs_accelerate_py.agent_supervisor import leased_lane as leased_lane_module
-from ipfs_accelerate_py.agent_supervisor.leased_lane import run_leased_lane_result
-from ipfs_accelerate_py.agent_supervisor.resource_scheduler import HostResourceSnapshot
+from ipfs_accelerate_py.agent_supervisor.merge.leased_lane import run_leased_lane_result
+from ipfs_accelerate_py.agent_supervisor.runtime.resource_scheduler import HostResourceSnapshot
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.core import pid_alive
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     TASK_ATTEMPT_LIMIT_IDLE_REASON,

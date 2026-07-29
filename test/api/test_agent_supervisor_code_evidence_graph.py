@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.artifact_store import (
+from ipfs_accelerate_py.agent_supervisor.runtime.artifact_store import (
     CODE_EVIDENCE_GRAPH_KIND,
     canonical_code_evidence_graph_records,
     query_artifact,
@@ -13,7 +13,7 @@ from ipfs_accelerate_py.agent_supervisor.artifact_store import (
     read_code_evidence_graph_projection,
     write_code_evidence_graph_artifact,
 )
-from ipfs_accelerate_py.agent_supervisor.code_evidence_graph import (
+from ipfs_accelerate_py.agent_supervisor.analysis.code_evidence_graph import (
     CodeEvidenceGraph,
     EvidenceEdgeKind,
     EvidenceGraphValidationError,

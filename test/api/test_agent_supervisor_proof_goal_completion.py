@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.code_proof_obligations import (
+from ipfs_accelerate_py.agent_supervisor.proof.code_proof_obligations import (
     ImplementationEvidenceKind,
     ImplementationObligationSet,
     ImplementationResultBinding,
@@ -12,7 +12,7 @@ from ipfs_accelerate_py.agent_supervisor.code_proof_obligations import (
     compile_candidate_proof_scopes,
     derive_fresh_implementation_obligations,
 )
-from ipfs_accelerate_py.agent_supervisor.formal_verification_contracts import (
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
     AssuranceLevel,
     CodeProofObligation,
     EvidenceAuthority,
@@ -24,11 +24,11 @@ from ipfs_accelerate_py.agent_supervisor.formal_verification_contracts import (
     ProofVerdict,
     ResourceBudget,
 )
-from ipfs_accelerate_py.agent_supervisor.formal_planning_contracts import (
+from ipfs_accelerate_py.agent_supervisor.planning.formal_planning_contracts import (
     PlanAssurance,
     PlanConsistencyLevel,
 )
-from ipfs_accelerate_py.agent_supervisor.goal_completion import (
+from ipfs_accelerate_py.agent_supervisor.objectives.goal_completion import (
     CompletionEvidence,
     GoalState,
     evaluate_code_proof_goal_completion,

@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.code_evidence_graph import (
+from ipfs_accelerate_py.agent_supervisor.analysis.code_evidence_graph import (
     POST_MERGE_EVIDENCE_ACCEPTANCE_CRITERIA,
     POST_MERGE_EVIDENCE_GATE_KINDS,
     POST_MERGE_EVIDENCE_REQUIREMENT_ID,
@@ -16,7 +16,7 @@ from ipfs_accelerate_py.agent_supervisor.code_evidence_graph import (
     assemble_post_merge_evidence,
     verify_post_merge_evidence,
 )
-from ipfs_accelerate_py.agent_supervisor.validation_scheduler import (
+from ipfs_accelerate_py.agent_supervisor.validation.validation_scheduler import (
     ImpactValidationCheck,
     ImpactValidationDAGReceipt,
     ImpactValidationKind,
@@ -25,7 +25,7 @@ from ipfs_accelerate_py.agent_supervisor.validation_scheduler import (
     ValidationNodeDisposition,
     build_impact_selected_validation_dag,
 )
-from ipfs_accelerate_py.agent_supervisor.formal_verification_contracts import (
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
     EvidenceAuthority,
     EvidenceKind,
     EvidenceVerdict,
@@ -34,12 +34,12 @@ from ipfs_accelerate_py.agent_supervisor.formal_verification_contracts import (
     ProofVerdict,
     ResourceBudget,
 )
-from ipfs_accelerate_py.agent_supervisor.formal_plan_conformance import (
+from ipfs_accelerate_py.agent_supervisor.planning.formal_plan_conformance import (
     PostMergeCompletionAdmissionGate,
     evaluate_post_merge_completion_admission,
 )
-from ipfs_accelerate_py.agent_supervisor.merge_queue import MergeQueue
-from ipfs_accelerate_py.agent_supervisor.merge_train import MergeTrain
+from ipfs_accelerate_py.agent_supervisor.merge.merge_queue import MergeQueue
+from ipfs_accelerate_py.agent_supervisor.merge.merge_train import MergeTrain
 
 
 CANDIDATE_TREE = "tree-candidate"

@@ -3,12 +3,12 @@ from __future__ import annotations
 import time
 from collections.abc import Sequence
 
-from ipfs_accelerate_py.agent_supervisor.provider_batch_scheduler import (
+from ipfs_accelerate_py.agent_supervisor.runtime.provider_batch_scheduler import (
     ProviderBatchRequest,
     ProviderBatchScheduler,
     ProviderBatchSchedulerConfig,
 )
-from ipfs_accelerate_py.agent_supervisor.resource_scheduler import (
+from ipfs_accelerate_py.agent_supervisor.runtime.resource_scheduler import (
     ADAPTIVE_SCHEDULING_THROUGHPUT_REQUIREMENT_ID,
     ADAPTIVE_STAGE_PROFILES,
     AdaptiveThroughputRun,

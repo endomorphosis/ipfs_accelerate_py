@@ -5,7 +5,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from ipfs_accelerate_py.agent_supervisor.control_contracts import Operation
+from ipfs_accelerate_py.agent_supervisor.control.control_contracts import Operation
 from ipfs_accelerate_py.mcp_server.hierarchical_tool_manager import (
     HierarchicalToolManager,
 )

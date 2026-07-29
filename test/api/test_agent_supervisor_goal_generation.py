@@ -1,15 +1,23 @@
 from __future__ import annotations
 
 import json
+import os
+from pathlib import Path
+import subprocess
+import sys
 
 import pytest
 
-import ipfs_accelerate_py.agent_supervisor.objective_tracker as objective_tracker_module
-from ipfs_accelerate_py.agent_supervisor.goal_coverage import (
+import ipfs_accelerate_py.agent_supervisor.objectives.objective_tracker as objective_tracker_module
+from ipfs_accelerate_py.agent_supervisor.merge.checkout_lock import (
+    objective_admission_lock_path,
+)
+from ipfs_accelerate_py.agent_supervisor.task_sources.duckdb_state import exclusive_file_lock
+from ipfs_accelerate_py.agent_supervisor.objectives.goal_coverage import (
     UNMAPPED_GOAL_ID,
     goal_coverage_work_seeds,
 )
-from ipfs_accelerate_py.agent_supervisor.objective_graph import (
+from ipfs_accelerate_py.agent_supervisor.objectives.objective_graph import (
     ObjectiveGenerationLimits,
     ObjectiveGoalMaterializationPolicy,
     ObjectiveWorkKind,
@@ -19,7 +27,7 @@ from ipfs_accelerate_py.agent_supervisor.objective_graph import (
     preview_objective_goal_materialization,
     parse_goal_heap,
 )
-from ipfs_accelerate_py.agent_supervisor.objective_daemon import (
+from ipfs_accelerate_py.agent_supervisor.objectives.objective_daemon import (
     _objective_generation_board_state,
     active_objective_generation_work,
     blocked_review_objective_generation_families,
@@ -32,16 +40,16 @@ from ipfs_accelerate_py.agent_supervisor.objective_daemon import (
     objective_generation_proposals,
     objective_generation_task_findings,
 )
-from ipfs_accelerate_py.agent_supervisor.objective_tracker import (
+from ipfs_accelerate_py.agent_supervisor.objectives.objective_tracker import (
     ObjectiveMaterializationTransactionState,
     commit_objective_goal_materialization,
     objective_materialization_tree_identity,
 )
-from ipfs_accelerate_py.agent_supervisor.plan_evaluator import (
+from ipfs_accelerate_py.agent_supervisor.planning.plan_evaluator import (
     AnalysisProposal,
     ObjectiveWorkEvaluationPolicy,
 )
-from ipfs_accelerate_py.agent_supervisor.task_proposal_router import (
+from ipfs_accelerate_py.agent_supervisor.planning.task_proposal_router import (
     analysis_proposals_to_objective_work,
 )
 
@@ -2056,3 +2064,90 @@ def test_auto_safe_without_bound_authority_fails_closed_and_is_reviewable(
     record = load_objective_admission_records(generation_path)[goal.canonical_id]
     assert record["status"] == "rejected"
     assert record["lifecycle_owner"] == "objective_daemon"
+
+
+def test_git_objective_admission_lock_is_external_stable_and_tree_neutral(
+    tmp_path,
+) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+
+    def git(*args: str) -> str:
+        result = subprocess.run(
+            ["git", *args],
+            cwd=repo_root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        assert result.returncode == 0, result.stderr or result.stdout
+        return result.stdout.strip()
+
+    git("init")
+    objective_path = repo_root / "docs" / "objective-heap.md"
+    objective_path.parent.mkdir()
+    objective_path.write_text(_objective_heap(), encoding="utf-8")
+    git("add", "docs/objective-heap.md")
+    git(
+        "-c",
+        "user.name=Test User",
+        "-c",
+        "user.email=test@example.invalid",
+        "commit",
+        "-m",
+        "seed objective",
+    )
+
+    lock_path = objective_admission_lock_path(objective_path)
+    assert lock_path != objective_path.with_name(
+        f".{objective_path.name}.admission.lock"
+    )
+    assert ".git" in lock_path.parts
+
+    source_root = Path(__file__).resolve().parents[2]
+    environment = {
+        **os.environ,
+        "PYTHONPATH": str(source_root),
+        "PYTHONDONTWRITEBYTECODE": "1",
+    }
+    script = (
+        "import sys; from pathlib import Path; "
+        "from ipfs_accelerate_py.agent_supervisor.checkout_lock "
+        "import objective_admission_lock_path; "
+        "print(objective_admission_lock_path(Path(sys.argv[1])))"
+    )
+    process_paths = [
+        subprocess.run(
+            [sys.executable, "-c", script, str(objective_path)],
+            cwd=repo_root,
+            env=environment,
+            text=True,
+            capture_output=True,
+            check=True,
+        ).stdout.strip()
+        for _ in range(2)
+    ]
+    assert process_paths == [str(lock_path), str(lock_path)]
+
+    journal_path = tmp_path / "objective-materialization.json"
+    identity_before = objective_materialization_tree_identity(
+        repo_root,
+        objective_path=objective_path,
+        journal_path=journal_path,
+    )
+    with exclusive_file_lock(lock_path):
+        identity_during = objective_materialization_tree_identity(
+            repo_root,
+            objective_path=objective_path,
+            journal_path=journal_path,
+        )
+    identity_after = objective_materialization_tree_identity(
+        repo_root,
+        objective_path=objective_path,
+        journal_path=journal_path,
+    )
+
+    assert lock_path.exists()
+    assert identity_during == identity_before
+    assert identity_after == identity_before
+    assert git("status", "--porcelain", "--untracked-files=all") == ""

@@ -6,7 +6,7 @@ import time
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.multi_prover_resources import (
+from ipfs_accelerate_py.agent_supervisor.proof.multi_prover_resources import (
     PROVER_RESOURCE_CLASSES,
     BundleProverSupervisor,
     DeterministicResultCache,
@@ -22,7 +22,7 @@ from ipfs_accelerate_py.agent_supervisor.multi_prover_resources import (
     dependency_closed_ready_slice,
     normalize_prover_resource_class,
 )
-from ipfs_accelerate_py.agent_supervisor.resource_scheduler import (
+from ipfs_accelerate_py.agent_supervisor.runtime.resource_scheduler import (
     HostResourceSnapshot,
     ProviderCapacity,
     ResourceLeaseBudget,

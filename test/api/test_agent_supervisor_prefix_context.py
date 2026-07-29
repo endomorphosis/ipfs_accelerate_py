@@ -4,7 +4,7 @@ from dataclasses import replace
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.context_compiler import (
+from ipfs_accelerate_py.agent_supervisor.context.context_compiler import (
     MIN_WARM_PREFIX_REUSE_BPS,
     PREFIX_REUSE_REQUIREMENT_ID,
     ContextCompiler,
@@ -21,7 +21,7 @@ from ipfs_accelerate_py.agent_supervisor.context_compiler import (
     compile_prefix_context,
     render_prefix_context,
 )
-from ipfs_accelerate_py.agent_supervisor.context_contracts import (
+from ipfs_accelerate_py.agent_supervisor.context.context_contracts import (
     ContextBudget,
     ContextReference,
     ContextTier,

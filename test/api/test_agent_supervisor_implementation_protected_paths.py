@@ -11,8 +11,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor import checkout_lock as checkout_lock_module
-from ipfs_accelerate_py.agent_supervisor.checkout_lock import (
+from ipfs_accelerate_py.agent_supervisor.merge import checkout_lock as checkout_lock_module
+from ipfs_accelerate_py.agent_supervisor.merge.checkout_lock import (
     serialized_lock_update,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
@@ -20,11 +20,11 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
     implementation_daemon as implementation_daemon_module,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon import supervisor_runtime
-from ipfs_accelerate_py.agent_supervisor.checkout_lock import (
+from ipfs_accelerate_py.agent_supervisor.merge.checkout_lock import (
     BACKLOG_REFINERY_AUTHOR_EMAIL,
     generated_protected_board_commit_subject,
 )
-from ipfs_accelerate_py.agent_supervisor.implementation_daemon_runner import (
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon_runner import (
     build_portal_implementation_daemon_from_args,
 )
 from ipfs_accelerate_py.agent_supervisor.merge_queue import (
@@ -647,9 +647,16 @@ def test_crash_snapshot_reconciliation_accepts_device_renumbering_only(
     daemon = _daemon(tmp_path)
     daemon.worktree_root = tmp_path / "worktrees"
     workspace = daemon.worktree_root / "attempt"
+    workspace.mkdir(parents=True)
+    # Ephemeral workspaces must have a stable Git HEAD for protected-path fences.
+    _git(workspace, "init")
+    _git(workspace, "config", "user.email", "test@example.com")
+    _git(workspace, "config", "user.name", "test")
     workspace_protected = workspace / POLICY_PATH
     workspace_protected.parent.mkdir(parents=True)
     workspace_protected.write_text("unchanged\n", encoding="utf-8")
+    _git(workspace, "add", POLICY_PATH)
+    _git(workspace, "commit", "-m", "seed protected path")
     daemon._require_implementation_protected_snapshot(
         task=_task(outputs=["src/example.py"]),
         attempt=1,
@@ -1276,6 +1283,152 @@ def test_operator_clearance_accepts_disposed_exact_baseline_mirror(
     assert proof["mirrored_protected_paths"] == [POLICY_PATH]
 
 
+def test_operator_clearance_accepts_disposed_identity_only_recreation(
+    tmp_path: Path,
+) -> None:
+    daemon, repo, workspace, _protected = _protected_git_worktree_daemon(
+        tmp_path
+    )
+    task = _task(outputs=["src/example.py"])
+    before = daemon._require_implementation_protected_snapshot(
+        task=task,
+        attempt=1,
+        workspace_path=workspace,
+    )
+
+    protected = workspace / POLICY_PATH
+    replacement = protected.with_name(f"{protected.name}.replacement")
+    replacement.write_bytes(protected.read_bytes())
+    replacement.chmod(protected.stat().st_mode)
+    replacement.replace(protected)
+    violation = daemon._implementation_protected_path_violation(
+        task=task,
+        attempt=1,
+        workspace_path=workspace,
+        before=before,
+    )
+    assert {
+        item["scope"] for item in violation["mutations"]
+    } == {"workspace"}
+    assert violation["mutations"][0]["change"] == "identity_changed"
+    assert (
+        violation["mutations"][0]["before"]["sha256"]
+        == violation["mutations"][0]["after"]["sha256"]
+    )
+    unrelated = repo / "src" / "unrelated.py"
+    unrelated.parent.mkdir(exist_ok=True)
+    unrelated.write_text("VALUE = 1\n", encoding="utf-8")
+    _git(repo, "add", "src/unrelated.py")
+    _git(
+        repo,
+        "-c",
+        "user.name=Unrelated",
+        "-c",
+        "user.email=unrelated@example.invalid",
+        "commit",
+        "-m",
+        "change an unrelated path",
+    )
+    _git(repo, "worktree", "remove", "--force", str(workspace))
+
+    result = daemon.clear_implementation_protected_path_incident(
+        operator_note=(
+            "Reviewed an absent checkout whose protected file was recreated "
+            "with identical content and metadata."
+        ),
+        approve_disposed_ephemeral_workspace=True,
+    )
+
+    assert result["cleared"] is True, result
+    assert result["reason"] == (
+        "operator_approved_mirrored_ephemeral_workspace"
+    )
+    receipt = json.loads(
+        Path(result["receipt_path"]).read_text(encoding="utf-8")
+    )
+    proof = receipt["mirrored_ephemeral_workspace_proof"]
+    assert proof["workspace_absent"] is True
+    assert proof["workspace_unregistered"] is True
+    assert proof["workspace_git_head_missing_at_snapshot"] is False
+    assert proof["mutation_changes"] == ["identity_changed"]
+    assert proof["mirrored_protected_paths"] == [POLICY_PATH]
+    assert receipt["protected_path_history_unchanged"] is True
+    assert receipt["history"] == []
+
+
+def test_operator_clearance_accepts_shared_commit_and_disposed_identity_recreation(
+    tmp_path: Path,
+) -> None:
+    daemon, repo, workspace, protected = _protected_git_worktree_daemon(
+        tmp_path
+    )
+    task = _task(outputs=["src/example.py"])
+    before = daemon._require_implementation_protected_snapshot(
+        task=task,
+        attempt=1,
+        workspace_path=workspace,
+    )
+
+    workspace_protected = workspace / POLICY_PATH
+    replacement = workspace_protected.with_name(
+        f"{workspace_protected.name}.replacement"
+    )
+    replacement.write_bytes(workspace_protected.read_bytes())
+    replacement.chmod(workspace_protected.stat().st_mode)
+    replacement.replace(workspace_protected)
+    protected.write_text("reviewed operator update\n", encoding="utf-8")
+    _git(repo, "add", POLICY_PATH)
+    _git(
+        repo,
+        "-c",
+        "user.name=Operator",
+        "-c",
+        "user.email=operator@example.invalid",
+        "commit",
+        "-m",
+        "update protected policy",
+    )
+    operator_commit = _git(repo, "rev-parse", "HEAD")
+    violation = daemon._implementation_protected_path_violation(
+        task=task,
+        attempt=1,
+        workspace_path=workspace,
+        before=before,
+    )
+    assert {
+        item["scope"] for item in violation["mutations"]
+    } == {"shared_checkout", "workspace"}
+    assert {
+        item["change"]
+        for item in violation["mutations"]
+        if item["scope"] == "workspace"
+    } == {"identity_changed"}
+    _git(repo, "worktree", "remove", "--force", str(workspace))
+
+    result = daemon.clear_implementation_protected_path_incident(
+        approved_commits=[operator_commit],
+        operator_note=(
+            "Reviewed the operator commit and the absent checkout's "
+            "identity-only recreation."
+        ),
+        approve_disposed_ephemeral_workspace=True,
+    )
+
+    assert result["cleared"] is True, result
+    assert result["reason"] == (
+        "operator_approved_shared_checkout_commits_and_"
+        "mirrored_ephemeral_workspace"
+    )
+    assert result["approved_commits"] == [operator_commit]
+    receipt = json.loads(
+        Path(result["receipt_path"]).read_text(encoding="utf-8")
+    )
+    assert receipt["history"][0]["commit"] == operator_commit
+    proof = receipt["mirrored_ephemeral_workspace_proof"]
+    assert proof["mutation_changes"] == ["identity_changed"]
+    assert proof["mirrored_protected_paths"] == [POLICY_PATH]
+
+
 def test_disposed_workspace_approval_rejects_selective_protected_deletion(
     tmp_path: Path,
 ) -> None:
@@ -1332,6 +1485,342 @@ def test_disposed_workspace_approval_rejects_selective_protected_deletion(
     assert result["cleared"] is False
     assert result["reason"] == "disposed_ephemeral_workspace_proof_failed"
     assert daemon._implementation_protected_incident_path().exists()
+
+
+def test_auto_clears_workspace_only_protected_deletions_when_shared_intact(
+    tmp_path: Path,
+) -> None:
+    """Ephemeral deletions of protected docs must not permanently stall lanes."""
+
+    repo = tmp_path / "repo"
+    worktrees = tmp_path / "worktrees"
+    workspace = worktrees / "workspace-ephemeral"
+    repo.mkdir()
+    worktrees.mkdir()
+    # Workspace is gone (typical after failed agent cleanup).
+    protected = repo / POLICY_PATH
+    protected.parent.mkdir(parents=True)
+    protected.write_text("authoritative\n", encoding="utf-8")
+
+    daemon = PortalImplementationDaemon(
+        todo_path=repo / "tasks.todo.md",
+        state_path=tmp_path / "state" / "task-state.json",
+        strategy_path=tmp_path / "state" / "strategy.json",
+        events_path=tmp_path / "state" / "events.jsonl",
+        repo_root=repo,
+        worktree_root=worktrees,
+        implement=True,
+        implementation_command="implementation-command-that-must-not-run",
+        implementation_protected_paths=(POLICY_PATH,),
+    )
+    daemon._latch_implementation_protected_incident(
+        {
+            "reason": "implementation_protected_path_mutated",
+            "task_id": "EX-001",
+            "attempt": 1,
+            "workspace_path": str(workspace),
+            "mutations": [
+                {
+                    "scope": "workspace",
+                    "path": POLICY_PATH,
+                    "change": "deleted",
+                    "before": {"state": "present"},
+                    "after": {"state": "missing"},
+                }
+            ],
+        }
+    )
+
+    result = daemon._reconcile_implementation_protected_path_fence()
+
+    assert result.get("cleared") is True
+    assert result.get("auto") is True
+    assert result.get("blocked") is False
+    assert not daemon._implementation_protected_incident_path().exists()
+    assert any(
+        json.loads(line)["type"]
+        == "implementation_protected_path_incident_auto_cleared"
+        for line in daemon.events_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    )
+
+
+def test_auto_clear_refuses_shared_checkout_deletions(tmp_path: Path) -> None:
+    protected = tmp_path / POLICY_PATH
+    protected.parent.mkdir(parents=True)
+    protected.write_text("before\n", encoding="utf-8")
+    daemon = _daemon(tmp_path)
+    daemon._latch_implementation_protected_incident(
+        {
+            "reason": "implementation_protected_path_mutated",
+            "task_id": "EX-001",
+            "attempt": 1,
+            "workspace_path": str(tmp_path / "worktrees" / "ws"),
+            "mutations": [
+                {
+                    "scope": "shared_checkout",
+                    "path": POLICY_PATH,
+                    "change": "deleted",
+                }
+            ],
+        }
+    )
+
+    result = daemon._reconcile_implementation_protected_path_fence()
+
+    assert result.get("blocked") is True
+    assert result.get("reason") == "implementation_protected_path_incident_latched"
+    assert daemon._implementation_protected_incident_path().exists()
+
+
+def test_auto_clear_refuses_shared_plan_content_changes(tmp_path: Path) -> None:
+    """Shared plan/objectives content edits still require operator clearance."""
+
+    protected = tmp_path / POLICY_PATH
+    protected.parent.mkdir(parents=True)
+    protected.write_text("before\n", encoding="utf-8")
+    daemon = _daemon(tmp_path)
+    daemon._latch_implementation_protected_incident(
+        {
+            "reason": "implementation_protected_path_mutated",
+            "task_id": "EX-001",
+            "attempt": 1,
+            "workspace_path": str(tmp_path / "worktrees" / "ws"),
+            "mutations": [
+                {
+                    "scope": "shared_checkout",
+                    "path": POLICY_PATH,
+                    "change": "content_changed",
+                    "before": {
+                        "state": "present",
+                        "kind": "regular_file",
+                        "sha256": "aa",
+                    },
+                    "after": {
+                        "state": "present",
+                        "kind": "regular_file",
+                        "sha256": "bb",
+                    },
+                }
+            ],
+        }
+    )
+
+    result = daemon._reconcile_implementation_protected_path_fence()
+
+    assert result.get("blocked") is True
+    assert result.get("reason") == "implementation_protected_path_incident_latched"
+
+
+def test_auto_clears_shared_todo_board_content_change(tmp_path: Path) -> None:
+    """Supervisor-owned board rewrites must not permanently stall lanes."""
+
+    todo_rel = "docs/architecture/example.todo.md"
+    worktrees = tmp_path / "worktrees"
+    workspace = worktrees / "workspace-ephemeral"
+    worktrees.mkdir()
+    workspace.mkdir()
+    todo = tmp_path / todo_rel
+    todo.parent.mkdir(parents=True)
+    todo.write_text("# board\n", encoding="utf-8")
+
+    daemon = PortalImplementationDaemon(
+        todo_path=tmp_path / "tasks.todo.md",
+        state_path=tmp_path / "state" / "task-state.json",
+        strategy_path=tmp_path / "state" / "strategy.json",
+        events_path=tmp_path / "state" / "events.jsonl",
+        repo_root=tmp_path,
+        worktree_root=worktrees,
+        implement=True,
+        implementation_command="implementation-command-that-must-not-run",
+        implementation_protected_paths=(todo_rel,),
+    )
+    daemon._latch_implementation_protected_incident(
+        {
+            "reason": "implementation_protected_path_mutated",
+            "task_id": "EX-001",
+            "attempt": 2,
+            "workspace_path": str(workspace),
+            "mutations": [
+                {
+                    "scope": "shared_checkout",
+                    "path": todo_rel,
+                    "change": "content_changed",
+                    "before": {
+                        "state": "present",
+                        "kind": "regular_file",
+                        "sha256": "old",
+                    },
+                    "after": {
+                        "state": "present",
+                        "kind": "regular_file",
+                        "sha256": "new",
+                    },
+                }
+            ],
+        }
+    )
+
+    result = daemon._reconcile_implementation_protected_path_fence()
+
+    assert result.get("cleared") is True
+    assert result.get("auto") is True
+    assert result.get("reason") == "shared_todo_board_content_change_accepted"
+    assert not daemon._implementation_protected_incident_path().exists()
+
+
+def test_auto_clears_content_preserving_identity_thrash(tmp_path: Path) -> None:
+    """Hardlink/nlink thrash with identical content must not stall lanes."""
+
+    worktrees = tmp_path / "worktrees"
+    workspace = worktrees / "workspace-ephemeral"
+    worktrees.mkdir()
+    workspace.mkdir()
+    protected = tmp_path / POLICY_PATH
+    protected.parent.mkdir(parents=True)
+    protected.write_text("authoritative\n", encoding="utf-8")
+
+    daemon = PortalImplementationDaemon(
+        todo_path=tmp_path / "tasks.todo.md",
+        state_path=tmp_path / "state" / "task-state.json",
+        strategy_path=tmp_path / "state" / "strategy.json",
+        events_path=tmp_path / "state" / "events.jsonl",
+        repo_root=tmp_path,
+        worktree_root=worktrees,
+        implement=True,
+        implementation_command="implementation-command-that-must-not-run",
+        implementation_protected_paths=(POLICY_PATH,),
+    )
+    daemon._latch_implementation_protected_incident(
+        {
+            "reason": "implementation_protected_path_mutated",
+            "task_id": "EX-002",
+            "attempt": 1,
+            "workspace_path": str(workspace),
+            "mutations": [
+                {
+                    "scope": "shared_checkout",
+                    "path": POLICY_PATH,
+                    "change": "identity_changed",
+                    "before": {
+                        "state": "present",
+                        "kind": "regular_file",
+                        "sha256": "same-digest",
+                        "links": 1,
+                    },
+                    "after": {
+                        "state": "present",
+                        "kind": "regular_file",
+                        "sha256": "same-digest",
+                        "links": 2,
+                    },
+                }
+            ],
+        }
+    )
+
+    result = daemon._reconcile_implementation_protected_path_fence()
+
+    assert result.get("cleared") is True
+    assert result.get("auto") is True
+    assert result.get("reason") == "content_preserving_identity_thrash_accepted"
+    assert not daemon._implementation_protected_incident_path().exists()
+
+
+def test_auto_clears_mixed_identity_and_todo_board_thrash(tmp_path: Path) -> None:
+    """Live multi-lane pattern: identity thrash on plan + board content rewrite."""
+
+    plan_rel = "docs/architecture/PLAN.md"
+    todo_rel = "docs/architecture/board.todo.md"
+    worktrees = tmp_path / "worktrees"
+    workspace = worktrees / "workspace-ephemeral"
+    worktrees.mkdir()
+    workspace.mkdir()
+    for relative, body in ((plan_rel, "# plan\n"), (todo_rel, "# board\n")):
+        path = tmp_path / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(body, encoding="utf-8")
+
+    daemon = PortalImplementationDaemon(
+        todo_path=tmp_path / "tasks.todo.md",
+        state_path=tmp_path / "state" / "task-state.json",
+        strategy_path=tmp_path / "state" / "strategy.json",
+        events_path=tmp_path / "state" / "events.jsonl",
+        repo_root=tmp_path,
+        worktree_root=worktrees,
+        implement=True,
+        implementation_command="implementation-command-that-must-not-run",
+        implementation_protected_paths=(plan_rel, todo_rel),
+    )
+    daemon._latch_implementation_protected_incident(
+        {
+            "reason": "implementation_protected_path_mutated",
+            "task_id": "EX-003",
+            "attempt": 3,
+            "workspace_path": str(workspace),
+            "mutations": [
+                {
+                    "scope": "shared_checkout",
+                    "path": plan_rel,
+                    "change": "identity_changed",
+                    "before": {
+                        "state": "present",
+                        "kind": "regular_file",
+                        "sha256": "plan-digest",
+                        "links": 1,
+                    },
+                    "after": {
+                        "state": "present",
+                        "kind": "regular_file",
+                        "sha256": "plan-digest",
+                        "links": 2,
+                    },
+                },
+                {
+                    "scope": "shared_checkout",
+                    "path": todo_rel,
+                    "change": "content_changed",
+                    "before": {
+                        "state": "present",
+                        "kind": "regular_file",
+                        "sha256": "old-board",
+                    },
+                    "after": {
+                        "state": "present",
+                        "kind": "regular_file",
+                        "sha256": "new-board",
+                    },
+                },
+                {
+                    "scope": "workspace",
+                    "path": todo_rel,
+                    "change": "content_changed",
+                    "before": {
+                        "state": "present",
+                        "kind": "regular_file",
+                        "sha256": "ws-old",
+                    },
+                    "after": {
+                        "state": "present",
+                        "kind": "regular_file",
+                        "sha256": "ws-new",
+                    },
+                },
+            ],
+        }
+    )
+
+    result = daemon._reconcile_implementation_protected_path_fence()
+
+    assert result.get("cleared") is True
+    assert result.get("auto") is True
+    assert result.get("reason") == "protected_path_stall_auto_cleared"
+    assert set(result.get("class_codes") or []) == {
+        "content_preserving_identity_thrash",
+        "shared_todo_board_content_change",
+        "workspace_todo_board_content_change",
+    }
+    assert not daemon._implementation_protected_incident_path().exists()
 
 
 def test_latched_incident_checkpoint_acknowledges_wake_and_stops_replay(
@@ -1769,7 +2258,7 @@ def test_stale_lock_cleanup_preserves_implementation_lease_protocol_files(
 
     assert implementation_lock_path.exists()
     assert update_guard_path.exists()
-    assert not generic_lock_path.exists()
+    assert generic_lock_path.exists()
     managed = {
         item["lock_path"]
         for item in result["skipped"]
@@ -1778,6 +2267,52 @@ def test_stale_lock_cleanup_preserves_implementation_lease_protocol_files(
     assert managed == {
         str(implementation_lock_path),
         str(update_guard_path),
+    }
+    assert {
+        item["lock_path"]
+        for item in result["skipped"]
+        if item.get("reason") == "persistent_state_flock"
+    } == {str(generic_lock_path)}
+
+
+def test_stale_lock_cleanup_preserves_flocks_and_removes_git_transaction_locks(
+    tmp_path: Path,
+) -> None:
+    daemon = _daemon(tmp_path)
+    state_dir = tmp_path / "state"
+    git_dir = tmp_path / ".git"
+    git_ref_dir = git_dir / "refs" / "heads"
+    state_dir.mkdir(parents=True)
+    git_ref_dir.mkdir(parents=True)
+    event_lock_paths = (
+        state_dir / ".events.jsonl.lock",
+        state_dir / ".portal_supervisor_events.jsonl.lock",
+    )
+    transient_git_lock_paths = (
+        git_dir / "index.lock",
+        git_ref_dir / "main.lock",
+    )
+    persistent_git_flock_path = git_dir / "agent-llm-resolver.lock"
+    for path in (
+        *event_lock_paths,
+        *transient_git_lock_paths,
+        persistent_git_flock_path,
+    ):
+        path.write_text("stale\n", encoding="utf-8")
+        os.utime(path, (1, 1))
+
+    result = daemon._cleanup_stale_locks(max_age_seconds=1)
+
+    assert all(path.exists() for path in event_lock_paths)
+    assert persistent_git_flock_path.exists()
+    assert not any(path.exists() for path in transient_git_lock_paths)
+    assert {
+        item["lock_path"]
+        for item in result["skipped"]
+        if item.get("reason") == "persistent_state_flock"
+    } == {str(path) for path in event_lock_paths}
+    assert {item["lock_path"] for item in result["removed"]} == {
+        str(path) for path in transient_git_lock_paths
     }
 
 
@@ -1866,7 +2401,7 @@ def test_serialized_lock_update_has_windows_backend(
     monkeypatch.setattr(checkout_lock_module, "msvcrt", FakeMsvcrt)
     lock_path = tmp_path / "state" / "implementation.lock"
 
-    with serialized_lock_update(lock_path):
+    with checkout_lock_module.serialized_lock_update(lock_path):
         assert calls == [(FakeMsvcrt.LK_NBLCK, 1)]
 
     assert calls == [

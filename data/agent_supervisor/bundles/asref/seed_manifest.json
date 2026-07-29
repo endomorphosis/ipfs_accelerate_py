@@ -1,0 +1,19 @@
+{
+  "schema": "ipfs_accelerate_py.asref.seed_manifest.v1",
+  "task_id": "ASREF-010",
+  "goal_id": "ASREF-G100",
+  "files": [
+    "README.md",
+    "asref-bootstrap.todo.md",
+    "evidence_coverage_asref_g100.md",
+    "lane_matrix.json",
+    "launch_recipe.json",
+    "protected_paths.json",
+    "seed_manifest.json"
+  ],
+  "generated_files": [
+    "index.duckdb",
+    "index.json",
+    "todo_vector_index.json"
+  ]
+}

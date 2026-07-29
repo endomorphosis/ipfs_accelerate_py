@@ -4,19 +4,19 @@ from dataclasses import replace
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.decision_contracts import (
+from ipfs_accelerate_py.agent_supervisor.context.decision_contracts import (
     ApplicabilityFact,
     ApplicabilityFactKind,
 )
-from ipfs_accelerate_py.agent_supervisor.ir_adapters import IRAdapterRegistry
-from ipfs_accelerate_py.agent_supervisor.ir_registry import (
+from ipfs_accelerate_py.agent_supervisor.proof.ir_adapters import IRAdapterRegistry
+from ipfs_accelerate_py.agent_supervisor.proof.ir_registry import (
     IRFamily,
     IRLoadRequest,
     IRLoadStatus,
     IRRegistry,
     deterministic_ir_fixture,
 )
-from ipfs_accelerate_py.agent_supervisor.legal_constraint_adapter import (
+from ipfs_accelerate_py.agent_supervisor.proof.legal_constraint_adapter import (
     LEGAL_APPLICABILITY_REQUIREMENT_ID,
     LegalApplicabilityOutcome,
     LegalApplicabilityQuery,

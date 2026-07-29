@@ -3,6 +3,8 @@
 
 This script intentionally only adjusts ``sys.path`` for a source checkout and
 delegates to
+``python -m ipfs_accelerate_py.agent_supervisor.prompt.prompt_workflow``.  It does not
+import providers, open DuckDB, or start a supervisor process on its own.
 ``python -m ipfs_accelerate_py.agent_supervisor.prompt_workflow``.  It does not
 import providers, open DuckDB, mutate policy, start a supervisor process, or
 expand shell-interpolated paths on its own.
@@ -26,7 +28,7 @@ if str(REPO_ROOT) not in sys.path:
 
 
 def main(argv: list[str] | None = None) -> int:
-    from ipfs_accelerate_py.agent_supervisor.prompt_workflow import (
+    from ipfs_accelerate_py.agent_supervisor.prompt.prompt_workflow import (
         run_prompt_workflow_cli,
     )
 

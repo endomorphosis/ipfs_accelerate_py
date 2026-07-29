@@ -5,11 +5,11 @@ import sqlite3
 from pathlib import Path
 
 import pytest
-from ipfs_accelerate_py.agent_supervisor.bundle_supervisor import (
+from ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor import (
     launch_bundle_lanes,
     plan_bundle_lanes,
 )
-from ipfs_accelerate_py.agent_supervisor.lease_coordination import (
+from ipfs_accelerate_py.agent_supervisor.merge.lease_coordination import (
     DependencyNotReadyError,
     ExecutionScopeConflictError,
     LeaseConflictError,
@@ -22,7 +22,7 @@ from ipfs_accelerate_py.agent_supervisor.lease_coordination import (
     migrate_sqlite_coordination_store,
     profile_g_cid,
 )
-from ipfs_accelerate_py.agent_supervisor.objective_graph import (
+from ipfs_accelerate_py.agent_supervisor.objectives.objective_graph import (
     build_bundle_task_payloads,
     submit_bundle_tasks,
 )
@@ -738,13 +738,13 @@ def test_bundle_launcher_runs_only_an_accepted_lease(monkeypatch: pytest.MonkeyP
         starts.append(list(command))
         return Process()
 
-    monkeypatch.setattr("ipfs_accelerate_py.agent_supervisor.bundle_supervisor.subprocess.Popen", fake_popen)
+    monkeypatch.setattr("ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor.subprocess.Popen", fake_popen)
     coordination = repo / "coordination.sqlite3"
     first = launch_bundle_lanes(lanes, repo_root=repo, coordination_path=coordination, claimant_did="did:web:lane-a.example")
     second = launch_bundle_lanes(lanes, repo_root=repo, coordination_path=coordination, claimant_did="did:web:lane-b.example")
 
     assert first[0]["accepted"] is True
-    assert "ipfs_accelerate_py.agent_supervisor.leased_lane" in first[0]["command"]
+    assert "ipfs_accelerate_py.agent_supervisor.merge.leased_lane" in first[0]["command"]
     assert second[0]["accepted"] is False
     assert second[0]["code"] == "G_CLAIM_CONFLICT"
     assert len(starts) == 1
@@ -772,7 +772,7 @@ def test_bundle_launcher_propagates_only_the_leased_execution_slice(
     prerequisite_cid = profile_g_cid({"member": "HSSL-BENCH-001"})
     leased_cid = profile_g_cid({"member": "HSSL-BENCH-011"})
     monkeypatch.setattr(
-        "ipfs_accelerate_py.agent_supervisor.bundle_supervisor.build_bundle_task_payloads",
+        "ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor.build_bundle_task_payloads",
         lambda _path: [
             {
                 "bundle_key": "objective/hssl/protocol",
@@ -814,7 +814,7 @@ def test_bundle_launcher_propagates_only_the_leased_execution_slice(
         return Process()
 
     monkeypatch.setattr(
-        "ipfs_accelerate_py.agent_supervisor.bundle_supervisor.subprocess.Popen",
+        "ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor.subprocess.Popen",
         fake_popen,
     )
     launched = launch_bundle_lanes(

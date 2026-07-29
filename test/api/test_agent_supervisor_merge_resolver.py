@@ -4,7 +4,7 @@ import json
 import subprocess
 from pathlib import Path
 
-from ipfs_accelerate_py.agent_supervisor.merge_resolver import (
+from ipfs_accelerate_py.agent_supervisor.merge.merge_resolver import (
     active_merge_matches_payload,
     build_merge_prompt,
     latest_failed_merge_event,

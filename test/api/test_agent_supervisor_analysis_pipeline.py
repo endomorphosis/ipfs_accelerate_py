@@ -11,15 +11,15 @@ from pathlib import Path
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.analyzer_health import (
+from ipfs_accelerate_py.agent_supervisor.analysis.analyzer_health import (
     AnalysisEscalationPolicy,
 )
-from ipfs_accelerate_py.agent_supervisor.analysis_cache import (
+from ipfs_accelerate_py.agent_supervisor.analysis.analysis_cache import (
     AnalysisCache,
     AnalysisCacheLookupStatus,
     AnalysisCacheReason,
 )
-from ipfs_accelerate_py.agent_supervisor.analysis_pipeline import (
+from ipfs_accelerate_py.agent_supervisor.analysis.analysis_pipeline import (
     EXACT_TREE_REUSE_ACCEPTANCE_CRITERIA,
     EXACT_TREE_REUSE_REQUIREMENT_ID,
     INTEGRATED_ANALYSIS_ACCEPTANCE_CRITERIA,
@@ -37,18 +37,18 @@ from ipfs_accelerate_py.agent_supervisor.analysis_pipeline import (
     PipelineCacheStatus,
     make_analysis_stage_receipt,
 )
-from ipfs_accelerate_py.agent_supervisor.audit_scanner import (
+from ipfs_accelerate_py.agent_supervisor.analysis.audit_scanner import (
     run_low_backlog_analysis,
 )
-from ipfs_accelerate_py.agent_supervisor.conflict_graph import (
+from ipfs_accelerate_py.agent_supervisor.core.conflict_graph import (
     build_python_ast_blob_record,
 )
-from ipfs_accelerate_py.agent_supervisor.ipfs_datasets_analysis_provider import (
+from ipfs_accelerate_py.agent_supervisor.integrations.ipfs_datasets_analysis_provider import (
     IPFS_DATASETS_LAZY_DEGRADATION_REQUIREMENT_ID,
     AnalysisProviderStatus,
     IpfsDatasetsAnalysisProvider,
 )
-from ipfs_accelerate_py.agent_supervisor.goal_completion import (
+from ipfs_accelerate_py.agent_supervisor.objectives.goal_completion import (
     CompletionEvidence,
     GoalState,
 )

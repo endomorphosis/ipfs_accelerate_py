@@ -11,7 +11,7 @@ from typing import Any
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.control_contracts import (
+from ipfs_accelerate_py.agent_supervisor.control.control_contracts import (
     AuthorizationDecision,
     AuthorizationVerdict,
     EffectKind,
@@ -25,7 +25,7 @@ from ipfs_accelerate_py.agent_supervisor.control_contracts import (
     PROMPT_CONTROL_OPERATIONS,
     get_operation_catalog,
 )
-from ipfs_accelerate_py.agent_supervisor.control_plane import (
+from ipfs_accelerate_py.agent_supervisor.control.control_plane import (
     DIRECT_CONTROL_SERVICE_DISPATCHER_ID,
     BackendResponse,
     InMemoryControlStateStore,

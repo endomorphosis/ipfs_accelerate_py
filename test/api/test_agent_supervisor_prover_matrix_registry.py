@@ -6,7 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.prover_matrix_registry import (
+from ipfs_accelerate_py.agent_supervisor.proof.prover_matrix_registry import (
     EXPECTED_PROVER_IDS,
     PROVER_MATRIX_DUCKDB_SCHEMA_VERSION,
     PROVER_MATRIX_SCHEMA_VERSION,

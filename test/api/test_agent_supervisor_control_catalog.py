@@ -4,7 +4,7 @@ from dataclasses import FrozenInstanceError
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.control_contracts import (
+from ipfs_accelerate_py.agent_supervisor.control.control_contracts import (
     CONTROL_CATALOG_VERSION,
     EVENT_CURSOR_SCHEMA,
     MUTATION_OPERATIONS,

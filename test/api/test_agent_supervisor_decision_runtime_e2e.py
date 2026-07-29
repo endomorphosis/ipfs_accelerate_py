@@ -9,11 +9,11 @@ from types import SimpleNamespace
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.decision_contracts import (
+from ipfs_accelerate_py.agent_supervisor.context.decision_contracts import (
     DecisionKind,
     DecisionStage,
 )
-from ipfs_accelerate_py.agent_supervisor.decision_runtime import (
+from ipfs_accelerate_py.agent_supervisor.context.decision_runtime import (
     DecisionBoundary,
     DecisionOutcome,
     DecisionRuntime,
@@ -267,7 +267,7 @@ def test_completion_requires_a_fresh_decision_and_merged_tree_evidence() -> None
 
 def test_runtime_module_has_no_optional_provider_imports() -> None:
     source = Path(
-        "ipfs_accelerate_py/agent_supervisor/decision_runtime.py"
+        "ipfs_accelerate_py/agent_supervisor/context/decision_runtime.py"
     ).read_text(encoding="utf-8")
     imported = {
         alias.name

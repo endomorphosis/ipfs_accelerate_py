@@ -4,13 +4,13 @@ from dataclasses import replace
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.code_proof_obligations import (
+from ipfs_accelerate_py.agent_supervisor.proof.code_proof_obligations import (
     CodeObligationRequest,
     compile_candidate_proof_scopes,
     materialize_code_proof_obligation,
     obligation_cache_identity,
 )
-from ipfs_accelerate_py.agent_supervisor.proof_obligation_templates import (
+from ipfs_accelerate_py.agent_supervisor.proof.proof_obligation_templates import (
     DEFAULT_PROOF_OBLIGATION_TEMPLATES,
     DEFAULT_TEMPLATE_REGISTRY,
     AmbiguousProofTemplateError,

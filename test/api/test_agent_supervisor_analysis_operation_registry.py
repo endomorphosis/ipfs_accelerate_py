@@ -7,7 +7,7 @@ from dataclasses import replace
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.analysis_operation_registry import (
+from ipfs_accelerate_py.agent_supervisor.analysis.analysis_operation_registry import (
     IPFS_DATASETS_ANALYSIS_PRODUCER_ID,
     LOCAL_ANALYSIS_PRODUCER_ID,
     AnalysisAuthoritySemantics,
@@ -28,11 +28,11 @@ from ipfs_accelerate_py.agent_supervisor.analysis_operation_registry import (
     normalize_analysis_reference,
     normalize_logic_family,
 )
-from ipfs_accelerate_py.agent_supervisor.analysis_transport import (
+from ipfs_accelerate_py.agent_supervisor.analysis.analysis_transport import (
     AnalysisProviderKind,
     AnalysisTransportStatus,
 )
-from ipfs_accelerate_py.agent_supervisor.ipfs_datasets_logic_provider import (
+from ipfs_accelerate_py.agent_supervisor.integrations.ipfs_datasets_logic_provider import (
     create_local_registry_logic_producer,
     create_optional_registry_logic_producer,
     registry_logic_producer_declarations,
@@ -498,9 +498,7 @@ def test_logic_family_binding_stays_within_provenance_bound() -> None:
 
 
 def test_hammer_import_uses_managed_writable_environment(monkeypatch) -> None:
-    from ipfs_accelerate_py.agent_supervisor import (
-        ipfs_datasets_logic_provider as logic_provider,
-    )
+    from ipfs_accelerate_py.agent_supervisor import ipfs_datasets_logic_provider as logic_provider
 
     observed = {}
 

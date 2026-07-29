@@ -17,29 +17,29 @@ from hashlib import sha1
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
-from ..checkout_lock import (
+from ..merge.checkout_lock import (
     checkout_lock_metadata,
     checkout_lock_owner_is_active,
     checkout_mutation_lock_path,
     generated_protected_board_commit_subject,
     serialized_lock_update,
 )
-from ..event_log import append_jsonl_event, repair_jsonl_event_log, unique_backup_path
-from ..implementation_supervisor_runner import (
+from ..runtime.event_log import append_jsonl_event, repair_jsonl_event_log, unique_backup_path
+from .implementation_supervisor_runner import (
     persist_goal_completion_projection,
     persist_supervisor_scan_receipt,
 )
-from ..merge_conflict_repair import resolve_append_only_markdown_conflicts
-from ..scan_receipts import (
+from ..merge.merge_conflict_repair import resolve_append_only_markdown_conflicts
+from ..objectives.scan_receipts import (
     RefillScanResult,
     ScanTerminalReason,
     adapt_legacy_scan_result,
     build_scan_result,
     scan_identity,
 )
-from ..prompt_workflow import RescueOperation, prompt_workflow_cid
-from ..rescue_planner import RescuePlanner, RescuePlannerPolicy, RescuePlanningRequest
-from ..supervisor_watchdog import (
+from ..prompt.prompt_workflow import RescueOperation, prompt_workflow_cid
+from ..rescue.rescue_planner import RescuePlanner, RescuePlannerPolicy, RescuePlanningRequest
+from ..rescue.supervisor_watchdog import (
     AUTONOMOUS_UNSTALL_STATE_SCHEMA,
     AutonomousUnstallCoordinator,
     AutonomousUnstallPolicy,
@@ -142,7 +142,7 @@ def apply_proof_rollout_projection(
     at the top level for health checks and older status consumers.
     """
 
-    from ..formal_verification_policy import (
+    from ..proof.formal_verification_policy import (
         PROOF_ROLLOUT_STATUS_SCHEMA,
         ProofRolloutStatus,
     )
@@ -2279,6 +2279,24 @@ class PortalImplementationSupervisor:
                 "active_task_id": state.active_task_id,
             }
 
+        # Preserve stalled branch work before dropping active markers. Without
+        # this, a dead provider leaves dirty implementation worktrees that
+        # block later merges and require manual rescue.
+        rescue_result: dict[str, Any] = {}
+        worktree_path = Path(active_worktree) if active_worktree else None
+        if worktree_path is not None and worktree_path.exists():
+            dirty = self._git_status_short(worktree_path)
+            target_ref = self._git_current_branch(self.config.repo_root) or "HEAD"
+            if dirty:
+                rescue_result = self._rescue_dirty_worktree(
+                    worktree_path,
+                    branch=active_branch,
+                    head=self._git_ref_commit(worktree_path, "HEAD"),
+                    target_ref=target_ref,
+                    status_lines=dirty,
+                    reason="stale_active_execution_auto_rescue",
+                )
+
         repaired_at = utc_now()
         recovered_attempt = consume_stale_active_attempt(state)
         state.active_attempt = 0
@@ -2298,6 +2316,7 @@ class PortalImplementationSupervisor:
             "daemon_pid": daemon_pid or 0,
             "repaired_at": repaired_at,
             "attempt_recovery": recovered_attempt,
+            "rescue_result": rescue_result,
             **active_fields,
         }
         self._record_event("stale_active_execution_state_repaired", result)
@@ -2343,6 +2362,7 @@ class PortalImplementationSupervisor:
         *,
         producer: str,
         commit_outputs: bool,
+        operation: str = "generated_board_update",
         callback,
     ):
         """Serialize a committed generated-board update with checkout mutations."""
@@ -2379,7 +2399,7 @@ class PortalImplementationSupervisor:
                     branch=f"generated-board:{producer}",
                     owner_script=Path(sys.argv[0]).name,
                     extra={
-                        "operation": "generated_board_update",
+                        "operation": operation,
                         "producer": producer,
                         "state_dir": str(self.config.state_dir.resolve()),
                         "state_path": str(self.config.state_path.resolve()),
@@ -2530,7 +2550,7 @@ class PortalImplementationSupervisor:
         merge_head: str,
         unmerged_paths: list[str],
     ) -> dict[str, Any]:
-        from ipfs_accelerate_py.agent_supervisor.merge_resolver import build_merge_prompt, invoke_llm_resolver
+        from ipfs_accelerate_py.agent_supervisor.merge.merge_resolver import build_merge_prompt, invoke_llm_resolver
 
         target_branch = self._git_current_branch(repo_root) or "HEAD"
         active_task_id = ""
@@ -4497,7 +4517,7 @@ class PortalImplementationSupervisor:
     def _generated_main_checkout_status_filters(self) -> tuple[list[str], list[str]]:
         """Return supervisor-generated dirty paths that should not block reconciliation."""
 
-        from ipfs_accelerate_py.agent_supervisor.backlog_refinery import (
+        from ipfs_accelerate_py.agent_supervisor.objectives.backlog_refinery import (
             generated_guardrail_status_filters,
         )
 
@@ -4545,23 +4565,40 @@ class PortalImplementationSupervisor:
             for relative in self.config.worktree_submodule_paths
             if str(relative).strip()
         ]
-        from ipfs_accelerate_py.agent_supervisor.backlog_refinery import (
+        from ipfs_accelerate_py.agent_supervisor.objectives.backlog_refinery import (
             commit_generated_dirty_outputs,
         )
 
         commit_subject = generated_protected_board_commit_subject(
             self.config.generated_dirty_repair_commit_subject
         )
-        result = commit_generated_dirty_outputs(
-            repo_root=self.config.repo_root,
-            generated_paths=generated_paths,
-            generated_prefixes=generated_prefixes,
-            candidate_git_roots=candidate_git_roots,
-            subject=commit_subject,
-            include_clean_submodule_gitlinks=self.config.generated_dirty_repair_include_submodule_gitlinks,
-            max_paths=self.config.generated_dirty_repair_max_paths,
-            stale_git_lock_seconds=self.config.generated_dirty_repair_stale_lock_seconds,
+        result = self._run_generated_board_producer(
+            producer="generated-dirty-repair",
+            commit_outputs=True,
+            operation="generated_dirty_repair",
+            callback=lambda: commit_generated_dirty_outputs(
+                repo_root=self.config.repo_root,
+                generated_paths=generated_paths,
+                generated_prefixes=generated_prefixes,
+                protected_paths=self.config.implementation_protected_paths,
+                candidate_git_roots=candidate_git_roots,
+                subject=commit_subject,
+                include_clean_submodule_gitlinks=(
+                    self.config.generated_dirty_repair_include_submodule_gitlinks
+                ),
+                max_paths=self.config.generated_dirty_repair_max_paths,
+                stale_git_lock_seconds=(
+                    self.config.generated_dirty_repair_stale_lock_seconds
+                ),
+            ),
         )
+        if not isinstance(result, Mapping):
+            return {
+                "attempted": False,
+                "reason": "checkout_mutation_lock_unavailable",
+                "lock_path": str(self._repo_merge_lock_path()),
+            }
+        result = dict(result)
         if result.get("committed_count") or result.get("selected_path_count"):
             self._record_event("generated_dirty_checkout_repair", result)
         return result
@@ -4575,7 +4612,7 @@ class PortalImplementationSupervisor:
 
         if not status_lines:
             return [], dict(evidence or {})
-        from ipfs_accelerate_py.agent_supervisor.backlog_refinery import (
+        from ipfs_accelerate_py.agent_supervisor.objectives.backlog_refinery import (
             filter_generated_main_checkout_evidence,
         )
 
@@ -4596,7 +4633,7 @@ class PortalImplementationSupervisor:
 
         if not status_lines:
             return {}
-        from ipfs_accelerate_py.agent_supervisor.backlog_refinery import (
+        from ipfs_accelerate_py.agent_supervisor.objectives.backlog_refinery import (
             path_is_generated_status_output,
         )
 
@@ -4657,7 +4694,7 @@ class PortalImplementationSupervisor:
     ) -> list[str]:
         """Expand a collapsed untracked directory if all contained files are generated outputs."""
 
-        from ipfs_accelerate_py.agent_supervisor.backlog_refinery import (
+        from ipfs_accelerate_py.agent_supervisor.objectives.backlog_refinery import (
             path_is_generated_status_output,
         )
 
@@ -6580,7 +6617,7 @@ class PortalImplementationSupervisor:
 
         if not self.config.todo_path.exists() or not self.config.strategy_path.exists():
             return []
-        from ipfs_accelerate_py.agent_supervisor.backlog_refinery import (
+        from ipfs_accelerate_py.agent_supervisor.objectives.backlog_refinery import (
             release_completed_guardrail_blocks,
             task_id_prefix,
         )
@@ -6624,7 +6661,7 @@ class PortalImplementationSupervisor:
         if not self.config.todo_path.exists():
             return []
 
-        from ipfs_accelerate_py.agent_supervisor.backlog_refinery import (
+        from ipfs_accelerate_py.agent_supervisor.objectives.backlog_refinery import (
             record_dependency_guardrail_findings,
             task_id_prefix,
         )
@@ -6684,7 +6721,7 @@ class PortalImplementationSupervisor:
         if not self.config.todo_path.exists():
             return []
 
-        from ipfs_accelerate_py.agent_supervisor.backlog_refinery import (
+        from ipfs_accelerate_py.agent_supervisor.objectives.backlog_refinery import (
             record_reconciliation_guardrail_findings,
             task_id_prefix,
         )
@@ -6740,7 +6777,7 @@ class PortalImplementationSupervisor:
         if not self.config.todo_path.exists():
             return []
 
-        from ipfs_accelerate_py.agent_supervisor.backlog_refinery import (
+        from ipfs_accelerate_py.agent_supervisor.objectives.backlog_refinery import (
             record_retry_budget_findings,
             task_id_prefix,
         )
@@ -6957,13 +6994,13 @@ class PortalImplementationSupervisor:
         if not objective_path.is_file():
             return {"attempted": False, "reason": "objective_path_missing"}
 
-        from ipfs_accelerate_py.agent_supervisor.objective_daemon import (
+        from ipfs_accelerate_py.agent_supervisor.objectives.objective_daemon import (
             completion_evidence_records_from_gate_records,
             load_goal_completion_evidence_records,
             load_goal_completion_gate_records,
             parse_goal_completion_todo_boards,
         )
-        from ipfs_accelerate_py.agent_supervisor.objective_tracker import (
+        from ipfs_accelerate_py.agent_supervisor.objectives.objective_tracker import (
             reconcile_objective_goal_completion,
         )
 
@@ -7164,8 +7201,8 @@ class PortalImplementationSupervisor:
             )
             return disabled
 
-        from ipfs_accelerate_py.agent_supervisor.objective_daemon import default_objective_path
-        from ipfs_accelerate_py.agent_supervisor.objective_tracker import (
+        from ipfs_accelerate_py.agent_supervisor.objectives.objective_daemon import default_objective_path
+        from ipfs_accelerate_py.agent_supervisor.objectives.objective_tracker import (
             migrate_legacy_objective_goals,
         )
 
@@ -7274,15 +7311,15 @@ class PortalImplementationSupervisor:
         if not self.config.objective_task_janitor_enabled:
             return {}
 
-        from ipfs_accelerate_py.agent_supervisor.backlog_refinery import (
+        from ipfs_accelerate_py.agent_supervisor.objectives.backlog_refinery import (
             load_strategy,
             mark_task_statuses_in_todo_text,
             task_id_prefix,
             write_json,
         )
-        from ipfs_accelerate_py.agent_supervisor.objective_daemon import default_objective_path
-        from ipfs_accelerate_py.agent_supervisor.objective_graph import parse_goal_heap
-        from ipfs_accelerate_py.agent_supervisor.objective_task_janitor import (
+        from ipfs_accelerate_py.agent_supervisor.objectives.objective_daemon import default_objective_path
+        from ipfs_accelerate_py.agent_supervisor.objectives.objective_graph import parse_goal_heap
+        from ipfs_accelerate_py.agent_supervisor.objectives.objective_task_janitor import (
             DEFAULT_MISSION_TERMS,
             reconcile_objective_task_strategy,
             registered_goal_ids_from_bundle_index,
@@ -7412,7 +7449,7 @@ class PortalImplementationSupervisor:
                 "error": str(exc),
             }
 
-        from ipfs_accelerate_py.agent_supervisor.objective_tracker import rewrite_goal_fields
+        from ipfs_accelerate_py.agent_supervisor.objectives.objective_tracker import rewrite_goal_fields
 
         updates: dict[str, dict[str, str]] = {}
         for goal_id in sorted(effective_goal_ids):
@@ -7527,7 +7564,7 @@ class PortalImplementationSupervisor:
         inferred_mapping: dict[str, dict[str, Any]] = {}
         criteria_by_goal: dict[str, list[str]] = {}
         if goals and findings:
-            from ipfs_accelerate_py.agent_supervisor.goal_coverage import (
+            from ipfs_accelerate_py.agent_supervisor.objectives.goal_coverage import (
                 UNMAPPED_GOAL_ID,
                 acceptance_criteria_for_goal,
                 attach_findings_to_goals,
@@ -7702,8 +7739,8 @@ class PortalImplementationSupervisor:
     def _objective_goals_for_finding_mapping(self) -> list[Any]:
         """Read the current heap for deterministic dynamic-finding assignment."""
 
-        from ipfs_accelerate_py.agent_supervisor.objective_daemon import default_objective_path
-        from ipfs_accelerate_py.agent_supervisor.objective_graph import parse_goal_heap
+        from ipfs_accelerate_py.agent_supervisor.objectives.objective_daemon import default_objective_path
+        from ipfs_accelerate_py.agent_supervisor.objectives.objective_graph import parse_goal_heap
 
         objective_path = self.config.objective_path or default_objective_path(
             self.config.repo_root
@@ -7912,22 +7949,22 @@ class PortalImplementationSupervisor:
 
         from argparse import Namespace
 
-        from ipfs_accelerate_py.agent_supervisor.backlog_refinery import (
+        from ipfs_accelerate_py.agent_supervisor.objectives.backlog_refinery import (
             load_strategy,
             should_refill_backlog,
             task_id_prefix,
             write_json,
         )
-        from ipfs_accelerate_py.agent_supervisor.objective_daemon import (
+        from ipfs_accelerate_py.agent_supervisor.objectives.objective_daemon import (
             default_objective_path,
             discovery_fingerprints,
             run_objective_daemon,
         )
-        from ipfs_accelerate_py.agent_supervisor.objective_graph import (
+        from ipfs_accelerate_py.agent_supervisor.objectives.objective_graph import (
             DEFAULT_DISCOVERY_OUTPUT_PATH,
             DEFAULT_OBJECTIVE_TASK_SUMMARY_PREFIX,
         )
-        from ipfs_accelerate_py.agent_supervisor.objective_tracker import (
+        from ipfs_accelerate_py.agent_supervisor.objectives.objective_tracker import (
             DEFAULT_ROOT_GOAL_TITLE,
             DEFAULT_TRACKING_DOCUMENT_TITLE,
             DEFAULT_ULTIMATE_GOAL,
@@ -8254,7 +8291,7 @@ class PortalImplementationSupervisor:
                 started_at=started_at,
             )
 
-        from ipfs_accelerate_py.agent_supervisor.backlog_refinery import (
+        from ipfs_accelerate_py.agent_supervisor.objectives.backlog_refinery import (
             CODEBASE_SCAN_SKIP_PREFIXES,
             load_strategy,
             record_codebase_scan_findings,

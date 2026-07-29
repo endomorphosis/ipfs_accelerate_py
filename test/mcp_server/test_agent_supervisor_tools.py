@@ -10,11 +10,11 @@ from typing import Any
 import pytest
 
 from ipfs_accelerate_py import cli
-from ipfs_accelerate_py.agent_supervisor.control_cli import (
+from ipfs_accelerate_py.agent_supervisor.control.control_cli import (
     COMMAND_OPERATIONS,
     agent_cli_discovery_manifest,
 )
-from ipfs_accelerate_py.agent_supervisor.control_contracts import (
+from ipfs_accelerate_py.agent_supervisor.control.control_contracts import (
     CONTROL_DISCOVERY_SAFETY_REQUIREMENT_ID,
     CONTROL_SURFACE_PARITY_REQUIREMENT_ID,
     AuthorityViolationError,
@@ -38,7 +38,7 @@ from ipfs_accelerate_py.agent_supervisor.control_contracts import (
     PathEscapeError,
     READ_OPERATIONS,
 )
-from ipfs_accelerate_py.agent_supervisor.control_plane import (
+from ipfs_accelerate_py.agent_supervisor.control.control_plane import (
     CONTROL_REDACTION_MARKER,
     BackendResponse,
     InMemoryControlStateStore,
@@ -337,8 +337,8 @@ def test_discovery_safety_evidence_uses_observed_python_cli_and_mcp_runs(
             (
                 "ipfs_datasets_py.",
                 "ipfs_accelerate_py.agent_supervisor.ipfs_datasets_",
-                "ipfs_accelerate_py.agent_supervisor.leanstral_proof_provider",
-                "ipfs_accelerate_py.agent_supervisor.formal_verification_provider",
+                "ipfs_accelerate_py.agent_supervisor.proof.leanstral_proof_provider",
+                "ipfs_accelerate_py.agent_supervisor.proof.formal_verification_provider",
             )
         ):
             provider_loads += 1

@@ -6,7 +6,7 @@ from typing import Any
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.control_contracts import (
+from ipfs_accelerate_py.agent_supervisor.control.control_contracts import (
     CONTROL_MUTATION_AUDIT_RECEIPT_SCHEMA,
     CONTROL_PROPOSAL_AUDIT_RECEIPT_SCHEMA,
     AuthorizationBindingError,
@@ -31,7 +31,7 @@ from ipfs_accelerate_py.agent_supervisor.control_contracts import (
     PathEscapeError,
     UnknownOperationError,
 )
-from ipfs_accelerate_py.agent_supervisor.control_plane import (
+from ipfs_accelerate_py.agent_supervisor.control.control_plane import (
     BackendResponse,
     InMemoryControlStateStore,
     RepositorySupervisorBackend,

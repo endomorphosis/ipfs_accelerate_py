@@ -1,0 +1,3350 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-07-27T07:16:07.547559+00:00",
+  "branch_target": "refactor/agent-supervisor-layout",
+  "source_root": "ipfs_accelerate_py/agent_supervisor",
+  "rules_note": "First matching RULES entry wins; refine before bulk moves if ownership wrong.",
+  "package_counts": {
+    "proof": 36,
+    "todo_daemon.loop": 26,
+    "planning": 15,
+    "objectives": 14,
+    "analysis": 13,
+    "self_improvement": 10,
+    "merge": 9,
+    "task_sources": 9,
+    "runtime": 8,
+    "context": 7,
+    "control": 6,
+    "rescue": 6,
+    "core": 5,
+    "validation": 5,
+    "integrations": 4,
+    "prompt": 4,
+    "todo_daemon.git": 4,
+    "todo_daemon.implementation": 4,
+    "(root)": 1,
+    "todo_daemon": 1
+  },
+  "entry_points": [
+    {
+      "config": "pyproject.toml",
+      "name": "ipfs-accelerate-agent-objective-daemon",
+      "target": "ipfs_accelerate_py.agent_supervisor.objective_daemon:main"
+    },
+    {
+      "config": "pyproject.toml",
+      "name": "ipfs-accelerate-agent-backlog-refinery",
+      "target": "ipfs_accelerate_py.agent_supervisor.backlog_refinery:main"
+    },
+    {
+      "config": "pyproject.toml",
+      "name": "ipfs-accelerate-agent-bundle-supervisor",
+      "target": "ipfs_accelerate_py.agent_supervisor.bundle_supervisor:main"
+    },
+    {
+      "config": "pyproject.toml",
+      "name": "ipfs-accelerate-agent-artifact-query",
+      "target": "ipfs_accelerate_py.agent_supervisor.artifact_store:main"
+    },
+    {
+      "config": "pyproject.toml",
+      "name": "ipfs-accelerate-agent-implementation-daemon",
+      "target": "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon:main"
+    },
+    {
+      "config": "pyproject.toml",
+      "name": "ipfs-accelerate-agent-implementation-supervisor",
+      "target": "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor:main"
+    },
+    {
+      "config": "pyproject.toml",
+      "name": "ipfs-accelerate-agent-merge-resolver",
+      "target": "ipfs_accelerate_py.agent_supervisor.merge_resolver:main"
+    },
+    {
+      "config": "pyproject.toml",
+      "name": "ipfs-accelerate-agent-llm-merge-resolver-fallback",
+      "target": "ipfs_accelerate_py.agent_supervisor.llm_merge_resolver_fallback:main"
+    },
+    {
+      "config": "setup.py",
+      "name": "ipfs-accelerate-agent-objective-daemon",
+      "target": "ipfs_accelerate_py.agent_supervisor.objective_daemon:main"
+    },
+    {
+      "config": "setup.py",
+      "name": "ipfs-accelerate-agent-backlog-refinery",
+      "target": "ipfs_accelerate_py.agent_supervisor.backlog_refinery:main"
+    },
+    {
+      "config": "setup.py",
+      "name": "ipfs-accelerate-agent-bundle-supervisor",
+      "target": "ipfs_accelerate_py.agent_supervisor.bundle_supervisor:main"
+    },
+    {
+      "config": "setup.py",
+      "name": "ipfs-accelerate-agent-artifact-query",
+      "target": "ipfs_accelerate_py.agent_supervisor.artifact_store:main"
+    },
+    {
+      "config": "setup.py",
+      "name": "ipfs-accelerate-agent-implementation-daemon",
+      "target": "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon:main"
+    },
+    {
+      "config": "setup.py",
+      "name": "ipfs-accelerate-agent-implementation-supervisor",
+      "target": "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor:main"
+    },
+    {
+      "config": "setup.py",
+      "name": "ipfs-accelerate-agent-merge-resolver",
+      "target": "ipfs_accelerate_py.agent_supervisor.merge_resolver:main"
+    },
+    {
+      "config": "setup.py",
+      "name": "ipfs-accelerate-agent-llm-merge-resolver-fallback",
+      "target": "ipfs_accelerate_py.agent_supervisor.llm_merge_resolver_fallback:main"
+    }
+  ],
+  "modules": [
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/__init__.py",
+      "module": "ipfs_accelerate_py.agent_supervisor",
+      "stem": "__init__",
+      "target_package": "(root)",
+      "bundle": "asref/public-api",
+      "action": "rewrite_exports",
+      "import_file_count": 0,
+      "import_files_sample": []
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/adaptive_goal_refiner.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.adaptive_goal_refiner",
+      "stem": "adaptive_goal_refiner",
+      "current_rel": "adaptive_goal_refiner.py",
+      "target_package": "objectives",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/objectives/adaptive_goal_refiner.py",
+      "bundle": "asref/objectives",
+      "action": "git_mv",
+      "import_file_count": 3,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_adaptive_goal_refiner.py",
+        "test/api/test_agent_supervisor_event_goal_refinement.py",
+        "test/api/test_agent_supervisor_formal_replanner.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/adaptive_planner.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.adaptive_planner",
+      "stem": "adaptive_planner",
+      "current_rel": "adaptive_planner.py",
+      "target_package": "planning",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/planning/adaptive_planner.py",
+      "bundle": "asref/planning",
+      "action": "git_mv",
+      "import_file_count": 3,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_adaptive_goal_refiner.py",
+        "test/api/test_agent_supervisor_adaptive_planner.py",
+        "test/api/test_agent_supervisor_and_or_planner.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/analysis_ast_index.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.analysis_ast_index",
+      "stem": "analysis_ast_index",
+      "current_rel": "analysis_ast_index.py",
+      "target_package": "analysis",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/analysis/analysis_ast_index.py",
+      "bundle": "asref/analysis",
+      "action": "git_mv",
+      "import_file_count": 1,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_analysis_ast_index.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/analysis_cache.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.analysis_cache",
+      "stem": "analysis_cache",
+      "current_rel": "analysis_cache.py",
+      "target_package": "analysis",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/analysis/analysis_cache.py",
+      "bundle": "asref/analysis",
+      "action": "git_mv",
+      "import_file_count": 4,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_analysis_cache.py",
+        "test/api/test_agent_supervisor_analysis_consensus.py",
+        "test/api/test_agent_supervisor_analysis_pipeline.py",
+        "test/api/test_agent_supervisor_cache_coordinator.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/analysis_consensus.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.analysis_consensus",
+      "stem": "analysis_consensus",
+      "current_rel": "analysis_consensus.py",
+      "target_package": "analysis",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/analysis/analysis_consensus.py",
+      "bundle": "asref/analysis",
+      "action": "git_mv",
+      "import_file_count": 1,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_analysis_consensus.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/analysis_contracts.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.analysis_contracts",
+      "stem": "analysis_contracts",
+      "current_rel": "analysis_contracts.py",
+      "target_package": "analysis",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/analysis/analysis_contracts.py",
+      "bundle": "asref/analysis",
+      "action": "git_mv",
+      "import_file_count": 1,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_analysis_contracts.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/analysis_operation_registry.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.analysis_operation_registry",
+      "stem": "analysis_operation_registry",
+      "current_rel": "analysis_operation_registry.py",
+      "target_package": "analysis",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/analysis/analysis_operation_registry.py",
+      "bundle": "asref/analysis",
+      "action": "git_mv",
+      "import_file_count": 1,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_analysis_operation_registry.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/analysis_pipeline.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.analysis_pipeline",
+      "stem": "analysis_pipeline",
+      "current_rel": "analysis_pipeline.py",
+      "target_package": "analysis",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/analysis/analysis_pipeline.py",
+      "bundle": "asref/analysis",
+      "action": "git_mv",
+      "import_file_count": 2,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_analysis_consensus.py",
+        "test/api/test_agent_supervisor_analysis_pipeline.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/analysis_retrieval.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.analysis_retrieval",
+      "stem": "analysis_retrieval",
+      "current_rel": "analysis_retrieval.py",
+      "target_package": "analysis",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/analysis/analysis_retrieval.py",
+      "bundle": "asref/analysis",
+      "action": "git_mv",
+      "import_file_count": 4,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_analysis_retrieval.py",
+        "test/api/test_agent_supervisor_evidence_value.py",
+        "test/api/test_agent_supervisor_ipfs_datasets_analysis_provider.py",
+        "test/api/test_agent_supervisor_proof_directed_retrieval.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/analysis_transport.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.analysis_transport",
+      "stem": "analysis_transport",
+      "current_rel": "analysis_transport.py",
+      "target_package": "analysis",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/analysis/analysis_transport.py",
+      "bundle": "asref/analysis",
+      "action": "git_mv",
+      "import_file_count": 3,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_analysis_operation_registry.py",
+        "test/api/test_agent_supervisor_analysis_transport.py",
+        "test/api/test_agent_supervisor_ir_registry.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/analyzer_health.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.analyzer_health",
+      "stem": "analyzer_health",
+      "current_rel": "analyzer_health.py",
+      "target_package": "analysis",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/analysis/analyzer_health.py",
+      "bundle": "asref/analysis",
+      "action": "git_mv",
+      "import_file_count": 8,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_adaptive_goal_refiner.py",
+        "test/api/test_agent_supervisor_analysis_escalation.py",
+        "test/api/test_agent_supervisor_analysis_pipeline.py",
+        "test/api/test_agent_supervisor_analyzer_health.py",
+        "test/api/test_agent_supervisor_backlog_refinery.py",
+        "test/api/test_agent_supervisor_control_lifecycle.py",
+        "test/api/test_agent_supervisor_control_plane.py",
+        "test/api/test_agent_supervisor_efficiency_metrics.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/artifact_store.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.artifact_store",
+      "stem": "artifact_store",
+      "current_rel": "artifact_store.py",
+      "target_package": "runtime",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/runtime/artifact_store.py",
+      "bundle": "asref/runtime",
+      "action": "git_mv",
+      "import_file_count": 9,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_artifact_store.py",
+        "test/api/test_agent_supervisor_bounded_persistence.py",
+        "test/api/test_agent_supervisor_code_evidence_graph.py",
+        "test/api/test_agent_supervisor_leanstral_proof_context.py",
+        "test/api/test_agent_supervisor_program_behavior.py",
+        "test/api/test_agent_supervisor_proof_attestation_store.py",
+        "test/api/test_agent_supervisor_proof_context.py",
+        "test/api/test_agent_supervisor_proof_metrics.py",
+        "test/api/test_agent_supervisor_scheduler.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/audit_scanner.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.audit_scanner",
+      "stem": "audit_scanner",
+      "current_rel": "audit_scanner.py",
+      "target_package": "analysis",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/analysis/audit_scanner.py",
+      "bundle": "asref/analysis",
+      "action": "git_mv",
+      "import_file_count": 3,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_analysis_escalation.py",
+        "test/api/test_agent_supervisor_analysis_pipeline.py",
+        "test/api/test_agent_supervisor_audit_scanner.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/authorization_logic.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.authorization_logic",
+      "stem": "authorization_logic",
+      "current_rel": "authorization_logic.py",
+      "target_package": "control",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/control/authorization_logic.py",
+      "bundle": "asref/control",
+      "action": "git_mv",
+      "import_file_count": 2,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_authorization_logic.py",
+        "test/api/test_agent_supervisor_control_transactions.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/backlog_refinery.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.backlog_refinery",
+      "stem": "backlog_refinery",
+      "current_rel": "backlog_refinery.py",
+      "target_package": "objectives",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/objectives/backlog_refinery.py",
+      "bundle": "asref/objectives",
+      "action": "git_mv",
+      "import_file_count": 10,
+      "import_files_sample": [
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py",
+        "test/api/test_agent_supervisor_analyzer_health.py",
+        "test/api/test_agent_supervisor_audit_scanner.py",
+        "test/api/test_agent_supervisor_backlog_refinery.py",
+        "test/api/test_agent_supervisor_incremental_runtime.py",
+        "test/api/test_agent_supervisor_self_improvement_refill.py",
+        "test/api/test_agent_supervisor_task_quality.py",
+        "test/api/test_agent_supervisor_todo_daemon_port.py",
+        "test/api/test_agent_supervisor_v2_successor_generation.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/bundle_optimizer.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.bundle_optimizer",
+      "stem": "bundle_optimizer",
+      "current_rel": "bundle_optimizer.py",
+      "target_package": "objectives",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/objectives/bundle_optimizer.py",
+      "bundle": "asref/objectives",
+      "action": "git_mv",
+      "import_file_count": 2,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_bundle_optimizer.py",
+        "test/api/test_agent_supervisor_bundle_optimizer_v2.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/bundle_supervisor.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.bundle_supervisor",
+      "stem": "bundle_supervisor",
+      "current_rel": "bundle_supervisor.py",
+      "target_package": "objectives",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/objectives/bundle_supervisor.py",
+      "bundle": "asref/objectives",
+      "action": "git_mv",
+      "import_file_count": 12,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_bundle_optimizer.py",
+        "test/api/test_agent_supervisor_bundle_plan_cache.py",
+        "test/api/test_agent_supervisor_conflict_graph.py",
+        "test/api/test_agent_supervisor_distributed_lanes.py",
+        "test/api/test_agent_supervisor_lease_coordination.py",
+        "test/api/test_agent_supervisor_objective_graph.py",
+        "test/api/test_agent_supervisor_planner.py",
+        "test/api/test_agent_supervisor_resource_scheduler.py",
+        "test/api/test_agent_supervisor_scheduler.py",
+        "test/api/test_agent_supervisor_scheduler_metrics.py",
+        "test/api/test_agent_supervisor_task_attempt_limit.py",
+        "test/api/test_agent_supervisor_todo_daemon_port.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/cache_coordinator.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.cache_coordinator",
+      "stem": "cache_coordinator",
+      "current_rel": "cache_coordinator.py",
+      "target_package": "analysis",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/analysis/cache_coordinator.py",
+      "bundle": "asref/analysis",
+      "action": "git_mv",
+      "import_file_count": 2,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_cache_coordinator.py",
+        "test/api/test_agent_supervisor_distributed_singleflight.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/checkout_lock.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.checkout_lock",
+      "stem": "checkout_lock",
+      "current_rel": "checkout_lock.py",
+      "target_package": "merge",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/merge/checkout_lock.py",
+      "bundle": "asref/merge",
+      "action": "git_mv",
+      "import_file_count": 3,
+      "import_files_sample": [
+        "ipfs_accelerate_py/agent_supervisor/backlog_refinery.py",
+        "test/api/test_agent_supervisor_implementation_daemon_runner.py",
+        "test/api/test_agent_supervisor_implementation_protected_paths.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/code_evidence_graph.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.code_evidence_graph",
+      "stem": "code_evidence_graph",
+      "current_rel": "code_evidence_graph.py",
+      "target_package": "analysis",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/analysis/code_evidence_graph.py",
+      "bundle": "asref/analysis",
+      "action": "git_mv",
+      "import_file_count": 8,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_analysis_retrieval.py",
+        "test/api/test_agent_supervisor_code_evidence_graph.py",
+        "test/api/test_agent_supervisor_hermetic_validation.py",
+        "test/api/test_agent_supervisor_leanstral_proof_context.py",
+        "test/api/test_agent_supervisor_post_merge_evidence.py",
+        "test/api/test_agent_supervisor_proof_context.py",
+        "test/api/test_agent_supervisor_semantic_dependency_graph.py",
+        "test/api/test_agent_supervisor_validation_dag.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/code_proof_obligations.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.code_proof_obligations",
+      "stem": "code_proof_obligations",
+      "current_rel": "code_proof_obligations.py",
+      "target_package": "proof",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/proof/code_proof_obligations.py",
+      "bundle": "asref/proof",
+      "action": "git_mv",
+      "import_file_count": 8,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_code_proof_scopes.py",
+        "test/api/test_agent_supervisor_proof_goal_completion.py",
+        "test/api/test_agent_supervisor_proof_obligation_templates.py",
+        "test/api/test_agent_supervisor_proposal_validation.py",
+        "test/api/test_agent_supervisor_scope_adjudication.py",
+        "test/api/test_agent_supervisor_semantic_validation_pipeline.py",
+        "test/api/test_agent_supervisor_untrusted_proposal.py",
+        "test/api/test_agent_supervisor_validation_dag.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/codex_failure_policy.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.codex_failure_policy",
+      "stem": "codex_failure_policy",
+      "current_rel": "codex_failure_policy.py",
+      "target_package": "rescue",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/rescue/codex_failure_policy.py",
+      "bundle": "asref/rescue",
+      "action": "git_mv",
+      "import_file_count": 1,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_codex_failure_policy.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/conflict_graph.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.conflict_graph",
+      "stem": "conflict_graph",
+      "current_rel": "conflict_graph.py",
+      "target_package": "core",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/core/conflict_graph.py",
+      "bundle": "asref/core",
+      "action": "git_mv",
+      "import_file_count": 6,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_analysis_ast_index.py",
+        "test/api/test_agent_supervisor_analysis_pipeline.py",
+        "test/api/test_agent_supervisor_bundle_optimizer.py",
+        "test/api/test_agent_supervisor_code_proof_scopes.py",
+        "test/api/test_agent_supervisor_conflict_graph.py",
+        "test/api/test_agent_supervisor_goal_coverage.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/context_compiler.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.context_compiler",
+      "stem": "context_compiler",
+      "current_rel": "context_compiler.py",
+      "target_package": "context",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/context/context_compiler.py",
+      "bundle": "asref/context",
+      "action": "git_mv",
+      "import_file_count": 7,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_context_compiler.py",
+        "test/api/test_agent_supervisor_context_delta.py",
+        "test/api/test_agent_supervisor_decision_context.py",
+        "test/api/test_agent_supervisor_decision_context_delta.py",
+        "test/api/test_agent_supervisor_efficiency_metrics.py",
+        "test/api/test_agent_supervisor_evidence_value.py",
+        "test/api/test_agent_supervisor_prefix_context.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/context_contracts.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.context_contracts",
+      "stem": "context_contracts",
+      "current_rel": "context_contracts.py",
+      "target_package": "context",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/context/context_contracts.py",
+      "bundle": "asref/context",
+      "action": "git_mv",
+      "import_file_count": 8,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_context_compiler.py",
+        "test/api/test_agent_supervisor_context_delta.py",
+        "test/api/test_agent_supervisor_control_contracts.py",
+        "test/api/test_agent_supervisor_decision_context.py",
+        "test/api/test_agent_supervisor_efficiency_metrics.py",
+        "test/api/test_agent_supervisor_evidence_value.py",
+        "test/api/test_agent_supervisor_prefix_context.py",
+        "test/api/test_agent_supervisor_todo_daemon_port.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/control_cli.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.control_cli",
+      "stem": "control_cli",
+      "current_rel": "control_cli.py",
+      "target_package": "control",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/control/control_cli.py",
+      "bundle": "asref/control",
+      "action": "git_mv",
+      "import_file_count": 6,
+      "import_files_sample": [
+        "ipfs_accelerate_py/cli.py",
+        "test/api/test_agent_supervisor_control_conformance_v2.py",
+        "test/api/test_agent_supervisor_prompt_cli.py",
+        "test/api/test_agent_supervisor_prompt_control_conformance.py",
+        "test/mcp_server/test_agent_supervisor_tools.py",
+        "test/test_unified_cli_agent_supervisor.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/control_contracts.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.control_contracts",
+      "stem": "control_contracts",
+      "current_rel": "control_contracts.py",
+      "target_package": "control",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/control/control_contracts.py",
+      "bundle": "asref/control",
+      "action": "git_mv",
+      "import_file_count": 16,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_control_catalog.py",
+        "test/api/test_agent_supervisor_control_conformance_v2.py",
+        "test/api/test_agent_supervisor_control_contracts.py",
+        "test/api/test_agent_supervisor_control_lifecycle.py",
+        "test/api/test_agent_supervisor_control_plane.py",
+        "test/api/test_agent_supervisor_control_transactions.py",
+        "test/api/test_agent_supervisor_event_driven_runtime.py",
+        "test/api/test_agent_supervisor_lifecycle_orchestrator.py",
+        "test/api/test_agent_supervisor_prompt_cli.py",
+        "test/api/test_agent_supervisor_prompt_control_catalog.py",
+        "test/api/test_agent_supervisor_prompt_control_conformance.py",
+        "test/api/test_agent_supervisor_prompt_mcp.py",
+        "test/api/test_agent_supervisor_prompt_workflow_service.py",
+        "test/mcp_server/test_agent_supervisor_tools.py",
+        "test/mcp_server/test_server.py",
+        "test/test_unified_cli_agent_supervisor.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/control_plane.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.control_plane",
+      "stem": "control_plane",
+      "current_rel": "control_plane.py",
+      "target_package": "control",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/control/control_plane.py",
+      "bundle": "asref/control",
+      "action": "git_mv",
+      "import_file_count": 13,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_control_conformance_v2.py",
+        "test/api/test_agent_supervisor_control_lifecycle.py",
+        "test/api/test_agent_supervisor_control_plane.py",
+        "test/api/test_agent_supervisor_control_transactions.py",
+        "test/api/test_agent_supervisor_lifecycle_orchestrator.py",
+        "test/api/test_agent_supervisor_prompt_cli.py",
+        "test/api/test_agent_supervisor_prompt_control_catalog.py",
+        "test/api/test_agent_supervisor_prompt_control_conformance.py",
+        "test/api/test_agent_supervisor_prompt_mcp.py",
+        "test/api/test_agent_supervisor_runtime_temporal_monitor.py",
+        "test/api/test_agent_supervisor_supervisor_watchdog.py",
+        "test/mcp_server/test_agent_supervisor_tools.py",
+        "test/test_unified_cli_agent_supervisor.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/dataset_store.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.dataset_store",
+      "stem": "dataset_store",
+      "current_rel": "dataset_store.py",
+      "target_package": "task_sources",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/task_sources/dataset_store.py",
+      "bundle": "asref/task-sources",
+      "action": "git_mv",
+      "import_file_count": 4,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_audit_scanner.py",
+        "test/api/test_agent_supervisor_backlog_refinery.py",
+        "test/api/test_agent_supervisor_incremental_runtime.py",
+        "test/api/test_agent_supervisor_proof_scope_index.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/decision_context.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.decision_context",
+      "stem": "decision_context",
+      "current_rel": "decision_context.py",
+      "target_package": "context",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/context/decision_context.py",
+      "bundle": "asref/context",
+      "action": "git_mv",
+      "import_file_count": 3,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_decision_context.py",
+        "test/api/test_agent_supervisor_decision_context_delta.py",
+        "test/api/test_agent_supervisor_execution_permit.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/decision_contracts.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.decision_contracts",
+      "stem": "decision_contracts",
+      "current_rel": "decision_contracts.py",
+      "target_package": "context",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/context/decision_contracts.py",
+      "bundle": "asref/context",
+      "action": "git_mv",
+      "import_file_count": 7,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_decision_context.py",
+        "test/api/test_agent_supervisor_decision_contracts.py",
+        "test/api/test_agent_supervisor_decision_runtime_e2e.py",
+        "test/api/test_agent_supervisor_execution_permit.py",
+        "test/api/test_agent_supervisor_ir_registry.py",
+        "test/api/test_agent_supervisor_legal_constraints.py",
+        "test/api/test_agent_supervisor_proof_directed_retrieval.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/decision_runtime.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.decision_runtime",
+      "stem": "decision_runtime",
+      "current_rel": "decision_runtime.py",
+      "target_package": "context",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/context/decision_runtime.py",
+      "bundle": "asref/context",
+      "action": "git_mv",
+      "import_file_count": 2,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_decision_runtime_e2e.py",
+        "test/api/test_agent_supervisor_decision_runtime_invalidation.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/decision_runtime_benchmark.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.decision_runtime_benchmark",
+      "stem": "decision_runtime_benchmark",
+      "current_rel": "decision_runtime_benchmark.py",
+      "target_package": "context",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/context/decision_runtime_benchmark.py",
+      "bundle": "asref/context",
+      "action": "git_mv",
+      "import_file_count": 4,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_decision_runtime_adversarial.py",
+        "test/api/test_agent_supervisor_decision_runtime_benchmark.py",
+        "test/api/test_agent_supervisor_decision_runtime_public_api.py",
+        "test/api/test_agent_supervisor_decision_runtime_rollout.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/decision_runtime_rollout.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.decision_runtime_rollout",
+      "stem": "decision_runtime_rollout",
+      "current_rel": "decision_runtime_rollout.py",
+      "target_package": "context",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/context/decision_runtime_rollout.py",
+      "bundle": "asref/context",
+      "action": "git_mv",
+      "import_file_count": 2,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_decision_runtime_public_api.py",
+        "test/api/test_agent_supervisor_decision_runtime_rollout.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/duckdb_state.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.duckdb_state",
+      "stem": "duckdb_state",
+      "current_rel": "duckdb_state.py",
+      "target_package": "task_sources",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/task_sources/duckdb_state.py",
+      "bundle": "asref/task-sources",
+      "action": "git_mv",
+      "import_file_count": 1,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_duckdb_state.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/duckdb_task_source.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.duckdb_task_source",
+      "stem": "duckdb_task_source",
+      "current_rel": "duckdb_task_source.py",
+      "target_package": "task_sources",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/task_sources/duckdb_task_source.py",
+      "bundle": "asref/task-sources",
+      "action": "git_mv",
+      "import_file_count": 3,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_duckdb_task_source.py",
+        "test/api/test_agent_supervisor_task_source_e2e.py",
+        "test/api/test_agent_supervisor_task_source_parity.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/event_log.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.event_log",
+      "stem": "event_log",
+      "current_rel": "event_log.py",
+      "target_package": "runtime",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/runtime/event_log.py",
+      "bundle": "asref/runtime",
+      "action": "git_mv",
+      "import_file_count": 5,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_bounded_persistence.py",
+        "test/api/test_agent_supervisor_decision_runtime_invalidation.py",
+        "test/api/test_agent_supervisor_event_driven_runtime.py",
+        "test/api/test_agent_supervisor_fault_recovery_v2.py",
+        "test/api/test_agent_supervisor_scheduler_metrics.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/execution_permit.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.execution_permit",
+      "stem": "execution_permit",
+      "current_rel": "execution_permit.py",
+      "target_package": "control",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/control/execution_permit.py",
+      "bundle": "asref/control",
+      "action": "git_mv",
+      "import_file_count": 1,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_execution_permit.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/external_completion.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.external_completion",
+      "stem": "external_completion",
+      "current_rel": "external_completion.py",
+      "target_package": "core",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/core/external_completion.py",
+      "bundle": "asref/core",
+      "action": "git_mv",
+      "import_file_count": 1,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_external_completion.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/formal_counterexamples.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.formal_counterexamples",
+      "stem": "formal_counterexamples",
+      "current_rel": "formal_counterexamples.py",
+      "target_package": "proof",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/proof/formal_counterexamples.py",
+      "bundle": "asref/proof",
+      "action": "git_mv",
+      "import_file_count": 2,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_formal_counterexamples.py",
+        "test/api/test_agent_supervisor_formal_replanner.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/formal_logic_vocabulary.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.formal_logic_vocabulary",
+      "stem": "formal_logic_vocabulary",
+      "current_rel": "formal_logic_vocabulary.py",
+      "target_package": "proof",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/proof/formal_logic_vocabulary.py",
+      "bundle": "asref/proof",
+      "action": "git_mv",
+      "import_file_count": 7,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_formal_plan_compiler.py",
+        "test/api/test_agent_supervisor_formal_plan_validator.py",
+        "test/api/test_agent_supervisor_formal_planning_contracts.py",
+        "test/api/test_agent_supervisor_goal_refinement_verification.py",
+        "test/api/test_agent_supervisor_leanstral_goal_benchmark.py",
+        "test/api/test_agent_supervisor_leanstral_goal_lifecycle_e2e.py",
+        "test/api/test_agent_supervisor_prover_conformance.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/formal_plan_compiler.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.formal_plan_compiler",
+      "stem": "formal_plan_compiler",
+      "current_rel": "formal_plan_compiler.py",
+      "target_package": "planning",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/planning/formal_plan_compiler.py",
+      "bundle": "asref/planning",
+      "action": "git_mv",
+      "import_file_count": 6,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_duckdb_task_source.py",
+        "test/api/test_agent_supervisor_formal_plan_compiler.py",
+        "test/api/test_agent_supervisor_formal_plan_context.py",
+        "test/api/test_agent_supervisor_formal_plan_validator.py",
+        "test/api/test_agent_supervisor_formal_replanner.py",
+        "test/api/test_agent_supervisor_prompt_plan_admission.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/formal_plan_conformance.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.formal_plan_conformance",
+      "stem": "formal_plan_conformance",
+      "current_rel": "formal_plan_conformance.py",
+      "target_package": "planning",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/planning/formal_plan_conformance.py",
+      "bundle": "asref/planning",
+      "action": "git_mv",
+      "import_file_count": 3,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_formal_plan_conformance.py",
+        "test/api/test_agent_supervisor_post_merge_evidence.py",
+        "test/api/test_agent_supervisor_semantic_validation_pipeline.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/formal_plan_context.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.formal_plan_context",
+      "stem": "formal_plan_context",
+      "current_rel": "formal_plan_context.py",
+      "target_package": "planning",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/planning/formal_plan_context.py",
+      "bundle": "asref/planning",
+      "action": "git_mv",
+      "import_file_count": 1,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_formal_plan_context.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/formal_plan_validator.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.formal_plan_validator",
+      "stem": "formal_plan_validator",
+      "current_rel": "formal_plan_validator.py",
+      "target_package": "planning",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/planning/formal_plan_validator.py",
+      "bundle": "asref/planning",
+      "action": "git_mv",
+      "import_file_count": 4,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_formal_plan_context.py",
+        "test/api/test_agent_supervisor_formal_plan_validator.py",
+        "test/api/test_agent_supervisor_formal_replanner.py",
+        "test/api/test_agent_supervisor_proof_carrying_planner_e2e.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/formal_planning_adversarial.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.formal_planning_adversarial",
+      "stem": "formal_planning_adversarial",
+      "current_rel": "formal_planning_adversarial.py",
+      "target_package": "planning",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/planning/formal_planning_adversarial.py",
+      "bundle": "asref/planning",
+      "action": "git_mv",
+      "import_file_count": 1,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_formal_planning_adversarial.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/formal_planning_contracts.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.formal_planning_contracts",
+      "stem": "formal_planning_contracts",
+      "current_rel": "formal_planning_contracts.py",
+      "target_package": "planning",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/planning/formal_planning_contracts.py",
+      "bundle": "asref/planning",
+      "action": "git_mv",
+      "import_file_count": 9,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_adaptive_goal_refiner.py",
+        "test/api/test_agent_supervisor_event_goal_refinement.py",
+        "test/api/test_agent_supervisor_formal_plan_compiler.py",
+        "test/api/test_agent_supervisor_formal_plan_conformance.py",
+        "test/api/test_agent_supervisor_formal_plan_validator.py",
+        "test/api/test_agent_supervisor_formal_planning_contracts.py",
+        "test/api/test_agent_supervisor_goal_refinement_verification.py",
+        "test/api/test_agent_supervisor_leanstral_goal_lifecycle_e2e.py",
+        "test/api/test_agent_supervisor_proof_goal_completion.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/formal_planning_metrics.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.formal_planning_metrics",
+      "stem": "formal_planning_metrics",
+      "current_rel": "formal_planning_metrics.py",
+      "target_package": "planning",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/planning/formal_planning_metrics.py",
+      "bundle": "asref/planning",
+      "action": "git_mv",
+      "import_file_count": 1,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_formal_planning_benchmarks.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/formal_planning_rollout.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.formal_planning_rollout",
+      "stem": "formal_planning_rollout",
+      "current_rel": "formal_planning_rollout.py",
+      "target_package": "planning",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/planning/formal_planning_rollout.py",
+      "bundle": "asref/planning",
+      "action": "git_mv",
+      "import_file_count": 1,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_formal_planning_benchmarks.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/formal_replanner.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.formal_replanner",
+      "stem": "formal_replanner",
+      "current_rel": "formal_replanner.py",
+      "target_package": "planning",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/planning/formal_replanner.py",
+      "bundle": "asref/planning",
+      "action": "git_mv",
+      "import_file_count": 4,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_adaptive_goal_refiner.py",
+        "test/api/test_agent_supervisor_adaptive_planner.py",
+        "test/api/test_agent_supervisor_delta_replanning.py",
+        "test/api/test_agent_supervisor_formal_replanner.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/formal_verification_cache.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.formal_verification_cache",
+      "stem": "formal_verification_cache",
+      "current_rel": "formal_verification_cache.py",
+      "target_package": "proof",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/proof/formal_verification_cache.py",
+      "bundle": "asref/proof",
+      "action": "git_mv",
+      "import_file_count": 3,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_formal_verification_cache.py",
+        "test/api/test_agent_supervisor_proof_adversarial.py",
+        "test/api/test_agent_supervisor_proof_attestation_store.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/formal_verification_capabilities.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.formal_verification_capabilities",
+      "stem": "formal_verification_capabilities",
+      "current_rel": "formal_verification_capabilities.py",
+      "target_package": "proof",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/proof/formal_verification_capabilities.py",
+      "bundle": "asref/proof",
+      "action": "git_mv",
+      "import_file_count": 4,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_formal_verification_capabilities.py",
+        "test/api/test_agent_supervisor_formal_verification_provider.py",
+        "test/api/test_agent_supervisor_leanstral_proof_provider.py",
+        "test/api/test_agent_supervisor_proof_attestation_backends.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/formal_verification_contracts.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.formal_verification_contracts",
+      "stem": "formal_verification_contracts",
+      "current_rel": "formal_verification_contracts.py",
+      "target_package": "proof",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/proof/formal_verification_contracts.py",
+      "bundle": "asref/proof",
+      "action": "git_mv",
+      "import_file_count": 40,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_code_proof_scopes.py",
+        "test/api/test_agent_supervisor_control_conformance_v2.py",
+        "test/api/test_agent_supervisor_duckdb_task_source.py",
+        "test/api/test_agent_supervisor_formal_planning_adversarial.py",
+        "test/api/test_agent_supervisor_formal_planning_benchmarks.py",
+        "test/api/test_agent_supervisor_formal_planning_contracts.py",
+        "test/api/test_agent_supervisor_formal_verification_cache.py",
+        "test/api/test_agent_supervisor_formal_verification_contracts.py",
+        "test/api/test_agent_supervisor_formal_verification_policy.py",
+        "test/api/test_agent_supervisor_formal_verification_provider.py",
+        "test/api/test_agent_supervisor_goal_development_contracts.py",
+        "test/api/test_agent_supervisor_goal_refinement_verification.py",
+        "test/api/test_agent_supervisor_ipfs_datasets_logic_provider.py",
+        "test/api/test_agent_supervisor_ir_constraint_compiler.py",
+        "test/api/test_agent_supervisor_kernel_verification.py",
+        "test/api/test_agent_supervisor_leanstral_goal_benchmark.py",
+        "test/api/test_agent_supervisor_leanstral_goal_development.py",
+        "test/api/test_agent_supervisor_leanstral_goal_lifecycle_e2e.py",
+        "test/api/test_agent_supervisor_leanstral_proof_context.py",
+        "test/api/test_agent_supervisor_leanstral_proof_gate.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/formal_verification_policy.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.formal_verification_policy",
+      "stem": "formal_verification_policy",
+      "current_rel": "formal_verification_policy.py",
+      "target_package": "proof",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/proof/formal_verification_policy.py",
+      "bundle": "asref/proof",
+      "action": "git_mv",
+      "import_file_count": 7,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_formal_planning_benchmarks.py",
+        "test/api/test_agent_supervisor_formal_verification_policy.py",
+        "test/api/test_agent_supervisor_proof_adversarial.py",
+        "test/api/test_agent_supervisor_proof_fallbacks.py",
+        "test/api/test_agent_supervisor_proof_merge_gate.py",
+        "test/api/test_agent_supervisor_proof_rollout.py",
+        "test/api/test_agent_supervisor_proof_workflow_e2e.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/formal_verification_provider.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.formal_verification_provider",
+      "stem": "formal_verification_provider",
+      "current_rel": "formal_verification_provider.py",
+      "target_package": "proof",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/proof/formal_verification_provider.py",
+      "bundle": "asref/proof",
+      "action": "git_mv",
+      "import_file_count": 5,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_formal_verification_provider.py",
+        "test/api/test_agent_supervisor_ipfs_datasets_logic_provider.py",
+        "test/api/test_agent_supervisor_leanstral_goal_development.py",
+        "test/api/test_agent_supervisor_leanstral_proof_context.py",
+        "test/api/test_agent_supervisor_leanstral_proof_provider.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/git_gc.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.git_gc",
+      "stem": "git_gc",
+      "current_rel": "git_gc.py",
+      "target_package": "merge",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/merge/git_gc.py",
+      "bundle": "asref/merge",
+      "action": "git_mv",
+      "import_file_count": 3,
+      "import_files_sample": [
+        "ipfs_accelerate_py/agent_supervisor/git_gc.py",
+        "test/api/test_agent_supervisor_todo_daemon_port.py",
+        "tests/test_agent_supervisor_git_gc.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/goal_completion.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.goal_completion",
+      "stem": "goal_completion",
+      "current_rel": "goal_completion.py",
+      "target_package": "objectives",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/objectives/goal_completion.py",
+      "bundle": "asref/objectives",
+      "action": "git_mv",
+      "import_file_count": 20,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_adaptive_goal_refiner.py",
+        "test/api/test_agent_supervisor_adaptive_planner.py",
+        "test/api/test_agent_supervisor_analysis_pipeline.py",
+        "test/api/test_agent_supervisor_bundle_optimizer.py",
+        "test/api/test_agent_supervisor_control_lifecycle.py",
+        "test/api/test_agent_supervisor_control_plane.py",
+        "test/api/test_agent_supervisor_efficiency_metrics.py",
+        "test/api/test_agent_supervisor_external_completion.py",
+        "test/api/test_agent_supervisor_formal_plan_conformance.py",
+        "test/api/test_agent_supervisor_goal_completion.py",
+        "test/api/test_agent_supervisor_goal_lifecycle_e2e.py",
+        "test/api/test_agent_supervisor_objective_evidence_policy.py",
+        "test/api/test_agent_supervisor_objective_graph.py",
+        "test/api/test_agent_supervisor_objective_task_janitor.py",
+        "test/api/test_agent_supervisor_parallel_acceptance_flow.py",
+        "test/api/test_agent_supervisor_proof_goal_completion.py",
+        "test/api/test_agent_supervisor_proof_invalidation.py",
+        "test/api/test_agent_supervisor_self_improvement_e2e.py",
+        "test/api/test_agent_supervisor_self_improvement_refill.py",
+        "test/api/test_agent_supervisor_semantic_validation_pipeline.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/goal_coverage.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.goal_coverage",
+      "stem": "goal_coverage",
+      "current_rel": "goal_coverage.py",
+      "target_package": "objectives",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/objectives/goal_coverage.py",
+      "bundle": "asref/objectives",
+      "action": "git_mv",
+      "import_file_count": 8,
+      "import_files_sample": [
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py",
+        "test/api/test_agent_supervisor_adaptive_goal_refiner.py",
+        "test/api/test_agent_supervisor_control_lifecycle.py",
+        "test/api/test_agent_supervisor_control_plane.py",
+        "test/api/test_agent_supervisor_efficiency_metrics.py",
+        "test/api/test_agent_supervisor_goal_coverage.py",
+        "test/api/test_agent_supervisor_goal_generation.py",
+        "test/api/test_agent_supervisor_semantic_validation_pipeline.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/goal_development_contracts.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.goal_development_contracts",
+      "stem": "goal_development_contracts",
+      "current_rel": "goal_development_contracts.py",
+      "target_package": "objectives",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/objectives/goal_development_contracts.py",
+      "bundle": "asref/objectives",
+      "action": "git_mv",
+      "import_file_count": 4,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_goal_development_contracts.py",
+        "test/api/test_agent_supervisor_leanstral_goal_benchmark.py",
+        "test/api/test_agent_supervisor_leanstral_goal_development.py",
+        "test/api/test_agent_supervisor_leanstral_goal_lifecycle_e2e.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/goal_quality.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.goal_quality",
+      "stem": "goal_quality",
+      "current_rel": "goal_quality.py",
+      "target_package": "objectives",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/objectives/goal_quality.py",
+      "bundle": "asref/objectives",
+      "action": "git_mv",
+      "import_file_count": 2,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_and_or_planner.py",
+        "test/api/test_agent_supervisor_goal_quality.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/goal_refinement_verification.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.goal_refinement_verification",
+      "stem": "goal_refinement_verification",
+      "current_rel": "goal_refinement_verification.py",
+      "target_package": "objectives",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/objectives/goal_refinement_verification.py",
+      "bundle": "asref/objectives",
+      "action": "git_mv",
+      "import_file_count": 4,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_adaptive_goal_refiner.py",
+        "test/api/test_agent_supervisor_event_goal_refinement.py",
+        "test/api/test_agent_supervisor_goal_refinement_verification.py",
+        "test/api/test_agent_supervisor_leanstral_goal_lifecycle_e2e.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/hyperproperty_verification.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.hyperproperty_verification",
+      "stem": "hyperproperty_verification",
+      "current_rel": "hyperproperty_verification.py",
+      "target_package": "proof",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/proof/hyperproperty_verification.py",
+      "bundle": "asref/proof",
+      "action": "git_mv",
+      "import_file_count": 1,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_hyperproperty_verification.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/implementation_daemon_runner.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.implementation_daemon_runner",
+      "stem": "implementation_daemon_runner",
+      "current_rel": "implementation_daemon_runner.py",
+      "target_package": "todo_daemon.implementation",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation/implementation_daemon_runner.py",
+      "bundle": "asref/todo-daemon",
+      "action": "git_mv",
+      "import_file_count": 4,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_event_driven_runtime.py",
+        "test/api/test_agent_supervisor_implementation_daemon_runner.py",
+        "test/api/test_agent_supervisor_implementation_protected_paths.py",
+        "test/api/test_agent_supervisor_todo_daemon_port.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/implementation_supervisor_runner.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.implementation_supervisor_runner",
+      "stem": "implementation_supervisor_runner",
+      "current_rel": "implementation_supervisor_runner.py",
+      "target_package": "todo_daemon.implementation",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation/implementation_supervisor_runner.py",
+      "bundle": "asref/todo-daemon",
+      "action": "git_mv",
+      "import_file_count": 4,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_goal_lifecycle_e2e.py",
+        "test/api/test_agent_supervisor_implementation_supervisor_runner.py",
+        "test/api/test_agent_supervisor_objective_graph.py",
+        "test/api/test_agent_supervisor_todo_daemon_port.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/intent_constraint_adapter.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.intent_constraint_adapter",
+      "stem": "intent_constraint_adapter",
+      "current_rel": "intent_constraint_adapter.py",
+      "target_package": "proof",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/proof/intent_constraint_adapter.py",
+      "bundle": "asref/proof",
+      "action": "git_mv",
+      "import_file_count": 3,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_intent_constraints.py",
+        "test/api/test_agent_supervisor_ir_constraint_compiler.py",
+        "test/api/test_agent_supervisor_prompt_plan_admission.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/interface_contract_codegen.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.interface_contract_codegen",
+      "stem": "interface_contract_codegen",
+      "current_rel": "interface_contract_codegen.py",
+      "target_package": "proof",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/proof/interface_contract_codegen.py",
+      "bundle": "asref/proof",
+      "action": "git_mv",
+      "import_file_count": 1,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_interface_contract_codegen.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/ipfs_datasets_analysis_provider.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.ipfs_datasets_analysis_provider",
+      "stem": "ipfs_datasets_analysis_provider",
+      "current_rel": "ipfs_datasets_analysis_provider.py",
+      "target_package": "integrations",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/integrations/ipfs_datasets_analysis_provider.py",
+      "bundle": "asref/integrations",
+      "action": "git_mv",
+      "import_file_count": 2,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_analysis_pipeline.py",
+        "test/api/test_agent_supervisor_ipfs_datasets_analysis_provider.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/ipfs_datasets_logic_provider.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.ipfs_datasets_logic_provider",
+      "stem": "ipfs_datasets_logic_provider",
+      "current_rel": "ipfs_datasets_logic_provider.py",
+      "target_package": "integrations",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/integrations/ipfs_datasets_logic_provider.py",
+      "bundle": "asref/integrations",
+      "action": "git_mv",
+      "import_file_count": 2,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_analysis_operation_registry.py",
+        "test/api/test_agent_supervisor_ipfs_datasets_logic_provider.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/ir_adapters.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.ir_adapters",
+      "stem": "ir_adapters",
+      "current_rel": "ir_adapters.py",
+      "target_package": "proof",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/proof/ir_adapters.py",
+      "bundle": "asref/proof",
+      "action": "git_mv",
+      "import_file_count": 4,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_ir_adapters.py",
+        "test/api/test_agent_supervisor_ir_constraint_compiler.py",
+        "test/api/test_agent_supervisor_legal_constraints.py",
+        "test/api/test_agent_supervisor_security_constraints.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/ir_constraint_compiler.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.ir_constraint_compiler",
+      "stem": "ir_constraint_compiler",
+      "current_rel": "ir_constraint_compiler.py",
+      "target_package": "proof",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/proof/ir_constraint_compiler.py",
+      "bundle": "asref/proof",
+      "action": "git_mv",
+      "import_file_count": 3,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_execution_permit.py",
+        "test/api/test_agent_supervisor_ir_constraint_compiler.py",
+        "test/api/test_agent_supervisor_prompt_plan_admission.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/ir_registry.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.ir_registry",
+      "stem": "ir_registry",
+      "current_rel": "ir_registry.py",
+      "target_package": "proof",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/proof/ir_registry.py",
+      "bundle": "asref/proof",
+      "action": "git_mv",
+      "import_file_count": 7,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_intent_constraints.py",
+        "test/api/test_agent_supervisor_ir_adapters.py",
+        "test/api/test_agent_supervisor_ir_constraint_compiler.py",
+        "test/api/test_agent_supervisor_ir_registry.py",
+        "test/api/test_agent_supervisor_legal_constraints.py",
+        "test/api/test_agent_supervisor_prompt_plan_admission.py",
+        "test/api/test_agent_supervisor_security_constraints.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/kernel_verification.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.kernel_verification",
+      "stem": "kernel_verification",
+      "current_rel": "kernel_verification.py",
+      "target_package": "proof",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/proof/kernel_verification.py",
+      "bundle": "asref/proof",
+      "action": "git_mv",
+      "import_file_count": 3,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_kernel_verification.py",
+        "test/api/test_agent_supervisor_leanstral_proof_gate.py",
+        "test/api/test_agent_supervisor_proof_adversarial.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/leanstral_goal_benchmark.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.leanstral_goal_benchmark",
+      "stem": "leanstral_goal_benchmark",
+      "current_rel": "leanstral_goal_benchmark.py",
+      "target_package": "proof",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/proof/leanstral_goal_benchmark.py",
+      "bundle": "asref/proof",
+      "action": "git_mv",
+      "import_file_count": 0,
+      "import_files_sample": []
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/leanstral_goal_development.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.leanstral_goal_development",
+      "stem": "leanstral_goal_development",
+      "current_rel": "leanstral_goal_development.py",
+      "target_package": "proof",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/proof/leanstral_goal_development.py",
+      "bundle": "asref/proof",
+      "action": "git_mv",
+      "import_file_count": 1,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_leanstral_goal_development.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/leanstral_goal_lifecycle.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.leanstral_goal_lifecycle",
+      "stem": "leanstral_goal_lifecycle",
+      "current_rel": "leanstral_goal_lifecycle.py",
+      "target_package": "proof",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/proof/leanstral_goal_lifecycle.py",
+      "bundle": "asref/proof",
+      "action": "git_mv",
+      "import_file_count": 0,
+      "import_files_sample": []
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/leanstral_proof_provider.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.leanstral_proof_provider",
+      "stem": "leanstral_proof_provider",
+      "current_rel": "leanstral_proof_provider.py",
+      "target_package": "proof",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/proof/leanstral_proof_provider.py",
+      "bundle": "asref/proof",
+      "action": "git_mv",
+      "import_file_count": 4,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_leanstral_goal_development.py",
+        "test/api/test_agent_supervisor_leanstral_proof_context.py",
+        "test/api/test_agent_supervisor_leanstral_proof_gate.py",
+        "test/api/test_agent_supervisor_leanstral_proof_provider.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/lease_coordination.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.lease_coordination",
+      "stem": "lease_coordination",
+      "current_rel": "lease_coordination.py",
+      "target_package": "merge",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/merge/lease_coordination.py",
+      "bundle": "asref/merge",
+      "action": "git_mv",
+      "import_file_count": 7,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_bundle_plan_cache.py",
+        "test/api/test_agent_supervisor_distributed_lanes.py",
+        "test/api/test_agent_supervisor_distributed_singleflight.py",
+        "test/api/test_agent_supervisor_lease_coordination.py",
+        "test/api/test_agent_supervisor_planner.py",
+        "test/api/test_agent_supervisor_resource_scheduler.py",
+        "test/api/test_agent_supervisor_scheduler.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/leased_lane.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.leased_lane",
+      "stem": "leased_lane",
+      "current_rel": "leased_lane.py",
+      "target_package": "merge",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/merge/leased_lane.py",
+      "bundle": "asref/merge",
+      "action": "git_mv",
+      "import_file_count": 2,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_resource_scheduler.py",
+        "test/api/test_agent_supervisor_scheduler.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/legal_constraint_adapter.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.legal_constraint_adapter",
+      "stem": "legal_constraint_adapter",
+      "current_rel": "legal_constraint_adapter.py",
+      "target_package": "proof",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/proof/legal_constraint_adapter.py",
+      "bundle": "asref/proof",
+      "action": "git_mv",
+      "import_file_count": 2,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_ir_constraint_compiler.py",
+        "test/api/test_agent_supervisor_legal_constraints.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/lifecycle_orchestrator.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.lifecycle_orchestrator",
+      "stem": "lifecycle_orchestrator",
+      "current_rel": "lifecycle_orchestrator.py",
+      "target_package": "control",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/control/lifecycle_orchestrator.py",
+      "bundle": "asref/control",
+      "action": "git_mv",
+      "import_file_count": 1,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_lifecycle_orchestrator.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/llm_merge_resolver_fallback.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.llm_merge_resolver_fallback",
+      "stem": "llm_merge_resolver_fallback",
+      "current_rel": "llm_merge_resolver_fallback.py",
+      "target_package": "integrations",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/integrations/llm_merge_resolver_fallback.py",
+      "bundle": "asref/integrations",
+      "action": "git_mv",
+      "import_file_count": 1,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_todo_daemon_port.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/logic_translation_validation.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.logic_translation_validation",
+      "stem": "logic_translation_validation",
+      "current_rel": "logic_translation_validation.py",
+      "target_package": "proof",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/proof/logic_translation_validation.py",
+      "bundle": "asref/proof",
+      "action": "git_mv",
+      "import_file_count": 1,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_prover_conformance.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/markdown_task_source.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.markdown_task_source",
+      "stem": "markdown_task_source",
+      "current_rel": "markdown_task_source.py",
+      "target_package": "task_sources",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/task_sources/markdown_task_source.py",
+      "bundle": "asref/task-sources",
+      "action": "git_mv",
+      "import_file_count": 4,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_markdown_task_source.py",
+        "test/api/test_agent_supervisor_task_source_e2e.py",
+        "test/api/test_agent_supervisor_task_source_parity.py",
+        "test/api/test_agent_supervisor_taskboard_store.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/merge_checkpoint.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.merge_checkpoint",
+      "stem": "merge_checkpoint",
+      "current_rel": "merge_checkpoint.py",
+      "target_package": "merge",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/merge/merge_checkpoint.py",
+      "bundle": "asref/merge",
+      "action": "git_mv",
+      "import_file_count": 0,
+      "import_files_sample": []
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/merge_conflict_repair.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.merge_conflict_repair",
+      "stem": "merge_conflict_repair",
+      "current_rel": "merge_conflict_repair.py",
+      "target_package": "merge",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/merge/merge_conflict_repair.py",
+      "bundle": "asref/merge",
+      "action": "git_mv",
+      "import_file_count": 0,
+      "import_files_sample": []
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/merge_queue.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.merge_queue",
+      "stem": "merge_queue",
+      "current_rel": "merge_queue.py",
+      "target_package": "merge",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/merge/merge_queue.py",
+      "bundle": "asref/merge",
+      "action": "git_mv",
+      "import_file_count": 7,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_duckdb_state.py",
+        "test/api/test_agent_supervisor_merge_queue.py",
+        "test/api/test_agent_supervisor_merge_train.py",
+        "test/api/test_agent_supervisor_parallel_acceptance_flow.py",
+        "test/api/test_agent_supervisor_post_merge_evidence.py",
+        "test/api/test_agent_supervisor_proof_merge_gate.py",
+        "test/api/test_agent_supervisor_todo_daemon_port.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/merge_resolver.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.merge_resolver",
+      "stem": "merge_resolver",
+      "current_rel": "merge_resolver.py",
+      "target_package": "merge",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/merge/merge_resolver.py",
+      "bundle": "asref/merge",
+      "action": "git_mv",
+      "import_file_count": 7,
+      "import_files_sample": [
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py",
+        "test/api/test_agent_supervisor_duckdb_state.py",
+        "test/api/test_agent_supervisor_merge_resolver.py",
+        "test/api/test_agent_supervisor_merge_train.py",
+        "test/api/test_agent_supervisor_objective_graph.py",
+        "test/api/test_agent_supervisor_todo_daemon_port.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/merge_train.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.merge_train",
+      "stem": "merge_train",
+      "current_rel": "merge_train.py",
+      "target_package": "merge",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/merge/merge_train.py",
+      "bundle": "asref/merge",
+      "action": "git_mv",
+      "import_file_count": 5,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_distributed_lanes.py",
+        "test/api/test_agent_supervisor_merge_train.py",
+        "test/api/test_agent_supervisor_parallel_acceptance_flow.py",
+        "test/api/test_agent_supervisor_post_merge_evidence.py",
+        "test/api/test_agent_supervisor_proof_merge_gate.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/meta_spark_goose_runner.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.meta_spark_goose_runner",
+      "stem": "meta_spark_goose_runner",
+      "current_rel": "meta_spark_goose_runner.py",
+      "target_package": "integrations",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/integrations/meta_spark_goose_runner.py",
+      "bundle": "asref/integrations",
+      "action": "git_mv",
+      "import_file_count": 1,
+      "import_files_sample": [
+        "scripts/ops/agent_supervisor/meta_spark_goose_runner.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/multi_prover_resources.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.multi_prover_resources",
+      "stem": "multi_prover_resources",
+      "current_rel": "multi_prover_resources.py",
+      "target_package": "proof",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/proof/multi_prover_resources.py",
+      "bundle": "asref/proof",
+      "action": "git_mv",
+      "import_file_count": 1,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_multi_prover_resources.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/multi_prover_router.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.multi_prover_router",
+      "stem": "multi_prover_router",
+      "current_rel": "multi_prover_router.py",
+      "target_package": "proof",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/proof/multi_prover_router.py",
+      "bundle": "asref/proof",
+      "action": "git_mv",
+      "import_file_count": 5,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_formal_planning_adversarial.py",
+        "test/api/test_agent_supervisor_goal_refinement_verification.py",
+        "test/api/test_agent_supervisor_leanstral_goal_lifecycle_e2e.py",
+        "test/api/test_agent_supervisor_multi_prover_router.py",
+        "test/api/test_agent_supervisor_prover_evidence_store.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/multi_supervisor_runner.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.multi_supervisor_runner",
+      "stem": "multi_supervisor_runner",
+      "current_rel": "multi_supervisor_runner.py",
+      "target_package": "runtime",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/runtime/multi_supervisor_runner.py",
+      "bundle": "asref/runtime",
+      "action": "git_mv",
+      "import_file_count": 2,
+      "import_files_sample": [
+        "scripts/ops/ai_service_catalog_supervisor.py",
+        "test/api/test_agent_supervisor_todo_daemon_port.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/objective_daemon.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.objective_daemon",
+      "stem": "objective_daemon",
+      "current_rel": "objective_daemon.py",
+      "target_package": "objectives",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/objectives/objective_daemon.py",
+      "bundle": "asref/objectives",
+      "action": "git_mv",
+      "import_file_count": 9,
+      "import_files_sample": [
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py",
+        "test/api/test_agent_supervisor_analysis_escalation.py",
+        "test/api/test_agent_supervisor_external_completion.py",
+        "test/api/test_agent_supervisor_goal_completion.py",
+        "test/api/test_agent_supervisor_goal_generation.py",
+        "test/api/test_agent_supervisor_objective_graph.py",
+        "test/api/test_agent_supervisor_objective_task_janitor.py",
+        "test/api/test_agent_supervisor_plan_evaluator.py",
+        "test/api/test_agent_supervisor_todo_daemon_port.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/objective_graph.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.objective_graph",
+      "stem": "objective_graph",
+      "current_rel": "objective_graph.py",
+      "target_package": "objectives",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/objectives/objective_graph.py",
+      "bundle": "asref/objectives",
+      "action": "git_mv",
+      "import_file_count": 23,
+      "import_files_sample": [
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py",
+        "scripts/ops/ai_service_catalog_supervisor.py",
+        "test/api/test_agent_supervisor_artifact_store.py",
+        "test/api/test_agent_supervisor_backlog_refinery.py",
+        "test/api/test_agent_supervisor_bundle_optimizer.py",
+        "test/api/test_agent_supervisor_external_completion.py",
+        "test/api/test_agent_supervisor_goal_coverage.py",
+        "test/api/test_agent_supervisor_goal_generation.py",
+        "test/api/test_agent_supervisor_goal_lifecycle_e2e.py",
+        "test/api/test_agent_supervisor_incremental_runtime.py",
+        "test/api/test_agent_supervisor_leanstral_goal_benchmark.py",
+        "test/api/test_agent_supervisor_leanstral_goal_lifecycle_e2e.py",
+        "test/api/test_agent_supervisor_lease_coordination.py",
+        "test/api/test_agent_supervisor_objective_evidence_policy.py",
+        "test/api/test_agent_supervisor_objective_graph.py",
+        "test/api/test_agent_supervisor_objective_task_janitor.py",
+        "test/api/test_agent_supervisor_planner.py",
+        "test/api/test_agent_supervisor_proof_aware_planning.py",
+        "test/api/test_agent_supervisor_proof_invalidation.py",
+        "test/api/test_agent_supervisor_self_improvement_refill.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/objective_task_janitor.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.objective_task_janitor",
+      "stem": "objective_task_janitor",
+      "current_rel": "objective_task_janitor.py",
+      "target_package": "objectives",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/objectives/objective_task_janitor.py",
+      "bundle": "asref/objectives",
+      "action": "git_mv",
+      "import_file_count": 3,
+      "import_files_sample": [
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py",
+        "test/api/test_agent_supervisor_objective_task_janitor.py",
+        "test/api/test_agent_supervisor_proof_invalidation.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/objective_tracker.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.objective_tracker",
+      "stem": "objective_tracker",
+      "current_rel": "objective_tracker.py",
+      "target_package": "objectives",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/objectives/objective_tracker.py",
+      "bundle": "asref/objectives",
+      "action": "git_mv",
+      "import_file_count": 11,
+      "import_files_sample": [
+        "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py",
+        "test/api/test_agent_supervisor_adaptive_goal_refiner.py",
+        "test/api/test_agent_supervisor_event_goal_refinement.py",
+        "test/api/test_agent_supervisor_external_completion.py",
+        "test/api/test_agent_supervisor_goal_completion.py",
+        "test/api/test_agent_supervisor_goal_generation.py",
+        "test/api/test_agent_supervisor_goal_lifecycle_e2e.py",
+        "test/api/test_agent_supervisor_leanstral_goal_benchmark.py",
+        "test/api/test_agent_supervisor_objective_graph.py",
+        "test/api/test_agent_supervisor_self_improvement_refill.py",
+        "test/api/test_agent_supervisor_todo_daemon_port.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/persistent_task_queue.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.persistent_task_queue",
+      "stem": "persistent_task_queue",
+      "current_rel": "persistent_task_queue.py",
+      "target_package": "task_sources",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/task_sources/persistent_task_queue.py",
+      "bundle": "asref/task-sources",
+      "action": "git_mv",
+      "import_file_count": 1,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_task_identity.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/plan_evaluator.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.plan_evaluator",
+      "stem": "plan_evaluator",
+      "current_rel": "plan_evaluator.py",
+      "target_package": "planning",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/planning/plan_evaluator.py",
+      "bundle": "asref/planning",
+      "action": "git_mv",
+      "import_file_count": 6,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_adaptive_goal_refiner.py",
+        "test/api/test_agent_supervisor_adaptive_planner.py",
+        "test/api/test_agent_supervisor_and_or_planner.py",
+        "test/api/test_agent_supervisor_goal_generation.py",
+        "test/api/test_agent_supervisor_plan_evaluator.py",
+        "test/api/test_agent_supervisor_proof_aware_planning.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/plan_failure_memory.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.plan_failure_memory",
+      "stem": "plan_failure_memory",
+      "current_rel": "plan_failure_memory.py",
+      "target_package": "planning",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/planning/plan_failure_memory.py",
+      "bundle": "asref/planning",
+      "action": "git_mv",
+      "import_file_count": 1,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_delta_replanning.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/program_behavior.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.program_behavior",
+      "stem": "program_behavior",
+      "current_rel": "program_behavior.py",
+      "target_package": "core",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/core/program_behavior.py",
+      "bundle": "asref/core",
+      "action": "git_mv",
+      "import_file_count": 1,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_program_behavior.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/prompt_directory_scanner.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.prompt_directory_scanner",
+      "stem": "prompt_directory_scanner",
+      "current_rel": "prompt_directory_scanner.py",
+      "target_package": "prompt",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/prompt/prompt_directory_scanner.py",
+      "bundle": "asref/prompt",
+      "action": "git_mv",
+      "import_file_count": 1,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_prompt_directory_scanner.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/prompt_goal_planner.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.prompt_goal_planner",
+      "stem": "prompt_goal_planner",
+      "current_rel": "prompt_goal_planner.py",
+      "target_package": "prompt",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/prompt/prompt_goal_planner.py",
+      "bundle": "asref/prompt",
+      "action": "git_mv",
+      "import_file_count": 3,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_prompt_goal_planner.py",
+        "test/api/test_agent_supervisor_prompt_plan_admission.py",
+        "test/api/test_agent_supervisor_prompt_workflow_service.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/prompt_plan_admission.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.prompt_plan_admission",
+      "stem": "prompt_plan_admission",
+      "current_rel": "prompt_plan_admission.py",
+      "target_package": "prompt",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/prompt/prompt_plan_admission.py",
+      "bundle": "asref/prompt",
+      "action": "git_mv",
+      "import_file_count": 1,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_prompt_plan_admission.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/prompt_workflow.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.prompt_workflow",
+      "stem": "prompt_workflow",
+      "current_rel": "prompt_workflow.py",
+      "target_package": "prompt",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/prompt/prompt_workflow.py",
+      "bundle": "asref/prompt",
+      "action": "git_mv",
+      "import_file_count": 15,
+      "import_files_sample": [
+        "scripts/ops/agent_supervisor/prompt_workflow.py",
+        "test/api/test_agent_supervisor_autonomous_unstall.py",
+        "test/api/test_agent_supervisor_duckdb_task_source.py",
+        "test/api/test_agent_supervisor_markdown_task_source.py",
+        "test/api/test_agent_supervisor_programmatic_recovery.py",
+        "test/api/test_agent_supervisor_prompt_cli.py",
+        "test/api/test_agent_supervisor_prompt_directory_scanner.py",
+        "test/api/test_agent_supervisor_prompt_goal_planner.py",
+        "test/api/test_agent_supervisor_prompt_plan_admission.py",
+        "test/api/test_agent_supervisor_prompt_workflow_contracts.py",
+        "test/api/test_agent_supervisor_prompt_workflow_service.py",
+        "test/api/test_agent_supervisor_recovery_diagnostics.py",
+        "test/api/test_agent_supervisor_rescue_orchestrator.py",
+        "test/api/test_agent_supervisor_rescue_planner.py",
+        "test/api/test_agent_supervisor_task_source_e2e.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/proof_attestation.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.proof_attestation",
+      "stem": "proof_attestation",
+      "current_rel": "proof_attestation.py",
+      "target_package": "proof",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/proof/proof_attestation.py",
+      "bundle": "asref/proof",
+      "action": "git_mv",
+      "import_file_count": 4,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_proof_adversarial.py",
+        "test/api/test_agent_supervisor_proof_attestation_backends.py",
+        "test/api/test_agent_supervisor_proof_attestation_contracts.py",
+        "test/api/test_agent_supervisor_proof_attestation_store.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/proof_carrying_planner.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.proof_carrying_planner",
+      "stem": "proof_carrying_planner",
+      "current_rel": "proof_carrying_planner.py",
+      "target_package": "planning",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/planning/proof_carrying_planner.py",
+      "bundle": "asref/planning",
+      "action": "git_mv",
+      "import_file_count": 1,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_proof_carrying_planner_e2e.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/proof_context.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.proof_context",
+      "stem": "proof_context",
+      "current_rel": "proof_context.py",
+      "target_package": "proof",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/proof/proof_context.py",
+      "bundle": "asref/proof",
+      "action": "git_mv",
+      "import_file_count": 5,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_formal_plan_context.py",
+        "test/api/test_agent_supervisor_leanstral_proof_context.py",
+        "test/api/test_agent_supervisor_leanstral_proof_gate.py",
+        "test/api/test_agent_supervisor_proof_aware_planning.py",
+        "test/api/test_agent_supervisor_proof_context.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/proof_directed_retrieval.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.proof_directed_retrieval",
+      "stem": "proof_directed_retrieval",
+      "current_rel": "proof_directed_retrieval.py",
+      "target_package": "proof",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/proof/proof_directed_retrieval.py",
+      "bundle": "asref/proof",
+      "action": "git_mv",
+      "import_file_count": 3,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_decision_context.py",
+        "test/api/test_agent_supervisor_decision_context_delta.py",
+        "test/api/test_agent_supervisor_proof_directed_retrieval.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/proof_fallbacks.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.proof_fallbacks",
+      "stem": "proof_fallbacks",
+      "current_rel": "proof_fallbacks.py",
+      "target_package": "proof",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/proof/proof_fallbacks.py",
+      "bundle": "asref/proof",
+      "action": "git_mv",
+      "import_file_count": 1,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_proof_fallbacks.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/proof_metrics.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.proof_metrics",
+      "stem": "proof_metrics",
+      "current_rel": "proof_metrics.py",
+      "target_package": "proof",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/proof/proof_metrics.py",
+      "bundle": "asref/proof",
+      "action": "git_mv",
+      "import_file_count": 2,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_proof_benchmarks.py",
+        "test/api/test_agent_supervisor_proof_metrics.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/proof_obligation_templates.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.proof_obligation_templates",
+      "stem": "proof_obligation_templates",
+      "current_rel": "proof_obligation_templates.py",
+      "target_package": "proof",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/proof/proof_obligation_templates.py",
+      "bundle": "asref/proof",
+      "action": "git_mv",
+      "import_file_count": 1,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_proof_obligation_templates.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/proof_scheduler.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.proof_scheduler",
+      "stem": "proof_scheduler",
+      "current_rel": "proof_scheduler.py",
+      "target_package": "proof",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/proof/proof_scheduler.py",
+      "bundle": "asref/proof",
+      "action": "git_mv",
+      "import_file_count": 3,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_proof_resource_scheduler.py",
+        "test/api/test_agent_supervisor_proof_scheduler.py",
+        "test/api/test_agent_supervisor_proof_workflow_e2e.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/proof_scope_index.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.proof_scope_index",
+      "stem": "proof_scope_index",
+      "current_rel": "proof_scope_index.py",
+      "target_package": "proof",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/proof/proof_scope_index.py",
+      "bundle": "asref/proof",
+      "action": "git_mv",
+      "import_file_count": 4,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_cross_domain_proof_scope.py",
+        "test/api/test_agent_supervisor_decision_runtime_invalidation.py",
+        "test/api/test_agent_supervisor_proof_invalidation.py",
+        "test/api/test_agent_supervisor_proof_scope_index.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/proposal_validation.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.proposal_validation",
+      "stem": "proposal_validation",
+      "current_rel": "proposal_validation.py",
+      "target_package": "validation",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/validation/proposal_validation.py",
+      "bundle": "asref/validation",
+      "action": "git_mv",
+      "import_file_count": 4,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_proposal_validation.py",
+        "test/api/test_agent_supervisor_semantic_validation_pipeline.py",
+        "test/api/test_agent_supervisor_untrusted_proposal.py",
+        "test/api/test_agent_supervisor_validation_dag.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/protocol_verification.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.protocol_verification",
+      "stem": "protocol_verification",
+      "current_rel": "protocol_verification.py",
+      "target_package": "proof",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/proof/protocol_verification.py",
+      "bundle": "asref/proof",
+      "action": "git_mv",
+      "import_file_count": 1,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_protocol_verification.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/prover_conformance.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.prover_conformance",
+      "stem": "prover_conformance",
+      "current_rel": "prover_conformance.py",
+      "target_package": "proof",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/proof/prover_conformance.py",
+      "bundle": "asref/proof",
+      "action": "git_mv",
+      "import_file_count": 2,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_multi_prover_router.py",
+        "test/api/test_agent_supervisor_prover_conformance.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/prover_evidence_store.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.prover_evidence_store",
+      "stem": "prover_evidence_store",
+      "current_rel": "prover_evidence_store.py",
+      "target_package": "proof",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/proof/prover_evidence_store.py",
+      "bundle": "asref/proof",
+      "action": "git_mv",
+      "import_file_count": 1,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_prover_evidence_store.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/prover_matrix_registry.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.prover_matrix_registry",
+      "stem": "prover_matrix_registry",
+      "current_rel": "prover_matrix_registry.py",
+      "target_package": "proof",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/proof/prover_matrix_registry.py",
+      "bundle": "asref/proof",
+      "action": "git_mv",
+      "import_file_count": 6,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_authorization_logic.py",
+        "test/api/test_agent_supervisor_hyperproperty_verification.py",
+        "test/api/test_agent_supervisor_multi_prover_router.py",
+        "test/api/test_agent_supervisor_protocol_verification.py",
+        "test/api/test_agent_supervisor_prover_matrix_registry.py",
+        "test/api/test_agent_supervisor_supervisor_state_model.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/provider_batch_scheduler.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.provider_batch_scheduler",
+      "stem": "provider_batch_scheduler",
+      "current_rel": "provider_batch_scheduler.py",
+      "target_package": "runtime",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/runtime/provider_batch_scheduler.py",
+      "bundle": "asref/runtime",
+      "action": "git_mv",
+      "import_file_count": 5,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_leanstral_goal_development.py",
+        "test/api/test_agent_supervisor_parallel_acceptance_flow.py",
+        "test/api/test_agent_supervisor_provider_batch_scheduler.py",
+        "test/api/test_agent_supervisor_stage_scheduler_v2.py",
+        "test/test_voice_job_recovery.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/recovery_diagnostics.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.recovery_diagnostics",
+      "stem": "recovery_diagnostics",
+      "current_rel": "recovery_diagnostics.py",
+      "target_package": "rescue",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/rescue/recovery_diagnostics.py",
+      "bundle": "asref/rescue",
+      "action": "git_mv",
+      "import_file_count": 3,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_autonomous_unstall.py",
+        "test/api/test_agent_supervisor_programmatic_recovery.py",
+        "test/api/test_agent_supervisor_recovery_diagnostics.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/rescue_orchestrator.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.rescue_orchestrator",
+      "stem": "rescue_orchestrator",
+      "current_rel": "rescue_orchestrator.py",
+      "target_package": "rescue",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/rescue/rescue_orchestrator.py",
+      "bundle": "asref/rescue",
+      "action": "git_mv",
+      "import_file_count": 1,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_rescue_orchestrator.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/rescue_planner.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.rescue_planner",
+      "stem": "rescue_planner",
+      "current_rel": "rescue_planner.py",
+      "target_package": "rescue",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/rescue/rescue_planner.py",
+      "bundle": "asref/rescue",
+      "action": "git_mv",
+      "import_file_count": 3,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_autonomous_unstall.py",
+        "test/api/test_agent_supervisor_rescue_orchestrator.py",
+        "test/api/test_agent_supervisor_rescue_planner.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/resource_scheduler.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.resource_scheduler",
+      "stem": "resource_scheduler",
+      "current_rel": "resource_scheduler.py",
+      "target_package": "runtime",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/runtime/resource_scheduler.py",
+      "bundle": "asref/runtime",
+      "action": "git_mv",
+      "import_file_count": 10,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_adaptive_resources.py",
+        "test/api/test_agent_supervisor_multi_prover_resources.py",
+        "test/api/test_agent_supervisor_parallel_acceptance_flow.py",
+        "test/api/test_agent_supervisor_proof_resource_scheduler.py",
+        "test/api/test_agent_supervisor_proof_validation_scheduler.py",
+        "test/api/test_agent_supervisor_proof_workflow_e2e.py",
+        "test/api/test_agent_supervisor_resource_scheduler.py",
+        "test/api/test_agent_supervisor_scheduler.py",
+        "test/api/test_agent_supervisor_stage_scheduler_v2.py",
+        "test/test_voice_job_recovery.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime_cas.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.runtime_cas",
+      "stem": "runtime_cas",
+      "current_rel": "runtime_cas.py",
+      "target_package": "runtime",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/runtime/runtime_cas.py",
+      "bundle": "asref/runtime",
+      "action": "git_mv",
+      "import_file_count": 3,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_cache_coordinator.py",
+        "test/api/test_agent_supervisor_decision_runtime_invalidation.py",
+        "test/api/test_agent_supervisor_runtime_cas.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/runtime_temporal_monitor.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.runtime_temporal_monitor",
+      "stem": "runtime_temporal_monitor",
+      "current_rel": "runtime_temporal_monitor.py",
+      "target_package": "runtime",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/runtime/runtime_temporal_monitor.py",
+      "bundle": "asref/runtime",
+      "action": "git_mv",
+      "import_file_count": 2,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_formal_counterexamples.py",
+        "test/api/test_agent_supervisor_runtime_temporal_monitor.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/scan_receipts.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.scan_receipts",
+      "stem": "scan_receipts",
+      "current_rel": "scan_receipts.py",
+      "target_package": "objectives",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/objectives/scan_receipts.py",
+      "bundle": "asref/objectives",
+      "action": "git_mv",
+      "import_file_count": 10,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_adaptive_goal_refiner.py",
+        "test/api/test_agent_supervisor_audit_scanner.py",
+        "test/api/test_agent_supervisor_backlog_refinery.py",
+        "test/api/test_agent_supervisor_control_lifecycle.py",
+        "test/api/test_agent_supervisor_control_plane.py",
+        "test/api/test_agent_supervisor_efficiency_metrics.py",
+        "test/api/test_agent_supervisor_goal_lifecycle_e2e.py",
+        "test/api/test_agent_supervisor_implementation_supervisor_runner.py",
+        "test/api/test_agent_supervisor_self_improvement_refill.py",
+        "test/api/test_agent_supervisor_semantic_validation_pipeline.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/scheduler_metrics.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.scheduler_metrics",
+      "stem": "scheduler_metrics",
+      "current_rel": "scheduler_metrics.py",
+      "target_package": "runtime",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/runtime/scheduler_metrics.py",
+      "bundle": "asref/runtime",
+      "action": "git_mv",
+      "import_file_count": 4,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_adaptive_resources.py",
+        "test/api/test_agent_supervisor_proof_metrics.py",
+        "test/api/test_agent_supervisor_proof_rollout.py",
+        "test/api/test_agent_supervisor_scheduler_metrics.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/scope_adjudication.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.scope_adjudication",
+      "stem": "scope_adjudication",
+      "current_rel": "scope_adjudication.py",
+      "target_package": "validation",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/validation/scope_adjudication.py",
+      "bundle": "asref/validation",
+      "action": "git_mv",
+      "import_file_count": 1,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_scope_adjudication.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/security_constraint_adapter.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.security_constraint_adapter",
+      "stem": "security_constraint_adapter",
+      "current_rel": "security_constraint_adapter.py",
+      "target_package": "proof",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/proof/security_constraint_adapter.py",
+      "bundle": "asref/proof",
+      "action": "git_mv",
+      "import_file_count": 3,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_ir_constraint_compiler.py",
+        "test/api/test_agent_supervisor_prompt_plan_admission.py",
+        "test/api/test_agent_supervisor_security_constraints.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/self_improvement.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.self_improvement",
+      "stem": "self_improvement",
+      "current_rel": "self_improvement.py",
+      "target_package": "self_improvement",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/self_improvement/self_improvement.py",
+      "bundle": "asref/self-improvement",
+      "action": "git_mv",
+      "import_file_count": 1,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_self_improvement_refill.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/self_improvement_completion.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.self_improvement_completion",
+      "stem": "self_improvement_completion",
+      "current_rel": "self_improvement_completion.py",
+      "target_package": "self_improvement",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/self_improvement/self_improvement_completion.py",
+      "bundle": "asref/self-improvement",
+      "action": "git_mv",
+      "import_file_count": 1,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_self_improvement_e2e.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/self_improvement_rollout.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.self_improvement_rollout",
+      "stem": "self_improvement_rollout",
+      "current_rel": "self_improvement_rollout.py",
+      "target_package": "self_improvement",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/self_improvement/self_improvement_rollout.py",
+      "bundle": "asref/self-improvement",
+      "action": "git_mv",
+      "import_file_count": 1,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_self_improvement_e2e.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/self_improvement_v2.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.self_improvement_v2",
+      "stem": "self_improvement_v2",
+      "current_rel": "self_improvement_v2.py",
+      "target_package": "self_improvement",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/self_improvement/self_improvement_v2.py",
+      "bundle": "asref/self-improvement",
+      "action": "git_mv",
+      "import_file_count": 4,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_self_improvement_v2_benchmark.py",
+        "test/api/test_agent_supervisor_self_improvement_v2_rollout.py",
+        "test/api/test_agent_supervisor_v2_refill_epoch.py",
+        "test/api/test_agent_supervisor_v2_successor_generation.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/self_improvement_v2_rollout.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.self_improvement_v2_rollout",
+      "stem": "self_improvement_v2_rollout",
+      "current_rel": "self_improvement_v2_rollout.py",
+      "target_package": "self_improvement",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/self_improvement/self_improvement_v2_rollout.py",
+      "bundle": "asref/self-improvement",
+      "action": "git_mv",
+      "import_file_count": 1,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_self_improvement_v2_rollout.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/semantic_dependency_graph.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.semantic_dependency_graph",
+      "stem": "semantic_dependency_graph",
+      "current_rel": "semantic_dependency_graph.py",
+      "target_package": "analysis",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/analysis/semantic_dependency_graph.py",
+      "bundle": "asref/analysis",
+      "action": "git_mv",
+      "import_file_count": 6,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_cross_domain_proof_scope.py",
+        "test/api/test_agent_supervisor_decision_context.py",
+        "test/api/test_agent_supervisor_decision_context_delta.py",
+        "test/api/test_agent_supervisor_ir_constraint_compiler.py",
+        "test/api/test_agent_supervisor_proof_directed_retrieval.py",
+        "test/api/test_agent_supervisor_semantic_dependency_graph.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/submodule_degradation.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.submodule_degradation",
+      "stem": "submodule_degradation",
+      "current_rel": "submodule_degradation.py",
+      "target_package": "core",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/core/submodule_degradation.py",
+      "bundle": "asref/core",
+      "action": "git_mv",
+      "import_file_count": 0,
+      "import_files_sample": []
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/supervisor_efficiency_metrics.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.supervisor_efficiency_metrics",
+      "stem": "supervisor_efficiency_metrics",
+      "current_rel": "supervisor_efficiency_metrics.py",
+      "target_package": "self_improvement",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/self_improvement/supervisor_efficiency_metrics.py",
+      "bundle": "asref/self-improvement",
+      "action": "git_mv",
+      "import_file_count": 3,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_efficiency_metrics.py",
+        "test/api/test_agent_supervisor_token_ledger.py",
+        "test/api/test_agent_supervisor_v2_benchmark.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/supervisor_recovery.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.supervisor_recovery",
+      "stem": "supervisor_recovery",
+      "current_rel": "supervisor_recovery.py",
+      "target_package": "rescue",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/rescue/supervisor_recovery.py",
+      "bundle": "asref/rescue",
+      "action": "git_mv",
+      "import_file_count": 3,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_decision_runtime_invalidation.py",
+        "test/api/test_agent_supervisor_fault_recovery_v2.py",
+        "test/api/test_agent_supervisor_programmatic_recovery.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/supervisor_state_model.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.supervisor_state_model",
+      "stem": "supervisor_state_model",
+      "current_rel": "supervisor_state_model.py",
+      "target_package": "self_improvement",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/self_improvement/supervisor_state_model.py",
+      "bundle": "asref/self-improvement",
+      "action": "git_mv",
+      "import_file_count": 1,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_supervisor_state_model.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/supervisor_token_ledger.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.supervisor_token_ledger",
+      "stem": "supervisor_token_ledger",
+      "current_rel": "supervisor_token_ledger.py",
+      "target_package": "self_improvement",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/self_improvement/supervisor_token_ledger.py",
+      "bundle": "asref/self-improvement",
+      "action": "git_mv",
+      "import_file_count": 1,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_token_ledger.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/supervisor_v2_benchmark.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.supervisor_v2_benchmark",
+      "stem": "supervisor_v2_benchmark",
+      "current_rel": "supervisor_v2_benchmark.py",
+      "target_package": "self_improvement",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/self_improvement/supervisor_v2_benchmark.py",
+      "bundle": "asref/self-improvement",
+      "action": "git_mv",
+      "import_file_count": 3,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_self_improvement_v2_benchmark.py",
+        "test/api/test_agent_supervisor_self_improvement_v2_rollout.py",
+        "test/api/test_agent_supervisor_v2_benchmark.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/supervisor_v2_contracts.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.supervisor_v2_contracts",
+      "stem": "supervisor_v2_contracts",
+      "current_rel": "supervisor_v2_contracts.py",
+      "target_package": "self_improvement",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/self_improvement/supervisor_v2_contracts.py",
+      "bundle": "asref/self-improvement",
+      "action": "git_mv",
+      "import_file_count": 5,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_bounded_persistence.py",
+        "test/api/test_agent_supervisor_cache_coordinator.py",
+        "test/api/test_agent_supervisor_runtime_cas.py",
+        "test/api/test_agent_supervisor_token_ledger.py",
+        "test/api/test_agent_supervisor_v2_contracts.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/supervisor_watchdog.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.supervisor_watchdog",
+      "stem": "supervisor_watchdog",
+      "current_rel": "supervisor_watchdog.py",
+      "target_package": "rescue",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/rescue/supervisor_watchdog.py",
+      "bundle": "asref/rescue",
+      "action": "git_mv",
+      "import_file_count": 3,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_autonomous_unstall.py",
+        "test/api/test_agent_supervisor_scheduler_metrics.py",
+        "test/api/test_agent_supervisor_supervisor_watchdog.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/task_identity.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.task_identity",
+      "stem": "task_identity",
+      "current_rel": "task_identity.py",
+      "target_package": "task_sources",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/task_sources/task_identity.py",
+      "bundle": "asref/task-sources",
+      "action": "git_mv",
+      "import_file_count": 3,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_bundle_optimizer.py",
+        "test/api/test_agent_supervisor_external_completion.py",
+        "test/api/test_agent_supervisor_task_identity.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/task_proposal_router.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.task_proposal_router",
+      "stem": "task_proposal_router",
+      "current_rel": "task_proposal_router.py",
+      "target_package": "planning",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/planning/task_proposal_router.py",
+      "bundle": "asref/planning",
+      "action": "git_mv",
+      "import_file_count": 9,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_adaptive_goal_refiner.py",
+        "test/api/test_agent_supervisor_adaptive_planner.py",
+        "test/api/test_agent_supervisor_analysis_escalation.py",
+        "test/api/test_agent_supervisor_goal_generation.py",
+        "test/api/test_agent_supervisor_plan_evaluator.py",
+        "test/api/test_agent_supervisor_proposal_validation.py",
+        "test/api/test_agent_supervisor_provider_batch_scheduler.py",
+        "test/api/test_agent_supervisor_task_proposal_router.py",
+        "test/api/test_agent_supervisor_todo_daemon_port.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/task_quality.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.task_quality",
+      "stem": "task_quality",
+      "current_rel": "task_quality.py",
+      "target_package": "planning",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/planning/task_quality.py",
+      "bundle": "asref/planning",
+      "action": "git_mv",
+      "import_file_count": 3,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_bundle_optimizer.py",
+        "test/api/test_agent_supervisor_task_granularity.py",
+        "test/api/test_agent_supervisor_task_quality.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/task_source.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.task_source",
+      "stem": "task_source",
+      "current_rel": "task_source.py",
+      "target_package": "task_sources",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/task_sources/task_source.py",
+      "bundle": "asref/task-sources",
+      "action": "git_mv",
+      "import_file_count": 2,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_task_source_e2e.py",
+        "test/api/test_agent_supervisor_task_source_parity.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/taskboard_store.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.taskboard_store",
+      "stem": "taskboard_store",
+      "current_rel": "taskboard_store.py",
+      "target_package": "task_sources",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/task_sources/taskboard_store.py",
+      "bundle": "asref/task-sources",
+      "action": "git_mv",
+      "import_file_count": 4,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_event_driven_runtime.py",
+        "test/api/test_agent_supervisor_markdown_task_source.py",
+        "test/api/test_agent_supervisor_taskboard_store.py",
+        "test/api/test_agent_supervisor_v2_refill_epoch.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/__main__.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.todo_daemon.__main__",
+      "stem": "__main__",
+      "current_rel": "todo_daemon/__main__.py",
+      "target_package": "todo_daemon",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/__main__.py",
+      "bundle": "asref/todo-daemon",
+      "action": "keep",
+      "import_file_count": 0,
+      "import_files_sample": [],
+      "note": "Package entrypoint stays at todo_daemon/__main__.py"
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/app.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.todo_daemon.app",
+      "stem": "app",
+      "current_rel": "todo_daemon/app.py",
+      "target_package": "todo_daemon.loop",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/loop/app.py",
+      "bundle": "asref/todo-daemon",
+      "action": "git_mv",
+      "import_file_count": 0,
+      "import_files_sample": []
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/artifacts.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.todo_daemon.artifacts",
+      "stem": "artifacts",
+      "current_rel": "todo_daemon/artifacts.py",
+      "target_package": "todo_daemon.loop",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/loop/artifacts.py",
+      "bundle": "asref/todo-daemon",
+      "action": "git_mv",
+      "import_file_count": 0,
+      "import_files_sample": []
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/auto_commit.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.todo_daemon.auto_commit",
+      "stem": "auto_commit",
+      "current_rel": "todo_daemon/auto_commit.py",
+      "target_package": "todo_daemon.git",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/git/auto_commit.py",
+      "bundle": "asref/todo-daemon",
+      "action": "git_mv",
+      "import_file_count": 0,
+      "import_files_sample": []
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/cli.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.todo_daemon.cli",
+      "stem": "cli",
+      "current_rel": "todo_daemon/cli.py",
+      "target_package": "todo_daemon.loop",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/loop/cli.py",
+      "bundle": "asref/todo-daemon",
+      "action": "git_mv",
+      "import_file_count": 0,
+      "import_files_sample": []
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/context.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.todo_daemon.context",
+      "stem": "context",
+      "current_rel": "todo_daemon/context.py",
+      "target_package": "todo_daemon.loop",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/loop/context.py",
+      "bundle": "asref/todo-daemon",
+      "action": "git_mv",
+      "import_file_count": 0,
+      "import_files_sample": []
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/core.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.todo_daemon.core",
+      "stem": "core",
+      "current_rel": "todo_daemon/core.py",
+      "target_package": "todo_daemon.loop",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/loop/core.py",
+      "bundle": "asref/todo-daemon",
+      "action": "git_mv",
+      "import_file_count": 0,
+      "import_files_sample": []
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/deterministic_fallback.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.todo_daemon.deterministic_fallback",
+      "stem": "deterministic_fallback",
+      "current_rel": "todo_daemon/deterministic_fallback.py",
+      "target_package": "todo_daemon.loop",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/loop/deterministic_fallback.py",
+      "bundle": "asref/todo-daemon",
+      "action": "git_mv",
+      "import_file_count": 0,
+      "import_files_sample": []
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/diagnostics.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.todo_daemon.diagnostics",
+      "stem": "diagnostics",
+      "current_rel": "todo_daemon/diagnostics.py",
+      "target_package": "todo_daemon.loop",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/loop/diagnostics.py",
+      "bundle": "asref/todo-daemon",
+      "action": "git_mv",
+      "import_file_count": 0,
+      "import_files_sample": []
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/engine.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.todo_daemon.engine",
+      "stem": "engine",
+      "current_rel": "todo_daemon/engine.py",
+      "target_package": "todo_daemon.loop",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/loop/engine.py",
+      "bundle": "asref/todo-daemon",
+      "action": "git_mv",
+      "import_file_count": 0,
+      "import_files_sample": []
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/file_replacement.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.todo_daemon.file_replacement",
+      "stem": "file_replacement",
+      "current_rel": "todo_daemon/file_replacement.py",
+      "target_package": "todo_daemon.loop",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/loop/file_replacement.py",
+      "bundle": "asref/todo-daemon",
+      "action": "git_mv",
+      "import_file_count": 0,
+      "import_files_sample": []
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/git_utils.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.todo_daemon.git_utils",
+      "stem": "git_utils",
+      "current_rel": "todo_daemon/git_utils.py",
+      "target_package": "todo_daemon.git",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/git/git_utils.py",
+      "bundle": "asref/todo-daemon",
+      "action": "git_mv",
+      "import_file_count": 0,
+      "import_files_sample": []
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/history.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.todo_daemon.history",
+      "stem": "history",
+      "current_rel": "todo_daemon/history.py",
+      "target_package": "todo_daemon.git",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/git/history.py",
+      "bundle": "asref/todo-daemon",
+      "action": "git_mv",
+      "import_file_count": 0,
+      "import_files_sample": []
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon",
+      "stem": "implementation_daemon",
+      "current_rel": "todo_daemon/implementation_daemon.py",
+      "target_package": "todo_daemon.implementation",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation/implementation_daemon.py",
+      "bundle": "asref/todo-daemon",
+      "action": "git_mv",
+      "import_file_count": 0,
+      "import_files_sample": []
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor",
+      "stem": "implementation_supervisor",
+      "current_rel": "todo_daemon/implementation_supervisor.py",
+      "target_package": "todo_daemon.implementation",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation/implementation_supervisor.py",
+      "bundle": "asref/todo-daemon",
+      "action": "git_mv",
+      "import_file_count": 0,
+      "import_files_sample": []
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/legal_parser.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.todo_daemon.legal_parser",
+      "stem": "legal_parser",
+      "current_rel": "todo_daemon/legal_parser.py",
+      "target_package": "todo_daemon.loop",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/loop/legal_parser.py",
+      "bundle": "asref/todo-daemon",
+      "action": "git_mv",
+      "import_file_count": 0,
+      "import_files_sample": []
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/legal_parser_daemon.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.todo_daemon.legal_parser_daemon",
+      "stem": "legal_parser_daemon",
+      "current_rel": "todo_daemon/legal_parser_daemon.py",
+      "target_package": "todo_daemon.loop",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/loop/legal_parser_daemon.py",
+      "bundle": "asref/todo-daemon",
+      "action": "git_mv",
+      "import_file_count": 0,
+      "import_files_sample": []
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/lifecycle_wrapper.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.todo_daemon.lifecycle_wrapper",
+      "stem": "lifecycle_wrapper",
+      "current_rel": "todo_daemon/lifecycle_wrapper.py",
+      "target_package": "todo_daemon.loop",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/loop/lifecycle_wrapper.py",
+      "bundle": "asref/todo-daemon",
+      "action": "git_mv",
+      "import_file_count": 0,
+      "import_files_sample": []
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/llm.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.todo_daemon.llm",
+      "stem": "llm",
+      "current_rel": "todo_daemon/llm.py",
+      "target_package": "todo_daemon.loop",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/loop/llm.py",
+      "bundle": "asref/todo-daemon",
+      "action": "git_mv",
+      "import_file_count": 0,
+      "import_files_sample": []
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/llm_defaults.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.todo_daemon.llm_defaults",
+      "stem": "llm_defaults",
+      "current_rel": "todo_daemon/llm_defaults.py",
+      "target_package": "todo_daemon.loop",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/loop/llm_defaults.py",
+      "bundle": "asref/todo-daemon",
+      "action": "git_mv",
+      "import_file_count": 0,
+      "import_files_sample": []
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/logic_port.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.todo_daemon.logic_port",
+      "stem": "logic_port",
+      "current_rel": "todo_daemon/logic_port.py",
+      "target_package": "todo_daemon.loop",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/loop/logic_port.py",
+      "bundle": "asref/todo-daemon",
+      "action": "git_mv",
+      "import_file_count": 0,
+      "import_files_sample": []
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/plans.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.todo_daemon.plans",
+      "stem": "plans",
+      "current_rel": "todo_daemon/plans.py",
+      "target_package": "todo_daemon.loop",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/loop/plans.py",
+      "bundle": "asref/todo-daemon",
+      "action": "git_mv",
+      "import_file_count": 0,
+      "import_files_sample": []
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/registry.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.todo_daemon.registry",
+      "stem": "registry",
+      "current_rel": "todo_daemon/registry.py",
+      "target_package": "todo_daemon.loop",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/loop/registry.py",
+      "bundle": "asref/todo-daemon",
+      "action": "git_mv",
+      "import_file_count": 0,
+      "import_files_sample": []
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/runner.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.todo_daemon.runner",
+      "stem": "runner",
+      "current_rel": "todo_daemon/runner.py",
+      "target_package": "todo_daemon.loop",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/loop/runner.py",
+      "bundle": "asref/todo-daemon",
+      "action": "git_mv",
+      "import_file_count": 0,
+      "import_files_sample": []
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/specs.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.todo_daemon.specs",
+      "stem": "specs",
+      "current_rel": "todo_daemon/specs.py",
+      "target_package": "todo_daemon.loop",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/loop/specs.py",
+      "bundle": "asref/todo-daemon",
+      "action": "git_mv",
+      "import_file_count": 0,
+      "import_files_sample": []
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/status.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.todo_daemon.status",
+      "stem": "status",
+      "current_rel": "todo_daemon/status.py",
+      "target_package": "todo_daemon.loop",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/loop/status.py",
+      "bundle": "asref/todo-daemon",
+      "action": "git_mv",
+      "import_file_count": 0,
+      "import_files_sample": []
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor",
+      "stem": "supervisor",
+      "current_rel": "todo_daemon/supervisor.py",
+      "target_package": "todo_daemon.loop",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/loop/supervisor.py",
+      "bundle": "asref/todo-daemon",
+      "action": "git_mv",
+      "import_file_count": 0,
+      "import_files_sample": []
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_loop.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_loop",
+      "stem": "supervisor_loop",
+      "current_rel": "todo_daemon/supervisor_loop.py",
+      "target_package": "todo_daemon.loop",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/loop/supervisor_loop.py",
+      "bundle": "asref/todo-daemon",
+      "action": "git_mv",
+      "import_file_count": 0,
+      "import_files_sample": []
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_runtime.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_runtime",
+      "stem": "supervisor_runtime",
+      "current_rel": "todo_daemon/supervisor_runtime.py",
+      "target_package": "todo_daemon.loop",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/loop/supervisor_runtime.py",
+      "bundle": "asref/todo-daemon",
+      "action": "git_mv",
+      "import_file_count": 0,
+      "import_files_sample": []
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/task_board.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.todo_daemon.task_board",
+      "stem": "task_board",
+      "current_rel": "todo_daemon/task_board.py",
+      "target_package": "todo_daemon.loop",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/loop/task_board.py",
+      "bundle": "asref/todo-daemon",
+      "action": "git_mv",
+      "import_file_count": 0,
+      "import_files_sample": []
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/typescript.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.todo_daemon.typescript",
+      "stem": "typescript",
+      "current_rel": "todo_daemon/typescript.py",
+      "target_package": "todo_daemon.loop",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/loop/typescript.py",
+      "bundle": "asref/todo-daemon",
+      "action": "git_mv",
+      "import_file_count": 0,
+      "import_files_sample": []
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/worktrees.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.todo_daemon.worktrees",
+      "stem": "worktrees",
+      "current_rel": "todo_daemon/worktrees.py",
+      "target_package": "todo_daemon.git",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/git/worktrees.py",
+      "bundle": "asref/todo-daemon",
+      "action": "git_mv",
+      "import_file_count": 0,
+      "import_files_sample": []
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/wrapper.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.todo_daemon.wrapper",
+      "stem": "wrapper",
+      "current_rel": "todo_daemon/wrapper.py",
+      "target_package": "todo_daemon.loop",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/todo_daemon/loop/wrapper.py",
+      "bundle": "asref/todo-daemon",
+      "action": "git_mv",
+      "import_file_count": 0,
+      "import_files_sample": []
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/todo_vector_index.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.todo_vector_index",
+      "stem": "todo_vector_index",
+      "current_rel": "todo_vector_index.py",
+      "target_package": "task_sources",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/task_sources/todo_vector_index.py",
+      "bundle": "asref/task-sources",
+      "action": "git_mv",
+      "import_file_count": 4,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_artifact_store.py",
+        "test/api/test_agent_supervisor_bundle_optimizer.py",
+        "test/api/test_agent_supervisor_goal_coverage.py",
+        "test/api/test_agent_supervisor_todo_daemon_port.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/validation_commands.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.validation_commands",
+      "stem": "validation_commands",
+      "current_rel": "validation_commands.py",
+      "target_package": "validation",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/validation/validation_commands.py",
+      "bundle": "asref/validation",
+      "action": "git_mv",
+      "import_file_count": 7,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_implementation_daemon_runner.py",
+        "test/api/test_agent_supervisor_proof_fallbacks.py",
+        "test/api/test_agent_supervisor_proof_validation_scheduler.py",
+        "test/api/test_agent_supervisor_semantic_validation_pipeline.py",
+        "test/api/test_agent_supervisor_todo_daemon_port.py",
+        "test/api/test_agent_supervisor_validation_dag.py",
+        "test/api/test_agent_supervisor_validation_scheduler.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/validation_runtime.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.validation_runtime",
+      "stem": "validation_runtime",
+      "current_rel": "validation_runtime.py",
+      "target_package": "validation",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/validation/validation_runtime.py",
+      "bundle": "asref/validation",
+      "action": "git_mv",
+      "import_file_count": 3,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_hermetic_validation.py",
+        "test/api/test_agent_supervisor_validation_dag.py",
+        "test/api/test_agent_supervisor_validation_scheduler.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/validation_scheduler.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.validation_scheduler",
+      "stem": "validation_scheduler",
+      "current_rel": "validation_scheduler.py",
+      "target_package": "validation",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/validation/validation_scheduler.py",
+      "bundle": "asref/validation",
+      "action": "git_mv",
+      "import_file_count": 7,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_hermetic_validation.py",
+        "test/api/test_agent_supervisor_parallel_acceptance_flow.py",
+        "test/api/test_agent_supervisor_post_merge_evidence.py",
+        "test/api/test_agent_supervisor_proof_validation_scheduler.py",
+        "test/api/test_agent_supervisor_semantic_validation_pipeline.py",
+        "test/api/test_agent_supervisor_validation_dag.py",
+        "test/api/test_agent_supervisor_validation_scheduler.py"
+      ]
+    },
+    {
+      "path": "ipfs_accelerate_py/agent_supervisor/wrapper_utils.py",
+      "module": "ipfs_accelerate_py.agent_supervisor.wrapper_utils",
+      "stem": "wrapper_utils",
+      "current_rel": "wrapper_utils.py",
+      "target_package": "core",
+      "target_path": "ipfs_accelerate_py/agent_supervisor/core/wrapper_utils.py",
+      "bundle": "asref/core",
+      "action": "git_mv",
+      "import_file_count": 3,
+      "import_files_sample": [
+        "test/api/test_agent_supervisor_backlog_refinery.py",
+        "test/api/test_agent_supervisor_implementation_daemon_runner.py",
+        "test/api/test_agent_supervisor_todo_daemon_port.py"
+      ]
+    }
+  ],
+  "package_members": {
+    "(root)": [
+      "ipfs_accelerate_py/agent_supervisor/__init__.py"
+    ],
+    "analysis": [
+      "ipfs_accelerate_py/agent_supervisor/analysis_ast_index.py",
+      "ipfs_accelerate_py/agent_supervisor/analysis_cache.py",
+      "ipfs_accelerate_py/agent_supervisor/analysis_consensus.py",
+      "ipfs_accelerate_py/agent_supervisor/analysis_contracts.py",
+      "ipfs_accelerate_py/agent_supervisor/analysis_operation_registry.py",
+      "ipfs_accelerate_py/agent_supervisor/analysis_pipeline.py",
+      "ipfs_accelerate_py/agent_supervisor/analysis_retrieval.py",
+      "ipfs_accelerate_py/agent_supervisor/analysis_transport.py",
+      "ipfs_accelerate_py/agent_supervisor/analyzer_health.py",
+      "ipfs_accelerate_py/agent_supervisor/audit_scanner.py",
+      "ipfs_accelerate_py/agent_supervisor/cache_coordinator.py",
+      "ipfs_accelerate_py/agent_supervisor/code_evidence_graph.py",
+      "ipfs_accelerate_py/agent_supervisor/semantic_dependency_graph.py"
+    ],
+    "context": [
+      "ipfs_accelerate_py/agent_supervisor/context_compiler.py",
+      "ipfs_accelerate_py/agent_supervisor/context_contracts.py",
+      "ipfs_accelerate_py/agent_supervisor/decision_context.py",
+      "ipfs_accelerate_py/agent_supervisor/decision_contracts.py",
+      "ipfs_accelerate_py/agent_supervisor/decision_runtime.py",
+      "ipfs_accelerate_py/agent_supervisor/decision_runtime_benchmark.py",
+      "ipfs_accelerate_py/agent_supervisor/decision_runtime_rollout.py"
+    ],
+    "control": [
+      "ipfs_accelerate_py/agent_supervisor/authorization_logic.py",
+      "ipfs_accelerate_py/agent_supervisor/control_cli.py",
+      "ipfs_accelerate_py/agent_supervisor/control_contracts.py",
+      "ipfs_accelerate_py/agent_supervisor/control_plane.py",
+      "ipfs_accelerate_py/agent_supervisor/execution_permit.py",
+      "ipfs_accelerate_py/agent_supervisor/lifecycle_orchestrator.py"
+    ],
+    "core": [
+      "ipfs_accelerate_py/agent_supervisor/conflict_graph.py",
+      "ipfs_accelerate_py/agent_supervisor/external_completion.py",
+      "ipfs_accelerate_py/agent_supervisor/program_behavior.py",
+      "ipfs_accelerate_py/agent_supervisor/submodule_degradation.py",
+      "ipfs_accelerate_py/agent_supervisor/wrapper_utils.py"
+    ],
+    "integrations": [
+      "ipfs_accelerate_py/agent_supervisor/ipfs_datasets_analysis_provider.py",
+      "ipfs_accelerate_py/agent_supervisor/ipfs_datasets_logic_provider.py",
+      "ipfs_accelerate_py/agent_supervisor/llm_merge_resolver_fallback.py",
+      "ipfs_accelerate_py/agent_supervisor/meta_spark_goose_runner.py"
+    ],
+    "merge": [
+      "ipfs_accelerate_py/agent_supervisor/checkout_lock.py",
+      "ipfs_accelerate_py/agent_supervisor/git_gc.py",
+      "ipfs_accelerate_py/agent_supervisor/lease_coordination.py",
+      "ipfs_accelerate_py/agent_supervisor/leased_lane.py",
+      "ipfs_accelerate_py/agent_supervisor/merge_checkpoint.py",
+      "ipfs_accelerate_py/agent_supervisor/merge_conflict_repair.py",
+      "ipfs_accelerate_py/agent_supervisor/merge_queue.py",
+      "ipfs_accelerate_py/agent_supervisor/merge_resolver.py",
+      "ipfs_accelerate_py/agent_supervisor/merge_train.py"
+    ],
+    "objectives": [
+      "ipfs_accelerate_py/agent_supervisor/adaptive_goal_refiner.py",
+      "ipfs_accelerate_py/agent_supervisor/backlog_refinery.py",
+      "ipfs_accelerate_py/agent_supervisor/bundle_optimizer.py",
+      "ipfs_accelerate_py/agent_supervisor/bundle_supervisor.py",
+      "ipfs_accelerate_py/agent_supervisor/goal_completion.py",
+      "ipfs_accelerate_py/agent_supervisor/goal_coverage.py",
+      "ipfs_accelerate_py/agent_supervisor/goal_development_contracts.py",
+      "ipfs_accelerate_py/agent_supervisor/goal_quality.py",
+      "ipfs_accelerate_py/agent_supervisor/goal_refinement_verification.py",
+      "ipfs_accelerate_py/agent_supervisor/objective_daemon.py",
+      "ipfs_accelerate_py/agent_supervisor/objective_graph.py",
+      "ipfs_accelerate_py/agent_supervisor/objective_task_janitor.py",
+      "ipfs_accelerate_py/agent_supervisor/objective_tracker.py",
+      "ipfs_accelerate_py/agent_supervisor/scan_receipts.py"
+    ],
+    "planning": [
+      "ipfs_accelerate_py/agent_supervisor/adaptive_planner.py",
+      "ipfs_accelerate_py/agent_supervisor/formal_plan_compiler.py",
+      "ipfs_accelerate_py/agent_supervisor/formal_plan_conformance.py",
+      "ipfs_accelerate_py/agent_supervisor/formal_plan_context.py",
+      "ipfs_accelerate_py/agent_supervisor/formal_plan_validator.py",
+      "ipfs_accelerate_py/agent_supervisor/formal_planning_adversarial.py",
+      "ipfs_accelerate_py/agent_supervisor/formal_planning_contracts.py",
+      "ipfs_accelerate_py/agent_supervisor/formal_planning_metrics.py",
+      "ipfs_accelerate_py/agent_supervisor/formal_planning_rollout.py",
+      "ipfs_accelerate_py/agent_supervisor/formal_replanner.py",
+      "ipfs_accelerate_py/agent_supervisor/plan_evaluator.py",
+      "ipfs_accelerate_py/agent_supervisor/plan_failure_memory.py",
+      "ipfs_accelerate_py/agent_supervisor/proof_carrying_planner.py",
+      "ipfs_accelerate_py/agent_supervisor/task_proposal_router.py",
+      "ipfs_accelerate_py/agent_supervisor/task_quality.py"
+    ],
+    "prompt": [
+      "ipfs_accelerate_py/agent_supervisor/prompt_directory_scanner.py",
+      "ipfs_accelerate_py/agent_supervisor/prompt_goal_planner.py",
+      "ipfs_accelerate_py/agent_supervisor/prompt_plan_admission.py",
+      "ipfs_accelerate_py/agent_supervisor/prompt_workflow.py"
+    ],
+    "proof": [
+      "ipfs_accelerate_py/agent_supervisor/code_proof_obligations.py",
+      "ipfs_accelerate_py/agent_supervisor/formal_counterexamples.py",
+      "ipfs_accelerate_py/agent_supervisor/formal_logic_vocabulary.py",
+      "ipfs_accelerate_py/agent_supervisor/formal_verification_cache.py",
+      "ipfs_accelerate_py/agent_supervisor/formal_verification_capabilities.py",
+      "ipfs_accelerate_py/agent_supervisor/formal_verification_contracts.py",
+      "ipfs_accelerate_py/agent_supervisor/formal_verification_policy.py",
+      "ipfs_accelerate_py/agent_supervisor/formal_verification_provider.py",
+      "ipfs_accelerate_py/agent_supervisor/hyperproperty_verification.py",
+      "ipfs_accelerate_py/agent_supervisor/intent_constraint_adapter.py",
+      "ipfs_accelerate_py/agent_supervisor/interface_contract_codegen.py",
+      "ipfs_accelerate_py/agent_supervisor/ir_adapters.py",
+      "ipfs_accelerate_py/agent_supervisor/ir_constraint_compiler.py",
+      "ipfs_accelerate_py/agent_supervisor/ir_registry.py",
+      "ipfs_accelerate_py/agent_supervisor/kernel_verification.py",
+      "ipfs_accelerate_py/agent_supervisor/leanstral_goal_benchmark.py",
+      "ipfs_accelerate_py/agent_supervisor/leanstral_goal_development.py",
+      "ipfs_accelerate_py/agent_supervisor/leanstral_goal_lifecycle.py",
+      "ipfs_accelerate_py/agent_supervisor/leanstral_proof_provider.py",
+      "ipfs_accelerate_py/agent_supervisor/legal_constraint_adapter.py",
+      "ipfs_accelerate_py/agent_supervisor/logic_translation_validation.py",
+      "ipfs_accelerate_py/agent_supervisor/multi_prover_resources.py",
+      "ipfs_accelerate_py/agent_supervisor/multi_prover_router.py",
+      "ipfs_accelerate_py/agent_supervisor/proof_attestation.py",
+      "ipfs_accelerate_py/agent_supervisor/proof_context.py",
+      "ipfs_accelerate_py/agent_supervisor/proof_directed_retrieval.py",
+      "ipfs_accelerate_py/agent_supervisor/proof_fallbacks.py",
+      "ipfs_accelerate_py/agent_supervisor/proof_metrics.py",
+      "ipfs_accelerate_py/agent_supervisor/proof_obligation_templates.py",
+      "ipfs_accelerate_py/agent_supervisor/proof_scheduler.py",
+      "ipfs_accelerate_py/agent_supervisor/proof_scope_index.py",
+      "ipfs_accelerate_py/agent_supervisor/protocol_verification.py",
+      "ipfs_accelerate_py/agent_supervisor/prover_conformance.py",
+      "ipfs_accelerate_py/agent_supervisor/prover_evidence_store.py",
+      "ipfs_accelerate_py/agent_supervisor/prover_matrix_registry.py",
+      "ipfs_accelerate_py/agent_supervisor/security_constraint_adapter.py"
+    ],
+    "rescue": [
+      "ipfs_accelerate_py/agent_supervisor/codex_failure_policy.py",
+      "ipfs_accelerate_py/agent_supervisor/recovery_diagnostics.py",
+      "ipfs_accelerate_py/agent_supervisor/rescue_orchestrator.py",
+      "ipfs_accelerate_py/agent_supervisor/rescue_planner.py",
+      "ipfs_accelerate_py/agent_supervisor/supervisor_recovery.py",
+      "ipfs_accelerate_py/agent_supervisor/supervisor_watchdog.py"
+    ],
+    "runtime": [
+      "ipfs_accelerate_py/agent_supervisor/artifact_store.py",
+      "ipfs_accelerate_py/agent_supervisor/event_log.py",
+      "ipfs_accelerate_py/agent_supervisor/multi_supervisor_runner.py",
+      "ipfs_accelerate_py/agent_supervisor/provider_batch_scheduler.py",
+      "ipfs_accelerate_py/agent_supervisor/resource_scheduler.py",
+      "ipfs_accelerate_py/agent_supervisor/runtime_cas.py",
+      "ipfs_accelerate_py/agent_supervisor/runtime_temporal_monitor.py",
+      "ipfs_accelerate_py/agent_supervisor/scheduler_metrics.py"
+    ],
+    "self_improvement": [
+      "ipfs_accelerate_py/agent_supervisor/self_improvement.py",
+      "ipfs_accelerate_py/agent_supervisor/self_improvement_completion.py",
+      "ipfs_accelerate_py/agent_supervisor/self_improvement_rollout.py",
+      "ipfs_accelerate_py/agent_supervisor/self_improvement_v2.py",
+      "ipfs_accelerate_py/agent_supervisor/self_improvement_v2_rollout.py",
+      "ipfs_accelerate_py/agent_supervisor/supervisor_efficiency_metrics.py",
+      "ipfs_accelerate_py/agent_supervisor/supervisor_state_model.py",
+      "ipfs_accelerate_py/agent_supervisor/supervisor_token_ledger.py",
+      "ipfs_accelerate_py/agent_supervisor/supervisor_v2_benchmark.py",
+      "ipfs_accelerate_py/agent_supervisor/supervisor_v2_contracts.py"
+    ],
+    "task_sources": [
+      "ipfs_accelerate_py/agent_supervisor/dataset_store.py",
+      "ipfs_accelerate_py/agent_supervisor/duckdb_state.py",
+      "ipfs_accelerate_py/agent_supervisor/duckdb_task_source.py",
+      "ipfs_accelerate_py/agent_supervisor/markdown_task_source.py",
+      "ipfs_accelerate_py/agent_supervisor/persistent_task_queue.py",
+      "ipfs_accelerate_py/agent_supervisor/task_identity.py",
+      "ipfs_accelerate_py/agent_supervisor/task_source.py",
+      "ipfs_accelerate_py/agent_supervisor/taskboard_store.py",
+      "ipfs_accelerate_py/agent_supervisor/todo_vector_index.py"
+    ],
+    "todo_daemon": [
+      "ipfs_accelerate_py/agent_supervisor/todo_daemon/__main__.py"
+    ],
+    "todo_daemon.git": [
+      "ipfs_accelerate_py/agent_supervisor/todo_daemon/auto_commit.py",
+      "ipfs_accelerate_py/agent_supervisor/todo_daemon/git_utils.py",
+      "ipfs_accelerate_py/agent_supervisor/todo_daemon/history.py",
+      "ipfs_accelerate_py/agent_supervisor/todo_daemon/worktrees.py"
+    ],
+    "todo_daemon.implementation": [
+      "ipfs_accelerate_py/agent_supervisor/implementation_daemon_runner.py",
+      "ipfs_accelerate_py/agent_supervisor/implementation_supervisor_runner.py",
+      "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+      "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py"
+    ],
+    "todo_daemon.loop": [
+      "ipfs_accelerate_py/agent_supervisor/todo_daemon/app.py",
+      "ipfs_accelerate_py/agent_supervisor/todo_daemon/artifacts.py",
+      "ipfs_accelerate_py/agent_supervisor/todo_daemon/cli.py",
+      "ipfs_accelerate_py/agent_supervisor/todo_daemon/context.py",
+      "ipfs_accelerate_py/agent_supervisor/todo_daemon/core.py",
+      "ipfs_accelerate_py/agent_supervisor/todo_daemon/deterministic_fallback.py",
+      "ipfs_accelerate_py/agent_supervisor/todo_daemon/diagnostics.py",
+      "ipfs_accelerate_py/agent_supervisor/todo_daemon/engine.py",
+      "ipfs_accelerate_py/agent_supervisor/todo_daemon/file_replacement.py",
+      "ipfs_accelerate_py/agent_supervisor/todo_daemon/legal_parser.py",
+      "ipfs_accelerate_py/agent_supervisor/todo_daemon/legal_parser_daemon.py",
+      "ipfs_accelerate_py/agent_supervisor/todo_daemon/lifecycle_wrapper.py",
+      "ipfs_accelerate_py/agent_supervisor/todo_daemon/llm.py",
+      "ipfs_accelerate_py/agent_supervisor/todo_daemon/llm_defaults.py",
+      "ipfs_accelerate_py/agent_supervisor/todo_daemon/logic_port.py",
+      "ipfs_accelerate_py/agent_supervisor/todo_daemon/plans.py",
+      "ipfs_accelerate_py/agent_supervisor/todo_daemon/registry.py",
+      "ipfs_accelerate_py/agent_supervisor/todo_daemon/runner.py",
+      "ipfs_accelerate_py/agent_supervisor/todo_daemon/specs.py",
+      "ipfs_accelerate_py/agent_supervisor/todo_daemon/status.py",
+      "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor.py",
+      "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_loop.py",
+      "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_runtime.py",
+      "ipfs_accelerate_py/agent_supervisor/todo_daemon/task_board.py",
+      "ipfs_accelerate_py/agent_supervisor/todo_daemon/typescript.py",
+      "ipfs_accelerate_py/agent_supervisor/todo_daemon/wrapper.py"
+    ],
+    "validation": [
+      "ipfs_accelerate_py/agent_supervisor/proposal_validation.py",
+      "ipfs_accelerate_py/agent_supervisor/scope_adjudication.py",
+      "ipfs_accelerate_py/agent_supervisor/validation_commands.py",
+      "ipfs_accelerate_py/agent_supervisor/validation_runtime.py",
+      "ipfs_accelerate_py/agent_supervisor/validation_scheduler.py"
+    ]
+  }
+}

@@ -6,10 +6,10 @@ from pathlib import Path
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.goal_completion import (
+from ipfs_accelerate_py.agent_supervisor.objectives.goal_completion import (
     validate_completion_evidence,
 )
-from ipfs_accelerate_py.agent_supervisor.objective_graph import (
+from ipfs_accelerate_py.agent_supervisor.objectives.objective_graph import (
     EvidenceMatchKind,
     EvidenceRequirementKind,
     EvidenceSourcePolicy,
@@ -159,6 +159,15 @@ def test_path_requirements_need_the_exact_path_identity_not_a_text_reference() -
     assert "path_reference_nomination_only" in receipt.reason_codes
     assert exact_path.satisfies
     assert not exact_path.nomination_only
+
+
+def test_prose_with_a_slash_is_not_misclassified_as_a_path() -> None:
+    assert (
+        EvidenceSourcePolicy.requirement_kind(
+            "duplicate/cooldown work is suppressed"
+        )
+        is EvidenceRequirementKind.OTHER
+    )
 
 
 @pytest.mark.parametrize(

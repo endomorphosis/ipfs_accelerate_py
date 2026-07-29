@@ -3,11 +3,11 @@ from __future__ import annotations
 import json
 import os
 
-from ipfs_accelerate_py.agent_supervisor.task_identity import (
+from ipfs_accelerate_py.agent_supervisor.task_sources.task_identity import (
     canonical_bundle_identity,
     canonical_task_identity,
 )
-from ipfs_accelerate_py.agent_supervisor.persistent_task_queue import PersistentTaskQueue
+from ipfs_accelerate_py.agent_supervisor.task_sources.persistent_task_queue import PersistentTaskQueue
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     PortalImplementationDaemon,
     PortalTaskState,

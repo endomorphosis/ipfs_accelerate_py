@@ -7,20 +7,20 @@ from pathlib import Path
 
 import pytest
 
-from ipfs_accelerate_py.agent_supervisor.artifact_store import (
+from ipfs_accelerate_py.agent_supervisor.runtime.artifact_store import (
     PROOF_ATTESTATION_KIND,
     query_proof_attestations,
     raw_ipfs_cid,
     read_proof_attestation_artifact,
     write_proof_attestation_artifact,
 )
-from ipfs_accelerate_py.agent_supervisor.formal_verification_cache import (
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_cache import (
     CacheLookupStatus,
     CacheRejectionReason,
     FormalVerificationCache,
     build_proof_cache_key,
 )
-from ipfs_accelerate_py.agent_supervisor.formal_verification_contracts import (
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
     AssuranceLevel,
     EvidenceAuthority,
     EvidenceKind,
@@ -30,7 +30,7 @@ from ipfs_accelerate_py.agent_supervisor.formal_verification_contracts import (
     ProofVerdict,
     ResourceBudget,
 )
-from ipfs_accelerate_py.agent_supervisor.proof_attestation import (
+from ipfs_accelerate_py.agent_supervisor.proof.proof_attestation import (
     AttestationBackendPolicy,
     AttestationValidationError,
     PersistedAttestationRecord,
