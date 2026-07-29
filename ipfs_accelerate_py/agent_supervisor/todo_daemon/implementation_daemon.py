@@ -78,6 +78,7 @@ from ..task_identity import (
 from ..task_source import (
     MAX_QUERY_LIMIT as TASK_SOURCE_QUERY_LIMIT,
     CanonicalTaskSource,
+    TaskSourceConflictError,
     TaskSourceError,
     TaskSourceIdentity,
     TaskSourceIntegrityError,
@@ -1922,9 +1923,20 @@ def state_file_repair_reason(path: Path) -> str:
     return ""
 
 
-def parse_task_file(path: Path, task_header_prefix: str = TASK_HEADER_PREFIX) -> list[PortalTask]:
+def parse_task_text(
+    text: str,
+    *,
+    path: Path,
+    task_header_prefix: str = TASK_HEADER_PREFIX,
+) -> list[PortalTask]:
+    """Parse one exact taskboard snapshot.
+
+    Keeping the text parser separate lets status mutations validate canonical
+    task revisions against the same locked bytes they are about to replace.
+    """
+
     task_header_prefix = normalize_task_header_prefix(task_header_prefix)
-    lines = path.read_text(encoding="utf-8").splitlines()
+    lines = text.splitlines()
     tasks: list[PortalTask] = []
     current_id = ""
     current_title = ""
@@ -2000,6 +2012,14 @@ def parse_task_file(path: Path, task_header_prefix: str = TASK_HEADER_PREFIX) ->
 
     flush()
     return tasks
+
+
+def parse_task_file(path: Path, task_header_prefix: str = TASK_HEADER_PREFIX) -> list[PortalTask]:
+    return parse_task_text(
+        path.read_text(encoding="utf-8"),
+        path=path,
+        task_header_prefix=task_header_prefix,
+    )
 
 
 def dependency_satisfied_references(
@@ -4549,6 +4569,41 @@ class PortalImplementationDaemon:
             )
             return set()
 
+    def _shared_completed_task_cid_bindings(
+        self,
+    ) -> dict[str, set[str]]:
+        method = getattr(
+            self.merge_queue,
+            "completed_task_cid_bindings",
+            None,
+        )
+        if not callable(method):
+            return {}
+        try:
+            raw_bindings = method()
+            if not isinstance(raw_bindings, Mapping):
+                return {}
+            return {
+                str(task_id): {
+                    str(task_cid)
+                    for task_cid in task_cids
+                    if str(task_cid)
+                }
+                for task_id, task_cids in raw_bindings.items()
+                if str(task_id)
+                and isinstance(task_cids, (set, frozenset, list, tuple))
+            }
+        except Exception as exc:
+            self._record_event(
+                "shared_merge_receipts_unavailable",
+                {
+                    "query": "completed_task_cid_bindings",
+                    "exception_type": type(exc).__name__,
+                    "error": str(exc)[-4000:],
+                },
+            )
+            return {}
+
     @staticmethod
     def _canonical_representative_task_ids(
         tasks: Sequence[PortalTask],
@@ -5190,11 +5245,18 @@ class PortalImplementationDaemon:
         shared_completed_merge_cids = self._shared_merge_queue_task_cids(
             "completed_canonical_task_ids"
         )
+        shared_completed_task_bindings = (
+            self._shared_completed_task_cid_bindings()
+        )
         shared_active_merge_cids.difference_update(shared_completed_merge_cids)
         shared_completed_task_ids = {
             task.task_id
             for task in tasks
-            if self._canonical_ref(task) in shared_completed_merge_cids
+            if (
+                self._canonical_ref(task) in shared_completed_merge_cids
+                or self._canonical_ref(task)
+                in shared_completed_task_bindings.get(task.task_id, set())
+            )
         }
         shared_active_merge_task_ids = {
             task.task_id
@@ -6716,11 +6778,17 @@ class PortalImplementationDaemon:
             self._record_event("dependency_blocked_tasks_reopened", result)
         return result
 
-    def _mark_task_completed_in_todo(self, task_id: str) -> dict[str, Any]:
+    def _mark_task_completed_in_todo(
+        self,
+        task_id: str,
+        *,
+        expected_task_cids: Mapping[str, str] | None = None,
+    ) -> dict[str, Any]:
         return self._mark_tasks_completed_in_todo(
             [task_id],
             primary_task_id=task_id,
             completion_reason="single_task",
+            expected_task_cids=expected_task_cids,
         )
 
     def _completion_receipts_for_task_ids(
@@ -6750,10 +6818,12 @@ class PortalImplementationDaemon:
         for task_id in dict.fromkeys(str(item).strip() for item in task_ids):
             if not task_id:
                 continue
-            identity = self._task_identity_by_display_id.get(task_id)
             task = parsed_by_id.get(task_id)
-            if identity is None and task is not None:
-                identity = self._identity_for_task(task)
+            identity = (
+                self._identity_for_task(task)
+                if task is not None
+                else self._task_identity_by_display_id.get(task_id)
+            )
             if identity is None:
                 continue
             member_receipt = {
@@ -6789,6 +6859,7 @@ class PortalImplementationDaemon:
         primary_task_id: str,
         completion_reason: str,
         bundle_work_order: dict[str, Any] | None = None,
+        expected_task_cids: Mapping[str, str] | None = None,
     ) -> dict[str, Any]:
         return self._decision_runtime_mutation(
             "task_board_mutation",
@@ -6798,12 +6869,14 @@ class PortalImplementationDaemon:
                 "task_ids": tuple(task_ids),
                 "primary_task_id": primary_task_id,
                 "completion_reason": completion_reason,
+                "expected_task_cids": dict(expected_task_cids or {}),
             },
             lambda: self._mark_tasks_completed_in_todo_unchecked(
                 task_ids,
                 primary_task_id=primary_task_id,
                 completion_reason=completion_reason,
                 bundle_work_order=bundle_work_order,
+                expected_task_cids=expected_task_cids,
             ),
         )
 
@@ -6814,23 +6887,60 @@ class PortalImplementationDaemon:
         primary_task_id: str,
         completion_reason: str,
         bundle_work_order: dict[str, Any] | None = None,
+        expected_task_cids: Mapping[str, str] | None = None,
     ) -> dict[str, Any]:
         target_task_ids = [
             str(task_id).strip()
             for task_id in dict.fromkeys(task_ids)
             if str(task_id).strip()
         ]
+        normalized_expected_task_cids = {
+            str(task_id).strip(): str(task_cid).strip()
+            for task_id, task_cid in (expected_task_cids or {}).items()
+            if str(task_id).strip() and str(task_cid).strip()
+        }
+        if expected_task_cids is not None and (
+            len(normalized_expected_task_cids) != len(expected_task_cids)
+            or set(normalized_expected_task_cids) != set(target_task_ids)
+        ):
+            result = {
+                "updated": False,
+                "task_id": primary_task_id,
+                "reason": "completion_task_cid_binding_malformed",
+                "completion_reason": completion_reason,
+                "expected_task_ids": sorted(target_task_ids),
+                "bound_task_ids": sorted(normalized_expected_task_cids),
+            }
+            self._record_event("todo_status_update_failed", result)
+            return result
         if self.task_source is not None:
             updated_task_ids: list[str] = []
             already_completed_task_ids: list[str] = []
             completion_receipts: list[dict[str, Any]] = []
             try:
+                current_by_id: dict[str, TaskSourceTask] = {}
                 for task_id in target_task_ids:
                     current = self.task_source.get(task_id)
                     if current is None:
                         raise TaskSourceIntegrityError(
                             f"task source does not contain {task_id!r}"
                         )
+                    current_by_id[task_id] = current
+                revision_mismatches = {
+                    task_id: {
+                        "expected_task_cid": expected_cid,
+                        "current_task_cid": current_by_id[task_id].task_cid,
+                    }
+                    for task_id, expected_cid in normalized_expected_task_cids.items()
+                    if current_by_id[task_id].task_cid != expected_cid
+                }
+                if revision_mismatches:
+                    raise TaskSourceConflictError(
+                        "completion task revision changed: "
+                        + json.dumps(revision_mismatches, sort_keys=True)
+                    )
+                for task_id in target_task_ids:
+                    current = current_by_id[task_id]
                     if normalize_status(current.status) == "completed":
                         already_completed_task_ids.append(task_id)
                         continue
@@ -6909,13 +7019,112 @@ class PortalImplementationDaemon:
                 self._record_event("todo_status_updated", result)
             return result
 
-        todo_path = self.todo_path
         try:
-            lines = todo_path.read_text(encoding="utf-8").splitlines(keepends=True)
+            with locked_taskboard(self.todo_path) as taskboard:
+                taskboard_text = taskboard.read()
+                locked_tasks = parse_task_text(
+                    taskboard_text,
+                    path=self.todo_path,
+                    task_header_prefix=self.task_header_prefix,
+                )
+                locked_by_id: dict[str, list[PortalTask]] = {
+                    task_id: [] for task_id in target_task_ids
+                }
+                for current_task in locked_tasks:
+                    if current_task.task_id in locked_by_id:
+                        locked_by_id[current_task.task_id].append(current_task)
+                missing_locked_ids = sorted(
+                    task_id
+                    for task_id, matches in locked_by_id.items()
+                    if not matches
+                )
+                ambiguous_locked_ids = sorted(
+                    task_id
+                    for task_id, matches in locked_by_id.items()
+                    if len(matches) > 1
+                )
+                revision_mismatches = {
+                    task_id: {
+                        "expected_task_cid": expected_cid,
+                        "current_task_cid": (
+                            self._identity_for_task(
+                                locked_by_id[task_id][0]
+                            ).canonical_task_cid
+                            if len(locked_by_id.get(task_id, ())) == 1
+                            else ""
+                        ),
+                    }
+                    for task_id, expected_cid in normalized_expected_task_cids.items()
+                    if (
+                        len(locked_by_id.get(task_id, ())) != 1
+                        or self._identity_for_task(
+                            locked_by_id[task_id][0]
+                        ).canonical_task_cid
+                        != expected_cid
+                    )
+                }
+                if (
+                    missing_locked_ids
+                    or ambiguous_locked_ids
+                    or revision_mismatches
+                ):
+                    result = {
+                        "updated": False,
+                        "task_id": primary_task_id,
+                        "reason": "completion_task_revision_changed",
+                        "completion_reason": completion_reason,
+                        "missing_task_ids": missing_locked_ids,
+                        "ambiguous_task_ids": ambiguous_locked_ids,
+                        "mismatches": revision_mismatches,
+                    }
+                    self._record_event("todo_status_update_failed", result)
+                    return result
+                lines = taskboard_text.splitlines(keepends=True)
+
+                mutation_result = self._mark_tasks_completed_in_locked_lines(
+                    lines,
+                    target_task_ids=target_task_ids,
+                    primary_task_id=primary_task_id,
+                    completion_reason=completion_reason,
+                    bundle_work_order=bundle_work_order,
+                )
+                if mutation_result.pop("_replace_locked_taskboard", False):
+                    replace_locked_taskboard(taskboard, "".join(lines))
         except OSError as exc:
             result = {"updated": False, "task_id": primary_task_id, "reason": "read_failed", "error": str(exc)}
             self._record_event("todo_status_update_failed", result)
             return result
+        result = mutation_result
+        todo_path = self.todo_path
+        if result.get("reason") == "status_line_missing":
+            self._record_event("todo_status_update_failed", result)
+            return result
+        commit_result = self._commit_generated_file_update(
+            todo_path,
+            task_id=primary_task_id,
+            subject=f"{primary_task_id}: mark todo completed",
+        )
+        if commit_result and (
+            result.get("updated")
+            or commit_result.get("reason") != "no_changes"
+        ):
+            result["commit_result"] = commit_result
+        if result.get("updated"):
+            self._record_event("todo_status_updated", result)
+        elif commit_result and commit_result.get("reason") != "no_changes":
+            self._record_event("todo_status_reconciled", result)
+        return result
+
+    def _mark_tasks_completed_in_locked_lines(
+        self,
+        lines: list[str],
+        *,
+        target_task_ids: Sequence[str],
+        primary_task_id: str,
+        completion_reason: str,
+        bundle_work_order: dict[str, Any] | None,
+    ) -> dict[str, Any]:
+        """Mutate task status lines already protected by ``locked_taskboard``."""
 
         target_set = set(target_task_ids)
         current_task_id = ""
@@ -6951,15 +7160,13 @@ class PortalImplementationDaemon:
             if task_id not in header_indices and task_id not in status_indices
         ]
         if primary_task_id in missing_task_ids:
-            result = {
+            return {
                 "updated": False,
                 "task_id": primary_task_id,
                 "reason": "status_line_missing",
                 "missing_task_ids": missing_task_ids,
                 "missing_status_task_ids": missing_status_task_ids,
             }
-            self._record_event("todo_status_update_failed", result)
-            return result
 
         updated_task_ids: list[str] = []
         already_completed_task_ids: list[str] = []
@@ -7015,7 +7222,7 @@ class PortalImplementationDaemon:
                 "updated": False,
                 "task_id": primary_task_id,
                 "reason": "already_completed",
-                "path": str(todo_path),
+                "path": str(self.todo_path),
                 "completion_reason": completion_reason,
                 "updated_task_ids": [],
                 "already_completed_task_ids": already_completed_task_ids,
@@ -7031,37 +7238,11 @@ class PortalImplementationDaemon:
                 result["completion_receipts"] = completion_receipts
             if bundle_work_order is not None:
                 result["bundle_work_order"] = bundle_work_order
-            commit_result = self._commit_generated_file_update(
-                todo_path,
-                task_id=primary_task_id,
-                subject=f"{primary_task_id}: mark todo completed",
-            )
-            if commit_result and commit_result.get("reason") != "no_changes":
-                result["commit_result"] = commit_result
-                self._record_event("todo_status_reconciled", result)
             return result
-        tmp_path = todo_path.with_name(f".{todo_path.name}.tmp")
-        try:
-            tmp_path.write_text("".join(lines), encoding="utf-8")
-            os.replace(tmp_path, todo_path)
-        except OSError as exc:
-            try:
-                tmp_path.unlink()
-            except OSError:
-                pass
-            result = {"updated": False, "task_id": primary_task_id, "reason": "write_failed", "error": str(exc)}
-            self._record_event("todo_status_update_failed", result)
-            return result
-
-        commit_result = self._commit_generated_file_update(
-            todo_path,
-            task_id=primary_task_id,
-            subject=f"{primary_task_id}: mark todo completed",
-        )
         result = {
             "updated": True,
             "task_id": primary_task_id,
-            "path": str(todo_path),
+            "path": str(self.todo_path),
             "completion_reason": completion_reason,
             "updated_task_ids": updated_task_ids,
             "already_completed_task_ids": already_completed_task_ids,
@@ -7077,9 +7258,7 @@ class PortalImplementationDaemon:
             result["completion_receipts"] = completion_receipts
         if bundle_work_order is not None:
             result["bundle_work_order"] = bundle_work_order
-        if commit_result:
-            result["commit_result"] = commit_result
-        self._record_event("todo_status_updated", result)
+        result["_replace_locked_taskboard"] = True
         return result
 
     def _commit_generated_file_update(self, path: Path, *, task_id: str, subject: str) -> dict[str, Any]:
@@ -7578,6 +7757,24 @@ class PortalImplementationDaemon:
 
         identity = self._identity_for_task(task)
         work_order = self._bundle_work_order_for_task(task)
+        completion_task_ids = (
+            work_order.task_ids if work_order is not None else [task.task_id]
+        )
+        completion_task_cids, completion_binding_error = (
+            self._current_completion_task_cids(
+                completion_task_ids,
+                require_pending=True,
+            )
+        )
+        if completion_binding_error:
+            raise RuntimeError(
+                "merge candidate task revision binding failed: "
+                f"{completion_binding_error.get('reason') or 'unknown'}"
+            )
+        if completion_task_cids.get(task.task_id) != identity.canonical_task_cid:
+            raise RuntimeError(
+                "merge candidate primary task revision changed before enqueue"
+            )
         protected_rejection = self._reject_protected_merge_candidate(
             task_id=task.task_id,
             attempt=attempt,
@@ -7599,7 +7796,7 @@ class PortalImplementationDaemon:
             )
         )
         metadata = {
-            "schema": "ipfs_accelerate_py/agent-supervisor/merge-candidate@2",
+            "schema": "ipfs_accelerate_py/agent-supervisor/merge-candidate@3",
             "target_binding_schema": MERGE_TARGET_BINDING_SCHEMA,
             "target_repository_id": self.merge_target_repository_id,
             "target_branch": self.resolved_merge_target_branch,
@@ -7617,6 +7814,7 @@ class PortalImplementationDaemon:
             "repo_root": str(self.repo_root),
             "task_header_prefix": self.task_header_prefix,
             "task": asdict(task),
+            "completion_task_cids": completion_task_cids,
             "implementation_protected_paths": list(
                 self.implementation_protected_paths
             ),
@@ -7750,6 +7948,7 @@ class PortalImplementationDaemon:
             "implementation_commit": implementation_commit,
             "canonical_task_key": identity.canonical_task_key,
             "canonical_task_cid": identity.canonical_task_cid,
+            "completion_task_cids": completion_task_cids,
             "queue_dir": str(self.merge_queue_dir),
             "target_repository_id": self.merge_target_repository_id,
             "target_branch": self.resolved_merge_target_branch,
@@ -7782,6 +7981,235 @@ class PortalImplementationDaemon:
         values.setdefault("priority", str(request.priority or "P2"))
         values.setdefault("track", "ops")
         return PortalTask(**values)
+
+    def _current_completion_task_cids(
+        self,
+        task_ids: Sequence[str],
+        *,
+        require_pending: bool,
+    ) -> tuple[dict[str, str], dict[str, Any]]:
+        """Bind display IDs to the exact current board revisions.
+
+        Display IDs are mutable labels.  A queue request may complete a task
+        only while every primary/bundle member still resolves uniquely to the
+        canonical CID captured when the candidate was enqueued.
+        """
+
+        normalized_ids = list(
+            dict.fromkeys(
+                str(task_id).strip()
+                for task_id in task_ids
+                if str(task_id).strip()
+            )
+        )
+        if not normalized_ids:
+            return {}, {"reason": "completion_task_ids_missing"}
+        try:
+            tasks = self._load_tasks()
+        except Exception as exc:
+            return {}, {
+                "reason": "completion_task_board_unavailable",
+                "error_type": type(exc).__name__,
+                "error": str(exc)[-1000:],
+            }
+        matches_by_id: dict[str, list[PortalTask]] = {
+            task_id: [] for task_id in normalized_ids
+        }
+        for current in tasks:
+            if current.task_id in matches_by_id:
+                matches_by_id[current.task_id].append(current)
+        missing = sorted(
+            task_id
+            for task_id, matches in matches_by_id.items()
+            if not matches
+        )
+        ambiguous = sorted(
+            task_id
+            for task_id, matches in matches_by_id.items()
+            if len(matches) > 1
+        )
+        if missing or ambiguous:
+            return {}, {
+                "reason": "completion_task_identity_unresolved",
+                "missing_task_ids": missing,
+                "ambiguous_task_ids": ambiguous,
+            }
+        completed = sorted(
+            task_id
+            for task_id, matches in matches_by_id.items()
+            if normalize_status(matches[0].status) == "completed"
+        )
+        if require_pending and completed:
+            return {}, {
+                "reason": "completion_task_already_completed",
+                "completed_task_ids": completed,
+            }
+        return (
+            {
+                task_id: self._identity_for_task(matches[0]).canonical_task_cid
+                for task_id, matches in matches_by_id.items()
+            },
+            {},
+        )
+
+    def _completion_task_revision_binding_error(
+        self,
+        metadata: Mapping[str, Any],
+        *,
+        require_pending: bool,
+    ) -> dict[str, Any]:
+        raw_expected = metadata.get("completion_task_cids")
+        if not isinstance(raw_expected, Mapping) or not raw_expected:
+            return {"reason": "completion_task_cid_binding_missing"}
+        expected = {
+            str(task_id).strip(): str(task_cid).strip()
+            for task_id, task_cid in raw_expected.items()
+            if str(task_id).strip() and str(task_cid).strip()
+        }
+        if len(expected) != len(raw_expected):
+            return {"reason": "completion_task_cid_binding_malformed"}
+        raw_task = metadata.get("task")
+        primary_task_id = (
+            str(raw_task.get("task_id") or "").strip()
+            if isinstance(raw_task, Mapping)
+            else ""
+        )
+        bundle = metadata.get("bundle_work_order")
+        if isinstance(bundle, Mapping):
+            bundle_primary = str(
+                bundle.get("primary_task_id") or ""
+            ).strip()
+            raw_covered = bundle.get("covered_task_ids")
+            if (
+                not primary_task_id
+                or bundle_primary != primary_task_id
+                or not isinstance(raw_covered, Sequence)
+                or isinstance(raw_covered, (str, bytes, bytearray))
+            ):
+                return {
+                    "reason": "completion_bundle_binding_malformed"
+                }
+            expected_task_ids = {
+                bundle_primary,
+                *(
+                    str(task_id).strip()
+                    for task_id in raw_covered
+                    if str(task_id).strip()
+                ),
+            }
+        else:
+            expected_task_ids = (
+                {primary_task_id} if primary_task_id else set()
+            )
+        if set(expected) != expected_task_ids:
+            return {
+                "reason": "completion_task_binding_membership_mismatch",
+                "expected_task_ids": sorted(expected_task_ids),
+                "bound_task_ids": sorted(expected),
+            }
+        current, error = self._current_completion_task_cids(
+            list(expected),
+            require_pending=require_pending,
+        )
+        if error:
+            return error
+        mismatches = {
+            task_id: {
+                "expected_task_cid": expected_cid,
+                "current_task_cid": current.get(task_id, ""),
+            }
+            for task_id, expected_cid in expected.items()
+            if current.get(task_id) != expected_cid
+        }
+        if mismatches:
+            return {
+                "reason": "completion_task_revision_changed",
+                "mismatches": mismatches,
+            }
+        return {}
+
+    def _completion_daemon_for_merge_request(
+        self,
+        metadata: Mapping[str, Any],
+    ) -> "PortalImplementationDaemon":
+        request_todo_path = Path(
+            str(metadata.get("todo_path") or self.todo_path)
+        )
+        if request_todo_path == self.todo_path:
+            return self
+        request_state_path = Path(
+            str(metadata.get("state_path") or self.state_path)
+        )
+        return PortalImplementationDaemon(
+            todo_path=request_todo_path,
+            state_path=request_state_path,
+            strategy_path=Path(
+                str(
+                    metadata.get("strategy_path")
+                    or request_state_path.parent / "strategy.json"
+                )
+            ),
+            events_path=Path(
+                str(
+                    metadata.get("events_path")
+                    or request_state_path.parent / "events.jsonl"
+                )
+            ),
+            repo_root=self.repo_root,
+            task_header_prefix=str(
+                metadata.get("task_header_prefix")
+                or self.task_header_prefix
+            ),
+            implement=False,
+            worktree_root=self.worktree_root,
+            merge_target_branch=self.resolved_merge_target_branch,
+            worktree_submodule_paths=self.worktree_submodule_paths,
+            merge_queue=self.merge_queue,
+            merge_queue_dir=self.merge_queue_dir,
+            decision_runtime=self.decision_runtime,
+        )
+
+    def _completed_task_binding_error(
+        self,
+        metadata: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        binding_error = self._completion_task_revision_binding_error(
+            metadata,
+            require_pending=False,
+        )
+        if binding_error:
+            return binding_error
+        raw_expected = metadata.get("completion_task_cids")
+        expected_ids = {
+            str(task_id)
+            for task_id in raw_expected
+            if str(task_id)
+        } if isinstance(raw_expected, Mapping) else set()
+        try:
+            tasks = self._load_tasks()
+        except Exception as exc:
+            return {
+                "reason": "completion_task_board_unavailable",
+                "error_type": type(exc).__name__,
+                "error": str(exc)[-1000:],
+            }
+        statuses = {
+            task.task_id: normalize_status(task.status)
+            for task in tasks
+            if task.task_id in expected_ids
+        }
+        incomplete = sorted(
+            task_id
+            for task_id in expected_ids
+            if statuses.get(task_id) != "completed"
+        )
+        if incomplete:
+            return {
+                "reason": "completion_task_status_not_persisted",
+                "incomplete_task_ids": incomplete,
+                "statuses": statuses,
+            }
+        return {}
 
     @staticmethod
     def _scope_adjudication_merge_binding_error(
@@ -7860,6 +8288,19 @@ class PortalImplementationDaemon:
         """Adapt one durable queue request to the daemon's mature merge path."""
 
         metadata = request.metadata if isinstance(request.metadata, dict) else {}
+        candidate_schema = str(metadata.get("schema") or "").strip()
+        if (
+            candidate_schema
+            and candidate_schema
+            != "ipfs_accelerate_py/agent-supervisor/merge-candidate@3"
+        ):
+            return {
+                "attempted": False,
+                "merged": False,
+                "returncode": 2,
+                "reason": "merge_candidate_schema_unsupported",
+                "candidate_schema": candidate_schema,
+            }
         actual_repository_id = str(
             getattr(request, "target_repository_id", "")
             or metadata.get("target_repository_id")
@@ -7891,6 +8332,75 @@ class PortalImplementationDaemon:
                 "actual_target_branch": actual_branch,
                 "actual_target_binding_schema": actual_schema,
             }
+        completion_daemon = self._completion_daemon_for_merge_request(
+            metadata
+        )
+        completion_task_cids: dict[str, str] = {}
+        if (
+            candidate_schema
+            == "ipfs_accelerate_py/agent-supervisor/merge-candidate@3"
+        ):
+            expected_completion_cids = metadata.get(
+                "completion_task_cids"
+            )
+            completion_task_cids = (
+                {
+                    str(task_id): str(task_cid)
+                    for task_id, task_cid in expected_completion_cids.items()
+                }
+                if isinstance(expected_completion_cids, Mapping)
+                else {}
+            )
+            expected_primary_cid = (
+                str(completion_task_cids.get(str(request.task_id)) or "")
+                if completion_task_cids
+                else ""
+            )
+            request_primary_cid = str(
+                getattr(request, "canonical_task_id", "") or ""
+            )
+            request_primary_key = str(
+                getattr(request, "canonical_task_key", "") or ""
+            )
+            queued_task = self._portal_task_from_merge_request(request)
+            queued_identity = self._identity_for_task(queued_task)
+            if (
+                not expected_primary_cid
+                or request_primary_cid != expected_primary_cid
+                or request_primary_key
+                != queued_identity.canonical_task_key
+                or queued_identity.canonical_task_cid
+                != expected_primary_cid
+            ):
+                return {
+                    "attempted": False,
+                    "merged": False,
+                    "returncode": 2,
+                    "reason": "merge_candidate_primary_identity_mismatch",
+                    "expected_primary_task_cid": expected_primary_cid,
+                    "request_primary_task_cid": request_primary_cid,
+                    "request_primary_task_key": request_primary_key,
+                    "queued_primary_task_cid": (
+                        queued_identity.canonical_task_cid
+                    ),
+                    "queued_primary_task_key": (
+                        queued_identity.canonical_task_key
+                    ),
+                }
+            completion_binding_error = (
+                completion_daemon._completion_task_revision_binding_error(
+                    metadata,
+                    require_pending=True,
+                )
+            )
+            if completion_binding_error:
+                return {
+                    "attempted": False,
+                    "merged": False,
+                    "returncode": 2,
+                    "reason": "merge_candidate_task_revision_mismatch",
+                    "completion_binding_error": completion_binding_error,
+                }
         task = self._portal_task_from_merge_request(request)
         branch_name = str(request.branch_name or "")
         implementation_commit = str(
@@ -8081,6 +8591,31 @@ class PortalImplementationDaemon:
             )
         if branch_rehydration.get("rehydrated", False):
             result["branch_rehydration"] = branch_rehydration
+        if (
+            result.get("merged")
+            and candidate_schema
+            == "ipfs_accelerate_py/agent-supervisor/merge-candidate@3"
+        ):
+            completion_binding_error = (
+                completion_daemon._completion_task_revision_binding_error(
+                    metadata,
+                    require_pending=True,
+                )
+            )
+            if completion_binding_error:
+                result.update(
+                    {
+                        "merged": False,
+                        "returncode": 2,
+                        "reason": "merge_integrated_task_revision_mismatch",
+                        "integration_occurred": True,
+                        "completion_skipped": True,
+                        "completion_binding_error": (
+                            completion_binding_error
+                        ),
+                    }
+                )
+                return result
         if result.get("merged"):
             worktree_path_text = str(metadata.get("worktree_path") or "")
             cleanup_result = (
@@ -8097,25 +8632,6 @@ class PortalImplementationDaemon:
                 result["reason"] = "merge_cleanup_failed"
                 result["returncode"] = 1
             else:
-                completion_daemon = self
-                request_todo_path = Path(str(metadata.get("todo_path") or self.todo_path))
-                if request_todo_path != self.todo_path:
-                    request_state_path = Path(str(metadata.get("state_path") or self.state_path))
-                    completion_daemon = PortalImplementationDaemon(
-                        todo_path=request_todo_path,
-                        state_path=request_state_path,
-                        strategy_path=Path(str(metadata.get("strategy_path") or request_state_path.parent / "strategy.json")),
-                        events_path=Path(str(metadata.get("events_path") or request_state_path.parent / "events.jsonl")),
-                        repo_root=self.repo_root,
-                        task_header_prefix=str(metadata.get("task_header_prefix") or self.task_header_prefix),
-                        implement=False,
-                        worktree_root=self.worktree_root,
-                        merge_target_branch=self.resolved_merge_target_branch,
-                        worktree_submodule_paths=self.worktree_submodule_paths,
-                        merge_queue=self.merge_queue,
-                        merge_queue_dir=self.merge_queue_dir,
-                        decision_runtime=self.decision_runtime,
-                    )
                 completion_tree_id = str(
                     result.get("merge_commit")
                     or result.get("target_commit")
@@ -8154,9 +8670,104 @@ class PortalImplementationDaemon:
                         primary_task_id=str(bundle_payload.get("primary_task_id") or task.task_id),
                         completion_reason="bundle_work_order",
                         bundle_work_order=bundle_payload,
+                        expected_task_cids=(
+                            completion_task_cids
+                            if candidate_schema
+                            == "ipfs_accelerate_py/agent-supervisor/merge-candidate@3"
+                            else None
+                        ),
                     )
                 else:
-                    todo_update_result = completion_daemon._mark_task_completed_in_todo(task.task_id)
+                    todo_update_result = (
+                        completion_daemon._mark_task_completed_in_todo(
+                            task.task_id,
+                            expected_task_cids=(
+                                completion_task_cids
+                                if candidate_schema
+                                == "ipfs_accelerate_py/agent-supervisor/merge-candidate@3"
+                                else None
+                            ),
+                        )
+                    )
+                if (
+                    candidate_schema
+                    == "ipfs_accelerate_py/agent-supervisor/merge-candidate@3"
+                ):
+                    raw_completion_receipts = todo_update_result.get(
+                        "completion_receipts"
+                    )
+                    completion_receipts = (
+                        [
+                            receipt
+                            for receipt in raw_completion_receipts
+                            if isinstance(receipt, Mapping)
+                        ]
+                        if isinstance(raw_completion_receipts, Sequence)
+                        and not isinstance(
+                            raw_completion_receipts,
+                            (str, bytes, bytearray),
+                        )
+                        else []
+                    )
+                    receipt_cids = {
+                        str(receipt.get("task_id") or ""): str(
+                            receipt.get("canonical_task_cid") or ""
+                        )
+                        for receipt in completion_receipts
+                        if str(receipt.get("task_id") or "")
+                        and str(receipt.get("canonical_task_cid") or "")
+                    }
+                    if (
+                        receipt_cids != completion_task_cids
+                        or len(completion_receipts)
+                        != len(completion_task_cids)
+                    ):
+                        result.update(
+                            {
+                                "merged": False,
+                                "returncode": 2,
+                                "reason": (
+                                    "merge_completion_receipt_invalid"
+                                ),
+                                "integration_occurred": True,
+                                "completion_receipt_error": {
+                                    "reason": (
+                                        "completion_receipt_binding_mismatch"
+                                    ),
+                                    "expected_task_cids": (
+                                        completion_task_cids
+                                    ),
+                                    "receipt_task_cids": receipt_cids,
+                                },
+                                "todo_update_result": (
+                                    todo_update_result
+                                ),
+                            }
+                        )
+                        return result
+                    completion_receipt_error = (
+                        completion_daemon._completed_task_binding_error(
+                            metadata
+                        )
+                    )
+                    if completion_receipt_error:
+                        result.update(
+                            {
+                                "merged": False,
+                                "returncode": 2,
+                                "reason": (
+                                    "merge_completion_receipt_invalid"
+                                ),
+                                "integration_occurred": True,
+                                "completion_receipt_error": (
+                                    completion_receipt_error
+                                ),
+                                "todo_update_result": (
+                                    todo_update_result
+                                ),
+                            }
+                        )
+                        return result
                 completion_daemon._record_task_queue_outcome(task, 0)
                 result["todo_update_result"] = todo_update_result
         return result
@@ -8321,6 +8932,7 @@ class PortalImplementationDaemon:
         implementation_commit: str,
         commit_result: Mapping[str, Any],
         validation_result: Mapping[str, Any],
+        changed_submodule_paths: Sequence[str] | None = None,
     ) -> dict[str, Any]:
         """Hand a validated implementation commit to the durable merge train."""
 
@@ -8360,8 +8972,12 @@ class PortalImplementationDaemon:
             ),
             task=task,
             attempt=attempt,
-            changed_submodule_paths=self._committed_submodule_paths(
-                commit_result.get("submodule_results") or []
+            changed_submodule_paths=(
+                list(changed_submodule_paths)
+                if changed_submodule_paths is not None
+                else self._committed_submodule_paths(
+                    commit_result.get("submodule_results") or []
+                )
             ),
             validation_result=dict(validation_result),
             worktree_pool_handoff=bool(pool_handoff.get("released", False)),
@@ -8407,6 +9023,627 @@ class PortalImplementationDaemon:
                     }
                 )
         return merge_result
+
+    def reconcile_validated_worktree_candidate(
+        self,
+        *,
+        worktree_path: Path,
+        branch_name: str,
+        task: PortalTask,
+        baseline_ref: str,
+        candidate_commit: str,
+        changed_submodule_paths: Sequence[str] | None = None,
+        recovery_key: str = "",
+        preacquired_task_claim: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Adopt one orphaned candidate through the normal validation train.
+
+        This recovery path deliberately skips provider dispatch and attempt
+        accounting.  It does not skip any completion gate: the current task
+        identity owns a canonical cross-lane claim, the immutable
+        baseline-to-candidate proposal is scope checked, every declared
+        validation command runs, the candidate is rebound after validation,
+        and the existing commit is handed to the ordinary merge train.  Only
+        that train's completion callback may update the task board.
+        """
+
+        started_at = utc_now()
+        # Receipt schemas require a positive attempt ordinal.  This synthetic
+        # ordinal is validation metadata only: the recovery path never calls
+        # _record_task_attempt and every event explicitly marks it unconsumed.
+        attempt = 1
+        identity = self._identity_for_task(task)
+        task_claim_path = self._implementation_task_claim_path(
+            task.task_id,
+            canonical_task_cid=identity.canonical_task_cid,
+        )
+        if preacquired_task_claim is not None:
+            task_claim_metadata = dict(preacquired_task_claim)
+            existing_claim = load_json_dict(task_claim_path)
+            acquired_claim = bool(
+                existing_claim is not None
+                and str(existing_claim.get("lease_id") or "")
+                == str(task_claim_metadata.get("lease_id") or "")
+                and str(existing_claim.get("canonical_task_cid") or "")
+                == identity.canonical_task_cid
+            )
+            claim_reason = (
+                "preacquired"
+                if acquired_claim
+                else "preacquired_claim_mismatch"
+            )
+        else:
+            task_claim_metadata = (
+                self._build_implementation_task_claim_metadata(
+                    task,
+                    attempt,
+                    started_at,
+                )
+            )
+            acquired_claim, claim_reason, existing_claim = (
+                self._try_acquire_implementation_task_claim(
+                    task_claim_path,
+                    task_claim_metadata,
+                )
+            )
+        if not acquired_claim:
+            result = {
+                "task_id": task.task_id,
+                "attempt": attempt,
+                "returncode": 1,
+                "skipped": True,
+                "reason": f"task_claim_{claim_reason}",
+                "attempt_consumed": False,
+                "provider_dispatched": False,
+                "worktree_path": str(worktree_path),
+                "branch": branch_name,
+                "baseline_ref": baseline_ref,
+                "implementation_commit": candidate_commit,
+                "recovery_key": recovery_key,
+            }
+            if existing_claim:
+                result["lock_owner_pid"] = int(
+                    existing_claim.get("pid") or 0
+                )
+                result["lock_owner_task_id"] = str(
+                    existing_claim.get("task_id") or ""
+                )
+                result["lock_owner_state_dir"] = str(
+                    existing_claim.get("state_dir") or ""
+                )
+            self._record_event(
+                "worktree_reconciliation_validation_deferred",
+                result,
+            )
+            return result
+
+        implementation_lock_path = self._implementation_lock_path()
+        implementation_lock_metadata: dict[str, Any] = {}
+        acquired_implementation_lock = False
+        try:
+            implementation_lock_metadata = (
+                self._build_implementation_lock_metadata(
+                    task,
+                    attempt,
+                    started_at,
+                )
+            )
+            (
+                acquired_implementation_lock,
+                implementation_lock_reason,
+                existing_implementation_lock,
+            ) = self._try_acquire_implementation_lock(
+                implementation_lock_path,
+                implementation_lock_metadata,
+            )
+        except BaseException:
+            self._release_implementation_task_claim(
+                task_claim_path,
+                task_claim_metadata,
+            )
+            raise
+        if not acquired_implementation_lock:
+            self._release_implementation_task_claim(
+                task_claim_path,
+                task_claim_metadata,
+            )
+            result = {
+                "task_id": task.task_id,
+                "attempt": attempt,
+                "returncode": 1,
+                "skipped": True,
+                "reason": (
+                    f"implementation_lock_{implementation_lock_reason}"
+                ),
+                "attempt_consumed": False,
+                "provider_dispatched": False,
+                "worktree_path": str(worktree_path),
+                "branch": branch_name,
+                "baseline_ref": baseline_ref,
+                "implementation_commit": candidate_commit,
+                "recovery_key": recovery_key,
+            }
+            if existing_implementation_lock:
+                result["lock_owner_pid"] = int(
+                    existing_implementation_lock.get("pid") or 0
+                )
+                result["lock_owner_task_id"] = str(
+                    existing_implementation_lock.get("task_id") or ""
+                )
+            self._record_event(
+                "worktree_reconciliation_validation_deferred",
+                result,
+            )
+            return result
+
+        log_path = self.implementation_log_dir / (
+            f"{task.task_id.lower()}-reconciliation-validation-"
+            f"{candidate_commit[:12]}.log"
+        )
+        validation_result: dict[str, Any] = {
+            "attempted": False,
+            "passed": False,
+            "returncode": 1,
+            "results": [],
+            "reason": "reconciliation_validation_not_run",
+        }
+        commit_result: dict[str, Any] = {"committed": False}
+        merge_result: dict[str, Any] = {
+            "merged": False,
+            "reason": "not_attempted",
+        }
+        protected_path_snapshot: dict[str, dict[str, Any]] | None = None
+        protected_path_violation: dict[str, Any] = {}
+        try:
+            state = PortalTaskState.load(self.state_path)
+        except Exception as exc:
+            self._release_implementation_lock(
+                implementation_lock_path,
+                implementation_lock_metadata,
+            )
+            self._release_implementation_task_claim(
+                task_claim_path,
+                task_claim_metadata,
+            )
+            result = {
+                "task_id": task.task_id,
+                "attempt": attempt,
+                "returncode": 1,
+                "skipped": True,
+                "reason": "reconciliation_state_load_failed",
+                "error_type": type(exc).__name__,
+                "error": str(exc)[-1000:],
+                "attempt_consumed": False,
+                "provider_dispatched": False,
+                "worktree_path": str(worktree_path),
+                "branch": branch_name,
+                "baseline_ref": baseline_ref,
+                "implementation_commit": candidate_commit,
+                "recovery_key": recovery_key,
+            }
+            self._record_event(
+                "worktree_reconciliation_validation_deferred",
+                result,
+            )
+            return result
+        state_owned = False
+        returncode = 1
+        terminal_event_recorded = False
+
+        def reconciliation_result() -> dict[str, Any]:
+            return {
+                "task_id": task.task_id,
+                "task_cid": identity.canonical_task_cid,
+                "attempt": attempt,
+                "returncode": returncode,
+                "attempt_consumed": False,
+                "provider_dispatched": False,
+                "log_path": str(log_path),
+                "worktree_path": str(worktree_path),
+                "branch": branch_name,
+                "baseline_ref": baseline_ref,
+                "commit_result": commit_result,
+                "implementation_commit": candidate_commit,
+                "merge_result": merge_result,
+                "validation_result": validation_result,
+                "protected_path_violation": protected_path_violation,
+                "recovery_key": recovery_key,
+            }
+
+        def reconciliation_event_type() -> str:
+            if returncode == 0 and merge_result.get("merged"):
+                return "implementation_finished"
+            if merge_result.get("queued"):
+                return "worktree_reconciliation_candidate_queued"
+            return "worktree_reconciliation_validation_finished"
+
+        try:
+            if state.implementation_in_progress:
+                return {
+                    "task_id": task.task_id,
+                    "attempt": attempt,
+                    "returncode": 1,
+                    "skipped": True,
+                    "reason": "lane_execution_active",
+                    "active_task_id": state.active_task_id,
+                    "attempt_consumed": False,
+                    "provider_dispatched": False,
+                    "worktree_path": str(worktree_path),
+                    "branch": branch_name,
+                    "baseline_ref": baseline_ref,
+                    "implementation_commit": candidate_commit,
+                    "recovery_key": recovery_key,
+                }
+            if not worktree_path.exists():
+                raise FileNotFoundError(str(worktree_path))
+
+            resolved_baseline = self._resolved_commit_ref(
+                worktree_path,
+                baseline_ref,
+            )
+            resolved_candidate = self._resolved_commit_ref(
+                worktree_path,
+                candidate_commit,
+            )
+            current_head = self._resolved_commit_ref(worktree_path, "HEAD")
+            current_branch = self._git_current_branch(worktree_path)
+            if (
+                not resolved_baseline
+                or not resolved_candidate
+                or resolved_candidate != current_head
+                or current_branch != branch_name
+                or resolved_baseline == resolved_candidate
+                or not self._git_ref_is_ancestor_in_repo(
+                    worktree_path,
+                    resolved_baseline,
+                    resolved_candidate,
+                )
+            ):
+                raise RuntimeError(
+                    "reconciled candidate identity or ancestry mismatch"
+                )
+
+            self._prepare_worktree_for_validation(
+                worktree_path,
+                task=task,
+                branch_name=branch_name,
+            )
+            pre_validation_status = self._run_git(
+                ["status", "--porcelain"],
+                cwd=worktree_path,
+            ).stdout.strip()
+            if pre_validation_status:
+                raise RuntimeError(
+                    "reconciled candidate worktree is not clean"
+                )
+
+            protected_path_snapshot = (
+                self._require_implementation_protected_snapshot(
+                    task=task,
+                    attempt=attempt,
+                    workspace_path=worktree_path,
+                )
+            )
+            state.active_task_id = task.task_id
+            state.active_task_key = identity.canonical_task_key
+            state.active_task_cid = identity.canonical_task_cid
+            state.active_task_title = task.title
+            state.active_task_track = task.track
+            state.active_task_started_at = started_at
+            # A crash-recovery validator must never be promoted into provider
+            # retry accounting by stale-state repair.
+            state.active_attempt = 0
+            state.active_phase = "validating_reconciled_candidate"
+            state.active_phase_started_at = started_at
+            state.active_phase_detail = "; ".join(task.validation)
+            state.active_log_path = str(log_path)
+            state.active_worktree_path = str(worktree_path)
+            state.active_branch = branch_name
+            state.implementation_in_progress = True
+            state.heartbeat_at = started_at
+            state.last_progress_at = started_at
+            state.save(self.state_path)
+            state_owned = True
+
+            log_path.parent.mkdir(parents=True, exist_ok=True)
+            log_path.write_text(
+                "\n".join(
+                    (
+                        f"Task: {task.task_id} reconciled candidate",
+                        f"Task CID: {identity.canonical_task_cid}",
+                        f"Candidate: {resolved_candidate}",
+                        f"Baseline: {resolved_baseline}",
+                        "Provider dispatched: false",
+                        "",
+                    )
+                ),
+                encoding="utf-8",
+            )
+            self._record_event(
+                "worktree_reconciliation_validation_started",
+                {
+                    "task_id": task.task_id,
+                    "task_cid": identity.canonical_task_cid,
+                    "attempt": attempt,
+                    "worktree_path": str(worktree_path),
+                    "branch": branch_name,
+                    "baseline_ref": resolved_baseline,
+                    "implementation_commit": resolved_candidate,
+                    "log_path": str(log_path),
+                    "provider_dispatched": False,
+                    "attempt_consumed": False,
+                    "recovery_key": recovery_key,
+                },
+            )
+
+            proposal_validation = self._validate_implementation_patch(
+                worktree_path,
+                task,
+                baseline_ref=resolved_baseline,
+            )
+            validation_result = self._run_validation_commands(
+                worktree_path,
+                task,
+                log_path,
+                state=state,
+                proposal_validation=proposal_validation,
+            )
+            validation_result = self._apply_implementation_failure_review(
+                task=task,
+                attempt=attempt,
+                workspace_path=worktree_path,
+                validation_result=validation_result,
+                log_path=log_path,
+                proposal_validation=proposal_validation,
+                baseline_ref=resolved_baseline,
+                state=state,
+            )
+            validation_result = (
+                self._verify_post_validation_candidate_binding(
+                    worktree_path,
+                    task,
+                    baseline_ref=resolved_baseline,
+                    proposal_validation=proposal_validation,
+                    validation_result=validation_result,
+                )
+            )
+            protected_path_violation = (
+                self._finalize_implementation_protected_path_fence(
+                    task=task,
+                    attempt=attempt,
+                    workspace_path=worktree_path,
+                    before=protected_path_snapshot,
+                    reason=(
+                        "reconciled_candidate_post_validation_unchanged"
+                    ),
+                )
+            )
+            protected_path_snapshot = None
+            if protected_path_violation:
+                validation_result = {
+                    **validation_result,
+                    "passed": False,
+                    "returncode": 1,
+                    "reason": "implementation_protected_path_mutated",
+                    "protected_path_violation": protected_path_violation,
+                }
+
+            if validation_result.get("passed", False):
+                post_validation_status = self._run_git(
+                    [
+                        "status",
+                        "--porcelain",
+                        "--untracked-files=all",
+                    ],
+                    cwd=worktree_path,
+                ).stdout.strip()
+                post_validation_head = self._resolved_commit_ref(
+                    worktree_path,
+                    "HEAD",
+                )
+                post_validation_branch = self._git_current_branch(
+                    worktree_path
+                )
+                if (
+                    post_validation_status
+                    or post_validation_head != resolved_candidate
+                    or post_validation_branch != branch_name
+                ):
+                    validation_result = {
+                        **validation_result,
+                        "passed": False,
+                        "returncode": 1,
+                        "reason": (
+                            "reconciled_candidate_mutated_during_validation"
+                        ),
+                        "status_short": (
+                            post_validation_status.splitlines()[:20]
+                        ),
+                        "expected_commit": resolved_candidate,
+                        "actual_commit": post_validation_head,
+                        "expected_branch": branch_name,
+                        "actual_branch": post_validation_branch,
+                    }
+            if validation_result.get("passed", False):
+                commit_result = (
+                    self._validated_existing_worktree_commit(
+                        worktree_path,
+                        baseline_ref=resolved_baseline,
+                    )
+                    or {
+                        "committed": False,
+                        "reason": (
+                            "reconciled_candidate_existing_commit_invalid"
+                        ),
+                    }
+                )
+                implementation_commit = str(
+                    commit_result.get("commit") or ""
+                )
+                if implementation_commit != resolved_candidate:
+                    validation_result = {
+                        **validation_result,
+                        "passed": False,
+                        "returncode": 1,
+                        "reason": (
+                            "reconciled_candidate_commit_identity_changed"
+                        ),
+                        "expected_commit": resolved_candidate,
+                        "actual_commit": implementation_commit,
+                    }
+            if validation_result.get("passed", False):
+                current_task_cids, current_task_binding_error = (
+                    self._current_completion_task_cids(
+                        [task.task_id],
+                        require_pending=True,
+                    )
+                )
+                if (
+                    current_task_binding_error
+                    or current_task_cids.get(task.task_id)
+                    != identity.canonical_task_cid
+                ):
+                    validation_result = {
+                        **validation_result,
+                        "passed": False,
+                        "returncode": 1,
+                        "reason": (
+                            "reconciled_candidate_task_revision_changed"
+                        ),
+                        "completion_binding_error": (
+                            current_task_binding_error
+                        ),
+                        "expected_task_cid": (
+                            identity.canonical_task_cid
+                        ),
+                        "current_task_cid": current_task_cids.get(
+                            task.task_id,
+                            "",
+                        ),
+                    }
+            if validation_result.get("passed", False):
+                effective_changed_submodule_paths = (
+                    list(changed_submodule_paths)
+                    if changed_submodule_paths is not None
+                    else [
+                        relative
+                        for relative in self.worktree_submodule_paths
+                        if self._root_submodule_changed_in_task(
+                            branch_name,
+                            resolved_baseline,
+                            relative,
+                        )
+                    ]
+                )
+                merge_result = self._enqueue_validated_worktree(
+                    state=state,
+                    task=task,
+                    attempt=attempt,
+                    branch_name=branch_name,
+                    baseline_ref=resolved_baseline,
+                    worktree_path=worktree_path,
+                    implementation_commit=resolved_candidate,
+                    commit_result=commit_result,
+                    validation_result=validation_result,
+                    changed_submodule_paths=(
+                        effective_changed_submodule_paths
+                    ),
+                )
+                if merge_result.get("merged"):
+                    returncode = 0
+                elif merge_result.get("queued"):
+                    merge_result["reason"] = (
+                        "reconciled_candidate_queued_pending_merge"
+                    )
+                else:
+                    validation_result = {
+                        **validation_result,
+                        "passed": False,
+                        "returncode": 1,
+                        "reason": "reconciled_candidate_handoff_failed",
+                        "merge_result": merge_result,
+                    }
+            if returncode != 0 and worktree_path.exists():
+                self._restore_ephemeral_worktree_paths_for_commit(
+                    worktree_path
+                )
+        except Exception as exc:
+            validation_result = {
+                **validation_result,
+                "passed": False,
+                "returncode": 1,
+                "reason": "reconciliation_validation_exception",
+                "error_type": type(exc).__name__,
+                "error": str(exc)[-1000:],
+            }
+        finally:
+            try:
+                if protected_path_snapshot is not None:
+                    protected_path_violation = (
+                        self._finalize_implementation_protected_path_fence(
+                            task=task,
+                            attempt=attempt,
+                            workspace_path=worktree_path,
+                            before=protected_path_snapshot,
+                            reason=(
+                                "reconciled_candidate_terminal_check_unchanged"
+                            ),
+                        )
+                    )
+                    if protected_path_violation:
+                        validation_result = {
+                            **validation_result,
+                            "passed": False,
+                            "returncode": 1,
+                            "reason": (
+                                "implementation_protected_path_mutated"
+                            ),
+                            "protected_path_violation": (
+                                protected_path_violation
+                            ),
+                        }
+                        returncode = 1
+                if state_owned:
+                    current_state = PortalTaskState.load(self.state_path)
+                    if (
+                        current_state.active_task_cid
+                        == identity.canonical_task_cid
+                    ):
+                        self._mark_implementation_finished(
+                            current_state,
+                            finished_at=utc_now(),
+                        )
+                        current_state.save(self.state_path)
+                    self._record_event(
+                        reconciliation_event_type(),
+                        reconciliation_result(),
+                    )
+                    terminal_event_recorded = True
+            finally:
+                if not self._release_implementation_lock(
+                    implementation_lock_path,
+                    implementation_lock_metadata,
+                ):
+                    logger.warning(
+                        "Refusing to remove reconciled-candidate "
+                        "implementation lock no longer owned by this "
+                        "validation: %s",
+                        implementation_lock_path,
+                    )
+                if not self._release_implementation_task_claim(
+                    task_claim_path,
+                    task_claim_metadata,
+                ):
+                    logger.warning(
+                        "Refusing to remove reconciled-candidate task claim "
+                        "no longer owned by this validation: %s",
+                        task_claim_path,
+                    )
+
+        result = reconciliation_result()
+        if not terminal_event_recorded:
+            self._record_event(reconciliation_event_type(), result)
+        return result
 
     def _run_implementation_in_ephemeral_worktree(
         self,
@@ -18490,10 +19727,10 @@ class PortalImplementationDaemon:
                 merge_result = event.get("merge_result") or {}
                 if not isinstance(merge_result, dict):
                     continue
-                # A lane can finish while its request remains queued.  Commit
-                # ancestry is the durable proof a later train consumer landed
-                # it, even when that consumer wrote to another lane's event log.
-                if not merge_result.get("merged") and not merge_result.get("queued"):
+                # Queue admission is not a completion receipt.  In particular,
+                # ancestry alone cannot prove that the merge callback applied
+                # the current-CID completion decision.
+                if not merge_result.get("merged"):
                     continue
             elif event_type == "merge_reconciled":
                 if not event.get("resolved"):
@@ -18501,6 +19738,48 @@ class PortalImplementationDaemon:
             else:
                 continue
             if implementation_commit and not self._git_ref_is_ancestor(implementation_commit, target_branch):
+                continue
+            raw_bindings = (
+                (event.get("merge_result") or {}).get(
+                    "completion_task_cids"
+                )
+                if isinstance(event.get("merge_result"), Mapping)
+                else None
+            )
+            if not isinstance(raw_bindings, Mapping):
+                raw_bindings = event.get("completion_task_cids")
+            if isinstance(raw_bindings, Mapping) and raw_bindings:
+                binding_metadata = {
+                    "completion_task_cids": raw_bindings
+                }
+                if self._completion_task_revision_binding_error(
+                    binding_metadata,
+                    require_pending=False,
+                ):
+                    continue
+                task_ids.update(
+                    str(bound_task_id)
+                    for bound_task_id in raw_bindings
+                    if str(bound_task_id)
+                )
+                continue
+            event_task_cid = str(
+                event.get("task_cid")
+                or event.get("canonical_task_cid")
+                or ""
+            )
+            if not event_task_cid:
+                continue
+            current_cids, binding_error = (
+                self._current_completion_task_cids(
+                    [task_id],
+                    require_pending=False,
+                )
+            )
+            if (
+                binding_error
+                or current_cids.get(task_id) != event_task_cid
+            ):
                 continue
             task_ids.add(task_id)
         return task_ids

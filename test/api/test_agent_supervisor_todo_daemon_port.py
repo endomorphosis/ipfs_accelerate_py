@@ -10,6 +10,7 @@ import signal
 import subprocess
 import sys
 import time
+from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
@@ -4934,6 +4935,507 @@ def test_implementation_daemon_rehydrates_cleaned_merge_queue_branch(
     assert mismatch["branch_commit"] == later
 
 
+def test_merge_train_rejects_changed_current_task_revision(
+    tmp_path: Path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Todos
+
+## REF-043 Bind current task revision
+
+- Status: todo
+- Completion: manual
+- Priority: P0
+- Track: ops
+- Outputs: feature.py
+- Validation: python -m py_compile feature.py
+- Acceptance: Deliver the first task revision.
+""",
+        encoding="utf-8",
+    )
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "README.md", "todo.md")
+    _git(repo, "commit", "-m", "base")
+    baseline = _git(repo, "rev-parse", "HEAD")
+    branch_name = "implementation/ref-043-current-cid"
+    _git(repo, "checkout", "-b", branch_name)
+    (repo / "feature.py").write_text("VALUE = 1\n", encoding="utf-8")
+    _git(repo, "add", "feature.py")
+    _git(repo, "commit", "-m", "REF-043: feature")
+    candidate = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "main")
+
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## REF-",
+        worktree_submodule_paths=[],
+    )
+    task = daemon._load_tasks()[0]
+    request, _result = daemon._enqueue_merge_candidate(
+        branch_name=branch_name,
+        implementation_commit=candidate,
+        baseline_ref=baseline,
+        worktree_path=None,
+        task=task,
+        attempt=1,
+    )
+    assert (
+        request.metadata["schema"]
+        == "ipfs_accelerate_py/agent-supervisor/merge-candidate@3"
+    )
+    assert request.metadata["completion_task_cids"] == {
+        "REF-043": daemon._identity_for_task(task).canonical_task_cid
+    }
+
+    todo_path.write_text(
+        todo_path.read_text(encoding="utf-8").replace(
+            "Deliver the first task revision.",
+            "Deliver a materially revised task contract.",
+        ),
+        encoding="utf-8",
+    )
+    merge_calls: list[str] = []
+    monkeypatch.setattr(
+        daemon,
+        "_merge_branch_to_main",
+        lambda selected_branch, *_args, **_kwargs: (
+            merge_calls.append(selected_branch)
+            or {"merged": True, "returncode": 0}
+        ),
+    )
+
+    result = daemon._merge_train_callback(request)
+
+    assert result["merged"] is False
+    assert result["reason"] == "merge_candidate_task_revision_mismatch"
+    assert (
+        result["completion_binding_error"]["reason"]
+        == "completion_task_revision_changed"
+    )
+    assert merge_calls == []
+    assert "- Status: todo" in todo_path.read_text(encoding="utf-8")
+
+
+def test_merge_candidate_v3_threads_completion_cids_into_todo_mutation(
+    tmp_path: Path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Todos
+
+## REF-045 Fence the completion mutation
+
+- Status: todo
+- Completion: manual
+- Priority: P0
+- Track: ops
+- Outputs: feature.py
+- Acceptance: Complete only the queued task revision.
+""",
+        encoding="utf-8",
+    )
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "README.md", "todo.md")
+    _git(repo, "commit", "-m", "base")
+    baseline = _git(repo, "rev-parse", "HEAD")
+    branch_name = "implementation/ref-045-completion-cid"
+    _git(repo, "checkout", "-b", branch_name)
+    (repo / "feature.py").write_text("VALUE = 1\n", encoding="utf-8")
+    _git(repo, "add", "feature.py")
+    _git(repo, "commit", "-m", "REF-045: feature")
+    candidate = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "main")
+
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## REF-",
+        worktree_submodule_paths=[],
+    )
+    task = daemon._load_tasks()[0]
+    expected_task_cids = {
+        task.task_id: daemon._identity_for_task(task).canonical_task_cid
+    }
+    request, _result = daemon._enqueue_merge_candidate(
+        branch_name=branch_name,
+        implementation_commit=candidate,
+        baseline_ref=baseline,
+        worktree_path=None,
+        task=task,
+        attempt=1,
+    )
+    observed: dict[str, object] = {}
+
+    def record_todo_mutation(
+        task_ids,
+        *,
+        primary_task_id,
+        completion_reason,
+        bundle_work_order=None,
+        expected_task_cids=None,
+    ):
+        observed.update(
+            {
+                "task_ids": list(task_ids),
+                "primary_task_id": primary_task_id,
+                "completion_reason": completion_reason,
+                "bundle_work_order": bundle_work_order,
+                "expected_task_cids": expected_task_cids,
+            }
+        )
+        return {
+            "updated": True,
+            "updated_task_ids": list(task_ids),
+            "completion_receipts": [
+                {
+                    "task_id": task_id,
+                    "canonical_task_cid": expected_task_cids[task_id],
+                }
+                for task_id in task_ids
+            ],
+        }
+
+    monkeypatch.setattr(
+        daemon,
+        "_merge_branch_to_main",
+        lambda *_args, **_kwargs: {"merged": True, "returncode": 0},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_mark_tasks_completed_in_todo",
+        record_todo_mutation,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_completed_task_binding_error",
+        lambda _metadata: {},
+    )
+
+    result = daemon._merge_train_callback(request)
+
+    assert result["merged"] is True
+    assert observed == {
+        "task_ids": ["REF-045"],
+        "primary_task_id": "REF-045",
+        "completion_reason": "single_task",
+        "bundle_work_order": None,
+        "expected_task_cids": expected_task_cids,
+    }
+
+
+def test_merge_candidate_v3_refuses_markdown_completion_when_revision_changes_at_mutation_boundary(
+    tmp_path: Path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Todos
+
+## REF-046 Fence the Markdown mutation boundary
+
+- Status: todo
+- Completion: manual
+- Priority: P0
+- Track: ops
+- Outputs: feature.py
+- Acceptance: Complete the original contract.
+""",
+        encoding="utf-8",
+    )
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "README.md", "todo.md")
+    _git(repo, "commit", "-m", "base")
+    baseline = _git(repo, "rev-parse", "HEAD")
+    branch_name = "implementation/ref-046-mutation-boundary"
+    _git(repo, "checkout", "-b", branch_name)
+    (repo / "feature.py").write_text("VALUE = 1\n", encoding="utf-8")
+    _git(repo, "add", "feature.py")
+    _git(repo, "commit", "-m", "REF-046: feature")
+    candidate = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "main")
+
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## REF-",
+        worktree_submodule_paths=[],
+    )
+    task = daemon._load_tasks()[0]
+    request, _result = daemon._enqueue_merge_candidate(
+        branch_name=branch_name,
+        implementation_commit=candidate,
+        baseline_ref=baseline,
+        worktree_path=None,
+        task=task,
+        attempt=1,
+    )
+
+    real_locked_taskboard = implementation_daemon_module.locked_taskboard
+
+    @contextmanager
+    def revise_task_at_mutation_boundary(path):
+        todo_path.write_text(
+            todo_path.read_text(encoding="utf-8").replace(
+                "Complete the original contract.",
+                "Complete a revised contract that was not queued.",
+            ),
+            encoding="utf-8",
+        )
+        with real_locked_taskboard(path) as taskboard:
+            yield taskboard
+
+    monkeypatch.setattr(
+        daemon,
+        "_merge_branch_to_main",
+        lambda *_args, **_kwargs: {"merged": True, "returncode": 0},
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "locked_taskboard",
+        revise_task_at_mutation_boundary,
+    )
+
+    result = daemon._merge_train_callback(request)
+    rendered = todo_path.read_text(encoding="utf-8")
+
+    assert result["merged"] is False
+    assert result["integration_occurred"] is True
+    assert result["todo_update_result"]["updated"] is False
+    assert (
+        result["todo_update_result"]["reason"]
+        == "completion_task_revision_changed"
+    )
+    assert "- Status: todo" in rendered
+    assert "Complete a revised contract that was not queued." in rendered
+
+
+def test_merge_candidate_v3_refuses_atomic_bundle_completion_when_member_revision_changes_at_mutation_boundary(
+    tmp_path: Path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Todos
+
+## REF-047 Complete the bundle
+
+- Status: todo
+- Completion: manual
+- Priority: P0
+- Track: ops
+- Outputs: feature.py
+- Acceptance: Complete the queued bundle primary.
+
+## REF-048 Complete the bundle member
+
+- Status: todo
+- Completion: manual
+- Priority: P0
+- Track: ops
+- Outputs: feature.py
+- Acceptance: Complete the queued bundle member.
+""",
+        encoding="utf-8",
+    )
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "README.md", "todo.md")
+    _git(repo, "commit", "-m", "base")
+    baseline = _git(repo, "rev-parse", "HEAD")
+    branch_name = "implementation/ref-047-bundle-boundary"
+    _git(repo, "checkout", "-b", branch_name)
+    (repo / "feature.py").write_text("VALUE = 1\n", encoding="utf-8")
+    _git(repo, "add", "feature.py")
+    _git(repo, "commit", "-m", "REF-047: feature")
+    candidate = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "main")
+
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## REF-",
+        worktree_submodule_paths=[],
+    )
+    tasks = {task.task_id: task for task in daemon._load_tasks()}
+    bundle_payload = {
+        "primary_task_id": "REF-047",
+        "covered_task_ids": ["REF-048"],
+        "packet_key": "packet/ref-047",
+        "goal_ids": [],
+        "work_item_count": 2,
+        "index_path": "todo.md",
+    }
+    work_order = SimpleNamespace(
+        task_ids=["REF-047", "REF-048"],
+        to_dict=lambda: bundle_payload,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_bundle_work_order_for_task",
+        lambda _task: work_order,
+    )
+    request, _result = daemon._enqueue_merge_candidate(
+        branch_name=branch_name,
+        implementation_commit=candidate,
+        baseline_ref=baseline,
+        worktree_path=None,
+        task=tasks["REF-047"],
+        attempt=1,
+    )
+    assert request.metadata["completion_task_cids"] == {
+        task_id: daemon._identity_for_task(task).canonical_task_cid
+        for task_id, task in tasks.items()
+    }
+
+    real_locked_taskboard = implementation_daemon_module.locked_taskboard
+
+    @contextmanager
+    def revise_bundle_member_at_mutation_boundary(path):
+        todo_path.write_text(
+            todo_path.read_text(encoding="utf-8").replace(
+                "Complete the queued bundle member.",
+                "Complete a revised bundle member that was not queued.",
+            ),
+            encoding="utf-8",
+        )
+        with real_locked_taskboard(path) as taskboard:
+            yield taskboard
+
+    monkeypatch.setattr(
+        daemon,
+        "_merge_branch_to_main",
+        lambda *_args, **_kwargs: {"merged": True, "returncode": 0},
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "locked_taskboard",
+        revise_bundle_member_at_mutation_boundary,
+    )
+
+    result = daemon._merge_train_callback(request)
+    statuses = {
+        task.task_id: task.status
+        for task in parse_task_file(
+            todo_path,
+            task_header_prefix="## REF-",
+        )
+    }
+
+    assert result["merged"] is False
+    assert result["integration_occurred"] is True
+    assert result["todo_update_result"]["updated"] is False
+    assert (
+        result["todo_update_result"]["reason"]
+        == "completion_task_revision_changed"
+    )
+    assert (
+        result["todo_update_result"]["mismatches"]["REF-048"][
+            "expected_task_cid"
+        ]
+        == request.metadata["completion_task_cids"]["REF-048"]
+    )
+    assert statuses == {"REF-047": "todo", "REF-048": "todo"}
+
+
+def test_queued_ancestry_is_not_a_completion_receipt(tmp_path: Path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Todos
+
+## REF-044 Wait for merge callback
+
+- Status: todo
+- Completion: manual
+- Outputs: README.md
+- Acceptance: Require a completed queue receipt.
+""",
+        encoding="utf-8",
+    )
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "README.md", "todo.md")
+    _git(repo, "commit", "-m", "base")
+    candidate = _git(repo, "rev-parse", "HEAD")
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## REF-",
+    )
+    task = daemon._load_tasks()[0]
+    task_cid = daemon._identity_for_task(task).canonical_task_cid
+    daemon._record_event(
+        "implementation_finished",
+        {
+            "task_id": task.task_id,
+            "task_cid": task_cid,
+            "implementation_commit": candidate,
+            "returncode": 0,
+            "merge_result": {
+                "merged": False,
+                "queued": True,
+                "request_id": "queued-only",
+                "completion_task_cids": {
+                    task.task_id: task_cid,
+                },
+            },
+        },
+    )
+
+    assert daemon._successfully_merged_task_ids() == set()
+
+
 def test_merge_train_accepts_commit_integrated_by_merge_resolver(tmp_path: Path, monkeypatch):
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -7673,7 +8175,7 @@ def test_implementation_daemon_defers_provider_quota_without_consuming_attempt(t
 
     assert first["deferred"] is True
     assert first["reason"] == "provider_capacity_exhausted"
-    assert first["providers"] == ["codex", "copilot"]
+    assert first["providers"] == ["codex", "copilot", "grok"]
     assert first["attempt_consumed"] is False
     assert persisted.implementation_attempts == {}
     assert daemon._find_live_inflight_implementation() is None
@@ -17054,7 +17556,7 @@ def test_implementation_supervisor_rescues_dirty_merged_worktree(tmp_path):
     assert _git(repo, "show", f"{current_branch}:src/app.py") == "VALUE = 'rescued dirty content'"
 
 
-def test_implementation_supervisor_merges_rescued_worktree_and_deletes_it(tmp_path):
+def test_implementation_supervisor_preserves_unbound_rescued_worktree(tmp_path):
     repo, worktree_path, supervisor = _merged_cleanup_worktree_fixture(
         tmp_path,
         "implementation/rescue-dirty-merge",
@@ -17067,12 +17569,20 @@ def test_implementation_supervisor_merges_rescued_worktree_and_deletes_it(tmp_pa
 
     reconcile_result = supervisor.reconcile_backlogged_worktrees()
 
-    assert reconcile_result["reconciled_count"] == 1
-    assert reconcile_result["cleanup_count"] == 1
+    assert reconcile_result["reconciled_count"] == 0
+    assert reconcile_result["cleanup_count"] == 0
     assert reconcile_result["processed"][0]["branch"] == rescue_branch
-    assert reconcile_result["processed"][0]["cleanup_result"]["cleaned"] is True
-    assert not worktree_path.exists()
-    assert (repo / "src" / "app.py").read_text(encoding="utf-8") == "VALUE = 'rescued and merged'\n"
+    assert (
+        reconcile_result["processed"][0]["merge_result"]["reason"]
+        == "reconciliation_candidate_task_board_unavailable"
+    )
+    assert worktree_path.exists()
+    assert (
+        repo / "src" / "app.py"
+    ).read_text(encoding="utf-8") == "VALUE = 'base'\n"
+    assert (
+        worktree_path / "src" / "app.py"
+    ).read_text(encoding="utf-8") == "VALUE = 'rescued and merged'\n"
     rescue_branch_exists = subprocess.run(
         ["git", "rev-parse", "--verify", "--quiet", rescue_branch],
         cwd=repo,
@@ -17080,7 +17590,7 @@ def test_implementation_supervisor_merges_rescued_worktree_and_deletes_it(tmp_pa
         capture_output=True,
         check=False,
     )
-    assert rescue_branch_exists.returncode != 0
+    assert rescue_branch_exists.returncode == 0
 
 
 def test_implementation_supervisor_caps_dirty_worktree_evidence_samples(tmp_path, monkeypatch):
@@ -17258,10 +17768,14 @@ def test_implementation_supervisor_reconciles_clean_backlogged_worktree(tmp_path
 
     assert result["candidate_count"] == 1
     assert result["processed_count"] == 1
-    assert result["reconciled_count"] == 1
-    assert result["cleanup_count"] == 1
-    assert (repo / "feature.txt").read_text(encoding="utf-8") == "feature\n"
-    assert not worktree_path.exists()
+    assert result["reconciled_count"] == 0
+    assert result["cleanup_count"] == 0
+    assert (
+        result["processed"][0]["merge_result"]["reason"]
+        == "reconciliation_candidate_task_board_unavailable"
+    )
+    assert not (repo / "feature.txt").exists()
+    assert worktree_path.exists()
     branch_exists = subprocess.run(
         ["git", "rev-parse", "--verify", "--quiet", branch_name],
         cwd=repo,
@@ -17269,7 +17783,466 @@ def test_implementation_supervisor_reconciles_clean_backlogged_worktree(tmp_path
         capture_output=True,
         check=False,
     )
-    assert branch_exists.returncode != 0
+    assert branch_exists.returncode == 0
+
+
+def _reconciled_candidate_task_board(
+    *,
+    task_id: str,
+    validation: str,
+    outputs: str = "feature.py",
+) -> str:
+    return (
+        "# Tasks\n\n"
+        f"## {task_id} Recover an orphaned implementation candidate\n\n"
+        "- Status: todo\n"
+        "- Completion: manual\n"
+        "- Priority: P0\n"
+        "- Track: ops\n"
+        f"- Outputs: {outputs}\n"
+        f"- Validation: {validation}\n"
+        "- Acceptance: The current task contract validates the recovered "
+        "candidate before completion.\n"
+    )
+
+
+def test_implementation_supervisor_validates_current_task_before_recovered_merge(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        _reconciled_candidate_task_board(
+            task_id="ACCEL-010",
+            validation="python -m py_compile feature.py",
+        ),
+        encoding="utf-8",
+    )
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    (repo / ".gitignore").write_text(
+        "__pycache__/\n*.pyc\n",
+        encoding="utf-8",
+    )
+    _git(repo, "add", ".gitignore", "README.md", "todo.md")
+    _git(repo, "commit", "-m", "base")
+
+    branch_name = (
+        "implementation/accel-010-a1b2c3d4e5f6-attempt-1-123"
+    )
+    _git(repo, "checkout", "-b", branch_name)
+    (repo / "feature.py").write_text(
+        'VALUE = "feature"\n',
+        encoding="utf-8",
+    )
+    _git(repo, "add", "feature.py")
+    candidate_commit = _git(repo, "commit", "-m", "feature")
+    candidate_commit = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "main")
+    state_dir = tmp_path / "state"
+    worktree_root = tmp_path / "worktrees"
+    worktree_path = worktree_root / "candidate"
+    _git(repo, "worktree", "add", str(worktree_path), branch_name)
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=todo_path,
+            state_path=state_dir / "task_state.json",
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "supervisor_events.jsonl",
+            state_dir=state_dir,
+            state_prefix="accel",
+            task_prefix="## ACCEL-",
+            repo_root=repo,
+            worktree_root=worktree_root,
+            merge_target_branch="main",
+        )
+    )
+
+    result = supervisor.reconcile_backlogged_worktrees()
+
+    assert result["reconciled_count"] == 1
+    recovered = result["processed"][0]["recovery_result"]
+    assert recovered["implementation_commit"] == candidate_commit
+    assert recovered["provider_dispatched"] is False
+    assert recovered["attempt_consumed"] is False
+    assert recovered["validation_result"]["passed"] is True
+    assert recovered["validation_result"]["proposal_gate"]["accepted"] is True
+    assert result["processed"][0]["validated_before_merge"] is True
+    assert "- Status: completed" in todo_path.read_text(encoding="utf-8")
+    assert (repo / "feature.py").read_text(
+        encoding="utf-8"
+    ) == 'VALUE = "feature"\n'
+    managed_events = [
+        json.loads(line)
+        for line in (state_dir / "accel_events.jsonl").read_text(
+            encoding="utf-8"
+        ).splitlines()
+    ]
+    assert any(
+        event["type"] == "implementation_finished"
+        and event["task_id"] == "ACCEL-010"
+        and event["attempt_consumed"] is False
+        and event["provider_dispatched"] is False
+        for event in managed_events
+    )
+    assert _git(repo, "status", "--short") == ""
+
+
+def test_reconciled_candidate_validation_never_commits_test_artifacts(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        _reconciled_candidate_task_board(
+            task_id="ACCEL-010A",
+            validation="python -m pytest -q test_feature.py",
+        ),
+        encoding="utf-8",
+    )
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    (repo / "test_feature.py").write_text(
+        "from pathlib import Path\n\n"
+        "def test_feature():\n"
+        "    import feature\n"
+        "    assert feature.VALUE == 1\n"
+        "    Path('unexpected-validation-artifact.txt')."
+        "write_text('artifact')\n",
+        encoding="utf-8",
+    )
+    (repo / ".gitignore").write_text(
+        "__pycache__/\n*.pyc\n",
+        encoding="utf-8",
+    )
+    _git(
+        repo,
+        "add",
+        ".gitignore",
+        "README.md",
+        "test_feature.py",
+        "todo.md",
+    )
+    _git(repo, "commit", "-m", "base")
+    baseline = _git(repo, "rev-parse", "HEAD")
+    branch_name = "implementation/accel-010a-immutable"
+    _git(repo, "checkout", "-b", branch_name)
+    (repo / "feature.py").write_text("VALUE = 1\n", encoding="utf-8")
+    _git(repo, "add", "feature.py")
+    _git(repo, "commit", "-m", "feature")
+    candidate = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "main")
+    worktree_path = tmp_path / "candidate"
+    _git(repo, "worktree", "add", str(worktree_path), branch_name)
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        worktree_root=tmp_path / "worktrees",
+        merge_target_branch="main",
+        worktree_submodule_paths=[],
+    )
+    task = daemon._load_tasks()[0]
+
+    result = daemon.reconcile_validated_worktree_candidate(
+        worktree_path=worktree_path,
+        branch_name=branch_name,
+        task=task,
+        baseline_ref=baseline,
+        candidate_commit=candidate,
+        recovery_key="immutable-artifact-test",
+    )
+
+    assert result["returncode"] != 0
+    assert result["validation_result"]["reason"] in {
+        "candidate_changed_during_validation",
+        "reconciled_candidate_mutated_during_validation",
+    }
+    assert result["commit_result"]["committed"] is False
+    assert _git(worktree_path, "rev-parse", "HEAD") == candidate
+    assert (
+        _git(repo, "rev-list", "--count", f"{baseline}..{branch_name}")
+        == "1"
+    )
+    assert "- Status: todo" in todo_path.read_text(encoding="utf-8")
+
+
+def test_implementation_supervisor_keeps_failed_recovered_candidate_unmerged(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        _reconciled_candidate_task_board(
+            task_id="ACCEL-011",
+            validation="python -m py_compile feature.py",
+        ),
+        encoding="utf-8",
+    )
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    (repo / ".gitignore").write_text(
+        "__pycache__/\n*.pyc\n",
+        encoding="utf-8",
+    )
+    _git(repo, "add", ".gitignore", "README.md", "todo.md")
+    _git(repo, "commit", "-m", "base")
+
+    branch_name = (
+        "implementation/accel-011-0f1e2d3c4b5a-attempt-1-456"
+    )
+    _git(repo, "checkout", "-b", branch_name)
+    (repo / "feature.py").write_text(
+        "this is invalid python\n",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "feature.py")
+    _git(repo, "commit", "-m", "feature")
+    _git(repo, "checkout", "main")
+    state_dir = tmp_path / "state"
+    worktree_root = tmp_path / "worktrees"
+    worktree_path = worktree_root / "candidate"
+    _git(repo, "worktree", "add", str(worktree_path), branch_name)
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=todo_path,
+            state_path=state_dir / "task_state.json",
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "supervisor_events.jsonl",
+            state_dir=state_dir,
+            state_prefix="accel",
+            task_prefix="## ACCEL-",
+            repo_root=repo,
+            worktree_root=worktree_root,
+            merge_target_branch="main",
+        )
+    )
+
+    first = supervisor.reconcile_backlogged_worktrees()
+    second = supervisor.reconcile_backlogged_worktrees()
+
+    recovered = first["processed"][0]["recovery_result"]
+    assert first["reconciled_count"] == 0
+    assert recovered["returncode"] != 0
+    assert recovered["validation_result"]["passed"] is False
+    assert recovered["provider_dispatched"] is False
+    assert not (repo / "feature.py").exists()
+    assert "- Status: todo" in todo_path.read_text(encoding="utf-8")
+    assert worktree_path.exists()
+    assert second["reconciled_count"] == 0
+    assert second["processed_count"] == 1
+    assert (
+        second["processed"][0]["merge_result"]["reason"]
+        == "reconciliation_candidate_validation_already_settled"
+    )
+
+
+def test_implementation_supervisor_replays_exact_historical_merge_through_train(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        _reconciled_candidate_task_board(
+            task_id="ACCEL-012",
+            validation="python -m py_compile feature.py",
+        ),
+        encoding="utf-8",
+    )
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    (repo / ".gitignore").write_text(
+        "__pycache__/\n*.pyc\n",
+        encoding="utf-8",
+    )
+    _git(repo, "add", ".gitignore", "README.md", "todo.md")
+    _git(repo, "commit", "-m", "base")
+    proposal_baseline_ref = _git(repo, "rev-parse", "HEAD")
+
+    historical_branch = (
+        "implementation/accel-012-123456abcdef-attempt-1-789"
+    )
+    historical_worktree = tmp_path / "historical-worktree"
+    _git(repo, "checkout", "-b", historical_branch)
+    (repo / "feature.py").write_text(
+        'VALUE = "feature"\n',
+        encoding="utf-8",
+    )
+    _git(repo, "add", "feature.py")
+    _git(repo, "commit", "-m", "feature")
+    candidate_commit = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "main")
+    # Reproduce the production repair shape: the target independently
+    # contains the candidate patch before the historical no-op merge.
+    (repo / "feature.py").write_text(
+        'VALUE = "feature"\n',
+        encoding="utf-8",
+    )
+    _git(repo, "add", "feature.py")
+    _git(repo, "commit", "-m", "independent repair")
+    baseline_ref = _git(repo, "rev-parse", "HEAD")
+    preflight_tree = _git(
+        repo,
+        "merge-tree",
+        "--write-tree",
+        baseline_ref,
+        candidate_commit,
+    )
+    _git(repo, "merge", "--no-ff", "--no-edit", historical_branch)
+    merge_commit = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "branch", "-D", historical_branch)
+
+    state_dir = tmp_path / "runtime" / "codex"
+    state_dir.mkdir(parents=True)
+    supervisor_events_path = (
+        state_dir / "accel_supervisor_events.jsonl"
+    )
+    supervisor_events_path.write_text(
+        json.dumps(
+                {
+                    "type": "worktree_reconciliation",
+                    "target_ref": "main",
+                    "target_signature": baseline_ref,
+                    "processed": [
+                        {
+                            "branch": historical_branch,
+                            "head": candidate_commit,
+                            "path": str(historical_worktree),
+                            "target_ref": "main",
+                            "merged": True,
+                            "preflight_result": {
+                                "attempted": True,
+                                "mergeable": True,
+                                "returncode": 0,
+                                "branch": historical_branch,
+                                "target_ref": "main",
+                                "tree": preflight_tree,
+                            },
+                            "merge_result": {
+                                "attempted": True,
+                                "merged": True,
+                                "returncode": 0,
+                                "branch": historical_branch,
+                                "target_branch": "main",
+                                "merge_commit": merge_commit,
+                            },
+                            "cleanup_result": {
+                                "branch": historical_branch,
+                                "worktree_path": str(
+                                    historical_worktree
+                                ),
+                                "cleaned": True,
+                                "removed_worktree": True,
+                                "deleted_branch": True,
+                            },
+                    }
+                ],
+            },
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    managed_events_path = state_dir / "accel_events.jsonl"
+    managed_events_path.write_text(
+        json.dumps(
+            {
+                "type": "implementation_started",
+                    "task_id": "ACCEL-012",
+                    "canonical_task_cid": "historical-task-cid",
+                    "canonical_task_key": (
+                        "task/v1/"
+                        "123456abcdef0000000000000000000000000000000000000000000000"
+                    ),
+                    "board_namespace": "todo.md",
+                    "branch": historical_branch,
+                    "baseline_ref": proposal_baseline_ref,
+                    "worktree_path": str(historical_worktree),
+                    "workspace_setup": {
+                        "base_commit": proposal_baseline_ref,
+                        "branch": historical_branch,
+                        "worktree_path": str(historical_worktree),
+                    },
+                "timestamp": "2026-07-29T00:00:00+00:00",
+            },
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    worktree_root = tmp_path / "worktrees"
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=todo_path,
+            state_path=state_dir / "task_state.json",
+            strategy_path=state_dir / "strategy.json",
+            events_path=supervisor_events_path,
+            state_dir=state_dir,
+            state_prefix="accel",
+            task_prefix="## ACCEL-",
+            repo_root=repo,
+            worktree_root=worktree_root,
+            merge_target_branch="main",
+        )
+    )
+
+    result = (
+        supervisor.recover_already_merged_reconciliation_candidates()
+    )
+
+    assert result["completed_count"] == 1
+    replay = result["results"][0]
+    assert replay["baseline_ref"] == proposal_baseline_ref
+    assert replay["integration_baseline_ref"] == baseline_ref
+    assert replay["historical_candidate_commit"] == candidate_commit
+    assert replay["merge_commit"] == merge_commit
+    assert replay["merge_tree"] == preflight_tree
+    assert replay["provider_dispatched"] is False
+    assert replay["attempt_consumed"] is False
+    assert (
+        replay["recovery_result"]["validation_result"]["proposal_gate"][
+            "accepted"
+        ]
+        is True
+    )
+    assert "- Status: completed" in todo_path.read_text(encoding="utf-8")
+    managed_events = [
+        json.loads(line)
+        for line in (state_dir / "accel_events.jsonl").read_text(
+            encoding="utf-8"
+        ).splitlines()
+    ]
+    assert any(
+        event["type"] == "implementation_finished"
+        and event["implementation_commit"] == candidate_commit
+        and event["attempt_consumed"] is False
+        for event in managed_events
+    )
+    replay_again = (
+        supervisor.recover_already_merged_reconciliation_candidates()
+    )
+    assert replay_again["processed_count"] == 0
+    assert _git(repo, "status", "--short") == ""
 
 
 def test_implementation_supervisor_preflights_conflicting_backlogged_worktree(tmp_path):
@@ -17323,7 +18296,7 @@ def test_implementation_supervisor_preflights_conflicting_backlogged_worktree(tm
     assert worktree_path.exists()
 
 
-def test_implementation_supervisor_escalates_preflight_conflict_to_configured_resolver(
+def test_implementation_supervisor_resolver_cannot_bypass_missing_task_binding(
     tmp_path,
 ):
     repo = tmp_path / "repo"
@@ -17376,13 +18349,19 @@ def test_implementation_supervisor_escalates_preflight_conflict_to_configured_re
 
     result = supervisor.reconcile_backlogged_worktrees()
 
-    assert merge_calls == [branch_name]
+    assert merge_calls == []
     assert result["candidate_count"] == 1
-    assert result["reconciled_count"] == 1
-    assert result["preflight_blocked_count"] == 0
+    assert result["reconciled_count"] == 0
+    assert result["preflight_blocked_count"] == 1
     assert result["preflight_resolver_escalation_count"] == 1
     assert result["processed"][0]["preflight_result"]["mergeable"] is False
     assert result["processed"][0]["preflight_resolver_escalated"] is True
+    assert (
+        result["processed"][0]["merge_result"]["reason"]
+        == "reconciliation_candidate_task_board_unavailable"
+    )
+    assert marker.read_text(encoding="utf-8") == "main change\n"
+    assert worktree_path.exists()
 
 
 def test_implementation_supervisor_defers_worktree_reconciliation_when_main_dirty(tmp_path):
@@ -17480,7 +18459,13 @@ def test_implementation_supervisor_ignores_generated_objective_heap_dirty_main(t
     assert result["raw_main_checkout_dirty"] is True
     assert "implementation_plan/docs/objective-heap.md" in result["raw_main_dirty_evidence"]["status_paths"]
     assert "implementation_plan/docs/objective-heap.md" in result["main_dirty_evidence"]["filtered_generated_status_paths"]
-    assert (repo / "feature.txt").exists()
+    assert result["reconciled_count"] == 0
+    assert (
+        result["processed"][0]["merge_result"]["reason"]
+        == "reconciliation_candidate_task_board_unavailable"
+    )
+    assert not (repo / "feature.txt").exists()
+    assert worktree_path.exists()
     assert objective_path.read_text(encoding="utf-8") == "# Objective\n\n## Generated goal\n"
 
 
@@ -17530,7 +18515,13 @@ def test_implementation_supervisor_ignores_generated_state_directory_dirty_main(
     assert result["raw_main_checkout_dirty"] is True
     assert "tmp/supervisor/state/submodule-merge-diagnostics.json" in result["raw_main_dirty_evidence"]["status_paths"]
     assert "tmp/supervisor/state/submodule-merge-diagnostics.json" in result["main_dirty_evidence"]["filtered_generated_status_paths"]
-    assert (repo / "feature.txt").exists()
+    assert result["reconciled_count"] == 0
+    assert (
+        result["processed"][0]["merge_result"]["reason"]
+        == "reconciliation_candidate_task_board_unavailable"
+    )
+    assert not (repo / "feature.txt").exists()
+    assert worktree_path.exists()
     assert diagnostics_path.read_text(encoding="utf-8") == '{"attempts": [{"task_id": "ACCEL-011"}]}\n'
 
 
