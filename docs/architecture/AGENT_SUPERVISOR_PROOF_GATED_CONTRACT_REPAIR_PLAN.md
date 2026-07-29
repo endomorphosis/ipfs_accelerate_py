@@ -99,13 +99,16 @@ file-disjoint RPR work from proceeding.
 Current launch snapshot:
 
 - exact accelerator `ipfs_datasets_py` gitlink is initialized and import-bound;
-- cvc5 1.3.3 is available;
-- Z3 and mypy are unavailable;
-- Node 18.19.1 is available, but pinned `typescript@5.6.3` is unavailable;
-- Python contract work can proceed; affected Z3, mypy, and TypeScript claims
-  remain unsupported until their reviewed toolchains are present.
+- cvc5 CLI/Python 1.3.3 and Z3 4.16.0 are available;
+- mypy 1.20.2 and ruff 0.16.0 are available to validation workers;
+- Node 18.19.1 and the managed `typescript@5.9.3` CLI/compiler API are
+  available under a versioned user-local root;
+- Python dependencies are declared in `requirements.txt`/`setup.py`, Z3 and
+  cvc5 are registered in both datasets lazy solver surfaces, and TypeScript is
+  provisioned only through the explicit pinned npm loader.
 
-No task may auto-install a proof or analysis toolchain.
+Capability probes and ordinary tasks never install a proof or analysis
+toolchain. Provisioning requires an explicit operator `--install` request.
 
 ## 4. Non-negotiable invariants
 
