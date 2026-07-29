@@ -228,7 +228,7 @@ compact references and bounded spans only.
 
 ## VFS-012 Add a bounded ipfs_datasets_py GraphRAG/IPLD projection provider
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P1
 - Track: program-graph
