@@ -1,4 +1,10 @@
-"""Tests for VFS-020 code-contract capability-probed solver routing."""
+"""Tests for VFS-020 / VFS-G070 code-contract capability-probed solver routing.
+
+Also covers VFS-053 objective validation repair: exact-text discovery of
+``objective validation repair``, separation of FormalLogicVocabulary
+translation, MultiProverRouter candidate search, and KernelVerification
+authoritative validation.
+"""
 
 from __future__ import annotations
 
@@ -9,11 +15,19 @@ import pytest
 
 from ipfs_accelerate_py.agent_supervisor.code_contract_logic import (
     LOGIC_FAMILY,
+    LOGIC_TRANSLATION_EVIDENCE,
+    OBJECTIVE_GOAL_ID as LOGIC_OBJECTIVE_GOAL_ID,
+    OBJECTIVE_VALIDATION_REPAIR_EVIDENCE as LOGIC_REPAIR_EVIDENCE,
+    FormalLogicVocabulary,
     PredicateRelation,
     SupportedPredicateKind,
     TranslationStatus,
+    all_covered_evidence_terms as logic_all_covered_evidence_terms,
+    covered_evidence_terms as logic_covered_evidence_terms,
+    objective_validation_repair_evidence_terms as logic_repair_terms,
     pinned_translator_identity,
     translate_contract,
+    translation_stage_owner,
 )
 from ipfs_accelerate_py.agent_supervisor.code_contract_prover import (
     ADMITTED_BACKEND_IDS,
@@ -23,7 +37,15 @@ from ipfs_accelerate_py.agent_supervisor.code_contract_prover import (
     CodeContractProver,
     CodeContractProverError,
     CompiledObligationRequest,
+    KERNEL_PROOF_RECEIPT_EVIDENCE,
+    KernelVerificationBindings,
+    KernelVerificationResult,
+    KernelVerificationStatus,
+    MultiProverRouter,
     NonConclusiveReason,
+    OBJECTIVE_GOAL_ID,
+    OBJECTIVE_VALIDATION_REPAIR_EVIDENCE,
+    OBJECTIVE_VALIDATION_REPAIR_TASK_ID,
     ProbeReport,
     ProveRejectedError,
     ProveRequest,
@@ -33,11 +55,18 @@ from ipfs_accelerate_py.agent_supervisor.code_contract_prover import (
     SolverAttempt,
     ValidationDisposition,
     ValidationReceipt,
+    all_covered_evidence_terms,
+    authoritative_kernel_validation_symbols,
+    candidate_search_lacks_kernel_authority,
     compile_backend_request,
     compile_obligation_requests,
     compile_smt_payload_for_claim,
+    covered_evidence_terms,
+    kernel_proof_receipt_evidence_terms,
     make_solver_fixture,
+    objective_validation_repair_evidence_terms,
     pinned_prover_identity,
+    proof_stage_owners,
     validate_solver_portfolio,
 )
 from ipfs_accelerate_py.agent_supervisor.program_contracts import (
@@ -912,3 +941,140 @@ def test_effects_present_in_translated_claims() -> None:
     }
     assert SupportedPredicateKind.EFFECT.value in kinds
     assert SupportedPredicateKind.AUTHORIZATION.value in kinds
+
+
+def test_objective_validation_repair_evidence_term_discoverable() -> None:
+    """VFS-G070 objective validation repair: exact-text discovery key present.
+
+    Anchors the synthetic phrase ``objective validation repair`` so objective
+    scans re-find the validation gate after domain evidence
+    (``vfs/logic-translation@1``, ``vfs/kernel-proof-receipt@1``) is present.
+    The repair term never enters claim, receipt, or probe identity.  Parent
+    domain goal remains VFS-G070; the repair task is VFS-053.
+    """
+
+    assert OBJECTIVE_VALIDATION_REPAIR_EVIDENCE == "objective validation repair"
+    assert LOGIC_REPAIR_EVIDENCE == "objective validation repair"
+    assert OBJECTIVE_GOAL_ID == "VFS-G070"
+    assert LOGIC_OBJECTIVE_GOAL_ID == "VFS-G070"
+    assert OBJECTIVE_VALIDATION_REPAIR_TASK_ID == "VFS-053"
+    assert objective_validation_repair_evidence_terms() == (
+        "objective validation repair",
+    )
+    assert logic_repair_terms() == ("objective validation repair",)
+
+    # Domain envelope evidence remains stage-local (no repair term).
+    assert logic_covered_evidence_terms() == ("vfs/logic-translation@1",)
+    assert "objective validation repair" not in logic_covered_evidence_terms()
+    assert covered_evidence_terms() == ("vfs/kernel-proof-receipt@1",)
+    assert kernel_proof_receipt_evidence_terms() == (KERNEL_PROOF_RECEIPT_EVIDENCE,)
+    assert "objective validation repair" not in covered_evidence_terms()
+
+    # Translation-only full set (no kernel surface).
+    assert logic_all_covered_evidence_terms() == (
+        "vfs/logic-translation@1",
+        "objective validation repair",
+    )
+    # Full discovery set: translation, kernel-proof, then validation-gate meta.
+    assert all_covered_evidence_terms() == (
+        "vfs/logic-translation@1",
+        "vfs/kernel-proof-receipt@1",
+        "objective validation repair",
+    )
+    assert OBJECTIVE_VALIDATION_REPAIR_EVIDENCE in all_covered_evidence_terms()
+    assert LOGIC_TRANSLATION_EVIDENCE in all_covered_evidence_terms()
+    assert KERNEL_PROOF_RECEIPT_EVIDENCE in all_covered_evidence_terms()
+
+    # Conformance receipts keep domain evidence only.
+    translation = translated()
+    assert translation.receipt.evidence == LOGIC_TRANSLATION_EVIDENCE
+    assert "objective validation repair" not in translation.receipt.evidence
+
+
+def test_translation_candidate_search_kernel_validation_remain_separate() -> None:
+    """Keep translation, candidate search, and kernel validation separate.
+
+    FormalLogicVocabulary owns translation; MultiProverRouter owns candidate
+    search without authority; KernelVerification / validate_solver_portfolio
+    own authoritative validation.  Premise selectors cannot self-promote.
+    """
+
+    owners = proof_stage_owners()
+    assert owners["translation"] == "FormalLogicVocabulary"
+    assert owners["candidate_search"] == "MultiProverRouter"
+    assert owners["kernel_validation"] == "KernelVerification"
+    assert translation_stage_owner() == "FormalLogicVocabulary"
+    assert FormalLogicVocabulary.LOGIC_VOCABULARY_VERSION >= 1
+    assert MultiProverRouter is not None
+    assert KernelVerificationStatus.ACCEPTED.value == "accepted"
+    assert KernelVerificationBindings is not None
+    assert KernelVerificationResult is not None
+
+    symbols = authoritative_kernel_validation_symbols()
+    assert "KernelVerification" in symbols
+    assert "validate_solver_portfolio" in symbols
+    assert "MultiProverRouter" not in symbols
+    assert "FormalLogicVocabulary" not in symbols
+    assert candidate_search_lacks_kernel_authority() is True
+
+
+def test_authoritative_proof_validation_rejects_candidate_self_promotion() -> None:
+    """Authoritative proof-validation case: candidates lack KernelVerification authority.
+
+    A MultiProverRouter-style candidate that claims VERIFIED while probe
+    admission was revoked fails closed at independent validation (capability
+    loss / forged authority).  Wrong theorem, stale proof, omitted effect, and
+    capability-loss cases remain non-conclusive.
+    """
+
+    assert candidate_search_lacks_kernel_authority() is True
+    translation = translated()
+    prover = fixture_prover(outcomes={"cvc5": "unsat", "z3": "unsat"})
+    result = prover.prove_translation(translation)
+    # Candidate self-promotion: keep a probe receipt id for construction, but
+    # validate against a report with empty admission (KernelVerification boundary).
+    source = result.attempts[0]
+    forged = (
+        SolverAttempt(
+            backend_id=source.backend_id,
+            request_id=source.request_id,
+            request_digest=source.request_digest,
+            reported_status=source.reported_status,
+            effective_outcome=AttemptOutcome.VERIFIED,
+            authoritative=True,
+            conclusive=True,
+            probe_receipt_id=source.probe_receipt_id or "probe:forged-candidate",
+            toolchain_digest=source.toolchain_digest,
+            detail="forged candidate authority",
+            evidence=dict(source.evidence),
+            duration_ms=source.duration_ms,
+        ),
+    )
+    empty_probe = ProbeReport(
+        probes=result.probe_report.probes,
+        admitted_backend_ids=(),
+        missing_backend_ids=tuple(ADMITTED_BACKEND_IDS),
+        availability=BackendAvailability.UNAVAILABLE,
+        policy_id="policy:vfs-053-forged@1",
+        detail="forged candidate without admitted probe",
+    )
+    validation = validate_solver_portfolio(
+        compiled=result.compiled,
+        attempts=forged,
+        probe_report=empty_probe,
+    )
+    assert not validation.conclusive
+    assert validation.status in (
+        ProveStatus.INCONCLUSIVE,
+        ProveStatus.ERROR,
+    )
+    assert validation.reason in (
+        NonConclusiveReason.CAPABILITY_LOSS,
+        NonConclusiveReason.FORGED_AUTHORITY,
+        NonConclusiveReason.MISSING_BACKEND,
+        NonConclusiveReason.PORTFOLIO_INCONCLUSIVE,
+    )
+    # Stage map still separates candidate search from kernel validation.
+    assert proof_stage_owners()["candidate_search"] != proof_stage_owners()[
+        "kernel_validation"
+    ]

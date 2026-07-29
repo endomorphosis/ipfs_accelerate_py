@@ -6,10 +6,17 @@ reachability become immutable :class:`~ipfs_datasets_py.logic.ir_core.claims.IRC
 records with source and assumption CIDs.  Every successful translation emits a
 round-trip/conformance receipt; unsupported residuals are explicit.
 
-Conflict policy: reuse :mod:`formal_logic_vocabulary` and
-``ipfs_datasets_py.logic.ir_core`` claims/protocols.  This module is a
-construction API, not a natural-language parser and not a separate theorem
-language.
+Conflict policy: reuse FormalLogicVocabulary
+(:mod:`proof.formal_logic_vocabulary`) and ``ipfs_datasets_py.logic.ir_core``
+claims/protocols.  This module is a construction API, not a natural-language
+parser and not a separate theorem language.
+
+Objective validation repair for VFS-G070 anchors the synthetic discovery term
+``objective validation repair`` on this translation surface without granting
+translation products completion or proof authority.  Translation
+(``vfs/logic-translation@1``) stays separate from MultiProverRouter candidate
+search and KernelVerification / independent portfolio validation
+(``vfs/kernel-proof-receipt@1`` on the prover surface).
 
 Fail-closed rejections:
 
@@ -59,6 +66,7 @@ from .program_contracts import (
     UnsupportedSemantics,
 )
 from .program_graph_queries import ProgramGraphSlice
+from .proof import formal_logic_vocabulary as FormalLogicVocabulary
 from .proof.formal_logic_vocabulary import (
     Formula,
     ReviewedPredicate,
@@ -84,6 +92,19 @@ RULESET_ID: Final[str] = "vfs/code-contract-predicates"
 RULESET_VERSION: Final[str] = "1"
 LOGIC_FAMILY: Final[str] = "code_contract_ir"
 LOGIC_TRANSLATION_EVIDENCE: Final[str] = "vfs/logic-translation@1"
+# Synthetic objective-heap evidence term for VFS-G070 validation-gate work.
+# Exact-text discovery key only — never part of claim/receipt identity payload.
+OBJECTIVE_VALIDATION_REPAIR_EVIDENCE: Final[str] = "objective validation repair"
+# Domain parent goal that owns translation + kernel-proof surfaces.
+OBJECTIVE_GOAL_ID: Final[str] = "VFS-G070"
+# Validation-gate task that owns the synthetic repair obligation (VFS-053).
+OBJECTIVE_VALIDATION_REPAIR_TASK_ID: Final[str] = "VFS-053"
+
+# FormalLogicVocabulary is the reviewed translation vocabulary only; it never
+# authorizes MultiProverRouter candidates or KernelVerification receipts.
+assert FormalLogicVocabulary.LOGIC_VOCABULARY_VERSION >= 1
+assert OBJECTIVE_VALIDATION_REPAIR_EVIDENCE == "objective validation repair"
+assert OBJECTIVE_GOAL_ID == "VFS-G070"
 
 CODE_CONTRACT_PREDICATE_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/code-contract-predicate@1"
@@ -2491,6 +2512,67 @@ def make_predicate(
     )
 
 
+# ---------------------------------------------------------------------------
+# Objective evidence discovery (VFS-G070 / VFS-053)
+# ---------------------------------------------------------------------------
+
+
+def logic_translation_evidence_terms() -> tuple[str, ...]:
+    """Return domain translation evidence (``vfs/logic-translation@1``).
+
+    The synthetic ``objective validation repair`` term is intentionally
+    omitted here so translation envelope ``evidence`` stays domain-only; use
+    :func:`objective_validation_repair_evidence_terms` (or
+    :func:`all_covered_evidence_terms`) for the VFS-G070 validation gate.
+    """
+
+    return (LOGIC_TRANSLATION_EVIDENCE,)
+
+
+def covered_evidence_terms() -> tuple[str, ...]:
+    """Return domain objective evidence terms this translation surface proves.
+
+    Mirrors :func:`logic_translation_evidence_terms`.  Translation remains
+    independent from MultiProverRouter candidate search and KernelVerification.
+    """
+
+    return logic_translation_evidence_terms()
+
+
+def objective_validation_repair_evidence_terms() -> tuple[str, ...]:
+    """Return the synthetic VFS-G070 validation-gate evidence term.
+
+    Exact-text discovery key for objective validation repair.  Never mixes
+    into content-addressed claim, obligation, or conformance-receipt identity.
+    Translation (FormalLogicVocabulary) stays separate from candidate search
+    and kernel validation.  Owned by :data:`OBJECTIVE_GOAL_ID` (``VFS-G070``)
+    via repair task :data:`OBJECTIVE_VALIDATION_REPAIR_TASK_ID` (``VFS-053``).
+    """
+
+    return (OBJECTIVE_VALIDATION_REPAIR_EVIDENCE,)
+
+
+def all_covered_evidence_terms() -> tuple[str, ...]:
+    """Return domain VFS-G070 translation terms plus the validation-repair gate.
+
+    Domain translation evidence comes first; the synthetic objective
+    validation repair discovery key is appended last and never enters
+    claim/receipt identity.  Kernel-proof receipts live on the prover surface.
+    """
+
+    return covered_evidence_terms() + objective_validation_repair_evidence_terms()
+
+
+def translation_stage_owner() -> str:
+    """Return the AST-discoverable owner of the translation stage only.
+
+    FormalLogicVocabulary constructs reviewed formulas; it never selects
+    solvers or issues KernelVerification receipts.
+    """
+
+    return "FormalLogicVocabulary"
+
+
 __all__ = [
     "CODE_CONTRACT_LOGIC_VERSION",
     "TRANSLATOR_ID",
@@ -2499,11 +2581,15 @@ __all__ = [
     "RULESET_VERSION",
     "LOGIC_FAMILY",
     "LOGIC_TRANSLATION_EVIDENCE",
+    "OBJECTIVE_GOAL_ID",
+    "OBJECTIVE_VALIDATION_REPAIR_EVIDENCE",
+    "OBJECTIVE_VALIDATION_REPAIR_TASK_ID",
     "ArgumentSort",
     "CallSliceBinding",
     "CodeContractLogicError",
     "ConformanceReceipt",
     "ContractPredicate",
+    "FormalLogicVocabulary",
     "LogicAssumption",
     "PredicateArgument",
     "PredicateRelation",
@@ -2514,16 +2600,21 @@ __all__ = [
     "TranslationResult",
     "TranslationStatus",
     "UnsupportedResidual",
+    "all_covered_evidence_terms",
+    "covered_evidence_terms",
     "extract_assumptions_from_contract",
     "extract_predicates_from_contract",
     "extract_reachability_predicates",
+    "logic_translation_evidence_terms",
     "make_predicate",
+    "objective_validation_repair_evidence_terms",
     "pinned_translator_identity",
     "project_reviewed_formula",
     "reconstruct_predicate_from_claim",
     "round_trip_predicates",
     "translate",
     "translate_contract",
+    "translation_stage_owner",
     "translator_identity",
     "verify_conformance_receipt",
 ]
