@@ -14038,6 +14038,69 @@ def test_implementation_daemon_records_stage_specific_context_reserves(tmp_path)
     assert "decoded_output" not in receipt_text
 
 
+def test_implementation_daemon_uses_grok_window_and_bounded_reserve_env(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text("# Todos\n", encoding="utf-8")
+    state_dir = repo / "state"
+    state_dir.mkdir()
+    monkeypatch.setenv(
+        implementation_daemon_module._GROK_CONTEXT_WINDOW_ENV,
+        "8192",
+    )
+    monkeypatch.setenv(
+        implementation_daemon_module._CODEX_CONTEXT_WINDOW_ENV,
+        "1",
+    )
+    monkeypatch.setenv(
+        implementation_daemon_module.IMPLEMENTATION_CONTEXT_OUTPUT_RESERVE_ENV,
+        "2048",
+    )
+    monkeypatch.setenv(
+        implementation_daemon_module.IMPLEMENTATION_CONTEXT_TOOL_RESERVE_ENV,
+        "1024",
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implementation_context_tokenizer=lambda text: max(
+            1, len(text.encode("utf-8")) // 16
+        ),
+    )
+    task = PortalTask(
+        task_id="ACCEL-001",
+        title="Compile bounded Grok implementation context",
+        status="ready",
+        completion="manual",
+        priority="P0",
+        track="runtime",
+        outputs=["src/context.py"],
+        validation=["pytest tests/test_context.py"],
+        acceptance="Preserve the provider-specific context contract.",
+        canonical_task_cid="task:accel-001",
+        metadata={
+            "Context budget tokens": "4096",
+            "Provider role": "grok-implement, codex-review",
+        },
+    )
+
+    result = daemon._compile_implementation_context(task, attempt=1)
+
+    resolution = result.receipt.budget_resolution
+    assert resolution.provider_context_window == 8_192
+    assert resolution.reserved_output_tokens == 2_048
+    assert resolution.reserved_tool_tokens == 1_024
+    assert resolution.effective_input_limit == 4_096
+
+
 def test_retry_repair_context_authorizes_declared_validation_targets(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()

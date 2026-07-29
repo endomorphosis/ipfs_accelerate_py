@@ -275,6 +275,13 @@ _META_SPARK_BASE_PATH_ENV = "IPFS_ACCELERATE_AGENT_META_SPARK_BASE_PATH"
 _GROK_BIN_ENV = "IPFS_ACCELERATE_AGENT_GROK_BIN"
 _GROK_MODEL_ENV = "IPFS_ACCELERATE_AGENT_GROK_MODEL"
 _GROK_MAX_TURNS_ENV = "IPFS_ACCELERATE_AGENT_GROK_MAX_TURNS"
+_GROK_CONTEXT_WINDOW_ENV = "IPFS_ACCELERATE_AGENT_GROK_CONTEXT_WINDOW"
+IMPLEMENTATION_CONTEXT_OUTPUT_RESERVE_ENV = (
+    "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_CONTEXT_OUTPUT_RESERVE"
+)
+IMPLEMENTATION_CONTEXT_TOOL_RESERVE_ENV = (
+    "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_CONTEXT_TOOL_RESERVE"
+)
 SHARED_WORKTREE_PATHS = (
     "wallet_interface/ui/node_modules",
     "mobile/node_modules",
@@ -365,6 +372,11 @@ def _env_int(name: str, default: int) -> int:
         return int(raw)
     except ValueError:
         return default
+
+
+def _env_nonnegative_int(name: str, default: int) -> int:
+    value = _env_int(name, default)
+    return value if value >= 0 else default
 
 
 def _env_float(name: str, default: float) -> float:
@@ -19626,6 +19638,30 @@ class PortalImplementationDaemon:
             )
         return limit
 
+    def _implementation_context_window(self, task: PortalTask) -> int:
+        if self.implementation_provider_context_window is not None:
+            return self.implementation_provider_context_window
+        provider = self._task_declared_implementation_provider(task)
+        if not provider:
+            provider = (
+                os.environ.get(IMPLEMENTATION_PROVIDER_ENV, "").strip().lower()
+            )
+        environment_name = (
+            _GROK_CONTEXT_WINDOW_ENV
+            if provider in {
+                "grok",
+                "grok_cli",
+                "grok-cli",
+                "xai_cli",
+                "xai-cli",
+                "grok_build",
+                "grok-build",
+            }
+            else _CODEX_CONTEXT_WINDOW_ENV
+        )
+        configured = _env_int(environment_name, 200_000)
+        return configured if configured > 0 else 200_000
+
     def _build_implementation_command(
         self,
         workspace_path: Path,
@@ -21233,10 +21269,16 @@ class PortalImplementationDaemon:
                     or DEFAULT_IMPLEMENTATION_CONTEXT_INPUT_TOKENS
                 ),
                 reserved_output_tokens=(
-                    DEFAULT_IMPLEMENTATION_CONTEXT_OUTPUT_RESERVE
+                    _env_nonnegative_int(
+                        IMPLEMENTATION_CONTEXT_OUTPUT_RESERVE_ENV,
+                        DEFAULT_IMPLEMENTATION_CONTEXT_OUTPUT_RESERVE,
+                    )
                 ),
                 reserved_tool_tokens=(
-                    DEFAULT_IMPLEMENTATION_CONTEXT_TOOL_RESERVE
+                    _env_nonnegative_int(
+                        IMPLEMENTATION_CONTEXT_TOOL_RESERVE_ENV,
+                        DEFAULT_IMPLEMENTATION_CONTEXT_TOOL_RESERVE,
+                    )
                 ),
                 max_items=256,
                 max_item_bytes=16_384,
@@ -21256,15 +21298,7 @@ class PortalImplementationDaemon:
                 int(configured_budget["max_input_tokens"]),
                 task_context_limit,
             )
-        provider_window = self.implementation_provider_context_window
-        if provider_window is None:
-            raw_window = os.environ.get(
-                _CODEX_CONTEXT_WINDOW_ENV, "200000"
-            ).strip()
-            try:
-                provider_window = int(raw_window)
-            except ValueError:
-                provider_window = 200_000
+        provider_window = self._implementation_context_window(task)
         compiler = ContextCompiler(
             configured_budget,
             tokenizer=self.implementation_context_tokenizer,
