@@ -207,6 +207,8 @@ TRANSIENT_MERGE_LOCK_REASONS = frozenset(
 TRANSIENT_MERGE_RETRY_BUDGET_WHEN_DISABLED = 1
 IMPLEMENTATION_TASK_CLAIM_LOCK_KIND = "implementation_task_claim"
 IMPLEMENTATION_TASK_CLAIM_LOCK_DIRNAME = "implementation-task-claims"
+IMPLEMENTATION_RESOURCE_CLAIM_LOCK_KIND = "implementation_resource_claim"
+IMPLEMENTATION_RESOURCE_CLAIM_LOCK_DIRNAME = "implementation-resource-claims"
 TASK_ATTEMPT_LIMIT_IDLE_REASON = (
     "all_selectable_ready_tasks_reached_max_task_attempts"
 )
@@ -4874,6 +4876,10 @@ class PortalImplementationDaemon:
                 self.repo_root,
                 lock_name=IMPLEMENTATION_TASK_CLAIM_LOCK_DIRNAME,
             ),
+            checkout_mutation_lock_path(
+                self.repo_root,
+                lock_name=IMPLEMENTATION_RESOURCE_CLAIM_LOCK_DIRNAME,
+            ),
             *self.external_reservation_manifest_paths,
         ]
         policy_paths = [
@@ -6220,6 +6226,62 @@ class PortalImplementationDaemon:
             self._record_event("implementation_skipped", result)
             return result
 
+        acquired_resource_claims: list[
+            tuple[Path, dict[str, Any]]
+        ] = []
+        try:
+            (
+                acquired_resource_claims,
+                unavailable_resource_path,
+                resource_claim_reason,
+                existing_resource_claim,
+            ) = self._acquire_implementation_resource_claims(
+                task,
+                attempt=attempt,
+                started_at=started_at,
+            )
+        except BaseException:
+            try:
+                self._release_implementation_task_claim(
+                    task_claim_path,
+                    task_claim_metadata,
+                )
+            finally:
+                acquired_task_claim = False
+            raise
+        if unavailable_resource_path:
+            self._release_implementation_task_claim(
+                task_claim_path,
+                task_claim_metadata,
+            )
+            acquired_task_claim = False
+            result = {
+                "skipped": True,
+                "deferred": True,
+                "reason": f"resource_claim_{resource_claim_reason}",
+                "task_id": task.task_id,
+                "attempt": attempt,
+                "attempt_consumed": False,
+                "provider_dispatched": False,
+                "resource_kind": "submodule",
+                "resource_path": unavailable_resource_path,
+            }
+            if existing_resource_claim:
+                result["lock_owner_pid"] = int(
+                    existing_resource_claim.get("pid") or 0
+                )
+                result["lock_owner_task_id"] = str(
+                    existing_resource_claim.get("task_id") or ""
+                )
+                result["lock_owner_state_dir"] = str(
+                    existing_resource_claim.get("state_dir") or ""
+                )
+                result["lock_owner_resource_path"] = str(
+                    existing_resource_claim.get("resource_path") or ""
+                )
+            self._record_event("implementation_skipped", result)
+            return result
+
         acquired_lock = False
         log_path = self.implementation_log_dir / f"{task.task_id.lower()}-attempt-{attempt}.log"
         try:
@@ -6280,6 +6342,10 @@ class PortalImplementationDaemon:
                 result["active_task_cleared"] = owns_idle_projection
                 self._record_event("implementation_retry_deferred", result)
             finally:
+                self._release_implementation_resource_claims(
+                    acquired_resource_claims
+                )
+                acquired_resource_claims = []
                 if not self._release_implementation_task_claim(
                     task_claim_path,
                     task_claim_metadata,
@@ -6293,17 +6359,24 @@ class PortalImplementationDaemon:
             return result
         except BaseException:
             try:
-                if not self._release_implementation_task_claim(
-                    task_claim_path,
-                    task_claim_metadata,
-                ):
-                    logger.warning(
-                        "Refusing to remove implementation task claim no "
-                        "longer owned by this attempt after prompt failure: %s",
+                self._release_implementation_resource_claims(
+                    acquired_resource_claims
+                )
+                acquired_resource_claims = []
+                try:
+                    if not self._release_implementation_task_claim(
                         task_claim_path,
-                    )
+                        task_claim_metadata,
+                    ):
+                        logger.warning(
+                            "Refusing to remove implementation task claim no "
+                            "longer owned by this attempt after prompt failure: %s",
+                            task_claim_path,
+                        )
+                finally:
+                    acquired_task_claim = False
             finally:
-                acquired_task_claim = False
+                acquired_resource_claims = []
             raise
         workspace_path = self.repo_root
         baseline_ref = ""
@@ -6785,6 +6858,10 @@ class PortalImplementationDaemon:
                     lock_path,
                     exc_info=True,
                 )
+            self._release_implementation_resource_claims(
+                acquired_resource_claims
+            )
+            acquired_resource_claims = []
             try:
                 if acquired_task_claim and not self._release_implementation_task_claim(
                     task_claim_path,
@@ -22086,6 +22163,63 @@ class PortalImplementationDaemon:
             / lock_filename
         )
 
+    def _implementation_resource_claim_path(self, resource_path: str) -> Path:
+        normalized = normalize_relative_path_list((resource_path,))
+        if len(normalized) != 1:
+            raise ValueError(
+                "implementation resource path must be repository-relative"
+            )
+        resource = normalized[0]
+        safe_resource = re.sub(
+            r"[^A-Za-z0-9_.-]+",
+            "-",
+            resource,
+        ).strip("._-")
+        digest = hashlib.sha256(
+            f"submodule\0{resource}".encode()
+        ).hexdigest()[:20]
+        lock_filename = (
+            f"submodule-{(safe_resource or 'resource')[:72]}-{digest}.lock"
+        )
+        return (
+            checkout_mutation_lock_path(
+                self.repo_root,
+                lock_name=IMPLEMENTATION_RESOURCE_CLAIM_LOCK_DIRNAME,
+            )
+            / lock_filename
+        )
+
+    def _task_implementation_resource_paths(
+        self,
+        task: PortalTask,
+    ) -> tuple[str, ...]:
+        """Return configured submodule roots affected by one task's outputs."""
+
+        outputs = normalize_relative_path_list(task_declared_output_paths(task))
+        matched = [
+            resource
+            for resource in self.worktree_submodule_paths
+            if any(
+                output == resource or output.startswith(f"{resource}/")
+                for output in outputs
+            )
+        ]
+        # A claim for an outer submodule also protects every nested gitlink.
+        # Retain only the broadest matched roots so acquisition stays ordered
+        # and does not manufacture self-conflicts for nested configurations.
+        selected: list[str] = []
+        for resource in sorted(
+            matched,
+            key=lambda item: (len(PurePosixPath(item).parts), item),
+        ):
+            if any(
+                resource == parent or resource.startswith(f"{parent}/")
+                for parent in selected
+            ):
+                continue
+            selected.append(resource)
+        return tuple(selected)
+
     def _build_implementation_lock_metadata(self, task: PortalTask, attempt: int, started_at: str) -> dict[str, Any]:
         identity = self._identity_for_task(task)
         lease_seed = (
@@ -22137,6 +22271,40 @@ class PortalImplementationDaemon:
             },
         )
 
+    def _build_implementation_resource_claim_metadata(
+        self,
+        task: PortalTask,
+        attempt: int,
+        started_at: str,
+        resource_path: str,
+    ) -> dict[str, Any]:
+        identity = self._identity_for_task(task)
+        lease_seed = (
+            f"resource-claim:{os.getpid()}:{threading.get_ident()}:"
+            f"{time.time_ns()}:{resource_path}:{task.task_id}:{attempt}"
+        )
+        return checkout_lock_metadata(
+            kind=IMPLEMENTATION_RESOURCE_CLAIM_LOCK_KIND,
+            repo_root=self.repo_root,
+            task_id=task.task_id,
+            attempt=attempt,
+            owner_script=Path(sys.argv[0]).name,
+            extra={
+                "state_dir": str(self.state_path.parent.resolve()),
+                "state_path": str(self.state_path.resolve()),
+                "started_at": started_at,
+                "repository_id": self.merge_target_repository_id,
+                "canonical_task_key": identity.canonical_task_key,
+                "canonical_task_cid": identity.canonical_task_cid,
+                "board_namespace": identity.board_namespace,
+                "resource_kind": "submodule",
+                "resource_path": resource_path,
+                "lease_id": hashlib.sha256(
+                    lease_seed.encode("utf-8")
+                ).hexdigest(),
+            },
+        )
+
     def _build_merge_lock_metadata(
         self,
         branch_name: str,
@@ -22176,6 +22344,32 @@ class PortalImplementationDaemon:
             except OSError:
                 return False
         return self._lock_owner_is_active(metadata, expected_kind=IMPLEMENTATION_TASK_CLAIM_LOCK_KIND)
+
+    def _implementation_resource_claim_owner_is_active(
+        self,
+        metadata: dict[str, Any],
+    ) -> bool:
+        repository_id = str(metadata.get("repository_id") or "")
+        if repository_id:
+            if repository_id != self.merge_target_repository_id:
+                return False
+        else:
+            repo_root = str(metadata.get("repo_root") or "")
+            try:
+                if (
+                    repo_root
+                    and Path(repo_root).resolve() != self.repo_root.resolve()
+                ):
+                    return False
+            except OSError:
+                return False
+        resource_path = str(metadata.get("resource_path") or "")
+        if not resource_path:
+            return False
+        return self._lock_owner_is_active(
+            metadata,
+            expected_kind=IMPLEMENTATION_RESOURCE_CLAIM_LOCK_KIND,
+        )
 
     def _external_task_reservations(
         self,
@@ -22398,6 +22592,128 @@ class PortalImplementationDaemon:
                 if not published:
                     lock_path.unlink(missing_ok=True)
             return True, reason, existing
+
+    def _try_acquire_implementation_resource_claim(
+        self,
+        lock_path: Path,
+        metadata: dict[str, Any],
+    ) -> tuple[bool, str, dict[str, Any] | None]:
+        """Publish one repo-shared submodule resource claim."""
+
+        with serialized_lock_update(lock_path):
+            lock_fd, reason, existing = self._try_acquire_lock(
+                lock_path,
+                lock_kind=IMPLEMENTATION_RESOURCE_CLAIM_LOCK_KIND,
+                owner_active=self._implementation_resource_claim_owner_is_active,
+            )
+            if lock_fd is None:
+                return False, reason, existing
+            published = False
+            try:
+                self._write_lock_metadata(lock_fd, metadata)
+                published = True
+            finally:
+                if not published:
+                    lock_path.unlink(missing_ok=True)
+            return True, reason, existing
+
+    def _acquire_implementation_resource_claims(
+        self,
+        task: PortalTask,
+        *,
+        attempt: int,
+        started_at: str,
+    ) -> tuple[
+        list[tuple[Path, dict[str, Any]]],
+        str,
+        str,
+        dict[str, Any] | None,
+    ]:
+        """Acquire every affected submodule claim before provider dispatch.
+
+        Claims are acquired in canonical path order. If any acquisition loses
+        a race, every claim already acquired by this task is rolled back before
+        returning, so no worker can hold a partial resource set.
+        """
+
+        acquired: list[tuple[Path, dict[str, Any]]] = []
+        try:
+            for resource_path in sorted(
+                self._task_implementation_resource_paths(task)
+            ):
+                claim_path = self._implementation_resource_claim_path(
+                    resource_path
+                )
+                metadata = self._build_implementation_resource_claim_metadata(
+                    task,
+                    attempt,
+                    started_at,
+                    resource_path,
+                )
+                claimed, reason, existing = (
+                    self._try_acquire_implementation_resource_claim(
+                        claim_path,
+                        metadata,
+                    )
+                )
+                if claimed:
+                    acquired.append((claim_path, metadata))
+                    continue
+                self._release_implementation_resource_claims(acquired)
+                return [], resource_path, reason, existing
+        except BaseException:
+            self._release_implementation_resource_claims(acquired)
+            raise
+        return acquired, "", "acquired", None
+
+    def _release_implementation_resource_claim(
+        self,
+        lock_path: Path,
+        metadata: Mapping[str, Any],
+    ) -> bool:
+        """Release only the submodule resource claim owned by this attempt."""
+
+        with serialized_lock_update(lock_path):
+            existing = load_json_dict(lock_path)
+            lease_id = str(metadata.get("lease_id") or "")
+            if (
+                existing is None
+                or not lease_id
+                or str(existing.get("lease_id") or "") != lease_id
+            ):
+                return False
+            try:
+                lock_path.unlink()
+            except FileNotFoundError:
+                return False
+            return True
+
+    def _release_implementation_resource_claims(
+        self,
+        claims: Sequence[tuple[Path, Mapping[str, Any]]],
+    ) -> bool:
+        released = True
+        for lock_path, metadata in reversed(tuple(claims)):
+            try:
+                if not self._release_implementation_resource_claim(
+                    lock_path,
+                    metadata,
+                ):
+                    released = False
+                    logger.warning(
+                        "Refusing to remove implementation resource claim no "
+                        "longer owned by this attempt: %s",
+                        lock_path,
+                    )
+            except (OSError, RuntimeError):
+                released = False
+                logger.warning(
+                    "Failed to coordinate removal of implementation resource "
+                    "claim %s",
+                    lock_path,
+                    exc_info=True,
+                )
+        return released
 
     def _release_implementation_task_claim(
         self,

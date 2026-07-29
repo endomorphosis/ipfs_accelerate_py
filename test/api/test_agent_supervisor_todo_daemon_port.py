@@ -9531,6 +9531,306 @@ def test_implementation_daemon_skips_repo_wide_task_claim_collision(tmp_path):
     assert result["lock_owner_state_dir"] == str((repo / "other-lane").resolve())
 
 
+def test_implementation_daemon_defers_cross_lane_submodule_resource_collision(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "process_command_line",
+        lambda _pid: f"python -m pytest {Path(sys.argv[0]).name}",
+    )
+    common = {
+        "todo_path": repo / "todo.md",
+        "repo_root": repo,
+        "task_header_prefix": "## ACCEL-",
+        "implement": True,
+        "worktree_submodule_paths": ("modules/alpha", "modules/beta"),
+    }
+    first_daemon = TodoImplementationDaemon(
+        **common,
+        state_path=repo / "lane-a" / "state.json",
+        strategy_path=repo / "lane-a" / "strategy.json",
+        events_path=repo / "lane-a" / "events.jsonl",
+    )
+    second_daemon = TodoImplementationDaemon(
+        **common,
+        state_path=repo / "lane-b" / "state.json",
+        strategy_path=repo / "lane-b" / "strategy.json",
+        events_path=repo / "lane-b" / "events.jsonl",
+    )
+    first_task = PortalTask(
+        task_id="ACCEL-001",
+        title="Modify alpha model",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="ops",
+        outputs=["modules/alpha/src/model.py"],
+    )
+    second_task = PortalTask(
+        task_id="ACCEL-002",
+        title="Modify alpha registry",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="ops",
+        outputs=["modules/alpha/src/registry.py"],
+    )
+
+    first_claims, unavailable, reason, _existing = (
+        first_daemon._acquire_implementation_resource_claims(
+            first_task,
+            attempt=1,
+            started_at="2026-01-01T00:00:00+00:00",
+        )
+    )
+    assert unavailable == ""
+    assert reason == "acquired"
+    assert len(first_claims) == 1
+
+    result = second_daemon._run_implementation(
+        second_task,
+        TodoTaskState(),
+    )
+
+    assert result["skipped"] is True
+    assert result["deferred"] is True
+    assert result["reason"] == "resource_claim_lock_exists"
+    assert result["attempt_consumed"] is False
+    assert result["provider_dispatched"] is False
+    assert result["resource_kind"] == "submodule"
+    assert result["resource_path"] == "modules/alpha"
+    assert result["lock_owner_task_id"] == first_task.task_id
+    assert result["lock_owner_state_dir"] == str(
+        (repo / "lane-a").resolve()
+    )
+    assert not second_daemon._implementation_task_claim_path(
+        second_task.task_id,
+        canonical_task_cid=second_daemon._canonical_ref(second_task),
+    ).exists()
+
+    assert first_daemon._release_implementation_resource_claims(
+        first_claims
+    )
+    second_claims, unavailable, reason, _existing = (
+        second_daemon._acquire_implementation_resource_claims(
+            second_task,
+            attempt=1,
+            started_at="2026-01-01T00:00:01+00:00",
+        )
+    )
+    assert unavailable == ""
+    assert reason == "acquired"
+    assert second_daemon._release_implementation_resource_claims(
+        second_claims
+    )
+
+
+def test_implementation_resource_claims_preserve_disjoint_submodule_parallelism(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "process_command_line",
+        lambda _pid: f"python -m pytest {Path(sys.argv[0]).name}",
+    )
+    common = {
+        "todo_path": repo / "todo.md",
+        "repo_root": repo,
+        "task_header_prefix": "## ACCEL-",
+        "implement": True,
+        "worktree_submodule_paths": ("modules/alpha", "modules/beta"),
+    }
+    alpha_daemon = TodoImplementationDaemon(
+        **common,
+        state_path=repo / "lane-a" / "state.json",
+        strategy_path=repo / "lane-a" / "strategy.json",
+        events_path=repo / "lane-a" / "events.jsonl",
+    )
+    beta_daemon = TodoImplementationDaemon(
+        **common,
+        state_path=repo / "lane-b" / "state.json",
+        strategy_path=repo / "lane-b" / "strategy.json",
+        events_path=repo / "lane-b" / "events.jsonl",
+    )
+    alpha_task = PortalTask(
+        task_id="ACCEL-001",
+        title="Modify alpha",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="ops",
+        outputs=["modules/alpha/src/model.py"],
+    )
+    beta_task = PortalTask(
+        task_id="ACCEL-002",
+        title="Modify beta",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="ops",
+        outputs=["modules/beta/src/model.py"],
+    )
+
+    alpha_claims, alpha_unavailable, _reason, _existing = (
+        alpha_daemon._acquire_implementation_resource_claims(
+            alpha_task,
+            attempt=1,
+            started_at="2026-01-01T00:00:00+00:00",
+        )
+    )
+    beta_claims, beta_unavailable, _reason, _existing = (
+        beta_daemon._acquire_implementation_resource_claims(
+            beta_task,
+            attempt=1,
+            started_at="2026-01-01T00:00:00+00:00",
+        )
+    )
+
+    assert alpha_unavailable == ""
+    assert beta_unavailable == ""
+    assert len(alpha_claims) == len(beta_claims) == 1
+    assert alpha_claims[0][0] != beta_claims[0][0]
+    assert alpha_daemon._release_implementation_resource_claims(
+        alpha_claims
+    )
+    assert beta_daemon._release_implementation_resource_claims(
+        beta_claims
+    )
+
+
+def test_implementation_resource_claim_reclaims_stale_owner(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "lane" / "state.json",
+        strategy_path=repo / "lane" / "strategy.json",
+        events_path=repo / "lane" / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+        worktree_submodule_paths=("modules/alpha",),
+    )
+    task = PortalTask(
+        task_id="ACCEL-001",
+        title="Reclaim alpha",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="ops",
+        outputs=["modules/alpha/src/model.py"],
+    )
+    claim_path = daemon._implementation_resource_claim_path(
+        "modules/alpha"
+    )
+    claim_path.parent.mkdir(parents=True, exist_ok=True)
+    claim_path.write_text(
+        json.dumps(
+            {
+                "kind": "implementation_resource_claim",
+                "lease_id": "stale-owner",
+                "pid": 999_999_999,
+                "owner_script": "implementation_daemon.py",
+                "repo_root": str(repo.resolve()),
+                "state_dir": str((repo / "dead-lane").resolve()),
+                "task_id": "ACCEL-DEAD",
+                "resource_kind": "submodule",
+                "resource_path": "modules/alpha",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    claims, unavailable, reason, _existing = (
+        daemon._acquire_implementation_resource_claims(
+            task,
+            attempt=1,
+            started_at="2026-01-01T00:00:00+00:00",
+        )
+    )
+
+    assert unavailable == ""
+    assert reason == "acquired"
+    replacement = json.loads(claim_path.read_text(encoding="utf-8"))
+    assert replacement["pid"] == os.getpid()
+    assert replacement["task_id"] == task.task_id
+    assert replacement["lease_id"] != "stale-owner"
+    events = [
+        json.loads(line)
+        for line in (repo / "lane" / "events.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    assert any(
+        event["type"] == "implementation_resource_claim_lock_cleared"
+        for event in events
+    )
+    assert daemon._release_implementation_resource_claims(claims)
+
+
+def test_prompt_failure_releases_published_submodule_resource_claim(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+        worktree_submodule_paths=("modules/alpha",),
+    )
+    task = PortalTask(
+        task_id="ACCEL-001",
+        title="Prompt failure",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="ops",
+        outputs=["modules/alpha/src/model.py"],
+    )
+    claim_path = daemon._implementation_resource_claim_path(
+        "modules/alpha"
+    )
+    observed_claim: dict[str, object] = {}
+
+    def fail_after_claim_published(_selected, _attempt):
+        observed_claim.update(
+            json.loads(claim_path.read_text(encoding="utf-8"))
+        )
+        raise RuntimeError("prompt compilation failed")
+
+    monkeypatch.setattr(
+        daemon,
+        "_build_implementation_prompt",
+        fail_after_claim_published,
+    )
+
+    with pytest.raises(RuntimeError, match="prompt compilation failed"):
+        daemon._run_implementation(task, TodoTaskState())
+
+    assert observed_claim["resource_kind"] == "submodule"
+    assert observed_claim["resource_path"] == "modules/alpha"
+    assert observed_claim["canonical_task_cid"] == daemon._canonical_ref(task)
+    assert observed_claim["lease_id"]
+    assert not claim_path.exists()
+    assert not daemon._implementation_task_claim_path(
+        task.task_id,
+        canonical_task_cid=daemon._canonical_ref(task),
+    ).exists()
+
+
 def test_implementation_daemon_defers_provider_quota_without_consuming_attempt(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
