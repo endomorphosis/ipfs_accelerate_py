@@ -119,7 +119,7 @@ task IDs on this board.
 
 ## RPR-003 Implement a snapshot-bound code-symbol vector index
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
