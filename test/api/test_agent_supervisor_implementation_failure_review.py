@@ -165,6 +165,72 @@ def test_guide_rescue_for_out_of_scope_refactor_paths() -> None:
     )
 
 
+def test_unverifiable_validation_companion_requests_contract_revision() -> None:
+    fixture_path = (
+        "wallet_interface/ui/tests/fixtures/world-id-fixtures.ts"
+    )
+    panel_path = (
+        "wallet_interface/ui/src/shared/components/"
+        "WorldIdVerificationPanel.tsx"
+    )
+    api_path = (
+        "wallet_interface/ui/src/features/wallet/lib/walletApi.ts"
+    )
+    review = review_implementation_failure(
+        task_id="WALPROC-065",
+        attempt=1,
+        expected_outputs=(api_path, panel_path),
+        changed_paths=(api_path, panel_path, fixture_path),
+        validation_commands=(
+            "npm --prefix wallet_interface/ui test -- --runInBand",
+        ),
+        proposal_accepted=False,
+        scope_adjudication={
+            "accepted": False,
+            "justified_paths": [],
+            "denied_paths": [fixture_path],
+            "decisions": [
+                {
+                    "path": fixture_path,
+                    "verdict": "denied",
+                    "reason_codes": ["test_change_unverifiable"],
+                }
+            ],
+        },
+        validation_result={
+            "attempted": False,
+            "passed": False,
+            "returncode": 78,
+            "reason": "proposal_gate_failed",
+            "error": "proposal_validation_failed",
+            "proposal_gate": {
+                "reason_codes": ["path_outside_scope"],
+                "changed_paths": [api_path, panel_path, fixture_path],
+            },
+        },
+    )
+
+    assert review.decision is FailureReviewDecision.GUIDE_RESCUE
+    assert review.contract_gap_paths == (fixture_path,)
+    assert (
+        FailureReviewReason.TASK_SCOPE_CONTRACT_REVISION_REQUIRED.value
+        in review.reason_codes
+    )
+    assert "Task-scope contract revision required" in review.guidance_markdown
+    assert "protected-board authority" in review.guidance_markdown
+    assert fixture_path in review.next_attempt_prompt_addendum
+    assert "Do not modify these out-of-scope paths" not in (
+        review.next_attempt_prompt_addendum
+    )
+    restored = ImplementationFailureReviewReceipt.from_dict(
+        review.to_record()
+    )
+    assert restored == review
+    assert compact_failure_review(review)["contract_gap_paths"] == [
+        fixture_path
+    ]
+
+
 def test_validation_selection_impact_paths_are_not_candidate_changes() -> None:
     expected_outputs = (
         "data/validation/conformance-report.json",

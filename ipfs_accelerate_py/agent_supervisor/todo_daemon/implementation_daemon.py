@@ -1070,6 +1070,45 @@ def normalize_retry_validation_path(value: Any) -> str:
     return path.as_posix()
 
 
+def validation_command_working_prefix(command: str) -> str:
+    """Return a safe package working prefix declared by a test command."""
+
+    try:
+        tokens = shlex.split(str(command or ""), posix=True)
+    except ValueError:
+        return ""
+    for index, token in enumerate(tokens):
+        raw_prefix = ""
+        if token in {"--prefix", "--cwd", "--dir"} and index + 1 < len(tokens):
+            raw_prefix = tokens[index + 1]
+        elif token.startswith(("--prefix=", "--cwd=", "--dir=")):
+            raw_prefix = token.split("=", 1)[1]
+        elif token == "cd" and index + 1 < len(tokens):
+            raw_prefix = tokens[index + 1]
+        if not raw_prefix:
+            continue
+        normalized = normalize_retry_validation_path(raw_prefix)
+        if normalized:
+            return normalized
+    return ""
+
+
+def normalize_reported_test_failure_path(command: str, value: Any) -> str:
+    """Resolve one runner-relative failure path to the repository root."""
+
+    normalized = normalize_retry_validation_path(value)
+    if not normalized:
+        return ""
+    prefix = validation_command_working_prefix(command)
+    if (
+        prefix
+        and normalized != prefix
+        and not normalized.startswith(f"{prefix}/")
+    ):
+        normalized = normalize_retry_validation_path(f"{prefix}/{normalized}")
+    return normalized
+
+
 def unsafe_validation_path_aliases(command: str) -> set[str]:
     """Return normalized aliases derived from absolute or escaping arguments.
 
@@ -1102,10 +1141,21 @@ def unsafe_validation_path_aliases(command: str) -> set[str]:
 
 
 def retry_budget_repair_validation_paths(task: Any) -> tuple[str, ...]:
-    """Return bounded repository-relative validation targets for a repair."""
+    """Return bounded repository-relative diagnostic targets for a repair."""
 
     if not is_retry_budget_repair_task(task):
         return ()
+    metadata = {
+        str(key).strip().lower().replace("_", " "): str(value or "").strip()
+        for key, value in (getattr(task, "metadata", {}) or {}).items()
+    }
+    if "validation failure paths" in metadata:
+        paths: list[str] = []
+        for raw_path in split_csv(metadata["validation failure paths"]):
+            normalized = normalize_retry_validation_path(raw_path)
+            if normalized and normalized not in paths:
+                paths.append(normalized)
+        return tuple(paths)
     paths: list[str] = []
     for command in getattr(task, "validation", ()) or ():
         unsafe_aliases = unsafe_validation_path_aliases(str(command))
@@ -12773,6 +12823,7 @@ class PortalImplementationDaemon:
             task_id=task.task_id,
             attempt=int(attempt),
             expected_outputs=tuple(task.outputs),
+            validation_commands=tuple(task.validation),
             validation_result=result,
             workspace_path=workspace_path,
             log_excerpt=log_excerpt,
@@ -13160,6 +13211,20 @@ class PortalImplementationDaemon:
                             failed_tests.append(normalized_node_id)
                         normalized_path = normalize_retry_validation_path(
                             normalized_node_id.split("::", 1)[0]
+                        )
+                        if (
+                            normalized_path
+                            and normalized_path not in failed_test_paths
+                        ):
+                            failed_test_paths.append(normalized_path)
+                    for reported_path in summary.get(
+                        "failed_test_paths", ()
+                    ):
+                        normalized_path = (
+                            normalize_reported_test_failure_path(
+                                command,
+                                reported_path,
+                            )
                         )
                         if (
                             normalized_path
@@ -19835,9 +19900,13 @@ class PortalImplementationDaemon:
             retry_budget_repair_source(task)
         )
         retry_validation_paths = retry_budget_repair_validation_paths(task)
-        implied_validation_paths = implied_validation_test_output_paths(
-            task,
-            repo_root=self.repo_root,
+        implied_validation_paths = (
+            ()
+            if retry_repair_source_id
+            else implied_validation_test_output_paths(
+                task,
+                repo_root=self.repo_root,
+            )
         )
         checkpoint_dir = self._implementation_checkpoint_dir(task)
         checkpoint_manifest = self._implementation_checkpoint_manifest(task)
@@ -19868,7 +19937,7 @@ class PortalImplementationDaemon:
             rules = (
                 *rules,
                 "For retry-budget repairs, use the persisted failure evidence and declared validation targets to distinguish a task-owned regression from inherited validation debt.",
-                "Validation targets are authorized repair scope, not required changes: preserve correct production policy and never weaken assertions merely to make the gate pass.",
+                "Reported validation-failure paths are diagnostic and read-only unless the exact path is also declared in Outputs: preserve correct production policy and never weaken assertions merely to make the gate pass.",
             )
         if implied_validation_paths:
             rules = (
@@ -19894,11 +19963,6 @@ class PortalImplementationDaemon:
             dict.fromkeys(
                 (
                     *base_allowed_edit_paths,
-                    *(
-                        retry_validation_paths
-                        if completion_scope is None
-                        else ()
-                    ),
                     *(
                         implied_validation_paths
                         if completion_scope is None
@@ -19928,13 +19992,14 @@ class PortalImplementationDaemon:
             "mode": (
                 "completion_gap_exact"
                 if completion_scope is not None
-                else "retry_repair_validation_targets"
+                else "retry_repair_output_exact"
                 if retry_repair_source_id
                 else "task_outputs_with_implied_validation_tests"
                 if implied_validation_paths
                 else "task_output_exact"
             ),
             "allowed_paths": allowed_edit_paths,
+            "diagnostic_read_only_paths": retry_validation_paths,
             "protected_paths": protected_edit_paths,
             "read_only_outputs": read_only_outputs,
             "validation_may_read_other_paths": True,

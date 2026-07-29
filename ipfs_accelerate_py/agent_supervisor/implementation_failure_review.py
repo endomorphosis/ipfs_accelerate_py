@@ -14,18 +14,20 @@ never authorizes secret, protected-path, submodule, or test-weakening failures.
 
 from __future__ import annotations
 
+import shlex
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path, PurePosixPath
 from typing import Any, Iterable, Mapping, Sequence
 
 from .formal_verification_contracts import canonical_json, content_identity
+from .validation_commands import infer_validation_impact_paths
 
 
 FAILURE_REVIEW_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/implementation-failure-review@1"
 )
-FAILURE_REVIEW_POLICY_VERSION = "deterministic-failure-review-v1"
+FAILURE_REVIEW_POLICY_VERSION = "deterministic-failure-review-v2"
 
 # Failures that may never be accepted by the reviewer.
 _HARD_DENY_FINDING_CODES = frozenset(
@@ -73,6 +75,9 @@ class FailureReviewReason(str, Enum):
     VALIDATION_COMMAND_FAILED = "validation_command_failed"
     ENVIRONMENT_VALIDATION_UNAVAILABLE = "environment_validation_unavailable"
     LARGE_OR_UNDECLARED_REFACTOR = "large_or_undeclared_refactor"
+    TASK_SCOPE_CONTRACT_REVISION_REQUIRED = (
+        "task_scope_contract_revision_required"
+    )
     EMPTY_OR_NO_CHANGE = "empty_or_no_change"
     GENERIC_IMPLEMENTATION_FAILURE = "generic_implementation_failure"
     NO_ACTIONABLE_EVIDENCE = "no_actionable_evidence"
@@ -229,6 +234,71 @@ def _scope_projection(
     return dict(nested) if nested else {}
 
 
+def _scope_contract_gap_paths(
+    scope_adjudication: Mapping[str, Any],
+    *,
+    validation_commands: Sequence[str],
+    validation_result: Mapping[str, Any],
+) -> tuple[str, ...]:
+    """Find denied test companions that need protected task revision."""
+
+    validation_paths = set(
+        _normalized_paths(
+            validation_result.get("validation_impact_paths") or ()
+        )
+    )
+    for command in validation_commands:
+        validation_paths.update(
+            _normalized_paths(infer_validation_impact_paths(str(command)))
+        )
+        try:
+            tokens = shlex.split(str(command), posix=True)
+        except ValueError:
+            tokens = []
+        for index, token in enumerate(tokens):
+            raw_prefix = ""
+            if token in {"--prefix", "--cwd", "--dir", "cd"}:
+                if index + 1 < len(tokens):
+                    raw_prefix = tokens[index + 1]
+            elif token.startswith(("--prefix=", "--cwd=", "--dir=")):
+                raw_prefix = token.split("=", 1)[1]
+            prefix = _normalize_path(raw_prefix)
+            if prefix:
+                validation_paths.add(prefix)
+    if not validation_paths:
+        return ()
+
+    contract_gap_reasons = {
+        "test_change_unverifiable",
+        "test_without_regression_evidence",
+    }
+    decisions = scope_adjudication.get("decisions") or ()
+    if not isinstance(decisions, Sequence) or isinstance(
+        decisions, (str, bytes)
+    ):
+        return ()
+
+    paths: list[str] = []
+    for decision in decisions:
+        if not isinstance(decision, Mapping):
+            continue
+        if str(decision.get("verdict") or "").strip() != "denied":
+            continue
+        if not set(_as_str_tuple(decision.get("reason_codes"))).intersection(
+            contract_gap_reasons
+        ):
+            continue
+        path = _normalize_path(decision.get("path"))
+        if not path or not any(
+            path == target or path.startswith(target.rstrip("/") + "/")
+            for target in validation_paths
+        ):
+            continue
+        if path not in paths:
+            paths.append(path)
+    return tuple(sorted(paths))
+
+
 def _is_environment_failure(
     validation_result: Mapping[str, Any],
     *,
@@ -293,6 +363,7 @@ def _guidance_lines(
     out_of_scope_paths: Sequence[str],
     justified_paths: Sequence[str],
     denied_paths: Sequence[str],
+    contract_gap_paths: Sequence[str],
     failed_commands: Sequence[str],
     expected_outputs: Sequence[str],
 ) -> list[str]:
@@ -354,6 +425,18 @@ def _guidance_lines(
             )
             for path in justified_paths:
                 lines.append(f"- `{path}`")
+    if contract_gap_paths:
+        lines.append("")
+        lines.append("### Task-scope contract revision required")
+        lines.append(
+            "The proposal remains rejected. For each exact companion below, "
+            "either revert the change or have protected-board authority add "
+            "that exact path to Outputs / Predicted files before retrying. "
+            "A broad validation command is diagnostic evidence, not edit "
+            "authority."
+        )
+        for path in contract_gap_paths:
+            lines.append(f"- `{path}`")
     if failed_commands:
         lines.append("")
         lines.append("### Failed validation commands")
@@ -414,6 +497,7 @@ class ImplementationFailureReviewReceipt:
     out_of_scope_paths: tuple[str, ...]
     justified_paths: tuple[str, ...]
     denied_paths: tuple[str, ...]
+    contract_gap_paths: tuple[str, ...]
     failed_commands: tuple[str, ...]
     guidance_markdown: str
     next_attempt_prompt_addendum: str
@@ -442,6 +526,7 @@ class ImplementationFailureReviewReceipt:
             "out_of_scope_paths",
             "justified_paths",
             "denied_paths",
+            "contract_gap_paths",
             "failed_commands",
         ):
             object.__setattr__(self, name, _as_str_tuple(getattr(self, name)))
@@ -474,6 +559,11 @@ class ImplementationFailureReviewReceipt:
             self,
             "denied_paths",
             _normalized_paths(self.denied_paths),
+        )
+        object.__setattr__(
+            self,
+            "contract_gap_paths",
+            _normalized_paths(self.contract_gap_paths),
         )
         guidance = str(self.guidance_markdown or "").strip()
         if not guidance:
@@ -517,6 +607,7 @@ class ImplementationFailureReviewReceipt:
             "out_of_scope_paths": list(self.out_of_scope_paths),
             "justified_paths": list(self.justified_paths),
             "denied_paths": list(self.denied_paths),
+            "contract_gap_paths": list(self.contract_gap_paths),
             "failed_commands": list(self.failed_commands),
             "guidance_markdown": self.guidance_markdown,
             "next_attempt_prompt_addendum": self.next_attempt_prompt_addendum,
@@ -555,6 +646,9 @@ class ImplementationFailureReviewReceipt:
             out_of_scope_paths=tuple(payload.get("out_of_scope_paths") or ()),
             justified_paths=tuple(payload.get("justified_paths") or ()),
             denied_paths=tuple(payload.get("denied_paths") or ()),
+            contract_gap_paths=tuple(
+                payload.get("contract_gap_paths") or ()
+            ),
             failed_commands=tuple(payload.get("failed_commands") or ()),
             guidance_markdown=str(payload.get("guidance_markdown") or ""),
             next_attempt_prompt_addendum=str(
@@ -582,6 +676,7 @@ def review_implementation_failure(
     log_excerpt: str = "",
     proposal_accepted: bool | None = None,
     scope_adjudication: Mapping[str, Any] | None = None,
+    validation_commands: Sequence[str] = (),
 ) -> ImplementationFailureReviewReceipt:
     """Review one failed implementation/validation attempt.
 
@@ -605,6 +700,11 @@ def review_implementation_failure(
     scope = dict(scope_adjudication or {}) or _scope_projection(validation)
     justified = _normalized_paths(scope.get("justified_paths") or ())
     denied = _normalized_paths(scope.get("denied_paths") or ())
+    contract_gap_paths = _scope_contract_gap_paths(
+        scope,
+        validation_commands=validation_commands,
+        validation_result=validation,
+    )
     scope_accepted = scope.get("accepted") is True
     out_of_scope = tuple(
         path
@@ -646,6 +746,10 @@ def review_implementation_failure(
             )
     elif out_of_scope or denied:
         reason_codes.append(FailureReviewReason.SCOPE_EXPANSION_DENIED.value)
+    if contract_gap_paths:
+        reason_codes.append(
+            FailureReviewReason.TASK_SCOPE_CONTRACT_REVISION_REQUIRED.value
+        )
     if missing and len(missing) == len(expected) and not changed:
         reason_codes.append(FailureReviewReason.EMPTY_OR_NO_CHANGE.value)
     elif missing:
@@ -720,6 +824,7 @@ def review_implementation_failure(
             out_of_scope_paths=out_of_scope,
             justified_paths=justified,
             denied_paths=denied,
+            contract_gap_paths=contract_gap_paths,
             failed_commands=failed_commands,
             expected_outputs=expected,
         )
@@ -732,12 +837,24 @@ def review_implementation_failure(
         addendum_lines.append(
             "Still required outputs: " + ", ".join(missing) + "."
         )
-    if denied or out_of_scope:
-        blocked = tuple(dict.fromkeys((*denied, *out_of_scope)))
+    ordinary_denied = tuple(
+        path
+        for path in dict.fromkeys((*denied, *out_of_scope))
+        if path not in set(contract_gap_paths)
+    )
+    if ordinary_denied:
         addendum_lines.append(
             "Do not modify these out-of-scope paths: "
-            + ", ".join(blocked)
+            + ", ".join(ordinary_denied)
             + "."
+        )
+    if contract_gap_paths:
+        addendum_lines.append(
+            "Task-scope contract revision required for: "
+            + ", ".join(contract_gap_paths)
+            + ". The proposal remains rejected; either revert each companion "
+            "or have protected-board authority add its exact path to "
+            "Outputs/Predicted before retrying."
         )
     if justified and decision is not FailureReviewDecision.ACCEPT:
         addendum_lines.append(
@@ -766,6 +883,7 @@ def review_implementation_failure(
         out_of_scope_paths=out_of_scope,
         justified_paths=justified,
         denied_paths=denied,
+        contract_gap_paths=contract_gap_paths,
         failed_commands=failed_commands,
         guidance_markdown=guidance,
         next_attempt_prompt_addendum=" ".join(addendum_lines),
@@ -789,6 +907,7 @@ def compact_failure_review(
         "out_of_scope_paths": list(receipt.out_of_scope_paths),
         "justified_paths": list(receipt.justified_paths),
         "denied_paths": list(receipt.denied_paths),
+        "contract_gap_paths": list(receipt.contract_gap_paths),
         "failed_commands": list(receipt.failed_commands),
         "next_attempt_prompt_addendum": receipt.next_attempt_prompt_addendum,
         "policy_version": receipt.policy_version,

@@ -13563,7 +13563,7 @@ def test_implementation_daemon_records_stage_specific_context_reserves(tmp_path)
     assert "decoded_output" not in receipt_text
 
 
-def test_retry_repair_context_authorizes_declared_validation_targets(tmp_path):
+def test_retry_repair_context_keeps_validation_targets_diagnostic(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
     todo_path = repo / "todo.md"
@@ -13609,10 +13609,12 @@ def test_retry_repair_context_authorizes_declared_validation_targets(tmp_path):
         "Resolve the bounded validation retry-budget blocker for ACCEL-001"
     )
     edit_policy = result.capsule.authority["edit_policy"]
-    assert edit_policy["mode"] == "retry_repair_validation_targets"
+    assert edit_policy["mode"] == "retry_repair_output_exact"
     assert edit_policy["allowed_paths"] == (
         "src/runtime.py",
         "data/discovery",
+    )
+    assert edit_policy["diagnostic_read_only_paths"] == (
         "tests/test_runtime.py",
         "tests/test_policy.py",
     )
@@ -13626,6 +13628,7 @@ def test_retry_repair_context_authorizes_declared_validation_targets(tmp_path):
     )
     prompt_rules = result.capsule.authority["generic_prompt_policy"]
     assert any("inherited validation debt" in rule for rule in prompt_rules)
+    assert any("diagnostic and read-only" in rule for rule in prompt_rules)
     assert any("never weaken assertions" in rule for rule in prompt_rules)
 
 

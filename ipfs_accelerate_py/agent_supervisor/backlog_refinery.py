@@ -5178,12 +5178,184 @@ is appended for normal daemon parsing.
     return path
 
 
+def _bounded_validation_failure_paths(
+    failed_test_paths: Sequence[str],
+    *,
+    limit: int = 16,
+) -> list[str]:
+    """Return safe exact failed-test paths suitable for task authority."""
+
+    raw_values: Sequence[Any]
+    if isinstance(failed_test_paths, (str, bytes, bytearray)):
+        raw_values = (failed_test_paths,)
+    else:
+        raw_values = failed_test_paths
+    paths: list[str] = []
+    for raw_path in raw_values:
+        normalized = str(raw_path or "").strip().replace("\\", "/")
+        while normalized.startswith("./"):
+            normalized = normalized[2:]
+        parts = tuple(part for part in normalized.split("/") if part)
+        canonical_path = "/".join(parts)
+        suffix = Path(canonical_path).suffix.lower()
+        test_named = bool(parts) and (
+            any(part.lower() in {"test", "tests", "e2e"} for part in parts[:-1])
+            or parts[-1].lower().startswith("test_")
+            or "_test." in parts[-1].lower()
+            or ".spec." in parts[-1].lower()
+            or ".test." in parts[-1].lower()
+        )
+        if (
+            not normalized
+            or normalized.startswith("/")
+            or "\0" in normalized
+            or "\n" in normalized
+            or "\r" in normalized
+            or any(character in normalized for character in "*?[")
+            or ".." in parts
+            or (parts and parts[0].endswith(":"))
+            or suffix
+            not in {
+                ".cjs",
+                ".cts",
+                ".js",
+                ".jsx",
+                ".mjs",
+                ".mts",
+                ".py",
+                ".pyi",
+                ".ts",
+                ".tsx",
+            }
+            or not test_named
+            or canonical_path in paths
+        ):
+            continue
+        paths.append(canonical_path)
+        if len(paths) >= max(1, int(limit)):
+            break
+    return paths
+
+
+def _focused_npm_playwright_retry_command(
+    command: str,
+    *,
+    failed_test_paths: Sequence[str],
+) -> str:
+    """Narrow an npm-prefix Playwright clause to exact reported test files.
+
+    The original command is returned unchanged unless every transformation is
+    source-bound and shell-safe. This preserves the fail-closed fallback for
+    unknown runners, unqualified paths, and complex shell expressions.
+    """
+
+    exact_paths = _bounded_validation_failure_paths(failed_test_paths)
+    if not exact_paths:
+        return command
+    try:
+        tokens = shlex.split(command, posix=True)
+    except ValueError:
+        return command
+    if not tokens or any(
+        token in {"|", "||", ";", "&", ">", ">>", "<", "<<"}
+        or "$(" in token
+        or "`" in token
+        or "\n" in token
+        for token in tokens
+    ):
+        return command
+
+    clauses: list[list[str]] = []
+    current: list[str] = []
+    for token in tokens:
+        if token == "&&":
+            if not current:
+                return command
+            clauses.append(current)
+            current = []
+            continue
+        current.append(token)
+    if not current:
+        return command
+    clauses.append(current)
+
+    focused = False
+    rendered_clauses: list[str] = []
+    for clause in clauses:
+        executable = Path(clause[0]).name.lower().removesuffix(".cmd")
+        if executable != "npm" or "test" not in clause:
+            rendered_clauses.append(shlex.join(clause))
+            continue
+        prefix = ""
+        for index, token in enumerate(clause):
+            if token == "--prefix" and index + 1 < len(clause):
+                prefix = clause[index + 1]
+                break
+            if token.startswith("--prefix="):
+                prefix = token.split("=", 1)[1]
+                break
+        prefix = prefix.strip().replace("\\", "/").strip("/")
+        if (
+            not prefix
+            or prefix in {".", ".."}
+            or ".." in prefix.split("/")
+            or prefix.split("/", 1)[0].endswith(":")
+        ):
+            rendered_clauses.append(shlex.join(clause))
+            continue
+
+        runner_paths: list[str] = []
+        for path in exact_paths:
+            expected_prefix = f"{prefix}/"
+            if not path.startswith(expected_prefix):
+                continue
+            relative = path[len(expected_prefix) :]
+            relative_parts = tuple(
+                part for part in relative.split("/") if part
+            )
+            suffix = Path(relative).suffix.lower()
+            test_named = (
+                any(part in {"test", "tests", "e2e"} for part in relative_parts)
+                or ".spec." in relative
+                or ".test." in relative
+            )
+            if (
+                not relative
+                or ".." in relative_parts
+                or suffix
+                not in {
+                    ".cjs",
+                    ".cts",
+                    ".js",
+                    ".jsx",
+                    ".mjs",
+                    ".mts",
+                    ".ts",
+                    ".tsx",
+                }
+                or not test_named
+            ):
+                continue
+            if relative not in runner_paths:
+                runner_paths.append(relative)
+        if not runner_paths:
+            rendered_clauses.append(shlex.join(clause))
+            continue
+        rendered_clauses.append(shlex.join([*clause, *runner_paths]))
+        focused = True
+
+    if not focused:
+        return command
+    return " && ".join(rendered_clauses)
+
+
 def validation_retry_task_block(
     *,
     task_id: str,
     source_task: Any,
     failed_command: str,
     discovery_path: Path,
+    failed_test_paths: Sequence[str] = (),
     depends_on: Sequence[str] = (),
     discovery_output_path: str = DEFAULT_DISCOVERY_OUTPUT_PATH,
     launch_playwright_validation_gate: bool = False,
@@ -5191,10 +5363,25 @@ def validation_retry_task_block(
     outputs = list(getattr(source_task, "outputs", []) or [])
     if discovery_output_path not in outputs:
         outputs.append(discovery_output_path)
-    validation_command = safe_retry_validation_command(failed_command, discovery_path=discovery_path)
-    validation_target_paths = infer_validation_impact_paths(
-        validation_command
+    exact_failure_paths = _bounded_validation_failure_paths(
+        failed_test_paths
     )
+    for path in exact_failure_paths:
+        if path not in outputs:
+            outputs.append(path)
+    validation_command = safe_retry_validation_command(
+        failed_command,
+        discovery_path=discovery_path,
+    )
+    validation_command = _focused_npm_playwright_retry_command(
+        validation_command,
+        failed_test_paths=exact_failure_paths,
+    )
+    validation_target_paths = list(exact_failure_paths)
+    if not validation_target_paths:
+        validation_target_paths.extend(
+            infer_validation_impact_paths(validation_command)
+        )
     validation_scope_acceptance = (
         " The declared validation target paths "
         f"({', '.join(validation_target_paths)}) are bounded diagnostic and "
@@ -5208,6 +5395,13 @@ def validation_retry_task_block(
         if launch_playwright_validation_gate
         else ""
     )
+    validation_failure_metadata = (
+        "- Validation failure paths: "
+        + ", ".join(exact_failure_paths)
+        + "\n"
+        if exact_failure_paths
+        else ""
+    )
     return f"""## {task_id} Resolve validation retry-budget failure for {source_task.task_id}
 
 - Status: todo
@@ -5217,6 +5411,7 @@ def validation_retry_task_block(
 - Depends on: {", ".join(depends_on)}
 - Outputs: {", ".join(outputs)}
 - Validation: {validation_command}
+{validation_failure_metadata.rstrip()}
 - Acceptance: Retry-budget guardrail filed this from repeated validation failures in {source_task.task_id}. Use evidence in {discovery_path} to fix the validation blocker, then mark this repair task completed so the supervisor can release {source_task.task_id} from strategy blocked_tasks.{validation_scope_acceptance}{launch_gate_acceptance}
 """
 
@@ -5473,6 +5668,9 @@ def record_retry_budget_findings(
                 source_task=task,
                 failed_command=validation_command,
                 discovery_path=discovery_path,
+                failed_test_paths=(
+                    latest_validation.get("failed_test_paths") or ()
+                ),
                 depends_on=depends_on,
                 discovery_output_path=discovery_output_path,
                 launch_playwright_validation_gate=launch_playwright_validation_gate,

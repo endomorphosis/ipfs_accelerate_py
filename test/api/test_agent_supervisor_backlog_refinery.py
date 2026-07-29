@@ -46,6 +46,14 @@ from ipfs_accelerate_py.agent_supervisor.dataset_store import ObjectiveDatasetSt
 from ipfs_accelerate_py.agent_supervisor.checkout_lock import (
     BACKLOG_REFINERY_AUTHOR_EMAIL,
 )
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.diagnostics import (
+    summarize_test_failure,
+)
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+    normalize_reported_test_failure_path,
+    parse_task_file,
+    retry_budget_repair_validation_paths,
+)
 from ipfs_accelerate_py.agent_supervisor.wrapper_utils import agent_supervisor_namespace_paths
 from ipfs_accelerate_py.agent_supervisor.scan_receipts import (
     REFILL_SCAN_RESULT_SCHEMA_VERSION,
@@ -2932,6 +2940,188 @@ def test_backlog_refinery_retry_budget_blocks_validation_loop(tmp_path):
         in todo_text
     )
     assert "do not weaken correct assertions or policy" in todo_text
+
+
+def test_summarize_test_failure_parses_playwright_identifiers_and_paths():
+    summary = summarize_test_failure(
+        "\n".join(
+            [
+                "\x1b[31m  ✘  1 [Desktop Chrome] › "
+                "tests/abby-style.spec.ts:42:3 › home layout stays bounded"
+                "\x1b[39m",
+                "",
+                "  1) [Desktop Chrome] › "
+                "tests/abby-style.spec.ts:42:3 › home layout stays bounded",
+                "    AssertionError: expect(locator).toBeVisible() failed",
+                "",
+                "  2) [Mobile Safari] › "
+                "tests/world-id-ux.spec.ts:268:1 › raw nullifier stays hidden",
+            ]
+        )
+    )
+
+    assert summary["failed_tests"] == [
+        "[Desktop Chrome] › tests/abby-style.spec.ts:42:3 › "
+        "home layout stays bounded",
+        "[Mobile Safari] › tests/world-id-ux.spec.ts:268:1 › "
+        "raw nullifier stays hidden",
+    ]
+    assert summary["failed_test_paths"] == [
+        "tests/abby-style.spec.ts",
+        "tests/world-id-ux.spec.ts",
+    ]
+    assert "tests/abby-style.spec.ts:42:3" in summary["failure_head"]
+    assert "AssertionError" in summary["exception_types"]
+    assert normalize_reported_test_failure_path(
+        "npm --prefix wallet_interface/ui test -- --runInBand",
+        summary["failed_test_paths"][1],
+    ) == "wallet_interface/ui/tests/world-id-ux.spec.ts"
+
+
+def test_playwright_retry_focus_falls_back_for_unqualified_or_unsafe_paths():
+    broad_command = (
+        "npm --prefix wallet_interface/ui test -- --runInBand"
+    )
+
+    assert backlog_refinery._focused_npm_playwright_retry_command(
+        broad_command,
+        failed_test_paths=("tests/world-id-ux.spec.ts",),
+    ) == broad_command
+    assert backlog_refinery._focused_npm_playwright_retry_command(
+        broad_command,
+        failed_test_paths=("../outside.spec.ts",),
+    ) == broad_command
+    assert backlog_refinery._focused_npm_playwright_retry_command(
+        broad_command,
+        failed_test_paths=("wallet_interface/ui/tests/*.spec.ts",),
+    ) == broad_command
+    compound_command = f"{broad_command} || echo unsafe"
+    assert backlog_refinery._focused_npm_playwright_retry_command(
+        compound_command,
+        failed_test_paths=(
+            "wallet_interface/ui/tests/world-id-ux.spec.ts",
+        ),
+    ) == compound_command
+
+
+def test_retry_budget_prefers_failed_playwright_paths_for_repair_scope(
+    tmp_path,
+):
+    repo = _seed_repo(tmp_path)
+    todo_path = repo / "todo.md"
+    events_path = repo / "state" / "events.jsonl"
+    strategy_path = repo / "state" / "strategy.json"
+    discovery_dir = repo / "data" / "agent_supervisor" / "discovery"
+    todo_path.write_text(
+        """# Agent Todos
+
+## AUTO-001 Fix the World ID panel
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: runtime
+- Depends on:
+- Outputs: wallet_interface/ui/src/WorldIdPanel.tsx
+- Validation: npm --prefix wallet_interface/ui test -- --runInBand
+- Acceptance: Keep World ID proof details private.
+""",
+        encoding="utf-8",
+    )
+    events_path.parent.mkdir(parents=True)
+    summary = summarize_test_failure(
+        "  1) [Desktop Chrome] › "
+        "tests/world-id-ux.spec.ts:268:1 › raw nullifier stays hidden\n"
+        "    Error: expect(locator).toHaveCount(0) failed\n"
+    )
+    rooted_paths = [
+        f"wallet_interface/ui/{path}"
+        for path in summary["failed_test_paths"]
+    ]
+    failure = {
+        "type": "implementation_finished",
+        "task_id": "AUTO-001",
+        "attempt": 1,
+        "validation_result": {
+            "attempted": True,
+            "passed": False,
+            "returncode": 1,
+            "error": "validation_command_failed",
+            "reason": "declared_validation_failed",
+            "failed_command": (
+                "npm --prefix wallet_interface/ui test -- --runInBand"
+            ),
+            "failed_tests": summary["failed_tests"],
+            "failed_test_paths": rooted_paths,
+            "validation_impact_paths": ["wallet_interface/ui"],
+            "failure_head": summary["failure_head"],
+        },
+        "log_path": "state/implementation_logs/auto-001-attempt-1.log",
+    }
+    events_path.write_text(
+        json.dumps(failure)
+        + "\n"
+        + json.dumps({**failure, "attempt": 2})
+        + "\n",
+        encoding="utf-8",
+    )
+
+    findings = record_retry_budget_findings(
+        todo_path=todo_path,
+        events_path=events_path,
+        strategy_path=strategy_path,
+        discovery_dir=discovery_dir,
+        task_header_prefix_value="## AUTO-",
+        task_prefix="AUTO-",
+        validation_retry_budget=2,
+        merge_retry_budget=0,
+    )
+
+    assert len(findings) == 1
+    todo_text = todo_path.read_text(encoding="utf-8")
+    assert (
+        "The declared validation target paths "
+        "(wallet_interface/ui/tests/world-id-ux.spec.ts) are bounded "
+        "diagnostic and repair scope"
+        in todo_text
+    )
+    assert (
+        "The declared validation target paths (wallet_interface/ui) "
+        "are bounded diagnostic and repair scope"
+        not in todo_text
+    )
+    assert (
+        "- Outputs: wallet_interface/ui/src/WorldIdPanel.tsx, "
+        "data/agent_supervisor/discovery, "
+        "wallet_interface/ui/tests/world-id-ux.spec.ts"
+        in todo_text
+    )
+    assert (
+        "- Validation: npm --prefix wallet_interface/ui test -- "
+        "--runInBand tests/world-id-ux.spec.ts"
+        in todo_text
+    )
+    repair_task = parse_task_file(
+        todo_path,
+        "## AUTO-",
+    )[1]
+    assert repair_task.metadata["validation failure paths"] == (
+        "wallet_interface/ui/tests/world-id-ux.spec.ts"
+    )
+    assert retry_budget_repair_validation_paths(repair_task) == (
+        "wallet_interface/ui/tests/world-id-ux.spec.ts",
+    )
+    assert repair_task.outputs[-1] == (
+        "wallet_interface/ui/tests/world-id-ux.spec.ts"
+    )
+    discovery_text = Path(findings[0]["discovery_path"]).read_text(
+        encoding="utf-8"
+    )
+    assert (
+        "- Failed test paths: "
+        "wallet_interface/ui/tests/world-id-ux.spec.ts"
+        in discovery_text
+    )
 
 
 def test_retry_budget_classifies_pre_dispatch_validation_stall(tmp_path):

@@ -40,6 +40,18 @@ DEFAULT_TIMEOUT_FAILURE_MARKERS = frozenset({"timed out"})
 DEFAULT_PARSE_FAILURE_MARKERS = frozenset({"did not contain json"})
 DEFAULT_VALIDATION_FAILURE_MARKERS = frozenset({"ts1005"})
 
+_ANSI_CONTROL_SEQUENCE_RE = re.compile(
+    r"\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\))"
+)
+_PLAYWRIGHT_FAILURE_RE = re.compile(
+    r"(?P<identifier>"
+    r"\[[^\]\r\n]+\]\s+›\s+"
+    r"(?P<path>[^:\r\n]+?\.[cm]?[jt]sx?)"
+    r":\d+:\d+"
+    r"(?:\s+›\s+[^\r\n]+)?"
+    r")"
+)
+
 
 @dataclass(frozen=True)
 class FailureBlockDecision:
@@ -101,16 +113,37 @@ def is_pytest_session_noise(text: str) -> bool:
 
 
 def summarize_test_failure(stdout: Any) -> dict[str, Any]:
-    """Summarize failed pytest node ids, exception types, and useful output head."""
+    """Summarize failed pytest/Playwright ids, paths, and useful output head."""
 
     output = command_output_text(stdout)
     failed_tests: list[str] = []
+    failed_test_paths: list[str] = []
     for match in re.finditer(r"FAILED\s+([^\s]+)", output):
         name = match.group(1).strip()
         if name == "[" or "::" not in name:
             continue
         if name and name not in failed_tests:
             failed_tests.append(name)
+        path = name.split("::", 1)[0].strip().replace("\\", "/")
+        if path and path not in failed_test_paths:
+            failed_test_paths.append(path)
+
+    playwright_failure_lines: list[str] = []
+    for raw_line in output.splitlines():
+        line = _ANSI_CONTROL_SEQUENCE_RE.sub("", raw_line).strip()
+        match = _PLAYWRIGHT_FAILURE_RE.search(line)
+        if match is None:
+            continue
+        identifier = " ".join(match.group("identifier").split())
+        path = match.group("path").strip().replace("\\", "/")
+        while path.startswith("./"):
+            path = path[2:]
+        if identifier and identifier not in failed_tests:
+            failed_tests.append(identifier)
+        if path and path not in failed_test_paths:
+            failed_test_paths.append(path)
+        if identifier and identifier not in playwright_failure_lines:
+            playwright_failure_lines.append(identifier)
 
     exception_types: list[str] = []
     for match in re.finditer(r"\b([A-Za-z_][A-Za-z0-9_]*(?:Error|Exception))\b", output):
@@ -132,9 +165,15 @@ def summarize_test_failure(stdout: Any) -> dict[str, Any]:
             interesting_lines.append(text)
         if len(interesting_lines) >= 10:
             break
+    for identifier in playwright_failure_lines:
+        if identifier not in interesting_lines:
+            interesting_lines.append(identifier)
+        if len(interesting_lines) >= 10:
+            break
 
     return {
         "failed_tests": failed_tests,
+        "failed_test_paths": failed_test_paths,
         "exception_types": exception_types,
         "failure_head": "\n".join(interesting_lines)[:2000],
     }
