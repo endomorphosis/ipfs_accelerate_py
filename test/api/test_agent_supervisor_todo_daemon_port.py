@@ -4554,6 +4554,318 @@ def test_implementation_daemon_reuses_primary_submodule_from_linked_worktree(
     ) is None
 
 
+def _nested_submodule_guard_daemon(tmp_path: Path) -> tuple[TodoImplementationDaemon, Path]:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / ".gitmodules").write_text(
+        (
+            '[submodule "ipfs_kit_py"]\n'
+            "    path = ipfs_kit_py\n"
+            "    url = https://github.com/endomorphosis/ipfs_kit_py.git\n"
+            '[submodule "ipfs_datasets_py"]\n'
+            "    path = ipfs_datasets_py\n"
+            "    url = https://github.com/endomorphosis/ipfs_datasets_py.git\n"
+        ),
+        encoding="utf-8",
+    )
+    nested = tmp_path / "nested"
+    nested.mkdir()
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=["ipfs_kit_py", "ipfs_datasets_py"],
+    )
+    return daemon, nested
+
+
+def _nested_submodule_guard_events(daemon: TodoImplementationDaemon) -> list[dict[str, object]]:
+    return [
+        json.loads(line)
+        for line in daemon.events_path.read_text(encoding="utf-8").splitlines()
+    ]
+
+
+def test_implementation_daemon_guards_nested_repository_cycle_before_worktree_creation(
+    tmp_path: Path,
+    monkeypatch,
+):
+    daemon, nested = _nested_submodule_guard_daemon(tmp_path)
+    (nested / ".gitmodules").write_text(
+        (
+            '[submodule "ipfs_accelerate_py"]\n'
+            "    path = ipfs_accelerate_py\n"
+            "    url = git@github.com:endomorphosis/ipfs_accelerate_py.git\n"
+        ),
+        encoding="utf-8",
+    )
+    create_calls: list[tuple[Path, str]] = []
+    expected_gitlink_ref = "a" * 40
+    monkeypatch.setattr(
+        daemon,
+        "_create_local_submodule_worktree",
+        lambda worktree, relative, **_kwargs: create_calls.append((worktree, relative)) or True,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_submodule_gitlink_ref",
+        lambda *_args: expected_gitlink_ref,
+    )
+
+    daemon._initialize_nested_worktree_submodules(
+        nested,
+        branch_name="implementation/cycle",
+        parent_relative="ipfs_kit_py",
+        _ancestor_identities=frozenset(
+            {"network:github.com/endomorphosis/ipfs_accelerate_py"}
+        ),
+        _configured_identities=frozenset(),
+    )
+
+    assert create_calls == []
+    guarded = _nested_submodule_guard_events(daemon)
+    assert len(guarded) == 1
+    assert guarded[0]["type"] == "nested_submodule_initialization_guarded"
+    assert guarded[0]["reason"] == "repository_cycle"
+    assert guarded[0]["path"] == "ipfs_kit_py/ipfs_accelerate_py"
+    assert guarded[0]["depth"] == 1
+    assert len(str(guarded[0]["matched_identity_sha256"])) == 64
+    assert guarded[0]["expected_gitlink_ref_available"] is True
+    assert guarded[0]["expected_gitlink_ref_sha256"] == hashlib.sha256(
+        expected_gitlink_ref.encode("utf-8")
+    ).hexdigest()
+
+
+def test_implementation_daemon_skips_nested_copy_of_configured_top_level_dependency(
+    tmp_path: Path,
+    monkeypatch,
+):
+    daemon, nested = _nested_submodule_guard_daemon(tmp_path)
+    (nested / ".gitmodules").write_text(
+        (
+            '[submodule ".tools/ipfs_kit_py"]\n'
+            "    path = .tools/ipfs_kit_py\n"
+            "    url = https://github.com/endomorphosis/ipfs_kit_py\n"
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_create_local_submodule_worktree",
+        lambda *_args, **_kwargs: pytest.fail(
+            "configured duplicate must be guarded before worktree creation"
+        ),
+    )
+
+    daemon._initialize_nested_worktree_submodules(
+        nested,
+        branch_name="implementation/duplicate",
+        parent_relative="ipfs_datasets_py",
+        _ancestor_identities=frozenset(
+            {"network:github.com/endomorphosis/ipfs_datasets_py"}
+        ),
+    )
+
+    guarded = _nested_submodule_guard_events(daemon)
+    assert len(guarded) == 1
+    assert guarded[0]["reason"] == "configured_dependency_duplicate"
+    assert guarded[0]["path"] == "ipfs_datasets_py/.tools/ipfs_kit_py"
+
+
+def test_implementation_daemon_guards_nested_submodule_with_unknown_identity(
+    tmp_path: Path,
+    monkeypatch,
+):
+    daemon, nested = _nested_submodule_guard_daemon(tmp_path)
+    (nested / ".gitmodules").write_text(
+        (
+            '[submodule "unknown"]\n'
+            "    path = dependencies/unknown\n"
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_create_local_submodule_worktree",
+        lambda *_args, **_kwargs: pytest.fail(
+            "an unidentified nested repository must not be materialized"
+        ),
+    )
+
+    daemon._initialize_nested_worktree_submodules(
+        nested,
+        branch_name="implementation/unknown-identity",
+        parent_relative="components/parent",
+        _ancestor_identities=frozenset(),
+        _configured_identities=frozenset(),
+    )
+
+    guarded = _nested_submodule_guard_events(daemon)
+    assert len(guarded) == 1
+    assert guarded[0]["reason"] == "identity_unavailable"
+    assert guarded[0]["path"] == "components/parent/dependencies/unknown"
+    assert guarded[0]["expected_gitlink_ref_available"] is False
+    assert guarded[0]["expected_gitlink_ref_sha256"] == ""
+
+
+def test_implementation_daemon_keeps_acyclic_nested_submodule_recursion(
+    tmp_path: Path,
+    monkeypatch,
+):
+    daemon, nested = _nested_submodule_guard_daemon(tmp_path)
+    (nested / ".gitmodules").write_text(
+        (
+            '[submodule "libs/child"]\n'
+            "    path = libs/child\n"
+            "    url = https://example.invalid/dependencies/child.git\n"
+        ),
+        encoding="utf-8",
+    )
+    target = nested / "libs" / "child"
+    declared_calls: list[Path] = []
+    create_calls: list[tuple[Path, str, str]] = []
+
+    def declared_paths(worktree: Path) -> list[str]:
+        declared_calls.append(worktree)
+        return ["libs/child"] if worktree == nested else []
+
+    def create_local(
+        worktree: Path,
+        relative: str,
+        *,
+        source_relative: str,
+        **_kwargs,
+    ) -> bool:
+        create_calls.append((worktree, relative, source_relative))
+        target.mkdir(parents=True)
+        return True
+
+    monkeypatch.setattr(daemon, "_declared_submodule_paths", declared_paths)
+    monkeypatch.setattr(daemon, "_create_local_submodule_worktree", create_local)
+    monkeypatch.setattr(daemon, "_is_git_worktree", lambda path: path == target)
+    monkeypatch.setattr(
+        daemon,
+        "_submodule_repository_identities",
+        lambda path: (
+            {"network:example.invalid/dependencies/child"}
+            if path == target
+            else set()
+        ),
+    )
+
+    daemon._initialize_nested_worktree_submodules(
+        nested,
+        branch_name="implementation/acyclic",
+        parent_relative="components/parent",
+        _ancestor_identities=frozenset({"network:example.invalid/components/parent"}),
+        _configured_identities=frozenset(),
+    )
+
+    assert create_calls == [
+        (nested, "libs/child", "components/parent/libs/child"),
+    ]
+    assert declared_calls == [nested, target]
+    assert not daemon.events_path.exists()
+
+
+def test_implementation_daemon_guards_nested_submodule_depth_and_path_limits(
+    tmp_path: Path,
+    monkeypatch,
+):
+    daemon, nested = _nested_submodule_guard_daemon(tmp_path)
+    paths = iter(
+        [
+            ["child"],
+            ["x" * (implementation_daemon_module.MAX_NESTED_SUBMODULE_PATH_BYTES + 1)],
+        ]
+    )
+    monkeypatch.setattr(daemon, "_declared_submodule_paths", lambda _path: next(paths))
+    monkeypatch.setattr(
+        daemon,
+        "_create_local_submodule_worktree",
+        lambda *_args, **_kwargs: pytest.fail(
+            "bounded nested path must not create a worktree"
+        ),
+    )
+
+    daemon._initialize_nested_worktree_submodules(
+        nested,
+        branch_name="implementation/depth-bound",
+        parent_relative="parent",
+        _depth=implementation_daemon_module.MAX_NESTED_SUBMODULE_DEPTH,
+        _ancestor_identities=frozenset(),
+        _configured_identities=frozenset(),
+    )
+    daemon._initialize_nested_worktree_submodules(
+        nested,
+        branch_name="implementation/path-bound",
+        parent_relative="parent",
+        _ancestor_identities=frozenset(),
+        _configured_identities=frozenset(),
+    )
+
+    guarded = [
+        event
+        for event in _nested_submodule_guard_events(daemon)
+        if event["type"] == "nested_submodule_initialization_guarded"
+    ]
+    assert [event["reason"] for event in guarded] == [
+        "max_depth_exceeded",
+        "path_limit_exceeded",
+    ]
+    assert guarded[0]["depth"] == implementation_daemon_module.MAX_NESTED_SUBMODULE_DEPTH + 1
+    assert guarded[1]["path_bytes"] > implementation_daemon_module.MAX_NESTED_SUBMODULE_PATH_BYTES
+    assert len(str(guarded[1]["path"]).encode("utf-8")) <= (
+        implementation_daemon_module.MAX_NESTED_SUBMODULE_GUARD_EVENT_TEXT_BYTES
+    )
+    assert len(str(guarded[1]["path_sha256"])) == 64
+
+
+def test_implementation_daemon_bounds_nested_submodule_guard_diagnostics(
+    tmp_path: Path,
+    monkeypatch,
+):
+    daemon, nested = _nested_submodule_guard_daemon(tmp_path)
+    diagnostic_limit = implementation_daemon_module.MAX_NESTED_SUBMODULE_GUARD_EVENTS
+    monkeypatch.setattr(
+        daemon,
+        "_declared_submodule_paths",
+        lambda _path: [f"child-{index}" for index in range(diagnostic_limit + 5)],
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_create_local_submodule_worktree",
+        lambda *_args, **_kwargs: pytest.fail(
+            "depth-guarded nested path must not create a worktree"
+        ),
+    )
+
+    daemon._initialize_nested_worktree_submodules(
+        nested,
+        branch_name="implementation/bounded-events",
+        parent_relative="parent",
+        _depth=implementation_daemon_module.MAX_NESTED_SUBMODULE_DEPTH,
+        _ancestor_identities=frozenset(),
+        _configured_identities=frozenset(),
+    )
+
+    events = _nested_submodule_guard_events(daemon)
+    guarded = [
+        event for event in events
+        if event["type"] == "nested_submodule_initialization_guarded"
+    ]
+    suppressed = [
+        event for event in events
+        if event["type"] == "nested_submodule_initialization_guard_suppressed"
+    ]
+    assert len(guarded) == diagnostic_limit
+    assert len(suppressed) == 1
+    assert suppressed[0]["limit"] == diagnostic_limit
+
+
 def test_implementation_daemon_defers_nested_submodule_with_missing_gitlink(
     tmp_path: Path,
     monkeypatch,
