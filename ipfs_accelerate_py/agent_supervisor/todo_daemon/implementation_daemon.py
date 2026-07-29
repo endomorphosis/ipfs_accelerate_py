@@ -19354,16 +19354,19 @@ class PortalImplementationDaemon:
                 < IMPLEMENTATION_PROGRESS_HEARTBEAT_SECONDS
             ):
                 return
+            current = PortalTaskState.load(self.state_path)
             if (
-                state.active_task_id != task.task_id
-                or int(state.active_attempt or 0) != int(attempt)
-                or not state.implementation_in_progress
+                current.active_task_id != task.task_id
+                or int(current.active_attempt or 0) != int(attempt)
+                or not current.implementation_in_progress
             ):
                 return
             timestamp = utc_now()
+            current.heartbeat_at = timestamp
+            current.last_progress_at = timestamp
+            current.save(self.state_path)
             state.heartbeat_at = timestamp
             state.last_progress_at = timestamp
-            state.save(self.state_path)
             last_saved_monotonic = now_monotonic
 
         return observe
