@@ -1,4 +1,9 @@
-"""SCA-214 real-module conformance for exact datasets logic/prover backends.
+"""SCA-214 / SCA-627 real-module conformance for exact datasets logic/prover backends.
+
+Proves objective evidence SCAEV062DATASETSLOGIC for SCA-G062: adapt the real
+datasets IR, TDFOL, CEC, SMT, and Hammer signatures into the accelerator
+obligation/prover interfaces and register only capability-probed,
+reconstruction-compatible backends.
 
 These tests exercise actual ``ipfs_datasets_py.logic`` IR/TDFOL/CEC/SMT/Hammer
 signatures through the supervisor facades.  Fixture-only success is rejected:
@@ -32,6 +37,9 @@ from ipfs_accelerate_py.agent_supervisor.integrations.ipfs_datasets_logic_provid
     DATASETS_LOGIC_BACKEND_SPECS,
     DATASETS_LOGIC_CANDIDATE_ASSURANCE,
     LOGIC_IR_INTERFACE,
+    SCAEV062DATASETSLOGIC,
+    SCAEV062DATASETSLOGIC_COVERAGE,
+    SCAEV062DATASETSLOGIC_EVIDENCE,
     DatasetsLogicBackendError,
     DatasetsLogicBackendKind,
     DatasetsLogicBackendProbe,
@@ -60,8 +68,10 @@ from ipfs_accelerate_py.agent_supervisor.proof.mcp_contract_prover import (
     ContractProofOutcome,
     ContractProofRoute,
     McpContractProver,
+    SCAEV062DATASETSLOGIC as PROVER_SCAEV062DATASETSLOGIC,
     create_mcp_contract_prover_with_datasets_logic_backends,
     datasets_logic_backends_are_registered,
+    datasets_logic_prover_evidence,
 )
 
 
@@ -149,6 +159,28 @@ def _real_corpus_manifest():
     return manifest
 
 
+def test_scaev062datasetslogic_evidence_markers_are_exact() -> None:
+    """Exact-text SCAEV062DATASETSLOGIC markers for objective evidence admission."""
+
+    assert SCAEV062DATASETSLOGIC == "SCAEV062DATASETSLOGIC"
+    assert SCAEV062DATASETSLOGIC_EVIDENCE == SCAEV062DATASETSLOGIC
+    assert PROVER_SCAEV062DATASETSLOGIC == SCAEV062DATASETSLOGIC
+    assert "real-module-ir-tdfol-cec-smt-hammer-signature-probes" in SCAEV062DATASETSLOGIC_COVERAGE
+    assert "capability-probed-registration-only-no-label-admission" in SCAEV062DATASETSLOGIC_COVERAGE
+    assert (
+        "smt-tdfol-cec-outputs-candidates-until-trusted-reconstruction"
+        in SCAEV062DATASETSLOGIC_COVERAGE
+    )
+    assert (
+        "unregistered-or-unavailable-backends-unsupported-not-local-success"
+        in SCAEV062DATASETSLOGIC_COVERAGE
+    )
+    projection = datasets_logic_prover_evidence()
+    assert projection["evidence_id"] == SCAEV062DATASETSLOGIC
+    assert SCAEV062DATASETSLOGIC in projection["requirement_ids"]
+    assert projection["coverage"]
+
+
 def test_exact_backend_specs_cover_ir_tdfol_cec_smt_and_hammer() -> None:
     kinds = {item for item in DatasetsLogicBackendKind}
     assert kinds == {
@@ -160,6 +192,8 @@ def test_exact_backend_specs_cover_ir_tdfol_cec_smt_and_hammer() -> None:
     }
     assert set(DATASETS_LOGIC_BACKEND_SPECS) == kinds
     assert LOGIC_IR_INTERFACE == "LogicIR@1"
+    for spec in DATASETS_LOGIC_BACKEND_SPECS.values():
+        assert spec.identity()["evidence_id"] == SCAEV062DATASETSLOGIC
 
 
 def test_real_module_probes_call_actual_ir_tdfol_cec_smt_hammer_signatures() -> None:
@@ -193,6 +227,8 @@ def test_real_module_probes_call_actual_ir_tdfol_cec_smt_hammer_signatures() -> 
     assert identity["cid"]
     assert identity["candidate"] is True
     assert identity["authoritative_assurance"] == DATASETS_LOGIC_CANDIDATE_ASSURANCE
+    assert identity["evidence_id"] == SCAEV062DATASETSLOGIC
+    assert SCAEV062DATASETSLOGIC in identity["requirement_ids"]
 
     # TDFOL / CEC / SMT / Hammer facades invoke real signatures through prove().
     call_log: list[tuple[str, dict]] = []
@@ -362,6 +398,11 @@ def test_only_registered_capability_probed_backends_run() -> None:
         ContractProofRoute.CEC,
         ContractProofRoute.TDFOL,
     )
+    assert getattr(prover, "datasets_logic_evidence_id") == SCAEV062DATASETSLOGIC
+    evidence = datasets_logic_prover_evidence(prover)
+    assert evidence["evidence_id"] == SCAEV062DATASETSLOGIC
+    assert SCAEV062DATASETSLOGIC in evidence["requirement_ids"]
+    assert built.to_dict()["evidence_id"] == SCAEV062DATASETSLOGIC
 
     # An unregistered provider id must not be resolved through the global registry.
     assert prover._resolve_provider(ContractProofRoute.KERNEL)[0] is None
@@ -519,4 +560,10 @@ def test_registered_backend_provider_capability_matches_probe() -> None:
     assert capability.metadata["logic_ir_interface"] == LOGIC_IR_INTERFACE
     assert capability.metadata["candidate_authoritative"] is False
     assert capability.metadata["available"] is True
-    assert provider.probe.to_dict()["schema"].endswith("datasets-logic-probe@1")
+    assert capability.metadata["evidence_id"] == SCAEV062DATASETSLOGIC
+    assert SCAEV062DATASETSLOGIC in capability.metadata["requirement_ids"]
+    assert capability.metadata["coverage"] == list(SCAEV062DATASETSLOGIC_COVERAGE)
+    probe_payload = provider.probe.to_dict()
+    assert probe_payload["schema"].endswith("datasets-logic-probe@1")
+    assert probe_payload["evidence_id"] == SCAEV062DATASETSLOGIC
+    assert SCAEV062DATASETSLOGIC in probe_payload["requirement_ids"]
