@@ -1723,7 +1723,7 @@ compact references and bounded spans only.
 
 ## VFS-053 Close objective gap: Translate supported code contracts into kernel-checkable proof obligations
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
