@@ -13060,8 +13060,35 @@ class PortalImplementationDaemon:
 
     @staticmethod
     def _submodule_worktree_branch_name(branch_name: str, relative: str) -> str:
-        safe_relative = relative.strip("/").replace("/", "-")
-        return f"{branch_name}-submodule-{safe_relative}"
+        safe_relative = "".join(
+            character
+            if character.isalnum() or character in "-._"
+            else "-"
+            for character in relative.strip("/")
+        ).strip("-.")
+        safe_relative = safe_relative or "dependency"
+        prefix = f"{branch_name}-submodule-"
+        candidate = f"{prefix}{safe_relative}"
+        # Git stores the final ref component as a filesystem name. Recursive
+        # repository paths can otherwise exceed NAME_MAX even when the full
+        # ref is syntactically valid. Preserve readable short names and bind
+        # truncated names to the complete relative path with a stable digest.
+        max_bytes = 200
+        if len(candidate.encode("utf-8")) <= max_bytes:
+            return candidate
+        digest = hashlib.sha256(relative.encode("utf-8")).hexdigest()[:16]
+        suffix = f"-{digest}"
+        available = max_bytes - len(prefix.encode("utf-8")) - len(
+            suffix.encode("utf-8")
+        )
+        if available < 16:
+            branch_digest = hashlib.sha256(branch_name.encode("utf-8")).hexdigest()[:16]
+            return f"implementation/submodule-{branch_digest}-{digest}"
+        bounded_relative = safe_relative.encode("utf-8")[:available].decode(
+            "utf-8",
+            errors="ignore",
+        ).rstrip("-.")
+        return f"{prefix}{bounded_relative}{suffix}"
 
     def _is_git_worktree(self, path: Path) -> bool:
         if not path.exists() or path.is_symlink():
@@ -22151,12 +22178,20 @@ class PortalImplementationDaemon:
             )
         return preserved
 
-    def _gitlink_commit_at_ref(self, ref: str, relative: str) -> str:
-        if not ref or not self._repo_relative_path_safe(relative):
+    @staticmethod
+    def _gitlink_commit_at_repo_ref(
+        repo_root: Path,
+        ref: str,
+        relative: str,
+    ) -> str:
+        if (
+            not ref
+            or not TodoImplementationDaemon._repo_relative_path_safe(relative)
+        ):
             return ""
         result = subprocess.run(
             ["git", "ls-tree", ref, "--", relative],
-            cwd=self.repo_root,
+            cwd=repo_root,
             text=True,
             capture_output=True,
             check=False,
@@ -22169,6 +22204,9 @@ class PortalImplementationDaemon:
             if separator and path == relative and len(fields) >= 3 and fields[0] == "160000":
                 return fields[2]
         return ""
+
+    def _gitlink_commit_at_ref(self, ref: str, relative: str) -> str:
+        return self._gitlink_commit_at_repo_ref(self.repo_root, ref, relative)
 
     def _dirty_gitlink_is_unchanged_for_candidates(
         self,
@@ -22186,7 +22224,11 @@ class PortalImplementationDaemon:
         for event in candidates:
             branch = str(event.get("branch") or "")
             implementation_commit = str(event.get("implementation_commit") or "")
-            merge_ref = branch if branch and self._git_ref_exists(branch) else implementation_commit
+            merge_ref = (
+                branch
+                if branch and self._git_ref_exists(branch)
+                else implementation_commit
+            )
             candidate_commit = self._gitlink_commit_at_ref(merge_ref, relative)
             if not candidate_commit:
                 return False
@@ -22194,6 +22236,75 @@ class PortalImplementationDaemon:
             if candidate_commit != target_commit:
                 return False
         return compared > 0
+
+    def _dirty_gitlink_has_only_unchanged_nested_gitlinks(
+        self,
+        relative: str,
+        candidates: Sequence[dict[str, Any]],
+        *,
+        target_branch: str,
+    ) -> bool:
+        """Prove that a changed candidate gitlink does not touch nested dirt.
+
+        A configured submodule can contain unrelated dirty nested submodules
+        while a pending candidate advances the outer gitlink for ordinary
+        files.  Treating the outer path as globally dirty deadlocks merge
+        reconciliation even when every dirty nested gitlink is identical in
+        the target and candidate trees.  This proof stays fail closed for a
+        detached outer checkout, ordinary file dirt, missing refs, or any
+        nested gitlink changed by a candidate.
+        """
+
+        if not self._repo_relative_path_safe(relative):
+            return False
+        submodule_root = self.repo_root / relative
+        target_commit = self._gitlink_commit_at_ref(target_branch, relative)
+        if not target_commit or not submodule_root.is_dir():
+            return False
+        head = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=submodule_root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if head.returncode != 0 or head.stdout.strip() != target_commit:
+            return False
+
+        candidate_commits: list[str] = []
+        for event in candidates:
+            branch = str(event.get("branch") or "")
+            implementation_commit = str(event.get("implementation_commit") or "")
+            merge_ref = branch if branch and self._git_ref_exists(branch) else implementation_commit
+            candidate_commit = self._gitlink_commit_at_ref(merge_ref, relative)
+            if not candidate_commit:
+                return False
+            candidate_commits.append(candidate_commit)
+        if not candidate_commits:
+            return False
+
+        dirty_nested_paths = sorted(self._dirty_worktree_paths(submodule_root))
+        if not dirty_nested_paths:
+            return False
+        for nested_relative in dirty_nested_paths:
+            target_nested_commit = self._gitlink_commit_at_repo_ref(
+                submodule_root,
+                target_commit,
+                nested_relative,
+            )
+            if not target_nested_commit:
+                return False
+            for candidate_commit in candidate_commits:
+                if (
+                    self._gitlink_commit_at_repo_ref(
+                        submodule_root,
+                        candidate_commit,
+                        nested_relative,
+                    )
+                    != target_nested_commit
+                ):
+                    return False
+        return True
 
     def _reconciliation_blocking_dirty_paths(
         self,
@@ -22213,6 +22324,10 @@ class PortalImplementationDaemon:
                 nonblocking.append(relative)
                 continue
             if self._dirty_gitlink_is_unchanged_for_candidates(
+                relative,
+                candidates,
+                target_branch=target_branch,
+            ) or self._dirty_gitlink_has_only_unchanged_nested_gitlinks(
                 relative,
                 candidates,
                 target_branch=target_branch,
@@ -22308,7 +22423,20 @@ class PortalImplementationDaemon:
                 priority="P2",
                 track="ops",
             )
+            branch_exists = bool(branch and self._git_ref_exists(branch))
+            landed_ref_source = ""
             if self._git_ref_is_ancestor(implementation_commit, target_branch):
+                landed_ref_source = "implementation_commit"
+            elif (
+                branch_exists
+                and self._git_ref_is_ancestor(branch, target_branch)
+            ):
+                # A resolver may rebase or otherwise rewrite the daemon-owned
+                # branch before landing it. The immutable pre-resolution
+                # implementation commit will then not be an ancestor even
+                # though the rewritten branch has already reached the target.
+                landed_ref_source = "branch"
+            if landed_ref_source:
                 # The parent commit can land before its daemon-owned submodule
                 # branches finish merging.  Do not interpret parent ancestry as
                 # proof that nested work is complete: resume the durable
@@ -22335,11 +22463,16 @@ class PortalImplementationDaemon:
                     "attempt": attempt,
                     "branch": branch,
                     "implementation_commit": implementation_commit,
+                    "landed_ref_source": landed_ref_source,
                     "resolved": resolved,
                     "reason": (
                         "submodule_merge_retry_failed"
                         if failed_submodules
-                        else "implementation_commit_already_merged"
+                        else (
+                            "implementation_commit_already_merged"
+                            if landed_ref_source == "implementation_commit"
+                            else "implementation_branch_already_merged"
+                        )
                         if cleanup_cleaned
                         else "cleanup_retry_failed"
                     ),
@@ -22351,7 +22484,6 @@ class PortalImplementationDaemon:
                 self._record_event("merge_reconciled", result)
                 results.append(result)
                 continue
-            branch_exists = bool(branch and self._git_ref_exists(branch))
             merge_ref = branch if branch_exists else ""
             merge_ref_source = "branch" if branch_exists else ""
             if not merge_ref and self._git_ref_exists(implementation_commit):

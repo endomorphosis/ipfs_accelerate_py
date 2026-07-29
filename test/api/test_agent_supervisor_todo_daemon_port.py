@@ -6024,6 +6024,41 @@ def test_implementation_daemon_defers_nested_submodule_with_missing_gitlink(
     assert deferred_event["reason"] == "gitlink_ref_unavailable"
 
 
+def test_implementation_daemon_bounds_recursive_submodule_worktree_branch_names():
+    branch = "implementation/cvesir-013-attempt-2"
+    first_relative = "/".join(
+        [
+            "ipfs_datasets_py",
+            ".tools/ipfs_kit_py",
+            "ipfs_accelerate_py",
+            "ipfs_datasets_py",
+        ]
+        * 10
+    )
+    second_relative = f"{first_relative}/different-tail"
+
+    first = TodoImplementationDaemon._submodule_worktree_branch_name(
+        branch,
+        first_relative,
+    )
+    second = TodoImplementationDaemon._submodule_worktree_branch_name(
+        branch,
+        second_relative,
+    )
+
+    assert len(first.encode("utf-8")) <= 200
+    assert len(second.encode("utf-8")) <= 200
+    assert first.startswith(f"{branch}-submodule-")
+    assert second.startswith(f"{branch}-submodule-")
+    assert first != second
+    first_digest = first.rsplit("-", 1)[-1]
+    second_digest = second.rsplit("-", 1)[-1]
+    assert len(first_digest) == 16
+    assert all(character in "0123456789abcdef" for character in first_digest)
+    assert len(second_digest) == 16
+    assert all(character in "0123456789abcdef" for character in second_digest)
+
+
 def test_implementation_daemon_creates_parent_handoff_for_submodule_only_commit(
     tmp_path: Path,
     monkeypatch,
@@ -8198,6 +8233,80 @@ def test_implementation_daemon_preserves_nested_tmp_and_allows_unchanged_dirty_s
     assert (submodule / "child.txt").read_text(encoding="utf-8") == "unrelated user dirt\n"
 
 
+def test_implementation_daemon_allows_candidate_submodule_advance_with_unchanged_nested_dirt(
+    tmp_path,
+):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    nested_source = tmp_path / "nested-source"
+    nested_source.mkdir()
+    _git(nested_source, "init")
+    _git(nested_source, "checkout", "-b", "main")
+    _git(nested_source, "config", "user.name", "Test User")
+    _git(nested_source, "config", "user.email", "test@example.invalid")
+    (nested_source / "nested.txt").write_text("base\n", encoding="utf-8")
+    _git(nested_source, "add", "nested.txt")
+    _git(nested_source, "commit", "-m", "nested base")
+
+    _git(
+        submodule,
+        "-c",
+        "protocol.file.allow=always",
+        "submodule",
+        "add",
+        str(nested_source),
+        "nested/tool",
+    )
+    _git(submodule, "add", ".gitmodules", "nested/tool")
+    _git(submodule, "commit", "-m", "add nested tool")
+    _git(repo, "add", "libs/child")
+    _git(repo, "commit", "-m", "record nested tool")
+
+    _git(submodule, "checkout", "-b", "implementation/auto-126-submodule-libs-child")
+    (submodule / "candidate.txt").write_text("candidate\n", encoding="utf-8")
+    _git(submodule, "add", "candidate.txt")
+    _git(submodule, "commit", "-m", "AUTO-126: candidate child work")
+    _git(repo, "checkout", "-b", "implementation/auto-126")
+    _git(repo, "add", "libs/child")
+    _git(repo, "commit", "-m", "AUTO-126: advance child gitlink")
+    implementation_commit = _git(repo, "rev-parse", "HEAD")
+
+    _git(repo, "checkout", "main")
+    _git(submodule, "checkout", "main")
+    nested_checkout = submodule / "nested" / "tool"
+    (nested_checkout / "nested.txt").write_text(
+        "unrelated user dirt\n",
+        encoding="utf-8",
+    )
+
+    state_dir = tmp_path / "supervisor-state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=["libs/child"],
+    )
+    candidates = [
+        {
+            "task_id": "AUTO-126",
+            "branch": "implementation/auto-126",
+            "implementation_commit": implementation_commit,
+        }
+    ]
+
+    blocking, nonblocking = daemon._reconciliation_blocking_dirty_paths(
+        candidates,
+        target_branch="main",
+    )
+
+    assert blocking == []
+    assert nonblocking == ["libs/child"]
+    assert (nested_checkout / "nested.txt").read_text(encoding="utf-8") == (
+        "unrelated user dirt\n"
+    )
+
+
 def test_implementation_daemon_failed_merge_reconciliation_remains_retryable(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -8331,6 +8440,77 @@ def test_implementation_daemon_retries_submodule_after_parent_commit_already_lan
     assert reconciliation[-1]["submodule_merge_results"][0]["merged"] is True
     assert _git(submodule, "merge-base", "--is-ancestor", submodule_commit, "main") == ""
     assert not checkpoint_path.exists()
+
+
+def test_implementation_daemon_reconciles_rewritten_branch_already_landed(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "base.txt").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "base.txt")
+    _git(repo, "commit", "-m", "base")
+
+    branch = "implementation/auto-117"
+    _git(repo, "checkout", "-b", branch)
+    (repo / "feature.txt").write_text("feature\n", encoding="utf-8")
+    _git(repo, "add", "feature.txt")
+    _git(repo, "commit", "-m", "AUTO-117: feature")
+    original_implementation_commit = _git(repo, "rev-parse", "HEAD")
+
+    _git(repo, "checkout", "main")
+    (repo / "concurrent.txt").write_text("concurrent\n", encoding="utf-8")
+    _git(repo, "add", "concurrent.txt")
+    _git(repo, "commit", "-m", "concurrent target change")
+    _git(repo, "checkout", branch)
+    _git(repo, "rebase", "main")
+    rewritten_commit = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "main")
+    _git(repo, "merge", "--no-ff", "--no-edit", branch)
+
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        "## AUTO-117 Accept rewritten merge\n\n"
+        "- Status: todo\n"
+        "- Completion: manual\n",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "todo.md")
+    _git(repo, "commit", "-m", "add task board")
+    state_dir = tmp_path / "supervisor-state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="AUTO-",
+    )
+    daemon._record_event(
+        "implementation_finished",
+        {
+            "task_id": "AUTO-117",
+            "attempt": 1,
+            "branch": branch,
+            "implementation_commit": original_implementation_commit,
+            "merge_result": {
+                "attempted": True,
+                "merged": False,
+                "reason": "merge_retry_failed",
+            },
+        },
+    )
+
+    reconciliation = daemon._reconcile_failed_merges()
+
+    assert reconciliation[-1]["resolved"] is True
+    assert reconciliation[-1]["reason"] == "implementation_branch_already_merged"
+    assert reconciliation[-1]["landed_ref_source"] == "branch"
+    assert _git(repo, "merge-base", "--is-ancestor", rewritten_commit, "main") == ""
+    assert not daemon._git_ref_is_ancestor(original_implementation_commit, "main")
+    assert "- Status: completed" in todo_path.read_text(encoding="utf-8")
 
 
 def test_todo_daemon_runtime_is_ported_to_accelerate_package():

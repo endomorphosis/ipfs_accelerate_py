@@ -1,0 +1,135 @@
+# Objective Bundle: cvefixes-security-ir/source
+
+Source todo: docs/architecture/cvefixes_security_ir.todo.md
+Purpose: bundle objective-generated tasks so parallel daemons can work one lane at a time.
+Conflict policy: keep edits inside this bundle when possible; use the LLM merge resolver for semantic conflicts.
+
+## CVESIR-010 Close objective gap: Licensing, privacy, poisoning, and release policy
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: governance
+- Depends on:
+- Outputs: ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/release_policy.py, ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_release_policy.py
+- Validation: python -m pytest ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_release_policy.py -q
+- Evidence inputs: data/agent_supervisor/discovery
+- Discovery evidence: /home/barberb/lift_coding/hallucinate_app/ipfs_accelerate_py/data/agent_supervisor/cvefixes_security_ir/discovery/2026-07-29-cvesir-010-objective-gap-b6a4cf6a4106.md
+- Bundle: cvefixes-security-ir/source
+- Bundle shard: data/agent_supervisor/cvefixes_security_ir/bundles/cvefixes-security-ir-source.todo.md
+- Bundle strategy: explicit
+- Graph parents: CVESIR-G000
+- Graph depth: 1
+- Objective heap index: 9
+- Parallel lane: cvefixes-security-ir/source
+- Conflict policy: Own release policy only; do not upload or change shared Security IR authority.
+- Predicted files: ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/release_policy.py, ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_release_policy.py
+- Changed paths:
+- AST symbols: ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/release_policy.py, ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_release_policy.py
+- Interfaces:
+- Submodules:
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: CVESIR-G030
+- Completion authority: local
+- External authority blockers:
+- Canonical task key: task/v1/98a59cd0d1a14f18188d4ac59f64b2d549a4372082271f75d78fd346f36eb41a
+- Canonical task CID: baguqeeratcszzugrufhrqgenjlcz6zfs2ve2inzaqitr65oxr7jun43owqna
+- Semantic identity: objective-evidence-obligation/v1/7a014d0e6331197ff4ef7f020ee3a5eb5c30673014ab606489b603592f6d6e7b
+- Acceptance subset: Default public profile excludes unrestricted full bodies, provenance is retained, source instructions remain inert, detected secrets, unsafe paths, unreviewed licenses, and policy drift block release.
+- Preconditions: objective goal CVESIR-G030 is schedulable
+- Effects: satisfy evidence requirement: ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/release_policy.py, satisfy evidence requirement: ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_release_policy.py
+- Evidence subset: ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/release_policy.py, ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_release_policy.py
+- Resource class: cpu-medium
+- Token class: medium
+- Estimated tokens: 0
+- Resources: cpu-medium
+- Merge fate: objective/CVESIR-G030
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/7a014d0e6331197ff4ef7f020ee3a5eb5c30673014ab606489b603592f6d6e7b
+- Missing evidence: ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/release_policy.py, ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_release_policy.py
+- Embedding query: Define public/internal body profiles, license provenance, PII/secret scanning, prompt-injection treatment, redaction receipts, and publication admission.
+- AST query: ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/release_policy.py, ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_release_policy.py
+- Surplus group: objective/CVESIR-G030
+- Merge key: 5304bf2438b28ad5
+- Merge family: objective/CVESIR-G030
+- Merge role: aggregate
+- Work item count: 2
+- Work scope: goal_subgoal_multi_evidence_batch
+- Goal packet:
+- Goal packet role:
+- Goal packet goals:
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: aggregate
+- Todo vector key: 3e306f2abac4630f
+- Acceptance: Objective scan filed this gap for CVESIR-G030. Use evidence in /home/barberb/lift_coding/hallucinate_app/ipfs_accelerate_py/data/agent_supervisor/cvefixes_security_ir/discovery/2026-07-29-cvesir-010-objective-gap-b6a4cf6a4106.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/release_policy.py, ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_release_policy.py), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
+
+## CVESIR-016 Close objective gap: Pinned CVEfixes source snapshot and safe row adapter
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: source
+- Depends on:
+- Outputs: ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/source_snapshot.py, ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_source_snapshot.py
+- Validation: python -m pytest ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_source_snapshot.py -q
+- Evidence inputs: data/agent_supervisor/discovery
+- Discovery evidence: /home/barberb/lift_coding/hallucinate_app/ipfs_accelerate_py/data/agent_supervisor/cvefixes_security_ir/discovery/2026-07-29-cvesir-016-objective-gap-682b54665f76.md
+- Bundle: cvefixes-security-ir/source
+- Bundle shard: data/agent_supervisor/cvefixes_security_ir/bundles/cvefixes-security-ir-source.todo.md
+- Bundle strategy: explicit
+- Graph parents: CVESIR-G000
+- Graph depth: 1
+- Objective heap index: 15
+- Parallel lane: cvefixes-security-ir/source
+- Conflict policy: Own source snapshot and its tests only; do not implement graph or policy projection.
+- Predicted files: ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/source_snapshot.py, ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_source_snapshot.py
+- Changed paths:
+- AST symbols: ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/source_snapshot.py, ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_source_snapshot.py
+- Interfaces:
+- Submodules:
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: CVESIR-G010
+- Completion authority: local
+- External authority blockers:
+- Canonical task key: task/v1/7895da8f8c169bd366b2d939d9963d6f2bdeefa82e0d132d9a80d40598dab149
+- Canonical task CID: baguqeerapck5vd4mc2n5gzvs3e45tfr5n4v5535ifygrglm2qdkalgg2wfeq
+- Semantic identity: objective-evidence-obligation/v1/f68b4af29069d0d327c7013589dc056760f7d09f611911e35a04a8c8562da62c
+- Acceptance subset: Pin and shard hashes are verified, rows are bounded and inert, serialized descriptions are parsed without eval, malformed and drifted inputs fail closed, tokens never enter artifacts.
+- Preconditions: objective goal CVESIR-G010 is schedulable
+- Effects: satisfy evidence requirement: ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/source_snapshot.py, satisfy evidence requirement: ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_source_snapshot.py
+- Evidence subset: ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/source_snapshot.py, ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_source_snapshot.py
+- Resource class: cpu-medium
+- Token class: medium
+- Estimated tokens: 0
+- Resources: cpu-medium
+- Merge fate: objective/CVESIR-G010
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/f68b4af29069d0d327c7013589dc056760f7d09f611911e35a04a8c8562da62c
+- Missing evidence: ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/source_snapshot.py, ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_source_snapshot.py
+- Embedding query: Implement a read-only source profile pinned to hitoshura25/cvefixes revision d4f5c4ea65329d9ccbb8a3b3149e5d06eda5edb2, three Parquet shards, 12,987 rows, and the reviewed 23-column contract.
+- AST query: ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/source_snapshot.py, ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_source_snapshot.py
+- Surplus group: objective/CVESIR-G010
+- Merge key: 0593d8e295059217
+- Merge family: objective/CVESIR-G010
+- Merge role: aggregate
+- Work item count: 2
+- Work scope: goal_subgoal_multi_evidence_batch
+- Goal packet:
+- Goal packet role:
+- Goal packet goals:
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: aggregate
+- Todo vector key: 3345128b71a1244e
+- Acceptance: Objective scan filed this gap for CVESIR-G010. Use evidence in /home/barberb/lift_coding/hallucinate_app/ipfs_accelerate_py/data/agent_supervisor/cvefixes_security_ir/discovery/2026-07-29-cvesir-016-objective-gap-682b54665f76.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/source_snapshot.py, ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_source_snapshot.py), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
