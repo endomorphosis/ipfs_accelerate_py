@@ -212,7 +212,7 @@ task IDs on this board.
 
 ## RPR-006 Synthesize sender requirements and receiver guarantees
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
