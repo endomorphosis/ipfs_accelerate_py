@@ -472,7 +472,10 @@ def test_implementation_daemon_uses_stable_pooled_path_for_populated_submodules(
     assert daemon._cleanup_merged_worktree(warm_path, "implementation/daemon-warm")["pooled"] is True
 
 
-def test_implementation_daemon_releases_pool_lease_before_merge_queue_handoff(tmp_path: Path) -> None:
+def test_implementation_daemon_releases_pool_lease_before_merge_queue_handoff(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
     repo = tmp_path / "repo"
     _init_repo(repo)
     (repo / "README.md").write_text("base\n", encoding="utf-8")
@@ -494,6 +497,16 @@ def test_implementation_daemon_releases_pool_lease_before_merge_queue_handoff(tm
         worktree_root=worktree_root,
     )
     daemon._consume_one_merge_candidate = lambda: None  # type: ignore[method-assign]
+    monkeypatch.setattr(
+        daemon,
+        "_run_validation_with_candidate_binding",
+        lambda *_args, **_kwargs: {
+            "attempted": True,
+            "passed": True,
+            "returncode": 0,
+            "results": [],
+        },
+    )
     task = PortalTask(
         task_id="INC-001",
         title="Release pooled merge handoff",
@@ -512,7 +525,16 @@ def test_implementation_daemon_releases_pool_lease_before_merge_queue_handoff(tm
     assert merge_result["queued"] is True
     assert handoff["released"] is True
     assert handoff["pooled"] is True
+    assert handoff["lifecycle_finalize"]["finalized"] is True
+    assert handoff["lifecycle_finalize"]["state"] == "terminal"
     assert daemon._worktree_pool_leases == {}
+    assert daemon._active_worktree_lifecycle is None
+    assert list(daemon.worktree_lifecycle.iter_records()) == []
+    assert daemon.worktree_lifecycle.load_task_attempt(
+        canonical_task_cid=daemon._canonical_ref(task),
+        task_id=task.task_id,
+        attempt=result["attempt"],
+    ) is None
     assert list((worktree_root / ".pool-state").glob("*.lock")) == []
     queued = daemon.merge_queue.dequeue(consumer_id="merge-train:test")
     assert queued is not None
@@ -553,7 +575,16 @@ def test_failed_implementation_does_not_pin_pooled_worktree(tmp_path: Path) -> N
     assert result["returncode"] == 7
     assert result["cleanup_result"]["reason"] == "failed_implementation_pool_lease_released"
     assert result["cleanup_result"]["pool_release"]["released"] is True
+    assert result["cleanup_result"]["pool_release"]["lifecycle_finalize"]["finalized"] is True
+    assert result["cleanup_result"]["pool_release"]["lifecycle_finalize"]["state"] == "terminal"
     assert daemon._worktree_pool_leases == {}
+    assert daemon._active_worktree_lifecycle is None
+    assert list(daemon.worktree_lifecycle.iter_records()) == []
+    assert daemon.worktree_lifecycle.load_task_attempt(
+        canonical_task_cid=daemon._canonical_ref(task),
+        task_id=task.task_id,
+        attempt=result["attempt"],
+    ) is None
     assert list((worktree_root / ".pool-state").glob("*.lock")) == []
 
 

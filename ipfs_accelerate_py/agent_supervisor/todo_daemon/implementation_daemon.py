@@ -306,7 +306,6 @@ PROVIDER_CAPACITY_PATTERNS = (
         "grok",
         re.compile(
             r"(?:grok.*(?:rate limit|quota|usage limit|balance exhausted|usage balance)|"
-            r"you(?:'|\u2019)?ve hit your usage limit|"
             r"xai.*(?:429|rate.?limit|402)|"
             r"402\s*payment\s*required|"
             r"payment\s*required|"
@@ -11277,7 +11276,15 @@ class PortalImplementationDaemon:
         reason: str,
         reusable: bool = True,
     ) -> dict[str, Any]:
-        """Release a pooled checkout while retaining its durable task branch."""
+        """Release a pooled checkout and end the lane's workspace ownership.
+
+        A released checkout is either idle in the pool or has been discarded;
+        it is no longer owned by the implementation lane.  Finalize the
+        lifecycle claim at the same boundary so retries and later pool users
+        are not fenced by an orphaned task/attempt record.  Durable task
+        branches and merge-queue requests have their own ownership records and
+        do not require the checkout lifecycle claim to remain nonterminal.
+        """
 
         try:
             lease_key = worktree_path.resolve()
@@ -11299,6 +11306,11 @@ class PortalImplementationDaemon:
             "worktree_path": str(worktree_path),
             **release_result,
         }
+        if result.get("released", False):
+            result["lifecycle_finalize"] = self._finalize_worktree_lifecycle(
+                worktree_path,
+                reason=f"pool_release:{reason}",
+            )
         self._record_event("worktree_pool_lease_released", result)
         return result
 

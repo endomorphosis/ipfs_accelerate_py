@@ -28,8 +28,9 @@ DURATION_SECONDS="${RPR_DURATION_SECONDS:-28800}"
 export PYTHONPATH="${REPO_ROOT}:${REPO_ROOT}/ipfs_datasets_py${PYTHONPATH:+:${PYTHONPATH}}"
 export PYTHONDONTWRITEBYTECODE=1
 export PYTHONHASHSEED=0
-export IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER="${IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER:-codex}"
+export IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER="${IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER:-auto}"
 export IPFS_ACCELERATE_AGENT_CODEX_MODEL="${IPFS_ACCELERATE_AGENT_CODEX_MODEL:-gpt-5.6-terra}"
+export IPFS_ACCELERATE_AGENT_RECLAIM_DEAD_WORKTREE_LEASES_ON_STARTUP="${IPFS_ACCELERATE_AGENT_RECLAIM_DEAD_WORKTREE_LEASES_ON_STARTUP:-1}"
 export IPFS_DATASETS_AUTO_INSTALL=false
 export IPFS_AUTO_INSTALL=false
 export IPFS_DATASETS_PY_MINIMAL_IMPORTS=1
@@ -221,11 +222,57 @@ doctor() {
   verify_branch_and_sources
   validate_control_plane
   "${PYTHON_BIN}" -m json.tool "${REPO_ROOT}/${SCHEDULER_PATH}" >/dev/null
-  if [[ ! -x "${CODEX_BIN}" ]]; then
-    echo "Codex executable is unavailable: ${CODEX_BIN}" >&2
-    return 2
-  fi
-  "${CODEX_BIN}" login status
+  "${PYTHON_BIN}" - "${REPO_ROOT}" <<'PY'
+import os
+import pathlib
+import subprocess
+import sys
+
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+    PortalImplementationDaemon,
+)
+
+repo_root = pathlib.Path(sys.argv[1]).resolve()
+probe = object.__new__(PortalImplementationDaemon)
+probe.implementation_command = ""
+try:
+    command = PortalImplementationDaemon._build_implementation_command(
+        probe,
+        repo_root,
+    )
+except Exception as exc:
+    raise SystemExit(f"selected implementation provider is unavailable: {exc}") from exc
+if not command:
+    raise SystemExit("selected implementation provider produced no command")
+
+launcher = pathlib.Path(command[0]).name
+if launcher == "codex":
+    status = subprocess.run(
+        [command[0], "login", "status"],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if status.returncode != 0:
+        detail = (status.stderr or status.stdout).strip()
+        raise SystemExit(f"selected Codex provider is not authenticated: {detail}")
+command_names = {pathlib.Path(item).name for item in command}
+if "grok_cli_runner.py" in command_names:
+    selected = "grok"
+elif "meta_spark_goose_runner.py" in command_names:
+    selected = "goose-meta-spark"
+elif launcher == "codex":
+    selected = "codex"
+elif launcher in {"bash", "sh"} and "copilot" in " ".join(command):
+    selected = "codex-with-copilot-fallback"
+else:
+    selected = launcher
+print(
+    "implementation provider ready: "
+    f"configured={os.environ.get('IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER', 'auto')} "
+    f"selected={selected} launcher={launcher}"
+)
+PY
   if command -v cvc5 >/dev/null 2>&1; then
     cvc5 --version | head -n 1
   else

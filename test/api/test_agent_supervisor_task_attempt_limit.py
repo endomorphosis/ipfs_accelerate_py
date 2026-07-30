@@ -450,6 +450,22 @@ def test_classify_provider_capacity_detects_grok_402_balance_exhausted() -> None
     assert classified["reason"] == "provider_capacity_exhausted"
 
 
+def test_classify_codex_quota_does_not_poison_grok_capacity() -> None:
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+        classify_provider_capacity_failure,
+    )
+
+    classified = classify_provider_capacity_failure(
+        "You've hit your usage limit. Try again later."
+    )
+
+    assert classified == {
+        "exhausted": True,
+        "providers": ["codex"],
+        "reason": "provider_capacity_exhausted",
+    }
+
+
 def test_provider_capacity_deferral_rolls_back_start_charge(tmp_path) -> None:
     todo_path = tmp_path / "tasks.todo.md"
     _write_single_task_board(todo_path)
