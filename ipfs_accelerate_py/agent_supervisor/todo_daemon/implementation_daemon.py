@@ -3648,6 +3648,28 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         self._current_runtime_wake_events: list[Any] = []
         self._current_runtime_wake_kinds: set[str] = set()
         self._runtime_checkpoint = self._load_runtime_checkpoint()
+        checkpoint_diagnostic_fingerprints = self._runtime_checkpoint.get(
+            "diagnostic_event_fingerprints"
+        )
+        checkpoint_backpressure_fingerprint = (
+            str(
+                checkpoint_diagnostic_fingerprints.get(
+                    "task_attempt_limit_backpressure"
+                )
+                or ""
+            )
+            if isinstance(checkpoint_diagnostic_fingerprints, Mapping)
+            else ""
+        )
+        self._last_attempt_limit_backpressure_fingerprint = (
+            checkpoint_backpressure_fingerprint
+            if re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                checkpoint_backpressure_fingerprint,
+            )
+            else ""
+        )
+        self._diagnostic_checkpoint_dirty = False
         checkpoint_source_identity = self._runtime_checkpoint.get(
             "task_source_identity"
         )
@@ -6850,6 +6872,12 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "task_state": asdict(PortalTaskState.load(self.state_path)),
             "source_kinds": sorted(sources),
         }
+        if self._last_attempt_limit_backpressure_fingerprint:
+            projection["diagnostic_event_fingerprints"] = {
+                "task_attempt_limit_backpressure": (
+                    self._last_attempt_limit_backpressure_fingerprint
+                )
+            }
         task_source_identity = self._task_source_identity_record()
         if task_source_identity is not None:
             projection["task_source_identity"] = task_source_identity
@@ -6874,6 +6902,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             **projection,
             "cursor": event_cursor.to_record(),
         }
+        self._diagnostic_checkpoint_dirty = False
         result = {
             "changed": materialized.changed,
             "write_count": materialized.write_count,
@@ -7551,19 +7580,34 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 attempt_limit_idle_reason = (
                     "all_selectable_ready_tasks_reached_max_task_attempts"
                 )
-            self._record_event(
-                "task_attempt_limit_backpressure",
-                {
-                    "reason": "max_task_attempts_reached",
-                    "max_task_attempts": self.max_task_attempts,
-                    "limited_task_count": len(attempt_limited_tasks),
-                    "limited_task_ids": [
-                        item["task_id"] for item in attempt_limited_tasks
-                    ],
-                    "limited_tasks": attempt_limited_tasks,
-                    "selection_idle_reason": attempt_limit_idle_reason,
-                },
-            )
+            backpressure_payload = {
+                "reason": "max_task_attempts_reached",
+                "max_task_attempts": self.max_task_attempts,
+                "limited_task_count": len(attempt_limited_tasks),
+                "limited_task_ids": [
+                    item["task_id"] for item in attempt_limited_tasks
+                ],
+                "limited_tasks": attempt_limited_tasks,
+                "selection_idle_reason": attempt_limit_idle_reason,
+            }
+            backpressure_fingerprint = "sha256:" + hashlib.sha256(
+                canonical_json(backpressure_payload).encode("utf-8")
+            ).hexdigest()
+            if (
+                backpressure_fingerprint
+                != self._last_attempt_limit_backpressure_fingerprint
+            ):
+                self._record_event(
+                    "task_attempt_limit_backpressure",
+                    backpressure_payload,
+                )
+                self._last_attempt_limit_backpressure_fingerprint = (
+                    backpressure_fingerprint
+                )
+                self._diagnostic_checkpoint_dirty = True
+        elif self._last_attempt_limit_backpressure_fingerprint:
+            self._last_attempt_limit_backpressure_fingerprint = ""
+            self._diagnostic_checkpoint_dirty = True
         selected = self._select_next_task(
             selectable_tasks,
             resolved_statuses,
@@ -7875,7 +7919,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         # execution state after the board projection above was selected. Do
         # not acknowledge that source head until a follow-up pass reconciles
         # those effects into the task projection.
-        if state_written and (
+        if (state_written or self._diagnostic_checkpoint_dirty) and (
             implementation_result is None or non_consuming_provider_deferral_result
         ):
             checkpoint_result = self._save_runtime_checkpoint(
