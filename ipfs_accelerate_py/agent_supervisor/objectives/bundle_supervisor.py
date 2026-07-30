@@ -5243,6 +5243,7 @@ class DynamicBundleScheduler:
 
         self._stop_event.set()
         with self._lock, LeaseCoordinator(self.coordination_path) as coordinator:
+            stopped_task_cids = set(self._running)
             for task_cid, running in list(self._running.items()):
                 self._terminate_handle(running.handle, grace_seconds=grace_seconds)
                 try:
@@ -5256,11 +5257,24 @@ class DynamicBundleScheduler:
                         reason="scheduler_stopped",
                     )
             self._running.clear()
-            projection = coordinator.list_tasks()
-        try:
-            discovered = self._plan()
-        except (OSError, ValueError, json.JSONDecodeError):
-            discovered = []
+            try:
+                discovered = self._plan()
+            except (OSError, ValueError, json.JSONDecodeError):
+                discovered = []
+            current_task_cids = {
+                lane.task_cid
+                for lane in discovered
+                if lane.task_cid
+            }
+            current_task_cids.update(stopped_task_cids)
+            projection = (
+                coordinator.list_tasks(
+                    task_cids=current_task_cids,
+                    include_claimability=True,
+                )
+                if current_task_cids
+                else []
+            )
         return self._write_live_manifest(
             discovered=discovered,
             task_projection=projection,
