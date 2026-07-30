@@ -359,6 +359,11 @@ def build_voice_cache_miss_event(
             and str(trace.get("provider") or "") == "precomputed"
             and details.get("precomputed") is False
             and str(details.get("resolver_reason") or "").strip()
+            and (
+                str(trace.get("status") or "") == "skipped"
+                or details.get("resolver_reason")
+                == "precomputed_audio_validation_failed"
+            )
         ):
             miss_trace = trace
             miss_trace_index = trace_index

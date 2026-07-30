@@ -549,6 +549,82 @@ def test_runtime_resolution_falls_through_to_live_tts_on_miss() -> None:
     assert result.provenance.grounded_slots
 
 
+def test_invalid_precomputed_hit_emits_validated_live_tts_repair_event() -> None:
+    """A corrupt exact hit remains eligible for a validated replacement append."""
+
+    corrupt_audio = b"RIFFxxxxWAVEcorrupt"
+    corrupt_sha = sha256(corrupt_audio).hexdigest()
+    bundle = _fixture_bundle()
+    audio_row = {
+        **bundle["audio_rows"][0],
+        "content_sha256": corrupt_sha,
+        "byte_length": len(corrupt_audio),
+    }
+    resolver = PrecomputedVoiceAudioResolver.from_audio_rows(
+        [audio_row],
+        audio_bytes_by_sha256={corrupt_sha: corrupt_audio},
+        default_identity={
+            "provider_version": SYNTHESIS.provider_version,
+            "generation_settings": dict(SYNTHESIS.generation_settings),
+        },
+    )
+    speech = FakeSpeech()
+
+    result = process_voice_turn(
+        _request(request_id="corrupt-precomputed-turn"),
+        template_provider=FakeTemplateProvider(plan=_plan()),
+        tts_provider=speech,
+        audio_resolver=resolver,
+    )
+
+    assert result.audio == speech.audio
+    assert result.provenance.tts_provider != "precomputed"
+    failed_precomputed = [
+        trace
+        for trace in result.traces
+        if trace.stage == "synthesis"
+        and trace.provider == "precomputed"
+        and trace.status == "failed"
+    ]
+    assert len(failed_precomputed) == 1
+    assert (
+        failed_precomputed[0].details.get("resolver_reason")
+        == "precomputed_audio_validation_failed"
+    )
+    assert failed_precomputed[0].details.get("synthesis_identity") == SYNTHESIS.to_dict()
+
+    event = result.validated_cache_miss_event(
+        validation_receipt_id="round-trip-asr-pass-corrupt-replacement",
+        response_id="response-food",
+    )
+    assert event is not None
+    assert event.ready_for_dag_append is True
+    assert event.resolver_miss_reason == "precomputed_audio_validation_failed"
+    assert event.output_audio_sha256 == sha256(speech.audio).hexdigest()
+
+
+def test_precomputed_resolver_failure_does_not_emit_cache_miss_event() -> None:
+    """A transient resolver outage is not mistaken for a canonical cache miss."""
+
+    class FailingResolver:
+        def resolve(self, *_args: object, **_kwargs: object) -> None:
+            raise TimeoutError("transient pinned-release fetch failure")
+
+    speech = FakeSpeech()
+    result = process_voice_turn(
+        _request(request_id="failed-precomputed-resolver-turn"),
+        template_provider=FakeTemplateProvider(plan=_plan()),
+        tts_provider=speech,
+        audio_resolver=FailingResolver(),  # type: ignore[arg-type]
+    )
+
+    assert result.audio == speech.audio
+    assert result.validated_cache_miss_event(
+        validation_receipt_id="round-trip-asr-pass-resolver-outage",
+        response_id="response-food",
+    ) is None
+
+
 def test_runtime_resolution_text_only_fallback_receipt_on_total_audio_failure() -> None:
     """text-only or live-TTS fallback receipt when precomputed and TTS fail."""
 

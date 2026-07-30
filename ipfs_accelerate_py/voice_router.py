@@ -4290,6 +4290,7 @@ def process_voice_turn(
     # falls through to live TTS or text-only and never serves a near/stale match.
     if audio_resolver is not None:
         started_at = time.perf_counter()
+        synthesis_identity: Optional[SynthesisIdentity] = None
         try:
             synthesis_identity = _synthesis_identity_from_request(request)
             precomputed_resolution = audio_resolver.resolve(
@@ -4352,6 +4353,34 @@ def process_voice_turn(
                     )
                 )
         except Exception as error:
+            resolver_reason = (
+                "precomputed_audio_validation_failed"
+                if isinstance(
+                    precomputed_resolution,
+                    PrecomputedAudioResolution,
+                )
+                and precomputed_resolution.hit
+                else "precomputed_audio_resolver_failed"
+            )
+            failure_details: Dict[str, object] = {
+                "runtime_resolution": True,
+                "precomputed": False,
+                "live_tts_fallback": True,
+                "resolver_reason": resolver_reason,
+            }
+            # Preserve the exact lookup identity when a canonical artifact was
+            # found but rejected by the shared audio-quality gate. A later
+            # validated live-TTS replacement can then be appended to the
+            # response DAG without weakening exact-match semantics.
+            if synthesis_identity is not None:
+                failure_details.update(
+                    {
+                        "spoken_text_sha256": precomputed_spoken_text_sha256(
+                            response_text
+                        ),
+                        "synthesis_identity": synthesis_identity.to_dict(),
+                    }
+                )
             traces.append(
                 VoiceStageTrace(
                     "synthesis",
@@ -4361,12 +4390,7 @@ def process_voice_turn(
                     error=_safe_stage_error(
                         error, sensitive_values=(response_text,)
                     ),
-                    details={
-                        "runtime_resolution": True,
-                        "precomputed": False,
-                        "live_tts_fallback": True,
-                        "resolver_reason": "precomputed_audio_resolver_failed",
-                    },
+                    details=failure_details,
                 )
             )
 
