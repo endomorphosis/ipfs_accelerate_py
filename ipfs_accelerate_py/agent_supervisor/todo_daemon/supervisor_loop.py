@@ -61,6 +61,7 @@ class SupervisorLoopConfig:
     poll_seconds: float = 1.0
     watchdog_stale_after_seconds: float = 180.0
     watchdog_startup_grace_seconds: float = 30.0
+    watchdog_accept_fresh_child_log: bool = False
     stop_grace_seconds: float = 10.0
     max_restarts: int = 0
     latest_log_path: Optional[Path] = None
@@ -132,6 +133,7 @@ class SupervisorLoop:
                 "supervisor_poll_seconds": config.poll_seconds,
                 "watchdog_stale_after_seconds": config.watchdog_stale_after_seconds,
                 "watchdog_startup_grace_seconds": config.watchdog_startup_grace_seconds,
+                "watchdog_accept_fresh_child_log": config.watchdog_accept_fresh_child_log,
                 "stop_grace_seconds": config.stop_grace_seconds,
                 **dict(config.status_static_fields),
             },
@@ -251,7 +253,8 @@ class SupervisorLoop:
             and self.config.watchdog_stale_after_seconds <= 0
         )
         if heartbeat_failed:
-            raw_log_path = getattr(child, "log_path", None)
+            log_fallback_enabled = self.config.watchdog_accept_fresh_child_log
+            raw_log_path = getattr(child, "log_path", None) if log_fallback_enabled else None
             log_path = Path(raw_log_path) if raw_log_path else None
             log_age_seconds: Optional[float] = None
             if log_path is not None:
@@ -277,6 +280,7 @@ class SupervisorLoop:
                             else round(log_age_seconds, 3)
                         ),
                         "child_log_fresh": False,
+                        "child_log_fallback_enabled": log_fallback_enabled,
                     }
                 )
                 return SupervisorLoopDecision.recycle(

@@ -1156,7 +1156,7 @@ def run_process_group_stream(
     if group_alive():
         try:
             os.killpg(process.pid, signal.SIGTERM)
-        except OSError:
+        except (OSError, RuntimeError):
             pass
         deadline = time.monotonic() + max(0.0, float(termination_grace_seconds))
         while group_alive() and time.monotonic() < deadline:
@@ -1428,8 +1428,19 @@ def adopt_supervised_child(spec: SupervisedChildSpec) -> SupervisedChild | None:
     command_line = process_args(pid)
     if not supervised_child_command_matches(command_line, spec.command):
         return None
-    log_path = spec.resolve(spec.log_path)
     latest_log_path = spec.resolve(spec.latest_log_path) if spec.latest_log_path is not None else None
+    log_path = spec.resolve(spec.log_path)
+    if latest_log_path is not None:
+        try:
+            # A supervisor restart creates a fresh run id, but an adopted
+            # daemon continues writing the log selected by its original
+            # supervisor. The stable latest-log marker preserves that
+            # provenance across the supervisor-only restart.
+            adopted_log_path = latest_log_path.resolve(strict=True)
+            if adopted_log_path.is_file():
+                log_path = adopted_log_path
+        except OSError:
+            pass
     log_path.parent.mkdir(parents=True, exist_ok=True)
     return SupervisedChild(
         pid=int(pid),

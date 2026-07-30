@@ -2182,6 +2182,11 @@ def test_supervisor_runtime_adopts_matching_child_pid_marker(tmp_path, monkeypat
     pid_path = repo / "state" / "child.pid"
     pid_path.parent.mkdir()
     pid_path.write_text("2468\n", encoding="utf-8")
+    prior_log_path = repo / "logs" / "prior-child.log"
+    prior_log_path.parent.mkdir()
+    prior_log_path.write_text("still running\n", encoding="utf-8")
+    latest_log_path = repo / "logs" / "latest.log"
+    latest_log_path.symlink_to(prior_log_path.name)
 
     monkeypatch.setattr(supervisor_runtime, "pid_alive", lambda pid: int(pid) == 2468)
     monkeypatch.setattr(
@@ -2194,14 +2199,17 @@ def test_supervisor_runtime_adopts_matching_child_pid_marker(tmp_path, monkeypat
         SupervisedChildSpec(
             repo_root=repo,
             command=("python", "worker.py", "--state-dir", "state", "--implement"),
-            log_path=Path("logs/child.log"),
+            log_path=Path("logs/new-supervisor-run.log"),
             child_pid_path=Path("state/child.pid"),
+            latest_log_path=Path("logs/latest.log"),
         )
     )
 
     assert child is not None
     assert child.pid == 2468
     assert child.child_pid_path == pid_path
+    assert child.log_path == prior_log_path
+    assert child.latest_log_path == latest_log_path
 
 
 def test_supervisor_loop_adopts_existing_child_before_launch(tmp_path, monkeypatch) -> None:
@@ -8196,12 +8204,25 @@ def test_supervisor_loop_accepts_fresh_child_log_when_semantic_heartbeat_is_stal
         ensure_check_path=state_dir / "ensure_check.json",
     )
     child = SimpleNamespace(pid=os.getpid(), log_path=child_log_path)
+    strict_loop = SupervisorLoop(
+        SupervisorLoopConfig(
+            spec=spec,
+            command=(sys.executable, "-c", "pass"),
+            log_prefix="child",
+            watchdog_stale_after_seconds=60,
+        )
+    )
+    strict = strict_loop.watchdog_decision(child)
+    assert strict.reason == "stale_heartbeat"
+    assert strict.detail["child_log_fallback_enabled"] is False
+
     loop = SupervisorLoop(
         SupervisorLoopConfig(
             spec=spec,
             command=(sys.executable, "-c", "pass"),
             log_prefix="child",
             watchdog_stale_after_seconds=60,
+            watchdog_accept_fresh_child_log=True,
         )
     )
 
@@ -12058,6 +12079,7 @@ def test_implementation_supervisor_configures_worker_stall_watchdog(tmp_path):
     assert loop_config.watchdog_stale_after_seconds >= (
         config.implementation_timeout + max(30.0, config.check_interval * 2.0)
     )
+    assert loop_config.watchdog_accept_fresh_child_log is True
 
 
 def test_implementation_supervisor_allows_startup_grace_override(tmp_path):
