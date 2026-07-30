@@ -12979,6 +12979,342 @@ class PortalImplementationDaemon:
         plan["reason"] = "prior_failed_attempt_commit"
         return plan
 
+    @staticmethod
+    def _prior_seed_changed_gitlinks(
+        repo: Path,
+        before_revision: str,
+        after_revision: str,
+    ) -> tuple[str, ...] | None:
+        """Return gitlink paths changed by an exact repository tree delta."""
+
+        diff = subprocess.run(
+            [
+                "git",
+                "diff",
+                "--raw",
+                "--no-renames",
+                "-z",
+                before_revision,
+                after_revision,
+                "--",
+            ],
+            cwd=repo,
+            capture_output=True,
+            check=False,
+        )
+        if diff.returncode != 0:
+            return None
+        raw_diff = (
+            diff.stdout.encode("utf-8", errors="surrogateescape")
+            if isinstance(diff.stdout, str)
+            else diff.stdout
+        )
+        records = raw_diff.split(b"\0")
+        paths: list[str] = []
+        for index, record in enumerate(records[:-1]):
+            if not record.startswith(b":"):
+                continue
+            fields = record.removeprefix(b":").split()
+            if len(fields) >= 2 and b"160000" in fields[:2]:
+                paths.append(
+                    records[index + 1].decode("utf-8", errors="surrogateescape")
+                )
+        return tuple(sorted(set(paths)))
+
+    def _prior_attempt_submodule_seed_plans(
+        self,
+        worktree_path: Path,
+        *,
+        seed_ref: str,
+        baseline_ref: str,
+        fast_forward: bool,
+    ) -> dict[str, Any]:
+        """Preflight how configured submodules should follow a prior root seed."""
+
+        def failure(reason: str, path: str = "") -> dict[str, Any]:
+            return {"ok": False, "reason": reason, "path": path}
+
+        root_gitlink_changes = self._prior_seed_changed_gitlinks(
+            worktree_path, baseline_ref, seed_ref
+        )
+        if root_gitlink_changes is None:
+            return failure("prior_seed_root_gitlink_check_failed")
+        gitlinks: list[dict[str, str]] = []
+        for relative in self.worktree_submodule_paths:
+            baseline_revision = self._gitlink_commit_at_repo_ref(worktree_path, baseline_ref, relative)
+            seed_revision = self._gitlink_commit_at_repo_ref(worktree_path, seed_ref, relative)
+            if not baseline_revision and not seed_revision:
+                # A configured nested path is not directly visible through its
+                # outer gitlink. Reject a changed outer checkout rather than
+                # claiming that an unreconciled nested dependency was seeded.
+                parts = PurePosixPath(relative).parts
+                for size in range(len(parts) - 1, 0, -1):
+                    outer = "/".join(parts[:size])
+                    outer_baseline = self._gitlink_commit_at_repo_ref(
+                        worktree_path, baseline_ref, outer
+                    )
+                    outer_seed = self._gitlink_commit_at_repo_ref(
+                        worktree_path, seed_ref, outer
+                    )
+                    if outer_baseline or outer_seed:
+                        if outer_baseline != outer_seed:
+                            return failure("nested_configured_submodule_seed_changed", relative)
+                        break
+                continue
+            if not baseline_revision or not seed_revision:
+                return failure("configured_submodule_shape_changed", relative)
+            gitlinks.append({
+                "path": relative,
+                "baseline_revision": baseline_revision,
+                "seed_revision": seed_revision,
+            })
+        covered_gitlinks = {item["path"] for item in gitlinks}
+        unconfigured_gitlinks = sorted(set(root_gitlink_changes) - covered_gitlinks)
+        if unconfigured_gitlinks:
+            return failure(
+                "unconfigured_prior_seed_gitlink_changed",
+                unconfigured_gitlinks[0],
+            )
+        if not gitlinks:
+            return {"ok": True, "plans": []}
+
+        merge_base = baseline_ref
+        if not fast_forward:
+            merge_bases = self._git_merge_bases_in_repo(worktree_path, baseline_ref, seed_ref)
+            if len(merge_bases) != 1:
+                return failure("prior_seed_merge_base_ambiguous")
+            merge_base = merge_bases[0]
+
+        plans: list[dict[str, Any]] = []
+        for item in gitlinks:
+            relative = item["path"]
+            baseline_revision = item["baseline_revision"]
+            seed_revision = item["seed_revision"]
+            target = worktree_path / relative
+            if target.is_symlink() or not self._is_git_worktree(target):
+                return failure("configured_submodule_not_initialized", relative)
+            if self._resolve_git_commit_in_repo(target, "HEAD") != baseline_revision:
+                return failure("configured_submodule_not_at_baseline", relative)
+            tracked_status = subprocess.run(
+                ["git", "status", "--porcelain", "--untracked-files=no"],
+                cwd=target,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            if tracked_status.returncode != 0 or tracked_status.stdout.strip():
+                return failure("configured_submodule_not_clean", relative)
+            if not self._git_commit_exists_in_repo(target, seed_revision):
+                return failure("prior_seed_submodule_commit_missing", relative)
+
+            if fast_forward:
+                if not self._git_ref_is_ancestor_in_repo(
+                    target, baseline_revision, seed_revision
+                ):
+                    return failure("fast_forward_seed_submodule_diverged", relative)
+                nested_changes = self._prior_seed_changed_gitlinks(
+                    target, baseline_revision, seed_revision
+                )
+                if nested_changes is None or nested_changes:
+                    return failure(
+                        "prior_seed_nested_gitlink_changed"
+                        if nested_changes
+                        else "prior_seed_nested_gitlink_check_failed",
+                        relative,
+                    )
+                plans.append({**item, "mode": "align", "patch": b""})
+                continue
+
+            patch = b""
+            prior_base_revision = seed_revision
+            if not self._git_ref_is_ancestor_in_repo(target, seed_revision, baseline_revision):
+                prior_base_revision = self._gitlink_commit_at_repo_ref(
+                    worktree_path, merge_base, relative
+                )
+                if not prior_base_revision or not self._git_commit_exists_in_repo(
+                    target, prior_base_revision
+                ):
+                    return failure("prior_seed_submodule_base_missing", relative)
+                nested_changes = self._prior_seed_changed_gitlinks(
+                    target, prior_base_revision, seed_revision
+                )
+                if nested_changes is None or nested_changes:
+                    return failure(
+                        "prior_seed_nested_gitlink_changed"
+                        if nested_changes
+                        else "prior_seed_nested_gitlink_check_failed",
+                        relative,
+                    )
+                diff = subprocess.run(
+                    [
+                        "git",
+                        "diff",
+                        "--binary",
+                        "--full-index",
+                        prior_base_revision,
+                        seed_revision,
+                        "--",
+                    ],
+                    cwd=target,
+                    capture_output=True,
+                    check=False,
+                )
+                if diff.returncode != 0:
+                    return failure("prior_seed_submodule_diff_failed", relative)
+                patch = diff.stdout
+            plans.append({
+                **item,
+                "mode": "replay",
+                "prior_base_revision": prior_base_revision,
+                "patch": patch,
+            })
+        return {"ok": True, "plans": plans}
+
+    def _rollback_prior_attempt_submodule_reconciliation(
+        self,
+        worktree_path: Path,
+        *,
+        baseline_ref: str,
+        plans: Sequence[Mapping[str, Any]],
+    ) -> dict[str, Any]:
+        """Return a failed seed to its clean parent and child baselines."""
+
+        child_results: list[bool] = []
+        for plan in plans:
+            relative = str(plan.get("path") or "")
+            baseline_revision = str(plan.get("baseline_revision") or "")
+            target = worktree_path / relative
+            reset = subprocess.run(
+                ["git", "reset", "--hard", baseline_revision],
+                cwd=target,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            status = subprocess.run(
+                ["git", "status", "--porcelain", "--untracked-files=no"],
+                cwd=target,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            child_results.append(
+                reset.returncode == 0
+                and self._resolve_git_commit_in_repo(target, "HEAD")
+                == baseline_revision
+                and status.returncode == 0
+                and not status.stdout.strip()
+            )
+        parent = subprocess.run(
+            ["git", "reset", "--hard", baseline_ref],
+            cwd=worktree_path,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        parent_status = subprocess.run(
+            ["git", "status", "--porcelain", "--untracked-files=no"],
+            cwd=worktree_path,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        expected_parent = self._resolve_git_commit_in_repo(worktree_path, baseline_ref)
+        parent_restored = (
+            parent.returncode == 0
+            and bool(expected_parent)
+            and self._resolve_git_commit_in_repo(worktree_path, "HEAD")
+            == expected_parent
+            and parent_status.returncode == 0
+            and not parent_status.stdout.strip()
+        )
+        restored = parent_restored and all(child_results)
+        result = {
+            "reset": restored,
+            "parent_reset": parent_restored,
+            "children_reset": child_results,
+        }
+        if not restored:
+            raise RuntimeError(
+                "prior seed rollback could not prove a clean parent and child baseline"
+            )
+        return result
+
+    def _reconcile_prior_attempt_seed_submodules(
+        self,
+        worktree_path: Path,
+        *,
+        baseline_ref: str,
+        plans: Sequence[Mapping[str, Any]],
+    ) -> dict[str, Any]:
+        """Align fast-forwards or replay divergent prior child deltas."""
+
+        results: list[dict[str, Any]] = []
+
+        def failure(reason: str, path: str) -> dict[str, Any]:
+            return {"reconciled": False, "reason": reason, "path": path, "results": results}
+
+        for plan in plans:
+            relative = str(plan.get("path") or "")
+            target = worktree_path / relative
+            mode = str(plan.get("mode") or "")
+            expected_revision = str(plan.get("baseline_revision") or "")
+            if mode == "align":
+                expected_revision = str(plan.get("seed_revision") or "")
+                operation = subprocess.run(
+                    ["git", "reset", "--hard", expected_revision],
+                    cwd=target,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+            else:
+                operation = subprocess.run(
+                    ["git", "checkout", baseline_ref, "--", relative],
+                    cwd=worktree_path,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+            if operation.returncode != 0:
+                return failure("configured_submodule_alignment_failed", relative)
+            patch = plan.get("patch")
+            replayed = False
+            if isinstance(patch, bytes) and patch:
+                apply = subprocess.run(
+                    [
+                        "git",
+                        "apply",
+                        "--3way",
+                        "--whitespace=nowarn",
+                        "-",
+                    ],
+                    cwd=target,
+                    input=patch,
+                    capture_output=True,
+                    check=False,
+                )
+                if apply.returncode != 0:
+                    return failure("prior_seed_submodule_delta_apply_failed", relative)
+                replayed = True
+            try:
+                index_revision = self._proposal_index_gitlink_ref(worktree_path, relative)
+            except RuntimeError:
+                index_revision = ""
+            if (
+                self._resolve_git_commit_in_repo(target, "HEAD") != expected_revision
+                or index_revision != expected_revision
+            ):
+                return failure("configured_submodule_postcondition_failed", relative)
+            results.append({
+                "path": relative,
+                "mode": mode,
+                "baseline_revision": str(plan.get("baseline_revision") or ""),
+                "seed_revision": str(plan.get("seed_revision") or ""),
+                "replayed": replayed,
+            })
+        return {"reconciled": True, "reason": "configured_submodules_reconciled", "results": results}
+
     def _apply_prior_attempt_seed(
         self,
         worktree_path: Path,
@@ -13010,11 +13346,57 @@ class PortalImplementationDaemon:
                 "seed_ref": seed_ref,
                 "baseline_ref": baseline_ref,
             }
+        fast_forward = bool(
+            baseline_ref
+            and self._git_ref_is_ancestor_in_repo(
+                worktree_path, baseline_ref, seed_ref
+            )
+        )
+        submodule_preflight = self._prior_attempt_submodule_seed_plans(
+            worktree_path,
+            seed_ref=seed_ref,
+            baseline_ref=baseline_ref,
+            fast_forward=fast_forward,
+        )
+        if not submodule_preflight.get("ok"):
+            return {
+                "applied": False,
+                "reason": "prior_seed_submodule_preflight_failed",
+                "seed_ref": seed_ref,
+                "baseline_ref": baseline_ref,
+                "submodule_reconciliation": submodule_preflight,
+            }
+        submodule_plans = tuple(submodule_preflight.get("plans") or ())
+
+        def finish(root_apply: dict[str, Any]) -> dict[str, Any]:
+            reconciliation = self._reconcile_prior_attempt_seed_submodules(
+                worktree_path,
+                baseline_ref=baseline_ref,
+                plans=submodule_plans,
+            )
+            if reconciliation.get("reconciled"):
+                return {
+                    **root_apply,
+                    "submodule_reconciliation": reconciliation,
+                }
+            rollback = self._rollback_prior_attempt_submodule_reconciliation(
+                worktree_path,
+                baseline_ref=baseline_ref,
+                plans=submodule_plans,
+            )
+            return {
+                "applied": False,
+                "reason": "prior_seed_submodule_reconciliation_failed",
+                "seed_ref": seed_ref,
+                "baseline_ref": baseline_ref,
+                "root_apply_reason": str(root_apply.get("reason") or ""),
+                "submodule_reconciliation": reconciliation,
+                "rollback": rollback,
+            }
+
         # Fast-forward when the preserved attempt is a descendant of the
         # merge-target baseline (common when main/feature has not moved).
-        if baseline_ref and self._git_ref_is_ancestor_in_repo(
-            worktree_path, baseline_ref, seed_ref
-        ):
+        if fast_forward:
             reset = subprocess.run(
                 ["git", "reset", "--hard", seed_ref],
                 cwd=worktree_path,
@@ -13023,18 +13405,25 @@ class PortalImplementationDaemon:
                 check=False,
             )
             if reset.returncode == 0:
-                return {
-                    "applied": True,
-                    "reason": "fast_forward_reset",
-                    "seed_ref": seed_ref,
-                    "baseline_ref": baseline_ref,
-                }
+                return finish(
+                    {
+                        "applied": True,
+                        "reason": "fast_forward_reset",
+                        "seed_ref": seed_ref,
+                        "baseline_ref": baseline_ref,
+                    }
+                )
             return {
                 "applied": False,
                 "reason": "fast_forward_reset_failed",
                 "seed_ref": seed_ref,
                 "baseline_ref": baseline_ref,
                 "stderr": (reset.stderr or "")[-1000:],
+                "rollback": self._rollback_prior_attempt_submodule_reconciliation(
+                    worktree_path,
+                    baseline_ref=baseline_ref,
+                    plans=submodule_plans,
+                ),
             }
         merge = subprocess.run(
             ["git", "merge", "--no-edit", "--no-ff", seed_ref],
@@ -13044,41 +13433,106 @@ class PortalImplementationDaemon:
             check=False,
         )
         if merge.returncode == 0:
-            return {
-                "applied": True,
-                "reason": "merged_prior_seed",
-                "seed_ref": seed_ref,
-                "baseline_ref": baseline_ref,
-            }
-        subprocess.run(
+            return finish(
+                {
+                    "applied": True,
+                    "reason": "merged_prior_seed",
+                    "seed_ref": seed_ref,
+                    "baseline_ref": baseline_ref,
+                }
+            )
+        abort = subprocess.run(
             ["git", "merge", "--abort"],
             cwd=worktree_path,
             text=True,
             capture_output=True,
             check=False,
         )
-        checkout = subprocess.run(
-            ["git", "checkout", seed_ref, "--", "."],
+        unmerged = subprocess.run(
+            ["git", "ls-files", "--unmerged"],
             cwd=worktree_path,
             text=True,
             capture_output=True,
             check=False,
         )
-        if checkout.returncode == 0:
+        if (
+            abort.returncode != 0
+            or self._git_merge_head_in_repo(worktree_path)
+            or unmerged.returncode != 0
+            or unmerged.stdout.strip()
+        ):
             return {
-                "applied": True,
-                "reason": "checked_out_prior_tree",
+                "applied": False,
+                "reason": "prior_seed_merge_abort_failed",
                 "seed_ref": seed_ref,
                 "baseline_ref": baseline_ref,
                 "merge_stderr": (merge.stderr or "")[-500:],
+                "abort_stderr": (abort.stderr or "")[-500:],
+                "rollback": self._rollback_prior_attempt_submodule_reconciliation(
+                    worktree_path,
+                    baseline_ref=baseline_ref,
+                    plans=submodule_plans,
+                ),
             }
+        merge_bases = self._git_merge_bases_in_repo(
+            worktree_path, baseline_ref, seed_ref
+        )
+        root_patch = None
+        if len(merge_bases) == 1:
+            root_patch = subprocess.run(
+                [
+                    "git",
+                    "diff",
+                    "--binary",
+                    "--full-index",
+                    merge_bases[0],
+                    seed_ref,
+                    "--",
+                    ".",
+                    *[
+                        f":(top,exclude){plan['path']}"
+                        for plan in submodule_plans
+                    ],
+                ],
+                cwd=worktree_path,
+                capture_output=True,
+                check=False,
+            )
+        replay = None
+        if root_patch is not None and root_patch.returncode == 0:
+            replay = subprocess.run(
+                ["git", "apply", "--3way", "--whitespace=nowarn", "-"],
+                cwd=worktree_path,
+                input=root_patch.stdout,
+                capture_output=True,
+                check=False,
+            )
+        if replay is not None and replay.returncode == 0:
+            return finish(
+                {
+                    "applied": True,
+                    "reason": "replayed_prior_delta",
+                    "seed_ref": seed_ref,
+                    "baseline_ref": baseline_ref,
+                    "merge_stderr": (merge.stderr or "")[-500:],
+                }
+            )
         return {
             "applied": False,
             "reason": "prior_seed_apply_failed",
             "seed_ref": seed_ref,
             "baseline_ref": baseline_ref,
             "merge_stderr": (merge.stderr or "")[-500:],
-            "checkout_stderr": (checkout.stderr or "")[-500:],
+            "replay_stderr": (
+                replay.stderr.decode("utf-8", errors="replace")[-500:]
+                if replay is not None
+                else "unable to resolve a unique prior seed merge base"
+            ),
+            "rollback": self._rollback_prior_attempt_submodule_reconciliation(
+                worktree_path,
+                baseline_ref=baseline_ref,
+                plans=submodule_plans,
+            ),
         }
 
     def _record_prior_attempt_seed_failure(
