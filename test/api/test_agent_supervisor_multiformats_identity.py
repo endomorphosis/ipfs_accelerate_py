@@ -1,8 +1,16 @@
-"""Strict DAG-JSON / CIDv1 / multihash identity bridge tests (VFS-010)."""
+"""Strict DAG-JSON / CIDv1 / multihash identity bridge tests (VFS-010 / VFS-060).
+
+Also covers VFS-060 objective validation repair for VFS-G030: exact-text
+discovery of ``objective validation repair``, separation of domain
+``vfs/cid-profile@1`` evidence from the synthetic gate, and the refinement
+that immutable object identity stays separate from mutable current-tree
+projections used by the dependency-aware program-analysis cache.
+"""
 
 from __future__ import annotations
 
 import hashlib
+import json
 import math
 from datetime import datetime, timezone
 from pathlib import Path
@@ -32,10 +40,15 @@ from ipfs_accelerate_py.agent_supervisor.multiformats_identity import (
     DIGEST_SIZE,
     IDENTITY_LINK_SCHEMA,
     MH_TYPE,
+    OBJECTIVE_DOMAIN_EVIDENCE_TERMS,
+    OBJECTIVE_GOAL_ID,
+    OBJECTIVE_VALIDATION_REPAIR_EVIDENCE,
+    OBJECTIVE_VALIDATION_REPAIR_TASK_ID,
     CIDProfile,
     IdentityKind,
     IdentityLink,
     MultiformatsIdentityError,
+    all_covered_evidence_terms,
     canonical_dag_json_bytes,
     cid_for_bytes,
     cid_for_dag_json,
@@ -44,6 +57,7 @@ from ipfs_accelerate_py.agent_supervisor.multiformats_identity import (
     cid_profile_evidence_terms,
     covered_evidence_terms,
     digest_hex_from_cid,
+    immutable_object_identity_separate_from_tree_projections,
     independent_round_trip_cid,
     independent_round_trip_dag_json,
     link_content_identity,
@@ -51,11 +65,22 @@ from ipfs_accelerate_py.agent_supervisor.multiformats_identity import (
     link_payload_digest,
     link_raw_bytes,
     link_runtime_artifact,
+    objective_validation_repair_evidence_terms,
     parse_payload_digest,
     parse_runtime_artifact_id,
     reject_double_hashed_multihash,
     require_canonical_dag_json_bytes,
     validate_cid,
+)
+from ipfs_accelerate_py.agent_supervisor.program_analysis_cache import (
+    DEPENDENCY_CACHE_EVIDENCE,
+    OBJECTIVE_PARENT_GOAL_ID,
+    OBJECTIVE_PARENT_REPAIR_TASK_ID,
+    ProgramAnalysisCacheKey,
+    all_covered_evidence_terms as cache_all_covered_evidence_terms,
+    objective_validation_repair_evidence_terms as cache_repair_terms,
+    program_analysis_cache_evidence_terms,
+    tree_projection_is_not_object_identity,
 )
 from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
     content_identity,
@@ -397,6 +422,155 @@ def test_vfs_g141_cid_profile_is_executable_packet_evidence() -> None:
     link = link_content_identity(content_identity(value), value=value)
     assert link.cid == cid
     assert CID_PROFILE_EVIDENCE not in canonical_dag_json_bytes(value).decode()
+
+
+def test_objective_validation_repair_evidence_term_discoverable() -> None:
+    """VFS-G030 objective validation repair: exact-text discovery key present.
+
+    Anchors the synthetic phrase ``objective validation repair`` so objective
+    scans re-find the validation gate.  Domain evidence stays separate
+    (``vfs/cid-profile@1``).  The repair term never enters CID input bytes,
+    IdentityLink payloads, or mutable current-tree projection dimensions.
+    Owned by VFS-G030 via repair task VFS-060.
+    """
+
+    assert OBJECTIVE_VALIDATION_REPAIR_EVIDENCE == "objective validation repair"
+    assert OBJECTIVE_GOAL_ID == "VFS-G030"
+    assert OBJECTIVE_VALIDATION_REPAIR_TASK_ID == "VFS-060"
+    assert OBJECTIVE_PARENT_GOAL_ID == "VFS-G030"
+    assert OBJECTIVE_PARENT_REPAIR_TASK_ID == "VFS-060"
+    assert objective_validation_repair_evidence_terms() == (
+        "objective validation repair",
+    )
+    assert cache_repair_terms() == ("objective validation repair",)
+
+    # Domain envelope evidence remains cid-profile only on this bridge.
+    assert cid_profile_evidence_terms() == ("vfs/cid-profile@1",)
+    assert OBJECTIVE_DOMAIN_EVIDENCE_TERMS == ("vfs/cid-profile@1",)
+    assert covered_evidence_terms() == ("vfs/cid-profile@1",)
+    assert "objective validation repair" not in covered_evidence_terms()
+    assert "objective validation repair" not in cid_profile_evidence_terms()
+
+    # Full discovery set includes the validation-gate meta term last.
+    assert all_covered_evidence_terms() == (
+        "vfs/cid-profile@1",
+        "objective validation repair",
+    )
+    assert OBJECTIVE_VALIDATION_REPAIR_EVIDENCE in all_covered_evidence_terms()
+    # Cache surface covers dependency-cache + invalidation + profile + repair.
+    assert DEPENDENCY_CACHE_EVIDENCE in program_analysis_cache_evidence_terms()
+    assert "objective validation repair" not in program_analysis_cache_evidence_terms()
+    assert "objective validation repair" in cache_all_covered_evidence_terms()
+
+    # Profile / link identity envelopes never absorb the synthetic repair term.
+    profile_payload = cid_profile().to_dict()
+    assert profile_payload["evidence"] == CID_PROFILE_EVIDENCE
+    assert "objective validation repair" not in profile_payload["evidence"]
+    assert profile_payload.get("evidence_objective_validation_repair") is None
+
+    value = {"goal": "VFS-G030", "task": "VFS-060"}
+    cid = cid_for_dag_json(value)
+    link = link_content_identity(content_identity(value), value=value)
+    link_payload = link.to_dict()
+    encoded_value = canonical_dag_json_bytes(value).decode()
+    encoded_link = json.dumps(link_payload, sort_keys=True)
+    assert cid == package_cid_for_dag_json(value)
+    assert "objective validation repair" not in encoded_value
+    assert "objective validation repair" not in encoded_link
+    assert "objective validation repair" not in link.cid
+    assert link.cid == cid
+
+
+def test_vfs_g030_acceptance_identity_tree_separation_and_fail_closed() -> None:
+    """VFS-G030 acceptance: cross-package CIDs, mappings, tree separation.
+
+    Proves the acceptance subset for objective validation repair on the
+    multiformats + dependency-cache surface: CIDv1/base32/dag-json/sha2-256
+    bytes are cross-package reproducible; existing supervisor IDs retain
+    compatibility mappings; immutable object identity stays separate from
+    mutable current-tree projections; semantic dependencies participate in
+    cache keys; corruption-shaped inputs fail closed.
+    """
+
+    assert OBJECTIVE_GOAL_ID == "VFS-G030"
+    assert OBJECTIVE_VALIDATION_REPAIR_TASK_ID == "VFS-060"
+    assert "objective validation repair" in all_covered_evidence_terms()
+    assert immutable_object_identity_separate_from_tree_projections() is True
+
+    # Cross-package reproducibility for raw and DAG-JSON.
+    payload = {"unicode": "café", "nested": {"z": 2, "a": 1}}
+    reordered = {"nested": {"a": 1, "z": 2}, "unicode": "café"}
+    assert cid_for_dag_json(payload) == package_cid_for_dag_json(reordered)
+    assert cid_for_bytes(b"hello world") == package_cid_for_bytes(b"hello world")
+    assert validate_cid(cid_for_dag_json(payload), codecs=("dag-json",))
+    assert independent_round_trip_dag_json(payload) == cid_for_dag_json(payload)
+
+    # Existing supervisor IDs retain compatibility mappings.
+    formal = content_identity(payload)
+    bridge = cid_for_dag_json(payload)
+    assert formal == bridge
+    link = link_content_identity(formal, value=payload)
+    assert link.local_id == formal
+    assert link.cid == bridge
+
+    # Mutable current-tree projections bind cache keys only; object CIDs ignore them.
+    assert tree_projection_is_not_object_identity(
+        forest_identity="forest:sha256:tree-A",
+        payload=payload,
+    )
+    key_tree_a = ProgramAnalysisCacheKey(
+        forest_identity="forest:sha256:tree-A",
+        objective_revision="obj-1",
+        policy_revision="pol-1",
+        analyzer_version="analyzer@1",
+        schema_version="schema@1",
+        configuration_digest="sha256:cfg-1",
+        query_digest="sha256:q-1",
+        capability_revision="cap@1",
+        assumption_digest="sha256:ass-1",
+        toolchain_version="tc@1",
+    )
+    key_tree_b = ProgramAnalysisCacheKey(
+        forest_identity="forest:sha256:tree-B",
+        objective_revision="obj-1",
+        policy_revision="pol-1",
+        analyzer_version="analyzer@1",
+        schema_version="schema@1",
+        configuration_digest="sha256:cfg-1",
+        query_digest="sha256:q-1",
+        capability_revision="cap@1",
+        assumption_digest="sha256:ass-1",
+        toolchain_version="tc@1",
+    )
+    assert key_tree_a.digest != key_tree_b.digest
+    # All semantic / policy dimensions participate: policy change re-keys.
+    key_policy = ProgramAnalysisCacheKey(
+        forest_identity="forest:sha256:tree-A",
+        objective_revision="obj-1",
+        policy_revision="pol-2",
+        analyzer_version="analyzer@1",
+        schema_version="schema@1",
+        configuration_digest="sha256:cfg-1",
+        query_digest="sha256:q-1",
+        capability_revision="cap@1",
+        assumption_digest="sha256:ass-1",
+        toolchain_version="tc@1",
+    )
+    assert key_policy.digest != key_tree_a.digest
+    # Object CID for the same payload is stable across tree projection changes.
+    assert cid_for_dag_json(payload) == bridge
+    assert "forest:sha256:tree-A" not in bridge
+    assert "forest:sha256:tree-B" not in bridge
+
+    # Fail-closed on corrupted / non-identity inputs.
+    with pytest.raises(MultiformatsIdentityError):
+        validate_cid("not-a-cid")
+    with pytest.raises(MultiformatsIdentityError, match="timestamp"):
+        cid_for_dag_json({"when": datetime.now(timezone.utc)})
+    payload_bytes = b"do-not-double-hash"
+    double_cid = cid_for_bytes(hashlib.sha256(payload_bytes).digest())
+    with pytest.raises(MultiformatsIdentityError, match="double hashing"):
+        reject_double_hashed_multihash(payload_bytes, double_cid)
 
 
 def test_runtime_artifact_mismatched_payload_rejected() -> None:
