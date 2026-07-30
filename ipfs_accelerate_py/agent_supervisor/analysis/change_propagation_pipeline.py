@@ -1339,6 +1339,113 @@ def run_change_propagation_pipeline(
     ).run(request)
 
 
+def daemon_execute(
+    daemon: Any,
+    request: Any,
+    *,
+    policy: Any = None,
+    enable: bool = True,
+) -> Any:
+    """Daemon-facing entry: run the gated pipeline (lazy-safe, thin host).
+
+    Host methods on :class:`PortalImplementationDaemon` stay tiny so the
+    already-near-1-MiB daemon module remains proposal-gate admissible.
+    Mutations still go only through :class:`ChangePropagationTransaction`
+    and completion through :class:`ChangePropagationValidator`.
+    """
+
+    pipeline_policy = ChangePropagationPipelinePolicy(
+        enable_change_propagation=bool(enable),
+    )
+    if policy is not None:
+        if isinstance(policy, ChangePropagationPipelinePolicy):
+            pipeline_policy = policy
+        elif isinstance(policy, Mapping):
+            merged = {
+                **pipeline_policy.to_dict(),
+                **dict(policy),
+                "enable_change_propagation": bool(enable),
+            }
+            pipeline_policy = ChangePropagationPipelinePolicy.from_value(merged)
+    pipeline = ChangePropagationPipeline(policy=pipeline_policy)
+    if not isinstance(request, ChangePropagationPipelineRequest):
+        if isinstance(request, Mapping):
+            request = ChangePropagationPipelineRequest.from_mapping(request)
+    result = pipeline.run(request)
+    try:
+        record = getattr(daemon, "_record_event", None)
+        if callable(record):
+            record(
+                "change_propagation_pipeline",
+                {
+                    "enabled": result.enabled,
+                    "stage": result.stage,
+                    "disposition": result.disposition,
+                    "detail": result.detail,
+                    "provider_invoked": result.provider_invoked,
+                    "plan_id": result.plan_id,
+                    "write_paths": list(result.write_paths),
+                    "rolled_back": result.rolled_back,
+                    "complete": result.complete,
+                    "completion_authoritative": False,
+                    "partial_merge_allowed": False,
+                },
+            )
+    except Exception:
+        pass
+    return result
+
+
+def daemon_require_completion(
+    plan: Any,
+    transaction: Any,
+    *,
+    evidence: Any,
+    packet: Any = None,
+    execution_report: Any = None,
+    fixed_point_bound: int | None = None,
+) -> Any:
+    """Require a current PropagationCompletionReceipt@1 (fail-closed)."""
+
+    from ..validation.change_propagation_validation import (
+        ChangePropagationValidationError,
+        ChangePropagationValidator,
+    )
+
+    outcome = ChangePropagationValidator().validate(
+        plan,
+        transaction,
+        evidence=evidence,
+        packet=packet,
+        execution_report=execution_report,
+        fixed_point_bound=fixed_point_bound,
+    )
+    if not outcome.complete or outcome.completion is None:
+        reasons = ", ".join(outcome.report.reason_codes) or "incomplete"
+        raise ChangePropagationValidationError(
+            "change propagation fixed-point validation rejected: " + reasons
+        )
+    return outcome.completion
+
+
+def daemon_assert_no_write_bypass(
+    *,
+    write_performed: bool,
+    transaction_committed: bool,
+    completion_present: bool,
+) -> None:
+    """Fail closed when a propagation write would bypass the gate path."""
+
+    if write_performed and not transaction_committed:
+        raise RuntimeError(
+            "change-propagation write cannot bypass ChangePropagationTransaction"
+        )
+    if write_performed and transaction_committed and not completion_present:
+        raise RuntimeError(
+            "change-propagation completion requires PropagationCompletionReceipt"
+        )
+
+
 __all__ = [
     "CHANGE_PROPAGATION_PIPELINE_INTERFACE",
     "CHANGE_PROPAGATION_PIPELINE_SCHEMA",
@@ -1352,5 +1459,8 @@ __all__ = [
     "ChangePropagationPipelineResult",
     "PipelineDisposition",
     "PipelineStage",
+    "daemon_assert_no_write_bypass",
+    "daemon_execute",
+    "daemon_require_completion",
     "run_change_propagation_pipeline",
 ]
