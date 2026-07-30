@@ -583,6 +583,15 @@ def _router_error(
             selected_binding=selected_binding,
             receipt=receipt,
         )
+    if isinstance(exc, llm_router.LLMRouterOutputError):
+        return _error_result(
+            "invalid_router_output",
+            "The canonical router returned no usable text.",
+            schema_version=schema_version,
+            catalog_revision=revision,
+            selected_binding=selected_binding,
+            receipt=receipt,
+        )
     return _error_result(
         "router_error",
         "The canonical router could not complete the request.",

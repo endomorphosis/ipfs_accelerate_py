@@ -653,6 +653,23 @@ def test_timeout_cancellation_and_provider_errors_are_safe(
     assert failed["error"]["cause"] == "RuntimeError"
     assert "provider-private-secret" not in json.dumps(failed)
 
+    def raises_empty_output(*args: Any, **kwargs: Any) -> str:
+        raise text_embedding.llm_router.LLMRouterOutputError(
+            "Bearer provider-private-secret"
+        )
+
+    monkeypatch.setattr(
+        text_embedding.llm_router,
+        "generate_text",
+        raises_empty_output,
+    )
+    empty_output = _run(
+        text_embedding.llm_generate("hello", provider="text-provider")
+    )
+    assert empty_output["error"]["code"] == "invalid_router_output"
+    assert "cause" not in empty_output["error"]
+    assert "provider-private-secret" not in json.dumps(empty_output)
+
     started = threading.Event()
     release = threading.Event()
 
