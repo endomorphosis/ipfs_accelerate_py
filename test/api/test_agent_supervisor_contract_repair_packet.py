@@ -10,6 +10,9 @@ from ipfs_accelerate_py.agent_supervisor.contract_repair_packet import (
     COMPACT_REPAIR_PACKET_EVIDENCE,
     DEFAULT_MAX_PACKET_BYTES,
     DELTA_REPAIR_CONTEXT_EVIDENCE,
+    OBJECTIVE_DOMAIN_EVIDENCE_TERMS,
+    OBJECTIVE_GOAL_ID,
+    OBJECTIVE_TASK_ID,
     REQUIRED_CORE_FIELDS,
     BoundedSourceSpan,
     CallSliceRef,
@@ -28,12 +31,24 @@ from ipfs_accelerate_py.agent_supervisor.contract_repair_packet import (
     RepairPacketLimits,
     RepairPacketRequest,
     RepairPacketStatus,
+    all_covered_evidence_terms,
+    compact_repair_packet_evidence,
+    compact_repair_packet_evidence_terms,
     compile_contract_repair_packet,
     compile_repair_packet,
     compile_repair_packet_delta,
+    covered_evidence_terms,
+    delta_repair_context_evidence,
+    delta_repair_context_evidence_terms,
+    delta_satisfies_delta_repair_context,
     estimate_tokens,
     expand_repair_handle,
+    measure_repair_context,
     packet_is_cheaper_than_baseline,
+    packet_satisfies_compact_repair_packet,
+    prove_compact_repair_packet,
+    prove_delta_repair_context,
+    prove_repair_packet_evidence,
     reconstruct_repair_packet,
     repository_context_baseline_tokens,
 )
@@ -714,3 +729,166 @@ def test_request_from_dict_and_missing_required_fields_fail_closed() -> None:
         RepairPacketRequest.from_dict(
             {**_request().to_dict(), "edit_scope": ()}
         )
+
+
+# ---------------------------------------------------------------------------
+# VFS-G110 / VFS-078 objective evidence surface
+# ---------------------------------------------------------------------------
+
+
+def test_covered_evidence_terms_bind_vfs_g110_terms() -> None:
+    assert compact_repair_packet_evidence() == "vfs/compact-repair-packet@1"
+    assert delta_repair_context_evidence() == "vfs/delta-repair-context@1"
+    assert compact_repair_packet_evidence_terms() == (
+        COMPACT_REPAIR_PACKET_EVIDENCE,
+    )
+    assert delta_repair_context_evidence_terms() == (
+        DELTA_REPAIR_CONTEXT_EVIDENCE,
+    )
+    assert covered_evidence_terms() == OBJECTIVE_DOMAIN_EVIDENCE_TERMS
+    assert all_covered_evidence_terms() == covered_evidence_terms()
+    assert OBJECTIVE_DOMAIN_EVIDENCE_TERMS == (
+        "vfs/compact-repair-packet@1",
+        "vfs/delta-repair-context@1",
+    )
+    assert OBJECTIVE_GOAL_ID == "VFS-G110"
+    assert OBJECTIVE_TASK_ID == "VFS-078"
+
+
+def test_prove_compact_repair_packet_and_separate_context_measurement() -> None:
+    compiled = compile_repair_packet(_request())
+    assert packet_satisfies_compact_repair_packet(compiled) is True
+
+    symbolic = {
+        "findings": list(compiled.packet.finding_ids),
+        "contracts": [
+            compiled.packet.expected_contract_ref,
+            compiled.packet.observed_contract_ref,
+        ],
+        "call_slice": compiled.packet.call_slice.to_dict(),
+    }
+    baseline_files = [
+        {"path": f"src/module_{index}.py", "source": "x" * 1500}
+        for index in range(20)
+    ]
+    measurement = measure_repair_context(
+        compiled,
+        symbolic_analysis=symbolic,
+        repository_files=baseline_files,
+    )
+    assert measurement["measurements_are_separate"] is True
+    assert "symbolic_analysis" in measurement
+    assert "provider_context" in measurement
+    # Separate surfaces: neither field is a blended total of the other.
+    assert measurement["symbolic_analysis"]["estimated_tokens"] >= 1
+    assert measurement["provider_context"]["estimated_tokens"] >= 1
+    assert measurement["provider_context"]["within_default_budget"] is True
+    assert measurement["symbolic_analysis"]["includes_full_source"] is False
+    assert measurement["repository_baseline"]["packet_cheaper_than_baseline"]
+
+    claim = prove_compact_repair_packet(
+        compiled,
+        symbolic_analysis=symbolic,
+        repository_files=baseline_files,
+    )
+    assert claim["evidence"] == COMPACT_REPAIR_PACKET_EVIDENCE
+    assert claim["evidence_terms"] == ["vfs/compact-repair-packet@1"]
+    assert claim["goal_id"] == "VFS-G110"
+    assert claim["task_id"] == "VFS-078"
+    assert claim["satisfied"] is True
+    assert claim["model_output_is_proposal"] is True
+    assert claim["semantic_authority"] is False
+    assert claim["completion_authoritative"] is False
+    assert claim["measurement"]["measurements_are_separate"] is True
+
+
+def test_prove_delta_repair_context_binds_parent() -> None:
+    parent = compile_repair_packet(_request())
+    delta = compile_repair_packet_delta(
+        parent,
+        changed_evidence=(
+            {
+                "evidence_id": "opt:diag-1",
+                "content_id": "cid:opt-1-v2",
+                "summary": "updated",
+            },
+        ),
+    )
+    assert delta_satisfies_delta_repair_context(delta, parent=parent) is True
+    claim = prove_delta_repair_context(delta, parent=parent)
+    assert claim["evidence"] == DELTA_REPAIR_CONTEXT_EVIDENCE
+    assert claim["evidence_terms"] == ["vfs/delta-repair-context@1"]
+    assert claim["parent_packet_id"] == parent.packet.packet_id
+    assert claim["omits_inherited_invariant_core"] is True
+    assert claim["cheaper_than_parent_replay"] is True
+    assert claim["satisfied"] is True
+
+    bundle = prove_repair_packet_evidence(parent, delta=delta)
+    assert "vfs/compact-repair-packet@1" in bundle["all_evidence_terms"]
+    assert "vfs/delta-repair-context@1" in bundle["all_evidence_terms"]
+    assert bundle["satisfied"] is True
+    assert bundle["measurement"]["measurements_are_separate"] is True
+
+
+def test_formal_replanner_composition_compiles_compact_packets() -> None:
+    # Load the declared VFS-G110 output by file so the composition surface is
+    # exercised even when the package alias finder prefers planning/.
+    import importlib.util
+    import sys
+    from pathlib import Path
+
+    path = (
+        Path(__file__).resolve().parents[2]
+        / "ipfs_accelerate_py"
+        / "agent_supervisor"
+        / "formal_replanner.py"
+    )
+    assert path.is_file()
+    module_name = "vfs_g110_formal_replanner_composition"
+    spec = importlib.util.spec_from_file_location(module_name, path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    module.__package__ = "ipfs_accelerate_py.agent_supervisor"
+    sys.modules[module_name] = module
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        # Keep registered for dataclass identity during the test body.
+        pass
+
+    assert module.compact_repair_packet_evidence() == (
+        "vfs/compact-repair-packet@1"
+    )
+    assert module.delta_repair_context_evidence() == (
+        "vfs/delta-repair-context@1"
+    )
+    assert set(module.formal_repair_evidence_terms()) == {
+        "vfs/compact-repair-packet@1",
+        "vfs/delta-repair-context@1",
+    }
+    assert "FormalReplanner" in module.FormalReplanner
+    assert "CodexRepairPacket" in module.CodexRepairPacket
+    assert "ContextCompiler" in module.ContextCompiler
+
+    composition = module.compile_formal_repair_packet(
+        _request(),
+        changed_evidence=(
+            {
+                "evidence_id": "opt:diag-1",
+                "content_id": "cid:v2",
+                "summary": "delta via formal composition",
+            },
+        ),
+        repository_files=[
+            {"path": f"src/f_{i}.py", "source": "y" * 1200} for i in range(15)
+        ],
+    )
+    payload = composition.to_dict()
+    assert payload["goal_id"] == "VFS-G110"
+    assert payload["measurements_are_separate"] is True
+    assert payload["compact_claim"]["satisfied"] is True
+    assert payload["delta_claim"]["satisfied"] is True
+    assert payload["measurement"]["provider_context"]["within_default_budget"]
+    assert composition.packet.packet.required_core_present is True
+    assert composition.delta is not None
+    assert composition.delta.parent_packet_id == composition.packet_id
