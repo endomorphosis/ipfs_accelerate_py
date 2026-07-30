@@ -286,6 +286,10 @@ MAX_IMPLEMENTATION_CHECKPOINT_FILES = 16
 MAX_IMPLEMENTATION_CHECKPOINT_BYTES = 512 * 1024 * 1024
 MAX_IMPLEMENTATION_CHECKPOINT_PATH_BYTES = 256
 IMPLEMENTATION_PROGRESS_HEARTBEAT_SECONDS = 15.0
+IMPLEMENTATION_LIVENESS_HEARTBEAT_SECONDS = 30.0
+IMPLEMENTATION_LIVENESS_SCHEMA = (
+    "ipfs_accelerate_py.agent-supervisor.implementation-liveness@1"
+)
 WORKTREE_POOL_ENABLED_ENV = "IPFS_ACCELERATE_AGENT_WORKTREE_POOL_ENABLED"
 WORKTREE_POOL_MAX_ENTRIES_ENV = "IPFS_ACCELERATE_AGENT_WORKTREE_POOL_MAX_ENTRIES"
 DISABLE_SUBAGENTS_ENV = "IPFS_ACCELERATE_AGENT_DISABLE_SUBAGENTS"
@@ -3158,6 +3162,13 @@ def dependency_satisfied_references(
     return satisfied
 
 
+def implementation_liveness_path(state_path: Path) -> Path:
+    """Return the non-semantic, PID-bound heartbeat path for daemon liveness."""
+
+    selected = Path(state_path)
+    return selected.with_name(f"{selected.stem}.liveness.json")
+
+
 class PortalImplementationDaemon(AuthoritativeCompletionMixin):
     shared_todo_runner_class = TodoDaemonRunner
     shared_todo_hooks_class = TodoDaemonHooks
@@ -3255,6 +3266,8 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         self.state_path = state_path
         self.strategy_path = strategy_path
         self.events_path = events_path
+        self.liveness_path = implementation_liveness_path(self.state_path)
+        self._last_liveness_heartbeat_monotonic: float | None = None
         self.repo_root = (repo_root or REPO_ROOT).resolve()
         self.task_source: CanonicalTaskSource | None = None
         if configured_task_source is not None:
@@ -3673,6 +3686,30 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             dict(cached_result) if isinstance(cached_result, Mapping) else None
         )
         self._last_safety_reconciliation_monotonic = time.monotonic()
+
+    def _publish_liveness_heartbeat(self, *, force: bool = False) -> bool:
+        """Publish bounded process liveness without mutating semantic state."""
+
+        now_monotonic = time.monotonic()
+        last_published = self._last_liveness_heartbeat_monotonic
+        if (
+            not force
+            and last_published is not None
+            and now_monotonic - last_published
+            < IMPLEMENTATION_LIVENESS_HEARTBEAT_SECONDS
+        ):
+            return False
+        write_json_atomic(
+            self.liveness_path,
+            {
+                "schema": IMPLEMENTATION_LIVENESS_SCHEMA,
+                "heartbeat_at": utc_now(),
+                "heartbeat_pid": os.getpid(),
+                "state_path": str(self.state_path),
+            },
+        )
+        self._last_liveness_heartbeat_monotonic = now_monotonic
+        return True
 
     @staticmethod
     def _task_source_metadata_text(value: Any) -> str:
@@ -7150,6 +7187,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         return result
 
     def run_once(self) -> dict[str, Any]:
+        self._publish_liveness_heartbeat()
         wake_kinds = self._consume_runtime_wake_kinds()
         self._current_runtime_wake_kinds = set(wake_kinds)
         source_digest, _source_metadata = self._runtime_source_head()
