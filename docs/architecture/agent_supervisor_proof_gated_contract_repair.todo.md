@@ -646,7 +646,7 @@ task IDs on this board.
 
 ## RPR-020 Add operations, metrics, feature flags, and rollback
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
