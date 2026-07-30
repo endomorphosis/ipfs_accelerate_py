@@ -11,9 +11,12 @@ with IPFS network-based distribution and acceleration. Key features include:
 - Cross-platform support
 """
 
+import importlib
 import os
 import sys
+import threading
 from pathlib import Path
+from types import ModuleType
 
 from .hf_space_inference import (
     BatchProcessor,
@@ -73,10 +76,9 @@ if not SKIP_CORE:
     except Exception:
         ipfs_multiformats_py = None
 
-    try:
-        from .worker import worker
-    except Exception:
-        worker = None
+    # ``worker`` is resolved by the module-level ``__getattr__`` below.  Keep
+    # package discovery light: importing the legacy worker package eagerly
+    # loads every model skillset (including torch and transformers).
 
     try:
         from .config import config
@@ -207,13 +209,205 @@ else:
             "Set IPFS_ACCEL_SKIP_CORE=0 and install core dependencies to enable."
         )
 
+_WORKER_UNRESOLVED = object()
+_worker_export_value = None if SKIP_CORE else _WORKER_UNRESOLVED
+_worker_loading = False
+_worker_loader_thread_id = None
+_worker_condition = threading.Condition()
+
+
+class _LazyWorkerSnapshot(ModuleType):
+    """Module-like value used only by raw, non-virtual dictionary copies."""
+
+    def __getattr__(self, name):
+        resolved = _load_legacy_worker()
+        if resolved is None:
+            raise AttributeError(
+                "legacy worker is unavailable because optional dependencies "
+                "could not be imported"
+            )
+        return getattr(resolved, name)
+
+    def __dir__(self):
+        resolved = _load_legacy_worker()
+        return [] if resolved is None else dir(resolved)
+
+
+_worker_snapshot = _LazyWorkerSnapshot(
+    f"{__name__}.worker",
+    "Lazy compatibility view of the legacy worker module.",
+)
+
+
+def _load_legacy_worker():
+    """Resolve the historical module-valued worker export on explicit access."""
+
+    global _worker_export_value, _worker_loading, _worker_loader_thread_id
+    current_thread_id = threading.get_ident()
+    with _worker_condition:
+        if _worker_export_value is not _WORKER_UNRESOLVED:
+            return _worker_export_value
+        if _worker_loading and _worker_loader_thread_id == current_thread_id:
+            # Same-thread recursion can occur while importlib installs the
+            # worker package on this parent module.
+            return globals().get("worker")
+        while _worker_loading:
+            _worker_condition.wait()
+            if _worker_export_value is not _WORKER_UNRESOLVED:
+                return _worker_export_value
+        _worker_loading = True
+        _worker_loader_thread_id = current_thread_id
+    try:
+        try:
+            resolved = importlib.import_module(f"{__name__}.worker.worker")
+        except Exception:
+            resolved = None
+        with _worker_condition:
+            _worker_export_value = resolved
+            globals()["worker"] = resolved
+            existing_export = globals().get("export")
+            if isinstance(existing_export, dict):
+                dict.__setitem__(existing_export, "worker", resolved)
+            return resolved
+    finally:
+        with _worker_condition:
+            _worker_loading = False
+            _worker_loader_thread_id = None
+            _worker_condition.notify_all()
+
+
+class _LazyRootExport(dict):
+    """Dictionary-compatible exports with one optional lazy legacy value.
+
+    Virtual mapping access resolves ``worker``. Raw base-dict inspection keeps
+    a module-like lazy snapshot so provider-free discovery remains possible
+    without exposing a misleading permanent ``None`` value.
+    """
+
+    def __getitem__(self, key):
+        if key == "worker":
+            with _worker_condition:
+                if not dict.__contains__(self, key):
+                    raise KeyError(key)
+                stored = dict.__getitem__(self, key)
+                if stored is not _worker_snapshot:
+                    return stored
+            return _load_legacy_worker()
+        return super().__getitem__(key)
+
+    def __setitem__(self, key, value):
+        if key != "worker":
+            return super().__setitem__(key, value)
+        # Route public-dictionary monkeypatches through the same synchronized
+        # assignment contract as ``package.worker = value``.
+        setattr(sys.modules[__name__], "worker", value)
+
+    def __delitem__(self, key):
+        global _worker_export_value
+        if key != "worker":
+            return super().__delitem__(key)
+        with _worker_condition:
+            while (
+                _worker_loading
+                and _worker_loader_thread_id != threading.get_ident()
+            ):
+                _worker_condition.wait()
+            if not dict.__contains__(self, key):
+                raise KeyError(key)
+            _worker_export_value = (
+                None if SKIP_CORE else _WORKER_UNRESOLVED
+            )
+            globals().pop("worker", None)
+            dict.__delitem__(self, key)
+            _worker_condition.notify_all()
+
+    def get(self, key, default=None):
+        if key == "worker" and key in self:
+            return self[key]
+        return super().get(key, default)
+
+    def setdefault(self, key, default=None):
+        if key != "worker":
+            return super().setdefault(key, default)
+        with _worker_condition:
+            if dict.__contains__(self, key):
+                # Preserve the raw lazy snapshot behavior of the historical
+                # dict API without causing provider imports.
+                return dict.__getitem__(self, key)
+            self[key] = default
+            return default
+
+    def update(self, *args, **kwargs):
+        staged = {}
+        dict.update(staged, *args, **kwargs)
+        for key, value in staged.items():
+            self[key] = value
+
+    def __ior__(self, other):
+        self.update(other)
+        return self
+
+    def pop(self, key, *default):
+        if len(default) > 1:
+            raise TypeError(f"pop expected at most 2 arguments, got {1 + len(default)}")
+        if key != "worker":
+            return super().pop(key, *default)
+        with _worker_condition:
+            if not dict.__contains__(self, key):
+                if default:
+                    return default[0]
+                raise KeyError(key)
+            value = dict.__getitem__(self, key)
+            self.__delitem__(key)
+            return value
+
+    def popitem(self):
+        if not self:
+            raise KeyError("popitem(): dictionary is empty")
+        key = next(reversed(self))
+        return key, self.pop(key)
+
+    def clear(self):
+        global _worker_export_value
+        with _worker_condition:
+            while (
+                _worker_loading
+                and _worker_loader_thread_id != threading.get_ident()
+            ):
+                _worker_condition.wait()
+            had_worker = dict.__contains__(self, "worker")
+            dict.clear(self)
+            if had_worker:
+                _worker_export_value = (
+                    None if SKIP_CORE else _WORKER_UNRESOLVED
+                )
+                globals().pop("worker", None)
+            _worker_condition.notify_all()
+
+    def items(self):
+        if "worker" in self:
+            self["worker"]
+        return super().items()
+
+    def values(self):
+        if "worker" in self:
+            self["worker"]
+        return super().values()
+
+    def copy(self):
+        if "worker" in self:
+            self["worker"]
+        return super().copy()
+
+
 # Export all components
-export = {
+export = _LazyRootExport({
     "backends": backends,
     "config": config,
     "install_depends": install_depends,
     "ipfs_accelerate_py": ipfs_accelerate_py,
-    "worker": worker,
+    # Synchronized with the historical root export on first explicit access.
+    "worker": None if SKIP_CORE else _worker_snapshot,
     "ipfs_multiformats_py": ipfs_multiformats_py,
     "get_instance": get_instance,
     "accelerate_with_browser": accelerate_with_browser,
@@ -237,7 +431,15 @@ export = {
     "is_retryable_hf_space_error": is_retryable_hf_space_error,
     "is_stale_gradio_file_error": is_stale_gradio_file_error,
     "normalize_api_name": normalize_api_name,
-}
+})
+
+
+def __getattr__(name):
+    """Lazily expose optional legacy package-root components."""
+
+    if name == "worker":
+        return _load_legacy_worker()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 if not SKIP_CORE:
     # Add CLI entry point for package access
@@ -670,6 +872,75 @@ __all__ = [
     'VoiceStageTrace', 'VoiceTurnRequest', 'VoiceTurnProvenance',
     'VoiceTurnResult', 'voice_turn_cache_key', 'process_voice_turn',
 ]
+
+
+class _IPFSAccelerateModule(ModuleType):
+    """Keep the lazy root worker canonical across subpackage import order."""
+
+    def __getattribute__(self, name):
+        if name == "worker":
+            namespace = ModuleType.__getattribute__(self, "__dict__")
+            return namespace["_load_legacy_worker"]()
+        return ModuleType.__getattribute__(self, name)
+
+    def __setattr__(self, name, value):
+        if name != "worker":
+            ModuleType.__setattr__(self, name, value)
+            return
+        namespace = ModuleType.__getattribute__(self, "__dict__")
+        # Importlib installs the worker package on its parent before the
+        # historical concrete ``worker.worker`` module is selected. Preserve
+        # that raw bookkeeping without turning it into the canonical export.
+        if (
+            isinstance(value, ModuleType)
+            and value.__name__ == f"{namespace['__name__']}.worker"
+        ):
+            ModuleType.__setattr__(self, name, value)
+            return
+        condition = namespace["_worker_condition"]
+        with condition:
+            while (
+                namespace["_worker_loading"]
+                and namespace["_worker_loader_thread_id"] != threading.get_ident()
+            ):
+                condition.wait()
+            namespace["_worker_export_value"] = value
+            ModuleType.__setattr__(self, name, value)
+            export_map = namespace.get("export")
+            if isinstance(export_map, dict):
+                dict.__setitem__(export_map, "worker", value)
+            condition.notify_all()
+
+    def __delattr__(self, name):
+        if name != "worker":
+            ModuleType.__delattr__(self, name)
+            return
+        namespace = ModuleType.__getattribute__(self, "__dict__")
+        condition = namespace["_worker_condition"]
+        with condition:
+            while namespace["_worker_loading"]:
+                condition.wait()
+            namespace["_worker_export_value"] = (
+                None if namespace["SKIP_CORE"] else namespace["_WORKER_UNRESOLVED"]
+            )
+            namespace.pop("worker", None)
+            export_map = namespace.get("export")
+            if isinstance(export_map, dict):
+                dict.__setitem__(
+                    export_map,
+                    "worker",
+                    None
+                    if namespace["SKIP_CORE"]
+                    else namespace["_worker_snapshot"],
+                )
+            condition.notify_all()
+
+    def __dir__(self):
+        namespace = ModuleType.__getattribute__(self, "__dict__")
+        return sorted(set(namespace).union(namespace.get("__all__", ())))
+
+
+sys.modules[__name__].__class__ = _IPFSAccelerateModule
 
 # Package version
 __version__ = "0.4.0"

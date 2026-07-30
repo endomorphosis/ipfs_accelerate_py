@@ -152,10 +152,18 @@ def _response_dag_contracts() -> tuple[Any, Any]:
             ResponseDAGAppendCandidate,
             append_response_dag_candidate,
         )
+    except ModuleNotFoundError as exc:
+        if exc.name != "ipfs_datasets_py.voice.response_dag":
+            raise LocalResponseDAGQueueError(
+                "ipfs_datasets_py.voice.response_dag could not load"
+            ) from exc
+        from ._voice_response_dag_compat import (
+            ResponseDAGAppendCandidate,
+            append_response_dag_candidate,
+        )
     except ImportError as exc:
         raise LocalResponseDAGQueueError(
-            "ipfs_datasets_py.voice.response_dag is required to stage "
-            "validated cache misses"
+            "ipfs_datasets_py.voice.response_dag could not load"
         ) from exc
     return ResponseDAGAppendCandidate, append_response_dag_candidate
 

@@ -479,6 +479,95 @@ def test_open_child_counts_active_critical_graph_parent_as_covered_work():
     assert result["reopened_goal_ids"] == []
 
 
+def test_missing_work_reopen_can_be_disabled_without_completion_reconciliation():
+    completed_task = replace(
+        _goal_task(),
+        status="completed",
+    )
+
+    result = reconcile_objective_task_strategy(
+        goals=[
+            ObjectiveGoal(
+                "G1",
+                "Crypto finite objective",
+                {"status": "active", "priority": "P0"},
+            )
+        ],
+        tasks=[completed_task],
+        strategy={"objective_task_janitor_force_goal_ids": ["G1"]},
+        now="2026-07-22T00:00:00+00:00",
+        mission_terms=["crypto"],
+        reopen_missing_work_goals=False,
+    )
+
+    assert result["open_goal_ids"] == []
+    assert result["reopened_goal_ids"] == []
+    assert result["missing_work_reopen_enabled"] is False
+    assert result["strategy"]["objective_task_janitor_force_goal_ids"] == []
+    assert (
+        result["strategy"]["objective_task_janitor_missing_work_reopen_enabled"]
+        is False
+    )
+
+
+def test_supervisor_disables_missing_work_reopen_when_completion_reconciliation_is_off(
+    tmp_path,
+):
+    todo_path = tmp_path / "todo.md"
+    objective_path = tmp_path / "objective.md"
+    state_dir = tmp_path / "state"
+    state_dir.mkdir()
+    strategy_path = state_dir / "strategy.json"
+    objective_path.write_text(
+        """# Objective heap
+
+## G1 Crypto finite objective
+
+- Status: active
+- Priority: P0
+""",
+        encoding="utf-8",
+    )
+    todo_path.write_text(
+        """# Todo
+
+## AUTO-010 Implement finite objective
+
+- Status: completed
+- Completion: manual
+- Priority: P0
+- Track: core
+- Depends on:
+- Goal id: G1
+""",
+        encoding="utf-8",
+    )
+    strategy_path.write_text(
+        json.dumps({"objective_task_janitor_force_goal_ids": ["G1"]}) + "\n",
+        encoding="utf-8",
+    )
+    supervisor = PortalImplementationSupervisor(
+        PortalSupervisorConfig(
+            todo_path=todo_path,
+            state_path=state_dir / "task_state.json",
+            strategy_path=strategy_path,
+            events_path=state_dir / "events.jsonl",
+            state_dir=state_dir,
+            task_prefix="## AUTO-",
+            objective_path=objective_path,
+            objective_reconcile_goal_completion=False,
+            objective_task_janitor_mission_terms=("crypto",),
+        )
+    )
+
+    result = supervisor.reconcile_objective_task_janitor()
+
+    assert result["reopened_goal_ids"] == []
+    assert result["missing_work_reopen_enabled"] is False
+    strategy = json.loads(strategy_path.read_text(encoding="utf-8"))
+    assert strategy["objective_task_janitor_force_goal_ids"] == []
+
+
 def test_supplied_failed_completion_gate_cannot_be_hidden_by_verified_status():
     decision = _passing_completion_decision()
     decision["completion_gate"]["passed"] = False
