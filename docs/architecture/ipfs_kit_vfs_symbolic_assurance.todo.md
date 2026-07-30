@@ -2137,7 +2137,7 @@ compact references and bounded spans only.
 
 ## VFS-059 Close objective gap: Attest supported deterministic analysis traces with qualified zero-knowledge proofs
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
