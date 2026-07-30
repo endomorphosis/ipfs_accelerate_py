@@ -1222,7 +1222,7 @@ consumer or frontier is unresolved.
 
 ## RPR-038 Prove placement for new classes, methods, and data structures
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
