@@ -557,6 +557,65 @@ def test_failed_implementation_does_not_pin_pooled_worktree(tmp_path: Path) -> N
     assert list((worktree_root / ".pool-state").glob("*.lock")) == []
 
 
+def test_pooled_provider_deferral_releases_same_attempt_lifecycle(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "seed")
+    worktree_root = tmp_path / "pool"
+    daemon = PortalImplementationDaemon(
+        todo_path=tmp_path / "tasks.md",
+        state_path=tmp_path / "state.json",
+        strategy_path=tmp_path / "strategy.json",
+        events_path=tmp_path / "events.jsonl",
+        repo_root=repo,
+        implement=True,
+        implementation_command=(
+            "python -c \"print(\\\"ERROR: You've hit your usage limit.\\\"); "
+            "raise SystemExit(1)\""
+        ),
+        use_ephemeral_worktree=True,
+        worktree_root=worktree_root,
+    )
+    task = PortalTask(
+        task_id="INC-003",
+        title="Release deferred pooled implementation lifecycle",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="runtime",
+    )
+
+    first = daemon._run_implementation(task, PortalTaskState())
+
+    assert first["deferred"] is True
+    assert first["reason"] == "provider_capacity_exhausted"
+    assert first["attempt_consumed"] is False
+    assert first["cleanup_result"]["pool_release"]["released"] is True
+    assert first["cleanup_result"]["lifecycle_finalize"]["finalized"] is True
+    assert (
+        daemon.worktree_lifecycle.load_task_attempt(
+            canonical_task_cid=daemon._canonical_ref(task),
+            task_id=task.task_id,
+            attempt=1,
+        )
+        is None
+    )
+
+    daemon._active_provider_capacity_backoff = lambda: {}  # type: ignore[method-assign]
+    daemon.implementation_command = "python -c \"raise SystemExit(7)\""
+    second = daemon._run_implementation(
+        task,
+        PortalTaskState.load(daemon.state_path),
+    )
+
+    assert second["returncode"] == 7
+    assert second.get("reason") != "worktree_lifecycle_claim_exists"
+
+
 def test_missing_pooled_workspace_is_discarded_after_setup_race(
     tmp_path: Path,
     monkeypatch,

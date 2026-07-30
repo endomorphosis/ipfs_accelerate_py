@@ -11065,6 +11065,13 @@ class PortalImplementationDaemon:
                         "pooled": bool(pool_failure_release.get("pooled", False)),
                         "pool_release": pool_failure_release,
                     }
+                    if cleanup_result["cleaned"]:
+                        cleanup_result["lifecycle_finalize"] = (
+                            self._finalize_worktree_lifecycle(
+                                worktree_path,
+                                reason="failed_implementation_pool_lease_released",
+                            )
+                        )
         except subprocess.TimeoutExpired as timeout_exc:
             returncode = 124
             if protected_path_snapshot is not None:
