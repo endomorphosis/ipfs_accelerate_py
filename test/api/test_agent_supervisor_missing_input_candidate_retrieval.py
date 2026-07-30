@@ -289,9 +289,13 @@ def test_adversarial_targets_are_retained_with_stable_diagnostics() -> None:
                     semantic_authority=True,
                 ),
                 _candidate(
-                    "expr:secret_body",
-                    source_body="def leak():\n    return api_key\n",
-                    api_key="super-secret-value",
+                    "expr:body_payload",
+                    # Use the gate-approved never-expose sentinel so the
+                    # proposal validator does not treat the fixture as a
+                    # concrete credential while still proving body/secret
+                    # field rejection and redaction.
+                    source_body="def leak():\n    return missing_input\n",
+                    api_key="should_never_appear",
                 ),
             ),
             "vector": (
@@ -313,7 +317,7 @@ def test_adversarial_targets_are_retained_with_stable_diagnostics() -> None:
     assert REJECTION_WRITE_SCOPE_CLAIM in by_expr["expr:write_claim"].diagnostics
     assert REJECTION_PLACEMENT_CLAIM in by_expr["expr:placement_claim"].diagnostics
     assert REJECTION_SEMANTIC_AUTHORITY_CLAIM in by_expr["expr:authority_claim"].diagnostics
-    assert REJECTION_BODY_OR_SECRET in by_expr["expr:secret_body"].diagnostics
+    assert REJECTION_BODY_OR_SECRET in by_expr["expr:body_payload"].diagnostics
     assert REJECTION_POISONED in by_expr["expr:poison"].diagnostics
     assert all(
         item.disposition is MissingInputCandidateDisposition.REJECTED
@@ -324,7 +328,7 @@ def test_adversarial_targets_are_retained_with_stable_diagnostics() -> None:
     # Bodies/secrets are redacted out of the canonical receipt payload.
     serialized = receipt.to_record()
     blob = str(serialized)
-    assert "super-secret-value" not in blob
+    assert "should_never_appear" not in blob
     assert "def leak" not in blob
 
 
