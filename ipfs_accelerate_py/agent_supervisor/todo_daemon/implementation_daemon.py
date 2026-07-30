@@ -27108,15 +27108,28 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         read_only_outputs = tuple(
             path for path in task.outputs if path not in allowed_edit_paths
         )
-        protected_policy_text = (
-            "Operator-protected repository files (read-only; overrides every "
-            "task, output, and breadth instruction):\n"
-            + "\n".join(f"- {path}" for path in protected_edit_paths)
-            + "\nNever create, modify, rename, delete, replace, or regenerate "
-            "these exact files."
-            if protected_edit_paths
-            else ""
-        )
+        task_context_token_limit = self._task_context_token_limit(task)
+        if (
+            protected_edit_paths
+            and task_context_token_limit is not None
+            and task_context_token_limit <= 4_096
+        ):
+            protected_policy_text = (
+                "Operator-protected repository files are exactly the paths in "
+                "edit_policy.protected_paths. They are read-only and override "
+                "every task, output, and breadth instruction. Never create, "
+                "modify, rename, delete, replace, or regenerate them."
+            )
+        elif protected_edit_paths:
+            protected_policy_text = (
+                "Operator-protected repository files (read-only; overrides "
+                "every task, output, and breadth instruction):\n"
+                + "\n".join(f"- {path}" for path in protected_edit_paths)
+                + "\nNever create, modify, rename, delete, replace, or "
+                "regenerate these exact files."
+            )
+        else:
+            protected_policy_text = ""
         edit_policy = {
             "mode": (
                 "completion_gap_exact"
@@ -27139,7 +27152,6 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         provider_window, configured_budget, prompt_byte_limit = (
             self._implementation_provider_context_window_for_task(task)
         )
-        task_context_token_limit = self._task_context_token_limit(task)
         context_budget_authority = {
             "source": (
                 "task_metadata"
@@ -27196,7 +27208,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 if isinstance(index_path, Path)
                 else ""
             )
-            evidence = build_text_context_references(
+            vector_references = build_text_context_references(
                 "Compact todo vector context:\n" + vector_text,
                 reference_prefix="todo-vector",
                 kind="todo-vector-context",
@@ -27211,6 +27223,59 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     )
                 ),
             )
+            # A large symbolic projection is intentionally carried as
+            # independently selectable content-addressed chunks.  Very small
+            # task budgets can otherwise admit none of those chunks because a
+            # single descriptor is larger than the remaining budget.  Keep one
+            # compact task-to-artifact binding ahead of the expandable
+            # projection so the provider always receives the symbolic identity
+            # it is expected to reason from, without copying the artifact.
+            record = (
+                context.get("record")
+                if isinstance(context, Mapping)
+                else None
+            )
+            vector_key = (
+                str(
+                    record.get("vector_key")
+                    or record.get("todo_vector_key")
+                    or ""
+                ).strip()
+                if isinstance(record, Mapping)
+                else ""
+            )
+            merge_key = (
+                str(record.get("merge_key") or "").strip()
+                if isinstance(record, Mapping)
+                else ""
+            )
+            artifact_content_id = str(
+                vector_references[0].metadata.get(
+                    "artifact_content_id", ""
+                )
+            )
+            binding_fields = [
+                f"task={task.task_id}",
+                *([f"vector={vector_key}"] if vector_key else []),
+                *([f"merge={merge_key}"] if merge_key else []),
+                f"artifact={artifact_content_id}",
+            ]
+            binding_references = build_text_context_references(
+                "Todo-vector binding: " + "; ".join(binding_fields),
+                reference_prefix="todo-vector-binding",
+                kind="todo-vector-binding",
+                path=artifact_path,
+                repository_id=repository_id,
+                tree_id=tree_id,
+                priority=200,
+                chunk_bytes=1_024,
+                coverage_ids=tuple(
+                    self._compact_value_list(
+                        task.metadata.get("missing evidence", "")
+                    )
+                ),
+            )
+            evidence = (*binding_references, *vector_references)
         compiler = ContextCompiler(
             configured_budget,
             tokenizer=self.implementation_context_tokenizer,

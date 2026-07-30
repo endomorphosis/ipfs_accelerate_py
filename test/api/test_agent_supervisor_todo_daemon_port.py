@@ -15534,6 +15534,97 @@ def test_implementation_context_accepts_external_todo_vector_index(tmp_path):
     assert "Compact todo vector context:" in todo_vector_references[0].summary
 
 
+def test_low_context_task_keeps_content_addressed_todo_vector_binding(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text("# Todos\n", encoding="utf-8")
+    state_dir = repo / "state"
+    protected_paths = [
+        "implementation_plan/docs/44-swissknife-symbolic-contract-assurance-plan-2026-07-28.md",
+        "implementation_plan/docs/44-swissknife-symbolic-contract-assurance.objectives.md",
+        "implementation_plan/docs/44-swissknife-symbolic-contract-assurance.todo.md",
+        "config/swissknife_symbolic_contract_assurance_supervisor.json",
+        "config/swissknife_symbolic_contract_assurance_lane_inventory.json",
+        "config/swissknife_symbolic_contract_scope.json",
+    ]
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## SCA-",
+        implementation_protected_paths=protected_paths,
+    )
+    task = PortalTask(
+        task_id="SCA-640",
+        title="Resolve implementation retry-budget failure for SCA-608",
+        status="ready",
+        completion="manual",
+        priority="P0",
+        track="runtime",
+        depends_on=["SCA-220", "SCA-229", "SCA-615"],
+        outputs=[
+            "external/ipfs_accelerate/ipfs_accelerate_py/mcp_server/mcplusplus/idl_registry.py",
+            "external/ipfs_accelerate/test/mcp_server/test_mcplusplus_idl_identity_profile.py",
+            "data/agent_supervisor/swissknife_contract_assurance/parallel/lanes/lane-00/discovery",
+        ],
+        validation=[
+            "test -f data/agent_supervisor/swissknife_contract_assurance/"
+            "parallel/lanes/lane-00/discovery/retry-budget.md"
+        ],
+        acceptance=(
+            "Use persisted symbolic evidence to repair SCA-608 without "
+            "weakening production policy or its validation contract."
+        ),
+        metadata={"context budget tokens": "2048"},
+        canonical_task_cid="task:sca-640",
+    )
+    vector_context = {
+        "index_path": repo / "todo_vector_index.json",
+        "record": {
+            "vector_key": "e44b02152505d700",
+            "merge_key": "2df3a77c9695e2c6",
+        },
+    }
+    monkeypatch.setattr(
+        daemon,
+        "_render_todo_vector_context",
+        lambda _task: "symbolic contract evidence " * 10_000,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_load_todo_vector_context",
+        lambda _task: vector_context,
+    )
+
+    result = daemon._compile_implementation_context(task, attempt=1)
+
+    bindings = [
+        reference
+        for reference in result.capsule.evidence
+        if reference.kind == "todo-vector-binding"
+    ]
+    assert len(bindings) == 1
+    assert "task=SCA-640" in bindings[0].summary
+    assert "vector=e44b02152505d700" in bindings[0].summary
+    assert "merge=2df3a77c9695e2c6" in bindings[0].summary
+    full_projection = next(
+        reference
+        for reference in result.capsule.expansion_references
+        if reference.kind == "todo-vector-context"
+    )
+    assert (
+        f"artifact={full_projection.metadata['artifact_content_id']}"
+        in bindings[0].summary
+    )
+    assert result.capsule.input_tokens <= 2_048
+
+
 def test_implementation_prompt_can_disable_unavailable_subagents(monkeypatch, tmp_path):
     monkeypatch.setenv("IPFS_ACCELERATE_AGENT_DISABLE_SUBAGENTS", "1")
     task = PortalTask(
