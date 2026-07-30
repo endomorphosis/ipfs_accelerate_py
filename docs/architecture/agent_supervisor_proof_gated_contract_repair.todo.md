@@ -615,7 +615,7 @@ task IDs on this board.
 
 ## RPR-019 Measure proof-gated retrieval and repair safety
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
