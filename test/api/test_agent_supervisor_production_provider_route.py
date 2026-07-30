@@ -25,6 +25,9 @@ from ipfs_accelerate_py.model_catalog.identity import (
     model_identity,
     provider_identity,
 )
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
+    content_identity,
+)
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.contract_packet_provider_router import (
     PRODUCTION_PROVIDER_ROUTE_EVALUATION_SCHEMA,
     PRODUCTION_PROVIDER_ROUTE_INTERFACE,
@@ -1083,3 +1086,330 @@ def test_restart_refunds_only_evidenced_typed_malformed_provider_attempt_once(
         assert (
             first_state.typed_provider_malformed_refund_receipts == {}
         )
+
+
+def _persist_pre_policy_production_provider_failure(
+    daemon: TodoImplementationDaemon,
+    *,
+    log_returncode: Any = 1,
+    prior_malformed_marker: bool = False,
+    durable_attempt_count: int = 3,
+    failure_role: str = "grok",
+) -> tuple[PortalTask, Any, Any, Path]:
+    """Persist the exact failed-attempt shape observed before retry deferrals."""
+
+    daemon.implement = False
+    daemon.max_task_attempts = 3
+    daemon.todo_path.write_text(
+        f"""# Production provider route tasks
+
+## SCA-615 Production provider operational restart repair
+
+- Status: todo
+- Completion: manual
+- Priority: P0
+- Track: production-provider-routing
+- Depends on:
+- Outputs: {PATH}
+- Validation: python3 -m pytest test/api/test_agent_supervisor_production_provider_route.py -q
+- Acceptance: Retry an operational provider failure without consuming the task budget.
+- Provider role: grok-implement, codex-review
+""",
+        encoding="utf-8",
+    )
+    task = parse_task_file(daemon.todo_path, "## SCA-")[0]
+    identity = daemon._identity_for_task(task)
+    snapshot = f"git-commit:{_git_output(daemon.repo_root, 'rev-parse', 'HEAD')}"
+    packet = daemon.build_production_contract_packet_for_task(
+        task,
+        snapshot_id=snapshot,
+        attempt=3,
+    )
+
+    def failed_provider(_request):
+        raise RuntimeError("simulated production provider transport failure")
+
+    failed_provider.provider_identity = "mcp++:xai:grok-failed"
+    failed_provider.model_identity = "grok-failed"
+    failed_provider.last_session_identity = "session:grok-failed"
+    grok_provider = failed_provider
+    codex_provider = None
+    if failure_role == "codex":
+        failed_provider.provider_identity = "mcp++:openai:codex-failed"
+        failed_provider.model_identity = "codex-failed"
+        failed_provider.last_session_identity = "session:codex-failed"
+        grok_provider = _grok
+        codex_provider = failed_provider
+    route_result, _event, receipt_path = (
+        daemon.route_model_assisted_contract_packet(
+            packet,
+            current_snapshot_id=snapshot,
+            task=task,
+            attempt=3,
+            grok_provider=grok_provider,
+            codex_provider=codex_provider,
+            admission_gate=_accept,
+            apply=False,
+        )
+    )
+    assert route_result.reason_code == ProviderReason.PROVIDER_FAILURE.value
+    assert route_result.write_performed is False
+    assert route_result.provider_result_admitted is False
+    failed_attempt = route_result.attempts[-1]
+    expected_failed_role = (
+        ProviderRole.CODEX_REVIEW
+        if failure_role == "codex"
+        else ProviderRole.GROK_IMPLEMENT
+    )
+    assert failed_attempt.role is expected_failed_role
+    assert failed_attempt.status == "failed"
+    assert failed_attempt.prompt_bytes > 0
+    assert failed_attempt.response_bytes == 0
+    assert failed_attempt.response_digest == ""
+
+    log_path = daemon.implementation_log_dir / "sca-615-attempt-3.log"
+    log_path.write_text(
+        "Execution: production typed packet route "
+        f"({PRODUCTION_PROVIDER_ROUTE_INTERFACE})\n\n"
+        + json.dumps(
+            {
+                "provider_result_admitted": False,
+                "raw_model_command_invoked": False,
+                "returncode": log_returncode,
+                "typed_packet_route_only": True,
+                "write_performed": False,
+            },
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    malformed_markers = (
+        {
+            identity.canonical_task_cid: content_identity(
+                {
+                    "canonical_task_cid": identity.canonical_task_cid,
+                    "reason": ProviderReason.PROVIDER_RESPONSE_MALFORMED.value,
+                }
+            )
+        }
+        if prior_malformed_marker
+        else {}
+    )
+    state = PortalTaskState(
+        task_identities={task.task_id: identity.to_dict()},
+        implementation_attempts={task.task_id: durable_attempt_count},
+        implementation_attempts_by_cid={
+            identity.canonical_task_cid: durable_attempt_count
+        },
+        typed_provider_malformed_refund_receipts=malformed_markers,
+        last_implementation_task_id=task.task_id,
+        last_implementation_task_key=identity.canonical_task_key,
+        last_implementation_task_cid=identity.canonical_task_cid,
+        last_implementation_returncode=1,
+        last_implementation_log_path=str(log_path),
+        last_implementation_commit="",
+    )
+    state.save(daemon.state_path)
+    daemon.task_queue.register_task(
+        identity,
+        priority=task.priority,
+        track=task.track,
+    )
+    daemon.task_queue.record_failure(
+        identity.canonical_task_cid,
+        reason="pre-policy provider_failure",
+    )
+    daemon.task_queue.save()
+    assert daemon.task_queue.is_cooled_down(identity.canonical_task_cid)
+    return task, identity, route_result, receipt_path
+
+
+def _rewrite_provider_receipt_numeric_field(
+    receipt_path: Path,
+    *,
+    field_name: str,
+    value: Any,
+) -> None:
+    """Keep both content identities valid while corrupting one numeric field."""
+
+    integrated = json.loads(receipt_path.read_text(encoding="utf-8"))
+    integration = dict(integrated.pop("daemon_integration"))
+    integration.pop("integration_receipt_id", None)
+    integrated["attempts"][0][field_name] = value
+    receipt_body = {
+        key: item
+        for key, item in integrated.items()
+        if key != "receipt_id"
+    }
+    integrated["receipt_id"] = content_identity(receipt_body)
+    integration["provider_receipt_id"] = integrated["receipt_id"]
+    with_integration = dict(integrated)
+    with_integration["daemon_integration"] = integration
+    integration["integration_receipt_id"] = content_identity(
+        with_integration
+    )
+    integrated["daemon_integration"] = integration
+    receipt_path.write_text(
+        json.dumps(integrated, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+
+def test_restart_refunds_pre_policy_provider_failure_once_with_malformed_marker(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _daemon(tmp_path, monkeypatch)
+    task, identity, route_result, receipt_path = (
+        _persist_pre_policy_production_provider_failure(
+            daemon,
+            prior_malformed_marker=True,
+        )
+    )
+    original_state = PortalTaskState.load(daemon.state_path)
+    prior_malformed = dict(
+        original_state.typed_provider_malformed_refund_receipts
+    )
+
+    first = daemon.run_once()
+    first_state = PortalTaskState.load(daemon.state_path)
+    second = daemon.run_once()
+    second_state = PortalTaskState.load(daemon.state_path)
+
+    assert first["typed_provider_malformed_refunds"] == []
+    assert len(first["production_provider_operational_refunds"]) == 1
+    assert second.get("production_provider_operational_refunds", []) == []
+    refund = first["production_provider_operational_refunds"][0]
+    assert refund["task_id"] == task.task_id
+    assert refund["canonical_task_cid"] == identity.canonical_task_cid
+    assert refund["provider_reason"] == ProviderReason.PROVIDER_FAILURE.value
+    assert refund["attempt"] == 3
+    assert refund["previous_attempt_count"] == 3
+    assert refund["refunded_attempt_count"] == 2
+    assert refund["receipt_id"] == route_result.provider_receipt.receipt_id
+    assert refund["receipt_path"] == str(receipt_path)
+    assert refund["write_performed"] is False
+    assert refund["provider_result_admitted"] is False
+    assert first_state.implementation_attempts[task.task_id] == 2
+    assert second_state.implementation_attempts[task.task_id] == 2
+    assert first_state.implementation_attempts_by_cid[
+        identity.canonical_task_cid
+    ] == 2
+    assert (
+        first_state.production_provider_operational_refund_receipts
+        == {
+            identity.canonical_task_cid: (
+                route_result.provider_receipt.receipt_id
+            )
+        }
+    )
+    assert (
+        second_state.production_provider_operational_refund_receipts
+        == first_state.production_provider_operational_refund_receipts
+    )
+    assert first_state.typed_provider_malformed_refund_receipts == (
+        prior_malformed
+    )
+    assert second_state.typed_provider_malformed_refund_receipts == (
+        prior_malformed
+    )
+    queue_entry = daemon.task_queue.entries[
+        daemon.task_queue.resolve_key(identity.canonical_task_cid)
+    ]
+    assert queue_entry.consecutive_failures == 0
+    assert queue_entry.selection_penalty == 0
+    assert queue_entry.cooldown_until == 0.0
+    refund_events = [
+        item
+        for item in _events(daemon)
+        if item.get("type")
+        == "production_provider_operational_attempt_refunded"
+    ]
+    assert len(refund_events) == 1
+    assert refund_events[0]["receipt_id"] == (
+        route_result.provider_receipt.receipt_id
+    )
+
+
+def test_restart_preserves_current_nonconsuming_codex_failure_attempt_count(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A prospectively restored attempt-3 receipt cannot receive another refund."""
+
+    daemon = _daemon(tmp_path, monkeypatch)
+    task, identity, route_result, _receipt_path = (
+        _persist_pre_policy_production_provider_failure(
+            daemon,
+            durable_attempt_count=2,
+            failure_role="codex",
+        )
+    )
+    assert [attempt.role for attempt in route_result.attempts] == [
+        ProviderRole.GROK_IMPLEMENT,
+        ProviderRole.CODEX_REVIEW,
+    ]
+    assert route_result.attempts[0].status == "succeeded"
+    assert route_result.attempts[1].status == "failed"
+
+    result = daemon.run_once()
+    state = PortalTaskState.load(daemon.state_path)
+
+    assert result.get("typed_provider_malformed_refunds", []) == []
+    assert result.get("production_provider_operational_refunds", []) == []
+    assert state.implementation_attempts[task.task_id] == 2
+    assert state.implementation_attempts_by_cid[
+        identity.canonical_task_cid
+    ] == 2
+    assert state.production_provider_operational_refund_receipts == {}
+
+
+@pytest.mark.parametrize(
+    ("corrupt_location", "corrupt_value"),
+    [
+        ("log_returncode", "1"),
+        ("prompt_bytes", "1024"),
+        ("response_bytes", []),
+    ],
+)
+def test_restart_provider_failure_corrupt_numeric_evidence_declines_safely(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+    corrupt_location: str,
+    corrupt_value: Any,
+) -> None:
+    daemon = _daemon(tmp_path, monkeypatch)
+    task, identity, _route_result, receipt_path = (
+        _persist_pre_policy_production_provider_failure(
+            daemon,
+            log_returncode=(
+                corrupt_value
+                if corrupt_location == "log_returncode"
+                else 1
+            ),
+        )
+    )
+    if corrupt_location != "log_returncode":
+        _rewrite_provider_receipt_numeric_field(
+            receipt_path,
+            field_name=corrupt_location,
+            value=corrupt_value,
+        )
+
+    result = daemon.run_once()
+    state = PortalTaskState.load(daemon.state_path)
+
+    assert result["typed_provider_malformed_refunds"] == []
+    assert result["production_provider_operational_refunds"] == []
+    assert state.implementation_attempts[task.task_id] == 3
+    assert state.implementation_attempts_by_cid[
+        identity.canonical_task_cid
+    ] == 3
+    assert state.production_provider_operational_refund_receipts == {}
+    assert not [
+        item
+        for item in _events(daemon)
+        if item.get("type")
+        == "production_provider_operational_attempt_refunded"
+    ]
