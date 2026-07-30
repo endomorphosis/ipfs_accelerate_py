@@ -3877,7 +3877,7 @@ compact references and bounded spans only.
 
 ## VFS-086 Close objective gap: Prove vfs/symbolic-efficiency-benchmark@1 for Prove low-context symbolic-first operation and bounded resource use
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
