@@ -16248,6 +16248,70 @@ def test_too_small_task_llm_context_budget_defers_before_attempt_charge(
     assert TodoTaskState.load(daemon.state_path).implementation_attempts == {}
 
 
+def test_low_context_prompt_serializes_admission_appendix_once(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    protected_paths = [
+        "implementation_plan/docs/contract-assurance-plan.md",
+        "implementation_plan/docs/contract-assurance.objectives.md",
+        "implementation_plan/docs/contract-assurance.todo.md",
+        "config/contract_assurance_supervisor.json",
+        "config/contract_assurance_lane_inventory.json",
+        "config/contract_scope.json",
+    ]
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## SCA-",
+        implementation_protected_paths=protected_paths,
+    )
+    task = PortalTask(
+        task_id="SCA-235",
+        title="Repair Python failures and classify semantic-looking symlinks",
+        status="ready",
+        completion="manual",
+        priority="P0",
+        track="parser-failure-cluster-repair",
+        depends_on=["SCA-231", "SCA-229", "SCA-615"],
+        outputs=[
+            "swissknife/ipfs_accelerate_js/test/performance/webgpu_optimizer/run_benchmarks.py",
+            "swissknife/test/fixed_web_platform/cross_browser_model_sharding.py",
+            "swissknife/test/web_platform_test_output/test_hf_bert.py",
+            "external/ipfs_accelerate/ipfs_accelerate_py/agent_supervisor/analysis/repository_snapshot.py",
+            "external/ipfs_accelerate/test/api/test_agent_supervisor_repository_snapshot.py",
+            "data/agent_supervisor/contract-assurance/parser-failures/clusters/python.json",
+        ],
+        validation=[
+            "python3 scripts/parser_failure_backlog.py scan-cluster "
+            "--cluster PYTHON --receipt-out data/parser-failures/python.json"
+        ],
+        acceptance=(
+            "Classify symlinks before suffix routing, fix the real indentation "
+            "defects, and emit one compact deterministic repair receipt."
+        ),
+        metadata={
+            "context budget tokens": "2048",
+            "llm context budget bytes": "12288",
+        },
+        canonical_task_cid="task:sca-235",
+    )
+
+    prompt = daemon._build_implementation_prompt(task, attempt=1)
+    appendix = daemon._implementation_prompt_policy_appendix(task)
+    prompt_record = json.loads(prompt)
+    authority = prompt_record["authority"]
+
+    assert authority["implementation_prompt_policy_appendix"] == appendix.strip()
+    assert not any(
+        "Admission policy" in rule
+        for rule in authority["generic_prompt_policy"]
+    )
+    assert len(prompt.encode("utf-8")) <= 2_048 * 4
+
+
 def test_implementation_daemon_uses_grok_window_and_bounded_reserve_env(
     tmp_path,
     monkeypatch,

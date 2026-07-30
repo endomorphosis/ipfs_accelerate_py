@@ -26963,11 +26963,11 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 f"same path is available as ${IMPLEMENTATION_CHECKPOINT_DIR_ENV}."
             ),
         )
-        admission_policy = str(
+        prompt_policy_appendix = str(
             self._implementation_prompt_policy_appendix(task) or ""
         ).strip()
-        if admission_policy:
-            rules = (*rules, admission_policy)
+        # The appendix has its own authority field below. Repeating it in the
+        # generic rules can make otherwise bounded low-context tasks impossible.
         if completion_scope is None:
             rules = (
                 *rules,
@@ -27078,9 +27078,6 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 configured_budget.reserved_tool_tokens
             ),
         }
-        prompt_policy_appendix = str(
-            self._implementation_prompt_policy_appendix(task) or ""
-        ).strip()
         policy_revision = "sha256:" + hashlib.sha256(
             json.dumps(
                 {

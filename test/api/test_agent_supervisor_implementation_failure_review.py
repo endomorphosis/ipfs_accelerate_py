@@ -368,6 +368,7 @@ def test_directory_output_still_missing_without_descendant_changes() -> None:
 
 def test_implementation_prompt_policy_appendix_includes_admission_budgets() -> None:
     from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+        DEFAULT_IMPLEMENTATION_PROPOSAL_FILE_BYTES,
         PortalImplementationDaemon,
         PortalTask,
     )
@@ -396,7 +397,7 @@ def test_implementation_prompt_policy_appendix_includes_admission_budgets() -> N
     assert "directory trees" in appendix
     assert "2000000" in appendix
     assert "2500000" in appendix
-    assert "1000000" in appendix
+    assert str(DEFAULT_IMPLEMENTATION_PROPOSAL_FILE_BYTES) in appendix
     assert "tests/fixtures/logic/admissibility" in appendix
     assert "compact recipes" in appendix
 
