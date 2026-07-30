@@ -9,8 +9,10 @@ from hashlib import sha256
 import pytest
 
 from ipfs_accelerate_py.voice_response_dag_sink import (
+    IndependentVoiceValidationReceipt,
     LocalResponseDAGQueue,
     LocalResponseDAGQueueError,
+    LocalValidatedVoiceCacheMissArtifacts,
 )
 from ipfs_accelerate_py.voice_router import (
     GroundedSlot,
@@ -89,28 +91,57 @@ def _miss_result(*, surface: str = "website") -> VoiceTurnResult:
     )
 
 
-def _audio_descriptor() -> dict[str, object]:
+def _audio_descriptor(
+    *,
+    audio: bytes = AUDIO,
+    media_type: str = "audio/wav",
+) -> dict[str, object]:
     return {
-        "uri": (
-            "hf://datasets/Publicus/211-abby-tts/"
-            "response_dag/audio/response-phone.wav"
-        )
+        "byte_length": len(audio),
+        "content_sha256": sha256(audio).hexdigest(),
+        "media_type": media_type,
+        "uri": "ipfs://bafy-validated-response-phone-audio",
     }
+
+
+def _validation_receipt(
+    result: VoiceTurnResult,
+    *,
+    receipt_id: str = "whisper-pass-001",
+    passed: bool = True,
+    rendered_text_sha256: str | None = None,
+    output_audio_sha256: str | None = None,
+) -> IndependentVoiceValidationReceipt:
+    return IndependentVoiceValidationReceipt(
+        validation_receipt_id=receipt_id,
+        rendered_text_sha256=(
+            rendered_text_sha256
+            or sha256(result.response_text.encode("utf-8")).hexdigest()
+        ),
+        output_audio_sha256=(
+            output_audio_sha256 or sha256(result.audio or b"").hexdigest()
+        ),
+        validator_identity="openai-whisper-base-pinned-revision",
+        validation_method="asr_round_trip",
+        passed=passed,
+    )
 
 
 def test_website_miss_is_durable_idempotent_and_private(tmp_path) -> None:
     queue = LocalResponseDAGQueue(tmp_path / "response-dag-queue")
     result = _miss_result()
+    validation_receipt = _validation_receipt(result)
+    assert result.is_live_tts_cache_miss is True
 
     first = result.enqueue_validated_cache_miss_candidate(
         sink=queue,
-        validation_receipt_id="whisper-pass-001",
+        validation_receipt=validation_receipt,
         audio_descriptor=_audio_descriptor(),
         response_id="response-phone",
     )
     second = result.enqueue_validated_cache_miss_candidate(
         sink=queue,
-        validation_receipt_id="whisper-pass-001",
+        validation_receipt=validation_receipt,
         audio_descriptor=_audio_descriptor(),
         response_id="response-phone",
     )
@@ -128,6 +159,12 @@ def test_website_miss_is_durable_idempotent_and_private(tmp_path) -> None:
     assert len(loaded.template_rows) == 1
     assert len(loaded.vocabulary_rows) == 1
     assert loaded.metadata["surface"] == "website"
+    assert (
+        loaded.metadata["validation_receipt_sha256"]
+        == validation_receipt.receipt_sha256
+    )
+    assert loaded.metadata["validation_receipt"] == validation_receipt.to_dict()
+    assert loaded.metadata["validation_method"] == "asr_round_trip"
     assert loaded.vocabulary_rows[0]["source_cids"] == ["bafy-service-phone"]
 
     queue_file = queue.root / first.receipt.relative_path
@@ -143,12 +180,16 @@ def test_telephone_miss_infers_surface_without_call_or_session_state(tmp_path) -
     result = _miss_result(surface="telephone")
     queued = result.enqueue_validated_cache_miss_candidate(
         sink=LocalResponseDAGQueue(tmp_path / "queue"),
-        validation_receipt_id="whisper-pass-telephone-001",
+        validation_receipt=_validation_receipt(
+            result,
+            receipt_id="whisper-pass-telephone-001",
+        ),
         audio_descriptor=_audio_descriptor(),
     )
 
     assert queued is not None
-    assert queued.candidate.metadata == {"surface": "telephone"}
+    assert queued.candidate.metadata["surface"] == "telephone"
+    assert queued.candidate.metadata["validation_method"] == "asr_round_trip"
     serialized = json.dumps(queued.candidate.to_dict(), sort_keys=True)
     assert "call_id" not in serialized
     assert "session_id" not in serialized
@@ -172,15 +213,154 @@ def test_cache_hit_does_not_create_a_queue_record(tmp_path) -> None:
         fallback_reasons=(),
     )
     queue = LocalResponseDAGQueue(tmp_path / "queue")
+    assert hit.is_live_tts_cache_miss is False
 
     assert (
         hit.enqueue_validated_cache_miss_candidate(
             sink=queue,
-            validation_receipt_id="whisper-pass-hit",
+            validation_receipt=_validation_receipt(
+                hit,
+                receipt_id="whisper-pass-hit",
+            ),
             audio_descriptor=_audio_descriptor(),
         )
         is None
     )
+    assert len(queue) == 0
+
+
+def test_post_synthesis_artifacts_are_local_only_and_json_safe() -> None:
+    result = _miss_result()
+    artifacts = LocalValidatedVoiceCacheMissArtifacts(
+        validation_receipt=_validation_receipt(result),
+        audio_descriptor=_audio_descriptor(),
+        response_id="response-phone",
+    )
+
+    assert artifacts.remote_writes is False
+    assert artifacts.to_dict()["audio_descriptor"] == _audio_descriptor()
+    with pytest.raises(LocalResponseDAGQueueError, match="local-only"):
+        LocalValidatedVoiceCacheMissArtifacts(
+            validation_receipt=_validation_receipt(result),
+            audio_descriptor=_audio_descriptor(),
+            remote_writes=True,
+        )
+    with pytest.raises(
+        LocalResponseDAGQueueError,
+        match="private turn input|raw bytes",
+    ):
+        LocalValidatedVoiceCacheMissArtifacts.from_value(
+            {
+                "audio_descriptor": {
+                    **_audio_descriptor(),
+                    "caller_audio": b"private",
+                },
+                "validation_receipt": _validation_receipt(result).to_dict(),
+            }
+        )
+
+
+def test_miss_requires_content_bound_independent_receipt_and_stable_descriptor(
+    tmp_path,
+) -> None:
+    result = _miss_result()
+    queue = LocalResponseDAGQueue(tmp_path / "queue")
+    valid_receipt = _validation_receipt(result)
+
+    with pytest.raises(
+        LocalResponseDAGQueueError,
+        match="independent validation_receipt",
+    ):
+        result.enqueue_validated_cache_miss_candidate(
+            sink=queue,
+            validation_receipt=None,
+            audio_descriptor=_audio_descriptor(),
+        )
+    with pytest.raises(LocalResponseDAGQueueError, match="explicitly passed"):
+        result.enqueue_validated_cache_miss_candidate(
+            sink=queue,
+            validation_receipt={
+                **valid_receipt.to_dict(),
+                "passed": False,
+                "receipt_sha256": "",
+            },
+            audio_descriptor=_audio_descriptor(),
+        )
+    with pytest.raises(LocalResponseDAGQueueError, match="rendered text"):
+        result.enqueue_validated_cache_miss_candidate(
+            sink=queue,
+            validation_receipt=_validation_receipt(
+                result,
+                rendered_text_sha256=sha256(b"different response").hexdigest(),
+            ),
+            audio_descriptor=_audio_descriptor(),
+        )
+    with pytest.raises(LocalResponseDAGQueueError, match="content_sha256"):
+        result.enqueue_validated_cache_miss_candidate(
+            sink=queue,
+            validation_receipt=valid_receipt,
+            audio_descriptor={
+                "byte_length": len(AUDIO),
+                "media_type": "audio/wav",
+                "uri": "ipfs://bafy-output-audio",
+            },
+        )
+    with pytest.raises(LocalResponseDAGQueueError, match="immutable commit SHA"):
+        result.enqueue_validated_cache_miss_candidate(
+            sink=queue,
+            validation_receipt=valid_receipt,
+            audio_descriptor={
+                **_audio_descriptor(),
+                "uri": (
+                    "hf://datasets/Publicus/211-abby-tts@main/"
+                    "response_dag/audio/response-phone.wav"
+                ),
+            },
+        )
+    wrong_file = tmp_path / "wrong.wav"
+    wrong_file.write_bytes(b"different output audio")
+    with pytest.raises(LocalResponseDAGQueueError, match="returned audio"):
+        result.enqueue_validated_cache_miss_candidate(
+            sink=queue,
+            validation_receipt=valid_receipt,
+            audio_descriptor={
+                **_audio_descriptor(),
+                "uri": wrong_file.resolve().as_uri(),
+            },
+        )
+
+    assert len(queue) == 0
+
+
+def test_validation_receipt_and_descriptor_reject_private_or_secret_content(
+    tmp_path,
+) -> None:
+    result = _miss_result()
+    queue = LocalResponseDAGQueue(tmp_path / "queue")
+    receipt = _validation_receipt(result).to_dict()
+
+    with pytest.raises(LocalResponseDAGQueueError, match="private turn input"):
+        result.enqueue_validated_cache_miss_candidate(
+            sink=queue,
+            validation_receipt={
+                **receipt,
+                "caller_transcript": "private caller words",
+            },
+            audio_descriptor=_audio_descriptor(),
+        )
+    with pytest.raises(LocalResponseDAGQueueError, match="credentials"):
+        result.enqueue_validated_cache_miss_candidate(
+            sink=queue,
+            validation_receipt=receipt,
+            audio_descriptor={
+                **_audio_descriptor(),
+                "uri": (
+                    "https://voice.example/audio.wav?"
+                    "authorization=Bearer%20private-secret"
+                ),
+            },
+        )
+
     assert len(queue) == 0
 
 
@@ -201,7 +381,10 @@ def test_private_or_credential_metadata_fails_before_append(
     with pytest.raises(LocalResponseDAGQueueError):
         _miss_result().enqueue_validated_cache_miss_candidate(
             sink=queue,
-            validation_receipt_id="whisper-pass-private-test",
+            validation_receipt=_validation_receipt(
+                _miss_result(),
+                receipt_id="whisper-pass-private-test",
+            ),
             audio_descriptor=_audio_descriptor(),
             metadata=metadata,
         )
@@ -214,7 +397,10 @@ def test_conflicting_existing_candidate_is_never_overwritten(tmp_path) -> None:
     result = _miss_result()
     queued = result.enqueue_validated_cache_miss_candidate(
         sink=queue,
-        validation_receipt_id="whisper-pass-conflict",
+        validation_receipt=_validation_receipt(
+            result,
+            receipt_id="whisper-pass-conflict",
+        ),
         audio_descriptor=_audio_descriptor(),
     )
     assert queued is not None
@@ -225,7 +411,10 @@ def test_conflicting_existing_candidate_is_never_overwritten(tmp_path) -> None:
     with pytest.raises(LocalResponseDAGQueueError, match="conflicting bytes"):
         result.enqueue_validated_cache_miss_candidate(
             sink=queue,
-            validation_receipt_id="whisper-pass-conflict",
+            validation_receipt=_validation_receipt(
+                result,
+                receipt_id="whisper-pass-conflict",
+            ),
             audio_descriptor=_audio_descriptor(),
         )
 
@@ -239,7 +428,10 @@ def test_concurrent_duplicate_appends_publish_one_immutable_record(tmp_path) -> 
     def append_once(_index: int):
         queued = result.enqueue_validated_cache_miss_candidate(
             sink=queue,
-            validation_receipt_id="whisper-pass-concurrent",
+            validation_receipt=_validation_receipt(
+                result,
+                receipt_id="whisper-pass-concurrent",
+            ),
             audio_descriptor=_audio_descriptor(),
         )
         assert queued is not None

@@ -17,8 +17,12 @@ from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
 from typing import Any
+from urllib.parse import parse_qsl, unquote, urlsplit
 
 LOCAL_RESPONSE_DAG_QUEUE_SCHEMA_VERSION = "abby_voice_response_dag_local_queue_v1"
+INDEPENDENT_VOICE_VALIDATION_RECEIPT_SCHEMA_VERSION = (
+    "abby_voice_independent_validation_receipt_v1"
+)
 
 _PRIVATE_QUEUE_KEYS = frozenset(
     {
@@ -39,18 +43,25 @@ _PRIVATE_QUEUE_KEYS = frozenset(
     }
 )
 _SECRET_KEY_MARKERS = (
+    "access_key",
+    "api_key",
     "authorization",
+    "bearer",
+    "cookie",
     "credential",
     "password",
+    "private_key",
     "secret",
     "signature",
     "token",
 )
 _SECRET_VALUE_PATTERNS = (
     re.compile(r"\bhf_[A-Za-z0-9]{20,}\b"),
+    re.compile(r"(?i)\bBearer\s+[A-Za-z0-9._~+/=-]{8,}"),
     re.compile(r"-----BEGIN (?:[A-Z ]+ )?PRIVATE KEY-----"),
 )
-_SAFE_RECEIPT_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/+-]{0,255}$")
+_SAFE_RECEIPT_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/+@-]{0,255}$")
+_SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _SURFACE_ALIASES = {
     "web": "website",
     "website": "website",
@@ -196,6 +207,195 @@ def _validated_candidate(value: Any) -> Any:
         )
     _assert_privacy_safe(payload)
     return candidate
+
+
+@dataclass(frozen=True, slots=True)
+class IndependentVoiceValidationReceipt:
+    """Content-bound proof that a separate validator accepted live TTS.
+
+    The compact receipt intentionally excludes the validator transcript and
+    raw audio.  It binds the independent decision to the rendered text and
+    exact output bytes that will be represented by the response-DAG candidate.
+    """
+
+    validation_receipt_id: str
+    rendered_text_sha256: str
+    output_audio_sha256: str
+    validator_identity: str
+    validation_method: str = "asr_round_trip"
+    passed: bool = True
+    schema_version: str = INDEPENDENT_VOICE_VALIDATION_RECEIPT_SCHEMA_VERSION
+    receipt_sha256: str = ""
+
+    def __post_init__(self) -> None:
+        receipt_id = str(self.validation_receipt_id or "").strip()
+        if not _SAFE_RECEIPT_ID_RE.fullmatch(receipt_id):
+            raise LocalResponseDAGQueueError(
+                "validation_receipt_id must be an opaque, non-private identifier"
+            )
+        rendered_digest = str(self.rendered_text_sha256 or "").strip().casefold()
+        audio_digest = str(self.output_audio_sha256 or "").strip().casefold()
+        if not _SHA256_RE.fullmatch(rendered_digest):
+            raise LocalResponseDAGQueueError(
+                "validation receipt rendered_text_sha256 must be a full "
+                "lowercase SHA-256"
+            )
+        if not _SHA256_RE.fullmatch(audio_digest):
+            raise LocalResponseDAGQueueError(
+                "validation receipt output_audio_sha256 must be a full "
+                "lowercase SHA-256"
+            )
+        validator = str(self.validator_identity or "").strip()
+        method = str(self.validation_method or "").strip().casefold()
+        if not validator:
+            raise LocalResponseDAGQueueError(
+                "independent validation requires validator_identity"
+            )
+        if not _SAFE_RECEIPT_ID_RE.fullmatch(validator):
+            raise LocalResponseDAGQueueError(
+                "validator_identity must be an opaque, non-private identifier"
+            )
+        if not method or not re.fullmatch(r"[a-z][a-z0-9._+-]{0,63}", method):
+            raise LocalResponseDAGQueueError(
+                "validation_method must be a stable machine identifier"
+            )
+        if self.passed is not True:
+            raise LocalResponseDAGQueueError(
+                "response-DAG staging requires an explicitly passed "
+                "independent validation receipt"
+            )
+        if self.schema_version != INDEPENDENT_VOICE_VALIDATION_RECEIPT_SCHEMA_VERSION:
+            raise LocalResponseDAGQueueError(
+                f"unsupported independent validation receipt schema: "
+                f"{self.schema_version}"
+            )
+        object.__setattr__(self, "validation_receipt_id", receipt_id)
+        object.__setattr__(self, "rendered_text_sha256", rendered_digest)
+        object.__setattr__(self, "output_audio_sha256", audio_digest)
+        object.__setattr__(self, "validator_identity", validator)
+        object.__setattr__(self, "validation_method", method)
+        computed = sha256(_canonical_bytes(self.identity_dict())).hexdigest()
+        supplied = str(self.receipt_sha256 or "").strip().casefold()
+        if supplied and supplied != computed:
+            raise LocalResponseDAGQueueError(
+                "receipt_sha256 does not match independent validation content"
+            )
+        object.__setattr__(self, "receipt_sha256", computed)
+
+    def identity_dict(self) -> dict[str, Any]:
+        return {
+            "output_audio_sha256": self.output_audio_sha256,
+            "passed": self.passed,
+            "rendered_text_sha256": self.rendered_text_sha256,
+            "schema_version": self.schema_version,
+            "validation_method": self.validation_method,
+            "validation_receipt_id": self.validation_receipt_id,
+            "validator_identity": self.validator_identity,
+        }
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            **self.identity_dict(),
+            "receipt_sha256": self.receipt_sha256,
+        }
+
+    @classmethod
+    def from_value(cls, value: Any) -> IndependentVoiceValidationReceipt:
+        if isinstance(value, cls):
+            return value
+        to_dict = getattr(value, "to_dict", None)
+        raw = to_dict() if callable(to_dict) else value
+        if not isinstance(raw, Mapping):
+            raise LocalResponseDAGQueueError(
+                "validation_receipt must be an "
+                "IndependentVoiceValidationReceipt or mapping"
+            )
+        _assert_privacy_safe(raw, path="validation_receipt")
+        try:
+            return cls(
+                validation_receipt_id=raw.get("validation_receipt_id", ""),
+                rendered_text_sha256=raw.get("rendered_text_sha256", ""),
+                output_audio_sha256=raw.get("output_audio_sha256", ""),
+                validator_identity=raw.get("validator_identity", ""),
+                validation_method=raw.get(
+                    "validation_method", "asr_round_trip"
+                ),
+                passed=raw.get("passed", False),
+                schema_version=raw.get(
+                    "schema_version",
+                    INDEPENDENT_VOICE_VALIDATION_RECEIPT_SCHEMA_VERSION,
+                ),
+                receipt_sha256=raw.get("receipt_sha256", ""),
+            )
+        except LocalResponseDAGQueueError:
+            raise
+        except Exception as exc:
+            raise LocalResponseDAGQueueError(
+                f"invalid independent validation receipt: {exc}"
+            ) from exc
+
+
+@dataclass(frozen=True, slots=True)
+class LocalValidatedVoiceCacheMissArtifacts:
+    """Post-synthesis, locally persisted inputs for durable DAG staging."""
+
+    validation_receipt: IndependentVoiceValidationReceipt | Mapping[str, Any]
+    audio_descriptor: Mapping[str, Any]
+    response_id: str = ""
+    remote_writes: bool = False
+
+    def __post_init__(self) -> None:
+        receipt = IndependentVoiceValidationReceipt.from_value(
+            self.validation_receipt
+        )
+        if not isinstance(self.audio_descriptor, Mapping):
+            raise LocalResponseDAGQueueError(
+                "local cache-miss audio_descriptor must be a mapping"
+            )
+        descriptor = _thaw_json(self.audio_descriptor)
+        _assert_privacy_safe(descriptor, path="audio_descriptor")
+        response_id = str(self.response_id or "").strip()
+        if response_id and not _SAFE_RECEIPT_ID_RE.fullmatch(response_id):
+            raise LocalResponseDAGQueueError(
+                "response_id must be an opaque, non-private identifier"
+            )
+        if self.remote_writes is not False:
+            raise LocalResponseDAGQueueError(
+                "post-synthesis cache-miss artifacts must be local-only"
+            )
+        object.__setattr__(self, "validation_receipt", receipt)
+        object.__setattr__(self, "audio_descriptor", descriptor)
+        object.__setattr__(self, "response_id", response_id)
+
+    @classmethod
+    def from_value(cls, value: Any) -> LocalValidatedVoiceCacheMissArtifacts:
+        if isinstance(value, cls):
+            return value
+        to_dict = getattr(value, "to_dict", None)
+        raw = to_dict() if callable(to_dict) else value
+        if not isinstance(raw, Mapping):
+            raise LocalResponseDAGQueueError(
+                "post-synthesis validator must return "
+                "LocalValidatedVoiceCacheMissArtifacts, a mapping, or None"
+            )
+        _assert_privacy_safe(raw, path="post_synthesis_validation")
+        return cls(
+            validation_receipt=raw.get("validation_receipt") or {},
+            audio_descriptor=raw.get("audio_descriptor") or {},
+            response_id=raw.get("response_id", ""),
+            remote_writes=raw.get("remote_writes", False),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        receipt = IndependentVoiceValidationReceipt.from_value(
+            self.validation_receipt
+        )
+        return {
+            "audio_descriptor": _thaw_json(self.audio_descriptor),
+            "remote_writes": self.remote_writes,
+            "response_id": self.response_id,
+            "validation_receipt": receipt.to_dict(),
+        }
 
 
 def _candidate_envelope(candidate: Any) -> tuple[dict[str, Any], bytes]:
@@ -500,11 +700,158 @@ def _surface_metadata(result: Any, surface: str) -> dict[str, str]:
         ) from exc
 
 
+def _stable_audio_descriptor(
+    result: Any,
+    value: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Validate a caller-persisted descriptor against the returned audio."""
+
+    descriptor = dict(value)
+    _assert_privacy_safe(descriptor, path="audio_descriptor")
+    audio = getattr(result, "audio", None)
+    if not isinstance(audio, bytes) or not audio:
+        raise LocalResponseDAGQueueError(
+            "validated cache miss must contain non-empty output audio"
+        )
+    actual_audio_sha = sha256(audio).hexdigest()
+    supplied_audio_sha = str(
+        descriptor.get("content_sha256") or ""
+    ).strip().casefold()
+    if not _SHA256_RE.fullmatch(supplied_audio_sha):
+        raise LocalResponseDAGQueueError(
+            "stable audio_descriptor.content_sha256 must be an explicit "
+            "full lowercase SHA-256"
+        )
+    if supplied_audio_sha != actual_audio_sha:
+        raise LocalResponseDAGQueueError(
+            "audio_descriptor.content_sha256 does not match returned audio"
+        )
+    supplied_byte_length = descriptor.get("byte_length")
+    if (
+        isinstance(supplied_byte_length, bool)
+        or not isinstance(supplied_byte_length, int)
+        or supplied_byte_length <= 0
+    ):
+        raise LocalResponseDAGQueueError(
+            "stable audio_descriptor.byte_length must be an explicit "
+            "positive integer"
+        )
+    if supplied_byte_length != len(audio):
+        raise LocalResponseDAGQueueError(
+            "audio_descriptor.byte_length does not match returned audio"
+        )
+    supplied_media_type = str(
+        descriptor.get("media_type")
+        or descriptor.get("mime_type")
+        or ""
+    ).strip().casefold()
+    if not supplied_media_type.startswith("audio/"):
+        raise LocalResponseDAGQueueError(
+            "stable audio_descriptor.media_type must be explicit audio/*"
+        )
+    audio_format = str(getattr(result, "audio_format", "") or "").casefold()
+    expected_media_type = (
+        _AUDIO_MEDIA_TYPES.get(audio_format, f"audio/{audio_format}")
+        if audio_format
+        else ""
+    )
+    if expected_media_type and supplied_media_type != expected_media_type:
+        raise LocalResponseDAGQueueError(
+            "audio_descriptor.media_type does not match returned audio format"
+        )
+    if not str(descriptor.get("uri") or "").strip() and not str(
+        descriptor.get("ipfs_cid") or ""
+    ).strip():
+        raise LocalResponseDAGQueueError(
+            "stable audio descriptor requires an external uri or ipfs_cid"
+        )
+    uri = str(descriptor.get("uri") or "").strip()
+    if uri:
+        parsed_uri = urlsplit(uri)
+        scheme = parsed_uri.scheme.casefold()
+        if not scheme:
+            raise LocalResponseDAGQueueError(
+                "audio_descriptor.uri must be an absolute URI"
+            )
+        if parsed_uri.username is not None or parsed_uri.password is not None:
+            raise LocalResponseDAGQueueError(
+                "audio_descriptor.uri must not contain credentials"
+            )
+        for encoded_fields in (parsed_uri.query, parsed_uri.fragment):
+            for query_key, _query_value in parse_qsl(
+                encoded_fields,
+                keep_blank_values=True,
+            ):
+                normalized_key = query_key.casefold().replace("-", "_")
+                if any(
+                    marker in normalized_key
+                    for marker in _SECRET_KEY_MARKERS
+                ):
+                    raise LocalResponseDAGQueueError(
+                        "audio_descriptor.uri must not contain credentials"
+                    )
+        if scheme == "file":
+            if parsed_uri.netloc not in {"", "localhost"}:
+                raise LocalResponseDAGQueueError(
+                    "file audio_descriptor.uri must identify a local file"
+                )
+            local_path = Path(unquote(parsed_uri.path))
+            if local_path.is_symlink() or not local_path.is_file():
+                raise LocalResponseDAGQueueError(
+                    "file audio_descriptor.uri must identify an existing "
+                    "regular file"
+                )
+            persisted_digest = sha256()
+            persisted_size = 0
+            try:
+                with local_path.open("rb") as persisted_audio:
+                    for chunk in iter(
+                        lambda: persisted_audio.read(1024 * 1024),
+                        b"",
+                    ):
+                        persisted_digest.update(chunk)
+                        persisted_size += len(chunk)
+            except OSError as exc:
+                raise LocalResponseDAGQueueError(
+                    "file audio_descriptor.uri could not be read"
+                ) from exc
+            if (
+                persisted_digest.hexdigest() != actual_audio_sha
+                or persisted_size != len(audio)
+            ):
+                raise LocalResponseDAGQueueError(
+                    "file audio_descriptor.uri does not contain returned audio"
+                )
+        elif scheme == "hf":
+            if not re.search(r"@[0-9a-f]{40}(?:/|$)", uri):
+                raise LocalResponseDAGQueueError(
+                    "hf audio_descriptor.uri must use an immutable commit SHA"
+                )
+        elif (
+            scheme in {"http", "https"}
+            and (parsed_uri.hostname or "").casefold()
+            in {"hf.co", "huggingface.co", "www.huggingface.co"}
+            and not re.search(
+                r"/resolve/[0-9a-f]{40}(?:/|$)",
+                parsed_uri.path,
+            )
+        ):
+            raise LocalResponseDAGQueueError(
+                "Hugging Face audio_descriptor.uri must use an immutable "
+                "commit SHA"
+            )
+    descriptor["content_sha256"] = supplied_audio_sha
+    descriptor["byte_length"] = supplied_byte_length
+    descriptor["media_type"] = supplied_media_type
+    descriptor.pop("mime_type", None)
+    return descriptor
+
+
 def enqueue_validated_cache_miss_candidate(
     result: Any,
     *,
     sink: LocalResponseDAGQueue,
-    validation_receipt_id: str,
+    validation_receipt: IndependentVoiceValidationReceipt | Mapping[str, Any] | None,
     audio_descriptor: Mapping[str, Any],
     response_id: str = "",
     template_text: str = "",
@@ -514,51 +861,60 @@ def enqueue_validated_cache_miss_candidate(
 ) -> QueuedVoiceCacheMissCandidate | None:
     """Convert one validated live-TTS miss into one durable local DAG append.
 
-    Cache hits return ``None``.  The caller must supply the independent audio
-    validation receipt and a stable external audio descriptor; this function
-    never uploads audio or contacts the descriptor URI.
+    Cache hits return ``None``. The caller must supply a content-bound,
+    independent audio-validation receipt and a stable external audio
+    descriptor. This function never uploads audio or contacts the descriptor
+    URI.
     """
 
     if not isinstance(sink, LocalResponseDAGQueue):
         raise TypeError("sink must be a LocalResponseDAGQueue")
     if not isinstance(audio_descriptor, Mapping):
         raise TypeError("audio_descriptor must be a mapping")
+    if validation_receipt is None:
+        raise LocalResponseDAGQueueError(
+            "an explicit independent validation_receipt is required"
+        )
+    receipt = IndependentVoiceValidationReceipt.from_value(validation_receipt)
     event_builder = getattr(result, "validated_cache_miss_event", None)
     if not callable(event_builder):
         raise TypeError("result must be a VoiceTurnResult-compatible object")
     event = event_builder(
-        validation_receipt_id=validation_receipt_id,
+        validation_receipt_id=receipt.validation_receipt_id,
         response_id=response_id,
     )
     if event is None:
         return None
 
-    descriptor = dict(audio_descriptor)
     audio = getattr(result, "audio", None)
     if not isinstance(audio, bytes) or not audio:
         raise LocalResponseDAGQueueError(
             "validated cache miss must contain non-empty output audio"
         )
     actual_audio_sha = sha256(audio).hexdigest()
-    supplied_audio_sha = str(descriptor.get("content_sha256") or "")
-    if supplied_audio_sha and supplied_audio_sha != actual_audio_sha:
+    actual_rendered_sha = sha256(
+        str(getattr(result, "response_text", "") or "").encode("utf-8")
+    ).hexdigest()
+    if receipt.output_audio_sha256 != actual_audio_sha:
         raise LocalResponseDAGQueueError(
-            "audio_descriptor.content_sha256 does not match returned audio"
+            "independent validation receipt does not match returned audio"
         )
-    supplied_byte_length = descriptor.get("byte_length")
-    if supplied_byte_length is not None and supplied_byte_length != len(audio):
+    if receipt.rendered_text_sha256 != actual_rendered_sha:
         raise LocalResponseDAGQueueError(
-            "audio_descriptor.byte_length does not match returned audio"
+            "independent validation receipt does not match rendered text"
         )
-    descriptor.setdefault("content_sha256", actual_audio_sha)
-    descriptor.setdefault("byte_length", len(audio))
-    audio_format = str(getattr(result, "audio_format", "") or "").casefold()
-    descriptor.setdefault(
-        "media_type",
-        _AUDIO_MEDIA_TYPES.get(audio_format, f"audio/{audio_format}")
-        if audio_format
-        else "",
-    )
+    live_tts_provider = str(
+        getattr(getattr(result, "provenance", None), "tts_provider", "") or ""
+    ).strip()
+    if (
+        live_tts_provider
+        and receipt.validator_identity.casefold()
+        == live_tts_provider.casefold()
+    ):
+        raise LocalResponseDAGQueueError(
+            "independent validator_identity must differ from live TTS provider"
+        )
+    descriptor = _stable_audio_descriptor(result, audio_descriptor)
 
     provenance = getattr(result, "provenance", None)
     provenance_metadata = getattr(provenance, "metadata", {})
@@ -574,6 +930,9 @@ def enqueue_validated_cache_miss_candidate(
     )
     candidate_metadata = dict(metadata or {})
     candidate_metadata.update(_surface_metadata(result, surface))
+    candidate_metadata["validation_receipt"] = receipt.to_dict()
+    candidate_metadata["validation_receipt_sha256"] = receipt.receipt_sha256
+    candidate_metadata["validation_method"] = receipt.validation_method
     _assert_privacy_safe(candidate_metadata, path="metadata")
 
     _, append_candidate = _response_dag_contracts()
@@ -594,7 +953,10 @@ def enqueue_validated_cache_miss_candidate(
 
 
 __all__ = [
+    "INDEPENDENT_VOICE_VALIDATION_RECEIPT_SCHEMA_VERSION",
     "LOCAL_RESPONSE_DAG_QUEUE_SCHEMA_VERSION",
+    "IndependentVoiceValidationReceipt",
+    "LocalValidatedVoiceCacheMissArtifacts",
     "LocalResponseDAGQueue",
     "LocalResponseDAGQueueError",
     "LocalResponseDAGQueueReceipt",
