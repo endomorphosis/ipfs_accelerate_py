@@ -2270,7 +2270,7 @@ compact references and bounded spans only.
 
 ## VFS-061 Review swallowed exception path in ipfs_accelerate_py/agent_supervisor/program_analysis_cache.py:1966
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P1
 - Track: runtime
