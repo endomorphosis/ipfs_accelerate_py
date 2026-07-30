@@ -14870,10 +14870,13 @@ class PortalImplementationDaemon:
             elif (
                 not protected_path_violation
                 and provider_failure.get("exhausted", False)
+                and self.worktree_root.is_relative_to(self.repo_root)
             ):
-                # Capacity exhaustion produced no implementation candidate to
-                # preserve. Remove a non-pooled checkout as well so a
-                # same-attempt retry cannot collide with its own old branch.
+                # An in-repository worktree root is daemon-owned scratch space,
+                # so capacity exhaustion can remove its empty non-pooled
+                # checkout. Externally rooted non-pooled checkouts remain
+                # available for diagnostics and only release their lifecycle
+                # claim in the preservation branch below.
                 cleanup_result = self._cleanup_merged_worktree(
                     worktree_path,
                     branch_name,
