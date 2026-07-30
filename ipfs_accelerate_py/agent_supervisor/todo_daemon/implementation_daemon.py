@@ -16095,6 +16095,18 @@ class PortalImplementationDaemon:
             ),
         }
 
+    def execute_transactional_change_propagation(self, request, **kw):
+        from ..analysis import change_propagation_pipeline as p
+        return p.daemon_execute(self, request, **kw)
+
+    def require_change_propagation_completion(self, plan, transaction, **kw):
+        from ..analysis import change_propagation_pipeline as p
+        return p.daemon_require_completion(plan, transaction, **kw)
+
+    def assert_no_propagation_write_bypass(self, **kw):
+        from ..analysis import change_propagation_pipeline as p
+        return p.daemon_assert_no_write_bypass(**kw)
+
     def route_model_assisted_contract_packet(
         self,
         packet: Any,
