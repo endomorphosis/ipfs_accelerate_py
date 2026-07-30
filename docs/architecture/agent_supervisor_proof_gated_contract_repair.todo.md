@@ -1191,7 +1191,7 @@ consumer or frontier is unresolved.
 
 ## RPR-037 Implement deterministic analytical change transforms
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
