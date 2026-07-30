@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Operations, metrics, feature flags, and rollback for proof-gated contract repair.
 
-RPR-020 / RPR-G100.  Provides:
+RPR-020 / RPR-G100 (legacy) plus RPR-047 / RPR-G110 / RPR-G220 (propagation
+extension).  Provides:
 
 * doctor / status / replay / check-all operator commands;
 * ``ContractRepairRolloutPolicy`` feature flags (shadow default; assist and
@@ -9,7 +10,13 @@ RPR-020 / RPR-G100.  Provides:
   unique reconstructed supported substitutions/renames);
 * ``ContractRepairMetrics`` release and decision metrics;
 * fail-closed rollback when capability health regresses, roots go stale,
-  reconstruction fails, or a safety floor / metric breach is observed.
+  reconstruction fails, or a safety floor / metric breach is observed;
+* extended control-plane gates for transitive change propagation: terminal
+  RPR-047, RPR-G110/RPR-G220, ``change_propagation_policy``, six new zero
+  safety floors, protected-path/refill isolation, and four-shard drain
+  readiness;
+* ``ProofGatedContractRepairOperations`` and ``ChangePropagationEndToEnd``
+  helpers for the RPR-047 end-to-end surface.
 
 This module never grants mutation, completion, merge, or process authority.
 Reports and receipts are content-addressed and deterministic on clean re-runs.
@@ -71,11 +78,22 @@ SOURCE_BINDING_SCHEMA: Final[str] = (
 )
 TASK_ID: Final[str] = "RPR-020"
 GOAL_ID: Final[str] = "RPR-G100"
+# Terminal extension IDs recognized by the operations surface (RPR-047).
+TERMINAL_TASK_ID: Final[str] = "RPR-047"
+EXTENSION_CONTROL_GOAL_ID: Final[str] = "RPR-G110"
+EXTENSION_ROLLOUT_GOAL_ID: Final[str] = "RPR-G220"
 BOARD_NAMESPACE: Final[str] = "agent-supervisor-proof-gated-contract-repair-v1"
 TASK_PREFIX: Final[str] = "RPR-"
 GOAL_PREFIX: Final[str] = "RPR-G"
 MERGE_TARGET_BRANCH: Final[str] = "agent/proof-gated-contract-repair"
 DEFAULT_RECALL_K: Final[int] = 5
+EXPECTED_LANE_COUNT: Final[int] = 4
+INITIAL_PROPAGATION_ENTRY_TASKS: Final[tuple[str, ...]] = (
+    "RPR-022",
+    "RPR-023",
+    "RPR-024",
+    "RPR-025",
+)
 
 PLAN_REL: Final[str] = (
     "docs/architecture/AGENT_SUPERVISOR_PROOF_GATED_CONTRACT_REPAIR_PLAN.md"
@@ -92,6 +110,12 @@ SCHEDULER_REL: Final[str] = (
 LAUNCHER_REL: Final[str] = "scripts/proof_gated_contract_repair_supervisor.sh"
 GUIDE_REL: Final[str] = "docs/guides/PROOF_GATED_CONTRACT_REPAIR_GUIDE.md"
 BENCHMARK_SCRIPT_REL: Final[str] = "scripts/benchmark_contract_repair.py"
+PROPAGATION_BENCHMARK_SCRIPT_REL: Final[str] = (
+    "scripts/benchmark_change_propagation.py"
+)
+PROPAGATION_FIXTURE_MANIFEST_REL: Final[str] = (
+    "test/fixtures/agent_supervisor/change_propagation/manifest.json"
+)
 
 REQUIRED_CONTROL_PLANE: Final[tuple[str, ...]] = (
     PLAN_REL,
@@ -101,12 +125,64 @@ REQUIRED_CONTROL_PLANE: Final[tuple[str, ...]] = (
     LAUNCHER_REL,
 )
 
+REQUIRED_PROTECTED_PATHS: Final[tuple[str, ...]] = (
+    PLAN_REL,
+    OBJECTIVE_REL,
+    TODO_REL,
+    SCHEDULER_REL,
+    LAUNCHER_REL,
+)
+
+# Legacy RPR-020 / RPR-G100 floors (absolute zero).
 SAFETY_FLOOR_KEYS: Final[tuple[str, ...]] = (
     "wrong_path_automated_mutation_rate",
     "failed_obligation_override_rate",
     "stale_forged_or_poisoned_authoritative_admission_rate",
     "unsupported_memory_safety_promotion_rate",
 )
+
+# Six new propagation floors (RPR-045 / RPR-G220 / RPR-047). Primary names
+# match the sealed scheduler; aliases accept the benchmark spelling.
+PROPAGATION_SAFETY_FLOOR_KEYS: Final[tuple[str, ...]] = (
+    "missed_resolved_impacted_consumer_rate",
+    "unproved_or_wrong_value_source_admission_rate",
+    "behavior_invented_without_independent_authority_rate",
+    "partial_propagation_completion_rate",
+    "stale_graph_or_index_plan_admission_rate",
+    "false_fixed_point_completion_rate",
+)
+
+PROPAGATION_SAFETY_FLOOR_ALIASES: Final[Mapping[str, tuple[str, ...]]] = {
+    "behavior_invented_without_independent_authority_rate": (
+        "behavior_invented_without_independent_authority_rate",
+        "invented_behavior_without_authority_rate",
+    ),
+    "stale_graph_or_index_plan_admission_rate": (
+        "stale_graph_or_index_plan_admission_rate",
+        "stale_graph_index_plan_admission_rate",
+    ),
+}
+
+ALL_RELEASE_SAFETY_FLOOR_KEYS: Final[tuple[str, ...]] = (
+    *SAFETY_FLOOR_KEYS,
+    *PROPAGATION_SAFETY_FLOOR_KEYS,
+)
+
+# Required scheduler change_propagation_policy gates (fail-closed).
+REQUIRED_CHANGE_PROPAGATION_POLICY: Final[Mapping[str, Any]] = {
+    "impact_closure_required_before_plan_admission": True,
+    "one_obligation_per_resolved_consumer": True,
+    "unknown_required_frontier_disposition": "abstain",
+    "datasets_logic_reconstruction_required_before_value_or_behavior_admission": True,
+    "knowledge_graph_semantic_authority": False,
+    "runtime_witness_semantic_authority": False,
+    "llm_router_semantic_authority": False,
+    "analytical_transform_precedes_llm_router": True,
+    "llm_router_requires_admitted_behavior_and_paths": True,
+    "atomic_scc_transaction_required": True,
+    "partial_plan_completion_allowed": False,
+    "fixed_point_validation_required": True,
+}
 
 # Strategies that narrow-auto may execute without expanded review.
 NARROW_AUTO_STRATEGIES: Final[frozenset[str]] = frozenset(
@@ -296,6 +372,34 @@ def _cycle_nodes(edges: Mapping[str, Sequence[str]]) -> tuple[str, ...]:
     for item in sorted(edges):
         visit(item, ())
     return tuple(sorted(cycle))
+
+
+def _floor_lookup(
+    floors: Mapping[str, Any],
+    key: str,
+    *,
+    default: int | None = None,
+) -> int | None:
+    """Resolve a safety-floor key allowing known scheduler/benchmark aliases."""
+
+    aliases = PROPAGATION_SAFETY_FLOOR_ALIASES.get(key, (key,))
+    for alias in aliases:
+        if alias in floors:
+            return int(floors[alias])
+    if key in floors:
+        return int(floors[key])
+    return default
+
+
+def _task_metadata_get(task: Any, *keys: str) -> str:
+    metadata = getattr(task, "metadata", None) or {}
+    if not isinstance(metadata, Mapping):
+        return ""
+    for key in keys:
+        value = metadata.get(key)
+        if value is not None and str(value).strip():
+            return str(value).strip()
+    return ""
 
 
 def write_json_atomic(path: Path, payload: Mapping[str, Any]) -> Path:
@@ -1202,6 +1306,11 @@ def check_plan_objective_task_dag(
         errors.append("RPR-G000 is missing from the objective heap")
     if "RPR-G100" not in goal_ids:
         errors.append("RPR-G100 is missing from the objective heap")
+    # Extension control/rollout goals required by RPR-047.
+    if EXTENSION_CONTROL_GOAL_ID not in goal_ids:
+        errors.append(f"{EXTENSION_CONTROL_GOAL_ID} is missing from the objective heap")
+    if EXTENSION_ROLLOUT_GOAL_ID not in goal_ids:
+        errors.append(f"{EXTENSION_ROLLOUT_GOAL_ID} is missing from the objective heap")
 
     goal_edges: dict[str, tuple[str, ...]] = {}
     for goal in goals:
@@ -1218,6 +1327,26 @@ def check_plan_objective_task_dag(
     if goal_cycles:
         errors.append(f"goal dependency cycle: {list(goal_cycles)}")
 
+    # RPR-G110 must hang under RPR-G000 and depend on RPR-G100.
+    g110 = next((g for g in goals if g.goal_id == EXTENSION_CONTROL_GOAL_ID), None)
+    if g110 is not None:
+        g110_parents = set(g110.parent_goal_ids or ())
+        g110_deps = set(g110.dependencies or ())
+        if "RPR-G000" not in g110_parents and "RPR-G000" not in g110_deps:
+            errors.append(f"{EXTENSION_CONTROL_GOAL_ID} must parent under RPR-G000")
+        if "RPR-G100" not in g110_deps and "RPR-G100" not in g110_parents:
+            errors.append(f"{EXTENSION_CONTROL_GOAL_ID} must depend on RPR-G100")
+    g220 = next((g for g in goals if g.goal_id == EXTENSION_ROLLOUT_GOAL_ID), None)
+    if g220 is not None:
+        g220_parents = set(g220.parent_goal_ids or ())
+        g220_deps = set(g220.dependencies or ())
+        if EXTENSION_CONTROL_GOAL_ID not in g220_parents and (
+            EXTENSION_CONTROL_GOAL_ID not in g220_deps
+        ):
+            errors.append(
+                f"{EXTENSION_ROLLOUT_GOAL_ID} must parent under {EXTENSION_CONTROL_GOAL_ID}"
+            )
+
     tasks = parse_task_file(todo_path, task_header_prefix=TASK_PREFIX)
     task_ids = {task.task_id for task in tasks}
     if len(tasks) != len(task_ids):
@@ -1226,6 +1355,8 @@ def check_plan_objective_task_dag(
         errors.append("RPR-000 is missing")
     if "RPR-020" not in task_ids:
         errors.append("RPR-020 is missing")
+    if TERMINAL_TASK_ID not in task_ids:
+        errors.append(f"terminal task {TERMINAL_TASK_ID} is missing")
 
     task_edges: dict[str, tuple[str, ...]] = {}
     for task in tasks:
@@ -1251,6 +1382,34 @@ def check_plan_objective_task_dag(
         if missing_deps:
             errors.append(f"RPR-020 missing required deps: {sorted(missing_deps)}")
 
+    # Terminal RPR-047 depends on RPR-046; RPR-046 depends on RPR-020 + RPR-045.
+    rpr047 = next((task for task in tasks if task.task_id == TERMINAL_TASK_ID), None)
+    if rpr047 is not None:
+        missing_047 = {"RPR-046"} - set(rpr047.depends_on)
+        if missing_047:
+            errors.append(
+                f"{TERMINAL_TASK_ID} missing required deps: {sorted(missing_047)}"
+            )
+        goal_047 = _task_metadata_get(rpr047, "goal id", "goal_id")
+        if goal_047 and goal_047 != EXTENSION_ROLLOUT_GOAL_ID:
+            errors.append(
+                f"{TERMINAL_TASK_ID} goal id must be {EXTENSION_ROLLOUT_GOAL_ID}, "
+                f"got {goal_047!r}"
+            )
+        # No other task may depend on the terminal operations task.
+        dependents = sorted(
+            tid for tid, deps in task_edges.items() if TERMINAL_TASK_ID in deps
+        )
+        if dependents:
+            errors.append(
+                f"{TERMINAL_TASK_ID} must be terminal; dependents={dependents}"
+            )
+    rpr046 = next((task for task in tasks if task.task_id == "RPR-046"), None)
+    if rpr046 is not None:
+        missing_046 = {"RPR-020", "RPR-045"} - set(rpr046.depends_on)
+        if missing_046:
+            errors.append(f"RPR-046 missing required deps: {sorted(missing_046)}")
+
     scheduler = json.loads(scheduler_path.read_text(encoding="utf-8"))
     if scheduler.get("task_prefix") != TASK_PREFIX:
         errors.append("scheduler task prefix mismatch")
@@ -1262,6 +1421,12 @@ def check_plan_objective_task_dag(
         errors.append("objective refill must be disabled")
     if scheduler.get("codebase_refill_enabled") is not False:
         errors.append("codebase refill must be disabled")
+    if int(scheduler.get("max_lanes") or 0) != EXPECTED_LANE_COUNT:
+        errors.append(
+            f"max_lanes must be {EXPECTED_LANE_COUNT} for four-shard drain"
+        )
+    if scheduler.get("strict_task_sharding") is not True:
+        errors.append("strict_task_sharding must be true")
     proof_policy = scheduler.get("proof_policy") or {}
     if proof_policy.get("datasets_logic_required_before_target_admission") is not True:
         errors.append("datasets logic gate is not enabled")
@@ -1273,6 +1438,39 @@ def check_plan_objective_task_dag(
     for key in SAFETY_FLOOR_KEYS:
         if int(floors.get(key, 1)) != 0:
             errors.append(f"scheduler safety floor {key} is not zero")
+    for key in PROPAGATION_SAFETY_FLOOR_KEYS:
+        value = _floor_lookup(floors, key, default=None)
+        if value is None:
+            errors.append(f"scheduler missing propagation safety floor {key}")
+        elif int(value) != 0:
+            errors.append(f"scheduler safety floor {key} is not zero")
+
+    # change_propagation_policy gates (RPR-047).
+    prop_policy = scheduler.get("change_propagation_policy")
+    if not isinstance(prop_policy, Mapping):
+        errors.append("change_propagation_policy is missing from scheduler")
+    else:
+        for key, expected in REQUIRED_CHANGE_PROPAGATION_POLICY.items():
+            actual = prop_policy.get(key, "__missing__")
+            if actual != expected:
+                errors.append(
+                    f"change_propagation_policy.{key} expected {expected!r}, "
+                    f"got {actual!r}"
+                )
+
+    # Protected paths must include the sealed control-plane set.
+    protected = scheduler.get("protected_paths") or []
+    if not isinstance(protected, list):
+        errors.append("scheduler protected_paths must be a list")
+    else:
+        protected_set = {str(item) for item in protected}
+        missing_protected = [
+            path for path in REQUIRED_PROTECTED_PATHS if path not in protected_set
+        ]
+        if missing_protected:
+            errors.append(
+                f"scheduler protected_paths missing: {missing_protected}"
+            )
 
     if errors:
         return CheckResult(
@@ -1288,12 +1486,25 @@ def check_plan_objective_task_dag(
     return CheckResult(
         name="plan_objective_task_dag",
         status=CheckStatus.PASS,
-        detail="plan, objective heap, task DAG, and scheduler bindings are consistent",
+        detail=(
+            "plan, objective heap, task DAG, scheduler bindings, "
+            "propagation policy, and release floors are consistent"
+        ),
         evidence={
             "goal_count": len(goals),
             "task_count": len(tasks),
             "goal_ids": sorted(goal_ids),
             "task_ids": sorted(task_ids),
+            "terminal_task_id": TERMINAL_TASK_ID,
+            "extension_goal_ids": [
+                EXTENSION_CONTROL_GOAL_ID,
+                EXTENSION_ROLLOUT_GOAL_ID,
+            ],
+            "propagation_safety_floors": {
+                key: _floor_lookup(floors, key, default=0)
+                for key in PROPAGATION_SAFETY_FLOOR_KEYS
+            },
+            "change_propagation_policy": dict(prop_policy or {}),
         },
     )
 
@@ -1876,6 +2087,464 @@ def check_guide_boundaries(
     )
 
 
+def check_change_propagation_policy(
+    repo_root: Path | None = None,
+) -> CheckResult:
+    """Verify sealed change_propagation_policy gates and six new zero floors."""
+
+    root = (repo_root or repository_root()).resolve()
+    scheduler_path = root / SCHEDULER_REL
+    if not scheduler_path.is_file():
+        return CheckResult(
+            name="change_propagation_policy",
+            status=CheckStatus.FAIL,
+            detail=f"scheduler missing: {scheduler_path}",
+        )
+    errors: list[str] = []
+    scheduler = json.loads(scheduler_path.read_text(encoding="utf-8"))
+    prop_policy = scheduler.get("change_propagation_policy")
+    observed: dict[str, Any] = {}
+    if not isinstance(prop_policy, Mapping):
+        errors.append("change_propagation_policy is missing")
+    else:
+        observed = dict(prop_policy)
+        for key, expected in REQUIRED_CHANGE_PROPAGATION_POLICY.items():
+            actual = prop_policy.get(key, "__missing__")
+            if actual != expected:
+                errors.append(
+                    f"{key}: expected {expected!r}, got {actual!r}"
+                )
+    floors = scheduler.get("release_safety_floors") or {}
+    floor_evidence: dict[str, int] = {}
+    for key in PROPAGATION_SAFETY_FLOOR_KEYS:
+        value = _floor_lookup(floors if isinstance(floors, Mapping) else {}, key)
+        if value is None:
+            errors.append(f"missing zero safety floor {key}")
+            continue
+        floor_evidence[key] = int(value)
+        if int(value) != 0:
+            errors.append(f"safety floor {key} is not zero ({value})")
+    evidence = {
+        "change_propagation_policy": observed,
+        "propagation_safety_floors": floor_evidence,
+        "required_gates": dict(REQUIRED_CHANGE_PROPAGATION_POLICY),
+    }
+    if errors:
+        return CheckResult(
+            name="change_propagation_policy",
+            status=CheckStatus.FAIL,
+            detail="; ".join(errors),
+            evidence=evidence,
+        )
+    return CheckResult(
+        name="change_propagation_policy",
+        status=CheckStatus.PASS,
+        detail=(
+            "change_propagation_policy gates hold and six propagation "
+            "safety floors are absolute zero"
+        ),
+        evidence=evidence,
+    )
+
+
+def check_protected_paths_and_refill_isolation(
+    repo_root: Path | None = None,
+) -> CheckResult:
+    """Confirm protected control-plane paths and refill isolation."""
+
+    root = (repo_root or repository_root()).resolve()
+    scheduler_path = root / SCHEDULER_REL
+    if not scheduler_path.is_file():
+        return CheckResult(
+            name="protected_paths_refill_isolation",
+            status=CheckStatus.FAIL,
+            detail=f"scheduler missing: {scheduler_path}",
+        )
+    errors: list[str] = []
+    scheduler = json.loads(scheduler_path.read_text(encoding="utf-8"))
+    protected = scheduler.get("protected_paths") or []
+    protected_list = [str(item) for item in protected] if isinstance(protected, list) else []
+    protected_set = set(protected_list)
+    missing = [path for path in REQUIRED_PROTECTED_PATHS if path not in protected_set]
+    if missing:
+        errors.append(f"protected_paths missing required entries: {missing}")
+    for path in REQUIRED_PROTECTED_PATHS:
+        if not (root / path).is_file():
+            errors.append(f"protected path not on disk: {path}")
+    if scheduler.get("objective_refill_enabled") is not False:
+        errors.append("objective_refill_enabled must be false")
+    if scheduler.get("codebase_refill_enabled") is not False:
+        errors.append("codebase_refill_enabled must be false")
+    evidence = {
+        "protected_paths": protected_list,
+        "required_protected_paths": list(REQUIRED_PROTECTED_PATHS),
+        "objective_refill_enabled": scheduler.get("objective_refill_enabled"),
+        "codebase_refill_enabled": scheduler.get("codebase_refill_enabled"),
+    }
+    if errors:
+        return CheckResult(
+            name="protected_paths_refill_isolation",
+            status=CheckStatus.FAIL,
+            detail="; ".join(errors),
+            evidence=evidence,
+        )
+    return CheckResult(
+        name="protected_paths_refill_isolation",
+        status=CheckStatus.PASS,
+        detail="protected paths sealed and objective/codebase refill disabled",
+        evidence=evidence,
+    )
+
+
+def check_four_shard_board_drain(
+    repo_root: Path | None = None,
+) -> CheckResult:
+    """Prove a clean four-shard board can drain under strict sharding.
+
+    Verifies lane count, strict sharding, four distinct entry-task parallel
+    lanes, acyclic DAG, and that with every non-terminal task completed the
+    only remaining ready work is the terminal operations task (then empty).
+    """
+
+    root = (repo_root or repository_root()).resolve()
+    errors: list[str] = []
+    scheduler_path = root / SCHEDULER_REL
+    todo_path = root / TODO_REL
+    if not scheduler_path.is_file() or not todo_path.is_file():
+        return CheckResult(
+            name="four_shard_board_drain",
+            status=CheckStatus.FAIL,
+            detail="scheduler or todo board missing",
+        )
+    scheduler = json.loads(scheduler_path.read_text(encoding="utf-8"))
+    max_lanes = int(scheduler.get("max_lanes") or 0)
+    if max_lanes != EXPECTED_LANE_COUNT:
+        errors.append(f"max_lanes={max_lanes} (expected {EXPECTED_LANE_COUNT})")
+    if scheduler.get("strict_task_sharding") is not True:
+        errors.append("strict_task_sharding is not true")
+
+    tasks = parse_task_file(todo_path, task_header_prefix=TASK_PREFIX)
+    task_by_id = {task.task_id: task for task in tasks}
+    if TERMINAL_TASK_ID not in task_by_id:
+        errors.append(f"terminal task {TERMINAL_TASK_ID} missing")
+
+    entry_lanes: dict[str, str] = {}
+    for task_id in INITIAL_PROPAGATION_ENTRY_TASKS:
+        task = task_by_id.get(task_id)
+        if task is None:
+            errors.append(f"entry task {task_id} missing")
+            continue
+        lane = _task_metadata_get(task, "parallel lane", "parallel_lane")
+        if not lane:
+            errors.append(f"entry task {task_id} missing parallel lane")
+            continue
+        entry_lanes[task_id] = lane
+    if len(entry_lanes) == len(INITIAL_PROPAGATION_ENTRY_TASKS):
+        if len(set(entry_lanes.values())) != EXPECTED_LANE_COUNT:
+            errors.append(
+                f"entry tasks do not map to {EXPECTED_LANE_COUNT} distinct lanes: "
+                f"{entry_lanes}"
+            )
+
+    edges = {task.task_id: tuple(task.depends_on) for task in tasks}
+    if _cycle_nodes(edges):
+        errors.append("task dependency cycle prevents drain")
+
+    # Simulate a clean completed board except the terminal operations task.
+    completed = {
+        task.task_id
+        for task in tasks
+        if task.task_id != TERMINAL_TASK_ID
+        and str(getattr(task, "status", "") or "").casefold()
+        in {"completed", "done", "complete"}
+    }
+    # For drain readiness we also treat every non-terminal as hypothetically
+    # complete so a healthy restart can finish RPR-047 then empty the board.
+    hypothetical_completed = set(task_by_id) - {TERMINAL_TASK_ID}
+    ready = sorted(
+        task_id
+        for task_id, deps in edges.items()
+        if task_id not in hypothetical_completed
+        and all(dep in hypothetical_completed for dep in deps)
+    )
+    if ready != [TERMINAL_TASK_ID] and TERMINAL_TASK_ID in task_by_id:
+        errors.append(
+            f"after completing non-terminal work expected only "
+            f"[{TERMINAL_TASK_ID}] ready, got {ready}"
+        )
+    # After terminal completion the board drains.
+    drained_ready = sorted(
+        task_id
+        for task_id, deps in edges.items()
+        if task_id not in set(task_by_id)
+        and all(dep in set(task_by_id) for dep in deps)
+    )
+    # With all tasks completed, ready set is empty.
+    all_completed = set(task_by_id)
+    fully_drained = sorted(
+        task_id
+        for task_id, deps in edges.items()
+        if task_id not in all_completed
+        and all(dep in all_completed for dep in deps)
+    )
+    if fully_drained:
+        errors.append(f"fully completed board still has ready work: {fully_drained}")
+
+    evidence = {
+        "max_lanes": max_lanes,
+        "strict_task_sharding": scheduler.get("strict_task_sharding"),
+        "entry_lanes": entry_lanes,
+        "terminal_task_id": TERMINAL_TASK_ID,
+        "ready_after_non_terminal_complete": ready,
+        "ready_after_full_complete": fully_drained,
+        "board_task_count": len(tasks),
+        "completed_on_disk": sorted(completed),
+    }
+    if errors:
+        return CheckResult(
+            name="four_shard_board_drain",
+            status=CheckStatus.FAIL,
+            detail="; ".join(errors),
+            evidence=evidence,
+        )
+    return CheckResult(
+        name="four_shard_board_drain",
+        status=CheckStatus.PASS,
+        detail=(
+            f"clean {EXPECTED_LANE_COUNT}-shard board drains: entry lanes "
+            f"disjoint, terminal {TERMINAL_TASK_ID} last, empty when complete"
+        ),
+        evidence=evidence,
+    )
+
+
+# ---------------------------------------------------------------------------
+# RPR-047 operations surface / end-to-end helpers
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class ProofGatedContractRepairOperations:
+    """Canonical operations surface for RPR-020 + RPR-047 validation.
+
+    Aggregates legacy contract-repair checks with propagation extension gates.
+    Never grants mutation or completion authority.
+    """
+
+    INTERFACE: ClassVar[str] = "ProofGatedContractRepairOperations@1"
+    TERMINAL_TASK: ClassVar[str] = TERMINAL_TASK_ID
+    EXTENSION_GOAL: ClassVar[str] = EXTENSION_ROLLOUT_GOAL_ID
+    LEGACY_TASK: ClassVar[str] = "RPR-020"
+    LEGACY_GOAL: ClassVar[str] = "RPR-G100"
+
+    @classmethod
+    def run(
+        cls,
+        repo_root: Path | None = None,
+        *,
+        run_benchmark: bool = True,
+        probe_capabilities: bool = True,
+        policy: ContractRepairRolloutPolicy | None = None,
+        benchmark_report: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        report = run_all_checks(
+            repo_root,
+            run_benchmark=run_benchmark,
+            probe_capabilities=probe_capabilities,
+            policy=policy,
+            benchmark_report=benchmark_report,
+        )
+        report["operations_interface"] = cls.INTERFACE
+        report["terminal_task_id"] = cls.TERMINAL_TASK
+        report["extension_goal_id"] = cls.EXTENSION_GOAL
+        report["legacy_task_id"] = cls.LEGACY_TASK
+        report["legacy_goal_id"] = cls.LEGACY_GOAL
+        report["mutation_authorized"] = False
+        report["completion_authoritative"] = False
+        return report
+
+    @classmethod
+    def required_extension_ids(cls) -> dict[str, str]:
+        return {
+            "terminal_task_id": TERMINAL_TASK_ID,
+            "control_goal_id": EXTENSION_CONTROL_GOAL_ID,
+            "rollout_goal_id": EXTENSION_ROLLOUT_GOAL_ID,
+            "legacy_task_id": cls.LEGACY_TASK,
+            "legacy_goal_id": cls.LEGACY_GOAL,
+        }
+
+
+@dataclass(frozen=True)
+class ChangePropagationEndToEnd:
+    """Seeded end-to-end propagation scenarios for RPR-047.
+
+    Positive: two-to-three argument change detects every caller, proves one
+    source, applies an atomic analytical plan, rediffs to a fixed point, and
+    emits a completion receipt.  Negative wrong-value, unknown-frontier,
+    partial-SCC, and LLM-scope cases fail closed.
+    """
+
+    INTERFACE: ClassVar[str] = "ChangePropagationEndToEnd@1"
+    TASK_ID: ClassVar[str] = TERMINAL_TASK_ID
+    GOAL_ID: ClassVar[str] = EXTENSION_ROLLOUT_GOAL_ID
+
+    POSITIVE_SCENARIO: ClassVar[str] = "two_to_three_argument_callers"
+    NEGATIVE_SCENARIOS: ClassVar[tuple[str, ...]] = (
+        "same_typed_wrong_information",
+        "reflection_plugin_registry_ffi_frontier",
+        "partial_transaction",
+        "llm_scope_escape",
+    )
+
+    @classmethod
+    def evaluate_seeded_corpus(
+        cls,
+        repo_root: Path | None = None,
+    ) -> dict[str, Any]:
+        """Run hermetic fixture evaluation for positive and negative cases."""
+
+        root = (repo_root or repository_root()).resolve()
+        bench_path = root / PROPAGATION_BENCHMARK_SCRIPT_REL
+        if not bench_path.is_file():
+            raise ContractRepairValidationError(
+                f"propagation benchmark missing: {bench_path}"
+            )
+        name = "benchmark_change_propagation_rpr047_e2e"
+        if name in sys.modules:
+            bench = sys.modules[name]
+        else:
+            spec = importlib.util.spec_from_file_location(name, bench_path)
+            if spec is None or spec.loader is None:
+                raise ContractRepairValidationError(
+                    f"unable to load propagation benchmark at {bench_path}"
+                )
+            bench = importlib.util.module_from_spec(spec)
+            sys.modules[name] = bench
+            spec.loader.exec_module(bench)
+
+        manifest = bench.load_fixture_manifest(root / PROPAGATION_FIXTURE_MANIFEST_REL)
+        cases = list(manifest.get("cases") or [])
+        by_scenario: dict[str, Mapping[str, Any]] = {}
+        for case in cases:
+            if not isinstance(case, Mapping):
+                continue
+            scenario = str(case.get("scenario") or "")
+            by_scenario.setdefault(scenario, case)
+
+        positive = by_scenario.get(cls.POSITIVE_SCENARIO)
+        if positive is None:
+            raise ContractRepairValidationError(
+                f"seeded positive scenario missing: {cls.POSITIVE_SCENARIO}"
+            )
+        positive_result = bench.evaluate_fixture(positive)
+        positive_payload = (
+            positive_result.to_dict()
+            if hasattr(positive_result, "to_dict")
+            else dict(positive_result)
+        )
+
+        negatives: dict[str, Any] = {}
+        for scenario in cls.NEGATIVE_SCENARIOS:
+            fixture = by_scenario.get(scenario)
+            if fixture is None:
+                negatives[scenario] = {
+                    "present": False,
+                    "admitted": None,
+                    "completion_success": None,
+                    "ok_fail_closed": False,
+                }
+                continue
+            result = bench.evaluate_fixture(fixture)
+            payload = result.to_dict() if hasattr(result, "to_dict") else dict(result)
+            fail_closed = (
+                payload.get("admitted") is False
+                and payload.get("completion_success") is False
+            )
+            # LLM scope escape must never complete and never escape.
+            if scenario == "llm_scope_escape":
+                fail_closed = fail_closed and not bool(
+                    payload.get("llm_scope_escape")
+                )
+            # Partial SCC / transaction must roll back, not complete.
+            if scenario == "partial_transaction":
+                fail_closed = fail_closed and bool(payload.get("scc_rollback"))
+            negatives[scenario] = {
+                "present": True,
+                "admitted": payload.get("admitted"),
+                "completion_success": payload.get("completion_success"),
+                "outcome_kind": payload.get("outcome_kind"),
+                "scc_rollback": payload.get("scc_rollback"),
+                "llm_scope_escape": payload.get("llm_scope_escape"),
+                "ok_fail_closed": fail_closed,
+                "case": payload,
+            }
+
+        consumers = (
+            (positive.get("artifacts") or {})
+            .get("consumers", {})
+            .get("content", {})
+        )
+        resolved = consumers.get("resolved") if isinstance(consumers, Mapping) else []
+        caller_kinds = []
+        if isinstance(resolved, list):
+            caller_kinds = [
+                str(item.get("kind") or "")
+                for item in resolved
+                if isinstance(item, Mapping)
+            ]
+
+        positive_ok = (
+            bool(positive_payload.get("admitted"))
+            and bool(positive_payload.get("completion_success"))
+            and bool(positive_payload.get("consumer_precise"))
+            and bool(positive_payload.get("unique_source_precise"))
+            and bool(positive_payload.get("analytical_path"))
+            and bool(positive_payload.get("plan_complete"))
+            and int(positive_payload.get("fixed_point_iterations") or 0) >= 1
+            and len(caller_kinds) >= 4
+        )
+        negatives_ok = all(
+            item.get("present") and item.get("ok_fail_closed")
+            for item in negatives.values()
+        )
+        report = {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "change-propagation-end-to-end-report@1"
+            ),
+            "interface": cls.INTERFACE,
+            "task_id": cls.TASK_ID,
+            "goal_id": cls.GOAL_ID,
+            "positive_scenario": cls.POSITIVE_SCENARIO,
+            "positive": {
+                "ok": positive_ok,
+                "caller_kinds": caller_kinds,
+                "caller_count": len(caller_kinds),
+                "admitted": positive_payload.get("admitted"),
+                "completion_success": positive_payload.get("completion_success"),
+                "analytical_path": positive_payload.get("analytical_path"),
+                "unique_source_precise": positive_payload.get(
+                    "unique_source_precise"
+                ),
+                "consumer_precise": positive_payload.get("consumer_precise"),
+                "fixed_point_iterations": positive_payload.get(
+                    "fixed_point_iterations"
+                ),
+                "plan_complete": positive_payload.get("plan_complete"),
+                "outcome_kind": positive_payload.get("outcome_kind"),
+                "case": positive_payload,
+            },
+            "negatives": negatives,
+            "valid": positive_ok and negatives_ok,
+            "mutation_authorized": False,
+            "completion_authoritative": False,
+        }
+        report["report_id"] = content_identity(
+            {key: value for key, value in report.items() if key != "report_id"}
+        )
+        return report
+
+
 # ---------------------------------------------------------------------------
 # Aggregated validation / doctor / status / replay
 # ---------------------------------------------------------------------------
@@ -1902,6 +2571,10 @@ def run_all_checks(
         check_feature_flags(selected_policy),
         check_rollback_gates(selected_policy),
         check_guide_boundaries(root),
+        # RPR-047 extension gates (legacy checks above remain required).
+        check_change_propagation_policy(root),
+        check_protected_paths_and_refill_isolation(root),
+        check_four_shard_board_drain(root),
     ]
     results = [item.to_dict() for item in checks]
     ok = all(item.ok for item in checks)
@@ -1910,6 +2583,11 @@ def run_all_checks(
         "interface": VALIDATOR_INTERFACE,
         "task_id": TASK_ID,
         "goal_id": GOAL_ID,
+        "terminal_task_id": TERMINAL_TASK_ID,
+        "extension_goal_ids": [
+            EXTENSION_CONTROL_GOAL_ID,
+            EXTENSION_ROLLOUT_GOAL_ID,
+        ],
         "valid": ok,
         "default_mode": RolloutMode.SHADOW.value,
         "policy": selected_policy.to_dict(),
@@ -2218,7 +2896,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
             "Validate proof-gated contract-repair operations, metrics, "
-            "feature flags, and rollback gates (RPR-020)."
+            "feature flags, and rollback gates (RPR-020 / RPR-047)."
         ),
         parents=[common],
     )
@@ -2270,6 +2948,21 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sub.add_parser(
         "check-rollback", help="Validate rollback gates.", parents=[common]
+    )
+    sub.add_parser(
+        "check-propagation-policy",
+        help="Validate change_propagation_policy gates and new floors.",
+        parents=[common],
+    )
+    sub.add_parser(
+        "check-protected-paths",
+        help="Validate protected paths and refill isolation.",
+        parents=[common],
+    )
+    sub.add_parser(
+        "check-four-shard",
+        help="Validate four-shard board drain readiness.",
+        parents=[common],
     )
     sub.add_parser(
         "metrics",
@@ -2355,6 +3048,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             ),
             "check-flags": check_feature_flags,
             "check-rollback": check_rollback_gates,
+            "check-propagation-policy": lambda: check_change_propagation_policy(
+                root
+            ),
+            "check-protected-paths": lambda: check_protected_paths_and_refill_isolation(
+                root
+            ),
+            "check-four-shard": lambda: check_four_shard_board_drain(root),
         }
         if command in check_map:
             result = check_map[command]()
