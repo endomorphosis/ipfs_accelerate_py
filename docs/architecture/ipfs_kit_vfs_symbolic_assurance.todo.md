@@ -2516,7 +2516,7 @@ compact references and bounded spans only.
 
 ## VFS-065 Resolve 3 preflight-conflicting backlogged worktree merges
 
-- Status: blocked
+- Status: completed
 - Completion: manual
 - Is schedulable: false
 - Review only: true
