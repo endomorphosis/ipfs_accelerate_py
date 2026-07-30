@@ -4011,7 +4011,7 @@ compact references and bounded spans only.
 
 ## VFS-088 Close objective gap: Prove vfs/dependency-cache@1 for Use canonical multiformats identities and dependency-aware content caches
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
