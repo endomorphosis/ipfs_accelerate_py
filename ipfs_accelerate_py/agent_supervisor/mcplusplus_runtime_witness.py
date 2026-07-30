@@ -1548,6 +1548,26 @@ class RuntimeWitnessReceipt(_RuntimeContract):
     def receipt_id(self) -> str:
         return self.content_id
 
+    def _identity_payload(self) -> dict[str, Any]:
+        """Return the stable receipt identity without volatile telemetry.
+
+        ``duration_ms`` remains available in :meth:`to_dict` for operational
+        observation, but scheduler load can change it between otherwise
+        identical hermetic runs.  It therefore cannot participate in the
+        semantic identity used for deterministic replay and cache keys.
+        """
+
+        payload = self.to_dict()
+        for witness in payload["witnesses"]:
+            observation = witness.get("observation")
+            if isinstance(observation, dict):
+                observation.pop("duration_ms", None)
+        return payload
+
+    @property
+    def content_id(self) -> str:
+        return content_identity(self._identity_payload())
+
     @property
     def production_witness_count(self) -> int:
         return sum(1 for w in self.witnesses if w.is_production_witness)
