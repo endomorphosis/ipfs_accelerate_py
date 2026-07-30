@@ -289,6 +289,38 @@ def test_duplicate_attempt_rejected_while_owner_alive(tmp_path: Path) -> None:
         )
 
 
+def test_duplicate_task_attempts_do_not_materialize_unique_workspace_guards(
+    tmp_path: Path,
+) -> None:
+    store = _store(tmp_path)
+    store.begin_preparing(
+        task_id="DUP-GUARD",
+        canonical_task_cid="cid:dup-guard",
+        attempt=1,
+        lane_id="owner",
+        workspace_path=tmp_path / "owner-workspace",
+        branch="implementation/dup-guard-owner",
+        merge_target="main",
+    )
+    assert store.store_dir is not None
+    guards_before = set(store.store_dir.glob(".ws-*.json.update.lock"))
+
+    for ordinal in range(20):
+        with pytest.raises(DuplicateAttemptError):
+            store.begin_preparing(
+                task_id="DUP-GUARD",
+                canonical_task_cid="cid:dup-guard",
+                attempt=1,
+                lane_id=f"peer-{ordinal}",
+                workspace_path=tmp_path / f"peer-workspace-{ordinal}",
+                branch=f"implementation/dup-guard-peer-{ordinal}",
+                merge_target="main",
+            )
+
+    assert set(store.store_dir.glob(".ws-*.json.update.lock")) == guards_before
+    assert len(list(store.store_dir.glob(".task-*.json.update.lock"))) == 1
+
+
 def test_compare_and_delete_requires_matching_fence(tmp_path: Path) -> None:
     store = _store(tmp_path)
     workspace = tmp_path / "cad"

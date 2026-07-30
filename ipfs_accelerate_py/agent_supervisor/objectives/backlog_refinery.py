@@ -62,6 +62,7 @@ from .objective_graph import (
     parse_goal_heap,
     repo_relative_path,
     safe_bundle_key,
+    taskboard_namespace_from_todo,
 )
 from .scan_receipts import (
     DEFAULT_EXHAUSTION_QUORUM_SIZE,
@@ -77,7 +78,11 @@ from .scan_receipts import (
     scan_configuration_revision,
     scan_identity,
 )
-from ..task_sources.task_identity import TaskIdentity, canonical_task_identity
+from ..task_sources.task_identity import (
+    TaskIdentity,
+    canonical_task_identity,
+    normalize_board_namespace,
+)
 from ..todo_daemon.implementation_daemon import (
     is_retry_budget_repair_task,
     parse_task_file,
@@ -3585,6 +3590,7 @@ def codebase_scan_task_block(
     bundle_key: str = "",
     bundle_shard: str = "",
     ast_symbols: Sequence[str] = (),
+    board_namespace: str = "codebase-scan",
 ) -> str:
     outputs = [discovery_output_path, finding.root_relative_path]
     identity = codebase_finding_task_identity(finding)
@@ -3646,7 +3652,8 @@ def codebase_scan_task_block(
 - Track: {finding.track}
 - Depends on: {", ".join(depends_on)}
 - Outputs: {", ".join(outputs)}
-- Validation: {finding.validation}{planning}
+- Validation: {finding.validation}
+- Board namespace: {normalize_board_namespace(board_namespace)}{planning}
 - Acceptance: Goal-scoped refill admitted this finding from {finding.root_relative_path}:{finding.line_number} for {goal_id or "an explicitly unscoped legacy board"}. Use evidence in {discovery_path}, make only the smallest change required by that goal lineage, add or update focused validation when appropriate, and do not expand into adjacent cleanup.
 """
 
@@ -6915,6 +6922,7 @@ def record_codebase_scan_findings(
     detected_count = len(findings)
     with locked_taskboard(todo_path) as taskboard:
         todo_text = taskboard.read()
+        board_namespace = taskboard_namespace_from_todo(todo_text, todo_path)
         latest_seen = codebase_scan_fingerprint_hints(
             todo_text,
             discovery_dir=discovery_dir,
@@ -6962,6 +6970,7 @@ def record_codebase_scan_findings(
                 bundle_key=bundle_key,
                 bundle_shard=bundle_shard,
                 ast_symbols=ast_symbols,
+                board_namespace=board_namespace,
             )
             todo_text = todo_text.rstrip() + "\n\n" + task_block.strip() + "\n"
             finding_record = {
@@ -6973,6 +6982,7 @@ def record_codebase_scan_findings(
                 "canonical_task_key": identity.canonical_task_key,
                 "canonical_task_cid": identity.canonical_task_cid,
                 "semantic_identity": identity.semantic_fingerprint,
+                "board_namespace": board_namespace,
                 "objective_goal_ids": list(finding.objective_goal_ids),
             }
             if bundle_key:
@@ -6987,6 +6997,7 @@ def record_codebase_scan_findings(
                         "task_block": task_block,
                         "task_payload": {
                             "task_id": follow_up_task_id,
+                            "board_namespace": board_namespace,
                             "canonical_task_key": identity.canonical_task_key,
                             "canonical_task_cid": identity.canonical_task_cid,
                             "semantic_identity": identity.semantic_fingerprint,

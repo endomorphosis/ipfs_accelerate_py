@@ -8232,7 +8232,11 @@ def test_provider_capacity_backoff_passes_do_not_grow_state_or_events(
     assert events_path.read_bytes() == events_after_failure
 
 
-def test_ephemeral_implementation_defers_provider_quota_without_retry_failure(tmp_path):
+@pytest.mark.parametrize("worktree_pool_enabled", [False, True])
+def test_ephemeral_implementation_defers_provider_quota_without_retry_failure(
+    tmp_path,
+    worktree_pool_enabled,
+):
     repo = tmp_path / "repo"
     repo.mkdir()
     _git(repo, "init")
@@ -8259,7 +8263,7 @@ def test_ephemeral_implementation_defers_provider_quota_without_retry_failure(tm
         implementation_command="bash quota.sh",
         use_ephemeral_worktree=True,
         worktree_root=repo / "worktrees",
-        worktree_pool_enabled=False,
+        worktree_pool_enabled=worktree_pool_enabled,
     )
     task = PortalTask(
         task_id="ACCEL-001",
@@ -8276,8 +8280,37 @@ def test_ephemeral_implementation_defers_provider_quota_without_retry_failure(tm
     assert result["deferred"] is True
     assert result["reason"] == "provider_capacity_exhausted"
     assert result["attempt_consumed"] is False
+    assert result["cleanup_result"]["cleaned"] is True
+    assert result["cleanup_result"]["lifecycle_finalize"]["finalized"] is True
     assert persisted.implementation_attempts == {}
     assert daemon._find_live_inflight_implementation() is None
+    assert daemon._active_worktree_lifecycle is None
+    assert (
+        daemon.worktree_lifecycle.load_workspace(Path(result["worktree_path"]))
+        is None
+    )
+
+    retry_workspace = repo / "retry-workspace"
+    retry_record = daemon.worktree_lifecycle.begin_preparing(
+        task_id=task.task_id,
+        canonical_task_cid=daemon._canonical_ref(task),
+        attempt=1,
+        lane_id="same-daemon-retry",
+        workspace_path=retry_workspace,
+        branch="implementation/accel-001-retry",
+        merge_target="main",
+    )
+    terminal = daemon.worktree_lifecycle.mark_terminal(
+        retry_workspace,
+        lease_id=retry_record.lease_id,
+        expected_fence=retry_record.fence,
+        reason="test_complete",
+    )
+    assert daemon.worktree_lifecycle.compare_and_delete(
+        retry_workspace,
+        expected_fence=terminal.fence,
+        lease_id=terminal.lease_id,
+    )
 
 
 def test_retry_deferral_reconciles_idle_projection_for_supervisor_maintenance(
@@ -10732,7 +10765,7 @@ def test_implementation_supervisor_creates_missing_todo_before_refill(tmp_path):
 - Priority: P1
 - Goal: Prove that runtime bridge dispatch supports virtual AI OS execution.
 - Evidence: RuntimeBridge.dispatch, missing_runtime_contract
-- Outputs: src/runtime_bridge.py, tests
+- Outputs: docs/plan.md, docs/todo.md, src/runtime_bridge.py, tests
 - Validation: test -f objective-heap.md
 - Acceptance: Runtime bridge dispatch has a current validated contract proof.
 - Gap task: Add the missing runtime contract proof.
@@ -10753,6 +10786,10 @@ def test_implementation_supervisor_creates_missing_todo_before_refill(tmp_path):
             state_dir=state_dir,
             repo_root=repo,
             task_prefix="## ACCEL-",
+            implementation_protected_paths=(
+                "docs/plan.md",
+                "docs/todo.md",
+            ),
             objective_refill_enabled=True,
             objective_path=objective_path,
             objective_discovery_dir=repo / "discovery",
@@ -10769,7 +10806,30 @@ def test_implementation_supervisor_creates_missing_todo_before_refill(tmp_path):
     assert result["todo_board_repair"]["created"] is True
     assert result["objective_refill_count"] == 1
     assert todo_path.exists()
-    assert "## ACCEL-001 Close objective gap" in todo_path.read_text(encoding="utf-8")
+    todo_text = todo_path.read_text(encoding="utf-8")
+    assert "## ACCEL-001 Close objective gap" in todo_text
+    generated_task = todo_text.split("## ACCEL-001 ", 1)[1]
+    output_line = next(
+        line for line in generated_task.splitlines() if line.startswith("- Outputs:")
+    )
+    predicted_line = next(
+        line
+        for line in generated_task.splitlines()
+        if line.startswith("- Predicted files:")
+    )
+    context_line = next(
+        line
+        for line in generated_task.splitlines()
+        if line.startswith("- Context paths:")
+    )
+    assert "src/runtime_bridge.py" in output_line
+    assert "src/runtime_bridge.py" in predicted_line
+    assert "docs/plan.md" not in output_line
+    assert "docs/todo.md" not in output_line
+    assert "docs/plan.md" not in predicted_line
+    assert "docs/todo.md" not in predicted_line
+    assert "docs/plan.md" in context_line
+    assert "docs/todo.md" in context_line
     events = [json.loads(line) for line in (state_dir / "supervisor_events.jsonl").read_text(encoding="utf-8").splitlines()]
     assert any(event["type"] == "todo_board_created" for event in events)
 

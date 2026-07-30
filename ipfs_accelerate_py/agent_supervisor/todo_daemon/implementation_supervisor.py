@@ -7675,6 +7675,9 @@ class PortalImplementationSupervisor:
             repo_root=self.config.repo_root,
             objective_path=objective_path,
             todo_path=self.config.todo_path,
+            protected_output_paths=list(
+                self.config.implementation_protected_paths
+            ),
             discovery_dir=discovery_dir,
             bundle_dir=bundle_dir,
             dataset_dir=dataset_dir,

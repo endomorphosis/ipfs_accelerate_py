@@ -11135,9 +11135,11 @@ class PortalImplementationDaemon:
             worktree_path=worktree_path,
             branch_name=branch_name,
         )
+        lifecycle_record = self._active_worktree_lifecycle
         pool_handoff = self._release_pooled_worktree_lease(
             worktree_path,
             reason="merge_queue_handoff",
+            finalize_lifecycle=False,
         )
         request, merge_result = self._enqueue_merge_candidate(
             branch_name=branch_name,
@@ -11154,7 +11156,19 @@ class PortalImplementationDaemon:
             validation_result=dict(validation_result),
             worktree_pool_handoff=bool(pool_handoff.get("released", False)),
         )
+        if lifecycle_record is not None:
+            lifecycle_handoff = self._finalize_exact_worktree_lifecycle(
+                lifecycle_record,
+                reason="merge_queue_handoff",
+            )
+        else:
+            lifecycle_handoff = {
+                "finalized": False,
+                "reason": "no_lifecycle_record",
+            }
+        merge_result["worktree_lifecycle_handoff"] = lifecycle_handoff
         if pool_handoff.get("attempted", False):
+            pool_handoff["lifecycle_finalize"] = lifecycle_handoff
             merge_result["worktree_pool_handoff"] = pool_handoff
         try:
             train_result = self._consume_one_merge_candidate()
@@ -11672,14 +11686,36 @@ class PortalImplementationDaemon:
                         commit_result = dict(failed_preservation_result.get("commit_result") or commit_result)
                         implementation_commit = str(commit_result.get("commit", ""))
                         cleanup_result = dict(failed_preservation_result.get("cleanup_result") or cleanup_result)
+            elif (
+                not protected_path_violation
+                and provider_failure.get("exhausted", False)
+            ):
+                # Capacity deferrals restore the attempt counter, so the same
+                # task/attempt must be able to acquire a fresh lifecycle after
+                # backoff.  Dispose the partial workspace and terminalize its
+                # exact lease instead of only releasing a pooled checkout.
+                cleanup_result = self._cleanup_merged_worktree(
+                    worktree_path,
+                    branch_name,
+                    reusable=False,
+                )
             elif not protected_path_violation:
                 pool_failure_release = self._release_pooled_worktree_lease(
                     worktree_path,
                     reason="implementation_command_failed",
                 )
                 if pool_failure_release.get("attempted", False):
+                    lifecycle_finalize = dict(
+                        pool_failure_release.get("lifecycle_finalize") or {}
+                    )
                     cleanup_result = {
-                        "cleaned": bool(pool_failure_release.get("released", False)),
+                        "cleaned": bool(
+                            pool_failure_release.get("released", False)
+                            and (
+                                not lifecycle_finalize
+                                or lifecycle_finalize.get("finalized", False)
+                            )
+                        ),
                         "reason": "failed_implementation_pool_lease_released",
                         "pooled": bool(pool_failure_release.get("pooled", False)),
                         "pool_release": pool_failure_release,
@@ -12837,6 +12873,7 @@ class PortalImplementationDaemon:
         *,
         reason: str,
         reusable: bool = True,
+        finalize_lifecycle: bool = True,
     ) -> dict[str, Any]:
         """Release a pooled checkout while retaining its durable task branch."""
 
@@ -12844,6 +12881,13 @@ class PortalImplementationDaemon:
             lease_key = worktree_path.resolve()
         except OSError:
             lease_key = worktree_path
+        lifecycle_record = self._active_worktree_lifecycle
+        if (
+            lifecycle_record is not None
+            and normalize_workspace_path(lifecycle_record.workspace_path)
+            != normalize_workspace_path(worktree_path)
+        ):
+            lifecycle_record = None
         self._forget_seeded_worktree_context(worktree_path)
         lease = self._worktree_pool_leases.pop(lease_key, None)
         if lease is None:
@@ -12860,6 +12904,18 @@ class PortalImplementationDaemon:
             "worktree_path": str(worktree_path),
             **release_result,
         }
+        if release_result.get("released", False) and finalize_lifecycle:
+            result["lifecycle_finalize"] = (
+                self._finalize_exact_worktree_lifecycle(
+                    lifecycle_record,
+                    reason=f"pool_release_{reason}",
+                )
+                if lifecycle_record is not None
+                else {
+                    "finalized": False,
+                    "reason": "no_lifecycle_record",
+                }
+            )
         self._record_event("worktree_pool_lease_released", result)
         return result
 
@@ -19850,8 +19906,39 @@ class PortalImplementationDaemon:
                 record = loaded
         if record is None:
             return {"finalized": False, "reason": "no_lifecycle_record"}
+        return self._finalize_exact_worktree_lifecycle(
+            record,
+            reason=reason,
+        )
+
+    def _finalize_exact_worktree_lifecycle(
+        self,
+        record: WorkspaceLifecycleRecord,
+        *,
+        reason: str,
+    ) -> dict[str, Any]:
+        """Terminalize only the captured lease/fence for a released workspace.
+
+        A pooled checkout can be leased to another lane immediately after
+        release.  Reloading by its stable path after that point could observe
+        and terminalize the new owner's record.  Callers that release a pool
+        lease therefore capture their record first and finalize this exact
+        compare-and-swap identity.
+        """
+
+        def _clear_captured_active() -> None:
+            current = self._active_worktree_lifecycle
+            if (
+                current is not None
+                and current.lease_id == record.lease_id
+                and current.fence == record.fence
+                and normalize_workspace_path(current.workspace_path)
+                == normalize_workspace_path(record.workspace_path)
+            ):
+                self._active_worktree_lifecycle = None
+
         if record.is_terminal:
-            self._active_worktree_lifecycle = None
+            _clear_captured_active()
             return {
                 "finalized": True,
                 "reason": "already_terminal",
@@ -19864,12 +19951,22 @@ class PortalImplementationDaemon:
                 expected_fence=record.fence,
                 reason=reason,
             )
-            self.worktree_lifecycle.compare_and_delete(
+            deleted = self.worktree_lifecycle.compare_and_delete(
                 terminal.workspace_path,
                 expected_fence=terminal.fence,
                 lease_id=terminal.lease_id,
             )
-            self._active_worktree_lifecycle = None
+            _clear_captured_active()
+            if not deleted:
+                return {
+                    "finalized": False,
+                    "reason": "lifecycle_compare_delete_race",
+                    "fence": terminal.fence,
+                    "state": terminal.state.value,
+                    "failure_kind": LifecycleFailureKind.LIFECYCLE_RACE.value,
+                    "attempt_consumed": False,
+                    "provider_call_allowed": False,
+                }
             return {
                 "finalized": True,
                 "reason": reason,
@@ -19878,7 +19975,7 @@ class PortalImplementationDaemon:
             }
         except (FenceMismatchError, OwnershipError, WorktreeLifecycleError) as exc:
             # Peer reclamation or concurrent owner may have advanced the fence.
-            self._active_worktree_lifecycle = None
+            _clear_captured_active()
             return {
                 "finalized": False,
                 "reason": "lifecycle_finalize_race",
@@ -20024,6 +20121,14 @@ class PortalImplementationDaemon:
         reusable: bool = True,
     ) -> dict[str, Any]:
         started_at = utc_now()
+        lifecycle_record = self._active_worktree_lifecycle
+        if (
+            lifecycle_record is not None
+            and worktree_path is not None
+            and normalize_workspace_path(lifecycle_record.workspace_path)
+            != normalize_workspace_path(worktree_path)
+        ):
+            lifecycle_record = None
         lifecycle_auth = self._authorize_worktree_cleanup(
             worktree_path,
             branch_name,
@@ -20081,9 +20186,16 @@ class PortalImplementationDaemon:
                 if branch_error:
                     result["error"] = branch_error
                 if result.get("cleaned"):
-                    result["lifecycle_finalize"] = self._finalize_worktree_lifecycle(
-                        worktree_path,
-                        reason="pool_release_cleaned",
+                    result["lifecycle_finalize"] = (
+                        self._finalize_exact_worktree_lifecycle(
+                            lifecycle_record,
+                            reason="pool_release_cleaned",
+                        )
+                        if lifecycle_record is not None
+                        else {
+                            "finalized": False,
+                            "reason": "no_lifecycle_record",
+                        }
                     )
                 self._record_event("cleanup_finished", result)
                 return result
@@ -20131,9 +20243,16 @@ class PortalImplementationDaemon:
             "removed_worktree": removed_worktree,
             "deleted_branch": deleted_branch,
             "submodule_cleanup": submodule_cleanup,
-            "lifecycle_finalize": self._finalize_worktree_lifecycle(
-                worktree_path,
-                reason="worktree_cleaned",
+            "lifecycle_finalize": (
+                self._finalize_exact_worktree_lifecycle(
+                    lifecycle_record,
+                    reason="worktree_cleaned",
+                )
+                if lifecycle_record is not None
+                else {
+                    "finalized": False,
+                    "reason": "no_lifecycle_record",
+                }
             ),
         }
         self._record_event("cleanup_finished", result)

@@ -1036,6 +1036,14 @@ def test_codebase_scan_writes_file_local_ast_bundle(tmp_path):
         encoding="utf-8",
     )
     _write_todo(todo_path)
+    todo_path.write_text(
+        todo_path.read_text(encoding="utf-8").replace(
+            "- Validation: test -f README.md",
+            "- Validation: test -f README.md\n"
+            "- Board namespace: swissknife-vfs-assurance-v1",
+        ),
+        encoding="utf-8",
+    )
     _git(repo, "add", "todo.md", "src/runtime.py")
     _git(repo, "commit", "-m", "seed repo")
 
@@ -1052,15 +1060,20 @@ def test_codebase_scan_writes_file_local_ast_bundle(tmp_path):
     )
 
     assert findings[0]["bundle_key"] == "codebase/runtime/src-runtime"
+    assert findings[0]["board_namespace"] == "swissknife-vfs-assurance-v1"
     shard_path = bundle_dir / "codebase-runtime-src-runtime.todo.md"
-    assert "## AUTO-002 Resolve code annotation" in shard_path.read_text(encoding="utf-8")
+    shard_text = shard_path.read_text(encoding="utf-8")
+    assert "## AUTO-002 Resolve code annotation" in shard_text
+    assert "- Board namespace: swissknife-vfs-assurance-v1" in shard_text
     todo_text = todo_path.read_text(encoding="utf-8")
+    assert "- Board namespace: swissknife-vfs-assurance-v1" in todo_text
     assert "- Bundle: codebase/runtime/src-runtime" in todo_text
     assert "- AST symbols:" in todo_text
     assert "- AST symbol scope: file" in todo_text
     assert "route_request" in todo_text
     index = json.loads((bundle_dir / "index.json").read_text(encoding="utf-8"))
     member = index["bundles"]["codebase/runtime/src-runtime"]["tasks"][0]
+    assert member["board_namespace"] == "swissknife-vfs-assurance-v1"
     assert member["candidate_kind"] == "codebase_scan"
     assert member["goal_registration"] == "unscoped_legacy"
     assert member["paths"] == ["src/runtime.py"]
