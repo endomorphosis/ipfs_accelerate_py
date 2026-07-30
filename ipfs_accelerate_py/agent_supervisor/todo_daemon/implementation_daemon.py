@@ -24591,13 +24591,18 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         # break isinstance; rehydrate via mapping for compiler-local types.
         if hasattr(configured_budget, "to_dict"):
             configured_budget = configured_budget.to_dict()
-        compiler = ContextCompiler(
-            configured_budget,
-            tokenizer=self.implementation_context_tokenizer,
-            provider_context_window=provider_window,
-            provider_max_input_tokens=self.implementation_provider_max_input_tokens,
-            provider_max_input_bytes=prompt_byte_limit,
-        )
+        try:
+            compiler = ContextCompiler(
+                configured_budget,
+                tokenizer=self.implementation_context_tokenizer,
+                provider_context_window=provider_window,
+                provider_max_input_tokens=self.implementation_provider_max_input_tokens,
+                provider_max_input_bytes=prompt_byte_limit,
+            )
+        except RequiredContextOverflowError as exc:
+            raise ImplementationRetryDeferred(
+                "implementation retry context budget exhausted"
+            ) from exc
         try:
             result = compile_retry_context(
                 compiler,

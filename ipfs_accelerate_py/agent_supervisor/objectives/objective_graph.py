@@ -9146,10 +9146,10 @@ def _normalize_objective_predicted_files(values: Iterable[Any]) -> tuple[str, ..
     return tuple(
         sorted(
             {
-                normalized
+                Path(raw).as_posix()
                 for value in values
-                for normalized in [normalize_identity_path(value)]
-                if normalized and normalized.casefold() not in {"none", "n/a"}
+                for raw in [str(value or "").strip()]
+                if raw and raw.casefold() not in {"none", "n/a"}
             }
         )
     )
@@ -9448,14 +9448,36 @@ def bundle_path(bundle_dir: Path, bundle_key: str) -> Path:
     return bundle_dir / f"{safe_bundle_key(bundle_key)}.todo.md"
 
 
+def objective_discovery_path(
+    *,
+    discovery_dir: Path,
+    task_id: str,
+    finding: ObjectiveFinding,
+    date: str | None = None,
+) -> Path:
+    """Return the deterministic discovery path without writing it."""
+
+    selected_date = date or datetime.now(timezone.utc).date().isoformat()
+    return discovery_dir / (
+        f"{selected_date}-{task_id.lower()}-objective-gap-"
+        f"{finding.fingerprint[:12]}.md"
+    )
+
+
 def write_discovery(
     *,
     discovery_dir: Path,
     task_id: str,
     finding: ObjectiveFinding,
+    date: str | None = None,
 ) -> Path:
-    date = datetime.now(timezone.utc).date().isoformat()
-    path = discovery_dir / f"{date}-{task_id.lower()}-objective-gap-{finding.fingerprint[:12]}.md"
+    date = date or datetime.now(timezone.utc).date().isoformat()
+    path = objective_discovery_path(
+        discovery_dir=discovery_dir,
+        task_id=task_id,
+        finding=finding,
+        date=date,
+    )
     discovery_dir.mkdir(parents=True, exist_ok=True)
     missing = "\n".join(f"- {term}" for term in finding.missing_evidence) or "- none"
     present_items: list[str] = []
@@ -10332,6 +10354,8 @@ def generate_objective_todos(
             discovery_dir,
             task_prefix=task_prefix,
         )
+        admission_date = datetime.now(timezone.utc).date().isoformat()
+        pending_discoveries: list[tuple[str, ObjectiveFinding]] = []
         for finding in findings:
             task_id = next_task_id(
                 todo_text,
@@ -10416,10 +10440,11 @@ def generate_objective_todos(
                 finding,
                 dependencies=projected_dependencies,
             )
-            discovery_path = write_discovery(
+            discovery_path = objective_discovery_path(
                 discovery_dir=discovery_dir,
                 task_id=task_id,
                 finding=finding,
+                date=admission_date,
             )
             task_block = render_task_block(
                 task_id=task_id,
@@ -10440,6 +10465,7 @@ def generate_objective_todos(
                 )
             )
             dependencies_by_task[task_id] = tuple(projected_dependencies)
+            pending_discoveries.append((task_id, finding))
             records.append(
                 ObjectiveTaskRecord(
                     task_id=task_id,
@@ -10451,7 +10477,40 @@ def generate_objective_todos(
             )
 
         if records:
-            replace_locked_taskboard(taskboard, todo_text)
+            created_discoveries: list[Path] = []
+            try:
+                for task_id, finding in pending_discoveries:
+                    planned_path = objective_discovery_path(
+                        discovery_dir=discovery_dir,
+                        task_id=task_id,
+                        finding=finding,
+                        date=admission_date,
+                    )
+                    existed = planned_path.exists()
+                    written_path = write_discovery(
+                        discovery_dir=discovery_dir,
+                        task_id=task_id,
+                        finding=finding,
+                        date=admission_date,
+                    )
+                    if written_path != planned_path:
+                        raise RuntimeError(
+                            "objective discovery path changed during admission"
+                        )
+                    if not existed:
+                        created_discoveries.append(written_path)
+                replace_locked_taskboard(taskboard, todo_text)
+            except BaseException:
+                for path in reversed(created_discoveries):
+                    try:
+                        path.unlink()
+                    except FileNotFoundError:
+                        pass
+                try:
+                    discovery_dir.rmdir()
+                except OSError:
+                    pass
+                raise
 
     if not records:
         return []

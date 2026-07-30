@@ -2848,7 +2848,7 @@ def test_generate_objective_todos_serializes_normalized_overlapping_scope(
 
 - Status: todo
 - Depends on: ACCEL-001
-- Predicted files: src
+- Predicted files: .//src
 
 ## ACCEL-003 Settled writer
 
@@ -3004,6 +3004,70 @@ def test_generate_objective_todos_rejects_overlap_dependency_cycle(tmp_path):
             bundle_dir=bundle_dir,
             task_prefix="ACCEL-",
             precomputed_findings=[finding],
+            persist_ast_dataset=False,
+            write_todo_vector_index=False,
+        )
+
+    assert todo_path.read_bytes() == original_board
+    assert not discovery_dir.exists()
+    assert not bundle_dir.exists()
+
+
+def test_generate_objective_todos_late_batch_cycle_has_no_discovery_side_effects(
+    tmp_path,
+):
+    repo, objective_path, todo_path = _seed_repo(tmp_path)
+    discovery_dir = repo / "data" / "agent_supervisor" / "discovery"
+    bundle_dir = repo / "data" / "agent_supervisor" / "objective_bundles"
+    todo_path.write_text(
+        todo_path.read_text(encoding="utf-8").rstrip()
+        + """
+
+## ACCEL-002 Forward-dependent writer
+
+- Status: todo
+- Depends on: ACCEL-004
+- Predicted files: src/cycle.py
+""",
+        encoding="utf-8",
+    )
+    original_board = todo_path.read_bytes()
+
+    def finding(fingerprint: str, path: str) -> ObjectiveFinding:
+        return ObjectiveFinding(
+            fingerprint=fingerprint,
+            goal_id="VAIOS-G000",
+            title=f"Repair {fingerprint}",
+            summary=f"Repair {fingerprint}",
+            priority="P0",
+            track="runtime",
+            missing_evidence=[f"{fingerprint} proof"],
+            present_evidence={},
+            evidence_methods=[],
+            objective_path=str(objective_path),
+            outputs=[path],
+            predicted_files=[path],
+            validation="true",
+        )
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            "objective gap admission would create a dependency cycle "
+            "for ACCEL-004 through: ACCEL-002"
+        ),
+    ):
+        generate_objective_todos(
+            repo_root=repo,
+            objective_path=objective_path,
+            todo_path=todo_path,
+            discovery_dir=discovery_dir,
+            bundle_dir=bundle_dir,
+            task_prefix="ACCEL-",
+            precomputed_findings=[
+                finding("first-safe-gap", "src/first.py"),
+                finding("late-cyclic-gap", "src/cycle.py"),
+            ],
             persist_ast_dataset=False,
             write_todo_vector_index=False,
         )

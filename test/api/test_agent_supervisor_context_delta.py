@@ -978,6 +978,25 @@ def test_implementation_daemon_retries_context_overflow_with_cid_only_evidence(
             attempt=2,
         )
 
+    def compiler_budget_overflow(*args, **kwargs):
+        raise RequiredContextOverflowError(
+            "context reserves leave no effective input budget"
+        )
+
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "ContextCompiler",
+        compiler_budget_overflow,
+    )
+    with pytest.raises(
+        ImplementationRetryDeferred,
+        match="retry context budget exhausted",
+    ):
+        daemon("compiler-budget-blocked.json")._build_implementation_prompt(
+            task,
+            attempt=2,
+        )
+
 
 def test_delta_result_exposes_exact_invariant_core_preservation() -> None:
     compiler, parent, required, optional = _parent()
