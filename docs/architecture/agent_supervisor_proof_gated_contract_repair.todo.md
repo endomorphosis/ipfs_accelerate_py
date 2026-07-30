@@ -757,7 +757,7 @@ consumer or frontier is unresolved.
 
 ## RPR-023 Bind exact graph, dataflow, logic, vector, and llm_router capabilities
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
