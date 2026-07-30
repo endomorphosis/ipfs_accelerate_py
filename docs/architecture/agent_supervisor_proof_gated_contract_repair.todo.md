@@ -850,7 +850,7 @@ consumer or frontier is unresolved.
 
 ## RPR-026 Compute exact before-and-after semantic contract deltas
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
