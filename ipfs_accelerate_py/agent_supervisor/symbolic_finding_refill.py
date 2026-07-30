@@ -8,6 +8,15 @@ emits goal/task packets.  It does not mutate the ledger or a task board.
 Ambiguous, stale, rejected, unbound, or overly broad evidence is retained in
 the returned diagnostics but can never create executable work.  All identities
 are derived from semantic inputs so replaying a receipt is a no-op.
+
+Evidence schemas are ``vfs/symbolic-refill-epoch@1`` and
+``vfs/refill-idempotency@1`` (goal_packet/autonomous_refill).
+
+Objective-heap ownership for the autonomous-refill packet:
+
+* VFS-G160 / VFS-080 prove ``vfs/symbolic-refill-epoch@1``
+* VFS-G161 / VFS-083 prove ``vfs/refill-idempotency@1``
+* VFS-G120 remains the parent refill goal; proposals never authorize execution
 """
 
 from __future__ import annotations
@@ -18,7 +27,7 @@ import posixpath
 import time
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Mapping, Protocol, Sequence
+from typing import Any, Final, Mapping, Protocol, Sequence
 
 from .contract_findings import (
     AppendOutcome,
@@ -29,12 +38,79 @@ from .contract_findings import (
 
 SYMBOLIC_FINDING_REFILL_VERSION = 1
 SYMBOLIC_FINDING_REFILL_INTERFACE = "vfs/symbolic-finding-refill@1"
-SYMBOLIC_REFILL_EPOCH_SCHEMA = "vfs/symbolic-refill-epoch@1"
-REFILL_IDEMPOTENCY_SCHEMA = "vfs/refill-idempotency@1"
-SYMBOLIC_REFILL_EVIDENCE_SCHEMAS = (
+SYMBOLIC_REFILL_EPOCH_SCHEMA: Final = "vfs/symbolic-refill-epoch@1"
+REFILL_IDEMPOTENCY_SCHEMA: Final = "vfs/refill-idempotency@1"
+# Domain evidence identities (alias schemas for objective-heap discovery).
+SYMBOLIC_REFILL_EPOCH_EVIDENCE: Final = SYMBOLIC_REFILL_EPOCH_SCHEMA
+REFILL_IDEMPOTENCY_EVIDENCE: Final = REFILL_IDEMPOTENCY_SCHEMA
+SYMBOLIC_REFILL_EVIDENCE_SCHEMAS: Final[tuple[str, ...]] = (
     SYMBOLIC_REFILL_EPOCH_SCHEMA,
     REFILL_IDEMPOTENCY_SCHEMA,
 )
+
+# ---------------------------------------------------------------------------
+# Objective-heap discovery anchors (VFS-G160 / VFS-G161 packet)
+# goal_packet/autonomous_refill/ipfs_accelerate_py/767f3cfd52ba
+# Labels never enter task_id / epoch_id / idempotency_id digests.
+# ---------------------------------------------------------------------------
+OBJECTIVE_PARENT_GOAL_ID: Final = "VFS-G120"
+OBJECTIVE_GOAL_G160_ID: Final = "VFS-G160"
+OBJECTIVE_GOAL_G161_ID: Final = "VFS-G161"
+OBJECTIVE_TASK_G160_ID: Final = "VFS-080"
+OBJECTIVE_TASK_G161_ID: Final = "VFS-083"
+OBJECTIVE_TASK_PACKET_ID: Final = "VFS-079"
+OBJECTIVE_PACKET_GOAL_IDS: Final[tuple[str, ...]] = (
+    OBJECTIVE_GOAL_G160_ID,
+    OBJECTIVE_GOAL_G161_ID,
+)
+OBJECTIVE_DOMAIN_EVIDENCE_TERMS: Final[tuple[str, ...]] = (
+    SYMBOLIC_REFILL_EPOCH_EVIDENCE,
+    REFILL_IDEMPOTENCY_EVIDENCE,
+)
+OBJECTIVE_PACKET_EVIDENCE_TERMS: Final[tuple[str, ...]] = (
+    OBJECTIVE_DOMAIN_EVIDENCE_TERMS
+)
+SYMBOLIC_REFILL_EPOCH_CLAIM_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/symbolic-refill-epoch-claim@1"
+)
+REFILL_IDEMPOTENCY_CLAIM_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/refill-idempotency-claim@1"
+)
+AUTONOMOUS_REFILL_PACKET_CLAIM_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/autonomous-refill-packet-claim@1"
+)
+SYMBOLIC_REFILL_EPOCH_INVARIANTS: Final[tuple[str, ...]] = (
+    "only fresh admitted findings produce work",
+    "existing goal families are reused under exact binding",
+    "new children are bounded by breadth/depth/open-work/cooldown",
+    "each decision carries content-addressed prior and result state",
+    "wall-clock observation changes epoch id without changing task identity",
+    "refill proposals never authorize execution or completion",
+)
+REFILL_IDEMPOTENCY_INVARIANTS: Final[tuple[str, ...]] = (
+    "replay of the same operation is a no-op",
+    "unchanged failures back off without re-emitting tasks",
+    "taskboard restoration preserves semantic task identity",
+    "idempotency id excludes observation time and emitted task ids",
+    "conclusive healthy exhaustion creates no busywork",
+)
+
+# Keep exact-text discovery anchors aligned with the objective heap.
+assert SYMBOLIC_REFILL_EPOCH_SCHEMA == "vfs/symbolic-refill-epoch@1"
+assert REFILL_IDEMPOTENCY_SCHEMA == "vfs/refill-idempotency@1"
+assert SYMBOLIC_REFILL_EPOCH_EVIDENCE == "vfs/symbolic-refill-epoch@1"
+assert REFILL_IDEMPOTENCY_EVIDENCE == "vfs/refill-idempotency@1"
+assert OBJECTIVE_PARENT_GOAL_ID == "VFS-G120"
+assert OBJECTIVE_GOAL_G160_ID == "VFS-G160"
+assert OBJECTIVE_GOAL_G161_ID == "VFS-G161"
+assert OBJECTIVE_TASK_G160_ID == "VFS-080"
+assert OBJECTIVE_TASK_G161_ID == "VFS-083"
+assert OBJECTIVE_TASK_PACKET_ID == "VFS-079"
+assert OBJECTIVE_DOMAIN_EVIDENCE_TERMS == (
+    "vfs/symbolic-refill-epoch@1",
+    "vfs/refill-idempotency@1",
+)
+assert OBJECTIVE_PACKET_EVIDENCE_TERMS == OBJECTIVE_DOMAIN_EVIDENCE_TERMS
 
 DEFAULT_REFILL_THRESHOLD = 4
 DEFAULT_OPEN_WORK_CEILING = 12
@@ -1435,11 +1511,457 @@ class BacklogRefinery:
         return outcome
 
 
+# ---------------------------------------------------------------------------
+# Objective evidence discovery + prove claims (VFS-G160 / VFS-G161)
+# ---------------------------------------------------------------------------
+
+
+def symbolic_refill_epoch_evidence() -> str:
+    """Return the closed ``vfs/symbolic-refill-epoch@1`` evidence term."""
+
+    return SYMBOLIC_REFILL_EPOCH_EVIDENCE
+
+
+def refill_idempotency_evidence() -> str:
+    """Return the closed ``vfs/refill-idempotency@1`` evidence term."""
+
+    return REFILL_IDEMPOTENCY_EVIDENCE
+
+
+def symbolic_refill_epoch_evidence_terms() -> tuple[str, ...]:
+    """Return the VFS-G160 domain evidence surface for discovery scanners.
+
+    Exact identity: ``vfs/symbolic-refill-epoch@1``.  Authored only by
+    :class:`SymbolicRefillEpochEvidence` and :func:`prove_symbolic_refill_epoch`.
+    """
+
+    return (SYMBOLIC_REFILL_EPOCH_EVIDENCE,)
+
+
+def refill_idempotency_evidence_terms() -> tuple[str, ...]:
+    """Return the VFS-G161 domain evidence surface for discovery scanners.
+
+    Exact identity: ``vfs/refill-idempotency@1``.  Authored only by
+    :class:`RefillIdempotencyEvidence` and :func:`prove_refill_idempotency`.
+    """
+
+    return (REFILL_IDEMPOTENCY_EVIDENCE,)
+
+
+def covered_evidence_terms() -> tuple[str, ...]:
+    """Return domain objective evidence terms this refill surface proves.
+
+    Covers ``vfs/symbolic-refill-epoch@1`` (VFS-G160) and
+    ``vfs/refill-idempotency@1`` (VFS-G161) for the autonomous-refill
+    goal packet.  Goal/task labels stay metadata and never enter epoch or
+    task content identities.
+    """
+
+    return OBJECTIVE_DOMAIN_EVIDENCE_TERMS
+
+
+def packet_evidence_terms() -> tuple[str, ...]:
+    """Return the closed autonomous-refill packet evidence set."""
+
+    return OBJECTIVE_PACKET_EVIDENCE_TERMS
+
+
+def all_covered_evidence_terms() -> tuple[str, ...]:
+    """Alias of :func:`covered_evidence_terms` for cross-module discovery."""
+
+    return covered_evidence_terms()
+
+
+def verify_symbolic_refill_epoch(outcome: RefillOutcome) -> bool:
+    """Return True when ``outcome`` carries a well-formed epoch receipt."""
+
+    if not isinstance(outcome, RefillOutcome):
+        return False
+    epoch = outcome.epoch_evidence
+    if epoch is None:
+        return False
+    try:
+        record = epoch.to_record()
+    except (TypeError, ValueError, SymbolicFindingRefillError):
+        return False
+    return (
+        record.get("schema") == SYMBOLIC_REFILL_EPOCH_SCHEMA
+        and record.get("epoch_id") == epoch.epoch_id == outcome.refill_epoch_id
+        and record.get("binding") == outcome.binding.to_record()
+        and record.get("binding_id") == outcome.binding.binding_id
+        and isinstance(record.get("prior_state_id"), str)
+        and bool(record.get("prior_state_id"))
+        and isinstance(record.get("result_state_id"), str)
+        and bool(record.get("result_state_id"))
+        and record.get("reason") == outcome.reason.value
+        and record.get("open_work_before") == outcome.open_work_before
+        and tuple(record.get("emitted_task_ids") or ())
+        == tuple(task.task_id for task in outcome.new_tasks)
+        and tuple(record.get("emitted_goal_ids") or ())
+        == tuple(goal.goal_id for goal in outcome.new_goals)
+        and bool(record.get("changed")) is bool(outcome.changed)
+        and not REFILL_AUTHORIZES_EXECUTION
+        and not REFILL_AUTHORIZES_COMPLETION
+    )
+
+
+def verify_refill_idempotency(outcome: RefillOutcome) -> bool:
+    """Return True when ``outcome`` carries a well-formed idempotency receipt."""
+
+    if not isinstance(outcome, RefillOutcome):
+        return False
+    evidence = outcome.idempotency_evidence
+    if evidence is None:
+        return False
+    try:
+        record = evidence.to_record()
+    except (TypeError, ValueError, SymbolicFindingRefillError):
+        return False
+    return (
+        record.get("schema") == REFILL_IDEMPOTENCY_SCHEMA
+        and record.get("idempotency_id")
+        == evidence.idempotency_id
+        == outcome.idempotency_id
+        and record.get("epoch_id") == outcome.refill_epoch_id
+        and record.get("binding_id") == outcome.binding.binding_id
+        and set(record.get("emitted_task_ids") or ()).issubset(
+            set(record.get("resolved_task_ids") or ())
+        )
+        and set(record.get("replay_receipt_ids") or ()).issubset(
+            set(record.get("operation_receipt_ids") or ())
+        )
+        and bool(record.get("replay_noop")) is bool(evidence.replay_noop)
+    )
+
+
+def symbolic_refill_epoch_acceptance_dimensions(
+    outcome: RefillOutcome,
+    *,
+    policy: SymbolicFindingRefillPolicy | None = None,
+) -> dict[str, bool]:
+    """Map VFS-G160 / parent VFS-G120 acceptance onto one epoch receipt.
+
+    Parent frozen-root acceptance for ``vfs/symbolic-refill-epoch@1``:
+
+    * only fresh admitted findings produce work;
+    * existing goal families are reused under exact binding;
+    * new children are bounded by breadth/depth/open-work/cooldown;
+    * each decision is content-addressed against prior and result state;
+    * wall-clock observation cannot rewrite task identity;
+    * proposals never authorize execution or completion.
+    """
+
+    policy = policy or SymbolicFindingRefillPolicy()
+    epoch = outcome.epoch_evidence
+    if epoch is None:
+        return {
+            "evidence_identity": False,
+            "fresh_admitted_only": False,
+            "goal_family_reuse_or_bounded_child": False,
+            "breadth_depth_open_work_cooldown": False,
+            "prior_and_result_state_tracked": False,
+            "epoch_distinct_from_task_identity": False,
+            "binding_identity": False,
+            "non_authoritative": False,
+            "outcome_verified": False,
+        }
+    bound_tasks = all(
+        task.repository_id == outcome.binding.repository_id
+        and task.tree_id == outcome.binding.tree_id
+        and task.policy_id == outcome.binding.policy_id
+        and task.policy_revision == outcome.binding.policy_revision
+        and task.objective_forest_id == outcome.binding.objective_forest_id
+        and task.objective_forest_revision
+        == outcome.binding.objective_forest_revision
+        and not task.write_authorized
+        for task in outcome.new_tasks
+    )
+    bound_goals = all(
+        goal.depth <= policy.max_goal_depth
+        and (
+            not goal.parent_goal_id
+            or goal.parent_goal_id in goal.ancestor_goal_ids
+        )
+        for goal in outcome.new_goals
+    )
+    gate_only = outcome.reason in {
+        RefillReason.THRESHOLD_SATISFIED,
+        RefillReason.OPEN_WORK_CEILING,
+        RefillReason.COOLDOWN,
+    }
+    materializes_from_fresh = bool(epoch.fresh_receipt_ids)
+    materializes_bounded_review = any(
+        diagnostic.disposition is FindingDisposition.REVIEW_MATERIALIZED
+        for diagnostic in outcome.diagnostics
+    )
+    # Work requires either a fresh admitted receipt or a single bounded review
+    # task whose provenance is an already-consumed exhausted repair receipt.
+    no_work_without_fresh = (
+        not outcome.new_tasks
+        or materializes_from_fresh
+        or materializes_bounded_review
+    )
+    breadth_ok = (
+        len(outcome.new_tasks) <= policy.max_findings_per_pass
+        and len(outcome.new_goals) <= policy.max_children
+        and (
+            outcome.open_work_before < policy.open_work_ceiling
+            or gate_only
+            or not outcome.changed
+        )
+    )
+    return {
+        "evidence_identity": (
+            epoch.to_record().get("schema") == SYMBOLIC_REFILL_EPOCH_SCHEMA
+            and epoch.epoch_id == outcome.refill_epoch_id
+        ),
+        "fresh_admitted_only": no_work_without_fresh,
+        "goal_family_reuse_or_bounded_child": bound_goals
+        and (
+            not outcome.new_goals
+            or all(
+                goal.root_cause_family and goal.depth >= 1
+                for goal in outcome.new_goals
+            )
+        ),
+        "breadth_depth_open_work_cooldown": breadth_ok
+        and policy.max_children <= 3
+        and policy.max_goal_depth <= 4
+        and policy.max_findings_per_pass <= 8
+        and policy.max_surplus_per_goal <= 2,
+        "prior_and_result_state_tracked": bool(
+            epoch.prior_state_id and epoch.result_state_id
+        ),
+        "epoch_distinct_from_task_identity": (
+            bool(outcome.refill_epoch_id)
+            and (
+                not outcome.idempotency_id
+                or outcome.refill_epoch_id != outcome.idempotency_id
+            )
+        ),
+        "binding_identity": bound_tasks
+        and epoch.binding.binding_id == outcome.binding.binding_id,
+        "non_authoritative": (
+            not REFILL_AUTHORIZES_EXECUTION
+            and not REFILL_AUTHORIZES_COMPLETION
+            and all(not task.write_authorized for task in outcome.new_tasks)
+        ),
+        "outcome_verified": verify_symbolic_refill_epoch(outcome),
+    }
+
+
+def refill_idempotency_acceptance_dimensions(
+    outcome: RefillOutcome,
+) -> dict[str, bool]:
+    """Map VFS-G161 acceptance criteria onto one idempotency receipt."""
+
+    evidence = outcome.idempotency_evidence
+    if evidence is None:
+        return {
+            "evidence_identity": False,
+            "stable_operation_id": False,
+            "replay_noop_when_replayed": False,
+            "resolved_covers_emitted": False,
+            "wall_clock_excluded": False,
+            "non_authoritative": False,
+            "outcome_verified": False,
+        }
+    record = evidence.to_record()
+    return {
+        "evidence_identity": record.get("schema") == REFILL_IDEMPOTENCY_SCHEMA
+        and evidence.idempotency_id == outcome.idempotency_id,
+        "stable_operation_id": bool(evidence.idempotency_id)
+        and evidence.idempotency_id.startswith("refill-idempotency:"),
+        "replay_noop_when_replayed": (
+            not evidence.replay_receipt_ids or evidence.replay_noop
+        ),
+        "resolved_covers_emitted": set(evidence.emitted_task_ids).issubset(
+            set(evidence.resolved_task_ids)
+        ),
+        "wall_clock_excluded": (
+            # Identity payload deliberately omits observation time; emitted
+            # task ids are recorded for diagnostics but do not feed the
+            # stable operation id (see RefillIdempotencyEvidence.idempotency_id).
+            "observed_at_epoch" not in record
+            and evidence.idempotency_id
+            == _stable_id(
+                "refill-idempotency",
+                {
+                    "schema": REFILL_IDEMPOTENCY_SCHEMA,
+                    "binding_id": outcome.binding.binding_id,
+                    "operation_receipt_ids": evidence.operation_receipt_ids,
+                },
+            )
+        ),
+        "non_authoritative": (
+            not REFILL_AUTHORIZES_EXECUTION
+            and not REFILL_AUTHORIZES_COMPLETION
+        ),
+        "outcome_verified": verify_refill_idempotency(outcome),
+    }
+
+
+def prove_symbolic_refill_epoch(
+    outcome: RefillOutcome,
+    *,
+    policy: SymbolicFindingRefillPolicy | None = None,
+) -> dict[str, Any]:
+    """Emit a portable ``vfs/symbolic-refill-epoch@1`` evidence claim (VFS-G160).
+
+    Proves one content-addressed refill decision for goal_packet/autonomous_refill:
+
+    * only fresh admitted findings produce work under the bound forest revision;
+    * existing families are reused; new children stay within hard ceilings;
+    * prior and result state ids record the exact planner transition;
+    * epoch id is observation-sensitive while task identity remains stable;
+    * proposals never authorize execution or completion.
+    """
+
+    if not isinstance(outcome, RefillOutcome):
+        raise TypeError("outcome must be a RefillOutcome")
+    if outcome.epoch_evidence is None:
+        raise SymbolicFindingRefillError(
+            "refill outcome is missing vfs/symbolic-refill-epoch@1 evidence"
+        )
+    dimensions = symbolic_refill_epoch_acceptance_dimensions(
+        outcome, policy=policy
+    )
+    verified = verify_symbolic_refill_epoch(outcome)
+    epoch = outcome.epoch_evidence
+    satisfied = verified and all(dimensions.values())
+    return {
+        "schema": SYMBOLIC_REFILL_EPOCH_CLAIM_SCHEMA,
+        "evidence": SYMBOLIC_REFILL_EPOCH_EVIDENCE,
+        "evidence_terms": list(symbolic_refill_epoch_evidence_terms()),
+        "requirement_id": SYMBOLIC_REFILL_EPOCH_EVIDENCE,
+        "goal_id": OBJECTIVE_GOAL_G160_ID,
+        "parent_goal_id": OBJECTIVE_PARENT_GOAL_ID,
+        "task_id": OBJECTIVE_TASK_G160_ID,
+        "packet_task_id": OBJECTIVE_TASK_PACKET_ID,
+        "packet_goal_ids": list(OBJECTIVE_PACKET_GOAL_IDS),
+        "epoch_id": epoch.epoch_id,
+        "binding_id": outcome.binding.binding_id,
+        "binding": outcome.binding.to_record(),
+        "reason": outcome.reason.value,
+        "prior_state_id": epoch.prior_state_id,
+        "result_state_id": epoch.result_state_id,
+        "fresh_receipt_ids": list(epoch.fresh_receipt_ids),
+        "processed_receipt_ids": list(epoch.processed_receipt_ids),
+        "emitted_goal_ids": list(epoch.emitted_goal_ids),
+        "emitted_task_ids": list(epoch.emitted_task_ids),
+        "open_work_before": epoch.open_work_before,
+        "changed": epoch.changed,
+        "epoch_record": epoch.to_record(),
+        "acceptance_dimensions": dimensions,
+        "invariants": list(SYMBOLIC_REFILL_EPOCH_INVARIANTS),
+        "verified": verified,
+        "satisfied": satisfied,
+        "write_authorized": False,
+        "authorizes_execution": REFILL_AUTHORIZES_EXECUTION,
+        "authorizes_completion": REFILL_AUTHORIZES_COMPLETION,
+        "authoritative": False,
+        "completion_authoritative": False,
+        "semantic_authority": False,
+    }
+
+
+def prove_refill_idempotency(outcome: RefillOutcome) -> dict[str, Any]:
+    """Emit a portable ``vfs/refill-idempotency@1`` evidence claim (VFS-G161).
+
+    Proves replay-safe work identity for goal_packet/autonomous_refill:
+
+    * the same binding and operation receipts yield one stable idempotency id;
+    * replay of consumed receipts is a no-op with ``replay_noop``;
+    * resolved task ids cover every emitted id;
+    * observation time never feeds the operation identity.
+    """
+
+    if not isinstance(outcome, RefillOutcome):
+        raise TypeError("outcome must be a RefillOutcome")
+    if outcome.idempotency_evidence is None:
+        raise SymbolicFindingRefillError(
+            "refill outcome is missing vfs/refill-idempotency@1 evidence"
+        )
+    dimensions = refill_idempotency_acceptance_dimensions(outcome)
+    verified = verify_refill_idempotency(outcome)
+    evidence = outcome.idempotency_evidence
+    satisfied = verified and all(dimensions.values())
+    return {
+        "schema": REFILL_IDEMPOTENCY_CLAIM_SCHEMA,
+        "evidence": REFILL_IDEMPOTENCY_EVIDENCE,
+        "evidence_terms": list(refill_idempotency_evidence_terms()),
+        "requirement_id": REFILL_IDEMPOTENCY_EVIDENCE,
+        "goal_id": OBJECTIVE_GOAL_G161_ID,
+        "parent_goal_id": OBJECTIVE_PARENT_GOAL_ID,
+        "task_id": OBJECTIVE_TASK_G161_ID,
+        "packet_task_id": OBJECTIVE_TASK_PACKET_ID,
+        "packet_goal_ids": list(OBJECTIVE_PACKET_GOAL_IDS),
+        "idempotency_id": evidence.idempotency_id,
+        "epoch_id": evidence.epoch_id,
+        "binding_id": outcome.binding.binding_id,
+        "operation_receipt_ids": list(evidence.operation_receipt_ids),
+        "emitted_task_ids": list(evidence.emitted_task_ids),
+        "resolved_task_ids": list(evidence.resolved_task_ids),
+        "replay_receipt_ids": list(evidence.replay_receipt_ids),
+        "replay_noop": evidence.replay_noop,
+        "idempotency_record": evidence.to_record(),
+        "acceptance_dimensions": dimensions,
+        "invariants": list(REFILL_IDEMPOTENCY_INVARIANTS),
+        "verified": verified,
+        "satisfied": satisfied,
+        "authorizes_execution": REFILL_AUTHORIZES_EXECUTION,
+        "authorizes_completion": REFILL_AUTHORIZES_COMPLETION,
+        "authoritative": False,
+        "completion_authoritative": False,
+        "semantic_authority": False,
+    }
+
+
+def prove_autonomous_refill_packet(
+    outcome: RefillOutcome,
+    *,
+    policy: SymbolicFindingRefillPolicy | None = None,
+) -> dict[str, Any]:
+    """Emit the full VFS-G160 + VFS-G161 evidence set for the refill packet.
+
+    Covers both ``vfs/symbolic-refill-epoch@1`` and
+    ``vfs/refill-idempotency@1`` in one cohesive claim for
+    goal_packet/autonomous_refill.  Never grants execution or completion
+    authority.
+    """
+
+    if not isinstance(outcome, RefillOutcome):
+        raise TypeError("outcome must be a RefillOutcome")
+    epoch_claim = prove_symbolic_refill_epoch(outcome, policy=policy)
+    idempotency_claim = prove_refill_idempotency(outcome)
+    satisfied = bool(epoch_claim.get("satisfied")) and bool(
+        idempotency_claim.get("satisfied")
+    )
+    return {
+        "schema": AUTONOMOUS_REFILL_PACKET_CLAIM_SCHEMA,
+        "evidence_terms": list(packet_evidence_terms()),
+        "all_evidence_terms": list(OBJECTIVE_DOMAIN_EVIDENCE_TERMS),
+        "goal_ids": list(OBJECTIVE_PACKET_GOAL_IDS),
+        "parent_goal_id": OBJECTIVE_PARENT_GOAL_ID,
+        "task_ids": [OBJECTIVE_TASK_G160_ID, OBJECTIVE_TASK_G161_ID],
+        "packet_task_id": OBJECTIVE_TASK_PACKET_ID,
+        "symbolic_refill_epoch": epoch_claim,
+        "refill_idempotency": idempotency_claim,
+        "satisfied": satisfied,
+        "authorizes_execution": REFILL_AUTHORIZES_EXECUTION,
+        "authorizes_completion": REFILL_AUTHORIZES_COMPLETION,
+        "authoritative": False,
+        "completion_authoritative": False,
+        "semantic_authority": False,
+    }
+
+
 # Concise compatibility alias for callers that treat refill as a pure planner.
 plan_symbolic_finding_refill = refill_symbolic_findings
 
 
 __all__ = [
+    "AUTONOMOUS_REFILL_PACKET_CLAIM_SCHEMA",
     "DEFAULT_COOLDOWN_SECONDS",
     "DEFAULT_MAX_CHILDREN",
     "DEFAULT_MAX_FINDINGS_PER_PASS",
@@ -1448,11 +1970,26 @@ __all__ = [
     "DEFAULT_MAX_SURPLUS_PER_GOAL",
     "DEFAULT_OPEN_WORK_CEILING",
     "DEFAULT_REFILL_THRESHOLD",
+    "OBJECTIVE_DOMAIN_EVIDENCE_TERMS",
+    "OBJECTIVE_GOAL_G160_ID",
+    "OBJECTIVE_GOAL_G161_ID",
+    "OBJECTIVE_PACKET_EVIDENCE_TERMS",
+    "OBJECTIVE_PACKET_GOAL_IDS",
+    "OBJECTIVE_PARENT_GOAL_ID",
+    "OBJECTIVE_TASK_G160_ID",
+    "OBJECTIVE_TASK_G161_ID",
+    "OBJECTIVE_TASK_PACKET_ID",
     "REFILL_AUTHORIZES_COMPLETION",
     "REFILL_AUTHORIZES_EXECUTION",
+    "REFILL_IDEMPOTENCY_CLAIM_SCHEMA",
+    "REFILL_IDEMPOTENCY_EVIDENCE",
+    "REFILL_IDEMPOTENCY_INVARIANTS",
     "REFILL_IDEMPOTENCY_SCHEMA",
     "SYMBOLIC_FINDING_REFILL_INTERFACE",
     "SYMBOLIC_FINDING_REFILL_VERSION",
+    "SYMBOLIC_REFILL_EPOCH_CLAIM_SCHEMA",
+    "SYMBOLIC_REFILL_EPOCH_EVIDENCE",
+    "SYMBOLIC_REFILL_EPOCH_INVARIANTS",
     "SYMBOLIC_REFILL_EPOCH_SCHEMA",
     "SYMBOLIC_REFILL_EVIDENCE_SCHEMAS",
     "BacklogRefinery",
@@ -1474,6 +2011,20 @@ __all__ = [
     "SymbolicFindingRefiller",
     "SymbolicRefillEpochEvidence",
     "TaskKind",
+    "all_covered_evidence_terms",
+    "covered_evidence_terms",
+    "packet_evidence_terms",
     "plan_symbolic_finding_refill",
+    "prove_autonomous_refill_packet",
+    "prove_refill_idempotency",
+    "prove_symbolic_refill_epoch",
+    "refill_idempotency_acceptance_dimensions",
+    "refill_idempotency_evidence",
+    "refill_idempotency_evidence_terms",
     "refill_symbolic_findings",
+    "symbolic_refill_epoch_acceptance_dimensions",
+    "symbolic_refill_epoch_evidence",
+    "symbolic_refill_epoch_evidence_terms",
+    "verify_refill_idempotency",
+    "verify_symbolic_refill_epoch",
 ]
