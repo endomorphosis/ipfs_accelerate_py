@@ -266,6 +266,22 @@ DEFAULT_PRODUCTION_CODEX_MODEL = "gpt-5.6-sol"
 MCP_JSONRPC_ENVELOPE_MAX_BYTES = 64 * 1024
 MCP_JSONRPC_TOOL_NAME = "llm_generate"
 MCP_LLM_GENERATE_OPERATION = "text.generate"
+_MCP_TOOL_ERROR_CODE_MAX_BYTES = 64
+_MCP_TOOL_ERROR_CODE_PATTERN = re.compile(r"[a-z][a-z0-9_]{0,63}")
+_MCP_TOOL_ERROR_REASON_CODES = {
+    "input_limit_exceeded": ProviderReason.PROMPT_TOO_LARGE.value,
+    "invalid_request": ProviderReason.PACKET_MALFORMED.value,
+    "invalid_router_output": ProviderReason.PROVIDER_RESPONSE_MALFORMED.value,
+    "output_limit_exceeded": ProviderReason.PROVIDER_RESPONSE_TOO_LARGE.value,
+    "streaming_unsupported": ProviderReason.PACKET_MALFORMED.value,
+    "timeout": ProviderReason.PROVIDER_TIMEOUT.value,
+}
+_MCP_TOOL_UNAVAILABLE_ERROR_CODES = frozenset(
+    {
+        "no_match",
+        "selection_denied",
+    }
+)
 PRODUCTION_PROVIDER_OPERATIONAL_RETRY_REASONS = frozenset(
     {
         ProviderReason.GROK_QUOTA_EXHAUSTED.value,
@@ -597,6 +613,60 @@ def _production_provider_response_schema(
     raise ValueError(f"unsupported production provider role: {role.value}")
 
 
+def _bounded_mcp_tool_error_code(payload: Any) -> str:
+    """Extract one consistent safe code without reflecting error text."""
+
+    if not isinstance(payload, Mapping):
+        return ""
+    values = [
+        payload.get("error_code"),
+        payload.get("error_type"),
+        payload.get("code"),
+    ]
+    nested_error = payload.get("error")
+    if isinstance(nested_error, Mapping):
+        values.append(nested_error.get("code"))
+    elif nested_error is not None:
+        return ""
+    present = [value for value in values if value is not None]
+    if not present:
+        return ""
+    normalized: list[str] = []
+    for value in present:
+        if not isinstance(value, str):
+            return ""
+        code = value.strip().casefold()
+        if (
+            not code
+            or len(code.encode("utf-8")) > _MCP_TOOL_ERROR_CODE_MAX_BYTES
+            or _MCP_TOOL_ERROR_CODE_PATTERN.fullmatch(code) is None
+        ):
+            return ""
+        normalized.append(code)
+    if len(set(normalized)) != 1:
+        return ""
+    return normalized[0]
+
+
+def _bounded_mcp_tool_failure_reason(
+    payload: Any,
+    *,
+    role: ProviderRole,
+) -> str:
+    """Map an MCP-owned bounded error code to a supervisor reason enum."""
+
+    code = _bounded_mcp_tool_error_code(payload)
+    if code in _MCP_TOOL_UNAVAILABLE_ERROR_CODES:
+        if role is ProviderRole.GROK_IMPLEMENT:
+            return ProviderReason.GROK_UNAVAILABLE.value
+        if role is ProviderRole.CODEX_REVIEW:
+            return ProviderReason.CODEX_UNAVAILABLE.value
+    return _MCP_TOOL_ERROR_REASON_CODES.get(
+        code,
+        ProviderReason.PROVIDER_FAILURE.value,
+    )
+
+
 @dataclass(slots=True)
 class McpPlusPlusLlmGenerateProvider:
     """Synchronous, bounded MCP++ ``llm_generate`` provider transport."""
@@ -842,7 +912,12 @@ class McpPlusPlusLlmGenerateProvider:
                 )
         except ProviderRoutingError:
             raise
-        except (OSError, ssl.SSLError, TimeoutError) as exc:
+        except TimeoutError as exc:
+            raise ProviderRoutingError(
+                "MCP++ transport exceeded its bounded timeout",
+                reason_code=ProviderReason.PROVIDER_TIMEOUT,
+            ) from exc
+        except (OSError, ssl.SSLError) as exc:
             raise ProviderRoutingError(
                 f"MCP++ transport failed: {type(exc).__name__}",
                 reason_code=ProviderReason.PROVIDER_FAILURE,
@@ -857,17 +932,24 @@ class McpPlusPlusLlmGenerateProvider:
         if "error" in envelope:
             raise ProviderRoutingError(
                 "MCP++ llm_generate returned a JSON-RPC error",
-                reason_code=ProviderReason.PROVIDER_FAILURE,
+                reason_code=_bounded_mcp_tool_failure_reason(
+                    envelope.get("error"),
+                    role=self.role,
+                ),
             )
         result = envelope.get("result")
-        if (
-            not isinstance(result, Mapping)
-            or result.get("success") is not True
-            or result.get("status") != "success"
-        ):
+        if not isinstance(result, Mapping):
+            raise ProviderRoutingError(
+                "MCP++ llm_generate response is malformed",
+                reason_code=ProviderReason.PROVIDER_RESPONSE_MALFORMED,
+            )
+        if result.get("success") is not True or result.get("status") != "success":
             raise ProviderRoutingError(
                 "MCP++ llm_generate did not succeed",
-                reason_code=ProviderReason.PROVIDER_FAILURE,
+                reason_code=_bounded_mcp_tool_failure_reason(
+                    result,
+                    role=self.role,
+                ),
             )
 
         binding = result.get("selected_binding")

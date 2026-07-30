@@ -329,6 +329,29 @@ def _mcp_success_envelope(request: ProviderRequest) -> dict[str, Any]:
     }
 
 
+def _mcp_failure_envelope(
+    request_id: str,
+    error_code: str,
+    *,
+    unsafe_message: str,
+) -> dict[str, Any]:
+    return {
+        "jsonrpc": "2.0",
+        "id": request_id,
+        "result": {
+            "success": False,
+            "status": "error",
+            "error": {
+                "code": error_code,
+                "message": unsafe_message,
+                "cause": "UnsafeProviderDetail",
+            },
+            "error_code": error_code,
+            "error_type": error_code,
+        },
+    }
+
+
 def test_mcpplusplus_provider_pins_route_and_rejects_fallback(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -374,6 +397,133 @@ def test_mcpplusplus_provider_pins_route_and_rejects_fallback(
         match="routing receipt is invalid",
     ):
         provider(request)
+
+
+@pytest.mark.parametrize(
+    ("error_code", "expected_reason"),
+    [
+        ("timeout", ProviderReason.PROVIDER_TIMEOUT.value),
+        (
+            "output_limit_exceeded",
+            ProviderReason.PROVIDER_RESPONSE_TOO_LARGE.value,
+        ),
+        (
+            "invalid_router_output",
+            ProviderReason.PROVIDER_RESPONSE_MALFORMED.value,
+        ),
+        ("input_limit_exceeded", ProviderReason.PROMPT_TOO_LARGE.value),
+        ("invalid_request", ProviderReason.PACKET_MALFORMED.value),
+        ("no_match", ProviderReason.GROK_UNAVAILABLE.value),
+        ("router_error", ProviderReason.PROVIDER_FAILURE.value),
+        pytest.param(
+            "t" * 65,
+            ProviderReason.PROVIDER_FAILURE.value,
+            id="overlong-code-fails-generic",
+        ),
+    ],
+)
+def test_mcpplusplus_provider_classifies_only_bounded_tool_error_codes(
+    monkeypatch: pytest.MonkeyPatch,
+    error_code: str,
+    expected_reason: str,
+) -> None:
+    request = _mcp_provider_request()
+    request_id = (
+        f"sca615:{request.role.value}:"
+        f"{hashlib.sha256(request.prompt).hexdigest()}"
+    )
+    unsafe_message = (
+        "provider-secret=must-not-reflect prompt="
+        + request.prompt.decode("utf-8")
+    )
+    envelope = _mcp_failure_envelope(
+        request_id,
+        error_code,
+        unsafe_message=unsafe_message,
+    )
+
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.todo_daemon."
+        "implementation_daemon.urlopen",
+        lambda _request, *, timeout: _McpResponse(envelope),
+    )
+    provider = McpPlusPlusLlmGenerateProvider(
+        role=ProviderRole.GROK_IMPLEMENT,
+        endpoint_url="http://127.0.0.1:9002/mcp",
+        provider_selector="grok_cli",
+        model_selector="grok-4.5",
+    )
+
+    with pytest.raises(ProviderRoutingError) as failure:
+        provider(request)
+
+    assert failure.value.reason_code == expected_reason
+    assert unsafe_message not in str(failure.value)
+    assert request.prompt.decode("utf-8") not in str(failure.value)
+
+
+def test_mcpplusplus_failed_route_receipt_preserves_pinned_identities_only(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    unsafe_error_marker = "wire-error-secret-must-not-persist"
+    unsafe_prompt_marker = "wire-prompt-secret-must-not-persist"
+
+    def fake_urlopen(http_request, *, timeout):
+        request_payload = json.loads(http_request.data)
+        prompt = request_payload["params"]["arguments"]["prompt"]
+        unsafe_message = f"{unsafe_error_marker}:{prompt}"
+        return _McpResponse(
+            _mcp_failure_envelope(
+                request_payload["id"],
+                "timeout",
+                unsafe_message=unsafe_message,
+            )
+        )
+
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.todo_daemon."
+        "implementation_daemon.urlopen",
+        fake_urlopen,
+    )
+    provider = McpPlusPlusLlmGenerateProvider(
+        role=ProviderRole.GROK_IMPLEMENT,
+        endpoint_url="http://127.0.0.1:9002/mcp",
+        provider_selector="grok_cli",
+        model_selector="grok-4.5",
+    )
+    packet = build_production_contract_packet(
+        task_id="SCA-615",
+        snapshot_id=SNAPSHOT,
+        write_paths=[PATH],
+        validation_commands=["true"],
+        acceptance_criteria=unsafe_prompt_marker,
+    )
+
+    result = ImplementationProviderRouter(
+        grok_provider=provider,
+        admission_gate=_accept,
+    ).route(packet, current_snapshot_id=SNAPSHOT)
+
+    assert result.status is RouteStatus.REJECTED
+    assert result.reason_code == ProviderReason.PROVIDER_TIMEOUT.value
+    assert len(result.attempts) == 1
+    attempt = result.attempts[0]
+    assert attempt.status == "failed"
+    assert attempt.provider_identity == (
+        "mcp++:llm_generate:provider=grok_cli"
+    )
+    assert attempt.model_identity == "grok_cli:grok-4.5"
+    assert attempt.session_identity == ""
+    assert attempt.prompt_bytes > 0
+    assert attempt.response_bytes == 0
+
+    receipt = result.provider_receipt.to_dict()
+    encoded_receipt = json.dumps(receipt, sort_keys=True)
+    assert unsafe_error_marker not in encoded_receipt
+    assert unsafe_prompt_marker not in encoded_receipt
+    assert receipt["attempts"][0]["prompt_embedded"] is False
+    assert receipt["attempts"][0]["response_embedded"] is False
+    assert "error" not in receipt["attempts"][0]
 
 
 def test_mcpplusplus_codex_review_schema_is_strict_output_compatible() -> None:
@@ -1207,6 +1357,9 @@ def _persist_pre_policy_production_provider_failure(
     assert failed_attempt.prompt_bytes > 0
     assert failed_attempt.response_bytes == 0
     assert failed_attempt.response_digest == ""
+    assert failed_attempt.provider_identity == failed_provider.provider_identity
+    assert failed_attempt.model_identity == failed_provider.model_identity
+    assert failed_attempt.session_identity == ""
 
     log_path = daemon.implementation_log_dir / "sca-615-attempt-3.log"
     log_path.write_text(
