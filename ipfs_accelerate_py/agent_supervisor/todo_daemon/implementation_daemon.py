@@ -46,6 +46,10 @@ from ..context.context_contracts import (
     ContextCapsule,
 )
 from ..proof.formal_verification_contracts import canonical_json, content_identity
+from ipfs_accelerate_py.model_catalog.identity import (
+    model_identity as catalog_model_identity,
+    provider_identity as catalog_provider_identity,
+)
 from ..implementation_timeout import (
     DEFAULT_IMPLEMENTATION_TIMEOUT_SECONDS,
     effective_implementation_hard_timeout,
@@ -497,6 +501,8 @@ class McpPlusPlusLlmGenerateProvider:
     timeout_seconds: float = 120.0
     provider_identity: str = field(init=False)
     model_identity: str = field(init=False)
+    catalog_provider_id: str = field(init=False)
+    catalog_model_id: str = field(init=False)
     last_session_identity: str = field(default="", init=False)
     _session_lock: threading.Lock = field(
         default_factory=threading.Lock,
@@ -514,11 +520,27 @@ class McpPlusPlusLlmGenerateProvider:
                 "and Codex review roles"
             )
         provider = str(self.provider_selector or "").strip().casefold()
-        if not provider:
-            raise ValueError(f"{self.role.value} requires a pinned provider selector")
+        if (
+            not re.fullmatch(r"[a-z0-9][a-z0-9._/-]{0,127}", provider)
+            or "//" in provider
+            or ".." in provider
+        ):
+            raise ValueError(
+                f"{self.role.value} requires a canonical provider selector"
+            )
         model = str(self.model_selector or "").strip()
-        if not model:
-            raise ValueError(f"{self.role.value} requires a pinned model selector")
+        catalog_model_name = model.casefold()
+        if (
+            not re.fullmatch(
+                r"[a-z0-9][a-z0-9._/-]{0,127}",
+                catalog_model_name,
+            )
+            or "//" in catalog_model_name
+            or ".." in catalog_model_name
+        ):
+            raise ValueError(
+                f"{self.role.value} requires a canonical model selector"
+            )
         endpoint = str(self.endpoint_url or "").strip()
         parsed = urlsplit(endpoint)
         if (
@@ -563,6 +585,11 @@ class McpPlusPlusLlmGenerateProvider:
             f"mcp++:{MCP_JSONRPC_TOOL_NAME}:provider={provider}"
         )
         self.model_identity = f"{provider}:{model}"
+        self.catalog_provider_id = catalog_provider_identity(provider)
+        self.catalog_model_id = catalog_model_identity(
+            self.catalog_provider_id,
+            catalog_model_name,
+        )
 
     @staticmethod
     def _bounded_response_body(response: Any, limit: int) -> bytes:
@@ -748,9 +775,9 @@ class McpPlusPlusLlmGenerateProvider:
         if (
             not binding_id
             or str(binding.get("router") or "") != "llm_router"
-            or str(binding.get("provider_id") or "").casefold()
-            != self.provider_selector
-            or str(binding.get("model_id") or "") != self.model_selector
+            or str(binding.get("provider_id") or "")
+            != self.catalog_provider_id
+            or str(binding.get("model_id") or "") != self.catalog_model_id
             or not isinstance(operations, Sequence)
             or isinstance(operations, (str, bytes))
             or MCP_LLM_GENERATE_OPERATION

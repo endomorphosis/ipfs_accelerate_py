@@ -324,6 +324,102 @@ class TestTrioMCPServer:
 
         anyio.run(_run)
 
+    def test_attested_llm_catalog_is_exact_and_invokable(
+        self,
+        monkeypatch,
+    ):
+        """Only the preflighted provider/model pair becomes routable."""
+        from ipfs_accelerate_py.mcp_server.server import StandaloneMCP
+        from ipfs_accelerate_py.mcp_server.tools.ai_router_tools import (
+            text_embedding,
+        )
+        from ipfs_accelerate_py.model_catalog.catalog import AIServiceCatalog
+        import ipfs_accelerate_py.model_manager as model_manager_module
+
+        class CatalogManager:
+            def __init__(self):
+                self.catalog = AIServiceCatalog()
+
+            def snapshot(self):
+                return self.catalog.snapshot()
+
+            def resolve(self, *args, **kwargs):
+                return self.catalog.resolve(*args, **kwargs)
+
+        manager = CatalogManager()
+        monkeypatch.setattr(
+            model_manager_module,
+            "get_default_model_manager",
+            lambda: manager,
+        )
+        monkeypatch.setenv(
+            "MCPPP_TRIO_ATTESTED_LLM_BINDINGS",
+            "llama_cpp=leanstral_local",
+        )
+        monkeypatch.setattr(
+            text_embedding.llm_router,
+            "generate_text",
+            lambda *_args, **_kwargs: "READY",
+        )
+        monkeypatch.setattr(
+            text_embedding.llm_router,
+            "get_last_generation_trace",
+            lambda: {
+                "effective_provider_name": "llama_cpp",
+                "effective_model_name": "leanstral_local",
+                "fallback_used": False,
+            },
+        )
+
+        server = TrioMCPServer(ServerConfig(enable_p2p_tools=False))
+        server.mcp = StandaloneMCP(name="test-mcplusplus")
+        server._register_canonical_llm_generate()
+
+        snapshot = manager.snapshot()
+        assert len(snapshot.providers) == 1
+        assert len(snapshot.models) == 1
+        assert len(snapshot.bindings) == 1
+        assert snapshot.providers[0].name == "llama_cpp"
+        assert snapshot.models[0].name == "leanstral_local"
+        assert snapshot.bindings[0].state.authorized is True
+        assert snapshot.bindings[0].state.routable is True
+
+        async def _call():
+            return await text_embedding.llm_generate(
+                "Return READY.",
+                provider="llama_cpp",
+                model="leanstral_local",
+                allow_fallback=False,
+            )
+
+        result = anyio.run(_call)
+        assert result["success"] is True
+        assert result["text"] == "READY"
+        assert result["receipt"]["fallback"]["allowed"] is False
+        assert result["receipt"]["fallback"]["used"] is False
+        assert result["receipt"]["fallback"]["boundary_binding_ids"] == [
+            snapshot.bindings[0].binding_id
+        ]
+
+    def test_attested_llm_catalog_rejects_duplicate_provider(
+        self,
+        monkeypatch,
+    ):
+        """One provider cannot be ambiguously attested to two models."""
+        from ipfs_accelerate_py.mcplusplus_module.trio import (
+            server as trio_server_module,
+        )
+
+        monkeypatch.setenv(
+            "MCPPP_TRIO_ATTESTED_LLM_BINDINGS",
+            "grok_cli=grok-4.5,grok_cli=grok-4",
+        )
+        with pytest.raises(
+            ValueError,
+            match="exactly one model",
+        ):
+            trio_server_module._publish_attested_llm_catalog()
+
     def test_discover_uses_public_interface_repository_api(self, monkeypatch):
         """Discovery must not depend on InterfaceRepository internals."""
         from ipfs_accelerate_py.mcp_server.server import StandaloneMCP

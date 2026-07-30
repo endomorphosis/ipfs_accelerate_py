@@ -34,11 +34,12 @@ import json
 import inspect
 import logging
 import os
+import re
 import time
 from functools import partial
 from collections import defaultdict
 from typing import Any, Optional
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace as dataclass_replace
 
 import trio
 
@@ -50,6 +51,189 @@ except ImportError:  # pragma: no cover - only used when ASGI extras are absent
 from ..cid_ucan import compute_cid
 
 logger = logging.getLogger("ipfs_accelerate_mcp.mcplusplus.trio.server")
+
+ATTESTED_LLM_BINDINGS_ENV = "MCPPP_TRIO_ATTESTED_LLM_BINDINGS"
+ATTESTED_LLM_CATALOG_SOURCE = "runtime.attested-llm"
+MAX_ATTESTED_LLM_BINDINGS = 8
+MAX_ATTESTED_LLM_BINDINGS_BYTES = 2048
+_ATTESTED_PROVIDER = re.compile(r"[a-z0-9][a-z0-9_.-]{0,63}")
+_ATTESTED_MODEL = re.compile(r"[A-Za-z0-9][A-Za-z0-9._/:-]{0,127}")
+
+
+def _parse_attested_llm_bindings(raw: str) -> tuple[tuple[str, str], ...]:
+    """Parse a bounded ``provider=model`` operator attestation."""
+
+    value = str(raw or "").strip()
+    if not value:
+        return ()
+    if len(value.encode("utf-8")) > MAX_ATTESTED_LLM_BINDINGS_BYTES:
+        raise ValueError("attested LLM binding list exceeds its byte bound")
+    entries = value.split(",")
+    if len(entries) > MAX_ATTESTED_LLM_BINDINGS:
+        raise ValueError("too many attested LLM bindings")
+
+    bindings: list[tuple[str, str]] = []
+    providers: set[str] = set()
+    for entry in entries:
+        provider, separator, model = entry.strip().partition("=")
+        provider = provider.strip().casefold()
+        model = model.strip()
+        if (
+            separator != "="
+            or not _ATTESTED_PROVIDER.fullmatch(provider)
+            or not _ATTESTED_MODEL.fullmatch(model)
+        ):
+            raise ValueError(
+                "attested LLM bindings must use provider=model selectors"
+            )
+        if provider in providers:
+            raise ValueError(
+                "each attested LLM provider must select exactly one model"
+            )
+        providers.add(provider)
+        bindings.append((provider, model))
+    return tuple(sorted(bindings))
+
+
+@dataclass(frozen=True)
+class _AttestedLlmCatalogSource:
+    """Pure catalog projection of an operator-preflighted LLM allowlist."""
+
+    bindings: tuple[tuple[str, str], ...]
+    source: str = ATTESTED_LLM_CATALOG_SOURCE
+    precedence: int = 100
+    side_effecting: bool = False
+
+    def load(self) -> Any:
+        from ipfs_accelerate_py import llm_router
+        from ipfs_accelerate_py.model_catalog import (
+            CatalogSnapshot,
+            LifecycleState,
+            Operation,
+            OperationalState,
+            Provenance,
+            RouterBinding,
+        )
+        from ipfs_accelerate_py.model_catalog.sources.static import (
+            CatalogSourceResult,
+            SourceMetadata,
+        )
+
+        ready = OperationalState(
+            known=True,
+            configured=True,
+            authorized=True,
+            reachable=True,
+            healthy=True,
+            routable=True,
+        )
+        providers = []
+        models = []
+        router_bindings = []
+        for priority, (provider_name, model_selector) in enumerate(
+            self.bindings
+        ):
+            attestation = (
+                Provenance(
+                    source=self.source,
+                    source_record_id=f"{provider_name}={model_selector}",
+                ),
+            )
+            provider = llm_router.get_provider_descriptor(provider_name)
+            model = llm_router.resolve_model(
+                model=model_selector,
+                provider=provider_name,
+            )
+            operations = tuple(
+                sorted(
+                    {
+                        operation
+                        for capability in model.capabilities
+                        for operation in capability.operations
+                    },
+                    key=lambda item: item.value,
+                )
+            )
+            if Operation.TEXT_GENERATE not in operations:
+                raise ValueError(
+                    f"attested provider {provider_name} cannot generate text"
+                )
+            providers.append(
+                dataclass_replace(
+                    provider,
+                    lifecycle=LifecycleState.READY,
+                    state=ready,
+                    provenance=attestation,
+                )
+            )
+            models.append(
+                dataclass_replace(
+                    model,
+                    lifecycle=LifecycleState.READY,
+                    state=ready,
+                    provenance=attestation,
+                )
+            )
+            router_bindings.append(
+                RouterBinding(
+                    router="llm_router",
+                    provider_id=provider.provider_id,
+                    model_id=model.model_id,
+                    operations=operations,
+                    priority=MAX_ATTESTED_LLM_BINDINGS - priority,
+                    state=ready,
+                    provenance=attestation,
+                    labels=(("invocation_model", model_selector),),
+                )
+            )
+        snapshot = CatalogSnapshot(
+            providers=tuple(providers),
+            models=tuple(models),
+            bindings=tuple(router_bindings),
+        )
+        return CatalogSourceResult(
+            snapshot=snapshot,
+            metadata=SourceMetadata(
+                source=self.source,
+                precedence=self.precedence,
+                revision=snapshot.revision,
+            ),
+        )
+
+    refresh = load
+
+
+def _publish_attested_llm_catalog() -> int:
+    """Publish the process-local attested LLM catalog source when configured."""
+
+    bindings = _parse_attested_llm_bindings(
+        os.environ.get(ATTESTED_LLM_BINDINGS_ENV, "")
+    )
+    if not bindings:
+        return 0
+
+    from ipfs_accelerate_py.model_manager import get_default_model_manager
+
+    manager = get_default_model_manager()
+    catalog = manager.catalog
+
+    source = _AttestedLlmCatalogSource(bindings)
+    state = catalog.register_source(
+        source.source,
+        source,
+        precedence=source.precedence,
+        side_effecting=False,
+        load=True,
+        strict=True,
+    )
+    expected_records = len(bindings) * 3
+    if (
+        not state.loaded
+        or not state.healthy
+        or state.record_count != expected_records
+    ):
+        raise RuntimeError("attested LLM catalog publication was incomplete")
+    return len(bindings)
 
 
 async def _to_thread(fn):
@@ -512,6 +696,7 @@ class TrioMCPServer:
         if self.mcp is None:
             raise RuntimeError("MCP server not initialized")
 
+        attested_count = _publish_attested_llm_catalog()
         collector = LegacyCollectorMCP()
         register_native_ai_router_tools(collector)
         record = collector.tools.get("llm_generate")
@@ -527,7 +712,11 @@ class TrioMCPServer:
             execution_context=record.execution_context or "server",
             tags=record.tags,
         )
-        logger.info("Registered canonical bounded llm_generate MCP tool")
+        logger.info(
+            "Registered canonical bounded llm_generate MCP tool "
+            "(%d attested bindings)",
+            attested_count,
+        )
 
     def _resolve_p2p_registrars(self):
         """Resolve P2P registrar callables used by Trio MCP server.

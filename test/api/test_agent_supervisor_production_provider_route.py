@@ -21,6 +21,10 @@ from typing import Any, Mapping
 
 import pytest
 
+from ipfs_accelerate_py.model_catalog.identity import (
+    model_identity,
+    provider_identity,
+)
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.contract_packet_provider_router import (
     PRODUCTION_PROVIDER_ROUTE_EVALUATION_SCHEMA,
     PRODUCTION_PROVIDER_ROUTE_INTERFACE,
@@ -284,6 +288,11 @@ def _mcp_success_envelope(request: ProviderRequest) -> dict[str, Any]:
         f"{hashlib.sha256(request.prompt).hexdigest()}"
     )
     generated = '{"proposal":{"files":[]}}'
+    catalog_provider_id = provider_identity("grok_cli")
+    catalog_model_id = model_identity(
+        catalog_provider_id,
+        "grok-4.5",
+    )
     return {
         "jsonrpc": "2.0",
         "id": request_id,
@@ -295,8 +304,8 @@ def _mcp_success_envelope(request: ProviderRequest) -> dict[str, Any]:
             "selected_binding": {
                 "binding_id": "binding:grok",
                 "router": "llm_router",
-                "provider_id": "grok_cli",
-                "model_id": "grok-4.5",
+                "provider_id": catalog_provider_id,
+                "model_id": catalog_model_id,
                 "operations": ["text.generate"],
             },
             "receipt": {
