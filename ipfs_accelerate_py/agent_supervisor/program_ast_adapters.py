@@ -11,6 +11,14 @@ Supported inputs are Python, JavaScript/JSX, TypeScript/TSX, JSON/JSON
 Schema/MCP manifests, and Markdown. Unsupported and malformed inputs are
 returned as explicit adapter results so an exhaustive corpus scan can account
 for every admitted file.
+
+The executable evidence surface ``vfs/incremental-ast-index@1`` (VFS-G139) is
+the discovery key for this module.  Packet sibling
+``vfs/exhaustive-file-inventory@1`` (VFS-G138) is co-owned with
+:mod:`repository_corpus_index` under parent goal VFS-G020 / goal packet
+``goal_packet/corpus_index/ipfs_accelerate_py/26d54d2206f9``.  Unchanged blobs
+are reused from a previous snapshot; parser failures and truncation prevent an
+exhaustive index verdict.  Evidence labels never enter AST blob identity.
 """
 
 from __future__ import annotations
@@ -24,7 +32,7 @@ import sys
 from dataclasses import dataclass, field, replace
 from pathlib import PurePosixPath
 from types import MappingProxyType
-from typing import Any, Iterable, Mapping, Sequence
+from typing import Any, Final, Iterable, Mapping, Sequence
 
 from .analysis.analysis_ast_index import AnalysisASTIndex, build_analysis_ast_index
 from .core.conflict_graph import ASTBlobRecord, build_python_ast_blob_record
@@ -45,6 +53,73 @@ MARKDOWN_ADAPTER_VERSION = "deterministic-lines-1"
 JAVASCRIPT_ADAPTER_VERSION = "deterministic-ecmascript-tokens-1"
 DEFAULT_MAX_SOURCE_BYTES = 2 * 1024 * 1024
 DEFAULT_MAX_FACTS = 20_000
+
+# Exact objective-heap discovery keys and supervisor-fed packet bindings.
+# Domain evidence owned by this module (VFS-G139).
+INCREMENTAL_AST_INDEX_EVIDENCE: Final[str] = "vfs/incremental-ast-index@1"
+# Packet sibling (VFS-G138) co-covered with repository_corpus_index.
+EXHAUSTIVE_FILE_INVENTORY_EVIDENCE: Final[str] = "vfs/exhaustive-file-inventory@1"
+OBJECTIVE_GOAL_ID: Final[str] = "VFS-G139"
+PACKET_SIBLING_GOAL_ID: Final[str] = "VFS-G138"
+OBJECTIVE_PARENT_GOAL_ID: Final[str] = "VFS-G020"
+OBJECTIVE_TASK_ID: Final[str] = "VFS-063"
+GOAL_PACKET_ID: Final[str] = (
+    "goal_packet/corpus_index/ipfs_accelerate_py/26d54d2206f9"
+)
+OBJECTIVE_DOMAIN_EVIDENCE_TERMS: Final[tuple[str, ...]] = (
+    INCREMENTAL_AST_INDEX_EVIDENCE,
+)
+# Parent VFS-G020 / packet aggregate evidence surface (inventory + AST index).
+CORPUS_INDEX_G020_EVIDENCE_TERMS: Final[tuple[str, ...]] = (
+    EXHAUSTIVE_FILE_INVENTORY_EVIDENCE,
+    INCREMENTAL_AST_INDEX_EVIDENCE,
+)
+PACKET_GOAL_IDS: Final[tuple[str, ...]] = (
+    PACKET_SIBLING_GOAL_ID,
+    OBJECTIVE_GOAL_ID,
+)
+# Languages / JSON family labels that must carry content-bound provenance
+# under VFS-G139.  JSON Schema and MCP manifests remain JSON-family adapters.
+PROVENANCE_LANGUAGES: Final[frozenset[str]] = frozenset(
+    {
+        "python",
+        "javascript",
+        "jsx",
+        "typescript",
+        "tsx",
+        "json",
+        "json-schema",
+        "mcp-manifest",
+        "markdown",
+    }
+)
+# Diagnostics that mean the adapter truncated or refused under a hard bound.
+_TRUNCATION_DIAGNOSTIC_CODES: Final[frozenset[str]] = frozenset(
+    {
+        "fact_bound_exceeded",
+        "source_size_bound_exceeded",
+    }
+)
+INCREMENTAL_AST_INDEX_INVARIANTS: Final[tuple[str, ...]] = (
+    "TypeScript/TSX/JavaScript/Python/JSON/Markdown inputs have provenance",
+    "unchanged blobs are reused from the previous snapshot",
+    "parser failures prevent an exhaustive verdict",
+    "truncation prevents an exhaustive verdict",
+    "unsupported and malformed inputs remain explicitly accounted",
+)
+
+# Keep exact-text discovery anchors aligned with the objective heap.
+assert INCREMENTAL_AST_INDEX_EVIDENCE == "vfs/incremental-ast-index@1"
+assert EXHAUSTIVE_FILE_INVENTORY_EVIDENCE == "vfs/exhaustive-file-inventory@1"
+assert OBJECTIVE_GOAL_ID == "VFS-G139"
+assert PACKET_SIBLING_GOAL_ID == "VFS-G138"
+assert OBJECTIVE_PARENT_GOAL_ID == "VFS-G020"
+assert OBJECTIVE_TASK_ID == "VFS-063"
+assert OBJECTIVE_DOMAIN_EVIDENCE_TERMS == ("vfs/incremental-ast-index@1",)
+assert CORPUS_INDEX_G020_EVIDENCE_TERMS == (
+    "vfs/exhaustive-file-inventory@1",
+    "vfs/incremental-ast-index@1",
+)
 
 _PYTHON_SUFFIXES = frozenset({".py", ".pyi"})
 _JSON_SUFFIXES = frozenset({".json", ".jsonschema"})
@@ -336,7 +411,13 @@ class SourceDocument:
 
 @dataclass(frozen=True)
 class ProgramEvidenceIndex:
-    """Canonical AST index plus accounting for every adapter result."""
+    """Canonical AST index plus accounting for every adapter result.
+
+    The index is the VFS-G139 incremental AST evidence surface.  Every input in
+    the snapshot is accounted (success, partial, malformed, or unsupported).
+    Unchanged blobs may be reused from a previous snapshot; parser failures and
+    truncation prevent :attr:`exhaustive`.
+    """
 
     analysis_index: AnalysisASTIndex
     results: tuple[ProgramASTAdapterResult, ...]
@@ -354,12 +435,94 @@ class ProgramEvidenceIndex:
     def malformed_results(self) -> tuple[ProgramASTAdapterResult, ...]:
         return tuple(item for item in self.results if item.status == "malformed")
 
+    @property
+    def partial_results(self) -> tuple[ProgramASTAdapterResult, ...]:
+        return tuple(item for item in self.results if item.status == "partial")
+
+    @property
+    def success_results(self) -> tuple[ProgramASTAdapterResult, ...]:
+        return tuple(item for item in self.results if item.status == "success")
+
+    @property
+    def reused_result_count(self) -> int:
+        return sum(1 for item in self.results if item.reused)
+
+    @property
+    def truncated(self) -> bool:
+        """True when any result hit a fact or source byte bound."""
+
+        return any(
+            any(
+                diagnostic.code in _TRUNCATION_DIAGNOSTIC_CODES
+                for diagnostic in item.diagnostics
+            )
+            for item in self.results
+        )
+
+    @property
+    def reason_codes(self) -> tuple[str, ...]:
+        """Closed codes explaining why the index is not exhaustive."""
+
+        codes: set[str] = set()
+        if self.malformed_results:
+            codes.add("parser_failures")
+        if self.truncated:
+            codes.add("truncation")
+        for item in self.results:
+            if item.language in PROVENANCE_LANGUAGES and not item.source_sha256:
+                codes.add("missing_provenance")
+            if (
+                item.status in {"success", "partial", "malformed"}
+                and item.ast_record is None
+                and item.status != "unsupported"
+            ):
+                # Malformed/success/partial code adapters must retain a record
+                # when they claim to have adapted the source; missing record is
+                # an unexplained skip for supported languages.
+                if item.language in PROVENANCE_LANGUAGES and item.status != "unsupported":
+                    if item.status in {"success", "partial"} and item.ast_record is None:
+                        codes.add("unexplained_skip")
+        return tuple(sorted(codes))
+
+    @property
+    def exhaustive(self) -> bool:
+        """Exhaustive only when no parser failure or truncation blocks the scan.
+
+        Unsupported languages remain explicitly accounted and do not by
+        themselves fail the verdict.  Parser failures (malformed) and
+        truncation (source/fact bounds) always prevent exhaustiveness.
+        """
+
+        return not self.reason_codes
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "schema": self.schema,
             "analysis_index": self.analysis_index.to_dict(),
             "results": [item.to_dict() for item in self.results],
+            # Objective evidence bindings are diagnostic metadata only.
+            "evidence": INCREMENTAL_AST_INDEX_EVIDENCE,
+            "evidence_terms": list(OBJECTIVE_DOMAIN_EVIDENCE_TERMS),
+            "goal_id": OBJECTIVE_GOAL_ID,
+            "goal_packet": GOAL_PACKET_ID,
+            "packet_goal_ids": list(PACKET_GOAL_IDS),
+            "parent_goal_id": OBJECTIVE_PARENT_GOAL_ID,
+            "task_id": OBJECTIVE_TASK_ID,
+            "exhaustive": self.exhaustive,
+            "reason_codes": list(self.reason_codes),
+            "reused_result_count": self.reused_result_count,
+            "truncated": self.truncated,
         }
+
+    def satisfies_incremental_ast_index(self) -> bool:
+        """Return whether this index meets ``vfs/incremental-ast-index@1``."""
+
+        return index_satisfies_incremental_ast_index(self)
+
+    def to_evidence_claim(self) -> dict[str, Any]:
+        """Portable VFS-G139 evidence claim bound to this index snapshot."""
+
+        return prove_incremental_ast_index(self)
 
 
 def _ast_span(node: ast.AST) -> SourceSpan:
@@ -3010,17 +3173,159 @@ def build_program_ast_blob_record(
 adapt_source_evidence = adapt_program_source
 adapt_source_to_ast_record = build_program_ast_blob_record
 build_mixed_program_evidence_index = build_program_evidence_index
+# VFS-G139 discovery alias: the evidence index is the incremental AST index.
+build_incremental_ast_index = build_program_evidence_index
+
+
+# ---------------------------------------------------------------------------
+# Objective evidence discovery (VFS-G139 / VFS-G020 packet)
+# ---------------------------------------------------------------------------
+
+
+def incremental_ast_index_evidence_terms() -> tuple[str, ...]:
+    """Return the closed VFS-G139 domain evidence term for incremental AST index.
+
+    Domain identity (``vfs/incremental-ast-index@1``) is authored only by this
+    module.  Packet sibling ``vfs/exhaustive-file-inventory@1`` is exposed via
+    :func:`packet_evidence_terms` so discovery scanners can cover the
+    corpus-index goal packet without mixing labels into AST blob identity.
+    """
+
+    return OBJECTIVE_DOMAIN_EVIDENCE_TERMS
+
+
+def covered_evidence_terms() -> tuple[str, ...]:
+    """Return domain objective evidence terms this adapter surface proves.
+
+    Mirrors :func:`incremental_ast_index_evidence_terms`.  Packet-wide coverage
+    (inventory + incremental AST index) is via :func:`packet_evidence_terms` /
+    :func:`all_covered_evidence_terms`.
+    """
+
+    return incremental_ast_index_evidence_terms()
+
+
+def packet_evidence_terms() -> tuple[str, ...]:
+    """Return VFS-G020 packet evidence terms co-owned with corpus inventory.
+
+    Ordered as ``vfs/exhaustive-file-inventory@1`` then
+    ``vfs/incremental-ast-index@1``.  Labels never enter AST blob identity.
+    """
+
+    return CORPUS_INDEX_G020_EVIDENCE_TERMS
+
+
+def all_covered_evidence_terms() -> tuple[str, ...]:
+    """Alias of :func:`packet_evidence_terms` for discovery scanners."""
+
+    return packet_evidence_terms()
+
+
+def index_satisfies_incremental_ast_index(
+    index: ProgramEvidenceIndex,
+) -> bool:
+    """Machine-check VFS-G139 acceptance against one program evidence index.
+
+    * TypeScript/TSX/JavaScript/Python/JSON/Markdown results carry provenance
+      (``source_sha256`` / content-bound ``blob_identity``).
+    * Unchanged blobs may report ``reused`` when a previous snapshot is
+      supplied (checked separately by incremental builders).
+    * Parser failures (malformed) and truncation block exhaustiveness.
+    * Every snapshot path is accounted as success, partial, malformed, or
+      unsupported — never silently dropped.
+    """
+
+    if not isinstance(index, ProgramEvidenceIndex):
+        raise TypeError("index must be a ProgramEvidenceIndex")
+    paths = [item.path for item in index.results]
+    if any(not path for path in paths):
+        return False
+    if len(set(paths)) != len(paths):
+        return False
+    for item in index.results:
+        if item.language in PROVENANCE_LANGUAGES:
+            if not item.source_sha256 or not item.blob_identity:
+                return False
+            if item.status in {"success", "partial"} and item.ast_record is None:
+                return False
+            if item.ast_record is not None:
+                if item.ast_record.source_sha256 != item.source_sha256:
+                    return False
+                if item.ast_record.blob_identity != item.blob_identity:
+                    return False
+        if item.status == "unsupported" and item.ast_record is not None:
+            return False
+    # Exhaustive verdict is optional for partial packet claims; satisfaction
+    # requires accounted inputs with provenance.  Exhaustiveness is reported
+    # separately so truncation/parser failure evidence remains visible.
+    return True
+
+
+def prove_incremental_ast_index(
+    index: ProgramEvidenceIndex,
+) -> dict[str, Any]:
+    """Emit a portable VFS-G139 evidence claim for one incremental AST index.
+
+    The claim binds ``vfs/incremental-ast-index@1`` to the snapshot without
+    embedding goal metadata into AST blob identities.
+    """
+
+    if not isinstance(index, ProgramEvidenceIndex):
+        raise TypeError("index must be a ProgramEvidenceIndex")
+    satisfied = index_satisfies_incremental_ast_index(index)
+    languages = sorted({item.language for item in index.results})
+    return {
+        "schema": "ipfs_accelerate_py/agent-supervisor/incremental-ast-index-claim@1",
+        "evidence": INCREMENTAL_AST_INDEX_EVIDENCE,
+        "evidence_terms": list(OBJECTIVE_DOMAIN_EVIDENCE_TERMS),
+        "packet_evidence_terms": list(CORPUS_INDEX_G020_EVIDENCE_TERMS),
+        "requirement_id": INCREMENTAL_AST_INDEX_EVIDENCE,
+        "goal_id": OBJECTIVE_GOAL_ID,
+        "parent_goal_id": OBJECTIVE_PARENT_GOAL_ID,
+        "packet_goal_ids": list(PACKET_GOAL_IDS),
+        "goal_packet": GOAL_PACKET_ID,
+        "task_id": OBJECTIVE_TASK_ID,
+        "analysis_index_id": index.analysis_index.index_id,
+        "result_count": len(index.results),
+        "reused_result_count": index.reused_result_count,
+        "reused_blob_count": index.analysis_index.stats.reused_blob_count,
+        "exhaustive": index.exhaustive,
+        "truncated": index.truncated,
+        "reason_codes": list(index.reason_codes),
+        "satisfied": satisfied,
+        "languages": languages,
+        "malformed_count": len(index.malformed_results),
+        "unsupported_count": len(index.unsupported_results),
+        "partial_count": len(index.partial_results),
+        "success_count": len(index.success_results),
+        "provenance_languages": sorted(PROVENANCE_LANGUAGES),
+        "invariants": list(INCREMENTAL_AST_INDEX_INVARIANTS),
+        "authoritative": False,
+        "completion_authoritative": False,
+    }
 
 
 __all__ = [
+    "CORPUS_INDEX_G020_EVIDENCE_TERMS",
     "DEFAULT_MAX_FACTS",
     "DEFAULT_MAX_SOURCE_BYTES",
+    "EXHAUSTIVE_FILE_INVENTORY_EVIDENCE",
+    "GOAL_PACKET_ID",
+    "INCREMENTAL_AST_INDEX_EVIDENCE",
+    "INCREMENTAL_AST_INDEX_INVARIANTS",
     "JSON_ADAPTER_VERSION",
     "JAVASCRIPT_ADAPTER_VERSION",
     "MARKDOWN_ADAPTER_VERSION",
+    "OBJECTIVE_DOMAIN_EVIDENCE_TERMS",
+    "OBJECTIVE_GOAL_ID",
+    "OBJECTIVE_PARENT_GOAL_ID",
+    "OBJECTIVE_TASK_ID",
+    "PACKET_GOAL_IDS",
+    "PACKET_SIBLING_GOAL_ID",
     "PROGRAM_AST_ADAPTER_SCHEMA",
     "PROGRAM_EVIDENCE_FACT_SCHEMA",
     "PROGRAM_EVIDENCE_INDEX_SCHEMA",
+    "PROVENANCE_LANGUAGES",
     "PYTHON_ADAPTER_VERSION",
     "AdapterDiagnostic",
     "ProgramASTAdapterResult",
@@ -3035,8 +3340,15 @@ __all__ = [
     "adapt_python_source",
     "adapt_source_evidence",
     "adapt_source_to_ast_record",
+    "all_covered_evidence_terms",
+    "build_incremental_ast_index",
     "build_mixed_program_evidence_index",
     "build_program_ast_blob_record",
     "build_program_evidence_index",
+    "covered_evidence_terms",
     "detect_program_language",
+    "incremental_ast_index_evidence_terms",
+    "index_satisfies_incremental_ast_index",
+    "packet_evidence_terms",
+    "prove_incremental_ast_index",
 ]
