@@ -1,0 +1,125 @@
+{
+  "authorizes_repair": false,
+  "board_namespace": "ipfs-kit-vfs-symbolic-assurance-v1",
+  "evidence": "vfs/finding-taskboard@1",
+  "evidence_terms": [
+    "vfs/finding-taskboard@1"
+  ],
+  "executable_count": 1,
+  "goal_id": "VFS-G101",
+  "goal_lineage": [
+    "VFS-G000",
+    "VFS-G100",
+    "VFS-G101"
+  ],
+  "is_completion_evidence": false,
+  "policy_id": "baguqeeraekdswwgbpwoz6rl6rii2cpjak7dyhjrlj7wktse5ret2kaxr4d7q",
+  "review_count": 1,
+  "reviews": [
+    {
+      "disposition": "review",
+      "executable": false,
+      "finding_cids": [
+        "baguqeeraq6hj37d7lo27lzeb6wtsqiof74eccyirj6bkzvkhmsf7rf4hdsxa"
+      ],
+      "goal_id": "VFS-G101",
+      "outputs": [
+        "src/maybe.ts"
+      ],
+      "provenance_cids": [
+        "baguqeeraq6hj37d7lo27lzeb6wtsqiof74eccyirj6bkzvkhmsf7rf4hdsxa",
+        "baguqeeraqdeypvcbpp3bdmqkbmryi6pg6lrxphkh7w4h2c6y727wki6tk2ja",
+        "baguqeerawgesmhe3smqdnuaezoeclcooesrwciuy5d2uzfvvptltkffcasda",
+        "baguqeeraytec5ahgoxla5qgl6mcs6albwhgf3pnc56tgnqpg33begmyigciq"
+      ],
+      "reasons": [
+        "not_admitted"
+      ],
+      "review_id": "VFS-R-REV-0001",
+      "root_cause_family": "vfs-pilot-inconclusive",
+      "schema": "ipfs_accelerate_py/agent-supervisor/finding-task/review-record@1",
+      "summary": "Pilot fixture is explicitly inconclusive for src/maybe.ts",
+      "symbols": [
+        "src/maybe.ts"
+      ],
+      "tree_id": "baguqeerabgy5lvrxna6yljy3ljtq2ntlnlykhzhtpfijbu4jfm72pz4ocq7q"
+    }
+  ],
+  "revision": 1,
+  "schema": "ipfs_accelerate_py/agent-supervisor/finding-task/board-snapshot@1",
+  "tasks": [
+    {
+      "acceptance": [
+        "Exact outputs updated: src/broken.ts",
+        "Finding evidence remains bound to CIDs: baguqeeracnblhyus4ctj327ergcid2jcpvv73irnip6zwiu5uwkctqgvqhuq",
+        "Repair root-cause family vfs-pilot-seeded-contract-break",
+        "Validation and proof plans pass without expanding authority"
+      ],
+      "board_namespace": "ipfs-kit-vfs-symbolic-assurance-v1",
+      "canonical_task_cid": "baguqeerala55yx24ns6d424vc7elcpefqoxupiuug5sdzbqqe5pwuga23mla",
+      "canonical_task_key": "finding-task/v1/baguqeerahjkow7zeek5ahjtpex4cvhve4av43jsqatu2gifmooz3li7zxbxq",
+      "conflict_domain": "baguqeerajf34vwimd7jwe2clw7p4nlepefode2pn6z3fcaqx3fxwoeuiiepa",
+      "context_ceiling_bytes": 12288,
+      "context_ceiling_tokens": 3072,
+      "dependencies": [],
+      "disposition": "executable",
+      "effects": [
+        "align_observed:baguqeeraogb2yplmtxg5v5wbieyio5hrgqcrzjm7472yvs5ytcdsyl53uf5a",
+        "preserve_interfaces:pilot://swissknife/src/broken.ts",
+        "restore:vfs-pilot-seeded-contract-break",
+        "satisfy_expected:baguqeeracwfaxi7wmsspojxik4yhvcfl2rukp3ups5v7npl4xzthvbemmbdq"
+      ],
+      "evidence": "vfs/finding-taskboard@1",
+      "executable": true,
+      "finding_cids": [
+        "baguqeeracnblhyus4ctj327ergcid2jcpvv73irnip6zwiu5uwkctqgvqhuq"
+      ],
+      "goal_id": "VFS-G101",
+      "goal_lineage": [
+        "VFS-G000",
+        "VFS-G100",
+        "VFS-G101"
+      ],
+      "interfaces": [
+        "pilot://swissknife/src/broken.ts"
+      ],
+      "merge_fate": "pilot:swissknife:src/broken.ts",
+      "outputs": [
+        "src/broken.ts"
+      ],
+      "parent_goal_id": "VFS-G100",
+      "policy_revision": "policy:vfs-symbolic-pilot@1",
+      "proof_plan": [
+        "confirm_bound_counterexamples",
+        "recompute_contract_finding_from_evidence",
+        "verify_finding_cid_binds_expected_and_observed"
+      ],
+      "provenance_cids": [
+        "baguqeeracnblhyus4ctj327ergcid2jcpvv73irnip6zwiu5uwkctqgvqhuq",
+        "baguqeeracwfaxi7wmsspojxik4yhvcfl2rukp3ups5v7npl4xzthvbemmbdq",
+        "baguqeeramenkocyhe75p2reon7nymohjomrnju2r2t3hal3pnejqkxn5atpa",
+        "baguqeeraogb2yplmtxg5v5wbieyio5hrgqcrzjm7472yvs5ytcdsyl53uf5a",
+        "baguqeerarcvyatrmvdx45vtgnojjeaukoxehksnulydq3vtmry6dex63jx5a"
+      ],
+      "resource_class": "cpu-small",
+      "risk_millionths": 700000,
+      "root_cause_family": "vfs-pilot-seeded-contract-break",
+      "schema": "ipfs_accelerate_py/agent-supervisor/finding-task/repair-record@1",
+      "semantic_key": "baguqeerahjkow7zeek5ahjtpex4cvhve4av43jsqatu2gifmooz3li7zxbxq",
+      "supersedes_task_ids": [],
+      "symbols": [
+        "src/broken.ts"
+      ],
+      "task_cid": "baguqeerala55yx24ns6d424vc7elcpefqoxupiuug5sdzbqqe5pwuga23mla",
+      "task_id": "VFS-R-0001",
+      "title": "Repair vfs-pilot-seeded-contract-break: Pilot fixture marks an explicit contract break for src/broken.ts",
+      "token_class": "small",
+      "track": "finding-generation",
+      "tree_id": "baguqeerabgy5lvrxna6yljy3ljtq2ntlnlykhzhtpfijbu4jfm72pz4ocq7q",
+      "validation_plan": [
+        "python -m pytest test/api/test_agent_supervisor_contract_findings.py -q"
+      ]
+    }
+  ],
+  "tree_id": "baguqeerabgy5lvrxna6yljy3ljtq2ntlnlykhzhtpfijbu4jfm72pz4ocq7q"
+}
