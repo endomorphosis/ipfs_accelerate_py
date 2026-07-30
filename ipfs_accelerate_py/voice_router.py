@@ -2216,11 +2216,19 @@ class VoiceTurnResult:
             metadata=dict(metadata or {}),
         )
 
+    @property
+    def is_live_tts_cache_miss(self) -> bool:
+        """Return whether exact precomputed resolution missed before live TTS."""
+
+        from .voice_cache_miss import build_voice_cache_miss_event
+
+        return build_voice_cache_miss_event(self) is not None
+
     def enqueue_validated_cache_miss_candidate(
         self,
         *,
         sink: object,
-        validation_receipt_id: str,
+        validation_receipt: object,
         audio_descriptor: Mapping[str, object],
         response_id: str = "",
         template_text: str = "",
@@ -2242,7 +2250,7 @@ class VoiceTurnResult:
         return enqueue_validated_cache_miss_candidate(
             self,
             sink=sink,
-            validation_receipt_id=validation_receipt_id,
+            validation_receipt=validation_receipt,
             audio_descriptor=audio_descriptor,
             response_id=response_id,
             template_text=template_text,
@@ -7181,10 +7189,13 @@ from .voice_cache_miss import (  # noqa: E402
     build_voice_cache_miss_event,
 )
 from .voice_response_dag_sink import (  # noqa: E402
+    INDEPENDENT_VOICE_VALIDATION_RECEIPT_SCHEMA_VERSION,
     LOCAL_RESPONSE_DAG_QUEUE_SCHEMA_VERSION,
+    IndependentVoiceValidationReceipt,
     LocalResponseDAGQueue,
     LocalResponseDAGQueueError,
     LocalResponseDAGQueueReceipt,
+    LocalValidatedVoiceCacheMissArtifacts,
     QueuedVoiceCacheMissCandidate,
     enqueue_validated_cache_miss_candidate,
 )
@@ -7251,10 +7262,13 @@ __all__ = [
     "VoiceCacheMissEvent",
     "VoiceCacheMissEventError",
     "build_voice_cache_miss_event",
+    "INDEPENDENT_VOICE_VALIDATION_RECEIPT_SCHEMA_VERSION",
+    "IndependentVoiceValidationReceipt",
     "LOCAL_RESPONSE_DAG_QUEUE_SCHEMA_VERSION",
     "LocalResponseDAGQueue",
     "LocalResponseDAGQueueError",
     "LocalResponseDAGQueueReceipt",
+    "LocalValidatedVoiceCacheMissArtifacts",
     "QueuedVoiceCacheMissCandidate",
     "enqueue_validated_cache_miss_candidate",
     # Exact precomputed audio runtime resolution (G019)
