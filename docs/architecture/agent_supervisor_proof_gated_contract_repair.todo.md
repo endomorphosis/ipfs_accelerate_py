@@ -1315,7 +1315,7 @@ consumer or frontier is unresolved.
 
 ## RPR-041 Route only admitted unresolved steps through llm_router
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
