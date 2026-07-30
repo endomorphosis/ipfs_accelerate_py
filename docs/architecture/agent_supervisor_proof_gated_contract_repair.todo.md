@@ -553,7 +553,7 @@ task IDs on this board.
 
 ## RPR-017 Integrate the @2 decision path into the existing repair flow
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
