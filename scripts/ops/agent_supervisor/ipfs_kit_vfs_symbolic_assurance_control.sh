@@ -782,6 +782,7 @@ project_objectives() {
     --objective-generation-path "${PROJECTION_DIR}/objective_generation.json" \
     --task-prefix "VFS-" \
     --max-findings "0" \
+    --no-persist-ast-dataset \
     --no-generate-bounded-work \
     --no-reconcile-goal-completion \
     > "${PROJECTION_DIR}/objective_daemon_receipt.json"
@@ -887,6 +888,10 @@ launch_lane() {
       "--objective-graph-path" "${PROJECTION_DIR}/objective_graph.json"
       "--objective-bundle-dir" "${PROJECTION_DIR}/bundles"
       "--objective-dataset-dir" "${PROJECTION_DIR}/datasets"
+      # The authoritative evidence scan still streams every tracked source
+      # and derives AST symbols. Avoid the legacy full-source/ast.dump dataset,
+      # which can materialize multi-GB JSONL and then retain it all in memory.
+      "--no-objective-ast-dataset"
       "--objective-discovery-dir" "${PROJECTION_DIR}/discovery"
       "--objective-discovery-output-path" "data/agent_supervisor/ipfs_kit_vfs_symbolic_assurance/objective_gap.json"
       "--objective-todo-vector-index-path" "${PROJECTION_DIR}/todo_vector_index.json"
@@ -902,6 +907,11 @@ launch_lane() {
       "--objective-mission-term" "MCP++"
       "--no-objective-goal-completion-reconcile"
       "--no-objective-goal-migration"
+      # This program intentionally delegates formal goal completion to
+      # external proof artifacts. A janitor would otherwise force the same
+      # drained, unreconciled goals on every 30-second maintenance pass;
+      # cooldown-driven objective refill remains enabled.
+      "--no-objective-task-janitor"
       "--codebase-refill-scan"
       "--codebase-scan-discovery-dir" "${PROJECTION_DIR}/discovery"
       "--codebase-scan-discovery-output-path" "data/agent_supervisor/ipfs_kit_vfs_symbolic_assurance/codebase_finding.json"

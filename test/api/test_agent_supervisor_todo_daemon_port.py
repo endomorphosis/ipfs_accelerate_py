@@ -12942,6 +12942,84 @@ def test_implementation_supervisor_forwards_completion_paths_and_generation_cap(
     }
 
 
+def test_disabled_objective_janitor_ignores_stale_force_goal_ids(
+    tmp_path,
+    monkeypatch,
+):
+    from ipfs_accelerate_py.agent_supervisor import objective_daemon
+    from ipfs_accelerate_py.agent_supervisor.objectives import backlog_refinery
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    objective_path = repo / "objective.md"
+    objective_path.write_text(
+        "## G1 Goal\n\n- Status: active\n- Acceptance: criterion\n",
+        encoding="utf-8",
+    )
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Drained board
+
+## AUTO-001 Completed work
+
+- Status: completed
+- Goal id: G1
+""",
+        encoding="utf-8",
+    )
+    state_dir = repo / "state"
+    state_dir.mkdir()
+    strategy_path = state_dir / "strategy.json"
+    strategy_path.write_text(
+        json.dumps(
+            {
+                "objective_task_janitor_force_goal_ids": ["G1"],
+            }
+        ),
+        encoding="utf-8",
+    )
+    captured = {}
+
+    def capture_refill_decision(**kwargs):
+        captured["force"] = kwargs["force"]
+        return False, "cooldown", 0, 1
+
+    monkeypatch.setattr(
+        backlog_refinery,
+        "should_refill_backlog",
+        capture_refill_decision,
+    )
+    monkeypatch.setattr(
+        objective_daemon,
+        "run_objective_daemon",
+        lambda _args: pytest.fail(
+            "a disabled janitor must not replay its stale force goals"
+        ),
+    )
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=todo_path,
+            state_path=state_dir / "task_state.json",
+            strategy_path=strategy_path,
+            events_path=state_dir / "events.jsonl",
+            state_dir=state_dir,
+            repo_root=repo,
+            task_prefix="## AUTO-",
+            objective_refill_enabled=True,
+            objective_task_janitor_enabled=False,
+            objective_path=objective_path,
+            objective_reconcile_goal_completion=False,
+            objective_persist_ast_dataset=False,
+        )
+    )
+
+    result = supervisor.refill_objective_backlog()
+
+    assert captured["force"] is False
+    assert result.scan_mode == "cooldown"
+    assert result.generated_count == 0
+
+
 def test_completion_reconciliation_runs_when_refill_is_skipped_by_threshold(
     tmp_path,
     monkeypatch,

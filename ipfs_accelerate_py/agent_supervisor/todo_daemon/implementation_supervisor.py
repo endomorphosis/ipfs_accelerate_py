@@ -7627,11 +7627,24 @@ class PortalImplementationSupervisor:
         todo_text = self.config.todo_path.read_text(encoding="utf-8")
         strategy = load_strategy(self.config.strategy_path)
         task_prefix = task_id_prefix(self.config.task_prefix)
-        force_goal_ids = [
-            str(item)
-            for item in strategy.get("objective_task_janitor_force_goal_ids", [])
-            if str(item).strip()
-        ] if isinstance(strategy.get("objective_task_janitor_force_goal_ids"), list) else []
+        force_goal_ids = (
+            [
+                str(item)
+                for item in strategy.get(
+                    "objective_task_janitor_force_goal_ids",
+                    [],
+                )
+                if str(item).strip()
+            ]
+            if (
+                self.config.objective_task_janitor_enabled
+                and isinstance(
+                    strategy.get("objective_task_janitor_force_goal_ids"),
+                    list,
+                )
+            )
+            else []
+        )
         should_scan, mode, current_open, task_count = should_refill_backlog(
             todo_text=todo_text,
             state_path=self.config.state_path,

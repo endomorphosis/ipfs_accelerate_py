@@ -432,9 +432,17 @@ def test_static_contract_deterministic_shards_and_one_refill_owner() -> None:
     grok_block, codex_block = provider_block.split("\n  else\n", 1)
     assert "--objective-refill-scan" in grok_block
     assert "--codebase-refill-scan" in grok_block
+    assert "--no-objective-ast-dataset" in grok_block
+    assert "--no-objective-task-janitor" in grok_block
     assert "--objective-refill-scan" not in codex_block
     assert "--codebase-refill-scan" not in codex_block
+    assert "--no-objective-ast-dataset" not in codex_block
     assert "--auto-commit-generated-dirty" not in codex_block
+    project_block = text.split("project_objectives() {", 1)[1].split(
+        "\n}\n",
+        1,
+    )[0]
+    assert "--no-persist-ast-dataset" in project_block
 
 
 def test_static_contract_protected_paths_submodules_timeouts() -> None:
@@ -597,6 +605,9 @@ def test_shards_do_not_duplicate_tasks_and_one_refill_owner(control_harness) -> 
         assert grok["has_codebase_refill"] is True
         assert codex["has_objective_refill"] is False
         assert codex["has_codebase_refill"] is False
+        assert "--no-objective-ast-dataset" in grok["argv"]
+        assert "--no-objective-task-janitor" in grok["argv"]
+        assert "--no-objective-ast-dataset" not in codex["argv"]
         assert grok["env_provider"] == "grok-build"
         assert codex["env_provider"] == "codex"
         assert grok["merge_queue_dir"] == codex["merge_queue_dir"]
