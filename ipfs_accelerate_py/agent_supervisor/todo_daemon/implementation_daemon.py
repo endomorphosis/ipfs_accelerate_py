@@ -3373,7 +3373,11 @@ class PortalImplementationDaemon:
                 )
                 if not trusted:
                     untrusted_commits.add(commit)
-            if not commits:
+            # Untracked protected inputs cannot appear in Git path history.
+            # If their exact shared identities were independently proven
+            # unchanged, an ancestry-checked HEAD advance on unrelated paths
+            # is not evidence of a protected-path mutation.
+            if not commits and not shared_untracked_paths_proof:
                 return denied("protected_path_history_empty")
         if resolved_approvals != untrusted_commits:
             return denied(

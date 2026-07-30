@@ -1407,6 +1407,9 @@ def test_operator_clearance_accepts_pruned_untracked_protected_mirror(
     } == {"workspace"}
     assert violation["mutations"][0]["change"] == "deleted"
     _git(repo, "worktree", "remove", "--force", str(workspace))
+    (repo / "README.md").write_text("unrelated advance\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "advance unrelated source")
 
     result = daemon.clear_implementation_protected_path_incident(
         operator_note=(
