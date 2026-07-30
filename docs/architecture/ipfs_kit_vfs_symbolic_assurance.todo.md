@@ -3810,7 +3810,7 @@ compact references and bounded spans only.
 
 ## VFS-085 Close objective gap: Prove vfs/swissknife-vfs-pilot@1 for Run the frozen SwissKnife and IPFS Kit VFS pilot
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
