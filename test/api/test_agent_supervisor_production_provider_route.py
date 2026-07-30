@@ -1175,6 +1175,38 @@ def test_daemon_omits_compiled_context_from_a_different_snapshot(
     assert payload["expansion_handles"][0]["context_snapshot_id"] != SNAPSHOT
 
 
+def test_daemon_keeps_immutable_context_valid_when_source_head_advances(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _daemon(tmp_path, monkeypatch)
+    task = _task()
+    compiled = daemon._compile_implementation_context(task, attempt=1)
+    compiled_snapshot = f"git-commit:{compiled.capsule.tree_id}"
+
+    monkeypatch.setattr(
+        daemon,
+        "_implementation_repository_and_tree_ids",
+        lambda _task: (
+            compiled.capsule.repository_id,
+            "newer-source-head-after-context-compilation",
+        ),
+    )
+
+    packet = daemon.build_production_contract_packet_for_task(
+        task,
+        snapshot_id=compiled_snapshot,
+        attempt=1,
+    )
+
+    payload = dict(packet.provider_input_payload)
+    assert compiled.capsule.capsule_id in payload["goal"]["contract_ids"]
+    assert payload["expansion_handles"][0]["status"] == "verified"
+    assert payload["expansion_handles"][0]["context_tree_id"] == (
+        compiled.capsule.tree_id
+    )
+
+
 def test_daemon_rejects_cross_task_or_tampered_compiled_context(
     tmp_path,
     monkeypatch: pytest.MonkeyPatch,

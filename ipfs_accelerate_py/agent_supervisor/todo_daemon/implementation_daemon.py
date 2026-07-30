@@ -18087,14 +18087,13 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 reason_code=ProviderReason.PACKET_MALFORMED,
             ) from exc
 
-        expected_repository_id, current_source_tree_id = (
+        expected_repository_id, _ = (
             self._implementation_repository_and_tree_ids(task)
         )
         expected_revision = self._canonical_ref(task)
         goal = capsule.goal if isinstance(capsule.goal, Mapping) else {}
         if (
             capsule.repository_id != expected_repository_id
-            or capsule.tree_id != current_source_tree_id
             or capsule.objective_id != task.task_id
             or capsule.objective_revision != expected_revision
             or goal.get("task_id") != task.task_id
