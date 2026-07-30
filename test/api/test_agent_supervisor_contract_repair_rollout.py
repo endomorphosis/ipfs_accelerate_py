@@ -1,6 +1,6 @@
-"""RPR-020: operations, metrics, feature flags, and rollback.
+"""RPR-020 / RPR-047: operations, metrics, feature flags, and rollback.
 
-Acceptance:
+Acceptance (RPR-020 legacy preserved):
 
 * Validation CLI checks plan/objective/task DAG, exact source bindings,
   capability health, supervisor/process state, and benchmark floors;
@@ -12,6 +12,13 @@ Acceptance:
   rolls back;
 * guide states model boundaries and that vector/test/type/resource evidence
   does not prove memory safety.
+
+RPR-047 extension (without removing legacy checks):
+
+* require RPR-G110/RPR-G220 and terminal RPR-047 with correct dependency chain;
+* change_propagation_policy gates and six new zero safety floors;
+* protected paths / refill isolation and exact source bindings;
+* four-shard board drain readiness.
 """
 
 from __future__ import annotations
@@ -274,6 +281,18 @@ def test_plan_objective_task_dag_check() -> None:
     assert result.evidence["task_count"] >= 20
     assert "RPR-G100" in result.evidence["goal_ids"]
     assert "RPR-020" in result.evidence["task_ids"]
+    # RPR-047 extension IDs remain required alongside legacy checks.
+    assert "RPR-G110" in result.evidence["goal_ids"]
+    assert "RPR-G220" in result.evidence["goal_ids"]
+    assert "RPR-047" in result.evidence["task_ids"]
+    assert result.evidence["terminal_task_id"] == "RPR-047"
+    assert result.evidence["extension_goal_ids"] == ["RPR-G110", "RPR-G220"]
+    floors = result.evidence["propagation_safety_floors"]
+    for key in ops.PROPAGATION_SAFETY_FLOOR_KEYS:
+        assert floors[key] == 0
+    policy = result.evidence["change_propagation_policy"]
+    for key, expected in ops.REQUIRED_CHANGE_PROPAGATION_POLICY.items():
+        assert policy[key] == expected
 
 
 def test_exact_source_bindings_check() -> None:
@@ -352,6 +371,8 @@ def test_run_all_checks_with_cached_benchmark(benchmark_report: dict) -> None:
     assert report["mutation_authorized"] is False
     assert report["completion_authoritative"] is False
     assert report["valid"] is True, report.get("failed")
+    assert report["terminal_task_id"] == "RPR-047"
+    assert report["extension_goal_ids"] == ["RPR-G110", "RPR-G220"]
     names = {item["name"] for item in report["checks"]}
     assert {
         "plan_objective_task_dag",
@@ -362,6 +383,9 @@ def test_run_all_checks_with_cached_benchmark(benchmark_report: dict) -> None:
         "feature_flags",
         "rollback_gates",
         "guide_boundaries",
+        "change_propagation_policy",
+        "protected_paths_refill_isolation",
+        "four_shard_board_drain",
     } <= names
 
 
@@ -578,9 +602,91 @@ def test_cli_check_all_with_skips(capsys: pytest.CaptureFixture[str]) -> None:
     assert statuses["rollback_gates"] == "pass"
     assert statuses["guide_boundaries"] == "pass"
     assert statuses["benchmark_floors"] == "skip"
+    assert statuses["change_propagation_policy"] == "pass"
+    assert statuses["protected_paths_refill_isolation"] == "pass"
+    assert statuses["four_shard_board_drain"] == "pass"
     # valid is true when only skips remain among non-fail checks
     assert code == 0
     assert report["valid"] is True
+
+
+# ---------------------------------------------------------------------------
+# RPR-047 extension gates
+# ---------------------------------------------------------------------------
+
+
+def test_change_propagation_policy_and_six_new_floors() -> None:
+    result = ops.check_change_propagation_policy(_REPO_ROOT)
+    assert result.status is ops.CheckStatus.PASS, result.detail
+    floors = result.evidence["propagation_safety_floors"]
+    assert len(ops.PROPAGATION_SAFETY_FLOOR_KEYS) == 6
+    for key in ops.PROPAGATION_SAFETY_FLOOR_KEYS:
+        assert floors[key] == 0
+    for key, expected in ops.REQUIRED_CHANGE_PROPAGATION_POLICY.items():
+        assert result.evidence["change_propagation_policy"][key] == expected
+
+
+def test_protected_paths_and_refill_isolation() -> None:
+    result = ops.check_protected_paths_and_refill_isolation(_REPO_ROOT)
+    assert result.status is ops.CheckStatus.PASS, result.detail
+    protected = set(result.evidence["protected_paths"])
+    for path in ops.REQUIRED_PROTECTED_PATHS:
+        assert path in protected
+        assert (_REPO_ROOT / path).is_file()
+    assert result.evidence["objective_refill_enabled"] is False
+    assert result.evidence["codebase_refill_enabled"] is False
+
+
+def test_four_shard_board_can_drain() -> None:
+    result = ops.check_four_shard_board_drain(_REPO_ROOT)
+    assert result.status is ops.CheckStatus.PASS, result.detail
+    assert result.evidence["max_lanes"] == 4
+    assert result.evidence["strict_task_sharding"] is True
+    assert result.evidence["terminal_task_id"] == "RPR-047"
+    assert result.evidence["ready_after_non_terminal_complete"] == ["RPR-047"]
+    assert result.evidence["ready_after_full_complete"] == []
+    lanes = result.evidence["entry_lanes"]
+    assert set(lanes) == {"RPR-022", "RPR-023", "RPR-024", "RPR-025"}
+    assert len(set(lanes.values())) == 4
+
+
+def test_proof_gated_operations_surface(benchmark_report: dict) -> None:
+    assert ops.ProofGatedContractRepairOperations.INTERFACE == (
+        "ProofGatedContractRepairOperations@1"
+    )
+    ids = ops.ProofGatedContractRepairOperations.required_extension_ids()
+    assert ids["terminal_task_id"] == "RPR-047"
+    assert ids["control_goal_id"] == "RPR-G110"
+    assert ids["rollout_goal_id"] == "RPR-G220"
+    assert ids["legacy_task_id"] == "RPR-020"
+    assert ids["legacy_goal_id"] == "RPR-G100"
+    report = ops.ProofGatedContractRepairOperations.run(
+        _REPO_ROOT,
+        run_benchmark=False,
+        probe_capabilities=True,
+        benchmark_report=benchmark_report,
+    )
+    assert report["valid"] is True, report.get("failed")
+    assert report["terminal_task_id"] == "RPR-047"
+    assert report["legacy_task_id"] == "RPR-020"
+    assert report["mutation_authorized"] is False
+    assert report["completion_authoritative"] is False
+
+
+def test_cli_propagation_extension_checks(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    assert ops.main(["check-propagation-policy", "--json"]) == 0
+    policy = json.loads(capsys.readouterr().out)
+    assert policy["status"] == "pass"
+
+    assert ops.main(["check-protected-paths", "--json"]) == 0
+    protected = json.loads(capsys.readouterr().out)
+    assert protected["status"] == "pass"
+
+    assert ops.main(["check-four-shard", "--json"]) == 0
+    shards = json.loads(capsys.readouterr().out)
+    assert shards["status"] == "pass"
 
 
 def test_cli_status(capsys: pytest.CaptureFixture[str]) -> None:
