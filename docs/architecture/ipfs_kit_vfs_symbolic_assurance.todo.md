@@ -3207,7 +3207,7 @@ compact references and bounded spans only.
 
 ## VFS-076 Close objective gap: Prevent simulated or placeholder ZK paths from acquiring authority
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
