@@ -3743,7 +3743,7 @@ compact references and bounded spans only.
 
 ## VFS-084 Close objective gap: Prove vfs/shadow-rollout-report@1 for Release only evidence-backed results through shadow and assist gates
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
