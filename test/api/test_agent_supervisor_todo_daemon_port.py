@@ -6148,12 +6148,107 @@ def test_supervisor_loop_publishes_cached_worker_status(tmp_path):
     assert status["worker_phase_age_seconds"] == 45.0
     assert status["worker_descendant_count"] == 4
     assert status["stalled_without_active_worker"] is False
+    assert status["child_log_heartbeat_enabled"] is False
+    assert status["child_log_heartbeat_stale_after_seconds"] == 60.0
 
     loop._write_status("stopped")
     stopped = json.loads((state_dir / "supervisor_status.json").read_text(encoding="utf-8"))
     assert stopped["active_worker_count"] == 0
     assert stopped["active_worker_pids"] == []
     assert stopped["worker_descendant_count"] == 0
+
+
+def test_supervisor_loop_accepts_fresh_child_log_for_unchanged_idle_state(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    state_dir.mkdir()
+    log_path = state_dir / "child.log"
+    log_path.write_text("idle pass complete\n", encoding="utf-8")
+    spec = ManagedDaemonSpec(
+        name="test-daemon",
+        schema="test.daemon",
+        repo_root=repo,
+        daemon_dir=state_dir,
+        runner=(sys.executable, "-c", "pass"),
+        status_path=state_dir / "daemon_status.json",
+        supervisor_status_path=state_dir / "supervisor_status.json",
+        supervisor_pid_path=state_dir / "supervisor.pid",
+        child_pid_path=state_dir / "child.pid",
+        supervisor_out_path=state_dir / "supervisor.out",
+        ensure_status_path=state_dir / "ensure_status.json",
+        ensure_check_path=state_dir / "ensure_check.json",
+    )
+    loop = SupervisorLoop(
+        SupervisorLoopConfig(
+            spec=spec,
+            command=(sys.executable, "-c", "pass"),
+            log_prefix="child",
+            watchdog_stale_after_seconds=60,
+            child_log_heartbeat_enabled=True,
+            child_log_heartbeat_stale_after_seconds=30,
+        ),
+        wall_time=lambda: 1_000.0,
+    )
+    loop.last_log_path = spec.repo_relative(log_path)
+    os.utime(log_path, (990.0, 990.0))
+
+    decision = loop.default_watchdog(
+        SimpleNamespace(pid=os.getpid()),
+        {"heartbeat_at": "1970-01-01T00:00:01+00:00"},
+    )
+
+    assert decision.action == "continue"
+    assert loop._last_child_log_heartbeat["fresh"] is True
+    assert loop._last_child_log_heartbeat["age_seconds"] == 10.0
+
+
+def test_supervisor_loop_recycles_when_state_and_child_log_are_stale(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    state_dir.mkdir()
+    log_path = state_dir / "child.log"
+    log_path.write_text("old pass\n", encoding="utf-8")
+    spec = ManagedDaemonSpec(
+        name="test-daemon",
+        schema="test.daemon",
+        repo_root=repo,
+        daemon_dir=state_dir,
+        runner=(sys.executable, "-c", "pass"),
+        status_path=state_dir / "daemon_status.json",
+        supervisor_status_path=state_dir / "supervisor_status.json",
+        supervisor_pid_path=state_dir / "supervisor.pid",
+        child_pid_path=state_dir / "child.pid",
+        supervisor_out_path=state_dir / "supervisor.out",
+        ensure_status_path=state_dir / "ensure_status.json",
+        ensure_check_path=state_dir / "ensure_check.json",
+    )
+    loop = SupervisorLoop(
+        SupervisorLoopConfig(
+            spec=spec,
+            command=(sys.executable, "-c", "pass"),
+            log_prefix="child",
+            watchdog_stale_after_seconds=60,
+            child_log_heartbeat_enabled=True,
+            child_log_heartbeat_stale_after_seconds=30,
+        ),
+        wall_time=lambda: 1_000.0,
+    )
+    loop.last_log_path = spec.repo_relative(log_path)
+    os.utime(log_path, (900.0, 900.0))
+
+    decision = loop.default_watchdog(
+        SimpleNamespace(pid=os.getpid()),
+        {"heartbeat_at": "1970-01-01T00:00:01+00:00"},
+    )
+
+    assert decision.action == "recycle"
+    assert decision.reason == "stale_heartbeat"
+    assert decision.detail["child_log_heartbeat"]["fresh"] is False
+    assert decision.detail["child_log_heartbeat"]["age_seconds"] == 100.0
 
 
 def test_supervisor_loop_starts_stall_clock_when_worker_disappears(tmp_path):
@@ -9503,6 +9598,10 @@ def test_implementation_supervisor_configures_worker_stall_watchdog(tmp_path):
     assert loop_config.watchdog_startup_grace_seconds == 300
     assert loop_config.watchdog_stale_after_seconds >= (
         config.implementation_timeout + max(30.0, config.check_interval * 2.0)
+    )
+    assert loop_config.child_log_heartbeat_enabled is True
+    assert loop_config.child_log_heartbeat_stale_after_seconds >= (
+        config.daemon_interval * 4
     )
 
 

@@ -57,6 +57,31 @@ def test_guide_rescue_for_incomplete_expected_outputs() -> None:
     assert compact["receipt_id"] == review.receipt_id
 
 
+def test_directory_output_is_satisfied_by_changed_descendants() -> None:
+    review = review_implementation_failure(
+        task_id="KGP-047",
+        attempt=1,
+        expected_outputs=("tests/unit/search/test_sharded_car",),
+        changed_paths=(
+            "tests/unit/search/test_sharded_car/test_v1.py",
+            "tests/unit/search/test_sharded_car/fixtures/v1/S0.car",
+        ),
+        validation_result={
+            "attempted": True,
+            "passed": False,
+            "returncode": 78,
+            "reason": "proposal_gate_failed",
+            "proposal_gate": {"reason_codes": ["binary_change_forbidden"]},
+        },
+    )
+
+    assert review.missing_expected_outputs == ()
+    assert (
+        FailureReviewReason.INCOMPLETE_EXPECTED_OUTPUTS.value
+        not in review.reason_codes
+    )
+
+
 def test_guide_rescue_for_out_of_scope_refactor_paths() -> None:
     review = review_implementation_failure(
         task_id="EVAL-002",

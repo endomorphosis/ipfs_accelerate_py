@@ -1927,6 +1927,12 @@ class PortalImplementationSupervisor:
             poll_seconds=min(1.0, max(0.01, float(self.config.check_interval))),
             watchdog_stale_after_seconds=watchdog_stale_after_seconds,
             watchdog_startup_grace_seconds=self._watchdog_startup_grace_seconds(),
+            child_log_heartbeat_enabled=True,
+            child_log_heartbeat_stale_after_seconds=max(
+                60.0,
+                float(self.config.daemon_interval) * 4.0,
+                float(self.config.check_interval) * 4.0,
+            ),
             stop_grace_seconds=15.0,
             max_restarts=max(0, int(self.config.max_restarts)),
             status_static_fields={

@@ -265,6 +265,213 @@ def test_daemon_parser_and_runner_apply_default_protected_paths(
     )
 
 
+def test_validation_prune_rebases_untracked_protected_context(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Protected Context Test")
+    _git(repo, "config", "user.email", "protected-context@example.invalid")
+    (repo / "README.md").write_text("baseline\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "baseline")
+
+    protected_path = "docs/architecture/runtime-plan.md"
+    protected = repo / protected_path
+    protected.parent.mkdir(parents=True)
+    protected.write_text("operator-owned plan\n", encoding="utf-8")
+    worktree_root = tmp_path / "worktrees"
+    daemon = PortalImplementationDaemon(
+        todo_path=repo / "tasks.todo.md",
+        state_path=tmp_path / "state" / "task-state.json",
+        strategy_path=tmp_path / "state" / "strategy.json",
+        events_path=tmp_path / "state" / "events.jsonl",
+        repo_root=repo,
+        implement=True,
+        implementation_command="fake-agent",
+        implementation_protected_paths=(protected_path,),
+        use_ephemeral_worktree=True,
+        worktree_root=worktree_root,
+        worktree_pool_enabled=False,
+        merge_target_branch="main",
+    )
+    task = _task(outputs=["src/example.py"])
+    workspace = worktree_root / "lane"
+    branch = "implementation/protected-context-prune"
+    daemon._create_seeded_worktree(workspace, branch, task=task)
+
+    before = daemon._require_implementation_protected_snapshot(
+        task=task,
+        attempt=1,
+        workspace_path=workspace,
+    )
+    assert daemon._implementation_protected_path_violation(
+        task=task,
+        attempt=1,
+        workspace_path=workspace,
+        before=before,
+    ) == {}
+
+    pruned = daemon._prepare_worktree_for_validation(
+        workspace,
+        task=task,
+        branch_name=branch,
+    )
+    assert protected_path in pruned
+    assert not (workspace / protected_path).exists()
+
+    rebased = (
+        daemon._rebase_implementation_protected_snapshot_after_context_prune(
+            task=task,
+            attempt=1,
+            workspace_path=workspace,
+            before=before,
+            pruned_paths=pruned,
+        )
+    )
+    assert rebased["workspace"]["paths"][protected_path] == {
+        "state": "missing"
+    }
+    assert (
+        rebased["shared_checkout"]["paths"][protected_path]["sha256"]
+        == before["shared_checkout"]["paths"][protected_path]["sha256"]
+    )
+    assert daemon._finalize_implementation_protected_path_fence(
+        task=task,
+        attempt=1,
+        workspace_path=workspace,
+        before=rebased,
+        reason="test_validation_finished",
+    ) == {}
+    assert not daemon._implementation_protected_active_snapshot_path().exists()
+
+    events = [
+        json.loads(line)
+        for line in daemon.events_path.read_text(encoding="utf-8").splitlines()
+    ]
+    assert any(
+        event["type"]
+        == "implementation_protected_path_context_prune_rebased"
+        for event in events
+    )
+    cleanup = daemon._cleanup_merged_worktree(workspace, branch)
+    assert cleanup["cleaned"] is True
+
+
+def test_validation_prune_rebases_after_trusted_concurrent_board_commit(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Protected Context Test")
+    _git(repo, "config", "user.email", "protected-context@example.invalid")
+    board_path = "docs/architecture/runtime.todo.md"
+    board = repo / board_path
+    board.parent.mkdir(parents=True)
+    board.write_text("## EX-001\n- Status: ready\n", encoding="utf-8")
+    _git(repo, "add", board_path)
+    _git(repo, "commit", "-m", "baseline")
+
+    plan_path = "docs/architecture/runtime-plan.md"
+    plan = repo / plan_path
+    plan.write_text("operator-owned plan\n", encoding="utf-8")
+    worktree_root = tmp_path / "worktrees"
+    daemon = PortalImplementationDaemon(
+        todo_path=board,
+        state_path=tmp_path / "state" / "task-state.json",
+        strategy_path=tmp_path / "state" / "strategy.json",
+        events_path=tmp_path / "state" / "events.jsonl",
+        repo_root=repo,
+        implement=True,
+        implementation_command="fake-agent",
+        implementation_protected_paths=(plan_path, board_path),
+        use_ephemeral_worktree=True,
+        worktree_root=worktree_root,
+        worktree_pool_enabled=False,
+        merge_target_branch="main",
+    )
+    task = _task(outputs=["src/example.py"])
+    workspace = worktree_root / "lane"
+    branch = "implementation/protected-context-concurrent-board"
+    daemon._create_seeded_worktree(workspace, branch, task=task)
+    before = daemon._require_implementation_protected_snapshot(
+        task=task,
+        attempt=1,
+        workspace_path=workspace,
+    )
+
+    board.write_text("## EX-001\n- Status: completed\n", encoding="utf-8")
+    _git(repo, "add", board_path)
+    _git(
+        repo,
+        "-c",
+        "user.name=Implementation Daemon",
+        "-c",
+        "user.email=implementation-daemon@example.invalid",
+        "commit",
+        "-m",
+        "EX-OTHER: mark todo completed",
+    )
+    assert daemon._implementation_protected_path_violation(
+        task=task,
+        attempt=1,
+        workspace_path=workspace,
+        before=before,
+    ) == {}
+
+    pruned = daemon._prepare_worktree_for_validation(
+        workspace,
+        task=task,
+        branch_name=branch,
+    )
+    assert plan_path in pruned
+    rebased = (
+        daemon._rebase_implementation_protected_snapshot_after_context_prune(
+            task=task,
+            attempt=1,
+            workspace_path=workspace,
+            before=before,
+            pruned_paths=pruned,
+        )
+    )
+
+    assert rebased["workspace"]["paths"][plan_path] == {"state": "missing"}
+    assert (
+        rebased["shared_checkout"]["paths"][board_path]["sha256"]
+        != before["shared_checkout"]["paths"][board_path]["sha256"]
+    )
+    assert rebased["shared_checkout"]["git_head"] == _git(repo, "rev-parse", "HEAD")
+    assert daemon._finalize_implementation_protected_path_fence(
+        task=task,
+        attempt=1,
+        workspace_path=workspace,
+        before=rebased,
+        reason="test_validation_finished",
+    ) == {}
+    assert not daemon._implementation_protected_incident_path().exists()
+
+    events = [
+        json.loads(line)
+        for line in daemon.events_path.read_text(encoding="utf-8").splitlines()
+    ]
+    rebased_events = [
+        event
+        for event in events
+        if event["type"]
+        == "implementation_protected_path_context_prune_rebased"
+    ]
+    assert len(rebased_events) == 1
+    assert rebased_events[0]["concurrent_shared_update"]["commits"][0][
+        "subject"
+    ] == "EX-OTHER: mark todo completed"
+    cleanup = daemon._cleanup_merged_worktree(workspace, branch)
+    assert cleanup["cleaned"] is True
+
+
 def test_general_implementation_prompt_marks_protected_files_read_only(
     tmp_path: Path,
 ) -> None:
@@ -618,12 +825,29 @@ def test_crash_snapshot_reconciliation_accepts_device_renumbering_only(
     protected = tmp_path / POLICY_PATH
     protected.parent.mkdir(parents=True)
     protected.write_text("unchanged\n", encoding="utf-8")
+    _git(tmp_path, "init")
+    _git(tmp_path, "config", "user.name", "Protected Snapshot Test")
+    _git(
+        tmp_path,
+        "config",
+        "user.email",
+        "protected-snapshot@example.invalid",
+    )
+    _git(tmp_path, "add", POLICY_PATH)
+    _git(tmp_path, "commit", "-m", "baseline")
     daemon = _daemon(tmp_path)
     daemon.worktree_root = tmp_path / "worktrees"
     workspace = daemon.worktree_root / "attempt"
-    workspace_protected = workspace / POLICY_PATH
-    workspace_protected.parent.mkdir(parents=True)
-    workspace_protected.write_text("unchanged\n", encoding="utf-8")
+    daemon.worktree_root.mkdir()
+    _git(
+        tmp_path,
+        "worktree",
+        "add",
+        "-b",
+        "device-renumbering",
+        str(workspace),
+        "HEAD",
+    )
     daemon._require_implementation_protected_snapshot(
         task=_task(outputs=["src/example.py"]),
         attempt=1,
@@ -1127,6 +1351,185 @@ def test_operator_clearance_accepts_disposed_exact_baseline_mirror(
     assert proof["workspace_absent"] is True
     assert proof["workspace_unregistered"] is True
     assert proof["mirrored_protected_paths"] == [POLICY_PATH]
+
+
+def test_operator_clearance_accepts_pruned_untracked_protected_mirror(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Protected Context Test")
+    _git(repo, "config", "user.email", "protected-context@example.invalid")
+    (repo / "README.md").write_text("baseline\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "baseline")
+
+    protected_path = "docs/architecture/runtime-plan.md"
+    protected = repo / protected_path
+    protected.parent.mkdir(parents=True)
+    protected.write_text("operator-owned plan\n", encoding="utf-8")
+    worktree_root = tmp_path / "worktrees"
+    daemon = PortalImplementationDaemon(
+        todo_path=repo / "tasks.todo.md",
+        state_path=tmp_path / "state" / "task-state.json",
+        strategy_path=tmp_path / "state" / "strategy.json",
+        events_path=tmp_path / "state" / "events.jsonl",
+        repo_root=repo,
+        implement=True,
+        implementation_command="fake-agent",
+        implementation_protected_paths=(protected_path,),
+        use_ephemeral_worktree=True,
+        worktree_root=worktree_root,
+        worktree_pool_enabled=False,
+        merge_target_branch="main",
+    )
+    task = _task(outputs=["src/example.py"])
+    workspace = worktree_root / "lane"
+    branch = "implementation/protected-context-prune-clearance"
+    daemon._create_seeded_worktree(workspace, branch, task=task)
+    before = daemon._require_implementation_protected_snapshot(
+        task=task,
+        attempt=1,
+        workspace_path=workspace,
+    )
+
+    (workspace / protected_path).unlink()
+    violation = daemon._implementation_protected_path_violation(
+        task=task,
+        attempt=1,
+        workspace_path=workspace,
+        before=before,
+    )
+    assert {
+        item["scope"] for item in violation["mutations"]
+    } == {"workspace"}
+    assert violation["mutations"][0]["change"] == "deleted"
+    _git(repo, "worktree", "remove", "--force", str(workspace))
+
+    result = daemon.clear_implementation_protected_path_incident(
+        operator_note=(
+            "Reviewed the daemon-pruned, byte-identical untracked planning "
+            "mirror after its disposable worktree was removed."
+        ),
+        approve_disposed_ephemeral_workspace=True,
+    )
+
+    assert result["cleared"] is True
+    assert result["reason"] == (
+        "operator_approved_pruned_mirrored_ephemeral_workspace"
+    )
+    receipt = json.loads(
+        Path(result["receipt_path"]).read_text(encoding="utf-8")
+    )
+    proof = receipt["mirrored_ephemeral_workspace_proof"]
+    assert proof["mode"] == "seeded_context_pruned"
+    assert proof["workspace_git_head_at_snapshot"]
+    assert proof["mirrored_protected_paths"] == [protected_path]
+    assert receipt["shared_untracked_paths_proof"] == {
+        "schema": "unchanged-untracked-protected-paths-proof-v1",
+        "protected_paths": [protected_path],
+        "status_records": [f"?? {protected_path}"],
+        "shared_identities_unchanged": True,
+    }
+
+
+def test_operator_clearance_accepts_removed_mirror_with_trusted_shared_update(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Protected Context Test")
+    _git(repo, "config", "user.email", "protected-context@example.invalid")
+    board_path = "docs/architecture/tasks.todo.md"
+    board = repo / board_path
+    board.parent.mkdir(parents=True)
+    board.write_text("## EX-OTHER\n\n- [ ] pending\n", encoding="utf-8")
+    _git(repo, "add", board_path)
+    _git(repo, "commit", "-m", "baseline")
+
+    plan_path = "docs/architecture/runtime-plan.md"
+    plan = repo / plan_path
+    plan.write_text("operator-owned plan\n", encoding="utf-8")
+    worktree_root = tmp_path / "worktrees"
+    daemon = PortalImplementationDaemon(
+        todo_path=repo / board_path,
+        state_path=tmp_path / "state" / "task-state.json",
+        strategy_path=tmp_path / "state" / "strategy.json",
+        events_path=tmp_path / "state" / "events.jsonl",
+        repo_root=repo,
+        implement=True,
+        implementation_command="fake-agent",
+        implementation_protected_paths=(board_path, plan_path),
+        use_ephemeral_worktree=True,
+        worktree_root=worktree_root,
+        worktree_pool_enabled=False,
+        merge_target_branch="main",
+    )
+    task = _task(outputs=["src/example.py"])
+    workspace = worktree_root / "lane"
+    daemon._create_seeded_worktree(
+        workspace,
+        "implementation/protected-context-mixed-clearance",
+        task=task,
+    )
+    before = daemon._require_implementation_protected_snapshot(
+        task=task,
+        attempt=1,
+        workspace_path=workspace,
+    )
+
+    board.write_text("## EX-OTHER\n\n- [x] complete\n", encoding="utf-8")
+    _git(repo, "add", board_path)
+    _git(
+        repo,
+        "-c",
+        "user.name=Implementation Daemon",
+        "-c",
+        "user.email=implementation-daemon@example.invalid",
+        "commit",
+        "-m",
+        "EX-OTHER: mark todo completed",
+    )
+    (workspace / plan_path).unlink()
+    violation = daemon._implementation_protected_path_violation(
+        task=task,
+        attempt=1,
+        workspace_path=workspace,
+        before=before,
+    )
+    assert {
+        item["scope"] for item in violation["mutations"]
+    } == {"shared_checkout", "workspace"}
+    _git(repo, "worktree", "remove", "--force", str(workspace))
+
+    result = daemon.clear_implementation_protected_path_incident(
+        operator_note=(
+            "Reviewed the trusted board update and the byte-identical "
+            "planning mirror removed during context pruning."
+        ),
+        approve_disposed_ephemeral_workspace=True,
+    )
+
+    assert result["cleared"] is True
+    assert result["reason"] == (
+        "operator_approved_pruned_mirrored_ephemeral_workspace"
+    )
+    assert result["approved_commits"] == []
+    receipt = json.loads(
+        Path(result["receipt_path"]).read_text(encoding="utf-8")
+    )
+    assert receipt["history"][0]["trusted_generator"] is True
+    assert (
+        receipt["mirrored_ephemeral_workspace_proof"]["mode"]
+        == "seeded_context_pruned"
+    )
+    assert receipt["shared_untracked_paths_proof"]["protected_paths"] == [
+        plan_path
+    ]
 
 
 def test_disposed_workspace_approval_rejects_selective_protected_deletion(

@@ -225,8 +225,7 @@ PROVIDER_CAPACITY_PATTERNS = (
     (
         "grok",
         re.compile(
-            r"(?:grok.*(?:usage limit|rate limit|quota)|you(?:'|\u2019)?ve hit your usage limit|"
-            r"unknown model id|billing)",
+            r"(?:grok|xai).*(?:usage limit|rate limit|quota|unknown model id|billing)",
             re.IGNORECASE,
         ),
     ),
@@ -278,6 +277,9 @@ MAX_IMPLEMENTATION_PROPOSAL_SERIALIZED_BYTES = 24_000_000
 PROPOSAL_ARTIFACT_ENVELOPE_METADATA_KEY = "proposal artifact envelope"
 PROPOSAL_ARTIFACT_ENVELOPE_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/task-artifact-envelope@1"
+)
+PROPOSAL_BINARY_ARTIFACT_ENVELOPE_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/task-artifact-envelope@2"
 )
 PROPOSAL_ARTIFACT_AUTHORITY_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/task-artifact-authority@1"
@@ -3112,6 +3114,13 @@ class PortalImplementationDaemon:
                         mutations=mutations,
                     )
                 )
+                if not disposed_workspace_proof:
+                    mirrored_workspace_proof = (
+                        self._mirrored_ephemeral_workspace_clearance_proof(
+                            active=active,
+                            mutations=mutations,
+                        )
+                    )
             elif mutation_scopes == {"workspace"}:
                 mirrored_workspace_proof = (
                     self._mirrored_ephemeral_workspace_clearance_proof(
@@ -3202,12 +3211,106 @@ class PortalImplementationDaemon:
             capture_output=True,
             check=False,
         )
-        if status.returncode != 0 or status.stdout.strip():
+        shared_untracked_paths_proof: dict[str, Any] = {}
+        if status.returncode != 0:
             return denied(
                 "protected_paths_dirty",
                 protected_paths=protected_paths,
                 status=status.stdout.strip(),
             )
+        if status.stdout.strip():
+            allow_unchanged_untracked = bool(
+                mirrored_workspace_proof.get("mode")
+                == "seeded_context_pruned"
+            )
+            raw_status = subprocess.run(
+                [
+                    "git",
+                    "status",
+                    "--porcelain=v1",
+                    "-z",
+                    "--untracked-files=all",
+                    "--",
+                    *protected_paths,
+                ],
+                cwd=self.repo_root,
+                capture_output=True,
+                check=False,
+            )
+            status_records = {
+                item
+                for item in raw_status.stdout.decode(
+                    "utf-8",
+                    errors="surrogateescape",
+                ).split("\0")
+                if item
+            }
+            tracked_result = subprocess.run(
+                ["git", "ls-files", "-z", "--", *protected_paths],
+                cwd=self.repo_root,
+                capture_output=True,
+                check=False,
+            )
+            tracked_paths = {
+                item
+                for item in tracked_result.stdout.decode(
+                    "utf-8",
+                    errors="surrogateescape",
+                ).split("\0")
+                if item
+            }
+            untracked_protected_paths = sorted(
+                set(protected_paths) - tracked_paths
+            )
+            expected_untracked_records = {
+                f"?? {relative}" for relative in untracked_protected_paths
+            }
+            current_shared = self._implementation_protected_path_snapshot(
+                self.repo_root
+            ).get("shared_checkout")
+            before_shared_paths = before_shared.get("paths")
+            current_shared_paths = (
+                current_shared.get("paths")
+                if isinstance(current_shared, Mapping)
+                else None
+            )
+            shared_identities_unchanged = bool(
+                isinstance(before_shared_paths, Mapping)
+                and isinstance(current_shared_paths, Mapping)
+                and all(
+                    before_shared_paths.get(relative)
+                    == current_shared_paths.get(relative)
+                    for relative in untracked_protected_paths
+                )
+            )
+            if (
+                not allow_unchanged_untracked
+                or raw_status.returncode != 0
+                or tracked_result.returncode != 0
+                or status_records != expected_untracked_records
+                or not untracked_protected_paths
+                or not shared_identities_unchanged
+            ):
+                return denied(
+                    "protected_paths_dirty",
+                    protected_paths=protected_paths,
+                    status=status.stdout.strip(),
+                    allow_unchanged_untracked=allow_unchanged_untracked,
+                    raw_status_returncode=raw_status.returncode,
+                    tracked_paths_returncode=tracked_result.returncode,
+                    status_records=sorted(status_records),
+                    expected_untracked_records=sorted(
+                        expected_untracked_records
+                    ),
+                    untracked_protected_paths=untracked_protected_paths,
+                    shared_identities_unchanged=shared_identities_unchanged,
+                )
+            shared_untracked_paths_proof = {
+                "schema": "unchanged-untracked-protected-paths-proof-v1",
+                "protected_paths": untracked_protected_paths,
+                "status_records": sorted(status_records),
+                "shared_identities_unchanged": True,
+            }
 
         resolved_approvals: set[str] = set()
         invalid_approvals: list[str] = []
@@ -3294,6 +3397,7 @@ class PortalImplementationDaemon:
             "approved_commits": sorted(resolved_approvals),
             "disposed_ephemeral_workspace_proof": disposed_workspace_proof,
             "mirrored_ephemeral_workspace_proof": mirrored_workspace_proof,
+            "shared_untracked_paths_proof": shared_untracked_paths_proof,
         }
         clearance_id = "sha256:" + hashlib.sha256(
             canonical_json(clearance_basis).encode("utf-8")
@@ -3313,6 +3417,7 @@ class PortalImplementationDaemon:
             "history": commits,
             "disposed_ephemeral_workspace_proof": disposed_workspace_proof,
             "mirrored_ephemeral_workspace_proof": mirrored_workspace_proof,
+            "shared_untracked_paths_proof": shared_untracked_paths_proof,
         }
         receipt_path = (
             incident_path.parent
@@ -3334,7 +3439,12 @@ class PortalImplementationDaemon:
         result = {
             "cleared": True,
             "reason": (
-                "operator_approved_mirrored_ephemeral_workspace"
+                (
+                    "operator_approved_pruned_mirrored_ephemeral_workspace"
+                    if mirrored_workspace_proof.get("mode")
+                    == "seeded_context_pruned"
+                    else "operator_approved_mirrored_ephemeral_workspace"
+                )
                 if mirrored_workspace_proof
                 else "operator_approved_shared_checkout_commits"
             ),
@@ -3403,8 +3513,6 @@ class PortalImplementationDaemon:
             Mapping,
         ):
             return {}
-        if str(before_workspace.get("git_head") or ""):
-            return {}
         workspace_paths = before_workspace.get("paths")
         shared_paths = before_shared.get("paths")
         if not isinstance(workspace_paths, Mapping) or not isinstance(
@@ -3414,40 +3522,66 @@ class PortalImplementationDaemon:
             return {}
 
         mirrored_paths: list[str] = []
+        mutation_modes: set[str] = set()
         identity_keys = ("state", "kind", "size", "sha256", "symlink_target")
         for mutation in mutations:
-            if (
-                str(mutation.get("scope") or "") != "workspace"
-                or str(mutation.get("change") or "") != "created"
-            ):
-                return {}
+            if str(mutation.get("scope") or "") != "workspace":
+                continue
             path = str(mutation.get("path") or "")
+            change = str(mutation.get("change") or "")
             before = mutation.get("before")
             after = mutation.get("after")
             baseline = shared_paths.get(path)
             workspace_baseline = workspace_paths.get(path)
-            if (
-                not path
-                or not isinstance(before, Mapping)
-                or before.get("state") != "missing"
-                or not isinstance(workspace_baseline, Mapping)
-                or workspace_baseline.get("state") != "missing"
-                or not isinstance(after, Mapping)
-                or not isinstance(baseline, Mapping)
-                or baseline.get("state") != "present"
+            if not path or not isinstance(before, Mapping) or not isinstance(
+                after,
+                Mapping,
+            ) or not isinstance(workspace_baseline, Mapping) or not isinstance(
+                baseline,
+                Mapping,
             ):
                 return {}
-            if any(after.get(key) != baseline.get(key) for key in identity_keys):
+            if change == "created":
+                if (
+                    str(before_workspace.get("git_head") or "")
+                    or before.get("state") != "missing"
+                    or workspace_baseline.get("state") != "missing"
+                    or baseline.get("state") != "present"
+                    or any(
+                        after.get(key) != baseline.get(key)
+                        for key in identity_keys
+                    )
+                ):
+                    return {}
+                mutation_modes.add("baseline_mirrored")
+            elif change == "deleted":
+                if (
+                    before.get("state") != "present"
+                    or after.get("state") != "missing"
+                    or baseline.get("state") != "present"
+                    or dict(before) != dict(workspace_baseline)
+                    or any(
+                        before.get(key) != baseline.get(key)
+                        for key in identity_keys
+                    )
+                ):
+                    return {}
+                mutation_modes.add("seeded_context_pruned")
+            else:
                 return {}
             mirrored_paths.append(path)
-        if not mirrored_paths:
+        if not mirrored_paths or len(mutation_modes) != 1:
             return {}
+        mode = next(iter(mutation_modes))
         return {
             "schema": "mirrored-ephemeral-workspace-proof-v1",
+            "mode": mode,
             "workspace_path": str(workspace),
             "workspace_absent": True,
             "workspace_unregistered": True,
-            "workspace_git_head_missing_at_snapshot": True,
+            "workspace_git_head_at_snapshot": str(
+                before_workspace.get("git_head") or ""
+            ),
             "mirrored_protected_paths": sorted(mirrored_paths),
             "shared_baseline_git_head": str(
                 before_shared.get("git_head") or ""
@@ -3859,6 +3993,229 @@ class PortalImplementationDaemon:
         self._latch_implementation_protected_incident(payload)
         self._record_event("implementation_protected_path_mutated", payload)
         return payload
+
+    def _rebase_implementation_protected_snapshot_after_context_prune(
+        self,
+        *,
+        task: PortalTask,
+        attempt: int,
+        workspace_path: Path,
+        before: Mapping[str, Mapping[str, Any]],
+        pruned_paths: Sequence[str],
+    ) -> dict[str, dict[str, Any]]:
+        """Trust only the daemon's exact, post-agent context cleanup.
+
+        Untracked planning documents are mirrored into an isolated worktree so
+        an implementation agent can read them.  Validation preparation removes
+        byte-identical mirrored inputs so they cannot enter the candidate
+        patch.  Protected-path fencing must advance its workspace baseline
+        across that daemon-owned deletion, after the pre-validation fence has
+        already proved that neither the agent nor the shared checkout changed
+        the files.
+
+        Any additional identity change leaves the old baseline in force.  The
+        ordinary final fence will then fail closed.
+        """
+
+        pruned_protected_paths = sorted(
+            set(map(str, pruned_paths))
+            & set(self.implementation_protected_paths)
+        )
+        if not pruned_protected_paths:
+            return {
+                str(scope): dict(scope_snapshot)
+                for scope, scope_snapshot in before.items()
+            }
+        if workspace_path.resolve() == self.repo_root.resolve():
+            return {
+                str(scope): dict(scope_snapshot)
+                for scope, scope_snapshot in before.items()
+            }
+
+        expected_after = json.loads(canonical_json(before))
+        workspace_snapshot = expected_after.get("workspace")
+        workspace_paths = (
+            workspace_snapshot.get("paths")
+            if isinstance(workspace_snapshot, dict)
+            else None
+        )
+        if not isinstance(workspace_paths, dict):
+            self._record_event(
+                "implementation_protected_path_context_prune_rebase_refused",
+                {
+                    "task_id": task.task_id,
+                    "attempt": attempt,
+                    "workspace_path": str(workspace_path),
+                    "reason": "workspace_snapshot_missing",
+                    "pruned_protected_paths": pruned_protected_paths,
+                },
+            )
+            return {
+                str(scope): dict(scope_snapshot)
+                for scope, scope_snapshot in before.items()
+            }
+        for relative in pruned_protected_paths:
+            identity = workspace_paths.get(relative)
+            if not isinstance(identity, dict) or identity.get("state") != "present":
+                self._record_event(
+                    "implementation_protected_path_context_prune_rebase_refused",
+                    {
+                        "task_id": task.task_id,
+                        "attempt": attempt,
+                        "workspace_path": str(workspace_path),
+                        "reason": "protected_prune_baseline_not_present",
+                        "path": relative,
+                        "pruned_protected_paths": pruned_protected_paths,
+                    },
+                )
+                return {
+                    str(scope): dict(scope_snapshot)
+                    for scope, scope_snapshot in before.items()
+                }
+            workspace_paths[relative] = {"state": "missing"}
+
+        after = self._implementation_protected_path_snapshot(workspace_path)
+        concurrent_shared_update: dict[str, Any] = {}
+        if after != expected_after:
+            expected_workspace = expected_after.get("workspace")
+            observed_workspace = after.get("workspace")
+            expected_shared = expected_after.get("shared_checkout")
+            observed_shared = after.get("shared_checkout")
+            shared_mutations: list[dict[str, Any]] = []
+            shared_metadata_matches = False
+            shared_paths_match = False
+            if isinstance(expected_shared, Mapping) and isinstance(
+                observed_shared,
+                Mapping,
+            ):
+                expected_shared_metadata = {
+                    str(key): value
+                    for key, value in expected_shared.items()
+                    if key not in {"git_head", "git_head_error", "paths"}
+                }
+                observed_shared_metadata = {
+                    str(key): value
+                    for key, value in observed_shared.items()
+                    if key not in {"git_head", "git_head_error", "paths"}
+                }
+                shared_metadata_matches = (
+                    expected_shared_metadata == observed_shared_metadata
+                )
+                expected_shared_paths = expected_shared.get("paths")
+                observed_shared_paths = observed_shared.get("paths")
+                if isinstance(expected_shared_paths, Mapping) and isinstance(
+                    observed_shared_paths,
+                    Mapping,
+                ):
+                    shared_paths_match = (
+                        dict(expected_shared_paths)
+                        == dict(observed_shared_paths)
+                    )
+                    for relative in sorted(
+                        set(expected_shared_paths) | set(observed_shared_paths)
+                    ):
+                        before_identity = expected_shared_paths.get(relative)
+                        after_identity = observed_shared_paths.get(relative)
+                        normalized_before = (
+                            dict(before_identity)
+                            if isinstance(before_identity, Mapping)
+                            else {
+                                "state": "error",
+                                "error": "missing baseline identity",
+                            }
+                        )
+                        normalized_after = (
+                            dict(after_identity)
+                            if isinstance(after_identity, Mapping)
+                            else {
+                                "state": "error",
+                                "error": "missing final identity",
+                            }
+                        )
+                        if normalized_before == normalized_after:
+                            continue
+                        shared_mutations.append(
+                            {
+                                "scope": "shared_checkout",
+                                "path": str(relative),
+                                "change": (
+                                    self._implementation_protected_change_kind(
+                                        normalized_before,
+                                        normalized_after,
+                                    )
+                                ),
+                                "before": normalized_before,
+                                "after": normalized_after,
+                            }
+                        )
+
+            # The workspace side must remain byte-for-byte equal to the
+            # daemon-computed post-prune state. A shared checkout HEAD may move
+            # without changing protected identities, or protected board files
+            # may change through a history-verified daemon-owned commit that a
+            # pre-validation fence already accepts. No other difference is
+            # eligible for rebasing.
+            if (
+                expected_workspace == observed_workspace
+                and shared_metadata_matches
+                and isinstance(observed_shared, Mapping)
+            ):
+                if shared_paths_match:
+                    concurrent_shared_update = {
+                        "reason": "shared_head_advanced_protected_paths_unchanged",
+                        "before_head": str(
+                            expected_shared.get("git_head") or ""
+                        ),
+                        "after_head": str(observed_shared.get("git_head") or ""),
+                        "protected_paths": [],
+                        "commits": [],
+                    }
+                elif shared_mutations:
+                    concurrent_shared_update = (
+                        self._authorized_concurrent_protected_path_update(
+                            workspace_path=workspace_path,
+                            before=expected_after,
+                            after=after,
+                            mutations=shared_mutations,
+                        )
+                    )
+                if concurrent_shared_update:
+                    expected_after["shared_checkout"] = json.loads(
+                        canonical_json(observed_shared)
+                    )
+        if after != expected_after:
+            self._record_event(
+                "implementation_protected_path_context_prune_rebase_refused",
+                {
+                    "task_id": task.task_id,
+                    "attempt": attempt,
+                    "workspace_path": str(workspace_path),
+                    "reason": "unexpected_identity_change",
+                    "pruned_protected_paths": pruned_protected_paths,
+                },
+            )
+            return {
+                str(scope): dict(scope_snapshot)
+                for scope, scope_snapshot in before.items()
+            }
+
+        self._persist_implementation_protected_snapshot(
+            task=task,
+            attempt=attempt,
+            workspace_path=workspace_path,
+            snapshot=after,
+        )
+        self._record_event(
+            "implementation_protected_path_context_prune_rebased",
+            {
+                "task_id": task.task_id,
+                "attempt": attempt,
+                "workspace_path": str(workspace_path),
+                "pruned_protected_paths": pruned_protected_paths,
+                "concurrent_shared_update": concurrent_shared_update,
+            },
+        )
+        return after
 
     def _require_implementation_protected_snapshot(
         self,
@@ -8452,7 +8809,21 @@ class PortalImplementationDaemon:
                     )
                     cleanup_result = self._cleanup_merged_worktree(worktree_path, branch_name)
                 else:
-                    self._prepare_worktree_for_validation(worktree_path, task=task, branch_name=branch_name)
+                    pruned_context_paths = self._prepare_worktree_for_validation(
+                        worktree_path,
+                        task=task,
+                        branch_name=branch_name,
+                    )
+                    if protected_path_snapshot is not None:
+                        protected_path_snapshot = (
+                            self._rebase_implementation_protected_snapshot_after_context_prune(
+                                task=task,
+                                attempt=attempt,
+                                workspace_path=worktree_path,
+                                before=protected_path_snapshot,
+                                pruned_paths=pruned_context_paths or (),
+                            )
+                        )
                     proposal_validation = self._validate_implementation_patch(
                         worktree_path,
                         task,
@@ -8712,11 +9083,21 @@ class PortalImplementationDaemon:
                         worktree_path=worktree_path,
                         branch_name=branch_name,
                     )
-                    self._prepare_worktree_for_validation(
+                    pruned_context_paths = self._prepare_worktree_for_validation(
                         worktree_path,
                         task=task,
                         branch_name=branch_name,
                     )
+                    if protected_path_snapshot is not None:
+                        protected_path_snapshot = (
+                            self._rebase_implementation_protected_snapshot_after_context_prune(
+                                task=task,
+                                attempt=attempt,
+                                workspace_path=worktree_path,
+                                before=protected_path_snapshot,
+                                pruned_paths=pruned_context_paths or (),
+                            )
+                        )
                     proposal_validation = self._validate_implementation_patch(
                         worktree_path,
                         task,
@@ -10060,13 +10441,16 @@ class PortalImplementationDaemon:
         *,
         task: PortalTask | None = None,
         branch_name: str = "",
-    ) -> None:
+    ) -> list[str]:
         self._initialize_worktree_submodules(worktree_path, branch_name=branch_name)
         self._link_shared_worktree_paths(worktree_path)
         # Untracked source context is snapshotted when the worktree lease starts.
         # Re-reading the primary checkout here can attribute files created by a
         # concurrent user or lane to this implementation after its agent exits.
-        self._drop_unchanged_seeded_worktree_context(worktree_path, task=task)
+        return self._drop_unchanged_seeded_worktree_context(
+            worktree_path,
+            task=task,
+        )
 
     @staticmethod
     def _seeded_worktree_context_identity(path: Path) -> dict[str, Any]:
@@ -11703,6 +12087,7 @@ class PortalImplementationDaemon:
         tracked_command = [
             "git",
             "diff",
+            "--binary",
             "--no-ext-diff",
             "--no-color",
             "--find-renames",
@@ -11770,6 +12155,7 @@ class PortalImplementationDaemon:
             command = [
                 "git",
                 "diff",
+                "--binary",
                 "--no-index",
                 "--no-color",
             ]
@@ -11845,7 +12231,7 @@ class PortalImplementationDaemon:
         cls,
         proposal: Any,
         task: PortalTask | None = None,
-    ) -> dict[str, int]:
+    ) -> dict[str, int | bool]:
         """Return fail-closed limits for one locally collected proposal.
 
         Full source is retained so the gate can verify content and baseline
@@ -11943,6 +12329,16 @@ class PortalImplementationDaemon:
             <= DEFAULT_IMPLEMENTATION_PROPOSAL_PATCH_BYTES
             and largest_file_bytes
             <= DEFAULT_IMPLEMENTATION_PROPOSAL_FILE_BYTES
+            and (
+                task is None
+                or not str(
+                    task.metadata.get(
+                        PROPOSAL_ARTIFACT_ENVELOPE_METADATA_KEY,
+                        "",
+                    )
+                    or ""
+                ).strip()
+            )
         ):
             if (
                 materialized_bytes
@@ -11978,6 +12374,7 @@ class PortalImplementationDaemon:
             envelope = json.loads(raw_envelope)
         except (json.JSONDecodeError, TypeError, ValueError):
             return defaults
+        envelope_schema = envelope.get("schema") if type(envelope) is dict else None
         expected_fields = {
             "schema",
             "paths",
@@ -11985,10 +12382,20 @@ class PortalImplementationDaemon:
             "max_patch_bytes",
             "max_output_bytes",
         }
+        if envelope_schema == PROPOSAL_BINARY_ARTIFACT_ENVELOPE_SCHEMA:
+            expected_fields.add("allow_binary")
         if type(envelope) is not dict or set(envelope) != expected_fields:
             return defaults
-        if envelope.get("schema") != PROPOSAL_ARTIFACT_ENVELOPE_SCHEMA:
+        if envelope_schema not in {
+            PROPOSAL_ARTIFACT_ENVELOPE_SCHEMA,
+            PROPOSAL_BINARY_ARTIFACT_ENVELOPE_SCHEMA,
+        }:
             return defaults
+        allow_binary = False
+        if envelope_schema == PROPOSAL_BINARY_ARTIFACT_ENVELOPE_SCHEMA:
+            if type(envelope.get("allow_binary")) is not bool:
+                return defaults
+            allow_binary = envelope["allow_binary"]
 
         raw_paths = envelope.get("paths")
         if type(raw_paths) is not list or not raw_paths:
@@ -12023,11 +12430,17 @@ class PortalImplementationDaemon:
                 getattr(proposal, "changed_paths", ()) or ()
             )
         )
+        task_scope_paths = cls._proposal_scope_paths(task)
         if (
             set(changed_paths) != set(artifact_paths)
             or len(changed_paths) != len(artifact_paths)
-            or not set(artifact_paths).issubset(
-                {str(path) for path in task.outputs}
+            or not all(
+                any(
+                    artifact_path == scope_path
+                    or artifact_path.startswith(scope_path.rstrip("/") + "/")
+                    for scope_path in task_scope_paths
+                )
+                for artifact_path in artifact_paths
             )
         ):
             return defaults
@@ -12088,7 +12501,10 @@ class PortalImplementationDaemon:
             )
         ):
             return defaults
-        return measured_limits
+        return {
+            **measured_limits,
+            "allow_binary": allow_binary,
+        }
 
     def _consumed_proposal_ids(self, *, limit: int = 256) -> tuple[str, ...]:
         consumed: list[str] = []
@@ -12440,7 +12856,11 @@ class PortalImplementationDaemon:
         policy_version = "strict-proposal-v2+local-envelope-v1"
         policy_allowed_paths = allowed_paths
         if "max_file_bytes" in local_envelope_limits:
-            policy_version += "+declared-artifact-envelope-v1"
+            policy_version += (
+                "+declared-binary-artifact-envelope-v2"
+                if local_envelope_limits.get("allow_binary")
+                else "+declared-artifact-envelope-v1"
+            )
             # The envelope helper admitted only exact set equality between
             # these changed paths and the identity-bound task outputs.
             policy_allowed_paths = changed_paths

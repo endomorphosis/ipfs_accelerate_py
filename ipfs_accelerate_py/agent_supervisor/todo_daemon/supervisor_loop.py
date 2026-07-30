@@ -61,6 +61,8 @@ class SupervisorLoopConfig:
     poll_seconds: float = 1.0
     watchdog_stale_after_seconds: float = 180.0
     watchdog_startup_grace_seconds: float = 30.0
+    child_log_heartbeat_enabled: bool = False
+    child_log_heartbeat_stale_after_seconds: float = 60.0
     stop_grace_seconds: float = 10.0
     max_restarts: int = 0
     latest_log_path: Optional[Path] = None
@@ -118,11 +120,13 @@ class SupervisorLoop:
         watchdog_hook: Optional[WatchdogHook] = None,
         sleep: Callable[[float], None] = time.sleep,
         monotonic: Callable[[], float] = time.monotonic,
+        wall_time: Callable[[], float] = time.time,
     ) -> None:
         self.config = config
         self.watchdog_hook = watchdog_hook
         self.sleep = sleep
         self.monotonic = monotonic
+        self.wall_time = wall_time
         self.status = SupervisorStatusContext(
             config.spec,
             static_fields={
@@ -132,6 +136,10 @@ class SupervisorLoop:
                 "supervisor_poll_seconds": config.poll_seconds,
                 "watchdog_stale_after_seconds": config.watchdog_stale_after_seconds,
                 "watchdog_startup_grace_seconds": config.watchdog_startup_grace_seconds,
+                "child_log_heartbeat_enabled": config.child_log_heartbeat_enabled,
+                "child_log_heartbeat_stale_after_seconds": (
+                    config.child_log_heartbeat_stale_after_seconds
+                ),
                 "stop_grace_seconds": config.stop_grace_seconds,
                 **dict(config.status_static_fields),
             },
@@ -144,6 +152,7 @@ class SupervisorLoop:
         self._last_worker_status: dict[str, Any] = {}
         self._worker_tracking_phase = ""
         self._last_worker_seen_monotonic: Optional[float] = None
+        self._last_child_log_heartbeat: dict[str, Any] = {}
 
     def _child_spec(self, run_id: str) -> SupervisedChildSpec:
         log_path = supervised_log_path(
@@ -206,6 +215,10 @@ class SupervisorLoop:
                     ),
                 }
             )
+        if self._last_child_log_heartbeat:
+            payload_extra["child_log_heartbeat"] = dict(
+                self._last_child_log_heartbeat
+            )
         if extra:
             payload_extra.update(dict(extra))
         self.status.write(
@@ -247,10 +260,16 @@ class SupervisorLoop:
             stale_after_seconds=self.config.watchdog_stale_after_seconds,
         )
         if heartbeat.stale or (heartbeat.heartbeat_at is None and self.config.watchdog_stale_after_seconds <= 0):
-            return SupervisorLoopDecision.recycle(
-                "stale_heartbeat",
-                detail=heartbeat.to_payload(),
-            )
+            child_log_heartbeat = self._child_log_heartbeat()
+            self._last_child_log_heartbeat = dict(child_log_heartbeat)
+            if not child_log_heartbeat.get("fresh"):
+                return SupervisorLoopDecision.recycle(
+                    "stale_heartbeat",
+                    detail={
+                        **heartbeat.to_payload(),
+                        "child_log_heartbeat": child_log_heartbeat,
+                    },
+                )
         try:
             threshold = float(
                 current_status.get("worktree_no_child_stall_seconds")
@@ -270,6 +289,37 @@ class SupervisorLoop:
                 detail=worker_status,
             )
         return SupervisorLoopDecision.keep_running()
+
+    def _child_log_heartbeat(self) -> dict[str, Any]:
+        """Return an opt-in liveness proof from the managed child's own log."""
+
+        threshold = max(
+            0.0,
+            float(self.config.child_log_heartbeat_stale_after_seconds),
+        )
+        result: dict[str, Any] = {
+            "enabled": bool(self.config.child_log_heartbeat_enabled),
+            "path": self.last_log_path,
+            "stale_after_seconds": threshold,
+            "age_seconds": None,
+            "fresh": False,
+        }
+        if not self.config.child_log_heartbeat_enabled or not self.last_log_path:
+            return result
+        log_path = self.config.spec.resolve(Path(self.last_log_path))
+        if log_path is None:
+            return result
+        try:
+            age_seconds = max(
+                0.0,
+                float(self.wall_time()) - float(log_path.stat().st_mtime),
+            )
+        except OSError as exc:
+            result["error"] = f"{type(exc).__name__}: {exc}"
+            return result
+        result["age_seconds"] = round(age_seconds, 3)
+        result["fresh"] = age_seconds <= threshold
+        return result
 
     def _worker_status_with_disappearance_grace(
         self,
@@ -357,6 +407,7 @@ class SupervisorLoop:
             self._worker_tracking_phase = ""
             self._last_worker_seen_monotonic = None
             self._last_worker_status = {}
+            self._last_child_log_heartbeat = {}
             self._safe_write_status("starting", child=child, run_id=run_id, log_path=log_path)
             recycled = False
             stop_requested = False
