@@ -1271,6 +1271,79 @@ class PortalImplementationSupervisor:
                 )
         return active
 
+    def _fresh_peer_lane_runnable_projections(
+        self,
+        *,
+        now_ts: float | None = None,
+    ) -> list[dict[str, Any]]:
+        """Return fresh sibling-lane projections with selectable work."""
+
+        lane_dir = self.config.state_dir.parent
+        lanes_dir = lane_dir.parent
+        if not lane_dir.name.startswith("lane-") or lanes_dir.name != "lanes":
+            return []
+        try:
+            current_state_path = self.config.state_path.resolve()
+            peer_dirs = [
+                path
+                for path in sorted(lanes_dir.glob("lane-*"))[:256]
+                if path != lane_dir and path.is_dir() and not path.is_symlink()
+            ]
+        except OSError:
+            return []
+
+        observed_at = time.time() if now_ts is None else float(now_ts)
+        freshness_seconds = min(
+            1800.0,
+            max(300.0, float(self.config.check_interval) * 4.0),
+        )
+        runnable: list[dict[str, Any]] = []
+        for peer_dir in peer_dirs:
+            try:
+                peer_paths = sorted(
+                    (peer_dir / "state").glob("*_task_state.json")
+                )[:4]
+            except OSError:
+                continue
+            for peer_path in peer_paths:
+                try:
+                    if (
+                        peer_path.is_symlink()
+                        or peer_path.resolve() == current_state_path
+                    ):
+                        continue
+                except OSError:
+                    continue
+                peer_state = PortalTaskState.load(peer_path)
+                task_ids = list(peer_state.selectable_ready_task_ids)
+                if peer_state.selectable_ready_count <= 0 and not task_ids:
+                    continue
+                heartbeat = parse_timestamp(
+                    peer_state.heartbeat_at or peer_state.last_progress_at
+                )
+                if heartbeat is None:
+                    continue
+                age_seconds = observed_at - heartbeat.timestamp()
+                if age_seconds < -float(self.config.check_interval):
+                    continue
+                if age_seconds > freshness_seconds:
+                    continue
+                runnable.append(
+                    {
+                        "lane": peer_dir.name,
+                        "state_path": str(peer_path),
+                        "heartbeat_at": heartbeat.isoformat(),
+                        "age_seconds": max(0.0, age_seconds),
+                        "selectable_ready_count": max(
+                            int(peer_state.selectable_ready_count),
+                            len(task_ids),
+                        ),
+                        "selectable_ready_task_ids": task_ids[:256],
+                    }
+                )
+                break
+        return runnable
+
     def _acquire_protected_path_maintenance_lease(
         self,
     ) -> tuple[dict[str, Any] | None, dict[str, Any]]:
@@ -2204,6 +2277,13 @@ class PortalImplementationSupervisor:
             # finishes, hold the global implementation lease for a long
             # objective-refill scan, and make the daemon skip ready tasks for
             # the duration of that scan.
+            return SupervisorLoopDecision.keep_running()
+
+        if not stuck and self._fresh_peer_lane_runnable_projections(
+            now_ts=time.time()
+        ):
+            # Refill owns a repository-wide lease, so peers get the same
+            # daemon-first handoff as the current lane.
             return SupervisorLoopDecision.keep_running()
 
         self._last_supervisor_maintenance_at = now_monotonic

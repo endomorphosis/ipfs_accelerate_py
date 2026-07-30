@@ -10565,6 +10565,113 @@ def test_implementation_supervisor_watchdog_defers_maintenance_for_selectable_wo
     assert calls == []
 
 
+def test_implementation_supervisor_watchdog_defers_maintenance_for_peer_lane_work(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text("# Agent Todos\n", encoding="utf-8")
+    lanes_dir = repo / "runtime" / "parallel" / "lanes"
+    state_dir = lanes_dir / "lane-00" / "state"
+    peer_state_dir = lanes_dir / "lane-01" / "state"
+    state_dir.mkdir(parents=True)
+    peer_state_dir.mkdir(parents=True)
+    state_path = state_dir / "portal_00_task_state.json"
+    TodoTaskState(ready_count=0, selectable_ready_count=0).save(state_path)
+    now = datetime.now(timezone.utc)
+    TodoTaskState(
+        heartbeat_at=now.isoformat(),
+        ready_count=1,
+        selectable_ready_count=1,
+        ready_task_ids=["AUTO-PEER-001"],
+        selectable_ready_task_ids=["AUTO-PEER-001"],
+    ).save(peer_state_dir / "portal_01_task_state.json")
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=todo_path,
+            state_path=state_path,
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "supervisor_events.jsonl",
+            state_dir=state_dir,
+            repo_root=repo,
+            check_interval=60,
+        )
+    )
+    calls = []
+
+    class Child:
+        pid = os.getpid()
+
+    monkeypatch.setattr(
+        supervisor,
+        "_run_once_with_maintenance",
+        lambda _update_phase: calls.append("maintenance") or {"stuck": False},
+    )
+
+    decision = supervisor._supervisor_loop_watchdog_decision(None, Child(), {})
+
+    assert decision.action == "continue"
+    assert calls == []
+    peer = supervisor._fresh_peer_lane_runnable_projections()
+    assert [item["lane"] for item in peer] == ["lane-01"]
+    assert peer[0]["selectable_ready_task_ids"] == ["AUTO-PEER-001"]
+
+
+def test_implementation_supervisor_watchdog_ignores_stale_peer_lane_work(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text("# Agent Todos\n", encoding="utf-8")
+    lanes_dir = repo / "runtime" / "parallel" / "lanes"
+    state_dir = lanes_dir / "lane-00" / "state"
+    peer_state_dir = lanes_dir / "lane-01" / "state"
+    state_dir.mkdir(parents=True)
+    peer_state_dir.mkdir(parents=True)
+    state_path = state_dir / "portal_00_task_state.json"
+    TodoTaskState(ready_count=0, selectable_ready_count=0).save(state_path)
+    stale = datetime.fromtimestamp(time.time() - 601, tz=timezone.utc)
+    TodoTaskState(
+        heartbeat_at=stale.isoformat(),
+        ready_count=1,
+        selectable_ready_count=1,
+        ready_task_ids=["AUTO-STALE-001"],
+        selectable_ready_task_ids=["AUTO-STALE-001"],
+    ).save(peer_state_dir / "portal_01_task_state.json")
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=todo_path,
+            state_path=state_path,
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "supervisor_events.jsonl",
+            state_dir=state_dir,
+            repo_root=repo,
+            check_interval=60,
+        )
+    )
+    calls = []
+
+    class Child:
+        pid = os.getpid()
+
+    monkeypatch.setattr(
+        supervisor,
+        "_run_once_with_maintenance",
+        lambda _update_phase: calls.append("maintenance")
+        or {"stuck": False, "main_checkout_repair": {"repaired": False}},
+    )
+
+    decision = supervisor._supervisor_loop_watchdog_decision(None, Child(), {})
+
+    assert decision.action == "continue"
+    assert calls == ["maintenance"]
+    assert supervisor._fresh_peer_lane_runnable_projections() == []
+
+
 def test_implementation_supervisor_check_records_worktree_summary_counts(tmp_path, monkeypatch):
     repo = tmp_path / "repo"
     repo.mkdir()
