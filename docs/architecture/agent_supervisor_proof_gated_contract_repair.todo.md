@@ -974,7 +974,7 @@ consumer or frontier is unresolved.
 
 ## RPR-030 Analyze schema, constructor, serialization, and protocol impacts
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
