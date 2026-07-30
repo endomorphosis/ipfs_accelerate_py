@@ -38,7 +38,13 @@ from typing import Any, Final, Iterable, Mapping, Sequence
 
 from .analysis.analysis_ast_index import AnalysisASTIndex, build_analysis_ast_index
 from .core.conflict_graph import ASTBlobRecord, build_python_ast_blob_record
-
+from .multiformats_identity import validate_cid
+from .proof.formal_verification_contracts import content_identity
+from .repository_corpus_index import (
+    CorpusClassification,
+    CorpusEntry,
+    RepositoryCorpusIndex,
+)
 
 PROGRAM_AST_ADAPTER_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/program-ast-adapter-result@1"
@@ -48,6 +54,9 @@ PROGRAM_EVIDENCE_FACT_SCHEMA = (
 )
 PROGRAM_EVIDENCE_INDEX_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/program-evidence-index@1"
+)
+INVENTORY_PROGRAM_EVIDENCE_RECEIPT_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/inventory-program-evidence-receipt@1"
 )
 PYTHON_ADAPTER_VERSION = f"stdlib-ast-{sys.version_info.major}.{sys.version_info.minor}"
 JSON_ADAPTER_VERSION = "stdlib-json-1"
@@ -545,6 +554,414 @@ class ProgramEvidenceIndex:
         return prove_incremental_ast_index(self)
 
 
+def _mapping_field(value: Any, name: str) -> Mapping[str, Any]:
+    if not isinstance(value, Mapping):
+        raise ValueError(f"{name} must be an object")
+    return value
+
+
+def _sequence_field(value: Any, name: str) -> Sequence[Any]:
+    if not isinstance(value, Sequence) or isinstance(
+        value, (str, bytes, bytearray)
+    ):
+        raise ValueError(f"{name} must be an array")
+    return value
+
+
+def _boolean_field(
+    value: Mapping[str, Any], name: str, *, default: bool = False
+) -> bool:
+    result = value.get(name, default)
+    if not isinstance(result, bool):
+        raise TypeError(f"{name} must be a boolean")
+    return result
+
+
+def _source_span_from_dict(value: Any) -> SourceSpan:
+    payload = _mapping_field(value, "source span")
+    return SourceSpan(
+        line_start=int(payload.get("line_start", 0)),
+        column_start=int(payload.get("column_start", 0)),
+        line_end=int(payload.get("line_end", 0)),
+        column_end=int(payload.get("column_end", 0)),
+    )
+
+
+def _diagnostic_from_dict(value: Any) -> AdapterDiagnostic:
+    payload = _mapping_field(value, "adapter diagnostic")
+    return AdapterDiagnostic(
+        code=str(payload.get("code") or ""),
+        message=str(payload.get("message") or ""),
+        severity=str(payload.get("severity") or "error"),
+        span=_source_span_from_dict(payload.get("span") or {}),
+        details=_mapping_field(payload.get("details") or {}, "diagnostic details"),
+    )
+
+
+def _program_fact_from_dict(value: Any) -> ProgramEvidenceFact:
+    payload = _mapping_field(value, "program evidence fact")
+    schema = str(payload.get("schema") or PROGRAM_EVIDENCE_FACT_SCHEMA)
+    if schema != PROGRAM_EVIDENCE_FACT_SCHEMA:
+        raise ValueError(f"unsupported program evidence fact schema: {schema}")
+    result = ProgramEvidenceFact(
+        kind=str(payload.get("kind") or ""),
+        name=str(payload.get("name") or ""),
+        span=_source_span_from_dict(payload.get("span") or {}),
+        owner=str(payload.get("owner") or ""),
+        target=str(payload.get("target") or ""),
+        relationship=str(payload.get("relationship") or "observed"),
+        normative=_boolean_field(payload, "normative"),
+        ambiguous=_boolean_field(payload, "ambiguous"),
+        generated=_boolean_field(payload, "generated"),
+        details=_mapping_field(payload.get("details") or {}, "fact details"),
+        schema=schema,
+    )
+    claimed = str(payload.get("fact_id") or "")
+    if claimed and claimed != result.fact_id:
+        raise ValueError("program evidence fact identity does not match payload")
+    return result
+
+
+def _program_result_from_dict(value: Any) -> ProgramASTAdapterResult:
+    payload = _mapping_field(value, "program adapter result")
+    schema = str(payload.get("schema") or PROGRAM_AST_ADAPTER_SCHEMA)
+    if schema != PROGRAM_AST_ADAPTER_SCHEMA:
+        raise ValueError(f"unsupported program adapter result schema: {schema}")
+    raw_record = payload.get("ast_record")
+    if raw_record is None:
+        record = None
+    else:
+        record = ASTBlobRecord.from_dict(
+            _mapping_field(raw_record, "program adapter AST record")
+        )
+    return ProgramASTAdapterResult(
+        path=str(payload.get("path") or ""),
+        language=str(payload.get("language") or "unknown"),
+        status=str(payload.get("status") or "unsupported"),
+        source_sha256=str(payload.get("source_sha256") or ""),
+        blob_identity=str(payload.get("blob_identity") or ""),
+        parser=str(payload.get("parser") or ""),
+        ast_record=record,
+        facts=tuple(
+            _program_fact_from_dict(item)
+            for item in _sequence_field(payload.get("facts") or (), "program facts")
+        ),
+        diagnostics=tuple(
+            _diagnostic_from_dict(item)
+            for item in _sequence_field(
+                payload.get("diagnostics") or (), "program diagnostics"
+            )
+        ),
+        generated=_boolean_field(payload, "generated"),
+        reused=_boolean_field(payload, "reused"),
+        schema=schema,
+    )
+
+
+def _program_index_from_dict(value: Any) -> ProgramEvidenceIndex:
+    payload = _mapping_field(value, "program evidence index")
+    schema = str(payload.get("schema") or PROGRAM_EVIDENCE_INDEX_SCHEMA)
+    if schema != PROGRAM_EVIDENCE_INDEX_SCHEMA:
+        raise ValueError(f"unsupported program evidence index schema: {schema}")
+    analysis_payload = _mapping_field(
+        payload.get("analysis_index"), "program analysis index"
+    )
+    return ProgramEvidenceIndex(
+        analysis_index=AnalysisASTIndex.from_dict(analysis_payload),
+        results=tuple(
+            _program_result_from_dict(item)
+            for item in _sequence_field(
+                payload.get("results") or (), "program adapter results"
+            )
+        ),
+        schema=schema,
+    )
+
+
+def _portable_program_result(
+    result: ProgramASTAdapterResult,
+) -> dict[str, Any]:
+    payload = result.to_dict()
+    # Reuse is an execution observation.  Cold and warm construction of the
+    # same evidence must resolve to one receipt CID.
+    payload.pop("reused", None)
+    return payload
+
+
+def _portable_program_index(index: ProgramEvidenceIndex) -> dict[str, Any]:
+    analysis = index.analysis_index.to_dict()
+    return {
+        "schema": index.schema,
+        "analysis_index": {
+            "schema": analysis["schema"],
+            "schema_version": analysis["schema_version"],
+            "index_id": analysis["index_id"],
+            "path_records": analysis["path_records"],
+        },
+        "results": [_portable_program_result(item) for item in index.results],
+    }
+
+
+@dataclass(frozen=True)
+class InventoryProgramEvidenceReceipt:
+    """Inventory-bound coverage around an unchanged program evidence index.
+
+    The generic :class:`ProgramEvidenceIndex` deliberately treats an explicitly
+    accounted unsupported input as exhaustive.  Corpus-wide assurance needs a
+    stricter verdict: every parser-eligible inventory entry must be supplied,
+    provenance must match the inventory, and every supplied input must have a
+    supported, complete parse.  This wrapper carries that stricter coverage
+    contract without changing generic index semantics or corpus portable
+    identity.
+    """
+
+    program_index: ProgramEvidenceIndex
+    inventory_cid: str
+    inventory_exhaustive: bool
+    expected_paths: tuple[str, ...] = ()
+    missing_paths: tuple[str, ...] = ()
+    schema: str = INVENTORY_PROGRAM_EVIDENCE_RECEIPT_SCHEMA
+
+    def __post_init__(self) -> None:
+        if self.schema != INVENTORY_PROGRAM_EVIDENCE_RECEIPT_SCHEMA:
+            raise ValueError(
+                f"unsupported inventory program evidence schema: {self.schema}"
+            )
+        if not isinstance(self.program_index, ProgramEvidenceIndex):
+            raise TypeError(
+                "inventory program evidence requires a ProgramEvidenceIndex"
+            )
+        if self.program_index.schema != PROGRAM_EVIDENCE_INDEX_SCHEMA:
+            raise ValueError(
+                "inventory program evidence requires the current program index schema"
+            )
+        if not isinstance(self.program_index.analysis_index, AnalysisASTIndex):
+            raise TypeError(
+                "inventory program evidence requires an AnalysisASTIndex"
+            )
+        inventory_cid = validate_cid(self.inventory_cid, codecs=("dag-json",))
+        if not isinstance(self.inventory_exhaustive, bool):
+            raise TypeError("inventory_exhaustive must be a boolean")
+
+        expected = tuple(sorted(str(item) for item in self.expected_paths))
+        missing = tuple(sorted(str(item) for item in self.missing_paths))
+        if any(not path for path in (*expected, *missing)):
+            raise ValueError("inventory program evidence paths must be non-empty")
+        if len(expected) != len(set(expected)):
+            raise ValueError("inventory program evidence contains duplicate expected paths")
+        if len(missing) != len(set(missing)):
+            raise ValueError("inventory program evidence contains duplicate missing paths")
+        if not set(missing).issubset(expected):
+            raise ValueError("missing program paths must belong to expected paths")
+
+        if not all(
+            isinstance(item, ProgramASTAdapterResult)
+            for item in self.program_index.results
+        ):
+            raise TypeError(
+                "program evidence index results must be ProgramASTAdapterResult values"
+            )
+        if any(
+            item.schema != PROGRAM_AST_ADAPTER_SCHEMA
+            for item in self.program_index.results
+        ):
+            raise ValueError(
+                "program evidence index contains an unsupported result schema"
+            )
+        result_paths = tuple(item.path for item in self.program_index.results)
+        if len(result_paths) != len(set(result_paths)):
+            raise ValueError("program evidence index contains duplicate result paths")
+        if set(result_paths).intersection(missing):
+            raise ValueError("program paths cannot be both adapted and missing")
+        if set(result_paths).union(missing) != set(expected):
+            raise ValueError(
+                "expected program paths require one result or missing-path receipt"
+            )
+
+        supported_without_ast = tuple(
+            item.path
+            for item in self.program_index.results
+            if item.supported and item.ast_record is None
+        )
+        if supported_without_ast:
+            raise ValueError(
+                "supported inventory program results require canonical AST records"
+            )
+        result_records = {
+            item.path: item.ast_record
+            for item in self.program_index.results
+            if item.ast_record is not None
+        }
+        indexed_records = {
+            item.path: item.ast_record
+            for item in self.program_index.analysis_index.path_records
+        }
+        if set(result_records) != set(indexed_records):
+            raise ValueError(
+                "program result and analysis index AST paths do not match"
+            )
+        if any(
+            result_records[path].record_id != indexed_records[path].record_id
+            for path in result_records
+        ):
+            raise ValueError(
+                "program result and analysis index AST records do not match"
+            )
+
+        object.__setattr__(self, "inventory_cid", inventory_cid)
+        object.__setattr__(self, "expected_paths", expected)
+        object.__setattr__(self, "missing_paths", missing)
+
+    @property
+    def analysis_index(self) -> AnalysisASTIndex:
+        return self.program_index.analysis_index
+
+    @property
+    def results(self) -> tuple[ProgramASTAdapterResult, ...]:
+        return self.program_index.results
+
+    @property
+    def reused_result_count(self) -> int:
+        return self.program_index.reused_result_count
+
+    @property
+    def reason_codes(self) -> tuple[str, ...]:
+        """Closed reasons the inventory-bound coverage is not exhaustive."""
+
+        reasons = set(self.program_index.reason_codes)
+        if not self.inventory_exhaustive:
+            reasons.add("inventory_not_exhaustive")
+        if self.missing_paths:
+            reasons.add("inventory_inputs_missing")
+        if self.program_index.unsupported_results:
+            reasons.add("unsupported_parser_input")
+        return tuple(sorted(reasons))
+
+    @property
+    def exhaustive(self) -> bool:
+        return not self.reason_codes
+
+    def _identity_material(self) -> dict[str, Any]:
+        return {
+            "schema": self.schema,
+            "inventory_cid": self.inventory_cid,
+            "inventory_exhaustive": self.inventory_exhaustive,
+            "expected_paths": list(self.expected_paths),
+            "missing_paths": list(self.missing_paths),
+            "program_index": _portable_program_index(self.program_index),
+        }
+
+    @property
+    def receipt_cid(self) -> str:
+        return content_identity(self._identity_material())
+
+    def to_portable_dict(self) -> dict[str, Any]:
+        payload = self._identity_material()
+        payload["receipt_cid"] = self.receipt_cid
+        return payload
+
+    def verify_against_inventory(self, inventory: RepositoryCorpusIndex) -> bool:
+        if not isinstance(inventory, RepositoryCorpusIndex):
+            raise TypeError(
+                "inventory program evidence verification requires RepositoryCorpusIndex"
+            )
+        expected = tuple(
+            sorted(
+                item.canonical_path
+                for item in inventory.included_entries
+                if item.parser_eligible
+            )
+        )
+        if self.inventory_cid != inventory.inventory_cid:
+            raise ValueError(
+                "previous inventory program receipt does not match inventory CID"
+            )
+        if self.inventory_exhaustive != inventory.exhaustive:
+            raise ValueError(
+                "previous inventory program receipt exhaustive flag does not match inventory"
+            )
+        if self.expected_paths != expected:
+            raise ValueError(
+                "previous inventory program receipt paths do not match inventory"
+            )
+        return True
+
+    def to_dict(self) -> dict[str, Any]:
+        statuses: dict[str, int] = {}
+        languages: dict[str, int] = {}
+        for item in self.results:
+            statuses[item.status] = statuses.get(item.status, 0) + 1
+            languages[item.language] = languages.get(item.language, 0) + 1
+        payload = self.to_portable_dict()
+        payload.update({
+            "evidence": INCREMENTAL_AST_INDEX_EVIDENCE,
+            "evidence_terms": list(OBJECTIVE_DOMAIN_EVIDENCE_TERMS),
+            "packet_evidence_terms": list(CORPUS_INDEX_G020_EVIDENCE_TERMS),
+            "exhaustive": self.exhaustive,
+            "reason_codes": list(self.reason_codes),
+            "coverage": {
+                "expected_path_count": len(self.expected_paths),
+                "adapted_path_count": len(self.results),
+                "indexed_path_count": len(self.analysis_index.path_records),
+                "reused_result_count": self.reused_result_count,
+                "missing_paths": list(self.missing_paths),
+                "status_counts": dict(sorted(statuses.items())),
+                "language_counts": dict(sorted(languages.items())),
+            },
+            "program_index": self.program_index.to_dict(),
+            "authoritative": False,
+            "completion_authoritative": False,
+        })
+        return payload
+
+    @classmethod
+    def from_dict(
+        cls, payload: Mapping[str, Any]
+    ) -> "InventoryProgramEvidenceReceipt":
+        value = _mapping_field(payload, "inventory program evidence receipt")
+        schema = str(
+            value.get("schema") or INVENTORY_PROGRAM_EVIDENCE_RECEIPT_SCHEMA
+        )
+        if schema != INVENTORY_PROGRAM_EVIDENCE_RECEIPT_SCHEMA:
+            raise ValueError(
+                f"unsupported inventory program evidence schema: {schema}"
+            )
+        claimed = validate_cid(value.get("receipt_cid"), codecs=("dag-json",))
+        result = cls(
+            program_index=_program_index_from_dict(value.get("program_index")),
+            inventory_cid=str(value.get("inventory_cid") or ""),
+            inventory_exhaustive=_boolean_field(value, "inventory_exhaustive"),
+            expected_paths=tuple(
+                str(item)
+                for item in _sequence_field(
+                    value.get("expected_paths") or (), "expected program paths"
+                )
+            ),
+            missing_paths=tuple(
+                str(item)
+                for item in _sequence_field(
+                    value.get("missing_paths") or (), "missing program paths"
+                )
+            ),
+            schema=schema,
+        )
+        if claimed != result.receipt_cid:
+            raise ValueError(
+                "inventory program evidence receipt CID does not match payload"
+            )
+        if "exhaustive" in value and value["exhaustive"] is not result.exhaustive:
+            raise ValueError(
+                "inventory program evidence exhaustive verdict does not match payload"
+            )
+        if "reason_codes" in value and tuple(sorted(value["reason_codes"])) != (
+            result.reason_codes
+        ):
+            raise ValueError(
+                "inventory program evidence reason codes do not match payload"
+            )
+        return result
+
+
 def _ast_span(node: ast.AST) -> SourceSpan:
     return SourceSpan(
         int(getattr(node, "lineno", 0) or 0),
@@ -921,28 +1338,24 @@ def adapt_python_source(
     source_hash = _source_sha256(source)
     blob = str(blob_identity or source_hash)
     if isinstance(previous, ProgramASTAdapterResult):
-        if (
-            previous.language == "python"
-            and previous.source_sha256 == source_hash
-            and previous.blob_identity == blob
-        ):
-            return replace(previous, path=path, generated=generated, reused=True)
         previous_record = previous.ast_record
     else:
         previous_record = previous
 
+    derived_record = build_python_ast_blob_record(
+        source, blob_identity=blob, source_sha256=source_hash
+    )
     if (
         isinstance(previous_record, ASTBlobRecord)
         and previous_record.language == "python"
         and previous_record.source_sha256 == source_hash
         and previous_record.blob_identity == blob
+        and previous_record.record_id == derived_record.record_id
     ):
         canonical_record = previous_record
         reused = True
     else:
-        canonical_record = build_python_ast_blob_record(
-            source, blob_identity=blob, source_sha256=source_hash
-        )
+        canonical_record = derived_record
         reused = False
 
     try:
@@ -2189,12 +2602,6 @@ def adapt_ecmascript_source(
     if normalized_language not in {"javascript", "jsx", "typescript", "tsx"}:
         raise ValueError(f"unsupported ECMAScript language {normalized_language!r}")
     if isinstance(previous, ProgramASTAdapterResult):
-        if (
-            previous.language == normalized_language
-            and previous.source_sha256 == source_hash
-            and previous.blob_identity == blob
-        ):
-            return replace(previous, path=path, generated=generated, reused=True)
         previous_record = previous.ast_record
     else:
         previous_record = previous
@@ -2208,23 +2615,25 @@ def adapt_ecmascript_source(
     parse_error = "; ".join(
         f"{item.code}: {item.message}" for item in errors
     )
+    derived_record = _ecmascript_record(
+        source=source,
+        facts=facts,
+        source_hash=source_hash,
+        blob_identity=blob,
+        language=normalized_language,
+        parse_error=parse_error,
+    )
     if (
         isinstance(previous_record, ASTBlobRecord)
         and previous_record.language == normalized_language
         and previous_record.source_sha256 == source_hash
         and previous_record.blob_identity == blob
+        and previous_record.record_id == derived_record.record_id
     ):
         record = previous_record
         reused = True
     else:
-        record = _ecmascript_record(
-            source=source,
-            facts=facts,
-            source_hash=source_hash,
-            blob_identity=blob,
-            language=normalized_language,
-            parse_error=parse_error,
-        )
+        record = derived_record
         reused = False
     return ProgramASTAdapterResult(
         path=path,
@@ -2612,15 +3021,6 @@ def adapt_json_source(
 
     source_hash = _source_sha256(source)
     blob = str(blob_identity or source_hash)
-    if isinstance(previous, ProgramASTAdapterResult) and (
-        previous.language
-        in {"json", "json-schema", "mcp-manifest"}
-        and previous.source_sha256 == source_hash
-        and previous.blob_identity == blob
-        and previous.path == path
-        and (not generated or previous.generated)
-    ):
-        return replace(previous, path=path, reused=True)
     try:
         raw = json.loads(source, object_pairs_hook=_JSONObject)
     except (json.JSONDecodeError, RecursionError) as exc:
@@ -2881,14 +3281,6 @@ def adapt_markdown_source(
 
     source_hash = _source_sha256(source)
     blob = str(blob_identity or source_hash)
-    if isinstance(previous, ProgramASTAdapterResult) and (
-        previous.language == "markdown"
-        and previous.source_sha256 == source_hash
-        and previous.blob_identity == blob
-        and previous.path == path
-        and previous.generated == generated
-    ):
-        return replace(previous, path=path, generated=generated, reused=True)
     facts, diagnostics = _markdown_facts(source, generated=generated)
     record = _record_from_noncode_facts(
         facts=facts,
@@ -3125,6 +3517,27 @@ def _coerce_document(value: Any) -> SourceDocument:
     raise TypeError("source documents require SourceDocument, mapping, or path/source pair")
 
 
+def _program_result_cache_language(language: str) -> str:
+    """Normalize result languages only within one parser family."""
+
+    if language in {"json", "json-schema", "mcp-manifest"}:
+        return "json"
+    return language
+
+
+def _program_result_cache_key(
+    *,
+    language: str,
+    blob_identity: str,
+    source_sha256: str,
+) -> tuple[str, str, str]:
+    return (
+        _program_result_cache_language(language),
+        str(blob_identity),
+        str(source_sha256),
+    )
+
+
 def build_program_evidence_index(
     documents: Iterable[SourceDocument | Mapping[str, Any] | Sequence[str]]
     | Mapping[str, str],
@@ -3147,16 +3560,45 @@ def build_program_evidence_index(
         raise ValueError("batch program evidence inputs require repository paths")
     if len({item.path for item in normalized}) != len(normalized):
         raise ValueError("batch program evidence snapshot contains duplicate paths")
-    previous_by_path = (
-        {item.path: item for item in previous.results} if previous is not None else {}
-    )
+    previous_by_content: dict[tuple[str, str, str], ASTBlobRecord] = {}
+    conflicting_cache_keys: set[tuple[str, str, str]] = set()
+    if previous is not None:
+        for prior in previous.results:
+            if prior.ast_record is None:
+                continue
+            key = _program_result_cache_key(
+                language=prior.language,
+                blob_identity=prior.blob_identity,
+                source_sha256=prior.source_sha256,
+            )
+            existing = previous_by_content.get(key)
+            if existing is not None and existing.record_id != prior.ast_record.record_id:
+                conflicting_cache_keys.add(key)
+                previous_by_content.pop(key, None)
+            elif key not in conflicting_cache_keys:
+                previous_by_content[key] = prior.ast_record
+
+    def previous_record(item: SourceDocument) -> ASTBlobRecord | None:
+        source_hash = _source_sha256(item.source)
+        blob_identity = str(item.blob_identity or source_hash)
+        cache_key = _program_result_cache_key(
+            language=detect_program_language(item.path, item.language),
+            blob_identity=blob_identity,
+            source_sha256=source_hash,
+        )
+        return previous_by_content.get(cache_key)
+
     results = tuple(
         adapt_program_source(
             item.source,
             path=item.path,
             language=item.language,
             blob_identity=item.blob_identity,
-            previous=previous_by_path.get(item.path),
+            # Only canonical path-independent records cross snapshots.  Full
+            # results contain path-sensitive diagnostics and generated flags,
+            # so reusing them across a rename makes warm output differ from a
+            # cold parse.
+            previous=previous_record(item),
             generated=item.generated,
             max_source_bytes=max_source_bytes,
             max_facts=max_facts,
@@ -3173,6 +3615,141 @@ def build_program_evidence_index(
         previous=previous.analysis_index if previous is not None else None,
     )
     return ProgramEvidenceIndex(analysis_index=index, results=results)
+
+
+def build_inventory_program_evidence_receipt(
+    inventory: RepositoryCorpusIndex,
+    documents: Iterable[SourceDocument | Mapping[str, Any] | Sequence[str]]
+    | Mapping[str, str],
+    *,
+    previous: InventoryProgramEvidenceReceipt | None = None,
+    max_source_bytes: int = DEFAULT_MAX_SOURCE_BYTES,
+    max_facts: int = DEFAULT_MAX_FACTS,
+) -> InventoryProgramEvidenceReceipt:
+    """Build provenance-checked program coverage for one corpus inventory.
+
+    Inputs may use canonical inventory paths or unambiguous repository-relative
+    paths.  Every source is checked against its inventory SHA-256 observation
+    and is adapted under the inventory's blob identity.  Unprovided admitted
+    inputs remain explicit missing-path receipts instead of disappearing from
+    an otherwise successful AST snapshot.
+    """
+
+    if not isinstance(inventory, RepositoryCorpusIndex):
+        raise TypeError("inventory program evidence requires RepositoryCorpusIndex")
+    if previous is not None and not isinstance(
+        previous, InventoryProgramEvidenceReceipt
+    ):
+        raise TypeError(
+            "previous inventory program evidence must be a verified "
+            "InventoryProgramEvidenceReceipt"
+        )
+
+    raw_documents: Iterable[Any]
+    if isinstance(documents, Mapping):
+        raw_documents = tuple(documents.items())
+    else:
+        raw_documents = documents
+    supplied = tuple(_coerce_document(item) for item in raw_documents)
+    if not all(item.path for item in supplied):
+        raise ValueError("inventory program evidence inputs require repository paths")
+
+    admitted = tuple(
+        item for item in inventory.included_entries if item.parser_eligible
+    )
+    by_canonical = {item.canonical_path: item for item in admitted}
+    if len(by_canonical) != len(admitted):
+        raise ValueError("inventory contains duplicate admitted canonical paths")
+    by_relative: dict[str, list[CorpusEntry]] = {}
+    for entry in admitted:
+        by_relative.setdefault(entry.relative_path, []).append(entry)
+    if previous is not None:
+        previous.verify_against_inventory(inventory)
+
+    normalized: list[SourceDocument] = []
+    seen: set[str] = set()
+    for document in supplied:
+        entry = by_canonical.get(document.path)
+        if entry is None:
+            candidates = by_relative.get(document.path, ())
+            if len(candidates) > 1:
+                raise ValueError(
+                    "inventory document path is ambiguous across repositories: "
+                    f"{document.path!r}"
+                )
+            entry = candidates[0] if candidates else None
+        if entry is None:
+            raise ValueError(
+                f"document is not an admitted inventory input: {document.path!r}"
+            )
+        if entry.canonical_path in seen:
+            raise ValueError(
+                "inventory program evidence contains duplicate path "
+                f"{entry.canonical_path!r}"
+            )
+        seen.add(entry.canonical_path)
+
+        observed_hash = _source_sha256(document.source)
+        expected_hash = "sha256:" + entry.content_sha256
+        if observed_hash != expected_hash:
+            raise ValueError(
+                "document content does not match inventory provenance for "
+                f"{entry.canonical_path!r}"
+            )
+        if document.blob_identity and document.blob_identity != entry.blob_oid:
+            raise ValueError(
+                "document blob identity does not match inventory provenance for "
+                f"{entry.canonical_path!r}"
+            )
+        inventory_language = detect_program_language(entry.relative_path)
+        if document.language:
+            hinted_language = detect_program_language(
+                entry.relative_path, document.language
+            )
+            if hinted_language != inventory_language:
+                raise ValueError(
+                    "document language conflicts with inventory path for "
+                    f"{entry.canonical_path!r}: expected {inventory_language!r}, "
+                    f"received {hinted_language!r}"
+                )
+        inventory_generated = (
+            CorpusClassification.GENERATED_SOURCE.value
+            in entry.classifications
+        )
+        if document.generated and not inventory_generated:
+            raise ValueError(
+                "document generated classification conflicts with inventory for "
+                f"{entry.canonical_path!r}"
+            )
+        normalized.append(
+            SourceDocument(
+                path=entry.canonical_path,
+                source=document.source,
+                language=inventory_language,
+                blob_identity=entry.blob_oid,
+                generated=inventory_generated,
+            )
+        )
+
+    previous_index = previous.program_index if previous is not None else None
+    program_index = build_program_evidence_index(
+        normalized,
+        previous=previous_index,
+        max_source_bytes=max_source_bytes,
+        max_facts=max_facts,
+    )
+    expected_paths = tuple(sorted(by_canonical))
+    return InventoryProgramEvidenceReceipt(
+        program_index=program_index,
+        inventory_cid=inventory.inventory_cid,
+        inventory_exhaustive=inventory.exhaustive,
+        expected_paths=expected_paths,
+        missing_paths=tuple(sorted(set(expected_paths).difference(seen))),
+    )
+
+
+# Compatibility-oriented name retained from the original VFS-063 bridge.
+build_inventory_program_evidence_index = build_inventory_program_evidence_receipt
 
 
 def build_program_ast_blob_record(
@@ -3433,6 +4010,7 @@ __all__ = [
     "GOAL_PACKET_ID",
     "INCREMENTAL_AST_INDEX_EVIDENCE",
     "INCREMENTAL_AST_INDEX_INVARIANTS",
+    "INVENTORY_PROGRAM_EVIDENCE_RECEIPT_SCHEMA",
     "JSON_ADAPTER_VERSION",
     "JAVASCRIPT_ADAPTER_VERSION",
     "MARKDOWN_ADAPTER_VERSION",
@@ -3454,6 +4032,7 @@ __all__ = [
     "ProgramASTAdapterResult",
     "ProgramEvidenceFact",
     "ProgramEvidenceIndex",
+    "InventoryProgramEvidenceReceipt",
     "SourceDocument",
     "SourceSpan",
     "adapt_json_source",
@@ -3465,6 +4044,8 @@ __all__ = [
     "adapt_source_to_ast_record",
     "all_covered_evidence_terms",
     "build_incremental_ast_index",
+    "build_inventory_program_evidence_index",
+    "build_inventory_program_evidence_receipt",
     "build_mixed_program_evidence_index",
     "build_program_ast_blob_record",
     "build_program_evidence_index",

@@ -6,6 +6,7 @@ import json
 import logging
 import math
 import os
+import re
 import shlex
 import signal
 import subprocess
@@ -69,6 +70,7 @@ from .implementation_daemon import (
     normalize_focus_tracks,
     normalize_implementation_protected_paths,
     normalize_relative_path_list,
+    parse_task_file,
     parse_timestamp,
     process_command_line,
     process_is_running,
@@ -4531,6 +4533,16 @@ class PortalImplementationSupervisor:
         )
         max_merges = max(0, int(self.config.worktree_reconciliation_max_merges))
         dry_run = bool(self.config.worktree_reconciliation_dry_run)
+        try:
+            known_task_ids = tuple(
+                task.task_id
+                for task in parse_task_file(
+                    self.config.todo_path,
+                    self.config.task_prefix,
+                )
+            )
+        except (OSError, UnicodeDecodeError):
+            known_task_ids = ()
         scan_cache = self._load_worktree_scan_cache()
         scan_cache_hit_count = 0
         candidates: list[dict[str, Any]] = []
@@ -4731,7 +4743,10 @@ class PortalImplementationSupervisor:
 
             if reconciliation_daemon is None:
                 reconciliation_daemon = self._build_worktree_reconciliation_daemon()
-            task = self._worktree_reconciliation_task(branch)
+            task = self._worktree_reconciliation_task(
+                branch,
+                known_task_ids=known_task_ids,
+            )
             merge_result = reconciliation_daemon._merge_branch_to_main(branch, task, 0)
             cleanup_result: dict[str, Any] = {}
             if merge_result.get("merged"):
@@ -5178,12 +5193,42 @@ class PortalImplementationSupervisor:
         return path_text == relative_prefix or path_text.startswith(f"{relative_prefix}/")
 
     @staticmethod
-    def _worktree_reconciliation_task(branch: str) -> PortalTask:
-        if branch.startswith("rescue/worktree/"):
-            task_fragment = branch.removeprefix("rescue/worktree/").split("-", 1)[0].strip()
-        else:
-            task_fragment = branch.removeprefix("implementation/").split("-attempt-", 1)[0].strip()
-        task_id = task_fragment.upper() if task_fragment else "WORKTREE-RECONCILE"
+    def _worktree_branch_source_task_id(
+        branch: str,
+        *,
+        known_task_ids: Sequence[str] = (),
+    ) -> str:
+        """Resolve a branch to the longest task ID known by the active board."""
+
+        branch_text = str(branch or "").strip()
+        for task_id in sorted(
+            (str(item).strip() for item in known_task_ids if str(item).strip()),
+            key=lambda item: (-len(item), item),
+        ):
+            if re.search(
+                rf"(?<![A-Za-z0-9]){re.escape(task_id)}(?![A-Za-z0-9])",
+                branch_text,
+                flags=re.IGNORECASE,
+            ):
+                return task_id
+        # Preserve useful behavior for legacy boards that cannot be read while
+        # avoiding rescue prefixes and attempt counters as synthetic task IDs.
+        fallback = re.search(
+            r"(?<![A-Za-z0-9])([A-Za-z][A-Za-z0-9_]*-\d+)(?![A-Za-z0-9])",
+            branch_text,
+        )
+        return fallback.group(1).upper() if fallback else "WORKTREE-RECONCILE"
+
+    @staticmethod
+    def _worktree_reconciliation_task(
+        branch: str,
+        *,
+        known_task_ids: Sequence[str] = (),
+    ) -> PortalTask:
+        task_id = PortalImplementationSupervisor._worktree_branch_source_task_id(
+            branch,
+            known_task_ids=known_task_ids,
+        )
         return PortalTask(
             task_id=task_id,
             title=f"Reconcile backlogged implementation branch {branch}",

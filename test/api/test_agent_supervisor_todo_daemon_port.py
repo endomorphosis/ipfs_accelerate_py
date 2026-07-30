@@ -19726,6 +19726,31 @@ def test_implementation_supervisor_records_reconciliation_guardrail_for_dirty_ma
     assert events[-1]["type"] == "reconciliation_guardrail"
 
 
+@pytest.mark.parametrize(
+    ("branch", "expected_task_id"),
+    (
+        (
+            "implementation/vfs-055-9ddf2a-attempt-2-123",
+            "VFS-055",
+        ),
+        (
+            "rescue/worktree/implementation-vfs-063-7f1431-attempt-1-456",
+            "VFS-063",
+        ),
+    ),
+)
+def test_worktree_reconciliation_task_uses_known_board_id(
+    branch,
+    expected_task_id,
+):
+    task = TodoImplementationSupervisor._worktree_reconciliation_task(
+        branch,
+        known_task_ids=("VFS-05", "VFS-055", "VFS-063"),
+    )
+
+    assert task.task_id == expected_task_id
+
+
 def test_reconciliation_guardrail_ignores_generated_dirty_main_evidence(tmp_path):
     todo_path = tmp_path / "todo.md"
     strategy_path = tmp_path / "state" / "strategy.json"
