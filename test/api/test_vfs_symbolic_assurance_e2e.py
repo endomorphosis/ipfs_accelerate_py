@@ -64,8 +64,11 @@ from ipfs_accelerate_py.agent_supervisor.vfs_symbolic_rollout import (
     prove_assurance_rollout_packet,
     prove_shadow_rollout_report,
     run_vfs_symbolic_assurance_e2e,
+    shadow_rollout_report_acceptance_dimensions,
+    shadow_rollout_report_evidence,
     shadow_rollout_report_evidence_terms,
     verify_adversarial_e2e_report,
+    verify_shadow_rollout_report,
     verify_vfs_symbolic_rollout,
 )
 
@@ -584,10 +587,12 @@ def test_vfs_g163_shadow_rollout_report_evidence_discoverable():
 
     Assist promotes only when every adversarial gate passes; automatic stays
     shadow; binding/policy regressions return effective rollout to shadow.
+    Parent frozen-corpus acceptance is demonstrated only via the bound gate.
     """
 
     assert SHADOW_ROLLOUT_REPORT_EVIDENCE == "vfs/shadow-rollout-report@1"
     assert SHADOW_ROLLOUT_REPORT_SCHEMA == "vfs/shadow-rollout-report@1"
+    assert shadow_rollout_report_evidence() == "vfs/shadow-rollout-report@1"
     assert shadow_rollout_report_evidence_terms() == (
         "vfs/shadow-rollout-report@1",
     )
@@ -595,6 +600,7 @@ def test_vfs_g163_shadow_rollout_report_evidence_discoverable():
     assert OBJECTIVE_TASK_G163_ID == "VFS-084"
     assert "vfs/shadow-rollout-report@1" in covered_evidence_terms()
     assert "vfs/shadow-rollout-report@1" in packet_evidence_terms()
+    assert "vfs/shadow-rollout-report@1" in all_covered_evidence_terms()
 
     fixture, report, binding, policy = _population()
     shadow = ShadowRolloutReport(
@@ -603,7 +609,9 @@ def test_vfs_g163_shadow_rollout_report_evidence_discoverable():
         policy=policy,
         desired_mode=VfsRolloutMode.ASSIST,
     )
+    assert verify_shadow_rollout_report(shadow)
     payload = shadow.to_dict()
+    assert payload["schema"] == "vfs/shadow-rollout-report@1"
     assert payload["evidence"] == "vfs/shadow-rollout-report@1"
     assert payload["evidence_terms"] == ["vfs/shadow-rollout-report@1"]
     assert payload["goal_id"] == "VFS-G163"
@@ -614,6 +622,19 @@ def test_vfs_g163_shadow_rollout_report_evidence_discoverable():
     assert payload["authoritative"] is False
     assert payload["completion_authoritative"] is False
 
+    dimensions = shadow_rollout_report_acceptance_dimensions(shadow)
+    assert all(dimensions.values())
+    assert dimensions["parent_gate_reproducible_cids"]
+    assert dimensions["parent_gate_complete_inventories"]
+    assert dimensions["parent_gate_zero_stale_authoritative_hits"]
+    assert dimensions["parent_gate_zero_forged_proof_zk_authority"]
+    assert dimensions["parent_gate_seeded_mismatch_precision"]
+    assert dimensions["parent_gate_deterministic_tasks"]
+    assert dimensions["parent_gate_python_cli_mcp_parity"]
+    assert dimensions["parent_gate_restart_replay"]
+    assert dimensions["parent_gate_rollback"]
+    assert dimensions["parent_gate_automatic_mutation_disabled"]
+
     claim = prove_shadow_rollout_report(shadow)
     assert claim["schema"] == SHADOW_ROLLOUT_REPORT_CLAIM_SCHEMA
     assert claim["evidence"] == "vfs/shadow-rollout-report@1"
@@ -621,15 +642,36 @@ def test_vfs_g163_shadow_rollout_report_evidence_discoverable():
     assert claim["goal_id"] == "VFS-G163"
     assert claim["parent_goal_id"] == "VFS-G130"
     assert claim["task_id"] == "VFS-084"
+    assert claim["packet_goal_ids"] == ["VFS-G162", "VFS-G163"]
     assert claim["satisfied"] is True
+    assert claim["verified"] is True
     assert claim["effective_mode"] == "assist"
     assert claim["automatic_ready"] is False
     assert claim["automatic_mutation_enabled"] is False
     assert claim["authoritative"] is False
     assert claim["completion_authoritative"] is False
+    assert claim["semantic_authority"] is False
     assert all(claim["acceptance_dimensions"].values())
+    assert all(claim["parent_acceptance_dimensions"].values())
+    assert claim["fixture_cid"] == report.fixture.fixture_cid
+    assert claim["forest_id"] == report.fixture.forest_id
 
-    # Failed gates force assist requests back to shadow.
+    # Automatic desire never becomes effective; report still verifies.
+    automatic = ShadowRolloutReport(
+        gate_report=report,
+        binding=binding,
+        policy=policy,
+        desired_mode=VfsRolloutMode.AUTOMATIC,
+    )
+    assert automatic.effective_mode is VfsRolloutMode.SHADOW
+    assert automatic.rollback_applied
+    assert verify_shadow_rollout_report(automatic)
+    auto_claim = prove_shadow_rollout_report(automatic)
+    assert auto_claim["effective_mode"] == "shadow"
+    assert auto_claim["acceptance_dimensions"]["automatic_never_effective"]
+    assert auto_claim["acceptance_dimensions"]["rollback_when_assist_blocked"]
+
+    # Failed gates force assist requests back to shadow; parent dims fail.
     failed = evaluate_adversarial_gates(
         fixture,
         injection=AdversarialInjection(accept_wrong_proof=True),
@@ -642,10 +684,32 @@ def test_vfs_g163_shadow_rollout_report_evidence_discoverable():
     )
     assert regressed.effective_mode is VfsRolloutMode.SHADOW
     assert regressed.rollback_applied
+    assert verify_shadow_rollout_report(regressed)
     failed_claim = prove_shadow_rollout_report(regressed)
     assert failed_claim["effective_mode"] == "shadow"
     assert failed_claim["rollback_applied"] is True
+    assert failed_claim["satisfied"] is False
+    assert failed_claim["verified"] is True
     assert failed_claim["acceptance_dimensions"]["automatic_never_effective"]
+    assert failed_claim["acceptance_dimensions"]["regression_returns_to_shadow"]
+    assert not failed_claim["parent_acceptance_dimensions"][
+        "zero_forged_proof_zk_authority"
+    ]
+
+    # Stale binding returns to shadow while safety dimensions still hold.
+    stale = ShadowRolloutReport(
+        gate_report=report,
+        binding=replace(binding, forest_id="sha256:" + "0" * 64),
+        policy=policy,
+        desired_mode=VfsRolloutMode.ASSIST,
+    )
+    assert stale.effective_mode is VfsRolloutMode.SHADOW
+    assert "stale-binding:forest_id" in stale.reason_codes
+    assert verify_shadow_rollout_report(stale)
+    stale_claim = prove_shadow_rollout_report(stale)
+    assert stale_claim["satisfied"] is False
+    assert stale_claim["acceptance_dimensions"]["regression_returns_to_shadow"]
+    assert stale_claim["acceptance_dimensions"]["evidence_identity"]
 
 
 def test_assurance_rollout_packet_covers_g162_and_g163_together():

@@ -2760,41 +2760,172 @@ def adversarial_e2e_gate_acceptance_dimensions(
 def shadow_rollout_report_acceptance_dimensions(
     report: ShadowRolloutReport,
 ) -> dict[str, bool]:
-    """Map VFS-G163 acceptance criteria onto shadow/assist rollout state."""
+    """Map VFS-G163 acceptance criteria onto shadow/assist rollout state.
+
+    Release discipline for ``vfs/shadow-rollout-report@1``:
+
+    * assist only when every adversarial gate passes and binding/policy match;
+    * automatic never becomes effective while mutation remains disabled;
+    * any gate, binding, or assurance regression returns effective mode to
+      shadow;
+    * off/shadow never acquire semantic or completion authority;
+    * parent frozen-corpus acceptance is carried only via the bound gate
+      report (never forged into the shadow claim itself).
+    """
 
     effective = report.effective_mode
     desired = report.desired_mode
+    payload = report.to_dict()
+    gate_passed = bool(report.gate_report.passed)
+    regression_or_stale = any(
+        code.startswith("assurance-regression")
+        or code.startswith("stale-binding:")
+        or code.startswith("gate-failed:")
+        for code in report.reason_codes
+    )
+    parent_dims = adversarial_e2e_gate_acceptance_dimensions(report.gate_report)
     return {
         "assist_requires_all_gates": (
-            effective is not VfsRolloutMode.ASSIST or report.gate_report.passed
+            effective is not VfsRolloutMode.ASSIST or gate_passed
+        ),
+        "assist_requires_clean_reasons": (
+            effective is not VfsRolloutMode.ASSIST or not report.reason_codes
         ),
         "automatic_never_effective": effective is not VfsRolloutMode.AUTOMATIC,
-        "automatic_mutation_disabled": not report.automatic_mutation_enabled,
-        "automatic_not_ready": not report.automatic_ready,
+        "automatic_mutation_disabled": (
+            not report.automatic_mutation_enabled
+            and payload.get("automatic_mutation_enabled") is False
+        ),
+        "automatic_not_ready": (
+            not report.automatic_ready
+            and payload.get("automatic_ready") is False
+        ),
         "regression_returns_to_shadow": (
-            effective is VfsRolloutMode.SHADOW
-            or not any(
-                code.startswith("assurance-regression")
-                or code.startswith("stale-binding:")
-                or code.startswith("gate-failed:")
-                for code in report.reason_codes
-            )
+            effective is VfsRolloutMode.SHADOW or not regression_or_stale
+        ),
+        "rollback_when_assist_blocked": (
+            effective is not VfsRolloutMode.SHADOW
+            or desired
+            not in {VfsRolloutMode.ASSIST, VfsRolloutMode.AUTOMATIC}
+            or report.rollback_applied
         ),
         "off_and_shadow_non_authoritative": (
             effective
             not in {VfsRolloutMode.ASSIST, VfsRolloutMode.AUTOMATIC}
-            or report.gate_report.passed
+            or gate_passed
         ),
         "report_non_authoritative": (
-            not report.to_dict().get("authoritative", True)
-            and not report.to_dict().get("completion_authoritative", True)
+            payload.get("authoritative") is False
+            and payload.get("completion_authoritative") is False
         ),
         "desired_mode_recorded": desired in VfsRolloutMode,
-        "qualification_tracks_gates": (
-            report.qualification_passed == report.gate_report.passed
-            or not report.gate_report.passed
+        "qualification_tracks_gates": report.qualification_passed
+        == (
+            gate_passed
+            and not any(
+                code.startswith("gate-failed:")
+                or code.startswith("stale-binding:")
+                for code in report.reason_codes
+            )
         ),
+        "schema_identity": payload.get("schema") == SHADOW_ROLLOUT_REPORT_SCHEMA,
+        "evidence_identity": (
+            payload.get("evidence") == SHADOW_ROLLOUT_REPORT_EVIDENCE
+            and SHADOW_ROLLOUT_REPORT_EVIDENCE in payload.get("evidence_terms", [])
+        ),
+        "goal_task_binding": (
+            payload.get("goal_id") == OBJECTIVE_GOAL_G163_ID
+            and payload.get("task_id") == OBJECTIVE_TASK_G163_ID
+        ),
+        "parent_gate_reproducible_cids": parent_dims["reproducible_cids"],
+        "parent_gate_complete_inventories": parent_dims["complete_inventories"],
+        "parent_gate_zero_stale_authoritative_hits": parent_dims[
+            "zero_stale_authoritative_hits"
+        ],
+        "parent_gate_zero_forged_proof_zk_authority": parent_dims[
+            "zero_forged_proof_zk_authority"
+        ],
+        "parent_gate_seeded_mismatch_precision": parent_dims[
+            "seeded_mismatch_precision"
+        ],
+        "parent_gate_deterministic_tasks": parent_dims["deterministic_tasks"],
+        "parent_gate_python_cli_mcp_parity": parent_dims["python_cli_mcp_parity"],
+        "parent_gate_restart_replay": parent_dims["restart_replay"],
+        "parent_gate_rollback": parent_dims["rollback"],
+        "parent_gate_automatic_mutation_disabled": parent_dims[
+            "automatic_mutation_disabled"
+        ],
     }
+
+
+def verify_shadow_rollout_report(
+    report: ShadowRolloutReport,
+    *,
+    desired_mode: VfsRolloutMode | str | None = None,
+    prior_gate_report: AdversarialE2EGateReport | None = None,
+) -> bool:
+    """Replay-verify a ``vfs/shadow-rollout-report@1`` (VFS-G163 / VFS-084).
+
+    Rebuilds the report from the same gate/binding/policy inputs and requires
+    deterministic ``report_id``, effective mode, reason codes, and safety
+    flags.  Automatic mutation and automatic-ready must stay false.
+    """
+
+    if not isinstance(report, ShadowRolloutReport):
+        return False
+    if report.automatic_mutation_enabled or report.automatic_ready:
+        return False
+    if report.effective_mode is VfsRolloutMode.AUTOMATIC:
+        return False
+    mode = desired_mode if desired_mode is not None else report.desired_mode
+    prior = (
+        prior_gate_report
+        if prior_gate_report is not None
+        else report.prior_gate_report
+    )
+    try:
+        replayed = ShadowRolloutReport(
+            gate_report=report.gate_report,
+            binding=report.binding,
+            policy=report.policy,
+            desired_mode=mode,
+            prior_gate_report=prior,
+        )
+    except VfsSymbolicRolloutError:
+        return False
+    if replayed.report_id != report.report_id:
+        return False
+    if replayed.effective_mode is not report.effective_mode:
+        return False
+    if replayed.reason_codes != report.reason_codes:
+        return False
+    if replayed.rollback_applied != report.rollback_applied:
+        return False
+    if replayed.qualification_passed != report.qualification_passed:
+        return False
+    if replayed.passed != report.passed:
+        return False
+    left = report.to_dict()
+    right = replayed.to_dict()
+    if _canonical_bytes(left) != _canonical_bytes(right):
+        return False
+    dimensions = shadow_rollout_report_acceptance_dimensions(report)
+    # Safety dimensions must always hold; parent-gate dimensions track the
+    # bound gate report and may fail when injections intentionally regress.
+    safety_keys = (
+        "automatic_never_effective",
+        "automatic_mutation_disabled",
+        "automatic_not_ready",
+        "report_non_authoritative",
+        "schema_identity",
+        "evidence_identity",
+        "goal_task_binding",
+        "assist_requires_all_gates",
+        "assist_requires_clean_reasons",
+        "regression_returns_to_shadow",
+        "rollback_when_assist_blocked",
+    )
+    return all(dimensions.get(key) for key in safety_keys)
 
 
 def prove_adversarial_e2e_gate(
@@ -2852,11 +2983,19 @@ def prove_shadow_rollout_report(
 ) -> dict[str, Any]:
     """Emit a portable ``vfs/shadow-rollout-report@1`` evidence claim (VFS-G163).
 
-    Proves shadow/assist release discipline: assist only after every
-    adversarial gate passes, automatic stays non-effective, binding/policy
-    regressions return to shadow, and reports never become completion
-    authoritative.  Mapping inputs must rebuild through
-    :class:`ShadowRolloutReport` construction when possible.
+    Proves shadow/assist release discipline for goal_packet/assurance_rollout:
+
+    * assist only after every adversarial gate passes and reasons are clean;
+    * automatic stays non-effective while mutation remains disabled;
+    * binding/policy/assurance regressions return effective rollout to shadow;
+    * reports never become semantic or completion authoritative;
+    * parent frozen-corpus acceptance (reproducible CIDs, inventories, zero
+      stale authoritative hits, zero forged proof/ZK authority, seeded
+      mismatch precision, deterministic tasks, Python/CLI/MCP parity, restart
+      replay, rollback) is demonstrated only through the bound gate report.
+
+    Mapping inputs must rebuild through :class:`ShadowRolloutReport`
+    construction when possible (reports are not trusted from opaque dicts).
     """
 
     if isinstance(report, Mapping):
@@ -2890,7 +3029,18 @@ def prove_shadow_rollout_report(
     if not isinstance(report, ShadowRolloutReport):
         raise TypeError("report must be a ShadowRolloutReport")
     dimensions = shadow_rollout_report_acceptance_dimensions(report)
-    satisfied = bool(report.passed) and all(dimensions.values())
+    parent_dims = adversarial_e2e_gate_acceptance_dimensions(report.gate_report)
+    verified = verify_shadow_rollout_report(report)
+    # Satisfied only when the shadow safety surface holds, the bound gate
+    # population is clean, and deterministic replay succeeds.
+    satisfied = (
+        bool(report.passed)
+        and all(dimensions.values())
+        and all(parent_dims.values())
+        and verified
+        and not report.automatic_mutation_enabled
+        and report.effective_mode is not VfsRolloutMode.AUTOMATIC
+    )
     return {
         "schema": SHADOW_ROLLOUT_REPORT_CLAIM_SCHEMA,
         "evidence": SHADOW_ROLLOUT_REPORT_EVIDENCE,
@@ -2900,11 +3050,13 @@ def prove_shadow_rollout_report(
         "parent_goal_id": OBJECTIVE_PARENT_GOAL_ID,
         "task_id": OBJECTIVE_TASK_G163_ID,
         "packet_task_id": OBJECTIVE_TASK_PACKET_ID,
+        "packet_goal_ids": list(OBJECTIVE_PACKET_GOAL_IDS),
         "report_id": report.report_id,
         "gate_report_id": report.gate_report.report_id,
         "binding_id": report.binding.binding_id,
         "policy_binding_id": report.policy.policy_binding_id,
         "fixture_cid": report.gate_report.fixture.fixture_cid,
+        "forest_id": report.gate_report.fixture.forest_id,
         "desired_mode": report.desired_mode.value,
         "effective_mode": report.effective_mode.value,
         "qualification_passed": report.qualification_passed,
@@ -2912,7 +3064,9 @@ def prove_shadow_rollout_report(
         "rollback_applied": report.rollback_applied,
         "reason_codes": list(report.reason_codes),
         "acceptance_dimensions": dimensions,
+        "parent_acceptance_dimensions": parent_dims,
         "invariants": list(SHADOW_ROLLOUT_REPORT_INVARIANTS),
+        "verified": verified,
         "satisfied": satisfied,
         "automatic_ready": False,
         "automatic_mutation_enabled": False,
@@ -3067,5 +3221,6 @@ __all__ = (
     "shadow_rollout_report_evidence",
     "shadow_rollout_report_evidence_terms",
     "verify_adversarial_e2e_report",
+    "verify_shadow_rollout_report",
     "verify_vfs_symbolic_rollout",
 )
