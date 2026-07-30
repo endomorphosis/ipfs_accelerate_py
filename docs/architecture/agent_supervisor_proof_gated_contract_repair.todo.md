@@ -1036,7 +1036,7 @@ consumer or frontier is unresolved.
 
 ## RPR-032 Nominate missing-input and construction routes
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
