@@ -2526,6 +2526,11 @@ compact references and bounded spans only.
 - Fingerprint: 8157ddba1d6022f76c604e744d80397904765334
 - Dedupe key: reconciliation_guardrail:preflight_merge_conflict
 - Depends on:
-- Outputs: /home/barberb/.local/state/ipfs_accelerate_py/ipfs_kit_vfs_symbolic_assurance/state/discovery, docs/architecture/ipfs_kit_vfs_symbolic_assurance.todo.md
+- Outputs: docs/architecture/ipfs_kit_vfs_symbolic_assurance.todo.md
+- Board namespace: ipfs-kit-vfs-symbolic-assurance-v1
+- Goal id: VFS-G000
+- Bundle: vfs-assurance/foundation
+- Parallel lane: assurance-contracts
+- Resource class: cpu-small
 - Validation: test -f /home/barberb/.local/state/ipfs_accelerate_py/ipfs_kit_vfs_symbolic_assurance/state/discovery/2026-07-30-vfs-065-reconciliation-8157ddba1d60.md
-- Acceptance: Reconciliation guardrail filed this because 3 branch or worktree cleanup candidates are blocked by preflight_merge_conflict. This task is intentionally operator-gated because unknown dirty checkout content must not be committed, stashed, or discarded automatically. Use evidence and the machine-readable reconciliation plan in /home/barberb/.local/state/ipfs_accelerate_py/ipfs_kit_vfs_symbolic_assurance/state/discovery/2026-07-30-vfs-065-reconciliation-8157ddba1d60.md, reconcile the dirty checkout or dirty worktree group deliberately, then rerun the supervisor cleanup/reconciliation pass and confirm that the blocked candidate count decreases.
+- Acceptance: Reconciliation guardrail filed this because 3 branch or worktree cleanup candidates are blocked by preflight_merge_conflict. Use evidence and the machine-readable reconciliation plan in /home/barberb/.local/state/ipfs_accelerate_py/ipfs_kit_vfs_symbolic_assurance/state/discovery/2026-07-30-vfs-065-reconciliation-8157ddba1d60.md, reconcile the dirty checkout or dirty worktree group deliberately, then rerun the supervisor cleanup/reconciliation pass and confirm that the blocked candidate count decreases.
