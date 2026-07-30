@@ -1377,7 +1377,7 @@ consumer or frontier is unresolved.
 
 ## RPR-043 Implement checkpointed transactions and fixed-point validation primitives
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
