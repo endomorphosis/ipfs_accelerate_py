@@ -2200,3 +2200,70 @@ compact references and bounded spans only.
 - Candidate kind: validation_gate
 - Todo vector key: b99cc0547bb2d7e8
 - Acceptance: Objective scan filed this gap for VFS-G080. Use evidence in /home/barberb/.local/state/ipfs_accelerate_py/ipfs_kit_vfs_symbolic_assurance/projection/discovery/2026-07-29-vfs-059-objective-gap-129de255cd91.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (objective validation repair), and keep the supervisor-fed backlog aligned with the objective heap.  Start in shadow and keep ZK attestation independent from semantic proof authority.
+
+## VFS-060 Close objective gap: Use canonical multiformats identities and dependency-aware content caches
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: content-addressing
+- Depends on:
+- Outputs: ipfs_accelerate_py/agent_supervisor/multiformats_identity.py, ipfs_accelerate_py/agent_supervisor/program_analysis_cache.py, test/api/test_agent_supervisor_multiformats_identity.py
+- Validation: python -m pytest test/api/test_agent_supervisor_multiformats_identity.py test/api/test_agent_supervisor_program_analysis_cache.py -q
+- Board namespace: ipfs-kit-vfs-symbolic-assurance-v1
+- Evidence inputs: data/agent_supervisor/ipfs_kit_vfs_symbolic_assurance/objective_gap.json
+- Discovery evidence: /home/barberb/.local/state/ipfs_accelerate_py/ipfs_kit_vfs_symbolic_assurance/projection/discovery/2026-07-30-vfs-060-objective-gap-163d03533eb2.md
+- Bundle: vfs-assurance/cas
+- Bundle shard: /home/barberb/.local/state/ipfs_accelerate_py/ipfs_kit_vfs_symbolic_assurance/projection/bundles/vfs-assurance-cas.todo.md
+- Bundle strategy: explicit
+- Graph parents: VFS-G000
+- Graph depth: 1
+- Objective heap index: 4
+- Parallel lane: vfs-assurance/cas
+- Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
+- Predicted files: ipfs_accelerate_py/agent_supervisor/multiformats_identity.py, ipfs_accelerate_py/agent_supervisor/program_analysis_cache.py, test/api/test_agent_supervisor_multiformats_identity.py
+- Changed paths:
+- Context paths: ipfs_accelerate_py/agent_supervisor/multiformats_identity.py, ipfs_accelerate_py/agent_supervisor/program_analysis_cache.py, test/api/test_agent_supervisor_multiformats_identity.py
+- AST symbols: cid_for_dag_json validate_cid RuntimeCAS AnalysisCacheKey
+- Interfaces:
+- Submodules:
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: VFS-G030
+- Completion authority: local
+- External authority blockers:
+- Canonical task key: task/v1/0d37f3f35b702967e5896ae68094c7bdc69d75a0afd6bbf3b2d4f255c1c8741c
+- Canonical task CID: baguqeerabu37h423oauwpzmjnltibfghxxdj25nav7llx45s2tzflqoioqoa
+- Semantic identity: objective-evidence-obligation/v1/8e195c33f31ef1d04fb5f7b8894924ce38e8cf6dc4b44391d903edd79cbd775d
+- Acceptance subset: CIDv1/base32/dag-json/sha2-256 bytes are cross-package reproducible, existing supervisor IDs retain compatibility mappings, all semantic dependencies and policy versions participate in cache keys, corruption and stale/negative results fail closed.
+- Preconditions: objective goal VFS-G030 is schedulable
+- Effects: satisfy evidence requirement: objective validation repair
+- Evidence subset: objective validation repair
+- Resource class: cpu-medium
+- Token class: medium
+- Estimated tokens: 0
+- Resources: cpu-medium
+- Merge fate: objective/VFS-G030
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/8e195c33f31ef1d04fb5f7b8894924ce38e8cf6dc4b44391d903edd79cbd775d
+- Missing evidence: objective validation repair
+- Embedding query: multiformats multihash CIDv1 DAG JSON content cache invalidation
+- AST query: cid_for_dag_json validate_cid RuntimeCAS AnalysisCacheKey
+- Surplus group: objective/VFS-G030
+- Merge key: f3478c1a0719b873
+- Merge family: objective/VFS-G030
+- Merge role: validation_gate
+- Work item count: 1
+- Work scope: objective_validation_repair
+- Goal packet:
+- Goal packet role:
+- Goal packet goals:
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: validation_gate
+- Todo vector key: 0caa2a5e36e6187c
+- Acceptance: Objective scan filed this gap for VFS-G030. Use evidence in /home/barberb/.local/state/ipfs_accelerate_py/ipfs_kit_vfs_symbolic_assurance/projection/discovery/2026-07-30-vfs-060-objective-gap-163d03533eb2.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (objective validation repair), and keep the supervisor-fed backlog aligned with the objective heap.  Keep immutable object identity separate from mutable current-tree projections.
