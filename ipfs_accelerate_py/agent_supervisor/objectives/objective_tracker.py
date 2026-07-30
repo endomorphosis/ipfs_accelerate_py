@@ -6,6 +6,7 @@ import json
 import os
 import re
 import subprocess
+import sys as _sys
 import tempfile
 import threading
 from contextlib import contextmanager
@@ -6909,3 +6910,12 @@ def parse_root_evidence(values: Iterable[str]) -> list[str]:
     for value in values:
         terms.extend(split_terms(value))
     return terms or list(DEFAULT_ROOT_EVIDENCE)
+
+
+# The package-root compatibility importer supports the retired flat module
+# path during the domain-layout cutover.  Publish the canonical module object
+# under that name as soon as this module has initialized so both import paths
+# share globals and mutation/atomic-write hooks.
+_sys.modules[
+    "ipfs_accelerate_py.agent_supervisor.objective_tracker"
+] = _sys.modules[__name__]

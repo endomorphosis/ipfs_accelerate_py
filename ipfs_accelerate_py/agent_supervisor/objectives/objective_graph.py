@@ -16,6 +16,7 @@ import math
 import os
 import re
 import subprocess
+import sys as _sys
 import time
 import warnings
 from dataclasses import asdict, dataclass, field, replace
@@ -12209,3 +12210,12 @@ def submit_bundle_tasks(
             )
         )
     return task_ids
+
+
+# The package-root compatibility importer supports the retired flat module
+# path during the domain-layout cutover.  Publish the canonical module object
+# under that name as soon as this module has initialized so both import paths
+# share caches, globals, and instrumentation hooks.
+_sys.modules[
+    "ipfs_accelerate_py.agent_supervisor.objective_graph"
+] = _sys.modules[__name__]
