@@ -25,7 +25,7 @@ from dataclasses import asdict, dataclass, field, fields, replace
 from datetime import datetime, timedelta, timezone
 from enum import Enum
 from hashlib import sha1, sha256
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Callable, Iterable, Mapping, Sequence
 
 from ..analysis.analyzer_health import (
@@ -80,6 +80,7 @@ from .scan_receipts import (
 )
 from ..task_sources.task_identity import TaskIdentity, canonical_task_identity
 from ..todo_daemon.implementation_daemon import (
+    TARGETED_IMPLEMENTATION_EVIDENCE_POLICY,
     is_retry_budget_repair_task,
     parse_task_file,
     retry_budget_repair_source,
@@ -143,6 +144,12 @@ DEFAULT_SELF_IMPROVEMENT_SUCCESSOR_COOLDOWN_SECONDS = int(
         "IPFS_ACCELERATE_AGENT_SELF_IMPROVEMENT_SUCCESSOR_COOLDOWN_SECONDS",
         "21600",
     )
+)
+TARGETED_RETRY_EVIDENCE_ACCEPTANCE = (
+    " The repair provider input must bind "
+    f"{TARGETED_IMPLEMENTATION_EVIDENCE_POLICY} selected evidence through "
+    "ProductionProviderRoute@1; "
+    "an identity-only packet does not satisfy this repair contract."
 )
 
 
@@ -5351,8 +5358,9 @@ def validation_retry_task_block(
 - Depends on: {", ".join(depends_on)}
 - Outputs: {", ".join(outputs)}
 - Validation: {validation_command}
+- Discovery evidence: {discovery_path}
 {execution_metadata}
-- Acceptance: Retry-budget guardrail filed this from repeated validation failures in {source_task.task_id}. Use evidence in {discovery_path} to fix the validation blocker, then mark this repair task completed so the supervisor can release {source_task.task_id} from strategy blocked_tasks.{validation_scope_acceptance}{launch_gate_acceptance}
+- Acceptance: Retry-budget guardrail filed this from repeated validation failures in {source_task.task_id}. Use evidence in {discovery_path} to fix the validation blocker, then mark this repair task completed so the supervisor can release {source_task.task_id} from strategy blocked_tasks.{validation_scope_acceptance}{launch_gate_acceptance}{TARGETED_RETRY_EVIDENCE_ACCEPTANCE}
 """
 
 
@@ -5365,7 +5373,7 @@ def retry_task_execution_metadata(
 
     raw_metadata = getattr(source_task, "metadata", {}) or {}
     if not isinstance(raw_metadata, Mapping):
-        return ""
+        raw_metadata = {}
     metadata = {
         str(key).strip().lower().replace("_", " "): str(value).strip()
         for key, value in raw_metadata.items()
@@ -5373,10 +5381,17 @@ def retry_task_execution_metadata(
     }
     if predicted_files is not None:
         metadata["predicted files"] = str(predicted_files).strip()
+    context_budget = metadata.get("context budget tokens", "")
+    if not context_budget.isdigit() or int(context_budget) < 4_096:
+        metadata["context budget tokens"] = "4096"
+    metadata["context evidence policy"] = (
+        TARGETED_IMPLEMENTATION_EVIDENCE_POLICY
+    )
     lines: list[str] = []
     inherited_fields = (
         ("provider role", "Provider role"),
         ("context budget tokens", "Context budget tokens"),
+        ("context evidence policy", "Context evidence policy"),
         ("parallel lane", "Parallel lane"),
         ("predicted files", "Predicted files"),
         ("allow concurrent with", "Allow concurrent with"),
@@ -5387,6 +5402,122 @@ def retry_task_execution_metadata(
         if value:
             lines.append(f"- {label}: {value}")
     return "\n".join(lines)
+
+
+def _retry_parallel_scope_paths(task: Any) -> tuple[str, ...]:
+    raw_metadata = getattr(task, "metadata", {}) or {}
+    metadata = (
+        {
+            str(key).strip().lower().replace("_", " "): str(value).strip()
+            for key, value in raw_metadata.items()
+        }
+        if isinstance(raw_metadata, Mapping)
+        else {}
+    )
+    raw_paths = metadata.get("predicted files", "")
+    values = split_csv(raw_paths) if raw_paths else list(
+        getattr(task, "outputs", []) or []
+    )
+    paths: list[str] = []
+    for value in values:
+        normalized = str(value or "").strip().replace("\\", "/")
+        candidate = PurePosixPath(normalized)
+        if (
+            not normalized
+            or candidate.is_absolute()
+            or ".." in candidate.parts
+            or candidate.as_posix() in {".", ".."}
+        ):
+            continue
+        path = candidate.as_posix()
+        if path not in paths:
+            paths.append(path)
+    return tuple(paths)
+
+
+def _retry_parallel_paths_overlap(left: str, right: str) -> bool:
+    left_parts = PurePosixPath(left).parts
+    right_parts = PurePosixPath(right).parts
+    common = min(len(left_parts), len(right_parts))
+    return bool(common) and left_parts[:common] == right_parts[:common]
+
+
+def retry_repair_serialization_dependencies(
+    source_task: Any,
+    tasks: Sequence[Any],
+) -> tuple[str, ...]:
+    """Order a new repair after unrelated active writers in its exact scope.
+
+    The repair/source pair is serialized by the shared board-visible repair
+    fence. Dependency relatives of the source are also already runtime-ordered.
+    Only unrelated active tasks need an explicit edge on the newly appended
+    repair, which cannot create a cycle back into the existing graph.
+    """
+
+    by_id = {
+        str(getattr(task, "task_id", "") or ""): task
+        for task in tasks
+        if str(getattr(task, "task_id", "") or "")
+    }
+    source_task_id = str(getattr(source_task, "task_id", "") or "")
+    source_paths = _retry_parallel_scope_paths(source_task)
+    if not source_task_id or not source_paths:
+        return ()
+
+    ancestors: dict[str, set[str]] = {}
+    visiting: set[str] = set()
+
+    def task_ancestors(task_id: str) -> set[str]:
+        cached = ancestors.get(task_id)
+        if cached is not None:
+            return cached
+        if task_id in visiting:
+            return set()
+        visiting.add(task_id)
+        result: set[str] = set()
+        task = by_id.get(task_id)
+        for dependency in getattr(task, "depends_on", []) or []:
+            dependency_id = str(dependency or "").strip()
+            if not dependency_id or dependency_id not in by_id:
+                continue
+            result.add(dependency_id)
+            result.update(task_ancestors(dependency_id))
+        visiting.discard(task_id)
+        ancestors[task_id] = result
+        return result
+
+    source_ancestors = task_ancestors(source_task_id)
+    dependencies: list[str] = []
+    for other_id in sorted(by_id):
+        if other_id == source_task_id:
+            continue
+        other = by_id[other_id]
+        status = (
+            str(getattr(other, "status", "") or "")
+            .strip()
+            .lower()
+            .replace("-", "_")
+            .replace(" ", "_")
+        )
+        if status in {"completed", "blocked"}:
+            continue
+        other_source_id, _failure_kind = retry_budget_repair_source(other)
+        if other_source_id == source_task_id:
+            continue
+        other_ancestors = task_ancestors(other_id)
+        if (
+            other_id in source_ancestors
+            or source_task_id in other_ancestors
+        ):
+            continue
+        other_paths = _retry_parallel_scope_paths(other)
+        if any(
+            _retry_parallel_paths_overlap(source_path, other_path)
+            for source_path in source_paths
+            for other_path in other_paths
+        ):
+            dependencies.append(other_id)
+    return tuple(dependencies)
 
 
 def safe_retry_validation_command(command: str, *, discovery_path: Path) -> str:
@@ -5473,8 +5604,9 @@ def implementation_retry_task_block(
 - Depends on: {", ".join(depends_on)}
 - Outputs: {", ".join(outputs)}
 - Validation: {validation_command}
+- Discovery evidence: {discovery_path}
 {execution_metadata}
-- Acceptance: Implementation retry-budget guardrail filed this from repeated implementation failures in {source_task.task_id}. Use evidence in {discovery_path} to fix the setup, runtime, or timeout blocker, then mark this repair task completed so the supervisor can release {source_task.task_id} from strategy blocked_tasks.
+- Acceptance: Implementation retry-budget guardrail filed this from repeated implementation failures in {source_task.task_id}. Use evidence in {discovery_path} to fix the setup, runtime, or timeout blocker, then mark this repair task completed so the supervisor can release {source_task.task_id} from strategy blocked_tasks.{TARGETED_RETRY_EVIDENCE_ACCEPTANCE}
 """
 
 
@@ -5517,8 +5649,9 @@ def merge_retry_task_block(
 - Depends on: {", ".join(depends_on)}
 - Outputs: {", ".join(outputs)}
 - Validation: {validation_command}
+- Discovery evidence: {discovery_path}
 {execution_metadata}
-- Acceptance: Merge retry-budget guardrail filed this from repeated merge failures in {source_task.task_id}. Use evidence in {discovery_path} to fix the merge blocker, verify the intended implementation changes are committed in their owning repository or submodule, run `ipfs-accelerate-agent-merge-resolver --events-path ... --apply` when the conflict is semantic, then mark this repair task completed so the supervisor can release {source_task.task_id} from strategy blocked_tasks.
+- Acceptance: Merge retry-budget guardrail filed this from repeated merge failures in {source_task.task_id}. Use evidence in {discovery_path} to fix the merge blocker, verify the intended implementation changes are committed in their owning repository or submodule, run `ipfs-accelerate-agent-merge-resolver --events-path ... --apply` when the conflict is semantic, then mark this repair task completed so the supervisor can release {source_task.task_id} from strategy blocked_tasks.{TARGETED_RETRY_EVIDENCE_ACCEPTANCE}
 """
 
 
@@ -5586,12 +5719,23 @@ def record_retry_budget_findings(
                 failure_kind="implementation",
             )
             generated_paths.append(discovery_path)
+            serialization_dependencies = (
+                retry_repair_serialization_dependencies(task, tasks)
+            )
+            repair_dependencies = tuple(
+                dict.fromkeys(
+                    (
+                        *(task.depends_on or ()),
+                        *serialization_dependencies,
+                    )
+                )
+            )
             task_block = implementation_retry_task_block(
                 task_id=follow_up_task_id,
                 source_task=task,
                 discovery_path=discovery_path,
                 strategy_path=strategy_path,
-                depends_on=task.depends_on,
+                depends_on=repair_dependencies,
                 discovery_output_path=discovery_output_path,
             )
             todo_text = todo_text.rstrip() + "\n\n" + task_block.strip() + "\n"
@@ -5606,6 +5750,9 @@ def record_retry_budget_findings(
                     "failed_command": failed_command,
                     "discovery_path": str(discovery_path),
                     "failure_kind": "implementation",
+                    "serialization_dependencies": list(
+                        serialization_dependencies
+                    ),
                 }
             )
 
@@ -5636,7 +5783,19 @@ def record_retry_budget_findings(
                 retry_budget=validation_retry_budget,
             )
             generated_paths.append(discovery_path)
-            depends_on = list(validation_depends_on) if validation_depends_on else list(task.depends_on)
+            base_dependencies = (
+                list(validation_depends_on)
+                if validation_depends_on
+                else list(task.depends_on)
+            )
+            serialization_dependencies = (
+                retry_repair_serialization_dependencies(task, tasks)
+            )
+            depends_on = list(
+                dict.fromkeys(
+                    (*base_dependencies, *serialization_dependencies)
+                )
+            )
             validation_command = (
                 validation_task_command_transform(failed_command)
                 if validation_task_command_transform is not None
@@ -5669,6 +5828,9 @@ def record_retry_budget_findings(
                     "discovery_path": str(discovery_path),
                     "failure_kind": "validation",
                     "launch_playwright_validation_gate": launch_playwright_validation_gate,
+                    "serialization_dependencies": list(
+                        serialization_dependencies
+                    ),
                 }
             )
 
@@ -5699,12 +5861,23 @@ def record_retry_budget_findings(
                 failure_kind="merge",
             )
             generated_paths.append(discovery_path)
+            serialization_dependencies = (
+                retry_repair_serialization_dependencies(task, tasks)
+            )
+            repair_dependencies = tuple(
+                dict.fromkeys(
+                    (
+                        *(task.depends_on or ()),
+                        *serialization_dependencies,
+                    )
+                )
+            )
             task_block = merge_retry_task_block(
                 task_id=follow_up_task_id,
                 source_task=task,
                 discovery_path=discovery_path,
                 strategy_path=strategy_path,
-                depends_on=task.depends_on,
+                depends_on=repair_dependencies,
                 discovery_output_path=discovery_output_path,
             )
             todo_text = todo_text.rstrip() + "\n\n" + task_block.strip() + "\n"
@@ -5719,6 +5892,9 @@ def record_retry_budget_findings(
                     "failed_command": failed_command,
                     "discovery_path": str(discovery_path),
                     "failure_kind": "merge",
+                    "serialization_dependencies": list(
+                        serialization_dependencies
+                    ),
                 }
             )
 

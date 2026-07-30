@@ -3063,6 +3063,94 @@ def test_backlog_refinery_retry_budget_blocks_implementation_loop(tmp_path):
     assert "Exception type: `RuntimeError`" in discovery_text
 
 
+def test_retry_repair_serializes_unrelated_overlapping_writer(tmp_path):
+    repo = _seed_repo(tmp_path)
+    todo_path = repo / "todo.md"
+    events_path = repo / "state" / "events.jsonl"
+    strategy_path = repo / "state" / "strategy.json"
+    discovery_dir = repo / "data" / "agent_supervisor" / "discovery"
+    todo_path.write_text(
+        """# Agent Todos
+
+## AUTO-001 Fix shared runtime contract
+
+- Status: todo
+- Completion: manual
+- Priority: P0
+- Track: runtime
+- Depends on:
+- Outputs: src/shared.py
+- Validation: pytest tests/test_shared.py
+- Provider role: grok-implement, codex-review
+- Context budget tokens: 2048
+- Parallel lane: runtime-contract
+- Predicted files: src/shared.py
+- Acceptance: Add SCAEV_SHARED.
+
+## AUTO-002 Extend shared runtime API
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: api
+- Depends on:
+- Outputs: src/shared.py
+- Validation: pytest tests/test_shared_api.py
+- Parallel lane: runtime-api
+- Predicted files: src/shared.py
+- Acceptance: Extend the shared API.
+""",
+        encoding="utf-8",
+    )
+    events_path.parent.mkdir(parents=True)
+    failure = {
+        "type": "implementation_finished",
+        "task_id": "AUTO-001",
+        "attempt": 1,
+        "returncode": 1,
+        "validation_result": {"attempted": False, "passed": True},
+        "merge_result": {
+            "attempted": False,
+            "merged": False,
+            "reason": "not_attempted",
+        },
+        "log_path": "state/implementation_logs/auto-001-attempt-1.log",
+    }
+    events_path.write_text(
+        json.dumps(failure)
+        + "\n"
+        + json.dumps({**failure, "attempt": 2})
+        + "\n",
+        encoding="utf-8",
+    )
+
+    findings = record_retry_budget_findings(
+        todo_path=todo_path,
+        events_path=events_path,
+        strategy_path=strategy_path,
+        discovery_dir=discovery_dir,
+        task_header_prefix_value="## AUTO-",
+        task_prefix="AUTO-",
+        implementation_retry_budget=2,
+        validation_retry_budget=0,
+        merge_retry_budget=0,
+    )
+
+    assert findings[0]["follow_up_task_id"] == "AUTO-003"
+    assert findings[0]["serialization_dependencies"] == ["AUTO-002"]
+    tasks = backlog_refinery.parse_task_file(todo_path, "## AUTO-")
+    repair = next(task for task in tasks if task.task_id == "AUTO-003")
+    assert repair.depends_on == ["AUTO-002"]
+    assert repair.metadata["context budget tokens"] == "4096"
+    assert repair.metadata["context evidence policy"] == (
+        "content-addressed-targeted-v1"
+    )
+    assert repair.metadata["discovery evidence"] == findings[0][
+        "discovery_path"
+    ]
+    assert "identity-only packet does not satisfy" in repair.acceptance
+
+
 def test_backlog_refinery_retry_budget_skips_recursive_repair_tasks(tmp_path):
     repo = _seed_repo(tmp_path)
     todo_path = repo / "todo.md"

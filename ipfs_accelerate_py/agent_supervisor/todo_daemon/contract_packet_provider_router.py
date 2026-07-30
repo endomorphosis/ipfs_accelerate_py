@@ -896,12 +896,14 @@ def _bounded_evidence_slice(
 
     scope = provider_input.get("scope")
     acceptance = provider_input.get("acceptance")
+    evidence = provider_input.get("evidence_handles")
+    if evidence is None:
+        evidence = []
     expansion: Any = []
     for key in (
         "expansion_handles",
         "expansion_references",
         "expansion_cids",
-        "evidence_handles",
     ):
         if key in provider_input:
             expansion = provider_input[key]
@@ -927,6 +929,7 @@ def _bounded_evidence_slice(
             dict(acceptance) if isinstance(acceptance, Mapping) else acceptance
         ),
         "goal_ids": goal_ids,
+        "evidence_handles": evidence,
         "expansion_handles": expansion if expansion is not None else [],
         "authority": {
             "provider_output_tier": "proposal",
@@ -2390,9 +2393,9 @@ class ImplementationProviderRouter:
 class ProductionContractPacket:
     """Bounded production contract packet for model-assisted implement/review.
 
-    Never embeds repository corpus, full source, or expansion bodies.  Providers
-    receive only :attr:`provider_input_payload` (Grok) or the admitted proposal
-    plus evidence slice (Codex).
+    Never embeds repository corpus, full files, or AST bodies. Providers receive
+    only :attr:`provider_input_payload` (Grok) or the admitted proposal plus a
+    compiler-selected, content-addressed evidence slice (Codex).
     """
 
     packet_id: str
@@ -3053,16 +3056,18 @@ def build_production_contract_packet(
     task_id: str,
     snapshot_id: str,
     write_paths: Sequence[str],
+    write_directory_paths: Sequence[str] = (),
     read_paths: Sequence[str] | None = None,
     validation_commands: Sequence[str] = (),
     acceptance_criteria: str = "",
     contract_ids: Sequence[str] = (),
     obligation_ids: Sequence[str] = (),
+    evidence_handles: Sequence[Any] = (),
     expansion_handles: Sequence[Any] = (),
     packet_id: str = "",
     extra_goal: Mapping[str, Any] | None = None,
 ) -> ProductionContractPacket:
-    """Build a bounded production packet that never embeds repository corpus."""
+    """Build a bounded packet with no corpus or unselected source bodies."""
 
     tid = str(task_id or "").strip()
     snap = str(snapshot_id or "").strip()
@@ -3072,6 +3077,11 @@ def build_production_contract_packet(
             reason_code=ProviderReason.PACKET_MALFORMED,
         )
     writes = [str(path).strip() for path in write_paths if str(path).strip()]
+    write_directories = [
+        str(path).strip()
+        for path in write_directory_paths
+        if str(path).strip()
+    ]
     reads = [
         str(path).strip()
         for path in (read_paths if read_paths is not None else writes)
@@ -3080,6 +3090,11 @@ def build_production_contract_packet(
     if not writes:
         raise ProviderRoutingError(
             "production packet requires at least one write path",
+            reason_code=ProviderReason.PACKET_MALFORMED,
+        )
+    if any(path not in writes for path in write_directories):
+        raise ProviderRoutingError(
+            "directory write scopes must be declared write paths",
             reason_code=ProviderReason.PACKET_MALFORMED,
         )
     goal: dict[str, Any] = {
@@ -3107,6 +3122,7 @@ def build_production_contract_packet(
         "scope": {
             "read_paths": reads,
             "write_paths": writes,
+            "write_directory_paths": write_directories,
         },
         "acceptance": {
             "validation_commands": [
@@ -3114,6 +3130,7 @@ def build_production_contract_packet(
             ],
             "criteria": str(acceptance_criteria or ""),
         },
+        "evidence_handles": list(evidence_handles),
         "expansion_handles": list(expansion_handles),
     }
     _check_structure(payload, forbid_broad_context=True)

@@ -480,6 +480,92 @@ def test_production_model_assisted_invokes_only_typed_packet_route(
     assert production["provider_receipt"]
 
 
+def test_production_directory_scope_allows_declared_descendants(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _daemon(tmp_path, monkeypatch)
+    directory = "src/scoped"
+    child = f"{directory}/contract.py"
+    scoped = daemon.repo_root / directory
+    scoped.mkdir(parents=True)
+    (scoped / "baseline.py").write_text("# baseline\n", encoding="utf-8")
+    _git(daemon.repo_root, "add", directory)
+    _git(daemon.repo_root, "commit", "-m", "seed directory scope")
+    baseline_ref = _git_output(daemon.repo_root, "rev-parse", "HEAD")
+    task = _task(outputs=[directory], validation=[])
+
+    def grok(_request):
+        return {
+            "proposal": {
+                "patch": f"diff --git a/{child} b/{child}\n",
+                "declared_paths": [child],
+                "files": [{"path": child, "content": "# scoped\n"}],
+            }
+        }
+
+    def codex(_request):
+        return {"decision": "approve", "findings": []}
+
+    grok.provider_identity = "mcp++:xai:grok-directory"
+    grok.model_identity = "grok-directory"
+    grok.last_session_identity = "session:grok-directory"
+    codex.provider_identity = "mcp++:openai:codex-directory"
+    codex.model_identity = "codex-directory"
+    codex.last_session_identity = "session:codex-directory"
+
+    route_payload = daemon.run_production_model_assisted_route(
+        task,
+        attempt=1,
+        workspace_path=daemon.repo_root,
+        snapshot_id=SNAPSHOT,
+        apply=True,
+        grok_provider=grok,
+        codex_provider=codex,
+        admission_gate=_accept,
+    )
+
+    assert route_payload["returncode"] == 0
+    packet_scope = route_payload[
+        "contract_packet"
+    ].provider_input_payload["scope"]
+    assert packet_scope["write_directory_paths"] == [directory]
+    allowed_paths, allowed_directories = (
+        daemon._production_packet_write_scope(
+            route_payload["contract_packet"]
+        )
+    )
+    assert daemon._production_path_in_write_scope(
+        child,
+        allowed=set(allowed_paths),
+        allowed_directories=allowed_directories,
+    )
+    assert not daemon._production_path_in_write_scope(
+        "src/scoped-sibling/contract.py",
+        allowed=set(allowed_paths),
+        allowed_directories=allowed_directories,
+    )
+    assert (daemon.repo_root / child).read_text(encoding="utf-8") == (
+        "# scoped\n"
+    )
+
+    _git(daemon.repo_root, "add", child)
+    _git(daemon.repo_root, "commit", "-m", "apply directory-scoped proposal")
+    implementation_commit = _git_output(
+        daemon.repo_root,
+        "rev-parse",
+        "HEAD",
+    )
+    binding = daemon._bind_production_route_to_implementation_commit(
+        task=task,
+        attempt=1,
+        baseline_ref=baseline_ref,
+        implementation_commit=implementation_commit,
+        route_payload=route_payload,
+    )
+    assert binding.changed_paths == (child,)
+
+
 def test_production_route_forbids_raw_implementation_command(
     tmp_path,
     monkeypatch: pytest.MonkeyPatch,
@@ -950,6 +1036,94 @@ def test_daemon_builds_bounded_production_packet(
     assert payload["authority"]["completion_authoritative"] is False
     assert PATH in payload["scope"]["write_paths"]
     assert "repository_corpus" not in json.dumps(payload)
+
+
+def test_production_packet_forwards_only_compiler_selected_targeted_evidence(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _daemon(tmp_path, monkeypatch)
+    target = daemon.repo_root / PATH
+    target.write_text(
+        "# baseline\nTARGETED_SOURCE_MARKER = 'repair-me'\n",
+        encoding="utf-8",
+    )
+    discovery = daemon.repo_root / "data" / "discovery" / "sca-615.md"
+    discovery.parent.mkdir(parents=True)
+    discovery.write_text(
+        "# Finding\nMissing evidence: SCAEV615ROUTE\n",
+        encoding="utf-8",
+    )
+    task = _task(
+        metadata={
+            "Provider role": "grok-implement, codex-review",
+            "Context budget tokens": "4096",
+            "Discovery evidence": "data/discovery/sca-615.md",
+            "Missing evidence": "SCAEV615ROUTE",
+        }
+    )
+
+    context = daemon._compile_implementation_context(task, attempt=1)
+    selected = context.capsule.evidence
+    assert any(
+        reference.kind == "task-discovery-evidence"
+        for reference in selected
+    )
+    assert any(
+        "TARGETED_SOURCE_MARKER" in reference.summary
+        for reference in selected
+    )
+
+    packet = daemon.build_production_contract_packet_for_task(
+        task,
+        snapshot_id=SNAPSHOT,
+        attempt=1,
+        context_capsule=context.capsule,
+    )
+    payload = dict(packet.provider_input_payload)
+    handles = payload["evidence_handles"]
+    encoded_handles = json.dumps(handles, sort_keys=True)
+    assert "TARGETED_SOURCE_MARKER" in encoded_handles
+    assert "SCAEV615ROUTE" in encoded_handles
+    assert payload["goal"]["context_capsule_id"] == (
+        context.capsule.content_id
+    )
+    assert payload["goal"]["obligation_ids"] == ["SCAEV615ROUTE"]
+    assert len(encoded_handles.encode("utf-8")) < 16_384
+
+    captured: dict[str, Any] = {}
+
+    def grok(request):
+        captured["grok"] = request
+        return _grok(request)
+
+    def codex(request):
+        captured["codex"] = request
+        return _codex(request)
+
+    result = ImplementationProviderRouter(
+        grok_provider=grok,
+        codex_provider=codex,
+        admission_gate=_accept,
+    ).route(
+        packet,
+        current_snapshot_id=SNAPSHOT,
+        apply=False,
+    )
+
+    assert result.provider_result_admitted is True
+    assert "TARGETED_SOURCE_MARKER" in json.dumps(
+        captured["grok"]["provider_input"],
+        sort_keys=True,
+    )
+    assert "TARGETED_SOURCE_MARKER" in json.dumps(
+        captured["codex"]["provider_input"]["evidence_slice"],
+        sort_keys=True,
+    )
+    assert "TARGETED_SOURCE_MARKER" not in json.dumps(
+        result.provider_receipt.to_dict(),
+        sort_keys=True,
+    )
 
 
 def test_build_production_provider_route_evaluation_helper() -> None:

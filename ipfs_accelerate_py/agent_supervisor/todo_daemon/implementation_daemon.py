@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import base64
 import hashlib
+import heapq
 import json
 import logging
 import os
@@ -430,6 +431,12 @@ SHARED_WORKTREE_PATHS = (
 DEFAULT_IMPLEMENTATION_CONTEXT_INPUT_TOKENS = 120_000
 DEFAULT_IMPLEMENTATION_CONTEXT_OUTPUT_RESERVE = 16_384
 DEFAULT_IMPLEMENTATION_CONTEXT_TOOL_RESERVE = 8_192
+TARGETED_IMPLEMENTATION_EVIDENCE_POLICY = "content-addressed-targeted-v1"
+TARGETED_IMPLEMENTATION_EVIDENCE_CHUNK_BYTES = 2_048
+TARGETED_IMPLEMENTATION_EVIDENCE_FILE_BYTES = 6_144
+TARGETED_IMPLEMENTATION_EVIDENCE_MAX_READ_BYTES = 512 * 1_024
+TARGETED_IMPLEMENTATION_EVIDENCE_MAX_PATHS = 24
+PRODUCTION_CONTEXT_EVIDENCE_MAX_BYTES = 12_288
 PROPOSAL_VALIDATION_FAILURE_RETURN_CODE = 78
 MAX_PERSISTED_PROPOSAL_REASON_CODES = 16
 MAX_PENDING_SCOPE_ADJUDICATIONS = 256
@@ -8445,6 +8452,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     started_at=started_at,
                     log_path=log_path,
                     prompt=prompt,
+                    context_capsule=(
+                        self._current_implementation_context_capsule()
+                    ),
                 )
                 if ephemeral_result.get("lifecycle_race"):
                     canonical_task_cid = self._canonical_ref(task)
@@ -11070,6 +11080,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         started_at: str,
         log_path: Path,
         prompt: str,
+        context_capsule: ContextCapsule | None = None,
     ) -> dict[str, Any]:
         self.implementation_log_dir.mkdir(parents=True, exist_ok=True)
         self.worktree_root.mkdir(parents=True, exist_ok=True)
@@ -11312,6 +11323,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                                 workspace_path=worktree_path,
                                 baseline_ref=baseline_ref,
                                 apply=True,
+                                context_capsule=context_capsule,
                                 grok_provider=self._production_grok_provider,
                                 codex_provider=self._production_codex_provider,
                                 deterministic_provider=(
@@ -17785,17 +17797,85 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             return f"git-commit:{head}"
         return f"workspace:{cwd.resolve()}"
 
+    def _production_context_evidence_handles(
+        self,
+        task: PortalTask,
+        context_capsule: ContextCapsule | None,
+    ) -> tuple[dict[str, Any], ...]:
+        """Project selected capsule evidence into a small provider-only slice."""
+
+        if context_capsule is None:
+            return ()
+        if not isinstance(context_capsule, ContextCapsule):
+            raise ProviderRoutingError(
+                "production context must be a ContextCapsule",
+                reason_code=ProviderReason.PACKET_MALFORMED,
+            )
+        if (
+            context_capsule.objective_id != task.task_id
+            or context_capsule.objective_revision != self._canonical_ref(task)
+        ):
+            raise ProviderRoutingError(
+                "production context does not match the task revision",
+                reason_code=ProviderReason.PACKET_STALE,
+            )
+
+        task_limit = self._task_context_token_limit(task)
+        effective_tokens = min(4_096, task_limit or 4_096)
+        evidence_byte_limit = min(
+            PRODUCTION_CONTEXT_EVIDENCE_MAX_BYTES,
+            max(2_048, max(0, effective_tokens - 1_024) * 4),
+        )
+        handles: list[dict[str, Any]] = []
+        used_bytes = 0
+        references = sorted(
+            context_capsule.evidence,
+            key=lambda reference: (
+                -reference.priority,
+                reference.reference_id,
+            ),
+        )
+        for reference in references:
+            if not reference.summary:
+                continue
+            handle = {
+                "reference_id": reference.reference_id,
+                "kind": reference.kind,
+                "referenced_content_id": (
+                    reference.referenced_content_id
+                ),
+                "repository_id": reference.repository_id,
+                "tree_id": reference.tree_id,
+                "path": reference.path,
+                "summary": reference.summary,
+                "byte_count": reference.byte_count,
+                "coverage_ids": list(reference.coverage_ids),
+            }
+            encoded = json.dumps(
+                handle,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode("utf-8")
+            if used_bytes + len(encoded) > evidence_byte_limit:
+                continue
+            handles.append(handle)
+            used_bytes += len(encoded)
+        return tuple(handles)
+
     def build_production_contract_packet_for_task(
         self,
         task: PortalTask,
         *,
         snapshot_id: str,
         attempt: int = 0,
+        context_capsule: ContextCapsule | None = None,
     ) -> ProductionContractPacket:
         """Compile a bounded production packet for one model-assisted task.
 
-        The packet carries task/scope/acceptance identity and expansion handles
-        only.  It never embeds repository corpus, full source, or AST bodies.
+        The packet carries task/scope/acceptance identity plus only the
+        content-addressed evidence excerpts already selected by the context
+        compiler. It never embeds repository corpus, full files, or AST bodies.
         """
 
         write_paths = [
@@ -17811,21 +17891,64 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 "production model-assisted route requires declared outputs",
                 reason_code=ProviderReason.PACKET_MALFORMED,
             )
+        write_directory_paths = [
+            path
+            for path in write_paths
+            if (
+                self.repo_root
+                / self._canonical_production_write_path(path)
+            ).is_dir()
+        ]
         extra_goal: dict[str, Any] = {
             "title": str(task.title or ""),
             "priority": str(task.priority or ""),
             "track": str(task.track or ""),
             "attempt": int(attempt),
+            "targeted_evidence_policy": (
+                TARGETED_IMPLEMENTATION_EVIDENCE_POLICY
+            ),
         }
+        evidence_handles = self._production_context_evidence_handles(
+            task,
+            context_capsule,
+        )
+        if context_capsule is not None:
+            extra_goal.update(
+                {
+                    "context_capsule_id": context_capsule.content_id,
+                    "context_policy_revision": (
+                        context_capsule.policy_revision
+                    ),
+                    "context_evidence_count": len(evidence_handles),
+                }
+            )
+        contract_ids = self._compact_value_list(
+            self._task_metadata_value(task, "interfaces", "contract ids")
+        )
+        obligation_ids = self._compact_value_list(
+            self._task_metadata_value(
+                task,
+                "missing evidence",
+                "evidence subset",
+                "obligation ids",
+            )
+        )
+        read_paths = list(write_paths)
+        for handle in evidence_handles:
+            evidence_path = str(handle.get("path") or "").strip()
+            if evidence_path and evidence_path not in read_paths:
+                read_paths.append(evidence_path)
         return build_production_contract_packet(
             task_id=task.task_id,
             snapshot_id=snapshot_id,
             write_paths=write_paths,
-            read_paths=write_paths,
+            write_directory_paths=write_directory_paths,
+            read_paths=read_paths,
             validation_commands=tuple(task.validation or ()),
             acceptance_criteria=str(task.acceptance or ""),
-            contract_ids=(),
-            obligation_ids=(),
+            contract_ids=contract_ids,
+            obligation_ids=obligation_ids,
+            evidence_handles=evidence_handles,
             expansion_handles=(),
             packet_id=f"packet:production:{task.task_id}:attempt-{int(attempt)}",
             extra_goal=extra_goal,
@@ -17909,7 +18032,10 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             )
         return candidate.as_posix()
 
-    def _production_packet_write_scope(self, packet: Any) -> tuple[str, ...]:
+    def _production_packet_write_scope(
+        self,
+        packet: Any,
+    ) -> tuple[tuple[str, ...], tuple[str, ...]]:
         payload = getattr(packet, "provider_input_payload", None)
         if payload is None:
             payload = getattr(packet, "payload", None)
@@ -17943,7 +18069,44 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 "production packet requires a nonempty writer allowlist",
                 reason_code=ProviderReason.PACKET_MALFORMED,
             )
-        return allowed
+        raw_directories = scope.get("write_directory_paths", ())
+        if (
+            isinstance(raw_directories, (str, bytes, Mapping))
+            or not isinstance(raw_directories, Sequence)
+        ):
+            raise ProviderRoutingError(
+                "production packet directory write scope is malformed",
+                reason_code=ProviderReason.PACKET_MALFORMED,
+            )
+        directories = tuple(
+            sorted(
+                {
+                    self._canonical_production_write_path(path)
+                    for path in raw_directories
+                }
+            )
+        )
+        if any(directory not in allowed for directory in directories):
+            raise ProviderRoutingError(
+                "production packet directory scope exceeds its writer allowlist",
+                reason_code=ProviderReason.PACKET_MALFORMED,
+            )
+        return allowed, directories
+
+    @staticmethod
+    def _production_path_in_write_scope(
+        path: str,
+        *,
+        allowed: set[str],
+        allowed_directories: tuple[str, ...],
+    ) -> bool:
+        if path in allowed:
+            return True
+        candidate = PurePosixPath(path)
+        return any(
+            PurePosixPath(directory) in candidate.parents
+            for directory in allowed_directories
+        )
 
     def _make_production_workspace_writer(
         self,
@@ -17954,7 +18117,10 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
     ) -> WriterCallable:
         """Return a fenced writer that applies only an admitted proposal."""
 
-        allowed = set(self._production_packet_write_scope(packet))
+        allowed_paths, allowed_directories = (
+            self._production_packet_write_scope(packet)
+        )
+        allowed = set(allowed_paths)
         workspace = workspace_path.resolve()
 
         def writer(proposal: Any, lease_id: str) -> None:
@@ -17982,7 +18148,11 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 else []
             )
             for rel in declared_paths:
-                if rel not in allowed:
+                if not self._production_path_in_write_scope(
+                    rel,
+                    allowed=allowed,
+                    allowed_directories=allowed_directories,
+                ):
                     raise RuntimeError(
                         f"declared write path out of packet scope: {rel}"
                     )
@@ -17995,7 +18165,11 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                         item.get("path") or item.get("file") or ""
                     ).strip()
                     rel = self._canonical_production_write_path(rel)
-                    if rel not in allowed:
+                    if not self._production_path_in_write_scope(
+                        rel,
+                        allowed=allowed,
+                        allowed_directories=allowed_directories,
+                    ):
                         raise RuntimeError(
                             f"write path out of packet scope: {rel}"
                         )
@@ -18065,7 +18239,11 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             if not names:
                 raise RuntimeError("patch write paths could not be enumerated")
             for rel in names:
-                if rel not in allowed:
+                if not self._production_path_in_write_scope(
+                    rel,
+                    allowed=allowed,
+                    allowed_directories=allowed_directories,
+                ):
                     raise RuntimeError(
                         f"patch path out of packet scope: {rel}"
                     )
@@ -18105,6 +18283,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         bounds: Any = None,
         grok_quota: Any = None,
         codex_quota: Any = None,
+        context_capsule: ContextCapsule | None = None,
     ) -> dict[str, Any]:
         """Production-wire bounded Grok proposal and independent Codex review.
 
@@ -18141,6 +18320,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 task,
                 snapshot_id=current_snapshot,
                 attempt=attempt,
+                context_capsule=context_capsule,
             )
 
         lease = str(writer_lease_id or "").strip()
@@ -18336,10 +18516,19 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         )
         if not changed_paths:
             raise RuntimeError("production implementation commit has no changes")
-        packet_scope = set(
+        packet_scope_paths, packet_scope_directories = (
             self._production_packet_write_scope(contract_packet)
         )
-        out_of_scope = sorted(set(changed_paths) - packet_scope)
+        packet_scope = set(packet_scope_paths)
+        out_of_scope = sorted(
+            path
+            for path in changed_paths
+            if not self._production_path_in_write_scope(
+                path,
+                allowed=packet_scope,
+                allowed_directories=packet_scope_directories,
+            )
+        )
         if out_of_scope:
             raise RuntimeError(
                 "production implementation commit exceeds packet write scope: "
@@ -25903,6 +26092,401 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         # discarded before they can receive an inclusion/exclusion decision.
         return items
 
+    @staticmethod
+    def _bounded_evidence_text(value: str, *, max_bytes: int) -> str:
+        encoded = str(value or "").encode("utf-8")
+        if len(encoded) <= max_bytes:
+            return encoded.decode("utf-8")
+        bounded = encoded[:max_bytes].decode("utf-8", errors="ignore")
+        line_boundary = bounded.rfind("\n")
+        if line_boundary >= max(1, len(bounded) // 2):
+            bounded = bounded[:line_boundary]
+        return bounded.rstrip()
+
+    def _safe_implementation_evidence_path(
+        self,
+        value: Any,
+    ) -> tuple[Path, str] | None:
+        """Resolve one task-declared evidence path without permitting escape."""
+
+        text = str(value or "").strip().strip("`'\"")
+        if not text or "\x00" in text:
+            return None
+        path = Path(text)
+        candidate = path if path.is_absolute() else self.repo_root / path
+        try:
+            repository_root = self.repo_root.resolve()
+            resolved = candidate.resolve(strict=False)
+            relative = resolved.relative_to(repository_root).as_posix()
+        except (OSError, RuntimeError, ValueError):
+            return None
+        if not relative or relative == ".":
+            return None
+        return resolved, relative
+
+    def _implementation_evidence_source_tasks(
+        self,
+        task: PortalTask,
+    ) -> tuple[PortalTask, ...]:
+        tasks = [task]
+        source_task_id, _failure_kind = retry_budget_repair_source(task)
+        if not source_task_id:
+            return tuple(tasks)
+        try:
+            source_task = next(
+                (
+                    candidate
+                    for candidate in self._load_tasks()
+                    if candidate.task_id == source_task_id
+                ),
+                None,
+            )
+        except (OSError, TaskSourceError, ValueError):
+            source_task = None
+        if source_task is not None:
+            tasks.append(source_task)
+        return tuple(tasks)
+
+    def _implementation_evidence_search_terms(
+        self,
+        tasks: Sequence[PortalTask],
+    ) -> tuple[str, ...]:
+        """Return bounded symbolic anchors for task-owned excerpt selection."""
+
+        terms: list[str] = []
+
+        def add(value: Any) -> None:
+            for item in self._compact_value_list(value):
+                normalized = str(item).strip()
+                if normalized and normalized.casefold() not in {
+                    existing.casefold() for existing in terms
+                }:
+                    terms.append(normalized)
+
+        metadata_fields = {
+            "ast symbols",
+            "contract ids",
+            "evidence subset",
+            "interfaces",
+            "missing evidence",
+            "obligation ids",
+        }
+        for evidence_task in tasks:
+            for key, value in (evidence_task.metadata or {}).items():
+                normalized_key = str(key).strip().lower().replace("_", " ")
+                if normalized_key in metadata_fields:
+                    add(value)
+            identifiers = re.findall(
+                r"\b(?:[A-Z][A-Z0-9_]{3,}|[A-Za-z_][A-Za-z0-9_]{5,})\b",
+                " ".join(
+                    (
+                        evidence_task.title,
+                        evidence_task.acceptance,
+                    )
+                ),
+            )
+            add(identifiers)
+        return tuple(terms[:24])
+
+    def _implementation_evidence_candidates(
+        self,
+        task: PortalTask,
+        *,
+        source_tasks: Sequence[PortalTask],
+    ) -> tuple[tuple[Path, str, str, int], ...]:
+        """Select only task-declared files, diagnostics, and directory indexes."""
+
+        candidates: dict[str, tuple[Path, str, str, int]] = {}
+
+        def add(raw_path: Any, *, kind: str, priority: int) -> None:
+            resolved = self._safe_implementation_evidence_path(raw_path)
+            if resolved is None:
+                return
+            path, relative = resolved
+            previous = candidates.get(relative)
+            candidate = (path, relative, kind, priority)
+            if previous is None or priority > previous[3]:
+                candidates[relative] = candidate
+
+        for evidence_task in source_tasks:
+            metadata = evidence_task.metadata or {}
+            for key, value in metadata.items():
+                normalized_key = str(key).strip().lower().replace("_", " ")
+                if normalized_key == "discovery evidence":
+                    for path in self._compact_value_list(value):
+                        add(
+                            path,
+                            kind="task-discovery-evidence",
+                            priority=1_000,
+                        )
+                elif normalized_key == "evidence inputs":
+                    for path in self._compact_value_list(value):
+                        add(
+                            path,
+                            kind="task-evidence-index",
+                            priority=700,
+                        )
+            for output in evidence_task.outputs:
+                add(
+                    output,
+                    kind="task-output-evidence",
+                    priority=800,
+                )
+            for command in evidence_task.validation:
+                try:
+                    tokens = shlex.split(str(command), posix=True)
+                except ValueError:
+                    tokens = []
+                for token in tokens:
+                    path_token = token.split("::", 1)[0].strip()
+                    if not path_token or path_token.startswith("-"):
+                        continue
+                    if (
+                        "/" not in path_token
+                        and "\\" not in path_token
+                        and not Path(path_token).suffix
+                    ):
+                        continue
+                    resolved = self._safe_implementation_evidence_path(
+                        path_token
+                    )
+                    if resolved is None or not resolved[0].exists():
+                        continue
+                    add(
+                        path_token,
+                        kind="task-validation-evidence",
+                        priority=850,
+                    )
+            for absolute_path in re.findall(
+                r"(?:/[A-Za-z0-9_.@+~%-]+)+",
+                evidence_task.acceptance,
+            ):
+                add(
+                    absolute_path,
+                    kind="task-discovery-evidence",
+                    priority=950,
+                )
+
+        ordered = sorted(
+            candidates.values(),
+            key=lambda item: (-item[3], item[1], item[2]),
+        )
+        return tuple(ordered[:TARGETED_IMPLEMENTATION_EVIDENCE_MAX_PATHS])
+
+    def _implementation_directory_evidence(
+        self,
+        path: Path,
+        *,
+        relative: str,
+    ) -> str:
+        entries: list[str] = []
+        try:
+            sampled_children = heapq.nsmallest(
+                65,
+                path.iterdir(),
+                key=lambda item: item.name.casefold(),
+            )
+        except OSError as exc:
+            return (
+                f"Task evidence path: {relative}\n"
+                f"State: unreadable directory ({type(exc).__name__})"
+            )
+        children = sampled_children[:64]
+        for child in children:
+            try:
+                child_type = (
+                    "directory"
+                    if child.is_dir()
+                    else "file"
+                    if child.is_file()
+                    else "other"
+                )
+                size = child.stat().st_size if child_type == "file" else 0
+            except OSError:
+                child_type = "unreadable"
+                size = 0
+            suffix = f" ({size} bytes)" if child_type == "file" else ""
+            entries.append(f"- {child.name}: {child_type}{suffix}")
+        has_more = len(sampled_children) > len(children)
+        return "\n".join(
+            (
+                f"Task evidence directory index: {relative}",
+                (
+                    f"Entry count: at least {len(sampled_children)}"
+                    if has_more
+                    else f"Entry count: {len(sampled_children)}"
+                ),
+                f"Entries omitted: {str(has_more).lower()}",
+                *entries,
+            )
+        )
+
+    def _implementation_file_evidence(
+        self,
+        path: Path,
+        *,
+        relative: str,
+        search_terms: Sequence[str],
+    ) -> str:
+        hasher = hashlib.sha256()
+        sampled = bytearray()
+        try:
+            with path.open("rb") as handle:
+                while True:
+                    block = handle.read(64 * 1_024)
+                    if not block:
+                        break
+                    hasher.update(block)
+                    remaining = (
+                        TARGETED_IMPLEMENTATION_EVIDENCE_MAX_READ_BYTES
+                        - len(sampled)
+                    )
+                    if remaining > 0:
+                        sampled.extend(block[:remaining])
+        except OSError as exc:
+            return (
+                f"Task evidence path: {relative}\n"
+                f"State: unreadable file ({type(exc).__name__})"
+            )
+        try:
+            file_size = path.stat().st_size
+        except OSError:
+            file_size = len(sampled)
+        content_id = f"sha256:{hasher.hexdigest()}"
+        if b"\x00" in sampled:
+            return "\n".join(
+                (
+                    f"Task evidence path: {relative}",
+                    f"Content id: {content_id}",
+                    f"File bytes: {file_size}",
+                    "State: binary content omitted",
+                )
+            )
+        text = sampled.decode("utf-8", errors="replace")
+        lines = text.splitlines()
+        intervals: list[tuple[int, int, str]] = []
+
+        def add_interval(start: int, end: int, label: str) -> None:
+            bounded_start = max(0, start)
+            bounded_end = min(len(lines), end)
+            if bounded_start >= bounded_end:
+                return
+            if any(
+                bounded_start >= existing_start
+                and bounded_end <= existing_end
+                for existing_start, existing_end, _label in intervals
+            ):
+                return
+            intervals.append((bounded_start, bounded_end, label))
+
+        folded_lines = [line.casefold() for line in lines]
+        matched = 0
+        for term in search_terms:
+            folded_term = term.casefold()
+            if len(folded_term) < 4:
+                continue
+            for line_index, line in enumerate(folded_lines):
+                if folded_term not in line:
+                    continue
+                add_interval(
+                    line_index - 5,
+                    line_index + 7,
+                    f"symbolic anchor {term}",
+                )
+                matched += 1
+                break
+            if matched >= 8:
+                break
+        add_interval(0, min(30, len(lines)), "file head")
+        add_interval(max(0, len(lines) - 16), len(lines), "file tail")
+
+        sections: list[str] = []
+        for start, end, label in intervals:
+            numbered = "\n".join(
+                f"{line_number + 1}: {lines[line_number]}"
+                for line_number in range(start, end)
+            )
+            sections.append(
+                f"--- {label}; lines {start + 1}-{end} ---\n{numbered}"
+            )
+        header = "\n".join(
+            (
+                f"Task evidence path: {relative}",
+                f"Content id: {content_id}",
+                f"File bytes: {file_size}",
+                "Selection policy: symbolic anchors, head, and tail",
+                (
+                    "Sample truncated before selection: "
+                    f"{str(file_size > len(sampled)).lower()}"
+                ),
+            )
+        )
+        return self._bounded_evidence_text(
+            "\n\n".join((header, *sections)),
+            max_bytes=TARGETED_IMPLEMENTATION_EVIDENCE_FILE_BYTES,
+        )
+
+    def _implementation_targeted_evidence(
+        self,
+        task: PortalTask,
+        *,
+        repository_id: str,
+        tree_id: str,
+    ) -> tuple[Any, ...]:
+        source_tasks = self._implementation_evidence_source_tasks(task)
+        search_terms = self._implementation_evidence_search_terms(
+            source_tasks
+        )
+        coverage_ids = tuple(
+            term
+            for term in search_terms
+            if re.fullmatch(r"[A-Z][A-Z0-9_:-]{3,}", term)
+        )
+        references: list[Any] = []
+        for path, relative, kind, priority in (
+            self._implementation_evidence_candidates(
+                task,
+                source_tasks=source_tasks,
+            )
+        ):
+            if path.is_dir():
+                evidence_text = self._implementation_directory_evidence(
+                    path,
+                    relative=relative,
+                )
+            elif path.is_file():
+                evidence_text = self._implementation_file_evidence(
+                    path,
+                    relative=relative,
+                    search_terms=search_terms,
+                )
+            else:
+                evidence_text = "\n".join(
+                    (
+                        f"Task evidence path: {relative}",
+                        "State: path is absent from the current snapshot",
+                    )
+            )
+            reference_digest = hashlib.sha256(
+                f"{relative}\0{kind}".encode()
+            ).hexdigest()[:16]
+            references.extend(
+                build_text_context_references(
+                    evidence_text,
+                    reference_prefix=f"task-evidence-{reference_digest}",
+                    kind=kind,
+                    path=relative,
+                    repository_id=repository_id,
+                    tree_id=tree_id,
+                    priority=priority,
+                    chunk_bytes=(
+                        TARGETED_IMPLEMENTATION_EVIDENCE_CHUNK_BYTES
+                    ),
+                    coverage_ids=coverage_ids,
+                )
+            )
+        return tuple(references)
+
     def _render_todo_vector_context(self, task: PortalTask) -> str:
         context = self._load_todo_vector_context(task)
         if context is None:
@@ -27176,6 +27760,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     "implementation_timeout_policy": (
                         timeout_policy.to_dict()
                     ),
+                    "targeted_implementation_evidence_policy": (
+                        TARGETED_IMPLEMENTATION_EVIDENCE_POLICY
+                    ),
                 },
                 ensure_ascii=False,
                 sort_keys=True,
@@ -27183,7 +27770,11 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             ).encode("utf-8")
         ).hexdigest()
         vector_text = self._render_todo_vector_context(task)
-        evidence = ()
+        evidence = self._implementation_targeted_evidence(
+            task,
+            repository_id=repository_id,
+            tree_id=tree_id,
+        )
         if vector_text:
             context = self._load_todo_vector_context(task)
             index_path = (
@@ -27196,19 +27787,22 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 if isinstance(index_path, Path)
                 else ""
             )
-            evidence = build_text_context_references(
-                "Compact todo vector context:\n" + vector_text,
-                reference_prefix="todo-vector",
-                kind="todo-vector-context",
-                path=artifact_path,
-                repository_id=repository_id,
-                tree_id=tree_id,
-                priority=100,
-                chunk_bytes=6_144,
-                coverage_ids=tuple(
-                    self._compact_value_list(
-                        task.metadata.get("missing evidence", "")
-                    )
+            evidence = (
+                *evidence,
+                *build_text_context_references(
+                    "Compact todo vector context:\n" + vector_text,
+                    reference_prefix="todo-vector",
+                    kind="todo-vector-context",
+                    path=artifact_path,
+                    repository_id=repository_id,
+                    tree_id=tree_id,
+                    priority=100,
+                    chunk_bytes=6_144,
+                    coverage_ids=tuple(
+                        self._compact_value_list(
+                            task.metadata.get("missing evidence", "")
+                        )
+                    ),
                 ),
             )
         compiler = ContextCompiler(
@@ -27266,6 +27860,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     "implementation_context_budget": (
                         context_budget_authority
                     ),
+                    "targeted_evidence_policy": (
+                        TARGETED_IMPLEMENTATION_EVIDENCE_POLICY
+                    ),
                     "durable_checkpoint": {
                         "directory": checkpoint_prompt_reference,
                         "environment_variable": IMPLEMENTATION_CHECKPOINT_DIR_ENV,
@@ -27322,6 +27919,16 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             },
         )
         return result
+
+    def _current_implementation_context_capsule(
+        self,
+    ) -> ContextCapsule | None:
+        result = self._last_implementation_context
+        if isinstance(result, ContextCompileResult):
+            return result.capsule
+        if isinstance(result, ContextDeltaResult):
+            return result.reconstructed_capsule
+        return None
 
     def _persist_implementation_context_receipt(
         self,
