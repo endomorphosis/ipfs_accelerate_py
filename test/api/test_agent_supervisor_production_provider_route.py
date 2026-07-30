@@ -1276,6 +1276,59 @@ def test_production_packet_forwards_only_compiler_selected_targeted_evidence(
     )
 
 
+def test_production_packet_trims_low_priority_evidence_to_exact_prompt_bounds(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _daemon(tmp_path, monkeypatch)
+    task = _task()
+    compiled = daemon._compile_implementation_context(task, attempt=1)
+    snapshot = f"git-commit:{compiled.capsule.tree_id}"
+    candidates = tuple(
+        {
+            "reference_id": f"reference-{index}",
+            "kind": "targeted-source",
+            "referenced_content_id": f"cid:reference-{index}",
+            "repository_id": compiled.capsule.repository_id,
+            "tree_id": compiled.capsule.tree_id,
+            "path": PATH,
+            "summary": f"priority-{index}:" + ("x" * 5_000),
+            "byte_count": 5_000,
+            "coverage_ids": [f"coverage-{index}"],
+        }
+        for index in range(3)
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_production_context_evidence_handles",
+        lambda _task, _capsule: candidates,
+    )
+
+    packet = daemon.build_production_contract_packet_for_task(
+        task,
+        snapshot_id=snapshot,
+        attempt=1,
+        context_capsule=compiled.capsule,
+    )
+    payload = dict(packet.provider_input_payload)
+    included = payload["evidence_handles"]
+    included_ids = [handle["reference_id"] for handle in included]
+
+    assert 0 < len(included) < len(candidates)
+    assert included_ids == [
+        handle["reference_id"] for handle in candidates[: len(included)]
+    ]
+    assert payload["goal"]["context_evidence_count"] == len(included)
+    assert payload["goal"]["context_prompt_budget_trimmed"] is True
+
+    request = daemon._preflight_production_packet_prompt(
+        packet,
+        snapshot_id=snapshot,
+    )
+    assert len(request.prompt) <= request.bounds.max_prompt_bytes
+    assert request.prompt_tokens <= request.bounds.max_prompt_tokens
+
+
 def test_daemon_bridges_verified_compiled_context_as_ids_and_handles(
     tmp_path,
     monkeypatch: pytest.MonkeyPatch,

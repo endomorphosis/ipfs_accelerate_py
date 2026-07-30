@@ -156,6 +156,7 @@ from .contract_packet_provider_router import (
     ProductionContractPacket,
     ProductionReceiptDisposition,
     ProductionReviewChainBinding,
+    ProviderBounds,
     ProviderCallable,
     ProviderRequest,
     ProviderReason,
@@ -11372,7 +11373,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     {
                         "task_id": task.task_id,
                         "attempt": int(attempt),
-                        "snapshot_id": f"git-commit:{context_capsule.tree_id}",
+                        "production_snapshot_id": (
+                            f"git-commit:{context_capsule.tree_id}"
+                        ),
                         "context_capsule_id": context_capsule.content_id,
                         "context_evidence_count": len(
                             context_capsule.evidence
@@ -18100,6 +18103,31 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             used_bytes += len(encoded)
         return tuple(handles)
 
+    @staticmethod
+    def _preflight_production_packet_prompt(
+        packet: ProductionContractPacket,
+        *,
+        snapshot_id: str,
+        provider_bounds: ProviderBounds | Mapping[str, Any] | None = None,
+    ) -> ProviderRequest:
+        """Build the exact Grok request without invoking a provider."""
+
+        router_kwargs: dict[str, Any] = {}
+        if provider_bounds is not None:
+            router_kwargs["bounds"] = provider_bounds
+        router = ImplementationProviderRouter(**router_kwargs)
+        packet_id, packet_snapshot, task_id, payload = router._packet_fields(
+            packet,
+            snapshot_id,
+        )
+        return router._request(
+            role=ProviderRole.GROK_IMPLEMENT,
+            packet_id=packet_id,
+            snapshot_id=packet_snapshot,
+            task_id=task_id,
+            provider_input=payload,
+        )
+
     def build_production_contract_packet_for_task(
         self,
         task: PortalTask,
@@ -18107,6 +18135,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         snapshot_id: str,
         attempt: int = 0,
         context_capsule: ContextCapsule | None = None,
+        provider_bounds: ProviderBounds | Mapping[str, Any] | None = None,
     ) -> ProductionContractPacket:
         """Compile a bounded production packet for one model-assisted task.
 
@@ -18156,7 +18185,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             context_capsule is not None
             and snapshot_id == f"git-commit:{context_capsule.tree_id}"
         )
-        evidence_handles = (
+        candidate_evidence_handles = (
             self._production_context_evidence_handles(
                 task,
                 context_capsule,
@@ -18171,7 +18200,6 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     "context_policy_revision": (
                         context_capsule.policy_revision
                     ),
-                    "context_evidence_count": len(evidence_handles),
                     "context_snapshot_matches": context_snapshot_matches,
                 }
             )
@@ -18204,26 +18232,69 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 )
             )
         )
-        read_paths = list(write_paths)
-        for handle in evidence_handles:
-            evidence_path = str(handle.get("path") or "").strip()
-            if evidence_path and evidence_path not in read_paths:
-                read_paths.append(evidence_path)
-        return build_production_contract_packet(
-            task_id=task.task_id,
-            snapshot_id=snapshot_id,
-            write_paths=write_paths,
-            write_directory_paths=write_directory_paths,
-            read_paths=read_paths,
-            validation_commands=tuple(task.validation or ()),
-            acceptance_criteria=str(task.acceptance or ""),
-            contract_ids=contract_ids,
-            obligation_ids=obligation_ids,
-            evidence_handles=evidence_handles,
-            expansion_handles=expansion_handles,
-            packet_id=f"packet:production:{task.task_id}:attempt-{int(attempt)}",
-            extra_goal=extra_goal,
-        )
+        evidence_handles = list(candidate_evidence_handles)
+        prompt_budget_trimmed = False
+        prompt_budget_reasons = {
+            ProviderReason.PROMPT_TOO_LARGE.value,
+            ProviderReason.PROMPT_TOKEN_BUDGET.value,
+        }
+        while True:
+            packet_goal = dict(extra_goal)
+            if context_capsule is not None:
+                packet_goal.update(
+                    {
+                        "context_evidence_count": len(evidence_handles),
+                        "context_evidence_deferred_count": max(
+                            0,
+                            len(context_capsule.evidence)
+                            - len(evidence_handles),
+                        ),
+                        "context_prompt_budget_trimmed": (
+                            prompt_budget_trimmed
+                        ),
+                    }
+                )
+            read_paths = list(write_paths)
+            for handle in evidence_handles:
+                evidence_path = str(handle.get("path") or "").strip()
+                if evidence_path and evidence_path not in read_paths:
+                    read_paths.append(evidence_path)
+            packet = build_production_contract_packet(
+                task_id=task.task_id,
+                snapshot_id=snapshot_id,
+                write_paths=write_paths,
+                write_directory_paths=write_directory_paths,
+                read_paths=read_paths,
+                validation_commands=tuple(task.validation or ()),
+                acceptance_criteria=str(task.acceptance or ""),
+                contract_ids=contract_ids,
+                obligation_ids=obligation_ids,
+                evidence_handles=tuple(evidence_handles),
+                expansion_handles=expansion_handles,
+                packet_id=(
+                    f"packet:production:{task.task_id}:"
+                    f"attempt-{int(attempt)}"
+                ),
+                extra_goal=packet_goal,
+            )
+            try:
+                self._preflight_production_packet_prompt(
+                    packet,
+                    snapshot_id=snapshot_id,
+                    provider_bounds=provider_bounds,
+                )
+            except ProviderRoutingError as exc:
+                if (
+                    exc.reason_code not in prompt_budget_reasons
+                    or not evidence_handles
+                ):
+                    raise
+                # References are priority ordered. Preserve the most relevant
+                # excerpts and remove one lowest-priority body per exact retry.
+                evidence_handles.pop()
+                prompt_budget_trimmed = True
+                continue
+            return packet
 
     @staticmethod
     def _production_context_reference_handle(
@@ -18871,6 +18942,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 snapshot_id=current_snapshot,
                 attempt=attempt,
                 context_capsule=context_capsule,
+                provider_bounds=bounds,
             )
 
         lease = str(writer_lease_id or "").strip()

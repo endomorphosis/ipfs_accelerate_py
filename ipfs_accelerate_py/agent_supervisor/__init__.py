@@ -616,17 +616,40 @@ class _LandedModuleAliasFinder:
             return None
         if fullname in _sys.modules:
             return _importlib.util.find_spec(fullname)
-        try:
-            module = _load_landed_module(rest)
-        except Exception:
-            return None
+        owner = AGENT_SUPERVISOR_LANDED_MODULE_TO_PACKAGE[rest]
+        real_name = f"{__name__}.{owner}.{rest}"
 
         class _AliasLoader:
             def create_module(self, spec):  # type: ignore[no-untyped-def]
-                return module
+                # A distinct proxy keeps importlib from replacing the
+                # canonical module's __spec__ and re-executing its classes.
+                return None
 
             def exec_module(self, module_):  # type: ignore[no-untyped-def]
-                return None
+                target = _importlib.import_module(real_name)
+                import_metadata = {
+                    "__name__",
+                    "__loader__",
+                    "__package__",
+                    "__spec__",
+                    "__path__",
+                }
+                module_.__dict__.update(
+                    {
+                        key: value
+                        for key, value in target.__dict__.items()
+                        if key not in import_metadata
+                    }
+                )
+                module_.__dict__["__wrapped_module__"] = target
+                module_.__dict__["__getattr__"] = (
+                    lambda name: getattr(target, name)
+                )
+                module_.__dict__["__dir__"] = (
+                    lambda: sorted(
+                        set(module_.__dict__).union(dir(target))
+                    )
+                )
 
         return _importlib.util.spec_from_loader(fullname, _AliasLoader())
 

@@ -1665,6 +1665,7 @@ class ImplementationProviderRouter:
         # Grok (and local fallback) receive the bounded contract packet.
         # Independent Codex review receives only the admitted proposal plus a
         # narrow evidence slice — never the implementer's full goal corpus.
+        codex_evidence_slice: dict[str, Any] | None = None
         if role is ProviderRole.CODEX_REVIEW:
             if admitted_proposal is None or not admitted_proposal.admitted:
                 raise ProviderRoutingError(
@@ -1676,6 +1677,31 @@ class ImplementationProviderRouter:
                     "independent Codex review requires an admitted Grok proposal",
                     reason_code=ProviderReason.PROVIDERS_NOT_INDEPENDENT,
                 )
+            codex_evidence_slice = _bounded_evidence_slice(
+                provider_input,
+                packet_id=packet_id,
+                snapshot_id=snapshot_id,
+                task_id=task_id,
+            )
+            evidence_items = codex_evidence_slice.get("evidence_handles")
+            expansion_items = codex_evidence_slice.get("expansion_handles")
+            evidence_available = (
+                len(evidence_items) if isinstance(evidence_items, list) else 0
+            )
+            expansion_available = (
+                len(expansion_items)
+                if isinstance(expansion_items, list)
+                else 0
+            )
+            codex_evidence_slice["prompt_budget"] = {
+                "evidence_handles_available": evidence_available,
+                "evidence_handles_included": evidence_available,
+                "evidence_handles_omitted": 0,
+                "expansion_handles_available": expansion_available,
+                "expansion_handles_included": expansion_available,
+                "expansion_handles_omitted": 0,
+                "trimmed": False,
+            }
             payload = {
                 "admitted_implementation_proposal": {
                     "role": admitted_proposal.role.value,
@@ -1684,12 +1710,7 @@ class ImplementationProviderRouter:
                     "proof_authoritative": False,
                     "completion_authoritative": False,
                 },
-                "evidence_slice": _bounded_evidence_slice(
-                    provider_input,
-                    packet_id=packet_id,
-                    snapshot_id=snapshot_id,
-                    task_id=task_id,
-                ),
+                "evidence_slice": codex_evidence_slice,
             }
         else:
             payload = {"contract_packet": dict(provider_input)}
@@ -1707,41 +1728,77 @@ class ImplementationProviderRouter:
                     "completion_authoritative": False,
                 }
         response_contract = _response_contract(role)
-        envelope = {
-            "schema": IMPLEMENTATION_PROVIDER_REQUEST_SCHEMA,
-            "interface": IMPLEMENTATION_PROVIDER_ROUTER_INTERFACE,
-            "role": role.value,
-            "packet_id": packet_id,
-            "snapshot_id": snapshot_id,
-            "task_id": task_id,
-            "provider_input": payload,
-            "bounds": self.bounds.to_dict(),
-            "response_instruction": dict(_response_instruction(role)),
-            "response_contract": dict(response_contract),
-            "authority": {
-                "provider_output_tier": "proposal",
-                "repository_write_allowed": False,
-                "proof_authoritative": False,
-                "completion_authoritative": False,
-            },
-        }
-        prompt = _canonical_bytes(envelope)
-        try:
-            prompt_tokens = self.token_counter(prompt)
-        except Exception as exc:
-            raise ProviderRoutingError(
-                "token counter failed",
-                reason_code=ProviderReason.PACKET_MALFORMED,
-            ) from exc
-        if (
-            isinstance(prompt_tokens, bool)
-            or not isinstance(prompt_tokens, int)
-            or prompt_tokens < 0
-        ):
-            raise ProviderRoutingError(
-                "token counter returned an invalid value",
-                reason_code=ProviderReason.PACKET_MALFORMED,
+        def measure_prompt() -> tuple[bytes, int]:
+            envelope = {
+                "schema": IMPLEMENTATION_PROVIDER_REQUEST_SCHEMA,
+                "interface": IMPLEMENTATION_PROVIDER_ROUTER_INTERFACE,
+                "role": role.value,
+                "packet_id": packet_id,
+                "snapshot_id": snapshot_id,
+                "task_id": task_id,
+                "provider_input": payload,
+                "bounds": self.bounds.to_dict(),
+                "response_instruction": dict(_response_instruction(role)),
+                "response_contract": dict(response_contract),
+                "authority": {
+                    "provider_output_tier": "proposal",
+                    "repository_write_allowed": False,
+                    "proof_authoritative": False,
+                    "completion_authoritative": False,
+                },
+            }
+            measured_prompt = _canonical_bytes(envelope)
+            try:
+                measured_tokens = self.token_counter(measured_prompt)
+            except Exception as exc:
+                raise ProviderRoutingError(
+                    "token counter failed",
+                    reason_code=ProviderReason.PACKET_MALFORMED,
+                ) from exc
+            if (
+                isinstance(measured_tokens, bool)
+                or not isinstance(measured_tokens, int)
+                or measured_tokens < 0
+            ):
+                raise ProviderRoutingError(
+                    "token counter returned an invalid value",
+                    reason_code=ProviderReason.PACKET_MALFORMED,
+                )
+            return measured_prompt, measured_tokens
+
+        prompt, prompt_tokens = measure_prompt()
+        while (
+            codex_evidence_slice is not None
+            and (
+                len(prompt) > self.bounds.max_prompt_bytes
+                or prompt_tokens > self.bounds.max_prompt_tokens
             )
+        ):
+            removed = False
+            for key in ("evidence_handles", "expansion_handles"):
+                items = codex_evidence_slice.get(key)
+                if isinstance(items, list) and items:
+                    items.pop()
+                    removed = True
+                    break
+            if not removed:
+                break
+            budget = codex_evidence_slice["prompt_budget"]
+            for prefix, key in (
+                ("evidence", "evidence_handles"),
+                ("expansion", "expansion_handles"),
+            ):
+                items = codex_evidence_slice.get(key)
+                included = len(items) if isinstance(items, list) else 0
+                available = int(
+                    budget[f"{prefix}_handles_available"]
+                )
+                budget[f"{prefix}_handles_included"] = included
+                budget[f"{prefix}_handles_omitted"] = (
+                    available - included
+                )
+            budget["trimmed"] = True
+            prompt, prompt_tokens = measure_prompt()
         if len(prompt) > self.bounds.max_prompt_bytes:
             raise ProviderRoutingError(
                 "provider prompt exceeds its exact UTF-8 byte bound",

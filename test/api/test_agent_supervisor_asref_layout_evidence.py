@@ -129,6 +129,44 @@ def test_asref_g090_public_api_and_entry_points() -> None:
     assert (REPO_ROOT / "docs/NESTED_PACKAGES.md").is_file()
 
 
+def test_flat_module_aliases_preserve_canonical_contract_type_identity() -> None:
+    """Retired flat imports must not re-execute canonical domain modules."""
+
+    code = """
+import sys
+from ipfs_accelerate_py.agent_supervisor.proof.code_proof_context import (
+    ContextBudget as proof_budget,
+)
+from ipfs_accelerate_py.agent_supervisor.context_contracts import (
+    ContextBudget,
+    ContextTier,
+)
+from ipfs_accelerate_py.agent_supervisor.context.context_contracts import (
+    ContextBudget as canonical_budget,
+    ContextTier as canonical_tier,
+)
+from ipfs_accelerate_py.agent_supervisor.context.context_compiler import (
+    ContextBudget as compiler_budget,
+)
+assert ContextBudget is canonical_budget is compiler_budget is proof_budget
+assert ContextTier is canonical_tier
+canonical = sys.modules[
+    "ipfs_accelerate_py.agent_supervisor.context.context_contracts"
+]
+alias = sys.modules["ipfs_accelerate_py.agent_supervisor.context_contracts"]
+assert canonical.__spec__.name.endswith(".context.context_contracts")
+assert alias.__spec__.name.endswith(".context_contracts")
+assert alias.__spec__.name != canonical.__spec__.name
+"""
+    subprocess.run(
+        [sys.executable, "-c", code],
+        cwd=REPO_ROOT,
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+
+
 def test_asref_g100_launch_recipe_and_protected_paths() -> None:
     """ASREF-G100: multi-lane Grok launch recipe + protected architecture paths."""
 

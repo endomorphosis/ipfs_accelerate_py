@@ -4038,9 +4038,29 @@ class ContextCompiler:
         value_policy: EvidenceValuePolicy | Mapping[str, Any] | None = None,
     ) -> None:
         if not isinstance(budget, ContextBudget):
-            if not isinstance(budget, Mapping):
-                raise ContextCompilationError("budget must be a ContextBudget")
-            budget = ContextBudget.from_dict(budget)
+            budget_payload: Any = budget
+            if not isinstance(budget_payload, Mapping):
+                serializer = getattr(budget_payload, "to_dict", None)
+                if not callable(serializer):
+                    raise ContextCompilationError(
+                        "budget must be a ContextBudget"
+                    )
+                try:
+                    budget_payload = serializer()
+                except Exception as exc:
+                    raise ContextCompilationError(
+                        "budget canonical serialization failed"
+                    ) from exc
+            if not isinstance(budget_payload, Mapping):
+                raise ContextCompilationError(
+                    "budget canonical serialization must return an object"
+                )
+            try:
+                budget = ContextBudget.from_dict(budget_payload)
+            except ContextContractError as exc:
+                raise ContextCompilationError(
+                    "budget does not satisfy the ContextBudget contract"
+                ) from exc
         if estimator is not None and tokenizer is not None:
             raise ContextCompilationError(
                 "provide tokenizer or estimator, not both"

@@ -725,6 +725,61 @@ def test_codex_receives_only_bounded_proposal_and_evidence_slice() -> None:
     assert proposal["completion_authoritative"] is False
 
 
+def test_codex_prompt_drops_low_priority_evidence_before_rejecting_review() -> None:
+    payload = dict(_Packet().provider_input_payload)
+    payload["evidence_handles"] = [
+        {
+            "reference_id": "high-priority",
+            "summary": "h" * 4_500,
+        },
+        {
+            "reference_id": "low-priority",
+            "summary": "l" * 4_500,
+        },
+    ]
+    seen: dict[str, Any] = {}
+
+    def grok(_request):
+        return {
+            "proposal": {
+                "patch": "p" * 7_000,
+                "declared_paths": [PATH],
+            }
+        }
+
+    def codex(request):
+        seen["request"] = request
+        return {"decision": "approve", "findings": []}
+
+    result = ImplementationProviderRouter(
+        grok_provider=grok,
+        codex_provider=codex,
+        admission_gate=_accept,
+    ).route(
+        _Packet(payload=payload),
+        current_snapshot_id=SNAPSHOT,
+    )
+
+    assert result.status is RouteStatus.SUCCEEDED
+    request = seen["request"]
+    assert len(request.prompt) <= request.bounds.max_prompt_bytes
+    assert request.prompt_tokens <= request.bounds.max_prompt_tokens
+    evidence_slice = request["provider_input"]["evidence_slice"]
+    assert [
+        handle["reference_id"]
+        for handle in evidence_slice["evidence_handles"]
+    ] == ["high-priority"]
+    assert evidence_slice["prompt_budget"] == {
+        "evidence_handles_available": 2,
+        "evidence_handles_included": 1,
+        "evidence_handles_omitted": 1,
+        "expansion_handles_available": 0,
+        "expansion_handles_included": 0,
+        "expansion_handles_omitted": 0,
+        "trimmed": True,
+    }
+
+
 def test_absent_or_degraded_review_is_explicit_and_not_authoritative() -> None:
     """SCA-228: missing/degraded Codex review cannot satisfy completion."""
 
