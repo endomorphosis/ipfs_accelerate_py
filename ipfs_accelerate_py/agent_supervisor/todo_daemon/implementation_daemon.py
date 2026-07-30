@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import fnmatch
 import hashlib
 import json
 import logging
@@ -11505,6 +11506,7 @@ class PortalImplementationDaemon:
         timeout_result: dict[str, Any] = {}
         protected_path_snapshot: dict[str, dict[str, Any]] | None = None
         protected_path_violation: dict[str, Any] = {}
+        seed_replayable_proposal_ids: tuple[str, ...] = ()
         checkpoint_dir = self._ensure_implementation_checkpoint_dir(task)
         timeout_policy = self._implementation_timeout_policy(task)
         lifecycle_record: WorkspaceLifecycleRecord | None = None
@@ -11546,10 +11548,29 @@ class PortalImplementationDaemon:
             worktree_path = self._effective_pooled_worktree_path(worktree_path)
             seed_apply = self._apply_prior_attempt_seed(
                 worktree_path,
+                task=task,
                 seed_plan=seed_plan,
                 baseline_ref=baseline_ref,
             )
             if seed_apply.get("applied"):
+                seed_proposal_authority = seed_apply.get(
+                    "proposal_authority"
+                )
+                seed_pre_dispatch_gate = seed_apply.get(
+                    "pre_dispatch_proposal_gate"
+                )
+                if (
+                    isinstance(seed_proposal_authority, Mapping)
+                    and isinstance(seed_pre_dispatch_gate, Mapping)
+                    and seed_pre_dispatch_gate.get("accepted") is True
+                ):
+                    seed_proposal_id = str(
+                        seed_proposal_authority.get("proposal_id") or ""
+                    ).strip()
+                    if seed_proposal_id:
+                        seed_replayable_proposal_ids = (
+                            seed_proposal_id,
+                        )
                 self._record_event(
                     "implementation_prior_attempt_seeded",
                     {
@@ -11560,7 +11581,11 @@ class PortalImplementationDaemon:
                         **dict(seed_apply),
                     },
                 )
-            elif seed_plan.get("reuse_prior_attempt"):
+            elif (
+                seed_plan.get("reuse_prior_attempt")
+                and seed_apply.get("reason")
+                != "prior_seed_no_authorized_change"
+            ):
                 # Hard conflict / apply failure: keep clean baseline but leave
                 # durable guidance for this attempt's prompt and a short
                 # backoff so we do not thrash identical seed failures.
@@ -11802,6 +11827,9 @@ class PortalImplementationDaemon:
                                 worktree_path,
                                 task,
                                 baseline_ref=baseline_ref,
+                                replayable_consumed_proposal_ids=(
+                                    seed_replayable_proposal_ids
+                                ),
                             )
                         )
                         validation_result = self._run_validation_commands(
@@ -12117,6 +12145,9 @@ class PortalImplementationDaemon:
                                 worktree_path,
                                 task,
                                 baseline_ref=baseline_ref,
+                                replayable_consumed_proposal_ids=(
+                                    seed_replayable_proposal_ids
+                                ),
                             )
                         )
                         validation_result = self._run_validation_commands(
@@ -13021,13 +13052,54 @@ class PortalImplementationDaemon:
                 )
         return tuple(sorted(set(paths)))
 
+    @staticmethod
+    def _prior_seed_changed_paths(
+        repo: Path,
+        before_revision: str,
+        after_revision: str,
+    ) -> tuple[str, ...] | None:
+        """Return every path in an exact tree delta without rename ambiguity."""
+
+        diff = subprocess.run(
+            [
+                "git",
+                "diff",
+                "--name-only",
+                "--no-renames",
+                "-z",
+                before_revision,
+                after_revision,
+                "--",
+            ],
+            cwd=repo,
+            capture_output=True,
+            check=False,
+        )
+        if diff.returncode != 0:
+            return None
+        raw_diff = (
+            diff.stdout.encode("utf-8", errors="surrogateescape")
+            if isinstance(diff.stdout, str)
+            else diff.stdout
+        )
+        return tuple(
+            sorted(
+                {
+                    path.decode("utf-8", errors="surrogateescape")
+                    for path in raw_diff.split(b"\0")
+                    if path
+                }
+            )
+        )
+
     def _prior_attempt_submodule_seed_plans(
         self,
         worktree_path: Path,
         *,
         seed_ref: str,
         baseline_ref: str,
-        fast_forward: bool,
+        merge_base: str,
+        scope_paths: Sequence[str],
     ) -> dict[str, Any]:
         """Preflight how configured submodules should follow a prior root seed."""
 
@@ -13078,18 +13150,19 @@ class PortalImplementationDaemon:
         if not gitlinks:
             return {"ok": True, "plans": []}
 
-        merge_base = baseline_ref
-        if not fast_forward:
-            merge_bases = self._git_merge_bases_in_repo(worktree_path, baseline_ref, seed_ref)
-            if len(merge_bases) != 1:
-                return failure("prior_seed_merge_base_ambiguous")
-            merge_base = merge_bases[0]
-
         plans: list[dict[str, Any]] = []
         for item in gitlinks:
             relative = item["path"]
             baseline_revision = item["baseline_revision"]
             seed_revision = item["seed_revision"]
+            allowed_local_paths: list[str] = []
+            for scope_path in scope_paths:
+                if scope_path == relative:
+                    allowed_local_paths = ["."]
+                    break
+                if scope_path.startswith(f"{relative}/"):
+                    allowed_local_paths.append(scope_path[len(relative) + 1 :])
+            allowed_local_paths = sorted(set(allowed_local_paths))
             target = worktree_path / relative
             if target.is_symlink() or not self._is_git_worktree(target):
                 return failure("configured_submodule_not_initialized", relative)
@@ -13104,29 +13177,23 @@ class PortalImplementationDaemon:
             )
             if tracked_status.returncode != 0 or tracked_status.stdout.strip():
                 return failure("configured_submodule_not_clean", relative)
+            if not allowed_local_paths:
+                plans.append({
+                    **item,
+                    "mode": "skip_out_of_scope",
+                    "prior_base_revision": baseline_revision,
+                    "allowed_paths": [],
+                    "replayed_paths": [],
+                    "skipped_paths": [relative],
+                    "patch": b"",
+                })
+                continue
             if not self._git_commit_exists_in_repo(target, seed_revision):
                 return failure("prior_seed_submodule_commit_missing", relative)
 
-            if fast_forward:
-                if not self._git_ref_is_ancestor_in_repo(
-                    target, baseline_revision, seed_revision
-                ):
-                    return failure("fast_forward_seed_submodule_diverged", relative)
-                nested_changes = self._prior_seed_changed_gitlinks(
-                    target, baseline_revision, seed_revision
-                )
-                if nested_changes is None or nested_changes:
-                    return failure(
-                        "prior_seed_nested_gitlink_changed"
-                        if nested_changes
-                        else "prior_seed_nested_gitlink_check_failed",
-                        relative,
-                    )
-                plans.append({**item, "mode": "align", "patch": b""})
-                continue
-
             patch = b""
             prior_base_revision = seed_revision
+            changed_paths: tuple[str, ...] = ()
             if not self._git_ref_is_ancestor_in_repo(target, seed_revision, baseline_revision):
                 prior_base_revision = self._gitlink_commit_at_repo_ref(
                     worktree_path, merge_base, relative
@@ -13138,34 +13205,75 @@ class PortalImplementationDaemon:
                 nested_changes = self._prior_seed_changed_gitlinks(
                     target, prior_base_revision, seed_revision
                 )
-                if nested_changes is None or nested_changes:
+                if nested_changes is None:
                     return failure(
-                        "prior_seed_nested_gitlink_changed"
-                        if nested_changes
-                        else "prior_seed_nested_gitlink_check_failed",
+                        "prior_seed_nested_gitlink_check_failed",
                         relative,
                     )
-                diff = subprocess.run(
-                    [
-                        "git",
-                        "diff",
-                        "--binary",
-                        "--full-index",
-                        prior_base_revision,
-                        seed_revision,
-                        "--",
-                    ],
-                    cwd=target,
-                    capture_output=True,
-                    check=False,
+                def allowed(path: str) -> bool:
+                    return "." in allowed_local_paths or any(
+                        self._path_matches_prefix(path, prefix)
+                        for prefix in allowed_local_paths
+                    )
+
+                authorized_nested_changes = tuple(
+                    path for path in nested_changes if allowed(path)
                 )
-                if diff.returncode != 0:
-                    return failure("prior_seed_submodule_diff_failed", relative)
-                patch = diff.stdout
+                if authorized_nested_changes:
+                    return failure(
+                        "prior_seed_nested_gitlink_changed",
+                        relative,
+                    )
+                discovered_paths = self._prior_seed_changed_paths(
+                    target,
+                    prior_base_revision,
+                    seed_revision,
+                )
+                if discovered_paths is None:
+                    return failure(
+                        "prior_seed_submodule_path_check_failed",
+                        relative,
+                    )
+                changed_paths = discovered_paths
+                replayed_paths = tuple(path for path in changed_paths if allowed(path))
+                if replayed_paths:
+                    diff = subprocess.run(
+                        [
+                            "git",
+                            "diff",
+                            "--binary",
+                            "--full-index",
+                            prior_base_revision,
+                            seed_revision,
+                            "--",
+                            *[
+                                f":(top,literal){path}"
+                                for path in replayed_paths
+                            ],
+                        ],
+                        cwd=target,
+                        capture_output=True,
+                        check=False,
+                    )
+                    if diff.returncode != 0:
+                        return failure("prior_seed_submodule_diff_failed", relative)
+                    patch = diff.stdout
+            replayed_paths = tuple(
+                path
+                for path in changed_paths
+                if "." in allowed_local_paths
+                or any(
+                    self._path_matches_prefix(path, prefix)
+                    for prefix in allowed_local_paths
+                )
+            )
             plans.append({
                 **item,
                 "mode": "replay",
                 "prior_base_revision": prior_base_revision,
+                "allowed_paths": allowed_local_paths,
+                "replayed_paths": list(replayed_paths),
+                "skipped_paths": sorted(set(changed_paths) - set(replayed_paths)),
                 "patch": patch,
             })
         return {"ok": True, "plans": plans}
@@ -13247,7 +13355,7 @@ class PortalImplementationDaemon:
         baseline_ref: str,
         plans: Sequence[Mapping[str, Any]],
     ) -> dict[str, Any]:
-        """Align fast-forwards or replay divergent prior child deltas."""
+        """Replay prior child deltas while retaining clean baseline ancestry."""
 
         results: list[dict[str, Any]] = []
 
@@ -13259,23 +13367,13 @@ class PortalImplementationDaemon:
             target = worktree_path / relative
             mode = str(plan.get("mode") or "")
             expected_revision = str(plan.get("baseline_revision") or "")
-            if mode == "align":
-                expected_revision = str(plan.get("seed_revision") or "")
-                operation = subprocess.run(
-                    ["git", "reset", "--hard", expected_revision],
-                    cwd=target,
-                    text=True,
-                    capture_output=True,
-                    check=False,
-                )
-            else:
-                operation = subprocess.run(
-                    ["git", "checkout", baseline_ref, "--", relative],
-                    cwd=worktree_path,
-                    text=True,
-                    capture_output=True,
-                    check=False,
-                )
+            operation = subprocess.run(
+                ["git", "checkout", baseline_ref, "--", relative],
+                cwd=worktree_path,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
             if operation.returncode != 0:
                 return failure("configured_submodule_alignment_failed", relative)
             patch = plan.get("patch")
@@ -13311,18 +13409,148 @@ class PortalImplementationDaemon:
                 "mode": mode,
                 "baseline_revision": str(plan.get("baseline_revision") or ""),
                 "seed_revision": str(plan.get("seed_revision") or ""),
+                "allowed_paths": list(plan.get("allowed_paths") or ()),
+                "replayed_paths": list(plan.get("replayed_paths") or ()),
+                "skipped_paths": list(plan.get("skipped_paths") or ()),
                 "replayed": replayed,
             })
         return {"reconciled": True, "reason": "configured_submodules_reconciled", "results": results}
+
+    def _prior_seed_proposal_authority(
+        self,
+        task: PortalTask,
+    ) -> dict[str, Any]:
+        """Bind retry seeding to the latest accepted same-task proposal receipt."""
+
+        declared_paths: list[str] = []
+        for raw_path in task_declared_output_paths(task):
+            path = str(raw_path).strip().replace("\\", "/")
+            while path.startswith("./"):
+                path = path[2:]
+            if (
+                path
+                and not path.startswith("/")
+                and "\0" not in path
+                and ".." not in PurePosixPath(path).parts
+            ):
+                declared_paths.append(path)
+        declared_scope = tuple(sorted(set(declared_paths)))
+        if not declared_scope:
+            return {
+                "ok": False,
+                "reason": "prior_seed_scope_not_declared",
+                "authorized_paths": [],
+            }
+
+        expected_identity = self._identity_for_task(task)
+        expected_cid = expected_identity.canonical_task_cid
+        expected_key = expected_identity.canonical_task_key
+        for event in reversed(self._iter_events()):
+            if (
+                event.get("type") != "implementation_proposal_validated"
+                or str(event.get("task_id") or "").strip() != task.task_id
+                or event.get("accepted") is not True
+            ):
+                continue
+            event_cid = str(event.get("canonical_task_cid") or "").strip()
+            event_key = str(event.get("canonical_task_key") or "").strip()
+            if event_cid != expected_cid:
+                continue
+            if event_key and event_key != expected_key:
+                continue
+            proposal_id = str(event.get("proposal_id") or "").strip()
+            receipt_id = str(event.get("receipt_id") or "").strip()
+            if not event_key or not proposal_id or not receipt_id:
+                return {
+                    "ok": False,
+                    "reason": "prior_seed_proposal_authority_malformed",
+                    "authorized_paths": [],
+                }
+            raw_paths = event.get("changed_paths")
+            if (
+                not isinstance(raw_paths, Sequence)
+                or isinstance(raw_paths, (str, bytes, bytearray))
+                or not raw_paths
+            ):
+                return {
+                    "ok": False,
+                    "reason": "prior_seed_proposal_paths_malformed",
+                    "authorized_paths": [],
+                }
+            receipt_paths: list[str] = []
+            for raw_path in raw_paths:
+                path = str(raw_path).strip().replace("\\", "/")
+                while path.startswith("./"):
+                    path = path[2:]
+                if (
+                    not path
+                    or path.startswith("/")
+                    or "\0" in path
+                    or ".." in PurePosixPath(path).parts
+                    or path in receipt_paths
+                ):
+                    return {
+                        "ok": False,
+                        "reason": "prior_seed_proposal_paths_malformed",
+                        "authorized_paths": [],
+                    }
+                receipt_paths.append(path)
+            declared_authorized_paths = tuple(
+                path
+                for path in receipt_paths
+                if any(
+                    self._path_matches_scope(path, declared)
+                    for declared in declared_scope
+                )
+            )
+            protected_paths = tuple(
+                path
+                for path in declared_authorized_paths
+                if self._overlaps_implementation_protected_path(path)
+            )
+            authorized_paths = tuple(
+                path
+                for path in declared_authorized_paths
+                if path not in protected_paths
+            )
+            return {
+                "ok": bool(authorized_paths),
+                "reason": (
+                    "accepted_proposal_paths_bound"
+                    if authorized_paths
+                    else "prior_seed_proposal_scope_empty"
+                ),
+                "task_id": task.task_id,
+                "canonical_task_cid": event_cid,
+                "canonical_task_key": event_key,
+                "proposal_id": proposal_id,
+                "receipt_id": receipt_id,
+                "event_id": str(event.get("event_id") or ""),
+                "sequence": event.get("sequence"),
+                "declared_scope_paths": list(declared_scope),
+                "receipt_paths": receipt_paths,
+                "authorized_paths": list(authorized_paths),
+                "dropped_protected_paths": list(protected_paths),
+                "dropped_receipt_paths": sorted(
+                    set(receipt_paths) - set(authorized_paths)
+                ),
+            }
+        return {
+            "ok": False,
+            "reason": "prior_seed_accepted_proposal_missing",
+            "task_id": task.task_id,
+            "authorized_paths": [],
+        }
 
     def _apply_prior_attempt_seed(
         self,
         worktree_path: Path,
         *,
+        task: PortalTask,
         seed_plan: Mapping[str, Any],
         baseline_ref: str,
     ) -> dict[str, Any]:
-        """Overlay a preserved prior-attempt commit onto a fresh merge-target worktree."""
+        """Replay a prior attempt's task-authorized delta onto a clean baseline."""
 
         if not seed_plan.get("reuse_prior_attempt"):
             return {
@@ -13346,17 +13574,46 @@ class PortalImplementationDaemon:
                 "seed_ref": seed_ref,
                 "baseline_ref": baseline_ref,
             }
-        fast_forward = bool(
-            baseline_ref
-            and self._git_ref_is_ancestor_in_repo(
-                worktree_path, baseline_ref, seed_ref
-            )
+        proposal_authority = self._prior_seed_proposal_authority(task)
+        scope_paths = tuple(proposal_authority.get("authorized_paths") or ())
+        if not proposal_authority.get("ok") or not scope_paths:
+            return {
+                "applied": False,
+                "reason": str(
+                    proposal_authority.get("reason")
+                    or "prior_seed_accepted_proposal_missing"
+                ),
+                "seed_ref": seed_ref,
+                "baseline_ref": baseline_ref,
+                "task_id": task.task_id,
+                "proposal_authority": proposal_authority,
+            }
+        merge_bases = self._git_merge_bases_in_repo(
+            worktree_path, baseline_ref, seed_ref
         )
+        if len(merge_bases) != 1:
+            return {
+                "applied": False,
+                "reason": "prior_seed_merge_base_ambiguous",
+                "seed_ref": seed_ref,
+                "baseline_ref": baseline_ref,
+            }
+        merge_base = merge_bases[0]
+        if self._git_ref_is_ancestor_in_repo(
+            worktree_path, seed_ref, baseline_ref
+        ):
+            return {
+                "applied": False,
+                "reason": "prior_seed_already_integrated",
+                "seed_ref": seed_ref,
+                "baseline_ref": baseline_ref,
+            }
         submodule_preflight = self._prior_attempt_submodule_seed_plans(
             worktree_path,
             seed_ref=seed_ref,
             baseline_ref=baseline_ref,
-            fast_forward=fast_forward,
+            merge_base=merge_base,
+            scope_paths=scope_paths,
         )
         if not submodule_preflight.get("ok"):
             return {
@@ -13374,10 +13631,142 @@ class PortalImplementationDaemon:
                 baseline_ref=baseline_ref,
                 plans=submodule_plans,
             )
+            expected_baseline = self._resolve_git_commit_in_repo(
+                worktree_path, baseline_ref
+            )
+            parent_head = self._resolve_git_commit_in_repo(
+                worktree_path, "HEAD"
+            )
+            rejected_seed_is_ancestor = self._git_ref_is_ancestor_in_repo(
+                worktree_path, seed_ref, parent_head
+            )
+            if (
+                reconciliation.get("reconciled")
+                and expected_baseline
+                and parent_head == expected_baseline
+                and not rejected_seed_is_ancestor
+            ):
+                if root_apply.get("no_change"):
+                    parent_status = subprocess.run(
+                        [
+                            "git",
+                            "status",
+                            "--porcelain",
+                            "--untracked-files=no",
+                        ],
+                        cwd=worktree_path,
+                        text=True,
+                        capture_output=True,
+                        check=False,
+                    )
+                    if (
+                        parent_status.returncode == 0
+                        and not parent_status.stdout.strip()
+                    ):
+                        return {
+                            **root_apply,
+                            "applied": False,
+                            "reason": (
+                                "prior_seed_no_authorized_change"
+                            ),
+                            "no_change_certified": True,
+                            "proposal_authority": proposal_authority,
+                            "submodule_reconciliation": reconciliation,
+                        }
+                    reconciliation = {
+                        **reconciliation,
+                        "reconciled": False,
+                        "reason": "prior_seed_no_change_postcondition_failed",
+                    }
+                else:
+                    try:
+                        proposal_validation = (
+                            self._validate_implementation_patch(
+                                worktree_path,
+                                task,
+                                baseline_ref=baseline_ref,
+                                replayable_consumed_proposal_ids=(
+                                    str(
+                                        proposal_authority.get(
+                                            "proposal_id"
+                                        )
+                                        or ""
+                                    ),
+                                ),
+                                record_event=False,
+                                allow_scope_adjudication=False,
+                            )
+                        )
+                        compact_gate = self._compact_proposal_validation(
+                            proposal_validation
+                        )
+                        pre_dispatch_accepted = bool(
+                            getattr(
+                                proposal_validation,
+                                "accepted",
+                                False,
+                            )
+                        )
+                    except Exception as exc:
+                        compact_gate = {
+                            "attempted": True,
+                            "accepted": False,
+                            "reason_codes": [
+                                (
+                                    "prior_seed_pre_dispatch_"
+                                    "validation_error"
+                                )
+                            ],
+                            "error_type": type(exc).__name__,
+                            "proof_authoritative": False,
+                            "completion_authoritative": False,
+                        }
+                        pre_dispatch_accepted = False
+                    if not pre_dispatch_accepted:
+                        rollback = (
+                            self._rollback_prior_attempt_submodule_reconciliation(
+                                worktree_path,
+                                baseline_ref=baseline_ref,
+                                plans=submodule_plans,
+                            )
+                        )
+                        return {
+                            "applied": False,
+                            "reason": (
+                                "prior_seed_pre_dispatch_validation_failed"
+                            ),
+                            "seed_ref": seed_ref,
+                            "baseline_ref": baseline_ref,
+                            "proposal_authority": proposal_authority,
+                            "pre_dispatch_proposal_gate": compact_gate,
+                            "submodule_reconciliation": reconciliation,
+                            "rollback": rollback,
+                        }
+                    self._record_event(
+                        (
+                            "implementation_prior_attempt_seed_"
+                            "pre_dispatch_validated"
+                        ),
+                        {
+                            "task_id": task.task_id,
+                            "seed_ref": seed_ref,
+                            "baseline_ref": baseline_ref,
+                            "source_proposal_id": str(
+                                proposal_authority.get("proposal_id") or ""
+                            ),
+                            "proposal_gate": compact_gate,
+                        },
+                    )
+                    return {
+                        **root_apply,
+                        "pre_dispatch_proposal_gate": compact_gate,
+                        "submodule_reconciliation": reconciliation,
+                    }
             if reconciliation.get("reconciled"):
-                return {
-                    **root_apply,
-                    "submodule_reconciliation": reconciliation,
+                reconciliation = {
+                    **reconciliation,
+                    "reconciled": False,
+                    "reason": "prior_seed_parent_ancestry_postcondition_failed",
                 }
             rollback = self._rollback_prior_attempt_submodule_reconciliation(
                 worktree_path,
@@ -13394,141 +13783,107 @@ class PortalImplementationDaemon:
                 "rollback": rollback,
             }
 
-        # Fast-forward when the preserved attempt is a descendant of the
-        # merge-target baseline (common when main/feature has not moved).
-        if fast_forward:
-            reset = subprocess.run(
-                ["git", "reset", "--hard", seed_ref],
-                cwd=worktree_path,
-                text=True,
-                capture_output=True,
-                check=False,
-            )
-            if reset.returncode == 0:
-                return finish(
-                    {
-                        "applied": True,
-                        "reason": "fast_forward_reset",
-                        "seed_ref": seed_ref,
-                        "baseline_ref": baseline_ref,
-                    }
-                )
+        changed_root_paths = self._prior_seed_changed_paths(
+            worktree_path,
+            merge_base,
+            seed_ref,
+        )
+        if changed_root_paths is None:
             return {
                 "applied": False,
-                "reason": "fast_forward_reset_failed",
+                "reason": "prior_seed_root_path_check_failed",
                 "seed_ref": seed_ref,
                 "baseline_ref": baseline_ref,
-                "stderr": (reset.stderr or "")[-1000:],
-                "rollback": self._rollback_prior_attempt_submodule_reconciliation(
-                    worktree_path,
-                    baseline_ref=baseline_ref,
-                    plans=submodule_plans,
-                ),
             }
-        merge = subprocess.run(
-            ["git", "merge", "--no-edit", "--no-ff", seed_ref],
-            cwd=worktree_path,
-            text=True,
-            capture_output=True,
-            check=False,
+        configured_submodules = tuple(
+            str(plan.get("path") or "") for plan in submodule_plans
         )
-        if merge.returncode == 0:
-            return finish(
-                {
-                    "applied": True,
-                    "reason": "merged_prior_seed",
-                    "seed_ref": seed_ref,
-                    "baseline_ref": baseline_ref,
-                }
+        root_scope_paths = tuple(
+            path
+            for path in scope_paths
+            if not any(
+                self._path_matches_prefix(path, relative)
+                for relative in configured_submodules
+                if relative
             )
-        abort = subprocess.run(
-            ["git", "merge", "--abort"],
-            cwd=worktree_path,
-            text=True,
-            capture_output=True,
-            check=False,
         )
-        unmerged = subprocess.run(
-            ["git", "ls-files", "--unmerged"],
-            cwd=worktree_path,
-            text=True,
-            capture_output=True,
-            check=False,
+        replayed_root_paths = tuple(
+            path
+            for path in changed_root_paths
+            if any(
+                self._path_matches_prefix(path, prefix)
+                for prefix in root_scope_paths
+            )
+            and not any(path == relative for relative in configured_submodules)
         )
-        if (
-            abort.returncode != 0
-            or self._git_merge_head_in_repo(worktree_path)
-            or unmerged.returncode != 0
-            or unmerged.stdout.strip()
-        ):
-            return {
-                "applied": False,
-                "reason": "prior_seed_merge_abort_failed",
-                "seed_ref": seed_ref,
-                "baseline_ref": baseline_ref,
-                "merge_stderr": (merge.stderr or "")[-500:],
-                "abort_stderr": (abort.stderr or "")[-500:],
-                "rollback": self._rollback_prior_attempt_submodule_reconciliation(
-                    worktree_path,
-                    baseline_ref=baseline_ref,
-                    plans=submodule_plans,
-                ),
-            }
-        merge_bases = self._git_merge_bases_in_repo(
-            worktree_path, baseline_ref, seed_ref
+        skipped_root_paths = tuple(
+            path for path in changed_root_paths if path not in replayed_root_paths
         )
-        root_patch = None
-        if len(merge_bases) == 1:
+        root_patch_bytes = b""
+        if replayed_root_paths:
             root_patch = subprocess.run(
                 [
                     "git",
                     "diff",
                     "--binary",
                     "--full-index",
-                    merge_bases[0],
+                    merge_base,
                     seed_ref,
                     "--",
-                    ".",
                     *[
-                        f":(top,exclude,literal){plan['path']}"
-                        for plan in submodule_plans
+                        f":(top,literal){path}"
+                        for path in replayed_root_paths
                     ],
                 ],
                 cwd=worktree_path,
                 capture_output=True,
                 check=False,
             )
+            if root_patch.returncode != 0:
+                return {
+                    "applied": False,
+                    "reason": "prior_seed_root_diff_failed",
+                    "seed_ref": seed_ref,
+                    "baseline_ref": baseline_ref,
+                }
+            root_patch_bytes = root_patch.stdout
         root_replay = {
             "applied": True,
             "reason": "replayed_prior_delta",
             "seed_ref": seed_ref,
             "baseline_ref": baseline_ref,
-            "merge_stderr": (merge.stderr or "")[-500:],
+            "merge_base": merge_base,
+            "scope_paths": list(scope_paths),
+            "proposal_authority": proposal_authority,
+            "replayed_root_paths": list(replayed_root_paths),
+            "skipped_root_paths": list(skipped_root_paths),
+            "no_change": (
+                not root_patch_bytes
+                and not any(
+                    isinstance(plan.get("patch"), bytes) and plan.get("patch")
+                    for plan in submodule_plans
+                )
+            ),
         }
-        if root_patch is not None and root_patch.returncode == 0 and not root_patch.stdout:
+        if not root_patch_bytes:
             return finish(root_replay)
-        replay = None
-        if root_patch is not None and root_patch.returncode == 0:
-            replay = subprocess.run(
-                ["git", "apply", "--3way", "--whitespace=nowarn", "-"],
-                cwd=worktree_path,
-                input=root_patch.stdout,
-                capture_output=True,
-                check=False,
-            )
-        if replay is not None and replay.returncode == 0:
+        replay = subprocess.run(
+            ["git", "apply", "--3way", "--whitespace=nowarn", "-"],
+            cwd=worktree_path,
+            input=root_patch_bytes,
+            capture_output=True,
+            check=False,
+        )
+        if replay.returncode == 0:
             return finish(root_replay)
         return {
             "applied": False,
             "reason": "prior_seed_apply_failed",
             "seed_ref": seed_ref,
             "baseline_ref": baseline_ref,
-            "merge_stderr": (merge.stderr or "")[-500:],
-            "replay_stderr": (
-                replay.stderr.decode("utf-8", errors="replace")[-500:]
-                if replay is not None
-                else "unable to resolve a unique prior seed merge base"
-            ),
+            "replay_stderr": replay.stderr.decode(
+                "utf-8", errors="replace"
+            )[-500:],
             "rollback": self._rollback_prior_attempt_submodule_reconciliation(
                 worktree_path,
                 baseline_ref=baseline_ref,
@@ -15175,6 +15530,23 @@ class PortalImplementationDaemon:
     def _path_matches_prefix(relative: str, prefix: str) -> bool:
         normalized = prefix.rstrip("/")
         return relative == normalized or relative.startswith(f"{normalized}/")
+
+    @staticmethod
+    def _path_matches_scope(relative: str, pattern: str) -> bool:
+        """Match one proposal path with the proposal gate's scope semantics."""
+
+        normalized = str(pattern).strip().replace("\\", "/")
+        while normalized.startswith("./"):
+            normalized = normalized[2:]
+        if not normalized:
+            return False
+        if any(character in normalized for character in "*?["):
+            return fnmatch.fnmatchcase(relative, normalized)
+        if normalized.endswith("/"):
+            return relative.startswith(normalized)
+        return relative == normalized or relative.startswith(
+            f"{normalized.rstrip('/')}/"
+        )
 
     def _commit_worktree_changes(
         self,
@@ -17487,6 +17859,8 @@ class PortalImplementationDaemon:
         *,
         baseline_ref: str,
         replayable_consumed_proposal_ids: Sequence[str] = (),
+        record_event: bool = True,
+        allow_scope_adjudication: bool = True,
     ) -> Any:
         """Validate a candidate patch before task validation is dispatched."""
 
@@ -17755,7 +18129,8 @@ class PortalImplementationDaemon:
             )
         )
         if (
-            not result.accepted
+            allow_scope_adjudication
+            and not result.accepted
             and finding_codes
             == (ProposalFindingCode.PATH_OUTSIDE_SCOPE.value,)
         ):
@@ -17806,33 +18181,34 @@ class PortalImplementationDaemon:
             adjudication_projection = compact_scope_adjudication(
                 adjudication
             )
-            if (
-                proposal.proposal_id
-                not in self._implementation_scope_adjudications
-                and len(self._implementation_scope_adjudications)
-                >= MAX_PENDING_SCOPE_ADJUDICATIONS
-            ):
-                oldest_proposal_id = next(
-                    iter(self._implementation_scope_adjudications)
+            if record_event:
+                if (
+                    proposal.proposal_id
+                    not in self._implementation_scope_adjudications
+                    and len(self._implementation_scope_adjudications)
+                    >= MAX_PENDING_SCOPE_ADJUDICATIONS
+                ):
+                    oldest_proposal_id = next(
+                        iter(self._implementation_scope_adjudications)
+                    )
+                    self._implementation_scope_adjudications.pop(
+                        oldest_proposal_id,
+                        None,
+                    )
+                self._implementation_scope_adjudications[
+                    proposal.proposal_id
+                ] = adjudication
+                self._record_event(
+                    "implementation_scope_adjudicated",
+                    {
+                        "task_id": task.task_id,
+                        **adjudication_projection,
+                    },
                 )
-                self._implementation_scope_adjudications.pop(
-                    oldest_proposal_id,
-                    None,
-                )
-            self._implementation_scope_adjudications[
-                proposal.proposal_id
-            ] = adjudication
-            self._record_event(
-                "implementation_scope_adjudicated",
-                {
-                    "task_id": task.task_id,
-                    **adjudication_projection,
-                },
-            )
         secret_scope_examination = self._secret_change_scope_examination(
             result
         )
-        if secret_scope_examination is not None:
+        if record_event and secret_scope_examination is not None:
             self._record_event(
                 "implementation_secret_change_scope_examined",
                 {
@@ -17850,15 +18226,16 @@ class PortalImplementationDaemon:
                 else ""
             ),
         )
-        self._record_event(
-            "implementation_proposal_validated"
-            if result.accepted
-            else "implementation_proposal_rejected",
-            {
-                "task_id": task.task_id,
-                **compact,
-            },
-        )
+        if record_event:
+            self._record_event(
+                "implementation_proposal_validated"
+                if result.accepted
+                else "implementation_proposal_rejected",
+                {
+                    "task_id": task.task_id,
+                    **compact,
+                },
+            )
         return result
 
     @staticmethod
