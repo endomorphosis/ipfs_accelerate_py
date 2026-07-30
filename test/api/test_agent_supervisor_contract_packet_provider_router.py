@@ -167,6 +167,7 @@ def test_no_provider_receives_repository_path_corpus_or_expansion_bodies() -> No
     seen = []
 
     def capture(request):
+        assert json.loads(request.prompt) == request.to_dict()
         seen.append(request.to_dict())
         assert "repository_root" not in request
         assert "workspace" not in request
@@ -196,8 +197,25 @@ def test_no_provider_receives_repository_path_corpus_or_expansion_bodies() -> No
         "task_id",
         "provider_input",
         "bounds",
+        "response_instruction",
         "response_contract",
         "authority",
+    }
+    assert seen[0]["response_instruction"] == {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "provider-response-instruction@1"
+        ),
+        "mode": "bare-rfc8259-json-object",
+        "directive": (
+            "Return exactly one bare RFC 8259 JSON object matching "
+            "response_contract. The first output character must be '{' "
+            "and the last output character must be '}'. Emit no prose, "
+            "Markdown, code fence, progress update, or text before or "
+            "after the object. Do not announce or describe future work."
+        ),
+        "required_top_level_fields": ["proposal"],
+        "additional_text_forbidden": True,
     }
     assert seen[0]["response_contract"]["required"] == ["proposal"]
     assert seen[0]["response_contract"]["proposal_contract"]["required_any"] == [
@@ -205,6 +223,10 @@ def test_no_provider_receives_repository_path_corpus_or_expansion_bodies() -> No
         "files",
     ]
     assert seen[1]["response_contract"]["required"] == ["decision", "findings"]
+    assert seen[1]["response_instruction"]["required_top_level_fields"] == [
+        "decision",
+        "findings",
+    ]
     assert seen[0]["authority"]["repository_write_allowed"] is False
 
 
