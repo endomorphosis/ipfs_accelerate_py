@@ -26944,6 +26944,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             repo_root=self.repo_root,
         )
         checkpoint_dir = self._implementation_checkpoint_dir(task)
+        checkpoint_prompt_reference = f"${IMPLEMENTATION_CHECKPOINT_DIR_ENV}"
         checkpoint_manifest = self._implementation_checkpoint_manifest(task)
         timeout_policy = self._implementation_timeout_policy(task)
         rules = (
@@ -26958,9 +26959,10 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "The final response must list changed files and validation results.",
             (
                 "For resumable or long-running work, inspect and reuse valid "
-                f"coordinate checkpoints in {checkpoint_dir} before rerunning "
+                "coordinate checkpoints in "
+                f"{checkpoint_prompt_reference} before rerunning "
                 "completed work; write new checkpoints there atomically. The "
-                f"same path is available as ${IMPLEMENTATION_CHECKPOINT_DIR_ENV}."
+                "daemon resolves this variable to the shared durable path."
             ),
         )
         prompt_policy_appendix = str(
@@ -27183,7 +27185,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                         context_budget_authority
                     ),
                     "durable_checkpoint": {
-                        "directory": str(checkpoint_dir),
+                        "directory": checkpoint_prompt_reference,
                         "environment_variable": IMPLEMENTATION_CHECKPOINT_DIR_ENV,
                         "manifest_cid": checkpoint_manifest["manifest_cid"],
                         "file_count": checkpoint_manifest["file_count"],
@@ -27203,7 +27205,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     "retry_repair_failure_kind": retry_repair_failure_kind,
                     "validation_target_paths": retry_validation_paths,
                     "implied_validation_output_paths": implied_validation_paths,
-                    "checkpoint_directory": str(checkpoint_dir),
+                    "checkpoint_directory": checkpoint_prompt_reference,
                 },
                 acceptance={
                     "criteria": task.acceptance or "none listed",

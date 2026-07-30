@@ -16251,6 +16251,16 @@ def test_too_small_task_llm_context_budget_defers_before_attempt_charge(
 def test_low_context_prompt_serializes_admission_appendix_once(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
+    state_dir = (
+        repo
+        / "data"
+        / "agent_supervisor"
+        / "swissknife_contract_assurance"
+        / "parallel"
+        / "lanes"
+        / "lane-03"
+        / "state"
+    )
     protected_paths = [
         "implementation_plan/docs/contract-assurance-plan.md",
         "implementation_plan/docs/contract-assurance.objectives.md",
@@ -16261,9 +16271,9 @@ def test_low_context_prompt_serializes_admission_appendix_once(tmp_path):
     ]
     daemon = TodoImplementationDaemon(
         todo_path=repo / "todo.md",
-        state_path=repo / "state" / "task_state.json",
-        strategy_path=repo / "state" / "strategy.json",
-        events_path=repo / "state" / "events.jsonl",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
         repo_root=repo,
         task_header_prefix="## SCA-",
         implementation_protected_paths=protected_paths,
@@ -16303,12 +16313,18 @@ def test_low_context_prompt_serializes_admission_appendix_once(tmp_path):
     appendix = daemon._implementation_prompt_policy_appendix(task)
     prompt_record = json.loads(prompt)
     authority = prompt_record["authority"]
+    checkpoint_reference = (
+        f"${implementation_daemon_module.IMPLEMENTATION_CHECKPOINT_DIR_ENV}"
+    )
 
     assert authority["implementation_prompt_policy_appendix"] == appendix.strip()
     assert not any(
         "Admission policy" in rule
         for rule in authority["generic_prompt_policy"]
     )
+    assert str(daemon._implementation_checkpoint_dir(task)) not in prompt
+    assert authority["durable_checkpoint"]["directory"] == checkpoint_reference
+    assert prompt_record["scope"]["checkpoint_directory"] == checkpoint_reference
     assert len(prompt.encode("utf-8")) <= 2_048 * 4
 
 
