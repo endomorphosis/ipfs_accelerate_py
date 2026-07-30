@@ -58,6 +58,7 @@ from .implementation_daemon import (
     PortalTask,
     PortalTaskState,
     consume_stale_active_attempt,
+    implementation_liveness_path,
     implementation_task_claim_protected_fence_paths,
     load_json_dict,
     normalize_focus_tracks,
@@ -627,7 +628,9 @@ class PortalImplementationSupervisor:
                 "daemon_pid_alive": daemon_alive,
                 "repo_root": str(self.config.repo_root),
                 "current_status_path": str(self.config.state_path),
-                "progress_path": str(self.config.state_path),
+                "progress_path": str(
+                    implementation_liveness_path(self.config.state_path)
+                ),
                 "state_path": str(self.config.state_path),
                 "child_pid_path": str(self._managed_daemon_pid_path()),
                 "supervisor_lock_path": str(
@@ -2126,7 +2129,7 @@ class PortalImplementationSupervisor:
             daemon_dir=self.config.state_dir,
             runner=command,
             status_path=self.config.state_path,
-            progress_path=self.config.state_path,
+            progress_path=implementation_liveness_path(self.config.state_path),
             result_log_path=self.config.events_path,
             task_board_path=self.config.todo_path,
             supervisor_status_path=self.config.state_dir / f"{prefix}_supervisor_status.json",

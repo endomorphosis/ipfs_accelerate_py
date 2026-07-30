@@ -329,6 +329,29 @@ def _mcp_success_envelope(request: ProviderRequest) -> dict[str, Any]:
     }
 
 
+def _mcp_failure_envelope(
+    request_id: str,
+    error_code: str,
+    *,
+    unsafe_message: str,
+) -> dict[str, Any]:
+    return {
+        "jsonrpc": "2.0",
+        "id": request_id,
+        "result": {
+            "success": False,
+            "status": "error",
+            "error": {
+                "code": error_code,
+                "message": unsafe_message,
+                "cause": "UnsafeProviderDetail",
+            },
+            "error_code": error_code,
+            "error_type": error_code,
+        },
+    }
+
+
 def test_mcpplusplus_provider_pins_route_and_rejects_fallback(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -374,6 +397,133 @@ def test_mcpplusplus_provider_pins_route_and_rejects_fallback(
         match="routing receipt is invalid",
     ):
         provider(request)
+
+
+@pytest.mark.parametrize(
+    ("error_code", "expected_reason"),
+    [
+        ("timeout", ProviderReason.PROVIDER_TIMEOUT.value),
+        (
+            "output_limit_exceeded",
+            ProviderReason.PROVIDER_RESPONSE_TOO_LARGE.value,
+        ),
+        (
+            "invalid_router_output",
+            ProviderReason.PROVIDER_RESPONSE_MALFORMED.value,
+        ),
+        ("input_limit_exceeded", ProviderReason.PROMPT_TOO_LARGE.value),
+        ("invalid_request", ProviderReason.PACKET_MALFORMED.value),
+        ("no_match", ProviderReason.GROK_UNAVAILABLE.value),
+        ("router_error", ProviderReason.PROVIDER_FAILURE.value),
+        pytest.param(
+            "t" * 65,
+            ProviderReason.PROVIDER_FAILURE.value,
+            id="overlong-code-fails-generic",
+        ),
+    ],
+)
+def test_mcpplusplus_provider_classifies_only_bounded_tool_error_codes(
+    monkeypatch: pytest.MonkeyPatch,
+    error_code: str,
+    expected_reason: str,
+) -> None:
+    request = _mcp_provider_request()
+    request_id = (
+        f"sca615:{request.role.value}:"
+        f"{hashlib.sha256(request.prompt).hexdigest()}"
+    )
+    unsafe_message = (
+        "provider-secret=must-not-reflect prompt="
+        + request.prompt.decode("utf-8")
+    )
+    envelope = _mcp_failure_envelope(
+        request_id,
+        error_code,
+        unsafe_message=unsafe_message,
+    )
+
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.todo_daemon."
+        "implementation_daemon.urlopen",
+        lambda _request, *, timeout: _McpResponse(envelope),
+    )
+    provider = McpPlusPlusLlmGenerateProvider(
+        role=ProviderRole.GROK_IMPLEMENT,
+        endpoint_url="http://127.0.0.1:9002/mcp",
+        provider_selector="grok_cli",
+        model_selector="grok-4.5",
+    )
+
+    with pytest.raises(ProviderRoutingError) as failure:
+        provider(request)
+
+    assert failure.value.reason_code == expected_reason
+    assert unsafe_message not in str(failure.value)
+    assert request.prompt.decode("utf-8") not in str(failure.value)
+
+
+def test_mcpplusplus_failed_route_receipt_preserves_pinned_identities_only(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    unsafe_error_marker = "wire-error-secret-must-not-persist"
+    unsafe_prompt_marker = "wire-prompt-secret-must-not-persist"
+
+    def fake_urlopen(http_request, *, timeout):
+        request_payload = json.loads(http_request.data)
+        prompt = request_payload["params"]["arguments"]["prompt"]
+        unsafe_message = f"{unsafe_error_marker}:{prompt}"
+        return _McpResponse(
+            _mcp_failure_envelope(
+                request_payload["id"],
+                "timeout",
+                unsafe_message=unsafe_message,
+            )
+        )
+
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.todo_daemon."
+        "implementation_daemon.urlopen",
+        fake_urlopen,
+    )
+    provider = McpPlusPlusLlmGenerateProvider(
+        role=ProviderRole.GROK_IMPLEMENT,
+        endpoint_url="http://127.0.0.1:9002/mcp",
+        provider_selector="grok_cli",
+        model_selector="grok-4.5",
+    )
+    packet = build_production_contract_packet(
+        task_id="SCA-615",
+        snapshot_id=SNAPSHOT,
+        write_paths=[PATH],
+        validation_commands=["true"],
+        acceptance_criteria=unsafe_prompt_marker,
+    )
+
+    result = ImplementationProviderRouter(
+        grok_provider=provider,
+        admission_gate=_accept,
+    ).route(packet, current_snapshot_id=SNAPSHOT)
+
+    assert result.status is RouteStatus.REJECTED
+    assert result.reason_code == ProviderReason.PROVIDER_TIMEOUT.value
+    assert len(result.attempts) == 1
+    attempt = result.attempts[0]
+    assert attempt.status == "failed"
+    assert attempt.provider_identity == (
+        "mcp++:llm_generate:provider=grok_cli"
+    )
+    assert attempt.model_identity == "grok_cli:grok-4.5"
+    assert attempt.session_identity == ""
+    assert attempt.prompt_bytes > 0
+    assert attempt.response_bytes == 0
+
+    receipt = result.provider_receipt.to_dict()
+    encoded_receipt = json.dumps(receipt, sort_keys=True)
+    assert unsafe_error_marker not in encoded_receipt
+    assert unsafe_prompt_marker not in encoded_receipt
+    assert receipt["attempts"][0]["prompt_embedded"] is False
+    assert receipt["attempts"][0]["response_embedded"] is False
+    assert "error" not in receipt["attempts"][0]
 
 
 def test_mcpplusplus_codex_review_schema_is_strict_output_compatible() -> None:
@@ -1073,10 +1223,10 @@ def test_production_packet_forwards_only_compiler_selected_targeted_evidence(
         "TARGETED_SOURCE_MARKER" in reference.summary
         for reference in selected
     )
-
+    snapshot = f"git-commit:{context.capsule.tree_id}"
     packet = daemon.build_production_contract_packet_for_task(
         task,
-        snapshot_id=SNAPSHOT,
+        snapshot_id=snapshot,
         attempt=1,
         context_capsule=context.capsule,
     )
@@ -1107,7 +1257,7 @@ def test_production_packet_forwards_only_compiler_selected_targeted_evidence(
         admission_gate=_accept,
     ).route(
         packet,
-        current_snapshot_id=SNAPSHOT,
+        current_snapshot_id=snapshot,
         apply=False,
     )
 
@@ -1124,6 +1274,144 @@ def test_production_packet_forwards_only_compiler_selected_targeted_evidence(
         result.provider_receipt.to_dict(),
         sort_keys=True,
     )
+
+
+def test_daemon_bridges_verified_compiled_context_as_ids_and_handles(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _daemon(tmp_path, monkeypatch)
+    task = _task()
+    bounded_summary = (
+        "task=SCA-615; vector=cid:vector; merge=cid:merge; "
+        f"artifact=sha256:{'a' * 64}"
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_render_todo_vector_context",
+        lambda _task: bounded_summary,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_load_todo_vector_context",
+        lambda _task: {},
+    )
+    compiled = daemon._compile_implementation_context(task, attempt=1)
+    snapshot = f"git-commit:{compiled.capsule.tree_id}"
+
+    packet = daemon.build_production_contract_packet_for_task(
+        task,
+        snapshot_id=snapshot,
+        attempt=1,
+    )
+
+    payload = dict(packet.provider_input_payload)
+    contract_ids = set(payload["goal"]["contract_ids"])
+    selected = compiled.capsule.evidence[0]
+    assert compiled.capsule.capsule_id in contract_ids
+    assert compiled.receipt.receipt_id in contract_ids
+    assert selected.reference_content_id in contract_ids
+    assert selected.referenced_content_id in contract_ids
+    binding = payload["expansion_handles"][0]
+    assert binding["status"] == "verified"
+    assert binding["task_id"] == task.task_id
+    assert binding["production_snapshot_id"] == snapshot
+    selected_handle = next(
+        item
+        for item in payload["expansion_handles"]
+        if item.get("reference_id") == selected.reference_id
+    )
+    assert selected_handle["disposition"] == "selected"
+    assert "summary" not in selected_handle
+    assert bounded_summary not in json.dumps(payload, sort_keys=True)
+
+
+def test_daemon_omits_compiled_context_from_a_different_snapshot(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _daemon(tmp_path, monkeypatch)
+    task = _task()
+    daemon._compile_implementation_context(task, attempt=1)
+
+    packet = daemon.build_production_contract_packet_for_task(
+        task,
+        snapshot_id=SNAPSHOT,
+        attempt=1,
+    )
+
+    payload = dict(packet.provider_input_payload)
+    assert payload["goal"]["contract_ids"] == []
+    assert payload["goal"]["obligation_ids"] == []
+    assert payload["expansion_handles"][0]["status"] == (
+        "omitted_snapshot_mismatch"
+    )
+    assert payload["expansion_handles"][0]["context_snapshot_id"] != SNAPSHOT
+
+
+def test_daemon_keeps_immutable_context_valid_when_source_head_advances(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _daemon(tmp_path, monkeypatch)
+    task = _task()
+    compiled = daemon._compile_implementation_context(task, attempt=1)
+    compiled_snapshot = f"git-commit:{compiled.capsule.tree_id}"
+
+    monkeypatch.setattr(
+        daemon,
+        "_implementation_repository_and_tree_ids",
+        lambda _task: (
+            compiled.capsule.repository_id,
+            "newer-source-head-after-context-compilation",
+        ),
+    )
+
+    packet = daemon.build_production_contract_packet_for_task(
+        task,
+        snapshot_id=compiled_snapshot,
+        attempt=1,
+    )
+
+    payload = dict(packet.provider_input_payload)
+    assert compiled.capsule.capsule_id in payload["goal"]["contract_ids"]
+    assert payload["expansion_handles"][0]["status"] == "verified"
+    assert payload["expansion_handles"][0]["context_tree_id"] == (
+        compiled.capsule.tree_id
+    )
+
+
+def test_daemon_rejects_cross_task_or_tampered_compiled_context(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _daemon(tmp_path, monkeypatch)
+    task = _task()
+    compiled = daemon._compile_implementation_context(task, attempt=1)
+    snapshot = f"git-commit:{compiled.capsule.tree_id}"
+
+    with pytest.raises(
+        ProviderRoutingError,
+        match="stale or cross-task",
+    ) as cross_task:
+        daemon.build_production_contract_packet_for_task(
+            _task(task_id="SCA-OTHER"),
+            snapshot_id=snapshot,
+            attempt=1,
+        )
+    assert cross_task.value.reason_code == ProviderReason.PACKET_MALFORMED.value
+
+    object.__setattr__(compiled.capsule, "objective_id", "SCA-TAMPERED")
+    with pytest.raises(
+        ProviderRoutingError,
+        match="canonical verification",
+    ) as tampered:
+        daemon.build_production_contract_packet_for_task(
+            task,
+            snapshot_id=snapshot,
+            attempt=1,
+        )
+    assert tampered.value.reason_code == ProviderReason.PACKET_MALFORMED.value
 
 
 def test_build_production_provider_route_evaluation_helper() -> None:
@@ -1381,6 +1669,9 @@ def _persist_pre_policy_production_provider_failure(
     assert failed_attempt.prompt_bytes > 0
     assert failed_attempt.response_bytes == 0
     assert failed_attempt.response_digest == ""
+    assert failed_attempt.provider_identity == failed_provider.provider_identity
+    assert failed_attempt.model_identity == failed_provider.model_identity
+    assert failed_attempt.session_identity == ""
 
     log_path = daemon.implementation_log_dir / "sca-615-attempt-3.log"
     log_path.write_text(

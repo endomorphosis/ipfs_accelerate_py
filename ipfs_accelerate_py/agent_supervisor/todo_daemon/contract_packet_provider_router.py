@@ -1884,11 +1884,16 @@ class ImplementationProviderRouter:
         role: ProviderRole,
         reason_code: str,
         request: ProviderRequest | None = None,
+        provider: ProviderCallable | None = None,
     ) -> ProviderAttempt:
         return ProviderAttempt(
             role=role,
             status="failed",
             reason_code=reason_code,
+            provider_identity=str(
+                getattr(provider, "provider_identity", "") or ""
+            ),
+            model_identity=str(getattr(provider, "model_identity", "") or ""),
             prompt_bytes=len(request.prompt) if request else 0,
             prompt_tokens=request.prompt_tokens if request else 0,
             prompt_digest=_sha256(request.prompt) if request else "",
@@ -1989,6 +1994,8 @@ class ImplementationProviderRouter:
                 self._error_attempt(
                     ProviderRole.DETERMINISTIC_LOCAL,
                     exc.reason_code,
+                    locals().get("request"),
+                    self.deterministic_provider,
                 )
             )
             return self._result(
@@ -2004,6 +2011,7 @@ class ImplementationProviderRouter:
                     ProviderRole.DETERMINISTIC_LOCAL,
                     exc.reason_code,
                     locals().get("request"),
+                    self.deterministic_provider,
                 )
             )
             return self._result(
@@ -2147,7 +2155,10 @@ class ImplementationProviderRouter:
         except ProviderQuotaError as exc:
             attempts.append(
                 self._error_attempt(
-                    ProviderRole.GROK_IMPLEMENT, exc.reason_code, grok_request
+                    ProviderRole.GROK_IMPLEMENT,
+                    exc.reason_code,
+                    grok_request,
+                    self.grok_provider,
                 )
             )
             return self._local_fallback(
@@ -2164,7 +2175,10 @@ class ImplementationProviderRouter:
         except ProviderRoutingError as exc:
             attempts.append(
                 self._error_attempt(
-                    ProviderRole.GROK_IMPLEMENT, exc.reason_code, grok_request
+                    ProviderRole.GROK_IMPLEMENT,
+                    exc.reason_code,
+                    grok_request,
+                    self.grok_provider,
                 )
             )
             return self._result(
@@ -2213,7 +2227,10 @@ class ImplementationProviderRouter:
         except ProviderQuotaError as exc:
             attempts.append(
                 self._error_attempt(
-                    ProviderRole.CODEX_REVIEW, exc.reason_code, codex_request
+                    ProviderRole.CODEX_REVIEW,
+                    exc.reason_code,
+                    codex_request,
+                    self.codex_provider,
                 )
             )
             return self._finish_with_grok(
@@ -2227,7 +2244,10 @@ class ImplementationProviderRouter:
         except ProviderRoutingError as exc:
             attempts.append(
                 self._error_attempt(
-                    ProviderRole.CODEX_REVIEW, exc.reason_code, codex_request
+                    ProviderRole.CODEX_REVIEW,
+                    exc.reason_code,
+                    codex_request,
+                    self.codex_provider,
                 )
             )
             # Grok has already passed the supervisor gate.  Review degradation

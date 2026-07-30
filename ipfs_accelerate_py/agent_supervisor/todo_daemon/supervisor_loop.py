@@ -309,8 +309,57 @@ class SupervisorLoop:
         )
         return status
 
+    def _status_with_progress_liveness(
+        self,
+        child: SupervisedChild,
+        current_status: Mapping[str, Any],
+    ) -> Mapping[str, Any]:
+        """Overlay a newer heartbeat only when it belongs to this child."""
+
+        status_path = self.config.spec.resolve(self.config.spec.status_path)
+        progress_path = self.config.spec.resolve(self.config.spec.progress_path)
+        if progress_path is None or progress_path == status_path:
+            return current_status
+
+        progress_status = read_json(progress_path)
+        progress_heartbeat = heartbeat_snapshot(
+            progress_status,
+            stale_after_seconds=self.config.watchdog_stale_after_seconds,
+        )
+        try:
+            progress_pid = int(progress_heartbeat.pid)
+            child_pid = int(child.pid)
+        except (TypeError, ValueError):
+            return current_status
+        if progress_pid != child_pid or progress_heartbeat.heartbeat_at is None:
+            return current_status
+
+        current_heartbeat = heartbeat_snapshot(
+            current_status,
+            stale_after_seconds=self.config.watchdog_stale_after_seconds,
+        )
+        if (
+            current_heartbeat.heartbeat_at is not None
+            and progress_heartbeat.heartbeat_at <= current_heartbeat.heartbeat_at
+        ):
+            return current_status
+
+        merged_status = dict(current_status)
+        merged_status.update(
+            {
+                "heartbeat_at": progress_heartbeat.heartbeat_at.isoformat(),
+                "heartbeat_pid": progress_pid,
+                "heartbeat_source": "progress_path",
+            }
+        )
+        return merged_status
+
     def watchdog_decision(self, child: SupervisedChild) -> SupervisorLoopDecision:
         current_status = read_json(self.config.spec.resolve(self.config.spec.status_path))
+        current_status = self._status_with_progress_liveness(
+            child,
+            current_status,
+        )
         decision = self.default_watchdog(child, current_status)
         if decision.action != "continue":
             return decision

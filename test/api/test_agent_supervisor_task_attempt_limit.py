@@ -128,6 +128,88 @@ def test_canonical_attempt_limit_blocks_cooldown_fallback_retry(
         "TASK-001": canonical_task_cid,
     }
 
+    loaded_checkpoint = daemon.runtime_checkpoint_store.load()
+    assert loaded_checkpoint is not None
+    checkpoint_projection, _checkpoint_cursor = loaded_checkpoint
+    persisted_fingerprint = checkpoint_projection[
+        "diagnostic_event_fingerprints"
+    ]["task_attempt_limit_backpressure"]
+    assert persisted_fingerprint.startswith("sha256:")
+
+    # Force a full pass whose parsed task contract is byte-for-byte identical.
+    todo_path.write_text(
+        todo_path.read_text(encoding="utf-8") + "\n",
+        encoding="utf-8",
+    )
+    third = daemon.run_once()
+    repeated_events = [
+        json.loads(line)
+        for line in events_path.read_text(encoding="utf-8").splitlines()
+    ]
+
+    assert third["attempt_limited_task_ids"] == ["TASK-001"]
+    assert len(
+        [
+            event
+            for event in repeated_events
+            if event["type"] == "task_attempt_limit_backpressure"
+        ]
+    ) == 1
+
+    restarted = PortalImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_path,
+        strategy_path=strategy_path,
+        events_path=events_path,
+        repo_root=tmp_path,
+        task_header_prefix="## TASK-",
+        implement=True,
+        max_task_attempts=1,
+        merge_queue_dir=tmp_path / "merge-queue",
+        validation_cache_dir=tmp_path / "validation-cache",
+        worktree_pool_enabled=False,
+    )
+    assert (
+        restarted._last_attempt_limit_backpressure_fingerprint
+        == persisted_fingerprint
+    )
+
+    restarted.run_once()
+    restart_events = [
+        json.loads(line)
+        for line in events_path.read_text(encoding="utf-8").splitlines()
+    ]
+    assert len(
+        [
+            event
+            for event in restart_events
+            if event["type"] == "task_attempt_limit_backpressure"
+        ]
+    ) == 1
+
+    transitioned_state = PortalTaskState.load(state_path)
+    transitioned_state.implementation_attempts["TASK-001"] = 2
+    transitioned_state.implementation_attempts_by_cid[canonical_task_cid] = 2
+    transitioned_state.save(state_path)
+
+    transitioned = restarted.run_once()
+    transition_events = [
+        json.loads(line)
+        for line in events_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    backpressure_after_transition = [
+        event
+        for event in transition_events
+        if event["type"] == "task_attempt_limit_backpressure"
+    ]
+
+    assert transitioned["attempt_limited_task_ids"] == ["TASK-001"]
+    assert len(backpressure_after_transition) == 2
+    assert backpressure_after_transition[-1]["limited_tasks"][0][
+        "attempt_count"
+    ] == 2
+
 
 def test_completed_retry_repair_restores_attempt_budget_and_queue_eligibility(
     tmp_path,

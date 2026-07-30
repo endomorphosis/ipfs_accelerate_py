@@ -32,9 +32,11 @@ from ..context.context_compiler import (
     ContextCompileResult,
     ContextCompiler,
     ContextDeltaError,
+    ContextDeltaReceipt,
     ContextDeltaResult,
     ContextExpansionCancelled,
     RequiredContextOverflowError,
+    RetryContextCapsule,
     RetryContextResult,
     build_text_context_references,
     compile_retry_context,
@@ -45,6 +47,8 @@ from ..context.context_contracts import (
     ABSOLUTE_MAX_CONTEXT_BYTES,
     ContextBudget,
     ContextCapsule,
+    ContextDeltaCapsule,
+    ContextReference,
 )
 from ..proof.formal_verification_contracts import canonical_json, content_identity
 from ipfs_accelerate_py.model_catalog.identity import (
@@ -239,6 +243,14 @@ PRODUCTION_PROVIDER_ROUTE_BINDING_EVENT = (
 PRODUCTION_PROVIDER_ROUTE_PENDING_EVENT = (
     "production_provider_receipt_pending"
 )
+PRODUCTION_IMPLEMENTATION_CONTEXT_BINDING_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "production-implementation-context-binding@1"
+)
+PRODUCTION_CONTEXT_REFERENCE_HANDLE_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "production-context-reference-handle@1"
+)
 # Env overrides for injectable production providers (tests/operators).
 PRODUCTION_PROVIDER_ROUTE_ENABLED_ENV = (
     "IPFS_ACCELERATE_AGENT_PRODUCTION_PROVIDER_ROUTE"
@@ -267,6 +279,22 @@ DEFAULT_PRODUCTION_CODEX_MODEL = "gpt-5.6-sol"
 MCP_JSONRPC_ENVELOPE_MAX_BYTES = 64 * 1024
 MCP_JSONRPC_TOOL_NAME = "llm_generate"
 MCP_LLM_GENERATE_OPERATION = "text.generate"
+_MCP_TOOL_ERROR_CODE_MAX_BYTES = 64
+_MCP_TOOL_ERROR_CODE_PATTERN = re.compile(r"[a-z][a-z0-9_]{0,63}")
+_MCP_TOOL_ERROR_REASON_CODES = {
+    "input_limit_exceeded": ProviderReason.PROMPT_TOO_LARGE.value,
+    "invalid_request": ProviderReason.PACKET_MALFORMED.value,
+    "invalid_router_output": ProviderReason.PROVIDER_RESPONSE_MALFORMED.value,
+    "output_limit_exceeded": ProviderReason.PROVIDER_RESPONSE_TOO_LARGE.value,
+    "streaming_unsupported": ProviderReason.PACKET_MALFORMED.value,
+    "timeout": ProviderReason.PROVIDER_TIMEOUT.value,
+}
+_MCP_TOOL_UNAVAILABLE_ERROR_CODES = frozenset(
+    {
+        "no_match",
+        "selection_denied",
+    }
+)
 PRODUCTION_PROVIDER_OPERATIONAL_RETRY_REASONS = frozenset(
     {
         ProviderReason.GROK_QUOTA_EXHAUSTED.value,
@@ -287,6 +315,11 @@ MAX_IMPLEMENTATION_CHECKPOINT_FILES = 16
 MAX_IMPLEMENTATION_CHECKPOINT_BYTES = 512 * 1024 * 1024
 MAX_IMPLEMENTATION_CHECKPOINT_PATH_BYTES = 256
 IMPLEMENTATION_PROGRESS_HEARTBEAT_SECONDS = 15.0
+IMPLEMENTATION_RETRY_CONTEXT_BACKOFF_SECONDS = 300
+IMPLEMENTATION_LIVENESS_HEARTBEAT_SECONDS = 30.0
+IMPLEMENTATION_LIVENESS_SCHEMA = (
+    "ipfs_accelerate_py.agent-supervisor.implementation-liveness@1"
+)
 WORKTREE_POOL_ENABLED_ENV = "IPFS_ACCELERATE_AGENT_WORKTREE_POOL_ENABLED"
 WORKTREE_POOL_MAX_ENTRIES_ENV = "IPFS_ACCELERATE_AGENT_WORKTREE_POOL_MAX_ENTRIES"
 DISABLE_SUBAGENTS_ENV = "IPFS_ACCELERATE_AGENT_DISABLE_SUBAGENTS"
@@ -599,6 +632,60 @@ def _production_provider_response_schema(
     raise ValueError(f"unsupported production provider role: {role.value}")
 
 
+def _bounded_mcp_tool_error_code(payload: Any) -> str:
+    """Extract one consistent safe code without reflecting error text."""
+
+    if not isinstance(payload, Mapping):
+        return ""
+    values = [
+        payload.get("error_code"),
+        payload.get("error_type"),
+        payload.get("code"),
+    ]
+    nested_error = payload.get("error")
+    if isinstance(nested_error, Mapping):
+        values.append(nested_error.get("code"))
+    elif nested_error is not None:
+        return ""
+    present = [value for value in values if value is not None]
+    if not present:
+        return ""
+    normalized: list[str] = []
+    for value in present:
+        if not isinstance(value, str):
+            return ""
+        code = value.strip().casefold()
+        if (
+            not code
+            or len(code.encode("utf-8")) > _MCP_TOOL_ERROR_CODE_MAX_BYTES
+            or _MCP_TOOL_ERROR_CODE_PATTERN.fullmatch(code) is None
+        ):
+            return ""
+        normalized.append(code)
+    if len(set(normalized)) != 1:
+        return ""
+    return normalized[0]
+
+
+def _bounded_mcp_tool_failure_reason(
+    payload: Any,
+    *,
+    role: ProviderRole,
+) -> str:
+    """Map an MCP-owned bounded error code to a supervisor reason enum."""
+
+    code = _bounded_mcp_tool_error_code(payload)
+    if code in _MCP_TOOL_UNAVAILABLE_ERROR_CODES:
+        if role is ProviderRole.GROK_IMPLEMENT:
+            return ProviderReason.GROK_UNAVAILABLE.value
+        if role is ProviderRole.CODEX_REVIEW:
+            return ProviderReason.CODEX_UNAVAILABLE.value
+    return _MCP_TOOL_ERROR_REASON_CODES.get(
+        code,
+        ProviderReason.PROVIDER_FAILURE.value,
+    )
+
+
 @dataclass(slots=True)
 class McpPlusPlusLlmGenerateProvider:
     """Synchronous, bounded MCP++ ``llm_generate`` provider transport."""
@@ -844,7 +931,12 @@ class McpPlusPlusLlmGenerateProvider:
                 )
         except ProviderRoutingError:
             raise
-        except (OSError, ssl.SSLError, TimeoutError) as exc:
+        except TimeoutError as exc:
+            raise ProviderRoutingError(
+                "MCP++ transport exceeded its bounded timeout",
+                reason_code=ProviderReason.PROVIDER_TIMEOUT,
+            ) from exc
+        except (OSError, ssl.SSLError) as exc:
             raise ProviderRoutingError(
                 f"MCP++ transport failed: {type(exc).__name__}",
                 reason_code=ProviderReason.PROVIDER_FAILURE,
@@ -859,17 +951,24 @@ class McpPlusPlusLlmGenerateProvider:
         if "error" in envelope:
             raise ProviderRoutingError(
                 "MCP++ llm_generate returned a JSON-RPC error",
-                reason_code=ProviderReason.PROVIDER_FAILURE,
+                reason_code=_bounded_mcp_tool_failure_reason(
+                    envelope.get("error"),
+                    role=self.role,
+                ),
             )
         result = envelope.get("result")
-        if (
-            not isinstance(result, Mapping)
-            or result.get("success") is not True
-            or result.get("status") != "success"
-        ):
+        if not isinstance(result, Mapping):
+            raise ProviderRoutingError(
+                "MCP++ llm_generate response is malformed",
+                reason_code=ProviderReason.PROVIDER_RESPONSE_MALFORMED,
+            )
+        if result.get("success") is not True or result.get("status") != "success":
             raise ProviderRoutingError(
                 "MCP++ llm_generate did not succeed",
-                reason_code=ProviderReason.PROVIDER_FAILURE,
+                reason_code=_bounded_mcp_tool_failure_reason(
+                    result,
+                    role=self.role,
+                ),
             )
 
         binding = result.get("selected_binding")
@@ -3165,6 +3264,13 @@ def dependency_satisfied_references(
     return satisfied
 
 
+def implementation_liveness_path(state_path: Path) -> Path:
+    """Return the non-semantic, PID-bound heartbeat path for daemon liveness."""
+
+    selected = Path(state_path)
+    return selected.with_name(f"{selected.stem}.liveness.json")
+
+
 class PortalImplementationDaemon(AuthoritativeCompletionMixin):
     shared_todo_runner_class = TodoDaemonRunner
     shared_todo_hooks_class = TodoDaemonHooks
@@ -3262,6 +3368,8 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         self.state_path = state_path
         self.strategy_path = strategy_path
         self.events_path = events_path
+        self.liveness_path = implementation_liveness_path(self.state_path)
+        self._last_liveness_heartbeat_monotonic: float | None = None
         self.repo_root = (repo_root or REPO_ROOT).resolve()
         self.task_source: CanonicalTaskSource | None = None
         if configured_task_source is not None:
@@ -3655,6 +3763,28 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         self._current_runtime_wake_events: list[Any] = []
         self._current_runtime_wake_kinds: set[str] = set()
         self._runtime_checkpoint = self._load_runtime_checkpoint()
+        checkpoint_diagnostic_fingerprints = self._runtime_checkpoint.get(
+            "diagnostic_event_fingerprints"
+        )
+        checkpoint_backpressure_fingerprint = (
+            str(
+                checkpoint_diagnostic_fingerprints.get(
+                    "task_attempt_limit_backpressure"
+                )
+                or ""
+            )
+            if isinstance(checkpoint_diagnostic_fingerprints, Mapping)
+            else ""
+        )
+        self._last_attempt_limit_backpressure_fingerprint = (
+            checkpoint_backpressure_fingerprint
+            if re.fullmatch(
+                r"sha256:[0-9a-f]{64}",
+                checkpoint_backpressure_fingerprint,
+            )
+            else ""
+        )
+        self._diagnostic_checkpoint_dirty = False
         checkpoint_source_identity = self._runtime_checkpoint.get(
             "task_source_identity"
         )
@@ -3680,6 +3810,30 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             dict(cached_result) if isinstance(cached_result, Mapping) else None
         )
         self._last_safety_reconciliation_monotonic = time.monotonic()
+
+    def _publish_liveness_heartbeat(self, *, force: bool = False) -> bool:
+        """Publish bounded process liveness without mutating semantic state."""
+
+        now_monotonic = time.monotonic()
+        last_published = self._last_liveness_heartbeat_monotonic
+        if (
+            not force
+            and last_published is not None
+            and now_monotonic - last_published
+            < IMPLEMENTATION_LIVENESS_HEARTBEAT_SECONDS
+        ):
+            return False
+        write_json_atomic(
+            self.liveness_path,
+            {
+                "schema": IMPLEMENTATION_LIVENESS_SCHEMA,
+                "heartbeat_at": utc_now(),
+                "heartbeat_pid": os.getpid(),
+                "state_path": str(self.state_path),
+            },
+        )
+        self._last_liveness_heartbeat_monotonic = now_monotonic
+        return True
 
     @staticmethod
     def _task_source_metadata_text(value: Any) -> str:
@@ -6857,6 +7011,12 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "task_state": asdict(PortalTaskState.load(self.state_path)),
             "source_kinds": sorted(sources),
         }
+        if self._last_attempt_limit_backpressure_fingerprint:
+            projection["diagnostic_event_fingerprints"] = {
+                "task_attempt_limit_backpressure": (
+                    self._last_attempt_limit_backpressure_fingerprint
+                )
+            }
         task_source_identity = self._task_source_identity_record()
         if task_source_identity is not None:
             projection["task_source_identity"] = task_source_identity
@@ -6881,6 +7041,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             **projection,
             "cursor": event_cursor.to_record(),
         }
+        self._diagnostic_checkpoint_dirty = False
         result = {
             "changed": materialized.changed,
             "write_count": materialized.write_count,
@@ -7157,6 +7318,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         return result
 
     def run_once(self) -> dict[str, Any]:
+        self._publish_liveness_heartbeat()
         wake_kinds = self._consume_runtime_wake_kinds()
         self._current_runtime_wake_kinds = set(wake_kinds)
         source_digest, _source_metadata = self._runtime_source_head()
@@ -7558,19 +7720,34 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 attempt_limit_idle_reason = (
                     "all_selectable_ready_tasks_reached_max_task_attempts"
                 )
-            self._record_event(
-                "task_attempt_limit_backpressure",
-                {
-                    "reason": "max_task_attempts_reached",
-                    "max_task_attempts": self.max_task_attempts,
-                    "limited_task_count": len(attempt_limited_tasks),
-                    "limited_task_ids": [
-                        item["task_id"] for item in attempt_limited_tasks
-                    ],
-                    "limited_tasks": attempt_limited_tasks,
-                    "selection_idle_reason": attempt_limit_idle_reason,
-                },
-            )
+            backpressure_payload = {
+                "reason": "max_task_attempts_reached",
+                "max_task_attempts": self.max_task_attempts,
+                "limited_task_count": len(attempt_limited_tasks),
+                "limited_task_ids": [
+                    item["task_id"] for item in attempt_limited_tasks
+                ],
+                "limited_tasks": attempt_limited_tasks,
+                "selection_idle_reason": attempt_limit_idle_reason,
+            }
+            backpressure_fingerprint = "sha256:" + hashlib.sha256(
+                canonical_json(backpressure_payload).encode("utf-8")
+            ).hexdigest()
+            if (
+                backpressure_fingerprint
+                != self._last_attempt_limit_backpressure_fingerprint
+            ):
+                self._record_event(
+                    "task_attempt_limit_backpressure",
+                    backpressure_payload,
+                )
+                self._last_attempt_limit_backpressure_fingerprint = (
+                    backpressure_fingerprint
+                )
+                self._diagnostic_checkpoint_dirty = True
+        elif self._last_attempt_limit_backpressure_fingerprint:
+            self._last_attempt_limit_backpressure_fingerprint = ""
+            self._diagnostic_checkpoint_dirty = True
         selected = self._select_next_task(
             selectable_tasks,
             resolved_statuses,
@@ -7882,7 +8059,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         # execution state after the board projection above was selected. Do
         # not acknowledge that source head until a follow-up pass reconciles
         # those effects into the task projection.
-        if state_written and (
+        if (state_written or self._diagnostic_checkpoint_dirty) and (
             implementation_result is None or non_consuming_provider_deferral_result
         ):
             checkpoint_result = self._save_runtime_checkpoint(
@@ -17908,9 +18085,24 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 TARGETED_IMPLEMENTATION_EVIDENCE_POLICY
             ),
         }
-        evidence_handles = self._production_context_evidence_handles(
-            task,
-            context_capsule,
+        verified_contract_ids, verified_obligation_ids, expansion_handles = (
+            self._verified_production_context_packet_fields(
+                task,
+                snapshot_id=snapshot_id,
+                attempt=attempt,
+            )
+        )
+        context_snapshot_matches = bool(
+            context_capsule is not None
+            and snapshot_id == f"git-commit:{context_capsule.tree_id}"
+        )
+        evidence_handles = (
+            self._production_context_evidence_handles(
+                task,
+                context_capsule,
+            )
+            if context_snapshot_matches
+            else ()
         )
         if context_capsule is not None:
             extra_goal.update(
@@ -17920,17 +18112,36 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                         context_capsule.policy_revision
                     ),
                     "context_evidence_count": len(evidence_handles),
+                    "context_snapshot_matches": context_snapshot_matches,
                 }
             )
-        contract_ids = self._compact_value_list(
-            self._task_metadata_value(task, "interfaces", "contract ids")
+        contract_ids = tuple(
+            dict.fromkeys(
+                (
+                    *verified_contract_ids,
+                    *self._compact_value_list(
+                        self._task_metadata_value(
+                            task,
+                            "interfaces",
+                            "contract ids",
+                        )
+                    ),
+                )
+            )
         )
-        obligation_ids = self._compact_value_list(
-            self._task_metadata_value(
-                task,
-                "missing evidence",
-                "evidence subset",
-                "obligation ids",
+        obligation_ids = tuple(
+            dict.fromkeys(
+                (
+                    *verified_obligation_ids,
+                    *self._compact_value_list(
+                        self._task_metadata_value(
+                            task,
+                            "missing evidence",
+                            "evidence subset",
+                            "obligation ids",
+                        )
+                    ),
+                )
             )
         )
         read_paths = list(write_paths)
@@ -17949,9 +18160,231 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             contract_ids=contract_ids,
             obligation_ids=obligation_ids,
             evidence_handles=evidence_handles,
-            expansion_handles=(),
+            expansion_handles=expansion_handles,
             packet_id=f"packet:production:{task.task_id}:attempt-{int(attempt)}",
             extra_goal=extra_goal,
+        )
+
+    @staticmethod
+    def _production_context_reference_handle(
+        reference: ContextReference,
+        *,
+        selected: bool,
+    ) -> dict[str, Any]:
+        """Project one verified reference without copying its summary/body."""
+
+        body: dict[str, Any] = {
+            "schema": PRODUCTION_CONTEXT_REFERENCE_HANDLE_SCHEMA,
+            "reference_id": reference.reference_id,
+            "reference_content_id": reference.reference_content_id,
+            "referenced_content_id": reference.referenced_content_id,
+            "kind": reference.kind,
+            "tier": reference.tier.value,
+            "disposition": "selected" if selected else "deferred",
+            "repository_id": reference.repository_id,
+            "tree_id": reference.tree_id,
+            "path": reference.path,
+            "byte_count": int(reference.byte_count),
+            "coverage_ids": list(reference.coverage_ids),
+        }
+        return {"handle_id": content_identity(body), **body}
+
+    def _verified_production_context_packet_fields(
+        self,
+        task: PortalTask,
+        *,
+        snapshot_id: str,
+        attempt: int,
+    ) -> tuple[tuple[str, ...], tuple[str, ...], tuple[dict[str, Any], ...]]:
+        """Bridge a formally verified compiler result into a bounded packet.
+
+        Context compiled against the packet's exact Git root contributes only
+        content IDs and compact handles.  A source/target root mismatch is
+        recorded as an omission handle instead of falsely claiming that stale
+        context applies to the production snapshot.
+        """
+
+        current = self._last_implementation_context
+        if current is None:
+            return (), (), ()
+
+        try:
+            if isinstance(current, ContextCompileResult):
+                capsule = ContextCapsule.from_dict(current.capsule.to_record())
+                receipt = ContextCompilationReceipt.from_dict(
+                    current.receipt.to_record()
+                )
+                verified: ContextCompileResult | ContextDeltaResult = (
+                    ContextCompileResult(
+                        capsule=capsule,
+                        receipt=receipt,
+                        decisions=receipt.decisions,
+                    )
+                )
+                selected_references = capsule.evidence
+                deferred_references = capsule.expansion_references
+                context_mode = "base"
+                provider_context_id = capsule.capsule_id
+                context_ids = (
+                    capsule.capsule_id,
+                    receipt.receipt_id,
+                    capsule.invariant_core_id,
+                )
+                retry_capsule = None
+            elif isinstance(current, ContextDeltaResult):
+                verified = ContextDeltaResult(
+                    parent_capsule=ContextCapsule.from_dict(
+                        current.parent_capsule.to_record()
+                    ),
+                    delta_capsule=ContextDeltaCapsule.from_dict(
+                        current.delta_capsule.to_record()
+                    ),
+                    reconstructed_capsule=ContextCapsule.from_dict(
+                        current.reconstructed_capsule.to_record()
+                    ),
+                    receipt=ContextDeltaReceipt.from_dict(
+                        current.receipt.to_record()
+                    ),
+                    decisions=current.receipt.decisions,
+                )
+                retry = self._last_implementation_retry
+                if retry is None:
+                    raise ValueError(
+                        "compiled delta is missing its semantic retry binding"
+                    )
+                retry_capsule = RetryContextCapsule.from_dict(
+                    retry.capsule.to_record()
+                )
+                RetryContextResult(
+                    capsule=retry_capsule,
+                    delta_result=verified,
+                )
+                capsule = verified.parent_capsule
+                selected_references = verified.delta_capsule.evidence
+                deferred_references = ()
+                context_mode = "retry"
+                provider_context_id = retry_capsule.capsule_id
+                context_ids = (
+                    retry_capsule.capsule_id,
+                    verified.parent_capsule.capsule_id,
+                    verified.delta_capsule.capsule_id,
+                    verified.reconstructed_capsule.capsule_id,
+                    verified.receipt.receipt_id,
+                    verified.parent_capsule.invariant_core_id,
+                    retry_capsule.diagnostic_receipt_id,
+                )
+            else:
+                raise TypeError("implementation context has an unsupported type")
+        except (TypeError, ValueError) as exc:
+            raise ProviderRoutingError(
+                "compiled implementation context failed canonical verification",
+                reason_code=ProviderReason.PACKET_MALFORMED,
+            ) from exc
+
+        expected_repository_id, _ = (
+            self._implementation_repository_and_tree_ids(task)
+        )
+        expected_revision = self._canonical_ref(task)
+        goal = capsule.goal if isinstance(capsule.goal, Mapping) else {}
+        if (
+            capsule.repository_id != expected_repository_id
+            or capsule.objective_id != task.task_id
+            or capsule.objective_revision != expected_revision
+            or goal.get("task_id") != task.task_id
+        ):
+            raise ProviderRoutingError(
+                "compiled implementation context is stale or cross-task",
+                reason_code=ProviderReason.PACKET_MALFORMED,
+            )
+        if context_mode == "base":
+            compiled_attempt = goal.get("attempt")
+            if (
+                isinstance(compiled_attempt, bool)
+                or compiled_attempt != int(attempt)
+            ):
+                raise ProviderRoutingError(
+                    "compiled implementation context attempt does not match",
+                    reason_code=ProviderReason.PACKET_MALFORMED,
+                )
+        elif (
+            retry_capsule is None
+            or retry_capsule.repair_round != max(1, int(attempt) - 1)
+        ):
+            raise ProviderRoutingError(
+                "compiled retry context attempt does not match",
+                reason_code=ProviderReason.PACKET_MALFORMED,
+            )
+
+        expected_context_snapshot = f"git-commit:{capsule.tree_id}"
+        binding: dict[str, Any] = {
+            "schema": PRODUCTION_IMPLEMENTATION_CONTEXT_BINDING_SCHEMA,
+            "task_id": task.task_id,
+            "task_cid": expected_revision,
+            "attempt": int(attempt),
+            "context_mode": context_mode,
+            "provider_context_id": provider_context_id,
+            "context_receipt_id": verified.receipt.receipt_id,
+            "repository_id": capsule.repository_id,
+            "context_tree_id": capsule.tree_id,
+            "context_snapshot_id": expected_context_snapshot,
+            "production_snapshot_id": snapshot_id,
+        }
+        if snapshot_id != expected_context_snapshot:
+            binding.update(
+                {
+                    "status": "omitted_snapshot_mismatch",
+                    "omission_reason": (
+                        "compiled_context_not_bound_to_production_snapshot"
+                    ),
+                }
+            )
+            return (), (), (
+                {"handle_id": content_identity(binding), **binding},
+            )
+
+        binding["status"] = "verified"
+        binding_handle = {"handle_id": content_identity(binding), **binding}
+        handles = [
+            binding_handle,
+            *(
+                self._production_context_reference_handle(
+                    reference,
+                    selected=True,
+                )
+                for reference in selected_references
+            ),
+            *(
+                self._production_context_reference_handle(
+                    reference,
+                    selected=False,
+                )
+                for reference in deferred_references
+            ),
+        ]
+        contract_ids = {
+            binding_handle["handle_id"],
+            *context_ids,
+            *(
+                identifier
+                for reference in selected_references
+                for identifier in (
+                    reference.reference_content_id,
+                    reference.referenced_content_id,
+                )
+                if identifier
+            ),
+        }
+        obligation_ids = {
+            coverage_id
+            for reference in selected_references
+            for coverage_id in reference.coverage_ids
+        }
+        if retry_capsule is not None:
+            obligation_ids.update(retry_capsule.unresolved_requirement_ids)
+        return (
+            tuple(sorted(contract_ids)),
+            tuple(sorted(obligation_ids)),
+            tuple(handles),
         )
 
     def _production_admission_gate(self, proposal: Any) -> dict[str, Any]:
@@ -27478,7 +27911,8 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             )
         except RequiredContextOverflowError as exc:
             raise ImplementationRetryDeferred(
-                "implementation retry context budget exhausted"
+                "implementation retry context budget exhausted",
+                backoff_seconds=IMPLEMENTATION_RETRY_CONTEXT_BACKOFF_SECONDS,
             ) from exc
         try:
             result = compile_retry_context(
@@ -27564,7 +27998,8 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 RequiredContextOverflowError,
             ) as fallback_exc:
                 raise ImplementationRetryDeferred(
-                    "implementation retry context budget exhausted"
+                    "implementation retry context budget exhausted",
+                    backoff_seconds=IMPLEMENTATION_RETRY_CONTEXT_BACKOFF_SECONDS,
                 ) from fallback_exc
             retry_context_mode = "cid_only"
         except RequiredContextOverflowError as exc:
@@ -27692,15 +28127,28 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         read_only_outputs = tuple(
             path for path in task.outputs if path not in allowed_edit_paths
         )
-        protected_policy_text = (
-            "Operator-protected repository files (read-only; overrides every "
-            "task, output, and breadth instruction):\n"
-            + "\n".join(f"- {path}" for path in protected_edit_paths)
-            + "\nNever create, modify, rename, delete, replace, or regenerate "
-            "these exact files."
-            if protected_edit_paths
-            else ""
-        )
+        task_context_token_limit = self._task_context_token_limit(task)
+        if (
+            protected_edit_paths
+            and task_context_token_limit is not None
+            and task_context_token_limit <= 4_096
+        ):
+            protected_policy_text = (
+                "Operator-protected repository files are exactly the paths in "
+                "edit_policy.protected_paths. They are read-only and override "
+                "every task, output, and breadth instruction. Never create, "
+                "modify, rename, delete, replace, or regenerate them."
+            )
+        elif protected_edit_paths:
+            protected_policy_text = (
+                "Operator-protected repository files (read-only; overrides "
+                "every task, output, and breadth instruction):\n"
+                + "\n".join(f"- {path}" for path in protected_edit_paths)
+                + "\nNever create, modify, rename, delete, replace, or "
+                "regenerate these exact files."
+            )
+        else:
+            protected_policy_text = ""
         edit_policy = {
             "mode": (
                 "completion_gap_exact"
@@ -27723,7 +28171,6 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         provider_window, configured_budget, prompt_byte_limit = (
             self._implementation_provider_context_window_for_task(task)
         )
-        task_context_token_limit = self._task_context_token_limit(task)
         context_budget_authority = {
             "source": (
                 "task_metadata"
@@ -27787,23 +28234,77 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 if isinstance(index_path, Path)
                 else ""
             )
+            vector_references = build_text_context_references(
+                "Compact todo vector context:\n" + vector_text,
+                reference_prefix="todo-vector",
+                kind="todo-vector-context",
+                path=artifact_path,
+                repository_id=repository_id,
+                tree_id=tree_id,
+                priority=100,
+                chunk_bytes=6_144,
+                coverage_ids=tuple(
+                    self._compact_value_list(
+                        task.metadata.get("missing evidence", "")
+                    )
+                ),
+            )
+            # A large symbolic projection is intentionally carried as
+            # independently selectable content-addressed chunks.  Very small
+            # task budgets can otherwise admit none of those chunks because a
+            # single descriptor is larger than the remaining budget.  Keep one
+            # compact task-to-artifact binding ahead of the expandable
+            # projection so the provider always receives the symbolic identity
+            # it is expected to reason from, without copying the artifact.
+            record = (
+                context.get("record")
+                if isinstance(context, Mapping)
+                else None
+            )
+            vector_key = (
+                str(
+                    record.get("vector_key")
+                    or record.get("todo_vector_key")
+                    or ""
+                ).strip()
+                if isinstance(record, Mapping)
+                else ""
+            )
+            merge_key = (
+                str(record.get("merge_key") or "").strip()
+                if isinstance(record, Mapping)
+                else ""
+            )
+            artifact_content_id = str(
+                vector_references[0].metadata.get(
+                    "artifact_content_id", ""
+                )
+            )
+            binding_fields = [
+                f"task={task.task_id}",
+                *([f"vector={vector_key}"] if vector_key else []),
+                *([f"merge={merge_key}"] if merge_key else []),
+                f"artifact={artifact_content_id}",
+            ]
+            binding_references = build_text_context_references(
+                "Todo-vector binding: " + "; ".join(binding_fields),
+                reference_prefix="todo-vector-binding",
+                kind="todo-vector-binding",
+                path=artifact_path,
+                repository_id=repository_id,
+                tree_id=tree_id,
+                priority=200,
+                chunk_bytes=1_024,
+                coverage_ids=tuple(
+                    self._compact_value_list(
+                        task.metadata.get("missing evidence", "")
+                    )
+                ),
+            )
             evidence = (
                 *evidence,
-                *build_text_context_references(
-                    "Compact todo vector context:\n" + vector_text,
-                    reference_prefix="todo-vector",
-                    kind="todo-vector-context",
-                    path=artifact_path,
-                    repository_id=repository_id,
-                    tree_id=tree_id,
-                    priority=100,
-                    chunk_bytes=6_144,
-                    coverage_ids=tuple(
-                        self._compact_value_list(
-                            task.metadata.get("missing evidence", "")
-                        )
-                    ),
-                ),
+                *binding_references,
+                *vector_references,
             )
         compiler = ContextCompiler(
             configured_budget,
