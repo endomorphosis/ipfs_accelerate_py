@@ -8,7 +8,9 @@ import gc
 import hashlib
 import json
 import logging
+import math
 import os
+import shlex
 import signal
 import subprocess
 import sys
@@ -715,6 +717,48 @@ def bundle_taskboard_input_binding_path(lane: BundleLaneSpec) -> Path:
     """Return the durable source-to-runtime taskboard binding for one lane."""
 
     return lane.state_dir / f"{lane.state_prefix}_taskboard_input.json"
+
+
+def stale_bundle_lane_input_binding(
+    lane: BundleLaneSpec,
+    *,
+    repo_root: Path,
+) -> dict[str, str] | None:
+    """Diagnose a planned lane whose immutable runtime input is from an older plan.
+
+    Runtime taskboards are deliberately mutable after materialization because
+    the implementation daemon records task status there. Their accompanying
+    input binding is immutable, however. If a later plan points the same lane
+    state directory at different source bytes, launching it would only fail
+    inside :func:`materialize_bundle_lane_taskboard` after a coordination lease
+    and resource reservation had already been acquired.
+
+    This read-only preflight recognizes that one actionable mismatch without
+    rewriting either the binding or the runtime taskboard. Other malformed
+    binding conditions continue through the existing fail-closed materializer.
+    """
+
+    planned_digest = str(lane.source_todo_sha256 or "").strip().lower()
+    if len(planned_digest) != 64:
+        return None
+    binding_path = bundle_taskboard_input_binding_path(lane)
+    try:
+        existing_binding = json.loads(binding_path.read_text(encoding="utf-8"))
+    except (FileNotFoundError, OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(existing_binding, dict):
+        return None
+    bound_digest = str(
+        existing_binding.get("source_todo_sha256") or ""
+    ).strip().lower()
+    if not bound_digest or bound_digest == planned_digest:
+        return None
+    return {
+        "reason": "stale_input_binding",
+        "binding_path": repo_relative_path(repo_root, binding_path),
+        "bound_source_todo_sha256": bound_digest,
+        "planned_source_todo_sha256": planned_digest,
+    }
 
 
 def _write_bytes_atomically(path: Path, content: bytes) -> None:
@@ -3029,6 +3073,13 @@ def launch_bundle_lanes(
         id(lane): _lane_launch_policy_error(lane)
         for lane in lanes
     }
+    stale_input_bindings = {
+        id(lane): stale_bundle_lane_input_binding(
+            lane,
+            repo_root=repo_root,
+        )
+        for lane in lanes
+    }
     if lanes and all(policy_errors[id(lane)] for lane in lanes):
         return [
             {
@@ -3053,6 +3104,21 @@ def launch_bundle_lanes(
                         "accepted": False,
                         "error": policy_error,
                         "code": "G_EXECUTION_POLICY_DENIED",
+                    }
+                )
+                continue
+            stale_input_binding = stale_input_bindings[id(lane)]
+            if stale_input_binding is not None:
+                results.append(
+                    {
+                        "bundle_key": lane.bundle_key,
+                        "accepted": False,
+                        "error": (
+                            "immutable runtime taskboard input is bound to a "
+                            "different planned source digest"
+                        ),
+                        "code": "G_STALE_INPUT_BINDING",
+                        **stale_input_binding,
                     }
                 )
                 continue
@@ -3382,6 +3448,9 @@ class DynamicBundleScheduler:
         provider_capacity_source: Callable[..., Any] | None = None,
         provider_capacity_path: Path | None = None,
         external_task_state_paths: Sequence[Path | str] = (),
+        bundle_index_refresh_command: str = "",
+        bundle_index_refresh_timeout_seconds: float = 60.0,
+        bundle_index_refresher: Callable[[], Any] | None = None,
         resource_policy: ResourcePolicy | dict[str, Any] | None = None,
         **lane_options: Any,
     ) -> None:
@@ -3430,6 +3499,20 @@ class DynamicBundleScheduler:
         self.external_task_state_paths = tuple(
             Path(path).resolve() for path in external_task_state_paths
         )
+        self.bundle_index_refresh_command = str(
+            bundle_index_refresh_command or ""
+        ).strip()
+        self.bundle_index_refresh_timeout_seconds = float(
+            bundle_index_refresh_timeout_seconds
+        )
+        if (
+            not math.isfinite(self.bundle_index_refresh_timeout_seconds)
+            or self.bundle_index_refresh_timeout_seconds <= 0
+        ):
+            raise ValueError(
+                "bundle_index_refresh_timeout_seconds must be positive"
+            )
+        self._bundle_index_refresher = bundle_index_refresher
         self._running: dict[str, RunningBundleLane] = {}
         self._stop_event = threading.Event()
         self._lock = threading.RLock()
@@ -3439,6 +3522,9 @@ class DynamicBundleScheduler:
         self._last_scheduler_snapshot: SchedulerSnapshot | None = None
         self._last_resource_snapshot: ResourceScheduleSnapshot | None = None
         self._event_source_cache: dict[Path, tuple[int, int, list[dict[str, Any]]]] = {}
+        self._last_bundle_index_refresh_source_revision: (
+            tuple[tuple[str, int, int], ...] | None
+        ) = None
         self._plan_cache: tuple[
             tuple[Path, ...],
             tuple[tuple[str, int, int], ...],
@@ -3786,6 +3872,82 @@ class DynamicBundleScheduler:
             self._fence_external_active_members(lane, external_active_task_ids)
             for lane in base_lanes
         ]
+
+    def _refresh_bundle_index_if_needed(self) -> bool:
+        """Refresh a derived index before applying changed merge evidence."""
+
+        if (
+            self._bundle_index_refresher is None
+            and not self.bundle_index_refresh_command
+        ):
+            return False
+        receipt_revision = list(
+            bundle_member_completion_source_revision(self.state_root)
+        )
+        head = subprocess.run(
+            ["git", "rev-parse", "--verify", "HEAD"],
+            cwd=self.repo_root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        source_revision = tuple(
+            [
+                *receipt_revision,
+                (
+                    f"git:{head.stdout.strip() if head.returncode == 0 else ''}",
+                    0,
+                    0,
+                ),
+            ]
+        )
+        if (
+            self._last_bundle_index_refresh_source_revision is not None
+            and source_revision
+            == self._last_bundle_index_refresh_source_revision
+        ):
+            return False
+        try:
+            if self._bundle_index_refresher is not None:
+                self._bundle_index_refresher()
+            else:
+                command = shlex.split(self.bundle_index_refresh_command)
+                if not command:
+                    raise ValueError("bundle-index refresh command is empty")
+                completed = subprocess.run(
+                    command,
+                    cwd=self.repo_root,
+                    text=True,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.PIPE,
+                    timeout=self.bundle_index_refresh_timeout_seconds,
+                    check=False,
+                )
+                if completed.returncode != 0:
+                    error = str(completed.stderr or "").strip()[-2_000:]
+                    raise ValueError(
+                        "bundle-index refresh command failed with exit code "
+                        f"{completed.returncode}"
+                        + (f": {error}" if error else "")
+                    )
+        except subprocess.TimeoutExpired as exc:
+            raise ValueError(
+                "bundle-index refresh command timed out after "
+                f"{self.bundle_index_refresh_timeout_seconds:.3f}s"
+            ) from exc
+        except Exception as exc:
+            if isinstance(exc, ValueError):
+                raise
+            raise ValueError(
+                f"bundle-index refresh failed: {type(exc).__name__}: {exc}"
+            ) from exc
+        if not self.bundle_index_path.is_file():
+            raise ValueError(
+                "bundle-index refresh did not produce the configured index"
+            )
+        self._last_bundle_index_refresh_source_revision = source_revision
+        self._plan_cache = None
+        return True
 
     @staticmethod
     def _default_process_alive(handle: Any) -> bool:
@@ -4496,6 +4658,7 @@ class DynamicBundleScheduler:
         with self._lock:
             self._cycle += 1
             try:
+                self._refresh_bundle_index_if_needed()
                 discovered = self._plan()
                 self._last_discovery_error = ""
             except (OSError, ValueError, json.JSONDecodeError) as exc:
@@ -4610,6 +4773,29 @@ class DynamicBundleScheduler:
                     task_cids=current_task_cids,
                     include_claimability=True,
                 )
+                ready_input_binding_task_cids = {
+                    str(item.get("task_cid") or "")
+                    for item in decision_projection
+                    if self._projection_state(item) == "ready"
+                }
+                stale_input_bindings = {
+                    lane.task_cid: diagnosis
+                    for lane in registered
+                    if lane.task_cid in ready_input_binding_task_cids
+                    if (
+                        diagnosis := stale_bundle_lane_input_binding(
+                            lane,
+                            repo_root=self.repo_root,
+                        )
+                    )
+                }
+                for item in decision_projection:
+                    task_cid = str(item.get("task_cid") or "")
+                    diagnosis = stale_input_bindings.get(task_cid)
+                    if diagnosis is not None:
+                        item["state"] = "blocked"
+                        item["blocked_reason"] = "stale_input_binding"
+                        item["stale_input_binding"] = dict(diagnosis)
                 decision_projection_by_task_cid = {
                     str(item.get("task_cid") or ""): item
                     for item in decision_projection
@@ -4742,6 +4928,16 @@ class DynamicBundleScheduler:
                         })
                         continue
                     if lane.task_cid in reconciled:
+                        continue
+                    stale_input_binding = stale_input_bindings.get(lane.task_cid)
+                    if stale_input_binding is not None:
+                        decisions.append({
+                            "task_cid": lane.task_cid,
+                            "bundle_key": lane.bundle_key,
+                            "decision": "deferred",
+                            **stale_input_binding,
+                            "snapshot_id": decision_snapshot.snapshot_id,
+                        })
                         continue
                     scope_owner = running_by_bundle_key.get(lane.bundle_key)
                     if scope_owner is not None:
@@ -4968,6 +5164,16 @@ class DynamicBundleScheduler:
                     task_cids=current_task_cids,
                     include_claimability=True,
                 )
+                for item in projection:
+                    task_cid = str(item.get("task_cid") or "")
+                    diagnosis = stale_input_bindings.get(task_cid)
+                    if (
+                        diagnosis is not None
+                        and self._projection_state(item) == "ready"
+                    ):
+                        item["state"] = "blocked"
+                        item["blocked_reason"] = "stale_input_binding"
+                        item["stale_input_binding"] = dict(diagnosis)
                 current_snapshot = self._build_scheduler_snapshot(registered, projection)
                 if (
                     self._cycle % COORDINATION_COMPACTION_INTERVAL_CYCLES == 0
@@ -5096,6 +5302,20 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--start", action="store_true", help="Launch the planned lane supervisors")
     parser.add_argument("--max-lanes", type=int, default=1, help="Maximum concurrent leased workers")
     parser.add_argument("--poll-interval", type=float, default=5.0)
+    parser.add_argument(
+        "--bundle-index-refresh-command",
+        default="",
+        help=(
+            "Optional argv string that atomically refreshes a derived bundle "
+            "index before planning against a changed completion-receipt stream"
+        ),
+    )
+    parser.add_argument(
+        "--bundle-index-refresh-timeout-seconds",
+        type=float,
+        default=60.0,
+        help="Positive timeout for the optional bundle-index refresh command",
+    )
     parser.add_argument("--once", action="store_true", help="Run one reconciliation cycle and exit")
     implement_group = parser.add_mutually_exclusive_group()
     implement_group.add_argument("--implement", dest="implement", action="store_true")
@@ -5226,6 +5446,16 @@ def run_bundle_supervisor(args: argparse.Namespace) -> dict[str, Any]:
             provider_capacity_path=getattr(args, "provider_capacity_path", None),
             external_task_state_paths=tuple(
                 getattr(args, "external_task_state_path", ()) or ()
+            ),
+            bundle_index_refresh_command=getattr(
+                args,
+                "bundle_index_refresh_command",
+                "",
+            ),
+            bundle_index_refresh_timeout_seconds=getattr(
+                args,
+                "bundle_index_refresh_timeout_seconds",
+                60.0,
             ),
             resource_policy={
                 "max_lanes": getattr(args, "max_lanes", 1) or 1,
