@@ -7300,6 +7300,194 @@ def test_merge_train_rejects_resolver_merge_with_unverified_changed_submodule(
     assert "- Status: todo" in todo_path.read_text(encoding="utf-8")
 
 
+def test_merge_train_does_not_complete_when_parent_omits_reconciled_gitlink(
+    tmp_path: Path,
+    monkeypatch,
+):
+    repo, submodule, _base, target_submodule, candidate_submodule = (
+        _seed_parent_with_divergent_gitlinks(tmp_path)
+    )
+    branch_name = "implementation/auto-116"
+    candidate = _git(repo, "rev-parse", branch_name)
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        "## AUTO-116 Verify reconciled gitlink\n\n"
+        "- Status: todo\n"
+        "- Completion: manual\n",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "todo.md")
+    _git(repo, "commit", "-m", "add task board")
+    _git(submodule, "merge", "--no-ff", "--no-edit", "child-side")
+    reconciled_submodule = _git(submodule, "rev-parse", "HEAD")
+    assert _git(
+        submodule,
+        "merge-base",
+        "--is-ancestor",
+        candidate_submodule,
+        reconciled_submodule,
+    ) == ""
+    assert _git(
+        submodule,
+        "merge-base",
+        "--is-ancestor",
+        target_submodule,
+        reconciled_submodule,
+    ) == ""
+
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="AUTO-",
+        worktree_submodule_paths=["libs/child"],
+    )
+
+    def integrate_parent_but_omit_reconciled_gitlink(
+        selected_branch,
+        *_args,
+        **_kwargs,
+    ):
+        target_before = _git(repo, "rev-parse", "main")
+        target_tree = _git(repo, "rev-parse", f"{target_before}^{{tree}}")
+        merge_commit = _git(
+            repo,
+            "commit-tree",
+            target_tree,
+            "-p",
+            target_before,
+            "-p",
+            candidate,
+            "-m",
+            "merge parent without reconciled child gitlink",
+        )
+        _git(
+            repo,
+            "update-ref",
+            "refs/heads/main",
+            merge_commit,
+            target_before,
+        )
+        assert _git(repo, "rev-parse", "main:libs/child") == target_submodule
+        return {
+            "attempted": True,
+            "merged": True,
+            "returncode": 0,
+            "branch": selected_branch,
+            "merge_commit": merge_commit,
+            "submodule_merge_results": [
+                {
+                    "path": "libs/child",
+                    "merged": True,
+                    "commit": reconciled_submodule,
+                }
+            ],
+            "merged_gitlink_recording": {
+                "attempted": True,
+                "ok": True,
+                "committed": False,
+                "reason": "false_positive_fixture",
+            },
+        }
+
+    monkeypatch.setattr(
+        daemon,
+        "_merge_branch_to_main",
+        integrate_parent_but_omit_reconciled_gitlink,
+    )
+    request = SimpleNamespace(
+        branch_name=branch_name,
+        commit_sha=candidate,
+        task_id="AUTO-116",
+        priority="P0",
+        attempt=1,
+        metadata={
+            "target_binding_schema": MERGE_TARGET_BINDING_SCHEMA,
+            "target_repository_id": daemon.merge_target_repository_id,
+            "target_branch": daemon.resolved_merge_target_branch,
+            "changed_submodule_paths": ["libs/child"],
+            "task": {
+                "task_id": "AUTO-116",
+                "title": "Verify reconciled gitlink",
+                "status": "todo",
+                "completion": "manual",
+                "priority": "P0",
+                "track": "ops",
+            },
+        },
+    )
+
+    result = daemon._merge_train_callback(request)
+
+    assert result["merged"] is False
+    assert result["returncode"] == 2
+    assert result["reason"] == "post_merge_submodule_invariant_failed"
+    assert result["completion_skipped"] is True
+    invariant = result["post_merge_submodule_invariant"]
+    assert invariant["passed"] is False
+    assert (
+        invariant["integrated_handoff_proof"]["reason"]
+        == "changed_submodule_gitlink_not_integrated"
+    )
+    assert _git(repo, "merge-base", "--is-ancestor", candidate, "main") == ""
+    assert _git(repo, "rev-parse", "main:libs/child") == target_submodule
+    assert _git(repo, "rev-parse", "main:libs/child") != reconciled_submodule
+    assert "- Status: todo" in todo_path.read_text(encoding="utf-8")
+
+    # Candidate containment alone is also insufficient: the parent must record
+    # the exact child reconciliation commit produced by this merge.
+    _git(
+        repo,
+        "update-index",
+        "--add",
+        "--cacheinfo",
+        f"160000,{candidate_submodule},libs/child",
+    )
+    _git(repo, "commit", "-m", "record candidate but omit reconciliation")
+    candidate_only_target = _git(repo, "rev-parse", "HEAD")
+    exact_invariant = daemon._post_merge_changed_submodule_invariant(
+        candidate_commit=candidate,
+        target_commit=candidate_only_target,
+        changed_submodule_paths=["libs/child"],
+        submodule_merge_results=[
+            {
+                "path": "libs/child",
+                "merged": True,
+                "commit": reconciled_submodule,
+            }
+        ],
+    )
+    assert exact_invariant["integrated_handoff_proof"]["passed"] is True
+    assert exact_invariant["passed"] is False
+    assert exact_invariant["reason"] == "reconciled_submodule_gitlink_mismatch"
+
+    _git(
+        repo,
+        "update-index",
+        "--add",
+        "--cacheinfo",
+        f"160000,{reconciled_submodule},libs/child",
+    )
+    _git(repo, "commit", "-m", "record exact child reconciliation")
+    recorded_target = _git(repo, "rev-parse", "HEAD")
+    recorded_invariant = daemon._post_merge_changed_submodule_invariant(
+        candidate_commit=candidate,
+        target_commit=recorded_target,
+        changed_submodule_paths=["libs/child"],
+        submodule_merge_results=[
+            {
+                "path": "libs/child",
+                "merged": True,
+                "commit": reconciled_submodule,
+            }
+        ],
+    )
+    assert recorded_invariant["passed"] is True
+
+
 def _seed_parent_with_divergent_gitlinks(
     tmp_path: Path,
     *,
@@ -24188,6 +24376,7 @@ def test_implementation_daemon_invokes_llm_resolver_for_dirty_submodule_checkout
 def test_implementation_daemon_skips_dirty_submodule_resolver_when_branch_already_merged(tmp_path):
     repo, submodule = _seed_parent_with_submodule(tmp_path)
     _git(submodule, "branch", "implementation/auto-001-submodule-libs-child")
+    main_commit = _git(submodule, "rev-parse", "main")
     (submodule / "child.txt").write_text("dirty but unrelated\n", encoding="utf-8")
 
     capture_path = tmp_path / "unexpected-submodule-dirty-prompt.txt"
@@ -24230,6 +24419,7 @@ def test_implementation_daemon_skips_dirty_submodule_resolver_when_branch_alread
             "default_branch": "main",
             "merged": True,
             "reason": "already_merged",
+            "commit": main_commit,
         }
     ]
     assert not capture_path.exists()

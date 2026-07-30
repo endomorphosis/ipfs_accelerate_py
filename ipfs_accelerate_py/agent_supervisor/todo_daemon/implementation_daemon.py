@@ -9105,6 +9105,95 @@ class PortalImplementationDaemon:
             changed_submodule_paths=changed_submodule_paths,
         )
 
+    def _post_merge_changed_submodule_invariant(
+        self,
+        *,
+        candidate_commit: str,
+        target_commit: str,
+        changed_submodule_paths: Any,
+        submodule_merge_results: Any,
+        existing_handoff: bool = False,
+    ) -> dict[str, Any]:
+        """Prove the parent records, and contains, every reconciled child."""
+        proof = self._integrated_changed_submodule_proof(
+            candidate_commit=candidate_commit,
+            target_commit=target_commit,
+            changed_submodule_paths=changed_submodule_paths,
+        )
+        result: dict[str, Any] = {
+            "passed": False,
+            "reason": str(
+                proof.get("reason")
+                or "candidate_submodule_handoff_unproven"
+            ),
+            "candidate_commit": candidate_commit,
+            "target_commit": target_commit,
+            "integrated_handoff_proof": proof,
+            "paths": [],
+        }
+        if proof.get("passed") is not True:
+            return result
+
+        merge_rows: dict[str, list[Mapping[str, Any]]] = {}
+        if isinstance(submodule_merge_results, Sequence) and not isinstance(
+            submodule_merge_results,
+            (str, bytes, bytearray),
+        ):
+            for item in submodule_merge_results:
+                if not isinstance(item, Mapping):
+                    continue
+                path = str(item.get("path") or "").strip("/")
+                if path:
+                    merge_rows.setdefault(path, []).append(item)
+
+        for proof_row in proof.get("paths", []):
+            path = str(proof_row.get("path") or "")
+            chain = proof_row.get("chain") or []
+            leaf = chain[-1] if chain else {}
+            target_gitlink = str(leaf.get("target_gitlink") or "").casefold()
+            rows = merge_rows.get(path, [])
+            row = rows[0] if len(rows) == 1 else {}
+            reconciled_commit = str(
+                row.get("commit") or ""
+            ).strip().casefold()
+            check: dict[str, Any] = {
+                "path": path,
+                "candidate_gitlink": str(
+                    leaf.get("candidate_gitlink") or ""
+                ).casefold(),
+                "target_gitlink": target_gitlink,
+                "reconciled_commit": (
+                    target_gitlink if existing_handoff else reconciled_commit
+                ),
+            }
+            if len(rows) != 1:
+                check["reason"] = (
+                    "reconciled_submodule_result_missing"
+                    if not rows
+                    else "reconciled_submodule_result_ambiguous"
+                )
+            elif row.get("merged") is not True:
+                check["reason"] = "reconciled_submodule_result_failed"
+            elif not existing_handoff and not reconciled_commit:
+                check["reason"] = "reconciled_submodule_commit_missing"
+            elif not existing_handoff and target_gitlink != reconciled_commit:
+                check["reason"] = "reconciled_submodule_gitlink_mismatch"
+            else:
+                check.update(
+                    passed=True,
+                    reason="reconciled_submodule_gitlink_recorded",
+                )
+            result["paths"].append(check)
+            if check.get("passed") is not True:
+                result["reason"] = check["reason"]
+                return result
+
+        result.update(
+            passed=True,
+            reason="managed_submodule_handoff_verified",
+        )
+        return result
+
     def _merge_train_callback(self, request: Any) -> dict[str, Any]:
         """Adapt one durable queue request to the daemon's mature merge path."""
 
@@ -9558,6 +9647,48 @@ class PortalImplementationDaemon:
             )
         if branch_rehydration.get("rehydrated", False):
             result["branch_rehydration"] = branch_rehydration
+        if (
+            result.get("merged") or result.get("already_merged")
+        ) and (
+            isinstance(raw_changed_submodule_paths, Sequence)
+            and not isinstance(
+                raw_changed_submodule_paths,
+                (str, bytes, bytearray),
+            )
+            and bool(raw_changed_submodule_paths)
+        ):
+            target_commit = self._run_git(
+                ["rev-parse", target_branch],
+                cwd=self.repo_root,
+            ).stdout.strip()
+            post_merge_submodule_invariant = (
+                self._post_merge_changed_submodule_invariant(
+                    candidate_commit=implementation_commit,
+                    target_commit=target_commit,
+                    changed_submodule_paths=raw_changed_submodule_paths,
+                    submodule_merge_results=submodule_merge_results,
+                    existing_handoff=initially_integrated,
+                )
+            )
+            result["post_merge_submodule_invariant"] = (
+                post_merge_submodule_invariant
+            )
+            if post_merge_submodule_invariant.get("passed") is not True:
+                result.update(
+                    {
+                        "merged": False,
+                        "already_merged": False,
+                        "returncode": 2,
+                        "reason": "post_merge_submodule_invariant_failed",
+                        "integration_occurred": self._git_ref_is_ancestor(
+                            implementation_commit,
+                            target_branch,
+                        ),
+                        "completion_skipped": True,
+                        "target_commit": target_commit,
+                    }
+                )
+                return result
         if (
             (
                 result.get("merged")
@@ -20543,6 +20674,10 @@ class PortalImplementationDaemon:
                     "default_branch": default_branch,
                     "merged": True,
                     "reason": "already_merged",
+                    "commit": self._run_git(
+                        ["rev-parse", default_branch],
+                        cwd=source,
+                    ).stdout.strip(),
                 }
                 if stale_config_repair.get("repairs"):
                     result["stale_submodule_worktree_config_repair"] = stale_config_repair
