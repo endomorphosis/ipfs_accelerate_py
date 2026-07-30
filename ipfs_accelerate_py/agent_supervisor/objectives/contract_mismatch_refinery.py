@@ -1,8 +1,10 @@
 """Bounded projection of MCP contract edit packets into a repair task board.
 
 ``ContractMismatchRefinery`` is deliberately not a source scanner.  It accepts
-only the narrow, already-admitted ``CodeEditPacket@1`` produced by SCA-100 and
-projects accelerator-owned packets into agent-supervisor Markdown tasks.
+the narrow, already-admitted ``CodeEditPacket@1`` produced by SCA-100 and,
+after decision validation, the proof-gated ``ContractRepairEditPacket@2``
+path.  Both project accelerator-owned packets into agent-supervisor Markdown
+tasks without letting a provider expand write scope.
 
 The projection is safe to run repeatedly:
 
@@ -34,8 +36,19 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Final
 
 from ..analysis.contract_mismatch_analyzer import SourceOwner, route_source_owner
+from ..analysis.contract_repair_contracts import (
+    DecisionDisposition,
+    RepairTargetDecision,
+)
+from ..proof.contract_repair_edit_packet import (
+    CONTRACT_REPAIR_EDIT_PACKET_INTERFACE,
+    CONTRACT_REPAIR_EDIT_PACKET_SCHEMA,
+    ContractRepairEditPacket,
+    ContractRepairEditPacketError,
+)
 from ..proof.formal_verification_contracts import canonical_json_bytes
 from ..proof.mcp_contract_edit_packet import (
+    WRITE_PATH_AUTHORITY_TARGET_DECISION,
     ContractEditPacketError,
     McpContractEditPacket,
 )
@@ -105,6 +118,8 @@ class ContractMismatchRefineryReason(str, Enum):
     MALFORMED_DEPENDENCY = "malformed_dependency"
     SELF_DEPENDENCY = "self_dependency"
     MALFORMED_BOARD = "malformed_board"
+    DECISION_INVALID = "decision_invalid"
+    SCOPE_EXPANSION = "scope_expansion"
 
 
 class ContractMismatchRefineryError(ValueError):
@@ -312,6 +327,10 @@ class ContractMismatchRefineryPolicy:
     cooldown_seconds: int = DEFAULT_COOLDOWN_SECONDS
     board_namespace: str = DEFAULT_BOARD_NAMESPACE
     goal_id: str = DEFAULT_GOAL_ID
+    # When true, accept ContractRepairEditPacket@2 after decision validation.
+    # Default true so the integration cutover can project admitted @2 packets;
+    # validation still fails closed without an admitted decision binding.
+    accept_proof_gated_packets: bool = True
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -347,6 +366,11 @@ class ContractMismatchRefineryPolicy:
             _one_line(self.board_namespace, "board_namespace"),
         )
         object.__setattr__(self, "goal_id", _one_line(self.goal_id, "goal_id"))
+        if not isinstance(self.accept_proof_gated_packets, bool):
+            raise ContractMismatchRefineryError(
+                "accept_proof_gated_packets must be a boolean",
+                reason_code=ContractMismatchRefineryReason.MALFORMED_PACKET,
+            )
 
 
 @dataclass(frozen=True, slots=True)
@@ -857,19 +881,268 @@ def _priority(reason_codes: Sequence[str]) -> str:
     return "P0" if any(token in text for token in _SECURITY_TOKENS) else "P1"
 
 
+def _is_contract_repair_edit_packet(
+    raw: McpContractEditPacket | ContractRepairEditPacket | Mapping[str, Any],
+) -> bool:
+    if isinstance(raw, ContractRepairEditPacket):
+        return True
+    if isinstance(raw, McpContractEditPacket):
+        return False
+    if not isinstance(raw, Mapping):
+        return False
+    schema = str(raw.get("schema") or "")
+    interface = str(raw.get("interface") or "")
+    return (
+        schema == CONTRACT_REPAIR_EDIT_PACKET_SCHEMA
+        or interface == CONTRACT_REPAIR_EDIT_PACKET_INTERFACE
+        or "contract-repair-edit-packet@2" in schema
+    )
+
+
+def _coerce_mcp_or_repair_packet(
+    raw: McpContractEditPacket | ContractRepairEditPacket | Mapping[str, Any],
+) -> McpContractEditPacket | ContractRepairEditPacket:
+    if isinstance(raw, (McpContractEditPacket, ContractRepairEditPacket)):
+        return raw
+    if not isinstance(raw, Mapping):
+        raise ContractMismatchRefineryError(
+            "packet must be a mapping or typed packet",
+            reason_code=ContractMismatchRefineryReason.MALFORMED_PACKET,
+        )
+    if _is_contract_repair_edit_packet(raw):
+        return ContractRepairEditPacket.from_dict(raw)
+    return McpContractEditPacket.from_dict(raw)
+
+
+def _validate_decision_for_packet(
+    packet: McpContractEditPacket | ContractRepairEditPacket,
+    *,
+    decision: RepairTargetDecision | None,
+) -> None:
+    """Require an admitted decision and forbid provider scope expansion."""
+
+    if isinstance(packet, ContractRepairEditPacket):
+        if not packet.decision_id:
+            raise ContractMismatchRefineryError(
+                "ContractRepairEditPacket@2 requires a decision identity",
+                reason_code=ContractMismatchRefineryReason.DECISION_INVALID,
+            )
+        write_paths = tuple(packet.write_paths)
+        if decision is None:
+            # Packet already embeds decision-bound write paths from
+            # materialization; without a replay decision we still refuse empty
+            # write authority.
+            if not write_paths:
+                raise ContractMismatchRefineryError(
+                    "decision-bound packet has no write paths",
+                    reason_code=ContractMismatchRefineryReason.DECISION_INVALID,
+                )
+            return
+        if decision.content_id != packet.decision_id:
+            raise ContractMismatchRefineryError(
+                "packet decision_id does not match the validated decision",
+                reason_code=ContractMismatchRefineryReason.DECISION_INVALID,
+            )
+        if decision.disposition is not DecisionDisposition.ADMITTED:
+            raise ContractMismatchRefineryError(
+                "refinery accepts @2 only for an admitted decision",
+                reason_code=ContractMismatchRefineryReason.DECISION_INVALID,
+            )
+        if write_paths != tuple(decision.permitted_write_paths):
+            raise ContractMismatchRefineryError(
+                "packet write paths expand beyond the validated decision",
+                reason_code=ContractMismatchRefineryReason.SCOPE_EXPANSION,
+            )
+        if not set(packet.read_paths).issuperset(decision.permitted_read_paths):
+            raise ContractMismatchRefineryError(
+                "packet read paths drop decision read authority",
+                reason_code=ContractMismatchRefineryReason.DECISION_INVALID,
+            )
+        return
+
+    # McpContractEditPacket @2 decision path embeds authority metadata.
+    goal = packet.context_capsule.goal
+    authority = packet.context_capsule.authority
+    scope = packet.context_capsule.scope
+    write_authority = str(
+        scope.get("write_path_authority")
+        or authority.get("write_path_authority")
+        or ""
+    )
+    decision_id = str(
+        goal.get("decision_id")
+        or authority.get("decision_id")
+        or scope.get("decision_id")
+        or ""
+    )
+    packet_version = goal.get("packet_version") or authority.get("packet_version")
+    decision_bound = (
+        write_authority == WRITE_PATH_AUTHORITY_TARGET_DECISION
+        or packet_version == 2
+        or bool(decision_id)
+    )
+    if not decision_bound:
+        return
+    if not decision_id:
+        raise ContractMismatchRefineryError(
+            "decision-bound MCP packet is missing decision_id",
+            reason_code=ContractMismatchRefineryReason.DECISION_INVALID,
+        )
+    if decision is None:
+        if not packet.write_paths:
+            raise ContractMismatchRefineryError(
+                "decision-bound packet has no write paths",
+                reason_code=ContractMismatchRefineryReason.DECISION_INVALID,
+            )
+        return
+    if decision.content_id != decision_id:
+        raise ContractMismatchRefineryError(
+            "MCP packet decision_id does not match the validated decision",
+            reason_code=ContractMismatchRefineryReason.DECISION_INVALID,
+        )
+    if decision.disposition is not DecisionDisposition.ADMITTED:
+        raise ContractMismatchRefineryError(
+            "refinery accepts decision-bound packets only when admitted",
+            reason_code=ContractMismatchRefineryReason.DECISION_INVALID,
+        )
+    if tuple(packet.write_paths) != tuple(decision.permitted_write_paths):
+        raise ContractMismatchRefineryError(
+            "provider cannot expand write scope beyond the decision",
+            reason_code=ContractMismatchRefineryReason.SCOPE_EXPANSION,
+        )
+
+
 def _packet_task(
-    packet: McpContractEditPacket,
+    packet: McpContractEditPacket | ContractRepairEditPacket,
     *,
     policy: ContractMismatchRefineryPolicy,
     now_epoch: int,
     evidence_record_ids: Iterable[str] = (),
+    decision: RepairTargetDecision | None = None,
 ) -> ContractRepairTask:
+    if isinstance(packet, ContractRepairEditPacket):
+        if not policy.accept_proof_gated_packets:
+            raise ContractMismatchRefineryError(
+                "proof-gated @2 packets are disabled by policy",
+                reason_code=ContractMismatchRefineryReason.UNSUPPORTED_FINDING,
+            )
+        _validate_decision_for_packet(packet, decision=decision)
+        finding_id = _one_line(packet.trace_id, "finding_id")
+        task_id = deterministic_repair_task_id(
+            finding_id, board_namespace=policy.board_namespace
+        )
+        write_paths = _paths(packet.write_paths, "write_paths")
+        read_paths = _paths(packet.read_paths, "read_paths")
+        # Task affected_paths track the admitted write allowlist for @2.
+        affected_paths = write_paths
+        contract_ids = _strings(
+            (
+                packet.sender_expected_contract_id,
+                packet.receiver_expected_contract_id,
+            ),
+            "contract_ids",
+            required=True,
+        )
+        obligations = _strings(
+            packet.post_edit_obligation_ids, "obligation_ids", required=True
+        )
+        symbols = _strings(
+            (packet.target_span.path, packet.strategy.value),
+            "affected_symbols",
+            required=True,
+        )
+        validation = _strings(
+            packet.validation_commands, "validation_commands", required=True
+        )
+        reproof = _strings(
+            packet.reproof_commands, "reproof_commands", required=True
+        )
+        reason_codes = _strings(
+            (
+                f"strategy:{packet.strategy.value}",
+                f"decision:{packet.decision_id}",
+            ),
+            "reason_codes",
+        )
+        finding_record_id = _one_line(packet.decision_id, "finding_record_id")
+        records = tuple(
+            sorted(
+                {
+                    *(
+                        _one_line(item, "evidence_record_id")
+                        for item in evidence_record_ids
+                    ),
+                    finding_record_id,
+                }
+            )
+        )
+        if len(records) > MAX_EVIDENCE_REVISIONS:
+            retained = tuple(
+                item for item in records if item != finding_record_id
+            )[-(MAX_EVIDENCE_REVISIONS - 1) :]
+            records = tuple(sorted((*retained, finding_record_id)))
+        title = _one_line(
+            f"Repair contract {contract_ids[0]} at {packet.target_span.path}",
+            "title",
+        )
+        return ContractRepairTask(
+            task_id=task_id,
+            finding_id=finding_id,
+            finding_record_id=finding_record_id,
+            evidence_record_ids=records,
+            packet_id=packet.packet_id,
+            snapshot_id=packet.roots.tree_id,
+            source_task_id=packet.decision_id,
+            title=title,
+            priority=_priority(reason_codes),
+            status="todo",
+            blocked_reason="",
+            contract_ids=contract_ids,
+            obligation_ids=obligations,
+            affected_symbols=symbols,
+            affected_paths=affected_paths,
+            read_paths=read_paths,
+            write_paths=write_paths,
+            dependency_ids=(),
+            failed_premise_ids=(),
+            reason_codes=reason_codes,
+            reproduction=validation,
+            validation_commands=validation,
+            reproof_commands=reproof,
+            expected_postcondition={
+                "decision_id": packet.decision_id,
+                "strategy": packet.strategy.value,
+                "target_path": packet.target_span.path,
+            },
+            bounded_contract_slice={
+                "decision_id": packet.decision_id,
+                "write_paths": list(write_paths),
+                "clauses": [item.to_dict() for item in packet.clauses],
+            },
+            counterexample_id=(
+                packet.counterexample_refs[0].content_id
+                if packet.counterexample_refs
+                else packet.decision_id
+            ),
+            counterexample={
+                "refs": [item.to_dict() for item in packet.counterexample_refs]
+            },
+            expansion_handles=tuple(
+                item.to_dict() for item in packet.expansion_handles
+            ),
+            goal_id=policy.goal_id,
+            board_namespace=policy.board_namespace,
+            last_observed_epoch=now_epoch,
+            completion_authoritative=False,
+        )
+
     task_id = deterministic_repair_task_id(
         packet.finding_id, board_namespace=policy.board_namespace
     )
     goal = packet.context_capsule.goal
     scope = packet.context_capsule.scope
     acceptance = packet.context_capsule.acceptance
+    _validate_decision_for_packet(packet, decision=decision)
     contract_ids = _strings(packet.contract_ids, "contract_ids", required=True)
     obligations = _strings(
         packet.obligation_ids, "obligation_ids", required=True
@@ -1095,15 +1368,25 @@ class ContractMismatchRefinery:
 
     def refine(
         self,
-        packets: Iterable[McpContractEditPacket | Mapping[str, Any]],
+        packets: Iterable[
+            McpContractEditPacket
+            | ContractRepairEditPacket
+            | Mapping[str, Any]
+        ],
         *,
         current_snapshot_id: str,
         existing_board: str = "",
         current_open_work: int = 0,
         now_epoch: int = 0,
         current_finding_record_ids: Mapping[str, str] | None = None,
+        target_decisions: Mapping[str, RepairTargetDecision] | None = None,
     ) -> ContractMismatchRefineryResult:
-        """Project packets without scanning source or asserting completion."""
+        """Project packets without scanning source or asserting completion.
+
+        ``target_decisions`` optionally maps decision_id (or finding/trace id)
+        to a ``RepairTargetDecision``.  When present, @2 packets are admitted
+        only after that decision validates and write paths match exactly.
+        """
 
         snapshot = _one_line(current_snapshot_id, "current_snapshot_id")
         open_work = _bounded_int(
@@ -1156,8 +1439,19 @@ class ContractMismatchRefinery:
             current_records[_one_line(raw_id, "finding_id")] = _one_line(
                 raw_record, "finding_record_id"
             )
+        decision_index: dict[str, RepairTargetDecision] = {}
+        for raw_key, raw_decision in (target_decisions or {}).items():
+            if not isinstance(raw_decision, RepairTargetDecision):
+                raise ContractMismatchRefineryError(
+                    "target_decisions values must be RepairTargetDecision",
+                    reason_code=ContractMismatchRefineryReason.DECISION_INVALID,
+                )
+            decision_index[_one_line(raw_key, "decision_key")] = raw_decision
+            decision_index[raw_decision.content_id] = raw_decision
 
-        grouped: dict[str, list[McpContractEditPacket]] = {}
+        grouped: dict[
+            str, list[McpContractEditPacket | ContractRepairEditPacket]
+        ] = {}
         malformed_decisions: list[ContractMismatchRefineryDecision] = []
         for raw in packets:
             try:
@@ -1199,13 +1493,30 @@ class ContractMismatchRefinery:
                         )
                     )
                     continue
-                packet = (
-                    raw
-                    if isinstance(raw, McpContractEditPacket)
-                    else McpContractEditPacket.from_dict(raw)
-                )
-                grouped.setdefault(packet.finding_id, []).append(packet)
-            except (ContractEditPacketError, TypeError, ValueError) as exc:
+                packet = _coerce_mcp_or_repair_packet(raw)
+                if isinstance(packet, ContractRepairEditPacket):
+                    if not self.policy.accept_proof_gated_packets:
+                        malformed_decisions.append(
+                            ContractMismatchRefineryDecision(
+                                finding_id=packet.trace_id,
+                                task_id="",
+                                reason_code=(
+                                    ContractMismatchRefineryReason.UNSUPPORTED_FINDING
+                                ),
+                                detail="proof-gated @2 packets are disabled",
+                            )
+                        )
+                        continue
+                    group_id = packet.trace_id
+                else:
+                    group_id = packet.finding_id
+                grouped.setdefault(group_id, []).append(packet)
+            except (
+                ContractEditPacketError,
+                ContractRepairEditPacketError,
+                TypeError,
+                ValueError,
+            ) as exc:
                 malformed_decisions.append(
                     ContractMismatchRefineryDecision(
                         finding_id="",
@@ -1247,17 +1558,30 @@ class ContractMismatchRefinery:
             )
             existing = by_finding.get(finding_id)
             expected_record = current_records.get(finding_id, "")
+
+            def _record_id(
+                item: McpContractEditPacket | ContractRepairEditPacket,
+            ) -> str:
+                if isinstance(item, ContractRepairEditPacket):
+                    return item.decision_id
+                return item.finding_record_id
+
             matching_candidates = tuple(
                 item
                 for item in candidates
-                if not expected_record
-                or item.finding_record_id == expected_record
+                if not expected_record or _record_id(item) == expected_record
             )
             packet = (
                 matching_candidates[-1] if matching_candidates else candidates[-1]
             )
-            stale = packet.snapshot_id != snapshot or (
-                expected_record and packet.finding_record_id != expected_record
+            if isinstance(packet, ContractRepairEditPacket):
+                packet_snapshot = packet.roots.tree_id
+                packet_record = packet.decision_id
+            else:
+                packet_snapshot = packet.snapshot_id
+                packet_record = packet.finding_record_id
+            stale = packet_snapshot != snapshot or (
+                expected_record and packet_record != expected_record
             )
             if stale:
                 if existing is not None:
@@ -1279,23 +1603,38 @@ class ContractMismatchRefinery:
                     )
                 continue
             try:
-                packet.assert_current(
-                    snapshot,
-                    finding_record_id=expected_record,
-                )
-                evidence_ids = {
-                    item.finding_record_id for item in candidates
-                }
+                if isinstance(packet, McpContractEditPacket):
+                    packet.assert_current(
+                        snapshot,
+                        finding_record_id=expected_record,
+                    )
+                elif packet.roots.tree_id != snapshot:
+                    raise ContractMismatchRefineryError(
+                        "repair packet tree is not current",
+                        reason_code=ContractMismatchRefineryReason.STALE_FINDING,
+                    )
+                evidence_ids = {_record_id(item) for item in candidates}
                 if existing is not None:
                     evidence_ids.update(existing.evidence_record_ids)
+                validated_decision = None
+                if isinstance(packet, ContractRepairEditPacket):
+                    validated_decision = decision_index.get(packet.decision_id)
+                else:
+                    decision_id = str(
+                        packet.context_capsule.goal.get("decision_id") or ""
+                    )
+                    if decision_id:
+                        validated_decision = decision_index.get(decision_id)
                 projected = _packet_task(
                     packet,
                     policy=self.policy,
                     now_epoch=now,
                     evidence_record_ids=evidence_ids,
+                    decision=validated_decision,
                 )
             except (
                 ContractEditPacketError,
+                ContractRepairEditPacketError,
                 ContractMismatchRefineryError,
                 TypeError,
                 ValueError,
@@ -1408,7 +1747,9 @@ class ContractMismatchRefinery:
 
 
 def refine_contract_mismatch_packets(
-    packets: Iterable[McpContractEditPacket | Mapping[str, Any]],
+    packets: Iterable[
+        McpContractEditPacket | ContractRepairEditPacket | Mapping[str, Any]
+    ],
     *,
     current_snapshot_id: str,
     existing_board: str = "",
@@ -1416,6 +1757,7 @@ def refine_contract_mismatch_packets(
     now_epoch: int = 0,
     policy: ContractMismatchRefineryPolicy | None = None,
     current_finding_record_ids: Mapping[str, str] | None = None,
+    target_decisions: Mapping[str, RepairTargetDecision] | None = None,
 ) -> ContractMismatchRefineryResult:
     """Functional entry point for supervisor refill integration."""
 
@@ -1426,6 +1768,7 @@ def refine_contract_mismatch_packets(
         current_open_work=current_open_work,
         now_epoch=now_epoch,
         current_finding_record_ids=current_finding_record_ids,
+        target_decisions=target_decisions,
     )
 
 
