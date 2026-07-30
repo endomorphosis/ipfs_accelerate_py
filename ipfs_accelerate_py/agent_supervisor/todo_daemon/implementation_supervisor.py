@@ -5579,13 +5579,15 @@ class PortalImplementationSupervisor:
         self,
         worktree_root: Path,
     ) -> dict[Path, dict[str, str]]:
-        """Return durable active-worktree claims from every sibling lane.
+        """Return durable worktree claims from every sibling lane and pool.
 
         A provider process can exit a few seconds before its daemon validates
         and commits the candidate. Process inspection alone therefore has a
         destructive false-negative window. The task state and protected-path
         snapshot remain durable throughout that handoff and are authoritative
         reasons for every supervisor sharing the worktree root to stand down.
+        Idle pool entries are also durable prepared assets: generic supervisor
+        cleanup must not remove them behind the pool's state machine.
         """
 
         try:
@@ -5676,11 +5678,16 @@ class PortalImplementationSupervisor:
             except (TypeError, ValueError):
                 lock_pid = 0
             live_owner_pid = 0
-            if lease_state in {"initializing", "leased"} and pid_is_alive(lease_pid):
+            if lease_state == "idle":
+                # An idle entry intentionally has no owner PID or lock. Its
+                # pool-state record, rather than process liveness, owns the
+                # detached checkout until WorktreePool reuses or invalidates it.
+                pass
+            elif lease_state in {"initializing", "leased"} and pid_is_alive(lease_pid):
                 live_owner_pid = lease_pid
             elif pid_is_alive(lock_pid):
                 live_owner_pid = lock_pid
-            if not live_owner_pid:
+            if lease_state != "idle" and not live_owner_pid:
                 continue
             register(
                 payload.get("path"),
@@ -5719,9 +5726,14 @@ class PortalImplementationSupervisor:
             or owner_snapshot_path == own_snapshot_path
         )
         owner_source = str(owner.get("source") or "")
+        owner_lease_state = str(owner.get("lease_state") or "")
         return {
             "reason": (
-                "active_worktree_pool_lease"
+                (
+                    "idle_worktree_pool_entry"
+                    if owner_lease_state == "idle"
+                    else "active_worktree_pool_lease"
+                )
                 if owner_source == "worktree_pool_lease"
                 else (
                     "active_state_worktree"
@@ -5735,7 +5747,7 @@ class PortalImplementationSupervisor:
             "owner_pool_state_path": str(owner.get("pool_state_path") or ""),
             "owner_task_id": str(owner.get("task_id") or ""),
             "owner_branch": str(owner.get("branch") or ""),
-            "owner_lease_state": str(owner.get("lease_state") or ""),
+            "owner_lease_state": owner_lease_state,
             "owner_lease_pid": str(owner.get("lease_pid") or ""),
         }
 

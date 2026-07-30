@@ -12611,6 +12611,15 @@ class PortalImplementationDaemon:
             "worktree_path": str(worktree_path),
             **release_result,
         }
+        if release_result.get("released", False) and reason == "merge_queue_handoff":
+            # The durable branch/queue request owns the candidate after this
+            # point; the scrubbed pool entry no longer belongs to the task.
+            # A deferred merge consumer may run in another daemon, so leaving
+            # terminalization to merge cleanup strands this claim in settling.
+            result["lifecycle_finalize"] = self._finalize_worktree_lifecycle(
+                worktree_path,
+                reason="pooled_merge_queue_handoff",
+            )
         self._record_event("worktree_pool_lease_released", result)
         return result
 
