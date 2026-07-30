@@ -156,6 +156,20 @@ REPOSITORY_IDENTITY_INVARIANTS: Final[tuple[str, ...]] = (
     "ipfs_accelerate_py is the sole write root in the initial policy",
     "portable evidence excludes host locators and credentials",
 )
+# Closed acceptance surface for vfs/repository-forest-manifest@1 (VFS-G137).
+# Keeps the objective-heap acceptance subset machine-checkable without folding
+# goal labels into portable forest or descriptor CIDs.
+REPOSITORY_FOREST_MANIFEST_INVARIANTS: Final[tuple[str, ...]] = (
+    "paths cannot escape a descriptor root",
+    "sibling repositories are never conflated",
+    "commit, tree, gitlinks, dirty overlay, ignore policy, and authority "
+    "affect identity",
+    "external SwissKnife is read-only in the initial policy",
+    "ipfs_accelerate_py is the sole write root in the initial policy",
+    "every observation is bound to exactly one forest descriptor",
+    "initial four-repository alias set is complete",
+    "portable forest manifest excludes host locators and credentials",
+)
 
 assert REPOSITORY_DESCRIPTOR_EVIDENCE == "vfs/repository-descriptor@1"
 assert (
@@ -171,6 +185,12 @@ assert REPOSITORY_FOREST_MANIFEST_TASK_ID == "VFS-068"
 assert REPOSITORY_IDENTITY_PACKET_EVIDENCE_TERMS == (
     "vfs/repository-descriptor@1",
     "vfs/repository-forest-manifest@1",
+)
+assert REPOSITORY_FOREST_MANIFEST_INVARIANTS[0] == (
+    "paths cannot escape a descriptor root"
+)
+assert "sibling repositories are never conflated" in (
+    REPOSITORY_FOREST_MANIFEST_INVARIANTS
 )
 
 DEFAULT_SWISSKNIFE_ROOT = "/home/barberb/swissknife"
@@ -2215,15 +2235,145 @@ def descriptor_satisfies_repository_descriptor(
     return degraded_reasons.isdisjoint(descriptor.reason_codes)
 
 
+def forest_observation_bindings(
+    forest: RepositoryForest | Mapping[str, Any],
+) -> tuple[dict[str, Any], ...]:
+    """Return host-free observation authority bindings for each descriptor.
+
+    Each binding ties one forest observation to an explicit alias, repository
+    identity, descriptor CID, authority mode, and identity components that
+    affect portable identity.  Host paths and credentials are excluded so the
+    bindings may travel with ``vfs/repository-forest-manifest@1`` claims.
+    """
+
+    if isinstance(forest, Mapping):
+        forest = RepositoryForest.from_portable_dict(forest)
+    if not isinstance(forest, RepositoryForest):
+        raise TypeError("forest must be a RepositoryForest")
+    bindings: list[dict[str, Any]] = []
+    for item in forest.descriptors:
+        bindings.append(
+            {
+                "alias": item.alias,
+                "repository_id": item.repository_id,
+                "descriptor_cid": item.descriptor_cid,
+                "authority_mode": item.authority.mode,
+                "authority_cid": item.authority.authority_cid,
+                "writable": item.authority.is_writable,
+                "identity_components": {
+                    "commit": item.commit,
+                    "tree": item.tree,
+                    "gitlink_closure_cid": (
+                        item.portable_closure.gitlink_closure_cid
+                    ),
+                    "gitlink_closure_complete": (
+                        item.portable_closure.gitlink_closure_complete
+                    ),
+                    "dirty": item.dirty,
+                    "dirty_overlay_digest": item.dirty_overlay_digest,
+                    "ignore_policy_cid": item.ignore_policy.policy_cid,
+                    "case_unicode_policy_cid": (
+                        item.case_unicode_policy.policy_cid
+                    ),
+                    "authority_cid": item.authority.authority_cid,
+                },
+            }
+        )
+    return tuple(bindings)
+
+
+def bind_observation_to_forest(
+    forest: RepositoryForest,
+    candidate: str | Path,
+    *,
+    require_existing: bool = False,
+) -> dict[str, Any]:
+    """Bind a path observation to exactly one forest descriptor.
+
+    Fail-closed when no descriptor contains the path (escape / unbound) or when
+    more than one sibling descriptor claims ownership (sibling conflation).
+    Portable sentinel locators are not host-resolvable and raise
+    ``observation_unbound``.
+    """
+
+    if not isinstance(forest, RepositoryForest):
+        raise TypeError("forest must be a RepositoryForest")
+    matches: list[tuple[RepositoryDescriptor, Path]] = []
+    for descriptor in forest.descriptors:
+        root_text = str(descriptor.root_path or "")
+        if root_text.startswith("portable://"):
+            continue
+        try:
+            resolved = path_within_repository(
+                descriptor,
+                candidate,
+                require_existing=require_existing,
+            )
+        except RepositoryForestError:
+            continue
+        matches.append((descriptor, resolved))
+    if not matches:
+        raise RepositoryForestError(
+            "observation_unbound",
+            "observation path is not bound to any forest descriptor",
+        )
+    if len(matches) > 1:
+        aliases = ", ".join(item.alias for item, _ in matches)
+        raise RepositoryForestError(
+            "sibling_repository_conflation",
+            f"observation path matches multiple descriptors: {aliases}",
+        )
+    descriptor, resolved = matches[0]
+    return {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "repository-forest-observation-binding@1"
+        ),
+        "evidence": REPOSITORY_FOREST_MANIFEST_EVIDENCE,
+        "forest_id": forest.forest_id,
+        "alias": descriptor.alias,
+        "repository_id": descriptor.repository_id,
+        "descriptor_cid": descriptor.descriptor_cid,
+        "authority_mode": descriptor.authority.mode,
+        "authority_cid": descriptor.authority.authority_cid,
+        "writable": descriptor.authority.is_writable,
+        "relative_path": Path(resolved)
+        .relative_to(descriptor.root_path)
+        .as_posix(),
+        "satisfied": True,
+    }
+
+
 def _forest_manifest_failure_reasons(
     forest: RepositoryForest,
 ) -> tuple[str, ...]:
+    """Return closed VFS-G137 failure reasons for an observed forest."""
+
     reasons: list[str] = []
+    if not forest.descriptors:
+        reasons.append("empty_forest")
+    if not forest.forest_id:
+        reasons.append("missing_forest_id")
     by_alias = {item.alias: item for item in forest.descriptors}
     missing = sorted(set(INITIAL_FOUR_REPOSITORY_ALIASES) - set(by_alias))
     reasons.extend(f"missing_repository:{alias}" for alias in missing)
     if forest.sole_write_alias != DEFAULT_ACCELERATOR_ALIAS:
         reasons.append("unexpected_write_root")
+
+    # Sibling repositories must never share identity or portable descriptors.
+    repository_ids = [item.repository_id for item in forest.descriptors]
+    if repository_ids and len(repository_ids) != len(set(repository_ids)):
+        reasons.append("sibling_repository_id_conflation")
+    descriptor_cids = [item.descriptor_cid for item in forest.descriptors]
+    if descriptor_cids and len(descriptor_cids) != len(set(descriptor_cids)):
+        reasons.append("sibling_descriptor_conflation")
+    binding_ids = [
+        item.local_locator.local_repository_binding_id
+        for item in forest.descriptors
+        if item.local_locator.local_repository_binding_id
+    ]
+    if binding_ids and len(binding_ids) != len(set(binding_ids)):
+        reasons.append("shared_git_authority_rejected")
 
     swissknife = by_alias.get(DEFAULT_SWISSKNIFE_ALIAS)
     if (
@@ -2238,6 +2388,9 @@ def _forest_manifest_failure_reasons(
         reasons.append("accelerator_not_read_write")
     if not forest.policy_cid:
         reasons.append("missing_forest_policy")
+    portable = forest.to_portable_dict()
+    if not portable_projection_excludes_host_state(portable):
+        reasons.append("portable_host_state_present")
     for descriptor in forest.descriptors:
         if not descriptor_satisfies_repository_descriptor(descriptor):
             reasons.append(f"descriptor_unsatisfied:{descriptor.alias}")
@@ -2247,7 +2400,13 @@ def _forest_manifest_failure_reasons(
 def forest_satisfies_repository_forest_manifest(
     forest: RepositoryForest | Mapping[str, Any],
 ) -> bool:
-    """Return whether a forest proves the initial VFS-G137 manifest contract."""
+    """Return whether a forest proves the initial VFS-G137 manifest contract.
+
+    Requires the frozen four-repository alias set, sole write authority on
+    ``ipfs_accelerate_py``, read-only SwissKnife, complete per-descriptor
+    bindings, non-conflated sibling identities, and a host-free portable
+    projection.  Goal/task labels are never consulted.
+    """
 
     if isinstance(forest, Mapping):
         try:
@@ -2320,13 +2479,23 @@ def prove_repository_descriptor(
 def prove_repository_forest_manifest(
     forest: RepositoryForest | Mapping[str, Any],
 ) -> dict[str, Any]:
-    """Emit a host-free VFS-G137 claim for the initial repository forest."""
+    """Emit a host-free VFS-G137 claim for the initial repository forest.
+
+    Proves ``vfs/repository-forest-manifest@1``: every observation is bound to
+    an explicit multi-repository authority forest with independent sibling
+    identities, fail-closed path containment, and the initial SwissKnife
+    read-only / accelerator sole-write policy.  Goal and packet labels are
+    evidence metadata only and never enter :attr:`RepositoryForest.forest_id`.
+    """
 
     if isinstance(forest, Mapping):
         forest = RepositoryForest.from_portable_dict(forest)
     if not isinstance(forest, RepositoryForest):
         raise TypeError("forest must be a RepositoryForest")
     failure_reasons = _forest_manifest_failure_reasons(forest)
+    portable = forest.to_portable_dict()
+    bindings = forest_observation_bindings(forest)
+    aliases = tuple(item.alias for item in forest.descriptors)
     return {
         "schema": REPOSITORY_FOREST_MANIFEST_CLAIM_SCHEMA,
         "evidence": REPOSITORY_FOREST_MANIFEST_EVIDENCE,
@@ -2346,14 +2515,38 @@ def prove_repository_forest_manifest(
         ),
         "forest_id": forest.forest_id,
         "policy_cid": forest.policy_cid,
+        "sole_write_alias": forest.sole_write_alias,
+        "aliases": list(aliases),
+        "required_aliases": list(INITIAL_FOUR_REPOSITORY_ALIASES),
         "descriptor_cids": [
             item.descriptor_cid for item in forest.descriptors
         ],
-        "portable_manifest": forest.to_portable_dict(),
+        "repository_ids": [
+            item.repository_id for item in forest.descriptors
+        ],
+        "observation_bindings": list(bindings),
+        "portable_manifest": portable,
+        "portable_host_state_excluded": portable_projection_excludes_host_state(
+            portable
+        ),
+        "sibling_repositories_distinct": (
+            len({item.repository_id for item in forest.descriptors})
+            == len(forest.descriptors)
+            and len({item.descriptor_cid for item in forest.descriptors})
+            == len(forest.descriptors)
+        ),
+        "swissknife_read_only": (
+            DEFAULT_SWISSKNIFE_ALIAS not in {item.alias for item in forest.descriptors}
+            or forest.descriptor_for_alias(
+                DEFAULT_SWISSKNIFE_ALIAS
+            ).authority.mode
+            == AuthorityMode.READ_ONLY.value
+        ),
         "satisfied": not failure_reasons,
         "reason_codes": list(failure_reasons),
         "observation_reason_codes": list(forest.reason_codes),
-        "invariants": list(REPOSITORY_IDENTITY_INVARIANTS),
+        "invariants": list(REPOSITORY_FOREST_MANIFEST_INVARIANTS),
+        "packet_invariants": list(REPOSITORY_IDENTITY_INVARIANTS),
         "authoritative": False,
         "completion_authoritative": False,
     }
@@ -2818,6 +3011,7 @@ __all__ = [
     "REPOSITORY_FOREST_MANIFEST_CLAIM_SCHEMA",
     "REPOSITORY_FOREST_MANIFEST_EVIDENCE",
     "REPOSITORY_FOREST_MANIFEST_GOAL_ID",
+    "REPOSITORY_FOREST_MANIFEST_INVARIANTS",
     "REPOSITORY_FOREST_MANIFEST_TASK_ID",
     "REPOSITORY_FOREST_REPLAY_CLAIM_SCHEMA",
     "REPOSITORY_FOREST_REPLAY_EVIDENCE",
@@ -2837,6 +3031,7 @@ __all__ = [
     "RepositoryIdentity",
     "UnicodeNormalizationForm",
     "all_covered_evidence_terms",
+    "bind_observation_to_forest",
     "build_initial_four_repository_forest",
     "build_repository_descriptor",
     "build_repository_forest",
@@ -2844,6 +3039,7 @@ __all__ = [
     "covered_evidence_terms",
     "descriptor_satisfies_repository_descriptor",
     "empty_dirty_overlay_digest",
+    "forest_observation_bindings",
     "forest_satisfies_repository_forest_manifest",
     "forest_satisfies_repository_forest_replay",
     "forests_share_portable_identity",
