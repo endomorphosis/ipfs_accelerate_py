@@ -1129,7 +1129,7 @@ consumer or frontier is unresolved.
 
 ## RPR-035 Compile change-propagation LogicIR obligations
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
