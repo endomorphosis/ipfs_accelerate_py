@@ -1,4 +1,12 @@
-"""Contract tests for the SCA ContentIdentity@1 multiformats bridge."""
+"""Contract tests for the SCA ContentIdentity@1 multiformats bridge.
+
+Proves objective evidence SCAEV015CID for SCA-G015: strict DAG-JSON artifacts
+use lowercase base32 CIDv1/dag-json/sha2-256; logic IR uses its domain-separated
+raw-codec profile; decoded multihash equals SHA-256 of retained canonical
+bytes; profile differences among cid_utils, ir_core.identity, ipld_cid, and
+profile_g remain typed contradictions; unavailable multiformats fails closed
+and no digest-shaped string is labeled CID.
+"""
 
 from __future__ import annotations
 
@@ -15,6 +23,7 @@ from ipfs_accelerate_py.agent_supervisor.analysis.content_identity_bridge import
     CONTENT_IDENTITY_INTERFACE,
     CONTENT_IDENTITY_SCHEMA,
     LOGIC_IR_PROFILE,
+    MULTIBASE_BASE32,
     MULTICODEC_DAG_JSON,
     MULTICODEC_RAW,
     MULTIHASH_SHA2_256,
@@ -22,6 +31,10 @@ from ipfs_accelerate_py.agent_supervisor.analysis.content_identity_bridge import
     PROVIDER_IPLD_CID,
     PROVIDER_IR_CORE_IDENTITY,
     PROVIDER_PROFILE_G,
+    SCAEV015CID,
+    SCAEV015CID_COVERAGE,
+    SCAEV015CID_EVIDENCE,
+    SCAEV015CID_GOAL_ID,
     STRICT_ARTIFACT_PROFILE,
     CidValidationError,
     ContentIdentityError,
@@ -39,6 +52,7 @@ from ipfs_accelerate_py.agent_supervisor.analysis.content_identity_bridge import
     profiles_are_interchangeable,
     require_multiformats,
     reset_provider_import_cache,
+    scaev015_cid_evidence,
     sha256_digest_label,
 )
 
@@ -353,9 +367,193 @@ def test_content_identity_probe_reports_providers_and_fail_closed_policy() -> No
     assert probe["logic_ir_profile"] == LOGIC_IR_PROFILE
     assert probe["cross_profile_equality_allowed"] is False
     assert probe["digest_labeled_as_cid_allowed"] is False
+    assert probe["decoded_multihash_must_match_canonical_bytes"] is True
+    assert probe["cid_required_operations_fail_closed"] is True
     assert multiformats_available() is True
     assert probe["providers"]["multiformats"] is True
     assert probe["cid_required_operations_ready"] is True
+    assert SCAEV015CID in probe["evidence"]["requirement_ids"]
+    assert probe["evidence"]["coverage"] == list(SCAEV015CID_COVERAGE)
+    assert probe["evidence"]["goal_id"] == SCAEV015CID_GOAL_ID
+
+
+def test_scaev015_cid_exact_text_markers_for_objective_evidence() -> None:
+    """Exact-text SCAEV015CID markers for objective evidence admission."""
+
+    assert SCAEV015CID == "SCAEV015CID"
+    assert SCAEV015CID_EVIDENCE == SCAEV015CID
+    assert SCAEV015CID_GOAL_ID == "SCA-G015"
+    assert "strict-dag-json-lowercase-base32-cidv1-dag-json-sha2-256" in SCAEV015CID_COVERAGE
+    assert "logic-ir-domain-separated-raw-codec-profile" in SCAEV015CID_COVERAGE
+    assert (
+        "decoded-multihash-equals-sha256-of-retained-canonical-bytes"
+        in SCAEV015CID_COVERAGE
+    )
+    assert (
+        "profile-differences-among-cid-utils-ir-core-ipld-cid-profile-g-are-typed-contradictions"
+        in SCAEV015CID_COVERAGE
+    )
+    assert (
+        "multiformats-unavailable-fails-closed-no-digest-labeled-as-cid"
+        in SCAEV015CID_COVERAGE
+    )
+    assert bridge.SCAEV015CID == SCAEV015CID
+    assert "SCAEV015CID" in bridge.__all__
+    assert "scaev015_cid_evidence" in bridge.__all__
+
+    payload = scaev015_cid_evidence()
+    assert SCAEV015CID in payload["evidence"]["requirement_ids"]
+    assert payload["evidence"]["coverage"] == list(SCAEV015CID_COVERAGE)
+    assert payload["goal_id"] == SCAEV015CID_GOAL_ID
+    assert payload["model_calls"] == 0
+    assert payload["artifact_profile"] == {
+        "canonicalization": STRICT_ARTIFACT_PROFILE,
+        "cid_version": 1,
+        "multibase": MULTIBASE_BASE32,
+        "multicodec": MULTICODEC_DAG_JSON,
+        "multihash": MULTIHASH_SHA2_256,
+    }
+    assert payload["logic_ir_profile"] == {
+        "canonicalization": LOGIC_IR_PROFILE,
+        "cid_version": 1,
+        "multibase": MULTIBASE_BASE32,
+        "multicodec": MULTICODEC_RAW,
+        "multihash": MULTIHASH_SHA2_256,
+    }
+    assert payload["policies"]["digest_labeled_as_cid_allowed"] is False
+    assert payload["policies"]["cid_required_operations_fail_closed"] is True
+    assert payload["policies"]["decoded_multihash_must_match_canonical_bytes"] is True
+    assert payload["policies"]["cross_profile_equality_allowed"] is False
+
+
+def test_scaev015_cid_covers_strict_dag_json_and_logic_ir_profiles() -> None:
+    """SCAEV015CID: strict DAG-JSON + domain-separated raw-codec logic IR."""
+
+    assert "strict-dag-json-lowercase-base32-cidv1-dag-json-sha2-256" in SCAEV015CID_COVERAGE
+    assert "logic-ir-domain-separated-raw-codec-profile" in SCAEV015CID_COVERAGE
+
+    artifact = identify_strict_artifact(_payload())
+    assert artifact.profile == STRICT_ARTIFACT_PROFILE
+    assert artifact.cid_version == 1
+    assert artifact.multibase == MULTIBASE_BASE32
+    assert artifact.multicodec == MULTICODEC_DAG_JSON
+    assert artifact.multihash == MULTIHASH_SHA2_256
+    assert artifact.cid == artifact.cid.lower()
+    assert artifact.cid.startswith("b")
+
+    ir = identify_logic_ir(
+        {"title": "scaev015"},
+        domain="intent",
+        schema_version="1.0.0",
+    )
+    assert ir.profile == LOGIC_IR_PROFILE
+    assert ir.multicodec == MULTICODEC_RAW
+    assert ir.multihash == MULTIHASH_SHA2_256
+    assert ir.domain == "intent"
+    assert b'"identity_profile":"ir-canonical-identity-v1"' in ir.canonical_bytes
+    assert profiles_are_interchangeable(artifact, ir) is False
+
+
+def test_scaev015_cid_decoded_multihash_matches_retained_canonical_bytes() -> None:
+    """SCAEV015CID: decoded multihash equals SHA-256 of retained bytes."""
+
+    assert (
+        "decoded-multihash-equals-sha256-of-retained-canonical-bytes"
+        in SCAEV015CID_COVERAGE
+    )
+    for identity in (
+        identify_strict_artifact({"scaev015": True}),
+        identify_logic_ir({"k": "v"}, domain="test", schema_version="v1"),
+    ):
+        verified = decode_and_verify_cid(
+            identity.cid,
+            identity.canonical_bytes,
+            expected_codec=identity.multicodec,
+            expected_profile=identity.profile,
+        )
+        assert verified["raw_digest"] == hashlib.sha256(
+            identity.canonical_bytes
+        ).hexdigest()
+        assert verified["digest"] == identity.digest
+        assert identity.digest == sha256_digest_label(identity.canonical_bytes)
+
+
+def test_scaev015_cid_provider_profile_differences_are_typed_contradictions() -> None:
+    """SCAEV015CID: cid_utils / ir_core / ipld_cid / profile_g stay explicit."""
+
+    assert (
+        "profile-differences-among-cid-utils-ir-core-ipld-cid-profile-g-are-typed-contradictions"
+        in SCAEV015CID_COVERAGE
+    )
+    unicode_payload = {"unicode": "café", "nested": {"z": 2, "a": 1}}
+    # cid_utils vs ipld_cid: typed canonical-byte / CID contradictions.
+    unicode_gap = compare_provider_identities(
+        unicode_payload,
+        providers=(PROVIDER_CID_UTILS, PROVIDER_IPLD_CID),
+    )
+    unicode_kinds = {item.kind for item in unicode_gap}
+    assert ProfileContradictionKind.CANONICAL_BYTES_MISMATCH in unicode_kinds
+    assert ProfileContradictionKind.CID_MISMATCH in unicode_kinds
+
+    # profile_g agrees with cid_utils on unicode dag-json (not an alias of IR).
+    assert (
+        compare_provider_identities(
+            unicode_payload,
+            providers=(PROVIDER_CID_UTILS, PROVIDER_PROFILE_G),
+        )
+        == ()
+    )
+
+    # IR vs artifact: codec + profile contradictions (never silent equality).
+    ir_gap = compare_provider_identities(
+        {"a": 1},
+        domain="intent",
+        schema_version="1.0.0",
+        providers=(PROVIDER_CID_UTILS, PROVIDER_IR_CORE_IDENTITY),
+    )
+    ir_kinds = {item.kind for item in ir_gap}
+    assert ProfileContradictionKind.CODEC_MISMATCH in ir_kinds
+    assert ProfileContradictionKind.PROFILE_MISMATCH in ir_kinds
+
+    # Default comparison includes all four datasets identity providers.
+    all_four = compare_provider_identities(
+        unicode_payload,
+        domain="intent",
+        schema_version="1.0.0",
+    )
+    providers_seen = {
+        provider
+        for item in all_four
+        for provider in (item.left_provider, item.right_provider)
+    }
+    assert PROVIDER_CID_UTILS in providers_seen
+    assert PROVIDER_IPLD_CID in providers_seen
+    assert PROVIDER_IR_CORE_IDENTITY in providers_seen
+
+
+def test_scaev015_cid_multiformats_fail_closed_no_digest_as_cid(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """SCAEV015CID: missing multiformats fails closed; digests stay digests."""
+
+    assert (
+        "multiformats-unavailable-fails-closed-no-digest-labeled-as-cid"
+        in SCAEV015CID_COVERAGE
+    )
+    _uninstall_multiformats(monkeypatch)
+    with pytest.raises(MultiformatsUnavailableError):
+        identify_strict_artifact({"a": 1})
+    with pytest.raises(MultiformatsUnavailableError):
+        identify_logic_ir({"a": 1}, domain="d", schema_version="1")
+    digest = sha256_digest_label(b"scaev015-payload")
+    assert is_digest_shaped(digest) is True
+    with pytest.raises(CidValidationError, match="digest-shaped"):
+        decode_and_verify_cid(
+            digest,
+            b"scaev015-payload",
+            expected_codec=MULTICODEC_RAW,
+        )
+    assert scaev015_cid_evidence()["policies"]["digest_labeled_as_cid_allowed"] is False
 
 
 def test_to_dict_schema_contract() -> None:
@@ -420,6 +618,8 @@ def test_module_exports_content_identity_interface() -> None:
     assert "identify_strict_artifact" in bridge.__all__
     assert "identify_logic_ir" in bridge.__all__
     assert "compare_provider_identities" in bridge.__all__
+    assert "SCAEV015CID" in bridge.__all__
+    assert "scaev015_cid_evidence" in bridge.__all__
 
 
 def test_lazy_import_cache_survives_repeated_calls() -> None:

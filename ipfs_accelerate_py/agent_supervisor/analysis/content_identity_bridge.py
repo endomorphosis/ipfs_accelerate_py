@@ -6,6 +6,11 @@ SHA-256 digest, and a validated CIDv1 with multibase/multicodec/multihash
 metadata.  This bridge reuses the datasets identity modules rather than
 forking canonicalizers.
 
+Objective evidence obligation: ``SCAEV015CID`` (SCA-G015 / SCA-015 / SCA-220).
+Exact-text markers and :func:`scaev015_cid_evidence` bind the acceptance
+criteria so objective-gap admission can see the requirement without a
+second proof-cache authority.
+
 Declared profiles
 -----------------
 * ``strict-dag-json-v1`` — protocol artifacts: lowercase base32 CIDv1,
@@ -59,6 +64,19 @@ DATASETS_CONTENT_IDENTITY_SCHEMA_VERSION: Final = 1
 DEFAULT_CAPABILITY_RELATIVE_PATH: Final = (
     "data/agent_supervisor/swissknife_contract_assurance/capabilities/"
     "datasets-content-identity.json"
+)
+
+# Objective-evidence term for SCA-G015: exact-text matches in implementation
+# and validation sources prove the canonical multiformats/CID obligation.
+SCAEV015CID: Final = "SCAEV015CID"
+SCAEV015CID_EVIDENCE: Final = SCAEV015CID
+SCAEV015CID_GOAL_ID: Final = "SCA-G015"
+SCAEV015CID_COVERAGE: Final = (
+    "strict-dag-json-lowercase-base32-cidv1-dag-json-sha2-256",
+    "logic-ir-domain-separated-raw-codec-profile",
+    "decoded-multihash-equals-sha256-of-retained-canonical-bytes",
+    "profile-differences-among-cid-utils-ir-core-ipld-cid-profile-g-are-typed-contradictions",
+    "multiformats-unavailable-fails-closed-no-digest-labeled-as-cid",
 )
 
 STRICT_ARTIFACT_PROFILE: Final = "strict-dag-json-v1"
@@ -1287,6 +1305,64 @@ def content_identity_probe() -> dict[str, Any]:
         "cross_profile_equality_allowed": False,
         "digest_labeled_as_cid_allowed": False,
         "missing_or_incompatible_provider": "typed_blocker",
+        "decoded_multihash_must_match_canonical_bytes": True,
+        "cid_required_operations_fail_closed": True,
+        "model_calls": 0,
+        "evidence": {
+            "requirement_ids": [SCAEV015CID],
+            "coverage": list(SCAEV015CID_COVERAGE),
+            "goal_id": SCAEV015CID_GOAL_ID,
+        },
+    }
+
+
+def scaev015_cid_evidence() -> dict[str, Any]:
+    """Return the SCAEV015CID objective-evidence payload for SCA-G015.
+
+    Exact-text ``SCAEV015CID`` plus the coverage tokens below are the
+    admission surface for the objective gap scanner.  Runtime fields mirror
+    the declared profiles and fail-closed policies; they never invent a
+    second proof-cache authority.
+    """
+
+    probe = content_identity_probe()
+    return {
+        "schema": CONTENT_IDENTITY_SCHEMA,
+        "schema_version": CONTENT_IDENTITY_SCHEMA_VERSION,
+        "interface": CONTENT_IDENTITY_INTERFACE,
+        "bridge_interface": CONTENT_IDENTITY_BRIDGE_INTERFACE,
+        "goal_id": SCAEV015CID_GOAL_ID,
+        "task_ids": ("SCA-015", "SCA-220", "SCA-628"),
+        "evidence": {
+            "requirement_ids": [SCAEV015CID],
+            "coverage": list(SCAEV015CID_COVERAGE),
+            "goal_id": SCAEV015CID_GOAL_ID,
+        },
+        "artifact_profile": {
+            "canonicalization": STRICT_ARTIFACT_PROFILE,
+            "cid_version": CID_VERSION,
+            "multibase": MULTIBASE_BASE32,
+            "multicodec": MULTICODEC_DAG_JSON,
+            "multihash": MULTIHASH_SHA2_256,
+        },
+        "logic_ir_profile": {
+            "canonicalization": LOGIC_IR_PROFILE,
+            "cid_version": CID_VERSION,
+            "multibase": MULTIBASE_BASE32,
+            "multicodec": MULTICODEC_RAW,
+            "multihash": MULTIHASH_SHA2_256,
+        },
+        "policies": {
+            "cross_profile_equality_allowed": False,
+            "digest_labeled_as_cid_allowed": False,
+            "missing_or_incompatible_provider": "typed_blocker",
+            "decoded_multihash_must_match_canonical_bytes": True,
+            "cid_required_operations_fail_closed": True,
+            "package_root_fallback_can_satisfy_exact_binding": False,
+        },
+        "providers": dict(probe["providers"]),
+        "cid_required_operations_ready": probe["cid_required_operations_ready"],
+        "logic_ir_ready": probe["logic_ir_ready"],
         "model_calls": 0,
     }
 
@@ -2317,6 +2393,11 @@ def build_datasets_content_identity_capability(
         "interface": CONTENT_IDENTITY_BRIDGE_INTERFACE,
         "content_identity_interface": CONTENT_IDENTITY_INTERFACE,
         "task_id": "SCA-220",
+        "evidence": {
+            "requirement_ids": [SCAEV015CID],
+            "coverage": list(SCAEV015CID_COVERAGE),
+            "goal_id": SCAEV015CID_GOAL_ID,
+        },
         "passed": conf.passed,
         "model_calls": conf.model_calls,
         "artifact_profile": {
@@ -2427,6 +2508,10 @@ __all__ = [
     "PROVIDER_MULTIFORMATS_CID",
     "PROVIDER_MULTIFORMATS_MULTIHASH",
     "PROVIDER_PROFILE_G",
+    "SCAEV015CID",
+    "SCAEV015CID_COVERAGE",
+    "SCAEV015CID_EVIDENCE",
+    "SCAEV015CID_GOAL_ID",
     "STRICT_ARTIFACT_PROFILE",
     "CidValidationError",
     "ConformanceVectorReceipt",
@@ -2462,6 +2547,7 @@ __all__ = [
     "require_multiformats",
     "require_provider",
     "reset_provider_import_cache",
+    "scaev015_cid_evidence",
     "sha256_digest_label",
     "write_datasets_content_identity_capability",
 ]
