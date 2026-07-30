@@ -197,6 +197,46 @@ if proof_policy.get("datasets_logic_required_before_target_admission") is not Tr
     raise SystemExit("datasets logic gate is not enabled")
 if proof_policy.get("vector_semantic_authority") is not False:
     raise SystemExit("vector semantic authority must be false")
+propagation_policy = scheduler.get("change_propagation_policy") or {}
+required_true = (
+    "impact_closure_required_before_plan_admission",
+    "one_obligation_per_resolved_consumer",
+    "datasets_logic_reconstruction_required_before_value_or_behavior_admission",
+    "analytical_transform_precedes_llm_router",
+    "llm_router_requires_admitted_behavior_and_paths",
+    "atomic_scc_transaction_required",
+    "fixed_point_validation_required",
+)
+for key in required_true:
+    if propagation_policy.get(key) is not True:
+        raise SystemExit(f"change propagation gate is not enabled: {key}")
+required_false = (
+    "knowledge_graph_semantic_authority",
+    "runtime_witness_semantic_authority",
+    "llm_router_semantic_authority",
+    "partial_plan_completion_allowed",
+)
+for key in required_false:
+    if propagation_policy.get(key) is not False:
+        raise SystemExit(f"unsafe change propagation policy: {key}")
+if propagation_policy.get("unknown_required_frontier_disposition") != "abstain":
+    raise SystemExit("unknown required change frontier must abstain")
+required_zero_floors = (
+    "wrong_path_automated_mutation_rate",
+    "failed_obligation_override_rate",
+    "stale_forged_or_poisoned_authoritative_admission_rate",
+    "unsupported_memory_safety_promotion_rate",
+    "missed_resolved_impacted_consumer_rate",
+    "unproved_or_wrong_value_source_admission_rate",
+    "behavior_invented_without_independent_authority_rate",
+    "partial_propagation_completion_rate",
+    "stale_graph_or_index_plan_admission_rate",
+    "false_fixed_point_completion_rate",
+)
+release_floors = scheduler.get("release_safety_floors") or {}
+for key in required_zero_floors:
+    if int(release_floors.get(key, 1)) != 0:
+        raise SystemExit(f"change propagation safety floor is not zero: {key}")
 
 print(
     json.dumps(

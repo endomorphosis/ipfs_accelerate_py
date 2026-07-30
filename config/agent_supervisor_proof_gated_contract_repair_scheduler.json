@@ -43,11 +43,31 @@
     "stale_or_unsupported_disposition": "abstain",
     "memory_resource_bound_implies_memory_safety": false
   },
+  "change_propagation_policy": {
+    "impact_closure_required_before_plan_admission": true,
+    "one_obligation_per_resolved_consumer": true,
+    "unknown_required_frontier_disposition": "abstain",
+    "datasets_logic_reconstruction_required_before_value_or_behavior_admission": true,
+    "knowledge_graph_semantic_authority": false,
+    "runtime_witness_semantic_authority": false,
+    "llm_router_semantic_authority": false,
+    "analytical_transform_precedes_llm_router": true,
+    "llm_router_requires_admitted_behavior_and_paths": true,
+    "atomic_scc_transaction_required": true,
+    "partial_plan_completion_allowed": false,
+    "fixed_point_validation_required": true
+  },
   "release_safety_floors": {
     "wrong_path_automated_mutation_rate": 0,
     "failed_obligation_override_rate": 0,
     "stale_forged_or_poisoned_authoritative_admission_rate": 0,
-    "unsupported_memory_safety_promotion_rate": 0
+    "unsupported_memory_safety_promotion_rate": 0,
+    "missed_resolved_impacted_consumer_rate": 0,
+    "unproved_or_wrong_value_source_admission_rate": 0,
+    "behavior_invented_without_independent_authority_rate": 0,
+    "partial_propagation_completion_rate": 0,
+    "stale_graph_or_index_plan_admission_rate": 0,
+    "false_fixed_point_completion_rate": 0
   },
   "resource_hints": {
     "rpr-contracts": "cpu-small",
@@ -69,6 +89,32 @@
     "rpr-integration-serialized": "cpu-medium",
     "rpr-post-edit": "cpu-large",
     "rpr-benchmark": "cpu-large",
-    "rpr-rollout": "cpu-small"
+    "rpr-rollout": "cpu-small",
+    "rpr-propagation-contracts": "cpu-small",
+    "rpr-propagation-capabilities": "cpu-small",
+    "rpr-propagation-fixtures": "cpu-small",
+    "rpr-program-graph": "cpu-large",
+    "rpr-contract-delta": "cpu-large",
+    "rpr-value-index": "cpu-medium",
+    "rpr-impact-closure": "cpu-large",
+    "rpr-consumer-inventory": "cpu-medium",
+    "rpr-schema-impact": "cpu-large",
+    "rpr-dynamic-frontier": "cpu-medium",
+    "rpr-missing-input-retrieval": "cpu-medium",
+    "rpr-value-provenance": "cpu-large",
+    "rpr-behavior-synthesis": "cpu-proof-solver",
+    "rpr-propagation-obligations": "cpu-proof-solver",
+    "rpr-propagation-proof": "cpu-proof-solver",
+    "rpr-analytical-transforms": "cpu-large",
+    "rpr-support-placement": "cpu-proof-solver",
+    "rpr-propagation-plan": "cpu-large",
+    "rpr-propagation-packet": "cpu-medium",
+    "rpr-propagation-provider": "cpu-medium",
+    "rpr-propagation-task-gate": "cpu-medium",
+    "rpr-propagation-integration-serialized": "cpu-large",
+    "rpr-propagation-validation": "cpu-large",
+    "rpr-propagation-benchmark": "cpu-large",
+    "rpr-propagation-rollout": "cpu-small",
+    "rpr-propagation-operations": "cpu-large"
   }
 }

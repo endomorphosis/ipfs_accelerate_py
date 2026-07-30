@@ -9,7 +9,11 @@ Merge target: `agent/proof-gated-contract-repair`
 
 Extend `ipfs_accelerate_py.agent_supervisor` so a broken call path can locate a
 refactored receiver or a valid implementation site without letting semantic
-similarity choose where an LLM writes code.
+similarity choose where an LLM writes code. Extend the same authority model to
+intentional code changes: compute everything a changed contract can affect,
+derive the repairs required at every dependent consumer, synthesize missing
+values or support behavior analytically where possible, and admit one atomic
+transitive migration plan or abstain.
 
 The runtime order is normative:
 
@@ -25,6 +29,23 @@ broken trace
   -> bounded repair packet
   -> implementation
   -> re-index, re-resolve, re-prove, validate
+```
+
+For an intentional change, the corresponding normative order is:
+
+```text
+base/candidate semantic diff
+  -> typed ProgramContract delta
+  -> snapshot-bound program graph, vector, and history nomination
+  -> dependency-complete reverse impact closure plus unknown frontier
+  -> one migration obligation per affected consumer
+  -> missing-value and behavior-source nomination
+  -> ipfs_datasets_py.logic proof/refutation/reconstruction
+  -> deterministic analytical transforms
+  -> one exact atomic propagation plan or abstention
+  -> bounded llm_router escalation only for admitted unresolved steps
+  -> checkpointed multi-file implementation
+  -> fixed-point re-index, re-resolve, re-diff, re-prove, and validate
 ```
 
 Vector search is a recall mechanism. It may nominate candidates, but it is
@@ -62,6 +83,12 @@ The missing join is target selection:
    the write location before retrieval and proof can identify a moved receiver
    or a better implementation site.
 5. There is no generic sender/receiver obligation compiler for code repair.
+6. There is no exact before/after contract delta, whole-program call/data/value
+   provenance graph, or dependency-complete fixed-point worklist for propagating
+   an intentional API or data-shape change.
+7. There is no analytical missing-argument source synthesis, complex support
+   behavior contract, atomic multi-file/SCC migration plan, or proof that every
+   affected consumer was updated.
 
 This program inserts a versioned proof-gated decision between findings and
 repair packets. It does not replace the active VFS symbolic-assurance or
@@ -138,6 +165,31 @@ toolchain. Provisioning requires an explicit operator `--install` request.
    identities, spans, and expansion handles, never unbounded repository bodies.
 10. **Patch-bound completion.** After editing, the changed dependency closure
     is re-indexed, re-resolved, re-proved, and validated on the candidate tree.
+11. **Closed impact accounting.** Every changed public or internally reachable
+    contract yields one disposition for every resolved dependent plus an
+    explicit bounded unknown frontier. “All consumers” is never claimed when
+    reflection, dynamic dispatch, generated code, native/FFI, or excluded paths
+    leave coverage incomplete.
+12. **Per-consumer obligations.** A new required input creates a distinct
+    migration obligation at each call site; a default or one successful caller
+    cannot discharge the others.
+13. **Proven value provenance.** A missing value is admitted only when its
+    scope, reaching definition, path condition, type/schema, information
+    content, effects, capabilities, authorization, ownership, lifetime, and
+    dependency direction satisfy the consumer obligation.
+14. **Analytical first.** Deterministic codemods and finite constructions are
+    preferred when a unique reconstructed result exists. Ambiguous or
+    unsupported synthesis does not become an LLM guess.
+15. **Behavior before implementation.** A new class, method, or data structure
+    receives an independently sourced contract for invariants, construction,
+    state transitions, lifecycle, errors, effects, serialization, concurrency,
+    compatibility, and ownership before any implementation is requested.
+16. **Atomic propagation.** Strongly connected edit groups and their wiring,
+    schema, generated, test, and migration changes are admitted as one
+    checkpointed plan. Partial completion cannot close the originating change.
+17. **LLM proposal only.** `llm_router` may implement only an admitted step with
+    exact paths and postconditions. It cannot invent semantics, select a value
+    source, expand the impact frontier, or weaken a proof obligation.
 
 ## 5. Typed data contracts
 
@@ -474,6 +526,17 @@ rolls back to the preceding stage.
 | 6 | edit packet v2, refinery, pre-provider gate | serialized shared-file cutovers |
 | 7 | patch-bound validation, benchmark, CLI/docs | admitted decision pipeline |
 | 8 | shadow/assist/narrow-auto release | all safety floors |
+| 9 | propagation contracts, capability adapter, fixtures, program graph | committed extension seal; four strict shards |
+| 10 | semantic change delta, value vector index, impact closure, consumer inventory | exact base/candidate snapshots |
+| 11 | schema/protocol analysis, dynamic frontier, value provenance | dependency-complete graph coverage |
+| 12 | missing-value nomination and complex behavior contract | one obligation per affected consumer |
+| 13 | LogicIR obligations, proof/refutation/reconstruction, placement | independent behavior authority |
+| 14 | deterministic codemods and atomic plan admission | unique reconstructed analytical results |
+| 15 | multi-edit packet, bounded llm_router fallback, task/provider gates | admitted exact paths and postconditions |
+| 16 | checkpoint/rollback transaction and fixed-point validator primitives | all new-file adapters complete |
+| 17 | serialized pipeline/daemon integration that requires those primitives | no mutation or completion bypass |
+| 18 | adversarial benchmark and shadow/assist/narrow-auto rollout | candidate-tree closure and all safety floors |
+| 19 | end-to-end operations validation | healthy restartable four-shard supervisor |
 
 The companion objective heap and taskboard encode the exact local dependency
 DAG and file ownership. Cross-program VFS/datasets requirements are capability
@@ -493,3 +556,256 @@ The program is complete when a seeded broken call can:
 - re-prove and validate the patch on the candidate tree;
 - demonstrate all safety floors on the adversarial corpus;
 - operate through a healthy, restartable, isolated parallel supervisor.
+
+The change-propagation extension is complete only when it can also:
+
+- bind a base and candidate snapshot and explain the semantic contract delta
+  independently of textual diff noise;
+- enumerate every statically resolved direct and transitive consumer, group
+  cycles, and preserve an explicit unknown frontier for unsupported behavior;
+- detect each caller that still supplies two arguments after a callee begins
+  requiring three and issue a separate migration obligation for it;
+- prove a unique in-scope or constructible source for the new argument, thread
+  the requirement upward to a fixed point, or abstain with a precise reason;
+- define and prove the contract and admissible owner for any required new
+  class, method, data structure, factory, schema, or state transition;
+- analytically materialize supported transformations before considering an LLM;
+- provide `llm_router` only an admitted behavior specification, counterexample,
+  exact read/write scope, and patch-bound validation obligations;
+- apply an admitted multi-file/SCC plan transactionally and demonstrate zero
+  unresolved impacted consumers, zero uncovered required frontier, and no new
+  contract delta on the candidate tree.
+
+## 16. Change-propagation scope and change identity
+
+The extension accepts a reviewed base/candidate repository pair or a proposed
+typed contract change. `ProgramChangeSet@1` binds both forest/tree identities,
+dirty overlays, submodule/gitlink roots, build and generated-code manifests,
+language/toolchain/config/policy identities, changed spans, tombstones, and the
+producer that normalized the diff. It separates source edits from derived
+semantic deltas so formatting, moves, generated churn, and comments do not
+manufacture migration obligations.
+
+`ProgramContractDelta@1` compares independently extracted before/after
+`ProgramContract@1` records. Its closed delta kinds include:
+
+- parameter add/remove/rename/reorder/default/keyword/variance changes;
+- result, generic, nullability, schema, serialization, and protocol changes;
+- sync/async, cancellation, errors, effects, capability, authorization,
+  lifecycle, temporal/state, consistency, resource, and memory-facet changes;
+- symbol move/rename/re-export/registration and visibility changes;
+- constructor, field, method, class, data structure, interface, and factory
+  introduction or removal.
+
+Each clause is `breaking`, `compatible`, `behavioral`, `unknown`, or
+`unsupported` for a stated consumer domain. A compatible source declaration
+does not imply compatibility for every runtime route.
+
+## 17. Program knowledge graph and complete impact accounting
+
+The program graph is an adapter over the existing repository/AST indexes,
+`CodeImpactIndex`, and `SemanticDependencyGraph`; it does not fork their
+identity or trust models. Concrete `program_graph.py` and
+`program_call_resolver.py` façades satisfy the existing capability probes.
+Every node and edge records exact source roots, extractor identity, confidence,
+authority, and completeness.
+
+The graph covers, where statically supported:
+
+- declarations, definitions, calls, overrides, implementations, overloads,
+  constructors, factories, builders, dependency injection, registries,
+  callbacks, decorators, and context managers;
+- imports, exports, re-exports, aliases, modules, packages, build targets,
+  generated bindings, native boundaries, and dependency-layer ownership;
+- parameters, return values, fields, aliases, reaching definitions, dominance,
+  path conditions, data flow, state flow, effects, resources, and capabilities;
+- schemas, serializers/deserializers, migrations, databases, messages, RPC,
+  HTTP/CLI surfaces, configuration/default providers, feature flags, and IDLs;
+- tests, mocks, fixtures, examples, benchmarks, documentation contracts, and
+  operational validation that exercise or promise the changed behavior.
+
+`ImpactClosureReceipt@1` starts at each semantic delta and computes reverse
+dependencies to a fixed point. It records resolved consumers, SCCs, required
+validation, exclusions, resource bounds, and an unknown frontier. Vector,
+GraphRAG, history, and runtime witnesses may nominate missing edges, but an
+edge becomes authoritative only through an admitted extractor, reviewed
+manifest, resolver, or reconstructed logic result. Reflection, monkey
+patching, string dispatch, plugin loading, FFI, remote services, generated
+sources, and excluded roots remain explicit frontiers unless closed by such
+evidence.
+
+## 18. Per-consumer compatibility and missing-value synthesis
+
+Each impacted node receives a `ConsumerMigrationObligation@1`, not merely a
+search hit. For the representative change:
+
+```python
+def process(left: A, right: B) -> R
+def process(left: A, right: B, context: C) -> R
+```
+
+the system inventories every resolved caller, including aliases, wrappers,
+method dispatch, factories, tests, mocks, generated clients, and calls reached
+after an argument is threaded through intermediate functions. A caller that
+still supplies two arguments gets a `MissingInputRequirement@1` containing:
+
+- the exact callee clause and consumer path condition;
+- required type/schema/range/nullability and information content;
+- construction preconditions and result postconditions;
+- allowed errors, effects, capabilities, authorization, trust, and resources;
+- ownership, lifetime, mutability, concurrency, caching, and disposal rules;
+- required propagation depth, compatibility policy, and proof obligations.
+
+Candidate sources are nominated from in-scope names, parameters, receiver
+state, reaching definitions, dominated branches, config and environment
+providers allowed by policy, request/session context, DI containers, factories,
+schemas, history, the program graph, and the code vector index. Nomination is
+body-bounded and non-authoritative.
+
+The analytical synthesizer then proves or refutes, for each candidate:
+
+1. it is available on every relevant control-flow path;
+2. its type/schema and refinement facts satisfy the missing input;
+3. it carries the required information rather than merely sharing a type;
+4. any conversion or constructor is total for the caller domain;
+5. errors, effects, capabilities, authorization, trust, and resources fit;
+6. ownership, lifetime, aliasing, mutation, and concurrency constraints fit;
+7. importing, constructing, or threading it creates no forbidden cycle;
+8. the same reconstructed conclusion holds under exact current roots.
+
+A unique proved source yields a deterministic mapping. No source yields
+refutation or a precisely typed upstream requirement. Multiple proved sources
+yield ambiguity. Unsupported analysis yields abstention. When an input must be
+threaded through callers, the worklist repeats until it reaches an
+authoritative source, a public boundary with a reviewed compatibility choice,
+or an unknown frontier.
+
+## 19. Complex behavior and new-type contract synthesis
+
+When the missing input requires a new class, method, data structure, provider,
+schema, or stateful service, the system defines `RequiredBehaviorContract@1`
+before choosing placement or generating code. Evidence precedence remains
+independent of the candidate implementation:
+
+1. reviewed IDL/schema/public stub and compatibility policy;
+2. normative specification and conformance tests;
+3. caller postconditions and callee preconditions;
+4. data invariants, migration manifests, architecture ownership, and history;
+5. implementation observations only as non-authoritative hypotheses.
+
+The contract states:
+
+- fields, variants, generic parameters, invariants, validation, and defaults;
+- constructors/factories, totality, initialization ordering, and DI wiring;
+- methods, state machine, allowed transitions, temporal behavior, and
+  idempotence;
+- ownership, lifetime, mutability, aliasing, caching, disposal, and concurrency;
+- serialization, persistence, versioning, migrations, equality, and hashing;
+- errors, cancellation, effects, capability/auth/trust boundaries, logging,
+  privacy, resource limits, and degradation;
+- compatibility adapters, rollout behavior, tests, and observability.
+
+Placement is separately proved against ownership, visibility, architecture
+layering, registration/export wiring, read/write authority, and dependency
+cycles. If evidence cannot uniquely determine behavior or placement, the plan
+records a decision requirement and does not ask a model to invent it.
+
+## 20. Proof, analytical transformation, and plan admission
+
+RPR-specific obligations lower supported deltas, consumer constraints, value
+provenance, constructors, state transitions, and placement facts through the
+capability-admitted `ipfs_datasets_py.logic` stack. Premise selection, SMT/ATP
+outputs, and LegalIR-style gap suggestions are candidates only. Kernel
+reconstruction under the exact premise, translator, toolchain, and policy roots
+is required for authority.
+
+`AnalyticalTransform@1` supports only closed transformations with deterministic
+rendering and replay, such as:
+
+- add/rename/reorder an argument using a unique proved expression;
+- thread a parameter through an acyclic or explicitly grouped call chain;
+- add a proved import/export/registration or finite adapter;
+- update a typed constructor, schema field, serializer, fixture, and generated
+  manifest when their mappings are total and policy-authorized.
+
+`AtomicPropagationPlan@1` contains the complete candidate set identity, all
+impact-closure nodes, one disposition per obligation, exact edit/validation
+steps, step dependencies, SCC transaction groups, read/write authority,
+preconditions, postconditions, invalidators, checkpoint/rollback strategy, and
+the final fixed-point proof obligation. Admission requires:
+
+- a current complete impact closure or an explicitly review-only frontier;
+- reconstructed proof for every automated value mapping and behavior clause;
+- no unresolved mandatory consumer, forbidden dependency, or counterexample;
+- one deterministic plan; competing mappings or placements force abstention;
+- exact paths derived from evidence and authority, never a similarity score.
+
+## 21. Bounded `llm_router` fallback
+
+Analytical repair is attempted first. `llm_router` is used only when the
+behavior and placement are admitted but syntax or a bounded implementation is
+not available as a deterministic transform. Routing uses the existing
+proposal/reviewer/writer-lease boundary, never a direct model call.
+
+The packet includes the exact plan and step identity, behavior contract,
+before/after contract table, minimal counterexamples, proved value sources,
+unsupported limits, exact read/write paths, per-edit postconditions, focused
+commands, and fixed-point re-proof requirements. It excludes secrets,
+unbounded bodies, rejected alternatives as scope, and unresolved semantics.
+The model may propose code within the lease; it cannot choose a different
+source, create a new dependency, relax a contract, omit a consumer, suppress a
+checker, or expand paths. A pre-provider gate revalidates all roots and proofs
+immediately before invocation.
+
+## 22. Transactional execution and fixed-point completion
+
+Execution occurs in an isolated candidate worktree with a content-addressed
+checkpoint. Steps run in dependency order; SCC members are treated as one
+transaction group. A failure, drift, scope escape, timeout, or incomplete
+group rolls back to the checkpoint and retains a diagnostic receipt. No
+partial plan may be merged or marked complete.
+
+After every group, and again for the final candidate tree, the validator:
+
+1. rebuilds affected repository, AST, vector, and graph rows and tombstones;
+2. re-extracts the base/candidate semantic delta;
+3. re-resolves calls, data/value flow, constructors, schemas, and wiring;
+4. recomputes the reverse impact closure and unknown frontier;
+5. checks that each original consumer obligation is discharged exactly once;
+6. detects new deltas/consumers and repeats to a policy-bounded fixed point;
+7. reconstructs all original and introduced logic obligations;
+8. runs type/schema/effect/capability/resource/memory and dependency-complete
+   tests without accepting weakened tests, deleted contracts, or suppression;
+9. emits a candidate-tree-bound `PropagationCompletionReceipt@1`.
+
+Completion requires zero unresolved mandatory consumers, zero omitted resolved
+dependents, zero uncovered required frontier, and no unplanned breaking delta.
+Bound exhaustion is an explicit incomplete result, not success.
+
+## 23. Adversarial evaluation and rollout
+
+Fixtures cover parameter addition/removal/rename/reorder, argument threading,
+same-typed but semantically wrong sources, branch-local values, nullable and
+schema mismatch, constructor failure, dependency cycles, async/context
+changes, stateful services, new classes and serializers, generated bindings,
+registries/reflection/plugins/FFI, poisoned graph/vector/history evidence,
+stale roots, SCC partial failure, LLM scope escape, and a second-order delta
+introduced by the first repair.
+
+In addition to the original floors, release requires:
+
+- missed resolved impacted-consumer rate: `0`;
+- unproved or wrong value-source admission rate: `0`;
+- behavior invented without independent authority rate: `0`;
+- partial propagation completion rate: `0`;
+- stale graph/index plan-admission rate: `0`;
+- fixed-point false-completion rate: `0`.
+
+Shadow mode records deltas, closure, proofs, and proposed plans. Assist mode
+shows exact obligations and admitted plans to an operator. Narrow auto initially
+permits only unique reconstructed analytical transforms on supported Python
+shapes with a complete frontier. LLM-authored, complex stateful, schema/public
+API, generated/native, dynamic, and cross-repository changes remain
+approval-gated until separate reviewed policy and benchmark evidence expands
+their scope. Any safety-floor breach, capability regression, stale root,
+reconstruction failure, or coverage loss rolls back one stage.
