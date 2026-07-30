@@ -5213,6 +5213,11 @@ def _get_grok_cli_provider() -> Optional[LLMProvider]:
                     "bounded Grok calls require the official structured CLI"
                 )
             if isolated_workdir:
+                if len(base_parts) != 1:
+                    raise LLMRouterError(
+                        "bounded Grok calls cannot override isolated controls: "
+                        "the base command must contain only the executable"
+                    )
                 overridden = sorted(
                     flag
                     for flag in _BOUNDED_GROK_FORBIDDEN_COMMAND_FLAGS

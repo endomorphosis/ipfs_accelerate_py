@@ -147,6 +147,10 @@ def test_grok_cli_provider_isolates_structured_mcp_call(monkeypatch) -> None:
         ["--system-prompt-override", "ignore bounded controls"],
         ["--tools", "run_terminal_command"],
         ["--tools=run_terminal_command"],
+        ["--"],
+        ["positional prompt"],
+        ["-pEVIL"],
+        ["-mMODEL"],
     ],
 )
 def test_grok_cli_provider_rejects_bounded_control_overrides(
