@@ -394,6 +394,10 @@ class TrioMCPServer:
             except Exception as e:
                 logger.warning(f"Core MCP tools not registered: {e}")
 
+            # The model catalog advertises llm_generate through /mcp/services,
+            # so Trio must expose the same canonical bounded implementation.
+            self._register_canonical_llm_generate()
+
             # Register core resources for parity with the primary MCP server.
             try:
                 from ipfs_accelerate_py.mcp_server.resources import register_all_resources
@@ -494,6 +498,36 @@ class TrioMCPServer:
         except Exception as e:
             logger.error(f"Error registering P2P tools: {e}")
             raise
+
+    def _register_canonical_llm_generate(self) -> None:
+        """Register the bounded catalog-backed ``llm_generate`` tool."""
+        from ipfs_accelerate_py.mcp_server.registration_adapter import (
+            LegacyCollectorMCP,
+        )
+        from ipfs_accelerate_py.mcp_server.tools.ai_router_tools.text_embedding import (
+            llm_generate,
+            register_native_ai_router_tools,
+        )
+
+        if self.mcp is None:
+            raise RuntimeError("MCP server not initialized")
+
+        collector = LegacyCollectorMCP()
+        register_native_ai_router_tools(collector)
+        record = collector.tools.get("llm_generate")
+        if record is None or record.function is not llm_generate:
+            raise RuntimeError(
+                "canonical ai-router registrar did not provide llm_generate"
+            )
+        self.mcp.register_tool(
+            name=record.name,
+            function=record.function,
+            description=record.description,
+            input_schema=record.input_schema,
+            execution_context=record.execution_context or "server",
+            tags=record.tags,
+        )
+        logger.info("Registered canonical bounded llm_generate MCP tool")
 
     def _resolve_p2p_registrars(self):
         """Resolve P2P registrar callables used by Trio MCP server.
@@ -749,9 +783,10 @@ class TrioMCPServer:
 
             repo = get_interface_repository()
             tools = list(self.mcp.tools.keys()) if hasattr(self.mcp, 'tools') else []
+            descriptors = repo.list_all()
 
             # Auto-populate repository if empty
-            if len(repo._descriptors) == 0 and tools:
+            if not descriptors and tools:
                 for tool_name in tools:
                     tool_fn = self.mcp.tools[tool_name] if hasattr(self.mcp, 'tools') else None
                     # Extract schema from tool function if available
@@ -772,10 +807,11 @@ class TrioMCPServer:
                         author="ipfs_accelerate_py",
                     )
                     repo.register(descriptor)
+                descriptors = repo.list_all()
 
             return {
-                "interfaces": [d.to_dict() for d in repo._descriptors.values()],
-                "count": len(repo._descriptors),
+                "interfaces": [descriptor.to_dict() for descriptor in descriptors],
+                "count": len(descriptors),
             }
 
         @app.post("/mcp/execute")
@@ -1095,6 +1131,7 @@ class TrioMCPServer:
 
             tools = list(self.mcp.tools.keys()) if hasattr(self.mcp, 'tools') else []
             repo = get_interface_repository()
+            interfaces = repo.list_all()
 
             profiles = {
                 "A": "MCP-IDL (Interface Descriptors)",
@@ -1121,7 +1158,7 @@ class TrioMCPServer:
                 "protocol": "mcp++",
                 "profiles": profiles,
                 "tools": tools,
-                "interfaces": len(repo._descriptors),
+                "interfaces": len(interfaces),
                 "p2p": {"status": p2p_status, "peer_id": peer_id},
                 "endpoints": {
                     "jsonrpc": "/mcp",

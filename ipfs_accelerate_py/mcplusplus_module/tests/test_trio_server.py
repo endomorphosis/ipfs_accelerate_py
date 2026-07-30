@@ -9,6 +9,8 @@ import anyio
 import trio
 from unittest.mock import Mock
 
+from fastapi.testclient import TestClient
+
 from ipfs_accelerate_py.mcplusplus_module.trio import (
     TrioMCPServer,
     ServerConfig,
@@ -280,6 +282,74 @@ class TestTrioMCPServer:
 
         server._register_p2p_tools()
         assert calls == ["workflow"]
+
+    def test_setup_lists_and_calls_canonical_bounded_llm_generate(self):
+        """Trio JSON-RPC must expose the catalog-backed bounded LLM tool."""
+        from ipfs_accelerate_py.mcp_server.tools.ai_router_tools.text_embedding import (
+            llm_generate,
+        )
+
+        async def _run() -> None:
+            server = TrioMCPServer(ServerConfig(enable_p2p_tools=False))
+            server.setup()
+
+            tool = server.mcp.tools["llm_generate"]
+            assert tool["function"] is llm_generate
+            assert tool["input_schema"]["properties"]["allow_fallback"]["default"] is False
+
+            listed = await server._handle_jsonrpc(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 41,
+                    "method": "tools/list",
+                    "params": {},
+                }
+            )
+            assert "llm_generate" in listed["result"]["tools"]
+
+            called = await server._handle_jsonrpc(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 42,
+                    "method": "tools/call",
+                    "params": {
+                        "name": "llm_generate",
+                        "arguments": {"prompt": ""},
+                    },
+                }
+            )
+            assert called["id"] == 42
+            assert called["result"]["success"] is False
+            assert called["result"]["error"]["code"] == "invalid_request"
+
+        anyio.run(_run)
+
+    def test_discover_uses_public_interface_repository_api(self, monkeypatch):
+        """Discovery must not depend on InterfaceRepository internals."""
+        from ipfs_accelerate_py.mcp_server.server import StandaloneMCP
+        from ipfs_accelerate_py.mcplusplus_module import interface_descriptor
+
+        class PublicOnlyRepository:
+            def list_all(self):
+                return (object(), object())
+
+        monkeypatch.setattr(
+            interface_descriptor,
+            "get_interface_repository",
+            lambda: PublicOnlyRepository(),
+        )
+        server = TrioMCPServer(ServerConfig(enable_p2p_tools=False))
+        server.mcp = StandaloneMCP(name="test-mcplusplus")
+        server._register_canonical_llm_generate()
+        app = server._create_fastapi_app()
+
+        with TestClient(app) as client:
+            response = client.get("/mcp/discover")
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["interfaces"] == 2
+        assert "llm_generate" in payload["tools"]
     
     def test_server_setup(self):
         """Test server setup process."""
