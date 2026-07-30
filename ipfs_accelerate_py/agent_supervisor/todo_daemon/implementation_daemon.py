@@ -26776,8 +26776,63 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         path: Path,
         *,
         relative: str,
+        snapshot_ref: str = "",
     ) -> str:
         entries: list[str] = []
+        if snapshot_ref:
+            listed = subprocess.run(
+                [
+                    "git",
+                    "ls-tree",
+                    "-z",
+                    "-l",
+                    f"{snapshot_ref}:{relative}",
+                ],
+                cwd=self.repo_root,
+                capture_output=True,
+                check=False,
+            )
+            if listed.returncode != 0:
+                return (
+                    f"Task evidence path: {relative}\n"
+                    "State: absent from the bound Git snapshot"
+                )
+            records = [
+                record
+                for record in bytes(listed.stdout or b"").split(b"\0")
+                if record
+            ]
+            for record in records[:64]:
+                metadata, separator, raw_name = record.partition(b"\t")
+                fields = metadata.decode(
+                    "utf-8", errors="replace"
+                ).split()
+                name = raw_name.decode("utf-8", errors="replace")
+                if not separator or len(fields) < 3:
+                    continue
+                child_type = (
+                    "directory" if fields[1] == "tree" else "file"
+                )
+                size = fields[3] if len(fields) > 3 else "-"
+                suffix = (
+                    f" ({size} bytes)"
+                    if child_type == "file" and size != "-"
+                    else ""
+                )
+                entries.append(f"- {name}: {child_type}{suffix}")
+            has_more = len(records) > 64
+            return "\n".join(
+                (
+                    f"Task evidence directory index: {relative}",
+                    (
+                        f"Entry count: at least {len(records)}"
+                        if has_more
+                        else f"Entry count: {len(records)}"
+                    ),
+                    f"Entries omitted: {str(has_more).lower()}",
+                    *entries,
+                )
+            )
         try:
             sampled_children = heapq.nsmallest(
                 65,
@@ -26825,11 +26880,77 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         *,
         relative: str,
         search_terms: Sequence[str],
+        snapshot_ref: str = "",
     ) -> str:
         hasher = hashlib.sha256()
         sampled = bytearray()
-        try:
-            with path.open("rb") as handle:
+        file_size = 0
+        if snapshot_ref:
+            object_result = subprocess.run(
+                [
+                    "git",
+                    "rev-parse",
+                    "--verify",
+                    f"{snapshot_ref}:{relative}",
+                ],
+                cwd=self.repo_root,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            object_id = str(object_result.stdout or "").strip()
+            if object_result.returncode != 0 or not object_id:
+                return (
+                    f"Task evidence path: {relative}\n"
+                    "State: absent from the bound Git snapshot"
+                )
+            size_result = subprocess.run(
+                ["git", "cat-file", "-s", object_id],
+                cwd=self.repo_root,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            try:
+                file_size = int(str(size_result.stdout or "").strip())
+            except (TypeError, ValueError):
+                file_size = 0
+            process = subprocess.Popen(
+                ["git", "cat-file", "blob", object_id],
+                cwd=self.repo_root,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+            assert process.stdout is not None
+            while True:
+                block = process.stdout.read(64 * 1_024)
+                if not block:
+                    break
+                hasher.update(block)
+                remaining = (
+                    TARGETED_IMPLEMENTATION_EVIDENCE_MAX_READ_BYTES
+                    - len(sampled)
+                )
+                if remaining > 0:
+                    sampled.extend(block[:remaining])
+            _stdout, stderr = process.communicate()
+            if process.returncode != 0:
+                return (
+                    f"Task evidence path: {relative}\n"
+                    "State: unreadable in the bound Git snapshot "
+                    f"({stderr.decode('utf-8', errors='replace')[-200:]})"
+                )
+            if file_size <= 0:
+                file_size = len(sampled)
+        else:
+            try:
+                handle = path.open("rb")
+            except OSError as exc:
+                return (
+                    f"Task evidence path: {relative}\n"
+                    f"State: unreadable file ({type(exc).__name__})"
+                )
+            with handle:
                 while True:
                     block = handle.read(64 * 1_024)
                     if not block:
@@ -26841,15 +26962,10 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     )
                     if remaining > 0:
                         sampled.extend(block[:remaining])
-        except OSError as exc:
-            return (
-                f"Task evidence path: {relative}\n"
-                f"State: unreadable file ({type(exc).__name__})"
-            )
-        try:
-            file_size = path.stat().st_size
-        except OSError:
-            file_size = len(sampled)
+            try:
+                file_size = path.stat().st_size
+            except OSError:
+                file_size = len(sampled)
         content_id = f"sha256:{hasher.hexdigest()}"
         if b"\x00" in sampled:
             return "\n".join(
@@ -26930,6 +27046,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         *,
         repository_id: str,
         tree_id: str,
+        snapshot_ref: str = "",
     ) -> tuple[Any, ...]:
         source_tasks = self._implementation_evidence_source_tasks(task)
         search_terms = self._implementation_evidence_search_terms(
@@ -26947,7 +27064,55 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 source_tasks=source_tasks,
             )
         ):
-            if path.is_dir():
+            snapshot_kind = ""
+            if snapshot_ref:
+                kind_result = subprocess.run(
+                    [
+                        "git",
+                        "cat-file",
+                        "-t",
+                        f"{snapshot_ref}:{relative}",
+                    ],
+                    cwd=self.repo_root,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+                if kind_result.returncode == 0:
+                    snapshot_kind = str(
+                        kind_result.stdout or ""
+                    ).strip()
+            if snapshot_kind == "tree":
+                evidence_text = self._implementation_directory_evidence(
+                    path,
+                    relative=relative,
+                    snapshot_ref=snapshot_ref,
+                )
+            elif snapshot_kind == "blob":
+                evidence_text = self._implementation_file_evidence(
+                    path,
+                    relative=relative,
+                    search_terms=search_terms,
+                    snapshot_ref=snapshot_ref,
+                )
+            elif snapshot_kind:
+                evidence_text = "\n".join(
+                    (
+                        f"Task evidence path: {relative}",
+                        (
+                            "State: unsupported Git object type "
+                            f"({snapshot_kind})"
+                        ),
+                    )
+                )
+            elif snapshot_ref:
+                evidence_text = "\n".join(
+                    (
+                        f"Task evidence path: {relative}",
+                        "State: path is absent from the bound Git snapshot",
+                    )
+                )
+            elif path.is_dir():
                 evidence_text = self._implementation_directory_evidence(
                     path,
                     relative=relative,
@@ -27171,7 +27336,10 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         return "\n".join([*required_lines, *optional_lines])
 
     def _implementation_repository_and_tree_ids(
-        self, task: PortalTask
+        self,
+        task: PortalTask,
+        *,
+        baseline_ref: str = "",
     ) -> tuple[str, str]:
         common_dir = subprocess.run(
             ["git", "rev-parse", "--git-common-dir"],
@@ -27191,8 +27359,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         repository_id = "repository:sha256:" + hashlib.sha256(
             repository_material.encode("utf-8")
         ).hexdigest()
+        selected_ref = str(baseline_ref or "HEAD").strip()
         head = subprocess.run(
-            ["git", "rev-parse", "--verify", "HEAD^{commit}"],
+            ["git", "rev-parse", "--verify", f"{selected_ref}^{{commit}}"],
             cwd=self.repo_root,
             text=True,
             capture_output=True,
@@ -27204,6 +27373,55 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 self._canonical_ref(task).encode("utf-8")
             ).hexdigest()
         return repository_id, tree_id
+
+    def _implementation_context_repository_and_tree_ids(
+        self,
+        task: PortalTask,
+    ) -> tuple[str, str]:
+        """Bind production context to the immutable merge-target baseline.
+
+        Production worktrees are seeded from the merge target, not from the
+        daemon's potentially dirty/shared checkout. Resolve that ref before
+        compilation. If it advances before worktree creation, the later packet
+        snapshot comparison fails closed and omits the stale context.
+        """
+
+        baseline_ref = self._implementation_context_baseline_ref(task)
+        return self._implementation_repository_and_tree_ids(
+            task,
+            baseline_ref=baseline_ref,
+        )
+
+    def _implementation_context_baseline_ref(
+        self,
+        task: PortalTask,
+    ) -> str:
+        """Return the production merge-target commit or no explicit baseline."""
+
+        baseline_ref = ""
+        if (
+            self.use_ephemeral_worktree
+            and self._production_provider_route_enabled(task)
+        ):
+            target_ref = (
+                self.resolved_merge_target_branch
+                or self._main_branch_name()
+            )
+            resolved = subprocess.run(
+                [
+                    "git",
+                    "rev-parse",
+                    "--verify",
+                    f"{target_ref}^{{commit}}",
+                ],
+                cwd=self.repo_root,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            if resolved.returncode == 0:
+                baseline_ref = str(resolved.stdout or "").strip()
+        return baseline_ref
 
     def _implementation_cancel_requested(self) -> bool:
         value = self.implementation_cancelled
@@ -27904,7 +28122,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             raise ImplementationRetryDeferred(
                 "implementation retry cancelled before compilation"
             )
-        repository_id, tree_id = self._implementation_repository_and_tree_ids(task)
+        repository_id, tree_id = (
+            self._implementation_context_repository_and_tree_ids(task)
+        )
         if (
             repository_id != parent_capsule.repository_id
             or tree_id != parent_capsule.tree_id
@@ -28094,8 +28314,10 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
     ) -> ContextCompileResult:
         """Compile the provider prompt from immutable task core and evidence."""
 
+        context_baseline_ref = self._implementation_context_baseline_ref(task)
         repository_id, tree_id = self._implementation_repository_and_tree_ids(
-            task
+            task,
+            baseline_ref=context_baseline_ref,
         )
         completion_scope = completion_gap_edit_scope(
             task,
@@ -28286,6 +28508,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             task,
             repository_id=repository_id,
             tree_id=tree_id,
+            snapshot_ref=context_baseline_ref,
         )
         if vector_text:
             context = self._load_todo_vector_context(task)
@@ -28603,8 +28826,8 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             self._load_implementation_retry_state(task)
             diagnostic = self._implementation_diagnostics.get(key)
             if diagnostic is not None:
-                repository_id, tree_id = self._implementation_repository_and_tree_ids(
-                    task
+                repository_id, tree_id = (
+                    self._implementation_context_repository_and_tree_ids(task)
                 )
                 parent = self._implementation_parent(task)
                 if parent is None or (

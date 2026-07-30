@@ -1276,6 +1276,59 @@ def test_production_packet_forwards_only_compiler_selected_targeted_evidence(
     )
 
 
+def test_production_context_uses_merge_target_snapshot_not_shared_checkout(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _daemon(tmp_path, monkeypatch)
+    target = daemon.repo_root / PATH
+    target.write_text(
+        "# production target\nTARGET_BASELINE_MARKER = True\n",
+        encoding="utf-8",
+    )
+    _git(daemon.repo_root, "add", PATH)
+    _git(daemon.repo_root, "commit", "-m", "production target baseline")
+    target_commit = _git_output(daemon.repo_root, "rev-parse", "HEAD")
+    _git(daemon.repo_root, "branch", "production-target", target_commit)
+
+    target.write_text(
+        "# shared checkout drift\nSHARED_DIRTY_MARKER = True\n",
+        encoding="utf-8",
+    )
+    daemon.use_ephemeral_worktree = True
+    daemon.merge_target_branch = "production-target"
+    daemon.resolved_merge_target_branch = "production-target"
+    task = _task()
+
+    context = daemon._compile_implementation_context(task, attempt=1)
+
+    assert context.capsule.tree_id == target_commit
+    selected_evidence = "\n".join(
+        reference.summary for reference in context.capsule.evidence
+    )
+    assert "TARGET_BASELINE_MARKER" in selected_evidence
+    assert "SHARED_DIRTY_MARKER" not in selected_evidence
+
+    snapshot = f"git-commit:{target_commit}"
+    packet = daemon.build_production_contract_packet_for_task(
+        task,
+        snapshot_id=snapshot,
+        attempt=1,
+        context_capsule=context.capsule,
+    )
+    payload = dict(packet.provider_input_payload)
+    assert payload["goal"]["context_snapshot_matches"] is True
+    assert payload["expansion_handles"][0]["status"] == "verified"
+    assert "TARGET_BASELINE_MARKER" in json.dumps(
+        payload["evidence_handles"],
+        sort_keys=True,
+    )
+    assert "SHARED_DIRTY_MARKER" not in json.dumps(
+        payload["evidence_handles"],
+        sort_keys=True,
+    )
+
+
 def test_daemon_bridges_verified_compiled_context_as_ids_and_handles(
     tmp_path,
     monkeypatch: pytest.MonkeyPatch,
