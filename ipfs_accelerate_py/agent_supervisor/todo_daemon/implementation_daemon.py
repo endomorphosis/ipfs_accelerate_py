@@ -22699,7 +22699,22 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 candidates,
                 target_branch=target_branch,
             )
-            if main_checkout_dirty_paths:
+            primary_checkout_branch = self._git_current_branch(self.repo_root)
+            # The primary checkout is only the merge workspace when it is on
+            # the configured target branch.  A dirty driver/operator checkout
+            # must not prevent ``_merge_branch_to_main`` from preparing and
+            # validating a separate ephemeral or explicitly trusted target
+            # checkout.  An unknown branch identity remains fail-closed.
+            primary_checkout_is_merge_workspace = (
+                not primary_checkout_branch
+                or primary_checkout_branch == target_branch
+            )
+            unrelated_primary_checkout_dirty_paths = (
+                main_checkout_dirty_paths
+                if not primary_checkout_is_merge_workspace
+                else []
+            )
+            if main_checkout_dirty_paths and primary_checkout_is_merge_workspace:
                 result = {
                     "resolved": False,
                     "reason": "main_checkout_dirty",
@@ -22714,11 +22729,20 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 self._record_event("merge_reconciliation_deferred", result)
                 results.append(result)
                 return results
-            if nonblocking_dirty_paths or nested_artifact_preservation:
+            if (
+                nonblocking_dirty_paths
+                or unrelated_primary_checkout_dirty_paths
+                or nested_artifact_preservation
+            ):
                 self._record_event(
                     "merge_reconciliation_nonblocking_checkout_state",
                     {
                         "nonblocking_dirty_paths": nonblocking_dirty_paths,
+                        "unrelated_primary_checkout_dirty_paths": (
+                            unrelated_primary_checkout_dirty_paths
+                        ),
+                        "primary_checkout_branch": primary_checkout_branch,
+                        "target_branch": target_branch,
                         "nested_artifact_preservation": nested_artifact_preservation,
                         "candidate_count": len(candidates),
                     },
