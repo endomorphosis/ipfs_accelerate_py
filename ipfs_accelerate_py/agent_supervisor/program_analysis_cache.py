@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import math
 import os
 import tempfile
@@ -90,6 +91,8 @@ from .self_improvement.supervisor_v2_contracts import (
     ResultBinding,
     SemanticDependencyIdentity,
 )
+
+logger = logging.getLogger(__name__)
 
 PROGRAM_ANALYSIS_CACHE_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/program-analysis-cache@1"
@@ -1964,7 +1967,10 @@ class ProgramAnalysisCache:
         try:
             self.artifact_store.compact()
         except Exception:  # noqa: BLE001 - compaction is best-effort
-            pass
+            logger.warning(
+                "Artifact-store compaction failed during cache pruning",
+                exc_info=True,
+            )
         self._rebuild_component_index()
         return removed
 
