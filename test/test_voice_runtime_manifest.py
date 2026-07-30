@@ -6,10 +6,13 @@ import json
 from hashlib import sha256
 
 import pytest
+from ipfs_datasets_py.voice.graphrag import SlottedResponseIndex
+from ipfs_datasets_py.voice.schema import AbbyVoiceTemplate
 
 from ipfs_accelerate_py.voice_audio_resolver import SynthesisIdentity
 from ipfs_accelerate_py.voice_runtime_manifest import (
     PinnedVoiceRuntimeManifestError,
+    load_pinned_voice_graphrag_provider,
     load_pinned_voice_runtime_resolver,
     validate_pinned_voice_runtime_manifest_url,
 )
@@ -24,6 +27,11 @@ AUDIO_URL = (
     "https://huggingface.co/datasets/Publicus/211-abby-tts/"
     f"resolve/{COMMIT}/data/abby_voice_v2/release-1/"
     "assets/audio/audio-1.mp3"
+)
+GRAPHRAG_URL = (
+    "https://huggingface.co/datasets/Publicus/211-abby-tts/"
+    f"resolve/{COMMIT}/data/abby_voice_v2/release-1/"
+    "manifests/graphrag-index.json"
 )
 AUDIO = b"immutable-precomputed-audio"
 TEXT = "Call five zero three, five five five, zero one zero zero."
@@ -115,6 +123,21 @@ def _identity() -> SynthesisIdentity:
     )
 
 
+def _graphrag_index() -> bytes:
+    template = AbbyVoiceTemplate(
+        template_id="clarify-location",
+        template_text="What city or ZIP code should I search?",
+        spoken_template="What city or ZIP code should I search?",
+        intent="clarify_location",
+        locale="en-US",
+        source_cids=(),
+        license_id="CC0-1.0",
+        consent_status="not_required",
+    )
+    index = SlottedResponseIndex.from_rows(templates=(template,))
+    return json.dumps(index.to_dict(), sort_keys=True).encode("utf-8")
+
+
 def test_pinned_manifest_builds_lazy_exact_resolver_and_validates_audio() -> None:
     calls: list[str] = []
 
@@ -135,6 +158,58 @@ def test_pinned_manifest_builds_lazy_exact_resolver_and_validates_audio() -> Non
     assert resolution.hit
     assert resolution.audio == AUDIO
     assert calls == [MANIFEST_URL, AUDIO_URL]
+
+
+def test_pinned_manifest_selects_same_release_graphrag_provider() -> None:
+    calls: list[str] = []
+
+    def fetch(url: str) -> bytes:
+        calls.append(url)
+        assert url == GRAPHRAG_URL
+        return _graphrag_index()
+
+    provider = load_pinned_voice_graphrag_provider(
+        MANIFEST_URL,
+        fetch_bytes=fetch,
+        minimum_confidence=0.0,
+    )
+
+    assert calls == [GRAPHRAG_URL]
+    plan = provider.retrieve(
+        "I need to clarify my location",
+        context={"intent": "clarify_location"},
+        locale="en-US",
+    )
+    assert plan is not None
+    assert plan["template_id"] == "clarify-location"
+    assert plan["template"] == "What city or ZIP code should I search?"
+    assert plan["metadata"]["index_cid"] == provider.index.index_cid
+
+
+def test_pinned_graphrag_loader_rejects_tampered_content() -> None:
+    payload = json.loads(_graphrag_index())
+    payload["templates"][0]["template_text"] = "Tampered response."
+
+    with pytest.raises(
+        PinnedVoiceRuntimeManifestError,
+        match="content validation",
+    ):
+        load_pinned_voice_graphrag_provider(
+            MANIFEST_URL,
+            fetch_bytes=lambda _url: json.dumps(payload).encode("utf-8"),
+        )
+
+
+@pytest.mark.parametrize("minimum_confidence", (-0.1, 1.1, True))
+def test_pinned_graphrag_loader_rejects_invalid_confidence(
+    minimum_confidence: object,
+) -> None:
+    with pytest.raises(PinnedVoiceRuntimeManifestError):
+        load_pinned_voice_graphrag_provider(
+            MANIFEST_URL,
+            fetch_bytes=lambda _url: _graphrag_index(),
+            minimum_confidence=minimum_confidence,  # type: ignore[arg-type]
+        )
 
 
 @pytest.mark.parametrize(

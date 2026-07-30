@@ -31,6 +31,7 @@ _PINNED_COMMIT_RE: Final = re.compile(r"^[0-9a-f]{40,64}$", re.IGNORECASE)
 _SHA256_RE: Final = re.compile(r"^[0-9a-f]{64}$")
 _MANIFEST_MAX_BYTES: Final = 64 * 1024 * 1024
 _AUDIO_MAX_BYTES: Final = 64 * 1024 * 1024
+_GRAPHRAG_INDEX_MAX_BYTES: Final = 256 * 1024 * 1024
 
 
 class PinnedVoiceRuntimeManifestError(ValueError):
@@ -125,6 +126,40 @@ def _validate_release_asset_url(manifest_url: str, resolved: str) -> str:
     if not asset_path.startswith(audio_root) or asset_path == audio_root.rstrip("/"):
         raise PinnedVoiceRuntimeManifestError(
             "runtime audio URL must stay under the pinned release assets/audio directory"
+        )
+    return resolved
+
+
+def _release_graphrag_index_url(manifest_url: str) -> str:
+    """Derive the GraphRAG index beside one pinned runtime release."""
+
+    pinned_url = validate_pinned_voice_runtime_manifest_url(manifest_url)
+    resolved = urljoin(pinned_url, "../manifests/graphrag-index.json")
+    _, manifest_commit = _pinned_huggingface_url(
+        pinned_url,
+        label="runtime manifest",
+    )
+    _, index_commit = _pinned_huggingface_url(
+        resolved,
+        label="runtime GraphRAG index",
+    )
+    if index_commit != manifest_commit:
+        raise PinnedVoiceRuntimeManifestError(
+            "runtime GraphRAG index escaped the pinned manifest commit"
+        )
+
+    manifest_path = posixpath.normpath(unquote(urlparse(pinned_url).path))
+    index_path = posixpath.normpath(unquote(urlparse(resolved).path))
+    metadata_marker = "/metadata/"
+    if metadata_marker not in manifest_path:
+        raise PinnedVoiceRuntimeManifestError(
+            "runtime manifest is not under a release metadata directory"
+        )
+    release_root = manifest_path.split(metadata_marker, 1)[0]
+    expected_path = f"{release_root}/manifests/graphrag-index.json"
+    if index_path != expected_path:
+        raise PinnedVoiceRuntimeManifestError(
+            "runtime GraphRAG index must stay in the pinned release"
         )
     return resolved
 
@@ -426,9 +461,88 @@ def load_pinned_voice_runtime_resolver(
     return resolver
 
 
+def load_pinned_voice_graphrag_provider(
+    manifest_url: str,
+    *,
+    fetch_bytes: Callable[[str], bytes] | None = None,
+    timeout_seconds: float = 15.0,
+    minimum_confidence: float = 0.35,
+) -> object:
+    """Load the same immutable release's content-verified GraphRAG provider.
+
+    This read-only loader deliberately derives the support index from the
+    already pinned runtime-manifest URL.  A deployment therefore cannot select
+    precomputed audio from one release and GraphRAG templates from another.
+    ``SlottedResponseIndex.from_dict`` verifies the serialized index and graph
+    content identifiers before the provider is returned.
+    """
+
+    pinned_url = validate_pinned_voice_runtime_manifest_url(manifest_url)
+    if timeout_seconds <= 0:
+        raise PinnedVoiceRuntimeManifestError("timeout_seconds must be positive")
+    if (
+        isinstance(minimum_confidence, bool)
+        or not isinstance(minimum_confidence, int | float)
+        or not 0.0 <= float(minimum_confidence) <= 1.0
+    ):
+        raise PinnedVoiceRuntimeManifestError(
+            "minimum_confidence must be between 0 and 1"
+        )
+    index_url = _release_graphrag_index_url(pinned_url)
+    if fetch_bytes is None:
+        payload_bytes = _read_https_bytes(
+            index_url,
+            maximum_bytes=_GRAPHRAG_INDEX_MAX_BYTES,
+            timeout_seconds=timeout_seconds,
+        )
+    else:
+        try:
+            fetched = fetch_bytes(index_url)
+        except Exception as exc:
+            raise PinnedVoiceRuntimeManifestError(
+                "injected runtime GraphRAG fetch failed"
+            ) from exc
+        if not isinstance(fetched, bytes | bytearray) or not fetched:
+            raise PinnedVoiceRuntimeManifestError(
+                "runtime GraphRAG fetch must return non-empty bytes"
+            )
+        payload_bytes = bytes(fetched)
+        if len(payload_bytes) > _GRAPHRAG_INDEX_MAX_BYTES:
+            raise PinnedVoiceRuntimeManifestError(
+                "runtime GraphRAG index exceeds its configured byte limit"
+            )
+
+    try:
+        payload = json.loads(payload_bytes.decode("utf-8"))
+    except (UnicodeError, json.JSONDecodeError) as exc:
+        raise PinnedVoiceRuntimeManifestError(
+            "runtime GraphRAG index is not valid UTF-8 JSON"
+        ) from exc
+    if not isinstance(payload, Mapping):
+        raise PinnedVoiceRuntimeManifestError(
+            "runtime GraphRAG index must be a JSON object"
+        )
+    try:
+        from ipfs_datasets_py.voice.graphrag import (
+            GraphRAGVoiceTemplateProvider,
+            SlottedResponseIndex,
+        )
+
+        index = SlottedResponseIndex.from_dict(payload)
+        return GraphRAGVoiceTemplateProvider(
+            index,
+            minimum_confidence=float(minimum_confidence),
+        )
+    except (ImportError, TypeError, ValueError) as exc:
+        raise PinnedVoiceRuntimeManifestError(
+            "runtime GraphRAG index failed content validation"
+        ) from exc
+
+
 __all__ = [
     "PinnedVoiceRuntimeManifestError",
     "RUNTIME_MANIFEST_SCHEMA",
+    "load_pinned_voice_graphrag_provider",
     "load_pinned_voice_runtime_resolver",
     "validate_pinned_voice_runtime_manifest_url",
 ]
