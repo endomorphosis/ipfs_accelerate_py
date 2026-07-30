@@ -21,12 +21,19 @@ projections** inside cache population keys.  They never become multiformats
 object identities; content CIDs remain the immutable payload addresses owned
 by :mod:`multiformats_identity` (VFS-G030 refinement).
 
+The executable :class:`DependencyCacheProfile` descriptor and exact discovery
+term ``vfs/dependency-cache@1`` are the VFS-G142 evidence surface.  They
+describe the already-enforced key population, semantic-dependency binding, and
+fail-closed stale/negative policy; neither the evidence label nor goal
+metadata is allowed to become a key dimension or completion claim.
+
 VFS-G030 (parent) and VFS-G031's synthetic ``objective validation repair``
 marker are exposed only through evidence-discovery helpers.  They never enter
-cache keys or receipts.  The shared VFS-057 packet also references the frozen
-``vfs/cid-profile@1`` surface from :mod:`multiformats_identity`; the two domain
-implementations remain separate while their packet bindings are
-machine-checkable.
+cache keys or receipts.  The content-addressing packet
+(``goal_packet/content_addressing/ipfs_accelerate_py/591cd7cfb087``) pairs
+this surface with ``vfs/cid-profile@1`` (VFS-G141) from
+:mod:`multiformats_identity`.  The older VFS-057 packet bindings remain
+machine-checkable and unchanged.
 """
 
 from __future__ import annotations
@@ -106,9 +113,44 @@ PROGRAM_ANALYSIS_CACHE_ENTRY_SCHEMA: Final = (
 PROGRAM_ANALYSIS_RECEIPT_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/program-analysis-receipt@1"
 )
+DEPENDENCY_CACHE_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/dependency-cache@1"
+)
 DEPENDENCY_CACHE_EVIDENCE: Final = "vfs/dependency-cache@1"
+# Exact objective-heap discovery key and its supervisor-fed packet bindings.
+DEPENDENCY_CACHE_GOAL_ID: Final = "VFS-G142"
+DEPENDENCY_CACHE_TASK_ID: Final = "VFS-088"
 CACHE_INVALIDATION_PROOF_EVIDENCE: Final = "vfs/cache-invalidation-proof@1"
 DEPENDENCY_CACHE_REQUIREMENT_ID: Final = DEPENDENCY_CAS_REQUIREMENT_ID
+# Content-addressing goal packet pairing cid-profile (G141) + dependency-cache
+# (G142).  Discovery metadata only — never a key dimension or authority claim.
+CONTENT_ADDRESSING_PACKET_ID: Final = (
+    "goal_packet/content_addressing/ipfs_accelerate_py/591cd7cfb087"
+)
+CONTENT_ADDRESSING_PACKET_GOAL_IDS: Final[tuple[str, ...]] = (
+    CID_PROFILE_GOAL_ID,
+    DEPENDENCY_CACHE_GOAL_ID,
+)
+CONTENT_ADDRESSING_PACKET_EVIDENCE_TERMS: Final[tuple[str, ...]] = (
+    CID_PROFILE_EVIDENCE,
+    DEPENDENCY_CACHE_EVIDENCE,
+)
+# Closed vocabulary of population dimensions that participate in every cache
+# key.  Policy versions and all semantic dependencies are first-class members.
+DEPENDENCY_CACHE_KEY_DIMENSIONS: Final[tuple[str, ...]] = (
+    "forest_identity",
+    "objective_revision",
+    "policy_revision",
+    "analyzer_version",
+    "schema_version",
+    "configuration_digest",
+    "query_digest",
+    "capability_revision",
+    "assumption_digest",
+    "toolchain_version",
+    "component_kind",
+    "authority",
+)
 # Synthetic exact-text validation-gate key.  It is discovery metadata only,
 # never a cache-key dimension, receipt claim, or source of completion authority.
 OBJECTIVE_VALIDATION_REPAIR_EVIDENCE: Final = "objective validation repair"
@@ -136,6 +178,14 @@ assert OBJECTIVE_PARENT_REPAIR_TASK_ID == "VFS-060"
 assert OBJECTIVE_GOAL_ID == "VFS-G031"
 assert OBJECTIVE_VALIDATION_REPAIR_GOAL_ID == "VFS-G145"
 assert DEPENDENCY_CACHE_EVIDENCE == "vfs/dependency-cache@1"
+assert DEPENDENCY_CACHE_GOAL_ID == "VFS-G142"
+assert DEPENDENCY_CACHE_TASK_ID == "VFS-088"
+assert CONTENT_ADDRESSING_PACKET_GOAL_IDS == ("VFS-G141", "VFS-G142")
+assert CONTENT_ADDRESSING_PACKET_EVIDENCE_TERMS == (
+    "vfs/cid-profile@1",
+    "vfs/dependency-cache@1",
+)
+assert "policy_revision" in DEPENDENCY_CACHE_KEY_DIMENSIONS
 assert immutable_object_identity_separate_from_tree_projections() is True
 
 DEFAULT_MAX_ENTRIES: Final = 512
@@ -2053,6 +2103,318 @@ class ProgramAnalysisCache:
         )
 
 
+@dataclass(frozen=True)
+class DependencyCacheProfile:
+    """Immutable interface descriptor for the VFS-G142 dependency-cache surface.
+
+    Construction is deliberately closed to the constants enforced by
+    :class:`ProgramAnalysisCacheKey` and the fail-closed lookup policy.
+    This makes ``vfs/dependency-cache@1`` machine-checkable without creating
+    a second, configurable cache-key path.  Evidence and goal labels are
+    discovery metadata only and never enter key digests or completion claims.
+    """
+
+    schema: str = DEPENDENCY_CACHE_SCHEMA
+    evidence: str = DEPENDENCY_CACHE_EVIDENCE
+    goal_id: str = DEPENDENCY_CACHE_GOAL_ID
+    task_id: str = DEPENDENCY_CACHE_TASK_ID
+    key_dimensions: tuple[str, ...] = DEPENDENCY_CACHE_KEY_DIMENSIONS
+    policy_dimension: str = "policy_revision"
+    semantic_dependencies_participate: bool = True
+    negative_never_completion: bool = True
+    stale_never_completion: bool = True
+    authority_namespaces_closed: bool = True
+    tree_projection_is_not_object_identity: bool = True
+    packet_id: str = CONTENT_ADDRESSING_PACKET_ID
+    packet_goals: tuple[str, ...] = CONTENT_ADDRESSING_PACKET_GOAL_IDS
+
+    def __post_init__(self) -> None:
+        expected = (
+            DEPENDENCY_CACHE_SCHEMA,
+            DEPENDENCY_CACHE_EVIDENCE,
+            DEPENDENCY_CACHE_GOAL_ID,
+            DEPENDENCY_CACHE_TASK_ID,
+            DEPENDENCY_CACHE_KEY_DIMENSIONS,
+            "policy_revision",
+            True,
+            True,
+            True,
+            True,
+            True,
+            CONTENT_ADDRESSING_PACKET_ID,
+            CONTENT_ADDRESSING_PACKET_GOAL_IDS,
+        )
+        actual = (
+            self.schema,
+            self.evidence,
+            self.goal_id,
+            self.task_id,
+            self.key_dimensions,
+            self.policy_dimension,
+            self.semantic_dependencies_participate,
+            self.negative_never_completion,
+            self.stale_never_completion,
+            self.authority_namespaces_closed,
+            self.tree_projection_is_not_object_identity,
+            self.packet_id,
+            self.packet_goals,
+        )
+        if actual != expected:
+            raise ProgramAnalysisCacheValidationError(
+                "dependency-cache profile is frozen to the VFS-G142 surface: "
+                "all semantic/policy key dimensions participate; "
+                "stale and negative results fail closed"
+            )
+        if "policy_revision" not in self.key_dimensions:
+            raise ProgramAnalysisCacheValidationError(
+                "policy_revision must participate in dependency-cache keys"
+            )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": self.schema,
+            "evidence": self.evidence,
+            "goal_id": self.goal_id,
+            "task_id": self.task_id,
+            "key_dimensions": list(self.key_dimensions),
+            "policy_dimension": self.policy_dimension,
+            "semantic_dependencies_participate": (
+                self.semantic_dependencies_participate
+            ),
+            "negative_never_completion": self.negative_never_completion,
+            "stale_never_completion": self.stale_never_completion,
+            "authority_namespaces_closed": self.authority_namespaces_closed,
+            "tree_projection_is_not_object_identity": (
+                self.tree_projection_is_not_object_identity
+            ),
+            "packet_id": self.packet_id,
+            "packet_goals": list(self.packet_goals),
+        }
+
+
+_DEPENDENCY_CACHE_PROFILE: Final = DependencyCacheProfile()
+
+
+def dependency_cache_profile() -> DependencyCacheProfile:
+    """Return the immutable VFS-G142 dependency-cache interface descriptor."""
+
+    return _DEPENDENCY_CACHE_PROFILE
+
+
+def dependency_cache_evidence_terms() -> tuple[str, ...]:
+    """Return the exact VFS-G142 objective evidence discovery term."""
+
+    return (DEPENDENCY_CACHE_EVIDENCE,)
+
+
+def content_addressing_packet_evidence_terms() -> tuple[str, ...]:
+    """Return shared packet evidence for VFS-G141 and VFS-G142.
+
+    Order is stable: ``vfs/cid-profile@1`` then ``vfs/dependency-cache@1``.
+    These terms describe the content-addressing packet
+    (:data:`CONTENT_ADDRESSING_PACKET_ID`) and never enter cache keys or
+    multiformats CID input bytes.
+    """
+
+    return CONTENT_ADDRESSING_PACKET_EVIDENCE_TERMS
+
+
+def content_addressing_packet_goal_ids() -> tuple[str, ...]:
+    """Return the VFS-G141 / VFS-G142 goal ids owned by the content-addressing packet."""
+
+    return CONTENT_ADDRESSING_PACKET_GOAL_IDS
+
+
+def semantic_dependencies_and_policy_participate_in_cache_keys() -> bool:
+    """VFS-G142 acceptance: every semantic dependency and policy version re-keys.
+
+    Builds a baseline key and mutates each declared dimension, including
+    ``policy_revision``.  Any dimension that fails to change the content
+    address fails closed (returns ``False``).  Goal / evidence labels never
+    appear in the serialized key.
+    """
+
+    profile = dependency_cache_profile()
+    if not profile.semantic_dependencies_participate:
+        return False
+    if profile.policy_dimension not in profile.key_dimensions:
+        return False
+
+    baseline_values: dict[str, Any] = {
+        "forest_identity": "forest:sha256:baseline",
+        "objective_revision": "obj-1",
+        "policy_revision": "pol-1",
+        "analyzer_version": "analyzer@1",
+        "schema_version": "schema@1",
+        "configuration_digest": "sha256:cfg-1",
+        "query_digest": "sha256:q-1",
+        "capability_revision": "cap@1",
+        "assumption_digest": "sha256:ass-1",
+        "toolchain_version": "tc@1",
+        "component_kind": ProgramAnalysisComponentKind.INVENTORY,
+        "authority": ProgramAnalysisAuthority.AUTHORITATIVE,
+    }
+    baseline = ProgramAnalysisCacheKey(**baseline_values)
+    encoded_baseline = json.dumps(baseline.to_dict(), sort_keys=True)
+    for forbidden in (
+        DEPENDENCY_CACHE_EVIDENCE,
+        DEPENDENCY_CACHE_GOAL_ID,
+        CONTENT_ADDRESSING_PACKET_ID,
+        OBJECTIVE_VALIDATION_REPAIR_EVIDENCE,
+    ):
+        if forbidden in encoded_baseline:
+            return False
+
+    # Every closed key dimension must participate (change digests).
+    replacements: dict[str, Any] = {
+        "forest_identity": "forest:sha256:other",
+        "objective_revision": "obj-2",
+        "policy_revision": "pol-2",
+        "analyzer_version": "analyzer@2",
+        "schema_version": "schema@2",
+        "configuration_digest": "sha256:cfg-2",
+        "query_digest": "sha256:q-2",
+        "capability_revision": "cap@2",
+        "assumption_digest": "sha256:ass-2",
+        "toolchain_version": "tc@2",
+        "component_kind": ProgramAnalysisComponentKind.GRAPH,
+        "authority": ProgramAnalysisAuthority.DIAGNOSTIC,
+    }
+    for dimension in profile.key_dimensions:
+        if dimension not in replacements:
+            return False
+        mutated = dict(baseline_values)
+        mutated[dimension] = replacements[dimension]
+        other = ProgramAnalysisCacheKey(**mutated)
+        if other.digest == baseline.digest:
+            return False
+
+    # Semantic dependency population includes policy and every dimension.
+    deps = baseline.population_dependencies()
+    dep_keys = {item.key for item in deps}
+    for dimension in profile.key_dimensions:
+        if dimension not in dep_keys:
+            return False
+    if "policy_revision" not in dep_keys:
+        return False
+    return True
+
+
+def dependency_cache_fail_closed_for_stale_and_negative(
+    cache: "ProgramAnalysisCache",
+    *,
+    now: list[float] | None = None,
+    success_ttl_seconds: float = 2.0,
+) -> bool:
+    """VFS-G142 acceptance: corruption, stale, and negative results fail closed.
+
+    Requires a cache constructed with a controllable ``now`` list clock
+    (``clock=lambda: now[0]``) and a finite ``default_success_ttl_seconds``.
+    When ``now`` is omitted, only negative/authority/malformed fail-closed
+    checks run (still sufficient when stale is covered by a dedicated test).
+    """
+
+    profile = dependency_cache_profile()
+    if not profile.stale_never_completion or not profile.negative_never_completion:
+        return False
+    if not profile.authority_namespaces_closed:
+        return False
+
+    success_receipt = {
+        "status": AnalysisOutcome.SUCCESSFUL.value,
+        "receipt_id": "fail-closed-success",
+        "summary": {"component": "inventory"},
+        "counts": {"files": 1},
+        "artifact_refs": [],
+    }
+
+    if now is not None:
+        success_key = ProgramAnalysisCacheKey(
+            forest_identity="forest:sha256:fail-closed",
+            objective_revision="obj-fc",
+            policy_revision="pol-fc",
+            analyzer_version="analyzer@fc",
+            schema_version="schema@fc",
+            configuration_digest="sha256:cfg-fc",
+            query_digest="sha256:q-fc",
+            capability_revision="cap@fc",
+            assumption_digest="sha256:ass-fc",
+            toolchain_version="tc@fc",
+        )
+        stored = cache.put(success_key, success_receipt)
+        if not stored.stored:
+            return False
+        hit = cache.lookup(success_key)
+        if not hit.is_completion_evidence:
+            return False
+        now[0] = float(now[0]) + float(success_ttl_seconds) + 1.0
+        stale = cache.lookup(success_key)
+        if stale.is_completion_evidence:
+            return False
+
+    negative_key = ProgramAnalysisCacheKey(
+        forest_identity="forest:sha256:fail-closed-neg",
+        objective_revision="obj-fc",
+        policy_revision="pol-fc",
+        analyzer_version="analyzer@fc",
+        schema_version="schema@fc",
+        configuration_digest="sha256:cfg-fc",
+        query_digest="sha256:q-neg",
+        capability_revision="cap@fc",
+        assumption_digest="sha256:ass-fc",
+        toolchain_version="tc@fc",
+    )
+    negative_receipt = {
+        "status": AnalysisOutcome.FAILED.value,
+        "receipt_id": "fail-closed-negative",
+        "summary": {"component": "inventory", "error": "simulated"},
+        "counts": {"files": 0},
+        "artifact_refs": [],
+    }
+    neg_stored = cache.put(negative_key, negative_receipt)
+    if not neg_stored.stored:
+        return False
+    if cache.lookup(negative_key).is_completion_evidence:
+        return False
+
+    draft_key = ProgramAnalysisCacheKey(
+        forest_identity="forest:sha256:fail-closed-draft",
+        objective_revision="obj-fc",
+        policy_revision="pol-fc",
+        analyzer_version="analyzer@fc",
+        schema_version="schema@fc",
+        configuration_digest="sha256:cfg-fc",
+        query_digest="sha256:q-draft",
+        capability_revision="cap@fc",
+        assumption_digest="sha256:ass-fc",
+        toolchain_version="tc@fc",
+        authority=ProgramAnalysisAuthority.DRAFT,
+    )
+    draft_stored = cache.put(draft_key, success_receipt)
+    if not draft_stored.stored:
+        return False
+    if cache.lookup(draft_key).is_completion_evidence:
+        return False
+
+    try:
+        ProgramAnalysisCacheKey(
+            forest_identity="",
+            objective_revision="obj",
+            policy_revision="pol",
+            analyzer_version="an",
+            schema_version="sch",
+            configuration_digest="cfg",
+            query_digest="q",
+            capability_revision="cap",
+            assumption_digest="ass",
+            toolchain_version="tc",
+        )
+        return False
+    except ProgramAnalysisCacheValidationError:
+        pass
+    return True
+
+
 def program_analysis_cache_evidence_terms() -> tuple[str, ...]:
     """Return cache-domain evidence without synthetic packet metadata.
 
@@ -2171,12 +2533,20 @@ __all__ = [
     "CACHE_INVALIDATION_PROOF_EVIDENCE",
     "CID_PROFILE_EVIDENCE",
     "CID_PROFILE_GOAL_ID",
+    "CONTENT_ADDRESSING_PACKET_EVIDENCE_TERMS",
+    "CONTENT_ADDRESSING_PACKET_GOAL_IDS",
+    "CONTENT_ADDRESSING_PACKET_ID",
     "DEPENDENCY_CACHE_EVIDENCE",
+    "DEPENDENCY_CACHE_GOAL_ID",
+    "DEPENDENCY_CACHE_KEY_DIMENSIONS",
     "DEPENDENCY_CACHE_REQUIREMENT_ID",
+    "DEPENDENCY_CACHE_SCHEMA",
+    "DEPENDENCY_CACHE_TASK_ID",
     "DEPENDENCY_CAS_REQUIREMENT_ID",
     "AnalysisComponentKind",
     "ComponentKind",
     "DependencyAwareProgramAnalysisCache",
+    "DependencyCacheProfile",
     "LookupStatus",
     "OBJECTIVE_GAP_TASK_ID",
     "OBJECTIVE_GOAL_ID",
@@ -2206,10 +2576,16 @@ __all__ = [
     "all_covered_evidence_terms",
     "canonical_program_analysis_json",
     "compact_program_analysis_receipt",
+    "content_addressing_packet_evidence_terms",
+    "content_addressing_packet_goal_ids",
+    "dependency_cache_evidence_terms",
+    "dependency_cache_fail_closed_for_stale_and_negative",
+    "dependency_cache_profile",
     "digest_program_analysis_input",
     "make_program_analysis_cache_key",
     "objective_validation_repair_evidence_terms",
     "packet_evidence_terms",
     "program_analysis_cache_evidence_terms",
+    "semantic_dependencies_and_policy_participate_in_cache_keys",
     "tree_projection_is_not_object_identity",
 ]

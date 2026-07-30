@@ -5,6 +5,11 @@ discovery of ``objective validation repair``, separation of domain
 ``vfs/cid-profile@1`` evidence from the synthetic gate, and the refinement
 that immutable object identity stays separate from mutable current-tree
 projections used by the dependency-aware program-analysis cache.
+
+Packet ``goal_packet/content_addressing/ipfs_accelerate_py/591cd7cfb087``
+(VFS-G141 + VFS-G142) is covered end-to-end: frozen CID profile evidence and
+the dependency-aware cache key / fail-closed surface for
+``vfs/dependency-cache@1``.
 """
 
 from __future__ import annotations
@@ -37,6 +42,12 @@ from ipfs_accelerate_py.agent_supervisor.multiformats_identity import (
     CID_PROFILE_SCHEMA,
     CID_PROFILE_TASK_ID,
     CID_VERSION,
+    CONTENT_ADDRESSING_PACKET_EVIDENCE_TERMS,
+    CONTENT_ADDRESSING_PACKET_GOAL_IDS,
+    CONTENT_ADDRESSING_PACKET_ID,
+    DEPENDENCY_CACHE_EVIDENCE as IDENTITY_DEPENDENCY_CACHE_EVIDENCE,
+    DEPENDENCY_CACHE_GOAL_ID as IDENTITY_DEPENDENCY_CACHE_GOAL_ID,
+    DEPENDENCY_CACHE_TASK_ID as IDENTITY_DEPENDENCY_CACHE_TASK_ID,
     DIGEST_SIZE,
     IDENTITY_LINK_SCHEMA,
     MH_TYPE,
@@ -55,6 +66,8 @@ from ipfs_accelerate_py.agent_supervisor.multiformats_identity import (
     cid_from_sha256_digest,
     cid_profile,
     cid_profile_evidence_terms,
+    content_addressing_packet_evidence_terms,
+    content_addressing_packet_goal_ids,
     covered_evidence_terms,
     digest_hex_from_cid,
     immutable_object_identity_separate_from_tree_projections,
@@ -73,13 +86,29 @@ from ipfs_accelerate_py.agent_supervisor.multiformats_identity import (
     validate_cid,
 )
 from ipfs_accelerate_py.agent_supervisor.program_analysis_cache import (
+    CONTENT_ADDRESSING_PACKET_EVIDENCE_TERMS as CACHE_PACKET_EVIDENCE,
+    CONTENT_ADDRESSING_PACKET_GOAL_IDS as CACHE_PACKET_GOALS,
+    CONTENT_ADDRESSING_PACKET_ID as CACHE_PACKET_ID,
     DEPENDENCY_CACHE_EVIDENCE,
+    DEPENDENCY_CACHE_GOAL_ID,
+    DEPENDENCY_CACHE_KEY_DIMENSIONS,
+    DEPENDENCY_CACHE_SCHEMA,
+    DEPENDENCY_CACHE_TASK_ID,
     OBJECTIVE_PARENT_GOAL_ID,
     OBJECTIVE_PARENT_REPAIR_TASK_ID,
+    DependencyCacheProfile,
+    ProgramAnalysisCache,
     ProgramAnalysisCacheKey,
+    ProgramAnalysisCacheValidationError,
     all_covered_evidence_terms as cache_all_covered_evidence_terms,
+    content_addressing_packet_evidence_terms as cache_packet_evidence_terms,
+    content_addressing_packet_goal_ids as cache_packet_goal_ids,
+    dependency_cache_evidence_terms,
+    dependency_cache_fail_closed_for_stale_and_negative,
+    dependency_cache_profile,
     objective_validation_repair_evidence_terms as cache_repair_terms,
     program_analysis_cache_evidence_terms,
+    semantic_dependencies_and_policy_participate_in_cache_keys,
     tree_projection_is_not_object_identity,
 )
 from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
@@ -479,6 +508,171 @@ def test_objective_validation_repair_evidence_term_discoverable() -> None:
     assert "objective validation repair" not in encoded_link
     assert "objective validation repair" not in link.cid
     assert link.cid == cid
+
+
+def test_vfs_g142_dependency_cache_is_executable_packet_evidence() -> None:
+    """VFS-G142: expose dependency-cache profile without polluting keys."""
+
+    profile = dependency_cache_profile()
+    assert profile is dependency_cache_profile()
+    assert profile == DependencyCacheProfile()
+    payload = profile.to_dict()
+    assert payload["schema"] == DEPENDENCY_CACHE_SCHEMA
+    assert payload["evidence"] == "vfs/dependency-cache@1"
+    assert payload["goal_id"] == "VFS-G142"
+    assert payload["task_id"] == "VFS-088"
+    assert payload["policy_dimension"] == "policy_revision"
+    assert "policy_revision" in payload["key_dimensions"]
+    assert payload["semantic_dependencies_participate"] is True
+    assert payload["negative_never_completion"] is True
+    assert payload["stale_never_completion"] is True
+    assert payload["authority_namespaces_closed"] is True
+    assert payload["tree_projection_is_not_object_identity"] is True
+    assert payload["packet_goals"] == ["VFS-G141", "VFS-G142"]
+
+    assert DEPENDENCY_CACHE_EVIDENCE == "vfs/dependency-cache@1"
+    assert DEPENDENCY_CACHE_GOAL_ID == "VFS-G142"
+    assert DEPENDENCY_CACHE_TASK_ID == "VFS-088"
+    assert IDENTITY_DEPENDENCY_CACHE_EVIDENCE == DEPENDENCY_CACHE_EVIDENCE
+    assert IDENTITY_DEPENDENCY_CACHE_GOAL_ID == DEPENDENCY_CACHE_GOAL_ID
+    assert IDENTITY_DEPENDENCY_CACHE_TASK_ID == DEPENDENCY_CACHE_TASK_ID
+    assert dependency_cache_evidence_terms() == ("vfs/dependency-cache@1",)
+    assert DEPENDENCY_CACHE_EVIDENCE in program_analysis_cache_evidence_terms()
+    assert DEPENDENCY_CACHE_EVIDENCE in cache_all_covered_evidence_terms()
+
+    # Content-addressing packet binds G141 + G142 on both module surfaces.
+    assert CONTENT_ADDRESSING_PACKET_ID == (
+        "goal_packet/content_addressing/ipfs_accelerate_py/591cd7cfb087"
+    )
+    assert CONTENT_ADDRESSING_PACKET_ID == CACHE_PACKET_ID
+    assert content_addressing_packet_evidence_terms() == (
+        "vfs/cid-profile@1",
+        "vfs/dependency-cache@1",
+    )
+    assert content_addressing_packet_goal_ids() == ("VFS-G141", "VFS-G142")
+    assert content_addressing_packet_evidence_terms() == CACHE_PACKET_EVIDENCE
+    assert content_addressing_packet_goal_ids() == CACHE_PACKET_GOALS
+    assert cache_packet_evidence_terms() == CONTENT_ADDRESSING_PACKET_EVIDENCE_TERMS
+    assert cache_packet_goal_ids() == CONTENT_ADDRESSING_PACKET_GOAL_IDS
+
+    # Descriptor is closed: callers cannot negotiate a weaker profile.
+    with pytest.raises(ProgramAnalysisCacheValidationError, match="frozen"):
+        DependencyCacheProfile(policy_dimension="policy_digest_only")
+    with pytest.raises(ProgramAnalysisCacheValidationError, match="frozen"):
+        DependencyCacheProfile(negative_never_completion=False)
+    with pytest.raises(ProgramAnalysisCacheValidationError, match="frozen"):
+        DependencyCacheProfile(goal_id="VFS-G999")
+
+    # Evidence metadata is not a cache-key dimension.
+    key = ProgramAnalysisCacheKey(
+        forest_identity="forest:sha256:packet",
+        objective_revision="obj",
+        policy_revision="pol",
+        analyzer_version="an",
+        schema_version="sch",
+        configuration_digest="cfg",
+        query_digest="q",
+        capability_revision="cap",
+        assumption_digest="ass",
+        toolchain_version="tc",
+    )
+    encoded = json.dumps(key.to_dict(), sort_keys=True)
+    assert "vfs/dependency-cache@1" not in encoded
+    assert "VFS-G142" not in encoded
+    assert DEPENDENCY_CACHE_EVIDENCE not in covered_evidence_terms()
+    assert DEPENDENCY_CACHE_EVIDENCE not in all_covered_evidence_terms()
+
+
+def test_vfs_g142_acceptance_semantic_deps_policy_and_fail_closed(
+    tmp_path: Path,
+) -> None:
+    """VFS-G142 acceptance: policy/deps re-key; stale/negative fail closed.
+
+    Proves the acceptance subset for ``vfs/dependency-cache@1`` on the shared
+    content-addressing packet with VFS-G141: CIDv1/base32/dag-json/sha2-256
+    bytes remain cross-package reproducible; existing supervisor IDs retain
+    compatibility mappings; all semantic dependencies and policy versions
+    participate in cache keys; corruption and stale/negative results fail
+    closed.
+    """
+
+    assert DEPENDENCY_CACHE_EVIDENCE == "vfs/dependency-cache@1"
+    assert DEPENDENCY_CACHE_GOAL_ID == "VFS-G142"
+    assert DEPENDENCY_CACHE_EVIDENCE in dependency_cache_evidence_terms()
+    assert DEPENDENCY_CACHE_EVIDENCE in content_addressing_packet_evidence_terms()
+    assert CID_PROFILE_EVIDENCE in content_addressing_packet_evidence_terms()
+    assert set(DEPENDENCY_CACHE_KEY_DIMENSIONS) == set(
+        dependency_cache_profile().key_dimensions
+    )
+
+    # Cross-package CID reproducibility + compatibility mappings (packet half).
+    payload = {"unicode": "café", "nested": {"z": 2, "a": 1}}
+    reordered = {"nested": {"a": 1, "z": 2}, "unicode": "café"}
+    assert cid_for_dag_json(payload) == package_cid_for_dag_json(reordered)
+    assert cid_for_bytes(b"hello world") == package_cid_for_bytes(b"hello world")
+    formal = content_identity(payload)
+    bridge = cid_for_dag_json(payload)
+    assert formal == bridge
+    link = link_content_identity(formal, value=payload)
+    assert link.local_id == formal
+    assert link.cid == bridge
+
+    # All semantic dependencies and policy versions participate in cache keys.
+    assert semantic_dependencies_and_policy_participate_in_cache_keys() is True
+    baseline = ProgramAnalysisCacheKey(
+        forest_identity="forest:sha256:tree-A",
+        objective_revision="obj-1",
+        policy_revision="pol-1",
+        analyzer_version="analyzer@1",
+        schema_version="schema@1",
+        configuration_digest="sha256:cfg-1",
+        query_digest="sha256:q-1",
+        capability_revision="cap@1",
+        assumption_digest="sha256:ass-1",
+        toolchain_version="tc@1",
+    )
+    policy_mutated = ProgramAnalysisCacheKey(
+        forest_identity="forest:sha256:tree-A",
+        objective_revision="obj-1",
+        policy_revision="pol-2",
+        analyzer_version="analyzer@1",
+        schema_version="schema@1",
+        configuration_digest="sha256:cfg-1",
+        query_digest="sha256:q-1",
+        capability_revision="cap@1",
+        assumption_digest="sha256:ass-1",
+        toolchain_version="tc@1",
+    )
+    assert baseline.digest != policy_mutated.digest
+    dep_keys = {dep.key for dep in baseline.population_dependencies()}
+    assert "policy_revision" in dep_keys
+    for dimension in DEPENDENCY_CACHE_KEY_DIMENSIONS:
+        assert dimension in dep_keys
+
+    # Tree projections bind keys only; object CIDs stay independent.
+    assert tree_projection_is_not_object_identity(
+        forest_identity="forest:sha256:tree-A",
+        payload=payload,
+    )
+    assert immutable_object_identity_separate_from_tree_projections() is True
+
+    # Corruption / stale / negative fail closed.
+    with pytest.raises(MultiformatsIdentityError):
+        validate_cid("not-a-cid")
+    with pytest.raises(MultiformatsIdentityError, match="timestamp"):
+        cid_for_dag_json({"when": datetime.now(timezone.utc)})
+
+    now = [1_000.0]
+    cache = ProgramAnalysisCache(
+        tmp_path,
+        default_success_ttl_seconds=2,
+        clock=lambda: now[0],
+    )
+    assert dependency_cache_fail_closed_for_stale_and_negative(
+        cache,
+        now=now,
+        success_ttl_seconds=2.0,
+    )
 
 
 def test_vfs_g030_acceptance_identity_tree_separation_and_fail_closed() -> None:

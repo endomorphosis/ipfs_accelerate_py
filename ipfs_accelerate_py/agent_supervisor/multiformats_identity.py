@@ -20,6 +20,13 @@ The executable profile descriptor and exact discovery term
 already-enforced wire profile; neither the evidence label nor goal metadata is
 included in CID input bytes or allowed to replace existing supervisor IDs.
 
+The content-addressing packet
+(``goal_packet/content_addressing/ipfs_accelerate_py/591cd7cfb087``) pairs
+this surface with ``vfs/dependency-cache@1`` (VFS-G142) owned by
+:mod:`program_analysis_cache`.  Packet evidence helpers here list both terms
+for discovery cohesion; dependency-cache key population and fail-closed
+lookup remain implemented only on the cache facade.
+
 VFS-G030 owns the parent multiformats + dependency-cache surface.  Its
 synthetic ``objective validation repair`` discovery marker is exposed only
 through evidence helpers and never enters CID bytes, compatibility links, or
@@ -62,6 +69,25 @@ CID_PROFILE_EVIDENCE: Final = "vfs/cid-profile@1"
 CID_PROFILE_GOAL_ID: Final = "VFS-G141"
 CID_PROFILE_TASK_ID: Final = "VFS-057"
 
+# Paired VFS-G142 dependency-cache discovery anchors (implemented by
+# program_analysis_cache).  Declared here as exact-text constants so the
+# content-addressing packet evidence is discoverable from both module surfaces
+# without importing the cache facade (avoids circular imports).
+DEPENDENCY_CACHE_EVIDENCE: Final = "vfs/dependency-cache@1"
+DEPENDENCY_CACHE_GOAL_ID: Final = "VFS-G142"
+DEPENDENCY_CACHE_TASK_ID: Final = "VFS-088"
+CONTENT_ADDRESSING_PACKET_ID: Final = (
+    "goal_packet/content_addressing/ipfs_accelerate_py/591cd7cfb087"
+)
+CONTENT_ADDRESSING_PACKET_GOAL_IDS: Final[tuple[str, ...]] = (
+    CID_PROFILE_GOAL_ID,
+    DEPENDENCY_CACHE_GOAL_ID,
+)
+CONTENT_ADDRESSING_PACKET_EVIDENCE_TERMS: Final[tuple[str, ...]] = (
+    CID_PROFILE_EVIDENCE,
+    DEPENDENCY_CACHE_EVIDENCE,
+)
+
 # Synthetic objective-heap evidence term for VFS-G030 validation-gate work.
 # Exact-text discovery key only — never part of CID input, identity links,
 # or mutable current-tree projection dimensions used by analysis caches.
@@ -80,6 +106,14 @@ assert OBJECTIVE_VALIDATION_REPAIR_TASK_ID == "VFS-060"
 assert CID_PROFILE_EVIDENCE == "vfs/cid-profile@1"
 assert CID_PROFILE_GOAL_ID == "VFS-G141"
 assert OBJECTIVE_DOMAIN_EVIDENCE_TERMS == ("vfs/cid-profile@1",)
+assert DEPENDENCY_CACHE_EVIDENCE == "vfs/dependency-cache@1"
+assert DEPENDENCY_CACHE_GOAL_ID == "VFS-G142"
+assert DEPENDENCY_CACHE_TASK_ID == "VFS-088"
+assert CONTENT_ADDRESSING_PACKET_GOAL_IDS == ("VFS-G141", "VFS-G142")
+assert CONTENT_ADDRESSING_PACKET_EVIDENCE_TERMS == (
+    "vfs/cid-profile@1",
+    "vfs/dependency-cache@1",
+)
 
 RUNTIME_ARTIFACT_PREFIX: Final = "runtime-artifact:sha256:"
 PAYLOAD_DIGEST_PREFIX: Final = "sha256:"
@@ -1027,9 +1061,30 @@ def all_covered_evidence_terms() -> tuple[str, ...]:
     Domain ``vfs/cid-profile@1`` comes first; the synthetic objective
     validation repair discovery key is appended last and never enters CID
     input bytes, identity-link payloads, or tree-projection cache dimensions.
+
+    Packet-level ``vfs/dependency-cache@1`` (VFS-G142) is intentionally omitted
+    here so this bridge stays cid-profile-only; use
+    :func:`content_addressing_packet_evidence_terms` for the shared
+    content-addressing packet surface.
     """
 
     return covered_evidence_terms() + objective_validation_repair_evidence_terms()
+
+
+def content_addressing_packet_evidence_terms() -> tuple[str, ...]:
+    """Return shared VFS-G141 / VFS-G142 packet evidence discovery terms.
+
+    Order is stable: ``vfs/cid-profile@1`` then ``vfs/dependency-cache@1``.
+    Neither term participates in CID input bytes or IdentityLink payloads.
+    """
+
+    return CONTENT_ADDRESSING_PACKET_EVIDENCE_TERMS
+
+
+def content_addressing_packet_goal_ids() -> tuple[str, ...]:
+    """Return the VFS-G141 / VFS-G142 goal ids for the content-addressing packet."""
+
+    return CONTENT_ADDRESSING_PACKET_GOAL_IDS
 
 
 def immutable_object_identity_separate_from_tree_projections() -> bool:
@@ -1067,6 +1122,12 @@ __all__ = [
     "CID_PROFILE_TASK_ID",
     "CID_VERSION",
     "CIDProfile",
+    "CONTENT_ADDRESSING_PACKET_EVIDENCE_TERMS",
+    "CONTENT_ADDRESSING_PACKET_GOAL_IDS",
+    "CONTENT_ADDRESSING_PACKET_ID",
+    "DEPENDENCY_CACHE_EVIDENCE",
+    "DEPENDENCY_CACHE_GOAL_ID",
+    "DEPENDENCY_CACHE_TASK_ID",
     "DIGEST_SIZE",
     "IDENTITY_LINK_SCHEMA",
     "IdentityKind",
@@ -1087,6 +1148,8 @@ __all__ = [
     "cid_from_sha256_digest",
     "cid_profile",
     "cid_profile_evidence_terms",
+    "content_addressing_packet_evidence_terms",
+    "content_addressing_packet_goal_ids",
     "covered_evidence_terms",
     "digest_hex_from_cid",
     "immutable_object_identity_separate_from_tree_projections",
