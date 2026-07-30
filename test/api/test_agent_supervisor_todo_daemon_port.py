@@ -10345,6 +10345,156 @@ def test_implementation_daemon_defers_provider_quota_without_consuming_attempt(t
     assert not any(event["type"] == "implementation_finished" for event in events)
 
 
+def test_provider_declared_retry_reset_and_explicit_command_attribution(
+    tmp_path,
+    monkeypatch,
+):
+    fixed_now = datetime(2026, 7, 30, 9, 0, tzinfo=timezone.utc)
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_provider_capacity_now",
+        lambda: fixed_now,
+        raising=False,
+    )
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text("# Todos\n", encoding="utf-8")
+    codex_command = repo / "codex"
+    codex_command.write_text(
+        "#!/bin/sh\n"
+        "printf \"ERROR: You've hit your usage limit.\\n\"\n"
+        "printf \"Try again at Aug 5th, 2026 4:09 AM.\\n\"\n"
+        "exit 1\n",
+        encoding="utf-8",
+    )
+    codex_command.chmod(0o755)
+    state_dir = repo / "state"
+    state_path = state_dir / "task_state.json"
+    events_path = state_dir / "events.jsonl"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_path,
+        strategy_path=state_dir / "strategy.json",
+        events_path=events_path,
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+        implementation_command=str(codex_command),
+    )
+    task = PortalTask(
+        task_id="ACCEL-001",
+        title="Honor the provider reset horizon",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="ops",
+    )
+
+    result = daemon._run_implementation(task, TodoTaskState())
+
+    assert result["deferred"] is True
+    assert result["providers"] == ["codex"]
+    assert result["retry_at"] == "2026-08-05T04:09:00+00:00"
+    assert result["retry_at_source"] == "provider_declared"
+
+    monkeypatch.delenv(
+        implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_goose_meta_spark_available",
+        lambda: False,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_grok_cli_available",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module.shutil,
+        "which",
+        lambda name: "/usr/bin/codex" if name == "codex" else None,
+    )
+    grok_daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_path,
+        strategy_path=state_dir / "strategy.json",
+        events_path=events_path,
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+        implementation_command="/usr/local/bin/grok --mode agent",
+    )
+
+    assert grok_daemon._active_provider_capacity_backoff() == {}
+
+
+@pytest.mark.parametrize(
+    "retry_line",
+    (
+        "",
+        "Try again at Aug 32nd, 2026 4:09 AM.",
+    ),
+)
+def test_provider_retry_reset_absent_or_invalid_uses_configured_fallback(
+    tmp_path,
+    monkeypatch,
+    retry_line,
+):
+    fixed_now = datetime(2026, 7, 30, 9, 0, tzinfo=timezone.utc)
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "_provider_capacity_now",
+        lambda: fixed_now,
+        raising=False,
+    )
+    monkeypatch.setenv(
+        implementation_daemon_module.PROVIDER_CAPACITY_BACKOFF_ENV,
+        "300",
+    )
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text("# Todos\n", encoding="utf-8")
+    codex_command = repo / "codex"
+    codex_command.write_text(
+        "#!/bin/sh\n"
+        "printf \"ERROR: You've hit your usage limit.\\n\"\n"
+        f"printf \"%s\\n\" {shlex.quote(retry_line)}\n"
+        "exit 1\n",
+        encoding="utf-8",
+    )
+    codex_command.chmod(0o755)
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+        implementation_command=str(codex_command),
+    )
+    task = PortalTask(
+        task_id="ACCEL-001",
+        title="Use the bounded provider fallback",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="ops",
+    )
+
+    result = daemon._run_implementation(task, TodoTaskState())
+
+    assert result["deferred"] is True
+    assert result["providers"] == ["codex"]
+    assert result["retry_at"] == "2026-07-30T09:05:00+00:00"
+    assert result["retry_at_source"] == "configured_backoff"
+
+
 def test_provider_capacity_backoff_passes_do_not_grow_state_or_events(
     tmp_path,
     monkeypatch,
