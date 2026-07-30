@@ -60,10 +60,6 @@ from ipfs_accelerate_py.agent_supervisor.analysis.content_identity_bridge import
 )
 
 
-REPO_ROOT = Path(__file__).resolve().parents[4]
-CAPABILITY_PATH = REPO_ROOT / DEFAULT_CAPABILITY_RELATIVE_PATH
-
-
 @pytest.fixture(autouse=True)
 def _clear_import_cache() -> Any:
     reset_provider_import_cache()
@@ -358,18 +354,21 @@ def test_conformance_receipt_passes_without_model_calls() -> None:
     assert payload["policies"]["cross_profile_equality_allowed"] is False
 
 
-def test_capability_document_is_written_and_matches_live_conformance() -> None:
+def test_capability_document_is_written_and_matches_live_conformance(
+    tmp_path: Path,
+) -> None:
     receipt = prove_content_identity_conformance()
     assert receipt.passed is True
 
     written = write_datasets_content_identity_capability(
-        CAPABILITY_PATH,
         receipt=receipt,
+        repository_root=tmp_path,
     )
-    assert written == CAPABILITY_PATH
-    assert CAPABILITY_PATH.is_file()
+    capability_path = tmp_path / DEFAULT_CAPABILITY_RELATIVE_PATH
+    assert written == capability_path
+    assert capability_path.is_file()
 
-    on_disk = json.loads(CAPABILITY_PATH.read_text(encoding="utf-8"))
+    on_disk = json.loads(capability_path.read_text(encoding="utf-8"))
     built = build_datasets_content_identity_capability(receipt=receipt)
 
     assert on_disk["schema"] == DATASETS_CONTENT_IDENTITY_SCHEMA
