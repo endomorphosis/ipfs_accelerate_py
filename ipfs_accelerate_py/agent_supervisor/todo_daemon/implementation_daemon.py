@@ -11,6 +11,7 @@ import re
 import signal
 import shlex
 import shutil
+import ssl
 import stat as stat_module
 import subprocess
 import sys
@@ -22,6 +23,7 @@ from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from typing import Any, Callable, Iterable, Mapping, Sequence
 from urllib.parse import unquote, urlsplit
+from urllib.request import Request, urlopen
 
 from .. import implementation_timeout as _implementation_timeout
 from ..context.context_compiler import (
@@ -145,6 +147,7 @@ from .contract_packet_provider_router import (
     ProductionReceiptDisposition,
     ProductionReviewChainBinding,
     ProviderCallable,
+    ProviderRequest,
     ProviderReason,
     ProviderRole,
     ProviderRoutingError,
@@ -235,6 +238,24 @@ PRODUCTION_PROVIDER_ROUTE_ENABLED_ENV = (
 PRODUCTION_PROVIDER_ALLOW_RAW_COMMAND_ENV = (
     "IPFS_ACCELERATE_AGENT_ALLOW_RAW_MODEL_COMMAND"
 )
+PRODUCTION_MCP_ENDPOINT_ENV = "IPFS_ACCELERATE_AGENT_PRODUCTION_MCP_ENDPOINT"
+PRODUCTION_MCP_CA_FILE_ENV = "IPFS_ACCELERATE_AGENT_PRODUCTION_MCP_CA_FILE"
+PRODUCTION_GROK_PROVIDER_ENV = (
+    "IPFS_ACCELERATE_AGENT_PRODUCTION_GROK_PROVIDER"
+)
+PRODUCTION_CODEX_PROVIDER_ENV = (
+    "IPFS_ACCELERATE_AGENT_PRODUCTION_CODEX_PROVIDER"
+)
+PRODUCTION_GROK_MODEL_ENV = "IPFS_ACCELERATE_AGENT_GROK_MODEL"
+PRODUCTION_CODEX_MODEL_ENV = "IPFS_ACCELERATE_AGENT_CODEX_MODEL"
+DEFAULT_PRODUCTION_MCP_ENDPOINT = "https://127.0.0.1:9002/mcp"
+DEFAULT_PRODUCTION_GROK_PROVIDER = "grok_cli"
+DEFAULT_PRODUCTION_CODEX_PROVIDER = "codex_cli"
+DEFAULT_PRODUCTION_GROK_MODEL = "grok-4.5"
+DEFAULT_PRODUCTION_CODEX_MODEL = "gpt-5.6-sol"
+MCP_JSONRPC_ENVELOPE_MAX_BYTES = 64 * 1024
+MCP_JSONRPC_TOOL_NAME = "llm_generate"
+MCP_LLM_GENERATE_OPERATION = "text.generate"
 MAX_IMPLEMENTATION_CHECKPOINT_FILES = 16
 MAX_IMPLEMENTATION_CHECKPOINT_BYTES = 512 * 1024 * 1024
 MAX_IMPLEMENTATION_CHECKPOINT_PATH_BYTES = 256
@@ -416,6 +437,370 @@ IMPLEMENTATION_PROTECTED_ACTIVE_SNAPSHOT_FILENAME = (
 IMPLEMENTATION_PROTECTED_INCIDENT_FILENAME = (
     "implementation-protected-path-incident.json"
 )
+
+
+def _json_object_without_duplicates(raw: bytes) -> Mapping[str, Any]:
+    """Decode one bounded JSON object while rejecting duplicate fields."""
+
+    try:
+        text = raw.decode("utf-8", errors="strict")
+    except UnicodeDecodeError as exc:
+        raise ProviderRoutingError(
+            "MCP++ response is not UTF-8",
+            reason_code=ProviderReason.PROVIDER_RESPONSE_MALFORMED,
+        ) from exc
+
+    def object_pairs(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError(f"duplicate JSON field: {key}")
+            result[key] = value
+        return result
+
+    try:
+        decoded = json.loads(
+            text,
+            object_pairs_hook=object_pairs,
+            parse_constant=lambda value: (_ for _ in ()).throw(
+                ValueError(f"non-finite JSON value: {value}")
+            ),
+        )
+    except (TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise ProviderRoutingError(
+            "MCP++ response is not canonical JSON",
+            reason_code=ProviderReason.PROVIDER_RESPONSE_MALFORMED,
+        ) from exc
+    if not isinstance(decoded, Mapping):
+        raise ProviderRoutingError(
+            "MCP++ response must be a JSON object",
+            reason_code=ProviderReason.PROVIDER_RESPONSE_MALFORMED,
+        )
+    return decoded
+
+
+@dataclass(slots=True)
+class McpPlusPlusLlmGenerateProvider:
+    """Synchronous, bounded MCP++ ``llm_generate`` provider transport."""
+
+    role: ProviderRole
+    endpoint_url: str
+    provider_selector: str
+    model_selector: str
+    ca_file: str = ""
+    max_tokens: int = 4096
+    timeout_seconds: float = 120.0
+    provider_identity: str = field(init=False)
+    model_identity: str = field(init=False)
+    last_session_identity: str = field(default="", init=False)
+    _session_lock: threading.Lock = field(
+        default_factory=threading.Lock,
+        init=False,
+        repr=False,
+    )
+
+    def __post_init__(self) -> None:
+        if self.role not in {
+            ProviderRole.GROK_IMPLEMENT,
+            ProviderRole.CODEX_REVIEW,
+        }:
+            raise ValueError(
+                "MCP++ production transport supports only Grok implement "
+                "and Codex review roles"
+            )
+        provider = str(self.provider_selector or "").strip().casefold()
+        if not provider:
+            raise ValueError(f"{self.role.value} requires a pinned provider selector")
+        model = str(self.model_selector or "").strip()
+        if not model:
+            raise ValueError(f"{self.role.value} requires a pinned model selector")
+        endpoint = str(self.endpoint_url or "").strip()
+        parsed = urlsplit(endpoint)
+        if (
+            parsed.scheme not in {"http", "https"}
+            or not parsed.hostname
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.query
+            or parsed.fragment
+        ):
+            raise ValueError("production MCP++ endpoint must be an HTTP(S) URL")
+        if parsed.scheme == "http" and parsed.hostname not in {
+            "127.0.0.1",
+            "::1",
+            "localhost",
+        }:
+            raise ValueError("unencrypted MCP++ transport is restricted to loopback")
+        if not parsed.path or parsed.path == "/":
+            raise ValueError("production MCP++ endpoint must include the /mcp path")
+        if (
+            isinstance(self.max_tokens, bool)
+            or not isinstance(self.max_tokens, int)
+            or self.max_tokens < 1
+        ):
+            raise ValueError("max_tokens must be a positive integer")
+        if (
+            isinstance(self.timeout_seconds, bool)
+            or not isinstance(self.timeout_seconds, (int, float))
+            or not 0 < float(self.timeout_seconds) <= 300
+        ):
+            raise ValueError("timeout_seconds must be in (0, 300]")
+        ca_file = str(self.ca_file or "").strip()
+        if ca_file and not Path(ca_file).is_file():
+            raise ValueError("production MCP++ CA file does not exist")
+
+        self.endpoint_url = endpoint
+        self.provider_selector = provider
+        self.model_selector = model
+        self.ca_file = ca_file
+        self.timeout_seconds = float(self.timeout_seconds)
+        self.provider_identity = (
+            f"mcp++:{MCP_JSONRPC_TOOL_NAME}:provider={provider}"
+        )
+        self.model_identity = f"{provider}:{model}"
+
+    @staticmethod
+    def _bounded_response_body(response: Any, limit: int) -> bytes:
+        raw_length = ""
+        headers = getattr(response, "headers", None)
+        if headers is not None:
+            raw_length = str(headers.get("Content-Length") or "").strip()
+        if raw_length:
+            try:
+                declared_length = int(raw_length)
+            except ValueError as exc:
+                raise ProviderRoutingError(
+                    "MCP++ response Content-Length is invalid",
+                    reason_code=ProviderReason.PROVIDER_RESPONSE_MALFORMED,
+                ) from exc
+            if declared_length < 0 or declared_length > limit:
+                raise ProviderRoutingError(
+                    "MCP++ JSON-RPC envelope exceeds its byte bound",
+                    reason_code=ProviderReason.PROVIDER_RESPONSE_TOO_LARGE,
+                )
+        body = response.read(limit + 1)
+        if not isinstance(body, bytes):
+            raise ProviderRoutingError(
+                "MCP++ transport returned a non-byte response",
+                reason_code=ProviderReason.PROVIDER_RESPONSE_MALFORMED,
+            )
+        if len(body) > limit:
+            raise ProviderRoutingError(
+                "MCP++ JSON-RPC envelope exceeds its byte bound",
+                reason_code=ProviderReason.PROVIDER_RESPONSE_TOO_LARGE,
+            )
+        return body
+
+    def _ssl_context(self) -> ssl.SSLContext | None:
+        if urlsplit(self.endpoint_url).scheme != "https":
+            return None
+        return ssl.create_default_context(cafile=self.ca_file or None)
+
+    def __call__(self, request: ProviderRequest) -> str:
+        if request.role is not self.role:
+            raise ProviderRoutingError(
+                "MCP++ provider role does not match the request",
+                reason_code=ProviderReason.PROVIDER_FAILURE,
+            )
+        prompt = bytes(request.prompt)
+        if len(prompt) > int(request.bounds.max_prompt_bytes):
+            raise ProviderRoutingError(
+                "MCP++ prompt exceeds the provider byte bound",
+                reason_code=ProviderReason.PROMPT_TOO_LARGE,
+            )
+        try:
+            prompt_text = prompt.decode("utf-8", errors="strict")
+        except UnicodeDecodeError as exc:
+            raise ProviderRoutingError(
+                "MCP++ prompt is not UTF-8",
+                reason_code=ProviderReason.PACKET_MALFORMED,
+            ) from exc
+
+        request_id = (
+            f"sca615:{self.role.value}:"
+            f"{hashlib.sha256(prompt).hexdigest()}"
+        )
+        response_limit = int(request.bounds.max_response_bytes)
+        request_payload = {
+            "jsonrpc": "2.0",
+            "id": request_id,
+            "method": "tools/call",
+            "params": {
+                "name": MCP_JSONRPC_TOOL_NAME,
+                "arguments": {
+                    "prompt": prompt_text,
+                    "provider": self.provider_selector,
+                    "model": self.model_selector,
+                    "max_tokens": min(
+                        self.max_tokens,
+                        max(1, response_limit // 4),
+                    ),
+                    "temperature": 0.0,
+                    "timeout": min(
+                        float(self.timeout_seconds),
+                        float(request.bounds.timeout_seconds),
+                    ),
+                    "max_output_bytes": response_limit,
+                    "allow_fallback": False,
+                    "stream": False,
+                },
+            },
+        }
+        encoded_request = json.dumps(
+            request_payload,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        ).encode("utf-8")
+        request_limit = (
+            int(request.bounds.max_prompt_bytes) + MCP_JSONRPC_ENVELOPE_MAX_BYTES
+        )
+        if len(encoded_request) > request_limit:
+            raise ProviderRoutingError(
+                "MCP++ JSON-RPC request exceeds its byte bound",
+                reason_code=ProviderReason.PROMPT_TOO_LARGE,
+            )
+
+        http_request = Request(
+            self.endpoint_url,
+            data=encoded_request,
+            headers={
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+            },
+            method="POST",
+        )
+        timeout = min(
+            float(self.timeout_seconds),
+            float(request.bounds.timeout_seconds),
+        )
+        try:
+            context = self._ssl_context()
+            if context is None:
+                opened = urlopen(http_request, timeout=timeout)
+            else:
+                opened = urlopen(http_request, timeout=timeout, context=context)
+            with opened as response:
+                status = int(
+                    getattr(response, "status", None)
+                    or response.getcode()
+                    or 0
+                )
+                if status != 200:
+                    raise ProviderRoutingError(
+                        f"MCP++ HTTP status {status}",
+                        reason_code=ProviderReason.PROVIDER_FAILURE,
+                    )
+                encoded_response = self._bounded_response_body(
+                    response,
+                    response_limit + MCP_JSONRPC_ENVELOPE_MAX_BYTES,
+                )
+        except ProviderRoutingError:
+            raise
+        except (OSError, ssl.SSLError, TimeoutError) as exc:
+            raise ProviderRoutingError(
+                f"MCP++ transport failed: {type(exc).__name__}",
+                reason_code=ProviderReason.PROVIDER_FAILURE,
+            ) from exc
+
+        envelope = _json_object_without_duplicates(encoded_response)
+        if envelope.get("jsonrpc") != "2.0" or envelope.get("id") != request_id:
+            raise ProviderRoutingError(
+                "MCP++ JSON-RPC response identity mismatch",
+                reason_code=ProviderReason.PROVIDER_RESPONSE_MALFORMED,
+            )
+        if "error" in envelope:
+            raise ProviderRoutingError(
+                "MCP++ llm_generate returned a JSON-RPC error",
+                reason_code=ProviderReason.PROVIDER_FAILURE,
+            )
+        result = envelope.get("result")
+        if (
+            not isinstance(result, Mapping)
+            or result.get("success") is not True
+            or result.get("status") != "success"
+        ):
+            raise ProviderRoutingError(
+                "MCP++ llm_generate did not succeed",
+                reason_code=ProviderReason.PROVIDER_FAILURE,
+            )
+
+        binding = result.get("selected_binding")
+        receipt = result.get("receipt")
+        text = result.get("text")
+        if (
+            not isinstance(binding, Mapping)
+            or not isinstance(receipt, Mapping)
+            or not isinstance(text, str)
+        ):
+            raise ProviderRoutingError(
+                "MCP++ llm_generate response is incomplete",
+                reason_code=ProviderReason.PROVIDER_RESPONSE_MALFORMED,
+            )
+        binding_id = str(binding.get("binding_id") or "").strip()
+        operations = binding.get("operations")
+        if (
+            not binding_id
+            or str(binding.get("router") or "") != "llm_router"
+            or str(binding.get("provider_id") or "").casefold()
+            != self.provider_selector
+            or str(binding.get("model_id") or "") != self.model_selector
+            or not isinstance(operations, Sequence)
+            or isinstance(operations, (str, bytes))
+            or MCP_LLM_GENERATE_OPERATION
+            not in {str(item) for item in operations}
+        ):
+            raise ProviderRoutingError(
+                "MCP++ selected binding violates the pinned provider/model",
+                reason_code=ProviderReason.PROVIDER_FAILURE,
+            )
+        fallback = receipt.get("fallback")
+        receipt_input = receipt.get("input")
+        receipt_output = receipt.get("output")
+        catalog_revision = str(result.get("catalog_revision") or "").strip()
+        if (
+            str(receipt.get("selected_binding_id") or "") != binding_id
+            or str(receipt.get("catalog_revision") or "") != catalog_revision
+            or str(receipt.get("operation") or "")
+            != MCP_LLM_GENERATE_OPERATION
+            or not catalog_revision
+            or not isinstance(fallback, Mapping)
+            or fallback.get("allowed") is not False
+            or fallback.get("used") is not False
+            or not isinstance(receipt_input, Mapping)
+            or receipt_input.get("count") != 1
+            or receipt_input.get("text_bytes") != len(prompt)
+            or not isinstance(receipt_output, Mapping)
+        ):
+            raise ProviderRoutingError(
+                "MCP++ routing receipt is invalid",
+                reason_code=ProviderReason.PROVIDER_RESPONSE_MALFORMED,
+            )
+        encoded_text = text.encode("utf-8", errors="strict")
+        if (
+            len(encoded_text) > response_limit
+            or receipt_output.get("bytes") != len(encoded_text)
+        ):
+            raise ProviderRoutingError(
+                "MCP++ generated text violates its byte receipt",
+                reason_code=ProviderReason.PROVIDER_RESPONSE_TOO_LARGE,
+            )
+
+        session_identity = content_identity(
+            {
+                "jsonrpc_id": request_id,
+                "binding_id": binding_id,
+                "catalog_revision": catalog_revision,
+                "provider": self.provider_selector,
+                "model": self.model_selector,
+                "prompt_sha256": hashlib.sha256(prompt).hexdigest(),
+                "response_sha256": hashlib.sha256(encoded_text).hexdigest(),
+            }
+        )
+        with self._session_lock:
+            self.last_session_identity = session_identity
+        return text
 
 
 def implementation_task_claim_protected_fence_paths(
@@ -2669,6 +3054,15 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         implementation_provider_max_input_tokens: int | None = None,
         implementation_max_repair_rounds: int = 3,
         implementation_cancelled: Any = None,
+        production_grok_provider: ProviderCallable | None = None,
+        production_codex_provider: ProviderCallable | None = None,
+        production_deterministic_provider: ProviderCallable | None = None,
+        production_mcp_endpoint: str | None = None,
+        production_grok_provider_selector: str | None = None,
+        production_codex_provider_selector: str | None = None,
+        production_grok_model: str | None = None,
+        production_codex_model: str | None = None,
+        production_mcp_ca_file: Path | str | None = None,
         decision_runtime: Any = None,
         decision_runtime_config: Mapping[str, Any] | None = None,
     ) -> None:
@@ -2748,6 +3142,76 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             implementation_max_repair_rounds
         )
         self.implementation_cancelled = implementation_cancelled
+        self._production_grok_provider = production_grok_provider
+        self._production_codex_provider = production_codex_provider
+        self._production_deterministic_provider = (
+            production_deterministic_provider
+        )
+        self._last_production_provider_receipt: Any = None
+        self._last_production_review_chain_binding: Any = None
+        explicit_production_route = os.environ.get(
+            PRODUCTION_PROVIDER_ROUTE_ENABLED_ENV, ""
+        ).strip().lower() in {"1", "true", "yes", "on"}
+        if (
+            self._production_grok_provider is None
+            and self._production_codex_provider is None
+            and explicit_production_route
+        ):
+            endpoint = str(
+                production_mcp_endpoint
+                or os.environ.get(PRODUCTION_MCP_ENDPOINT_ENV, "")
+                or DEFAULT_PRODUCTION_MCP_ENDPOINT
+            ).strip()
+            ca_file = str(
+                production_mcp_ca_file
+                or os.environ.get(PRODUCTION_MCP_CA_FILE_ENV, "")
+                or ""
+            ).strip()
+            grok_provider_selector = str(
+                production_grok_provider_selector
+                or os.environ.get(PRODUCTION_GROK_PROVIDER_ENV, "")
+                or DEFAULT_PRODUCTION_GROK_PROVIDER
+            ).strip()
+            codex_provider_selector = str(
+                production_codex_provider_selector
+                or os.environ.get(PRODUCTION_CODEX_PROVIDER_ENV, "")
+                or DEFAULT_PRODUCTION_CODEX_PROVIDER
+            ).strip()
+            grok_model = str(
+                production_grok_model
+                or os.environ.get(PRODUCTION_GROK_MODEL_ENV, "")
+                or DEFAULT_PRODUCTION_GROK_MODEL
+            ).strip()
+            codex_model = str(
+                production_codex_model
+                or os.environ.get(PRODUCTION_CODEX_MODEL_ENV, "")
+                or DEFAULT_PRODUCTION_CODEX_MODEL
+            ).strip()
+            self._production_grok_provider = McpPlusPlusLlmGenerateProvider(
+                role=ProviderRole.GROK_IMPLEMENT,
+                endpoint_url=endpoint,
+                provider_selector=grok_provider_selector,
+                model_selector=grok_model,
+                ca_file=ca_file,
+                timeout_seconds=min(120.0, float(implementation_timeout)),
+            )
+            self._production_codex_provider = McpPlusPlusLlmGenerateProvider(
+                role=ProviderRole.CODEX_REVIEW,
+                endpoint_url=endpoint,
+                provider_selector=codex_provider_selector,
+                model_selector=codex_model,
+                ca_file=ca_file,
+                timeout_seconds=min(120.0, float(implementation_timeout)),
+            )
+        if (
+            self._production_grok_provider is not None
+            and self._production_grok_provider
+            is self._production_codex_provider
+        ):
+            raise ValueError(
+                "production Grok implementation and Codex review providers "
+                "must be distinct callables"
+            )
         if decision_runtime is not None and decision_runtime_config is not None:
             configured = getattr(decision_runtime, "config", None)
             if configured is None:
@@ -8833,6 +9297,29 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         production_binding = getattr(
             self, "_last_production_review_chain_binding", None
         )
+        production_receipt = getattr(
+            self, "_last_production_provider_receipt", None
+        )
+        receipt_payload = (
+            production_receipt.to_dict()
+            if production_receipt is not None
+            and callable(getattr(production_receipt, "to_dict", None))
+            else (
+                dict(production_receipt)
+                if isinstance(production_receipt, Mapping)
+                else {}
+            )
+        )
+        receipt_packet = receipt_payload.get("packet")
+        if (
+            isinstance(receipt_packet, Mapping)
+            and str(receipt_packet.get("task_id") or "") == task.task_id
+        ):
+            metadata["production_provider_route"] = True
+            metadata["provider_execution_receipt"] = receipt_payload
+            metadata["provider_review_receipt_id"] = str(
+                receipt_payload.get("receipt_id") or ""
+            )
         if isinstance(production_binding, ProductionReviewChainBinding):
             if production_binding.task_id == task.task_id:
                 metadata["admitted_review_chain_binding"] = (
@@ -9914,24 +10401,23 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                                 workspace_path=worktree_path,
                                 baseline_ref=baseline_ref,
                                 apply=True,
-                                grok_provider=getattr(
-                                    self, "_production_grok_provider", None
-                                ),
-                                codex_provider=getattr(
-                                    self, "_production_codex_provider", None
-                                ),
-                                deterministic_provider=getattr(
-                                    self,
-                                    "_production_deterministic_provider",
-                                    None,
+                                grok_provider=self._production_grok_provider,
+                                codex_provider=self._production_codex_provider,
+                                deterministic_provider=(
+                                    self._production_deterministic_provider
                                 ),
                             ),
                         )
                     )
+                    production_returncode = production_route_payload.get(
+                        "returncode"
+                    )
                     completed = subprocess.CompletedProcess(
                         args=("production-provider-route",),
                         returncode=int(
-                            production_route_payload.get("returncode") or 1
+                            1
+                            if production_returncode is None
+                            else production_returncode
                         ),
                     )
                     route_event = dict(
@@ -10188,6 +10674,14 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     )
                     implementation_commit = str(commit_result.get("commit", ""))
                     if implementation_commit:
+                        if use_production_route:
+                            self._bind_production_route_to_implementation_commit(
+                                task=task,
+                                attempt=attempt,
+                                baseline_ref=baseline_ref,
+                                implementation_commit=implementation_commit,
+                                route_payload=production_route_payload,
+                            )
                         merge_result = self._enqueue_validated_worktree(
                             state=state,
                             task=task,
@@ -10419,6 +10913,14 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                         )
                         implementation_commit = str(commit_result.get("commit", ""))
                         if implementation_commit:
+                            if use_production_route:
+                                self._bind_production_route_to_implementation_commit(
+                                    task=task,
+                                    attempt=attempt,
+                                    baseline_ref=baseline_ref,
+                                    implementation_commit=implementation_commit,
+                                    route_payload=production_route_payload,
+                                )
                             merge_result = self._enqueue_validated_worktree(
                                 state=state,
                                 task=task,
@@ -16057,8 +16559,11 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "router_interface": IMPLEMENTATION_PROVIDER_ROUTER_INTERFACE,
             "receipt_interface": PROVIDER_EXECUTION_RECEIPT_INTERFACE,
             "lane_label_is_not_receipt": True,
+            "provider_receipt_id": receipt.receipt_id,
         }
-        payload["receipt_id"] = content_identity(payload)
+        payload["daemon_integration"]["integration_receipt_id"] = (
+            content_identity(payload)
+        )
         safe_task_id = re.sub(
             r"[^a-z0-9._-]+",
             "-",
@@ -16186,6 +16691,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "deterministic_provider": deterministic_provider,
             "admission_gate": admission_gate,
             "writer": writer,
+            "require_independent_review_for_write": bool(apply),
         }
         if bounds is not None:
             router_kwargs["bounds"] = bounds
@@ -16278,18 +16784,12 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
     ) -> bool:
         """Whether model-assisted work must use the typed packet route.
 
-        SCA-615 replaces the raw production model command.  Operators may
-        temporarily re-enable the legacy raw command only via an explicit env
-        override; that override is itself recorded as non-production.
+        SCA-615 replaces the raw production model command.  Production mode is
+        explicit and, once selected, cannot fall back to a raw CLI command.
         """
 
-        allow_raw = os.environ.get(
-            PRODUCTION_PROVIDER_ALLOW_RAW_COMMAND_ENV, ""
-        ).strip().lower()
-        if allow_raw in {"1", "true", "yes", "on"}:
-            return False
         configured = os.environ.get(
-            PRODUCTION_PROVIDER_ROUTE_ENABLED_ENV, "1"
+            PRODUCTION_PROVIDER_ROUTE_ENABLED_ENV, "0"
         ).strip().lower()
         if configured in {"0", "false", "no", "off"}:
             return False
@@ -16427,20 +16927,68 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "reason_code": f"admitted:{role_value or 'proposal'}",
         }
 
+    @staticmethod
+    def _canonical_production_write_path(path: Any) -> str:
+        text = str(path or "").strip()
+        candidate = PurePosixPath(text)
+        if (
+            not text
+            or "\\" in text
+            or candidate.is_absolute()
+            or any(part in {"", ".", ".."} for part in candidate.parts)
+        ):
+            raise ProviderRoutingError(
+                "production packet contains a non-canonical write path",
+                reason_code=ProviderReason.PACKET_MALFORMED,
+            )
+        return candidate.as_posix()
+
+    def _production_packet_write_scope(self, packet: Any) -> tuple[str, ...]:
+        payload = getattr(packet, "provider_input_payload", None)
+        if payload is None:
+            payload = getattr(packet, "payload", None)
+        if payload is None and isinstance(packet, Mapping):
+            payload = packet.get("payload", packet)
+        if not isinstance(payload, Mapping):
+            raise ProviderRoutingError(
+                "production packet payload is unavailable to the writer",
+                reason_code=ProviderReason.PACKET_MALFORMED,
+            )
+        scope = payload.get("scope")
+        write_paths = scope.get("write_paths") if isinstance(scope, Mapping) else None
+        if (
+            isinstance(write_paths, (str, bytes, Mapping))
+            or not isinstance(write_paths, Sequence)
+        ):
+            raise ProviderRoutingError(
+                "production packet write scope is malformed",
+                reason_code=ProviderReason.PACKET_MALFORMED,
+            )
+        allowed = tuple(
+            sorted(
+                {
+                    self._canonical_production_write_path(path)
+                    for path in write_paths
+                }
+            )
+        )
+        if not allowed:
+            raise ProviderRoutingError(
+                "production packet requires a nonempty writer allowlist",
+                reason_code=ProviderReason.PACKET_MALFORMED,
+            )
+        return allowed
+
     def _make_production_workspace_writer(
         self,
         workspace_path: Path,
         *,
-        task: PortalTask,
+        packet: Any,
         expected_lease_id: str,
     ) -> WriterCallable:
         """Return a fenced writer that applies only an admitted proposal."""
 
-        allowed = {
-            str(path).strip().lstrip("./")
-            for path in (task.outputs or ())
-            if str(path).strip()
-        }
+        allowed = set(self._production_packet_write_scope(packet))
         workspace = workspace_path.resolve()
 
         def writer(proposal: Any, lease_id: str) -> None:
@@ -16460,10 +17008,18 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 body = nested
             declared = body.get("declared_paths")
             declared_paths = (
-                [str(item).strip().lstrip("./") for item in declared]
+                [
+                    self._canonical_production_write_path(item)
+                    for item in declared
+                ]
                 if isinstance(declared, (list, tuple))
                 else []
             )
+            for rel in declared_paths:
+                if rel not in allowed:
+                    raise RuntimeError(
+                        f"declared write path out of packet scope: {rel}"
+                    )
             files = body.get("files")
             if isinstance(files, (list, tuple)):
                 for item in files:
@@ -16471,11 +17027,12 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                         raise RuntimeError("file replacement entry malformed")
                     rel = str(
                         item.get("path") or item.get("file") or ""
-                    ).strip().lstrip("./")
-                    if not rel:
-                        raise RuntimeError("file replacement path required")
-                    if allowed and rel not in allowed:
-                        raise RuntimeError(f"write path out of task scope: {rel}")
+                    ).strip()
+                    rel = self._canonical_production_write_path(rel)
+                    if rel not in allowed:
+                        raise RuntimeError(
+                            f"write path out of packet scope: {rel}"
+                        )
                     if declared_paths and rel not in declared_paths:
                         raise RuntimeError(
                             f"write path not declared on proposal: {rel}"
@@ -16526,7 +17083,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 check=False,
             )
             names = [
-                line.strip().lstrip("./")
+                self._canonical_production_write_path(line.strip())
                 for line in (name_proc.stdout or "").splitlines()
                 if line.strip()
             ]
@@ -16534,10 +17091,18 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 for line in (path_proc.stdout or "").splitlines():
                     parts = line.split("\t")
                     if len(parts) >= 3:
-                        names.append(parts[-1].strip().lstrip("./"))
+                        names.append(
+                            self._canonical_production_write_path(
+                                parts[-1].strip()
+                            )
+                        )
+            if not names:
+                raise RuntimeError("patch write paths could not be enumerated")
             for rel in names:
-                if allowed and rel not in allowed:
-                    raise RuntimeError(f"patch path out of task scope: {rel}")
+                if rel not in allowed:
+                    raise RuntimeError(
+                        f"patch path out of packet scope: {rel}"
+                    )
             apply_proc = subprocess.run(
                 ["git", "apply", "--whitespace=nowarn", "-"],
                 cwd=workspace,
@@ -16595,6 +17160,8 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 if not self._production_provider_route_enabled()
                 else "production provider route disabled"
             )
+        self._last_production_provider_receipt = None
+        self._last_production_review_chain_binding = None
 
         current_snapshot = str(snapshot_id or "").strip() or (
             self._current_production_snapshot_id(
@@ -16621,7 +17188,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         if apply and effective_writer is None and workspace_path is not None:
             effective_writer = self._make_production_workspace_writer(
                 workspace_path,
-                task=task,
+                packet=route_packet,
                 expected_lease_id=lease,
             )
         effective_admission = admission_gate or self._production_admission_gate
@@ -16675,13 +17242,8 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             expected_snapshot_id=current_snapshot,
             current_snapshot_id=current_snapshot,
         )
-        binding = bind_applied_patch_to_review_chain(
-            route_result,
-            writer_lease_id=lease if route_result.write_performed else "",
-        )
-        if binding is not None:
-            # Durable in-process handoff for merge metadata binding.
-            self._last_production_review_chain_binding = binding
+        self._last_production_provider_receipt = receipt
+        binding = None
         pending = disposition is not ProductionReceiptDisposition.ADMITTED
         production_event = {
             "schema": PRODUCTION_PROVIDER_ROUTE_SCHEMA,
@@ -16704,6 +17266,10 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 route_result.writer_lease_id if route_result.write_performed else ""
             ),
             "review_chain_binding": binding.to_dict() if binding is not None else None,
+            "review_chain_binding_pending": bool(
+                route_result.write_performed
+                and disposition is ProductionReceiptDisposition.ADMITTED
+            ),
             "completion_authoritative": False,
             "proof_authoritative": False,
             "raw_model_command_invoked": False,
@@ -16712,15 +17278,6 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "pending": pending,
         }
         self._record_event(PRODUCTION_PROVIDER_ROUTE_EVENT, production_event)
-        if binding is not None and route_result.write_performed:
-            self._record_event(
-                PRODUCTION_PROVIDER_ROUTE_BINDING_EVENT,
-                {
-                    **binding.to_dict(),
-                    "task_id": task.task_id,
-                    "attempt": int(attempt),
-                },
-            )
         if pending:
             self._record_event(
                 PRODUCTION_PROVIDER_ROUTE_PENDING_EVENT,
@@ -16736,6 +17293,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
 
         return {
             "route_result": route_result,
+            "contract_packet": route_packet,
             "event": production_event,
             "receipt_path": receipt_path,
             "receipt": receipt,
@@ -16759,6 +17317,99 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "writer_lease_id": lease if route_result.write_performed else "",
             "snapshot_id": current_snapshot,
         }
+
+    def _bind_production_route_to_implementation_commit(
+        self,
+        *,
+        task: PortalTask,
+        attempt: int,
+        baseline_ref: str,
+        implementation_commit: str,
+        route_payload: dict[str, Any],
+    ) -> ProductionReviewChainBinding:
+        """Bind an admitted provider receipt to the immutable Git candidate."""
+
+        route_result = route_payload.get("route_result")
+        contract_packet = route_payload.get("contract_packet")
+        if not isinstance(route_result, ImplementationRoutingResult):
+            raise RuntimeError("production route result is unavailable at commit")
+        if not implementation_commit or not baseline_ref:
+            raise RuntimeError("production commit binding requires immutable refs")
+        implementation_tree = self._candidate_repository_tree(
+            implementation_commit
+        )
+        if not implementation_tree:
+            raise RuntimeError("production implementation tree is unavailable")
+        changed = subprocess.run(
+            [
+                "git",
+                "diff",
+                "--name-only",
+                "--no-renames",
+                baseline_ref,
+                implementation_commit,
+                "--",
+            ],
+            cwd=self.repo_root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if changed.returncode != 0:
+            raise RuntimeError(
+                "production implementation changed paths are unavailable"
+            )
+        changed_paths = tuple(
+            sorted(
+                {
+                    self._canonical_production_write_path(line)
+                    for line in changed.stdout.splitlines()
+                    if line.strip()
+                }
+            )
+        )
+        if not changed_paths:
+            raise RuntimeError("production implementation commit has no changes")
+        packet_scope = set(
+            self._production_packet_write_scope(contract_packet)
+        )
+        out_of_scope = sorted(set(changed_paths) - packet_scope)
+        if out_of_scope:
+            raise RuntimeError(
+                "production implementation commit exceeds packet write scope: "
+                + ", ".join(out_of_scope[:8])
+            )
+        binding = bind_applied_patch_to_review_chain(
+            route_result,
+            writer_lease_id=str(
+                route_payload.get("writer_lease_id") or ""
+            ),
+            implementation_commit=implementation_commit,
+            implementation_tree_id=implementation_tree,
+            changed_paths=changed_paths,
+        )
+        if binding is None:
+            raise RuntimeError(
+                "production implementation commit lacks an admitted "
+                "independent review-chain binding"
+            )
+
+        self._last_production_review_chain_binding = binding
+        route_payload["binding"] = binding
+        event = route_payload.get("event")
+        if isinstance(event, dict):
+            event["review_chain_binding"] = binding.to_dict()
+            event["review_chain_binding_pending"] = False
+        self._record_event(
+            PRODUCTION_PROVIDER_ROUTE_BINDING_EVENT,
+            {
+                **binding.to_dict(),
+                "task_id": task.task_id,
+                "attempt": int(attempt),
+                "baseline_ref": baseline_ref,
+            },
+        )
+        return binding
 
     def production_provider_receipt_allows_merge(
         self,
@@ -16831,7 +17482,18 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                         implementation_commit=str(
                             raw_binding.get("implementation_commit") or ""
                         ),
+                        implementation_tree_id=str(
+                            raw_binding.get("implementation_tree_id") or ""
+                        ),
+                        changed_paths=tuple(
+                            str(path)
+                            for path in (raw_binding.get("changed_paths") or ())
+                            if str(path)
+                        ),
                         merge_commit=str(raw_binding.get("merge_commit") or ""),
+                        merge_tree_id=str(
+                            raw_binding.get("merge_tree_id") or ""
+                        ),
                         disposition=str(
                             raw_binding.get("disposition")
                             or ProductionReceiptDisposition.ADMITTED.value
