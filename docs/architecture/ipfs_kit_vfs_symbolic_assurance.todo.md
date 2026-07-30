@@ -3140,7 +3140,7 @@ compact references and bounded spans only.
 
 ## VFS-075 Close objective gap: Prove vfs/mcplusplus-manifest-parity@1 for Prove whether SwissKnife MCP++ calls reach the intended IPFS implementation
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
