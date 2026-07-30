@@ -1501,7 +1501,7 @@ consumer or frontier is unresolved.
 
 ## RPR-047 Extend end-to-end operations validation for propagation
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
