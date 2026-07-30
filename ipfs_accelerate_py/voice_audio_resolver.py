@@ -16,7 +16,7 @@ identifier is unchanged (stale-slot regression test).
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from hashlib import sha256
 import json
@@ -472,6 +472,29 @@ class PrecomputedVoiceAudioResolver:
         self._by_text_sha.setdefault(artifact.spoken_text_sha256, []).append(artifact)
         if artifact.template_id:
             self._by_template_id.setdefault(artifact.template_id, []).append(artifact)
+
+    @property
+    def artifact_count(self) -> int:
+        """Return the number of exact synthesis keys currently indexed."""
+
+        return len(self._by_match_key)
+
+    @property
+    def default_synthesis_identity(self) -> SynthesisIdentity | None:
+        """Return the one shared identity when every indexed artifact agrees.
+
+        Runtime-manifest consumers can use this value to fill omitted request
+        defaults without weakening exact matching.  Mixed-identity releases
+        deliberately return ``None`` so the caller must choose explicitly.
+        """
+
+        identities = {
+            artifact.synthesis_identity.identity_digest(): artifact.synthesis_identity
+            for artifact in self._by_match_key.values()
+        }
+        if len(identities) != 1:
+            return None
+        return next(iter(identities.values()))
 
     def resolve(
         self,
