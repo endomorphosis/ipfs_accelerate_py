@@ -15,6 +15,12 @@ receipts carry only shallow immutable artifact references.  Negative and
 non-success outcomes have bounded TTLs and never satisfy completion authority.
 Authority namespaces (authoritative, diagnostic, proposal, draft) are closed
 and cannot be upgraded by lookup.
+
+VFS-G031's synthetic ``objective validation repair`` marker is exposed only
+through evidence-discovery helpers.  It never enters cache keys or receipts.
+The shared VFS-057 packet also references the frozen ``vfs/cid-profile@1``
+surface from :mod:`multiformats_identity`; the two domain implementations
+remain separate while their packet bindings are machine-checkable.
 """
 
 from __future__ import annotations
@@ -49,11 +55,15 @@ from .analysis.cache_coordinator import (
     CacheCoordinationResult,
     CachePublication,
 )
+from .multiformats_identity import (
+    CID_PROFILE_EVIDENCE,
+    CID_PROFILE_GOAL_ID,
+)
 from .runtime.artifact_store import (
-    ArtifactQuotaPolicy,
     ArtifactOutcome,
-    BoundedArtifactStore,
+    ArtifactQuotaPolicy,
     BlobReference,
+    BoundedArtifactStore,
     RetentionClass,
 )
 from .runtime.runtime_cas import (
@@ -71,7 +81,6 @@ from .self_improvement.supervisor_v2_contracts import (
     SemanticDependencyIdentity,
 )
 
-
 PROGRAM_ANALYSIS_CACHE_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/program-analysis-cache@1"
 )
@@ -87,6 +96,17 @@ PROGRAM_ANALYSIS_RECEIPT_SCHEMA: Final = (
 DEPENDENCY_CACHE_EVIDENCE: Final = "vfs/dependency-cache@1"
 CACHE_INVALIDATION_PROOF_EVIDENCE: Final = "vfs/cache-invalidation-proof@1"
 DEPENDENCY_CACHE_REQUIREMENT_ID: Final = DEPENDENCY_CAS_REQUIREMENT_ID
+# Synthetic exact-text validation-gate key.  It is discovery metadata only,
+# never a cache-key dimension, receipt claim, or source of completion authority.
+OBJECTIVE_VALIDATION_REPAIR_EVIDENCE: Final = "objective validation repair"
+OBJECTIVE_GOAL_ID: Final = "VFS-G031"
+# Objective-heap child that owns the synthetic validation-gate obligation.
+OBJECTIVE_VALIDATION_REPAIR_GOAL_ID: Final = "VFS-G145"
+OBJECTIVE_GOAL_PACKET_IDS: Final[tuple[str, ...]] = (
+    OBJECTIVE_GOAL_ID,
+    CID_PROFILE_GOAL_ID,
+)
+OBJECTIVE_GAP_TASK_ID: Final = "VFS-057"
 
 DEFAULT_MAX_ENTRIES: Final = 512
 DEFAULT_MAX_BYTES: Final = 32 * 1024 * 1024
@@ -2000,6 +2020,46 @@ class ProgramAnalysisCache:
         )
 
 
+def program_analysis_cache_evidence_terms() -> tuple[str, ...]:
+    """Return cache-domain evidence without synthetic packet metadata."""
+
+    return (DEPENDENCY_CACHE_EVIDENCE, CACHE_INVALIDATION_PROOF_EVIDENCE)
+
+
+def objective_validation_repair_evidence_terms() -> tuple[str, ...]:
+    """Return the exact VFS-G031 validation-repair discovery marker.
+
+    Keeping this separate from :func:`program_analysis_cache_evidence_terms`
+    prevents the synthetic marker from becoming a runtime receipt claim or
+    being mistaken for completion authority.
+    """
+
+    return (OBJECTIVE_VALIDATION_REPAIR_EVIDENCE,)
+
+
+def packet_evidence_terms() -> tuple[str, ...]:
+    """Return the two missing evidence terms owned by the VFS-057 packet."""
+
+    return (
+        OBJECTIVE_VALIDATION_REPAIR_EVIDENCE,
+        CID_PROFILE_EVIDENCE,
+    )
+
+
+def all_covered_evidence_terms() -> tuple[str, ...]:
+    """Return domain evidence plus VFS-G141 and the synthetic repair marker.
+
+    The validation-repair marker remains last, following the repository
+    convention for synthetic discovery evidence.
+    """
+
+    return (
+        *program_analysis_cache_evidence_terms(),
+        CID_PROFILE_EVIDENCE,
+        *objective_validation_repair_evidence_terms(),
+    )
+
+
 # Compatibility aliases matching sibling cache modules.
 DependencyAwareProgramAnalysisCache = ProgramAnalysisCache
 ProgramAnalysisCacheEntry = AnalysisCacheEntry
@@ -2008,6 +2068,8 @@ ProgramAnalysisReceipt = AnalysisReceipt
 
 __all__ = [
     "CACHE_INVALIDATION_PROOF_EVIDENCE",
+    "CID_PROFILE_EVIDENCE",
+    "CID_PROFILE_GOAL_ID",
     "DEPENDENCY_CACHE_EVIDENCE",
     "DEPENDENCY_CACHE_REQUIREMENT_ID",
     "DEPENDENCY_CAS_REQUIREMENT_ID",
@@ -2015,6 +2077,11 @@ __all__ = [
     "ComponentKind",
     "DependencyAwareProgramAnalysisCache",
     "LookupStatus",
+    "OBJECTIVE_GAP_TASK_ID",
+    "OBJECTIVE_GOAL_ID",
+    "OBJECTIVE_GOAL_PACKET_IDS",
+    "OBJECTIVE_VALIDATION_REPAIR_EVIDENCE",
+    "OBJECTIVE_VALIDATION_REPAIR_GOAL_ID",
     "PROGRAM_ANALYSIS_CACHE_ENTRY_SCHEMA",
     "PROGRAM_ANALYSIS_CACHE_KEY_SCHEMA",
     "PROGRAM_ANALYSIS_CACHE_SCHEMA",
@@ -2033,8 +2100,12 @@ __all__ = [
     "ProgramAnalysisReceipt",
     "ProgramAnalysisStoreResult",
     "build_program_analysis_cache_key",
+    "all_covered_evidence_terms",
     "canonical_program_analysis_json",
     "compact_program_analysis_receipt",
     "digest_program_analysis_input",
     "make_program_analysis_cache_key",
+    "objective_validation_repair_evidence_terms",
+    "packet_evidence_terms",
+    "program_analysis_cache_evidence_terms",
 ]

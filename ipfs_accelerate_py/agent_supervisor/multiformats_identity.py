@@ -14,6 +14,11 @@ Existing supervisor identities (``content_identity`` CIDs and
 without silently replacing either side.  Cross-package drift is fail-closed:
 independent construction via ``cid_utils`` and the ``multiformats`` library
 must agree, and double-hashing of an already-computed digest is rejected.
+
+The executable profile descriptor and exact discovery term
+``vfs/cid-profile@1`` are the VFS-G141 evidence surface.  They describe the
+already-enforced wire profile; neither the evidence label nor goal metadata is
+included in CID input bytes or allowed to replace existing supervisor IDs.
 """
 
 from __future__ import annotations
@@ -31,12 +36,14 @@ from typing import Any, Final
 
 from ipfs_datasets_py.utils import cid_utils as _cid_utils
 
-
 MULTIFORMATS_IDENTITY_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/multiformats-identity@1"
 )
 IDENTITY_LINK_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/multiformats-identity-link@1"
+)
+CID_PROFILE_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/cid-profile@1"
 )
 
 CID_VERSION: Final = 1
@@ -44,6 +51,11 @@ CID_BASE: Final = "base32"
 MH_TYPE: Final = "sha2-256"
 DIGEST_SIZE: Final = 32
 ALLOWED_CODECS: Final = frozenset({"raw", "dag-json"})
+
+# Exact objective-heap discovery key and its supervisor-fed packet bindings.
+CID_PROFILE_EVIDENCE: Final = "vfs/cid-profile@1"
+CID_PROFILE_GOAL_ID: Final = "VFS-G141"
+CID_PROFILE_TASK_ID: Final = "VFS-057"
 
 RUNTIME_ARTIFACT_PREFIX: Final = "runtime-artifact:sha256:"
 PAYLOAD_DIGEST_PREFIX: Final = "sha256:"
@@ -76,6 +88,55 @@ _TEMPORAL_TYPES = (datetime, date, time, timedelta)
 
 class MultiformatsIdentityError(ValueError):
     """A multiformats identity or link violates the frozen profile."""
+
+
+@dataclass(frozen=True)
+class CIDProfile:
+    """Immutable interface descriptor for the admitted supervisor CID profile.
+
+    Construction is deliberately closed to the constants enforced by the
+    minting and validation helpers below.  This makes the VFS-G141 evidence
+    machine-checkable without creating a second, configurable CID path.
+    """
+
+    schema: str = CID_PROFILE_SCHEMA
+    evidence: str = CID_PROFILE_EVIDENCE
+    version: int = CID_VERSION
+    base: str = CID_BASE
+    codecs: tuple[str, ...] = tuple(sorted(ALLOWED_CODECS))
+    multihash_type: str = MH_TYPE
+    digest_size: int = DIGEST_SIZE
+
+    def __post_init__(self) -> None:
+        expected = (
+            CID_PROFILE_SCHEMA,
+            CID_PROFILE_EVIDENCE,
+            CID_VERSION,
+            CID_BASE,
+            tuple(sorted(ALLOWED_CODECS)),
+            MH_TYPE,
+            DIGEST_SIZE,
+        )
+        actual = (
+            self.schema,
+            self.evidence,
+            self.version,
+            self.base,
+            self.codecs,
+            self.multihash_type,
+            self.digest_size,
+        )
+        if actual != expected:
+            raise MultiformatsIdentityError(
+                "CID profile is frozen to "
+                "CIDv1/base32/dag-json+raw/sha2-256/32-byte digests"
+            )
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+_CID_PROFILE: Final = CIDProfile()
 
 
 class IdentityKind(str, Enum):
@@ -893,10 +954,37 @@ def independent_round_trip_dag_json(obj: Any) -> str:
     return cid
 
 
+def cid_profile() -> CIDProfile:
+    """Return the immutable VFS-G141 CID-profile interface descriptor."""
+
+    return _CID_PROFILE
+
+
+def cid_profile_evidence_terms() -> tuple[str, ...]:
+    """Return the exact VFS-G141 objective evidence discovery term."""
+
+    return (CID_PROFILE_EVIDENCE,)
+
+
+def covered_evidence_terms() -> tuple[str, ...]:
+    """Return domain evidence exposed by this identity bridge.
+
+    Objective/task labels are metadata only.  The returned evidence term does
+    not participate in canonical DAG-JSON bytes, CIDs, or compatibility links.
+    """
+
+    return cid_profile_evidence_terms()
+
+
 __all__ = [
     "ALLOWED_CODECS",
     "CID_BASE",
+    "CID_PROFILE_EVIDENCE",
+    "CID_PROFILE_GOAL_ID",
+    "CID_PROFILE_SCHEMA",
+    "CID_PROFILE_TASK_ID",
     "CID_VERSION",
+    "CIDProfile",
     "DIGEST_SIZE",
     "IDENTITY_LINK_SCHEMA",
     "IdentityKind",
@@ -910,6 +998,9 @@ __all__ = [
     "cid_for_bytes",
     "cid_for_dag_json",
     "cid_from_sha256_digest",
+    "cid_profile",
+    "cid_profile_evidence_terms",
+    "covered_evidence_terms",
     "digest_hex_from_cid",
     "independent_round_trip_cid",
     "independent_round_trip_dag_json",
