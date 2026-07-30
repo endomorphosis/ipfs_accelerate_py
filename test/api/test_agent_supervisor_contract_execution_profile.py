@@ -26,7 +26,7 @@ from ipfs_accelerate_py.agent_supervisor.contract_analysis.execution_profile imp
 )
 
 
-REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
+REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
 POLICY_PATH = (
     REPOSITORY_ROOT
     / "data"
