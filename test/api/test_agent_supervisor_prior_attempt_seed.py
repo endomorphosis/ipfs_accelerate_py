@@ -6,6 +6,8 @@ import subprocess
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     PortalImplementationDaemon,
     PortalTask,
@@ -937,6 +939,223 @@ def test_prior_seed_rejects_unconfigured_root_gitlink_delta(
     assert _git(worktree, "rev-parse", "HEAD") == baseline
     assert daemon._proposal_index_gitlink_ref(worktree, "deps/child") == baseline_child
     assert not (worktree / "vendor" / "other").exists()
+
+
+def test_prior_seed_ignores_unconfigured_gitlink_advanced_only_on_main(
+    tmp_path: Path,
+) -> None:
+    child_source = tmp_path / "child-source"
+    child_source.mkdir()
+    _git(child_source, "init")
+    _git(child_source, "checkout", "-b", "main")
+    _git(child_source, "config", "user.name", "Test User")
+    _git(child_source, "config", "user.email", "test@example.invalid")
+    (child_source / "child.txt").write_text("child base\n", encoding="utf-8")
+    _git(child_source, "add", "child.txt")
+    _git(child_source, "commit", "-m", "child base")
+
+    other_source = tmp_path / "other-source"
+    other_source.mkdir()
+    _git(other_source, "init")
+    _git(other_source, "checkout", "-b", "main")
+    _git(other_source, "config", "user.name", "Test User")
+    _git(other_source, "config", "user.email", "test@example.invalid")
+    (other_source / "other.txt").write_text("other base\n", encoding="utf-8")
+    _git(other_source, "add", "other.txt")
+    _git(other_source, "commit", "-m", "other base")
+
+    parent = tmp_path / "parent"
+    parent.mkdir()
+    _git(parent, "init")
+    _git(parent, "checkout", "-b", "main")
+    _git(parent, "config", "user.name", "Test User")
+    _git(parent, "config", "user.email", "test@example.invalid")
+    _git(
+        parent,
+        "-c",
+        "protocol.file.allow=always",
+        "submodule",
+        "add",
+        str(child_source),
+        "deps/child",
+    )
+    _git(
+        parent,
+        "-c",
+        "protocol.file.allow=always",
+        "submodule",
+        "add",
+        str(other_source),
+        "vendor/other",
+    )
+    _git(parent, "commit", "-am", "common parent")
+
+    _git(parent, "checkout", "-b", "prior-attempt")
+    (parent / "allowed.txt").write_text("authorized retry work\n", encoding="utf-8")
+    _git(parent, "add", "allowed.txt")
+    _git(parent, "commit", "-m", "rejected authorized seed")
+    seed = _git(parent, "rev-parse", "HEAD")
+
+    _git(parent, "checkout", "main")
+    other = parent / "vendor" / "other"
+    _git(other, "config", "user.name", "Test User")
+    _git(other, "config", "user.email", "test@example.invalid")
+    (other / "main-only.txt").write_text("main-only advance\n", encoding="utf-8")
+    _git(other, "add", "main-only.txt")
+    _git(other, "commit", "-m", "advance other only on main")
+    main_other = _git(other, "rev-parse", "HEAD")
+    _git(parent, "add", "vendor/other")
+    _git(parent, "commit", "-m", "advance unconfigured dependency on main")
+    baseline = _git(parent, "rev-parse", "HEAD")
+
+    worktree = _retry_worktree(parent, baseline, tmp_path / "retry-main-only-other")
+    daemon = PortalImplementationDaemon(
+        todo_path=tmp_path / "tasks.todo.md",
+        state_path=tmp_path / "state.json",
+        strategy_path=tmp_path / "strategy.json",
+        events_path=tmp_path / "events.jsonl",
+        repo_root=parent,
+        worktree_submodule_paths=["deps/child"],
+    )
+    task = _task("allowed.txt")
+    _authorize_seed(daemon, task, "allowed.txt")
+
+    result = daemon._apply_prior_attempt_seed(
+        worktree,
+        task=task,
+        seed_plan={"reuse_prior_attempt": True, "seed_ref": seed},
+        baseline_ref=baseline,
+    )
+
+    assert result["applied"] is True, result
+    assert _git(worktree, "rev-parse", "HEAD") == baseline
+    assert _git(worktree, "diff", "--cached", "--name-only") == "allowed.txt"
+    assert daemon._proposal_index_gitlink_ref(worktree, "vendor/other") == main_other
+    assert not _is_ancestor(worktree, seed)
+
+
+@pytest.mark.parametrize("main_change", ["add", "advance"])
+def test_prior_seed_preserves_configured_dependency_changed_only_on_main(
+    tmp_path: Path,
+    main_change: str,
+) -> None:
+    dependency_source = tmp_path / "main-only-source"
+    dependency_source.mkdir()
+    _git(dependency_source, "init")
+    _git(dependency_source, "checkout", "-b", "main")
+    _git(dependency_source, "config", "user.name", "Test User")
+    _git(dependency_source, "config", "user.email", "test@example.invalid")
+    (dependency_source / "dependency.txt").write_text(
+        "dependency base\n",
+        encoding="utf-8",
+    )
+    _git(dependency_source, "add", "dependency.txt")
+    _git(dependency_source, "commit", "-m", "dependency base")
+
+    parent = tmp_path / "parent"
+    parent.mkdir()
+    _git(parent, "init")
+    _git(parent, "checkout", "-b", "main")
+    _git(parent, "config", "user.name", "Test User")
+    _git(parent, "config", "user.email", "test@example.invalid")
+    (parent / "base.txt").write_text("parent base\n", encoding="utf-8")
+    _git(parent, "add", "base.txt")
+    _git(parent, "commit", "-m", "parent base")
+    if main_change == "advance":
+        _git(
+            parent,
+            "-c",
+            "protocol.file.allow=always",
+            "submodule",
+            "add",
+            str(dependency_source),
+            "deps/main-only",
+        )
+        _git(parent, "commit", "-am", "common configured dependency")
+
+    _git(parent, "checkout", "-b", "prior-attempt")
+    (parent / "allowed.txt").write_text("authorized retry work\n", encoding="utf-8")
+    _git(parent, "add", "allowed.txt")
+    _git(parent, "commit", "-m", "rejected authorized seed")
+    seed = _git(parent, "rev-parse", "HEAD")
+
+    _git(parent, "checkout", "main")
+    if main_change == "add":
+        _git(
+            parent,
+            "-c",
+            "protocol.file.allow=always",
+            "submodule",
+            "add",
+            str(dependency_source),
+            "deps/main-only",
+        )
+        _git(parent, "commit", "-am", "add configured dependency on main")
+    else:
+        dependency = parent / "deps" / "main-only"
+        _git(dependency, "config", "user.name", "Test User")
+        _git(dependency, "config", "user.email", "test@example.invalid")
+        (dependency / "main-only.txt").write_text(
+            "main-only advance\n",
+            encoding="utf-8",
+        )
+        _git(dependency, "add", "main-only.txt")
+        _git(dependency, "commit", "-m", "advance dependency only on main")
+        _git(dependency, "push", "origin", "HEAD:refs/heads/main-advance")
+        _git(parent, "add", "deps/main-only")
+        _git(parent, "commit", "-m", "advance configured dependency on main")
+    baseline = _git(parent, "rev-parse", "HEAD")
+    main_dependency = _git(parent / "deps" / "main-only", "rev-parse", "HEAD")
+
+    worktree = tmp_path / f"retry-configured-{main_change}"
+    _git(
+        parent,
+        "worktree",
+        "add",
+        "-b",
+        f"retry-{main_change}",
+        str(worktree),
+        baseline,
+    )
+    _git(
+        worktree,
+        "-c",
+        "protocol.file.allow=always",
+        "submodule",
+        "update",
+        "--init",
+        "--",
+        "deps/main-only",
+    )
+    daemon = PortalImplementationDaemon(
+        todo_path=tmp_path / "tasks.todo.md",
+        state_path=tmp_path / "state.json",
+        strategy_path=tmp_path / "strategy.json",
+        events_path=tmp_path / "events.jsonl",
+        repo_root=parent,
+        worktree_submodule_paths=["deps/main-only"],
+    )
+    task = _task("allowed.txt")
+    _authorize_seed(daemon, task, "allowed.txt")
+
+    result = daemon._apply_prior_attempt_seed(
+        worktree,
+        task=task,
+        seed_plan={"reuse_prior_attempt": True, "seed_ref": seed},
+        baseline_ref=baseline,
+    )
+
+    dependency = worktree / "deps" / "main-only"
+    assert result["applied"] is True, result
+    assert _git(worktree, "rev-parse", "HEAD") == baseline
+    assert _git(dependency, "rev-parse", "HEAD") == main_dependency
+    assert daemon._proposal_index_gitlink_ref(
+        worktree,
+        "deps/main-only",
+    ) == main_dependency
+    assert _git(worktree, "diff", "--cached", "--name-only") == "allowed.txt"
+    assert _git(dependency, "diff", "--cached", "--name-only") == ""
+    assert not _is_ancestor(worktree, seed)
 
 
 def test_prior_seed_divergence_preserves_baseline_and_replays_full_child_delta(
