@@ -86,11 +86,14 @@ from .code_contract_logic import (
     OBJECTIVE_VALIDATION_REPAIR_EVIDENCE,
     OBJECTIVE_VALIDATION_REPAIR_TASK_ID,
     PredicateRelation,
+    RejectionCode,
+    TranslationRejectedError,
     TranslationResult,
     TranslationStatus,
     FormalLogicVocabulary,
     objective_validation_repair_evidence_terms as _logic_repair_terms,
     pinned_translator_identity,
+    verify_translation_result,
 )
 from .proof.formal_verification_contracts import (
     AssuranceLevel,
@@ -849,17 +852,45 @@ def compile_obligation_requests(
             NonConclusiveReason.TRANSLATION_NOT_READY,
             f"translation status is {translation.status.value}",
         )
-    if translation.receipt.translator_identity != pinned_translator_identity():
-        raise ProveRejectedError(
-            NonConclusiveReason.STALE_TOOLCHAIN,
-            "translator identity does not match the pinned translator/ruleset",
-        )
 
     effect_ids_from_predicates = {
         predicate.predicate_id
         for predicate in translation.predicates
         if predicate.relation in _EFFECT_RELATIONS
     }
+    effect_ids_from_claims = {
+        claim.declaration_id or claim.claim_id
+        for claim in translation.claims
+        if (
+            claim.metadata.to_dict()
+            if hasattr(claim.metadata, "to_dict")
+            else {}
+        ).get("relation")
+        == PredicateRelation.HAS_EFFECT.value
+    }
+    if require_effects:
+        omitted_effects = effect_ids_from_predicates - effect_ids_from_claims
+        if omitted_effects:
+            raise ProveRejectedError(
+                NonConclusiveReason.OMITTED_EFFECTS,
+                "effect predicates were dropped before solver compilation",
+            )
+        if effect_ids_from_claims - effect_ids_from_predicates:
+            raise ProveRejectedError(
+                NonConclusiveReason.WRONG_THEOREM,
+                "solver claims contain effects absent from the translated predicates",
+            )
+
+    try:
+        verify_translation_result(translation)
+    except TranslationRejectedError as exc:
+        reason = (
+            NonConclusiveReason.STALE_TOOLCHAIN
+            if exc.code is RejectionCode.TRANSLATOR_RULESET_REUSE
+            else NonConclusiveReason.WRONG_THEOREM
+        )
+        raise ProveRejectedError(reason, exc.detail) from exc
+
     compiled: list[CompiledObligationRequest] = []
     compilers: dict[str, Callable[[BackendRequest], CompiledBackendRequest]] = {
         Z3_BACKEND_ID: Z3Compiler().compile,
@@ -915,23 +946,6 @@ def compile_obligation_requests(
             effect_ids: list[str] = []
             if relation == PredicateRelation.HAS_EFFECT.value:
                 effect_ids.append(claim.declaration_id or claim.claim_id)
-
-            if require_effects and effect_ids_from_predicates:
-                covered = {
-                    claim.declaration_id or claim.claim_id for claim in translation.claims
-                }
-                omitted = effect_ids_from_predicates - covered
-                if omitted and not any(
-                    (c.metadata.to_dict() if hasattr(c.metadata, "to_dict") else {}).get(
-                        "relation"
-                    )
-                    == PredicateRelation.HAS_EFFECT.value
-                    for c in translation.claims
-                ):
-                    raise ProveRejectedError(
-                        NonConclusiveReason.OMITTED_EFFECTS,
-                        "effect predicates were dropped before solver compilation",
-                    )
 
             # Assumption consistency: claim must carry every referenced id.
             claim_assumption_ids = {a.assumption_id for a in claim.assumptions}
@@ -1142,6 +1156,7 @@ class ValidationReceipt(CanonicalContract):
     derived_assurance: AssuranceLevel = AssuranceLevel.UNVERIFIED
     policy_id: str = "policy:code-contract-prover@1"
     evidence: Mapping[str, Any] = field(default_factory=dict)
+    evidence_kind: str = KERNEL_PROOF_RECEIPT_EVIDENCE
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -1186,6 +1201,15 @@ class ValidationReceipt(CanonicalContract):
         object.__setattr__(
             self, "evidence", MappingProxyType(_mapping(self.evidence, "evidence"))
         )
+        object.__setattr__(
+            self,
+            "evidence_kind",
+            _text(self.evidence_kind, "evidence_kind"),
+        )
+        if self.evidence_kind != KERNEL_PROOF_RECEIPT_EVIDENCE:
+            raise CodeContractProverError(
+                "validation receipt does not carry the pinned kernel-proof evidence"
+            )
         if (
             self.disposition is ValidationDisposition.ACCEPTED
             and self.status is ProveStatus.PROVED
@@ -1216,7 +1240,7 @@ class ValidationReceipt(CanonicalContract):
     def _payload(self) -> dict[str, Any]:
         return {
             "prover_version": CODE_CONTRACT_PROVER_VERSION,
-            "evidence_kind": KERNEL_PROOF_RECEIPT_EVIDENCE,
+            "evidence_kind": self.evidence_kind,
             "disposition": self.disposition,
             "status": self.status,
             "reason": self.reason,
@@ -1254,6 +1278,7 @@ class ValidationReceipt(CanonicalContract):
             ),
             policy_id=payload.get("policy_id", "policy:code-contract-prover@1"),
             evidence=payload.get("evidence") or {},
+            evidence_kind=payload.get("evidence_kind", ""),
         )
 
 
@@ -1565,6 +1590,15 @@ def validate_solver_portfolio(
     # Capability loss: every authoritative attempt must still be admitted.
     admitted = set(probe_report.admitted_backend_ids)
     for attempt in attempts:
+        if (
+            attempt.request_id != request.request_id
+            or attempt.request_digest != request_digest
+        ):
+            return _reject(
+                NonConclusiveReason.WRONG_THEOREM,
+                f"solver attempt from {attempt.backend_id} is bound to a different request",
+                status=ProveStatus.ERROR,
+            )
         if attempt.authoritative and attempt.backend_id not in admitted:
             return _reject(
                 NonConclusiveReason.CAPABILITY_LOSS,
@@ -1608,13 +1642,6 @@ def validate_solver_portfolio(
                     f"backend {attempt.backend_id} is not authoritative for finite constraints",
                     status=ProveStatus.ERROR,
                 )
-            if attempt.request_digest != request_digest:
-                return _reject(
-                    NonConclusiveReason.WRONG_THEOREM,
-                    "authoritative attempt bound to a different request",
-                    status=ProveStatus.ERROR,
-                )
-
         # Map non-conclusive solver statuses.
         if attempt.effective_outcome is AttemptOutcome.TIMEOUT:
             return _reject(NonConclusiveReason.TIMEOUT, attempt.detail or "solver timeout")
@@ -2560,6 +2587,97 @@ class CodeContractProver:
         )
 
 
+def verify_kernel_proof_receipt(
+    result: ProveResult | Mapping[str, Any],
+    *,
+    probe_report: ProbeReport | None = None,
+) -> ValidationReceipt:
+    """Independently verify a ``vfs/kernel-proof-receipt@1`` result.
+
+    The retained validation receipt is compared with a fresh derivation from
+    the compiled theorem, attempts, and capability probes.  Supplying a newer
+    probe report performs fail-closed replay: capability loss or toolchain
+    drift is returned as a non-conclusive receipt rather than preserving stale
+    proof authority.
+    """
+
+    if isinstance(result, Mapping):
+        result = ProveResult.from_dict(result)
+    if not isinstance(result, ProveResult):
+        raise CodeContractProverError("result must be ProveResult")
+    if result.prover_identity != pinned_prover_identity():
+        raise ProveRejectedError(
+            NonConclusiveReason.STALE_TOOLCHAIN,
+            "prove result was produced by a different prover identity",
+        )
+    if result.compiled.translator_identity != pinned_translator_identity():
+        raise ProveRejectedError(
+            NonConclusiveReason.STALE_TOOLCHAIN,
+            "compiled theorem was produced by a different translator identity",
+        )
+    if result.validation.evidence_kind != KERNEL_PROOF_RECEIPT_EVIDENCE:
+        raise ProveRejectedError(
+            NonConclusiveReason.FORGED_AUTHORITY,
+            "validation receipt does not carry vfs/kernel-proof-receipt@1",
+        )
+    expected_bindings = (
+        ("claim", result.validation.claim_digest, result.compiled.claim_digest),
+        (
+            "obligation",
+            result.validation.obligation_digest,
+            result.compiled.obligation_digest,
+        ),
+        (
+            "request",
+            result.validation.request_digest,
+            result.compiled.as_backend_request().digest,
+        ),
+    )
+    for name, retained, expected in expected_bindings:
+        if retained != expected:
+            raise ProveRejectedError(
+                NonConclusiveReason.WRONG_THEOREM,
+                f"validation receipt {name} digest is bound to a different theorem",
+            )
+
+    report = probe_report or result.probe_report
+    recomputed = validate_solver_portfolio(
+        compiled=result.compiled,
+        attempts=result.attempts,
+        probe_report=report,
+        required_assurance=result.validation.required_assurance,
+        policy_id=result.validation.policy_id,
+    )
+
+    # A new capability snapshot is a replay, not a claim that the old receipt
+    # remains current.  Return the freshly derived fail-closed disposition.
+    if report.report_id != result.probe_report.report_id:
+        return recomputed
+
+    if recomputed.receipt_id != result.validation.receipt_id:
+        reason = (
+            recomputed.reason
+            if recomputed.reason is not NonConclusiveReason.NONE
+            else NonConclusiveReason.FORGED_AUTHORITY
+        )
+        raise ProveRejectedError(
+            reason,
+            "retained validation receipt does not match independent validation",
+        )
+    if result.status is not recomputed.status:
+        raise ProveRejectedError(
+            NonConclusiveReason.FORGED_AUTHORITY,
+            "prove result status does not match independent validation",
+        )
+    retained_receipt_id = result.portfolio_result.get("validation_receipt_id")
+    if retained_receipt_id and retained_receipt_id != recomputed.receipt_id:
+        raise ProveRejectedError(
+            NonConclusiveReason.FORGED_AUTHORITY,
+            "portfolio summary is bound to a different validation receipt",
+        )
+    return recomputed
+
+
 def route_through_multi_prover(
     statement: str,
     *,
@@ -2756,4 +2874,5 @@ __all__ = [
     "prover_identity",
     "route_through_multi_prover",
     "validate_solver_portfolio",
+    "verify_kernel_proof_receipt",
 ]
