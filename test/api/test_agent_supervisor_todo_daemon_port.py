@@ -7446,6 +7446,276 @@ def test_merge_anchors_submodule_to_target_gitlink_without_advancing_ambient_mai
     assert _git(repo, "status", "--porcelain") == ""
 
 
+def test_merge_fast_forwards_stale_submodule_target_ref_to_authoritative_gitlink(
+    tmp_path,
+):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    stale_commit = _git(submodule, "rev-parse", "HEAD")
+    (submodule / "target-owned.txt").write_text(
+        "already published target work\n",
+        encoding="utf-8",
+    )
+    _git(submodule, "add", "target-owned.txt")
+    _git(submodule, "commit", "-m", "advance authoritative target")
+    target_base = _git(submodule, "rev-parse", "HEAD")
+    _git(repo, "add", "libs/child")
+    _git(repo, "commit", "-m", "record authoritative target gitlink")
+
+    submodule_branch = "implementation/auto-target-stale-submodule-libs-child"
+    _git(submodule, "checkout", "-b", submodule_branch, target_base)
+    (submodule / "task-owned.txt").write_text(
+        "task work after target advance\n",
+        encoding="utf-8",
+    )
+    _git(submodule, "add", "task-owned.txt")
+    _git(submodule, "commit", "-m", "task work after target advance")
+    task_commit = _git(submodule, "rev-parse", "HEAD")
+    _git(submodule, "checkout", "--detach", target_base)
+
+    state_dir = tmp_path / "supervisor-state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=["libs/child"],
+        merge_target_branch="main",
+    )
+    integration_ref = daemon._submodule_target_integration_ref(
+        target_scope="main",
+        full_relative="libs/child",
+    )
+    _git(submodule, "update-ref", integration_ref, stale_commit)
+
+    result = daemon._merge_submodule_branch_to_target_ref(
+        source=submodule,
+        full_relative="libs/child",
+        submodule_branch=submodule_branch,
+        target_base_commit=target_base,
+        target_scope="main",
+        task=PortalTask(
+            task_id="AUTO-TARGET-STALE",
+            title="Advance a stale target cursor",
+            status="todo",
+            completion="manual",
+            priority="P0",
+            track="ops",
+        ),
+        attempt=1,
+    )
+
+    assert result["merged"] is True
+    assert result["integration_ref_fast_forwarded_from"] == stale_commit
+    assert result["integration_ref_fast_forwarded_to"] == target_base
+    assert result["commit"] == task_commit
+    assert _git(submodule, "rev-parse", integration_ref) == task_commit
+
+
+def test_merge_rejects_submodule_target_ref_ahead_of_authoritative_gitlink(
+    tmp_path,
+):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    target_base = _git(submodule, "rev-parse", "HEAD")
+    submodule_branch = "implementation/auto-target-ahead-submodule-libs-child"
+    _git(submodule, "checkout", "-b", submodule_branch, target_base)
+    (submodule / "ahead.txt").write_text("cursor ahead\n", encoding="utf-8")
+    _git(submodule, "add", "ahead.txt")
+    _git(submodule, "commit", "-m", "advance cursor ahead of target")
+    ahead_commit = _git(submodule, "rev-parse", "HEAD")
+    _git(submodule, "checkout", "--detach", target_base)
+
+    state_dir = tmp_path / "supervisor-state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=["libs/child"],
+        merge_target_branch="main",
+    )
+    integration_ref = daemon._submodule_target_integration_ref(
+        target_scope="main",
+        full_relative="libs/child",
+    )
+    _git(submodule, "update-ref", integration_ref, ahead_commit)
+
+    result = daemon._merge_submodule_branch_to_target_ref(
+        source=submodule,
+        full_relative="libs/child",
+        submodule_branch=submodule_branch,
+        target_base_commit=target_base,
+        target_scope="main",
+        task=PortalTask(
+            task_id="AUTO-TARGET-AHEAD",
+            title="Reject a target-behind cursor",
+            status="todo",
+            completion="manual",
+            priority="P0",
+            track="ops",
+        ),
+        attempt=1,
+    )
+
+    assert result["merged"] is False
+    assert result["reason"] == "submodule_target_ref_drift"
+    assert result["drift_kind"] == "target_behind"
+    assert _git(submodule, "rev-parse", integration_ref) == ahead_commit
+
+
+def test_merge_rejects_divergent_submodule_target_ref(tmp_path):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    common_base = _git(submodule, "rev-parse", "HEAD")
+    (submodule / "target-owned.txt").write_text(
+        "authoritative target branch\n",
+        encoding="utf-8",
+    )
+    _git(submodule, "add", "target-owned.txt")
+    _git(submodule, "commit", "-m", "advance authoritative target")
+    target_base = _git(submodule, "rev-parse", "HEAD")
+
+    submodule_branch = "implementation/auto-target-diverged-submodule-libs-child"
+    _git(submodule, "checkout", "-b", submodule_branch, common_base)
+    (submodule / "task-owned.txt").write_text(
+        "divergent task branch\n",
+        encoding="utf-8",
+    )
+    _git(submodule, "add", "task-owned.txt")
+    _git(submodule, "commit", "-m", "create divergent task cursor")
+    divergent_commit = _git(submodule, "rev-parse", "HEAD")
+    _git(submodule, "checkout", "--detach", target_base)
+
+    state_dir = tmp_path / "supervisor-state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=["libs/child"],
+        merge_target_branch="main",
+    )
+    integration_ref = daemon._submodule_target_integration_ref(
+        target_scope="main",
+        full_relative="libs/child",
+    )
+    _git(submodule, "update-ref", integration_ref, divergent_commit)
+
+    result = daemon._merge_submodule_branch_to_target_ref(
+        source=submodule,
+        full_relative="libs/child",
+        submodule_branch=submodule_branch,
+        target_base_commit=target_base,
+        target_scope="main",
+        task=PortalTask(
+            task_id="AUTO-TARGET-DIVERGED",
+            title="Reject a divergent target cursor",
+            status="todo",
+            completion="manual",
+            priority="P0",
+            track="ops",
+        ),
+        attempt=1,
+    )
+
+    assert result["merged"] is False
+    assert result["reason"] == "submodule_target_ref_drift"
+    assert result["drift_kind"] == "diverged"
+    assert _git(submodule, "rev-parse", integration_ref) == divergent_commit
+
+
+def test_merge_rejects_stale_submodule_target_ref_compare_and_swap_race(
+    tmp_path,
+    monkeypatch,
+):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    stale_commit = _git(submodule, "rev-parse", "HEAD")
+    (submodule / "target-owned.txt").write_text(
+        "authoritative target work\n",
+        encoding="utf-8",
+    )
+    _git(submodule, "add", "target-owned.txt")
+    _git(submodule, "commit", "-m", "advance authoritative target")
+    target_base = _git(submodule, "rev-parse", "HEAD")
+
+    submodule_branch = "implementation/auto-target-race-submodule-libs-child"
+    _git(submodule, "checkout", "-b", submodule_branch, target_base)
+    (submodule / "task-owned.txt").write_text("task work\n", encoding="utf-8")
+    _git(submodule, "add", "task-owned.txt")
+    _git(submodule, "commit", "-m", "task work")
+    _git(submodule, "checkout", "--detach", target_base)
+
+    state_dir = tmp_path / "supervisor-state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=["libs/child"],
+        merge_target_branch="main",
+    )
+    integration_ref = daemon._submodule_target_integration_ref(
+        target_scope="main",
+        full_relative="libs/child",
+    )
+    _git(submodule, "update-ref", integration_ref, stale_commit)
+    expected_cas = [
+        "git",
+        "update-ref",
+        integration_ref,
+        target_base,
+        stale_commit,
+    ]
+    original_run = implementation_daemon_module.subprocess.run
+    raced = False
+
+    def race_target_ref_update(command, *args, **kwargs):
+        nonlocal raced
+        if not raced and command == expected_cas:
+            raced = True
+            competitor = original_run(
+                expected_cas,
+                cwd=submodule,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            assert competitor.returncode == 0
+        return original_run(command, *args, **kwargs)
+
+    monkeypatch.setattr(
+        implementation_daemon_module.subprocess,
+        "run",
+        race_target_ref_update,
+    )
+
+    result = daemon._merge_submodule_branch_to_target_ref(
+        source=submodule,
+        full_relative="libs/child",
+        submodule_branch=submodule_branch,
+        target_base_commit=target_base,
+        target_scope="main",
+        task=PortalTask(
+            task_id="AUTO-TARGET-RACE",
+            title="Reject a raced target cursor update",
+            status="todo",
+            completion="manual",
+            priority="P0",
+            track="ops",
+        ),
+        attempt=1,
+    )
+
+    assert raced is True
+    assert result["merged"] is False
+    assert result["reason"] == "submodule_target_ref_compare_and_swap_failed"
+    assert result["compare_and_swap_phase"] == "advance_stale_integration_ref"
+    assert result["integration_ref_commit_after_failure"] == target_base
+    assert _git(submodule, "rev-parse", integration_ref) == target_base
+
+
 def test_implementation_daemon_treats_nested_configured_path_as_changed(tmp_path):
     repo, _submodule = _seed_parent_with_submodule(tmp_path)
     baseline_ref = _git(repo, "rev-parse", "HEAD")

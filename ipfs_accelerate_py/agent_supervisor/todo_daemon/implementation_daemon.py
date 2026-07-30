@@ -3074,6 +3074,9 @@ class PortalImplementationDaemon:
         if not before_head or not after_head or before_head == after_head:
             return {}
 
+        history_start = before_head
+        history_kind = "linear"
+        merge_base = ""
         ancestry = subprocess.run(
             ["git", "merge-base", "--is-ancestor", before_head, after_head],
             cwd=self.repo_root,
@@ -3081,18 +3084,97 @@ class PortalImplementationDaemon:
             capture_output=True,
             check=False,
         )
-        if ancestry.returncode != 0:
+        if ancestry.returncode not in {0, 1}:
             return {}
 
-        protected_paths = sorted(
+        mutated_protected_paths = sorted(
             {
                 str(mutation.get("path") or "")
                 for mutation in mutations
                 if str(mutation.get("path") or "")
             }
         )
-        if not protected_paths:
+        if not mutated_protected_paths:
             return {}
+        protected_paths = mutated_protected_paths
+
+        if ancestry.returncode == 1:
+            # A sibling lane can briefly advance the shared checkout with a
+            # merge that is later rolled back and recreated.  In that case the
+            # saved HEAD and the final HEAD diverge even though the protected
+            # board changed only on the final, trusted side.  Admit that case
+            # only with a complete, fail-closed proof.
+            configured_protected_paths = sorted(
+                set(self.implementation_protected_paths)
+            )
+            before_workspace = before.get("workspace")
+            after_workspace = after.get("workspace")
+            if (
+                not configured_protected_paths
+                or not isinstance(before_workspace, Mapping)
+                or not isinstance(after_workspace, Mapping)
+            ):
+                return {}
+            before_workspace_paths = before_workspace.get("paths")
+            after_workspace_paths = after_workspace.get("paths")
+            if not isinstance(before_workspace_paths, Mapping) or not isinstance(
+                after_workspace_paths,
+                Mapping,
+            ):
+                return {}
+            if (
+                set(map(str, before_workspace_paths))
+                != set(configured_protected_paths)
+                or set(map(str, after_workspace_paths))
+                != set(configured_protected_paths)
+            ):
+                return {}
+            if any(
+                before_workspace_paths.get(relative)
+                != after_workspace_paths.get(relative)
+                for relative in configured_protected_paths
+            ):
+                return {}
+
+            merge_base_result = subprocess.run(
+                ["git", "merge-base", "--all", before_head, after_head],
+                cwd=self.repo_root,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            if merge_base_result.returncode != 0:
+                return {}
+            merge_bases = [
+                line.strip()
+                for line in merge_base_result.stdout.splitlines()
+                if line.strip()
+            ]
+            if len(merge_bases) != 1:
+                return {}
+            merge_base = merge_bases[0]
+
+            before_tree = subprocess.run(
+                [
+                    "git",
+                    "diff",
+                    "--quiet",
+                    merge_base,
+                    before_head,
+                    "--",
+                    *configured_protected_paths,
+                ],
+                cwd=self.repo_root,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            if before_tree.returncode != 0:
+                return {}
+            protected_paths = configured_protected_paths
+            history_start = merge_base
+            history_kind = "diverged_trusted_after_side"
+
         status = subprocess.run(
             [
                 "git",
@@ -3110,15 +3192,19 @@ class PortalImplementationDaemon:
         if status.returncode != 0 or status.stdout.strip():
             return {}
 
-        history = subprocess.run(
+        history_command = ["git", "log"]
+        if history_kind != "linear":
+            history_command.append("--full-history")
+        history_command.extend(
             [
-                "git",
-                "log",
                 "--format=%H%x09%ae%x09%s",
-                f"{before_head}..{after_head}",
+                f"{history_start}..{after_head}",
                 "--",
                 *protected_paths,
-            ],
+            ]
+        )
+        history = subprocess.run(
+            history_command,
             cwd=self.repo_root,
             text=True,
             capture_output=True,
@@ -3148,7 +3234,10 @@ class PortalImplementationDaemon:
         return {
             "before_head": before_head,
             "after_head": after_head,
-            "protected_paths": protected_paths,
+            "protected_paths": mutated_protected_paths,
+            "history_protected_paths": protected_paths,
+            "history_kind": history_kind,
+            "merge_base": merge_base,
             "commits": commits,
         }
 
@@ -3961,31 +4050,16 @@ class PortalImplementationDaemon:
                 saw_device_change = True
         return saw_device_change
 
-    def _implementation_protected_path_violation(
+    def _implementation_protected_path_mutations(
         self,
-        *,
-        task: PortalTask | None = None,
-        task_id: str = "",
-        attempt: int,
-        workspace_path: Path,
         before: Mapping[str, Mapping[str, Any]],
-    ) -> dict[str, Any]:
-        """Fail closed when any protected identity changes after agent execution."""
+        after: Mapping[str, Mapping[str, Any]],
+    ) -> list[dict[str, Any]]:
+        """Return exact protected-path identity changes between two snapshots."""
 
-        missing_ephemeral_before = (
-            self._missing_ephemeral_workspace_shared_snapshot(
-                workspace_path,
-                before,
-            )
-        )
-        comparison_before = missing_ephemeral_before or before
-        comparison_workspace = (
-            self.repo_root if missing_ephemeral_before is not None else workspace_path
-        )
-        after = self._implementation_protected_path_snapshot(comparison_workspace)
         mutations: list[dict[str, Any]] = []
-        for scope in sorted(set(comparison_before) | set(after)):
-            before_scope = comparison_before.get(scope) or {}
+        for scope in sorted(set(before) | set(after)):
+            before_scope = before.get(scope) or {}
             after_scope = after.get(scope) or {}
             before_paths = before_scope.get("paths")
             after_paths = after_scope.get("paths")
@@ -4020,6 +4094,34 @@ class PortalImplementationDaemon:
                         "after": normalized_after,
                     }
                 )
+        return mutations
+
+    def _implementation_protected_path_violation(
+        self,
+        *,
+        task: PortalTask | None = None,
+        task_id: str = "",
+        attempt: int,
+        workspace_path: Path,
+        before: Mapping[str, Mapping[str, Any]],
+    ) -> dict[str, Any]:
+        """Fail closed when any protected identity changes after agent execution."""
+
+        missing_ephemeral_before = (
+            self._missing_ephemeral_workspace_shared_snapshot(
+                workspace_path,
+                before,
+            )
+        )
+        comparison_before = missing_ephemeral_before or before
+        comparison_workspace = (
+            self.repo_root if missing_ephemeral_before is not None else workspace_path
+        )
+        after = self._implementation_protected_path_snapshot(comparison_workspace)
+        mutations = self._implementation_protected_path_mutations(
+            comparison_before,
+            after,
+        )
         if not mutations:
             if missing_ephemeral_before is not None:
                 self._record_event(
@@ -4168,12 +4270,211 @@ class PortalImplementationDaemon:
                 )
         return violation
 
+    def _recover_authorized_latched_protected_path_incident(
+        self,
+        incident: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Auto-clear a false-positive incident with a complete trusted proof.
+
+        The original incident and active snapshot are retained in an immutable
+        receipt.  Every malformed, stale, shared-workspace, or incomplete proof
+        returns an empty result so the caller leaves the incident latched.
+        """
+
+        if (
+            incident.get("schema")
+            != "implementation-protected-path-incident-v1"
+            or incident.get("reason")
+            != "implementation_protected_path_mutated"
+            or incident.get("requires_operator_clearance") is not True
+        ):
+            return {}
+
+        active_path = self._implementation_protected_active_snapshot_path()
+        active = load_json_dict(active_path)
+        if (
+            active is None
+            or active.get("schema")
+            != "implementation-protected-path-active-v1"
+            or active.get("ephemeral_worktree") is not True
+        ):
+            return {}
+        for field_name in ("task_id", "attempt", "workspace_path"):
+            if active.get(field_name) != incident.get(field_name):
+                return {}
+        task_id = active.get("task_id")
+        attempt = active.get("attempt")
+        if (
+            not isinstance(task_id, str)
+            or not task_id.strip()
+            or isinstance(attempt, bool)
+            or not isinstance(attempt, int)
+            or attempt <= 0
+        ):
+            return {}
+
+        active_protected_paths = active.get("protected_paths")
+        if not isinstance(active_protected_paths, list):
+            return {}
+        configured_protected_paths = sorted(
+            set(self.implementation_protected_paths)
+        )
+        if (
+            not configured_protected_paths
+            or sorted(map(str, active_protected_paths))
+            != configured_protected_paths
+            or len(active_protected_paths) != len(configured_protected_paths)
+        ):
+            return {}
+
+        mutations = incident.get("mutations")
+        if not isinstance(mutations, list) or not mutations:
+            return {}
+        incident_scopes = {
+            str(item.get("scope") or "")
+            for item in mutations
+            if isinstance(item, Mapping)
+        }
+        incident_paths = sorted(
+            {
+                str(item.get("path") or "")
+                for item in mutations
+                if isinstance(item, Mapping) and str(item.get("path") or "")
+            }
+        )
+        if incident_scopes != {"shared_checkout"} or not incident_paths:
+            return {}
+
+        snapshot = active.get("snapshot")
+        if not isinstance(snapshot, Mapping) or (
+            self._implementation_protected_snapshot_errors(snapshot)
+        ):
+            return {}
+        before_workspace = snapshot.get("workspace")
+        before_shared = snapshot.get("shared_checkout")
+        if not isinstance(before_workspace, Mapping) or not isinstance(
+            before_shared,
+            Mapping,
+        ):
+            return {}
+
+        workspace_value = str(active.get("workspace_path") or "")
+        try:
+            workspace_path = Path(workspace_value).resolve(strict=True)
+            repo_root = self.repo_root.resolve(strict=True)
+            worktree_root = self.worktree_root.resolve(strict=True)
+        except (OSError, RuntimeError):
+            return {}
+        if (
+            workspace_path == repo_root
+            or not self._path_is_under(workspace_path, worktree_root)
+            or str(before_workspace.get("root") or "") != str(workspace_path)
+            or str(before_shared.get("root") or "") != str(repo_root)
+        ):
+            return {}
+
+        after = self._implementation_protected_path_snapshot(workspace_path)
+        if self._implementation_protected_snapshot_errors(after):
+            return {}
+        current_mutations = self._implementation_protected_path_mutations(
+            snapshot,
+            after,
+        )
+        current_scopes = {
+            str(item.get("scope") or "") for item in current_mutations
+        }
+        current_paths = sorted(
+            {str(item.get("path") or "") for item in current_mutations}
+        )
+        if (
+            current_scopes != {"shared_checkout"}
+            or current_paths != incident_paths
+        ):
+            return {}
+
+        authorization = self._authorized_concurrent_protected_path_update(
+            workspace_path=workspace_path,
+            before=snapshot,
+            after=after,
+            mutations=current_mutations,
+        )
+        if (
+            not authorization
+            or authorization.get("history_kind")
+            != "diverged_trusted_after_side"
+        ):
+            return {}
+
+        # Close the proof-to-clear race for both protected identities and the
+        # shared checkout HEAD before preserving and removing the latch.
+        if self._implementation_protected_path_snapshot(workspace_path) != after:
+            return {}
+        if (
+            self._implementation_protected_git_head(repo_root)
+            != authorization.get("after_head")
+        ):
+            return {}
+
+        receipt_basis = {
+            "incident": dict(incident),
+            "active_snapshot": active,
+            "authorization": authorization,
+        }
+        recovery_id = "sha256:" + hashlib.sha256(
+            canonical_json(receipt_basis).encode("utf-8")
+        ).hexdigest()
+        receipt = {
+            "schema": "implementation-protected-path-auto-clearance-v1",
+            "recovery_id": recovery_id,
+            "cleared_at": utc_now(),
+            **receipt_basis,
+        }
+        receipt_path = (
+            incident_path := self._implementation_protected_incident_path()
+        ).parent / (
+            "implementation-protected-path-auto-clearance-"
+            f"{recovery_id.removeprefix('sha256:')[:16]}.json"
+        )
+        write_json_atomic(receipt_path, receipt)
+        try:
+            incident_path.unlink()
+        except FileNotFoundError:
+            return {}
+        self._clear_implementation_protected_snapshot(
+            task_id=task_id,
+            attempt=attempt,
+            reason="authorized_concurrent_update_recovered",
+        )
+        result = {
+            "blocked": False,
+            "reason": "implementation_protected_path_incident_auto_cleared",
+            "task_id": task_id,
+            "attempt": attempt,
+            "workspace_path": str(workspace_path),
+            "receipt_path": str(receipt_path),
+            "recovery_id": recovery_id,
+            "authorization": authorization,
+        }
+        self._record_event(
+            "implementation_protected_path_incident_auto_cleared",
+            result,
+        )
+        return result
+
     def _reconcile_implementation_protected_path_fence(self) -> dict[str, Any]:
         """Reconcile a crash-surviving snapshot before any queue consumption."""
 
         incident_path = self._implementation_protected_incident_path()
         if incident_path.exists():
             incident = load_json_dict(incident_path)
+            if incident is not None:
+                recovered = (
+                    self._recover_authorized_latched_protected_path_incident(
+                        incident
+                    )
+                )
+                if recovered:
+                    return recovered
             result = {
                 "blocked": True,
                 "reason": "implementation_protected_path_incident_latched",
@@ -18658,8 +18959,9 @@ class PortalImplementationDaemon:
         """Merge a child branch without checking out or advancing ambient main.
 
         The integration ref is a compare-and-swap cursor for exactly one
-        superproject target and child path.  Its expected value must equal the
-        gitlink pinned by the target superproject before this merge.
+        superproject target and child path.  A cursor behind the authoritative
+        target gitlink may advance monotonically with a compare-and-swap.
+        Target-behind, divergent, and raced cursors fail closed.
         """
 
         integration_ref = self._submodule_target_integration_ref(
@@ -18737,19 +19039,97 @@ class PortalImplementationDaemon:
                 )
             else:
                 current_ref = target_base_commit
+        integration_ref_fast_forward: dict[str, Any] = {}
         if current_ref != target_base_commit:
-            return {
-                "path": full_relative,
-                "branch": submodule_branch,
-                "default_branch": integration_ref,
-                "integration_ref": integration_ref,
-                "target_base_commit": target_base_commit,
-                "integration_ref_commit": current_ref,
-                "merged": False,
-                "returncode": 2,
-                "reason": "submodule_target_ref_drift",
-                "retryable": True,
-            }
+            if self._git_ref_is_ancestor_in_repo(
+                source,
+                current_ref,
+                target_base_commit,
+            ):
+                fast_forward = subprocess.run(
+                    [
+                        "git",
+                        "update-ref",
+                        integration_ref,
+                        target_base_commit,
+                        current_ref,
+                    ],
+                    cwd=source,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+                if fast_forward.returncode != 0:
+                    observed_ref_result = subprocess.run(
+                        [
+                            "git",
+                            "rev-parse",
+                            "--verify",
+                            "--quiet",
+                            integration_ref,
+                        ],
+                        cwd=source,
+                        text=True,
+                        capture_output=True,
+                        check=False,
+                    )
+                    observed_ref = (
+                        observed_ref_result.stdout.strip()
+                        if observed_ref_result.returncode == 0
+                        else ""
+                    )
+                    return {
+                        "path": full_relative,
+                        "branch": submodule_branch,
+                        "default_branch": integration_ref,
+                        "integration_ref": integration_ref,
+                        "target_base_commit": target_base_commit,
+                        "integration_ref_commit": current_ref,
+                        "integration_ref_commit_after_failure": observed_ref,
+                        "merged": False,
+                        "returncode": 2,
+                        "reason": (
+                            "submodule_target_ref_compare_and_swap_failed"
+                        ),
+                        "compare_and_swap_phase": (
+                            "advance_stale_integration_ref"
+                        ),
+                        "compare_and_swap_returncode": (
+                            fast_forward.returncode
+                        ),
+                        "compare_and_swap_stderr": (
+                            fast_forward.stderr[-4000:]
+                        ),
+                        "retryable": True,
+                    }
+                integration_ref_fast_forward = {
+                    "integration_ref_fast_forwarded_from": current_ref,
+                    "integration_ref_fast_forwarded_to": target_base_commit,
+                }
+                current_ref = target_base_commit
+            else:
+                target_is_behind = self._git_ref_is_ancestor_in_repo(
+                    source,
+                    target_base_commit,
+                    current_ref,
+                )
+                return {
+                    "path": full_relative,
+                    "branch": submodule_branch,
+                    "default_branch": integration_ref,
+                    "integration_ref": integration_ref,
+                    "target_base_commit": target_base_commit,
+                    "integration_ref_commit": current_ref,
+                    "merged": False,
+                    "returncode": 2,
+                    "reason": "submodule_target_ref_drift",
+                    "drift_kind": (
+                        "target_behind"
+                        if target_is_behind
+                        else "diverged"
+                    ),
+                    "retryable": True,
+                }
 
         worktree_root = self._submodule_target_worktree_root()
         worktree_root.mkdir(parents=True, exist_ok=True)
@@ -18939,6 +19319,7 @@ class PortalImplementationDaemon:
             "compare_and_swap_stderr": str(cas.stderr)[-4000:],
             "cleanup_returncode": remove.returncode,
             "cleanup_stderr": remove.stderr[-4000:],
+            **integration_ref_fast_forward,
         }
         if not merged:
             result["reason"] = (
