@@ -376,7 +376,7 @@ def test_mcpplusplus_provider_pins_route_and_rejects_fallback(
         provider(request)
 
 
-def test_codex_review_schema_is_strict_and_nullable() -> None:
+def test_mcpplusplus_codex_review_schema_is_strict_output_compatible() -> None:
     schema = _production_provider_response_schema(ProviderRole.CODEX_REVIEW)
 
     def assert_strict_objects(node: Any) -> None:
@@ -395,6 +395,14 @@ def test_codex_review_schema_is_strict_and_nullable() -> None:
     assert schema["required"] == ["decision", "findings", "proposal"]
     proposal = schema["properties"]["proposal"]
     assert proposal["anyOf"][-1] == {"type": "null"}
+    assert proposal["anyOf"][0]["required"] == [
+        "patch",
+        "declared_paths",
+    ]
+    assert proposal["anyOf"][1]["required"] == [
+        "files",
+        "declared_paths",
+    ]
     for branch in proposal["anyOf"][:-1]:
         assert branch["type"] == "object"
         assert branch["additionalProperties"] is False

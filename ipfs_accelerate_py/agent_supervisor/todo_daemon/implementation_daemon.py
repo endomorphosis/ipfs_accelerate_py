@@ -553,6 +553,10 @@ def _production_provider_response_schema(
     }
     proposal = {"anyOf": [patch_proposal, files_proposal]}
     if role is ProviderRole.CODEX_REVIEW:
+        # Codex strict structured output requires every property of every
+        # object schema to be required.  Preserve the semantic optionality of
+        # a repair proposal with an explicit null branch: an approval/rejection
+        # returns null, while repair/replace returns one fully shaped branch.
         return {
             "type": "object",
             "properties": {
