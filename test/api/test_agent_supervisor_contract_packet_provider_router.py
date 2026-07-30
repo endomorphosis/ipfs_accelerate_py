@@ -9,6 +9,9 @@ from typing import Any, Mapping
 
 import pytest
 
+from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
+    contract_packet_provider_router as provider_router,
+)
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.contract_packet_provider_router import (
     MAX_PROVIDER_PROMPT_BYTES,
     MAX_PROVIDER_PROMPT_TOKENS,
@@ -21,8 +24,11 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.contract_packet_provider_ro
     ProviderReason,
     ProviderRole,
     RouteStatus,
+    bind_applied_patch_to_review_chain,
     redact_provider_data,
     route_contract_packet,
+    validate_production_review_chain_binding,
+    validate_provider_execution_receipt,
 )
 
 
@@ -93,6 +99,14 @@ def _codex(request):
         "completion_authoritative"
     ] is False
     return {"decision": "approve", "findings": []}
+
+
+_grok.provider_identity = "mcp++:xai:grok-fixture"
+_grok.model_identity = "grok-fixture"
+_grok.last_session_identity = "session:grok-fixture"
+_codex.provider_identity = "mcp++:openai:codex-fixture"
+_codex.model_identity = "codex-fixture"
+_codex.last_session_identity = "session:codex-fixture"
 
 
 def test_sequential_grok_then_codex_and_only_admitted_writer_can_mutate() -> None:
@@ -182,8 +196,11 @@ def test_no_provider_receives_repository_path_corpus_or_expansion_bodies() -> No
         "task_id",
         "provider_input",
         "bounds",
+        "response_contract",
         "authority",
     }
+    assert seen[0]["response_contract"]["required"] == ["patch"]
+    assert seen[1]["response_contract"]["required"] == ["decision", "findings"]
     assert seen[0]["authority"]["repository_write_allowed"] is False
 
 
@@ -713,3 +730,180 @@ def test_absent_or_degraded_review_is_explicit_and_not_authoritative() -> None:
     assert degraded.completion_authoritative is False
     assert degraded.review_chain[-1].status == "degraded"
     assert degraded.provider_receipt.provider_result_admitted is False
+
+
+def test_fixture_providers_have_distinct_attested_execution_identities() -> None:
+    assert _grok.provider_identity
+    assert _grok.model_identity
+    assert _grok.last_session_identity
+    assert _codex.provider_identity
+    assert _codex.model_identity
+    assert _codex.last_session_identity
+    assert _grok.provider_identity != _codex.provider_identity
+    assert _grok.model_identity != _codex.model_identity
+    assert _grok.last_session_identity != _codex.last_session_identity
+
+
+def test_recomputed_forged_receipt_cannot_break_review_digest_linkage() -> None:
+    result = ImplementationProviderRouter(
+        grok_provider=_grok,
+        codex_provider=_codex,
+        admission_gate=_accept,
+        require_independent_review_for_write=True,
+    ).route(_Packet(), current_snapshot_id=SNAPSHOT)
+    receipt = result.provider_receipt.to_dict()
+    valid, reason = validate_provider_execution_receipt(receipt)
+    assert valid is not None
+    assert reason == ""
+
+    forged = json.loads(json.dumps(receipt))
+    forged_digest = forged["review_chain"][0]["response_digest"]
+    forged["review_chain"][1]["response_digest"] = forged_digest
+    forged["attempts"][1]["response_digest"] = forged_digest
+    forged["receipt_id"] = provider_router._packet_content_id(
+        {key: value for key, value in forged.items() if key != "receipt_id"}
+    )
+
+    validated, reason = validate_provider_execution_receipt(forged)
+    assert validated is None
+    assert reason == ProviderReason.REVIEW_CHAIN_UNBOUND.value
+
+
+def test_strict_production_mode_rejects_identical_provider_identities() -> None:
+    calls: list[str] = []
+
+    def grok(request):
+        calls.append("grok")
+        return _grok(request)
+
+    def codex(request):
+        calls.append("codex")
+        return _codex(request)
+
+    grok.provider_identity = "mcp++:shared-provider"
+    grok.model_identity = "grok-distinct-model"
+    grok.last_session_identity = "session:grok-distinct"
+    codex.provider_identity = "mcp++:shared-provider"
+    codex.model_identity = "codex-distinct-model"
+    codex.last_session_identity = "session:codex-distinct"
+
+    result = ImplementationProviderRouter(
+        grok_provider=grok,
+        codex_provider=codex,
+        admission_gate=_accept,
+        require_independent_review_for_write=True,
+    ).route(_Packet(), current_snapshot_id=SNAPSHOT)
+
+    assert result.status is RouteStatus.REJECTED
+    assert result.reason_code == ProviderReason.SELF_REVIEW_FORBIDDEN.value
+    assert result.write_performed is False
+    assert calls == []
+
+
+def test_strict_production_mode_never_writes_without_successful_review() -> None:
+    def degraded_codex(_request):
+        raise RuntimeError("review transport failed")
+
+    degraded_codex.provider_identity = "mcp++:openai:degraded-fixture"
+    degraded_codex.model_identity = "codex-degraded-fixture"
+    degraded_codex.last_session_identity = "session:codex-degraded-fixture"
+
+    for codex_provider, expected_presence in (
+        (None, "review_absent"),
+        (degraded_codex, "review_degraded"),
+    ):
+        writes = []
+        result = ImplementationProviderRouter(
+            grok_provider=_grok,
+            codex_provider=codex_provider,
+            admission_gate=_accept,
+            writer=lambda proposal, lease: writes.append((proposal, lease)),
+            require_independent_review_for_write=True,
+        ).route(
+            _Packet(),
+            current_snapshot_id=SNAPSHOT,
+            apply=True,
+            writer_lease_id="lease:strict-production",
+        )
+
+        assert result.status is RouteStatus.FALLBACK
+        assert result.review_presence == expected_presence
+        assert result.write_performed is False
+        assert result.writer_lease_id == ""
+        assert writes == []
+
+
+def test_review_chain_binding_requires_exact_commit_tree_and_paths() -> None:
+    writes = []
+    result = ImplementationProviderRouter(
+        grok_provider=_grok,
+        codex_provider=_codex,
+        admission_gate=_accept,
+        writer=lambda proposal, lease: writes.append((proposal, lease)),
+        require_independent_review_for_write=True,
+    ).route(
+        _Packet(),
+        current_snapshot_id=SNAPSHOT,
+        apply=True,
+        writer_lease_id="lease:binding",
+    )
+    assert result.status is RouteStatus.SUCCEEDED
+    assert len(writes) == 1
+
+    commit = "a" * 40
+    tree_id = "b" * 40
+    binding = bind_applied_patch_to_review_chain(
+        result,
+        implementation_commit=commit,
+        implementation_tree_id=tree_id,
+        changed_paths=[PATH],
+    )
+    assert binding is not None
+    assert validate_production_review_chain_binding(
+        binding,
+        result.provider_receipt,
+        expected_task_id=result.packet.task_id,
+        expected_snapshot_id=SNAPSHOT,
+        expected_implementation_commit=commit,
+        expected_implementation_tree_id=tree_id,
+        expected_changed_paths=[PATH],
+    ) == (True, ProviderReason.ROUTED.value)
+
+    mismatches = (
+        {"expected_implementation_commit": "c" * 40},
+        {"expected_implementation_tree_id": "d" * 40},
+        {"expected_changed_paths": [PATH, "unexpected.py"]},
+    )
+    for mismatch in mismatches:
+        expected = {
+            "expected_task_id": result.packet.task_id,
+            "expected_snapshot_id": SNAPSHOT,
+            "expected_implementation_commit": commit,
+            "expected_implementation_tree_id": tree_id,
+            "expected_changed_paths": [PATH],
+            **mismatch,
+        }
+        assert validate_production_review_chain_binding(
+            binding,
+            result.provider_receipt,
+            **expected,
+        ) == (False, ProviderReason.REVIEW_CHAIN_UNBOUND.value)
+
+    forged_binding = binding.to_dict()
+    forged_binding["changed_paths"] = ["unexpected.py"]
+    forged_binding["binding_id"] = provider_router._packet_content_id(
+        {
+            key: value
+            for key, value in forged_binding.items()
+            if key != "binding_id"
+        }
+    )
+    assert validate_production_review_chain_binding(
+        forged_binding,
+        result.provider_receipt,
+        expected_task_id=result.packet.task_id,
+        expected_snapshot_id=SNAPSHOT,
+        expected_implementation_commit=commit,
+        expected_implementation_tree_id=tree_id,
+        expected_changed_paths=[PATH],
+    ) == (False, ProviderReason.REVIEW_CHAIN_UNBOUND.value)
