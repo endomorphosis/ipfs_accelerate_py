@@ -21,6 +21,13 @@ are reused from a previous snapshot; parser failures and truncation prevent an
 exhaustive index verdict.  The synthetic ``objective validation repair``
 discovery key (VFS-064) anchors the parent VFS-G020 validation gate and never
 enters AST blob identity.  Evidence labels stay off content-bound identity.
+
+Language-edge resolution (``vfs/language-edge-resolution@1``, VFS-G021 /
+VFS-G143) projects import, re-export, call, decorator, callback, dynamic
+import, monkey-patch, and transport-boundary facts into typed edge candidates
+that always cite a source span and resolver rule.  Ambiguous and unsupported
+constructs stay explicit; name collisions and re-exports never become forged
+direct call edges.
 """
 
 from __future__ import annotations
@@ -70,12 +77,22 @@ DEFAULT_MAX_FACTS = 20_000
 INCREMENTAL_AST_INDEX_EVIDENCE: Final[str] = "vfs/incremental-ast-index@1"
 # Packet sibling (VFS-G138) co-covered with repository_corpus_index.
 EXHAUSTIVE_FILE_INVENTORY_EVIDENCE: Final[str] = "vfs/exhaustive-file-inventory@1"
+# Language-edge resolution (VFS-G021 / gap child VFS-G143). Co-owned with
+# program_graph: every projected edge cites span + resolver rule; collisions
+# and re-exports never forge direct calls.
+LANGUAGE_EDGE_RESOLUTION_EVIDENCE: Final[str] = "vfs/language-edge-resolution@1"
 # Synthetic objective-heap evidence term for VFS-G020 validation-gate work.
 # Exact-text discovery key only — never part of AST blob identity.
 OBJECTIVE_VALIDATION_REPAIR_EVIDENCE: Final[str] = "objective validation repair"
 OBJECTIVE_GOAL_ID: Final[str] = "VFS-G139"
 PACKET_SIBLING_GOAL_ID: Final[str] = "VFS-G138"
 OBJECTIVE_PARENT_GOAL_ID: Final[str] = "VFS-G020"
+# Domain parent goal for language-edge resolution (VFS-G021).
+LANGUAGE_EDGE_RESOLUTION_GOAL_ID: Final[str] = "VFS-G021"
+# Gap / prove task for vfs/language-edge-resolution@1.
+LANGUAGE_EDGE_RESOLUTION_TASK_ID: Final[str] = "VFS-069"
+# Child objective that owns the prove obligation (VFS-G143).
+LANGUAGE_EDGE_RESOLUTION_CHILD_GOAL_ID: Final[str] = "VFS-G143"
 # Domain packet task that authored vfs/incremental-ast-index@1 (VFS-G139).
 OBJECTIVE_TASK_ID: Final[str] = "VFS-063"
 # Repair task that owns the synthetic objective validation repair obligation.
@@ -89,6 +106,8 @@ OBJECTIVE_DOMAIN_EVIDENCE_TERMS: Final[tuple[str, ...]] = (
 # Parent VFS-G020 / packet aggregate evidence surface (inventory + AST index).
 # Domain packet keys only — objective validation repair is appended by
 # :func:`objective_validation_repair_evidence_terms` / full discovery helpers.
+# Language-edge resolution is a sibling corpus-index goal (VFS-G021), not part
+# of the inventory/AST packet pair.
 CORPUS_INDEX_G020_EVIDENCE_TERMS: Final[tuple[str, ...]] = (
     EXHAUSTIVE_FILE_INVENTORY_EVIDENCE,
     INCREMENTAL_AST_INDEX_EVIDENCE,
@@ -96,6 +115,29 @@ CORPUS_INDEX_G020_EVIDENCE_TERMS: Final[tuple[str, ...]] = (
 PACKET_GOAL_IDS: Final[tuple[str, ...]] = (
     PACKET_SIBLING_GOAL_ID,
     OBJECTIVE_GOAL_ID,
+)
+# Closed set of adapter fact kinds that project to language edges.
+_LANGUAGE_EDGE_FACT_KINDS: Final[frozenset[str]] = frozenset(
+    {
+        "import",
+        "export",
+        "re_export",
+        "call",
+        "new_expression",
+        "dynamic_import",
+        "monkey_patch",
+        "callback",
+        "registration",
+        "decorator",
+        "unsupported_node",
+    }
+)
+LANGUAGE_EDGE_RESOLUTION_INVARIANTS: Final[tuple[str, ...]] = (
+    "every projected edge cites a source span and resolver rule",
+    "ambiguous and unsupported constructs remain explicit",
+    "adversarial name collisions cannot become forged direct calls",
+    "re-exports cannot become forged direct calls",
+    "dynamic language features stay typed frontier edges",
 )
 # Languages / JSON family labels that must carry content-bound provenance
 # under VFS-G139.  JSON Schema and MCP manifests remain JSON-family adapters.
@@ -138,10 +180,14 @@ OBJECTIVE_VALIDATION_REPAIR_INVARIANTS: Final[tuple[str, ...]] = (
 # Keep exact-text discovery anchors aligned with the objective heap.
 assert INCREMENTAL_AST_INDEX_EVIDENCE == "vfs/incremental-ast-index@1"
 assert EXHAUSTIVE_FILE_INVENTORY_EVIDENCE == "vfs/exhaustive-file-inventory@1"
+assert LANGUAGE_EDGE_RESOLUTION_EVIDENCE == "vfs/language-edge-resolution@1"
 assert OBJECTIVE_VALIDATION_REPAIR_EVIDENCE == "objective validation repair"
 assert OBJECTIVE_GOAL_ID == "VFS-G139"
 assert PACKET_SIBLING_GOAL_ID == "VFS-G138"
 assert OBJECTIVE_PARENT_GOAL_ID == "VFS-G020"
+assert LANGUAGE_EDGE_RESOLUTION_GOAL_ID == "VFS-G021"
+assert LANGUAGE_EDGE_RESOLUTION_CHILD_GOAL_ID == "VFS-G143"
+assert LANGUAGE_EDGE_RESOLUTION_TASK_ID == "VFS-069"
 assert OBJECTIVE_TASK_ID == "VFS-063"
 assert OBJECTIVE_VALIDATION_REPAIR_TASK_ID == "VFS-064"
 assert OBJECTIVE_DOMAIN_EVIDENCE_TERMS == ("vfs/incremental-ast-index@1",)
@@ -3775,6 +3821,676 @@ build_incremental_ast_index = build_program_evidence_index
 
 
 # ---------------------------------------------------------------------------
+# Language-edge resolution (VFS-G021 / VFS-G143 / vfs/language-edge-resolution@1)
+# ---------------------------------------------------------------------------
+
+
+LANGUAGE_EDGE_RESOLUTION_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/language-edge-candidate@1"
+)
+LANGUAGE_EDGE_RESOLUTION_CLAIM_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/language-edge-resolution-claim@1"
+)
+
+
+@dataclass(frozen=True)
+class LanguageEdgeCandidate:
+    """One fail-closed language-edge projection from adapter facts.
+
+    Every candidate cites a source span and resolver rule.  Direct call
+    promotion is allowed only when the resolver status is terminal static and
+    the site is not a collision, re-export, dynamic, or unsupported construct.
+    """
+
+    site_id: str
+    kind: str
+    resolver_rule: str
+    span: SourceSpan
+    status: str
+    path: str = ""
+    language: str = ""
+    name: str = ""
+    target: str = ""
+    relationship: str = ""
+    fact_id: str = ""
+    blob_identity: str = ""
+    allows_direct_call: bool = False
+    reason: str = ""
+    details: Mapping[str, Any] = field(default_factory=dict)
+    schema: str = LANGUAGE_EDGE_RESOLUTION_SCHEMA
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "site_id", str(self.site_id or "").strip())
+        object.__setattr__(self, "kind", str(self.kind or "").strip())
+        object.__setattr__(
+            self, "resolver_rule", str(self.resolver_rule or "").strip()
+        )
+        object.__setattr__(self, "status", str(self.status or "").strip())
+        object.__setattr__(self, "path", str(self.path or "").replace("\\", "/"))
+        object.__setattr__(self, "language", str(self.language or ""))
+        object.__setattr__(self, "name", str(self.name or ""))
+        object.__setattr__(self, "target", str(self.target or ""))
+        object.__setattr__(self, "relationship", str(self.relationship or ""))
+        object.__setattr__(self, "fact_id", str(self.fact_id or ""))
+        object.__setattr__(self, "blob_identity", str(self.blob_identity or ""))
+        object.__setattr__(self, "allows_direct_call", bool(self.allows_direct_call))
+        object.__setattr__(self, "reason", str(self.reason or ""))
+        object.__setattr__(self, "details", _normalize_details(self.details))
+        if not self.site_id:
+            raise ValueError("language edge candidate requires site_id")
+        if not self.kind:
+            raise ValueError("language edge candidate requires kind")
+        if not self.resolver_rule:
+            raise ValueError("language edge candidate requires resolver_rule")
+        if not self.status:
+            raise ValueError("language edge candidate requires status")
+        if not isinstance(self.span, SourceSpan):
+            object.__setattr__(self, "span", _source_span_from_dict(self.span))
+        if self.allows_direct_call and self.status != "resolved_static":
+            raise ValueError(
+                "allows_direct_call requires status resolved_static"
+            )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": self.schema,
+            "site_id": self.site_id,
+            "kind": self.kind,
+            "resolver_rule": self.resolver_rule,
+            "span": self.span.to_dict(),
+            "status": self.status,
+            "path": self.path,
+            "language": self.language,
+            "name": self.name,
+            "target": self.target,
+            "relationship": self.relationship,
+            "fact_id": self.fact_id,
+            "blob_identity": self.blob_identity,
+            "allows_direct_call": self.allows_direct_call,
+            "reason": self.reason,
+            "details": dict(self.details),
+        }
+
+
+def _language_edge_status_for_fact(
+    fact: ProgramEvidenceFact,
+    *,
+    collision_names: frozenset[str],
+) -> tuple[str, str, bool]:
+    """Return (status, reason, allows_direct_call) for one adapter fact."""
+
+    name_key = f"{fact.owner}:{fact.name}" if fact.owner else fact.name
+    if fact.kind == "unsupported_node":
+        return "unsupported", "unsupported_construct", False
+    if fact.kind in {"monkey_patch", "callback", "decorator", "registration"}:
+        return "ambiguous", f"dynamic:{fact.kind}", False
+    if fact.kind == "dynamic_import":
+        return "ambiguous", "dynamic_import", False
+    if fact.kind == "re_export":
+        return "ambiguous", "re_export_not_direct_call", False
+    if name_key in collision_names or fact.name in collision_names:
+        return "ambiguous", "same_name_collision", False
+    if fact.ambiguous:
+        resolution = str(fact.details.get("resolution") or "")
+        if resolution == "candidate_only":
+            return "candidate", "import_candidate_only", False
+        if resolution == "dynamic_expression":
+            return "ambiguous", "dynamic_expression", False
+        if resolution == "unresolved_name":
+            return "unknown", "unresolved_name", False
+        if fact.kind == "import" and (
+            fact.name == "*" or str(fact.details.get("imported") or "") == "*"
+        ):
+            return "ambiguous", "star_import", False
+        return "ambiguous", "ambiguous_construct", False
+    if fact.kind in {"import", "export"}:
+        # Static import/export bindings are observational edges with a
+        # concrete target name, never promoted to resolved call edges.
+        return "candidate", f"static_{fact.kind}", False
+    if fact.kind in {"call", "new_expression"}:
+        # Adapter call facts are always candidate/unknown; direct call
+        # edges require the separate call-resolver with full graph evidence.
+        return "unknown", "call_site_requires_resolver", False
+    return "unknown", "unclassified_edge_fact", False
+
+
+def _resolver_rule_for_fact(
+    fact: ProgramEvidenceFact,
+    *,
+    language: str,
+    status: str,
+    reason: str,
+) -> str:
+    """Derive a stable resolver rule id from fact kind, language, and status."""
+
+    explicit = str(
+        fact.details.get("resolver_rule")
+        or fact.details.get("rule_id")
+        or ""
+    ).strip()
+    if explicit:
+        return explicit if explicit.startswith("rule:") else f"rule:{explicit}"
+    lang = (language or "unknown").replace("/", "-")
+    if reason == "same_name_collision":
+        return f"rule:{lang}:same_name_collision"
+    if reason == "re_export_not_direct_call":
+        return f"rule:{lang}:re_export"
+    if reason.startswith("dynamic:"):
+        return f"rule:{lang}:{reason.replace(':', '_')}"
+    if reason == "dynamic_import":
+        return f"rule:{lang}:dynamic_import"
+    if reason == "star_import":
+        return f"rule:{lang}:star_import"
+    if reason == "import_candidate_only":
+        return f"rule:{lang}:import_candidate"
+    if reason == "dynamic_expression":
+        return f"rule:{lang}:dynamic_expression"
+    if reason == "unresolved_name":
+        return f"rule:{lang}:unresolved_name"
+    if reason == "unsupported_construct":
+        return f"rule:{lang}:unsupported_node"
+    if fact.kind == "import":
+        return f"rule:{lang}:static_import"
+    if fact.kind == "export":
+        return f"rule:{lang}:static_export"
+    if fact.kind == "re_export":
+        return f"rule:{lang}:re_export"
+    if fact.kind in {"call", "new_expression"}:
+        return f"rule:{lang}:call_candidate"
+    return f"rule:{lang}:{fact.kind or 'edge'}:{status}"
+
+
+def _collision_names_from_result(
+    result: ProgramASTAdapterResult,
+) -> frozenset[str]:
+    """Collect names marked by name-collision diagnostics or multi-defs."""
+
+    collisions: set[str] = set()
+    for diagnostic in result.diagnostics:
+        if diagnostic.code in {
+            "ecmascript_name_collision",
+            "python_name_collision",
+            "name_collision",
+        }:
+            name = str(diagnostic.details.get("name") or "").strip()
+            if name:
+                collisions.add(name)
+                if ":" in name:
+                    collisions.add(name.rsplit(":", 1)[-1])
+    # Within one module, multiple definition facts for the same owner:name
+    # are treated as collisions for edge promotion (never forge a direct call).
+    def_counts: dict[str, int] = {}
+    for fact in result.facts:
+        if fact.kind.endswith("_definition") or fact.kind in {
+            "function_definition",
+            "class_definition",
+            "async_function_definition",
+            "arrow_function_definition",
+            "variable_definition",
+            "method_definition",
+        }:
+            key = f"{fact.owner}:{fact.name}" if fact.owner else fact.name
+            def_counts[key] = def_counts.get(key, 0) + 1
+    for key, count in def_counts.items():
+        if count > 1:
+            collisions.add(key)
+            collisions.add(key.rsplit(":", 1)[-1])
+    return frozenset(collisions)
+
+
+def project_language_edge_candidates(
+    result: ProgramASTAdapterResult,
+) -> tuple[LanguageEdgeCandidate, ...]:
+    """Project one adapter result into span+rule language-edge candidates.
+
+    Facts that are not edge-relevant are skipped.  Every emitted candidate
+    carries a non-empty resolver rule and a source span.  Direct-call
+    promotion is always refused for collisions, re-exports, dynamic
+    constructs, and ambiguous/unsupported sites.
+    """
+
+    if not isinstance(result, ProgramASTAdapterResult):
+        raise TypeError("result must be a ProgramASTAdapterResult")
+    collisions = _collision_names_from_result(result)
+    candidates: list[LanguageEdgeCandidate] = []
+    for fact in result.facts:
+        if fact.kind not in _LANGUAGE_EDGE_FACT_KINDS:
+            continue
+        status, reason, allows_direct = _language_edge_status_for_fact(
+            fact, collision_names=collisions
+        )
+        # Hard fail-closed: never allow direct call for collisions/re-exports.
+        if reason in {"same_name_collision", "re_export_not_direct_call"}:
+            allows_direct = False
+            if status == "resolved_static":
+                status = "ambiguous"
+        rule = _resolver_rule_for_fact(
+            fact, language=result.language, status=status, reason=reason
+        )
+        site_id = (
+            f"site:{result.path}:{fact.kind}:{fact.fact_id}"
+            if result.path
+            else f"site:{fact.kind}:{fact.fact_id}"
+        )
+        candidates.append(
+            LanguageEdgeCandidate(
+                site_id=site_id,
+                kind=fact.kind,
+                resolver_rule=rule,
+                span=fact.span,
+                status=status,
+                path=result.path,
+                language=result.language,
+                name=fact.name,
+                target=fact.target,
+                relationship=fact.relationship,
+                fact_id=fact.fact_id,
+                blob_identity=result.blob_identity,
+                allows_direct_call=allows_direct,
+                reason=reason,
+                details={
+                    "owner": fact.owner,
+                    "ambiguous": fact.ambiguous,
+                    "generated": fact.generated,
+                    **{
+                        key: value
+                        for key, value in dict(fact.details).items()
+                        if key
+                        not in {
+                            "statement",
+                            "keyword_names",
+                        }
+                    },
+                },
+            )
+        )
+    return tuple(
+        sorted(
+            candidates,
+            key=lambda item: (
+                item.span.line_start,
+                item.span.column_start,
+                item.kind,
+                item.name,
+                item.site_id,
+            ),
+        )
+    )
+
+
+def project_language_edge_candidates_from_index(
+    index: ProgramEvidenceIndex,
+) -> tuple[LanguageEdgeCandidate, ...]:
+    """Project every adapter result in an index into language-edge candidates."""
+
+    if not isinstance(index, ProgramEvidenceIndex):
+        raise TypeError("index must be a ProgramEvidenceIndex")
+    items: list[LanguageEdgeCandidate] = []
+    for result in index.results:
+        items.extend(project_language_edge_candidates(result))
+    return tuple(
+        sorted(
+            items,
+            key=lambda item: (
+                item.path,
+                item.span.line_start,
+                item.span.column_start,
+                item.kind,
+                item.site_id,
+            ),
+        )
+    )
+
+
+def language_edge_candidate_cites_span_and_rule(
+    candidate: LanguageEdgeCandidate,
+) -> bool:
+    """True when the candidate has a resolvable span and non-empty rule."""
+
+    if not isinstance(candidate, LanguageEdgeCandidate):
+        return False
+    if not candidate.resolver_rule or not candidate.resolver_rule.startswith(
+        "rule:"
+    ):
+        return False
+    span = candidate.span
+    # Span must be present; zeroed spans are only allowed for whole-file
+    # bindings that still report a path.  Edge sites require line anchors.
+    if span.line_start <= 0 and span.line_end <= 0:
+        return False
+    return True
+
+
+def language_edge_resolution_satisfies(
+    candidates: Sequence[LanguageEdgeCandidate],
+) -> bool:
+    """Machine-check VFS-G021 / VFS-G143 language-edge resolution acceptance.
+
+    * Every edge cites a source span and resolver rule.
+    * Ambiguous and unsupported constructs remain explicit (status in the
+      closed frontier vocabulary).
+    * Name collisions and re-exports never set ``allows_direct_call``.
+    """
+
+    if not candidates:
+        return True
+    frontier_statuses = {
+        "unresolved",
+        "candidate",
+        "ambiguous",
+        "external",
+        "unknown",
+        "unsupported",
+    }
+    terminal_statuses = {"resolved_static"}
+    for candidate in candidates:
+        if not language_edge_candidate_cites_span_and_rule(candidate):
+            return False
+        if candidate.status not in frontier_statuses | terminal_statuses:
+            return False
+        if candidate.reason in {
+            "same_name_collision",
+            "re_export_not_direct_call",
+        } and candidate.allows_direct_call:
+            return False
+        if candidate.status in {"ambiguous", "unsupported", "unknown"} and (
+            candidate.allows_direct_call
+        ):
+            return False
+        if candidate.kind in {
+            "monkey_patch",
+            "callback",
+            "dynamic_import",
+            "decorator",
+            "registration",
+            "unsupported_node",
+            "re_export",
+        } and candidate.allows_direct_call:
+            return False
+    return True
+
+
+def language_edge_resolution_evidence_terms() -> tuple[str, ...]:
+    """Return the closed VFS-G021 / VFS-G143 language-edge evidence term.
+
+    Exact identity: ``vfs/language-edge-resolution@1``.  Authored by this
+    module together with :mod:`program_graph` edge provenance checks.
+    """
+
+    return (LANGUAGE_EDGE_RESOLUTION_EVIDENCE,)
+
+
+def build_language_edge_program_graph(
+    results: Sequence[ProgramASTAdapterResult] | ProgramEvidenceIndex,
+    *,
+    forest_id: str = "forest:language-edge-resolution",
+    producer: str = "program-ast-adapters/language-edge-resolution@1",
+) -> Any:
+    """Project adapter results into a program graph with span+rule language edges.
+
+    Call/import/export/dynamic sites become nodes and edges.  Direct
+    ``resolved_static`` call edges are never minted for collisions, re-exports,
+    or dynamic constructs.  Returns a :class:`~.program_graph.ProgramGraph`.
+    """
+
+    # Local import keeps adapter load free of graph construction costs for
+    # callers that only need AST evidence.
+    from .program_graph import (
+        ProgramEdgeKind,
+        ProgramNodeKind,
+        ResolverStatus,
+        build_program_graph,
+        make_edge,
+        make_node,
+    )
+
+    if isinstance(results, ProgramEvidenceIndex):
+        adapter_results = results.results
+        candidates = project_language_edge_candidates_from_index(results)
+    else:
+        adapter_results = tuple(results)
+        candidates = tuple(
+            candidate
+            for result in adapter_results
+            for candidate in project_language_edge_candidates(result)
+        )
+    if not language_edge_resolution_satisfies(candidates):
+        raise ValueError(
+            "language edge candidates fail vfs/language-edge-resolution@1"
+        )
+
+    nodes_by_key: dict[str, Any] = {}
+    edges: list[Any] = []
+    kind_map = {
+        "import": ProgramEdgeKind.IMPORTS,
+        "export": ProgramEdgeKind.EXPORTS,
+        "re_export": ProgramEdgeKind.EXPORTS,
+        "call": ProgramEdgeKind.CALLS,
+        "new_expression": ProgramEdgeKind.CALLS,
+        "dynamic_import": ProgramEdgeKind.IMPORTS,
+        "monkey_patch": ProgramEdgeKind.REFERENCES,
+        "callback": ProgramEdgeKind.REFERENCES,
+        "registration": ProgramEdgeKind.REGISTERS,
+        "decorator": ProgramEdgeKind.REFERENCES,
+        "unsupported_node": ProgramEdgeKind.REFERENCES,
+    }
+    status_map = {
+        "resolved_static": ResolverStatus.RESOLVED_STATIC,
+        "candidate": ResolverStatus.CANDIDATE,
+        "ambiguous": ResolverStatus.AMBIGUOUS,
+        "external": ResolverStatus.EXTERNAL,
+        "unknown": ResolverStatus.UNKNOWN,
+        "unsupported": ResolverStatus.UNSUPPORTED,
+        "unresolved": ResolverStatus.UNRESOLVED,
+    }
+
+    def ensure_node(
+        *,
+        record_key: str,
+        kind: Any,
+        blob_cid: str,
+        component_id: str,
+        qualified_name: str,
+        path: str,
+        language: str,
+        span: Mapping[str, Any] | Any,
+        resolver_status: Any,
+        record: Mapping[str, Any],
+    ) -> Any:
+        existing = nodes_by_key.get(record_key)
+        if existing is not None:
+            return existing
+        node = make_node(
+            kind=kind,
+            record_key=record_key,
+            producer=producer,
+            blob_cid=blob_cid,
+            forest_id=forest_id,
+            component_id=component_id,
+            qualified_name=qualified_name,
+            path=path,
+            language=language,
+            span=span,
+            resolver_status=resolver_status,
+            record=record,
+        )
+        nodes_by_key[record_key] = node
+        return node
+
+    for result in adapter_results:
+        module_key = f"module:{result.path or result.blob_identity or 'unknown'}"
+        ensure_node(
+            record_key=module_key,
+            kind=ProgramNodeKind.MODULE,
+            blob_cid=result.blob_identity or f"blob:{result.source_sha256}",
+            component_id=module_key,
+            qualified_name=result.path or module_key,
+            path=result.path,
+            language=result.language,
+            span={"line_start": 1, "column_start": 0, "line_end": 1, "column_end": 0},
+            resolver_status=ResolverStatus.RESOLVED_STATIC,
+            record={
+                "evidence": LANGUAGE_EDGE_RESOLUTION_EVIDENCE,
+                "status": result.status,
+            },
+        )
+
+    for candidate in candidates:
+        module_key = f"module:{candidate.path or candidate.blob_identity or 'unknown'}"
+        site_key = candidate.site_id
+        target_name = candidate.target or candidate.name or "unknown"
+        target_key = f"symbol:{candidate.path}:{target_name}"
+        blob = candidate.blob_identity or f"blob:{candidate.path or 'unknown'}"
+        site_node = ensure_node(
+            record_key=site_key,
+            kind=ProgramNodeKind.SYMBOL,
+            blob_cid=blob,
+            component_id=module_key,
+            qualified_name=candidate.name or site_key,
+            path=candidate.path,
+            language=candidate.language,
+            span=candidate.span.to_dict(),
+            resolver_status=status_map.get(
+                candidate.status, ResolverStatus.UNKNOWN
+            ),
+            record={
+                "kind": candidate.kind,
+                "fact_id": candidate.fact_id,
+                "reason": candidate.reason,
+            },
+        )
+        target_node = ensure_node(
+            record_key=target_key,
+            kind=ProgramNodeKind.SYMBOL,
+            blob_cid=blob,
+            component_id=module_key,
+            qualified_name=target_name,
+            path=candidate.path,
+            language=candidate.language,
+            span=candidate.span.to_dict(),
+            resolver_status=ResolverStatus.CANDIDATE,
+            record={"projected_target": True},
+        )
+        edge_kind = kind_map.get(candidate.kind, ProgramEdgeKind.REFERENCES)
+        # Never promote non-terminal / collision / re-export / dynamic sites
+        # to resolved_static call edges.
+        edge_status = status_map.get(candidate.status, ResolverStatus.UNKNOWN)
+        if candidate.allows_direct_call and edge_status is ResolverStatus.RESOLVED_STATIC:
+            edge_status = ResolverStatus.RESOLVED_STATIC
+        elif edge_status is ResolverStatus.RESOLVED_STATIC:
+            edge_status = ResolverStatus.AMBIGUOUS
+        edges.append(
+            make_edge(
+                source=site_node.node_id,
+                target=target_node.node_id,
+                kind=edge_kind,
+                producer=producer,
+                blob_cid=blob,
+                forest_id=forest_id,
+                component_id=module_key,
+                span=candidate.span.to_dict(),
+                resolver_status=edge_status,
+                resolver_rule=candidate.resolver_rule,
+                record={
+                    "reason": candidate.reason,
+                    "reason_code": candidate.reason,
+                    "mechanism": candidate.kind,
+                    "allows_direct_call": candidate.allows_direct_call,
+                    "evidence": LANGUAGE_EDGE_RESOLUTION_EVIDENCE,
+                    "fact_id": candidate.fact_id,
+                },
+            )
+        )
+
+    return build_program_graph(
+        forest_id=forest_id,
+        nodes=tuple(nodes_by_key.values()),
+        edges=edges,
+        producer=producer,
+    )
+
+
+def prove_language_edge_resolution(
+    index: ProgramEvidenceIndex | None = None,
+    *,
+    results: Sequence[ProgramASTAdapterResult] | None = None,
+    candidates: Sequence[LanguageEdgeCandidate] | None = None,
+) -> dict[str, Any]:
+    """Emit a portable ``vfs/language-edge-resolution@1`` evidence claim.
+
+    Accepts an inventory-bound program evidence index, explicit adapter
+    results, or pre-projected candidates.  The claim never embeds goal
+    metadata into AST blob identity or forges direct call edges.
+    """
+
+    projected: tuple[LanguageEdgeCandidate, ...]
+    if candidates is not None:
+        projected = tuple(candidates)
+    elif index is not None:
+        if not isinstance(index, ProgramEvidenceIndex):
+            raise TypeError("index must be a ProgramEvidenceIndex")
+        projected = project_language_edge_candidates_from_index(index)
+    elif results is not None:
+        items: list[LanguageEdgeCandidate] = []
+        for result in results:
+            items.extend(project_language_edge_candidates(result))
+        projected = tuple(items)
+    else:
+        projected = ()
+
+    satisfied = language_edge_resolution_satisfies(projected)
+    by_status: dict[str, int] = {}
+    by_kind: dict[str, int] = {}
+    by_reason: dict[str, int] = {}
+    direct = 0
+    missing_rule = 0
+    missing_span = 0
+    forged_blocked = 0
+    for item in projected:
+        by_status[item.status] = by_status.get(item.status, 0) + 1
+        by_kind[item.kind] = by_kind.get(item.kind, 0) + 1
+        by_reason[item.reason] = by_reason.get(item.reason, 0) + 1
+        if item.allows_direct_call:
+            direct += 1
+        if not item.resolver_rule:
+            missing_rule += 1
+        if item.span.line_start <= 0 and item.span.line_end <= 0:
+            missing_span += 1
+        if item.reason in {
+            "same_name_collision",
+            "re_export_not_direct_call",
+        }:
+            forged_blocked += 1
+            if item.allows_direct_call:
+                satisfied = False
+
+    return {
+        "schema": LANGUAGE_EDGE_RESOLUTION_CLAIM_SCHEMA,
+        "evidence": LANGUAGE_EDGE_RESOLUTION_EVIDENCE,
+        "evidence_terms": list(language_edge_resolution_evidence_terms()),
+        "requirement_id": LANGUAGE_EDGE_RESOLUTION_EVIDENCE,
+        "goal_id": LANGUAGE_EDGE_RESOLUTION_GOAL_ID,
+        "child_goal_id": LANGUAGE_EDGE_RESOLUTION_CHILD_GOAL_ID,
+        "parent_goal_id": OBJECTIVE_PARENT_GOAL_ID,
+        "task_id": LANGUAGE_EDGE_RESOLUTION_TASK_ID,
+        "satisfied": satisfied,
+        "candidate_count": len(projected),
+        "direct_call_count": direct,
+        "missing_rule_count": missing_rule,
+        "missing_span_count": missing_span,
+        "forged_direct_call_blocked_count": forged_blocked,
+        "by_status": dict(sorted(by_status.items())),
+        "by_kind": dict(sorted(by_kind.items())),
+        "by_reason": dict(sorted(by_reason.items())),
+        "candidates": [item.to_dict() for item in projected],
+        "invariants": list(LANGUAGE_EDGE_RESOLUTION_INVARIANTS),
+        "authoritative": False,
+        "completion_authoritative": False,
+        "forges_direct_calls": False,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Objective evidence discovery (VFS-G139 / VFS-G020 packet / VFS-064 repair)
 # ---------------------------------------------------------------------------
 
@@ -3789,6 +4505,9 @@ def incremental_ast_index_evidence_terms() -> tuple[str, ...]:
     The synthetic ``objective validation repair`` term is intentionally
     omitted here; use :func:`objective_validation_repair_evidence_terms` (or
     :func:`parent_objective_evidence_terms`) for the VFS-G020 validation gate.
+    Language-edge resolution (``vfs/language-edge-resolution@1``) is a sibling
+    corpus-index goal exposed via
+    :func:`language_edge_resolution_evidence_terms`.
     """
 
     return OBJECTIVE_DOMAIN_EVIDENCE_TERMS
@@ -3797,14 +4516,16 @@ def incremental_ast_index_evidence_terms() -> tuple[str, ...]:
 def covered_evidence_terms() -> tuple[str, ...]:
     """Return domain objective evidence terms this adapter surface proves.
 
-    Mirrors :func:`incremental_ast_index_evidence_terms`.  Packet-wide domain
-    coverage (inventory + incremental AST index) is via
-    :func:`packet_evidence_terms` / :func:`all_covered_evidence_terms`.  The
-    synthetic objective validation repair gate is separate so adapter
-    envelopes stay domain-only.
+    Incremental AST index (VFS-G139) comes first; language-edge resolution
+    (VFS-G021 / VFS-G143) follows.  Packet-wide inventory co-coverage stays on
+    :func:`packet_evidence_terms`.  The synthetic objective validation repair
+    gate is separate so adapter envelopes stay domain-only.
     """
 
-    return incremental_ast_index_evidence_terms()
+    return (
+        *incremental_ast_index_evidence_terms(),
+        *language_edge_resolution_evidence_terms(),
+    )
 
 
 def packet_evidence_terms() -> tuple[str, ...]:
@@ -3812,7 +4533,8 @@ def packet_evidence_terms() -> tuple[str, ...]:
 
     Ordered as ``vfs/exhaustive-file-inventory@1`` then
     ``vfs/incremental-ast-index@1``.  Labels never enter AST blob identity.
-    Does not include the synthetic objective validation repair discovery key.
+    Does not include the synthetic objective validation repair discovery key
+    or the sibling ``vfs/language-edge-resolution@1`` surface (VFS-G021).
     """
 
     return CORPUS_INDEX_G020_EVIDENCE_TERMS
@@ -3847,15 +4569,17 @@ def parent_objective_evidence_terms() -> tuple[str, ...]:
 
 
 def all_covered_evidence_terms() -> tuple[str, ...]:
-    """Return packet domain evidence terms for cross-module discovery scanners.
+    """Return packet domain terms plus language-edge resolution for discovery.
 
-    Keeps inventory + incremental AST packet labels aligned with
-    :mod:`repository_corpus_index`.  Use :func:`parent_objective_evidence_terms`
+    Packet inventory + incremental AST labels stay aligned with
+    :mod:`repository_corpus_index` as the leading pair; language-edge
+    resolution (``vfs/language-edge-resolution@1``) is appended as the
+    adapters-owned sibling goal.  Use :func:`parent_objective_evidence_terms`
     (or :func:`objective_validation_repair_evidence_terms`) for the synthetic
     VFS-G020 objective validation repair gate.
     """
 
-    return packet_evidence_terms()
+    return packet_evidence_terms() + language_edge_resolution_evidence_terms()
 
 
 def prove_objective_validation_repair(
@@ -4050,6 +4774,13 @@ __all__ = [
     "INVENTORY_PROGRAM_EVIDENCE_RECEIPT_SCHEMA",
     "JSON_ADAPTER_VERSION",
     "JAVASCRIPT_ADAPTER_VERSION",
+    "LANGUAGE_EDGE_RESOLUTION_CHILD_GOAL_ID",
+    "LANGUAGE_EDGE_RESOLUTION_CLAIM_SCHEMA",
+    "LANGUAGE_EDGE_RESOLUTION_EVIDENCE",
+    "LANGUAGE_EDGE_RESOLUTION_GOAL_ID",
+    "LANGUAGE_EDGE_RESOLUTION_INVARIANTS",
+    "LANGUAGE_EDGE_RESOLUTION_SCHEMA",
+    "LANGUAGE_EDGE_RESOLUTION_TASK_ID",
     "MARKDOWN_ADAPTER_VERSION",
     "OBJECTIVE_DOMAIN_EVIDENCE_TERMS",
     "OBJECTIVE_GOAL_ID",
@@ -4067,6 +4798,7 @@ __all__ = [
     "PYTHON_ADAPTER_VERSION",
     "SOFTWARE_VERIFICATION_PROGRAM_AST_COMPAT",
     "AdapterDiagnostic",
+    "LanguageEdgeCandidate",
     "ProgramASTAdapterResult",
     "ProgramEvidenceFact",
     "ProgramEvidenceIndex",
@@ -4084,6 +4816,7 @@ __all__ = [
     "build_incremental_ast_index",
     "build_inventory_program_evidence_index",
     "build_inventory_program_evidence_receipt",
+    "build_language_edge_program_graph",
     "build_mixed_program_evidence_index",
     "build_program_ast_blob_record",
     "build_program_evidence_index",
@@ -4091,10 +4824,16 @@ __all__ = [
     "detect_program_language",
     "incremental_ast_index_evidence_terms",
     "index_satisfies_incremental_ast_index",
+    "language_edge_candidate_cites_span_and_rule",
+    "language_edge_resolution_evidence_terms",
+    "language_edge_resolution_satisfies",
     "objective_validation_repair_evidence_terms",
     "packet_evidence_terms",
     "parent_objective_evidence_terms",
     "program_evidence_for_software_verification",
+    "project_language_edge_candidates",
+    "project_language_edge_candidates_from_index",
     "prove_incremental_ast_index",
+    "prove_language_edge_resolution",
     "prove_objective_validation_repair",
 ]
