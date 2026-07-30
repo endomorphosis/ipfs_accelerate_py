@@ -21,6 +21,7 @@ from ipfs_accelerate_py.agent_supervisor.runtime.scheduler_metrics import (
     normalize_metric_identity,
     project_goal_completion_diagnostics,
     read_scheduler_snapshot,
+    scheduler_state_events,
     write_scheduler_snapshot,
 )
 from ipfs_accelerate_py.agent_supervisor.rescue.supervisor_watchdog import SupervisorWatchdog
@@ -199,6 +200,58 @@ def test_terminal_projection_deduplicates_provider_history_and_clears_live_backp
         ]
         == 4
     )
+
+
+def test_authoritative_projection_replaces_historical_child_task_identities() -> None:
+    child_identity = {
+        **IDENTITY,
+        "task_cid": "task:child-attempt",
+        "repository_tree_id": "tree:attempt",
+    }
+    bundle_identity = {
+        **IDENTITY,
+        "task_cid": "task:bundle-projection",
+        "repository_tree_id": "tree:merged",
+        "state": "completed",
+    }
+
+    snapshot = build_scheduler_snapshot(
+        [
+            {
+                "type": "implementation_started",
+                "timestamp": "2026-01-01T00:00:00Z",
+                **child_identity,
+            },
+            *scheduler_state_events(
+                [bundle_identity],
+                timestamp="2026-01-01T00:01:00Z",
+            ),
+        ]
+    )
+
+    assert len(snapshot["metrics"]) == 2
+    assert snapshot["phase_counts"]["active"] == 0
+    assert snapshot["phase_counts"]["idle"] == 1
+    assert [
+        (state["task_cid"], state["status"])
+        for state in snapshot["task_states"]
+    ] == [("task:bundle-projection", "completed")]
+
+
+def test_empty_authoritative_projection_clears_historical_live_state() -> None:
+    snapshot = build_scheduler_snapshot(
+        [
+            _event("implementation_started", "2026-01-01T00:00:00Z"),
+            *scheduler_state_events(
+                [],
+                timestamp="2026-01-01T00:01:00Z",
+            ),
+        ]
+    )
+
+    assert len(snapshot["metrics"]) == 1
+    assert snapshot["task_states"] == []
+    assert all(count == 0 for count in snapshot["phase_counts"].values())
 
 
 def test_rates_usage_and_identity_grouping_are_zero_safe_and_canonical() -> None:
