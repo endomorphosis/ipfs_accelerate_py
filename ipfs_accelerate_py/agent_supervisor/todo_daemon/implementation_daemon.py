@@ -10783,10 +10783,15 @@ class PortalImplementationDaemon:
             task_id=primary_task_id,
             subject=f"{primary_task_id}: mark todo completed",
         )
-        if commit_result and (
-            result.get("updated")
-            or commit_result.get("reason") != "no_changes"
-        ):
+        reconciled_commit = bool(
+            commit_result
+            and (
+                result.get("updated")
+                or commit_result.get("reason") != "no_changes"
+                or commit_result.get("parent_gitlink_commits")
+            )
+        )
+        if reconciled_commit:
             result["commit_result"] = commit_result
         self._protected_todo_commit_postcondition(
             result,
@@ -10794,7 +10799,7 @@ class PortalImplementationDaemon:
         )
         if result.get("updated"):
             self._record_event("todo_status_updated", result)
-        elif commit_result and commit_result.get("reason") != "no_changes":
+        elif reconciled_commit:
             self._record_event("todo_status_reconciled", result)
         return result
 
@@ -12417,15 +12422,51 @@ class PortalImplementationDaemon:
                         }
                     )
                     if not task_branch_commit:
-                        failure = {
-                            "path": full_relative,
-                            "reason": "canonical_task_branch_missing",
-                            "gitlink_commit": gitlink_commit,
-                            "task_branch": task_branch,
-                            "canonical_git_dir": str(canonical_git_dir),
-                        }
-                        path_receipt["reason"] = failure["reason"]
-                        failures.append(failure)
+                        legacy_refs_result = subprocess.run(
+                            [
+                                "git",
+                                "--git-dir",
+                                str(canonical_git_dir),
+                                "for-each-ref",
+                                "--format=%(refname)",
+                                "--contains",
+                                gitlink_commit,
+                                "refs/heads",
+                            ],
+                            text=True,
+                            capture_output=True,
+                            check=False,
+                        )
+                        legacy_refs = sorted(
+                            {
+                                ref.strip()
+                                for ref in legacy_refs_result.stdout.splitlines()
+                                if ref.strip()
+                            }
+                        )
+                        if legacy_refs_result.returncode == 0 and legacy_refs:
+                            path_receipt.update(
+                                {
+                                    "verified": True,
+                                    "reason": (
+                                        "canonical_legacy_branch_ref_verified"
+                                    ),
+                                    "durability": (
+                                        "canonical_legacy_branch_ref"
+                                    ),
+                                    "durable_refs": legacy_refs[:20],
+                                }
+                            )
+                        else:
+                            failure = {
+                                "path": full_relative,
+                                "reason": "canonical_task_branch_missing",
+                                "gitlink_commit": gitlink_commit,
+                                "task_branch": task_branch,
+                                "canonical_git_dir": str(canonical_git_dir),
+                            }
+                            path_receipt["reason"] = failure["reason"]
+                            failures.append(failure)
                     elif not branch_contains_gitlink:
                         failure = {
                             "path": full_relative,
@@ -14821,6 +14862,18 @@ class PortalImplementationDaemon:
                     in self._worktree_pool_leases
                 )
             ):
+                cleanup_result = self._cleanup_merged_worktree(
+                    worktree_path,
+                    branch_name,
+                    reusable=False,
+                )
+            elif (
+                not protected_path_violation
+                and provider_failure.get("exhausted", False)
+            ):
+                # Capacity exhaustion produced no implementation candidate to
+                # preserve. Remove a non-pooled checkout as well so a
+                # same-attempt retry cannot collide with its own old branch.
                 cleanup_result = self._cleanup_merged_worktree(
                     worktree_path,
                     branch_name,
@@ -20751,7 +20804,10 @@ class PortalImplementationDaemon:
         """Restore safe validation output, then certify candidate identity."""
 
         result = dict(validation_result)
-        if result.get("passed", False):
+        if (
+            result.get("passed", False)
+            and self._is_git_worktree(workspace_path)
+        ):
             generated_restore = (
                 self._restore_post_validation_generated_artifacts(
                     workspace_path,

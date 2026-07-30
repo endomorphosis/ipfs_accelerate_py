@@ -6632,7 +6632,8 @@ class PortalImplementationSupervisor:
                 normalized_branches[0]
                 if normalized_branches
                 else branch
-            )
+            ),
+            known_task_ids=tuple(tasks_by_id),
         )
         return tasks_by_id.get(fallback.task_id)
 

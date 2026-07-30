@@ -4893,19 +4893,30 @@ def reconciliation_record_matches_block(block: str, record: Mapping[str, Any]) -
         block,
         flags=re.IGNORECASE | re.MULTILINE,
     )
-    if status_match is not None and status_match.group(1).casefold().replace("-", "_") in {
-        "complete",
-        "completed",
-        "done",
-        "succeeded",
-    }:
-        # A resolved guardrail remains on the append-only board as evidence,
-        # but it must not suppress or absorb a later regression.
-        return False
+    resolved = (
+        status_match is not None
+        and status_match.group(1).casefold().replace("-", "_")
+        in {
+            "complete",
+            "completed",
+            "done",
+            "succeeded",
+        }
+    )
     fingerprint = str(record.get("fingerprint") or "")
     dedupe_key = str(record.get("dedupe_key") or "")
     kind = str(record.get("kind") or "")
     reason = str(record.get("reason") or "")
+    if resolved:
+        # Preflight-conflict cards are persistent operator work: reopen the
+        # same card so its discovery and strict board metadata are repaired
+        # atomically. Other resolved findings remain append-only evidence and
+        # a later regression receives a new task.
+        return bool(
+            dedupe_key
+            and dedupe_key in block
+            and kind == "preflight_merge_conflict"
+        )
     if fingerprint and fingerprint in block:
         return True
     if dedupe_key and dedupe_key in block:
@@ -6666,6 +6677,15 @@ def record_reconciliation_guardrail_findings(
     )
     if refreshes:
         todo_text = refreshed_todo_text
+        active_guardrail_blocks = [
+            block
+            for _start, _end, block in task_blocks_with_spans(todo_text)
+            if not re.search(
+                r"^-\s*Status:\s*(?:complete|completed|done|succeeded)\s*$",
+                block,
+                flags=re.IGNORECASE | re.MULTILINE,
+            )
+        ]
 
     records = [
         record
