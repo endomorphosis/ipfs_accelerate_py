@@ -2805,7 +2805,7 @@ compact references and bounded spans only.
 
 ## VFS-070 Close objective gap: Prove vfs/repository-forest-replay@1 for Freeze and replay the initial four-repository manifest
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
