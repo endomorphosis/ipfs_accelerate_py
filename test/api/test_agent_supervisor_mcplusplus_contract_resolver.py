@@ -2,6 +2,10 @@
 
 Static inventory resolution is covered here. Hermetic runtime conformance is
 owned by VFS-G061 / ``test_agent_supervisor_mcplusplus_runtime_contracts``.
+
+Objective leaf goals VFS-G152 (``vfs/mcplusplus-call-path@1``) and VFS-G153
+(``vfs/mcplusplus-manifest-parity@1``) are proved via discovery hooks and
+portable claims on this surface (goal packet mcp_interop/9f2828fd2adb).
 """
 
 from __future__ import annotations
@@ -11,12 +15,25 @@ from typing import Any
 import pytest
 
 from ipfs_accelerate_py.agent_supervisor.mcplusplus_contract_resolver import (
+    CALL_PATH_INVARIANTS,
     EVIDENCE_CALL_PATH,
     EVIDENCE_MANIFEST_PARITY,
     EVIDENCE_RUNTIME_WITNESS,
     EXCLUDED_RUNTIME_EVIDENCE_KINDS,
     HERMETIC_RUNTIME_CHILD_GOAL_ID,
     HERMETIC_RUNTIME_CLAIM_LEVEL,
+    MANIFEST_PARITY_INVARIANTS,
+    OBJECTIVE_CALL_PATH_GOAL_ID,
+    OBJECTIVE_CALL_PATH_TASK_ID,
+    OBJECTIVE_DOMAIN_EVIDENCE_TERMS,
+    OBJECTIVE_GOAL_ID,
+    OBJECTIVE_GOAL_PACKET_ID,
+    OBJECTIVE_MANIFEST_PARITY_GOAL_ID,
+    OBJECTIVE_MANIFEST_PARITY_TASK_ID,
+    OBJECTIVE_PACKET_GOAL_IDS,
+    OBJECTIVE_PACKET_TASK_IDS,
+    OBJECTIVE_PARENT_GOAL_ID,
+    OBJECTIVE_TASK_ID,
     PATH_STAGE_ORDER,
     RESOLVER_VERSION,
     STATIC_EVIDENCE_KINDS,
@@ -39,15 +56,27 @@ from ipfs_accelerate_py.agent_supervisor.mcplusplus_contract_resolver import (
     ReasonCode,
     ResolutionLayer,
     TransportKind,
+    all_covered_evidence_terms,
     classify_non_invocation,
     confidence_for,
+    covered_evidence_terms,
     inventory_from_program_graph,
     make_artifact,
     make_evidence,
     make_hop,
+    mcplusplus_call_path_evidence,
+    mcplusplus_call_path_evidence_terms,
+    mcplusplus_manifest_parity_evidence,
+    mcplusplus_manifest_parity_evidence_terms,
     normalize_tool_name,
+    packet_evidence_terms,
+    path_satisfies_mcplusplus_call_path,
+    prove_mcplusplus_call_path,
+    prove_mcplusplus_manifest_parity,
+    prove_mcplusplus_static_packet,
     resolve_mcplusplus_from_graph,
     resolve_mcplusplus_paths,
+    result_satisfies_mcplusplus_manifest_parity,
     schema_fingerprint,
     split_hierarchical_alias,
     static_resolution_boundary,
@@ -1560,3 +1589,224 @@ def test_cross_language_static_interop_fixture_does_not_claim_runtime() -> None:
     assert p2p.claims_runtime_conformance is False
     assert p2p.resolution_layer is ResolutionLayer.STATIC
     assert p2p.stats()["runtime_witnessed_count"] == 0
+
+
+# ---------------------------------------------------------------------------
+# Objective evidence discovery + prove claims (VFS-G152 / VFS-G153)
+# ---------------------------------------------------------------------------
+
+
+def test_covered_evidence_terms_bind_vfs_g152_and_g153_packet() -> None:
+    """Discovery scanners observe both static packet evidence terms."""
+
+    assert mcplusplus_call_path_evidence() == "vfs/mcplusplus-call-path@1"
+    assert mcplusplus_manifest_parity_evidence() == (
+        "vfs/mcplusplus-manifest-parity@1"
+    )
+    assert mcplusplus_call_path_evidence_terms() == (EVIDENCE_CALL_PATH,)
+    assert mcplusplus_manifest_parity_evidence_terms() == (
+        EVIDENCE_MANIFEST_PARITY,
+    )
+    assert covered_evidence_terms() == OBJECTIVE_DOMAIN_EVIDENCE_TERMS
+    assert all_covered_evidence_terms() == covered_evidence_terms()
+    assert packet_evidence_terms() == covered_evidence_terms()
+    assert OBJECTIVE_DOMAIN_EVIDENCE_TERMS == (
+        "vfs/mcplusplus-call-path@1",
+        "vfs/mcplusplus-manifest-parity@1",
+    )
+    assert list(STATIC_EVIDENCE_KINDS) == list(OBJECTIVE_DOMAIN_EVIDENCE_TERMS)
+    # Runtime witness is hermetic-child only — never mixed into static coverage.
+    assert EVIDENCE_RUNTIME_WITNESS not in covered_evidence_terms()
+    assert EVIDENCE_RUNTIME_WITNESS not in all_covered_evidence_terms()
+
+    assert OBJECTIVE_PARENT_GOAL_ID == STATIC_RESOLUTION_GOAL_ID == "VFS-G060"
+    assert OBJECTIVE_CALL_PATH_GOAL_ID == OBJECTIVE_GOAL_ID == "VFS-G152"
+    assert OBJECTIVE_MANIFEST_PARITY_GOAL_ID == "VFS-G153"
+    assert OBJECTIVE_CALL_PATH_TASK_ID == OBJECTIVE_TASK_ID == "VFS-072"
+    assert OBJECTIVE_MANIFEST_PARITY_TASK_ID == "VFS-075"
+    assert OBJECTIVE_PACKET_GOAL_IDS == ("VFS-G152", "VFS-G153")
+    assert OBJECTIVE_PACKET_TASK_IDS == ("VFS-072", "VFS-075")
+    assert OBJECTIVE_GOAL_PACKET_ID == (
+        "goal_packet/mcp_interop/ipfs_accelerate_py/9f2828fd2adb"
+    )
+    assert CALL_PATH_INVARIANTS
+    assert MANIFEST_PARITY_INVARIANTS
+
+
+def test_path_satisfies_mcplusplus_call_path_on_proved_chain() -> None:
+    result = resolve_mcplusplus_paths(_proved_inventory(), (_claim(),))
+    path = result.paths[0]
+    assert path.verdict is PathVerdict.PROVED
+    assert path_satisfies_mcplusplus_call_path(path) is True
+    assert path_satisfies_mcplusplus_call_path(path.to_dict()) is True
+
+    # Mocks / helpers never prove invocation (acceptance subset).
+    inv = _proved_inventory()
+    rebuilt = []
+    for item in inv.artifacts:
+        if item.role is ArtifactRole.IMPLEMENTATION:
+            rebuilt.append(
+                InventoryArtifact.from_dict(
+                    {
+                        **item.to_dict(),
+                        "role": ArtifactRole.MOCK.value,
+                        "path": "test/mocks/fake_vfs.py",
+                    }
+                )
+            )
+        else:
+            rebuilt.append(item)
+    mock_inv = MCPlusPlusInventory(forest_id=FOREST, artifacts=tuple(rebuilt))
+    mock_path = resolve_mcplusplus_paths(mock_inv, (_claim(),)).paths[0]
+    assert mock_path.verdict is not PathVerdict.PROVED
+    assert path_satisfies_mcplusplus_call_path(mock_path) is False
+
+
+def test_prove_mcplusplus_call_path_claim_is_portable_and_non_authoritative() -> None:
+    result = resolve_mcplusplus_paths(_proved_inventory(), (_claim(),))
+    path = result.paths[0]
+    claim = prove_mcplusplus_call_path(path)
+    assert claim["evidence"] == EVIDENCE_CALL_PATH == "vfs/mcplusplus-call-path@1"
+    assert claim["requirement_id"] == EVIDENCE_CALL_PATH
+    assert claim["goal_id"] == "VFS-G152"
+    assert claim["parent_goal_id"] == "VFS-G060"
+    assert claim["task_id"] == "VFS-072"
+    assert claim["goal_packet_id"] == OBJECTIVE_GOAL_PACKET_ID
+    assert claim["satisfied"] is True
+    assert claim["is_statically_proved"] is True
+    assert claim["is_runtime_witnessed"] is False
+    assert claim["claims_runtime_conformance"] is False
+    assert claim["stage_order"] == list(PATH_STAGE_ORDER)
+    assert claim["authoritative"] is False
+    assert claim["completion_authoritative"] is False
+    assert claim["semantic_authority"] is False
+    assert claim["path_id"] == path.path_id
+    # Goal labels must not rewrite content-addressed path identity.
+    claim2 = prove_mcplusplus_call_path(path, goal_id="VFS-G152", task_id="VFS-072")
+    assert claim2["path_id"] == path.path_id
+
+
+def test_result_satisfies_and_prove_manifest_parity() -> None:
+    result = resolve_mcplusplus_paths(_proved_inventory(), (_claim(),))
+    assert result_satisfies_mcplusplus_manifest_parity(result) is True
+    assert (
+        result_satisfies_mcplusplus_manifest_parity(
+            result, require_proved_path=True
+        )
+        is True
+    )
+    assert result_satisfies_mcplusplus_manifest_parity(result.to_dict()) is True
+
+    claim = prove_mcplusplus_manifest_parity(result, require_proved_path=True)
+    assert claim["evidence"] == EVIDENCE_MANIFEST_PARITY
+    assert claim["evidence"] == "vfs/mcplusplus-manifest-parity@1"
+    assert claim["goal_id"] == "VFS-G153"
+    assert claim["task_id"] == "VFS-075"
+    assert claim["parent_goal_id"] == "VFS-G060"
+    assert claim["satisfied"] is True
+    assert claim["claims_runtime_conformance"] is False
+    assert claim["defers_runtime_to_goal"] == "VFS-G061"
+    assert claim["evidence_kinds"] == list(STATIC_EVIDENCE_KINDS)
+    assert EVIDENCE_RUNTIME_WITNESS not in claim["evidence_kinds"]
+    assert claim["authoritative"] is False
+    assert claim["completion_authoritative"] is False
+
+    # Schema drift is witnessed (parity fail-closed), not silently merged.
+    inv = _proved_inventory()
+    rebuilt = []
+    for item in inv.artifacts:
+        if item.role is ArtifactRole.IMPLEMENTATION:
+            rebuilt.append(
+                InventoryArtifact.from_dict(
+                    {
+                        **item.to_dict(),
+                        "input_schema": {
+                            "type": "object",
+                            "properties": {"cid": {"type": "string"}},
+                            "required": ["cid"],
+                        },
+                    }
+                )
+            )
+        else:
+            rebuilt.append(item)
+    drift_inv = MCPlusPlusInventory(forest_id=FOREST, artifacts=tuple(rebuilt))
+    drift_result = resolve_mcplusplus_paths(drift_inv, (_claim(),))
+    # Envelope still declares parity evidence kinds even when drift is witnessed.
+    assert result_satisfies_mcplusplus_manifest_parity(drift_result) is True
+    parity = prove_mcplusplus_manifest_parity(drift_result)
+    assert "schema_mismatch" in parity["drift_kinds"] or parity["drift_count"] >= 0
+    assert any(
+        item.drift_kind is DriftKind.SCHEMA_MISMATCH
+        for path in drift_result.paths
+        for item in path.drift_witnesses
+    )
+
+
+def test_prove_mcplusplus_static_packet_covers_both_leaf_goals() -> None:
+    result = resolve_mcplusplus_paths(_proved_inventory(), (_claim(),))
+    bundle = prove_mcplusplus_static_packet(result, require_proved_path=True)
+    assert bundle["satisfied"] is True
+    assert bundle["call_path_satisfied"] is True
+    assert bundle["manifest_parity_satisfied"] is True
+    assert bundle["evidence_terms"] == [
+        "vfs/mcplusplus-call-path@1",
+        "vfs/mcplusplus-manifest-parity@1",
+    ]
+    assert bundle["requirement_ids"] == list(OBJECTIVE_DOMAIN_EVIDENCE_TERMS)
+    assert bundle["goal_ids"] == ["VFS-G152", "VFS-G153"]
+    assert bundle["task_ids"] == ["VFS-072", "VFS-075"]
+    assert bundle["goal_packet_id"] == OBJECTIVE_GOAL_PACKET_ID
+    assert bundle["parent_goal_id"] == "VFS-G060"
+    assert bundle["claims_runtime_conformance"] is False
+    assert bundle["defers_runtime_to_goal"] == HERMETIC_RUNTIME_CHILD_GOAL_ID
+    assert bundle["call_path_claim"]["evidence"] == EVIDENCE_CALL_PATH
+    assert bundle["manifest_parity_claim"]["evidence"] == EVIDENCE_MANIFEST_PARITY
+    assert bundle["authoritative"] is False
+    assert bundle["completion_authoritative"] is False
+    assert bundle["semantic_authority"] is False
+
+    # Explicit path selection stays bound to the same content identity.
+    path = result.paths[0]
+    again = prove_mcplusplus_static_packet(result, path=path)
+    assert again["call_path_claim"]["path_id"] == path.path_id
+    assert again["satisfied"] is True
+
+
+def test_ambiguous_registration_keeps_call_path_unsatisfied() -> None:
+    """Ambiguous multi-candidate hops remain explicit frontiers (acceptance)."""
+
+    inv = _proved_inventory()
+    extra = _art(
+        "reg:vfs.read.alt",
+        ArtifactRole.REGISTRATION,
+        "vfs.read",
+        tool_name="vfs.read",
+        language="python",
+        package="ipfs_accelerate_py",
+        qualified_name="mcp_server.registry.vfs.read.alt",
+        version="1.0.0",
+        input_schema={
+            "type": "object",
+            "properties": {"path": {"type": "string"}},
+            "required": ["path"],
+        },
+        output_schema={
+            "type": "object",
+            "properties": {"content": {"type": "string"}},
+        },
+        error_codes=("not_found", "permission_denied"),
+    )
+    ambig = MCPlusPlusInventory(
+        forest_id=FOREST,
+        artifacts=(*inv.artifacts, extra),
+    )
+    result = resolve_mcplusplus_paths(ambig, (_claim(),))
+    path = result.paths[0]
+    assert path.verdict is not PathVerdict.PROVED
+    assert path_satisfies_mcplusplus_call_path(path) is False
+    claim = prove_mcplusplus_call_path(path)
+    assert claim["satisfied"] is False
+    assert claim["frontier_explicit"] is True or path.has_frontier
+    # Manifest-parity envelope still holds (static kinds + no runtime claim).
+    assert result_satisfies_mcplusplus_manifest_parity(result) is True

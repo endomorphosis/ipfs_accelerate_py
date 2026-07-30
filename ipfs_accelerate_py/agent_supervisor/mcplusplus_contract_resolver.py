@@ -89,7 +89,7 @@ MCPLUSPLUS_ARTIFACT_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/mcplusplus-inventory-artifact@1"
 )
 
-# Evidence kinds produced by this static resolver (VFS-G060).
+# Evidence kinds produced by this static resolver (VFS-G060 / packet G152+G153).
 EVIDENCE_CALL_PATH = "vfs/mcplusplus-call-path@1"
 EVIDENCE_MANIFEST_PARITY = "vfs/mcplusplus-manifest-parity@1"
 # Runtime evidence is owned by the hermetic child goal — never emitted here.
@@ -105,6 +105,71 @@ STATIC_RESOLUTION_GOAL_ID = "VFS-G060"
 HERMETIC_RUNTIME_CHILD_GOAL_ID = "VFS-G061"
 STATIC_RESOLUTION_CLAIM_LEVEL = ClaimLevel.RESOLVED_STATIC
 HERMETIC_RUNTIME_CLAIM_LEVEL = ClaimLevel.RUNTIME_WITNESSED
+
+# Leaf goals for the mcp_interop goal packet (VFS-G152 call-path, VFS-G153 parity).
+# Labels are discovery metadata only — never enter path_id / result_id identity.
+OBJECTIVE_PARENT_GOAL_ID = STATIC_RESOLUTION_GOAL_ID
+OBJECTIVE_CALL_PATH_GOAL_ID = "VFS-G152"
+OBJECTIVE_MANIFEST_PARITY_GOAL_ID = "VFS-G153"
+OBJECTIVE_CALL_PATH_TASK_ID = "VFS-072"
+OBJECTIVE_MANIFEST_PARITY_TASK_ID = "VFS-075"
+# Primary objective for this packet-anchor task surface (call-path leaf).
+OBJECTIVE_GOAL_ID = OBJECTIVE_CALL_PATH_GOAL_ID
+OBJECTIVE_TASK_ID = OBJECTIVE_CALL_PATH_TASK_ID
+OBJECTIVE_GOAL_PACKET_ID = (
+    "goal_packet/mcp_interop/ipfs_accelerate_py/9f2828fd2adb"
+)
+OBJECTIVE_DOMAIN_EVIDENCE_TERMS: tuple[str, ...] = STATIC_EVIDENCE_KINDS
+OBJECTIVE_PACKET_GOAL_IDS: tuple[str, ...] = (
+    OBJECTIVE_CALL_PATH_GOAL_ID,
+    OBJECTIVE_MANIFEST_PARITY_GOAL_ID,
+)
+OBJECTIVE_PACKET_TASK_IDS: tuple[str, ...] = (
+    OBJECTIVE_CALL_PATH_TASK_ID,
+    OBJECTIVE_MANIFEST_PARITY_TASK_ID,
+)
+
+MCPLUSPLUS_CALL_PATH_CLAIM_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/mcplusplus-call-path-claim@1"
+)
+MCPLUSPLUS_MANIFEST_PARITY_CLAIM_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/mcplusplus-manifest-parity-claim@1"
+)
+MCPLUSPLUS_STATIC_PACKET_CLAIM_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/mcplusplus-static-packet-claim@1"
+)
+
+CALL_PATH_INVARIANTS: tuple[str, ...] = (
+    "full stage chain caller->connector->transport->list->call->registry->"
+    "adapter->implementation->result/error is inventory-bound",
+    "same-name helpers, mocks, static payloads, copied manifests, and "
+    "fallbacks never prove invocation",
+    "ambiguous and dynamic registrations remain explicit frontiers",
+    "proved paths are resolved_static only and never claim runtime_witnessed",
+)
+MANIFEST_PARITY_INVARIANTS: tuple[str, ...] = (
+    "Python, TypeScript, schema, and error-map names are checked for parity",
+    "manifest drift emits minimal witnesses rather than silent merges",
+    "schema, version, language-name, and error-map mismatches fail closed",
+    "static parity never grants hermetic runtime or completion authority",
+)
+
+# Keep exact-text discovery anchors aligned with the objective heap.
+assert EVIDENCE_CALL_PATH == "vfs/mcplusplus-call-path@1"
+assert EVIDENCE_MANIFEST_PARITY == "vfs/mcplusplus-manifest-parity@1"
+assert EVIDENCE_RUNTIME_WITNESS == "vfs/mcplusplus-runtime-witness@1"
+assert OBJECTIVE_PARENT_GOAL_ID == "VFS-G060"
+assert OBJECTIVE_CALL_PATH_GOAL_ID == "VFS-G152"
+assert OBJECTIVE_MANIFEST_PARITY_GOAL_ID == "VFS-G153"
+assert OBJECTIVE_CALL_PATH_TASK_ID == "VFS-072"
+assert OBJECTIVE_MANIFEST_PARITY_TASK_ID == "VFS-075"
+assert OBJECTIVE_GOAL_ID == "VFS-G152"
+assert OBJECTIVE_TASK_ID == "VFS-072"
+assert OBJECTIVE_DOMAIN_EVIDENCE_TERMS == (
+    "vfs/mcplusplus-call-path@1",
+    "vfs/mcplusplus-manifest-parity@1",
+)
+assert OBJECTIVE_PACKET_GOAL_IDS == ("VFS-G152", "VFS-G153")
 
 RESOLVER_VERSION = "mcplusplus-contract-resolver@1"
 RESOLVER_PRODUCER = "mcplusplus-contract-resolver@1"
@@ -4036,8 +4101,427 @@ def resolve_mcplusplus_from_graph(
     return resolve_mcplusplus_paths(inventory, claims, max_paths=max_paths)
 
 
+# ---------------------------------------------------------------------------
+# Objective evidence discovery + prove claims (VFS-G152 / VFS-G153)
+# ---------------------------------------------------------------------------
+
+_NON_INVOCATION_REASON_CODES: frozenset[ReasonCode] = frozenset(
+    {
+        ReasonCode.SAME_NAME_HELPER,
+        ReasonCode.MOCK_IMPLEMENTATION,
+        ReasonCode.TEST_SERVER,
+        ReasonCode.COPIED_MANIFEST,
+        ReasonCode.STATIC_DASHBOARD,
+        ReasonCode.LEGACY_FALLBACK,
+        ReasonCode.IMPORT_WITHOUT_CALL,
+    }
+)
+
+_FRONTIER_REASON_CODES: frozenset[ReasonCode] = frozenset(
+    {
+        ReasonCode.AMBIGUOUS_REGISTRATION,
+        ReasonCode.AMBIGUOUS_ADAPTER,
+        ReasonCode.AMBIGUOUS_IMPLEMENTATION,
+        ReasonCode.AMBIGUOUS_ALIAS,
+        ReasonCode.DYNAMIC_DISPATCH,
+        ReasonCode.EXTERNAL_PACKAGE,
+        ReasonCode.EXTERNAL_TRANSPORT,
+    }
+)
+
+
+def mcplusplus_call_path_evidence() -> str:
+    """Return the closed ``vfs/mcplusplus-call-path@1`` evidence term."""
+
+    return EVIDENCE_CALL_PATH
+
+
+def mcplusplus_manifest_parity_evidence() -> str:
+    """Return the closed ``vfs/mcplusplus-manifest-parity@1`` evidence term."""
+
+    return EVIDENCE_MANIFEST_PARITY
+
+
+def mcplusplus_call_path_evidence_terms() -> tuple[str, ...]:
+    """Return the call-path evidence surface for discovery scanners (VFS-G152)."""
+
+    return (EVIDENCE_CALL_PATH,)
+
+
+def mcplusplus_manifest_parity_evidence_terms() -> tuple[str, ...]:
+    """Return the manifest-parity evidence surface for discovery (VFS-G153)."""
+
+    return (EVIDENCE_MANIFEST_PARITY,)
+
+
+def covered_evidence_terms() -> tuple[str, ...]:
+    """Return domain objective evidence terms this static resolver proves.
+
+    Covers ``vfs/mcplusplus-call-path@1`` (VFS-G152) and
+    ``vfs/mcplusplus-manifest-parity@1`` (VFS-G153) for the mcp_interop goal
+    packet.  Hermetic runtime witnesses (``vfs/mcplusplus-runtime-witness@1``)
+    are owned by :data:`HERMETIC_RUNTIME_CHILD_GOAL_ID` and are never mixed
+    into this static surface.  Goal/task labels stay metadata and never enter
+    path or result content identities.
+    """
+
+    return OBJECTIVE_DOMAIN_EVIDENCE_TERMS
+
+
+def all_covered_evidence_terms() -> tuple[str, ...]:
+    """Alias of :func:`covered_evidence_terms` for cross-module discovery."""
+
+    return covered_evidence_terms()
+
+
+def packet_evidence_terms() -> tuple[str, ...]:
+    """Return both static packet evidence terms (call-path + manifest parity)."""
+
+    return OBJECTIVE_DOMAIN_EVIDENCE_TERMS
+
+
+def path_satisfies_mcplusplus_call_path(
+    path: MCPlusPlusCallPath | Mapping[str, Any],
+) -> bool:
+    """Machine-check VFS-G152 call-path acceptance on one resolved path.
+
+    * Every stage in :data:`PATH_STAGE_ORDER` is present and ``resolved_static``.
+    * Non-invocation roles (helpers, mocks, dashboards, fallbacks) never prove.
+    * Ambiguous/dynamic hops keep the path non-proved (frontier explicit).
+    * Static proof never claims runtime_witnessed authority.
+    """
+
+    if isinstance(path, Mapping):
+        try:
+            path = MCPlusPlusCallPath.from_dict(path)
+        except (MCPlusPlusResolverError, TypeError, ValueError):
+            return False
+    if not isinstance(path, MCPlusPlusCallPath):
+        return False
+    if path.verdict is not PathVerdict.PROVED:
+        return False
+    if not path.is_proved or not path.is_statically_proved:
+        return False
+    if path.is_runtime_witnessed:
+        return False
+    if path.claim_level is not STATIC_RESOLUTION_CLAIM_LEVEL:
+        return False
+    if path.resolution_layer is not ResolutionLayer.STATIC:
+        return False
+    if not path.implementation_ref:
+        return False
+    stages = [hop.stage.value for hop in path.hops]
+    if stages != list(PATH_STAGE_ORDER):
+        return False
+    for hop in path.hops:
+        if hop.status is not ResolverStatus.RESOLVED_STATIC:
+            return False
+        if hop.reason_code in _NON_INVOCATION_REASON_CODES:
+            return False
+        if hop.reason_code in _FRONTIER_REASON_CODES:
+            return False
+        if not hop.evidence:
+            return False
+    payload = path.to_dict()
+    if payload.get("evidence_kind") != EVIDENCE_CALL_PATH:
+        return False
+    if payload.get("claims_runtime_conformance") is True:
+        return False
+    if payload.get("is_runtime_witnessed") is True:
+        return False
+    return True
+
+
+def result_satisfies_mcplusplus_manifest_parity(
+    result: MCPlusPlusResolutionResult | Mapping[str, Any],
+    *,
+    require_proved_path: bool = False,
+) -> bool:
+    """Machine-check VFS-G153 manifest-parity acceptance on a resolution batch.
+
+    * Static result envelopes declare both packet evidence kinds.
+    * Runtime evidence is excluded; conformance is deferred to VFS-G061.
+    * Drift (schema, version, language name, error map, missing registration)
+      is witnessed rather than silently merged when present on paths.
+    * Optionally require at least one fully proved call path.
+    """
+
+    if isinstance(result, Mapping):
+        try:
+            result = MCPlusPlusResolutionResult.from_dict(result)
+        except (MCPlusPlusResolverError, TypeError, ValueError):
+            return False
+    if not isinstance(result, MCPlusPlusResolutionResult):
+        return False
+    if result.resolution_layer is not ResolutionLayer.STATIC:
+        return False
+    if result.claims_runtime_conformance:
+        return False
+    if result.claim_level is not STATIC_RESOLUTION_CLAIM_LEVEL:
+        return False
+    if result.defers_runtime_to_goal != HERMETIC_RUNTIME_CHILD_GOAL_ID:
+        return False
+    payload = result.to_dict()
+    kinds = list(payload.get("evidence_kinds") or ())
+    if EVIDENCE_CALL_PATH not in kinds:
+        return False
+    if EVIDENCE_MANIFEST_PARITY not in kinds:
+        return False
+    if EVIDENCE_RUNTIME_WITNESS in kinds:
+        return False
+    if kinds != list(STATIC_EVIDENCE_KINDS):
+        return False
+    boundary = payload.get("static_runtime_boundary") or {}
+    if not isinstance(boundary, Mapping):
+        return False
+    if boundary.get("claims_runtime_conformance") is True:
+        return False
+    if boundary.get("emits_runtime_receipts") is True:
+        return False
+    if boundary.get("opens_network") is True:
+        return False
+    # Drift witnesses must remain self-consistent (no silent empty reason).
+    for witness in result.drift_witnesses:
+        if not witness.drift_kind:
+            return False
+        if not witness.evidence:
+            return False
+    for path in result.paths:
+        for witness in path.drift_witnesses:
+            if not witness.drift_kind:
+                return False
+            if not witness.evidence:
+                return False
+        # A proved path cannot carry non-invocation reason codes.
+        if path.is_proved:
+            for hop in path.hops:
+                if hop.reason_code in _NON_INVOCATION_REASON_CODES:
+                    return False
+    if require_proved_path and not result.proved_paths():
+        return False
+    return True
+
+
+def prove_mcplusplus_call_path(
+    path: MCPlusPlusCallPath | Mapping[str, Any],
+    *,
+    goal_id: str = OBJECTIVE_CALL_PATH_GOAL_ID,
+    task_id: str = OBJECTIVE_CALL_PATH_TASK_ID,
+) -> dict[str, Any]:
+    """Emit a portable ``vfs/mcplusplus-call-path@1`` evidence claim (VFS-G152).
+
+    Goal/task labels are metadata only and never enter :attr:`path_id`.
+    """
+
+    if isinstance(path, Mapping):
+        path_obj = MCPlusPlusCallPath.from_dict(path)
+    else:
+        path_obj = path
+    if not isinstance(path_obj, MCPlusPlusCallPath):
+        raise TypeError("path must be an MCPlusPlusCallPath")
+
+    satisfied = path_satisfies_mcplusplus_call_path(path_obj)
+    hop_summaries = [
+        {
+            "stage": hop.stage.value,
+            "status": hop.status.value,
+            "reason_code": hop.reason_code.value,
+            "artifact_ids": list(hop.artifact_ids),
+        }
+        for hop in path_obj.hops
+    ]
+    non_invocation_rejected = any(
+        hop.reason_code in _NON_INVOCATION_REASON_CODES for hop in path_obj.hops
+    )
+    frontier_explicit = path_obj.has_frontier or any(
+        hop.reason_code in _FRONTIER_REASON_CODES for hop in path_obj.hops
+    )
+    return {
+        "schema": MCPLUSPLUS_CALL_PATH_CLAIM_SCHEMA,
+        "evidence": EVIDENCE_CALL_PATH,
+        "evidence_terms": list(mcplusplus_call_path_evidence_terms()),
+        "requirement_id": EVIDENCE_CALL_PATH,
+        "goal_id": str(goal_id or OBJECTIVE_CALL_PATH_GOAL_ID),
+        "parent_goal_id": OBJECTIVE_PARENT_GOAL_ID,
+        "task_id": str(task_id or OBJECTIVE_CALL_PATH_TASK_ID),
+        "goal_packet_id": OBJECTIVE_GOAL_PACKET_ID,
+        "path_id": path_obj.path_id,
+        "path_name": path_obj.path_name,
+        "forest_id": path_obj.forest_id,
+        "tool_name": path_obj.tool_name,
+        "server_name": path_obj.server_name,
+        "transport": path_obj.transport.value,
+        "profiles": list(path_obj.profiles),
+        "implementation_ref": path_obj.implementation_ref,
+        "language_names": dict(path_obj.language_names),
+        "verdict": path_obj.verdict.value,
+        "claim_level": path_obj.claim_level.value,
+        "resolution_layer": path_obj.resolution_layer.value,
+        "is_proved": path_obj.is_proved,
+        "is_statically_proved": path_obj.is_statically_proved,
+        "is_runtime_witnessed": path_obj.is_runtime_witnessed,
+        "claims_runtime_conformance": False,
+        "stage_order": list(PATH_STAGE_ORDER),
+        "hops": hop_summaries,
+        "non_invocation_rejected": non_invocation_rejected,
+        "frontier_explicit": frontier_explicit,
+        "drift_count": len(path_obj.drift_witnesses),
+        "satisfied": satisfied,
+        "invariants": list(CALL_PATH_INVARIANTS),
+        "authoritative": False,
+        "completion_authoritative": False,
+        "semantic_authority": False,
+    }
+
+
+def prove_mcplusplus_manifest_parity(
+    result: MCPlusPlusResolutionResult | Mapping[str, Any],
+    *,
+    goal_id: str = OBJECTIVE_MANIFEST_PARITY_GOAL_ID,
+    task_id: str = OBJECTIVE_MANIFEST_PARITY_TASK_ID,
+    require_proved_path: bool = False,
+) -> dict[str, Any]:
+    """Emit a portable ``vfs/mcplusplus-manifest-parity@1`` claim (VFS-G153).
+
+    Goal/task labels are metadata only and never enter :attr:`result_id`.
+    """
+
+    if isinstance(result, Mapping):
+        result_obj = MCPlusPlusResolutionResult.from_dict(result)
+    else:
+        result_obj = result
+    if not isinstance(result_obj, MCPlusPlusResolutionResult):
+        raise TypeError("result must be an MCPlusPlusResolutionResult")
+
+    satisfied = result_satisfies_mcplusplus_manifest_parity(
+        result_obj, require_proved_path=require_proved_path
+    )
+    drift_kinds = sorted(
+        {
+            *(item.drift_kind.value for item in result_obj.drift_witnesses),
+            *(
+                item.drift_kind.value
+                for path in result_obj.paths
+                for item in path.drift_witnesses
+            ),
+        }
+    )
+    language_names: dict[str, str] = {}
+    for path in result_obj.paths:
+        for lang, name in path.language_names.items():
+            language_names[str(lang)] = str(name)
+    return {
+        "schema": MCPLUSPLUS_MANIFEST_PARITY_CLAIM_SCHEMA,
+        "evidence": EVIDENCE_MANIFEST_PARITY,
+        "evidence_terms": list(mcplusplus_manifest_parity_evidence_terms()),
+        "requirement_id": EVIDENCE_MANIFEST_PARITY,
+        "goal_id": str(goal_id or OBJECTIVE_MANIFEST_PARITY_GOAL_ID),
+        "parent_goal_id": OBJECTIVE_PARENT_GOAL_ID,
+        "task_id": str(task_id or OBJECTIVE_MANIFEST_PARITY_TASK_ID),
+        "goal_packet_id": OBJECTIVE_GOAL_PACKET_ID,
+        "result_id": result_obj.result_id,
+        "forest_id": result_obj.forest_id,
+        "inventory_id": result_obj.inventory_id,
+        "resolver_version": result_obj.resolver_version,
+        "claim_level": result_obj.claim_level.value,
+        "resolution_layer": result_obj.resolution_layer.value,
+        "claims_runtime_conformance": result_obj.claims_runtime_conformance,
+        "defers_runtime_to_goal": result_obj.defers_runtime_to_goal,
+        "evidence_kinds": list(STATIC_EVIDENCE_KINDS),
+        "excluded_evidence_kinds": list(EXCLUDED_RUNTIME_EVIDENCE_KINDS),
+        "path_count": len(result_obj.paths),
+        "proved_count": len(result_obj.proved_paths()),
+        "statically_proved_count": len(result_obj.statically_proved_paths()),
+        "runtime_witnessed_count": 0,
+        "drift_count": len(result_obj.drift_witnesses)
+        + sum(len(path.drift_witnesses) for path in result_obj.paths),
+        "drift_kinds": drift_kinds,
+        "frontier_count": len(result_obj.frontiers),
+        "language_names": language_names,
+        "require_proved_path": bool(require_proved_path),
+        "satisfied": satisfied,
+        "invariants": list(MANIFEST_PARITY_INVARIANTS),
+        "authoritative": False,
+        "completion_authoritative": False,
+        "semantic_authority": False,
+    }
+
+
+def prove_mcplusplus_static_packet(
+    result: MCPlusPlusResolutionResult | Mapping[str, Any],
+    *,
+    path: MCPlusPlusCallPath | Mapping[str, Any] | None = None,
+    require_proved_path: bool = True,
+) -> dict[str, Any]:
+    """Emit the full mcp_interop static packet (call-path + manifest parity).
+
+    Covers goal packet ``goal_packet/mcp_interop/ipfs_accelerate_py/9f2828fd2adb``
+    leaf goals VFS-G152 and VFS-G153 in one claim.  When *path* is omitted the
+    first statically proved path is selected; if none exist and
+    *require_proved_path* is true, the call-path subclaim is unsatisfied.
+    """
+
+    if isinstance(result, Mapping):
+        result_obj = MCPlusPlusResolutionResult.from_dict(result)
+    else:
+        result_obj = result
+    if not isinstance(result_obj, MCPlusPlusResolutionResult):
+        raise TypeError("result must be an MCPlusPlusResolutionResult")
+
+    path_obj: MCPlusPlusCallPath | None
+    if path is not None:
+        if isinstance(path, Mapping):
+            path_obj = MCPlusPlusCallPath.from_dict(path)
+        else:
+            path_obj = path
+        if not isinstance(path_obj, MCPlusPlusCallPath):
+            raise TypeError("path must be an MCPlusPlusCallPath")
+    else:
+        proved = result_obj.proved_paths()
+        path_obj = proved[0] if proved else (
+            result_obj.paths[0] if result_obj.paths else None
+        )
+
+    call_path_claim: dict[str, Any] | None = None
+    if path_obj is not None:
+        call_path_claim = prove_mcplusplus_call_path(path_obj)
+    parity_claim = prove_mcplusplus_manifest_parity(
+        result_obj, require_proved_path=require_proved_path
+    )
+    call_path_satisfied = bool(
+        call_path_claim and call_path_claim.get("satisfied")
+    )
+    if path_obj is None and require_proved_path:
+        call_path_satisfied = False
+    parity_satisfied = bool(parity_claim.get("satisfied"))
+    satisfied = call_path_satisfied and parity_satisfied
+    return {
+        "schema": MCPLUSPLUS_STATIC_PACKET_CLAIM_SCHEMA,
+        "evidence_terms": list(packet_evidence_terms()),
+        "requirement_ids": list(OBJECTIVE_DOMAIN_EVIDENCE_TERMS),
+        "goal_packet_id": OBJECTIVE_GOAL_PACKET_ID,
+        "goal_ids": list(OBJECTIVE_PACKET_GOAL_IDS),
+        "task_ids": list(OBJECTIVE_PACKET_TASK_IDS),
+        "parent_goal_id": OBJECTIVE_PARENT_GOAL_ID,
+        "result_id": result_obj.result_id,
+        "forest_id": result_obj.forest_id,
+        "call_path_claim": call_path_claim,
+        "manifest_parity_claim": parity_claim,
+        "call_path_satisfied": call_path_satisfied,
+        "manifest_parity_satisfied": parity_satisfied,
+        "satisfied": satisfied,
+        "resolution_layer": ResolutionLayer.STATIC.value,
+        "claims_runtime_conformance": False,
+        "defers_runtime_to_goal": HERMETIC_RUNTIME_CHILD_GOAL_ID,
+        "authoritative": False,
+        "completion_authoritative": False,
+        "semantic_authority": False,
+    }
+
+
 __all__ = [
     "ArtifactRole",
+    "CALL_PATH_INVARIANTS",
     "CallPathClaim",
     "DEFAULT_MAX_ARTIFACTS",
     "DEFAULT_MAX_DRIFT_WITNESSES",
@@ -4053,15 +4537,19 @@ __all__ = [
     "HERMETIC_RUNTIME_CHILD_GOAL_ID",
     "HERMETIC_RUNTIME_CLAIM_LEVEL",
     "InventoryArtifact",
+    "MANIFEST_PARITY_INVARIANTS",
     "MCPLUSPLUS_ARTIFACT_SCHEMA",
+    "MCPLUSPLUS_CALL_PATH_CLAIM_SCHEMA",
     "MCPLUSPLUS_CALL_PATH_SCHEMA",
     "MCPLUSPLUS_CONTRACT_RESOLVER_SCHEMA",
     "MCPLUSPLUS_FRONTIER_SCHEMA",
     "MCPLUSPLUS_INVENTORY_SCHEMA",
     "MCPLUSPLUS_MANIFEST_DRIFT_SCHEMA",
+    "MCPLUSPLUS_MANIFEST_PARITY_CLAIM_SCHEMA",
     "MCPLUSPLUS_PATH_EVIDENCE_SCHEMA",
     "MCPLUSPLUS_PATH_HOP_SCHEMA",
     "MCPLUSPLUS_RESOLUTION_RESULT_SCHEMA",
+    "MCPLUSPLUS_STATIC_PACKET_CLAIM_SCHEMA",
     "MCPlusPlusCallPath",
     "MCPlusPlusContractResolver",
     "MCPlusPlusInventory",
@@ -4071,6 +4559,17 @@ __all__ = [
     "ManufacturedInvocationError",
     "ManifestDriftWitness",
     "MissingPathEvidenceError",
+    "OBJECTIVE_CALL_PATH_GOAL_ID",
+    "OBJECTIVE_CALL_PATH_TASK_ID",
+    "OBJECTIVE_DOMAIN_EVIDENCE_TERMS",
+    "OBJECTIVE_GOAL_ID",
+    "OBJECTIVE_GOAL_PACKET_ID",
+    "OBJECTIVE_MANIFEST_PARITY_GOAL_ID",
+    "OBJECTIVE_MANIFEST_PARITY_TASK_ID",
+    "OBJECTIVE_PACKET_GOAL_IDS",
+    "OBJECTIVE_PACKET_TASK_IDS",
+    "OBJECTIVE_PARENT_GOAL_ID",
+    "OBJECTIVE_TASK_ID",
     "PATH_STAGE_ORDER",
     "PathEvidence",
     "PathHop",
@@ -4086,15 +4585,27 @@ __all__ = [
     "STATIC_RESOLUTION_CLAIM_LEVEL",
     "STATIC_RESOLUTION_GOAL_ID",
     "TransportKind",
+    "all_covered_evidence_terms",
     "classify_non_invocation",
     "confidence_for",
+    "covered_evidence_terms",
     "inventory_from_program_graph",
     "make_artifact",
     "make_evidence",
     "make_hop",
+    "mcplusplus_call_path_evidence",
+    "mcplusplus_call_path_evidence_terms",
+    "mcplusplus_manifest_parity_evidence",
+    "mcplusplus_manifest_parity_evidence_terms",
     "normalize_tool_name",
+    "packet_evidence_terms",
+    "path_satisfies_mcplusplus_call_path",
+    "prove_mcplusplus_call_path",
+    "prove_mcplusplus_manifest_parity",
+    "prove_mcplusplus_static_packet",
     "resolve_mcplusplus_from_graph",
     "resolve_mcplusplus_paths",
+    "result_satisfies_mcplusplus_manifest_parity",
     "schema_fingerprint",
     "split_hierarchical_alias",
     "static_resolution_boundary",
