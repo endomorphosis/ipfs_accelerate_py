@@ -84,6 +84,9 @@ OBJECTIVE_GOAL_G163_ID: Final = "VFS-G163"
 OBJECTIVE_TASK_G162_ID: Final = "VFS-082"
 OBJECTIVE_TASK_G163_ID: Final = "VFS-084"
 OBJECTIVE_TASK_PACKET_ID: Final = "VFS-081"
+OBJECTIVE_PACKET_ID: Final = (
+    "goal_packet/assurance_rollout/ipfs_accelerate_py/047760894e45"
+)
 OBJECTIVE_PACKET_GOAL_IDS: Final[tuple[str, ...]] = (
     OBJECTIVE_GOAL_G162_ID,
     OBJECTIVE_GOAL_G163_ID,
@@ -94,6 +97,32 @@ OBJECTIVE_DOMAIN_EVIDENCE_TERMS: Final[tuple[str, ...]] = (
 )
 OBJECTIVE_PACKET_EVIDENCE_TERMS: Final[tuple[str, ...]] = (
     OBJECTIVE_DOMAIN_EVIDENCE_TERMS
+)
+# Canonical supervisor-facing projection of objective-heap completion bindings.
+# Tuple rows remain immutable and deterministic; public payloads render them as
+# named mappings via objective_evidence_bindings().
+OBJECTIVE_EVIDENCE_BINDING_ROWS: Final[
+    tuple[tuple[str, str, str], ...]
+] = (
+    (
+        ADVERSARIAL_E2E_GATE_EVIDENCE,
+        OBJECTIVE_GOAL_G162_ID,
+        OBJECTIVE_TASK_G162_ID,
+    ),
+    (
+        SHADOW_ROLLOUT_REPORT_EVIDENCE,
+        OBJECTIVE_GOAL_G163_ID,
+        OBJECTIVE_TASK_G163_ID,
+    ),
+)
+OBJECTIVE_PROJECTION_FIELDS: Final[frozenset[str]] = frozenset(
+    {
+        "goal_id",
+        "task_id",
+        "parent_goal_id",
+        "packet_id",
+        "packet_task_id",
+    }
 )
 ADVERSARIAL_E2E_GATE_CLAIM_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/adversarial-e2e-gate-claim@1"
@@ -135,11 +164,24 @@ assert OBJECTIVE_GOAL_G163_ID == "VFS-G163"
 assert OBJECTIVE_TASK_G162_ID == "VFS-082"
 assert OBJECTIVE_TASK_G163_ID == "VFS-084"
 assert OBJECTIVE_TASK_PACKET_ID == "VFS-081"
+assert OBJECTIVE_PACKET_ID == (
+    "goal_packet/assurance_rollout/ipfs_accelerate_py/047760894e45"
+)
 assert OBJECTIVE_DOMAIN_EVIDENCE_TERMS == (
     "vfs/adversarial-e2e-gate@1",
     "vfs/shadow-rollout-report@1",
 )
 assert OBJECTIVE_PACKET_EVIDENCE_TERMS == OBJECTIVE_DOMAIN_EVIDENCE_TERMS
+assert tuple(row[0] for row in OBJECTIVE_EVIDENCE_BINDING_ROWS) == (
+    OBJECTIVE_PACKET_EVIDENCE_TERMS
+)
+assert tuple(row[1] for row in OBJECTIVE_EVIDENCE_BINDING_ROWS) == (
+    OBJECTIVE_PACKET_GOAL_IDS
+)
+assert tuple(row[2] for row in OBJECTIVE_EVIDENCE_BINDING_ROWS) == (
+    OBJECTIVE_TASK_G162_ID,
+    OBJECTIVE_TASK_G163_ID,
+)
 
 MAX_GATE_EVIDENCE_IDS: Final = 32
 MAX_FINDING_PROJECTIONS: Final = 64
@@ -260,6 +302,16 @@ def _canonical_bytes(value: Any) -> bytes:
 
 def _identity(value: Any) -> str:
     return "sha256:" + hashlib.sha256(_canonical_bytes(value)).hexdigest()
+
+
+def _without_objective_projection(value: Mapping[str, Any]) -> dict[str, Any]:
+    """Remove supervisor routing labels from a domain evidence identity."""
+
+    return {
+        key: item
+        for key, item in value.items()
+        if key not in OBJECTIVE_PROJECTION_FIELDS
+    }
 
 
 def _content_cid(body: bytes) -> str:
@@ -921,7 +973,11 @@ class AdversarialE2EGateReport:
 
     @property
     def report_id(self) -> str:
-        return _identity(self.to_dict(include_report_id=False))
+        return _identity(
+            _without_objective_projection(
+                self.to_dict(include_report_id=False)
+            )
+        )
 
     @property
     def passed(self) -> bool:
@@ -959,6 +1015,9 @@ class AdversarialE2EGateReport:
             "objective_revision": VFS_SYMBOLIC_OBJECTIVE_REVISION,
             "goal_id": OBJECTIVE_GOAL_G162_ID,
             "task_id": OBJECTIVE_TASK_G162_ID,
+            "parent_goal_id": OBJECTIVE_PARENT_GOAL_ID,
+            "packet_id": OBJECTIVE_PACKET_ID,
+            "packet_task_id": OBJECTIVE_TASK_PACKET_ID,
             "fixture": self.fixture.to_dict(),
             "fixture_cid": self.fixture.fixture_cid,
             "observations": [
@@ -1792,7 +1851,11 @@ class ShadowRolloutReport:
 
     @property
     def report_id(self) -> str:
-        return _identity(self.to_dict(include_report_id=False))
+        return _identity(
+            _without_objective_projection(
+                self.to_dict(include_report_id=False)
+            )
+        )
 
     @property
     def reason_codes(self) -> tuple[str, ...]:
@@ -1897,6 +1960,9 @@ class ShadowRolloutReport:
             "objective_revision": VFS_SYMBOLIC_OBJECTIVE_REVISION,
             "goal_id": OBJECTIVE_GOAL_G163_ID,
             "task_id": OBJECTIVE_TASK_G163_ID,
+            "parent_goal_id": OBJECTIVE_PARENT_GOAL_ID,
+            "packet_id": OBJECTIVE_PACKET_ID,
+            "packet_task_id": OBJECTIVE_TASK_PACKET_ID,
             "binding": self.binding.to_dict(),
             "binding_id": self.binding.binding_id,
             "policy": self.policy.to_dict(),
@@ -2436,7 +2502,10 @@ class VfsSymbolicPublicAPI:
             "behavior_id": VFS_SYMBOLIC_BEHAVIOR_ID,
             "objective_id": VFS_SYMBOLIC_OBJECTIVE_ID,
             "parent_goal_id": OBJECTIVE_PARENT_GOAL_ID,
+            "packet_id": OBJECTIVE_PACKET_ID,
+            "packet_task_id": OBJECTIVE_TASK_PACKET_ID,
             "packet_goal_ids": list(OBJECTIVE_PACKET_GOAL_IDS),
+            "evidence_bindings": list(objective_evidence_bindings()),
             "evidence_schemas": [
                 ADVERSARIAL_E2E_GATE_SCHEMA,
                 SHADOW_ROLLOUT_REPORT_SCHEMA,
@@ -2694,6 +2763,25 @@ def all_covered_evidence_terms() -> tuple[str, ...]:
     return covered_evidence_terms()
 
 
+def objective_evidence_bindings() -> tuple[dict[str, str], ...]:
+    """Project the objective heap's evidence-to-goal/task bindings.
+
+    This is the canonical supervisor-fed backlog bridge for
+    ``goal_packet/assurance_rollout/ipfs_accelerate_py/047760894e45``:
+    ``vfs/adversarial-e2e-gate@1`` closes VFS-G162 through VFS-082 and
+    ``vfs/shadow-rollout-report@1`` closes VFS-G163 through VFS-084.
+    """
+
+    return tuple(
+        {
+            "evidence": evidence,
+            "goal_id": goal_id,
+            "task_id": task_id,
+        }
+        for evidence, goal_id, task_id in OBJECTIVE_EVIDENCE_BINDING_ROWS
+    )
+
+
 def _gate_passed(
     report: AdversarialE2EGateReport, gate_id: AdversarialGateId
 ) -> bool:
@@ -2824,6 +2912,7 @@ def prove_adversarial_e2e_gate(
         "goal_id": OBJECTIVE_GOAL_G162_ID,
         "parent_goal_id": OBJECTIVE_PARENT_GOAL_ID,
         "task_id": OBJECTIVE_TASK_G162_ID,
+        "packet_id": OBJECTIVE_PACKET_ID,
         "packet_task_id": OBJECTIVE_TASK_PACKET_ID,
         "report_id": report.report_id,
         "fixture_cid": report.fixture.fixture_cid,
@@ -2899,6 +2988,7 @@ def prove_shadow_rollout_report(
         "goal_id": OBJECTIVE_GOAL_G163_ID,
         "parent_goal_id": OBJECTIVE_PARENT_GOAL_ID,
         "task_id": OBJECTIVE_TASK_G163_ID,
+        "packet_id": OBJECTIVE_PACKET_ID,
         "packet_task_id": OBJECTIVE_TASK_PACKET_ID,
         "report_id": report.report_id,
         "gate_report_id": report.gate_report.report_id,
@@ -2968,6 +3058,11 @@ def prove_assurance_rollout_packet(
 
     if not isinstance(shadow_report, ShadowRolloutReport):
         raise TypeError("shadow_report must be a ShadowRolloutReport")
+    if shadow_report.gate_report.report_id != gate_report.report_id:
+        raise VfsSymbolicRolloutError(
+            "assurance rollout packet reports must bind to the same "
+            "adversarial gate report"
+        )
 
     adversarial_claim = prove_adversarial_e2e_gate(gate_report)
     shadow_claim = prove_shadow_rollout_report(shadow_report)
@@ -2978,12 +3073,15 @@ def prove_assurance_rollout_packet(
         "schema": ASSURANCE_ROLLOUT_PACKET_CLAIM_SCHEMA,
         "evidence_terms": list(packet_evidence_terms()),
         "all_evidence_terms": list(OBJECTIVE_DOMAIN_EVIDENCE_TERMS),
+        "evidence_bindings": list(objective_evidence_bindings()),
+        "packet_id": OBJECTIVE_PACKET_ID,
         "goal_ids": list(OBJECTIVE_PACKET_GOAL_IDS),
         "parent_goal_id": OBJECTIVE_PARENT_GOAL_ID,
         "task_ids": [OBJECTIVE_TASK_G162_ID, OBJECTIVE_TASK_G163_ID],
         "packet_task_id": OBJECTIVE_TASK_PACKET_ID,
         "adversarial_e2e_gate": adversarial_claim,
         "shadow_rollout_report": shadow_claim,
+        "gate_report_linked": True,
         "satisfied": satisfied,
         "automatic_mutation_enabled": False,
         "authoritative": False,
@@ -3008,8 +3106,10 @@ __all__ = (
     "FrozenRepositoryDescriptor",
     "GateStatus",
     "OBJECTIVE_DOMAIN_EVIDENCE_TERMS",
+    "OBJECTIVE_EVIDENCE_BINDING_ROWS",
     "OBJECTIVE_GOAL_G162_ID",
     "OBJECTIVE_GOAL_G163_ID",
+    "OBJECTIVE_PACKET_ID",
     "OBJECTIVE_PACKET_EVIDENCE_TERMS",
     "OBJECTIVE_PACKET_GOAL_IDS",
     "OBJECTIVE_PARENT_GOAL_ID",
@@ -3055,6 +3155,7 @@ __all__ = (
     "evaluate_adversarial_gates",
     "evaluate_vfs_symbolic_rollout",
     "freeze_multi_repository_fixture",
+    "objective_evidence_bindings",
     "packet_evidence_terms",
     "project_bounded_findings",
     "project_bounded_receipts",
