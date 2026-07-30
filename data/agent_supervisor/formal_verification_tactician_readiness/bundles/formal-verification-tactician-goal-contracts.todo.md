@@ -302,10 +302,10 @@ Conflict policy: keep edits inside this bundle when possible; use the LLM merge 
 - Preconditions: objective goal FVT-G025 is schedulable
 - Effects: satisfy evidence requirement: test/api/test_leanstral_end_goal_formalization_route.py
 - Evidence subset: test/api/test_leanstral_end_goal_formalization_route.py
-- Resource class: gpu-advisor-optional
+- Resource class: cpu-medium
 - Token class: medium
 - Estimated tokens: 0
-- Resources: gpu-advisor-optional
+- Resources: cpu-medium
 - Merge fate: objective/FVT-G025
 - Rejection reasons: none (accepted)
 - Evidence obligation key: objective-evidence-obligation/v1/cf1583452840bac1892c580aaffe46c1b0d3526820d342dbb46be88af1309a71

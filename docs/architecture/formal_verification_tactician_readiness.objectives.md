@@ -473,7 +473,7 @@ Program invariants:
 - Acceptance: Prose cannot bypass formalization; Leanstral cannot create/mutate formulas, source, assumptions, proof, commands, admission, or completion; timeout/unavailable/malformed responses fall back deterministically without stalling the supervisor.
 - Conflict policy: Own the post-formalization supervisor adapter and tests; preserve the existing Leanstral capability-isolation boundary and provider modes.
 - Interfaces: FormalizedGoalDevelopmentRoute@1
-- Resource class: gpu-advisor-optional
+- Resource class: cpu-medium
 - Goal completion schema version: 1
 - Completion confidence: 0.166667
 - Uncovered criteria: ["Prose cannot bypass formalization","Leanstral cannot create/mutate formulas, source, assumptions, proof, commands, admission, or completion","timeout/unavailable/malformed responses fall back deterministically without stalling the supervisor."]
