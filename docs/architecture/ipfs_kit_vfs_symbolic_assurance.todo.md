@@ -2738,7 +2738,7 @@ compact references and bounded spans only.
 
 ## VFS-069 Close objective gap: Prove vfs/language-edge-resolution@1 for Resolve dynamic language features without inventing call edges
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
