@@ -19,6 +19,7 @@ from ipfs_accelerate_py.agent_supervisor.context.context_compiler import (
     ExclusionReason,
     InclusionReason,
     MissingContextReferenceError,
+    RequiredContextOverflowError,
     RetryContextCapsule,
     compile_retry_context,
     compile_context_delta,
@@ -943,6 +944,36 @@ def test_implementation_daemon_retries_context_overflow_with_cid_only_evidence(
         match="retry context budget exhausted",
     ):
         daemon("budget-blocked.json")._build_implementation_prompt(
+            task,
+            attempt=2,
+        )
+
+    def required_context_overflow(*args, **kwargs):
+        raise RequiredContextOverflowError(
+            "required retry evidence exceeds the effective input budget"
+        )
+
+    calls = 0
+
+    def delta_then_required_overflow(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise ContextDeltaError(
+                "reconstructed full context exceeds the effective input budget"
+            )
+        return required_context_overflow(*args, **kwargs)
+
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "compile_retry_context",
+        delta_then_required_overflow,
+    )
+    with pytest.raises(
+        ImplementationRetryDeferred,
+        match="retry context budget exhausted",
+    ):
+        daemon("required-budget-blocked.json")._build_implementation_prompt(
             task,
             attempt=2,
         )

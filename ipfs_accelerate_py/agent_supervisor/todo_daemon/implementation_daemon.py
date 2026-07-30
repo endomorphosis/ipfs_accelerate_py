@@ -24677,7 +24677,10 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 raise ImplementationRetryDeferred(
                     "implementation retry cancelled during compilation"
                 ) from fallback_exc
-            except ContextDeltaError as fallback_exc:
+            except (
+                ContextDeltaError,
+                RequiredContextOverflowError,
+            ) as fallback_exc:
                 raise ImplementationRetryDeferred(
                     "implementation retry context budget exhausted"
                 ) from fallback_exc
