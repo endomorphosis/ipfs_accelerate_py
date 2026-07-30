@@ -3650,12 +3650,21 @@ class DynamicBundleScheduler:
     def running_count(self) -> int:
         return len(self._running)
 
-    def _sample_host_resources(self) -> HostResourceSnapshot | dict[str, Any]:
+    def _sample_host_resources(
+        self,
+        *,
+        active_workers: int | None = None,
+    ) -> HostResourceSnapshot | dict[str, Any]:
         source = self._host_resource_source
+        accounted_active_workers = (
+            len(self._running)
+            if active_workers is None
+            else max(0, int(active_workers))
+        )
         try:
             return source(
                 self.state_root,
-                active_workers=len(self._running),
+                active_workers=accounted_active_workers,
                 worker_limit=self.max_lanes,
                 active_phase="scheduler",
             )
@@ -4251,141 +4260,19 @@ class DynamicBundleScheduler:
         coordinator: LeaseCoordinator,
         lanes: Sequence[BundleLaneSpec],
     ) -> dict[str, dict[str, str]]:
-        """Settle durable terminal work whose accepted wrapper predates this scheduler.
+        """Defer untracked accepted leases to their fenced wrapper or expiry.
 
-        ``_running`` is intentionally process-local and is empty after a
-        scheduler restart.  The accepted lease and lane phase state are durable,
-        however, so a predecessor's wrapper can remain alive and renew forever
-        after its board has drained.  Reuse the same current-board and
-        identity-aware disposition check used for locally owned workers, then
-        publish the terminal receipt through the accepted fencing token.
-
-        The receipt is written before any process is stopped.  A still-running
-        leased wrapper observes the terminal lease on its next heartbeat, fences
-        its child, and exits without manufacturing a competing receipt.
-        Non-terminal accepted workers are never adopted or preempted.
+        ``_running`` is process-local, so after restart this scheduler cannot
+        prove that a predecessor wrapper has exited or fenced its descendants.
+        Neither mutable terminal board state nor a durable member receipt is
+        sufficient authority to publish a Profile-G terminal receipt.  The
+        predecessor ``leased_lane`` remains the only successful-settlement
+        authority; blocked work likewise remains accepted until that wrapper
+        settles, its lease expires, or an operator performs fenced recovery.
         """
 
-        lanes_by_bundle_key = {lane.bundle_key: lane for lane in lanes}
-        accepted_tasks = [
-            accepted
-            for accepted in coordinator.list_tasks()
-            if self._projection_state(accepted) == "accepted"
-            and str(accepted.get("task_cid") or "") not in self._running
-        ]
-        if not accepted_tasks:
-            return {}
-        member_receipts = bundle_member_completion_receipts(self.state_root)
-        reconciled: dict[str, dict[str, str]] = {}
-        for accepted in accepted_tasks:
-            task_cid = str(accepted.get("task_cid") or "")
-            if not task_cid:
-                continue
-            payload = accepted.get("bundle")
-            if not isinstance(payload, dict):
-                continue
-            bundle_key = str(
-                payload.get("bundle_key")
-                or accepted.get("bundle_key")
-                or ""
-            )
-            current_lane = lanes_by_bundle_key.get(bundle_key)
-            if current_lane is None:
-                todo_path = resolve_repo_path(
-                    self.repo_root,
-                    str(payload.get("todo_path") or payload.get("shard_path") or ""),
-                )
-                safe_key = safe_bundle_key(bundle_key or task_cid)
-                current_lane = BundleLaneSpec(
-                    bundle_key=bundle_key or task_cid,
-                    parallel_lane=str(payload.get("parallel_lane") or bundle_key or task_cid),
-                    todo_path=todo_path,
-                    state_dir=self.state_root / safe_key / "state",
-                    worktree_root=self.worktree_root / safe_key,
-                    state_prefix=lane_state_prefix(bundle_key or task_cid),
-                    task_ids=[],
-                    conflict_policy=str(payload.get("conflict_policy") or ""),
-                    command=[],
-                    log_path=self.log_dir / f"{safe_key}.log",
-                )
-            tasks = _mapping_list(payload.get("tasks"))
-            execution_tasks = _execution_slice_members(payload, tasks)
-            if (
-                "execution_slice_task_cids" in payload
-                or "execution_slice_task_ids" in payload
-            ) and not execution_tasks:
-                # An accepted lease must describe concrete work.  An empty
-                # current planning slice is not evidence about its predecessor.
-                continue
-            task_ids = [
-                str(task.get("task_id") or "")
-                for task in execution_tasks
-                if str(task.get("task_id") or "")
-            ]
-            recovery_lane = replace(
-                current_lane,
-                task_cid=task_cid,
-                goal_cid=str(accepted.get("goal_cid") or current_lane.goal_cid),
-                subgoal_cid=str(accepted.get("subgoal_cid") or current_lane.subgoal_cid),
-                task_ids=task_ids,
-                queue_payload=dict(payload),
-            )
-            disposition = self._disposition(recovery_lane)
-            if not disposition:
-                continue
-            completed_member_cids = {
-                str(task.get("canonical_task_cid") or task.get("task_cid") or "")
-                for task in execution_tasks
-                if str(task.get("canonical_task_cid") or task.get("task_cid") or "")
-            }
-            if disposition == "completed" and (
-                not completed_member_cids
-                or not completed_member_cids.issubset(member_receipts)
-            ):
-                logger.warning(
-                    "Refusing to reconcile completed lease %s without durable "
-                    "successful receipts for every execution-slice member",
-                    task_cid,
-                )
-                continue
-            try:
-                grant = coordinator.active_lease(task_cid)
-                if grant is None:
-                    continue
-                if disposition == "completed":
-                    coordinator.receipt(
-                        grant,
-                        status="succeeded",
-                        output={
-                            "reason": "reconciled durable terminal execution slice",
-                            "recovery": "untracked_accepted_lease",
-                            "member_receipts": [
-                                member_receipts[cid]
-                                for cid in sorted(completed_member_cids)
-                            ],
-                        },
-                    )
-                else:
-                    self._settle_grant(
-                        coordinator,
-                        grant,
-                        disposition=disposition,
-                    )
-            except LeaseError:
-                # Renewal, takeover, and peer settlement races are resolved by
-                # the coordination store's fencing token.  The next cycle will
-                # observe whichever state won.
-                continue
-            reconciled[task_cid] = {
-                "bundle_key": recovery_lane.bundle_key,
-                "disposition": disposition,
-            }
-            logger.info(
-                "Reconciled terminal accepted lease %s after scheduler restart (%s)",
-                task_cid,
-                disposition,
-            )
-        return reconciled
+        del coordinator, lanes
+        return {}
 
     def _default_launcher(self, lane: BundleLaneSpec, grant: Any) -> subprocess.Popen[bytes]:
         process, _command, _pid_path = _spawn_accepted_lane(
@@ -4779,8 +4666,49 @@ class DynamicBundleScheduler:
                     if self._projection_state(item) == "accepted"
                     and str(item.get("task_cid") or "")
                 }
+                accounted_worker_task_cids = set(self._running)
+                accounted_worker_task_cids.update(
+                    task_cid
+                    for task_cid, accepted in accepted_by_task_cid.items()
+                    if str(accepted.get("claimant_did") or "")
+                    == self.claimant_did
+                )
+                accounted_active_workers = len(accounted_worker_task_cids)
                 registered: list[BundleLaneSpec] = []
                 for lane in (item for item in discovered if item.queue_payload):
+                    policy_error = _lane_launch_policy_error(lane)
+                    completed_member_cids = _string_list(
+                        lane.queue_payload.get("completed_member_task_cids")
+                    )
+                    completed_member_ids = _string_list(
+                        lane.queue_payload.get("completed_member_task_ids")
+                    )
+                    receipt_drained = (
+                        not lane.task_ids
+                        and bool(completed_member_cids or completed_member_ids)
+                        and not _string_list(
+                            lane.queue_payload.get("execution_slice_task_cids")
+                        )
+                        and not _string_list(
+                            lane.queue_payload.get("execution_slice_task_ids")
+                        )
+                    )
+                    if (
+                        policy_error
+                        and receipt_drained
+                        and not self._disposition(lane)
+                    ):
+                        # Static launches reject these lanes before touching
+                        # coordination. Apply the same fail-closed boundary to
+                        # persistent discovery: a receipt-drained empty slice
+                        # must not acquire a fresh bundle identity merely
+                        # because its immutable source board still says todo.
+                        logger.debug(
+                            "Skipping non-executable bundle lane %s: %s",
+                            lane.bundle_key,
+                            policy_error,
+                        )
+                        continue
                     accepted = accepted_by_task_cid.get(lane.task_cid)
                     if accepted is not None:
                         # Preserve the immutable payload of work that is still
@@ -4877,13 +4805,18 @@ class DynamicBundleScheduler:
                     )
                 ]
                 try:
-                    host_resources = self._sample_host_resources()
+                    host_resources = self._sample_host_resources(
+                        active_workers=accounted_active_workers,
+                    )
                 except Exception:
                     logger.exception("Host resource sampling failed; retaining configured bounds")
                     host_resources = HostResourceSnapshot(
-                        active_workers=len(self._running),
+                        active_workers=accounted_active_workers,
                         worker_limit=self.max_lanes,
-                        available_worker_capacity=max(0, self.max_lanes - len(self._running)),
+                        available_worker_capacity=max(
+                            0,
+                            self.max_lanes - accounted_active_workers,
+                        ),
                     )
                 try:
                     provider_capacities = self._provider_capacities(coordinator)
@@ -4906,7 +4839,7 @@ class DynamicBundleScheduler:
                     host=host_resources,
                     providers=provider_capacities,
                     path=self.state_root,
-                    active_workers=len(self._running),
+                    active_workers=accounted_active_workers,
                 )
                 confirmed_requirements: list[LaneResourceRequirements] = []
                 resource_cycle_decisions: list[AdmissionDecision] = []
