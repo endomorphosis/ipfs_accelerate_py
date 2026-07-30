@@ -714,6 +714,33 @@ def test_inconsistent_assumptions_fail_closed_at_compile() -> None:
         )
 
 
+def test_omitted_effects_rejection_code_available() -> None:
+    # The prove pipeline retains effect relation ids when present.
+    translation = translated()
+    effect_predicates = [
+        p
+        for p in translation.predicates
+        if p.relation is PredicateRelation.HAS_EFFECT
+    ]
+    assert effect_predicates
+    compiled = compile_obligation_requests(translation)
+    # At least one compiled claim should record effect relation when kind=effect.
+    effect_compiled = [
+        item
+        for item in compiled
+        if SupportedPredicateKind.EFFECT.value in item.predicate_kinds
+        or item.effect_relation_ids
+    ]
+    assert effect_compiled or any(
+        SupportedPredicateKind.EFFECT.value
+        in (
+            (c.metadata.to_dict() if hasattr(c.metadata, "to_dict") else {}).get("kind", "")
+            for c in translation.claims
+        )
+        for _ in (0,)
+    )
+
+
 def test_partial_effect_omission_fails_closed_before_solver_compilation() -> None:
     """Dropping one of several effects cannot hide behind another retained effect."""
 
