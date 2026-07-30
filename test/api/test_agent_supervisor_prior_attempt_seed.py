@@ -504,6 +504,43 @@ def test_prior_seed_divergence_preserves_baseline_and_replays_full_child_delta(
     assert expansions[0]["base_revision"] == baseline_child
 
 
+def test_prior_seed_replays_child_only_divergent_delta(
+    tmp_path: Path,
+) -> None:
+    parent, baseline, baseline_child, _seed, _seed_child = _seed_prior_child_delta(
+        tmp_path,
+        divergent_baseline=True,
+    )
+    _git(parent, "checkout", "prior-attempt")
+    _git(parent, "rm", "prior-root-one.txt", "prior-root-two.txt")
+    _git(parent, "commit", "-m", "retain only prior child delta")
+    child_only_seed = _git(parent, "rev-parse", "HEAD")
+    worktree = _retry_worktree(parent, baseline, tmp_path / "retry-child-only")
+    daemon = PortalImplementationDaemon(
+        todo_path=tmp_path / "tasks.todo.md",
+        state_path=tmp_path / "state.json",
+        strategy_path=tmp_path / "strategy.json",
+        events_path=tmp_path / "events.jsonl",
+        repo_root=parent,
+        worktree_submodule_paths=["deps/child"],
+    )
+
+    result = daemon._apply_prior_attempt_seed(
+        worktree,
+        seed_plan={"reuse_prior_attempt": True, "seed_ref": child_only_seed},
+        baseline_ref=baseline,
+    )
+
+    child = worktree / "deps" / "child"
+    assert result["applied"] is True, result
+    assert result["reason"] == "replayed_prior_delta"
+    assert result["submodule_reconciliation"]["results"][0]["replayed"] is True
+    assert _git(child, "rev-parse", "HEAD") == baseline_child
+    assert (child / "prior-one.txt").is_file()
+    assert (child / "prior-two.txt").is_file()
+    assert (worktree / "current-root.txt").is_file()
+
+
 def test_prior_seed_reconciliation_failure_removes_staged_replay(
     tmp_path: Path,
     monkeypatch,

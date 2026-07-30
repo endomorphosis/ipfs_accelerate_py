@@ -13490,7 +13490,7 @@ class PortalImplementationDaemon:
                     "--",
                     ".",
                     *[
-                        f":(top,exclude){plan['path']}"
+                        f":(top,exclude,literal){plan['path']}"
                         for plan in submodule_plans
                     ],
                 ],
@@ -13498,6 +13498,15 @@ class PortalImplementationDaemon:
                 capture_output=True,
                 check=False,
             )
+        root_replay = {
+            "applied": True,
+            "reason": "replayed_prior_delta",
+            "seed_ref": seed_ref,
+            "baseline_ref": baseline_ref,
+            "merge_stderr": (merge.stderr or "")[-500:],
+        }
+        if root_patch is not None and root_patch.returncode == 0 and not root_patch.stdout:
+            return finish(root_replay)
         replay = None
         if root_patch is not None and root_patch.returncode == 0:
             replay = subprocess.run(
@@ -13508,15 +13517,7 @@ class PortalImplementationDaemon:
                 check=False,
             )
         if replay is not None and replay.returncode == 0:
-            return finish(
-                {
-                    "applied": True,
-                    "reason": "replayed_prior_delta",
-                    "seed_ref": seed_ref,
-                    "baseline_ref": baseline_ref,
-                    "merge_stderr": (merge.stderr or "")[-500:],
-                }
-            )
+            return finish(root_replay)
         return {
             "applied": False,
             "reason": "prior_seed_apply_failed",
