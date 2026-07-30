@@ -788,7 +788,7 @@ consumer or frontier is unresolved.
 
 ## RPR-024 Build the adversarial transitive-change fixture corpus
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
