@@ -2939,7 +2939,7 @@ compact references and bounded spans only.
 
 ## VFS-072 Close objective gap: Prove vfs/mcplusplus-call-path@1 for Prove whether SwissKnife MCP++ calls reach the intended IPFS implementation
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
