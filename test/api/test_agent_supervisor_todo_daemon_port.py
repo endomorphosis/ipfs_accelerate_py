@@ -8743,6 +8743,7 @@ def test_failed_submodule_merge_restores_shared_checkout_index_and_nested_dirt(
         events_path=state_dir / "events.jsonl",
         repo_root=repo,
         worktree_submodule_paths=["libs/child"],
+        llm_merge_resolver_command="",
     )
     parent_branch = "implementation/auto-rollback"
     task_branch = daemon._submodule_worktree_branch_name(
