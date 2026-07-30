@@ -54,6 +54,9 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
     PRODUCTION_PROVIDER_ROUTE_BINDING_EVENT,
     PRODUCTION_PROVIDER_ROUTE_EVENT,
     PRODUCTION_PROVIDER_ROUTE_PENDING_EVENT,
+    PRODUCTION_REVIEW_FEEDBACK_MAX_BYTES,
+    PRODUCTION_REVIEW_FEEDBACK_MAX_FINDING_BYTES,
+    PRODUCTION_REVIEW_FEEDBACK_MAX_FINDINGS,
     PortalTask,
     PortalTaskState,
     TodoImplementationDaemon,
@@ -1186,6 +1189,134 @@ def test_daemon_builds_bounded_production_packet(
     assert payload["authority"]["completion_authoritative"] is False
     assert PATH in payload["scope"]["write_paths"]
     assert "repository_corpus" not in json.dumps(payload)
+
+
+def test_declined_review_feedback_is_bounded_persisted_and_replayed_after_restart(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _daemon(tmp_path, monkeypatch)
+    task = _task()
+    compiled = daemon._compile_implementation_context(task, attempt=1)
+    daemon._persist_implementation_context_receipt(task, attempt=1)
+    snapshot = f"git-commit:{compiled.capsule.tree_id}"
+
+    def declining_codex(request):
+        assert request["role"] == ProviderRole.CODEX_REVIEW.value
+        return {
+            "decision": "changes_required",
+            "findings": [
+                "api_key=super-secret-value Fix the retry contract.",
+                "Preserve the content-addressed diagnostic binding.",
+                "Do not\nrepeat\tthe unchanged proposal.",
+                "Bound this finding " + ("x" * 2_000),
+                "UNPERSISTED_RAW_CORPUS_MARKER",
+                "sixth finding must also remain outside the projection",
+            ],
+        }
+
+    declining_codex.provider_identity = "mcp++:openai:codex-decline"
+    declining_codex.model_identity = "codex-decline"
+    declining_codex.last_session_identity = "session:codex-decline"
+
+    declined = daemon.run_production_model_assisted_route(
+        task,
+        attempt=1,
+        workspace_path=daemon.repo_root,
+        snapshot_id=snapshot,
+        apply=True,
+        context_capsule=compiled.capsule,
+        grok_provider=_grok,
+        codex_provider=declining_codex,
+        admission_gate=_accept,
+    )
+    assert declined["returncode"] == 1
+    assert declined["route_result"].reason_code == (
+        ProviderReason.REVIEW_DECLINED.value
+    )
+
+    diagnostic = daemon._record_failed_attempt_retry_context(
+        task,
+        returncode=1,
+        production_route_payload=declined,
+    )
+    assert diagnostic is not None
+    feedback = diagnostic.failure["production_review_feedback"]
+    assert feedback["source_attempt"] == 1
+    assert feedback["source_finding_count"] == 6
+    assert feedback["included_finding_count"] <= (
+        PRODUCTION_REVIEW_FEEDBACK_MAX_FINDINGS
+    )
+    assert feedback["truncated"] is True
+    assert len(json.dumps(feedback, sort_keys=True).encode("utf-8")) <= (
+        PRODUCTION_REVIEW_FEEDBACK_MAX_BYTES
+    )
+    assert all(
+        len(item["text"].encode("utf-8"))
+        <= PRODUCTION_REVIEW_FEEDBACK_MAX_FINDING_BYTES
+        for item in feedback["findings"]
+    )
+    persisted = (
+        daemon.implementation_log_dir
+        / "sca-615-diagnostic-receipt.json"
+    ).read_text(encoding="utf-8")
+    assert "super-secret-value" not in persisted
+    assert "UNPERSISTED_RAW_CORPUS_MARKER" not in persisted
+    assert "[REDACTED]" in persisted
+
+    # Exercise the durable path: only the receipt-bound sidecars survive.
+    daemon._implementation_base_contexts.clear()
+    daemon._implementation_loaded_parents.clear()
+    daemon._implementation_diagnostics.clear()
+    daemon._implementation_diagnostic_repeats.clear()
+    daemon._implementation_retry_not_before.clear()
+    daemon._last_implementation_context = None
+    daemon._last_implementation_retry = None
+    daemon._build_implementation_prompt(task, attempt=2)
+
+    seen: dict[str, Any] = {}
+
+    def retry_grok(request):
+        seen["goal"] = request["provider_input"]["contract_packet"]["goal"]
+        return _grok(request)
+
+    retry_grok.provider_identity = "mcp++:xai:grok-retry"
+    retry_grok.model_identity = "grok-retry"
+    retry_grok.last_session_identity = "session:grok-retry"
+
+    retried = daemon.run_production_model_assisted_route(
+        task,
+        attempt=2,
+        workspace_path=daemon.repo_root,
+        snapshot_id=snapshot,
+        apply=False,
+        context_capsule=daemon._current_implementation_context_capsule(),
+        grok_provider=retry_grok,
+        codex_provider=_codex,
+        admission_gate=_accept,
+    )
+    assert retried["returncode"] == 0
+    replay = seen["goal"]["prior_review_feedback"]
+    assert replay["target_attempt"] == 2
+    assert replay["diagnostic_receipt_id"] == diagnostic.receipt_id
+    assert replay["feedback"]["feedback_id"] == feedback["feedback_id"]
+    assert replay["replay_id"] in seen["goal"]["contract_ids"]
+    assert feedback["feedback_id"] in seen["goal"]["contract_ids"]
+    assert diagnostic.receipt_id in seen["goal"]["contract_ids"]
+
+    forged = json.loads(json.dumps(feedback))
+    forged["findings"][0]["text"] = "forged"
+    with pytest.raises(ValueError, match="identity"):
+        daemon._validate_production_review_feedback(forged)
+
+    with pytest.raises(ProviderRoutingError) as stale:
+        daemon.build_production_contract_packet_for_task(
+            task,
+            snapshot_id="git-commit:different-snapshot",
+            attempt=2,
+            context_capsule=daemon._current_implementation_context_capsule(),
+        )
+    assert stale.value.reason_code == ProviderReason.PACKET_STALE.value
 
 
 def test_production_packet_forwards_only_compiler_selected_targeted_evidence(
