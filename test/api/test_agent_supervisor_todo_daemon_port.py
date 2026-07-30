@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import ast
 import hashlib
 import json
 import logging
@@ -5331,6 +5332,487 @@ def test_post_validation_candidate_binding_restores_known_artifact_only(
     assert source_changed["passed"] is False
     assert source_changed["reason"] == "candidate_changed_during_validation"
     assert source_changed["candidate_binding"]["verified"] is False
+
+
+def _post_validation_stabilization_case(tmp_path: Path) -> SimpleNamespace:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "artifact.json").write_text('{"value": "base"}\n', encoding="utf-8")
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "artifact.json", "README.md")
+    _git(repo, "commit", "-m", "base")
+    baseline = _git(repo, "rev-parse", "HEAD")
+    (repo / "artifact.json").write_text(
+        '{"value": "candidate"}\n',
+        encoding="utf-8",
+    )
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=[],
+    )
+    task = PortalTask(
+        task_id="AUTO-STABILIZE",
+        title="Stabilize one deterministic generated output",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="ops",
+        outputs=["artifact.json"],
+        validation=["python generate_artifact.py"],
+        acceptance="The generated output reaches a validated fixed point.",
+    )
+    proposal_validation = daemon._validate_implementation_patch(
+        repo,
+        task,
+        baseline_ref=baseline,
+    )
+    assert proposal_validation.accepted is True
+    return SimpleNamespace(
+        repo=repo,
+        daemon=daemon,
+        task=task,
+        baseline=baseline,
+        proposal_validation=proposal_validation,
+        log_path=state_dir / "validation.log",
+        passed_validation={
+            "attempted": True,
+            "passed": True,
+            "returncode": 0,
+            "results": [],
+        },
+    )
+
+
+def test_post_validation_candidate_stabilizes_once_after_fresh_gate(
+    tmp_path: Path,
+    monkeypatch,
+):
+    case = _post_validation_stabilization_case(tmp_path)
+    artifact = case.repo / "artifact.json"
+    artifact.write_text('{"value": "generated"}\n', encoding="utf-8")
+    original_validate = case.daemon._validate_implementation_patch
+    gate_calls = []
+    validation_calls = []
+
+    def revalidate(workspace_path, task, **kwargs):
+        gate_calls.append(dict(kwargs))
+        return original_validate(workspace_path, task, **kwargs)
+
+    def rerun(
+        workspace_path,
+        task,
+        log_path,
+        *,
+        state=None,
+        proposal_validation=None,
+    ):
+        validation_calls.append(
+            (
+                workspace_path,
+                task.task_id,
+                log_path,
+                state,
+                proposal_validation.proposal.proposal_id,
+            )
+        )
+        return {
+            "attempted": True,
+            "passed": True,
+            "returncode": 0,
+            "results": [],
+            "proposal_gate": case.daemon._compact_proposal_validation(
+                proposal_validation
+            ),
+        }
+
+    monkeypatch.setattr(
+        case.daemon,
+        "_validate_implementation_patch",
+        revalidate,
+    )
+    monkeypatch.setattr(case.daemon, "_run_validation_commands", rerun)
+
+    result = case.daemon._restore_and_verify_post_validation_candidate(
+        case.repo,
+        case.task,
+        baseline_ref=case.baseline,
+        proposal_validation=case.proposal_validation,
+        validation_result=case.passed_validation,
+        log_path=case.log_path,
+        attempt=2,
+        allow_candidate_stabilization=True,
+    )
+
+    assert result["passed"] is True
+    assert result["candidate_binding"]["verified"] is True
+    assert result["candidate_stabilization"]["outcome"] == "stabilized"
+    assert result["candidate_stabilization"]["cycle_count"] == 1
+    assert len(gate_calls) == 1
+    assert gate_calls[0]["allow_scope_adjudication"] is False
+    assert "replayable_consumed_proposal_ids" not in gate_calls[0]
+    assert len(validation_calls) == 1
+    assert validation_calls[0][2] == case.log_path
+    assert result["proposal_gate"]["proposal_id"] == validation_calls[0][4]
+    assert artifact.read_text(encoding="utf-8") == (
+        '{"value": "generated"}\n'
+    )
+
+
+def test_post_validation_candidate_stabilization_rejects_output_expansion(
+    tmp_path: Path,
+    monkeypatch,
+):
+    case = _post_validation_stabilization_case(tmp_path)
+    (case.repo / "artifact.json").write_text(
+        '{"value": "generated"}\n',
+        encoding="utf-8",
+    )
+    (case.repo / "README.md").write_text(
+        "validation changed an undeclared output\n",
+        encoding="utf-8",
+    )
+
+    def must_not_run(*args, **kwargs):
+        raise AssertionError("outside-output mutation must not be dispatched")
+
+    monkeypatch.setattr(
+        case.daemon,
+        "_validate_implementation_patch",
+        must_not_run,
+    )
+    monkeypatch.setattr(
+        case.daemon,
+        "_run_validation_commands",
+        must_not_run,
+    )
+
+    result = case.daemon._restore_and_verify_post_validation_candidate(
+        case.repo,
+        case.task,
+        baseline_ref=case.baseline,
+        proposal_validation=case.proposal_validation,
+        validation_result=case.passed_validation,
+        log_path=case.log_path,
+        allow_candidate_stabilization=True,
+    )
+
+    assert result["passed"] is False
+    assert result["returncode"] == 78
+    assert (
+        result["reason"]
+        == "candidate_stabilization_outside_output_scope"
+    )
+    assert result["candidate_stabilization"]["cycle_count"] == 0
+    assert result["candidate_stabilization"]["current_candidate_paths"] == [
+        "README.md",
+        "artifact.json",
+    ]
+
+
+def test_post_validation_candidate_stabilization_rejects_protected_path(
+    tmp_path: Path,
+    monkeypatch,
+):
+    case = _post_validation_stabilization_case(tmp_path)
+    (case.repo / "artifact.json").write_text(
+        '{"value": "generated"}\n',
+        encoding="utf-8",
+    )
+    case.daemon.implementation_protected_paths = ("artifact.json",)
+
+    def must_not_run(*args, **kwargs):
+        raise AssertionError("protected mutation must not be re-proposed")
+
+    monkeypatch.setattr(
+        case.daemon,
+        "_validate_implementation_patch",
+        must_not_run,
+    )
+    monkeypatch.setattr(
+        case.daemon,
+        "_run_validation_commands",
+        must_not_run,
+    )
+
+    result = case.daemon._restore_and_verify_post_validation_candidate(
+        case.repo,
+        case.task,
+        baseline_ref=case.baseline,
+        proposal_validation=case.proposal_validation,
+        validation_result=case.passed_validation,
+        log_path=case.log_path,
+        allow_candidate_stabilization=True,
+    )
+
+    assert result["passed"] is False
+    assert result["reason"] == "candidate_stabilization_protected_path"
+    assert result["candidate_stabilization"]["protected_paths"] == [
+        "artifact.json"
+    ]
+    assert result["candidate_stabilization"]["cycle_count"] == 0
+
+
+def test_post_validation_candidate_stabilization_rejects_fresh_gate(
+    tmp_path: Path,
+    monkeypatch,
+):
+    case = _post_validation_stabilization_case(tmp_path)
+    (case.repo / "artifact.json").write_text(
+        '{"value": "generated"}\n',
+        encoding="utf-8",
+    )
+    gate_calls = []
+
+    def reject_reproposal(workspace_path, task, **kwargs):
+        gate_calls.append((workspace_path, task.task_id, dict(kwargs)))
+        return SimpleNamespace(
+            accepted=False,
+            proposal=case.proposal_validation.proposal,
+            policy=case.proposal_validation.policy,
+            receipt=case.proposal_validation.receipt,
+            findings=(),
+        )
+
+    def must_not_run(*args, **kwargs):
+        raise AssertionError("a rejected fresh proposal must not be dispatched")
+
+    monkeypatch.setattr(
+        case.daemon,
+        "_validate_implementation_patch",
+        reject_reproposal,
+    )
+    monkeypatch.setattr(
+        case.daemon,
+        "_run_validation_commands",
+        must_not_run,
+    )
+
+    result = case.daemon._restore_and_verify_post_validation_candidate(
+        case.repo,
+        case.task,
+        baseline_ref=case.baseline,
+        proposal_validation=case.proposal_validation,
+        validation_result=case.passed_validation,
+        log_path=case.log_path,
+        allow_candidate_stabilization=True,
+    )
+
+    assert result["passed"] is False
+    assert result["reason"] == "candidate_stabilization_reproposal_failed"
+    assert len(gate_calls) == 1
+    assert gate_calls[0][2] == {
+        "baseline_ref": case.baseline,
+        "allow_scope_adjudication": False,
+    }
+    assert (
+        result["candidate_stabilization"]["refreshed_proposal_gate"][
+            "accepted"
+        ]
+        is False
+    )
+
+
+def test_post_validation_candidate_stabilization_real_secret_is_not_dispatched(
+    tmp_path: Path,
+    monkeypatch,
+):
+    case = _post_validation_stabilization_case(tmp_path)
+    (case.repo / "artifact.json").write_text(
+        '{"api_key": "concrete-production-credential-12345"}\n',
+        encoding="utf-8",
+    )
+    validation_calls = []
+
+    def must_not_run(*args, **kwargs):
+        validation_calls.append((args, kwargs))
+        raise AssertionError("secret-bearing proposals must not be dispatched")
+
+    monkeypatch.setattr(
+        case.daemon,
+        "_run_validation_commands",
+        must_not_run,
+    )
+
+    result = case.daemon._restore_and_verify_post_validation_candidate(
+        case.repo,
+        case.task,
+        baseline_ref=case.baseline,
+        proposal_validation=case.proposal_validation,
+        validation_result=case.passed_validation,
+        log_path=case.log_path,
+        allow_candidate_stabilization=True,
+    )
+
+    assert result["passed"] is False
+    assert result["reason"] == "candidate_stabilization_reproposal_failed"
+    assert validation_calls == []
+    refreshed_gate = result["proposal_gate"]
+    assert refreshed_gate["accepted"] is False
+    assert "secret_change_forbidden" in refreshed_gate["reason_codes"]
+    assert (
+        result["candidate_stabilization"]["refreshed_proposal_gate"]
+        == refreshed_gate
+    )
+
+
+def test_post_validation_candidate_stabilization_is_nonrecursive(
+    tmp_path: Path,
+    monkeypatch,
+):
+    case = _post_validation_stabilization_case(tmp_path)
+    artifact = case.repo / "artifact.json"
+    artifact.write_text('{"value": "generated-once"}\n', encoding="utf-8")
+    validation_calls = []
+
+    def rerun(
+        workspace_path,
+        task,
+        log_path,
+        *,
+        state=None,
+        proposal_validation=None,
+    ):
+        validation_calls.append(proposal_validation.proposal.proposal_id)
+        artifact.write_text(
+            '{"value": "generated-twice"}\n',
+            encoding="utf-8",
+        )
+        (workspace_path / "README.md").write_text(
+            "second-run protected and outside-output drift\n",
+            encoding="utf-8",
+        )
+        return {
+            "attempted": True,
+            "passed": True,
+            "returncode": 0,
+            "results": [],
+            "proposal_gate": case.daemon._compact_proposal_validation(
+                proposal_validation
+            ),
+        }
+
+    case.daemon.implementation_protected_paths = ("README.md",)
+    monkeypatch.setattr(case.daemon, "_run_validation_commands", rerun)
+
+    result = case.daemon._restore_and_verify_post_validation_candidate(
+        case.repo,
+        case.task,
+        baseline_ref=case.baseline,
+        proposal_validation=case.proposal_validation,
+        validation_result=case.passed_validation,
+        log_path=case.log_path,
+        allow_candidate_stabilization=True,
+    )
+
+    assert result["passed"] is False
+    assert result["reason"] == "candidate_stabilization_nonconvergent"
+    assert result["candidate_binding"]["verified"] is False
+    assert result["candidate_stabilization"]["cycle_count"] == 1
+    assert len(validation_calls) == 1
+    assert artifact.read_text(encoding="utf-8") == (
+        '{"value": "generated-twice"}\n'
+    )
+
+
+def test_post_validation_candidate_collection_error_never_stabilizes(
+    tmp_path: Path,
+    monkeypatch,
+):
+    case = _post_validation_stabilization_case(tmp_path)
+    (case.repo / "artifact.json").write_text(
+        '{"value": "generated"}\n',
+        encoding="utf-8",
+    )
+
+    def collection_failure(*args, **kwargs):
+        raise RuntimeError("candidate collection unavailable")
+
+    def must_not_run(*args, **kwargs):
+        raise AssertionError("collection failures must not be retried")
+
+    monkeypatch.setattr(
+        case.daemon,
+        "_collect_proposal_candidate_diff",
+        collection_failure,
+    )
+    monkeypatch.setattr(
+        case.daemon,
+        "_validate_implementation_patch",
+        must_not_run,
+    )
+    monkeypatch.setattr(
+        case.daemon,
+        "_run_validation_commands",
+        must_not_run,
+    )
+
+    result = case.daemon._restore_and_verify_post_validation_candidate(
+        case.repo,
+        case.task,
+        baseline_ref=case.baseline,
+        proposal_validation=case.proposal_validation,
+        validation_result=case.passed_validation,
+        log_path=case.log_path,
+        allow_candidate_stabilization=True,
+    )
+
+    assert result["passed"] is False
+    assert result["reason"] == "candidate_changed_during_validation"
+    assert result["candidate_binding"]["collection_error"] == "RuntimeError"
+    assert "candidate_stabilization" not in result
+
+
+def test_post_validation_candidate_stabilization_call_site_policy():
+    source = Path(implementation_daemon_module.__file__).read_text(
+        encoding="utf-8"
+    )
+    tree = ast.parse(source)
+    daemon_class = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.ClassDef)
+        and node.name == "PortalImplementationDaemon"
+    )
+    policies = {}
+    for method in daemon_class.body:
+        if not isinstance(
+            method,
+            (ast.FunctionDef, ast.AsyncFunctionDef),
+        ):
+            continue
+        values = []
+        for node in ast.walk(method):
+            if not (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr
+                == "_restore_and_verify_post_validation_candidate"
+            ):
+                continue
+            keyword = next(
+                item
+                for item in node.keywords
+                if item.arg == "allow_candidate_stabilization"
+            )
+            assert isinstance(keyword.value, ast.Constant)
+            values.append(keyword.value.value)
+        if values:
+            policies[method.name] = values
+
+    assert policies == {
+        "_run_implementation": [True],
+        "reconcile_validated_worktree_candidate": [False],
+        "_run_implementation_in_ephemeral_worktree": [True, True],
+    }
 
 
 def test_implementation_proposal_accepts_exact_task_declared_and_chain(

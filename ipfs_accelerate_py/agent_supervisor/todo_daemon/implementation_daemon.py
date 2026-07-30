@@ -7200,6 +7200,10 @@ class PortalImplementationDaemon:
                             baseline_ref=baseline_ref,
                             proposal_validation=proposal_validation,
                             validation_result=validation_result,
+                            log_path=log_path,
+                            state=state,
+                            attempt=attempt,
+                            allow_candidate_stabilization=True,
                         )
                     )
                     if not validation_result.get("passed", False):
@@ -11214,6 +11218,10 @@ class PortalImplementationDaemon:
                         baseline_ref=resolved_baseline,
                         proposal_validation=proposal_validation,
                         validation_result=validation_result,
+                        log_path=log_path,
+                        state=state,
+                        attempt=attempt,
+                        allow_candidate_stabilization=False,
                     )
                 )
                 protected_path_violation = (
@@ -11877,6 +11885,10 @@ class PortalImplementationDaemon:
                                 baseline_ref=baseline_ref,
                                 proposal_validation=proposal_validation,
                                 validation_result=validation_result,
+                                log_path=log_path,
+                                state=state,
+                                attempt=attempt,
+                                allow_candidate_stabilization=True,
                             )
                         )
                 if not protected_path_violation:
@@ -12195,6 +12207,10 @@ class PortalImplementationDaemon:
                                 baseline_ref=baseline_ref,
                                 proposal_validation=proposal_validation,
                                 validation_result=validation_result,
+                                log_path=log_path,
+                                state=state,
+                                attempt=attempt,
+                                allow_candidate_stabilization=True,
                             )
                         )
                     if not protected_path_violation:
@@ -18541,8 +18557,20 @@ class PortalImplementationDaemon:
         baseline_ref: str,
         proposal_validation: Any,
         validation_result: Mapping[str, Any],
+        log_path: Path | None = None,
+        state: PortalTaskState | None = None,
+        attempt: int = 0,
+        allow_candidate_stabilization: bool = False,
     ) -> dict[str, Any]:
-        """Restore safe validation output, then certify candidate identity."""
+        """Restore validation output and certify a bounded candidate fixed point.
+
+        A successful validation may deterministically rewrite an already
+        authorized output (for example, a checked-in generated manifest).
+        Selected fresh-candidate paths may admit that rewrite once, but only
+        after an exact-path scope check, a fresh proposal gate, and one complete
+        validation rerun.  Reconciliation deliberately leaves this disabled
+        because an existing committed candidate must remain immutable.
+        """
 
         result = dict(validation_result)
         if result.get("passed", False):
@@ -18566,28 +18594,335 @@ class PortalImplementationDaemon:
                             "validation_generated_artifact_restore_failed"
                         ),
                     }
-        return self._verify_post_validation_candidate_binding(
+        if not result.get("passed", False):
+            return result
+
+        binding, current_entries = (
+            self._inspect_post_validation_candidate_binding(
+                workspace_path,
+                task,
+                baseline_ref=baseline_ref,
+                proposal_validation=proposal_validation,
+            )
+        )
+        result["candidate_binding"] = binding
+        if binding["verified"]:
+            self._record_event(
+                "implementation_candidate_binding_verified",
+                {
+                    "task_id": task.task_id,
+                    **binding,
+                },
+            )
+            return result
+
+        collection_error = str(binding.get("collection_error") or "")
+        if (
+            not allow_candidate_stabilization
+            or collection_error
+            or log_path is None
+            or not bool(getattr(proposal_validation, "accepted", False))
+        ):
+            return self._reject_post_validation_candidate_binding(
+                task,
+                result=result,
+                binding=binding,
+            )
+
+        proposal = getattr(proposal_validation, "proposal", None)
+        expected_entries = tuple(
+            getattr(proposal, "candidate_diff", ()) or ()
+        )
+        expected_paths = self._proposal_candidate_paths(expected_entries)
+        current_paths = self._proposal_candidate_paths(current_entries)
+        mutation_paths = self._proposal_candidate_mutation_paths(
+            expected_entries,
+            current_entries,
+        )
+        stabilization = {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "post-validation-candidate-stabilization@1"
+            ),
+            "attempted": True,
+            "max_cycles": 1,
+            "cycle_count": 0,
+            "outcome": "started",
+            "original_proposal_id": str(
+                getattr(proposal, "proposal_id", "") or ""
+            ),
+            "initial_expected_fingerprint": str(
+                binding.get("expected_fingerprint") or ""
+            ),
+            "initial_current_fingerprint": str(
+                binding.get("current_fingerprint") or ""
+            ),
+            "mutation_paths": list(mutation_paths[:256]),
+            "proof_authoritative": False,
+            "completion_authoritative": False,
+        }
+        self._record_event(
+            "implementation_candidate_stabilization_started",
+            {
+                "task_id": task.task_id,
+                "attempt": int(attempt),
+                **stabilization,
+            },
+        )
+
+        protected_mutations = tuple(
+            path
+            for path in mutation_paths
+            if any(
+                self._path_matches_prefix(path, protected)
+                or self._path_matches_prefix(protected, path)
+                for protected in (
+                    str(item).strip("/")
+                    for item in self.implementation_protected_paths
+                )
+                if protected
+            )
+        )
+        if protected_mutations:
+            stabilization["protected_paths"] = list(
+                protected_mutations[:256]
+            )
+            return self._reject_post_validation_candidate_stabilization(
+                task,
+                attempt=attempt,
+                result=result,
+                binding=binding,
+                stabilization=stabilization,
+                reason="candidate_stabilization_protected_path",
+            )
+
+        declared_outputs = task_declared_output_paths(task)
+        paths_remain_exact = bool(
+            mutation_paths
+            and current_paths == expected_paths
+            and all(path in expected_paths for path in mutation_paths)
+        )
+        paths_are_declared = bool(
+            declared_outputs
+            and all(
+                any(
+                    self._path_matches_scope(path, declared)
+                    for declared in declared_outputs
+                )
+                for path in mutation_paths
+            )
+        )
+        if not paths_remain_exact or not paths_are_declared:
+            stabilization["original_candidate_paths"] = list(
+                expected_paths[:256]
+            )
+            stabilization["current_candidate_paths"] = list(
+                current_paths[:256]
+            )
+            return self._reject_post_validation_candidate_stabilization(
+                task,
+                attempt=attempt,
+                result=result,
+                binding=binding,
+                stabilization=stabilization,
+                reason="candidate_stabilization_outside_output_scope",
+            )
+
+        try:
+            refreshed_proposal = self._validate_implementation_patch(
+                workspace_path,
+                task,
+                baseline_ref=baseline_ref,
+                allow_scope_adjudication=False,
+            )
+        except Exception as exc:
+            stabilization["reproposal_error_type"] = type(exc).__name__
+            reproposal_result = dict(result)
+            reproposal_result.pop("proposal_gate", None)
+            return self._reject_post_validation_candidate_stabilization(
+                task,
+                attempt=attempt,
+                result=reproposal_result,
+                binding=binding,
+                stabilization=stabilization,
+                reason="candidate_stabilization_reproposal_failed",
+            )
+        refreshed_gate = self._compact_proposal_validation(
+            refreshed_proposal
+        )
+        stabilization["refreshed_proposal_gate"] = refreshed_gate
+        if not bool(getattr(refreshed_proposal, "accepted", False)):
+            return self._reject_post_validation_candidate_stabilization(
+                task,
+                attempt=attempt,
+                result={
+                    **result,
+                    "proposal_gate": refreshed_gate,
+                },
+                binding=binding,
+                stabilization=stabilization,
+                reason="candidate_stabilization_reproposal_failed",
+            )
+
+        stabilization["cycle_count"] = 1
+        rerun = self._run_validation_commands(
+            workspace_path,
+            task,
+            log_path,
+            state=state,
+            proposal_validation=refreshed_proposal,
+        )
+        rerun_result = dict(rerun)
+        if not rerun_result.get("passed", False):
+            stabilization["outcome"] = "validation_failed"
+            rerun_result["candidate_stabilization"] = stabilization
+            self._record_event(
+                "implementation_candidate_stabilization_finished",
+                {
+                    "task_id": task.task_id,
+                    "attempt": int(attempt),
+                    **stabilization,
+                },
+            )
+            return rerun_result
+
+        generated_restore = self._restore_post_validation_generated_artifacts(
+            workspace_path,
+            proposal_validation=refreshed_proposal,
+        )
+        if generated_restore:
+            rerun_result["generated_dirty_restore"] = generated_restore
+            if int(generated_restore.get("failed_count") or 0):
+                rerun_result.update(
+                    {
+                        "passed": False,
+                        "returncode": (
+                            PROPOSAL_VALIDATION_FAILURE_RETURN_CODE
+                        ),
+                        "reason": (
+                            "validation_generated_artifact_restore_failed"
+                        ),
+                        "error": (
+                            "validation_generated_artifact_restore_failed"
+                        ),
+                    }
+                )
+                stabilization["outcome"] = (
+                    "generated_artifact_restore_failed"
+                )
+                rerun_result["candidate_stabilization"] = stabilization
+                self._record_event(
+                    "implementation_candidate_stabilization_finished",
+                    {
+                        "task_id": task.task_id,
+                        "attempt": int(attempt),
+                        **stabilization,
+                    },
+                )
+                return rerun_result
+
+        final_binding, _ = self._inspect_post_validation_candidate_binding(
             workspace_path,
             task,
             baseline_ref=baseline_ref,
-            proposal_validation=proposal_validation,
-            validation_result=result,
+            proposal_validation=refreshed_proposal,
+        )
+        rerun_result["candidate_binding"] = final_binding
+        if not final_binding["verified"]:
+            return self._reject_post_validation_candidate_stabilization(
+                task,
+                attempt=attempt,
+                result=rerun_result,
+                binding=final_binding,
+                stabilization=stabilization,
+                reason="candidate_stabilization_nonconvergent",
+            )
+
+        stabilization["outcome"] = "stabilized"
+        rerun_result["candidate_stabilization"] = stabilization
+        self._record_event(
+            "implementation_candidate_binding_verified",
+            {
+                "task_id": task.task_id,
+                **final_binding,
+            },
+        )
+        self._record_event(
+            "implementation_candidate_stabilization_finished",
+            {
+                "task_id": task.task_id,
+                "attempt": int(attempt),
+                **stabilization,
+            },
+        )
+        return rerun_result
+
+    @staticmethod
+    def _proposal_candidate_paths(
+        entries: Sequence[Any],
+    ) -> tuple[str, ...]:
+        """Return the exact normalized paths represented by candidate entries."""
+
+        return tuple(
+            sorted(
+                {
+                    str(path).strip("/")
+                    for entry in entries
+                    for path in (
+                        getattr(entry, "old_path", ""),
+                        getattr(entry, "new_path", ""),
+                    )
+                    if str(path).strip("/")
+                }
+            )
         )
 
-    def _verify_post_validation_candidate_binding(
+    def _proposal_candidate_mutation_paths(
+        self,
+        expected_entries: Sequence[Any],
+        current_entries: Sequence[Any],
+    ) -> tuple[str, ...]:
+        """Return paths whose entry-level source identity changed."""
+
+        def entry_identities(
+            entries: Sequence[Any],
+        ) -> dict[tuple[str, str], str]:
+            return {
+                (
+                    str(getattr(entry, "old_path", "") or "").strip("/"),
+                    str(getattr(entry, "new_path", "") or "").strip("/"),
+                ): self._proposal_candidate_fingerprint((entry,))
+                for entry in entries
+            }
+
+        expected = entry_identities(expected_entries)
+        current = entry_identities(current_entries)
+        changed_keys = {
+            key
+            for key in set(expected) | set(current)
+            if expected.get(key) != current.get(key)
+        }
+        return tuple(
+            sorted(
+                {
+                    path
+                    for key in changed_keys
+                    for path in key
+                    if path
+                }
+            )
+        )
+
+    def _inspect_post_validation_candidate_binding(
         self,
         workspace_path: Path,
         task: PortalTask,
         *,
         baseline_ref: str,
         proposal_validation: Any,
-        validation_result: Mapping[str, Any],
-    ) -> dict[str, Any]:
-        """Fail closed if validation changed the proposal-authorized candidate."""
+    ) -> tuple[dict[str, Any], tuple[Any, ...]]:
+        """Inspect candidate identity without recording a terminal decision."""
 
-        result = dict(validation_result)
-        if not result.get("passed", False):
-            return result
         proposal = getattr(proposal_validation, "proposal", None)
         expected_entries = tuple(
             getattr(proposal, "candidate_diff", ()) or ()
@@ -18596,6 +18931,7 @@ class PortalImplementationDaemon:
             expected_entries
         )
         collection_error = ""
+        current_entries: tuple[Any, ...] = ()
         try:
             current_entries, _ = self._collect_proposal_candidate_diff(
                 workspace_path,
@@ -18620,27 +18956,110 @@ class PortalImplementationDaemon:
         }
         if collection_error:
             binding["collection_error"] = collection_error
-        result["candidate_binding"] = binding
+        return binding, tuple(current_entries)
+
+    def _reject_post_validation_candidate_binding(
+        self,
+        task: PortalTask,
+        *,
+        result: Mapping[str, Any],
+        binding: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Record and return the existing strict candidate-binding failure."""
+
         self._record_event(
-            (
-                "implementation_candidate_binding_verified"
-                if verified
-                else "implementation_candidate_binding_rejected"
-            ),
+            "implementation_candidate_binding_rejected",
             {
                 "task_id": task.task_id,
-                **binding,
+                **dict(binding),
             },
         )
-        if verified:
-            return result
         return {
-            **result,
+            **dict(result),
+            "candidate_binding": dict(binding),
             "passed": False,
             "returncode": PROPOSAL_VALIDATION_FAILURE_RETURN_CODE,
             "reason": "candidate_changed_during_validation",
             "error": "proposal_candidate_binding_failed",
         }
+
+    def _reject_post_validation_candidate_stabilization(
+        self,
+        task: PortalTask,
+        *,
+        attempt: int,
+        result: Mapping[str, Any],
+        binding: Mapping[str, Any],
+        stabilization: Mapping[str, Any],
+        reason: str,
+    ) -> dict[str, Any]:
+        """Record one terminal, fail-closed stabilization decision."""
+
+        projection = {
+            **dict(stabilization),
+            "outcome": reason,
+        }
+        self._record_event(
+            "implementation_candidate_binding_rejected",
+            {
+                "task_id": task.task_id,
+                "reason": reason,
+                **dict(binding),
+            },
+        )
+        self._record_event(
+            "implementation_candidate_stabilization_finished",
+            {
+                "task_id": task.task_id,
+                "attempt": int(attempt),
+                **projection,
+            },
+        )
+        return {
+            **dict(result),
+            "candidate_binding": dict(binding),
+            "candidate_stabilization": projection,
+            "passed": False,
+            "returncode": PROPOSAL_VALIDATION_FAILURE_RETURN_CODE,
+            "reason": reason,
+            "error": "proposal_candidate_stabilization_failed",
+        }
+
+    def _verify_post_validation_candidate_binding(
+        self,
+        workspace_path: Path,
+        task: PortalTask,
+        *,
+        baseline_ref: str,
+        proposal_validation: Any,
+        validation_result: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Fail closed if validation changed the proposal-authorized candidate."""
+
+        result = dict(validation_result)
+        if not result.get("passed", False):
+            return result
+        binding, _ = self._inspect_post_validation_candidate_binding(
+            workspace_path,
+            task,
+            baseline_ref=baseline_ref,
+            proposal_validation=proposal_validation,
+        )
+        result["candidate_binding"] = binding
+        if binding["verified"]:
+            self._record_event(
+                "implementation_candidate_binding_verified",
+                {
+                    "task_id": task.task_id,
+                    **binding,
+                },
+            )
+            return result
+        return self._reject_post_validation_candidate_binding(
+            task,
+            result=result,
+            binding=binding,
+        )
 
     def _apply_implementation_failure_review(
         self,
