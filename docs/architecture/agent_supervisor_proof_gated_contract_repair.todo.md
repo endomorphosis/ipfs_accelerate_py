@@ -1284,7 +1284,7 @@ consumer or frontier is unresolved.
 
 ## RPR-040 Materialize plan-bound multi-edit packets
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
