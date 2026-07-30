@@ -9586,6 +9586,7 @@ def generate_text(
     provider_instance: Optional[LLMProvider] = None,
     deps: Optional[RouterDeps] = None,
     allow_local_fallback: bool = True,
+    allow_provider_fallback: bool = True,
     usage_coordinator: Optional[object] = None,
     usage_policy: Optional[object] = None,
     usage_candidates: Optional[Sequence[object]] = None,
@@ -9813,7 +9814,7 @@ def generate_text(
             provider is not None
             and pinned_provider in _UNPINNED_OPTIONAL_PROVIDER_ORDER
         )
-        if provider is None or pinned_optional:
+        if allow_provider_fallback and (provider is None or pinned_optional):
             for fallback_name, fallback_provider in _iter_unpinned_optional_providers():
                 if fallback_provider is backend:
                     continue
@@ -9865,7 +9866,7 @@ def generate_text(
                 except Exception:
                     pass
 
-        if pinned_optional:
+        if allow_provider_fallback and pinned_optional:
             try:
                 accelerate_provider = _get_accelerate_provider(resolved_deps)
                 if accelerate_provider is not None and accelerate_provider is not backend:

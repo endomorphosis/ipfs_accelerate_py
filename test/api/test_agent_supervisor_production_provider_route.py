@@ -361,10 +361,11 @@ def test_mcpplusplus_provider_pins_route_and_rejects_fallback(
     assert arguments["model"] == "grok-4.5"
     assert arguments["allow_fallback"] is False
     assert arguments["response_schema"]["required"] == ["proposal"]
-    assert (
-        arguments["response_schema"]["properties"]["proposal"]["anyOf"]
-        == [{"required": ["patch"]}, {"required": ["files"]}]
-    )
+    proposal_branches = arguments["response_schema"]["properties"]["proposal"]["anyOf"]
+    assert proposal_branches[0]["required"] == ["patch", "declared_paths"]
+    assert proposal_branches[0]["additionalProperties"] is False
+    assert proposal_branches[1]["required"] == ["files", "declared_paths"]
+    assert proposal_branches[1]["additionalProperties"] is False
     assert provider.last_session_identity
 
     envelope["result"]["receipt"]["fallback"]["used"] = True
@@ -393,13 +394,33 @@ def test_mcpplusplus_codex_review_schema_is_strict_output_compatible() -> None:
 
     assert schema["required"] == ["decision", "findings", "proposal"]
     proposal_union = schema["properties"]["proposal"]["anyOf"]
-    assert proposal_union[1] == {"type": "null"}
+    assert proposal_union[-1] == {"type": "null"}
     assert proposal_union[0]["required"] == [
         "patch",
+        "declared_paths",
+    ]
+    assert proposal_union[1]["required"] == [
         "files",
         "declared_paths",
     ]
     assert_strict_objects(schema)
+
+
+def test_codex_review_schema_is_strict_and_nullable() -> None:
+    schema = _production_provider_response_schema(ProviderRole.CODEX_REVIEW)
+
+    assert schema["required"] == ["decision", "findings", "proposal"]
+    proposal = schema["properties"]["proposal"]
+    assert proposal["anyOf"][-1] == {"type": "null"}
+    for branch in proposal["anyOf"][:-1]:
+        assert branch["type"] == "object"
+        assert branch["additionalProperties"] is False
+        assert set(branch["required"]) == set(branch["properties"])
+        files = branch["properties"].get("files")
+        if files is not None:
+            replacement = files["items"]
+            assert replacement["additionalProperties"] is False
+            assert set(replacement["required"]) == set(replacement["properties"])
 
 
 def test_production_model_assisted_invokes_only_typed_packet_route(

@@ -519,61 +519,44 @@ def _production_provider_response_schema(
         "required": ["path", "content"],
         "additionalProperties": False,
     }
-    proposal = {
+    declared_paths = {
+        "type": "array",
+        "maxItems": 64,
+        "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1024,
+        },
+    }
+    patch_proposal = {
         "type": "object",
         "properties": {
             "patch": {"type": "string", "minLength": 1, "maxLength": 262144},
+            "declared_paths": declared_paths,
+        },
+        "required": ["patch", "declared_paths"],
+        "additionalProperties": False,
+    }
+    files_proposal = {
+        "type": "object",
+        "properties": {
             "files": {
                 "type": "array",
                 "minItems": 1,
                 "maxItems": 64,
                 "items": replacement,
             },
-            "declared_paths": {
-                "type": "array",
-                "maxItems": 64,
-                "items": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 1024,
-                },
-            },
+            "declared_paths": declared_paths,
         },
-        "anyOf": [
-            {"required": ["patch"]},
-            {"required": ["files"]},
-        ],
+        "required": ["files", "declared_paths"],
         "additionalProperties": False,
     }
+    proposal = {"anyOf": [patch_proposal, files_proposal]}
     if role is ProviderRole.CODEX_REVIEW:
         # Codex strict structured output requires every property of every
         # object schema to be required.  Preserve the semantic optionality of
         # a repair proposal with an explicit null branch: an approval/rejection
-        # returns null, while repair/replace returns the fully shaped object.
-        # Empty patch/files values are only transport sentinels; the existing
-        # admission policy still rejects an unusable repair proposal.
-        codex_proposal = {
-            "type": "object",
-            "properties": {
-                "patch": {"type": "string", "maxLength": 262144},
-                "files": {
-                    "type": "array",
-                    "maxItems": 64,
-                    "items": replacement,
-                },
-                "declared_paths": {
-                    "type": "array",
-                    "maxItems": 64,
-                    "items": {
-                        "type": "string",
-                        "minLength": 1,
-                        "maxLength": 1024,
-                    },
-                },
-            },
-            "required": ["patch", "files", "declared_paths"],
-            "additionalProperties": False,
-        }
+        # returns null, while repair/replace returns one fully shaped branch.
         return {
             "type": "object",
             "properties": {
@@ -593,10 +576,7 @@ def _production_provider_response_schema(
                     "items": {"type": "string", "maxLength": 4096},
                 },
                 "proposal": {
-                    "anyOf": [
-                        codex_proposal,
-                        {"type": "null"},
-                    ],
+                    "anyOf": [patch_proposal, files_proposal, {"type": "null"}],
                 },
             },
             "required": ["decision", "findings", "proposal"],
