@@ -116,7 +116,14 @@ def test_packet_decision_mismatch_and_abstention_fail_closed() -> None:
     assert PreProviderGateReason.PACKET_DECISION_MISMATCH in ContractRepairPreProviderGate().validate(**values)  # type: ignore[arg-type]
 
     result, *_ = admitted()
-    rejected = replace(result.decision, disposition="rejected", strategy="reject", selected_candidate_id="", permitted_write_paths=())
+    rejected = replace(
+        result.decision,
+        disposition="rejected",
+        strategy="reject",
+        selected_candidate_id="",
+        permitted_read_paths=(),
+        permitted_write_paths=(),
+    )
     assert PreProviderGateReason.AMBIGUOUS_OR_ABSTAINED in ContractRepairPreProviderGate().validate(
         **valid_kwargs(decision=rejected)  # type: ignore[arg-type]
     )

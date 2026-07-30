@@ -544,7 +544,13 @@ class MemorySafetyFacet(CanonicalContract):
 
 @dataclass(frozen=True)
 class RepairCandidate(CanonicalContract):
-    """A nominated target carrying no write authority of its own."""
+    """A nominated target carrying no path authority of its own.
+
+    The two path fields are retained as ``@1`` compatibility sentinels and
+    must remain empty.  ``target_span`` nominates a location; only a replayed
+    repository authority may later grant that location read/write scope in a
+    :class:`RepairTargetDecision`.
+    """
 
     SCHEMA: ClassVar[str] = REPAIR_CANDIDATE_SCHEMA
 
@@ -568,8 +574,10 @@ class RepairCandidate(CanonicalContract):
         object.__setattr__(self, "permitted_read_paths", _paths(self.permitted_read_paths, "permitted_read_paths"))
         object.__setattr__(self, "candidate_write_paths", _paths(self.candidate_write_paths, "candidate_write_paths"))
         object.__setattr__(self, "rejection_reasons", _ids(self.rejection_reasons, "rejection_reasons"))
-        if self.strategy in {RepairStrategy.REJECT, RepairStrategy.AMBIGUOUS} and self.candidate_write_paths:
-            raise ContractRepairAuthorityError("reject and ambiguous candidates cannot propose writes")
+        if self.permitted_read_paths or self.candidate_write_paths:
+            raise ContractRepairAuthorityError(
+                "repair candidates cannot grant read or write path authority"
+            )
         _bounded(self, "repair candidate")
 
     def _payload(self) -> dict[str, Any]:
@@ -673,10 +681,22 @@ class RepairTargetDecision(CanonicalContract):
                 raise ContractRepairAuthorityError("decision strategy must equal selected candidate strategy")
             if not self.proof_refs:
                 raise ContractRepairAuthorityError("an admitted decision requires proof references")
-            if not set(self.permitted_write_paths).issubset(selected.candidate_write_paths):
-                raise ContractRepairAuthorityError("write paths must be derived from the selected candidate")
-        elif self.selected_candidate_id or self.permitted_write_paths:
-            raise ContractRepairAuthorityError("non-admitted decisions cannot select a target or grant writes")
+            exact_target_paths = (selected.target_span.path,)
+            if (
+                self.permitted_read_paths != exact_target_paths
+                or self.permitted_write_paths != exact_target_paths
+            ):
+                raise ContractRepairAuthorityError(
+                    "decision read and write paths must exactly equal the selected target path"
+                )
+        elif (
+            self.selected_candidate_id
+            or self.permitted_read_paths
+            or self.permitted_write_paths
+        ):
+            raise ContractRepairAuthorityError(
+                "non-admitted decisions cannot select a target or grant path authority"
+            )
         if self.disposition is not DecisionDisposition.ADMITTED and self.strategy not in {RepairStrategy.REJECT, RepairStrategy.AMBIGUOUS}:
             raise ContractRepairError("non-admitted decisions must use reject or ambiguous strategy")
         _bounded(self, "repair target decision")

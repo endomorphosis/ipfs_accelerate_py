@@ -51,6 +51,7 @@ class AdmissionInvalidator(str, Enum):
     READ_ONLY_PATH = "read_only_path"
     PROOF_DOWNGRADE = "proof_downgrade"
     CANDIDATE_SET_MUTATION = "candidate_set_mutation"
+    REPOSITORY_AUTHORITY_CHANGED = "repository_authority_changed"
     RANK_TIE = "rank_tie"
     LOW_MARGIN = "low_margin"
     EXPIRED = "expired"
@@ -547,12 +548,12 @@ class RepairTargetAdmission:
             reasons.add(AdmissionInvalidator.ROOT_CHANGED.value)
         if authority.target_span != candidate.target_span:
             reasons.add("selected_target_span_mismatch")
-        # ``RepairTargetDecision@1`` retains a legacy subset check against
-        # candidate_write_paths.  It cannot be allowed to choose the path:
-        # require exact equality with repository authority before satisfying
-        # that schema-level compatibility condition.
-        if candidate.candidate_write_paths != authority.permitted_write_paths:
-            reasons.add("candidate_write_path_not_exactly_repository_derived")
+        exact_target_paths = (candidate.target_span.path,)
+        if (
+            authority.permitted_read_paths != exact_target_paths
+            or authority.permitted_write_paths != exact_target_paths
+        ):
+            reasons.add("repository_authority_path_not_exact_target")
         if not authority.target_exists:
             reasons.add(AdmissionInvalidator.TARGET_MISSING.value)
         if authority.read_only:
@@ -796,11 +797,33 @@ class RepairTargetDecisionValidator:
                 invalid.add(AdmissionInvalidator.CANDIDATE_SET_MUTATION)
             elif (
                 authority.read_only
+                or authority.permitted_read_paths
+                != (selected.target_span.path,)
+                or authority.permitted_write_paths
+                != (selected.target_span.path,)
                 or authority.permitted_read_paths != decision.permitted_read_paths
                 or authority.permitted_write_paths != decision.permitted_write_paths
-                or selected.candidate_write_paths != authority.permitted_write_paths
+                or result.permitted_read_spans != authority.permitted_read_spans
+                or result.permitted_write_spans != authority.permitted_write_spans
             ):
                 invalid.add(AdmissionInvalidator.READ_ONLY_PATH)
+        if (
+            candidate_set_id == decision.candidate_set_id
+            and rerank_receipt.roots == roots
+            and rerank_receipt.receipt_id == result.audit.rerank_receipt_id
+        ):
+            try:
+                replayed = RepairTargetAdmission().admit(
+                    rows,
+                    rerank_receipt,
+                    authorities,
+                    expiry=result.expiry,
+                )
+            except (RepairTargetAdmissionError, ValueError):
+                invalid.add(AdmissionInvalidator.REPOSITORY_AUTHORITY_CHANGED)
+            else:
+                if replayed != result:
+                    invalid.add(AdmissionInvalidator.REPOSITORY_AUTHORITY_CHANGED)
         return tuple(sorted(invalid, key=lambda item: item.value))
 
     def is_valid(self, *args: object, **kwargs: object) -> bool:

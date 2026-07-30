@@ -122,19 +122,25 @@ def test_decision_requires_complete_candidate_identity_and_derived_write_paths(
         roots, span, "symbol:caller", "missing", TraceDisposition.MISSING_LOCAL,
         evidence_refs=(evidence,),
     )
+    target = SourceSpan("pkg/receiver.py", 0, 1, "blob:receiver")
     candidate = RepairCandidate(
-        roots, trace.content_id, RepairStrategy.NEW_IMPLEMENTATION, span, (evidence,),
-        proof_refs=(evidence,), permitted_read_paths=("pkg/caller.py",),
-        candidate_write_paths=("pkg/receiver.py",),
+        roots,
+        trace.content_id,
+        RepairStrategy.NEW_IMPLEMENTATION,
+        target,
+        (evidence,),
+        proof_refs=(evidence,),
     )
     set_id = candidate_set_identity((candidate,))
 
     decision = RepairTargetDecision(
         roots, (candidate,), set_id, DecisionDisposition.ADMITTED,
         RepairStrategy.NEW_IMPLEMENTATION, candidate.content_id,
-        permitted_read_paths=("pkg/caller.py",), permitted_write_paths=("pkg/receiver.py",),
+        permitted_read_paths=("pkg/receiver.py",), permitted_write_paths=("pkg/receiver.py",),
         evidence_refs=(evidence,), proof_refs=(evidence,), invalidation_refs=("tree:one",),
     )
+    assert candidate.permitted_read_paths == candidate.candidate_write_paths == ()
+    assert decision.permitted_read_paths == ("pkg/receiver.py",)
     assert decision.permitted_write_paths == ("pkg/receiver.py",)
     assert RepairTargetDecision.from_dict(decision.to_record()) == decision
 
@@ -142,20 +148,55 @@ def test_decision_requires_complete_candidate_identity_and_derived_write_paths(
         RepairTargetDecision(
             roots, (candidate,), "candidate-set:forged", DecisionDisposition.ADMITTED,
             RepairStrategy.NEW_IMPLEMENTATION, candidate.content_id,
+            permitted_read_paths=("pkg/receiver.py",),
             permitted_write_paths=("pkg/receiver.py",), evidence_refs=(evidence,),
             proof_refs=(evidence,), invalidation_refs=("tree:one",),
         )
 
-    with pytest.raises(ContractRepairAuthorityError, match="derived"):
+    with pytest.raises(ContractRepairAuthorityError, match="selected target path"):
         RepairTargetDecision(
             roots, (candidate,), set_id, DecisionDisposition.ADMITTED,
             RepairStrategy.NEW_IMPLEMENTATION, candidate.content_id,
+            permitted_read_paths=("pkg/receiver.py",),
             permitted_write_paths=("pkg/not-authorized.py",), evidence_refs=(evidence,),
             proof_refs=(evidence,), invalidation_refs=("tree:one",),
         )
 
+    with pytest.raises(ContractRepairAuthorityError, match="selected target path"):
+        RepairTargetDecision(
+            roots, (candidate,), set_id, DecisionDisposition.ADMITTED,
+            RepairStrategy.NEW_IMPLEMENTATION, candidate.content_id,
+            permitted_read_paths=("pkg/not-authorized.py",),
+            permitted_write_paths=("pkg/receiver.py",), evidence_refs=(evidence,),
+            proof_refs=(evidence,), invalidation_refs=("tree:one",),
+        )
 
-def test_nonadmitted_decisions_cannot_select_or_grant_writes(
+
+def test_candidates_cannot_carry_path_authority(
+    roots: AuthorityRoots, span: SourceSpan, evidence: EvidenceReference
+) -> None:
+    with pytest.raises(ContractRepairAuthorityError, match="cannot grant"):
+        RepairCandidate(
+            roots,
+            "trace:one",
+            RepairStrategy.NEW_IMPLEMENTATION,
+            span,
+            (evidence,),
+            permitted_read_paths=("pkg/caller.py",),
+        )
+
+    with pytest.raises(ContractRepairAuthorityError, match="cannot grant"):
+        RepairCandidate(
+            roots,
+            "trace:one",
+            RepairStrategy.NEW_IMPLEMENTATION,
+            span,
+            (evidence,),
+            candidate_write_paths=("pkg/caller.py",),
+        )
+
+
+def test_nonadmitted_decisions_cannot_select_or_grant_path_authority(
     roots: AuthorityRoots, span: SourceSpan, evidence: EvidenceReference
 ) -> None:
     candidate = RepairCandidate(
@@ -166,4 +207,12 @@ def test_nonadmitted_decisions_cannot_select_or_grant_writes(
             roots, (candidate,), candidate_set_identity((candidate,)),
             DecisionDisposition.ABSTAINED, RepairStrategy.AMBIGUOUS,
             candidate.content_id, evidence_refs=(evidence,), invalidation_refs=("tree:one",),
+        )
+
+    with pytest.raises(ContractRepairAuthorityError):
+        RepairTargetDecision(
+            roots, (candidate,), candidate_set_identity((candidate,)),
+            DecisionDisposition.ABSTAINED, RepairStrategy.AMBIGUOUS,
+            permitted_read_paths=("pkg/caller.py",),
+            evidence_refs=(evidence,), invalidation_refs=("tree:one",),
         )

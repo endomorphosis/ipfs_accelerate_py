@@ -54,8 +54,6 @@ def candidate(
         strategy,
         SourceSpan(f"pkg/{name}.py", 4, 12, f"blob:{name}"),
         (ref("candidate", f"candidate:{name}"),),
-        permitted_read_paths=("untrusted/candidate-suggestion.py",),
-        candidate_write_paths=(f"pkg/{name}.py",),
     )
 
 
@@ -117,6 +115,7 @@ def test_admits_one_exact_target_with_authority_derived_paths_spans_and_expiry()
 
     assert result.decision.disposition is DecisionDisposition.ADMITTED
     assert result.decision.strategy is RepairStrategy.NEW_IMPLEMENTATION
+    assert item.permitted_read_paths == item.candidate_write_paths == ()
     assert result.decision.permitted_read_paths == ("pkg/receiver.py",)
     assert result.decision.permitted_write_paths == ("pkg/receiver.py",)
     assert result.permitted_read_spans == (item.target_span,)
@@ -167,6 +166,59 @@ def test_candidate_set_mutation_and_read_only_target_reject_without_writes() -> 
     )
     assert result.decision.disposition is DecisionDisposition.REJECTED
     assert result.decision.write_paths == ()
+
+
+def test_unrelated_target_authority_rejects_and_contextual_replay_detects_drift() -> None:
+    item = candidate("receiver")
+    candidates = (item,)
+    rerank = receipt(candidates)
+    expiry = DecisionExpiry(100, 200)
+    repository_authority = authority(item, candidates)
+    result = RepairTargetAdmission().admit(
+        candidates, rerank, (repository_authority,), expiry=expiry
+    )
+    validator = RepairTargetDecisionValidator()
+
+    unrelated = SourceSpan("pkg/unrelated.py", 1, 2, "blob:unrelated")
+    unrelated_authority = TargetRepositoryAuthority(
+        ROOTS,
+        candidate_set_identity(candidates),
+        item.content_id,
+        unrelated,
+        (unrelated,),
+        (unrelated,),
+        (ref("repository_authority", "authority:unrelated"),),
+    )
+    rejected = RepairTargetAdmission().admit(
+        candidates, rerank, (unrelated_authority,), expiry=expiry
+    )
+    assert rejected.decision.disposition is DecisionDisposition.REJECTED
+    assert rejected.decision.read_paths == rejected.decision.write_paths == ()
+    invalid = validator.validate(
+        result,
+        roots=ROOTS,
+        candidates=candidates,
+        rerank_receipt=rerank,
+        authorities=(unrelated_authority,),
+        now=150,
+    )
+    assert AdmissionInvalidator.TARGET_MISSING in invalid
+    assert AdmissionInvalidator.REPOSITORY_AUTHORITY_CHANGED in invalid
+
+    changed_evidence = authority(
+        item,
+        candidates,
+        evidence_refs=(ref("repository_authority", "authority:changed"),),
+    )
+    invalid = validator.validate(
+        result,
+        roots=ROOTS,
+        candidates=candidates,
+        rerank_receipt=rerank,
+        authorities=(changed_evidence,),
+        now=150,
+    )
+    assert AdmissionInvalidator.REPOSITORY_AUTHORITY_CHANGED in invalid
 
 
 def test_tie_low_margin_and_runtime_drift_invalidate_or_abstain() -> None:

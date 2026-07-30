@@ -86,7 +86,6 @@ def packet():
         ROOTS, trace.content_id, RepairStrategy.NEW_IMPLEMENTATION,
         SourceSpan("pkg/receiver.py", 0, 10, "blob:receiver"),
         (ref("candidate", "candidate:one"),), proof_refs=(ref("proof", "candidate-proof:one"),),
-        candidate_write_paths=("pkg/receiver.py",),
     )
     candidates = (candidate,)
     receipt = RerankReceipt(
