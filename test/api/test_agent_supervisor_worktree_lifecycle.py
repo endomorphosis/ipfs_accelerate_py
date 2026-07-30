@@ -289,6 +289,65 @@ def test_duplicate_attempt_rejected_while_owner_alive(tmp_path: Path) -> None:
         )
 
 
+def test_duplicate_attempts_do_not_leak_candidate_workspace_guards(
+    tmp_path: Path,
+) -> None:
+    clock = FakeClock(1_000.0)
+    store = _store(
+        tmp_path,
+        lease_seconds=60.0,
+        startup_grace_seconds=0.0,
+        clock=clock,
+    )
+    original_workspace = tmp_path / "worktrees" / "original"
+    dead_owner = ProcessBirthIdentity(
+        pid=2**30 - 9,
+        start_time_ticks=1,
+        boot_id="dead-boot",
+    )
+    original = store.begin_preparing(
+        task_id="DUP-GUARD",
+        canonical_task_cid="cid:dup-guard",
+        attempt=1,
+        lane_id="lane-a",
+        workspace_path=original_workspace,
+        branch="implementation/dup-guard",
+        merge_target="main",
+        owner=dead_owner,
+    )
+    assert store.store_dir is not None
+    initial_guards = {
+        path.name
+        for path in store.store_dir.iterdir()
+        if path.name.endswith(".update.lock")
+    }
+
+    for index in range(20):
+        candidate = tmp_path / "worktrees" / f"retry-{index}"
+        with pytest.raises(
+            DuplicateAttemptError,
+            match="task/attempt claim lease has not expired",
+        ):
+            store.begin_preparing(
+                task_id="DUP-GUARD",
+                canonical_task_cid="cid:dup-guard",
+                attempt=1,
+                lane_id="lane-b",
+                workspace_path=candidate,
+                branch=f"implementation/dup-guard-retry-{index}",
+                merge_target="main",
+            )
+        assert store.load_workspace(candidate) is None
+
+    final_guards = {
+        path.name
+        for path in store.store_dir.iterdir()
+        if path.name.endswith(".update.lock")
+    }
+    assert final_guards == initial_guards
+    assert store.load_workspace(original_workspace) == original
+
+
 def test_compare_and_delete_requires_matching_fence(tmp_path: Path) -> None:
     store = _store(tmp_path)
     workspace = tmp_path / "cad"
