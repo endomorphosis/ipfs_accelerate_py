@@ -2671,7 +2671,7 @@ compact references and bounded spans only.
 
 ## VFS-068 Close objective gap: Prove vfs/repository-forest-manifest@1 for Bind every observation to an explicit multi-repository authority forest
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
