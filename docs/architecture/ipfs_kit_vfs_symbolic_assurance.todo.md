@@ -3609,7 +3609,7 @@ compact references and bounded spans only.
 
 ## VFS-082 Close objective gap: Prove vfs/adversarial-e2e-gate@1 for Release only evidence-backed results through shadow and assist gates
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
