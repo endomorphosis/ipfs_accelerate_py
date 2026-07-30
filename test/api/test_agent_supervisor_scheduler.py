@@ -1948,6 +1948,80 @@ def test_manifest_excludes_superseded_bundle_revisions(tmp_path: Path) -> None:
         assert len(coordinator.list_tasks(task_cids={current["tasks"][0]["task_cid"]})) == 1
 
 
+def test_stop_manifest_excludes_superseded_bundle_revisions(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Terminal projection must not resurrect every historical lease row."""
+
+    repo = tmp_path / "repo"
+    index = repo / "index.json"
+    launcher = _FakeLauncher()
+    _write_index(index, "T-1")
+    scheduler = _scheduler(tmp_path, index, launcher)
+    current_task_cid = scheduler._plan()[0].task_cid
+    rows = [
+        {"task_cid": "historical-task-cid", "state": "completed"},
+        {"task_cid": current_task_cid, "state": "completed"},
+    ]
+    observed_queries: list[tuple[set[str] | None, bool]] = []
+
+    class _ProjectionCoordinator:
+        def __init__(self, _path: Path) -> None:
+            pass
+
+        def __enter__(self) -> Any:
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+        def list_tasks(
+            self,
+            *,
+            task_cids: set[str] | None = None,
+            include_claimability: bool = False,
+        ) -> list[dict[str, Any]]:
+            observed_queries.append(
+                (
+                    set(task_cids) if task_cids is not None else None,
+                    include_claimability,
+                )
+            )
+            if task_cids is None:
+                return list(rows)
+            return [row for row in rows if row["task_cid"] in task_cids]
+
+    def project_manifest(
+        *,
+        discovered: Any,
+        task_projection: Any,
+        **_kwargs: Any,
+    ) -> dict[str, Any]:
+        projected = list(task_projection)
+        return {
+            "planned_count": len(discovered),
+            "completed_count": sum(
+                item.get("state") == "completed" for item in projected
+            ),
+            "tasks": projected,
+        }
+
+    monkeypatch.setattr(
+        bundle_supervisor_module,
+        "LeaseCoordinator",
+        _ProjectionCoordinator,
+    )
+    monkeypatch.setattr(scheduler, "_write_live_manifest", project_manifest)
+
+    terminal = scheduler.stop()
+
+    assert terminal["planned_count"] == 1
+    assert terminal["completed_count"] == 1
+    assert terminal["tasks"] == [rows[1]]
+    assert observed_queries == [({current_task_cid}, True)]
+
+
 def test_live_bundle_revision_blocks_replacement_with_the_same_bundle_key(
     tmp_path: Path,
 ) -> None:
