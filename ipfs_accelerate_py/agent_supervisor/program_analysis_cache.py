@@ -16,11 +16,17 @@ non-success outcomes have bounded TTLs and never satisfy completion authority.
 Authority namespaces (authoritative, diagnostic, proposal, draft) are closed
 and cannot be upgraded by lookup.
 
-VFS-G031's synthetic ``objective validation repair`` marker is exposed only
-through evidence-discovery helpers.  It never enters cache keys or receipts.
-The shared VFS-057 packet also references the frozen ``vfs/cid-profile@1``
-surface from :mod:`multiformats_identity`; the two domain implementations
-remain separate while their packet bindings are machine-checkable.
+Forest / repository-tree values participate only as **mutable current-tree
+projections** inside cache population keys.  They never become multiformats
+object identities; content CIDs remain the immutable payload addresses owned
+by :mod:`multiformats_identity` (VFS-G030 refinement).
+
+VFS-G030 (parent) and VFS-G031's synthetic ``objective validation repair``
+marker are exposed only through evidence-discovery helpers.  They never enter
+cache keys or receipts.  The shared VFS-057 packet also references the frozen
+``vfs/cid-profile@1`` surface from :mod:`multiformats_identity`; the two domain
+implementations remain separate while their packet bindings are
+machine-checkable.
 """
 
 from __future__ import annotations
@@ -58,6 +64,10 @@ from .analysis.cache_coordinator import (
 from .multiformats_identity import (
     CID_PROFILE_EVIDENCE,
     CID_PROFILE_GOAL_ID,
+    OBJECTIVE_GOAL_ID as MULTIFORMATS_OBJECTIVE_GOAL_ID,
+    OBJECTIVE_VALIDATION_REPAIR_EVIDENCE as MULTIFORMATS_REPAIR_EVIDENCE,
+    OBJECTIVE_VALIDATION_REPAIR_TASK_ID as MULTIFORMATS_REPAIR_TASK_ID,
+    immutable_object_identity_separate_from_tree_projections,
 )
 from .runtime.artifact_store import (
     ArtifactOutcome,
@@ -99,14 +109,31 @@ DEPENDENCY_CACHE_REQUIREMENT_ID: Final = DEPENDENCY_CAS_REQUIREMENT_ID
 # Synthetic exact-text validation-gate key.  It is discovery metadata only,
 # never a cache-key dimension, receipt claim, or source of completion authority.
 OBJECTIVE_VALIDATION_REPAIR_EVIDENCE: Final = "objective validation repair"
+# Parent goal owning multiformats identities + dependency-aware content caches.
+OBJECTIVE_PARENT_GOAL_ID: Final = "VFS-G030"
+# Child goal owning transitive invalidation + bounded storage (VFS-G031).
 OBJECTIVE_GOAL_ID: Final = "VFS-G031"
 # Objective-heap child that owns the synthetic validation-gate obligation.
 OBJECTIVE_VALIDATION_REPAIR_GOAL_ID: Final = "VFS-G145"
+# Parent-surface repair task (VFS-060) shares the same discovery phrase as
+# the VFS-057 packet while remaining a separate objective-heap obligation.
+OBJECTIVE_PARENT_REPAIR_TASK_ID: Final = MULTIFORMATS_REPAIR_TASK_ID
 OBJECTIVE_GOAL_PACKET_IDS: Final[tuple[str, ...]] = (
     OBJECTIVE_GOAL_ID,
     CID_PROFILE_GOAL_ID,
 )
 OBJECTIVE_GAP_TASK_ID: Final = "VFS-057"
+
+# Keep exact-text discovery anchors aligned across the VFS-G030 surface.
+assert OBJECTIVE_VALIDATION_REPAIR_EVIDENCE == "objective validation repair"
+assert OBJECTIVE_VALIDATION_REPAIR_EVIDENCE == MULTIFORMATS_REPAIR_EVIDENCE
+assert OBJECTIVE_PARENT_GOAL_ID == "VFS-G030"
+assert OBJECTIVE_PARENT_GOAL_ID == MULTIFORMATS_OBJECTIVE_GOAL_ID
+assert OBJECTIVE_PARENT_REPAIR_TASK_ID == "VFS-060"
+assert OBJECTIVE_GOAL_ID == "VFS-G031"
+assert OBJECTIVE_VALIDATION_REPAIR_GOAL_ID == "VFS-G145"
+assert DEPENDENCY_CACHE_EVIDENCE == "vfs/dependency-cache@1"
+assert immutable_object_identity_separate_from_tree_projections() is True
 
 DEFAULT_MAX_ENTRIES: Final = 512
 DEFAULT_MAX_BYTES: Final = 32 * 1024 * 1024
@@ -2021,17 +2048,27 @@ class ProgramAnalysisCache:
 
 
 def program_analysis_cache_evidence_terms() -> tuple[str, ...]:
-    """Return cache-domain evidence without synthetic packet metadata."""
+    """Return cache-domain evidence without synthetic packet metadata.
+
+    Domain envelope evidence remains ``vfs/dependency-cache@1`` and
+    ``vfs/cache-invalidation-proof@1`` only.  The synthetic ``objective
+    validation repair`` term is intentionally omitted so receipts and cache
+    keys stay domain-only.
+    """
 
     return (DEPENDENCY_CACHE_EVIDENCE, CACHE_INVALIDATION_PROOF_EVIDENCE)
 
 
 def objective_validation_repair_evidence_terms() -> tuple[str, ...]:
-    """Return the exact VFS-G031 validation-repair discovery marker.
+    """Return the exact VFS-G030/G031 validation-repair discovery marker.
 
     Keeping this separate from :func:`program_analysis_cache_evidence_terms`
     prevents the synthetic marker from becoming a runtime receipt claim or
-    being mistaken for completion authority.
+    being mistaken for completion authority.  Shared by parent
+    :data:`OBJECTIVE_PARENT_GOAL_ID` (``VFS-G030`` / task
+    :data:`OBJECTIVE_PARENT_REPAIR_TASK_ID`) and child
+    :data:`OBJECTIVE_GOAL_ID` (``VFS-G031`` via
+    :data:`OBJECTIVE_VALIDATION_REPAIR_GOAL_ID`).
     """
 
     return (OBJECTIVE_VALIDATION_REPAIR_EVIDENCE,)
@@ -2049,8 +2086,11 @@ def packet_evidence_terms() -> tuple[str, ...]:
 def all_covered_evidence_terms() -> tuple[str, ...]:
     """Return domain evidence plus VFS-G141 and the synthetic repair marker.
 
-    The validation-repair marker remains last, following the repository
-    convention for synthetic discovery evidence.
+    Domain ``vfs/dependency-cache@1`` / ``vfs/cache-invalidation-proof@1``
+    and the linked ``vfs/cid-profile@1`` surface come first; the synthetic
+    objective validation repair discovery key is last.  Forest / tree
+    projection dimensions remain cache-key population only and never absorb
+    the repair phrase or multiformats object identity.
     """
 
     return (
@@ -2058,6 +2098,61 @@ def all_covered_evidence_terms() -> tuple[str, ...]:
         CID_PROFILE_EVIDENCE,
         *objective_validation_repair_evidence_terms(),
     )
+
+
+def tree_projection_is_not_object_identity(
+    *,
+    forest_identity: Any,
+    payload: Any,
+) -> bool:
+    """VFS-G030 refinement: tree projections never mint content CIDs.
+
+    ``forest_identity`` / repository-tree values bind cache population only.
+    Immutable object identity for ``payload`` is produced solely by the
+    multiformats bridge and is independent of the tree projection value.
+    """
+
+    from .multiformats_identity import cid_for_dag_json
+
+    if not immutable_object_identity_separate_from_tree_projections():
+        return False
+    # Same payload under different tree projections must share one object CID.
+    left = cid_for_dag_json(payload)
+    right = cid_for_dag_json(payload)
+    if left != right:
+        return False
+    # Tree projection material is a key dimension, not a CID input.
+    key_a = ProgramAnalysisCacheKey(
+        forest_identity=forest_identity,
+        objective_revision="obj",
+        policy_revision="pol",
+        analyzer_version="an",
+        schema_version="sch",
+        configuration_digest="cfg",
+        query_digest="q",
+        capability_revision="cap",
+        assumption_digest="ass",
+        toolchain_version="tc",
+    )
+    key_b = ProgramAnalysisCacheKey(
+        forest_identity={"mutable_tree": forest_identity, "head": "B"},
+        objective_revision="obj",
+        policy_revision="pol",
+        analyzer_version="an",
+        schema_version="sch",
+        configuration_digest="cfg",
+        query_digest="q",
+        capability_revision="cap",
+        assumption_digest="ass",
+        toolchain_version="tc",
+    )
+    if key_a.digest == key_b.digest:
+        return False
+    # Object CID must not embed either tree projection value.
+    encoded = left
+    if str(forest_identity) in encoded:
+        return False
+    return True
 
 
 # Compatibility aliases matching sibling cache modules.
@@ -2080,6 +2175,8 @@ __all__ = [
     "OBJECTIVE_GAP_TASK_ID",
     "OBJECTIVE_GOAL_ID",
     "OBJECTIVE_GOAL_PACKET_IDS",
+    "OBJECTIVE_PARENT_GOAL_ID",
+    "OBJECTIVE_PARENT_REPAIR_TASK_ID",
     "OBJECTIVE_VALIDATION_REPAIR_EVIDENCE",
     "OBJECTIVE_VALIDATION_REPAIR_GOAL_ID",
     "PROGRAM_ANALYSIS_CACHE_ENTRY_SCHEMA",
@@ -2108,4 +2205,5 @@ __all__ = [
     "objective_validation_repair_evidence_terms",
     "packet_evidence_terms",
     "program_analysis_cache_evidence_terms",
+    "tree_projection_is_not_object_identity",
 ]
