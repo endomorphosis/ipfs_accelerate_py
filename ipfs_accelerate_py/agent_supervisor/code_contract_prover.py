@@ -80,9 +80,21 @@ from ipfs_datasets_py.logic.ir_core.protocols import (
 
 from .code_contract_logic import (
     CODE_CONTRACT_LOGIC_VERSION,
+    FORMAL_PROOF_PACKET_CLAIM_SCHEMA,
+    FORMAL_PROOF_PACKET_EVIDENCE_TERMS,
+    FORMAL_PROOF_PACKET_INVARIANTS,
+    KERNEL_PROOF_RECEIPT_EVIDENCE as LOGIC_KERNEL_PROOF_RECEIPT_EVIDENCE,
+    KERNEL_PROOF_RECEIPT_GOAL_ID,
+    KERNEL_PROOF_RECEIPT_TASK_ID,
     LOGIC_FAMILY,
     LOGIC_TRANSLATION_EVIDENCE,
+    LOGIC_TRANSLATION_GOAL_ID,
+    LOGIC_TRANSLATION_TASK_ID,
     OBJECTIVE_GOAL_ID,
+    OBJECTIVE_GOAL_PACKET_ID,
+    OBJECTIVE_PACKET_GOAL_IDS,
+    OBJECTIVE_PACKET_TASK_IDS,
+    OBJECTIVE_PARENT_GOAL_ID,
     OBJECTIVE_VALIDATION_REPAIR_EVIDENCE,
     OBJECTIVE_VALIDATION_REPAIR_TASK_ID,
     PredicateRelation,
@@ -91,8 +103,12 @@ from .code_contract_logic import (
     TranslationResult,
     TranslationStatus,
     FormalLogicVocabulary,
+    formal_proof_completion_goal_bindings as _logic_completion_bindings,
     objective_validation_repair_evidence_terms as _logic_repair_terms,
+    packet_evidence_terms as _logic_packet_terms,
     pinned_translator_identity,
+    prove_logic_translation,
+    translation_satisfies_logic_translation,
     verify_translation_result,
 )
 from .proof.formal_verification_contracts import (
@@ -127,18 +143,41 @@ from .proof.multi_prover_router import (
 CODE_CONTRACT_PROVER_VERSION: Final[int] = 1
 PROVER_ID: Final[str] = "code-contract-prover"
 PROVER_VERSION: Final[str] = "1"
-KERNEL_PROOF_RECEIPT_EVIDENCE: Final[str] = "vfs/kernel-proof-receipt@1"
+# Align with the logic-surface pin so discovery scanners see one canonical term.
+KERNEL_PROOF_RECEIPT_EVIDENCE: Final[str] = LOGIC_KERNEL_PROOF_RECEIPT_EVIDENCE
 SOLVER_PORTFOLIO_EVIDENCE: Final[str] = "vfs/code-contract-solver-portfolio@1"
 
-# Re-export VFS-G070 evidence terms so scanners discover them on both the
-# translation module and this independent prover surface.  Domain envelope
-# evidence stays translation/kernel-only; the synthetic objective validation
-# repair term is discoverable via objective_validation_repair_evidence_terms
-# / all_covered_evidence_terms and never enters content-addressed identity.
+# Closed acceptance surface for vfs/kernel-proof-receipt@1 (VFS-G155).
+KERNEL_PROOF_RECEIPT_INVARIANTS: Final[tuple[str, ...]] = (
+    "validation receipts carry pinned vfs/kernel-proof-receipt@1 evidence",
+    "MultiProverRouter premise selectors lack KernelVerification authority",
+    "wrong theorem bindings fail closed at independent validation",
+    "stale prover or translator identity fails closed",
+    "omitted effects fail closed before solver compilation",
+    "capability loss between probe and validation revokes authority",
+)
+
+# Re-export VFS-G070 / formal_proof packet evidence so scanners discover them
+# on both the translation module and this independent prover surface.  Domain
+# envelope evidence stays translation/kernel-only; the synthetic objective
+# validation repair term is discoverable via
+# objective_validation_repair_evidence_terms / all_covered_evidence_terms and
+# never enters content-addressed identity.
 assert OBJECTIVE_VALIDATION_REPAIR_EVIDENCE == "objective validation repair"
 assert OBJECTIVE_GOAL_ID == "VFS-G070"
+assert OBJECTIVE_PARENT_GOAL_ID == "VFS-G070"
 assert OBJECTIVE_VALIDATION_REPAIR_TASK_ID == "VFS-053"
 assert LOGIC_TRANSLATION_EVIDENCE == "vfs/logic-translation@1"
+assert KERNEL_PROOF_RECEIPT_EVIDENCE == "vfs/kernel-proof-receipt@1"
+assert LOGIC_TRANSLATION_GOAL_ID == "VFS-G154"
+assert KERNEL_PROOF_RECEIPT_GOAL_ID == "VFS-G155"
+assert LOGIC_TRANSLATION_TASK_ID == "VFS-071"
+assert KERNEL_PROOF_RECEIPT_TASK_ID == "VFS-074"
+assert OBJECTIVE_PACKET_GOAL_IDS == ("VFS-G154", "VFS-G155")
+assert FORMAL_PROOF_PACKET_EVIDENCE_TERMS == (
+    "vfs/logic-translation@1",
+    "vfs/kernel-proof-receipt@1",
+)
 # KernelVerification and MultiProverRouter remain distinct stages (no merge).
 assert KernelVerificationStatus.ACCEPTED.value == "accepted"
 assert MultiProverRouter is not None
@@ -167,6 +206,9 @@ CACHE_ENTRY_SCHEMA: Final[str] = (
 )
 PROVE_REQUEST_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/code-contract-prove-request@1"
+)
+KERNEL_PROOF_RECEIPT_CLAIM_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/kernel-proof-receipt-claim@1"
 )
 
 # BackendRequest.logic_family for admitted SMT adapters.
@@ -2711,8 +2753,14 @@ def route_through_multi_prover(
 
 
 # ---------------------------------------------------------------------------
-# Objective evidence discovery + stage separation (VFS-G070 / VFS-053)
+# Objective evidence discovery + stage separation (VFS-G070 / VFS-G154 / VFS-G155 / VFS-053)
 # ---------------------------------------------------------------------------
+
+
+def kernel_proof_receipt_evidence() -> str:
+    """Return the closed ``vfs/kernel-proof-receipt@1`` evidence term (VFS-G155)."""
+
+    return KERNEL_PROOF_RECEIPT_EVIDENCE
 
 
 def kernel_proof_receipt_evidence_terms() -> tuple[str, ...]:
@@ -2722,6 +2770,8 @@ def kernel_proof_receipt_evidence_terms() -> tuple[str, ...]:
     omitted here so prove-result envelope ``evidence`` stays domain-only; use
     :func:`objective_validation_repair_evidence_terms` (or
     :func:`all_covered_evidence_terms`) for the VFS-G070 validation gate.
+    Translation evidence (``vfs/logic-translation@1``, VFS-G154) lives on
+    :mod:`code_contract_logic` and on :func:`packet_evidence_terms`.
     """
 
     return (KERNEL_PROOF_RECEIPT_EVIDENCE,)
@@ -2730,12 +2780,26 @@ def kernel_proof_receipt_evidence_terms() -> tuple[str, ...]:
 def covered_evidence_terms() -> tuple[str, ...]:
     """Return domain objective evidence terms this prover surface proves.
 
-    Kernel-proof receipts only.  Translation evidence lives on
-    :mod:`code_contract_logic`; the repair gate is via
+    Kernel-proof receipts only (VFS-G155).  Translation evidence lives on
+    :mod:`code_contract_logic`; packet-wide domain coverage is via
+    :func:`packet_evidence_terms`; the repair gate is via
     :func:`all_covered_evidence_terms`.
     """
 
     return kernel_proof_receipt_evidence_terms()
+
+
+def packet_evidence_terms() -> tuple[str, ...]:
+    """Return formal_proof packet domain evidence terms (VFS-G154 + VFS-G155).
+
+    Ordered as ``vfs/logic-translation@1`` then ``vfs/kernel-proof-receipt@1``.
+    Aligns with :mod:`code_contract_logic` packet discovery without the
+    synthetic objective validation repair key.
+    """
+
+    terms = _logic_packet_terms()
+    assert terms == FORMAL_PROOF_PACKET_EVIDENCE_TERMS
+    return terms
 
 
 def objective_validation_repair_evidence_terms() -> tuple[str, ...]:
@@ -2753,12 +2817,11 @@ def objective_validation_repair_evidence_terms() -> tuple[str, ...]:
 
 
 def all_covered_evidence_terms() -> tuple[str, ...]:
-    """Return full VFS-G070 domain terms plus the objective validation repair gate.
+    """Return full formal_proof domain terms plus the objective validation repair gate.
 
-    Order: translation (FormalLogicVocabulary), kernel-proof receipt
-    (KernelVerification / independent portfolio validation), then the
-    synthetic repair discovery key.  MultiProverRouter candidate search is
-    never an evidence authority term.
+    Order: translation (FormalLogicVocabulary / VFS-G154), kernel-proof receipt
+    (KernelVerification / VFS-G155), then the synthetic repair discovery key.
+    MultiProverRouter candidate search is never an evidence authority term.
     """
 
     return (
@@ -2766,6 +2829,17 @@ def all_covered_evidence_terms() -> tuple[str, ...]:
         KERNEL_PROOF_RECEIPT_EVIDENCE,
         OBJECTIVE_VALIDATION_REPAIR_EVIDENCE,
     )
+
+
+def formal_proof_completion_goal_bindings() -> dict[str, list[str]]:
+    """Return fresh supervisor completion bindings for the formal_proof packet."""
+
+    bindings = _logic_completion_bindings()
+    assert bindings[LOGIC_TRANSLATION_GOAL_ID] == [LOGIC_TRANSLATION_EVIDENCE]
+    assert bindings[KERNEL_PROOF_RECEIPT_GOAL_ID] == [
+        KERNEL_PROOF_RECEIPT_EVIDENCE
+    ]
+    return bindings
 
 
 def proof_stage_owners() -> Mapping[str, str]:
@@ -2824,6 +2898,173 @@ def authoritative_kernel_validation_symbols() -> tuple[str, ...]:
     )
 
 
+def result_satisfies_kernel_proof_receipt(
+    result: ProveResult | Mapping[str, Any],
+    *,
+    probe_report: ProbeReport | None = None,
+    require_proved: bool = False,
+) -> bool:
+    """Machine-check VFS-G155 kernel-proof-receipt acceptance on one result.
+
+    * Validation receipt carries pinned ``vfs/kernel-proof-receipt@1``.
+    * Independent :func:`verify_kernel_proof_receipt` recomputation succeeds.
+    * Candidate search still lacks kernel authority.
+    * When *require_proved* is true, the result must be conclusively PROVED.
+    """
+
+    if isinstance(result, Mapping):
+        try:
+            result = ProveResult.from_dict(result)
+        except (CodeContractProverError, ProveRejectedError, TypeError, ValueError):
+            return False
+    if not isinstance(result, ProveResult):
+        return False
+    if result.validation.evidence_kind != KERNEL_PROOF_RECEIPT_EVIDENCE:
+        return False
+    try:
+        recomputed = verify_kernel_proof_receipt(
+            result, probe_report=probe_report
+        )
+    except (CodeContractProverError, ProveRejectedError):
+        return False
+    if recomputed.evidence_kind != KERNEL_PROOF_RECEIPT_EVIDENCE:
+        return False
+    if require_proved:
+        if result.status is not ProveStatus.PROVED:
+            return False
+        if not result.conclusive:
+            return False
+        if recomputed.status is not ProveStatus.PROVED:
+            return False
+    if not candidate_search_lacks_kernel_authority():
+        return False
+    return True
+
+
+def prove_kernel_proof_receipt(
+    result: ProveResult | Mapping[str, Any],
+    *,
+    goal_id: str = KERNEL_PROOF_RECEIPT_GOAL_ID,
+    task_id: str = KERNEL_PROOF_RECEIPT_TASK_ID,
+    probe_report: ProbeReport | None = None,
+    require_proved: bool = False,
+) -> dict[str, Any]:
+    """Emit a portable ``vfs/kernel-proof-receipt@1`` evidence claim (VFS-G155).
+
+    Goal/task labels are metadata only and never enter receipt digests.
+    """
+
+    if isinstance(result, Mapping):
+        result_obj = ProveResult.from_dict(result)
+    else:
+        result_obj = result
+    if not isinstance(result_obj, ProveResult):
+        raise TypeError("result must be a ProveResult")
+
+    satisfied = result_satisfies_kernel_proof_receipt(
+        result_obj,
+        probe_report=probe_report,
+        require_proved=require_proved,
+    )
+    authority_backends = [
+        attempt.backend_id
+        for attempt in result_obj.attempts
+        if attempt.authoritative
+    ]
+    return {
+        "schema": KERNEL_PROOF_RECEIPT_CLAIM_SCHEMA,
+        "evidence": KERNEL_PROOF_RECEIPT_EVIDENCE,
+        "evidence_terms": list(kernel_proof_receipt_evidence_terms()),
+        "requirement_id": KERNEL_PROOF_RECEIPT_EVIDENCE,
+        "goal_id": str(goal_id or KERNEL_PROOF_RECEIPT_GOAL_ID),
+        "parent_goal_id": OBJECTIVE_PARENT_GOAL_ID,
+        "task_id": str(task_id or KERNEL_PROOF_RECEIPT_TASK_ID),
+        "goal_packet_id": OBJECTIVE_GOAL_PACKET_ID,
+        "status": result_obj.status.value,
+        "reason": result_obj.reason.value,
+        "conclusive": result_obj.conclusive,
+        "evidence_kind": result_obj.validation.evidence_kind,
+        "validation_receipt_id": result_obj.validation.receipt_id,
+        "claim_digest": result_obj.validation.claim_digest,
+        "obligation_digest": result_obj.validation.obligation_digest,
+        "request_digest": result_obj.validation.request_digest,
+        "prover_identity": result_obj.prover_identity,
+        "translator_identity": result_obj.compiled.translator_identity,
+        "admitted_backend_ids": list(result_obj.probe_report.admitted_backend_ids),
+        "authority_backends": authority_backends,
+        "attempt_count": len(result_obj.attempts),
+        "candidate_search_lacks_authority": candidate_search_lacks_kernel_authority(),
+        "authoritative_symbols": list(authoritative_kernel_validation_symbols()),
+        "require_proved": bool(require_proved),
+        "satisfied": satisfied,
+        "invariants": list(KERNEL_PROOF_RECEIPT_INVARIANTS),
+        "authoritative": False,
+        "completion_authoritative": False,
+        "semantic_authority": False,
+    }
+
+
+def prove_formal_proof_packet(
+    translation: TranslationResult | Mapping[str, Any],
+    result: ProveResult | Mapping[str, Any] | None = None,
+    *,
+    require_round_trip: bool = True,
+    require_proved: bool = False,
+    probe_report: ProbeReport | None = None,
+) -> dict[str, Any]:
+    """Emit the full formal_proof packet claim (logic-translation + kernel receipt).
+
+    Covers goal packet ``goal_packet/formal_proof/ipfs_accelerate_py/0ac74eed54c2``
+    leaf goals VFS-G154 and VFS-G155 in one claim.  When *result* is omitted the
+    kernel subclaim is reported unsatisfied (translation-only envelope).
+    """
+
+    if isinstance(translation, Mapping):
+        translation_obj = TranslationResult.from_dict(translation)
+    else:
+        translation_obj = translation
+    if not isinstance(translation_obj, TranslationResult):
+        raise TypeError("translation must be a TranslationResult")
+
+    translation_claim = prove_logic_translation(
+        translation_obj,
+        require_round_trip=require_round_trip,
+    )
+    kernel_claim: dict[str, Any] | None = None
+    if result is not None:
+        kernel_claim = prove_kernel_proof_receipt(
+            result,
+            probe_report=probe_report,
+            require_proved=require_proved,
+        )
+    translation_satisfied = bool(translation_claim.get("satisfied"))
+    kernel_satisfied = bool(kernel_claim and kernel_claim.get("satisfied"))
+    if result is None:
+        kernel_satisfied = False
+    satisfied = translation_satisfied and kernel_satisfied
+    return {
+        "schema": FORMAL_PROOF_PACKET_CLAIM_SCHEMA,
+        "evidence_terms": list(packet_evidence_terms()),
+        "requirement_ids": list(FORMAL_PROOF_PACKET_EVIDENCE_TERMS),
+        "goal_packet_id": OBJECTIVE_GOAL_PACKET_ID,
+        "goal_ids": list(OBJECTIVE_PACKET_GOAL_IDS),
+        "task_ids": list(OBJECTIVE_PACKET_TASK_IDS),
+        "parent_goal_id": OBJECTIVE_PARENT_GOAL_ID,
+        "logic_translation_claim": translation_claim,
+        "kernel_proof_receipt_claim": kernel_claim,
+        "logic_translation_satisfied": translation_satisfied,
+        "kernel_proof_receipt_satisfied": kernel_satisfied,
+        "satisfied": satisfied,
+        "proof_stage_owners": dict(proof_stage_owners()),
+        "candidate_search_lacks_authority": candidate_search_lacks_kernel_authority(),
+        "completion_goal_bindings": formal_proof_completion_goal_bindings(),
+        "invariants": list(FORMAL_PROOF_PACKET_INVARIANTS),
+        "authoritative": False,
+        "completion_authoritative": False,
+        "semantic_authority": False,
+    }
+
+
 __all__ = [
     "ADMITTED_BACKEND_IDS",
     "BackendAvailability",
@@ -2832,16 +3073,29 @@ __all__ = [
     "CodeContractProver",
     "CodeContractProverError",
     "CompiledObligationRequest",
+    "FORMAL_PROOF_PACKET_CLAIM_SCHEMA",
+    "FORMAL_PROOF_PACKET_EVIDENCE_TERMS",
+    "FORMAL_PROOF_PACKET_INVARIANTS",
     "FormalLogicVocabulary",
+    "KERNEL_PROOF_RECEIPT_CLAIM_SCHEMA",
     "KERNEL_PROOF_RECEIPT_EVIDENCE",
+    "KERNEL_PROOF_RECEIPT_GOAL_ID",
+    "KERNEL_PROOF_RECEIPT_INVARIANTS",
+    "KERNEL_PROOF_RECEIPT_TASK_ID",
     "KernelVerificationBindings",
     "KernelVerificationError",
     "KernelVerificationResult",
     "KernelVerificationStatus",
     "LOGIC_TRANSLATION_EVIDENCE",
+    "LOGIC_TRANSLATION_GOAL_ID",
+    "LOGIC_TRANSLATION_TASK_ID",
     "MultiProverRouter",
     "NonConclusiveReason",
     "OBJECTIVE_GOAL_ID",
+    "OBJECTIVE_GOAL_PACKET_ID",
+    "OBJECTIVE_PACKET_GOAL_IDS",
+    "OBJECTIVE_PACKET_TASK_IDS",
+    "OBJECTIVE_PARENT_GOAL_ID",
     "OBJECTIVE_VALIDATION_REPAIR_EVIDENCE",
     "OBJECTIVE_VALIDATION_REPAIR_TASK_ID",
     "PROVER_ID",
@@ -2866,13 +3120,21 @@ __all__ = [
     "compile_smt_payload_for_claim",
     "covered_evidence_terms",
     "default_property_policy",
+    "formal_proof_completion_goal_bindings",
+    "kernel_proof_receipt_evidence",
     "kernel_proof_receipt_evidence_terms",
     "make_solver_fixture",
     "objective_validation_repair_evidence_terms",
+    "packet_evidence_terms",
     "pinned_prover_identity",
     "proof_stage_owners",
+    "prove_formal_proof_packet",
+    "prove_kernel_proof_receipt",
+    "prove_logic_translation",
     "prover_identity",
+    "result_satisfies_kernel_proof_receipt",
     "route_through_multi_prover",
+    "translation_satisfies_logic_translation",
     "validate_solver_portfolio",
     "verify_kernel_proof_receipt",
 ]

@@ -15,9 +15,16 @@ from typing import Any
 import pytest
 
 from ipfs_accelerate_py.agent_supervisor.code_contract_logic import (
+    FORMAL_PROOF_PACKET_EVIDENCE_TERMS as LOGIC_PACKET_EVIDENCE_TERMS,
     LOGIC_FAMILY,
     LOGIC_TRANSLATION_EVIDENCE,
+    LOGIC_TRANSLATION_GOAL_ID,
+    LOGIC_TRANSLATION_INVARIANTS,
+    LOGIC_TRANSLATION_TASK_ID,
     OBJECTIVE_GOAL_ID as LOGIC_OBJECTIVE_GOAL_ID,
+    OBJECTIVE_GOAL_PACKET_ID as LOGIC_GOAL_PACKET_ID,
+    OBJECTIVE_PACKET_GOAL_IDS as LOGIC_PACKET_GOAL_IDS,
+    OBJECTIVE_PARENT_GOAL_ID as LOGIC_PARENT_GOAL_ID,
     OBJECTIVE_VALIDATION_REPAIR_EVIDENCE as LOGIC_REPAIR_EVIDENCE,
     FormalLogicVocabulary,
     PredicateRelation,
@@ -26,9 +33,14 @@ from ipfs_accelerate_py.agent_supervisor.code_contract_logic import (
     TranslationStatus,
     all_covered_evidence_terms as logic_all_covered_evidence_terms,
     covered_evidence_terms as logic_covered_evidence_terms,
+    formal_proof_completion_goal_bindings as logic_completion_bindings,
+    logic_translation_evidence,
     objective_validation_repair_evidence_terms as logic_repair_terms,
+    packet_evidence_terms as logic_packet_evidence_terms,
     pinned_translator_identity,
+    prove_logic_translation as logic_prove_logic_translation,
     translate_contract,
+    translation_satisfies_logic_translation,
     translation_stage_owner,
     verify_translation_result,
 )
@@ -40,13 +52,24 @@ from ipfs_accelerate_py.agent_supervisor.code_contract_prover import (
     CodeContractProver,
     CodeContractProverError,
     CompiledObligationRequest,
+    FORMAL_PROOF_PACKET_EVIDENCE_TERMS,
+    FORMAL_PROOF_PACKET_INVARIANTS,
     KERNEL_PROOF_RECEIPT_EVIDENCE,
+    KERNEL_PROOF_RECEIPT_GOAL_ID,
+    KERNEL_PROOF_RECEIPT_INVARIANTS,
+    KERNEL_PROOF_RECEIPT_TASK_ID,
     KernelVerificationBindings,
     KernelVerificationResult,
     KernelVerificationStatus,
+    LOGIC_TRANSLATION_GOAL_ID as PROVER_LOGIC_TRANSLATION_GOAL_ID,
+    LOGIC_TRANSLATION_TASK_ID as PROVER_LOGIC_TRANSLATION_TASK_ID,
     MultiProverRouter,
     NonConclusiveReason,
     OBJECTIVE_GOAL_ID,
+    OBJECTIVE_GOAL_PACKET_ID,
+    OBJECTIVE_PACKET_GOAL_IDS,
+    OBJECTIVE_PACKET_TASK_IDS,
+    OBJECTIVE_PARENT_GOAL_ID,
     OBJECTIVE_VALIDATION_REPAIR_EVIDENCE,
     OBJECTIVE_VALIDATION_REPAIR_TASK_ID,
     ProbeReport,
@@ -65,11 +88,18 @@ from ipfs_accelerate_py.agent_supervisor.code_contract_prover import (
     compile_obligation_requests,
     compile_smt_payload_for_claim,
     covered_evidence_terms,
+    formal_proof_completion_goal_bindings,
+    kernel_proof_receipt_evidence,
     kernel_proof_receipt_evidence_terms,
     make_solver_fixture,
     objective_validation_repair_evidence_terms,
+    packet_evidence_terms,
     pinned_prover_identity,
     proof_stage_owners,
+    prove_formal_proof_packet,
+    prove_kernel_proof_receipt,
+    prove_logic_translation,
+    result_satisfies_kernel_proof_receipt,
     validate_solver_portfolio,
     verify_kernel_proof_receipt,
 )
@@ -1063,6 +1093,7 @@ def test_objective_validation_repair_evidence_term_discoverable() -> None:
     assert LOGIC_REPAIR_EVIDENCE == "objective validation repair"
     assert OBJECTIVE_GOAL_ID == "VFS-G070"
     assert LOGIC_OBJECTIVE_GOAL_ID == "VFS-G070"
+    assert OBJECTIVE_PARENT_GOAL_ID == LOGIC_PARENT_GOAL_ID == "VFS-G070"
     assert OBJECTIVE_VALIDATION_REPAIR_TASK_ID == "VFS-053"
     assert objective_validation_repair_evidence_terms() == (
         "objective validation repair",
@@ -1095,6 +1126,166 @@ def test_objective_validation_repair_evidence_term_discoverable() -> None:
     translation = translated()
     assert translation.receipt.evidence == LOGIC_TRANSLATION_EVIDENCE
     assert "objective validation repair" not in translation.receipt.evidence
+
+
+def test_formal_proof_packet_evidence_binds_vfs_g154_and_g155() -> None:
+    """Discovery scanners observe both formal_proof packet evidence terms.
+
+    Covers goal packet ``goal_packet/formal_proof/ipfs_accelerate_py/0ac74eed54c2``
+    leaf goals VFS-G154 (``vfs/logic-translation@1``) and VFS-G155
+    (``vfs/kernel-proof-receipt@1``).  Stage-local covered sets stay split;
+    packet terms co-cover both leaves without the synthetic repair key.
+    """
+
+    assert logic_translation_evidence() == "vfs/logic-translation@1"
+    assert kernel_proof_receipt_evidence() == "vfs/kernel-proof-receipt@1"
+    assert LOGIC_TRANSLATION_GOAL_ID == PROVER_LOGIC_TRANSLATION_GOAL_ID == "VFS-G154"
+    assert KERNEL_PROOF_RECEIPT_GOAL_ID == "VFS-G155"
+    assert LOGIC_TRANSLATION_TASK_ID == PROVER_LOGIC_TRANSLATION_TASK_ID == "VFS-071"
+    assert KERNEL_PROOF_RECEIPT_TASK_ID == "VFS-074"
+    assert OBJECTIVE_PACKET_GOAL_IDS == LOGIC_PACKET_GOAL_IDS == (
+        "VFS-G154",
+        "VFS-G155",
+    )
+    assert OBJECTIVE_PACKET_TASK_IDS == ("VFS-071", "VFS-074")
+    assert OBJECTIVE_GOAL_PACKET_ID == LOGIC_GOAL_PACKET_ID == (
+        "goal_packet/formal_proof/ipfs_accelerate_py/0ac74eed54c2"
+    )
+    assert FORMAL_PROOF_PACKET_EVIDENCE_TERMS == LOGIC_PACKET_EVIDENCE_TERMS == (
+        "vfs/logic-translation@1",
+        "vfs/kernel-proof-receipt@1",
+    )
+    assert packet_evidence_terms() == FORMAL_PROOF_PACKET_EVIDENCE_TERMS
+    assert logic_packet_evidence_terms() == packet_evidence_terms()
+    assert "objective validation repair" not in packet_evidence_terms()
+    assert LOGIC_TRANSLATION_INVARIANTS
+    assert KERNEL_PROOF_RECEIPT_INVARIANTS
+    assert FORMAL_PROOF_PACKET_INVARIANTS
+    bindings = formal_proof_completion_goal_bindings()
+    assert bindings == logic_completion_bindings()
+    assert bindings["VFS-G154"] == ["vfs/logic-translation@1"]
+    assert bindings["VFS-G155"] == ["vfs/kernel-proof-receipt@1"]
+
+
+def test_prove_logic_translation_claim_is_portable_and_non_authoritative() -> None:
+    """VFS-G154 portable claim binds round-trip translation without authority."""
+
+    translation = translated()
+    assert translation_satisfies_logic_translation(translation) is True
+    assert translation_satisfies_logic_translation(translation.to_dict()) is True
+
+    claim = prove_logic_translation(translation)
+    assert claim == logic_prove_logic_translation(translation)
+    assert claim["evidence"] == LOGIC_TRANSLATION_EVIDENCE == "vfs/logic-translation@1"
+    assert claim["requirement_id"] == LOGIC_TRANSLATION_EVIDENCE
+    assert claim["goal_id"] == "VFS-G154"
+    assert claim["parent_goal_id"] == "VFS-G070"
+    assert claim["task_id"] == "VFS-071"
+    assert claim["goal_packet_id"] == OBJECTIVE_GOAL_PACKET_ID
+    assert claim["satisfied"] is True
+    assert claim["round_trip_ok"] is True
+    assert claim["assumption_count"] >= 1
+    assert claim["translation_stage_owner"] == "FormalLogicVocabulary"
+    assert claim["authoritative"] is False
+    assert claim["completion_authoritative"] is False
+    assert claim["semantic_authority"] is False
+    assert claim["request_cid"] == translation.request_cid
+    # Goal labels must not rewrite content-addressed receipt identity.
+    claim2 = prove_logic_translation(
+        translation, goal_id="VFS-G154", task_id="VFS-071"
+    )
+    assert claim2["receipt_cid"] == translation.receipt.receipt_cid
+
+    # Wrong theorem-style binding (dropped claim) fails closed.
+    forged = replace(translation, claims=translation.claims[:-1])
+    assert translation_satisfies_logic_translation(forged) is False
+    assert prove_logic_translation(forged)["satisfied"] is False
+
+
+def test_prove_kernel_proof_receipt_claim_and_formal_proof_packet() -> None:
+    """VFS-G155 kernel receipt + full formal_proof packet (VFS-G154/G155)."""
+
+    translation = translated()
+    prover = fixture_prover(outcomes={"cvc5": "unsat", "z3": "unsat"})
+    result = prover.prove_translation(translation)
+    assert result.status is ProveStatus.PROVED
+
+    assert result_satisfies_kernel_proof_receipt(result) is True
+    assert result_satisfies_kernel_proof_receipt(result, require_proved=True) is True
+    assert result_satisfies_kernel_proof_receipt(result.to_dict()) is True
+
+    claim = prove_kernel_proof_receipt(result, require_proved=True)
+    assert claim["evidence"] == KERNEL_PROOF_RECEIPT_EVIDENCE
+    assert claim["evidence"] == "vfs/kernel-proof-receipt@1"
+    assert claim["goal_id"] == "VFS-G155"
+    assert claim["task_id"] == "VFS-074"
+    assert claim["parent_goal_id"] == "VFS-G070"
+    assert claim["goal_packet_id"] == OBJECTIVE_GOAL_PACKET_ID
+    assert claim["satisfied"] is True
+    assert claim["evidence_kind"] == KERNEL_PROOF_RECEIPT_EVIDENCE
+    assert claim["candidate_search_lacks_authority"] is True
+    assert "KernelVerification" in claim["authoritative_symbols"]
+    assert "MultiProverRouter" not in claim["authoritative_symbols"]
+    assert claim["authoritative"] is False
+    assert claim["completion_authoritative"] is False
+    assert claim["semantic_authority"] is False
+
+    # Capability loss fails closed at the kernel boundary.
+    empty_probe = ProbeReport(
+        probes=result.probe_report.probes,
+        admitted_backend_ids=(),
+        missing_backend_ids=tuple(ADMITTED_BACKEND_IDS),
+        availability=BackendAvailability.UNAVAILABLE,
+        policy_id="policy:vfs-071-cap-loss@1",
+        detail="capability loss",
+    )
+    assert (
+        result_satisfies_kernel_proof_receipt(
+            result, probe_report=empty_probe, require_proved=True
+        )
+        is False
+    )
+    lost = prove_kernel_proof_receipt(
+        result, probe_report=empty_probe, require_proved=True
+    )
+    assert lost["satisfied"] is False
+
+    bundle = prove_formal_proof_packet(
+        translation, result, require_round_trip=True, require_proved=True
+    )
+    assert bundle["satisfied"] is True
+    assert bundle["logic_translation_satisfied"] is True
+    assert bundle["kernel_proof_receipt_satisfied"] is True
+    assert bundle["evidence_terms"] == [
+        "vfs/logic-translation@1",
+        "vfs/kernel-proof-receipt@1",
+    ]
+    assert bundle["requirement_ids"] == list(FORMAL_PROOF_PACKET_EVIDENCE_TERMS)
+    assert bundle["goal_ids"] == ["VFS-G154", "VFS-G155"]
+    assert bundle["task_ids"] == ["VFS-071", "VFS-074"]
+    assert bundle["goal_packet_id"] == OBJECTIVE_GOAL_PACKET_ID
+    assert bundle["parent_goal_id"] == "VFS-G070"
+    assert bundle["logic_translation_claim"]["evidence"] == LOGIC_TRANSLATION_EVIDENCE
+    assert (
+        bundle["kernel_proof_receipt_claim"]["evidence"]
+        == KERNEL_PROOF_RECEIPT_EVIDENCE
+    )
+    assert bundle["candidate_search_lacks_authority"] is True
+    assert bundle["completion_goal_bindings"]["VFS-G154"] == [
+        "vfs/logic-translation@1"
+    ]
+    assert bundle["completion_goal_bindings"]["VFS-G155"] == [
+        "vfs/kernel-proof-receipt@1"
+    ]
+    assert bundle["authoritative"] is False
+    assert bundle["completion_authoritative"] is False
+    assert bundle["semantic_authority"] is False
+
+    # Translation-only envelope cannot satisfy the full packet.
+    partial = prove_formal_proof_packet(translation)
+    assert partial["logic_translation_satisfied"] is True
+    assert partial["kernel_proof_receipt_satisfied"] is False
+    assert partial["satisfied"] is False
 
 
 def test_translation_candidate_search_kernel_validation_remain_separate() -> None:

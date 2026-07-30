@@ -92,19 +92,73 @@ RULESET_ID: Final[str] = "vfs/code-contract-predicates"
 RULESET_VERSION: Final[str] = "1"
 LOGIC_FAMILY: Final[str] = "code_contract_ir"
 LOGIC_TRANSLATION_EVIDENCE: Final[str] = "vfs/logic-translation@1"
+# Sibling domain evidence owned by the prover surface (discovery pin only).
+# Envelope identity for kernel receipts lives on :mod:`code_contract_prover`.
+KERNEL_PROOF_RECEIPT_EVIDENCE: Final[str] = "vfs/kernel-proof-receipt@1"
 # Synthetic objective-heap evidence term for VFS-G070 validation-gate work.
 # Exact-text discovery key only — never part of claim/receipt identity payload.
 OBJECTIVE_VALIDATION_REPAIR_EVIDENCE: Final[str] = "objective validation repair"
 # Domain parent goal that owns translation + kernel-proof surfaces.
-OBJECTIVE_GOAL_ID: Final[str] = "VFS-G070"
+OBJECTIVE_PARENT_GOAL_ID: Final[str] = "VFS-G070"
+OBJECTIVE_GOAL_ID: Final[str] = OBJECTIVE_PARENT_GOAL_ID
+# Leaf goals for goal_packet/formal_proof (VFS-G154 translation, VFS-G155 kernel).
+# Labels are discovery metadata only — never enter receipt/claim digests.
+LOGIC_TRANSLATION_GOAL_ID: Final[str] = "VFS-G154"
+KERNEL_PROOF_RECEIPT_GOAL_ID: Final[str] = "VFS-G155"
+LOGIC_TRANSLATION_TASK_ID: Final[str] = "VFS-071"
+KERNEL_PROOF_RECEIPT_TASK_ID: Final[str] = "VFS-074"
+OBJECTIVE_GOAL_PACKET_ID: Final[str] = (
+    "goal_packet/formal_proof/ipfs_accelerate_py/0ac74eed54c2"
+)
+OBJECTIVE_PACKET_GOAL_IDS: Final[tuple[str, ...]] = (
+    LOGIC_TRANSLATION_GOAL_ID,
+    KERNEL_PROOF_RECEIPT_GOAL_ID,
+)
+OBJECTIVE_PACKET_TASK_IDS: Final[tuple[str, ...]] = (
+    LOGIC_TRANSLATION_TASK_ID,
+    KERNEL_PROOF_RECEIPT_TASK_ID,
+)
+# Formal-proof packet domain terms (translation + kernel).  Repair is separate.
+FORMAL_PROOF_PACKET_EVIDENCE_TERMS: Final[tuple[str, ...]] = (
+    LOGIC_TRANSLATION_EVIDENCE,
+    KERNEL_PROOF_RECEIPT_EVIDENCE,
+)
 # Validation-gate task that owns the synthetic repair obligation (VFS-053).
 OBJECTIVE_VALIDATION_REPAIR_TASK_ID: Final[str] = "VFS-053"
+
+# Closed acceptance surface for vfs/logic-translation@1 (VFS-G154).
+LOGIC_TRANSLATION_INVARIANTS: Final[tuple[str, ...]] = (
+    "translation round trips reconstruct predicates from IR claims",
+    "assumptions are explicit and bound on every translated obligation",
+    "unsupported semantics are residual-listed rather than silently dropped",
+    "premise selectors and candidate solvers lack translation authority",
+    "forged evidence kinds and changed translator/ruleset pins fail closed",
+)
+# Shared formal-proof packet acceptance (VFS-G154 + VFS-G155).
+FORMAL_PROOF_PACKET_INVARIANTS: Final[tuple[str, ...]] = (
+    "translation round trips are checked",
+    "assumptions and unsupported semantics are explicit",
+    "premise selectors and candidate solvers lack authority",
+    "wrong theorem, stale proof, omitted effect, and capability-loss cases fail closed",
+)
 
 # FormalLogicVocabulary is the reviewed translation vocabulary only; it never
 # authorizes MultiProverRouter candidates or KernelVerification receipts.
 assert FormalLogicVocabulary.LOGIC_VOCABULARY_VERSION >= 1
 assert OBJECTIVE_VALIDATION_REPAIR_EVIDENCE == "objective validation repair"
 assert OBJECTIVE_GOAL_ID == "VFS-G070"
+assert OBJECTIVE_PARENT_GOAL_ID == "VFS-G070"
+assert LOGIC_TRANSLATION_GOAL_ID == "VFS-G154"
+assert KERNEL_PROOF_RECEIPT_GOAL_ID == "VFS-G155"
+assert LOGIC_TRANSLATION_TASK_ID == "VFS-071"
+assert KERNEL_PROOF_RECEIPT_TASK_ID == "VFS-074"
+assert LOGIC_TRANSLATION_EVIDENCE == "vfs/logic-translation@1"
+assert KERNEL_PROOF_RECEIPT_EVIDENCE == "vfs/kernel-proof-receipt@1"
+assert OBJECTIVE_PACKET_GOAL_IDS == ("VFS-G154", "VFS-G155")
+assert FORMAL_PROOF_PACKET_EVIDENCE_TERMS == (
+    "vfs/logic-translation@1",
+    "vfs/kernel-proof-receipt@1",
+)
 
 CODE_CONTRACT_PREDICATE_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/code-contract-predicate@1"
@@ -126,6 +180,12 @@ CONFORMANCE_RECEIPT_SCHEMA: Final[str] = (
 )
 UNSUPPORTED_RESIDUAL_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/code-contract-unsupported-residual@1"
+)
+LOGIC_TRANSLATION_CLAIM_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/logic-translation-claim@1"
+)
+FORMAL_PROOF_PACKET_CLAIM_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/formal-proof-packet-claim@1"
 )
 
 MAX_PREDICATES: Final[int] = 512
@@ -2639,8 +2699,14 @@ def make_predicate(
 
 
 # ---------------------------------------------------------------------------
-# Objective evidence discovery (VFS-G070 / VFS-053)
+# Objective evidence discovery (VFS-G070 / VFS-G154 / VFS-053)
 # ---------------------------------------------------------------------------
+
+
+def logic_translation_evidence() -> str:
+    """Return the closed ``vfs/logic-translation@1`` evidence term (VFS-G154)."""
+
+    return LOGIC_TRANSLATION_EVIDENCE
 
 
 def logic_translation_evidence_terms() -> tuple[str, ...]:
@@ -2650,6 +2716,8 @@ def logic_translation_evidence_terms() -> tuple[str, ...]:
     omitted here so translation envelope ``evidence`` stays domain-only; use
     :func:`objective_validation_repair_evidence_terms` (or
     :func:`all_covered_evidence_terms`) for the VFS-G070 validation gate.
+    Kernel-proof receipts (``vfs/kernel-proof-receipt@1``, VFS-G155) live on
+    the prover surface and on :func:`packet_evidence_terms`.
     """
 
     return (LOGIC_TRANSLATION_EVIDENCE,)
@@ -2658,11 +2726,24 @@ def logic_translation_evidence_terms() -> tuple[str, ...]:
 def covered_evidence_terms() -> tuple[str, ...]:
     """Return domain objective evidence terms this translation surface proves.
 
-    Mirrors :func:`logic_translation_evidence_terms`.  Translation remains
-    independent from MultiProverRouter candidate search and KernelVerification.
+    Mirrors :func:`logic_translation_evidence_terms` (VFS-G154 only).
+    Translation remains independent from MultiProverRouter candidate search
+    and KernelVerification.  Packet-wide domain coverage is via
+    :func:`packet_evidence_terms`.
     """
 
     return logic_translation_evidence_terms()
+
+
+def packet_evidence_terms() -> tuple[str, ...]:
+    """Return formal_proof packet domain evidence terms (VFS-G154 + VFS-G155).
+
+    Ordered as ``vfs/logic-translation@1`` then ``vfs/kernel-proof-receipt@1``.
+    Labels never enter claim or receipt digests.  Does not include the
+    synthetic objective validation repair discovery key.
+    """
+
+    return FORMAL_PROOF_PACKET_EVIDENCE_TERMS
 
 
 def objective_validation_repair_evidence_terms() -> tuple[str, ...]:
@@ -2671,22 +2752,33 @@ def objective_validation_repair_evidence_terms() -> tuple[str, ...]:
     Exact-text discovery key for objective validation repair.  Never mixes
     into content-addressed claim, obligation, or conformance-receipt identity.
     Translation (FormalLogicVocabulary) stays separate from candidate search
-    and kernel validation.  Owned by :data:`OBJECTIVE_GOAL_ID` (``VFS-G070``)
-    via repair task :data:`OBJECTIVE_VALIDATION_REPAIR_TASK_ID` (``VFS-053``).
+    and kernel validation.  Owned by :data:`OBJECTIVE_PARENT_GOAL_ID`
+    (``VFS-G070``) via repair task :data:`OBJECTIVE_VALIDATION_REPAIR_TASK_ID`
+    (``VFS-053``).
     """
 
     return (OBJECTIVE_VALIDATION_REPAIR_EVIDENCE,)
 
 
 def all_covered_evidence_terms() -> tuple[str, ...]:
-    """Return domain VFS-G070 translation terms plus the validation-repair gate.
+    """Return domain VFS-G154 translation terms plus the validation-repair gate.
 
     Domain translation evidence comes first; the synthetic objective
     validation repair discovery key is appended last and never enters
-    claim/receipt identity.  Kernel-proof receipts live on the prover surface.
+    claim/receipt identity.  Kernel-proof receipts live on the prover surface
+    and on :func:`packet_evidence_terms`.
     """
 
     return covered_evidence_terms() + objective_validation_repair_evidence_terms()
+
+
+def formal_proof_completion_goal_bindings() -> dict[str, list[str]]:
+    """Return fresh supervisor completion bindings for the formal_proof packet."""
+
+    return {
+        LOGIC_TRANSLATION_GOAL_ID: [LOGIC_TRANSLATION_EVIDENCE],
+        KERNEL_PROOF_RECEIPT_GOAL_ID: [KERNEL_PROOF_RECEIPT_EVIDENCE],
+    }
 
 
 def translation_stage_owner() -> str:
@@ -2699,6 +2791,117 @@ def translation_stage_owner() -> str:
     return "FormalLogicVocabulary"
 
 
+def translation_satisfies_logic_translation(
+    result: TranslationResult | Mapping[str, Any],
+    *,
+    require_round_trip: bool = True,
+) -> bool:
+    """Machine-check VFS-G154 logic-translation acceptance on one result.
+
+    * Envelope carries pinned ``vfs/logic-translation@1`` evidence.
+    * Round-trip reconstruction succeeds when required.
+    * Assumptions referenced by predicates are present and explicit.
+    * Unsupported residuals are residual-listed (never silent).
+    * Successful translations retain no rejection codes.
+    """
+
+    if isinstance(result, Mapping):
+        try:
+            result = TranslationResult.from_dict(result)
+        except (CodeContractLogicError, TranslationRejectedError, TypeError, ValueError):
+            return False
+    if not isinstance(result, TranslationResult):
+        return False
+    try:
+        verify_translation_result(
+            result, require_round_trip=require_round_trip
+        )
+    except (CodeContractLogicError, TranslationRejectedError):
+        return False
+    if result.receipt.evidence != LOGIC_TRANSLATION_EVIDENCE:
+        return False
+    if require_round_trip and not result.receipt.round_trip_ok:
+        return False
+    assumption_ids = {item.assumption_cid for item in result.assumptions}
+    for predicate in result.predicates:
+        for assumption_cid in predicate.assumption_cids:
+            if assumption_cid not in assumption_ids:
+                return False
+        if (
+            predicate.support is SupportStatus.SUPPORTED
+            and predicate.residual
+        ):
+            return False
+    for residual in result.unsupported:
+        if not residual.aspect or not residual.reason:
+            return False
+    if result.rejection_codes or result.receipt.rejection_codes:
+        return False
+    return True
+
+
+def prove_logic_translation(
+    result: TranslationResult | Mapping[str, Any],
+    *,
+    goal_id: str = LOGIC_TRANSLATION_GOAL_ID,
+    task_id: str = LOGIC_TRANSLATION_TASK_ID,
+    require_round_trip: bool = True,
+) -> dict[str, Any]:
+    """Emit a portable ``vfs/logic-translation@1`` evidence claim (VFS-G154).
+
+    Goal/task labels are metadata only and never enter receipt or claim digests.
+    """
+
+    if isinstance(result, Mapping):
+        result_obj = TranslationResult.from_dict(result)
+    else:
+        result_obj = result
+    if not isinstance(result_obj, TranslationResult):
+        raise TypeError("result must be a TranslationResult")
+
+    satisfied = translation_satisfies_logic_translation(
+        result_obj, require_round_trip=require_round_trip
+    )
+    assumption_ids = tuple(
+        assumption.assumption_cid for assumption in result_obj.assumptions
+    )
+    unsupported_aspects = tuple(item.aspect for item in result_obj.unsupported)
+    predicate_kinds = tuple(
+        sorted({predicate.kind.value for predicate in result_obj.predicates})
+    )
+    return {
+        "schema": LOGIC_TRANSLATION_CLAIM_SCHEMA,
+        "evidence": LOGIC_TRANSLATION_EVIDENCE,
+        "evidence_terms": list(logic_translation_evidence_terms()),
+        "requirement_id": LOGIC_TRANSLATION_EVIDENCE,
+        "goal_id": str(goal_id or LOGIC_TRANSLATION_GOAL_ID),
+        "parent_goal_id": OBJECTIVE_PARENT_GOAL_ID,
+        "task_id": str(task_id or LOGIC_TRANSLATION_TASK_ID),
+        "goal_packet_id": OBJECTIVE_GOAL_PACKET_ID,
+        "request_cid": result_obj.request_cid,
+        "source_contract_cid": result_obj.source_contract_cid,
+        "receipt_cid": result_obj.receipt.receipt_cid,
+        "translator_identity": result_obj.receipt.translator_identity,
+        "status": result_obj.status.value,
+        "round_trip_ok": result_obj.receipt.round_trip_ok,
+        "predicate_count": len(result_obj.predicates),
+        "claim_count": len(result_obj.claims),
+        "assumption_count": len(result_obj.assumptions),
+        "assumption_cids": list(assumption_ids),
+        "unsupported_count": len(result_obj.unsupported),
+        "unsupported_aspects": list(unsupported_aspects),
+        "predicate_kinds": list(predicate_kinds),
+        "rejection_codes": list(result_obj.rejection_codes),
+        "require_round_trip": bool(require_round_trip),
+        "translation_stage_owner": translation_stage_owner(),
+        "satisfied": satisfied,
+        "invariants": list(LOGIC_TRANSLATION_INVARIANTS),
+        "authoritative": False,
+        "completion_authoritative": False,
+        "semantic_authority": False,
+    }
+
+
 __all__ = [
     "CODE_CONTRACT_LOGIC_VERSION",
     "TRANSLATOR_ID",
@@ -2707,7 +2910,21 @@ __all__ = [
     "RULESET_VERSION",
     "LOGIC_FAMILY",
     "LOGIC_TRANSLATION_EVIDENCE",
+    "KERNEL_PROOF_RECEIPT_EVIDENCE",
+    "LOGIC_TRANSLATION_GOAL_ID",
+    "LOGIC_TRANSLATION_TASK_ID",
+    "KERNEL_PROOF_RECEIPT_GOAL_ID",
+    "KERNEL_PROOF_RECEIPT_TASK_ID",
+    "LOGIC_TRANSLATION_INVARIANTS",
+    "LOGIC_TRANSLATION_CLAIM_SCHEMA",
+    "FORMAL_PROOF_PACKET_CLAIM_SCHEMA",
+    "FORMAL_PROOF_PACKET_EVIDENCE_TERMS",
+    "FORMAL_PROOF_PACKET_INVARIANTS",
     "OBJECTIVE_GOAL_ID",
+    "OBJECTIVE_PARENT_GOAL_ID",
+    "OBJECTIVE_GOAL_PACKET_ID",
+    "OBJECTIVE_PACKET_GOAL_IDS",
+    "OBJECTIVE_PACKET_TASK_IDS",
     "OBJECTIVE_VALIDATION_REPAIR_EVIDENCE",
     "OBJECTIVE_VALIDATION_REPAIR_TASK_ID",
     "ArgumentSort",
@@ -2731,15 +2948,20 @@ __all__ = [
     "extract_assumptions_from_contract",
     "extract_predicates_from_contract",
     "extract_reachability_predicates",
+    "formal_proof_completion_goal_bindings",
+    "logic_translation_evidence",
     "logic_translation_evidence_terms",
     "make_predicate",
     "objective_validation_repair_evidence_terms",
+    "packet_evidence_terms",
     "pinned_translator_identity",
     "project_reviewed_formula",
+    "prove_logic_translation",
     "reconstruct_predicate_from_claim",
     "round_trip_predicates",
     "translate",
     "translate_contract",
+    "translation_satisfies_logic_translation",
     "translation_stage_owner",
     "translator_identity",
     "verify_conformance_receipt",
