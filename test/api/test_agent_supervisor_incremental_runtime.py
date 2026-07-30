@@ -479,12 +479,24 @@ def test_implementation_daemon_releases_pool_lease_before_merge_queue_handoff(tm
     _git(repo, "add", ".")
     _git(repo, "commit", "-m", "seed")
     worktree_root = tmp_path / "pool"
+    todo_path = tmp_path / "tasks.md"
+    todo_path.write_text(
+        "## INC-001 Release pooled merge handoff\n\n"
+        "- Status: todo\n"
+        "- Completion: manual\n"
+        "- Priority: P1\n"
+        "- Track: runtime\n"
+        "- Outputs: feature.py\n"
+        "- Validation: python -m py_compile feature.py\n",
+        encoding="utf-8",
+    )
     daemon = PortalImplementationDaemon(
-        todo_path=tmp_path / "tasks.md",
+        todo_path=todo_path,
         state_path=tmp_path / "state.json",
         strategy_path=tmp_path / "strategy.json",
         events_path=tmp_path / "events.jsonl",
         repo_root=repo,
+        task_header_prefix="## INC-",
         implement=True,
         implementation_command=(
             "python -c \"from pathlib import Path; "
@@ -494,16 +506,7 @@ def test_implementation_daemon_releases_pool_lease_before_merge_queue_handoff(tm
         worktree_root=worktree_root,
     )
     daemon._consume_one_merge_candidate = lambda: None  # type: ignore[method-assign]
-    task = PortalTask(
-        task_id="INC-001",
-        title="Release pooled merge handoff",
-        status="todo",
-        completion="manual",
-        priority="P1",
-        track="runtime",
-        outputs=["feature.py"],
-        validation=["python -m py_compile feature.py"],
-    )
+    task = daemon._load_tasks()[0]
 
     result = daemon._run_implementation(task, PortalTaskState())
 
