@@ -18,14 +18,17 @@ from dataclasses import replace
 
 import pytest
 
+import ipfs_accelerate_py.agent_supervisor.vfs_symbolic_rollout as rollout
 from ipfs_accelerate_py.agent_supervisor.vfs_symbolic_rollout import (
     ADVERSARIAL_E2E_GATE_CLAIM_SCHEMA,
     ADVERSARIAL_E2E_GATE_EVIDENCE,
     ADVERSARIAL_E2E_GATE_SCHEMA,
     ASSURANCE_ROLLOUT_PACKET_CLAIM_SCHEMA,
     OBJECTIVE_DOMAIN_EVIDENCE_TERMS,
+    OBJECTIVE_EVIDENCE_BINDING_ROWS,
     OBJECTIVE_GOAL_G162_ID,
     OBJECTIVE_GOAL_G163_ID,
+    OBJECTIVE_PACKET_ID,
     OBJECTIVE_PACKET_EVIDENCE_TERMS,
     OBJECTIVE_PACKET_GOAL_IDS,
     OBJECTIVE_PARENT_GOAL_ID,
@@ -56,6 +59,7 @@ from ipfs_accelerate_py.agent_supervisor.vfs_symbolic_rollout import (
     evaluate_adversarial_gates,
     evaluate_vfs_symbolic_rollout,
     freeze_multi_repository_fixture,
+    objective_evidence_bindings,
     packet_evidence_terms,
     project_bounded_findings,
     project_bounded_receipts,
@@ -721,6 +725,25 @@ def test_assurance_rollout_packet_covers_g162_and_g163_together():
     )
     assert OBJECTIVE_PACKET_EVIDENCE_TERMS == OBJECTIVE_DOMAIN_EVIDENCE_TERMS
     assert OBJECTIVE_PACKET_GOAL_IDS == ("VFS-G162", "VFS-G163")
+    assert OBJECTIVE_PACKET_ID == (
+        "goal_packet/assurance_rollout/ipfs_accelerate_py/047760894e45"
+    )
+    assert OBJECTIVE_EVIDENCE_BINDING_ROWS == (
+        ("vfs/adversarial-e2e-gate@1", "VFS-G162", "VFS-082"),
+        ("vfs/shadow-rollout-report@1", "VFS-G163", "VFS-084"),
+    )
+    assert objective_evidence_bindings() == (
+        {
+            "evidence": "vfs/adversarial-e2e-gate@1",
+            "goal_id": "VFS-G162",
+            "task_id": "VFS-082",
+        },
+        {
+            "evidence": "vfs/shadow-rollout-report@1",
+            "goal_id": "VFS-G163",
+            "task_id": "VFS-084",
+        },
+    )
     assert covered_evidence_terms() == OBJECTIVE_DOMAIN_EVIDENCE_TERMS
     assert packet_evidence_terms() == OBJECTIVE_DOMAIN_EVIDENCE_TERMS
     assert all_covered_evidence_terms() == covered_evidence_terms()
@@ -742,7 +765,10 @@ def test_assurance_rollout_packet_covers_g162_and_g163_together():
     assert packet["goal_ids"] == ["VFS-G162", "VFS-G163"]
     assert packet["task_ids"] == ["VFS-082", "VFS-084"]
     assert packet["packet_task_id"] == "VFS-081"
+    assert packet["packet_id"] == OBJECTIVE_PACKET_ID
     assert packet["parent_goal_id"] == "VFS-G130"
+    assert packet["evidence_bindings"] == list(objective_evidence_bindings())
+    assert packet["gate_report_linked"] is True
     assert packet["satisfied"] is True
     assert packet["automatic_mutation_enabled"] is False
     assert packet["authoritative"] is False
@@ -758,6 +784,9 @@ def test_assurance_rollout_packet_covers_g162_and_g163_together():
     assert "vfs/adversarial-e2e-gate@1" in discovery["evidence_terms"]
     assert "vfs/shadow-rollout-report@1" in discovery["evidence_terms"]
     assert discovery["packet_goal_ids"] == ["VFS-G162", "VFS-G163"]
+    assert discovery["packet_id"] == OBJECTIVE_PACKET_ID
+    assert discovery["packet_task_id"] == "VFS-081"
+    assert discovery["evidence_bindings"] == list(objective_evidence_bindings())
     assert discovery["optional_providers_loaded"] is False
     assert discovery["processes_started"] is False
     assert discovery["automatic_mutation_enabled"] is False
@@ -769,3 +798,56 @@ def test_assurance_rollout_packet_covers_g162_and_g163_together():
         VfsRolloutMode(item) if not isinstance(item, VfsRolloutMode) else item
         for item in policy.approved_modes
     }
+
+
+def test_assurance_rollout_packet_rejects_split_gate_evidence():
+    """VFS-081 cannot aggregate individually clean but unrelated gate runs."""
+
+    _, gate_report, _, _ = _population(observed_at="2026-07-29T00:00:00Z")
+    _, other_report, other_binding, other_policy = _population(
+        observed_at="2026-07-29T00:00:01Z"
+    )
+    assert gate_report.passed
+    assert other_report.passed
+    assert gate_report.report_id != other_report.report_id
+
+    unrelated_shadow = ShadowRolloutReport(
+        gate_report=other_report,
+        binding=other_binding,
+        policy=other_policy,
+        desired_mode=VfsRolloutMode.ASSIST,
+    )
+    assert prove_adversarial_e2e_gate(gate_report)["satisfied"] is True
+    assert prove_shadow_rollout_report(unrelated_shadow)["satisfied"] is True
+
+    with pytest.raises(
+        VfsSymbolicRolloutError,
+        match="must bind to the same adversarial gate report",
+    ):
+        prove_assurance_rollout_packet(gate_report, unrelated_shadow)
+
+
+def test_objective_projection_labels_do_not_change_domain_report_ids(monkeypatch):
+    """Supervisor backlog routing metadata is outside evidence identities."""
+
+    _, gate_report, binding, policy = _population()
+    shadow_report = ShadowRolloutReport(
+        gate_report=gate_report,
+        binding=binding,
+        policy=policy,
+        desired_mode=VfsRolloutMode.ASSIST,
+    )
+    gate_report_id = gate_report.report_id
+    shadow_report_id = shadow_report.report_id
+
+    monkeypatch.setattr(rollout, "OBJECTIVE_GOAL_G162_ID", "VFS-G162-moved")
+    monkeypatch.setattr(rollout, "OBJECTIVE_GOAL_G163_ID", "VFS-G163-moved")
+    monkeypatch.setattr(rollout, "OBJECTIVE_TASK_G162_ID", "VFS-082-moved")
+    monkeypatch.setattr(rollout, "OBJECTIVE_TASK_G163_ID", "VFS-084-moved")
+    monkeypatch.setattr(rollout, "OBJECTIVE_TASK_PACKET_ID", "VFS-081-moved")
+    monkeypatch.setattr(rollout, "OBJECTIVE_PACKET_ID", "goal_packet/moved")
+
+    assert gate_report.to_dict()["goal_id"] == "VFS-G162-moved"
+    assert shadow_report.to_dict()["goal_id"] == "VFS-G163-moved"
+    assert gate_report.report_id == gate_report_id
+    assert shadow_report.report_id == shadow_report_id
