@@ -53,6 +53,8 @@ The same durable tree also binds the other VFS-G000 root terms so packet scans r
 | `vfs/repository-forest-receipt@1` | VFS-G132 | `receipts/repository_forest_receipt.receipt.json` |
 | `vfs/autonomous-refill-exhaustion@1` | VFS-G135 | `receipts/autonomous_refill_exhaustion.receipt.json` |
 
+Leaf receipts and packet aggregates were materialized by VFS-055 under the shared package tree (`receipts/`, `goal_packet_*_evidence.json`, `covered_evidence_terms.json`).
+
 ## Backlog and heap alignment
 
 - VFS-056 is the packet-anchor task for `goal_packet/vfs_symbolic_assurance/general/ab6d1ed417d3`.
