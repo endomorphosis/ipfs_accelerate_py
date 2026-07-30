@@ -1408,7 +1408,7 @@ consumer or frontier is unresolved.
 
 ## RPR-044 Integrate transactional propagation and require fixed-point completion
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
