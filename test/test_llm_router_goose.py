@@ -405,6 +405,51 @@ def test_agent_request_disables_automatic_provider_fallback(
     assert fallback_hits == []
 
 
+def test_explicit_provider_fallback_can_be_disabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fallback_hits: list[str] = []
+
+    class PrimaryFail:
+        def generate(
+            self,
+            prompt: str,
+            *,
+            model_name: Optional[str] = None,
+            **kwargs: Any,
+        ) -> str:
+            raise llm_router.LLMRouterError("codex primary failed")
+
+    class Other:
+        def generate(
+            self,
+            prompt: str,
+            *,
+            model_name: Optional[str] = None,
+            **kwargs: Any,
+        ) -> str:
+            fallback_hits.append("other")
+            return "fallback-text"
+
+    monkeypatch.setattr(
+        llm_router,
+        "_iter_unpinned_optional_providers",
+        lambda: [("copilot_cli", Other())],
+    )
+    monkeypatch.setattr(llm_router, "_get_accelerate_provider", lambda _deps: Other())
+
+    with pytest.raises(llm_router.LLMRouterError, match="codex primary failed"):
+        llm_router.generate_text(
+            "review",
+            provider="codex_cli",
+            provider_instance=PrimaryFail(),
+            allow_local_fallback=False,
+            allow_provider_fallback=False,
+        )
+
+    assert fallback_hits == []
+
+
 def test_no_retry_after_side_effects_started(monkeypatch: pytest.MonkeyPatch) -> None:
     _clear_goose_env(monkeypatch)
     attempts = {"n": 0}

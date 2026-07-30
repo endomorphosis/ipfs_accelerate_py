@@ -696,6 +696,7 @@ async def llm_generate(
                 model_name=invocation_model,
                 provider=invocation_provider,
                 allow_local_fallback=False,
+                allow_provider_fallback=allow_fallback,
                 disable_model_retry=True,
                 max_tokens=max_tokens,
                 temperature=float(temperature),

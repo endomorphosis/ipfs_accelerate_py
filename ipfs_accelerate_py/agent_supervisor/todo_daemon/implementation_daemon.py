@@ -519,32 +519,39 @@ def _production_provider_response_schema(
         "required": ["path", "content"],
         "additionalProperties": False,
     }
-    proposal = {
+    declared_paths = {
+        "type": "array",
+        "maxItems": 64,
+        "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1024,
+        },
+    }
+    patch_proposal = {
         "type": "object",
         "properties": {
             "patch": {"type": "string", "minLength": 1, "maxLength": 262144},
+            "declared_paths": declared_paths,
+        },
+        "required": ["patch", "declared_paths"],
+        "additionalProperties": False,
+    }
+    files_proposal = {
+        "type": "object",
+        "properties": {
             "files": {
                 "type": "array",
                 "minItems": 1,
                 "maxItems": 64,
                 "items": replacement,
             },
-            "declared_paths": {
-                "type": "array",
-                "maxItems": 64,
-                "items": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 1024,
-                },
-            },
+            "declared_paths": declared_paths,
         },
-        "anyOf": [
-            {"required": ["patch"]},
-            {"required": ["files"]},
-        ],
+        "required": ["files", "declared_paths"],
         "additionalProperties": False,
     }
+    proposal = {"anyOf": [patch_proposal, files_proposal]}
     if role is ProviderRole.CODEX_REVIEW:
         return {
             "type": "object",
@@ -564,9 +571,11 @@ def _production_provider_response_schema(
                     "maxItems": 128,
                     "items": {"type": "string", "maxLength": 4096},
                 },
-                "proposal": proposal,
+                "proposal": {
+                    "anyOf": [patch_proposal, files_proposal, {"type": "null"}],
+                },
             },
-            "required": ["decision", "findings"],
+            "required": ["decision", "findings", "proposal"],
             "additionalProperties": False,
         }
     if role is ProviderRole.GROK_IMPLEMENT:

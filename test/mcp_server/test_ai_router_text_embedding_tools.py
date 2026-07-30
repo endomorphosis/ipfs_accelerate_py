@@ -275,6 +275,7 @@ def test_text_routes_through_llm_router_with_revision_receipt_and_mcp_parity(
     assert calls[0][1]["provider"] == "text-provider"
     assert calls[0][1]["model_name"] == "chat-model"
     assert calls[0][1]["allow_local_fallback"] is False
+    assert calls[0][1]["allow_provider_fallback"] is False
     assert calls[0][1]["disable_model_retry"] is True
 
 
@@ -339,6 +340,7 @@ def test_text_structured_cli_route_is_schema_bound_and_isolated(
 
     assert result["success"] is True
     assert calls[0]["isolated_workdir"] is True
+    assert calls[0]["allow_provider_fallback"] is False
     assert calls[0]["response_schema"] == schema
 
     invalid = _run(
