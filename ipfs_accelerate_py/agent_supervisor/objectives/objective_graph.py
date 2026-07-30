@@ -10477,6 +10477,7 @@ def generate_objective_todos(
             )
 
         if records:
+            discovery_dir_preexisted = discovery_dir.exists()
             created_discoveries: list[Path] = []
             try:
                 for task_id, finding in pending_discoveries:
@@ -10506,10 +10507,11 @@ def generate_objective_todos(
                         path.unlink()
                     except FileNotFoundError:
                         pass
-                try:
-                    discovery_dir.rmdir()
-                except OSError:
-                    pass
+                if not discovery_dir_preexisted:
+                    try:
+                        discovery_dir.rmdir()
+                    except OSError:
+                        pass
                 raise
 
     if not records:

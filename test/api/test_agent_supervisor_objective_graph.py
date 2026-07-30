@@ -3077,6 +3077,61 @@ def test_generate_objective_todos_late_batch_cycle_has_no_discovery_side_effects
     assert not bundle_dir.exists()
 
 
+def test_generate_objective_todos_rollback_preserves_preexisting_discovery_dir(
+    tmp_path,
+    monkeypatch,
+):
+    repo, objective_path, todo_path = _seed_repo(tmp_path)
+    discovery_dir = repo / "data" / "agent_supervisor" / "discovery"
+    bundle_dir = repo / "data" / "agent_supervisor" / "objective_bundles"
+    discovery_dir.mkdir(parents=True)
+    original_board = todo_path.read_bytes()
+    finding = ObjectiveFinding(
+        fingerprint="rollback-preserves-discovery-dir",
+        goal_id="VAIOS-G000",
+        title="Preserve discovery directory",
+        summary="Preserve discovery directory",
+        priority="P0",
+        track="runtime",
+        missing_evidence=["rollback directory preservation proof"],
+        present_evidence={},
+        evidence_methods=[],
+        objective_path=str(objective_path),
+        outputs=["src/runtime_router.py"],
+        predicted_files=["src/runtime_router.py"],
+        validation="true",
+    )
+
+    def fail_taskboard_replacement(*_args, **_kwargs):
+        raise OSError("simulated taskboard replacement failure")
+
+    monkeypatch.setattr(
+        objective_graph_module,
+        "replace_locked_taskboard",
+        fail_taskboard_replacement,
+    )
+    with pytest.raises(
+        OSError,
+        match="simulated taskboard replacement failure",
+    ):
+        generate_objective_todos(
+            repo_root=repo,
+            objective_path=objective_path,
+            todo_path=todo_path,
+            discovery_dir=discovery_dir,
+            bundle_dir=bundle_dir,
+            task_prefix="ACCEL-",
+            precomputed_findings=[finding],
+            persist_ast_dataset=False,
+            write_todo_vector_index=False,
+        )
+
+    assert todo_path.read_bytes() == original_board
+    assert discovery_dir.is_dir()
+    assert not list(discovery_dir.iterdir())
+    assert not bundle_dir.exists()
+
+
 def test_manual_review_finding_without_edit_targets_is_visible_but_not_executable(
     tmp_path,
 ):
