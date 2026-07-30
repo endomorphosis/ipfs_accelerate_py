@@ -943,7 +943,7 @@ consumer or frontier is unresolved.
 
 ## RPR-029 Inventory compatibility at every affected call site
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
