@@ -211,6 +211,99 @@ def test_stale_reclamation_requires_expiry_and_advances_fence(tmp_path: Path) ->
     assert decision.record.state is WorkspaceLifecycleState.TERMINAL
 
 
+def test_branch_fallback_reclaims_authoritative_provisional_workspace(
+    tmp_path: Path,
+) -> None:
+    clock = FakeClock(1_000.0)
+    store = _store(
+        tmp_path,
+        lease_seconds=10.0,
+        startup_grace_seconds=0.0,
+        clock=clock,
+    )
+    provisional = tmp_path / "provisional-attempt-path"
+    pooled = tmp_path / "stable-pool-path"
+    branch = "implementation/provisional-branch"
+    record = store.begin_preparing(
+        task_id="STALE-PROVISIONAL",
+        attempt=1,
+        lane_id="dead-owner",
+        workspace_path=provisional,
+        branch=branch,
+        merge_target="main",
+        owner=ProcessBirthIdentity(
+            pid=2**30 - 7,
+            start_time_ticks=1,
+            boot_id="dead-owner",
+        ),
+    )
+    record_bytes = store.workspace_path_for(provisional).read_bytes()
+    clock.advance(11.0)
+
+    preflight = store.evaluate_cleanup(
+        workspace_path=pooled,
+        branch=branch,
+        caller_lease_id="reclaimer",
+    )
+    assert preflight.allowed
+    assert preflight.disposition is CleanupDisposition.RECLAIM_THEN_ALLOW
+    assert preflight.record == record
+    assert store.workspace_path_for(provisional).read_bytes() == record_bytes
+
+    decision = store.authorize_cleanup(
+        workspace_path=pooled,
+        branch=branch,
+        caller_lease_id="reclaimer",
+    )
+    reclaimed = store.load_workspace(provisional)
+
+    assert decision.allowed
+    assert decision.reason == "reclaimed_stale_record"
+    assert decision.record == reclaimed
+    assert reclaimed is not None
+    assert reclaimed.state is WorkspaceLifecycleState.TERMINAL
+    assert reclaimed.fence == record.fence + 1
+    assert store.load_workspace(pooled) is None
+
+
+def test_unresolved_stale_reclaim_race_fails_closed(tmp_path: Path) -> None:
+    clock = FakeClock(1_000.0)
+    store = _store(
+        tmp_path,
+        lease_seconds=10.0,
+        startup_grace_seconds=0.0,
+        clock=clock,
+    )
+    workspace = tmp_path / "stale-reclaim-race"
+    record = store.begin_preparing(
+        task_id="STALE-RACE",
+        attempt=1,
+        lane_id="dead-owner",
+        workspace_path=workspace,
+        branch="implementation/stale-reclaim-race",
+        merge_target="main",
+        owner=ProcessBirthIdentity(
+            pid=2**30 - 7,
+            start_time_ticks=1,
+            boot_id="dead-owner",
+        ),
+    )
+    clock.advance(11.0)
+    store.reclaim_stale = lambda *_args, **_kwargs: None  # type: ignore[method-assign]
+
+    decision = store.authorize_cleanup(
+        workspace_path=workspace,
+        caller_lease_id="reclaimer",
+    )
+
+    assert not decision.allowed
+    assert decision.disposition is CleanupDisposition.DENY
+    assert decision.reason == "stale_reclaim_race_unresolved"
+    assert decision.failure_kind is LifecycleFailureKind.LIFECYCLE_RACE
+    assert decision.attempt_consumed is False
+    assert store.load_workspace(workspace) == record
+
+
 def test_missing_proc_fails_closed(tmp_path: Path) -> None:
     missing_proc = tmp_path / "no-proc"
     store = _store(tmp_path, proc_root=missing_proc)

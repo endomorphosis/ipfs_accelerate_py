@@ -1208,18 +1208,42 @@ class WorktreeLifecycleStore:
             caller_lease_id=caller_lease_id,
         )
         if decision.disposition is CleanupDisposition.RECLAIM_THEN_ALLOW:
+            # Branch fallback can find a preparing claim whose provisional
+            # workspace differs from the stable pooled path supplied by the
+            # caller. Reclaim the authoritative record, never the lookup hint.
+            reclaim_workspace = (
+                decision.record.workspace_path
+                if decision.record is not None
+                else workspace_path
+            )
             reclaimed = self.reclaim_stale(
-                workspace_path,
+                reclaim_workspace,
                 reclaimer_lease_id=caller_lease_id or new_lease_id(seed="reclaim"),
                 reason=decision.reason,
             )
             if reclaimed is None:
                 # Lost the reclaim race; re-evaluate.
-                return self.evaluate_cleanup(
+                refreshed = self.evaluate_cleanup(
                     workspace_path=workspace_path,
                     branch=branch,
                     caller_lease_id=caller_lease_id,
                 )
+                if (
+                    refreshed.disposition
+                    is CleanupDisposition.RECLAIM_THEN_ALLOW
+                ):
+                    # Re-evaluation still requires an authoritative reclaim.
+                    # Never expose that unresolved intermediate disposition as
+                    # mutation authority to the caller.
+                    return CleanupDecision(
+                        disposition=CleanupDisposition.DENY,
+                        reason="stale_reclaim_race_unresolved",
+                        record=refreshed.record,
+                        failure_kind=LifecycleFailureKind.LIFECYCLE_RACE,
+                        provider_call_allowed=False,
+                        attempt_consumed=False,
+                    )
+                return refreshed
             return CleanupDecision(
                 disposition=CleanupDisposition.ALLOW,
                 reason="reclaimed_stale_record",
