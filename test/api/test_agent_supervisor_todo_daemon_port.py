@@ -148,6 +148,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
     PortalTask,
     TodoTaskState,
     TodoImplementationDaemon,
+    implementation_liveness_path,
     implied_validation_test_output_paths,
     dependency_satisfied_references,
     normalize_implementation_protected_paths,
@@ -7630,6 +7631,67 @@ def test_supervisor_loop_publishes_cached_worker_status(tmp_path):
     assert stopped["worker_descendant_count"] == 0
 
 
+def test_supervisor_loop_uses_newer_pid_bound_progress_liveness(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    status_path = state_dir / "daemon_status.json"
+    progress_path = state_dir / "daemon_liveness.json"
+    spec = ManagedDaemonSpec(
+        name="test-daemon",
+        schema="test.daemon",
+        repo_root=repo,
+        daemon_dir=state_dir,
+        runner=(sys.executable, "-c", "pass"),
+        status_path=status_path,
+        progress_path=progress_path,
+        supervisor_status_path=state_dir / "supervisor_status.json",
+        supervisor_pid_path=state_dir / "supervisor.pid",
+        child_pid_path=state_dir / "child.pid",
+        supervisor_out_path=state_dir / "supervisor.out",
+        ensure_status_path=state_dir / "ensure_status.json",
+        ensure_check_path=state_dir / "ensure_check.json",
+    )
+    write_json(
+        status_path,
+        {
+            "heartbeat_at": (
+                datetime.now(timezone.utc) - timedelta(hours=1)
+            ).isoformat(),
+        },
+    )
+    write_json(
+        progress_path,
+        {
+            "heartbeat_at": datetime.now(timezone.utc).isoformat(),
+            "heartbeat_pid": os.getpid(),
+        },
+    )
+    loop = SupervisorLoop(
+        SupervisorLoopConfig(
+            spec=spec,
+            command=(sys.executable, "-c", "pass"),
+            log_prefix="child",
+            watchdog_stale_after_seconds=60,
+        )
+    )
+    child = SimpleNamespace(pid=os.getpid())
+
+    assert loop.watchdog_decision(child).action == "continue"
+
+    write_json(
+        progress_path,
+        {
+            "heartbeat_at": datetime.now(timezone.utc).isoformat(),
+            "heartbeat_pid": os.getpid() + 1,
+        },
+    )
+
+    mismatched = loop.watchdog_decision(child)
+    assert mismatched.action == "recycle"
+    assert mismatched.reason == "stale_heartbeat"
+
+
 def test_supervisor_loop_starts_stall_clock_when_worker_disappears(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -9540,6 +9602,16 @@ def test_provider_capacity_backoff_passes_do_not_grow_state_or_events(
     first_retry_at = first["implementation_result"]["retry_at"]
     state_after_failure = state_path.read_bytes()
     events_after_failure = events_path.read_bytes()
+    liveness_path = implementation_liveness_path(state_path)
+    liveness_after_failure = liveness_path.read_bytes()
+    liveness = json.loads(liveness_after_failure)
+    assert liveness["heartbeat_pid"] == os.getpid()
+    assert liveness["state_path"] == str(state_path)
+    assert liveness_path not in {
+        path
+        for paths in daemon._runtime_source_paths().values()
+        for path in paths
+    }
 
     second = daemon.run_once()
 
@@ -9550,6 +9622,7 @@ def test_provider_capacity_backoff_passes_do_not_grow_state_or_events(
     assert second["write_count"] == 0
     assert state_path.read_bytes() == state_after_failure
     assert events_path.read_bytes() == events_after_failure
+    assert liveness_path.read_bytes() == liveness_after_failure
 
     third = daemon.run_once()
 
@@ -9559,6 +9632,16 @@ def test_provider_capacity_backoff_passes_do_not_grow_state_or_events(
     assert 0 < third["next_wake_after_seconds"] <= second["next_wake_after_seconds"]
     assert state_path.read_bytes() == state_after_failure
     assert events_path.read_bytes() == events_after_failure
+    assert liveness_path.read_bytes() == liveness_after_failure
+
+    daemon._last_liveness_heartbeat_monotonic -= 31
+    fourth = daemon.run_once()
+
+    assert fourth["unchanged"] is True
+    assert fourth["write_count"] == 0
+    assert state_path.read_bytes() == state_after_failure
+    assert events_path.read_bytes() == events_after_failure
+    assert liveness_path.read_bytes() != liveness_after_failure
 
 
 def test_ephemeral_implementation_defers_provider_quota_without_retry_failure(tmp_path):
@@ -11528,6 +11611,10 @@ def test_implementation_supervisor_configures_worker_stall_watchdog(tmp_path):
     loop_config = TodoImplementationSupervisor(config).build_supervisor_loop_config()
 
     assert loop_config.status_static_fields["worktree_no_child_stall_seconds"] == 42
+    assert loop_config.spec.progress_path == implementation_liveness_path(
+        config.state_path
+    )
+    assert loop_config.spec.progress_path != config.state_path
     assert loop_config.watchdog_startup_grace_seconds == 300
     assert loop_config.watchdog_stale_after_seconds >= (
         config.implementation_timeout + max(30.0, config.check_interval * 2.0)
