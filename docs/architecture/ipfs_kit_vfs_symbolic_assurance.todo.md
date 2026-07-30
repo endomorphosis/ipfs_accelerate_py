@@ -3408,7 +3408,7 @@ compact references and bounded spans only.
 
 ## VFS-079 Close objective gap packet: VFS-G160, VFS-G161
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
