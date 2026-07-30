@@ -881,7 +881,7 @@ consumer or frontier is unresolved.
 
 ## RPR-027 Index value and behavior candidates without granting authority
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
