@@ -1,0 +1,24 @@
+{
+  "schema": "ipfs_accelerate_py.agent_supervisor.codebase-finding-resolution@1",
+  "task_id": "VFS-061",
+  "goal_id": "VFS-G145",
+  "goal_lineage": [
+    "VFS-G145",
+    "VFS-G031",
+    "VFS-G030",
+    "VFS-G000"
+  ],
+  "finding": {
+    "fingerprint": "54632d475f3a12aaa3159e4dfd5c8c09419c80c8",
+    "kind": "swallowed_exception",
+    "source": "ipfs_accelerate_py/agent_supervisor/program_analysis_cache.py:1966",
+    "evidence": "except Exception:  # noqa: BLE001 - compaction is best-effort"
+  },
+  "disposition": {
+    "status": "resolved",
+    "reason": "Best-effort artifact-store compaction failures are now logged with traceback context before cache pruning continues.",
+    "implementation": "ipfs_accelerate_py/agent_supervisor/program_analysis_cache.py"
+  },
+  "validation_command": "python3 -m py_compile ipfs_accelerate_py/agent_supervisor/program_analysis_cache.py",
+  "completion_authoritative": false
+}
