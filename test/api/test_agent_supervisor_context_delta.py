@@ -40,9 +40,11 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
     implementation_daemon as implementation_daemon_module,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+    IMPLEMENTATION_RETRY_CONTEXT_BACKOFF_SECONDS,
     ImplementationRetryDeferred,
     PortalImplementationDaemon,
     PortalTask,
+    PortalTaskState,
 )
 
 
@@ -942,12 +944,16 @@ def test_implementation_daemon_retries_context_overflow_with_cid_only_evidence(
     with pytest.raises(
         ImplementationRetryDeferred,
         match="retry context budget exhausted",
-    ):
+    ) as delta_overflow:
         budget_blocked = daemon("budget-blocked.json")
         budget_blocked._build_implementation_prompt(
             task,
             attempt=2,
         )
+    assert (
+        delta_overflow.value.backoff_seconds
+        == IMPLEMENTATION_RETRY_CONTEXT_BACKOFF_SECONDS
+    )
     assert (
         state_dir / "logs" / "asi-overflow-diagnostic-receipt.json"
     ).exists()
@@ -979,11 +985,15 @@ def test_implementation_daemon_retries_context_overflow_with_cid_only_evidence(
     with pytest.raises(
         ImplementationRetryDeferred,
         match="retry context budget exhausted",
-    ):
+    ) as required_overflow:
         daemon("required-budget-blocked.json")._build_implementation_prompt(
             task,
             attempt=2,
         )
+    assert (
+        required_overflow.value.backoff_seconds
+        == IMPLEMENTATION_RETRY_CONTEXT_BACKOFF_SECONDS
+    )
 
     def compiler_budget_overflow(*args, **kwargs):
         raise RequiredContextOverflowError(
@@ -998,11 +1008,58 @@ def test_implementation_daemon_retries_context_overflow_with_cid_only_evidence(
     with pytest.raises(
         ImplementationRetryDeferred,
         match="retry context budget exhausted",
-    ):
+    ) as compiler_overflow:
         daemon("compiler-budget-blocked.json")._build_implementation_prompt(
             task,
             attempt=2,
         )
+    assert (
+        compiler_overflow.value.backoff_seconds
+        == IMPLEMENTATION_RETRY_CONTEXT_BACKOFF_SECONDS
+    )
+
+    dispatch_blocked = daemon("dispatch-budget-blocked.json")
+    canonical_task_cid = dispatch_blocked._canonical_ref(task)
+    state = PortalTaskState(
+        implementation_attempts={task.task_id: 1},
+        implementation_attempts_by_cid={canonical_task_cid: 1},
+    )
+    monkeypatch.setattr(
+        dispatch_blocked,
+        "_find_live_inflight_implementation",
+        lambda: None,
+    )
+    monkeypatch.setattr(
+        dispatch_blocked,
+        "_active_protected_path_maintenance_claim",
+        lambda: None,
+    )
+
+    dispatch_result = dispatch_blocked._run_implementation(task, state)
+
+    assert dispatch_result["skipped"] is True
+    assert (
+        dispatch_result["reason"]
+        == "implementation_retry_context_budget_exhausted"
+    )
+    assert (
+        dispatch_result["backoff_seconds"]
+        == IMPLEMENTATION_RETRY_CONTEXT_BACKOFF_SECONDS
+    )
+    assert dispatch_blocked.task_queue.is_cooled_down(canonical_task_cid) is True
+
+    restarted = daemon("dispatch-restarted.json")
+    assert restarted.task_queue.is_cooled_down(canonical_task_cid) is True
+    assert (
+        restarted._select_next_task(
+            [task],
+            {task.task_id: "ready"},
+            {},
+            {},
+            {},
+        )
+        is None
+    )
 
 
 def test_implementation_daemon_rebases_budget_blocked_retry_after_policy_change(

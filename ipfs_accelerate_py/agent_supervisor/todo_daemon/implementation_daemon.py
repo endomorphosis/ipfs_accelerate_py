@@ -286,6 +286,7 @@ MAX_IMPLEMENTATION_CHECKPOINT_FILES = 16
 MAX_IMPLEMENTATION_CHECKPOINT_BYTES = 512 * 1024 * 1024
 MAX_IMPLEMENTATION_CHECKPOINT_PATH_BYTES = 256
 IMPLEMENTATION_PROGRESS_HEARTBEAT_SECONDS = 15.0
+IMPLEMENTATION_RETRY_CONTEXT_BACKOFF_SECONDS = 300
 WORKTREE_POOL_ENABLED_ENV = "IPFS_ACCELERATE_AGENT_WORKTREE_POOL_ENABLED"
 WORKTREE_POOL_MAX_ENTRIES_ENV = "IPFS_ACCELERATE_AGENT_WORKTREE_POOL_MAX_ENTRIES"
 DISABLE_SUBAGENTS_ENV = "IPFS_ACCELERATE_AGENT_DISABLE_SUBAGENTS"
@@ -26894,7 +26895,8 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             )
         except RequiredContextOverflowError as exc:
             raise ImplementationRetryDeferred(
-                "implementation retry context budget exhausted"
+                "implementation retry context budget exhausted",
+                backoff_seconds=IMPLEMENTATION_RETRY_CONTEXT_BACKOFF_SECONDS,
             ) from exc
         try:
             result = compile_retry_context(
@@ -26980,7 +26982,8 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 RequiredContextOverflowError,
             ) as fallback_exc:
                 raise ImplementationRetryDeferred(
-                    "implementation retry context budget exhausted"
+                    "implementation retry context budget exhausted",
+                    backoff_seconds=IMPLEMENTATION_RETRY_CONTEXT_BACKOFF_SECONDS,
                 ) from fallback_exc
             retry_context_mode = "cid_only"
         except RequiredContextOverflowError as exc:
