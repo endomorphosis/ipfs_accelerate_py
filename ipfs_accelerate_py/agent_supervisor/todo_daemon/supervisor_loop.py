@@ -49,6 +49,9 @@ class SupervisorLoopDecision:
         return cls(action="stop", reason=reason, status=status)
 
 
+WatchdogQuiescentStatusPredicate = Callable[[Mapping[str, Any]], bool]
+
+
 @dataclass(frozen=True)
 class SupervisorLoopConfig:
     """Configuration for a reusable child-process supervisor loop."""
@@ -67,6 +70,9 @@ class SupervisorLoopConfig:
     child_env: Mapping[str, str] = field(default_factory=dict)
     status_static_fields: Mapping[str, Any] = field(default_factory=dict)
     status_extra_fields: Mapping[str, Any] = field(default_factory=dict)
+    watchdog_quiescent_status_predicate: Optional[
+        WatchdogQuiescentStatusPredicate
+    ] = None
 
 
 @dataclass(frozen=True)
@@ -132,6 +138,9 @@ class SupervisorLoop:
                 "supervisor_poll_seconds": config.poll_seconds,
                 "watchdog_stale_after_seconds": config.watchdog_stale_after_seconds,
                 "watchdog_startup_grace_seconds": config.watchdog_startup_grace_seconds,
+                "watchdog_quiescent_log_fallback": (
+                    config.watchdog_quiescent_status_predicate is not None
+                ),
                 "stop_grace_seconds": config.stop_grace_seconds,
                 **dict(config.status_static_fields),
             },
@@ -241,15 +250,78 @@ class SupervisorLoop:
         except Exception:
             return False
 
+    def _quiescent_child_log_activity(
+        self,
+        child: SupervisedChild,
+    ) -> dict[str, Any]:
+        """Return bounded child-log evidence for a stale semantic projection."""
+
+        threshold = max(0.0, float(self.config.watchdog_stale_after_seconds))
+        checked: set[Path] = set()
+        for candidate in (child.latest_log_path, child.log_path):
+            if candidate is None:
+                continue
+            path = Path(candidate)
+            if path in checked:
+                continue
+            checked.add(path)
+            try:
+                if not path.is_file():
+                    continue
+                stat_result = path.stat()
+                age_seconds = max(0.0, time.time() - stat_result.st_mtime)
+            except OSError:
+                continue
+            child_alive = pid_alive(child.pid)
+            return {
+                "child_log_path": str(path),
+                "child_log_age_seconds": round(age_seconds, 3),
+                "child_log_size_bytes": stat_result.st_size,
+                "child_log_stale_after_seconds": threshold,
+                "child_log_fresh": bool(
+                    child_alive
+                    and stat_result.st_size > 0
+                    and threshold > 0.0
+                    and age_seconds <= threshold
+                ),
+                "daemon_pid": child.pid,
+                "daemon_pid_alive": child_alive,
+            }
+        return {
+            "child_log_path": "",
+            "child_log_age_seconds": None,
+            "child_log_size_bytes": None,
+            "child_log_stale_after_seconds": threshold,
+            "child_log_fresh": False,
+            "daemon_pid": child.pid,
+            "daemon_pid_alive": pid_alive(child.pid),
+        }
+
     def default_watchdog(self, child: SupervisedChild, current_status: Mapping[str, Any]) -> SupervisorLoopDecision:
         heartbeat = heartbeat_snapshot(
             current_status,
             stale_after_seconds=self.config.watchdog_stale_after_seconds,
         )
-        if heartbeat.stale or (heartbeat.heartbeat_at is None and self.config.watchdog_stale_after_seconds <= 0):
+        heartbeat_failed = heartbeat.stale or (
+            heartbeat.heartbeat_at is None
+            and self.config.watchdog_stale_after_seconds <= 0
+        )
+        heartbeat_detail = heartbeat.to_payload()
+        predicate = self.config.watchdog_quiescent_status_predicate
+        if heartbeat_failed and predicate is not None:
+            try:
+                projection_quiescent = bool(predicate(current_status))
+            except Exception:
+                projection_quiescent = False
+            heartbeat_detail["projection_quiescent"] = projection_quiescent
+            if projection_quiescent:
+                log_activity = self._quiescent_child_log_activity(child)
+                heartbeat_detail.update(log_activity)
+                heartbeat_failed = not bool(log_activity["child_log_fresh"])
+        if heartbeat_failed:
             return SupervisorLoopDecision.recycle(
                 "stale_heartbeat",
-                detail=heartbeat.to_payload(),
+                detail=heartbeat_detail,
             )
         try:
             threshold = float(

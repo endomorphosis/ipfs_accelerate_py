@@ -7113,6 +7113,89 @@ def test_supervisor_loop_retries_child_launch_failures(tmp_path):
     assert status["last_exit_code"] == 127
 
 
+def test_supervisor_loop_uses_fresh_child_log_only_for_quiescent_stale_projection(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    state_dir.mkdir()
+    spec = ManagedDaemonSpec(
+        name="test-daemon",
+        schema="test.daemon",
+        repo_root=repo,
+        daemon_dir=state_dir,
+        runner=(sys.executable, "-c", "pass"),
+        status_path=state_dir / "daemon_status.json",
+        supervisor_status_path=state_dir / "supervisor_status.json",
+        supervisor_pid_path=state_dir / "supervisor.pid",
+        child_pid_path=state_dir / "child.pid",
+        supervisor_out_path=state_dir / "supervisor.out",
+        ensure_status_path=state_dir / "ensure_status.json",
+        ensure_check_path=state_dir / "ensure_check.json",
+    )
+    log_path = state_dir / "child.log"
+    log_path.write_text("healthy observation\n", encoding="utf-8")
+    child = SupervisedChild(
+        pid=os.getpid(),
+        command=spec.runner,
+        log_path=log_path,
+        child_pid_path=state_dir / "child.pid",
+    )
+    loop = SupervisorLoop(
+        SupervisorLoopConfig(
+            spec=spec,
+            command=spec.runner,
+            log_prefix="child",
+            watchdog_stale_after_seconds=60,
+            watchdog_quiescent_status_predicate=lambda status: bool(
+                status.get("quiescent")
+            ),
+        )
+    )
+    stale_heartbeat = (
+        datetime.now(timezone.utc) - timedelta(seconds=120)
+    ).isoformat()
+
+    fresh_log = loop.default_watchdog(
+        child,
+        {"heartbeat_at": stale_heartbeat, "quiescent": True},
+    )
+    nonquiescent = loop.default_watchdog(
+        child,
+        {"heartbeat_at": stale_heartbeat, "quiescent": False},
+    )
+    dead_child = replace(child, pid=99_999_999)
+    dead_process = loop.default_watchdog(
+        dead_child,
+        {"heartbeat_at": stale_heartbeat, "quiescent": True},
+    )
+    empty_log_path = state_dir / "empty.log"
+    empty_log_path.write_bytes(b"")
+    empty_log = loop.default_watchdog(
+        replace(child, log_path=empty_log_path),
+        {"heartbeat_at": stale_heartbeat, "quiescent": True},
+    )
+    old = time.time() - 120
+    os.utime(log_path, (old, old))
+    stale_log = loop.default_watchdog(
+        child,
+        {"heartbeat_at": stale_heartbeat, "quiescent": True},
+    )
+
+    assert fresh_log.action == "continue"
+    assert nonquiescent.action == "recycle"
+    assert nonquiescent.reason == "stale_heartbeat"
+    assert dead_process.action == "recycle"
+    assert dead_process.detail["daemon_pid_alive"] is False
+    assert empty_log.action == "recycle"
+    assert empty_log.detail["child_log_size_bytes"] == 0
+    assert stale_log.action == "recycle"
+    assert stale_log.reason == "stale_heartbeat"
+    assert stale_log.detail["projection_quiescent"] is True
+    assert stale_log.detail["child_log_fresh"] is False
+
+
 def test_supervisor_loop_publishes_cached_worker_status(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -10887,6 +10970,41 @@ def test_implementation_supervisor_configures_worker_stall_watchdog(tmp_path):
     assert loop_config.watchdog_startup_grace_seconds == 300
     assert loop_config.watchdog_stale_after_seconds >= (
         config.implementation_timeout + max(30.0, config.check_interval * 2.0)
+    )
+    predicate = loop_config.watchdog_quiescent_status_predicate
+    assert predicate is not None
+    assert predicate(
+        {
+            "active_task_id": "",
+            "implementation_in_progress": False,
+            "ready_count": 0,
+            "selectable_ready_count": 0,
+            "eligible_ready_count": 0,
+            "blocked_count": 0,
+            "selection_idle_reason": "no_shard_selectable_ready_tasks",
+        }
+    )
+    assert not predicate(
+        {
+            "active_task_id": "AUTO-001",
+            "implementation_in_progress": True,
+            "ready_count": 1,
+            "selectable_ready_count": 1,
+            "eligible_ready_count": 1,
+            "blocked_count": 0,
+            "selection_idle_reason": "",
+        }
+    )
+    assert not predicate(
+        {
+            "active_task_id": "",
+            "implementation_in_progress": False,
+            "ready_count": 0,
+            "selectable_ready_count": 0,
+            "eligible_ready_count": False,
+            "blocked_count": 0,
+            "selection_idle_reason": "no_shard_selectable_ready_tasks",
+        }
     )
 
 
