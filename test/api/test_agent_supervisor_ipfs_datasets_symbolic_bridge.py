@@ -1,4 +1,6 @@
-"""SCA-213 real-module canary for exact GraphRAG and Cypher-AST binding.
+"""SCA-213 / SCA-626 real-module canary for exact GraphRAG and Cypher-AST binding.
+
+Proves objective evidence SCAEV031DATASETSGRAPH for SCA-G031.
 
 Exercises ``ipfs_datasets_py.logic.intent_ir.graphrag.retrieval.IntentGraphRetriever``
 and ``ipfs_datasets_py.knowledge_graphs.cypher.ast`` / ``parser`` through the
@@ -18,6 +20,8 @@ from ipfs_accelerate_py.agent_supervisor.analysis.symbolic_contract_graph import
     EXACT_DATASETS_CYPHER_AST_MODULE,
     EXACT_DATASETS_CYPHER_PARSER_MODULE,
     EXACT_DATASETS_GRAPHRAG_MODULE,
+    SCAEV031DATASETSGRAPH as GRAPH_SCAEV031DATASETSGRAPH,
+    SCAEV031DATASETSGRAPH_EVIDENCE as GRAPH_SCAEV031DATASETSGRAPH_EVIDENCE,
     BoundedGraphRAGRetriever,
     ContractAuthority,
     ContractEdgeKind,
@@ -40,6 +44,9 @@ from ipfs_accelerate_py.agent_supervisor.integrations.ipfs_datasets_analysis_pro
     INTENT_GRAPH_RETRIEVER_INTERFACE,
     PACKAGE_ROOT_FALLBACK_MODULES,
     QUERY_NODE_INTERFACE,
+    SCAEV031DATASETSGRAPH,
+    SCAEV031DATASETSGRAPH_COVERAGE,
+    SCAEV031DATASETSGRAPH_EVIDENCE,
     DatasetsGraphBackendError,
     DatasetsGraphBackendKind,
     DatasetsGraphBackendProbe,
@@ -105,6 +112,40 @@ def _graph() -> SymbolicContractGraph:
         nodes=(alpha, beta),
         edges=(_edge(alpha, beta),),
     )
+
+
+def test_scaev031datasetsgraph_evidence_term_is_declared_and_receipted() -> None:
+    """Exact-text SCAEV031DATASETSGRAPH markers for objective evidence admission."""
+
+    assert SCAEV031DATASETSGRAPH == "SCAEV031DATASETSGRAPH"
+    assert SCAEV031DATASETSGRAPH_EVIDENCE == SCAEV031DATASETSGRAPH
+    assert GRAPH_SCAEV031DATASETSGRAPH == SCAEV031DATASETSGRAPH
+    assert GRAPH_SCAEV031DATASETSGRAPH_EVIDENCE == SCAEV031DATASETSGRAPH
+    assert "exact-graphrag-intent-graph-retriever-module-binding" in (
+        SCAEV031DATASETSGRAPH_COVERAGE
+    )
+    assert "exact-cypher-ast-and-parser-module-binding" in SCAEV031DATASETSGRAPH_COVERAGE
+    assert "real-module-canary-context-only-candidates" in SCAEV031DATASETSGRAPH_COVERAGE
+    assert "cypher-ast-syntax-only-non-authoritative" in SCAEV031DATASETSGRAPH_COVERAGE
+    assert (
+        "package-root-fixture-local-lexical-cannot-claim-exact-use"
+        in SCAEV031DATASETSGRAPH_COVERAGE
+    )
+
+    capability = inspect_exact_datasets_graph_capability()
+    assert capability["evidence_id"] == SCAEV031DATASETSGRAPH
+    assert SCAEV031DATASETSGRAPH in capability["evidence"]["requirement_ids"]
+    assert capability["evidence"]["coverage"] == list(SCAEV031DATASETSGRAPH_COVERAGE)
+    assert capability["evidence"]["evidence_id"] == SCAEV031DATASETSGRAPH_EVIDENCE
+
+    canary = run_datasets_graph_real_module_canary()
+    assert canary["evidence_id"] == SCAEV031DATASETSGRAPH
+    assert SCAEV031DATASETSGRAPH in canary["evidence"]["requirement_ids"]
+    assert canary["evidence"]["coverage"] == list(SCAEV031DATASETSGRAPH_COVERAGE)
+
+    local_capability = BoundedGraphRAGRetriever(_graph()).capability()
+    assert local_capability["evidence_id"] == SCAEV031DATASETSGRAPH
+    assert SCAEV031DATASETSGRAPH in local_capability["evidence"]["requirement_ids"]
 
 
 def test_exact_backend_specs_cover_graphrag_and_cypher_ast() -> None:
@@ -181,6 +222,7 @@ def test_real_module_canary_exercises_intent_graph_retriever_and_cypher_ast() ->
     assert canary["proof_authority"] is False
     assert canary["completion_authority"] is False
     assert canary["canary_receipt_id"].startswith("datasets-graph-canary:sha256:")
+    assert canary["evidence_id"] == SCAEV031DATASETSGRAPH
 
     capability = canary["capability"]
     assert capability["available"] is True
@@ -191,6 +233,14 @@ def test_real_module_canary_exercises_intent_graph_retriever_and_cypher_ast() ->
     assert capability["exact_modules"]["cypher_ast"] == EXACT_CYPHER_AST_MODULE
     assert capability["exact_modules"]["cypher_parser"] == EXACT_CYPHER_PARSER_MODULE
     assert capability["capability_receipt_id"]
+    assert capability["evidence_id"] == SCAEV031DATASETSGRAPH
+    # Real-module canary receipts include version and package-tree identities.
+    graphrag_backend = capability["backends"]["graphrag"]
+    cypher_backend = capability["backends"]["cypher_ast"]
+    assert graphrag_backend["package_version"]
+    assert graphrag_backend["package_tree"].startswith("datasets-package-tree:sha256:")
+    assert cypher_backend["package_version"]
+    assert cypher_backend["package_tree"].startswith("datasets-package-tree:sha256:")
 
     graphrag = canary["graphrag"]
     assert graphrag["interface"] == INTENT_GRAPH_RETRIEVER_INTERFACE
@@ -355,6 +405,7 @@ def test_bounded_graphrag_retriever_binds_exact_datasets_without_proof_authority
 
     local_capability = retriever.capability()
     assert local_capability["interface"] == BOUNDED_GRAPHRAG_RETRIEVER_INTERFACE
+    assert local_capability["evidence_id"] == SCAEV031DATASETSGRAPH
     assert local_capability["optional_provider_lazy"] is True
     assert local_capability["exact_datasets_lazy"] is True
     assert local_capability["package_root_fallback_accepted"] is False
