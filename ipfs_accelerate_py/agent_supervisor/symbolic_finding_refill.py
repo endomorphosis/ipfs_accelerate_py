@@ -12,12 +12,12 @@ are derived from semantic inputs so replaying a receipt is a no-op.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from enum import Enum
 import hashlib
 import json
 import posixpath
 import time
+from dataclasses import dataclass, field
+from enum import Enum
 from typing import Any, Mapping, Protocol, Sequence
 
 from .contract_findings import (
@@ -27,11 +27,14 @@ from .contract_findings import (
     FindingAdmissionState,
 )
 
-
 SYMBOLIC_FINDING_REFILL_VERSION = 1
 SYMBOLIC_FINDING_REFILL_INTERFACE = "vfs/symbolic-finding-refill@1"
 SYMBOLIC_REFILL_EPOCH_SCHEMA = "vfs/symbolic-refill-epoch@1"
 REFILL_IDEMPOTENCY_SCHEMA = "vfs/refill-idempotency@1"
+SYMBOLIC_REFILL_EVIDENCE_SCHEMAS = (
+    SYMBOLIC_REFILL_EPOCH_SCHEMA,
+    REFILL_IDEMPOTENCY_SCHEMA,
+)
 
 DEFAULT_REFILL_THRESHOLD = 4
 DEFAULT_OPEN_WORK_CEILING = 12
@@ -158,9 +161,8 @@ def _safe_output_paths(
     normalized_roots = tuple(_path(root).rstrip("/") for root in roots if _path(root))
     for output in outputs:
         if (
-            output.startswith("/")
+            output.startswith(("/", "../"))
             or output == ".."
-            or output.startswith("../")
             or "/../" in f"/{output}/"
         ):
             return ()
@@ -396,6 +398,23 @@ class RefillState:
         object.__setattr__(self, "diagnostic_states", diagnostic_states)
 
 
+def _state_id(state: RefillState) -> str:
+    """Content identity for caller-persisted refill state."""
+
+    return _stable_id(
+        "refill-state",
+        {
+            "last_sequence": state.last_sequence,
+            "last_refill_epoch": state.last_refill_epoch,
+            "next_allowed_epoch": state.next_allowed_epoch,
+            "seen_receipt_ids": state.seen_receipt_ids,
+            "semantic_task_ids": state.semantic_task_ids,
+            "diagnostic_states": state.diagnostic_states,
+            "review_task_ids": state.review_task_ids,
+        },
+    )
+
+
 @dataclass(frozen=True)
 class SymbolicFindingRefillPolicy:
     refill_threshold: int = DEFAULT_REFILL_THRESHOLD
@@ -440,6 +459,157 @@ class SymbolicFindingRefillPolicy:
 
 
 @dataclass(frozen=True)
+class SymbolicRefillEpochEvidence:
+    """Exact, content-addressed account of one refill planner decision.
+
+    The receipt distinguishes the observed epoch from the idempotent operation
+    below.  Wall-clock time therefore cannot change a task identity, while the
+    supervisor can still prove which persisted state and objective-heap
+    revision produced a particular decision.
+    """
+
+    binding: RefillBinding
+    reason: RefillReason
+    observed_at_epoch: int
+    prior_state_id: str
+    result_state_id: str
+    input_receipt_ids: tuple[str, ...] = ()
+    fresh_receipt_ids: tuple[str, ...] = ()
+    processed_receipt_ids: tuple[str, ...] = ()
+    emitted_goal_ids: tuple[str, ...] = ()
+    emitted_task_ids: tuple[str, ...] = ()
+    diagnostic_dispositions: tuple[str, ...] = ()
+    open_work_before: int = 0
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.observed_at_epoch, int) or self.observed_at_epoch < 0:
+            raise SymbolicFindingRefillError(
+                "observed_at_epoch must be a non-negative integer"
+            )
+        if not isinstance(self.open_work_before, int) or self.open_work_before < 0:
+            raise SymbolicFindingRefillError(
+                "open_work_before must be a non-negative integer"
+            )
+        for name in (
+            "prior_state_id",
+            "result_state_id",
+        ):
+            object.__setattr__(self, name, _required_text(getattr(self, name), name))
+        for name in (
+            "input_receipt_ids",
+            "fresh_receipt_ids",
+            "processed_receipt_ids",
+            "emitted_goal_ids",
+            "emitted_task_ids",
+            "diagnostic_dispositions",
+        ):
+            object.__setattr__(self, name, _unique(getattr(self, name)))
+        if not set(self.fresh_receipt_ids).issubset(self.input_receipt_ids):
+            raise SymbolicFindingRefillError(
+                "fresh receipt ids must be included in input receipt ids"
+            )
+        if not set(self.processed_receipt_ids).issubset(self.input_receipt_ids):
+            raise SymbolicFindingRefillError(
+                "processed receipt ids must be included in input receipt ids"
+            )
+
+    @property
+    def changed(self) -> bool:
+        return bool(self.emitted_goal_ids or self.emitted_task_ids)
+
+    @property
+    def epoch_id(self) -> str:
+        return _stable_id("refill-epoch", self._identity_record())
+
+    def _identity_record(self) -> dict[str, Any]:
+        return {
+            "schema": SYMBOLIC_REFILL_EPOCH_SCHEMA,
+            "binding": self.binding.to_record(),
+            "reason": self.reason.value,
+            "observed_at_epoch": self.observed_at_epoch,
+            "prior_state_id": self.prior_state_id,
+            "result_state_id": self.result_state_id,
+            "input_receipt_ids": self.input_receipt_ids,
+            "fresh_receipt_ids": self.fresh_receipt_ids,
+            "processed_receipt_ids": self.processed_receipt_ids,
+            "emitted_goal_ids": self.emitted_goal_ids,
+            "emitted_task_ids": self.emitted_task_ids,
+            "diagnostic_dispositions": self.diagnostic_dispositions,
+            "open_work_before": self.open_work_before,
+        }
+
+    def to_record(self) -> dict[str, Any]:
+        return {
+            **self._identity_record(),
+            "epoch_id": self.epoch_id,
+            "binding_id": self.binding.binding_id,
+            "changed": self.changed,
+        }
+
+
+@dataclass(frozen=True)
+class RefillIdempotencyEvidence:
+    """Replay witness for the stable work identity of a refill operation."""
+
+    binding: RefillBinding
+    epoch_id: str
+    operation_receipt_ids: tuple[str, ...] = ()
+    emitted_task_ids: tuple[str, ...] = ()
+    resolved_task_ids: tuple[str, ...] = ()
+    replay_receipt_ids: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "epoch_id", _required_text(self.epoch_id, "epoch_id"))
+        for name in (
+            "operation_receipt_ids",
+            "emitted_task_ids",
+            "resolved_task_ids",
+            "replay_receipt_ids",
+        ):
+            object.__setattr__(self, name, _unique(getattr(self, name)))
+        if not set(self.replay_receipt_ids).issubset(self.operation_receipt_ids):
+            raise SymbolicFindingRefillError(
+                "replay receipt ids must be included in operation receipt ids"
+            )
+        if not set(self.emitted_task_ids).issubset(self.resolved_task_ids):
+            raise SymbolicFindingRefillError(
+                "emitted task ids must be included in resolved task ids"
+            )
+
+    @property
+    def idempotency_id(self) -> str:
+        # Output task IDs and observation time are deliberately excluded.  The
+        # same evidence bound to the same objective revision is one operation,
+        # whether this is the materializing pass or a persisted-state replay.
+        return _stable_id(
+            "refill-idempotency",
+            {
+                "schema": REFILL_IDEMPOTENCY_SCHEMA,
+                "binding_id": self.binding.binding_id,
+                "operation_receipt_ids": self.operation_receipt_ids,
+            },
+        )
+
+    @property
+    def replay_noop(self) -> bool:
+        return bool(self.replay_receipt_ids) and not self.emitted_task_ids
+
+    def to_record(self) -> dict[str, Any]:
+        return {
+            "schema": REFILL_IDEMPOTENCY_SCHEMA,
+            "idempotency_id": self.idempotency_id,
+            "epoch_id": self.epoch_id,
+            "binding": self.binding.to_record(),
+            "binding_id": self.binding.binding_id,
+            "operation_receipt_ids": self.operation_receipt_ids,
+            "emitted_task_ids": self.emitted_task_ids,
+            "resolved_task_ids": self.resolved_task_ids,
+            "replay_receipt_ids": self.replay_receipt_ids,
+            "replay_noop": self.replay_noop,
+        }
+
+
+@dataclass(frozen=True)
 class RefillOutcome:
     reason: RefillReason
     binding: RefillBinding
@@ -451,10 +621,28 @@ class RefillOutcome:
     open_work_before: int = 0
     refill_epoch_id: str = ""
     idempotency_id: str = ""
+    epoch_evidence: SymbolicRefillEpochEvidence | None = None
+    idempotency_evidence: RefillIdempotencyEvidence | None = None
 
     @property
     def changed(self) -> bool:
         return bool(self.new_goals or self.new_tasks)
+
+    @property
+    def evidence_methods(self) -> tuple[str, ...]:
+        """Schemas directly evidenced by this decision."""
+
+        if self.epoch_evidence is None or self.idempotency_evidence is None:
+            return ()
+        return SYMBOLIC_REFILL_EVIDENCE_SCHEMAS
+
+    def evidence_records(self) -> tuple[dict[str, Any], ...]:
+        if self.epoch_evidence is None or self.idempotency_evidence is None:
+            return ()
+        return (
+            self.epoch_evidence.to_record(),
+            self.idempotency_evidence.to_record(),
+        )
 
 
 @dataclass
@@ -663,18 +851,59 @@ def refill_symbolic_findings(
     if not any(goal.goal_id == binding.refinement_goal_id for goal in normalized_goals):
         raise RefillAncestryError("binding refinement goal is absent")
 
-    open_work = sum(_task_open(task) for task in tasks)
-    empty = dict(
-        binding=binding,
-        state=state,
-        open_work_before=open_work,
+    ordered_receipts = tuple(
+        sorted(receipts, key=lambda item: (item.sequence, item.receipt_id))
     )
+    seen = set(state.seen_receipt_ids)
+    fresh_receipts = tuple(
+        receipt
+        for receipt in ordered_receipts
+        if receipt.receipt_id not in seen and receipt.sequence > state.last_sequence
+    )
+    gate_receipts = (
+        fresh_receipts[: policy.max_findings_per_pass]
+        or ordered_receipts[: policy.max_findings_per_pass]
+    )
+    open_work = sum(_task_open(task) for task in tasks)
     if open_work >= policy.open_work_ceiling:
-        return RefillOutcome(reason=RefillReason.OPEN_WORK_CEILING, **empty)
+        return _finish(
+            reason=RefillReason.OPEN_WORK_CEILING,
+            binding=binding,
+            prior_state=state,
+            state=state,
+            input_receipts=gate_receipts,
+            fresh_receipts=tuple(
+                receipt for receipt in gate_receipts if receipt in fresh_receipts
+            ),
+            open_work=open_work,
+            now=now,
+        )
     if open_work >= policy.refill_threshold:
-        return RefillOutcome(reason=RefillReason.THRESHOLD_SATISFIED, **empty)
+        return _finish(
+            reason=RefillReason.THRESHOLD_SATISFIED,
+            binding=binding,
+            prior_state=state,
+            state=state,
+            input_receipts=gate_receipts,
+            fresh_receipts=tuple(
+                receipt for receipt in gate_receipts if receipt in fresh_receipts
+            ),
+            open_work=open_work,
+            now=now,
+        )
     if now < state.next_allowed_epoch:
-        return RefillOutcome(reason=RefillReason.COOLDOWN, **empty)
+        return _finish(
+            reason=RefillReason.COOLDOWN,
+            binding=binding,
+            prior_state=state,
+            state=state,
+            input_receipts=gate_receipts,
+            fresh_receipts=tuple(
+                receipt for receipt in gate_receipts if receipt in fresh_receipts
+            ),
+            open_work=open_work,
+            now=now,
+        )
 
     semantic_task_ids = dict(state.semantic_task_ids)
     review_task_ids = dict(state.review_task_ids)
@@ -698,13 +927,6 @@ def refill_symbolic_findings(
         if finding_key and task_id and task_kind == TaskKind.UNBLOCK_REVIEW.value:
             review_task_ids.setdefault(finding_key, task_id)
 
-    ordered_receipts = sorted(receipts, key=lambda item: (item.sequence, item.receipt_id))
-    seen = set(state.seen_receipt_ids)
-    fresh_receipts = [
-        receipt
-        for receipt in ordered_receipts
-        if receipt.receipt_id not in seen and receipt.sequence > state.last_sequence
-    ]
     # Retry exhaustion normally occurs after the admitted receipt was consumed
     # by an earlier refill.  That receipt remains the provenance for the single
     # bounded review task and must not be hidden by replay filtering.
@@ -742,9 +964,12 @@ def refill_symbolic_findings(
         return _finish(
             reason=RefillReason.HEALTHY_EXHAUSTED,
             binding=binding,
+            prior_state=state,
             state=next_state,
             diagnostics=(diagnostic,),
             processed=(healthy_exhaustion.receipt_id,),
+            input_receipt_ids=(healthy_exhaustion.receipt_id,),
+            fresh_receipt_ids=(healthy_exhaustion.receipt_id,),
             open_work=open_work,
             now=now,
         )
@@ -762,7 +987,14 @@ def refill_symbolic_findings(
         )
     )
     if not selected:
-        return RefillOutcome(reason=RefillReason.NO_FRESH_RECEIPTS, **empty)
+        return _finish(
+            reason=RefillReason.NO_FRESH_RECEIPTS,
+            binding=binding,
+            prior_state=state,
+            state=state,
+            open_work=open_work,
+            now=now,
+        )
 
     existing_by_finding_key = {
         key: task_id
@@ -774,6 +1006,11 @@ def refill_symbolic_findings(
         task_id = str(_task_value(task, "task_id", "") or "")
         if finding_key and task_id and finding_key not in exhausted_finding_keys:
             existing_by_finding_key[finding_key] = task_id
+            # Import the authoritative taskboard identity into the next replay
+            # state.  The objective heap and supervisor-fed backlog then share
+            # one semantic-task mapping even when the caller restored a task
+            # before restoring planner state.
+            semantic_task_ids.setdefault(finding_key, task_id)
 
     diagnostics: list[RefillDiagnostic] = []
     proposed_goals: list[RefillGoal] = []
@@ -1017,11 +1254,16 @@ def refill_symbolic_findings(
     return _finish(
         reason=reason,
         binding=binding,
+        prior_state=state,
         state=next_state,
         goals=tuple(proposed_goals),
         tasks=tuple(new_tasks),
         diagnostics=tuple(diagnostics),
         processed=tuple(processed),
+        input_receipts=selected,
+        fresh_receipts=tuple(
+            receipt for receipt in selected if receipt in fresh_receipts
+        ),
         open_work=open_work,
         now=now,
     )
@@ -1031,23 +1273,74 @@ def _finish(
     *,
     reason: RefillReason,
     binding: RefillBinding,
+    prior_state: RefillState,
     state: RefillState,
     goals: tuple[RefillGoal, ...] = (),
     tasks: tuple[RefillTask, ...] = (),
     diagnostics: tuple[RefillDiagnostic, ...] = (),
     processed: tuple[str, ...] = (),
+    input_receipts: Sequence[AppendReceipt] = (),
+    fresh_receipts: Sequence[AppendReceipt] = (),
+    input_receipt_ids: tuple[str, ...] = (),
+    fresh_receipt_ids: tuple[str, ...] = (),
     open_work: int,
     now: int,
 ) -> RefillOutcome:
-    material = {
-        "schema": SYMBOLIC_REFILL_EPOCH_SCHEMA,
-        "binding_id": binding.binding_id,
-        "now_epoch": now,
-        "processed_receipt_ids": sorted(processed),
-        "goal_ids": sorted(goal.goal_id for goal in goals),
-        "task_ids": sorted(task.task_id for task in tasks),
-        "reason": reason.value,
-    }
+    operation_receipt_ids = _unique(
+        (*input_receipt_ids, *(receipt.receipt_id for receipt in input_receipts))
+    )
+    operation_fresh_ids = _unique(
+        (*fresh_receipt_ids, *(receipt.receipt_id for receipt in fresh_receipts))
+    )
+    operation_semantic_keys = _unique(
+        tuple(receipt.semantic_key_id for receipt in input_receipts)
+    )
+    diagnostic_dispositions = tuple(
+        diagnostic.disposition.value for diagnostic in diagnostics
+    )
+    epoch_evidence = SymbolicRefillEpochEvidence(
+        binding=binding,
+        reason=reason,
+        observed_at_epoch=now,
+        prior_state_id=_state_id(prior_state),
+        result_state_id=_state_id(state),
+        input_receipt_ids=operation_receipt_ids,
+        fresh_receipt_ids=operation_fresh_ids,
+        processed_receipt_ids=processed,
+        emitted_goal_ids=tuple(goal.goal_id for goal in goals),
+        emitted_task_ids=tuple(task.task_id for task in tasks),
+        diagnostic_dispositions=diagnostic_dispositions,
+        open_work_before=open_work,
+    )
+    task_ids_by_finding = dict(state.semantic_task_ids)
+    resolved_task_ids = _unique(
+        tuple(
+            task_ids_by_finding[key]
+            for key in operation_semantic_keys
+            if key in task_ids_by_finding
+        )
+    )
+    emitted_task_ids = tuple(task.task_id for task in tasks)
+    resolved_task_ids = _unique((*resolved_task_ids, *emitted_task_ids))
+    replay_receipt_ids = _unique(
+        tuple(
+            diagnostic.receipt_id
+            for diagnostic in diagnostics
+            if diagnostic.disposition
+            in {
+                FindingDisposition.REPLAY,
+                FindingDisposition.UNCHANGED_BACKOFF,
+            }
+        )
+    )
+    idempotency_evidence = RefillIdempotencyEvidence(
+        binding=binding,
+        epoch_id=epoch_evidence.epoch_id,
+        operation_receipt_ids=operation_receipt_ids,
+        emitted_task_ids=emitted_task_ids,
+        resolved_task_ids=resolved_task_ids,
+        replay_receipt_ids=replay_receipt_ids,
+    )
     return RefillOutcome(
         reason=reason,
         binding=binding,
@@ -1057,16 +1350,10 @@ def _finish(
         processed_receipt_ids=processed,
         state=state,
         open_work_before=open_work,
-        refill_epoch_id=_stable_id("refill-epoch", material),
-        idempotency_id=_stable_id(
-            "refill-idempotency",
-            {
-                "schema": REFILL_IDEMPOTENCY_SCHEMA,
-                "binding_id": binding.binding_id,
-                "receipt_ids": sorted(processed),
-                "task_ids": sorted(task.task_id for task in tasks),
-            },
-        ),
+        refill_epoch_id=epoch_evidence.epoch_id,
+        idempotency_id=idempotency_evidence.idempotency_id,
+        epoch_evidence=epoch_evidence,
+        idempotency_evidence=idempotency_evidence,
     )
 
 
@@ -1078,6 +1365,74 @@ class SymbolicFindingRefiller:
 
     def refill(self, **kwargs: Any) -> RefillOutcome:
         return refill_symbolic_findings(policy=self.policy, **kwargs)
+
+
+@dataclass(frozen=True)
+class SupervisorBacklogSnapshot:
+    """Exact objective-heap/taskboard coordinates consumed by one refill."""
+
+    binding: RefillBinding
+    goals: tuple[RefillGoal, ...]
+    tasks: tuple[RefillTask | Mapping[str, Any], ...] = ()
+    state: RefillState = field(default_factory=RefillState)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "goals", tuple(self.goals))
+        object.__setattr__(self, "tasks", tuple(self.tasks))
+        matching_roots = tuple(
+            goal
+            for goal in self.goals
+            if goal.goal_id == self.binding.refinement_goal_id
+        )
+        if len(matching_roots) != 1:
+            raise SymbolicFindingRefillError(
+                "backlog snapshot must contain its exact refinement goal once"
+            )
+
+    @property
+    def evidence_methods(self) -> tuple[str, ...]:
+        return SYMBOLIC_REFILL_EVIDENCE_SCHEMAS
+
+
+class BacklogRefinery:
+    """Adapt a supervisor-fed objective snapshot to a bounded proposal."""
+
+    def __init__(
+        self,
+        ledger: FindingLedgerReader,
+        policy: SymbolicFindingRefillPolicy | None = None,
+    ) -> None:
+        self.ledger = ledger
+        self.policy = policy or SymbolicFindingRefillPolicy()
+
+    def refill(
+        self,
+        snapshot: SupervisorBacklogSnapshot,
+        receipts: Sequence[AppendReceipt],
+        *,
+        now_epoch: int | None = None,
+        dependencies: Mapping[str, Sequence[str]] | None = None,
+        healthy_exhaustion: HealthyExhaustionReceipt | None = None,
+    ) -> RefillOutcome:
+        """Propose work against exactly ``snapshot`` without mutating it."""
+
+        outcome = refill_symbolic_findings(
+            receipts=receipts,
+            ledger=self.ledger,
+            binding=snapshot.binding,
+            goals=snapshot.goals,
+            tasks=snapshot.tasks,
+            state=snapshot.state,
+            policy=self.policy,
+            now_epoch=now_epoch,
+            dependencies=dependencies,
+            healthy_exhaustion=healthy_exhaustion,
+        )
+        if outcome.evidence_methods != snapshot.evidence_methods:
+            raise SymbolicFindingRefillError(
+                "refill proposal is missing required objective evidence"
+            )
+        return outcome
 
 
 # Concise compatibility alias for callers that treat refill as a pure planner.
@@ -1093,26 +1448,31 @@ __all__ = [
     "DEFAULT_MAX_SURPLUS_PER_GOAL",
     "DEFAULT_OPEN_WORK_CEILING",
     "DEFAULT_REFILL_THRESHOLD",
-    "FindingDisposition",
-    "HealthyExhaustionReceipt",
     "REFILL_AUTHORIZES_COMPLETION",
     "REFILL_AUTHORIZES_EXECUTION",
     "REFILL_IDEMPOTENCY_SCHEMA",
+    "SYMBOLIC_FINDING_REFILL_INTERFACE",
+    "SYMBOLIC_FINDING_REFILL_VERSION",
+    "SYMBOLIC_REFILL_EPOCH_SCHEMA",
+    "SYMBOLIC_REFILL_EVIDENCE_SCHEMAS",
+    "BacklogRefinery",
+    "FindingDisposition",
+    "HealthyExhaustionReceipt",
     "RefillAncestryError",
     "RefillBinding",
     "RefillBindingError",
     "RefillDiagnostic",
     "RefillGoal",
+    "RefillIdempotencyEvidence",
     "RefillOutcome",
     "RefillReason",
     "RefillState",
     "RefillTask",
-    "SYMBOLIC_FINDING_REFILL_INTERFACE",
-    "SYMBOLIC_FINDING_REFILL_VERSION",
-    "SYMBOLIC_REFILL_EPOCH_SCHEMA",
+    "SupervisorBacklogSnapshot",
     "SymbolicFindingRefillError",
     "SymbolicFindingRefillPolicy",
     "SymbolicFindingRefiller",
+    "SymbolicRefillEpochEvidence",
     "TaskKind",
     "plan_symbolic_finding_refill",
     "refill_symbolic_findings",
