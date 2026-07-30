@@ -2203,7 +2203,7 @@ compact references and bounded spans only.
 
 ## VFS-060 Close objective gap: Use canonical multiformats identities and dependency-aware content caches
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
