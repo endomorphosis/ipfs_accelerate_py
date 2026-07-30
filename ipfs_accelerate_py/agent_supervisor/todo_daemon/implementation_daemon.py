@@ -24925,6 +24925,29 @@ class PortalImplementationDaemon:
                     historical_integration_record.update(
                         historical_merge_result
                     )
+                    # A queued merge records the synchronous train callback
+                    # below the queue handoff result.  The callback carries
+                    # the immutable integration commit even when a
+                    # target-only rebase rewrites the daemon-owned branch.
+                    # Recover only those exact commit fields; the ancestry
+                    # proof below still has to bind the rewritten branch to
+                    # that commit and the configured target history.
+                    train_result = historical_merge_result.get(
+                        "train_result"
+                    )
+                    if isinstance(train_result, Mapping):
+                        train_merge_result = train_result.get(
+                            "merge_result"
+                        )
+                        if isinstance(train_merge_result, Mapping):
+                            for key in ("merge_commit", "target_commit"):
+                                if (
+                                    not historical_integration_record.get(key)
+                                    and train_merge_result.get(key)
+                                ):
+                                    historical_integration_record[key] = (
+                                        train_merge_result[key]
+                                    )
                 for key in ("merge_commit", "target_commit"):
                     if (
                         not historical_integration_record.get(key)
@@ -25061,6 +25084,7 @@ class PortalImplementationDaemon:
                     "branch": branch,
                     "implementation_commit": implementation_commit,
                     "landed_commit": landed_commit,
+                    "merge_commit": target_commit,
                     "completion_task_cids": completion_task_cids,
                     "landed_ref_source": landed_ref_source,
                     "resolved": resolved,
@@ -26154,6 +26178,16 @@ class PortalImplementationDaemon:
             elif event_type == "merge_reconciled":
                 if not event.get("resolved"):
                     continue
+                # A resolver or target-only submodule rebase may rewrite the
+                # implementation commit before it lands.  Reconciliation
+                # binds that rewrite to ``landed_commit`` and an immutable
+                # integration commit, so historical completion must prove
+                # ancestry from the landed commit instead of the superseded
+                # pre-rewrite identity.
+                implementation_commit = str(
+                    event.get("landed_commit")
+                    or implementation_commit
+                )
             else:
                 continue
             if implementation_commit and not self._git_ref_is_ancestor(implementation_commit, target_branch):
