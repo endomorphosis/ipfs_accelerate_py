@@ -307,6 +307,19 @@ def classify_property_kind(
     raise ContractValidationError(f"unsupported property kind: {value}")
 
 
+def to_canonical_property_kind(value: PropertyKind | str) -> str:
+    """Project a supervisor property kind onto the datasets property vocabulary."""
+
+    from ..canonical_logic_adapter import map_property_kind_to_canonical
+
+    try:
+        return map_property_kind_to_canonical(value)
+    except Exception as exc:
+        raise ContractValidationError(
+            f"cannot project property kind to canonical id: {value}"
+        ) from exc
+
+
 @dataclass(frozen=True)
 class ProverLane:
     prover_id: str
@@ -1560,4 +1573,5 @@ __all__ = [
     "classify_property_kind",
     "execute_portfolio",
     "route_obligation",
+    "to_canonical_property_kind",
 ]

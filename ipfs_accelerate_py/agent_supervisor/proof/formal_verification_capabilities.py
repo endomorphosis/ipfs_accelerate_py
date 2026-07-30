@@ -2465,6 +2465,26 @@ def clear_formal_verification_capability_cache() -> None:
     _DEFAULT_PROBE.clear_cache()
 
 
+def project_capability_report_to_canonical(
+    report: FormalVerificationCapabilityReport,
+) -> dict[str, Any]:
+    """Project a capability probe report onto the canonical provider vocabulary."""
+
+    from ..canonical_logic_adapter import get_canonical_logic_adapter
+
+    return get_canonical_logic_adapter().project_capability_report(report)
+
+
+def project_provider_capability_to_canonical(
+    capability: ProofProviderCapability | FormalVerificationProviderCapability,
+) -> dict[str, Any]:
+    """Project one provider capability probe onto the canonical descriptor shape."""
+
+    from ..canonical_logic_adapter import get_canonical_logic_adapter
+
+    return get_canonical_logic_adapter().project_provider_capability(capability)
+
+
 __all__ = [
     "FORMAL_VERIFICATION_CAPABILITY_SCHEMA_VERSION",
     "FORMAL_VERIFICATION_CAPABILITY_REPORT_VERSION",
@@ -2495,4 +2515,6 @@ __all__ = [
     "FormalVerificationCapabilityProbe",
     "probe_formal_verification_capabilities",
     "clear_formal_verification_capability_cache",
+    "project_capability_report_to_canonical",
+    "project_provider_capability_to_canonical",
 ]
