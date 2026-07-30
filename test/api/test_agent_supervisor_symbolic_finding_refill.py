@@ -21,16 +21,19 @@ from ipfs_accelerate_py.agent_supervisor.program_assurance_contracts import (
     FindingStatus,
 )
 from ipfs_accelerate_py.agent_supervisor.symbolic_finding_refill import (
-    FindingDisposition,
-    HealthyExhaustionReceipt,
     REFILL_AUTHORIZES_COMPLETION,
     REFILL_AUTHORIZES_EXECUTION,
+    REFILL_IDEMPOTENCY_SCHEMA,
+    SYMBOLIC_REFILL_EPOCH_SCHEMA,
+    BacklogRefinery,
+    FindingDisposition,
+    HealthyExhaustionReceipt,
     RefillAncestryError,
     RefillBinding,
     RefillGoal,
     RefillReason,
     RefillState,
-    RefillTask,
+    SupervisorBacklogSnapshot,
     SymbolicFindingRefillPolicy,
     TaskKind,
     refill_symbolic_findings,
@@ -165,7 +168,7 @@ def test_materializes_exact_family_with_stable_identity_and_binding(tmp_path):
     ledger, receipts = _ledger(tmp_path, finding)
 
     outcome = _refill(ledger, receipts)
-    replayed_from_same_snapshot = _refill(ledger, receipts)
+    replayed_from_same_snapshot = _refill(ledger, receipts, now=101)
 
     assert outcome.reason is RefillReason.REFILLED
     assert not outcome.new_goals
@@ -182,10 +185,104 @@ def test_materializes_exact_family_with_stable_identity_and_binding(tmp_path):
     assert task.objective_forest_revision == _binding().objective_forest_revision
     assert task.task_id == replayed_from_same_snapshot.new_tasks[0].task_id
     assert task.semantic_key == replayed_from_same_snapshot.new_tasks[0].semantic_key
+    assert outcome.idempotency_id == replayed_from_same_snapshot.idempotency_id
+    assert outcome.refill_epoch_id != replayed_from_same_snapshot.refill_epoch_id
     assert not task.write_authorized
     assert not REFILL_AUTHORIZES_EXECUTION
     assert not REFILL_AUTHORIZES_COMPLETION
     assert outcome.diagnostics[0].disposition is FindingDisposition.MATERIALIZED
+
+
+def test_epoch_and_idempotency_evidence_prove_stateful_replay_noop(tmp_path):
+    finding = _finding(1)
+    ledger, receipts = _ledger(tmp_path, finding)
+
+    admitted = _refill(ledger, receipts)
+    replay = _refill(
+        ledger,
+        receipts,
+        state=admitted.state,
+        now=admitted.state.next_allowed_epoch,
+    )
+
+    assert admitted.evidence_methods == (
+        SYMBOLIC_REFILL_EPOCH_SCHEMA,
+        REFILL_IDEMPOTENCY_SCHEMA,
+    )
+    epoch_record, idempotency_record = admitted.evidence_records()
+    assert epoch_record["schema"] == SYMBOLIC_REFILL_EPOCH_SCHEMA
+    assert epoch_record["epoch_id"] == admitted.refill_epoch_id
+    assert epoch_record["binding"] == _binding().to_record()
+    assert epoch_record["fresh_receipt_ids"] == (receipts[0].receipt_id,)
+    assert epoch_record["processed_receipt_ids"] == (receipts[0].receipt_id,)
+    assert epoch_record["emitted_task_ids"] == (admitted.new_tasks[0].task_id,)
+    assert epoch_record["changed"]
+    assert idempotency_record["schema"] == REFILL_IDEMPOTENCY_SCHEMA
+    assert idempotency_record["idempotency_id"] == admitted.idempotency_id
+    assert not idempotency_record["replay_noop"]
+
+    assert replay.reason is RefillReason.DIAGNOSTICS_ONLY
+    assert not replay.new_goals
+    assert not replay.new_tasks
+    assert replay.idempotency_id == admitted.idempotency_id
+    assert replay.refill_epoch_id != admitted.refill_epoch_id
+    replay_epoch, replay_idempotency = replay.evidence_records()
+    assert replay_epoch["prior_state_id"] != epoch_record["prior_state_id"]
+    assert replay_epoch["emitted_task_ids"] == ()
+    assert replay_idempotency["replay_receipt_ids"] == (
+        receipts[0].receipt_id,
+    )
+    assert replay_idempotency["resolved_task_ids"] == (
+        admitted.new_tasks[0].task_id,
+    )
+    assert replay_idempotency["replay_noop"]
+
+    restored_taskboard = _refill(
+        ledger,
+        receipts,
+        tasks=(admitted.new_tasks[0],),
+        state=RefillState(),
+        now=102,
+    )
+    assert not restored_taskboard.new_tasks
+    assert restored_taskboard.state.semantic_task_ids == (
+        (finding.semantic_key_id, admitted.new_tasks[0].task_id),
+    )
+    assert restored_taskboard.idempotency_evidence is not None
+    assert restored_taskboard.idempotency_evidence.resolved_task_ids == (
+        admitted.new_tasks[0].task_id,
+    )
+    assert restored_taskboard.idempotency_evidence.replay_noop
+
+
+def test_supervisor_snapshot_keeps_refill_bound_to_objective_heap(tmp_path):
+    finding = _finding(1, family="new-family")
+    ledger, receipts = _ledger(tmp_path, finding)
+    snapshot = SupervisorBacklogSnapshot(
+        binding=_binding(),
+        goals=(_root(),),
+    )
+
+    outcome = BacklogRefinery(ledger).refill(snapshot, receipts, now_epoch=100)
+
+    assert snapshot.goals == (_root(),)
+    assert snapshot.tasks == ()
+    assert snapshot.state == RefillState()
+    assert len(outcome.new_goals) == 1
+    assert outcome.new_goals[0].parent_goal_id == _root().goal_id
+    assert outcome.new_tasks[0].objective_forest_id == (
+        snapshot.binding.objective_forest_id
+    )
+    assert outcome.new_tasks[0].objective_forest_revision == (
+        snapshot.binding.objective_forest_revision
+    )
+    assert outcome.evidence_methods == snapshot.evidence_methods
+
+    with pytest.raises(ValueError, match="exact refinement goal"):
+        SupervisorBacklogSnapshot(
+            binding=_binding(),
+            goals=(_family_goal(),),
+        )
 
 
 def test_bounded_refinement_caps_children_and_preserves_ancestry(tmp_path):
