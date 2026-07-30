@@ -11421,6 +11421,22 @@ class PortalImplementationDaemon:
                                 reason="failed_implementation_pool_lease_released",
                             )
                         )
+                else:
+                    # A non-pooled failed checkout remains available for
+                    # diagnostics, but the provider process no longer owns it.
+                    # Retaining its nonterminal claim would fence cleanup for
+                    # the full lease and make a capacity deferral collide with
+                    # its own same-attempt retry.
+                    cleanup_result = {
+                        "cleaned": False,
+                        "reason": "failed_implementation_worktree_preserved",
+                        "pooled": False,
+                        "pool_release": pool_failure_release,
+                        "lifecycle_finalize": self._finalize_worktree_lifecycle(
+                            worktree_path,
+                            reason="failed_implementation_provider_exited",
+                        ),
+                    }
         except subprocess.TimeoutExpired as timeout_exc:
             returncode = 124
             if protected_path_snapshot is not None:
