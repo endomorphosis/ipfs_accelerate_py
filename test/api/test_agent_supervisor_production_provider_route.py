@@ -356,6 +356,11 @@ def test_mcpplusplus_provider_pins_route_and_rejects_fallback(
     assert arguments["provider"] == "grok_cli"
     assert arguments["model"] == "grok-4.5"
     assert arguments["allow_fallback"] is False
+    assert arguments["response_schema"]["required"] == ["proposal"]
+    assert (
+        arguments["response_schema"]["properties"]["proposal"]["anyOf"]
+        == [{"required": ["patch"]}, {"required": ["files"]}]
+    )
     assert provider.last_session_identity
 
     envelope["result"]["receipt"]["fallback"]["used"] = True

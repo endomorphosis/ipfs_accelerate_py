@@ -2605,6 +2605,86 @@ def _clean_grok_cli_output(text: str) -> str:
     return _clean_codex_output(text)
 
 
+_MAX_CLI_RESPONSE_SCHEMA_BYTES = 16 * 1024
+_MAX_CLI_RESPONSE_SCHEMA_DEPTH = 16
+_MAX_CLI_RESPONSE_SCHEMA_ITEMS = 1024
+_FORBIDDEN_CLI_RESPONSE_SCHEMA_KEYS = frozenset(
+    {
+        "$anchor",
+        "$dynamicAnchor",
+        "$dynamicRef",
+        "$id",
+        "$recursiveAnchor",
+        "$recursiveRef",
+        "$ref",
+        "$schema",
+    }
+)
+
+
+def _normalize_cli_response_schema(
+    value: object,
+) -> Optional[Dict[str, object]]:
+    """Return a detached, bounded JSON schema for a structured CLI call."""
+
+    if value is None:
+        return None
+    if not isinstance(value, Mapping):
+        raise LLMRouterError("response_schema must be a JSON object")
+
+    item_count = 0
+
+    def detach(item: object, *, depth: int) -> object:
+        nonlocal item_count
+        item_count += 1
+        if depth > _MAX_CLI_RESPONSE_SCHEMA_DEPTH:
+            raise LLMRouterError("response_schema exceeds its depth bound")
+        if item_count > _MAX_CLI_RESPONSE_SCHEMA_ITEMS:
+            raise LLMRouterError("response_schema exceeds its item bound")
+        if isinstance(item, Mapping):
+            detached: Dict[str, object] = {}
+            for raw_key, raw_value in item.items():
+                if not isinstance(raw_key, str):
+                    raise LLMRouterError("response_schema keys must be strings")
+                key = raw_key.strip()
+                if not key or len(key.encode("utf-8")) > 256:
+                    raise LLMRouterError("response_schema contains an invalid key")
+                if key in _FORBIDDEN_CLI_RESPONSE_SCHEMA_KEYS:
+                    raise LLMRouterError(
+                        "response_schema cannot contain external references or identifiers"
+                    )
+                detached[key] = detach(raw_value, depth=depth + 1)
+            return detached
+        if isinstance(item, Sequence) and not isinstance(
+            item, (str, bytes, bytearray, memoryview)
+        ):
+            return [detach(child, depth=depth + 1) for child in item]
+        if item is None or isinstance(item, (bool, int, str)):
+            return item
+        if isinstance(item, float) and math.isfinite(item):
+            return item
+        raise LLMRouterError(
+            f"response_schema contains unsupported {type(item).__name__}"
+        )
+
+    normalized = detach(value, depth=0)
+    if not isinstance(normalized, dict) or normalized.get("type") != "object":
+        raise LLMRouterError("response_schema root type must be object")
+    try:
+        encoded = json.dumps(
+            normalized,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        ).encode("utf-8")
+    except (TypeError, ValueError) as exc:
+        raise LLMRouterError("response_schema is not canonical JSON") from exc
+    if len(encoded) > _MAX_CLI_RESPONSE_SCHEMA_BYTES:
+        raise LLMRouterError("response_schema exceeds its encoded byte bound")
+    return normalized
+
+
 def _grok_cli_command() -> str:
     return (
         _coalesce_env(
@@ -3751,7 +3831,11 @@ def _get_codex_cli_provider() -> Optional[LLMProvider]:
             model = (model_name or _coalesce_env("ipfs_accelerate_py_CODEX_CLI_MODEL", "ipfs_accelerate_py_CODEX_MODEL") or "chatgpt-5.6-terra").strip()
             sandbox = (os.getenv("ipfs_accelerate_py_CODEX_SANDBOX", "auto") or "auto").strip()
             skip_git_repo_check = os.getenv("ipfs_accelerate_py_CODEX_SKIP_GIT_REPO_CHECK", "1") != "0"
-            timeout = float(kwargs.get("timeout", 180))
+            timeout = float(kwargs.pop("timeout", 180))
+            response_schema = _normalize_cli_response_schema(
+                kwargs.pop("response_schema", None)
+            )
+            isolated_workdir = bool(kwargs.pop("isolated_workdir", False))
 
             trace_jsonl_path = kwargs.pop("trace_jsonl_path", None)
             trace_dir = kwargs.pop("trace_dir", None)
@@ -3759,72 +3843,135 @@ def _get_codex_cli_provider() -> Optional[LLMProvider]:
 
             json_mode = bool(trace_enabled or kwargs.pop("json", False))
 
-            with tempfile.NamedTemporaryFile(mode="w+", suffix=".txt", delete=False) as last_msg:
-                last_msg_path = last_msg.name
-
-            cmd: list[str] = ["codex", "exec"]
-            if skip_git_repo_check:
-                cmd.append("--skip-git-repo-check")
-            # Some Codex CLI builds do not accept '--sandbox auto'.
-            # Treat 'auto' (the default) as "don't pass the flag" so the CLI can
-            # pick its own default sandbox mode.
-            if sandbox and sandbox.lower() != "auto":
-                cmd.extend(["--sandbox", sandbox])
-            if model:
-                cmd.extend(["-m", model])
-            cmd.extend(["--output-last-message", last_msg_path])
-            if json_mode:
-                cmd.append("--json")
-            cmd.append("-")
-
+            isolated_directory = (
+                tempfile.TemporaryDirectory(prefix="llm-router-codex-bounded-")
+                if isolated_workdir
+                else None
+            )
+            call_cwd = isolated_directory.name if isolated_directory is not None else None
+            last_msg_path = ""
+            schema_path = ""
             try:
-                proc = subprocess.run(
-                    cmd,
-                    input=str(prompt),
-                    text=True,
-                    capture_output=True,
-                    check=False,
-                    timeout=timeout,
-                )
-            except FileNotFoundError as exc:
-                raise LLMRouterError("codex CLI not found on PATH") from exc
+                with tempfile.NamedTemporaryFile(
+                    mode="w+",
+                    suffix=".txt",
+                    dir=call_cwd,
+                    delete=False,
+                ) as last_msg:
+                    last_msg_path = last_msg.name
+                if response_schema is not None:
+                    with tempfile.NamedTemporaryFile(
+                        mode="w",
+                        encoding="utf-8",
+                        suffix=".schema.json",
+                        dir=call_cwd,
+                        delete=False,
+                    ) as schema_file:
+                        json.dump(
+                            response_schema,
+                            schema_file,
+                            sort_keys=True,
+                            separators=(",", ":"),
+                            ensure_ascii=False,
+                            allow_nan=False,
+                        )
+                        schema_path = schema_file.name
 
-            try:
-                with open(last_msg_path, "r", encoding="utf-8", errors="replace") as handle:
-                    text_out = handle.read().strip()
-            except Exception:
-                text_out = ""
-            finally:
+                cmd: list[str] = ["codex", "exec"]
+                if skip_git_repo_check:
+                    cmd.append("--skip-git-repo-check")
+                if isolated_workdir:
+                    cmd.extend(
+                        [
+                            "--ephemeral",
+                            "--ignore-user-config",
+                            "--ignore-rules",
+                            "--disable",
+                            "shell_tool",
+                            "--disable",
+                            "unified_exec",
+                            "--disable",
+                            "code_mode_host",
+                            "--disable",
+                            "apps",
+                            "--disable",
+                            "browser_use",
+                            "--disable",
+                            "browser_use_external",
+                            "--disable",
+                            "computer_use",
+                            "--sandbox",
+                            "read-only",
+                            "-C",
+                            str(call_cwd),
+                        ]
+                    )
+                # Some Codex CLI builds do not accept '--sandbox auto'.
+                # Treat 'auto' as "don't pass the flag" outside bounded calls.
+                elif sandbox and sandbox.lower() != "auto":
+                    cmd.extend(["--sandbox", sandbox])
+                if model:
+                    cmd.extend(["-m", model])
+                if schema_path:
+                    cmd.extend(["--output-schema", schema_path])
+                cmd.extend(["--output-last-message", last_msg_path])
+                if json_mode:
+                    cmd.append("--json")
+                cmd.append("-")
+
                 try:
-                    os.unlink(last_msg_path)
+                    proc = subprocess.run(
+                        cmd,
+                        input=str(prompt),
+                        text=True,
+                        capture_output=True,
+                        check=False,
+                        timeout=timeout,
+                        cwd=call_cwd,
+                    )
+                except FileNotFoundError as exc:
+                    raise LLMRouterError("codex CLI not found on PATH") from exc
+
+                try:
+                    with open(last_msg_path, "r", encoding="utf-8", errors="replace") as handle:
+                        text_out = handle.read().strip()
                 except Exception:
-                    pass
+                    text_out = ""
 
-            if proc.returncode == 0 or text_out:
-                if json_mode and proc.stdout:
-                    extracted = _extract_last_agent_message_from_codex_jsonl(proc.stdout)
-                    if extracted:
-                        return _clean_codex_output(extracted)
-                return _clean_codex_output(text_out)
+                if proc.returncode == 0 or text_out:
+                    if json_mode and proc.stdout:
+                        extracted = _extract_last_agent_message_from_codex_jsonl(proc.stdout)
+                        if extracted:
+                            return _clean_codex_output(extracted)
+                    return _clean_codex_output(text_out)
 
-            if trace_enabled and proc.stdout and isinstance(trace_jsonl_path, str) and trace_jsonl_path.strip():
-                try:
-                    os.makedirs(os.path.dirname(trace_jsonl_path.strip()) or ".", exist_ok=True)
-                    with open(trace_jsonl_path.strip(), "a", encoding="utf-8") as handle:
-                        handle.write(proc.stdout)
-                        if not proc.stdout.endswith("\n"):
-                            handle.write("\n")
-                except OSError:
-                    pass
+                if trace_enabled and proc.stdout and isinstance(trace_jsonl_path, str) and trace_jsonl_path.strip():
+                    try:
+                        os.makedirs(os.path.dirname(trace_jsonl_path.strip()) or ".", exist_ok=True)
+                        with open(trace_jsonl_path.strip(), "a", encoding="utf-8") as handle:
+                            handle.write(proc.stdout)
+                            if not proc.stdout.endswith("\n"):
+                                handle.write("\n")
+                    except OSError:
+                        pass
 
-            kind = _classify_codex_error_kind(stdout=proc.stdout or "", stderr=proc.stderr or "")
-            resets = _extract_resets_in_seconds_from_codex_jsonl(proc.stdout or "")
-            if kind == "quota_exceeded":
-                raise LLMRouterError("Codex quota exceeded (billing/plan hard limit)")
-            if kind == "usage_limit":
-                suffix = f" (resets in ~{resets}s)" if isinstance(resets, int) else ""
-                raise LLMRouterError(f"Codex usage limit reached{suffix}")
-            raise LLMRouterError(proc.stderr.strip() or "codex exec failed")
+                kind = _classify_codex_error_kind(stdout=proc.stdout or "", stderr=proc.stderr or "")
+                resets = _extract_resets_in_seconds_from_codex_jsonl(proc.stdout or "")
+                if kind == "quota_exceeded":
+                    raise LLMRouterError("Codex quota exceeded (billing/plan hard limit)")
+                if kind == "usage_limit":
+                    suffix = f" (resets in ~{resets}s)" if isinstance(resets, int) else ""
+                    raise LLMRouterError(f"Codex usage limit reached{suffix}")
+                raise LLMRouterError(proc.stderr.strip() or "codex exec failed")
+            finally:
+                for temporary_path in (last_msg_path, schema_path):
+                    if temporary_path:
+                        try:
+                            os.unlink(temporary_path)
+                        except OSError:
+                            pass
+                if isolated_directory is not None:
+                    isolated_directory.cleanup()
 
     return _CodexCLIProvider()
 
@@ -4986,6 +5133,10 @@ def _get_grok_cli_provider() -> Optional[LLMProvider]:
                 )
             )
             timeout = float(kwargs.pop("timeout", 180))
+            response_schema = _normalize_cli_response_schema(
+                kwargs.pop("response_schema", None)
+            )
+            isolated_workdir = bool(kwargs.pop("isolated_workdir", False))
             trace_jsonl_path = kwargs.pop("trace_jsonl_path", None)
             trace_dir = kwargs.pop("trace_dir", None)
             trace_enabled = bool(kwargs.pop("trace", False) or trace_jsonl_path or trace_dir)
@@ -4994,7 +5145,10 @@ def _get_grok_cli_provider() -> Optional[LLMProvider]:
             if isinstance(command_override, list) and command_override:
                 base_parts = [str(value) for value in command_override]
                 command_text = ""
-                structured_cli = True
+                executable_name = (
+                    Path(base_parts[0]).name.lower() if base_parts else ""
+                )
+                structured_cli = executable_name in {"grok", "agent"}
             else:
                 command_text = (
                     str(command_override).strip()
@@ -5004,6 +5158,11 @@ def _get_grok_cli_provider() -> Optional[LLMProvider]:
                 base_parts = shlex.split(command_text)
                 executable_name = Path(base_parts[0]).name.lower() if base_parts else ""
                 structured_cli = executable_name in {"grok", "agent"}
+
+            if (response_schema is not None or isolated_workdir) and not structured_cli:
+                raise LLMRouterError(
+                    "bounded Grok calls require the official structured CLI"
+                )
 
             extra_env: Dict[str, Optional[str]] = {}
             if not os.getenv("XAI_API_KEY", "").strip():
@@ -5051,6 +5210,19 @@ def _get_grok_cli_provider() -> Optional[LLMProvider]:
                 cmd.append("--no-memory")
             if "--verbatim" not in cmd:
                 cmd.append("--verbatim")
+            if response_schema is not None and "--json-schema" not in cmd:
+                cmd.extend(
+                    [
+                        "--json-schema",
+                        json.dumps(
+                            response_schema,
+                            sort_keys=True,
+                            separators=(",", ":"),
+                            ensure_ascii=False,
+                            allow_nan=False,
+                        ),
+                    ]
+                )
 
             max_turns = max(
                 1,
@@ -5081,13 +5253,21 @@ def _get_grok_cli_provider() -> Optional[LLMProvider]:
             if permission_mode and "--permission-mode" not in cmd:
                 cmd.extend(["--permission-mode", permission_mode])
 
-            tools = kwargs.pop(
-                "grok_tools",
-                os.getenv(
-                    "ipfs_accelerate_py_GROK_CLI_TOOLS",
-                    os.getenv("IPFS_ACCELERATE_PY_GROK_CLI_TOOLS", ""),
-                ),
+            tools = (
+                "__mcp_bounded_no_tools__"
+                if isolated_workdir
+                else kwargs.pop(
+                    "grok_tools",
+                    os.getenv(
+                        "ipfs_accelerate_py_GROK_CLI_TOOLS",
+                        os.getenv("IPFS_ACCELERATE_PY_GROK_CLI_TOOLS", ""),
+                    ),
+                )
             )
+            if isolated_workdir and "--tools" in cmd:
+                raise LLMRouterError(
+                    "bounded Grok calls cannot override the disabled tool set"
+                )
             if "--tools" not in cmd:
                 cmd.extend(["--tools", str(tools or "")])
 
@@ -5115,12 +5295,25 @@ def _get_grok_cli_provider() -> Optional[LLMProvider]:
                 cmd.extend(["--session-id", chat_session_id])
 
             prompt_path = ""
+            isolated_directory = (
+                tempfile.TemporaryDirectory(prefix="llm-router-grok-bounded-")
+                if isolated_workdir
+                else None
+            )
+            call_cwd = isolated_directory.name if isolated_directory is not None else None
             try:
+                if isolated_workdir:
+                    if "--cwd" in cmd:
+                        raise LLMRouterError(
+                            "bounded Grok calls cannot override the isolated working directory"
+                        )
+                    cmd.extend(["--cwd", str(call_cwd)])
                 with tempfile.NamedTemporaryFile(
                     mode="w",
                     encoding="utf-8",
                     prefix="llm-router-grok-prompt-",
                     suffix=".txt",
+                    dir=call_cwd,
                     delete=False,
                 ) as prompt_file:
                     prompt_file.write(str(prompt))
@@ -5139,6 +5332,7 @@ def _get_grok_cli_provider() -> Optional[LLMProvider]:
                         check=False,
                         timeout=timeout,
                         env=env,
+                        cwd=call_cwd,
                     )
                 except FileNotFoundError as exc:
                     raise LLMRouterError("Grok CLI not found on PATH") from exc
@@ -5148,6 +5342,8 @@ def _get_grok_cli_provider() -> Optional[LLMProvider]:
                         os.unlink(prompt_path)
                     except OSError:
                         pass
+                if isolated_directory is not None:
+                    isolated_directory.cleanup()
 
             payload = _grok_cli_json_payload(proc.stdout or "")
             if proc.returncode != 0:

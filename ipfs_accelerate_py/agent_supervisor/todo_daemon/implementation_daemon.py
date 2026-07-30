@@ -266,6 +266,22 @@ DEFAULT_PRODUCTION_CODEX_MODEL = "gpt-5.6-sol"
 MCP_JSONRPC_ENVELOPE_MAX_BYTES = 64 * 1024
 MCP_JSONRPC_TOOL_NAME = "llm_generate"
 MCP_LLM_GENERATE_OPERATION = "text.generate"
+PRODUCTION_PROVIDER_OPERATIONAL_RETRY_REASONS = frozenset(
+    {
+        ProviderReason.GROK_QUOTA_EXHAUSTED.value,
+        ProviderReason.CODEX_QUOTA_EXHAUSTED.value,
+        ProviderReason.GROK_UNAVAILABLE.value,
+        ProviderReason.CODEX_UNAVAILABLE.value,
+        ProviderReason.PROVIDER_QUOTA_EXHAUSTED.value,
+        ProviderReason.PROVIDER_TIMEOUT.value,
+        ProviderReason.PROVIDER_FAILURE.value,
+        ProviderReason.PROVIDER_RESPONSE_MALFORMED.value,
+        ProviderReason.PROVIDER_RESPONSE_TOO_LARGE.value,
+        ProviderReason.REVIEW_ABSENT.value,
+        ProviderReason.REVIEW_DEGRADED.value,
+        ProviderReason.NO_FALLBACK.value,
+    }
+)
 MAX_IMPLEMENTATION_CHECKPOINT_FILES = 16
 MAX_IMPLEMENTATION_CHECKPOINT_BYTES = 512 * 1024 * 1024
 MAX_IMPLEMENTATION_CHECKPOINT_PATH_BYTES = 256
@@ -489,6 +505,80 @@ def _json_object_without_duplicates(raw: bytes) -> Mapping[str, Any]:
     return decoded
 
 
+def _production_provider_response_schema(
+    role: ProviderRole,
+) -> dict[str, Any]:
+    """Return the strict structured-output schema for one production role."""
+
+    replacement = {
+        "type": "object",
+        "properties": {
+            "path": {"type": "string", "minLength": 1, "maxLength": 1024},
+            "content": {"type": "string", "maxLength": 262144},
+        },
+        "required": ["path", "content"],
+        "additionalProperties": False,
+    }
+    proposal = {
+        "type": "object",
+        "properties": {
+            "patch": {"type": "string", "minLength": 1, "maxLength": 262144},
+            "files": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 64,
+                "items": replacement,
+            },
+            "declared_paths": {
+                "type": "array",
+                "maxItems": 64,
+                "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 1024,
+                },
+            },
+        },
+        "anyOf": [
+            {"required": ["patch"]},
+            {"required": ["files"]},
+        ],
+        "additionalProperties": False,
+    }
+    if role is ProviderRole.CODEX_REVIEW:
+        return {
+            "type": "object",
+            "properties": {
+                "decision": {
+                    "type": "string",
+                    "enum": [
+                        "approve",
+                        "reject",
+                        "changes_required",
+                        "repair",
+                        "replace",
+                    ],
+                },
+                "findings": {
+                    "type": "array",
+                    "maxItems": 128,
+                    "items": {"type": "string", "maxLength": 4096},
+                },
+                "proposal": proposal,
+            },
+            "required": ["decision", "findings"],
+            "additionalProperties": False,
+        }
+    if role is ProviderRole.GROK_IMPLEMENT:
+        return {
+            "type": "object",
+            "properties": {"proposal": proposal},
+            "required": ["proposal"],
+            "additionalProperties": False,
+        }
+    raise ValueError(f"unsupported production provider role: {role.value}")
+
+
 @dataclass(slots=True)
 class McpPlusPlusLlmGenerateProvider:
     """Synchronous, bounded MCP++ ``llm_generate`` provider transport."""
@@ -664,6 +754,9 @@ class McpPlusPlusLlmGenerateProvider:
                     "prompt": prompt_text,
                     "provider": self.provider_selector,
                     "model": self.model_selector,
+                    "response_schema": _production_provider_response_schema(
+                        self.role
+                    ),
                     "max_tokens": min(
                         self.max_tokens,
                         max(1, response_limit // 4),
@@ -7342,11 +7435,15 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             implementation_result
             and implementation_result.get("reason") == "provider_capacity_backoff"
         )
-        provider_capacity_deferral_result = bool(
+        non_consuming_provider_deferral_result = bool(
             implementation_result
             and implementation_result.get("deferred", False)
             and implementation_result.get("reason")
-            in {"provider_capacity_exhausted", "provider_capacity_backoff"}
+            in {
+                "provider_capacity_exhausted",
+                "provider_capacity_backoff",
+                "production_provider_route_deferred",
+            }
         )
         if state_written or (
             implementation_result is not None and not provider_backoff_result
@@ -7475,7 +7572,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         # not acknowledge that source head until a follow-up pass reconciles
         # those effects into the task projection.
         if state_written and (
-            implementation_result is None or provider_capacity_deferral_result
+            implementation_result is None or non_consuming_provider_deferral_result
         ):
             checkpoint_result = self._save_runtime_checkpoint(
                 source_digest=final_source_digest,
@@ -7487,7 +7584,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             result["write_count"] += int(checkpoint_result["write_count"])
         self._runtime_last_source_digest = (
             final_source_digest
-            if implementation_result is None or provider_capacity_deferral_result
+            if implementation_result is None or non_consuming_provider_deferral_result
             else ""
         )
         self._runtime_last_result = self._runtime_result_projection(result)
@@ -7725,6 +7822,26 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             result["cleanup_result"] = cleanup_result
         self._record_event("implementation_provider_exhausted", result)
         return result
+
+    @staticmethod
+    def _production_provider_operational_retry_reason(
+        route_payload: Mapping[str, Any] | None,
+    ) -> str:
+        """Return a non-task-owned production provider failure reason."""
+
+        if not isinstance(route_payload, Mapping):
+            return ""
+        route_result = route_payload.get("route_result")
+        reason = str(getattr(route_result, "reason_code", "") or "").strip()
+        if not reason:
+            event = route_payload.get("event")
+            if isinstance(event, Mapping):
+                reason = str(event.get("reason_code") or "").strip()
+        return (
+            reason
+            if reason in PRODUCTION_PROVIDER_OPERATIONAL_RETRY_REASONS
+            else ""
+        )
 
     def _run_implementation(self, task: PortalTask, state: PortalTaskState) -> dict[str, Any]:
         protected_conflicts = task_implementation_protected_path_conflicts(
@@ -10687,6 +10804,8 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         lifecycle_record: WorkspaceLifecycleRecord | None = None
         implementation_started = False
         lifecycle_race_exception = False
+        use_production_route = False
+        production_route_payload: dict[str, Any] = {}
 
         try:
             # Publish a preparing lifecycle claim *before* the cleanup-visible
@@ -10762,7 +10881,6 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 not deterministic_only
                 and self._production_provider_route_enabled(task)
             )
-            production_route_payload: dict[str, Any] = {}
             # SCA-615: production model-assisted work invokes only the typed
             # packet route.  The raw model CLI command is not built or run.
             command = (
@@ -11672,13 +11790,38 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         protected_path_external_deferral = bool(protected_path_violation) and (
             protected_mutation_scopes == {"shared_checkout"}
         )
+        production_provider_retry_reason = (
+            self._production_provider_operational_retry_reason(
+                production_route_payload
+            )
+            if use_production_route
+            else ""
+        )
         attempt_consumed = not (
-            protected_path_external_deferral or lifecycle_race_exception
+            protected_path_external_deferral
+            or lifecycle_race_exception
+            or bool(production_provider_retry_reason)
         )
         if attempt_consumed:
             self._record_task_attempt(state, task, attempt)
         else:
             self._restore_task_attempt(state, task, max(0, attempt - 1))
+        provider_route_backoff_seconds = 0.0
+        provider_route_retry_at = ""
+        if production_provider_retry_reason:
+            provider_route_backoff_seconds = (
+                self._provider_capacity_backoff_seconds()
+            )
+            provider_route_retry_at = datetime.fromtimestamp(
+                time.time() + provider_route_backoff_seconds,
+                tz=timezone.utc,
+            ).isoformat()
+            self.task_queue.defer(
+                self._canonical_ref(task),
+                provider_route_backoff_seconds,
+                reason=production_provider_retry_reason,
+            )
+            self.task_queue.save()
         state.last_implementation_started_at = started_at
         state.last_implementation_finished_at = finished_at
         state.last_implementation_returncode = returncode
@@ -11783,6 +11926,8 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 },
             )
         self._mark_implementation_finished(state, finished_at=finished_at)
+        if production_provider_retry_reason:
+            state.selection_idle_reason = "production_provider_route_deferred"
         state.save(self.state_path)
         # Queueing is a successful implementation handoff, but not task
         # completion.  The train consumer records the terminal merge outcome.
@@ -11852,6 +11997,29 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                         "branch": branch_name,
                     },
                 )
+            )
+        if production_provider_retry_reason:
+            result.update(
+                {
+                    "deferred": True,
+                    "reason": "production_provider_route_deferred",
+                    "provider_reason_code": production_provider_retry_reason,
+                    "backoff_seconds": provider_route_backoff_seconds,
+                    "retry_at": provider_route_retry_at,
+                }
+            )
+            self._record_event(
+                "implementation_retry_deferred",
+                {
+                    "task_id": task.task_id,
+                    "attempt": attempt,
+                    "reason": "production_provider_route_deferred",
+                    "provider_reason_code": production_provider_retry_reason,
+                    "backoff_seconds": provider_route_backoff_seconds,
+                    "retry_at": provider_route_retry_at,
+                    "attempt_consumed": False,
+                    "typed_packet_route_only": True,
+                },
             )
         result["cache_hit"] = result["workspace_setup"]["cache_hit"]
         result["setup_duration_seconds"] = result["workspace_setup"]["setup_duration_seconds"]
@@ -22933,7 +23101,10 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         candidates = fresh_candidates
         if candidates:
             nested_artifact_preservation = self._preserve_generated_nested_worktree_directories()
-            main_checkout_dirty_paths, nonblocking_dirty_paths = self._reconciliation_blocking_dirty_paths(
+            (
+                main_checkout_dirty_paths,
+                nonblocking_dirty_paths,
+            ) = self._reconciliation_blocking_dirty_paths(
                 candidates,
                 target_branch=target_branch,
             )

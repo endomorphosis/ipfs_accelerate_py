@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+from pathlib import Path
 
 import pytest
 
@@ -69,6 +70,156 @@ def test_grok_cli_provider_uses_bounded_headless_json_mode(monkeypatch) -> None:
     assert "--verbatim" in cmd
     assert 'Reply to "quoted text".' not in cmd
     assert captured["env"]["XAI_API_KEY"] == "alternate-test-key"
+
+
+def test_grok_cli_provider_isolates_structured_mcp_call(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+    schema = {
+        "type": "object",
+        "properties": {
+            "proposal": {
+                "type": "object",
+                "properties": {"patch": {"type": "string"}},
+                "required": ["patch"],
+                "additionalProperties": False,
+            }
+        },
+        "required": ["proposal"],
+        "additionalProperties": False,
+    }
+
+    def fake_run(cmd, **kwargs):
+        call_cwd = Path(kwargs["cwd"])
+        captured["cmd"] = list(cmd)
+        captured["cwd"] = call_cwd
+        captured["prompt_parent"] = Path(
+            cmd[cmd.index("--prompt-file") + 1]
+        ).parent
+        captured["schema"] = json.loads(
+            cmd[cmd.index("--json-schema") + 1]
+        )
+        return subprocess.CompletedProcess(
+            cmd,
+            0,
+            stdout=json.dumps(
+                {
+                    "text": '{"proposal":{"patch":"READY"}}',
+                    "stopReason": "EndTurn",
+                }
+            ),
+            stderr="",
+        )
+
+    monkeypatch.setattr(llm_router, "_cli_available", lambda _command: True)
+    monkeypatch.setattr(llm_router.subprocess, "run", fake_run)
+    monkeypatch.setenv("ipfs_accelerate_py_GROK_CLI_CMD", "grok")
+
+    provider = llm_router._get_grok_cli_provider()
+    assert provider is not None
+    result = provider.generate(
+        "Return one bounded proposal.",
+        response_schema=schema,
+        isolated_workdir=True,
+    )
+
+    assert result == '{"proposal":{"patch":"READY"}}'
+    cmd = captured["cmd"]
+    assert isinstance(cmd, list)
+    assert cmd[cmd.index("--tools") + 1] == "__mcp_bounded_no_tools__"
+    assert cmd[cmd.index("--cwd") + 1] == str(captured["cwd"])
+    assert captured["prompt_parent"] == captured["cwd"]
+    assert captured["schema"] == schema
+    assert not Path(captured["cwd"]).exists()
+
+
+def test_grok_cli_provider_rejects_bounded_list_wrapper(monkeypatch) -> None:
+    monkeypatch.setattr(llm_router, "_cli_available", lambda _command: True)
+    monkeypatch.setenv("ipfs_accelerate_py_GROK_CLI_CMD", "grok")
+
+    provider = llm_router._get_grok_cli_provider()
+    assert provider is not None
+    with pytest.raises(
+        llm_router.LLMRouterError,
+        match="official structured CLI",
+    ):
+        provider.generate(
+            "Return one bounded proposal.",
+            response_schema={"type": "object"},
+            isolated_workdir=True,
+            grok_cli_cmd=["python", "untrusted-wrapper.py"],
+        )
+
+
+def test_codex_cli_provider_isolates_structured_mcp_call(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+    schema = {
+        "type": "object",
+        "properties": {
+            "decision": {"type": "string", "enum": ["approve", "reject"]},
+            "findings": {"type": "array", "items": {"type": "string"}},
+        },
+        "required": ["decision", "findings"],
+        "additionalProperties": False,
+    }
+
+    def fake_run(cmd, **kwargs):
+        call_cwd = Path(kwargs["cwd"])
+        captured["cmd"] = list(cmd)
+        captured["cwd"] = call_cwd
+        schema_path = Path(cmd[cmd.index("--output-schema") + 1])
+        captured["schema"] = json.loads(schema_path.read_text(encoding="utf-8"))
+        output_path = Path(cmd[cmd.index("--output-last-message") + 1])
+        output_path.write_text(
+            '{"decision":"approve","findings":[]}',
+            encoding="utf-8",
+        )
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(llm_router.shutil, "which", lambda command: f"/bin/{command}")
+    monkeypatch.setattr(llm_router.subprocess, "run", fake_run)
+
+    provider = llm_router._get_codex_cli_provider()
+    assert provider is not None
+    result = provider.generate(
+        "Review one bounded proposal.",
+        response_schema=schema,
+        isolated_workdir=True,
+    )
+
+    assert result == '{"decision":"approve","findings":[]}'
+    cmd = captured["cmd"]
+    assert isinstance(cmd, list)
+    assert "--ephemeral" in cmd
+    assert "--ignore-user-config" in cmd
+    assert "--ignore-rules" in cmd
+    disabled_features = {
+        cmd[index + 1]
+        for index, value in enumerate(cmd)
+        if value == "--disable"
+    }
+    assert {
+        "shell_tool",
+        "unified_exec",
+        "code_mode_host",
+        "apps",
+        "browser_use",
+        "browser_use_external",
+        "computer_use",
+    } <= disabled_features
+    assert cmd[cmd.index("--sandbox") + 1] == "read-only"
+    assert cmd[cmd.index("-C") + 1] == str(captured["cwd"])
+    assert captured["schema"] == schema
+    assert not Path(captured["cwd"]).exists()
+
+
+def test_cli_response_schema_rejects_external_reference() -> None:
+    with pytest.raises(llm_router.LLMRouterError, match="external references"):
+        llm_router._normalize_cli_response_schema(
+            {
+                "type": "object",
+                "$ref": "https://example.invalid/schema.json",
+            }
+        )
 
 
 def test_grok_cli_agent_command_is_noninteractive(tmp_path) -> None:
