@@ -515,8 +515,18 @@ def test_implementation_daemon_releases_pool_lease_before_merge_queue_handoff(tm
     assert merge_result["queued"] is True
     assert handoff["released"] is True
     assert handoff["pooled"] is True
+    assert handoff["lifecycle_finalize"]["finalized"] is True
+    assert handoff["lifecycle_finalize"]["reason"] == "pooled_merge_queue_handoff"
     assert daemon._worktree_pool_leases == {}
     assert list((worktree_root / ".pool-state").glob("*.lock")) == []
+    assert (
+        daemon.worktree_lifecycle.load_task_attempt(
+            canonical_task_cid=daemon._canonical_ref(task),
+            task_id=task.task_id,
+            attempt=1,
+        )
+        is None
+    )
     queued = daemon.merge_queue.dequeue(consumer_id="merge-train:test")
     assert queued is not None
     assert queued.metadata["worktree_path"] == ""
@@ -849,3 +859,62 @@ def test_supervisor_does_not_fence_a_dead_pooled_worktree_lease(
     assert lease.path.resolve() not in owners
     release = lease.release(reusable=False)
     assert release["released"] is True
+
+
+def test_supervisor_does_not_cleanup_an_idle_pooled_worktree(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "seed")
+    worktree_root = tmp_path / "pool"
+    pool = WorktreePool(repo_root=repo, worktree_root=worktree_root)
+    lease = pool.acquire(
+        cache_key="idle-pool-entry",
+        base_ref="main",
+        branch_name="implementation/idle-pool-entry",
+    )
+    idle_path = lease.path
+    entry_id = lease.entry_id
+    release = lease.release(reusable=True)
+    assert release["released"] is True
+    assert release["pooled"] is True
+
+    state_dir = tmp_path / "state" / "lane-0"
+    supervisor = PortalImplementationSupervisor(
+        PortalSupervisorConfig(
+            todo_path=tmp_path / "tasks.md",
+            state_path=state_dir / "task_state.json",
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "events.jsonl",
+            state_dir=state_dir,
+            repo_root=repo,
+            worktree_root=worktree_root,
+        )
+    )
+    supervisor._list_process_commands = lambda: []  # type: ignore[method-assign]
+
+    result = supervisor.cleanup_backlogged_worktrees()
+
+    idle_skip = next(
+        item
+        for item in result["skipped"]
+        if item["reason"] == "idle_worktree_pool_entry"
+    )
+    assert idle_skip["path"] == str(idle_path)
+    assert idle_skip["owner_source"] == "worktree_pool_lease"
+    assert idle_skip["owner_lease_state"] == "idle"
+    assert idle_skip["owner_pool_state_path"].endswith(f"{entry_id}.json")
+    assert result["removed_count"] == 0
+    assert idle_path.exists()
+
+    warm = pool.acquire(
+        cache_key="idle-pool-entry",
+        base_ref="main",
+        branch_name="implementation/reused-idle-pool-entry",
+    )
+    assert warm.reused is True
+    assert warm.path == idle_path
+    assert warm.release(reusable=False)["released"] is True
