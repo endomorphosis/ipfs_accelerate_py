@@ -14,10 +14,22 @@ from ipfs_accelerate_py.agent_supervisor.vfs_contract_pack import (
     DRIFT_INVENTORY_IS_COMPLETION_EVIDENCE,
     DRIFT_INVENTORY_IS_CORRECTNESS_EVIDENCE,
     DRIFT_INVENTORY_VARIANT_PRESENCE_IS_DEFECT,
+    VFS_CANONICAL_OPERATION_MATRIX_CLAIM_SCHEMA,
+    VFS_CANONICAL_OPERATION_MATRIX_EVIDENCE_TERMS,
+    VFS_CANONICAL_OPERATION_MATRIX_GOAL_ID,
+    VFS_CANONICAL_OPERATION_MATRIX_GOAL_PACKET_ID,
+    VFS_CANONICAL_OPERATION_MATRIX_OBJECTIVE_REVISION,
+    VFS_CANONICAL_OPERATION_MATRIX_PACKET_EVIDENCE_TERMS,
+    VFS_CANONICAL_OPERATION_MATRIX_PACKET_GOAL_IDS,
+    VFS_CANONICAL_OPERATION_MATRIX_PACKET_TASK_IDS,
+    VFS_CANONICAL_OPERATION_MATRIX_PARENT_GOAL_ID,
+    VFS_CANONICAL_OPERATION_MATRIX_REQUIRED_INVARIANTS,
     VFS_CANONICAL_OPERATION_MATRIX_SCHEMA,
+    VFS_CANONICAL_OPERATION_MATRIX_TASK_ID,
     VFS_CONTRACT_PACK_GOAL_ID,
     VFS_CONTRACT_PACK_SCHEMA,
     VFS_CONTRACT_PACK_VERSION,
+    VFS_DIFFERENTIAL_CONTRACT_WITNESS_SCHEMA,
     VFS_DRIFT_INVENTORY_GOAL_ID,
     VFS_DRIFT_INVENTORY_OBJECTIVE_REVISION,
     VFS_DRIFT_INVENTORY_SCHEMA,
@@ -42,14 +54,27 @@ from ipfs_accelerate_py.agent_supervisor.vfs_contract_pack import (
     VfsErrorCode,
     VfsInvariantKind,
     VfsOperation,
+    all_covered_evidence_terms,
+    assert_vfs_canonical_operation_matrix_complete,
     assert_vfs_contract_pack_complete,
     assert_vfs_drift_inventory_complete,
     build_vfs_contract_pack,
     build_vfs_drift_inventory,
+    canonical_operation_matrix_evidence,
+    canonical_operation_matrix_evidence_terms,
     canonical_vfs_contract_pack,
     canonical_vfs_drift_inventory,
+    covered_evidence_terms,
+    packet_evidence_terms,
+    prove_vfs_canonical_operation_matrix,
     publish_vfs_contract_pack,
     publish_vfs_drift_inventory,
+    vfs_canonical_operation_matrix_satisfies_objective,
+)
+from ipfs_accelerate_py.agent_supervisor.vfs_differential_harness import (
+    VFS_DIFFERENTIAL_EVIDENCE_KINDS,
+    VFS_DIFFERENTIAL_PACKET_GOAL_IDS,
+    VFS_DIFFERENTIAL_WITNESS_SCHEMA,
 )
 
 
@@ -86,6 +111,175 @@ def test_pack_identity_authority_and_serialization_are_deterministic() -> None:
     assert pack.to_record() == build_vfs_contract_pack().to_record()
     assert json.loads(pack.to_json()) == record
     assert isinstance(pack, CanonicalVfsContractPack)
+
+
+def test_canonical_matrix_evidence_terms_bind_vfs_g158_packet() -> None:
+    assert (
+        canonical_operation_matrix_evidence()
+        == VFS_CANONICAL_OPERATION_MATRIX_SCHEMA
+        == "vfs/canonical-operation-matrix@1"
+    )
+    assert canonical_operation_matrix_evidence_terms() == (
+        "vfs/canonical-operation-matrix@1",
+    )
+    assert (
+        covered_evidence_terms()
+        == VFS_CANONICAL_OPERATION_MATRIX_EVIDENCE_TERMS
+    )
+    assert packet_evidence_terms() == (
+        "vfs/differential-contract-witness@1",
+        "vfs/canonical-operation-matrix@1",
+    )
+    assert (
+        all_covered_evidence_terms()
+        == VFS_CANONICAL_OPERATION_MATRIX_PACKET_EVIDENCE_TERMS
+        == packet_evidence_terms()
+    )
+
+    assert VFS_CANONICAL_OPERATION_MATRIX_GOAL_ID == "VFS-G158"
+    assert VFS_CANONICAL_OPERATION_MATRIX_TASK_ID == "VFS-073"
+    assert VFS_CANONICAL_OPERATION_MATRIX_PARENT_GOAL_ID == "VFS-G090"
+    assert VFS_CANONICAL_OPERATION_MATRIX_OBJECTIVE_REVISION == (
+        "baguqeeramjx4cofpxl4tvz57mno5f3hx6nfxkwp65ydb7il6vjw5hirigdaa"
+    )
+    assert VFS_CANONICAL_OPERATION_MATRIX_GOAL_PACKET_ID == (
+        "goal_packet/vfs_drift/ipfs_accelerate_py/1ad8c79bee6a"
+    )
+    assert VFS_CANONICAL_OPERATION_MATRIX_PACKET_GOAL_IDS == (
+        "VFS-G091",
+        "VFS-G158",
+    )
+    assert VFS_CANONICAL_OPERATION_MATRIX_PACKET_TASK_IDS == (
+        "VFS-077",
+        "VFS-073",
+    )
+
+    # Both packet members publish exactly the same shared evidence vocabulary.
+    assert VFS_DIFFERENTIAL_CONTRACT_WITNESS_SCHEMA == (
+        VFS_DIFFERENTIAL_WITNESS_SCHEMA
+    )
+    assert (
+        VFS_CANONICAL_OPERATION_MATRIX_PACKET_GOAL_IDS
+        == VFS_DIFFERENTIAL_PACKET_GOAL_IDS
+    )
+    assert (
+        VFS_CANONICAL_OPERATION_MATRIX_PACKET_EVIDENCE_TERMS
+        == VFS_DIFFERENTIAL_EVIDENCE_KINDS
+    )
+
+
+def test_canonical_matrix_claim_proves_complete_structural_coverage() -> None:
+    pack = build_vfs_contract_pack()
+    inventory = build_vfs_drift_inventory(pack)
+
+    assert_vfs_canonical_operation_matrix_complete(pack, inventory)
+    assert vfs_canonical_operation_matrix_satisfies_objective(pack, inventory)
+
+    claim = prove_vfs_canonical_operation_matrix(pack, inventory)
+    assert claim["schema"] == VFS_CANONICAL_OPERATION_MATRIX_CLAIM_SCHEMA
+    assert claim["evidence"] == "vfs/canonical-operation-matrix@1"
+    assert claim["evidence_terms"] == ["vfs/canonical-operation-matrix@1"]
+    assert claim["requirement_id"] == VFS_CANONICAL_OPERATION_MATRIX_SCHEMA
+    assert claim["goal_id"] == "VFS-G158"
+    assert claim["parent_goal_id"] == "VFS-G090"
+    assert claim["task_id"] == "VFS-073"
+    assert claim["objective_revision"] == (
+        VFS_CANONICAL_OPERATION_MATRIX_OBJECTIVE_REVISION
+    )
+    assert claim["goal_packet_id"] == (
+        VFS_CANONICAL_OPERATION_MATRIX_GOAL_PACKET_ID
+    )
+    assert claim["packet_goal_ids"] == ["VFS-G091", "VFS-G158"]
+    assert claim["packet_task_ids"] == ["VFS-077", "VFS-073"]
+    assert claim["packet_evidence_terms"] == [
+        "vfs/differential-contract-witness@1",
+        "vfs/canonical-operation-matrix@1",
+    ]
+    assert claim["bindings"] == {
+        "contract_pack_content_id": pack.content_id,
+        "drift_inventory_content_id": inventory.content_id,
+        "contract_version": VFS_CONTRACT_PACK_VERSION,
+    }
+
+    coverage = claim["coverage"]
+    assert set(coverage["operations"]) == {
+        operation.value for operation in VfsOperation
+    }
+    assert coverage["operation_count"] == len(VfsOperation)
+    assert set(coverage["public_surfaces"]) == {
+        surface.value for surface in PublicSurface
+    }
+    assert coverage["public_surface_count"] == len(PublicSurface)
+    assert set(coverage["required_invariant_kinds"]) == {
+        kind.value for kind in VfsInvariantKind
+    }
+    assert set(VFS_CANONICAL_OPERATION_MATRIX_REQUIRED_INVARIANTS) == set(
+        VfsInvariantKind
+    )
+    assert set(coverage["resolved_invariant_kinds"]) == {
+        kind.value for kind in VfsInvariantKind
+    }
+    assert set(coverage["execution_modes"]) == {"sync", "async"}
+    assert set(coverage["drift_surface_kinds"]) == {
+        kind.value for kind in DriftSurfaceKind
+    }
+    assert {
+        "duplicate_candidate",
+        "manifest_drift",
+        "variant_presence",
+    }.issubset(coverage["drift_finding_kinds"])
+    assert coverage["unresolved_issue_ids"] == [
+        "issue:backend-specific-atomicity"
+    ]
+    assert coverage["variant_presence_is_defect"] is False
+    assert coverage["repair_decision_count"] == 0
+    assert coverage["matrix_complete"] is True
+
+    assert claim["sibling_evidence_requirements"] == [
+        {
+            "evidence": "vfs/differential-contract-witness@1",
+            "goal_id": "VFS-G091",
+            "task_id": "VFS-077",
+            "status": "external_runtime_witness_required",
+        }
+    ]
+    assert claim["satisfied"] is True
+    assert claim["claim_level"] == "structural_contract"
+    assert claim["claims_runtime_conformance"] is False
+    assert claim["authoritative"] is False
+    assert claim["completion_authoritative"] is False
+    assert claim["semantic_authority"] is False
+    assert claim["authorizes_repair"] is False
+    assert claim["content_id"] == _canonical_digest(claim)
+    assert claim == prove_vfs_canonical_operation_matrix().copy()
+
+
+def test_canonical_matrix_objective_check_fails_closed_on_forgery() -> None:
+    pack = build_vfs_contract_pack()
+    inventory = build_vfs_drift_inventory(pack)
+
+    object.__setattr__(pack, "operations", pack.operations[:-1])
+    assert not vfs_canonical_operation_matrix_satisfies_objective(pack, inventory)
+    with pytest.raises(VfsContractPackError, match="complete VfsOperation"):
+        assert_vfs_canonical_operation_matrix_complete(pack, inventory)
+
+    valid_pack = build_vfs_contract_pack()
+    forged_inventory = build_vfs_drift_inventory(valid_pack)
+    manifest_finding = next(
+        finding
+        for finding in forged_inventory.findings
+        if finding.kind is DriftFindingKind.MANIFEST_DRIFT
+    )
+    object.__setattr__(
+        manifest_finding, "kind", DriftFindingKind.CONTRACT_DRIFT
+    )
+    assert not vfs_canonical_operation_matrix_satisfies_objective(
+        valid_pack, forged_inventory
+    )
+    with pytest.raises(VfsContractPackError, match="manifest finding"):
+        assert_vfs_canonical_operation_matrix_complete(
+            valid_pack, forged_inventory
+        )
 
 
 def test_drift_inventory_identity_tracks_the_objective_heap() -> None:
