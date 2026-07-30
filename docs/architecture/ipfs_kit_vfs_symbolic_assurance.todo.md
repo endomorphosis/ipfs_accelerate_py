@@ -2537,7 +2537,7 @@ compact references and bounded spans only.
 
 ## VFS-066 Close objective gap packet: VFS-G136, VFS-G137
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
