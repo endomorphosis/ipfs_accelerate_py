@@ -1005,7 +1005,7 @@ consumer or frontier is unresolved.
 
 ## RPR-031 Preserve dynamic, reflection, registry, generated, and FFI frontiers
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
