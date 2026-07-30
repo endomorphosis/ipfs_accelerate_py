@@ -6305,7 +6305,9 @@ class PortalImplementationDaemon:
                 False,
             )
         ):
-            return {
+            wake_kinds = self._consume_runtime_wake_kinds()
+            self._current_runtime_wake_kinds = set(wake_kinds)
+            result = {
                 "blocked": True,
                 "reason": str(
                     protected_checkout_recovery.get("reason")
@@ -6317,14 +6319,19 @@ class PortalImplementationDaemon:
                 "state_path": str(self.state_path),
                 "strategy_path": str(self.strategy_path),
                 "events_path": str(self.events_path),
-                "unchanged": False,
+                "unchanged": True,
                 "write_count": 0,
                 "projection_delta": {},
                 "implementation_result": None,
                 "merge_reconciliation": [],
-                "wake_kinds": [],
+                "wake_kinds": sorted(wake_kinds),
                 "requirement_id": EVENT_DRIVEN_RUNTIME_REQUIREMENT_ID,
             }
+            # A retained external lease is a stable deferral, not a reason to
+            # replay the same unacknowledged filesystem event in a tight loop.
+            # New lease changes or the normal safety timeout will wake us.
+            self._acknowledge_runtime_events()
+            return result
         external_completion_recovery = (
             self._recover_pending_external_completion_callbacks()
         )
@@ -22817,6 +22824,7 @@ class PortalImplementationDaemon:
         metadata = {
             **dict(lease.metadata),
             "protected_recovery_required": True,
+            "protected_recovery_owner": "implementation_daemon",
             "protected_paths": protected_paths,
             "protected_release_guard": guard,
             "protected_recovery_intent": intent,
@@ -23769,6 +23777,22 @@ class PortalImplementationDaemon:
         ):
             return {"required": False, "adopted": False}
         metadata = dict(existing.metadata)
+        recovery_owner = str(
+            metadata.get("protected_recovery_owner") or ""
+        )
+        if recovery_owner and recovery_owner != "implementation_daemon":
+            # Recovery journals form an owner-tagged union. The supervisor
+            # and its managed daemon carry different guards because they
+            # mutate different protected-output scopes. Never interpret
+            # another owner's signed payload with this daemon's schema.
+            return {
+                "required": True,
+                "adopted": False,
+                "blocked": True,
+                "reason": "external_protected_checkout_recovery_required",
+                "protected_recovery_owner": recovery_owner,
+                "lock_path": str(existing.lock_path),
+            }
         paths = self._recovery_lock_paths(metadata)
         guard = metadata.get("protected_release_guard")
         intent = metadata.get("protected_recovery_intent")

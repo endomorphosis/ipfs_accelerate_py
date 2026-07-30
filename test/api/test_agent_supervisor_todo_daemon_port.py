@@ -10140,6 +10140,237 @@ def test_generated_dirty_repair_owns_checkout_lock_and_defers_foreign_owner(
     assert "docs/generated.todo.md" in _git(repo, "status", "--short")
 
 
+def test_managed_daemon_fences_supervisor_protected_recovery_journal(
+    tmp_path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    todo_path = repo / "docs" / "generated.todo.md"
+    todo_path.parent.mkdir()
+    todo_path.write_text("# Generated board\n", encoding="utf-8")
+    _git(repo, "add", "docs/generated.todo.md")
+    _git(
+        repo,
+        "-c",
+        "user.name=Test User",
+        "-c",
+        "user.email=test@example.invalid",
+        "commit",
+        "-m",
+        "seed generated board",
+    )
+    state_dir = tmp_path / "state"
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=todo_path,
+            state_path=state_dir / "supervisor_task_state.json",
+            strategy_path=state_dir / "supervisor_strategy.json",
+            events_path=state_dir / "supervisor_events.jsonl",
+            state_dir=state_dir,
+            repo_root=repo,
+            implementation_protected_paths=("docs/generated.todo.md",),
+        )
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "daemon_task_state.json",
+        strategy_path=state_dir / "daemon_strategy.json",
+        events_path=state_dir / "daemon_events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## AUTO-",
+        implementation_protected_paths=("docs/generated.todo.md",),
+    )
+    observed: dict[str, object] = {}
+
+    def inspect_supervisor_journal() -> dict[str, object]:
+        lock_path = checkout_mutation_lock_path(repo)
+        journal_before = lock_path.read_bytes()
+        observed["daemon_context_empty_before"] = (
+            daemon._current_checkout_mutation_lease() is None
+        )
+        observed.update(daemon._adopt_protected_checkout_recovery())
+        observed["journal_unchanged"] = (
+            lock_path.read_bytes() == journal_before
+        )
+        observed["daemon_context_empty_after"] = (
+            daemon._current_checkout_mutation_lease() is None
+        )
+        return {"inspected": True}
+
+    result = supervisor._run_generated_board_producer(
+        producer="cross-component-test",
+        commit_outputs=True,
+        operation="generated_dirty_repair",
+        callback=inspect_supervisor_journal,
+    )
+
+    assert result == {"inspected": True}
+    assert observed["required"] is True
+    assert observed["blocked"] is True
+    assert observed["reason"] == (
+        "external_protected_checkout_recovery_required"
+    )
+    assert observed["protected_recovery_owner"] == (
+        "implementation_supervisor"
+    )
+    assert observed["journal_unchanged"] is True
+    assert observed["daemon_context_empty_before"] is True
+    assert observed["daemon_context_empty_after"] is True
+    assert not checkout_mutation_lock_path(repo).exists()
+
+
+def test_daemon_recovery_journal_preserves_legacy_and_repository_fences(
+    tmp_path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    todo_path = repo / "todo.md"
+    todo_path.write_text("# Generated board\n", encoding="utf-8")
+    _git(repo, "add", "todo.md")
+    _git(
+        repo,
+        "-c",
+        "user.name=Test User",
+        "-c",
+        "user.email=test@example.invalid",
+        "commit",
+        "-m",
+        "seed generated board",
+    )
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## AUTO-",
+        implementation_protected_paths=("todo.md",),
+    )
+    guard = daemon._protected_checkout_release_guard((todo_path,))
+    intent: dict[str, object] = {
+        "schema": (
+            "ipfs_accelerate_py.agent_supervisor."
+            "protected-checkout-recovery-intent@1"
+        ),
+        "operation": "mark_tasks_completed",
+        "task_id": "AUTO-001",
+        "attempt": 1,
+        "protected_paths": ["todo.md"],
+        "subjects": {"todo.md": "AUTO-001: mark todo completed"},
+        "guard_id": guard["guard_id"],
+    }
+    intent["intent_id"] = implementation_daemon_module.content_identity(
+        intent
+    )
+    metadata = checkout_lock_metadata(
+        kind="merge",
+        repo_root=repo,
+        task_id="AUTO-001",
+        attempt=1,
+        extra={"operation": "mark_tasks_completed"},
+    )
+    metadata.update(
+        {
+            "protected_recovery_required": True,
+            "protected_paths": ["todo.md"],
+            "protected_release_guard": guard,
+            "protected_recovery_intent": intent,
+        }
+    )
+    lock_path = checkout_mutation_lock_path(repo)
+
+    # Ownerless journals predate the owner tag and remain recoverable.
+    lock_path.write_text(
+        json.dumps(metadata, sort_keys=True),
+        encoding="utf-8",
+    )
+    legacy = daemon._adopt_protected_checkout_recovery()
+
+    assert legacy["required"] is True
+    assert legacy["attached"] is True
+    assert daemon._release_checkout_mutation_lease(legacy["lease"]) is True
+    daemon._clear_checkout_mutation_context()
+
+    # An explicitly daemon-owned, internally content-valid guard must still
+    # fail closed when it names a different physical repository.
+    foreign_guard = dict(guard)
+    foreign_guard["repository_id"] = "repository:foreign"
+    foreign_guard.pop("guard_id")
+    foreign_guard["guard_id"] = (
+        implementation_daemon_module.content_identity(foreign_guard)
+    )
+    foreign_intent = dict(intent)
+    foreign_intent["guard_id"] = foreign_guard["guard_id"]
+    foreign_intent.pop("intent_id")
+    foreign_intent["intent_id"] = (
+        implementation_daemon_module.content_identity(foreign_intent)
+    )
+    foreign_metadata = {
+        **metadata,
+        "protected_recovery_owner": "implementation_daemon",
+        "protected_release_guard": foreign_guard,
+        "protected_recovery_intent": foreign_intent,
+    }
+    lock_path.write_text(
+        json.dumps(foreign_metadata, sort_keys=True),
+        encoding="utf-8",
+    )
+    rejected = daemon._adopt_protected_checkout_recovery()
+
+    assert rejected["reason"] == "protected_recovery_journal_invalid"
+    assert rejected["journal_error"] == "guard_repository_mismatch"
+    lock_path.unlink()
+
+
+def test_blocked_protected_recovery_acknowledges_runtime_wake(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+    )
+    wake_event = {"kind": "lease", "revision": "test"}
+    acknowledged: list[object] = []
+
+    class WakeCoordinator:
+        def acknowledge(self, event):
+            acknowledged.append(event)
+
+    daemon._runtime_wake_coordinator = WakeCoordinator()
+    daemon._pending_runtime_wake_events = [wake_event]
+    monkeypatch.setattr(
+        daemon,
+        "_recover_protected_checkout_mutation",
+        lambda: {
+            "required": True,
+            "recovered": False,
+            "blocked": True,
+            "reason": "external_protected_checkout_recovery_required",
+        },
+    )
+
+    result = daemon.run_once()
+
+    assert result["blocked"] is True
+    assert result["unchanged"] is True
+    assert result["wake_kinds"] == ["lease"]
+    assert daemon._pending_runtime_wake_events == []
+    assert daemon._current_runtime_wake_events == []
+    assert acknowledged == [wake_event]
+
+
 def test_implementation_supervisor_repairs_implementation_without_worker(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -18330,6 +18561,9 @@ def test_implementation_daemon_retains_dirty_protected_completion_lease_until_re
     assert failed["durable"] is False
     assert failed["checkout_mutation_lease_retained"] is True
     assert retained_lease is not None
+    assert retained_lease.metadata["protected_recovery_owner"] == (
+        "implementation_daemon"
+    )
     assert checkout_mutation_lock_path(repo).exists()
     assert "todo.md" in _git(repo, "status", "--porcelain", "--", "todo.md")
     unexpected_mutations: list[str] = []
