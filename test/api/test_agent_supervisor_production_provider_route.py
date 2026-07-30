@@ -1401,6 +1401,65 @@ def test_daemon_omits_compiled_context_from_a_different_snapshot(
     assert payload["expansion_handles"][0]["context_snapshot_id"] != SNAPSHOT
 
 
+def test_daemon_recompiles_targeted_evidence_against_production_worktree(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _daemon(tmp_path, monkeypatch)
+    task = _task()
+    production_branch = "production-snapshot"
+    _git(daemon.repo_root, "branch", production_branch)
+    production_root = tmp_path / "production-worktree"
+    _git(
+        daemon.repo_root,
+        "worktree",
+        "add",
+        str(production_root),
+        production_branch,
+    )
+    production_target = production_root / PATH
+    production_target.write_text(
+        "# production baseline\nPRODUCTION_SNAPSHOT_MARKER = True\n",
+        encoding="utf-8",
+    )
+    _git(production_root, "add", PATH)
+    _git(production_root, "commit", "-m", "production snapshot")
+    production_commit = _git_output(production_root, "rev-parse", "HEAD")
+
+    control_target = daemon.repo_root / PATH
+    control_target.write_text(
+        "# control plane\nCONTROL_PLANE_MARKER = True\n",
+        encoding="utf-8",
+    )
+    _git(daemon.repo_root, "add", PATH)
+    _git(daemon.repo_root, "commit", "-m", "advance control plane")
+    control_context = daemon._compile_implementation_context(task, attempt=1)
+    assert control_context.capsule.tree_id != production_commit
+
+    production_context = daemon._compile_implementation_context(
+        task,
+        attempt=1,
+        repository_root=production_root,
+        expected_tree_id=production_commit,
+        include_control_plane_context=False,
+    )
+    packet = daemon.build_production_contract_packet_for_task(
+        task,
+        snapshot_id=f"git-commit:{production_commit}",
+        attempt=1,
+        context_capsule=production_context.capsule,
+    )
+
+    encoded = json.dumps(
+        packet.provider_input_payload["evidence_handles"],
+        sort_keys=True,
+    )
+    assert production_context.capsule.tree_id == production_commit
+    assert "PRODUCTION_SNAPSHOT_MARKER" in encoded
+    assert "CONTROL_PLANE_MARKER" not in encoded
+    assert packet.provider_input_payload["goal"]["context_snapshot_matches"] is True
+
+
 def test_daemon_keeps_immutable_context_valid_when_source_head_advances(
     tmp_path,
     monkeypatch: pytest.MonkeyPatch,

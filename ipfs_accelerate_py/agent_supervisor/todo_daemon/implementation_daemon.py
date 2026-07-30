@@ -11304,7 +11304,10 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         lifecycle_record: WorkspaceLifecycleRecord | None = None
         implementation_started = False
         lifecycle_race_exception = False
-        use_production_route = False
+        use_production_route = (
+            not deterministic_only
+            and self._production_provider_route_enabled(task)
+        )
         production_route_payload: dict[str, Any] = {}
 
         try:
@@ -11336,12 +11339,54 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     },
                 )
             seed_plan = self._prior_attempt_seed_plan(state=state, attempt=attempt)
-            baseline_ref = self._create_seeded_worktree(worktree_path, branch_name, task=task)
+            if use_production_route:
+                baseline_ref = self._create_seeded_worktree(
+                    worktree_path,
+                    branch_name,
+                    task=task,
+                    seed_untracked_context=False,
+                )
+            else:
+                baseline_ref = self._create_seeded_worktree(
+                    worktree_path,
+                    branch_name,
+                    task=task,
+                )
             # A pooled checkout keeps a stable physical path so Git does not
             # have to relocate populated submodule worktrees.  Resolve the
             # task's provisional timestamp path before any command, state, or
             # merge metadata is built from it.
             worktree_path = self._effective_pooled_worktree_path(worktree_path)
+            if use_production_route:
+                production_context = self._compile_implementation_context(
+                    task,
+                    attempt,
+                    repository_root=worktree_path,
+                    expected_tree_id=baseline_ref,
+                    include_control_plane_context=False,
+                )
+                context_capsule = production_context.capsule
+                self._persist_implementation_context_receipt(task, attempt)
+                self._record_event(
+                    "production_context_snapshot_bound",
+                    {
+                        "task_id": task.task_id,
+                        "attempt": int(attempt),
+                        "snapshot_id": f"git-commit:{context_capsule.tree_id}",
+                        "context_capsule_id": context_capsule.content_id,
+                        "context_evidence_count": len(
+                            context_capsule.evidence
+                        ),
+                        "context_expansion_count": len(
+                            context_capsule.expansion_references
+                        ),
+                    },
+                )
+                self._seed_untracked_worktree_context(
+                    worktree_path,
+                    task=task,
+                    overwrite_existing=True,
+                )
             seed_apply = self._apply_prior_attempt_seed(
                 worktree_path,
                 seed_plan=seed_plan,
@@ -11377,10 +11422,6 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 )
             workspace_setup = self._worktree_setup_result(worktree_path)
             workspace_setup["prior_attempt_seed"] = dict(seed_apply)
-            use_production_route = (
-                not deterministic_only
-                and self._production_provider_route_enabled(task)
-            )
             # SCA-615: production model-assisted work invokes only the typed
             # packet route.  The raw model CLI command is not built or run.
             command = (
@@ -13039,6 +13080,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         branch_name: str,
         *,
         task: PortalTask | None = None,
+        seed_untracked_context: bool = True,
     ) -> str:
         if self.worktree_pool is not None:
             base_ref = self._main_branch_name()
@@ -13068,7 +13110,12 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             # clean pooled image or leak from one task into the next.
             try:
                 self._link_shared_worktree_paths(lease_path)
-                self._seed_untracked_worktree_context(lease_path, task=task, overwrite_existing=True)
+                if seed_untracked_context:
+                    self._seed_untracked_worktree_context(
+                        lease_path,
+                        task=task,
+                        overwrite_existing=True,
+                    )
             except BaseException:
                 self._forget_seeded_worktree_context(lease_path)
                 self._worktree_pool_effective_paths.pop(requested_path, None)
@@ -13088,7 +13135,12 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         baseline_ref = self._run_git(["rev-parse", "HEAD"], cwd=worktree_path).stdout.strip()
         self._initialize_worktree_submodules(worktree_path, branch_name=branch_name)
         self._link_shared_worktree_paths(worktree_path)
-        self._seed_untracked_worktree_context(worktree_path, task=task, overwrite_existing=True)
+        if seed_untracked_context:
+            self._seed_untracked_worktree_context(
+                worktree_path,
+                task=task,
+                overwrite_existing=True,
+            )
         return baseline_ref
 
     def _effective_pooled_worktree_path(self, requested_path: Path) -> Path:
@@ -26604,18 +26656,20 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
     def _safe_implementation_evidence_path(
         self,
         value: Any,
+        *,
+        repository_root: Path | None = None,
     ) -> tuple[Path, str] | None:
         """Resolve one task-declared evidence path without permitting escape."""
 
         text = str(value or "").strip().strip("`'\"")
         if not text or "\x00" in text:
             return None
+        context_root = (repository_root or self.repo_root).resolve()
         path = Path(text)
-        candidate = path if path.is_absolute() else self.repo_root / path
+        candidate = path if path.is_absolute() else context_root / path
         try:
-            repository_root = self.repo_root.resolve()
             resolved = candidate.resolve(strict=False)
-            relative = resolved.relative_to(repository_root).as_posix()
+            relative = resolved.relative_to(context_root).as_posix()
         except (OSError, RuntimeError, ValueError):
             return None
         if not relative or relative == ".":
@@ -26691,13 +26745,17 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         task: PortalTask,
         *,
         source_tasks: Sequence[PortalTask],
+        repository_root: Path | None = None,
     ) -> tuple[tuple[Path, str, str, int], ...]:
         """Select only task-declared files, diagnostics, and directory indexes."""
 
         candidates: dict[str, tuple[Path, str, str, int]] = {}
 
         def add(raw_path: Any, *, kind: str, priority: int) -> None:
-            resolved = self._safe_implementation_evidence_path(raw_path)
+            resolved = self._safe_implementation_evidence_path(
+                raw_path,
+                repository_root=repository_root,
+            )
             if resolved is None:
                 return
             path, relative = resolved
@@ -26746,7 +26804,8 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     ):
                         continue
                     resolved = self._safe_implementation_evidence_path(
-                        path_token
+                        path_token,
+                        repository_root=repository_root,
                     )
                     if resolved is None or not resolved[0].exists():
                         continue
@@ -26930,6 +26989,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         *,
         repository_id: str,
         tree_id: str,
+        repository_root: Path | None = None,
     ) -> tuple[Any, ...]:
         source_tasks = self._implementation_evidence_source_tasks(task)
         search_terms = self._implementation_evidence_search_terms(
@@ -26945,6 +27005,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             self._implementation_evidence_candidates(
                 task,
                 source_tasks=source_tasks,
+                repository_root=repository_root,
             )
         ):
             if path.is_dir():
@@ -27171,11 +27232,16 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         return "\n".join([*required_lines, *optional_lines])
 
     def _implementation_repository_and_tree_ids(
-        self, task: PortalTask
+        self,
+        task: PortalTask,
+        *,
+        repository_root: Path | None = None,
+        expected_tree_id: str = "",
     ) -> tuple[str, str]:
+        context_root = (repository_root or self.repo_root).resolve()
         common_dir = subprocess.run(
             ["git", "rev-parse", "--git-common-dir"],
-            cwd=self.repo_root,
+            cwd=context_root,
             text=True,
             capture_output=True,
             check=False,
@@ -27185,15 +27251,15 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             (
                 Path(raw_common_dir)
                 if Path(raw_common_dir).is_absolute()
-                else self.repo_root / raw_common_dir
+                else context_root / raw_common_dir
             ).resolve()
-        ) if common_dir.returncode == 0 and raw_common_dir else str(self.repo_root)
+        ) if common_dir.returncode == 0 and raw_common_dir else str(context_root)
         repository_id = "repository:sha256:" + hashlib.sha256(
             repository_material.encode("utf-8")
         ).hexdigest()
         head = subprocess.run(
             ["git", "rev-parse", "--verify", "HEAD^{commit}"],
-            cwd=self.repo_root,
+            cwd=context_root,
             text=True,
             capture_output=True,
             check=False,
@@ -27203,6 +27269,12 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             tree_id = "tree:sha256:" + hashlib.sha256(
                 self._canonical_ref(task).encode("utf-8")
             ).hexdigest()
+        expected = str(expected_tree_id or "").strip()
+        if expected and tree_id != expected:
+            raise RuntimeError(
+                "implementation context root does not match the expected "
+                "production snapshot"
+            )
         return repository_id, tree_id
 
     def _implementation_cancel_requested(self) -> bool:
@@ -28090,16 +28162,25 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         return result
 
     def _compile_implementation_context(
-        self, task: PortalTask, attempt: int
+        self,
+        task: PortalTask,
+        attempt: int,
+        *,
+        repository_root: Path | None = None,
+        expected_tree_id: str = "",
+        include_control_plane_context: bool = True,
     ) -> ContextCompileResult:
         """Compile the provider prompt from immutable task core and evidence."""
 
+        context_root = (repository_root or self.repo_root).resolve()
         repository_id, tree_id = self._implementation_repository_and_tree_ids(
-            task
+            task,
+            repository_root=context_root,
+            expected_tree_id=expected_tree_id,
         )
         completion_scope = completion_gap_edit_scope(
             task,
-            repo_root=self.repo_root,
+            repo_root=context_root,
         )
         retry_repair_source_id, retry_repair_failure_kind = (
             retry_budget_repair_source(task)
@@ -28107,7 +28188,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         retry_validation_paths = retry_budget_repair_validation_paths(task)
         implied_validation_paths = implied_validation_test_output_paths(
             task,
-            repo_root=self.repo_root,
+            repo_root=context_root,
         )
         checkpoint_dir = self._implementation_checkpoint_dir(task)
         checkpoint_prompt_reference = f"${IMPLEMENTATION_CHECKPOINT_DIR_ENV}"
@@ -28281,11 +28362,16 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 separators=(",", ":"),
             ).encode("utf-8")
         ).hexdigest()
-        vector_text = self._render_todo_vector_context(task)
+        vector_text = (
+            self._render_todo_vector_context(task)
+            if include_control_plane_context
+            else ""
+        )
         evidence = self._implementation_targeted_evidence(
             task,
             repository_id=repository_id,
             tree_id=tree_id,
+            repository_root=context_root,
         )
         if vector_text:
             context = self._load_todo_vector_context(task)
