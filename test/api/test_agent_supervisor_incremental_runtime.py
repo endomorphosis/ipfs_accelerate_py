@@ -24,6 +24,10 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor i
     PortalSupervisorConfig,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.worktrees import WorktreePool
+from ipfs_accelerate_py.agent_supervisor.worktree_lifecycle import (
+    ProcessBirthIdentity,
+    WorkspaceLifecycleState,
+)
 
 
 def _git(cwd: Path, *args: str) -> str:
@@ -410,6 +414,396 @@ def test_clean_dependency_workspaces_are_reused_without_task_mutation_leakage(tm
     assert not (warm.path / "task-local.txt").exists()
     assert warm.release()["pooled"] is True
     assert pool.metrics["warm_acquisitions"] == 1
+
+
+def test_pooled_admission_leaves_lifecycle_denied_entry_untouched(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "seed")
+    worktree_root = tmp_path / "pool"
+    daemon = PortalImplementationDaemon(
+        todo_path=tmp_path / "tasks.md",
+        state_path=tmp_path / "state.json",
+        strategy_path=tmp_path / "strategy.json",
+        events_path=tmp_path / "events.jsonl",
+        repo_root=repo,
+        use_ephemeral_worktree=True,
+        worktree_root=worktree_root,
+        worktree_pool_max_entries=1,
+    )
+    pool = daemon.worktree_pool
+    assert pool is not None
+    prior = pool.acquire(
+        cache_key=daemon._implementation_worktree_cache_key(),
+        base_ref="main",
+        branch_name="implementation/prior-owner",
+    )
+    prior_path = prior.path
+    prior_entry_id = prior.entry_id
+    assert prior.release(reusable=True)["pooled"] is True
+
+    lifecycle = daemon.worktree_lifecycle.begin_preparing(
+        task_id="INC-POOL-OLD",
+        canonical_task_cid="cid:pool-old",
+        attempt=1,
+        lane_id="dead-owner",
+        workspace_path=prior_path,
+        branch="implementation/prior-owner",
+        merge_target="main",
+        owner=ProcessBirthIdentity(
+            pid=2**30 - 7,
+            start_time_ticks=1,
+            boot_id="dead-owner",
+        ),
+    )
+    lifecycle = daemon.worktree_lifecycle.mark_active(
+        prior_path,
+        lease_id=lifecycle.lease_id,
+        expected_fence=lifecycle.fence,
+    )
+    pool_state_path = (
+        worktree_root / ".pool-state" / f"{prior_entry_id}.json"
+    )
+    lifecycle_path = daemon.worktree_lifecycle.workspace_path_for(prior_path)
+    state_before = pool_state_path.read_bytes()
+    lifecycle_before = lifecycle_path.read_bytes()
+    head_before = _git(prior_path, "rev-parse", "HEAD")
+    status_before = _git(prior_path, "status", "--porcelain")
+
+    requested_path = worktree_root / "new-attempt"
+    daemon._create_seeded_worktree(
+        requested_path,
+        "implementation/new-owner",
+    )
+    acquired_path = daemon._effective_pooled_worktree_path(requested_path)
+    acquired = daemon._worktree_pool_leases[acquired_path]
+
+    assert acquired.reused is False
+    assert acquired.path != prior_path
+    assert (
+        "worktree_reuse_denied:owner_dead_lease_unexpired"
+        in acquired.invalidation_reasons
+    )
+    assert pool_state_path.read_bytes() == state_before
+    assert lifecycle_path.read_bytes() == lifecycle_before
+    assert daemon.worktree_lifecycle.load_workspace(prior_path) == lifecycle
+    assert _git(prior_path, "rev-parse", "HEAD") == head_before
+    assert _git(prior_path, "status", "--porcelain") == status_before
+    assert not (
+        worktree_root / ".pool-state" / f"{prior_entry_id}.lock"
+    ).exists()
+
+    release = daemon._release_pooled_worktree_lease(
+        acquired_path,
+        reason="test_cleanup",
+        reusable=True,
+    )
+    assert release["released"] is True
+    assert release["pooled"] is True
+    assert pool_state_path.read_bytes() == state_before
+    assert lifecycle_path.read_bytes() == lifecycle_before
+    assert _git(prior_path, "rev-parse", "HEAD") == head_before
+    assert _git(prior_path, "status", "--porcelain") == status_before
+
+    invalidation = pool.invalidate()
+    denied_skip = next(
+        item
+        for item in invalidation["skipped"]
+        if item["path"] == str(prior_path)
+    )
+    assert denied_skip["reason"] == (
+        "worktree_reuse_denied:owner_dead_lease_unexpired"
+    )
+    assert pool_state_path.read_bytes() == state_before
+    assert lifecycle_path.read_bytes() == lifecycle_before
+    assert _git(prior_path, "rev-parse", "HEAD") == head_before
+    assert _git(prior_path, "status", "--porcelain") == status_before
+
+
+def test_pooled_admission_reclaims_expired_lifecycle_only_after_claim(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "seed")
+    worktree_root = tmp_path / "pool"
+    daemon = PortalImplementationDaemon(
+        todo_path=tmp_path / "tasks.md",
+        state_path=tmp_path / "state.json",
+        strategy_path=tmp_path / "strategy.json",
+        events_path=tmp_path / "events.jsonl",
+        repo_root=repo,
+        use_ephemeral_worktree=True,
+        worktree_root=worktree_root,
+    )
+    pool = daemon.worktree_pool
+    assert pool is not None
+    prior = pool.acquire(
+        cache_key=daemon._implementation_worktree_cache_key(),
+        base_ref="main",
+        branch_name="implementation/expired-owner",
+    )
+    prior_path = prior.path
+    assert prior.release(reusable=True)["pooled"] is True
+
+    daemon.worktree_lifecycle.clock = lambda: 1_000.0
+    daemon.worktree_lifecycle.lease_seconds = 10.0
+    lifecycle = daemon.worktree_lifecycle.begin_preparing(
+        task_id="INC-POOL-EXPIRED",
+        canonical_task_cid="cid:pool-expired",
+        attempt=1,
+        lane_id="dead-owner",
+        workspace_path=prior_path,
+        branch="implementation/expired-owner",
+        merge_target="main",
+        owner=ProcessBirthIdentity(
+            pid=2**30 - 7,
+            start_time_ticks=1,
+            boot_id="dead-owner",
+        ),
+    )
+    lifecycle = daemon.worktree_lifecycle.mark_active(
+        prior_path,
+        lease_id=lifecycle.lease_id,
+        expected_fence=lifecycle.fence,
+    )
+    lifecycle_path = daemon.worktree_lifecycle.workspace_path_for(prior_path)
+    lifecycle_before = lifecycle_path.read_bytes()
+    daemon.worktree_lifecycle.clock = lambda: 1_011.0
+
+    preflight_allowed, preflight_reason = (
+        daemon._authorize_pooled_worktree_reuse(
+            prior_path,
+            lifecycle.branch,
+            "preflight",
+        )
+    )
+    assert preflight_allowed is True
+    assert preflight_reason == "stale_owner_lease_expired"
+    assert lifecycle_path.read_bytes() == lifecycle_before
+    assert daemon.worktree_lifecycle.load_workspace(prior_path) == lifecycle
+
+    requested_path = worktree_root / "new-attempt"
+    daemon._create_seeded_worktree(
+        requested_path,
+        "implementation/reclaimed-owner",
+    )
+    acquired_path = daemon._effective_pooled_worktree_path(requested_path)
+    acquired = daemon._worktree_pool_leases[acquired_path]
+    reclaimed = daemon.worktree_lifecycle.load_workspace(prior_path)
+
+    assert acquired.reused is True
+    assert acquired.path == prior_path
+    assert reclaimed is not None
+    assert reclaimed.state is WorkspaceLifecycleState.TERMINAL
+    assert reclaimed.fence == lifecycle.fence + 1
+
+    missing_request = worktree_root / "missing-state-release"
+    missing_branch = "implementation/missing-state-release"
+    daemon._create_seeded_worktree(missing_request, missing_branch)
+    missing_path = daemon._effective_pooled_worktree_path(missing_request)
+    missing_lease = daemon._worktree_pool_leases[missing_path]
+    (
+        worktree_root
+        / ".pool-state"
+        / f"{missing_lease.entry_id}.json"
+    ).unlink()
+
+    generic_failure = daemon._cleanup_merged_worktree(
+        missing_path,
+        missing_branch,
+        reusable=False,
+    )
+
+    assert generic_failure["cleaned"] is False
+    assert generic_failure["deferred"] is False
+    assert "failure_kind" not in generic_failure
+    assert "attempt_consumed" not in generic_failure
+    assert "provider_call_allowed" not in generic_failure
+    assert generic_failure["pool_release"]["reason"] == "lease_state_missing"
+    assert missing_path.exists()
+    assert daemon._worktree_pool_leases[missing_path] is missing_lease
+    assert missing_lease._released is False
+    assert reclaimed.terminal_reason == "stale_owner_lease_expired"
+
+    release = daemon._release_pooled_worktree_lease(
+        acquired_path,
+        reason="test_cleanup",
+        reusable=False,
+    )
+    assert release["released"] is True
+
+
+def test_lifecycle_denied_pool_release_stays_retryable_and_cannot_fall_through(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "seed")
+    worktree_root = tmp_path / "pool"
+    daemon = PortalImplementationDaemon(
+        todo_path=tmp_path / "tasks.md",
+        state_path=tmp_path / "state.json",
+        strategy_path=tmp_path / "strategy.json",
+        events_path=tmp_path / "events.jsonl",
+        repo_root=repo,
+        use_ephemeral_worktree=True,
+        worktree_root=worktree_root,
+    )
+    requested_path = worktree_root / "release-attempt"
+    branch_name = "implementation/release-owner"
+    daemon._create_seeded_worktree(requested_path, branch_name)
+    acquired_path = daemon._effective_pooled_worktree_path(requested_path)
+    lease = daemon._worktree_pool_leases[acquired_path]
+
+    daemon.worktree_lifecycle.clock = lambda: 2_000.0
+    daemon.worktree_lifecycle.lease_seconds = 10.0
+    lifecycle = daemon.worktree_lifecycle.begin_preparing(
+        task_id="INC-POOL-RELEASE",
+        canonical_task_cid="cid:pool-release",
+        attempt=1,
+        lane_id="dead-owner",
+        workspace_path=acquired_path,
+        branch=branch_name,
+        merge_target="main",
+        owner=ProcessBirthIdentity(
+            pid=2**30 - 7,
+            start_time_ticks=1,
+            boot_id="dead-owner",
+        ),
+    )
+    lifecycle = daemon.worktree_lifecycle.mark_active(
+        acquired_path,
+        lease_id=lifecycle.lease_id,
+        expected_fence=lifecycle.fence,
+    )
+    pool_state_path = (
+        worktree_root / ".pool-state" / f"{lease.entry_id}.json"
+    )
+    lock_path = worktree_root / ".pool-state" / f"{lease.entry_id}.lock"
+    state_before = pool_state_path.read_bytes()
+    lock_before = lock_path.read_bytes()
+    head_before = _git(acquired_path, "rev-parse", "HEAD")
+
+    # Model the narrow race where cleanup's first lifecycle check passed but a
+    # conflicting claim appeared before the pool release gate.
+    daemon._authorize_worktree_cleanup = lambda *_args, **_kwargs: {  # type: ignore[method-assign]
+        "allowed": True,
+        "reason": "precheck_passed",
+    }
+    denied = daemon._cleanup_merged_worktree(
+        acquired_path,
+        branch_name,
+        reusable=False,
+    )
+
+    assert denied["cleaned"] is False
+    assert denied["deferred"] is True
+    assert denied["removed_worktree"] is False
+    assert denied["pool_release"]["released"] is False
+    assert denied["pool_release"]["retryable"] is True
+    assert daemon._worktree_pool_leases[acquired_path] is lease
+    assert lease._released is False
+    assert pool_state_path.read_bytes() == state_before
+    assert lock_path.read_bytes() == lock_before
+    assert _git(acquired_path, "rev-parse", "HEAD") == head_before
+    assert _git(repo, "show-ref", "--verify", f"refs/heads/{branch_name}")
+
+    daemon.worktree_lifecycle.clock = lambda: 2_011.0
+    retried = daemon._release_pooled_worktree_lease(
+        acquired_path,
+        reason="test_retry_after_expiry",
+        reusable=False,
+    )
+
+    assert retried["released"] is True
+    assert lease._released is True
+    assert acquired_path not in daemon._worktree_pool_leases
+    assert not acquired_path.exists()
+    reclaimed = daemon.worktree_lifecycle.load_workspace(acquired_path)
+    assert reclaimed is not None
+    assert reclaimed.state is WorkspaceLifecycleState.TERMINAL
+    assert reclaimed.fence == lifecycle.fence + 1
+
+
+def test_failed_seed_cleanup_resolves_quarantined_effective_pool_path(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "seed")
+    worktree_root = tmp_path / "pool"
+    daemon = PortalImplementationDaemon(
+        todo_path=tmp_path / "tasks.md",
+        state_path=tmp_path / "state.json",
+        strategy_path=tmp_path / "strategy.json",
+        events_path=tmp_path / "events.jsonl",
+        repo_root=repo,
+        use_ephemeral_worktree=True,
+        worktree_root=worktree_root,
+    )
+    requested_path = worktree_root / "provisional-seed-path"
+    requested_key = requested_path.resolve()
+    branch_name = "implementation/quarantined-seed"
+    daemon._create_seeded_worktree(requested_path, branch_name)
+    effective_path = daemon._worktree_pool_effective_paths[requested_key]
+    lease = daemon._worktree_pool_leases[effective_path]
+
+    lifecycle = daemon.worktree_lifecycle.begin_preparing(
+        task_id="INC-POOL-QUARANTINED",
+        canonical_task_cid="cid:pool-quarantined",
+        attempt=1,
+        lane_id="dead-owner",
+        workspace_path=effective_path,
+        branch=branch_name,
+        merge_target="main",
+        owner=ProcessBirthIdentity(
+            pid=2**30 - 7,
+            start_time_ticks=1,
+            boot_id="dead-owner",
+        ),
+    )
+    lifecycle = daemon.worktree_lifecycle.mark_active(
+        effective_path,
+        lease_id=lifecycle.lease_id,
+        expected_fence=lifecycle.fence,
+    )
+    task = PortalTask(
+        task_id="INC-POOL-QUARANTINED",
+        title="Preserve quarantined pooled checkout",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="runtime",
+    )
+
+    cleanup = daemon._cleanup_failed_setup_worktree(
+        requested_path,
+        branch_name,
+        task=task,
+        attempt=1,
+        exception_result={"phase": "worktree_setup"},
+    )
+
+    assert cleanup["cleaned"] is False
+    assert cleanup["failure_kind"] == "lifecycle_race"
+    assert cleanup["attempt_consumed"] is False
+    assert cleanup["worktree_path"] == str(effective_path)
+    assert daemon._worktree_pool_effective_paths[requested_key] == effective_path
+    assert daemon._worktree_pool_leases[effective_path] is lease
+    assert effective_path.exists()
+    assert not requested_path.exists()
+    assert _git(repo, "show-ref", "--verify", f"refs/heads/{branch_name}")
 
 
 def test_dirty_workspace_is_discarded_instead_of_shared(tmp_path: Path) -> None:

@@ -2641,6 +2641,12 @@ class PortalImplementationDaemon:
         # pass this lease so the owner can dispose its own worktree while
         # peer lanes remain fenced out of nonterminal claims.
         self._active_worktree_lifecycle: WorkspaceLifecycleRecord | None = None
+        if self.worktree_pool is not None:
+            # Pool maintenance runs outside acquire(), so retain the lifecycle
+            # gate for pruning and explicit invalidation as well as warm reuse.
+            self.worktree_pool.reuse_authorizer = (
+                self._authorize_pooled_worktree_reuse
+            )
         self.merge_target_branch = str(merge_target_branch or "").strip()
         self.objective_path = objective_path
         self.objective_bundle_dir = objective_bundle_dir
@@ -12871,17 +12877,28 @@ class PortalImplementationDaemon:
     ) -> dict[str, Any]:
         """Remove partial worktrees when setup fails before the implementation command starts."""
 
+        try:
+            requested_key = worktree_path.resolve()
+        except OSError:
+            requested_key = worktree_path
+        effective_path = self._worktree_pool_effective_paths.get(
+            requested_key,
+            requested_key,
+        )
         cleanup_result = self._cleanup_merged_worktree(
-            worktree_path,
+            effective_path,
             branch_name,
             reusable=False,
         )
+        if cleanup_result.get("cleaned") is True:
+            self._worktree_pool_effective_paths.pop(requested_key, None)
         self._record_event(
             "failed_setup_worktree_cleanup",
             {
                 "task_id": task.task_id,
                 "attempt": attempt,
-                "worktree_path": str(worktree_path),
+                "worktree_path": str(effective_path),
+                "requested_worktree_path": str(worktree_path),
                 "branch": branch_name,
                 "cleanup_result": cleanup_result,
                 "exception_result": exception_result,
@@ -14142,6 +14159,7 @@ class PortalImplementationDaemon:
                 branch_name=branch_name,
                 dependency_paths=self.worktree_submodule_paths,
                 activate=activate,
+                authorize_reuse=self._authorize_pooled_worktree_reuse,
             )
             lease_path = Path(lease.path).resolve()
             try:
@@ -14158,12 +14176,34 @@ class PortalImplementationDaemon:
             try:
                 self._link_shared_worktree_paths(lease_path)
                 self._seed_untracked_worktree_context(lease_path, task=task, overwrite_existing=True)
-            except BaseException:
-                self._forget_seeded_worktree_context(lease_path)
-                self._worktree_pool_effective_paths.pop(requested_path, None)
-                self._worktree_pool_leases.pop(lease_path, None)
-                self._worktree_setup_metrics.pop(lease_path, None)
-                lease.release(reusable=False)
+            except BaseException as exc:
+                release_result = lease.release(reusable=False)
+                if release_result.get("released") is True:
+                    self._forget_seeded_worktree_context(lease_path)
+                    self._worktree_pool_effective_paths.pop(
+                        requested_path,
+                        None,
+                    )
+                    self._worktree_pool_leases.pop(lease_path, None)
+                    self._worktree_setup_metrics.pop(lease_path, None)
+                else:
+                    # Keep both requested→effective resolution and the
+                    # retryable lease so outer failure cleanup cannot fall
+                    # through against the nonexistent provisional path.
+                    self._record_event(
+                        "worktree_pool_lease_quarantined",
+                        {
+                            "requested_worktree_path": str(requested_path),
+                            "worktree_path": str(lease_path),
+                            "branch": branch_name,
+                            "reason": str(
+                                release_result.get("reason")
+                                or "pool_release_deferred"
+                            ),
+                            "release": release_result,
+                            "exception_type": type(exc).__name__,
+                        },
+                    )
                 raise
             baseline_ref = str(getattr(lease, "base_commit", "") or "")
             if not baseline_ref:
@@ -14189,6 +14229,40 @@ class PortalImplementationDaemon:
             key = requested_path
         return self._worktree_pool_effective_paths.pop(key, requested_path)
 
+    def _authorize_pooled_worktree_reuse(
+        self,
+        worktree_path: Path,
+        branch_name: str,
+        phase: str,
+    ) -> tuple[bool, str]:
+        """Fence pool admission against another attempt's lifecycle claim."""
+
+        if phase == "preflight":
+            decision = self.worktree_lifecycle.evaluate_cleanup(
+                workspace_path=worktree_path,
+                branch=branch_name,
+                caller_lease_id=self._active_worktree_lifecycle_lease_id(),
+            )
+        elif phase == "claimed":
+            decision = self.worktree_lifecycle.authorize_cleanup(
+                workspace_path=worktree_path,
+                branch=branch_name,
+                caller_lease_id=self._active_worktree_lifecycle_lease_id(),
+            )
+        else:
+            return False, "unknown_reuse_authorization_phase"
+        if not decision.allowed:
+            self._record_event(
+                "worktree_pool_reuse_fenced",
+                {
+                    "worktree_path": str(worktree_path),
+                    "branch": branch_name,
+                    "phase": phase,
+                    **decision.to_dict(),
+                },
+            )
+        return decision.allowed, decision.reason
+
     def _release_pooled_worktree_lease(
         self,
         worktree_path: Path,
@@ -14199,11 +14273,14 @@ class PortalImplementationDaemon:
         """Release a pooled checkout while retaining its durable task branch."""
 
         try:
-            lease_key = worktree_path.resolve()
+            requested_key = worktree_path.resolve()
         except OSError:
-            lease_key = worktree_path
-        self._forget_seeded_worktree_context(worktree_path)
-        lease = self._worktree_pool_leases.pop(lease_key, None)
+            requested_key = worktree_path
+        lease_key = self._worktree_pool_effective_paths.get(
+            requested_key,
+            requested_key,
+        )
+        lease = self._worktree_pool_leases.get(lease_key)
         if lease is None:
             return {
                 "attempted": False,
@@ -14212,6 +14289,10 @@ class PortalImplementationDaemon:
                 "worktree_path": str(worktree_path),
             }
         release_result = lease.release(reusable=reusable)
+        if release_result.get("released") is True:
+            self._worktree_pool_leases.pop(lease_key, None)
+            self._worktree_pool_effective_paths.pop(requested_key, None)
+            self._forget_seeded_worktree_context(lease.path)
         result = {
             "attempted": True,
             "handoff_reason": reason,
@@ -23340,44 +23421,82 @@ class PortalImplementationDaemon:
         lease: WorktreeLease | None = None
         lease_key: Path | None = None
         if worktree_path is not None:
-            self._forget_seeded_worktree_context(worktree_path)
             try:
                 lease_key = worktree_path.resolve()
             except OSError:
                 lease_key = worktree_path
-            lease = self._worktree_pool_leases.pop(lease_key, None)
+            lease = self._worktree_pool_leases.get(lease_key)
         if lease is not None:
             pool_release = lease.release(reusable=reusable)
-            if pool_release.get("released", False):
-                deleted_branch = False
-                branch_error = ""
-                try:
-                    if self._git_ref_exists(branch_name):
-                        self._run_git(["branch", "-D", branch_name], cwd=self.repo_root)
-                        deleted_branch = True
-                except RuntimeError as exc:
-                    branch_error = str(exc)
+            if not pool_release.get("released", False):
+                lifecycle_deferred = bool(
+                    pool_release.get("deferred") is True
+                    and pool_release.get("retryable") is True
+                )
                 result = {
-                    "cleaned": not branch_error,
+                    "cleaned": False,
+                    "deferred": lifecycle_deferred,
                     "branch": branch_name,
                     "worktree_path": str(worktree_path or ""),
                     "started_at": started_at,
                     "finished_at": utc_now(),
-                    "removed_worktree": not bool(pool_release.get("pooled", False)),
-                    "deleted_branch": deleted_branch,
+                    "removed_worktree": False,
+                    "deleted_branch": False,
                     "submodule_cleanup": [],
-                    "pooled": bool(pool_release.get("pooled", False)),
+                    "reason": str(
+                        pool_release.get("reason")
+                        or "worktree_pool_release_deferred"
+                    ),
                     "pool_release": pool_release,
                 }
-                if branch_error:
-                    result["error"] = branch_error
-                if result.get("cleaned"):
-                    result["lifecycle_finalize"] = self._finalize_worktree_lifecycle(
-                        worktree_path,
-                        reason="pool_release_cleaned",
+                if lifecycle_deferred:
+                    result.update(
+                        {
+                            "failure_kind": (
+                                LifecycleFailureKind.LIFECYCLE_RACE.value
+                            ),
+                            "attempt_consumed": False,
+                            "provider_call_allowed": False,
+                        }
                     )
                 self._record_event("cleanup_finished", result)
                 return result
+            if lease_key is not None:
+                self._worktree_pool_leases.pop(lease_key, None)
+            if worktree_path is not None:
+                self._forget_seeded_worktree_context(worktree_path)
+            deleted_branch = False
+            branch_error = ""
+            try:
+                if self._git_ref_exists(branch_name):
+                    self._run_git(["branch", "-D", branch_name], cwd=self.repo_root)
+                    deleted_branch = True
+            except RuntimeError as exc:
+                branch_error = str(exc)
+            result = {
+                "cleaned": not branch_error,
+                "branch": branch_name,
+                "worktree_path": str(worktree_path or ""),
+                "started_at": started_at,
+                "finished_at": utc_now(),
+                "removed_worktree": not bool(pool_release.get("pooled", False)),
+                "deleted_branch": deleted_branch,
+                "submodule_cleanup": [],
+                "pooled": bool(pool_release.get("pooled", False)),
+                "pool_release": pool_release,
+            }
+            if branch_error:
+                result["error"] = branch_error
+            if result.get("cleaned"):
+                result["lifecycle_finalize"] = self._finalize_worktree_lifecycle(
+                    worktree_path,
+                    reason="pool_release_cleaned",
+                )
+            self._record_event("cleanup_finished", result)
+            return result
+
+        if worktree_path is not None:
+            self._forget_seeded_worktree_context(worktree_path)
 
         removed_worktree = False
         deleted_branch = False
