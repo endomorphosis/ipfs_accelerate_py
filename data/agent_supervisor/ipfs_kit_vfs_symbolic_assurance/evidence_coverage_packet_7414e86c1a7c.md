@@ -64,7 +64,8 @@
 ## Backlog and heap alignment
 
 - VFS-052 is the packet-anchor task for `goal_packet/vfs_symbolic_assurance/general/7414e86c1a7c`.
-- Related board tasks VFS-055 (`vfs/autonomous-refill-exhaustion@1`) and VFS-056 (`vfs/exhaustive-index-receipt@1`) share this package’s leaf evidence; one cohesive pass covers the packet.
+- Related board tasks VFS-055 (`vfs/autonomous-refill-exhaustion@1`) and VFS-056 (`vfs/exhaustive-index-receipt@1` / packet `ab6d1ed417d3`) share this package’s leaf evidence; one cohesive pass covers the packet.
+- VFS-056 materializes the durable receipt files under `receipts/` and the packet aggregate `goal_packet_ab6d1ed417d3_evidence.json`.
 - VFS-G132..G135 remain the leaf owners under VFS-G000. **No objective-heap child refinement** is required.
 - Operator-protected files are **not** rewritten:
   - `docs/architecture/IPFS_KIT_VFS_SYMBOLIC_ASSURANCE_PLAN.md`
