@@ -555,6 +555,40 @@ def _response_contract(role: ProviderRole) -> Mapping[str, Any]:
     )
 
 
+def _response_instruction(role: ProviderRole) -> Mapping[str, Any]:
+    """Return the exact, machine-readable output instruction for a role.
+
+    The response contract alone is metadata that conversational providers can
+    mistake for background information.  Keep a separate directive in the
+    signed prompt envelope so the actual provider input explicitly requires a
+    single bare JSON object and forbids intent/progress prose.
+    """
+
+    required = (
+        ["decision", "findings"]
+        if role is ProviderRole.CODEX_REVIEW
+        else ["proposal"]
+    )
+    return MappingProxyType(
+        {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "provider-response-instruction@1"
+            ),
+            "mode": "bare-rfc8259-json-object",
+            "directive": (
+                "Return exactly one bare RFC 8259 JSON object matching "
+                "response_contract. The first output character must be '{' "
+                "and the last output character must be '}'. Emit no prose, "
+                "Markdown, code fence, progress update, or text before or "
+                "after the object. Do not announce or describe future work."
+            ),
+            "required_top_level_fields": required,
+            "additional_text_forbidden": True,
+        }
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class ProviderRequest(Mapping[str, Any]):
     """Canonical provider request.
@@ -584,6 +618,7 @@ class ProviderRequest(Mapping[str, Any]):
             "task_id": self.task_id,
             "provider_input": dict(self.payload),
             "bounds": self.bounds.to_dict(),
+            "response_instruction": dict(_response_instruction(self.role)),
             "response_contract": dict(self.response_contract),
             "authority": {
                 "provider_output_tier": "proposal",
@@ -1678,6 +1713,7 @@ class ImplementationProviderRouter:
             "task_id": task_id,
             "provider_input": payload,
             "bounds": self.bounds.to_dict(),
+            "response_instruction": dict(_response_instruction(role)),
             "response_contract": dict(response_contract),
             "authority": {
                 "provider_output_tier": "proposal",
