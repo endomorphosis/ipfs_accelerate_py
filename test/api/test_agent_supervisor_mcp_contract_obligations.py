@@ -1,4 +1,10 @@
-"""SCA-060 tests for canonical MCP++ logic obligations."""
+"""SCA-060 / SCA-630 tests for canonical MCP++ logic obligations.
+
+Proves objective evidence SCAEV060LOGIC for SCA-G060: every compiled
+obligation binds property, premises, assumptions, snapshot, scope,
+invalidators, required assurance, and supported logic fragment; source or
+graph dumps are rejected as premises.
+"""
 
 from __future__ import annotations
 
@@ -30,11 +36,15 @@ from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts imp
 )
 from ipfs_accelerate_py.agent_supervisor.proof.mcp_contract_obligations import (
     MCP_CONTRACT_OBLIGATIONS_INTERFACE,
+    SCAEV060LOGIC,
+    SCAEV060LOGIC_COVERAGE,
+    SCAEV060LOGIC_EVIDENCE,
     LogicFragment,
     McpContractObligation,
     McpContractObligationError,
     McpLogicView,
     compile_contract_claim,
+    scaev060logic_evidence,
 )
 
 
@@ -101,6 +111,29 @@ def _compile(
     )
 
 
+def test_scaev060logic_evidence_term_is_declared_and_receipted() -> None:
+    """Exact-text SCAEV060LOGIC markers for objective evidence admission."""
+
+    assert SCAEV060LOGIC == "SCAEV060LOGIC"
+    assert SCAEV060LOGIC_EVIDENCE == SCAEV060LOGIC
+    assert (
+        "property-premises-assumptions-snapshot-scope-invalidators-"
+        "required-assurance-supported-fragment-bound"
+        in SCAEV060LOGIC_COVERAGE
+    )
+    assert "source-and-graph-dumps-rejected-as-premises" in SCAEV060LOGIC_COVERAGE
+
+    payload = scaev060logic_evidence()
+    assert SCAEV060LOGIC in payload["requirement_ids"]
+    assert payload["coverage"] == list(SCAEV060LOGIC_COVERAGE)
+    assert "binds property" in payload["acceptance"]
+    assert "source or graph dumps are rejected as premises" in payload["acceptance"]
+
+    result = _compile()
+    assert result.evidence == payload
+    assert SCAEV060LOGIC in result.authority_bindings()["evidence"]["requirement_ids"]
+
+
 def test_compiler_binds_every_authority_dimension_without_minting_proof() -> None:
     result = _compile()
 
@@ -122,6 +155,21 @@ def test_compiler_binds_every_authority_dimension_without_minting_proof() -> Non
     assert result.code_claim.status is ClaimStatus.OPEN
     assert result.code_claim.derived_assurance is AssuranceLevel.UNVERIFIED
 
+    # Acceptance: every obligation binds property, premises, assumptions,
+    # snapshot, scope, invalidators, required assurance, and supported fragment.
+    bindings = result.authority_bindings()
+    assert bindings["property_id"] == result.property_id == result.contract_id
+    assert bindings["premise_ids"] == list(result.premise_ids)
+    assert bindings["assumption_ids"] == list(result.assumption_ids)
+    assert bindings["snapshot_id"] == result.snapshot_id
+    assert bindings["scope_ids"] == list(result.scope_ids)
+    assert bindings["invalidators"]
+    assert bindings["required_assurance"] == AssuranceLevel.KERNEL_VERIFIED.value
+    assert bindings["supported"] is True
+    assert bindings["logic_fragment"] == LogicFragment.SCHEMA.value
+    assert bindings["obligation_id"] == result.obligation_id
+    assert SCAEV060LOGIC in bindings["evidence"]["requirement_ids"]
+
     metadata = result.code_obligation.metadata
     assert metadata["catalog_id"] == result.catalog_id
     assert metadata["contract_id"] == result.property_id
@@ -139,6 +187,8 @@ def test_logic_view_uses_shared_identity_profile_and_canonical_round_trip() -> N
     assert view.identity_profile == "ir-canonical-identity-v1"
     assert view.logic_id.startswith("b")
     assert view.identity.multicodec == "raw"
+    assert isinstance(view.statement, str) and view.statement
+    assert view.to_dict()["logic_id"] == view.logic_id
     assert McpLogicView.from_json(view.to_json()).to_json() == view.to_json()
 
     encoded = result.to_json()
@@ -147,6 +197,9 @@ def test_logic_view_uses_shared_identity_profile_and_canonical_round_trip() -> N
     assert decoded.compiled_obligation_id == result.compiled_obligation_id
     assert decoded.code_obligation.obligation_id == result.obligation_id
     assert decoded.shared_ir_claim.obligations[0].obligation_id == view.logic_id
+    # Evidence markers stay available after round trip without altering identity.
+    assert decoded.evidence == result.evidence
+    assert SCAEV060LOGIC in decoded.evidence["requirement_ids"]
 
 
 def test_premise_order_and_duplicate_inputs_do_not_change_identity() -> None:
@@ -205,6 +258,8 @@ def test_closed_families_select_reviewed_compact_fragments(
     ],
 )
 def test_source_and_graph_dumps_are_rejected_as_premises(bad_premise) -> None:
+    """SCAEV060LOGIC: source or graph dumps are rejected as premises."""
+
     catalog, contract = _catalog(McpClaimFamily.ARGUMENTS_PRESERVED)
     claim = _claim()
     object.__setattr__(claim, "premise_ids", ("premise:ok", bad_premise))
@@ -223,6 +278,11 @@ def test_source_and_graph_dumps_are_rejected_as_premises(bad_premise) -> None:
             toolchain_id="toolchain:x",
             policy_id="policy:x",
         )
+
+    # Positive control: compact identifiers remain admitted and receipted.
+    ok = _compile(premises=("premise:ok", "premise:schema"))
+    assert ok.premise_ids == ("premise:ok", "premise:schema")
+    assert SCAEV060LOGIC in ok.evidence["requirement_ids"]
 
 
 def test_no_freeform_theorem_or_detached_catalog_contract_is_admitted() -> None:
