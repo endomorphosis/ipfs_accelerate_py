@@ -30,6 +30,7 @@ from ipfs_accelerate_py.agent_supervisor.repository_forest import (
     REPOSITORY_DESCRIPTOR_TASK_ID,
     REPOSITORY_FOREST_MANIFEST_EVIDENCE,
     REPOSITORY_FOREST_MANIFEST_GOAL_ID,
+    REPOSITORY_FOREST_MANIFEST_INVARIANTS,
     REPOSITORY_FOREST_MANIFEST_TASK_ID,
     REPOSITORY_FOREST_REPLAY_CLAIM_SCHEMA,
     REPOSITORY_FOREST_REPLAY_EVIDENCE,
@@ -42,12 +43,14 @@ from ipfs_accelerate_py.agent_supervisor.repository_forest import (
     RepositoryForest,
     RepositoryForestError,
     all_covered_evidence_terms,
+    bind_observation_to_forest,
     build_initial_four_repository_forest,
     build_repository_descriptor,
     build_repository_forest,
     covered_evidence_terms,
     descriptor_satisfies_repository_descriptor,
     empty_dirty_overlay_digest,
+    forest_observation_bindings,
     forest_satisfies_repository_forest_manifest,
     forest_satisfies_repository_forest_replay,
     forests_share_portable_identity,
@@ -1001,6 +1004,44 @@ def test_four_repository_forest_emits_complete_packet_claim(
     assert manifest_claim["portable_manifest"] == forest.to_portable_dict()
     assert manifest_claim["reason_codes"] == []
     assert manifest_claim["satisfied"] is True
+    assert manifest_claim["sole_write_alias"] == DEFAULT_ACCELERATOR_ALIAS
+    assert set(manifest_claim["aliases"]) == set(INITIAL_FOUR_REPOSITORY_ALIASES)
+    assert set(manifest_claim["required_aliases"]) == set(
+        INITIAL_FOUR_REPOSITORY_ALIASES
+    )
+    assert manifest_claim["portable_host_state_excluded"] is True
+    assert manifest_claim["sibling_repositories_distinct"] is True
+    assert manifest_claim["swissknife_read_only"] is True
+    assert len(manifest_claim["observation_bindings"]) == 4
+    assert manifest_claim["invariants"] == list(
+        REPOSITORY_FOREST_MANIFEST_INVARIANTS
+    )
+    assert "paths cannot escape a descriptor root" in manifest_claim["invariants"]
+    assert (
+        "sibling repositories are never conflated"
+        in manifest_claim["invariants"]
+    )
+    assert (
+        "external SwissKnife is read-only in the initial policy"
+        in manifest_claim["invariants"]
+    )
+    bindings = forest_observation_bindings(forest)
+    assert len(bindings) == 4
+    assert {item["alias"] for item in bindings} == set(
+        INITIAL_FOUR_REPOSITORY_ALIASES
+    )
+    swiss_binding = next(
+        item for item in bindings if item["alias"] == DEFAULT_SWISSKNIFE_ALIAS
+    )
+    assert swiss_binding["authority_mode"] == AuthorityMode.READ_ONLY.value
+    assert swiss_binding["writable"] is False
+    accel_binding = next(
+        item
+        for item in bindings
+        if item["alias"] == DEFAULT_ACCELERATOR_ALIAS
+    )
+    assert accel_binding["authority_mode"] == AuthorityMode.READ_WRITE.value
+    assert accel_binding["writable"] is True
 
     packet = prove_repository_identity_packet(forest)
     assert packet["evidence_terms"] == [
@@ -1053,3 +1094,116 @@ def test_incomplete_initial_forest_cannot_satisfy_manifest_evidence(
         "missing_repository:ipfs_kit_py",
     ]
     assert prove_repository_identity_packet(forest)["satisfied"] is False
+
+
+def test_forest_manifest_binds_observations_to_exact_descriptor(
+    tmp_path: Path,
+) -> None:
+    """Prove vfs/repository-forest-manifest@1 observation authority binding."""
+
+    swiss = _init_repo(tmp_path / DEFAULT_SWISSKNIFE_ALIAS, name="swiss")
+    accelerator = _init_repo(
+        tmp_path / DEFAULT_ACCELERATOR_ALIAS, name="accel"
+    )
+    kit = _init_repo(tmp_path / DEFAULT_KIT_ALIAS, name="kit")
+    datasets = _init_repo(tmp_path / DEFAULT_DATASETS_ALIAS, name="datasets")
+    forest = build_repository_forest(
+        initial_vfs_assurance_forest_policy(
+            accelerator_root=accelerator,
+            swissknife_root=swiss,
+            kit_root=kit,
+            datasets_root=datasets,
+        )
+    )
+
+    # Each in-root path binds to exactly one descriptor authority.
+    for alias, root in (
+        (DEFAULT_SWISSKNIFE_ALIAS, swiss),
+        (DEFAULT_ACCELERATOR_ALIAS, accelerator),
+        (DEFAULT_KIT_ALIAS, kit),
+        (DEFAULT_DATASETS_ALIAS, datasets),
+    ):
+        binding = bind_observation_to_forest(
+            forest,
+            root / "README.md",
+            require_existing=True,
+        )
+        assert binding["evidence"] == "vfs/repository-forest-manifest@1"
+        assert binding["alias"] == alias
+        assert binding["forest_id"] == forest.forest_id
+        assert binding["relative_path"] == "README.md"
+        assert binding["descriptor_cid"] == forest.descriptor_for_alias(
+            alias
+        ).descriptor_cid
+        assert binding["repository_id"] == forest.descriptor_for_alias(
+            alias
+        ).repository_id
+        assert binding["satisfied"] is True
+
+    # SwissKnife stays read-only; accelerator is the sole write root.
+    swiss_obs = bind_observation_to_forest(forest, swiss / "README.md")
+    assert swiss_obs["authority_mode"] == AuthorityMode.READ_ONLY.value
+    assert swiss_obs["writable"] is False
+    accel_obs = bind_observation_to_forest(
+        forest, accelerator / "README.md"
+    )
+    assert accel_obs["authority_mode"] == AuthorityMode.READ_WRITE.value
+    assert accel_obs["writable"] is True
+
+    # Paths outside every descriptor root fail closed (no silent scope expand).
+    outside = tmp_path / "outside.txt"
+    outside.write_text("secret\n", encoding="utf-8")
+    with pytest.raises(RepositoryForestError) as unbound:
+        bind_observation_to_forest(forest, outside)
+    assert unbound.value.reason_code == "observation_unbound"
+
+    # Escape attempts against a sibling root also remain unbound.
+    with pytest.raises(RepositoryForestError) as escaped:
+        bind_observation_to_forest(forest, swiss / ".." / "outside.txt")
+    assert escaped.value.reason_code == "observation_unbound"
+
+    # Portable forests cannot host-resolve observations (fail closed).
+    portable = RepositoryForest.from_portable_dict(forest.to_portable_dict())
+    with pytest.raises(RepositoryForestError) as portable_unbound:
+        bind_observation_to_forest(portable, "README.md")
+    assert portable_unbound.value.reason_code == "observation_unbound"
+
+    # Manifest claim still carries host-free observation bindings after replay.
+    claim = prove_repository_forest_manifest(portable)
+    assert claim["evidence"] == "vfs/repository-forest-manifest@1"
+    assert claim["satisfied"] is True
+    assert claim["sibling_repositories_distinct"] is True
+    assert len(claim["observation_bindings"]) == 4
+    encoded = json.dumps(claim, sort_keys=True)
+    for root in (swiss, accelerator, kit, datasets):
+        assert str(root) not in encoded
+    assert "local_locator" not in encoded
+
+
+def test_forest_manifest_evidence_terms_are_objective_heap_aligned() -> None:
+    """Discovery anchors for VFS-G137 stay exact-text aligned with the heap."""
+
+    assert (
+        REPOSITORY_FOREST_MANIFEST_EVIDENCE
+        == "vfs/repository-forest-manifest@1"
+    )
+    assert repository_forest_manifest_evidence_terms() == (
+        "vfs/repository-forest-manifest@1",
+    )
+    assert REPOSITORY_FOREST_MANIFEST_GOAL_ID == "VFS-G137"
+    assert REPOSITORY_FOREST_MANIFEST_TASK_ID == "VFS-068"
+    assert "vfs/repository-forest-manifest@1" in covered_evidence_terms()
+    assert "vfs/repository-forest-manifest@1" in all_covered_evidence_terms()
+    assert "vfs/repository-forest-manifest@1" in packet_evidence_terms()
+    assert repository_identity_completion_goal_bindings()["VFS-G137"] == [
+        "vfs/repository-forest-manifest@1"
+    ]
+    assert "paths cannot escape a descriptor root" in (
+        REPOSITORY_FOREST_MANIFEST_INVARIANTS
+    )
+    assert "sibling repositories are never conflated" in (
+        REPOSITORY_FOREST_MANIFEST_INVARIANTS
+    )
+    assert "every observation is bound to exactly one forest descriptor" in (
+        REPOSITORY_FOREST_MANIFEST_INVARIANTS
+    )
