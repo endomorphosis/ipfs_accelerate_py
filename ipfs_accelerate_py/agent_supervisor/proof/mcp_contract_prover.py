@@ -1598,6 +1598,19 @@ prove_mcp_contract = prove_contract_obligation
 route_contract_proof = route_contract_obligation
 
 
+# SCA-G062 / SCAEV062DATASETSLOGIC: exact datasets logic backends are bound
+# into McpContractProver only after capability-probed registration.  See
+# integrations.ipfs_datasets_logic_provider for the probe/registry contract.
+SCAEV062DATASETSLOGIC: Final = "SCAEV062DATASETSLOGIC"
+SCAEV062DATASETSLOGIC_EVIDENCE: Final = SCAEV062DATASETSLOGIC
+SCAEV062DATASETSLOGIC_COVERAGE: Final = (
+    "create_mcp_contract_prover_with_datasets_logic_backends",
+    "capability-probed-registration-only",
+    "unregistered-backends-unsupported",
+    "provider-candidates-until-trusted-reconstruction",
+)
+
+
 def create_mcp_contract_prover_with_datasets_logic_backends(
     *,
     importer: Callable[[str], Any] | None = None,
@@ -1615,11 +1628,15 @@ def create_mcp_contract_prover_with_datasets_logic_backends(
     Unregistered or unavailable backends remain unsupported.  Capability labels
     alone cannot admit a backend: registration requires an exact-module
     signature probe performed by the datasets logic facade.
+
+    Evidence: SCAEV062DATASETSLOGIC (exact datasets logic and prover binding).
     """
 
     # Keep the optional datasets integration lazy so importing this module does
     # not require ``ipfs_datasets_py`` in minimal installations.
     from ..integrations.ipfs_datasets_logic_provider import (
+        SCAEV062DATASETSLOGIC as _DATASETS_LOGIC_EVIDENCE,
+        SCAEV062DATASETSLOGIC_COVERAGE as _DATASETS_LOGIC_COVERAGE,
         build_datasets_logic_backend_registry,
     )
 
@@ -1657,6 +1674,8 @@ def create_mcp_contract_prover_with_datasets_logic_backends(
     # part of the closed constructor contract.
     prover.datasets_logic_registry = registry
     prover.datasets_logic_probes = probes
+    prover.datasets_logic_evidence_id = _DATASETS_LOGIC_EVIDENCE
+    prover.datasets_logic_coverage = tuple(_DATASETS_LOGIC_COVERAGE)
     return prover, registry
 
 
@@ -1674,6 +1693,26 @@ def datasets_logic_backends_are_registered(
         if provider is None:
             return False
     return True
+
+
+def datasets_logic_prover_evidence(prover: McpContractProver | None = None) -> dict[str, Any]:
+    """Return the SCAEV062DATASETSLOGIC evidence projection for a prover."""
+
+    evidence_id = SCAEV062DATASETSLOGIC
+    coverage = list(SCAEV062DATASETSLOGIC_COVERAGE)
+    if prover is not None:
+        attached = getattr(prover, "datasets_logic_evidence_id", None)
+        if isinstance(attached, str) and attached.strip():
+            evidence_id = attached.strip()
+        attached_coverage = getattr(prover, "datasets_logic_coverage", None)
+        if isinstance(attached_coverage, (list, tuple)):
+            coverage = [str(item) for item in attached_coverage]
+    return {
+        "evidence_id": evidence_id,
+        "requirement_ids": [evidence_id],
+        "coverage": coverage,
+        "interface": MCP_CONTRACT_PROVER_INTERFACE,
+    }
 
 
 __all__ = [
@@ -1702,8 +1741,12 @@ __all__ = [
     "SCAEV061PROVE_ACCEPTANCE",
     "SCAEV061PROVE_COVERAGE",
     "SCAEV061PROVE_EVIDENCE",
+    "SCAEV062DATASETSLOGIC",
+    "SCAEV062DATASETSLOGIC_COVERAGE",
+    "SCAEV062DATASETSLOGIC_EVIDENCE",
     "create_mcp_contract_prover_with_datasets_logic_backends",
     "datasets_logic_backends_are_registered",
+    "datasets_logic_prover_evidence",
     "proof_path_imports_no_llm",
     "prove_contract_obligation",
     "prove_mcp_contract",

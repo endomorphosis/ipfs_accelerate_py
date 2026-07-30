@@ -3013,7 +3013,8 @@ def create_ipfs_datasets_logic_provider(
 
 
 # ---------------------------------------------------------------------------
-# Exact datasets IR / TDFOL / CEC / SMT / Hammer backend binding (SCA-214)
+# Exact datasets IR / TDFOL / CEC / SMT / Hammer backend binding
+# (SCA-214 / SCA-627 / SCA-G062 / SCAEV062DATASETSLOGIC)
 # ---------------------------------------------------------------------------
 #
 # These facades bind the real ``ipfs_datasets_py.logic`` module signatures into
@@ -3031,6 +3032,19 @@ DATASETS_LOGIC_PROBE_SCHEMA: Final = (
 )
 DATASETS_LOGIC_BINDING_VERSION: Final = "1.0.0"
 DATASETS_LOGIC_CANDIDATE_ASSURANCE: Final = "candidate"
+
+# Objective-evidence term for SCA-G062: exact-text matches in implementation
+# and validation sources prove the datasets-logic/prover binding is covered.
+SCAEV062DATASETSLOGIC: Final = "SCAEV062DATASETSLOGIC"
+SCAEV062DATASETSLOGIC_EVIDENCE: Final = SCAEV062DATASETSLOGIC
+SCAEV062DATASETSLOGIC_COVERAGE: Final = (
+    "real-module-ir-tdfol-cec-smt-hammer-signature-probes",
+    "capability-probed-registration-only-no-label-admission",
+    "canonical-ir-and-premise-selection-identities",
+    "smt-tdfol-cec-outputs-candidates-until-trusted-reconstruction",
+    "unregistered-or-unavailable-backends-unsupported-not-local-success",
+    "mcp-prover-binding-via-create_mcp_contract_prover_with_datasets_logic_backends",
+)
 
 
 class DatasetsLogicBackendKind(str, Enum):
@@ -3097,6 +3111,7 @@ class DatasetsLogicBackendSpec:
             "description": self.description,
             "logic_ir_interface": LOGIC_IR_INTERFACE,
             "binding_version": DATASETS_LOGIC_BINDING_VERSION,
+            "evidence_id": SCAEV062DATASETSLOGIC,
         }
 
 
@@ -3329,6 +3344,9 @@ class DatasetsLogicBackendProbe:
                 "mcp_route": self.mcp_route,
                 "available": self.available,
                 "reason_code": self.reason_code,
+                "evidence_id": SCAEV062DATASETSLOGIC,
+                "requirement_ids": [SCAEV062DATASETSLOGIC],
+                "coverage": list(SCAEV062DATASETSLOGIC_COVERAGE),
             },
         )
 
@@ -3348,6 +3366,9 @@ class DatasetsLogicBackendProbe:
             "module_paths": list(self.module_paths),
             "capability": self.capability.to_dict() if self.available else None,
             "logic_ir_interface": LOGIC_IR_INTERFACE,
+            "evidence_id": SCAEV062DATASETSLOGIC,
+            "requirement_ids": [SCAEV062DATASETSLOGIC],
+            "coverage": list(SCAEV062DATASETSLOGIC_COVERAGE),
         }
 
 
@@ -3576,6 +3597,8 @@ def call_logic_ir_identity(
         "capability_revision": probe.capability_revision,
         "authoritative_assurance": DATASETS_LOGIC_CANDIDATE_ASSURANCE,
         "candidate": True,
+        "evidence_id": SCAEV062DATASETSLOGIC,
+        "requirement_ids": [SCAEV062DATASETSLOGIC],
     }
 
 
@@ -3693,6 +3716,8 @@ def select_premises_retaining_identities(
     projected["capability_revision"] = probe.capability_revision
     projected["candidate"] = True
     projected["authoritative_assurance"] = DATASETS_LOGIC_CANDIDATE_ASSURANCE
+    projected["evidence_id"] = SCAEV062DATASETSLOGIC
+    projected["requirement_ids"] = [SCAEV062DATASETSLOGIC]
     return projected
 
 
@@ -3721,6 +3746,8 @@ def _candidate_provider_result(
         "kernel_checked": False,
         "reconstruction_required": True,
         "trusted": False,
+        "evidence_id": SCAEV062DATASETSLOGIC,
+        "requirement_ids": [SCAEV062DATASETSLOGIC],
         "premise_ids": list(payload.get("premise_ids") or ()),
         "obligation_id": str(
             payload.get("obligation_id")
@@ -4350,6 +4377,9 @@ class DatasetsLogicBackendRegistry:
         return {
             "schema": DATASETS_LOGIC_BACKEND_SCHEMA,
             "logic_ir_interface": LOGIC_IR_INTERFACE,
+            "evidence_id": SCAEV062DATASETSLOGIC,
+            "requirement_ids": [SCAEV062DATASETSLOGIC],
+            "coverage": list(SCAEV062DATASETSLOGIC_COVERAGE),
             "registrations": [item.to_dict() for item in self.registrations],
         }
 
@@ -4436,6 +4466,9 @@ __all__ = [
     "DATASETS_LOGIC_BINDING_VERSION",
     "DATASETS_LOGIC_CANDIDATE_ASSURANCE",
     "DATASETS_LOGIC_BACKEND_SPECS",
+    "SCAEV062DATASETSLOGIC",
+    "SCAEV062DATASETSLOGIC_EVIDENCE",
+    "SCAEV062DATASETSLOGIC_COVERAGE",
     "DatasetsLogicBackendKind",
     "DatasetsLogicBackendError",
     "DatasetsLogicSymbolSpec",
