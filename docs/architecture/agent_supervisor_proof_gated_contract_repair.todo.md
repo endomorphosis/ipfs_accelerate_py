@@ -912,7 +912,7 @@ consumer or frontier is unresolved.
 
 ## RPR-028 Compute reverse transitive impact closure and SCCs
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
