@@ -52,7 +52,9 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
     PRODUCTION_PROVIDER_ROUTE_EVENT,
     PRODUCTION_PROVIDER_ROUTE_PENDING_EVENT,
     PortalTask,
+    PortalTaskState,
     TodoImplementationDaemon,
+    parse_task_file,
 )
 
 
@@ -941,3 +943,143 @@ def test_build_production_provider_route_evaluation_helper() -> None:
     assert evaluation["acceptance"]["typed_packet_route_only"] is True
     assert evaluation["route_result"]["provider_result_admitted"] is True
     assert evaluation["evaluation_id"]
+
+
+@pytest.mark.parametrize(
+    ("typed_route", "expected_attempt_count", "expected_refund_count"),
+    [(True, 2, 1), (False, 3, 0)],
+)
+def test_restart_refunds_only_evidenced_typed_malformed_provider_attempt_once(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+    typed_route: bool,
+    expected_attempt_count: int,
+    expected_refund_count: int,
+) -> None:
+    """An already charged attempt-3 receipt is replay-safe on restart."""
+
+    daemon = _daemon(tmp_path, monkeypatch)
+    daemon.implement = False
+    daemon.max_task_attempts = 3
+    daemon.todo_path.write_text(
+        f"""# Production provider route tasks
+
+## SCA-615 Production typed provider serialization
+
+- Status: todo
+- Completion: manual
+- Priority: P0
+- Track: production-provider-routing
+- Depends on:
+- Outputs: {PATH}
+- Validation: python3 -m pytest test/api/test_agent_supervisor_production_provider_route.py -q
+- Acceptance: Return one bounded provider proposal.
+- Provider role: grok-implement, codex-review
+""",
+        encoding="utf-8",
+    )
+    task = parse_task_file(daemon.todo_path, "## SCA-")[0]
+    identity = daemon._identity_for_task(task)
+    snapshot = f"git-commit:{_git_output(daemon.repo_root, 'rev-parse', 'HEAD')}"
+    packet = daemon.build_production_contract_packet_for_task(
+        task,
+        snapshot_id=snapshot,
+        attempt=3,
+    )
+
+    def malformed_provider(_request):
+        return "I'll inspect the scoped files and draft a proposal."
+
+    malformed_provider.provider_identity = "mcp++:xai:grok-malformed"
+    malformed_provider.model_identity = "grok-malformed"
+    malformed_provider.last_session_identity = "session:grok-malformed"
+    route_result, _event, receipt_path = (
+        daemon.route_model_assisted_contract_packet(
+            packet,
+            current_snapshot_id=snapshot,
+            task=task,
+            attempt=3,
+            grok_provider=malformed_provider,
+            apply=False,
+        )
+    )
+    assert (
+        route_result.reason_code
+        == ProviderReason.PROVIDER_RESPONSE_MALFORMED.value
+    )
+    assert route_result.write_performed is False
+    assert route_result.provider_result_admitted is False
+
+    log_path = daemon.implementation_log_dir / "sca-615-attempt-3.log"
+    execution = (
+        "Execution: production typed packet route "
+        f"({PRODUCTION_PROVIDER_ROUTE_INTERFACE})"
+        if typed_route
+        else "Command: grok --mode agent"
+    )
+    log_path.write_text(
+        execution
+        + "\n\n"
+        + json.dumps(
+            {
+                "provider_result_admitted": False,
+                "raw_model_command_invoked": False,
+                "returncode": 1,
+                "typed_packet_route_only": True,
+                "write_performed": False,
+            },
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    state = PortalTaskState(
+        task_identities={task.task_id: identity.to_dict()},
+        implementation_attempts={task.task_id: 3},
+        implementation_attempts_by_cid={
+            identity.canonical_task_cid: 3
+        },
+        last_implementation_task_id=task.task_id,
+        last_implementation_task_key=identity.canonical_task_key,
+        last_implementation_task_cid=identity.canonical_task_cid,
+        last_implementation_returncode=1,
+        last_implementation_log_path=str(log_path),
+        last_implementation_commit="",
+    )
+    state.save(daemon.state_path)
+
+    first = daemon.run_once()
+    first_state = PortalTaskState.load(daemon.state_path)
+    second = daemon.run_once()
+    second_state = PortalTaskState.load(daemon.state_path)
+
+    assert len(first["typed_provider_malformed_refunds"]) == (
+        expected_refund_count
+    )
+    assert second.get("typed_provider_malformed_refunds", []) == []
+    assert first_state.implementation_attempts[task.task_id] == (
+        expected_attempt_count
+    )
+    assert second_state.implementation_attempts[task.task_id] == (
+        expected_attempt_count
+    )
+    if typed_route:
+        receipt_id = route_result.provider_receipt.receipt_id
+        assert first["typed_provider_malformed_refunds"][0][
+            "receipt_id"
+        ] == receipt_id
+        assert first_state.typed_provider_malformed_refund_receipts == {
+            identity.canonical_task_cid: receipt_id
+        }
+        assert receipt_path.name == "sca-615-attempt-3-provider-receipt.json"
+        refund_events = [
+            item
+            for item in _events(daemon)
+            if item.get("type")
+            == "typed_provider_malformed_attempt_refunded"
+        ]
+        assert len(refund_events) == 1
+    else:
+        assert (
+            first_state.typed_provider_malformed_refund_receipts == {}
+        )

@@ -163,6 +163,7 @@ from .contract_packet_provider_router import (
     build_production_contract_packet,
     build_production_provider_route_evaluation,
     evaluate_production_provider_receipt,
+    validate_provider_execution_receipt,
     validate_production_review_chain_binding,
 )
 from .task_execution_policy import (
@@ -2722,6 +2723,9 @@ class PortalTaskState:
     implementation_attempts: dict[str, int] = field(default_factory=dict)
     implementation_attempts_by_cid: dict[str, int] = field(default_factory=dict)
     retry_budget_repair_receipts: dict[str, str] = field(default_factory=dict)
+    typed_provider_malformed_refund_receipts: dict[str, str] = field(
+        default_factory=dict
+    )
     last_implementation_task_id: str = ""
     last_implementation_task_key: str = ""
     last_implementation_task_cid: str = ""
@@ -2847,6 +2851,14 @@ class PortalTaskState:
                 retry_budget_repair_receipts={
                     str(key): str(value)
                     for key, value in (payload.get("retry_budget_repair_receipts") or {}).items()
+                    if str(key).strip() and str(value).strip()
+                },
+                typed_provider_malformed_refund_receipts={
+                    str(key): str(value)
+                    for key, value in (
+                        payload.get("typed_provider_malformed_refund_receipts")
+                        or {}
+                    ).items()
                     if str(key).strip() and str(value).strip()
                 },
                 last_implementation_task_id=str(payload.get("last_implementation_task_id") or ""),
@@ -2989,6 +3001,7 @@ def state_file_repair_reason(path: Path) -> str:
         "task_identities",
         "implementation_attempts",
         "implementation_attempts_by_cid",
+        "typed_provider_malformed_refund_receipts",
         "last_proof_workflow",
     ):
         value = payload.get(field_name)
@@ -5838,6 +5851,213 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
     def _task_attempt(self, state: PortalTaskState, task: PortalTask) -> int:
         return self._task_attempt_count(state, task) + 1
 
+    def _refund_typed_provider_malformed_attempt(
+        self,
+        state: PortalTaskState,
+        tasks: Sequence[PortalTask],
+    ) -> dict[str, Any] | None:
+        """Refund one evidenced typed-route serialization failure per task CID.
+
+        A restart can observe an attempt that the older runtime charged even
+        though MCP++ returned non-JSON text, no proposal was admitted, and no
+        repository write occurred.  Recover exactly that case from the
+        content-addressed provider receipt and typed-route log.  Raw CLI,
+        validation, scope, merge, and other provider failures remain charged.
+
+        The canonical-task-CID -> receipt-ID marker is stored in the same
+        durable state write as the decremented counters.  Replaying the same
+        receipt, including after a crash, is therefore idempotent; a second
+        malformed response for the same canonical task revision is charged.
+        """
+
+        if state.implementation_in_progress:
+            return None
+        task_id = str(state.last_implementation_task_id or "").strip()
+        if not task_id or state.last_implementation_returncode in {None, 0}:
+            return None
+        if state.last_implementation_commit:
+            return None
+        if state.last_merge_branch or state.last_merge_commit:
+            return None
+        task = next((item for item in tasks if item.task_id == task_id), None)
+        if task is None or self._task_uses_typed_local_execution(task):
+            return None
+        identity = self._identity_for_task(task)
+        canonical_task_cid = identity.canonical_task_cid
+        if (
+            not canonical_task_cid
+            or state.last_implementation_task_cid != canonical_task_cid
+            or canonical_task_cid
+            in state.typed_provider_malformed_refund_receipts
+        ):
+            return None
+
+        attempt = self._task_attempt_count(state, task)
+        if attempt < 1:
+            return None
+        safe_task_id = re.sub(
+            r"[^a-z0-9._-]+",
+            "-",
+            task.task_id.lower(),
+        ).strip("-") or "task"
+        expected_stem = f"{safe_task_id}-attempt-{attempt}"
+        log_path = Path(state.last_implementation_log_path)
+        if not log_path.is_absolute():
+            log_path = self.repo_root / log_path
+        receipt_path = log_path.with_name(
+            f"{expected_stem}-provider-receipt.json"
+        )
+        try:
+            log_root = self.implementation_log_dir.resolve(strict=True)
+            resolved_log = log_path.resolve(strict=True)
+            resolved_receipt = receipt_path.resolve(strict=True)
+            if (
+                resolved_log.parent != log_root
+                or resolved_receipt.parent != log_root
+                or resolved_log.name != f"{expected_stem}.log"
+                or resolved_receipt.name
+                != f"{expected_stem}-provider-receipt.json"
+                or resolved_log.stat().st_size > 64 * 1024
+                or resolved_receipt.stat().st_size > 1024 * 1024
+            ):
+                return None
+            log_text = resolved_log.read_text(encoding="utf-8")
+            receipt_payload = json.loads(
+                resolved_receipt.read_text(encoding="utf-8")
+            )
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            return None
+        if not isinstance(receipt_payload, dict):
+            return None
+        if (
+            "Execution: production typed packet route "
+            f"({PRODUCTION_PROVIDER_ROUTE_INTERFACE})"
+            not in log_text
+        ):
+            return None
+        summaries = [
+            line
+            for line in log_text.splitlines()
+            if line.lstrip().startswith("{")
+        ]
+        if len(summaries) != 1:
+            return None
+        try:
+            log_summary = json.loads(summaries[0])
+        except json.JSONDecodeError:
+            return None
+        if (
+            not isinstance(log_summary, dict)
+            or log_summary.get("typed_packet_route_only") is not True
+            or log_summary.get("raw_model_command_invoked") is not False
+            or log_summary.get("provider_result_admitted") is not False
+            or log_summary.get("write_performed") is not False
+            or int(log_summary.get("returncode") or 0) == 0
+        ):
+            return None
+
+        integration = receipt_payload.get("daemon_integration")
+        if not isinstance(integration, dict):
+            return None
+        integration_receipt_id = str(
+            integration.get("integration_receipt_id") or ""
+        )
+        integration_body = dict(integration)
+        integration_body.pop("integration_receipt_id", None)
+        integrated_payload = dict(receipt_payload)
+        integrated_payload["daemon_integration"] = integration_body
+        try:
+            integration_valid = (
+                bool(integration_receipt_id)
+                and content_identity(integrated_payload)
+                == integration_receipt_id
+            )
+        except (TypeError, ValueError):
+            integration_valid = False
+        if not integration_valid:
+            return None
+
+        core_receipt = dict(receipt_payload)
+        core_receipt.pop("daemon_integration", None)
+        validated_receipt, validation_reason = (
+            validate_provider_execution_receipt(core_receipt)
+        )
+        if validated_receipt is None or validation_reason:
+            return None
+        receipt_id = str(validated_receipt.get("receipt_id") or "")
+        packet = validated_receipt.get("packet")
+        admission = validated_receipt.get("admission")
+        attempts = validated_receipt.get("attempts")
+        if (
+            integration.get("schema")
+            != MODEL_ASSISTED_PROVIDER_RECEIPT_SCHEMA
+            or integration.get("task_id") != task.task_id
+            or integration.get("canonical_task_cid") != canonical_task_cid
+            or integration.get("attempt") != attempt
+            or integration.get("router_interface")
+            != IMPLEMENTATION_PROVIDER_ROUTER_INTERFACE
+            or integration.get("receipt_interface")
+            != PROVIDER_EXECUTION_RECEIPT_INTERFACE
+            or integration.get("provider_receipt_id") != receipt_id
+            or not isinstance(packet, Mapping)
+            or packet.get("task_id") != task.task_id
+            or validated_receipt.get("status") != RouteStatus.REJECTED.value
+            or validated_receipt.get("reason_code")
+            != ProviderReason.PROVIDER_RESPONSE_MALFORMED.value
+            or validated_receipt.get("write_performed") is not False
+            or validated_receipt.get("writer_lease_id") != ""
+            or validated_receipt.get("selected_proposal_digest") != ""
+            or validated_receipt.get("implementation_proposal_digest") != ""
+            or validated_receipt.get("review_proposal_digest") != ""
+            or not isinstance(admission, Mapping)
+            or admission.get("provider_result_admitted") is not False
+            or admission.get("repository_write_allowed") is not False
+            or not isinstance(attempts, list)
+            or len(attempts) != 1
+        ):
+            return None
+        provider_attempt = attempts[0]
+        if (
+            not isinstance(provider_attempt, Mapping)
+            or provider_attempt.get("role")
+            != ProviderRole.GROK_IMPLEMENT.value
+            or provider_attempt.get("status") != "failed"
+            or provider_attempt.get("reason_code")
+            != ProviderReason.PROVIDER_RESPONSE_MALFORMED.value
+            or int(provider_attempt.get("prompt_bytes") or 0) < 1
+            or int(provider_attempt.get("response_bytes") or 0) != 0
+            or str(provider_attempt.get("response_digest") or "")
+        ):
+            return None
+
+        previous_count = attempt
+        self._restore_task_attempt(state, task, attempt - 1)
+        queue_changed = self.task_queue.reset_retry_state(canonical_task_cid)
+        if queue_changed:
+            self.task_queue.save()
+        state.typed_provider_malformed_refund_receipts[
+            canonical_task_cid
+        ] = receipt_id
+        state.save(self.state_path)
+        refund = {
+            "task_id": task.task_id,
+            "canonical_task_cid": canonical_task_cid,
+            "attempt": attempt,
+            "previous_attempt_count": previous_count,
+            "refunded_attempt_count": attempt - 1,
+            "receipt_id": receipt_id,
+            "integration_receipt_id": integration_receipt_id,
+            "receipt_path": str(resolved_receipt),
+            "reason": "typed_provider_response_malformed_before_admission",
+            "write_performed": False,
+            "provider_result_admitted": False,
+        }
+        self._record_event(
+            "typed_provider_malformed_attempt_refunded",
+            refund,
+        )
+        return refund
+
     def _reset_attempt_budgets_for_completed_retry_repairs(
         self,
         state: PortalTaskState,
@@ -6809,6 +7029,14 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 },
             )
             previous = recovered_state
+        typed_provider_malformed_refunds: list[dict[str, Any]] = []
+        malformed_refund = self._refund_typed_provider_malformed_attempt(
+            previous,
+            tasks,
+        )
+        if malformed_refund is not None:
+            typed_provider_malformed_refunds.append(malformed_refund)
+            previous = PortalTaskState.load(self.state_path)
         retry_budget_resets, retry_budget_reset_deferred = (
             self._reset_attempt_budgets_for_completed_retry_repairs(
                 previous,
@@ -7094,6 +7322,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         state.retry_budget_repair_receipts = dict(
             previous.retry_budget_repair_receipts
         )
+        state.typed_provider_malformed_refund_receipts = dict(
+            previous.typed_provider_malformed_refund_receipts
+        )
         revision_reset_task_ids: list[str] = []
         for task in tasks:
             previous_identity = previous.task_identities.get(task.task_id, {})
@@ -7256,6 +7487,10 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                         item["source_task_id"]
                         for item in retry_budget_reset_deferred
                     ],
+                    "typed_provider_malformed_refund_task_ids": [
+                        item["task_id"]
+                        for item in typed_provider_malformed_refunds
+                    ],
                     "released_retry_budget_strategy_block_task_ids": [
                         item["source_task_id"]
                         for item in released_retry_budget_strategy_blocks
@@ -7288,6 +7523,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             ],
             "retry_budget_resets": retry_budget_resets,
             "retry_budget_reset_deferred": retry_budget_reset_deferred,
+            "typed_provider_malformed_refunds": (
+                typed_provider_malformed_refunds
+            ),
             "released_retry_budget_strategy_blocks": (
                 released_retry_budget_strategy_blocks
             ),
@@ -22863,24 +23101,29 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         candidates = fresh_candidates
         if candidates:
             nested_artifact_preservation = self._preserve_generated_nested_worktree_directories()
-            target_uses_repo_root = (
-                self._git_current_branch(self.repo_root) == target_branch
+            (
+                main_checkout_dirty_paths,
+                nonblocking_dirty_paths,
+            ) = self._reconciliation_blocking_dirty_paths(
+                candidates,
+                target_branch=target_branch,
             )
-            if target_uses_repo_root:
-                (
-                    main_checkout_dirty_paths,
-                    nonblocking_dirty_paths,
-                ) = self._reconciliation_blocking_dirty_paths(
-                    candidates,
-                    target_branch=target_branch,
-                )
-            else:
-                # The merge path creates or reuses a separately validated
-                # target-branch worktree. Operator changes in repo_root do not
-                # participate in that merge and must not block reconciliation.
-                main_checkout_dirty_paths = []
-                nonblocking_dirty_paths = []
-            if main_checkout_dirty_paths:
+            primary_checkout_branch = self._git_current_branch(self.repo_root)
+            # The primary checkout is only the merge workspace when it is on
+            # the configured target branch.  A dirty driver/operator checkout
+            # must not prevent ``_merge_branch_to_main`` from preparing and
+            # validating a separate ephemeral or explicitly trusted target
+            # checkout.  An unknown branch identity remains fail-closed.
+            primary_checkout_is_merge_workspace = (
+                not primary_checkout_branch
+                or primary_checkout_branch == target_branch
+            )
+            unrelated_primary_checkout_dirty_paths = (
+                main_checkout_dirty_paths
+                if not primary_checkout_is_merge_workspace
+                else []
+            )
+            if main_checkout_dirty_paths and primary_checkout_is_merge_workspace:
                 result = {
                     "resolved": False,
                     "reason": "main_checkout_dirty",
@@ -22895,11 +23138,20 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 self._record_event("merge_reconciliation_deferred", result)
                 results.append(result)
                 return results
-            if nonblocking_dirty_paths or nested_artifact_preservation:
+            if (
+                nonblocking_dirty_paths
+                or unrelated_primary_checkout_dirty_paths
+                or nested_artifact_preservation
+            ):
                 self._record_event(
                     "merge_reconciliation_nonblocking_checkout_state",
                     {
                         "nonblocking_dirty_paths": nonblocking_dirty_paths,
+                        "unrelated_primary_checkout_dirty_paths": (
+                            unrelated_primary_checkout_dirty_paths
+                        ),
+                        "primary_checkout_branch": primary_checkout_branch,
+                        "target_branch": target_branch,
                         "nested_artifact_preservation": nested_artifact_preservation,
                         "candidate_count": len(candidates),
                     },

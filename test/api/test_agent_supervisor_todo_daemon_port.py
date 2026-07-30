@@ -12191,6 +12191,136 @@ def test_merge_reconciliation_ignores_dirty_root_for_managed_target_worktree(
     assert (repo / "dirty.txt").read_text(encoding="utf-8") == "operator work\n"
 
 
+def test_implementation_daemon_reconciles_from_clean_ephemeral_target_despite_dirty_driver_checkout(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init", "-b", "main")
+    _git(repo, "config", "user.email", "agent@example.invalid")
+    _git(repo, "config", "user.name", "Agent")
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "Initial")
+    branch_name = "implementation/accel-002"
+    _git(repo, "checkout", "-b", branch_name)
+    candidate_path = repo / "candidate.txt"
+    candidate_path.write_text("candidate\n", encoding="utf-8")
+    _git(repo, "add", candidate_path.name)
+    _git(repo, "commit", "-m", "Implement candidate")
+    implementation_commit = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "-b", "operator-driver", "main")
+    candidate_path.write_text("operator work\n", encoding="utf-8")
+
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "missing.todo.md",
+        state_path=tmp_path / "state" / "task_state.json",
+        strategy_path=tmp_path / "state" / "strategy.json",
+        events_path=tmp_path / "state" / "events.jsonl",
+        repo_root=repo,
+        worktree_root=tmp_path / "managed-worktrees",
+        merge_target_branch="main",
+        llm_merge_resolver_command="",
+    )
+    event = {
+        "task_id": "ACCEL-002",
+        "attempt": 1,
+        "branch": branch_name,
+        "implementation_commit": implementation_commit,
+        "title": "Recover failed merge",
+    }
+    daemon._failed_merge_candidates = lambda skip_task_ids=None: [event]  # type: ignore[method-assign]
+
+    result = daemon._reconcile_failed_merges()
+
+    assert len(result) == 1
+    assert result[0]["resolved"] is True
+    assert result[0]["reason"] == "merge_retried"
+    assert result[0]["merge_result"]["used_ephemeral_main_worktree"] is True
+    assert _git(repo, "merge-base", "--is-ancestor", implementation_commit, "main") == ""
+    assert _git(repo, "show", "main:candidate.txt") == "candidate"
+    assert _git(repo, "branch", "--show-current") == "operator-driver"
+    assert candidate_path.read_text(encoding="utf-8") == "operator work\n"
+    events = [
+        json.loads(line)
+        for line in (tmp_path / "state" / "events.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    checkout_state = next(
+        event
+        for event in events
+        if event["type"] == "merge_reconciliation_nonblocking_checkout_state"
+    )
+    assert checkout_state["unrelated_primary_checkout_dirty_paths"] == ["candidate.txt"]
+    assert checkout_state["primary_checkout_branch"] == "operator-driver"
+    assert checkout_state["target_branch"] == "main"
+
+
+def test_implementation_daemon_keeps_dirty_trusted_target_workspace_fail_closed(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init", "-b", "main")
+    _git(repo, "config", "user.email", "agent@example.invalid")
+    _git(repo, "config", "user.name", "Agent")
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "Initial")
+    branch_name = "implementation/accel-002"
+    _git(repo, "checkout", "-b", branch_name)
+    candidate_path = repo / "candidate.txt"
+    candidate_path.write_text("candidate\n", encoding="utf-8")
+    _git(repo, "add", candidate_path.name)
+    _git(repo, "commit", "-m", "Implement candidate")
+    implementation_commit = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "-b", "operator-driver", "main")
+    candidate_path.write_text("operator driver work\n", encoding="utf-8")
+    target_workspace = tmp_path / "trusted-main"
+    _git(repo, "worktree", "add", str(target_workspace), "main")
+    target_candidate_path = target_workspace / "candidate.txt"
+    target_candidate_path.write_text("operator target work\n", encoding="utf-8")
+    monkeypatch.setenv(
+        implementation_daemon_module.TRUSTED_EXTERNAL_MERGE_WORKTREE_ENV,
+        str(target_workspace),
+    )
+
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "missing.todo.md",
+        state_path=tmp_path / "state" / "task_state.json",
+        strategy_path=tmp_path / "state" / "strategy.json",
+        events_path=tmp_path / "state" / "events.jsonl",
+        repo_root=repo,
+        worktree_root=tmp_path / "managed-worktrees",
+        merge_target_branch="main",
+        llm_merge_resolver_command="",
+    )
+    event = {
+        "task_id": "ACCEL-002",
+        "attempt": 1,
+        "branch": branch_name,
+        "implementation_commit": implementation_commit,
+        "title": "Recover failed merge",
+    }
+    daemon._failed_merge_candidates = lambda skip_task_ids=None: [event]  # type: ignore[method-assign]
+
+    result = daemon._reconcile_failed_merges()
+
+    assert len(result) == 1
+    assert result[0]["resolved"] is False
+    assert result[0]["reason"] == "merge_retry_failed"
+    assert result[0]["merge_result"]["reason"] == "main_branch_checked_out_elsewhere"
+    assert result[0]["merge_result"]["dirty_paths"] == ["candidate.txt"]
+    assert candidate_path.read_text(encoding="utf-8") == "operator driver work\n"
+    assert target_candidate_path.read_text(encoding="utf-8") == "operator target work\n"
+    assert subprocess.run(
+        ["git", "cat-file", "-e", "main:candidate.txt"],
+        cwd=repo,
+        capture_output=True,
+        check=False,
+    ).returncode != 0
+
+
 def test_implementation_daemon_preserves_nonconflicting_git_sync_recovery_note(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
