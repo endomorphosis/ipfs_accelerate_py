@@ -1439,7 +1439,7 @@ consumer or frontier is unresolved.
 
 ## RPR-045 Benchmark adversarial transitive-change safety
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
