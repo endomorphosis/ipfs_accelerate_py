@@ -1067,7 +1067,7 @@ consumer or frontier is unresolved.
 
 ## RPR-033 Compile reaching definitions, dominance, path conditions, and value provenance
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
