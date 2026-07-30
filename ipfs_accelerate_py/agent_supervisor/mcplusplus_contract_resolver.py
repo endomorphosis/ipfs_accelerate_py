@@ -153,6 +153,14 @@ MANIFEST_PARITY_INVARIANTS: tuple[str, ...] = (
     "schema, version, language-name, and error-map mismatches fail closed",
     "static parity never grants hermetic runtime or completion authority",
 )
+MANIFEST_PARITY_REQUIRED_ASPECTS: tuple[str, ...] = (
+    "python_name",
+    "typescript_name",
+    "input_schema",
+    "output_schema",
+    "version",
+    "error_map",
+)
 
 # Keep exact-text discovery anchors aligned with the objective heap.
 assert EVIDENCE_CALL_PATH == "vfs/mcplusplus-call-path@1"
@@ -2578,8 +2586,8 @@ class MCPlusPlusContractResolver:
         hops.append(map_hop)
         drift.extend(map_drift)
 
-        # Cross-language name / schema parity for this tool.
-        drift.extend(self._language_and_schema_drift(claim, listed, registration, implementation))
+        # Cross-language name parity for this tool.
+        drift.extend(self._language_name_drift(claim, registration))
 
         # Manifest parity for this tool.
         drift.extend(self._manifest_drift_for_tool(claim.tool_name, claim.server_name))
@@ -3361,103 +3369,140 @@ class MCPlusPlusContractResolver:
             }:
                 return reject, ()
 
-        # Schema/error parity across list, registration, implementation.
-        left = listed or registration
-        right = implementation or registration
-        if left is not None and right is not None:
-            left_in = schema_fingerprint(left.input_schema)
-            right_in = schema_fingerprint(right.input_schema)
-            if left_in and right_in and left_in != right_in:
-                drift.append(
-                    ManifestDriftWitness(
-                        drift_kind=DriftKind.SCHEMA_MISMATCH,
-                        tool_name=claim.tool_name,
-                        left_ref=left.artifact_id,
-                        right_ref=right.artifact_id,
-                        left_value=left_in,
-                        right_value=right_in,
-                        evidence=(
-                            _evidence_for_artifact(
-                                left,
-                                rule_id="rule:schema:input_mismatch",
-                                forest_id=forest_id,
-                            ),
-                            _evidence_for_artifact(
-                                right,
-                                rule_id="rule:schema:input_mismatch",
-                                forest_id=forest_id,
-                            ),
-                        ),
-                        notes={"aspect": "input_schema"},
-                    )
-                )
-            left_out = schema_fingerprint(left.output_schema)
-            right_out = schema_fingerprint(right.output_schema)
-            if left_out and right_out and left_out != right_out:
-                drift.append(
-                    ManifestDriftWitness(
-                        drift_kind=DriftKind.SCHEMA_MISMATCH,
-                        tool_name=claim.tool_name,
-                        left_ref=left.artifact_id,
-                        right_ref=right.artifact_id,
-                        left_value=left_out,
-                        right_value=right_out,
-                        evidence=(
-                            _evidence_for_artifact(
-                                left,
-                                rule_id="rule:schema:output_mismatch",
-                                forest_id=forest_id,
-                            ),
-                            _evidence_for_artifact(
-                                right,
-                                rule_id="rule:schema:output_mismatch",
-                                forest_id=forest_id,
-                            ),
-                        ),
-                        notes={"aspect": "output_schema"},
-                    )
-                )
-            if left.error_codes and right.error_codes:
-                if set(left.error_codes) != set(right.error_codes):
-                    drift.append(
-                        ManifestDriftWitness(
-                            drift_kind=DriftKind.ERROR_MAP_MISMATCH,
-                            tool_name=claim.tool_name,
-                            left_ref=left.artifact_id,
-                            right_ref=right.artifact_id,
-                            left_value=",".join(left.error_codes),
-                            right_value=",".join(right.error_codes),
-                            evidence=(
-                                _evidence_for_artifact(
-                                    left,
-                                    rule_id="rule:error_map:mismatch",
-                                    forest_id=forest_id,
-                                ),
-                                _evidence_for_artifact(
-                                    right,
-                                    rule_id="rule:error_map:mismatch",
-                                    forest_id=forest_id,
-                                ),
-                            ),
-                        )
-                    )
-
-        artifact_ids = tuple(
-            item.artifact_id
-            for item in (result_art, error_art, left, right, call_site)
+        # Compare every contract-bearing hop, not merely the two endpoints.
+        # A list and implementation that happen to agree must not conceal a
+        # drifting Python registration between them. Missing values stay
+        # unverified in hop notes and therefore cannot satisfy VFS-G153.
+        contract_artifacts = tuple(
+            item
+            for item in (listed, registration, implementation)
             if item is not None
         )
+        checked_aspects: list[str] = []
+        matched_aspects: list[str] = []
+
+        def _append_mismatch(
+            *,
+            aspect: str,
+            drift_kind: DriftKind,
+            values: Sequence[tuple[InventoryArtifact, str]],
+            rule_id: str,
+        ) -> None:
+            baseline_artifact, baseline_value = values[0]
+            divergent = next(
+                (
+                    (artifact, value)
+                    for artifact, value in values[1:]
+                    if value != baseline_value
+                ),
+                None,
+            )
+            if divergent is None:
+                matched_aspects.append(aspect)
+                return
+            divergent_artifact, divergent_value = divergent
+            drift.append(
+                ManifestDriftWitness(
+                    drift_kind=drift_kind,
+                    tool_name=claim.tool_name,
+                    left_ref=baseline_artifact.artifact_id,
+                    right_ref=divergent_artifact.artifact_id,
+                    left_value=baseline_value,
+                    right_value=divergent_value,
+                    evidence=(
+                        _evidence_for_artifact(
+                            baseline_artifact,
+                            rule_id=rule_id,
+                            forest_id=forest_id,
+                        ),
+                        _evidence_for_artifact(
+                            divergent_artifact,
+                            rule_id=rule_id,
+                            forest_id=forest_id,
+                        ),
+                    ),
+                    notes={"aspect": aspect},
+                )
+            )
+
+        aspect_values: tuple[
+            tuple[str, DriftKind, str, tuple[tuple[InventoryArtifact, str], ...]],
+            ...,
+        ] = (
+            (
+                "input_schema",
+                DriftKind.SCHEMA_MISMATCH,
+                "rule:schema:input_mismatch",
+                tuple(
+                    (artifact, schema_fingerprint(artifact.input_schema))
+                    for artifact in contract_artifacts
+                ),
+            ),
+            (
+                "output_schema",
+                DriftKind.SCHEMA_MISMATCH,
+                "rule:schema:output_mismatch",
+                tuple(
+                    (artifact, schema_fingerprint(artifact.output_schema))
+                    for artifact in contract_artifacts
+                ),
+            ),
+            (
+                "version",
+                DriftKind.VERSION_MISMATCH,
+                "rule:version:mismatch",
+                tuple(
+                    (artifact, artifact.version)
+                    for artifact in contract_artifacts
+                ),
+            ),
+            (
+                "error_map",
+                DriftKind.ERROR_MAP_MISMATCH,
+                "rule:error_map:mismatch",
+                tuple(
+                    (artifact, ",".join(sorted(set(artifact.error_codes))))
+                    for artifact in contract_artifacts
+                ),
+            ),
+        )
+        for aspect, drift_kind, rule_id, values in aspect_values:
+            # VFS-G153 requires the tools/list, Python registration, and
+            # package implementation contract surfaces to all participate.
+            if len(values) != 3 or any(not value for _, value in values):
+                continue
+            checked_aspects.append(aspect)
+            _append_mismatch(
+                aspect=aspect,
+                drift_kind=drift_kind,
+                values=values,
+                rule_id=rule_id,
+            )
+
+        artifact_ids = tuple(
+            dict.fromkeys(
+                item.artifact_id
+                for item in (
+                    result_art,
+                    error_art,
+                    *contract_artifacts,
+                    call_site,
+                )
+                if item is not None
+            )
+        )
+        parity_notes = {
+            "manifest_parity_checked_aspects": sorted(checked_aspects),
+            "manifest_parity_matched_aspects": sorted(matched_aspects),
+            "manifest_parity_contract_artifacts": [
+                item.artifact_id for item in contract_artifacts
+            ],
+        }
         if drift:
             hop = make_hop(
                 stage=PathStage.RESULT_ERROR_MAPPING,
                 status=ResolverStatus.CANDIDATE,
-                reason_code=ReasonCode.MANIFEST_DRIFT
-                if any(
-                    item.drift_kind
-                    in {DriftKind.SCHEMA_MISMATCH, DriftKind.ERROR_MAP_MISMATCH}
-                    for item in drift
-                )
-                else ReasonCode.SCHEMA_MISMATCH,
+                reason_code=ReasonCode.MANIFEST_DRIFT,
                 evidence=(
                     make_evidence(
                         rule_id="rule:result_error:drift",
@@ -3473,21 +3518,20 @@ class MCPlusPlusContractResolver:
                     else claim.tool_name
                 ),
                 artifact_ids=artifact_ids,
-                notes={"drift_count": len(drift)},
+                notes={"drift_count": len(drift), **parity_notes},
             )
             return hop, tuple(drift)
 
-        # Success: maps present or schemas agree / absent.
+        # This hop may still resolve for VFS-G152 when an explicit result/error
+        # mapping exists, but absent parity aspects remain unverified and keep
+        # the separate VFS-G153 claim fail-closed.
         if result_art is not None or error_art is not None or (
-            left is not None and right is not None
+            len(contract_artifacts) >= 2
         ):
             reason = ReasonCode.RESULT_MAP_MATCH
             if error_art is not None and result_art is None:
                 reason = ReasonCode.ERROR_MAP_MATCH
-            elif left is not None and right is not None and (
-                schema_fingerprint(left.input_schema)
-                or schema_fingerprint(left.output_schema)
-            ):
+            elif {"input_schema", "output_schema"}.issubset(matched_aspects):
                 reason = ReasonCode.SCHEMA_PARITY
             hop = make_hop(
                 stage=PathStage.RESULT_ERROR_MAPPING,
@@ -3517,6 +3561,7 @@ class MCPlusPlusContractResolver:
                     else claim.tool_name
                 ),
                 artifact_ids=artifact_ids,
+                notes=parity_notes,
             )
             return hop, ()
 
@@ -3538,12 +3583,10 @@ class MCPlusPlusContractResolver:
         )
         return hop, ()
 
-    def _language_and_schema_drift(
+    def _language_name_drift(
         self,
         claim: CallPathClaim,
-        listed: InventoryArtifact | None,
         registration: InventoryArtifact | None,
-        implementation: InventoryArtifact | None,
     ) -> tuple[ManifestDriftWitness, ...]:
         forest_id = self._inventory.forest_id
         witnesses: list[ManifestDriftWitness] = []
@@ -3585,64 +3628,6 @@ class MCPlusPlusContractResolver:
                             ),
                         )
                     )
-        # Version drift between list and registration.
-        if (
-            listed is not None
-            and registration is not None
-            and listed.version
-            and registration.version
-            and listed.version != registration.version
-        ):
-            witnesses.append(
-                ManifestDriftWitness(
-                    drift_kind=DriftKind.VERSION_MISMATCH,
-                    tool_name=claim.tool_name,
-                    left_ref=listed.artifact_id,
-                    right_ref=registration.artifact_id,
-                    left_value=listed.version,
-                    right_value=registration.version,
-                    evidence=(
-                        _evidence_for_artifact(
-                            listed,
-                            rule_id="rule:version:mismatch",
-                            forest_id=forest_id,
-                        ),
-                        _evidence_for_artifact(
-                            registration,
-                            rule_id="rule:version:mismatch",
-                            forest_id=forest_id,
-                        ),
-                    ),
-                )
-            )
-        if implementation is not None and registration is not None:
-            if (
-                implementation.version
-                and registration.version
-                and implementation.version != registration.version
-            ):
-                witnesses.append(
-                    ManifestDriftWitness(
-                        drift_kind=DriftKind.VERSION_MISMATCH,
-                        tool_name=claim.tool_name,
-                        left_ref=registration.artifact_id,
-                        right_ref=implementation.artifact_id,
-                        left_value=registration.version,
-                        right_value=implementation.version,
-                        evidence=(
-                            _evidence_for_artifact(
-                                registration,
-                                rule_id="rule:version:mismatch",
-                                forest_id=forest_id,
-                            ),
-                            _evidence_for_artifact(
-                                implementation,
-                                rule_id="rule:version:mismatch",
-                                forest_id=forest_id,
-                            ),
-                        ),
-                    )
-                )
         return tuple(witnesses)
 
     def _manifest_drift_for_tool(
@@ -4232,6 +4217,152 @@ def path_satisfies_mcplusplus_call_path(
     return True
 
 
+def manifest_parity_path_report(
+    path: MCPlusPlusCallPath | Mapping[str, Any],
+) -> dict[str, Any]:
+    """Return the evidence-bound VFS-G153 parity matrix for one call path.
+
+    A comparison is ``checked`` only when all required inventory surfaces
+    participated. A checked comparison is ``matched`` only when their values
+    agree. This distinction prevents absent schemas or error declarations from
+    being mistaken for parity merely because no mismatch witness was emitted.
+    """
+
+    if isinstance(path, Mapping):
+        try:
+            path = MCPlusPlusCallPath.from_dict(path)
+        except (MCPlusPlusResolverError, TypeError, ValueError):
+            return {
+                "status": "invalid",
+                "satisfied": False,
+                "required_aspects": list(MANIFEST_PARITY_REQUIRED_ASPECTS),
+                "checked_aspects": [],
+                "matched_aspects": [],
+                "mismatch_aspects": [],
+                "unverified_aspects": list(MANIFEST_PARITY_REQUIRED_ASPECTS),
+                "drift_witness_ids": [],
+                "drift_kinds": [],
+            }
+    if not isinstance(path, MCPlusPlusCallPath):
+        raise TypeError("path must be an MCPlusPlusCallPath or mapping")
+
+    required = set(MANIFEST_PARITY_REQUIRED_ASPECTS)
+    checked: set[str] = set()
+    matched: set[str] = set()
+
+    language_names = {
+        str(language).strip().lower(): str(name).strip()
+        for language, name in path.language_names.items()
+        if str(language).strip() and str(name).strip()
+    }
+    tool_aliases = set(tool_name_aliases(path.tool_name))
+    for language, aspect, binding_stage in (
+        ("python", "python_name", PathStage.SERVER_REGISTRY),
+        ("typescript", "typescript_name", PathStage.TOOLS_CALL),
+    ):
+        name = language_names.get(language, "")
+        binding_hop = path.hop_for(binding_stage)
+        if (
+            not name
+            or binding_hop is None
+            or binding_hop.status is not ResolverStatus.RESOLVED_STATIC
+        ):
+            continue
+        checked.add(aspect)
+        if tool_aliases & set(tool_name_aliases(name)):
+            matched.add(aspect)
+
+    mapping_hop = path.hop_for(PathStage.RESULT_ERROR_MAPPING)
+    if mapping_hop is not None:
+        note_checked = mapping_hop.notes.get(
+            "manifest_parity_checked_aspects", ()
+        )
+        note_matched = mapping_hop.notes.get(
+            "manifest_parity_matched_aspects", ()
+        )
+        note_contracts = mapping_hop.notes.get(
+            "manifest_parity_contract_artifacts", ()
+        )
+        contract_refs = (
+            {str(item) for item in note_contracts}
+            if isinstance(note_contracts, (list, tuple))
+            else set()
+        )
+        contract_binding_valid = (
+            mapping_hop.reason_code
+            in {
+                ReasonCode.SCHEMA_PARITY,
+                ReasonCode.RESULT_MAP_MATCH,
+                ReasonCode.ERROR_MAP_MATCH,
+                ReasonCode.MANIFEST_DRIFT,
+            }
+            and isinstance(note_contracts, (list, tuple))
+            and len(note_contracts) == 3
+            and len(contract_refs) == 3
+            and contract_refs.issubset(mapping_hop.artifact_ids)
+        )
+        if contract_binding_valid and isinstance(note_checked, (list, tuple)):
+            checked.update(
+                str(item) for item in note_checked if str(item) in required
+            )
+        if contract_binding_valid and isinstance(note_matched, (list, tuple)):
+            matched.update(
+                str(item) for item in note_matched if str(item) in required
+            )
+
+    drift_kinds = sorted(
+        {witness.drift_kind.value for witness in path.drift_witnesses}
+    )
+    mismatch_aspects = checked - matched
+    for witness in path.drift_witnesses:
+        aspect = str(witness.notes.get("aspect") or "")
+        if aspect in required:
+            mismatch_aspects.add(aspect)
+        elif witness.drift_kind is DriftKind.LANGUAGE_NAME_MISMATCH:
+            language = str(witness.left_ref).removeprefix("language:")
+            if language in {"python", "typescript"}:
+                mismatch_aspects.add(f"{language}_name")
+        elif witness.drift_kind is DriftKind.SCHEMA_MISMATCH:
+            # Older serialized results may not carry the aspect note.
+            mismatch_aspects.update({"input_schema", "output_schema"} - matched)
+        elif witness.drift_kind is DriftKind.ERROR_MAP_MISMATCH:
+            mismatch_aspects.add("error_map")
+        elif witness.drift_kind in {
+            DriftKind.VERSION_MISMATCH,
+            DriftKind.STALE_MANIFEST,
+        }:
+            mismatch_aspects.add("version")
+
+    unverified = required - checked
+    coverage_complete = not unverified
+    satisfied = (
+        coverage_complete
+        and not mismatch_aspects
+        and not path.drift_witnesses
+    )
+    status = "matched" if satisfied else (
+        "mismatch" if mismatch_aspects or path.drift_witnesses else "unverified"
+    )
+    return {
+        "path_id": path.path_id,
+        "path_name": path.path_name,
+        "tool_name": path.tool_name,
+        "status": status,
+        "satisfied": satisfied,
+        "coverage_complete": coverage_complete,
+        "required_aspects": list(MANIFEST_PARITY_REQUIRED_ASPECTS),
+        "checked_aspects": sorted(checked),
+        "matched_aspects": sorted(matched),
+        "mismatch_aspects": sorted(mismatch_aspects),
+        "unverified_aspects": sorted(unverified),
+        "language_names": dict(sorted(language_names.items())),
+        "drift_witness_ids": [
+            witness.witness_id for witness in path.drift_witnesses
+        ],
+        "drift_kinds": drift_kinds,
+    }
+
+
 def result_satisfies_mcplusplus_manifest_parity(
     result: MCPlusPlusResolutionResult | Mapping[str, Any],
     *,
@@ -4241,8 +4372,10 @@ def result_satisfies_mcplusplus_manifest_parity(
 
     * Static result envelopes declare both packet evidence kinds.
     * Runtime evidence is excluded; conformance is deferred to VFS-G061.
+    * Every path has explicit, matched Python/TypeScript names plus input
+      schema, output schema, version, and error-map comparisons.
     * Drift (schema, version, language name, error map, missing registration)
-      is witnessed rather than silently merged when present on paths.
+      is witnessed and makes parity unsatisfied rather than silently merging.
     * Optionally require at least one fully proved call path.
     """
 
@@ -4280,12 +4413,17 @@ def result_satisfies_mcplusplus_manifest_parity(
         return False
     if boundary.get("opens_network") is True:
         return False
-    # Drift witnesses must remain self-consistent (no silent empty reason).
+    if result.truncated or not result.paths:
+        return False
+    # Drift witnesses must remain self-consistent (no silent empty reason), and
+    # any drift keeps the batch parity claim fail-closed.
     for witness in result.drift_witnesses:
         if not witness.drift_kind:
             return False
         if not witness.evidence:
             return False
+    if result.drift_witnesses:
+        return False
     for path in result.paths:
         for witness in path.drift_witnesses:
             if not witness.drift_kind:
@@ -4297,6 +4435,8 @@ def result_satisfies_mcplusplus_manifest_parity(
             for hop in path.hops:
                 if hop.reason_code in _NON_INVOCATION_REASON_CODES:
                     return False
+        if not manifest_parity_path_report(path)["satisfied"]:
+            return False
     if require_proved_path and not result.proved_paths():
         return False
     return True
@@ -4396,20 +4536,54 @@ def prove_mcplusplus_manifest_parity(
     satisfied = result_satisfies_mcplusplus_manifest_parity(
         result_obj, require_proved_path=require_proved_path
     )
-    drift_kinds = sorted(
-        {
-            *(item.drift_kind.value for item in result_obj.drift_witnesses),
+    witnesses = {
+        item.witness_id: item
+        for item in (
+            *result_obj.drift_witnesses,
             *(
-                item.drift_kind.value
+                item
                 for path in result_obj.paths
                 for item in path.drift_witnesses
             ),
+        )
+    }
+    drift_kinds = sorted(
+        {item.drift_kind.value for item in witnesses.values()}
+    )
+    path_checks = [
+        manifest_parity_path_report(path) for path in result_obj.paths
+    ]
+    checked_aspects = sorted(
+        {
+            aspect
+            for report in path_checks
+            for aspect in report["checked_aspects"]
         }
     )
-    language_names: dict[str, str] = {}
-    for path in result_obj.paths:
-        for lang, name in path.language_names.items():
-            language_names[str(lang)] = str(name)
+    matched_aspects = sorted(
+        {
+            aspect
+            for report in path_checks
+            for aspect in report["matched_aspects"]
+        }
+    )
+    mismatch_aspects = sorted(
+        {
+            aspect
+            for report in path_checks
+            for aspect in report["mismatch_aspects"]
+        }
+    )
+    unverified_aspects = sorted(
+        {
+            aspect
+            for report in path_checks
+            for aspect in report["unverified_aspects"]
+        }
+    )
+    parity_status = "matched" if satisfied else (
+        "mismatch" if drift_kinds or mismatch_aspects else "unverified"
+    )
     return {
         "schema": MCPLUSPLUS_MANIFEST_PARITY_CLAIM_SCHEMA,
         "evidence": EVIDENCE_MANIFEST_PARITY,
@@ -4433,11 +4607,35 @@ def prove_mcplusplus_manifest_parity(
         "proved_count": len(result_obj.proved_paths()),
         "statically_proved_count": len(result_obj.statically_proved_paths()),
         "runtime_witnessed_count": 0,
-        "drift_count": len(result_obj.drift_witnesses)
-        + sum(len(path.drift_witnesses) for path in result_obj.paths),
+        "required_aspects": list(MANIFEST_PARITY_REQUIRED_ASPECTS),
+        "checked_aspects": checked_aspects,
+        "matched_aspects": matched_aspects,
+        "mismatch_aspects": mismatch_aspects,
+        "unverified_aspects": unverified_aspects,
+        "coverage_complete": bool(path_checks)
+        and all(report["coverage_complete"] for report in path_checks),
+        "parity_status": parity_status,
+        "path_checks": path_checks,
+        "drift_count": len(witnesses),
         "drift_kinds": drift_kinds,
+        "drift_witnesses": [
+            {
+                "witness_id": witness.witness_id,
+                "drift_kind": witness.drift_kind.value,
+                "tool_name": witness.tool_name,
+                "left_ref": witness.left_ref,
+                "right_ref": witness.right_ref,
+                "aspect": str(witness.notes.get("aspect") or ""),
+            }
+            for witness in sorted(
+                witnesses.values(), key=lambda item: item.witness_id
+            )
+        ],
         "frontier_count": len(result_obj.frontiers),
-        "language_names": language_names,
+        "language_names_by_path": {
+            path.path_id: dict(sorted(path.language_names.items()))
+            for path in result_obj.paths
+        },
         "require_proved_path": bool(require_proved_path),
         "satisfied": satisfied,
         "invariants": list(MANIFEST_PARITY_INVARIANTS),
@@ -4538,6 +4736,7 @@ __all__ = [
     "HERMETIC_RUNTIME_CLAIM_LEVEL",
     "InventoryArtifact",
     "MANIFEST_PARITY_INVARIANTS",
+    "MANIFEST_PARITY_REQUIRED_ASPECTS",
     "MCPLUSPLUS_ARTIFACT_SCHEMA",
     "MCPLUSPLUS_CALL_PATH_CLAIM_SCHEMA",
     "MCPLUSPLUS_CALL_PATH_SCHEMA",
@@ -4597,6 +4796,7 @@ __all__ = [
     "mcplusplus_call_path_evidence_terms",
     "mcplusplus_manifest_parity_evidence",
     "mcplusplus_manifest_parity_evidence_terms",
+    "manifest_parity_path_report",
     "normalize_tool_name",
     "packet_evidence_terms",
     "path_satisfies_mcplusplus_call_path",

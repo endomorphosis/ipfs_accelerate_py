@@ -23,6 +23,7 @@ from ipfs_accelerate_py.agent_supervisor.mcplusplus_contract_resolver import (
     HERMETIC_RUNTIME_CHILD_GOAL_ID,
     HERMETIC_RUNTIME_CLAIM_LEVEL,
     MANIFEST_PARITY_INVARIANTS,
+    MANIFEST_PARITY_REQUIRED_ASPECTS,
     OBJECTIVE_CALL_PATH_GOAL_ID,
     OBJECTIVE_CALL_PATH_TASK_ID,
     OBJECTIVE_DOMAIN_EVIDENCE_TERMS,
@@ -64,6 +65,7 @@ from ipfs_accelerate_py.agent_supervisor.mcplusplus_contract_resolver import (
     make_artifact,
     make_evidence,
     make_hop,
+    manifest_parity_path_report,
     mcplusplus_call_path_evidence,
     mcplusplus_call_path_evidence_terms,
     mcplusplus_manifest_parity_evidence,
@@ -983,11 +985,18 @@ def test_stale_manifest_version_drift() -> None:
 def test_language_name_mismatch_witness() -> None:
     inv = _proved_inventory()
     claim = _claim(language_names={"typescript": "vfsReadWrong", "python": "vfs.read"})
-    path = resolve_mcplusplus_paths(inv, (claim,)).paths[0]
+    result = resolve_mcplusplus_paths(inv, (claim,))
+    path = result.paths[0]
     assert any(
         item.drift_kind is DriftKind.LANGUAGE_NAME_MISMATCH
         for item in path.drift_witnesses
     )
+    report = manifest_parity_path_report(path)
+    assert report["mismatch_aspects"] == ["typescript_name"]
+    assert result_satisfies_mcplusplus_manifest_parity(result) is False
+    parity = prove_mcplusplus_manifest_parity(result)
+    assert parity["satisfied"] is False
+    assert parity["parity_status"] == "mismatch"
 
 
 def test_hierarchical_alias_resolves_registration() -> None:
@@ -1369,6 +1378,9 @@ def test_error_map_mismatch_witness() -> None:
         item.drift_kind is DriftKind.ERROR_MAP_MISMATCH
         for item in path.drift_witnesses
     )
+    assert result_satisfies_mcplusplus_manifest_parity(
+        resolve_mcplusplus_paths(inv2, (_claim(),))
+    ) is False
 
 
 def test_transport_not_admitted() -> None:
@@ -1688,6 +1700,19 @@ def test_prove_mcplusplus_call_path_claim_is_portable_and_non_authoritative() ->
 
 def test_result_satisfies_and_prove_manifest_parity() -> None:
     result = resolve_mcplusplus_paths(_proved_inventory(), (_claim(),))
+    report = manifest_parity_path_report(result.paths[0])
+    assert report["status"] == "matched"
+    assert report["satisfied"] is True
+    assert report["coverage_complete"] is True
+    assert report["required_aspects"] == list(MANIFEST_PARITY_REQUIRED_ASPECTS)
+    assert report["checked_aspects"] == sorted(MANIFEST_PARITY_REQUIRED_ASPECTS)
+    assert report["matched_aspects"] == sorted(MANIFEST_PARITY_REQUIRED_ASPECTS)
+    assert report["mismatch_aspects"] == []
+    assert report["unverified_aspects"] == []
+    assert report["language_names"] == {
+        "python": "vfs.read",
+        "typescript": "vfs.read",
+    }
     assert result_satisfies_mcplusplus_manifest_parity(result) is True
     assert (
         result_satisfies_mcplusplus_manifest_parity(
@@ -1704,6 +1729,21 @@ def test_result_satisfies_and_prove_manifest_parity() -> None:
     assert claim["task_id"] == "VFS-075"
     assert claim["parent_goal_id"] == "VFS-G060"
     assert claim["satisfied"] is True
+    assert claim["parity_status"] == "matched"
+    assert claim["coverage_complete"] is True
+    assert claim["required_aspects"] == list(MANIFEST_PARITY_REQUIRED_ASPECTS)
+    assert claim["checked_aspects"] == sorted(MANIFEST_PARITY_REQUIRED_ASPECTS)
+    assert claim["matched_aspects"] == sorted(MANIFEST_PARITY_REQUIRED_ASPECTS)
+    assert claim["mismatch_aspects"] == []
+    assert claim["unverified_aspects"] == []
+    assert claim["drift_witnesses"] == []
+    assert claim["path_checks"] == [report]
+    assert claim["language_names_by_path"] == {
+        result.paths[0].path_id: {
+            "python": "vfs.read",
+            "typescript": "vfs.read",
+        }
+    }
     assert claim["claims_runtime_conformance"] is False
     assert claim["defers_runtime_to_goal"] == "VFS-G061"
     assert claim["evidence_kinds"] == list(STATIC_EVIDENCE_KINDS)
@@ -1732,15 +1772,165 @@ def test_result_satisfies_and_prove_manifest_parity() -> None:
             rebuilt.append(item)
     drift_inv = MCPlusPlusInventory(forest_id=FOREST, artifacts=tuple(rebuilt))
     drift_result = resolve_mcplusplus_paths(drift_inv, (_claim(),))
-    # Envelope still declares parity evidence kinds even when drift is witnessed.
-    assert result_satisfies_mcplusplus_manifest_parity(drift_result) is True
+    # The envelope still declares the evidence kind, but the parity conclusion
+    # itself fails closed when drift is witnessed.
+    assert drift_result.to_dict()["evidence_kinds"] == list(STATIC_EVIDENCE_KINDS)
+    assert result_satisfies_mcplusplus_manifest_parity(drift_result) is False
     parity = prove_mcplusplus_manifest_parity(drift_result)
-    assert "schema_mismatch" in parity["drift_kinds"] or parity["drift_count"] >= 0
+    assert parity["satisfied"] is False
+    assert parity["parity_status"] == "mismatch"
+    assert parity["coverage_complete"] is True
+    assert parity["mismatch_aspects"] == ["input_schema"]
+    assert parity["drift_kinds"] == ["schema_mismatch"]
+    assert parity["drift_count"] == 1
+    assert parity["drift_witnesses"][0]["aspect"] == "input_schema"
+    assert parity["path_checks"][0]["status"] == "mismatch"
     assert any(
         item.drift_kind is DriftKind.SCHEMA_MISMATCH
         for path in drift_result.paths
         for item in path.drift_witnesses
     )
+
+
+def test_manifest_parity_missing_contract_values_are_unverified() -> None:
+    """No mismatch is not parity when a required comparison is absent."""
+
+    inventory = _proved_inventory()
+    rebuilt = []
+    for item in inventory.artifacts:
+        if item.role is ArtifactRole.IMPLEMENTATION:
+            rebuilt.append(
+                InventoryArtifact.from_dict(
+                    {
+                        **item.to_dict(),
+                        "output_schema": {},
+                        "error_codes": [],
+                        "version": "",
+                    }
+                )
+            )
+        else:
+            rebuilt.append(item)
+    result = resolve_mcplusplus_paths(
+        MCPlusPlusInventory(forest_id=FOREST, artifacts=tuple(rebuilt)),
+        (_claim(),),
+    )
+
+    # VFS-G152 remains independently proved by the explicit mapping hop.
+    assert path_satisfies_mcplusplus_call_path(result.paths[0]) is True
+    report = manifest_parity_path_report(result.paths[0])
+    assert report["status"] == "unverified"
+    assert report["coverage_complete"] is False
+    assert report["checked_aspects"] == [
+        "input_schema",
+        "python_name",
+        "typescript_name",
+    ]
+    assert report["unverified_aspects"] == [
+        "error_map",
+        "output_schema",
+        "version",
+    ]
+    assert report["drift_witness_ids"] == []
+    assert result_satisfies_mcplusplus_manifest_parity(result) is False
+
+    claim = prove_mcplusplus_manifest_parity(result)
+    assert claim["satisfied"] is False
+    assert claim["parity_status"] == "unverified"
+    assert claim["coverage_complete"] is False
+    assert claim["unverified_aspects"] == report["unverified_aspects"]
+    packet = prove_mcplusplus_static_packet(result)
+    assert packet["call_path_satisfied"] is True
+    assert packet["manifest_parity_satisfied"] is False
+    assert packet["satisfied"] is False
+
+
+def test_manifest_parity_serialized_result_requires_bound_check_matrix() -> None:
+    """A result envelope alone cannot substitute for comparison evidence."""
+
+    payload = resolve_mcplusplus_paths(
+        _proved_inventory(), (_claim(),)
+    ).to_dict()
+    path_payload = dict(payload["paths"][0])
+    hops = [dict(hop) for hop in path_payload["hops"]]
+    mapping_hop = next(
+        hop
+        for hop in hops
+        if hop["stage"] == PathStage.RESULT_ERROR_MAPPING.value
+    )
+    mapping_hop["notes"] = {}
+    path_payload["hops"] = hops
+    payload["paths"] = [path_payload]
+
+    # IDs in portable dictionaries are informational and are recomputed from
+    # identity fields. Removing the bound matrix therefore becomes unverified.
+    assert result_satisfies_mcplusplus_manifest_parity(payload) is False
+    claim = prove_mcplusplus_manifest_parity(payload)
+    assert claim["parity_status"] == "unverified"
+    assert claim["checked_aspects"] == ["python_name", "typescript_name"]
+    assert claim["unverified_aspects"] == [
+        "error_map",
+        "input_schema",
+        "output_schema",
+        "version",
+    ]
+
+
+def test_manifest_parity_checks_middle_registration_not_just_endpoints() -> None:
+    """A drifting Python registration cannot hide between matching endpoints."""
+
+    inventory = _proved_inventory()
+    rebuilt = []
+    for item in inventory.artifacts:
+        if item.role is ArtifactRole.REGISTRATION:
+            rebuilt.append(
+                InventoryArtifact.from_dict(
+                    {
+                        **item.to_dict(),
+                        "output_schema": {
+                            "type": "object",
+                            "properties": {"cid": {"type": "string"}},
+                        },
+                    }
+                )
+            )
+        else:
+            rebuilt.append(item)
+    result = resolve_mcplusplus_paths(
+        MCPlusPlusInventory(forest_id=FOREST, artifacts=tuple(rebuilt)),
+        (_claim(),),
+    )
+    report = manifest_parity_path_report(result.paths[0])
+    assert report["status"] == "mismatch"
+    assert report["mismatch_aspects"] == ["output_schema"]
+    assert result_satisfies_mcplusplus_manifest_parity(result) is False
+    assert prove_mcplusplus_manifest_parity(result)["satisfied"] is False
+
+
+def test_manifest_parity_version_mismatch_fails_closed() -> None:
+    inventory = _proved_inventory()
+    rebuilt = []
+    for item in inventory.artifacts:
+        if item.role is ArtifactRole.REGISTRATION:
+            rebuilt.append(
+                InventoryArtifact.from_dict(
+                    {**item.to_dict(), "version": "2.0.0"}
+                )
+            )
+        else:
+            rebuilt.append(item)
+    result = resolve_mcplusplus_paths(
+        MCPlusPlusInventory(forest_id=FOREST, artifacts=tuple(rebuilt)),
+        (_claim(),),
+    )
+    report = manifest_parity_path_report(result.paths[0])
+    assert report["status"] == "mismatch"
+    assert report["mismatch_aspects"] == ["version"]
+    assert report["drift_kinds"] == ["version_mismatch"]
+    assert result_satisfies_mcplusplus_manifest_parity(result) is False
+    parity = prove_mcplusplus_manifest_parity(result)
+    assert parity["satisfied"] is False
+    assert parity["drift_witnesses"][0]["aspect"] == "version"
 
 
 def test_prove_mcplusplus_static_packet_covers_both_leaf_goals() -> None:
@@ -1808,5 +1998,17 @@ def test_ambiguous_registration_keeps_call_path_unsatisfied() -> None:
     claim = prove_mcplusplus_call_path(path)
     assert claim["satisfied"] is False
     assert claim["frontier_explicit"] is True or path.has_frontier
-    # Manifest-parity envelope still holds (static kinds + no runtime claim).
-    assert result_satisfies_mcplusplus_manifest_parity(result) is True
+    # Ambiguity remains an explicit frontier and leaves registration-bound
+    # contract comparisons unverified, so parity also fails closed.
+    assert result.to_dict()["evidence_kinds"] == list(STATIC_EVIDENCE_KINDS)
+    assert result_satisfies_mcplusplus_manifest_parity(result) is False
+    parity = prove_mcplusplus_manifest_parity(result)
+    assert parity["satisfied"] is False
+    assert parity["parity_status"] == "unverified"
+    assert parity["path_checks"][0]["unverified_aspects"] == [
+        "error_map",
+        "input_schema",
+        "output_schema",
+        "python_name",
+        "version",
+    ]
