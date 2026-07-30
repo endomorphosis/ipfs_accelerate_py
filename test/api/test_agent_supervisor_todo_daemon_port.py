@@ -14250,9 +14250,295 @@ def test_implementation_daemon_records_worktree_setup_exception(tmp_path):
     implementation = result["implementation_result"]
     assert implementation["returncode"] == 1
     assert implementation["exception_result"]["exception_type"] == "RuntimeError"
+    assert implementation["attempt_consumed"] is True
+    assert implementation["provider_dispatched"] is False
+    persisted = TodoTaskState.load(state_dir / "task_state.json")
+    assert persisted.implementation_attempts["ACCEL-001"] == 1
+    assert set(persisted.implementation_attempts_by_cid.values()) == {1}
     events = [json.loads(line) for line in (state_dir / "events.jsonl").read_text(encoding="utf-8").splitlines()]
     assert any(event["type"] == "implementation_exception" for event in events)
+    assert any(
+        event["type"] == "implementation_finished"
+        and event["attempt_consumed"] is True
+        and event["provider_dispatched"] is False
+        for event in events
+    )
     assert events[-1]["type"] == "daemon_pass"
+
+
+def test_ephemeral_lifecycle_rebind_failure_preserves_attempt_budget(
+    tmp_path,
+    monkeypatch,
+):
+    from ipfs_accelerate_py.agent_supervisor.worktree_lifecycle import (
+        ProcessBirthIdentity,
+    )
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    todo_path = repo / "todo.md"
+    todo_path.write_text("# Todos\n", encoding="utf-8")
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "README.md", "todo.md")
+    _git(repo, "commit", "-m", "base")
+
+    state_dir = repo / "state"
+    worktree_root = repo / "worktrees"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## FVT-",
+        implement=True,
+        implementation_command="sh -c 'touch provider-called'",
+        use_ephemeral_worktree=True,
+        worktree_root=worktree_root,
+        worktree_pool_enabled=False,
+    )
+    task = PortalTask(
+        task_id="FVT-019",
+        title="Search for missing proof chains",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="proof-search",
+        outputs=["feature.py"],
+    )
+    daemon._register_task_identities([task])
+    identity = daemon._identity_for_task(task)
+    state = TodoTaskState(
+        task_identities={task.task_id: identity.to_dict()},
+        implementation_attempts={task.task_id: 2},
+        implementation_attempts_by_cid={
+            identity.canonical_task_cid: 2,
+        },
+    )
+    state.save(daemon.state_path)
+
+    pooled_workspace = worktree_root / "workspace-existing"
+    pooled_workspace.mkdir(parents=True)
+    stale_record = daemon.worktree_lifecycle.begin_preparing(
+        task_id=task.task_id,
+        canonical_task_cid=identity.canonical_task_cid,
+        attempt=2,
+        lane_id="dead-owner-lane",
+        workspace_path=pooled_workspace,
+        branch="implementation/fvt-019-attempt-2",
+        merge_target="main",
+        owner=ProcessBirthIdentity(
+            pid=2**30 - 19,
+            start_time_ticks=1,
+            boot_id="dead-owner",
+        ),
+    )
+    daemon.worktree_lifecycle.mark_active(
+        pooled_workspace,
+        lease_id=stale_record.lease_id,
+        expected_fence=stale_record.fence,
+    )
+    baseline_ref = _git(repo, "rev-parse", "HEAD")
+
+    def resolve_to_fenced_pooled_workspace(
+        requested_path,
+        branch_name,
+        *,
+        task=None,
+    ):
+        daemon._worktree_pool_effective_paths[
+            requested_path.resolve()
+        ] = pooled_workspace.resolve()
+        return baseline_ref
+
+    monkeypatch.setattr(
+        daemon,
+        "_create_seeded_worktree",
+        resolve_to_fenced_pooled_workspace,
+    )
+    queue_outcomes = []
+    monkeypatch.setattr(
+        daemon,
+        "_record_task_queue_outcome",
+        lambda *args, **kwargs: queue_outcomes.append((args, kwargs)),
+    )
+
+    result = daemon._run_implementation(task, state)
+    persisted = TodoTaskState.load(daemon.state_path)
+
+    assert result["returncode"] == 1
+    assert result["attempt"] == 3
+    assert result["attempt_consumed"] is False
+    assert result["provider_dispatched"] is False
+    assert result["exception_result"]["exception_type"] == (
+        "DuplicateAttemptError"
+    )
+    assert result["exception_result"]["message"] == (
+        "target workspace claim lease has not expired"
+    )
+    assert result["cleanup_result"]["attempt_consumed"] is False
+    assert result["cleanup_result"]["provider_call_allowed"] is False
+    assert result["cleanup_result"]["lifecycle"]["reason"] == (
+        "owner_dead_lease_unexpired"
+    )
+    assert result["cleanup_result"]["current_attempt_lifecycle_finalize"][
+        "finalized"
+    ] is True
+    assert persisted.implementation_attempts[task.task_id] == 2
+    assert (
+        persisted.implementation_attempts_by_cid[
+            identity.canonical_task_cid
+        ]
+        == 2
+    )
+    assert daemon._task_attempt(persisted, task) == 3
+    assert not (pooled_workspace / "provider-called").exists()
+    assert queue_outcomes == []
+    assert "diagnostic_receipt_id" not in result
+    assert (
+        daemon.worktree_lifecycle.load_task_attempt(
+            canonical_task_cid=identity.canonical_task_cid,
+            task_id=task.task_id,
+            attempt=3,
+        )
+        is None
+    )
+    events = [
+        json.loads(line)
+        for line in daemon.events_path.read_text(encoding="utf-8").splitlines()
+    ]
+    assert any(
+        event["type"] == "implementation_finished"
+        and event["task_id"] == task.task_id
+        and event["attempt"] == 3
+        and event["attempt_consumed"] is False
+        and event["provider_dispatched"] is False
+        for event in events
+    )
+
+
+def test_ephemeral_lifecycle_cleanup_after_provider_dispatch_consumes_attempt(
+    tmp_path,
+    monkeypatch,
+):
+    from ipfs_accelerate_py.agent_supervisor.worktree_lifecycle import (
+        DuplicateAttemptError,
+        LifecycleFailureKind,
+    )
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    todo_path = repo / "todo.md"
+    todo_path.write_text("# Todos\n", encoding="utf-8")
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "README.md", "todo.md")
+    _git(repo, "commit", "-m", "base")
+
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## FVT-",
+        implement=True,
+        implementation_command="true",
+        use_ephemeral_worktree=True,
+        worktree_root=repo / "worktrees",
+        worktree_pool_enabled=False,
+    )
+    task = PortalTask(
+        task_id="FVT-019",
+        title="Search for missing proof chains",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="proof-search",
+        outputs=["feature.py"],
+    )
+    daemon._register_task_identities([task])
+    identity = daemon._identity_for_task(task)
+    state = TodoTaskState(
+        task_identities={task.task_id: identity.to_dict()},
+        implementation_attempts={task.task_id: 2},
+        implementation_attempts_by_cid={
+            identity.canonical_task_cid: 2,
+        },
+    )
+    state.save(daemon.state_path)
+
+    provider_calls = []
+
+    def fail_after_dispatch(*args, **kwargs):
+        provider_calls.append((args, kwargs))
+        raise DuplicateAttemptError(
+            "target workspace claim lease has not expired"
+        )
+
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "run_process_group_stream",
+        fail_after_dispatch,
+    )
+    lifecycle_cleanup = {
+        "cleaned": False,
+        "reason": "lifecycle_owner_dead_lease_unexpired",
+        "failure_kind": LifecycleFailureKind.LIFECYCLE_RACE.value,
+        "attempt_consumed": False,
+        "provider_call_allowed": False,
+        "lifecycle": {"reason": "owner_dead_lease_unexpired"},
+    }
+    monkeypatch.setattr(
+        daemon,
+        "_cleanup_failed_setup_worktree",
+        lambda *args, **kwargs: dict(lifecycle_cleanup),
+    )
+    queue_outcomes = []
+    monkeypatch.setattr(
+        daemon,
+        "_record_task_queue_outcome",
+        lambda *args, **kwargs: queue_outcomes.append((args, kwargs)),
+    )
+
+    result = daemon._run_implementation(task, state)
+    persisted = TodoTaskState.load(daemon.state_path)
+
+    assert len(provider_calls) == 1
+    assert result["returncode"] == 1
+    assert result["attempt"] == 3
+    assert result["provider_dispatched"] is True
+    assert result["attempt_consumed"] is True
+    assert result["cleanup_result"] == lifecycle_cleanup
+    assert persisted.implementation_attempts[task.task_id] == 3
+    assert (
+        persisted.implementation_attempts_by_cid[
+            identity.canonical_task_cid
+        ]
+        == 3
+    )
+    assert daemon._task_attempt(persisted, task) == 4
+    assert len(queue_outcomes) == 1
+    events = [
+        json.loads(line)
+        for line in daemon.events_path.read_text(encoding="utf-8").splitlines()
+    ]
+    assert any(
+        event["type"] == "implementation_finished"
+        and event["task_id"] == task.task_id
+        and event["attempt"] == 3
+        and event["attempt_consumed"] is True
+        and event["provider_dispatched"] is True
+        for event in events
+    )
 
 
 def test_implementation_daemon_records_merge_reconcile_exception(tmp_path):

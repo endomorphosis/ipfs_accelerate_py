@@ -11514,6 +11514,7 @@ class PortalImplementationDaemon:
         timeout_result: dict[str, Any] = {}
         protected_path_snapshot: dict[str, dict[str, Any]] | None = None
         protected_path_violation: dict[str, Any] = {}
+        provider_dispatched = False
         seed_replayable_proposal_ids: tuple[str, ...] = ()
         checkpoint_dir = self._ensure_implementation_checkpoint_dir(task)
         timeout_policy = self._implementation_timeout_policy(task)
@@ -11686,6 +11687,41 @@ class PortalImplementationDaemon:
                 log_fh.write(f"Baseline: {baseline_ref}\n")
                 log_fh.write(f"Command: {' '.join(shlex.quote(item) for item in command)}\n\n")
                 log_fh.flush()
+
+                def invoke_provider() -> subprocess.CompletedProcess[str]:
+                    nonlocal provider_dispatched
+                    provider_environment = (
+                        self._implementation_process_environment(
+                            task,
+                            attempt=attempt,
+                            checkpoint_dir=checkpoint_dir,
+                        )
+                    )
+                    progress_observer = (
+                        self._implementation_progress_observer(
+                            state,
+                            task,
+                            attempt=attempt,
+                        )
+                    )
+                    provider_dispatched = True
+                    return run_process_group_stream(
+                        command,
+                        cwd=worktree_path,
+                        stdout=log_fh,
+                        input_text=prompt,
+                        env=provider_environment,
+                        timeout_seconds=timeout_policy.max_timeout_seconds,
+                        progress_timeout_seconds=(
+                            timeout_policy.progress_timeout_seconds
+                            if timeout_policy.progress_aware
+                            else None
+                        ),
+                        max_timeout_seconds=timeout_policy.max_timeout_seconds,
+                        progress_paths=(checkpoint_dir,),
+                        on_progress=progress_observer,
+                    )
+
                 completed = self._decision_runtime_mutation(
                     "command_invocation",
                     {
@@ -11696,30 +11732,7 @@ class PortalImplementationDaemon:
                         "workspace_path": str(worktree_path),
                         "branch": branch_name,
                     },
-                    lambda: run_process_group_stream(
-                        command,
-                        cwd=worktree_path,
-                        stdout=log_fh,
-                        input_text=prompt,
-                        env=self._implementation_process_environment(
-                            task,
-                            attempt=attempt,
-                            checkpoint_dir=checkpoint_dir,
-                        ),
-                        timeout_seconds=timeout_policy.max_timeout_seconds,
-                        progress_timeout_seconds=(
-                            timeout_policy.progress_timeout_seconds
-                            if timeout_policy.progress_aware
-                            else None
-                        ),
-                        max_timeout_seconds=timeout_policy.max_timeout_seconds,
-                        progress_paths=(checkpoint_dir,),
-                        on_progress=self._implementation_progress_observer(
-                            state,
-                            task,
-                            attempt=attempt,
-                        ),
-                    ),
+                    invoke_provider,
                 )
             returncode = completed.returncode
             protected_path_violation = (
@@ -12507,7 +12520,40 @@ class PortalImplementationDaemon:
         protected_path_external_deferral = bool(protected_path_violation) and (
             protected_mutation_scopes == {"shared_checkout"}
         )
-        attempt_consumed = not protected_path_external_deferral
+        # A fenced lifecycle race can surface after the attempt ordinal is
+        # selected but before the provider is invoked (for example while a
+        # pooled checkout is rebound).  Honor only the cleanup subsystem's
+        # explicit non-consuming classification; arbitrary setup/configuration
+        # exceptions remain fail-closed and spend the attempt.
+        lifecycle_setup_deferral = (
+            not provider_dispatched
+            and str(exception_result.get("phase") or "") == "worktree_setup"
+            and cleanup_result.get("attempt_consumed") is False
+            and cleanup_result.get("provider_call_allowed") is False
+            and cleanup_result.get("failure_kind")
+            == LifecycleFailureKind.LIFECYCLE_RACE.value
+        )
+        if lifecycle_setup_deferral:
+            active_lifecycle = self._active_worktree_lifecycle
+            if (
+                active_lifecycle is not None
+                and active_lifecycle.task_id == task.task_id
+                and active_lifecycle.canonical_task_cid
+                == self._canonical_ref(task)
+                and active_lifecycle.attempt == attempt
+            ):
+                # Finalize only this attempt's provisional claim.  Passing the
+                # pooled target path here could select and mutate the older
+                # owner record that caused the fence.
+                cleanup_result["current_attempt_lifecycle_finalize"] = (
+                    self._finalize_worktree_lifecycle(
+                        None,
+                        reason="pre_dispatch_lifecycle_deferral",
+                    )
+                )
+        attempt_consumed = not (
+            protected_path_external_deferral or lifecycle_setup_deferral
+        )
         if attempt_consumed:
             self._record_task_attempt(state, task, attempt)
         else:
@@ -12716,6 +12762,7 @@ class PortalImplementationDaemon:
             "workspace_setup": workspace_setup,
             "board_completion": dict(board_completion),
             "attempt_consumed": attempt_consumed,
+            "provider_dispatched": provider_dispatched,
         }
         if protected_path_violation:
             result["reason"] = "implementation_protected_path_mutated"
