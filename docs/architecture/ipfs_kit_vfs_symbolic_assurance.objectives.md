@@ -833,3 +833,23 @@ criterion.
 - Parallel lane: vfs-assurance/mcplusplus
 - Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
 - Gap task: Close the missing objective evidence `objective validation repair` with a narrow, verifiable change.
+
+## VFS-G149 Prove objective validation repair for Exhaustively inventory and incrementally parse the SwissKnife corpus
+
+- Status: active
+- Parent: VFS-G020
+- Fib priority: 5000
+- Track: corpus-index
+- Priority: P0
+- Bundle: vfs-assurance/index
+- Goal: Create concrete implementation, tests, docs, or interface descriptors proving `objective validation repair`.
+- Evidence: objective validation repair
+- Outputs: ipfs_accelerate_py/agent_supervisor/repository_corpus_index.py, ipfs_accelerate_py/agent_supervisor/program_ast_adapters.py, test/api/test_agent_supervisor_repository_corpus_index.py
+- Validation: python -m pytest test/api/test_agent_supervisor_repository_corpus_index.py test/api/test_agent_supervisor_program_ast_adapters.py -q
+- Acceptance: The scan publishes included and excluded populations with reasons ; TypeScript/TSX/JavaScript/Python/JSON/Markdown inputs have provenance ; unchanged blobs are reused ; unexplained skips ; parser failures ; and truncation prevent an exhaustive verdict.
+- Refinement depth: 2
+- Embedding query: objective validation repair
+- AST query: objective validation repair
+- Parallel lane: vfs-assurance/index
+- Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
+- Gap task: Close the missing objective evidence `objective validation repair` with a narrow, verifiable change.
