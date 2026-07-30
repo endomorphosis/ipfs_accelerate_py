@@ -20637,6 +20637,8 @@ class PortalImplementationDaemon:
 
         Lock files older than ``max_age_seconds`` (default 30 minutes) are
         force-removed to prevent deadlocks in long-running supervisors.
+        Persistent flock coordination inodes are excluded because process
+        death releases their kernel locks without requiring inode removal.
         """
         if max_age_seconds <= 0:
             max_age_seconds = float(
@@ -20668,6 +20670,20 @@ class PortalImplementationDaemon:
             f".{implementation_lock_path.name}.update.lock"
         )
         for lock_path in lock_files:
+            if (
+                lock_path.name.startswith(".")
+                and lock_path.name.endswith(".jsonl.lock")
+            ):
+                # Event-log writers open this persistent inode before taking
+                # flock. Unlinking it can split concurrent writers across the
+                # old and replacement inodes, defeating serialization.
+                skipped.append(
+                    {
+                        "lock_path": str(lock_path),
+                        "reason": "managed_by_event_log_flock_protocol",
+                    }
+                )
+                continue
             if lock_path in {
                 implementation_lock_path,
                 implementation_update_guard_path,

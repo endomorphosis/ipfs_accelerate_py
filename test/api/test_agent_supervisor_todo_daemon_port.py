@@ -8167,6 +8167,60 @@ def test_supervisor_loop_publishes_cached_worker_status(tmp_path):
     assert stopped["worker_descendant_count"] == 0
 
 
+def test_supervisor_loop_accepts_fresh_child_log_when_semantic_heartbeat_is_stale(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    state_dir.mkdir()
+    status_path = state_dir / "daemon_status.json"
+    status_path.write_text(
+        json.dumps({"heartbeat_at": "2000-01-01T00:00:00+00:00"}),
+        encoding="utf-8",
+    )
+    child_log_path = state_dir / "child.log"
+    child_log_path.write_text("healthy idle pass\n", encoding="utf-8")
+    spec = ManagedDaemonSpec(
+        name="test-daemon",
+        schema="test.daemon",
+        repo_root=repo,
+        daemon_dir=state_dir,
+        runner=(sys.executable, "-c", "pass"),
+        status_path=status_path,
+        supervisor_status_path=state_dir / "supervisor_status.json",
+        supervisor_pid_path=state_dir / "supervisor.pid",
+        child_pid_path=state_dir / "child.pid",
+        supervisor_out_path=state_dir / "supervisor.out",
+        ensure_status_path=state_dir / "ensure_status.json",
+        ensure_check_path=state_dir / "ensure_check.json",
+    )
+    child = SimpleNamespace(pid=os.getpid(), log_path=child_log_path)
+    loop = SupervisorLoop(
+        SupervisorLoopConfig(
+            spec=spec,
+            command=(sys.executable, "-c", "pass"),
+            log_prefix="child",
+            watchdog_stale_after_seconds=60,
+        )
+    )
+
+    assert loop.watchdog_decision(child).action == "continue"
+
+    os.utime(child_log_path, (1, 1))
+
+    stale = loop.watchdog_decision(child)
+    assert stale.reason == "stale_heartbeat"
+    assert stale.detail["child_log_fresh"] is False
+    assert stale.detail["child_log_age_seconds"] > 60
+
+    child_log_path.unlink()
+
+    missing = loop.watchdog_decision(child)
+    assert missing.reason == "stale_heartbeat"
+    assert missing.detail["child_log_age_seconds"] is None
+
+
 def test_supervisor_loop_starts_stall_clock_when_worker_disappears(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -8319,6 +8373,22 @@ def test_implementation_supervisor_signal_cleans_managed_daemon_before_exit(
             repo_root=repo,
         )
     )
+    supervisor_status_path = state_dir / "portal_supervisor_status.json"
+    supervisor_status_path.write_text(
+        json.dumps(
+            {
+                "status": "running",
+                "supervisor_pid": os.getpid(),
+                "supervisor_pid_alive": True,
+                "daemon_pid": 4321,
+                "daemon_pid_alive": True,
+                "active_worker_count": 1,
+                "active_worker_pids": [9876],
+                "worker_descendant_count": 1,
+            }
+        ),
+        encoding="utf-8",
+    )
 
     handlers = {
         signal.SIGTERM: "previous-term",
@@ -8402,6 +8472,23 @@ def test_implementation_supervisor_signal_cleans_managed_daemon_before_exit(
         signal.SIGINT: "previous-int",
     }
     assert len(transitions) == 4
+    stopped = json.loads(supervisor_status_path.read_text(encoding="utf-8"))
+    assert stopped["status"] == "stopped"
+    assert stopped["supervisor_pid"] == os.getpid()
+    assert stopped["supervisor_pid_alive"] is False
+    assert stopped["daemon_pid"] is None
+    assert stopped["daemon_pid_alive"] is False
+    assert stopped["active_worker_count"] == 0
+    assert stopped["active_worker_pids"] == []
+    assert stopped["worker_descendant_count"] == 0
+    assert stopped["stop_signal"] == signal.SIGTERM
+    assert stopped["last_exit_code"] == 128 + signal.SIGTERM
+    assert stopped["last_recycle_reason"] == "supervisor_signal_shutdown"
+    assert stopped["managed_daemon_cleanup"]["terminated"] is True
+    assert (
+        stopped["interrupted_implementation_reconciliation"]["reconciled"]
+        is True
+    )
 
 
 def test_implementation_daemon_accepts_configured_submodule_paths(tmp_path):

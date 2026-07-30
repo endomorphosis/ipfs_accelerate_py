@@ -641,15 +641,9 @@ def test_crash_snapshot_reconciliation_blocks_before_merge_consumption(
 def test_crash_snapshot_reconciliation_accepts_device_renumbering_only(
     tmp_path: Path,
 ) -> None:
-    protected = tmp_path / POLICY_PATH
-    protected.parent.mkdir(parents=True)
-    protected.write_text("unchanged\n", encoding="utf-8")
-    daemon = _daemon(tmp_path)
-    daemon.worktree_root = tmp_path / "worktrees"
-    workspace = daemon.worktree_root / "attempt"
-    workspace_protected = workspace / POLICY_PATH
-    workspace_protected.parent.mkdir(parents=True)
-    workspace_protected.write_text("unchanged\n", encoding="utf-8")
+    daemon, _repo, workspace, _protected = _protected_git_worktree_daemon(
+        tmp_path
+    )
     daemon._require_implementation_protected_snapshot(
         task=_task(outputs=["src/example.py"]),
         attempt=1,
@@ -1755,11 +1749,19 @@ def test_stale_lock_cleanup_preserves_implementation_lease_protocol_files(
     update_guard_path = (
         tmp_path / "state" / ".implementation.lock.update.lock"
     )
+    event_log_lock_path = daemon.events_path.with_name(
+        f".{daemon.events_path.name}.lock"
+    )
+    lane_event_log_lock_path = (
+        tmp_path / "state" / ".lane_supervisor_events.jsonl.lock"
+    )
     generic_lock_path = tmp_path / "state" / "merge-repair.lock"
     implementation_lock_path.parent.mkdir(parents=True)
     for path in (
         implementation_lock_path,
         update_guard_path,
+        event_log_lock_path,
+        lane_event_log_lock_path,
         generic_lock_path,
     ):
         path.write_text("stale\n", encoding="utf-8")
@@ -1769,6 +1771,8 @@ def test_stale_lock_cleanup_preserves_implementation_lease_protocol_files(
 
     assert implementation_lock_path.exists()
     assert update_guard_path.exists()
+    assert event_log_lock_path.exists()
+    assert lane_event_log_lock_path.exists()
     assert not generic_lock_path.exists()
     managed = {
         item["lock_path"]
@@ -1778,6 +1782,15 @@ def test_stale_lock_cleanup_preserves_implementation_lease_protocol_files(
     assert managed == {
         str(implementation_lock_path),
         str(update_guard_path),
+    }
+    event_log_managed = {
+        item["lock_path"]
+        for item in result["skipped"]
+        if item.get("reason") == "managed_by_event_log_flock_protocol"
+    }
+    assert event_log_managed == {
+        str(event_log_lock_path),
+        str(lane_event_log_lock_path),
     }
 
 
