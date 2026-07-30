@@ -1346,7 +1346,7 @@ consumer or frontier is unresolved.
 
 ## RPR-042 Project propagation tasks and gate immediately before providers
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
