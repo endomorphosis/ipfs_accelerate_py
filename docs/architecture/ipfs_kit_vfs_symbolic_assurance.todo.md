@@ -3274,7 +3274,7 @@ compact references and bounded spans only.
 
 ## VFS-077 Close objective gap: Differentially witness VFS facade and MCP behavior
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
