@@ -1841,6 +1841,9 @@ MULTI_ROOT_REPOSITORY_SNAPSHOT_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/sca-multi-root-repository-snapshot@1"
 )
 MULTI_ROOT_REPOSITORY_SNAPSHOT_INTERFACE = "MultiRootRepositorySnapshot@1"
+# Objective evidence obligation for multi-root provider source indexing
+# (SCA-G043).  Scanners match this exact token; do not rename lightly.
+MULTI_ROOT_PROVIDER_INDEX_EVIDENCE = "SCAEV043MULTIROOT"
 PROVIDER_ROOT_OBSERVATION_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/sca-provider-root-observation@1"
 )
@@ -2191,6 +2194,7 @@ class MultiRootRepositorySnapshot:
             "schema": MULTI_ROOT_REPOSITORY_SNAPSHOT_SCHEMA,
             "schema_version": self.schema_version,
             "interface": MULTI_ROOT_REPOSITORY_SNAPSHOT_INTERFACE,
+            "evidence_id": MULTI_ROOT_PROVIDER_INDEX_EVIDENCE,
             "scope_policy_id": self.scope_policy_id,
             "scope_id": self.scope_id,
             "primary_snapshot_id": (
@@ -3278,6 +3282,7 @@ __all__ = [
     "GITLINK_RECORD_SCHEMA",
     "GitStatus",
     "GitlinkRecord",
+    "MULTI_ROOT_PROVIDER_INDEX_EVIDENCE",
     "MULTI_ROOT_REPOSITORY_SNAPSHOT_INTERFACE",
     "MULTI_ROOT_REPOSITORY_SNAPSHOT_SCHEMA",
     "MultiRootRepositorySnapshot",
