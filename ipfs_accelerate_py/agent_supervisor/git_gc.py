@@ -18,6 +18,7 @@ Usage:
 Environment variables:
     IPFS_ACCELERATE_AGENT_GC_INTERVAL_SECONDS: Min seconds between GC runs (default: 14400 / 4h)
     IPFS_ACCELERATE_AGENT_GC_AGGRESSIVE_INTERVAL_SECONDS: Min seconds between aggressive GC (default: 86400 / 24h)
+    IPFS_ACCELERATE_AGENT_GC_COMMAND_TIMEOUT_SECONDS: Per-command maintenance limit (default: 45s)
     IPFS_ACCELERATE_AGENT_GC_MAX_LOOSE_OBJECTS: Trigger GC when loose objects exceed this (default: 5000)
     IPFS_ACCELERATE_AGENT_GC_REFLOG_EXPIRE_DAYS: Expire reflog entries older than this (default: 7)
     IPFS_ACCELERATE_AGENT_GC_WORKTREE_ROOT: Root path containing worktrees to also GC
@@ -42,12 +43,14 @@ logger = logging.getLogger(__name__)
 
 _GC_INTERVAL_ENV = "IPFS_ACCELERATE_AGENT_GC_INTERVAL_SECONDS"
 _GC_AGGRESSIVE_INTERVAL_ENV = "IPFS_ACCELERATE_AGENT_GC_AGGRESSIVE_INTERVAL_SECONDS"
+_GC_COMMAND_TIMEOUT_ENV = "IPFS_ACCELERATE_AGENT_GC_COMMAND_TIMEOUT_SECONDS"
 _GC_MAX_LOOSE_ENV = "IPFS_ACCELERATE_AGENT_GC_MAX_LOOSE_OBJECTS"
 _GC_REFLOG_EXPIRE_ENV = "IPFS_ACCELERATE_AGENT_GC_REFLOG_EXPIRE_DAYS"
 _GC_WORKTREE_ROOT_ENV = "IPFS_ACCELERATE_AGENT_GC_WORKTREE_ROOT"
 
 DEFAULT_GC_INTERVAL = 14400  # 4 hours
 DEFAULT_GC_AGGRESSIVE_INTERVAL = 86400  # 24 hours
+DEFAULT_GC_COMMAND_TIMEOUT = 45.0
 DEFAULT_MAX_LOOSE_OBJECTS = 5000
 DEFAULT_REFLOG_EXPIRE_DAYS = 7
 
@@ -173,6 +176,7 @@ class GitGarbageCollector:
     worktree_root: Path | None = None
     gc_interval: float = field(default_factory=lambda: float(os.environ.get(_GC_INTERVAL_ENV, str(DEFAULT_GC_INTERVAL))))
     aggressive_interval: float = field(default_factory=lambda: float(os.environ.get(_GC_AGGRESSIVE_INTERVAL_ENV, str(DEFAULT_GC_AGGRESSIVE_INTERVAL))))
+    command_timeout: float = field(default_factory=lambda: float(os.environ.get(_GC_COMMAND_TIMEOUT_ENV, str(DEFAULT_GC_COMMAND_TIMEOUT))))
     max_loose_objects: int = field(default_factory=lambda: int(os.environ.get(_GC_MAX_LOOSE_ENV, str(DEFAULT_MAX_LOOSE_OBJECTS))))
     reflog_expire_days: int = field(default_factory=lambda: int(os.environ.get(_GC_REFLOG_EXPIRE_ENV, str(DEFAULT_REFLOG_EXPIRE_DAYS))))
     _state: GCState | None = field(default=None, init=False, repr=False)
@@ -305,10 +309,22 @@ class GitGarbageCollector:
         # Step 3: Aggressive git gc
         step = self._run_git_gc(aggressive=True)
         results["steps"].append(step)
+        if step.get("error") or step.get("returncode") not in (None, 0):
+            return self._finish_failed_aggressive(
+                results,
+                loose_before=loose_before,
+                aborted_after="git_gc",
+            )
 
         # Step 4: Repack
         step = self._repack()
         results["steps"].append(step)
+        if step.get("error") or step.get("returncode") not in (None, 0):
+            return self._finish_failed_aggressive(
+                results,
+                loose_before=loose_before,
+                aborted_after="repack",
+            )
 
         # Step 5: Prune unreachable objects
         step = self._prune_objects()
@@ -338,6 +354,36 @@ class GitGarbageCollector:
             results["objects_freed"],
             loose_before,
             loose_after,
+        )
+        return results
+
+    def _finish_failed_aggressive(
+        self,
+        results: dict[str, Any],
+        *,
+        loose_before: int,
+        aborted_after: str,
+    ) -> dict[str, Any]:
+        """Persist an attempted-maintenance backoff after a bounded failure.
+
+        A timed-out aggressive repack must not be retried on every daemon
+        restart.  Recording the attempt preserves supervisor liveness while
+        leaving the ordinary four-hour auto-GC path available.
+        """
+        now = time.time()
+        results["success"] = False
+        results["aborted_after"] = aborted_after
+        results["loose_objects_after"] = loose_before
+        results["objects_freed"] = 0
+        results["finished_at"] = datetime.now(timezone.utc).isoformat()
+        self.state.last_gc_time = now
+        self.state.last_aggressive_gc_time = now
+        self.state.total_gc_runs += 1
+        self.state.save()
+        logger.warning(
+            "Aggressive Git GC aborted after %s; retry deferred for %.0f seconds",
+            aborted_after,
+            self.aggressive_interval,
         )
         return results
 
@@ -377,7 +423,11 @@ class GitGarbageCollector:
             args.append("--aggressive")
 
         try:
-            result = _run_git(args, cwd=self.repo_root, timeout=600)
+            result = _run_git(
+                args,
+                cwd=self.repo_root,
+                timeout=max(1.0, float(self.command_timeout)),
+            )
         except subprocess.TimeoutExpired:
             return {"step": "git_gc", "error": "timeout", "mode": "aggressive" if aggressive else "auto" if auto else "standard"}
 
@@ -391,7 +441,14 @@ class GitGarbageCollector:
     def _repack(self) -> dict[str, Any]:
         """Repack objects into fewer, larger pack files."""
         # -a: pack all objects, -d: remove redundant packs, --depth=250: deeper delta chains
-        result = _run_git(["repack", "-a", "-d", "--depth=250", "--window=250"], cwd=self.repo_root, timeout=600)
+        try:
+            result = _run_git(
+                ["repack", "-a", "-d", "--depth=250", "--window=250"],
+                cwd=self.repo_root,
+                timeout=max(1.0, float(self.command_timeout)),
+            )
+        except subprocess.TimeoutExpired:
+            return {"step": "repack", "error": "timeout"}
         self.state.last_repack_time = time.time()
         return {
             "step": "repack",
