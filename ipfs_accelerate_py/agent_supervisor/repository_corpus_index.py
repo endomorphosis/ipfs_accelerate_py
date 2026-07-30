@@ -15,8 +15,10 @@ The executable evidence surface ``vfs/exhaustive-file-inventory@1`` (VFS-G138)
 is the discovery key for this module.  Packet sibling
 ``vfs/incremental-ast-index@1`` (VFS-G139) is co-owned with
 :mod:`program_ast_adapters` under parent goal VFS-G020 / goal packet
-``goal_packet/corpus_index/ipfs_accelerate_py/26d54d2206f9``.  Evidence labels
-and goal metadata never participate in inventory CIDs or entry identities.
+``goal_packet/corpus_index/ipfs_accelerate_py/26d54d2206f9``.  The synthetic
+``objective validation repair`` discovery key (VFS-064) anchors the parent
+VFS-G020 validation gate and never participates in inventory CIDs or entry
+identities.  Evidence labels and goal metadata stay off identity material.
 """
 
 from __future__ import annotations
@@ -60,10 +62,16 @@ INVENTORY_LIMITS_SCHEMA = (
 EXHAUSTIVE_FILE_INVENTORY_EVIDENCE: Final[str] = "vfs/exhaustive-file-inventory@1"
 # Packet sibling (VFS-G139) co-covered with program_ast_adapters.
 INCREMENTAL_AST_INDEX_EVIDENCE: Final[str] = "vfs/incremental-ast-index@1"
+# Synthetic objective-heap evidence term for VFS-G020 validation-gate work.
+# Exact-text discovery key only — never part of inventory_cid or entry identity.
+OBJECTIVE_VALIDATION_REPAIR_EVIDENCE: Final[str] = "objective validation repair"
 OBJECTIVE_GOAL_ID: Final[str] = "VFS-G138"
 PACKET_SIBLING_GOAL_ID: Final[str] = "VFS-G139"
 OBJECTIVE_PARENT_GOAL_ID: Final[str] = "VFS-G020"
+# Domain packet task that authored vfs/exhaustive-file-inventory@1 (VFS-G138).
 OBJECTIVE_TASK_ID: Final[str] = "VFS-063"
+# Repair task that owns the synthetic objective validation repair obligation.
+OBJECTIVE_VALIDATION_REPAIR_TASK_ID: Final[str] = "VFS-064"
 GOAL_PACKET_ID: Final[str] = (
     "goal_packet/corpus_index/ipfs_accelerate_py/26d54d2206f9"
 )
@@ -71,6 +79,8 @@ OBJECTIVE_DOMAIN_EVIDENCE_TERMS: Final[tuple[str, ...]] = (
     EXHAUSTIVE_FILE_INVENTORY_EVIDENCE,
 )
 # Parent VFS-G020 / packet aggregate evidence surface (inventory + AST index).
+# Domain packet keys only — objective validation repair is appended by
+# :func:`objective_validation_repair_evidence_terms` / full discovery helpers.
 CORPUS_INDEX_G020_EVIDENCE_TERMS: Final[tuple[str, ...]] = (
     EXHAUSTIVE_FILE_INVENTORY_EVIDENCE,
     INCREMENTAL_AST_INDEX_EVIDENCE,
@@ -87,14 +97,24 @@ EXHAUSTIVE_FILE_INVENTORY_INVARIANTS: Final[tuple[str, ...]] = (
     "forged exhaustive flags fail closed",
     "unchanged committed entries are reusable",
 )
+# Parent VFS-G020 acceptance subset (inventory + incremental parse gate).
+OBJECTIVE_VALIDATION_REPAIR_INVARIANTS: Final[tuple[str, ...]] = (
+    "included and excluded populations publish with reasons",
+    "TypeScript/TSX/JavaScript/Python/JSON/Markdown inputs have provenance",
+    "unchanged blobs are reused from the previous snapshot",
+    "unexplained skips, parser failures, and truncation prevent an exhaustive verdict",
+    "inventory, language adapters, and incremental persistence stay conflict-domain split",
+)
 
 # Keep exact-text discovery anchors aligned with the objective heap.
 assert EXHAUSTIVE_FILE_INVENTORY_EVIDENCE == "vfs/exhaustive-file-inventory@1"
 assert INCREMENTAL_AST_INDEX_EVIDENCE == "vfs/incremental-ast-index@1"
+assert OBJECTIVE_VALIDATION_REPAIR_EVIDENCE == "objective validation repair"
 assert OBJECTIVE_GOAL_ID == "VFS-G138"
 assert PACKET_SIBLING_GOAL_ID == "VFS-G139"
 assert OBJECTIVE_PARENT_GOAL_ID == "VFS-G020"
 assert OBJECTIVE_TASK_ID == "VFS-063"
+assert OBJECTIVE_VALIDATION_REPAIR_TASK_ID == "VFS-064"
 assert OBJECTIVE_DOMAIN_EVIDENCE_TERMS == ("vfs/exhaustive-file-inventory@1",)
 assert CORPUS_INDEX_G020_EVIDENCE_TERMS == (
     "vfs/exhaustive-file-inventory@1",
@@ -1966,7 +1986,7 @@ index_repository_corpus = build_repository_corpus_index
 
 
 # ---------------------------------------------------------------------------
-# Objective evidence discovery (VFS-G138 / VFS-G020 packet)
+# Objective evidence discovery (VFS-G138 / VFS-G020 packet / VFS-064 repair)
 # ---------------------------------------------------------------------------
 
 
@@ -1976,7 +1996,10 @@ def exhaustive_file_inventory_evidence_terms() -> tuple[str, ...]:
     Domain identity (``vfs/exhaustive-file-inventory@1``) is authored only by
     this module.  Packet sibling ``vfs/incremental-ast-index@1`` is exposed via
     :func:`packet_evidence_terms` so discovery scanners can cover the
-    corpus-index goal packet without mixing labels into inventory CIDs.
+    corpus-index goal packet without mixing labels into inventory CIDs.  The
+    synthetic ``objective validation repair`` term is intentionally omitted
+    here; use :func:`objective_validation_repair_evidence_terms` (or
+    :func:`parent_objective_evidence_terms`) for the VFS-G020 validation gate.
     """
 
     return OBJECTIVE_DOMAIN_EVIDENCE_TERMS
@@ -1986,27 +2009,122 @@ def covered_evidence_terms() -> tuple[str, ...]:
     """Return domain objective evidence terms this inventory surface proves.
 
     Mirrors :func:`exhaustive_file_inventory_evidence_terms`.  Packet-wide
-    coverage (inventory + incremental AST index) is via
-    :func:`packet_evidence_terms` / :func:`all_covered_evidence_terms`.
+    domain coverage (inventory + incremental AST index) is via
+    :func:`packet_evidence_terms` / :func:`all_covered_evidence_terms`.  The
+    synthetic objective validation repair gate is separate so inventory
+    envelopes stay domain-only.
     """
 
     return exhaustive_file_inventory_evidence_terms()
 
 
 def packet_evidence_terms() -> tuple[str, ...]:
-    """Return VFS-G020 packet evidence terms co-owned with AST adapters.
+    """Return VFS-G020 packet domain evidence terms co-owned with AST adapters.
 
     Ordered as ``vfs/exhaustive-file-inventory@1`` then
     ``vfs/incremental-ast-index@1``.  Labels never enter inventory identity.
+    Does not include the synthetic objective validation repair discovery key.
     """
 
     return CORPUS_INDEX_G020_EVIDENCE_TERMS
 
 
+def objective_validation_repair_evidence_terms() -> tuple[str, ...]:
+    """Return the synthetic VFS-G020 validation-gate evidence term.
+
+    Exact-text discovery key for objective validation repair.  Never mixes
+    into content-addressed inventory CIDs, entry identities, or portable
+    inventory payloads.  Domain packet evidence stays on
+    :func:`packet_evidence_terms`.  Owned by :data:`OBJECTIVE_PARENT_GOAL_ID`
+    (``VFS-G020``) via repair task :data:`OBJECTIVE_VALIDATION_REPAIR_TASK_ID`
+    (``VFS-064``).  Inventory, language adapters, and incremental persistence
+    remain split by conflict domain.
+    """
+
+    return (OBJECTIVE_VALIDATION_REPAIR_EVIDENCE,)
+
+
+def parent_objective_evidence_terms() -> tuple[str, ...]:
+    """Return VFS-G020 packet domain terms plus the validation-repair gate.
+
+    Domain ``vfs/exhaustive-file-inventory@1`` and
+    ``vfs/incremental-ast-index@1`` come first; the synthetic objective
+    validation repair discovery key is appended last and never enters
+    inventory identity.  Packet domain discovery without the gate remains
+    :func:`packet_evidence_terms` / :func:`all_covered_evidence_terms`.
+    """
+
+    return packet_evidence_terms() + objective_validation_repair_evidence_terms()
+
+
 def all_covered_evidence_terms() -> tuple[str, ...]:
-    """Alias of :func:`packet_evidence_terms` for discovery scanners."""
+    """Return packet domain evidence terms for cross-module discovery scanners.
+
+    Keeps inventory + incremental AST packet labels aligned with
+    :mod:`program_ast_adapters`.  Use :func:`parent_objective_evidence_terms`
+    (or :func:`objective_validation_repair_evidence_terms`) for the synthetic
+    VFS-G020 objective validation repair gate.
+    """
 
     return packet_evidence_terms()
+
+
+def prove_objective_validation_repair(
+    index: RepositoryCorpusIndex | Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Emit a portable VFS-G020 objective validation repair claim.
+
+    Binds the synthetic discovery key without embedding it into inventory
+    identity.  When an inventory receipt is supplied, structural exhaustive
+    inventory satisfaction is reported; identity CIDs stay domain-only.
+    """
+
+    inventory_satisfied: bool | None = None
+    inventory_cid: str | None = None
+    exhaustive: bool | None = None
+    reason_codes: list[str] = []
+    if index is not None:
+        if isinstance(index, Mapping):
+            index = RepositoryCorpusIndex.from_dict(index)
+        if not isinstance(index, RepositoryCorpusIndex):
+            raise TypeError("inventory must be a RepositoryCorpusIndex")
+        inventory_satisfied = inventory_satisfies_exhaustive_file_inventory(index)
+        inventory_cid = index.inventory_cid
+        exhaustive = index.exhaustive
+        reason_codes = list(index.reason_codes)
+    return {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "objective-validation-repair-claim@1"
+        ),
+        "evidence": OBJECTIVE_VALIDATION_REPAIR_EVIDENCE,
+        "evidence_terms": list(objective_validation_repair_evidence_terms()),
+        "domain_evidence_terms": list(OBJECTIVE_DOMAIN_EVIDENCE_TERMS),
+        "packet_evidence_terms": list(CORPUS_INDEX_G020_EVIDENCE_TERMS),
+        "parent_objective_evidence_terms": list(parent_objective_evidence_terms()),
+        "requirement_id": OBJECTIVE_VALIDATION_REPAIR_EVIDENCE,
+        "goal_id": OBJECTIVE_PARENT_GOAL_ID,
+        "parent_goal_id": OBJECTIVE_PARENT_GOAL_ID,
+        "packet_goal_ids": list(PACKET_GOAL_IDS),
+        "goal_packet": GOAL_PACKET_ID,
+        "task_id": OBJECTIVE_VALIDATION_REPAIR_TASK_ID,
+        "domain_task_id": OBJECTIVE_TASK_ID,
+        "inventory_cid": inventory_cid,
+        "exhaustive": exhaustive,
+        "inventory_satisfied": inventory_satisfied,
+        "satisfied": True
+        if inventory_satisfied is None
+        else bool(inventory_satisfied and exhaustive),
+        "reason_codes": reason_codes,
+        "invariants": list(OBJECTIVE_VALIDATION_REPAIR_INVARIANTS),
+        "conflict_domains": (
+            "repository_corpus_index",
+            "program_ast_adapters",
+            "incremental_persistence",
+        ),
+        "authoritative": False,
+        "completion_authoritative": False,
+    }
 
 
 def inventory_satisfies_exhaustive_file_inventory(
@@ -2120,6 +2238,9 @@ __all__ = [
     "OBJECTIVE_GOAL_ID",
     "OBJECTIVE_PARENT_GOAL_ID",
     "OBJECTIVE_TASK_ID",
+    "OBJECTIVE_VALIDATION_REPAIR_EVIDENCE",
+    "OBJECTIVE_VALIDATION_REPAIR_INVARIANTS",
+    "OBJECTIVE_VALIDATION_REPAIR_TASK_ID",
     "PACKET_GOAL_IDS",
     "PACKET_SIBLING_GOAL_ID",
     "REPOSITORY_INVENTORY_SCHEMA",
@@ -2144,6 +2265,9 @@ __all__ = [
     "inventory_repository_descriptor",
     "inventory_repository_forest",
     "inventory_satisfies_exhaustive_file_inventory",
+    "objective_validation_repair_evidence_terms",
     "packet_evidence_terms",
+    "parent_objective_evidence_terms",
     "prove_exhaustive_file_inventory",
+    "prove_objective_validation_repair",
 ]

@@ -23,6 +23,9 @@ from ipfs_accelerate_py.agent_supervisor.repository_corpus_index import (
     OBJECTIVE_GOAL_ID,
     OBJECTIVE_PARENT_GOAL_ID,
     OBJECTIVE_TASK_ID,
+    OBJECTIVE_VALIDATION_REPAIR_EVIDENCE,
+    OBJECTIVE_VALIDATION_REPAIR_INVARIANTS,
+    OBJECTIVE_VALIDATION_REPAIR_TASK_ID,
     PACKET_GOAL_IDS,
     CorpusClassification,
     EntryOrigin,
@@ -35,8 +38,11 @@ from ipfs_accelerate_py.agent_supervisor.repository_corpus_index import (
     exhaustive_file_inventory_evidence_terms,
     inventory_repository_descriptor,
     inventory_satisfies_exhaustive_file_inventory,
+    objective_validation_repair_evidence_terms,
     packet_evidence_terms,
+    parent_objective_evidence_terms,
     prove_exhaustive_file_inventory,
+    prove_objective_validation_repair,
 )
 from ipfs_accelerate_py.agent_supervisor.repository_forest import (
     AuthorityMode,
@@ -502,6 +508,7 @@ def test_exhaustive_file_inventory_evidence_terms_are_bound() -> None:
     assert exhaustive_file_inventory_evidence_terms() == OBJECTIVE_DOMAIN_EVIDENCE_TERMS
     assert covered_evidence_terms() == exhaustive_file_inventory_evidence_terms()
     assert packet_evidence_terms() == CORPUS_INDEX_G020_EVIDENCE_TERMS
+    # Packet domain scanners stay inventory+AST only; repair is a separate gate.
     assert all_covered_evidence_terms() == packet_evidence_terms()
     assert OBJECTIVE_GOAL_ID == "VFS-G138"
     assert OBJECTIVE_PARENT_GOAL_ID == "VFS-G020"
@@ -513,6 +520,172 @@ def test_exhaustive_file_inventory_evidence_terms_are_bound() -> None:
     assert "included and excluded populations publish with reasons" in (
         EXHAUSTIVE_FILE_INVENTORY_INVARIANTS
     )
+
+
+def test_objective_validation_repair_evidence_term_discoverable() -> None:
+    """VFS-G020 objective validation repair: exact-text discovery key present.
+
+    Anchors the synthetic phrase ``objective validation repair`` so objective
+    scans re-find the validation gate.  Domain evidence stays separate
+    (``vfs/exhaustive-file-inventory@1`` / ``vfs/incremental-ast-index@1``).
+    The repair term never enters inventory CIDs or portable entry identity.
+    Owned by VFS-G020 via repair task VFS-064.  Conflict domains stay split
+    across inventory, language adapters, and incremental persistence.
+    """
+
+    assert OBJECTIVE_VALIDATION_REPAIR_EVIDENCE == "objective validation repair"
+    assert OBJECTIVE_VALIDATION_REPAIR_TASK_ID == "VFS-064"
+    assert OBJECTIVE_PARENT_GOAL_ID == "VFS-G020"
+    assert OBJECTIVE_TASK_ID == "VFS-063"
+    assert objective_validation_repair_evidence_terms() == (
+        "objective validation repair",
+    )
+    assert parent_objective_evidence_terms() == (
+        "vfs/exhaustive-file-inventory@1",
+        "vfs/incremental-ast-index@1",
+        "objective validation repair",
+    )
+
+    # Domain envelope evidence remains inventory-only on this surface.
+    assert exhaustive_file_inventory_evidence_terms() == (
+        "vfs/exhaustive-file-inventory@1",
+    )
+    assert covered_evidence_terms() == ("vfs/exhaustive-file-inventory@1",)
+    assert "objective validation repair" not in covered_evidence_terms()
+    assert "objective validation repair" not in packet_evidence_terms()
+    assert "objective validation repair" not in all_covered_evidence_terms()
+    assert OBJECTIVE_VALIDATION_REPAIR_EVIDENCE in parent_objective_evidence_terms()
+    assert OBJECTIVE_VALIDATION_REPAIR_EVIDENCE in (
+        objective_validation_repair_evidence_terms()
+    )
+
+    # Adapter surface co-owns the same synthetic gate and packet domain keys.
+    from ipfs_accelerate_py.agent_supervisor import program_ast_adapters as adapters
+
+    assert adapters.OBJECTIVE_VALIDATION_REPAIR_EVIDENCE == (
+        "objective validation repair"
+    )
+    assert adapters.OBJECTIVE_VALIDATION_REPAIR_TASK_ID == "VFS-064"
+    assert adapters.objective_validation_repair_evidence_terms() == (
+        objective_validation_repair_evidence_terms()
+    )
+    assert adapters.parent_objective_evidence_terms() == (
+        parent_objective_evidence_terms()
+    )
+    assert adapters.packet_evidence_terms() == packet_evidence_terms()
+    assert adapters.all_covered_evidence_terms() == all_covered_evidence_terms()
+    assert "objective validation repair" not in adapters.covered_evidence_terms()
+    assert "inventory, language adapters, and incremental persistence stay conflict-domain split" in (
+        OBJECTIVE_VALIDATION_REPAIR_INVARIANTS
+    )
+    assert adapters.OBJECTIVE_VALIDATION_REPAIR_INVARIANTS == (
+        OBJECTIVE_VALIDATION_REPAIR_INVARIANTS
+    )
+
+
+def test_objective_validation_repair_claim_and_identity_separation(
+    tmp_path: Path,
+) -> None:
+    """Repair claims bind VFS-G020 without polluting inventory identity."""
+
+    repo = _init_repo(
+        tmp_path / "swissknife",
+        {
+            "src/services/ipfs.ts": "export async function stat() {}\n",
+            "src/components/App.tsx": "export const App = () => <main />;\n",
+            "src/legacy.js": "module.exports = { ready: true };\n",
+            "src/service.py": "def run(x: int) -> int:\n    return x + 1\n",
+            "schemas/mcp.schema.json": '{"type":"object"}\n',
+            "docs/vfs.md": "# VFS\n\nOperators MUST inventory every path.\n",
+        },
+    )
+    result = inventory_repository_descriptor(_descriptor(repo))
+    assert result.exhaustive is True
+    assert inventory_satisfies_exhaustive_file_inventory(result) is True
+
+    bare = prove_objective_validation_repair()
+    assert bare["evidence"] == "objective validation repair"
+    assert bare["requirement_id"] == "objective validation repair"
+    assert bare["goal_id"] == "VFS-G020"
+    assert bare["task_id"] == "VFS-064"
+    assert bare["domain_task_id"] == "VFS-063"
+    assert bare["satisfied"] is True
+    assert bare["inventory_cid"] is None
+    assert bare["packet_evidence_terms"] == list(CORPUS_INDEX_G020_EVIDENCE_TERMS)
+    assert bare["parent_objective_evidence_terms"] == list(
+        parent_objective_evidence_terms()
+    )
+    assert bare["authoritative"] is False
+    assert bare["completion_authoritative"] is False
+    assert bare["conflict_domains"] == (
+        "repository_corpus_index",
+        "program_ast_adapters",
+        "incremental_persistence",
+    )
+
+    claim = prove_objective_validation_repair(result)
+    assert claim["evidence"] == "objective validation repair"
+    assert claim["satisfied"] is True
+    assert claim["exhaustive"] is True
+    assert claim["inventory_satisfied"] is True
+    assert claim["inventory_cid"] == result.inventory_cid
+    # Domain inventory claim stays free of the synthetic repair phrase.
+    domain = prove_exhaustive_file_inventory(result)
+    assert domain["evidence"] == "vfs/exhaustive-file-inventory@1"
+    assert "objective validation repair" not in domain["evidence"]
+    assert "objective validation repair" not in domain["evidence_terms"]
+    assert "objective validation repair" not in domain["packet_evidence_terms"]
+    portable = result.to_portable_dict()
+    assert "evidence" not in portable
+    assert "objective validation repair" not in str(portable)
+    # Repair metadata must not alter content-addressed inventory identity.
+    cold = inventory_repository_descriptor(_descriptor(repo))
+    assert cold.inventory_cid == result.inventory_cid
+
+    from ipfs_accelerate_py.agent_supervisor.program_ast_adapters import (
+        SourceDocument,
+        build_program_evidence_index,
+        prove_objective_validation_repair as prove_adapter_repair,
+    )
+
+    documents = (
+        SourceDocument(
+            path="src/service.py",
+            source="def run(x: int) -> int:\n    return x + 1\n",
+        ),
+        SourceDocument(
+            path="src/services/ipfs.ts",
+            source="export async function stat(): Promise<void> {}\n",
+        ),
+        SourceDocument(
+            path="src/components/App.tsx",
+            source="export const App = () => <main />;\n",
+        ),
+        SourceDocument(
+            path="src/legacy.js",
+            source="module.exports = { ready: true };\n",
+        ),
+        SourceDocument(
+            path="schemas/mcp.schema.json",
+            source='{"type":"object"}\n',
+        ),
+        SourceDocument(
+            path="docs/vfs.md",
+            source="# VFS\n\nOperators MUST inventory every path.\n",
+        ),
+    )
+    index = build_program_evidence_index(documents)
+    adapter_claim = prove_adapter_repair(index)
+    assert adapter_claim["evidence"] == "objective validation repair"
+    assert adapter_claim["task_id"] == "VFS-064"
+    assert adapter_claim["satisfied"] is True
+    assert adapter_claim["index_satisfied"] is True
+    assert adapter_claim["analysis_index_id"] == index.analysis_index.index_id
+    # AST blob identity stays free of the synthetic repair phrase.
+    for item in index.results:
+        if item.ast_record is not None:
+            assert "objective validation repair" not in item.ast_record.blob_identity
+            assert "objective validation repair" not in item.source_sha256
 
 
 def test_inventory_receipt_binds_exhaustive_file_inventory_evidence(
