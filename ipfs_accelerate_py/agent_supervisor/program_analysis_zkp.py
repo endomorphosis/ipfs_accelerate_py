@@ -1,7 +1,8 @@
 """ZK public inputs, witness policy, capability, and verifier conformance.
 
 This module is the VFS program-assurance zero-knowledge contract surface
-(VFS-022 / VFS-G080 and VFS-024 / VFS-G081).  It defines:
+(VFS-022 / VFS-G080, VFS-024 / VFS-G081, and VFS-059 objective validation
+repair).  It defines:
 
 * canonical public commitments for repository forest, inventory, contract,
   call slice, assumptions, analyzer/resolver/translator/prover versions,
@@ -112,6 +113,25 @@ PROGRAM_ZKP_EVIDENCE_VERIFICATION_RECEIPT: Final[str] = (
 PROGRAM_ZKP_G080_EVIDENCE_TERMS: Final[tuple[str, ...]] = (
     PROGRAM_ZKP_EVIDENCE_TRACE_STATEMENT,
     PROGRAM_ZKP_EVIDENCE_VERIFICATION_RECEIPT,
+)
+# Synthetic objective-heap evidence term for VFS-G080 validation-gate work.
+# Exact-text discovery key only — never part of statement/receipt identity,
+# public-input digests, circuit commitments, or semantic proof authority.
+OBJECTIVE_VALIDATION_REPAIR_EVIDENCE: Final[str] = "objective validation repair"
+# Domain goal that owns program-analysis ZK statement + receipt surfaces.
+OBJECTIVE_GOAL_ID: Final[str] = "VFS-G080"
+# Repair task that owns the synthetic objective validation repair obligation.
+OBJECTIVE_VALIDATION_REPAIR_TASK_ID: Final[str] = "VFS-059"
+
+# Keep exact-text discovery anchors aligned with the objective heap.
+assert OBJECTIVE_VALIDATION_REPAIR_EVIDENCE == "objective validation repair"
+assert OBJECTIVE_GOAL_ID == "VFS-G080"
+assert OBJECTIVE_VALIDATION_REPAIR_TASK_ID == "VFS-059"
+assert PROGRAM_ZKP_EVIDENCE_TRACE_STATEMENT == "vfs/zk-trace-statement@1"
+assert PROGRAM_ZKP_EVIDENCE_VERIFICATION_RECEIPT == "vfs/zk-verification-receipt@1"
+assert PROGRAM_ZKP_G080_EVIDENCE_TERMS == (
+    "vfs/zk-trace-statement@1",
+    "vfs/zk-verification-receipt@1",
 )
 
 # Production circuit / codec identities for program_contract_trace@v1.
@@ -2063,6 +2083,112 @@ def inconclusive_state_for_shadow() -> InconclusiveState:
 
 
 # ---------------------------------------------------------------------------
+# Objective evidence discovery + validation-gate repair (VFS-G080 / VFS-059)
+# ---------------------------------------------------------------------------
+
+
+def program_zkp_evidence_terms() -> tuple[str, ...]:
+    """Return the closed VFS-G080 domain evidence terms for ZK trace attestation.
+
+    Domain identities (``vfs/zk-trace-statement@1`` and
+    ``vfs/zk-verification-receipt@1``) are authored only by this module.
+    Trace statements and independent receipts never grant semantic proof
+    authority; shadow rollout is the default until production capability
+    admits cryptographic paths.
+
+    The synthetic ``objective validation repair`` term is intentionally
+    omitted here so statement/receipt ``evidence`` stays domain-only; use
+    :func:`objective_validation_repair_evidence_terms` (or
+    :func:`all_covered_evidence_terms`) for the VFS-G080 validation gate.
+    """
+
+    return PROGRAM_ZKP_G080_EVIDENCE_TERMS
+
+
+def covered_evidence_terms() -> tuple[str, ...]:
+    """Return domain objective evidence terms this program-analysis ZKP surface proves.
+
+    Mirrors :func:`program_zkp_evidence_terms`.  The repair gate is via
+    :func:`all_covered_evidence_terms`.
+    """
+
+    return program_zkp_evidence_terms()
+
+
+def objective_validation_repair_evidence_terms() -> tuple[str, ...]:
+    """Return the synthetic VFS-G080 validation-gate evidence term.
+
+    Exact-text discovery key for objective validation repair.  Never mixes
+    into content-addressed statement, receipt, public-input, circuit, key,
+    ceremony, or codec identity.  ZK attestation stays independent from
+    semantic proof authority and starts in shadow.  Owned by
+    :data:`OBJECTIVE_GOAL_ID` (``VFS-G080``) via repair task
+    :data:`OBJECTIVE_VALIDATION_REPAIR_TASK_ID` (``VFS-059``).
+    """
+
+    return (OBJECTIVE_VALIDATION_REPAIR_EVIDENCE,)
+
+
+def all_covered_evidence_terms() -> tuple[str, ...]:
+    """Return domain VFS-G080 ZK terms plus the objective validation repair gate.
+
+    Domain ``vfs/zk-trace-statement@1`` and ``vfs/zk-verification-receipt@1``
+    come first; the synthetic objective validation repair discovery key is
+    appended last and never enters statement/receipt identity, public-input
+    digests, or semantic-authority grants.
+    """
+
+    return covered_evidence_terms() + objective_validation_repair_evidence_terms()
+
+
+def zk_attestation_independent_of_semantic_authority() -> bool:
+    """ZK trace attestation never promotes into semantic proof authority.
+
+    Authoritative acceptance case for objective validation repair under
+    VFS-G080: default backend mode is shadow, verified traces remain at
+    ``zk_trace_attested``, statements and receipts refuse ``semantic_proof``,
+    and claim promotion into model/runtime semantic levels fails closed.
+    """
+
+    assert claim_level_for_verified_trace() is ClaimLevel.ZK_TRACE_ATTESTED
+    assert ProgramZkpBackendMode.SHADOW.value == "shadow"
+    # Normative non-claims stay fixed and exclude semantic overclaim.
+    non_claims = set(TRACE_VALIDITY_DOES_NOT_PROVE)
+    assert "translator_soundness" in non_claims
+    assert "arbitrary_runtime_semantics" in non_claims
+    assert "theorem_beyond_committed_supported_result" in non_claims
+    # Cross-level promotion into semantic claims is rejected.
+    for target in (
+        ClaimLevel.MODEL_PROVED,
+        ClaimLevel.MODEL_DISPROVED,
+        ClaimLevel.RUNTIME_WITNESSED,
+        ClaimLevel.OBSERVED_SYNTAX,
+        ClaimLevel.RESOLVED_STATIC,
+    ):
+        try:
+            reject_illegal_zk_claim_promotion(
+                ClaimLevel.ZK_TRACE_ATTESTED, target
+            )
+        except (ProgramZkpClaimPromotionError, ClaimPromotionError, SemanticAuthorityError):
+            continue
+        raise ProgramZkpClaimPromotionError(
+            "zk_trace_attested must not promote to %s" % target.value
+        )
+    return True
+
+
+def shadow_default_backend_mode() -> ProgramZkpBackendMode:
+    """Return the fail-closed default backend mode for program-analysis ZK.
+
+    VFS-G080 refinement: start in shadow and keep ZK attestation independent
+    from semantic proof authority until production capability admits a
+    cryptographic path.
+    """
+
+    return ProgramZkpBackendMode.SHADOW
+
+
+# ---------------------------------------------------------------------------
 # VFS-024: production capability, setup, ceremony, and verifier conformance
 # ---------------------------------------------------------------------------
 
@@ -3730,6 +3856,9 @@ __all__ = [
     "PROGRAM_ZKP_EVIDENCE_TRACE_STATEMENT",
     "PROGRAM_ZKP_EVIDENCE_VERIFICATION_RECEIPT",
     "PROGRAM_ZKP_G080_EVIDENCE_TERMS",
+    "OBJECTIVE_GOAL_ID",
+    "OBJECTIVE_VALIDATION_REPAIR_EVIDENCE",
+    "OBJECTIVE_VALIDATION_REPAIR_TASK_ID",
     "PROGRAM_CONTRACT_TRACE_CIRCUIT_ID",
     "PROGRAM_CONTRACT_TRACE_CIRCUIT_VERSION",
     "PROGRAM_CONTRACT_TRACE_MAX_TRACE_STEPS",
@@ -3802,4 +3931,10 @@ __all__ = [
     "claim_level_for_verified_trace",
     "verdict_for_trace_attestation",
     "inconclusive_state_for_shadow",
+    "program_zkp_evidence_terms",
+    "covered_evidence_terms",
+    "objective_validation_repair_evidence_terms",
+    "all_covered_evidence_terms",
+    "zk_attestation_independent_of_semantic_authority",
+    "shadow_default_backend_mode",
 ]

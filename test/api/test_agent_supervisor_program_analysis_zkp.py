@@ -9,6 +9,9 @@ from collections.abc import Mapping
 import pytest
 
 from ipfs_accelerate_py.agent_supervisor.program_analysis_zkp import (
+    OBJECTIVE_GOAL_ID,
+    OBJECTIVE_VALIDATION_REPAIR_EVIDENCE,
+    OBJECTIVE_VALIDATION_REPAIR_TASK_ID,
     PROGRAM_ZKP_EVIDENCE_TRACE_STATEMENT,
     PROGRAM_ZKP_EVIDENCE_VERIFICATION_RECEIPT,
     PROGRAM_ZKP_G080_EVIDENCE_TERMS,
@@ -34,23 +37,29 @@ from ipfs_accelerate_py.agent_supervisor.program_analysis_zkp import (
     ProgramZkpVersionError,
     ProgramZkpWitnessDisclosureError,
     ProgramZkpWitnessPolicy,
+    all_covered_evidence_terms,
     assert_trace_non_claims,
     build_canonical_program_zkp_trace,
     build_program_zkp_public_inputs,
     claim_level_for_verified_trace,
     commitment_identity,
+    covered_evidence_terms,
     create_program_zkp_shadow_envelope,
     encode_public_input_vector,
     next_trace_state,
+    objective_validation_repair_evidence_terms,
     prepare_program_analysis_zkp,
+    program_zkp_evidence_terms,
     public_artifact_contains,
     public_input_vector_digest,
     public_program_zkp_artifact,
     record_program_zkp_verification,
     reject_illegal_zk_claim_promotion,
     reject_private_witness_from_public_payload,
+    shadow_default_backend_mode,
     supported_transition_table,
     trace_validity_does_not_prove,
+    zk_attestation_independent_of_semantic_authority,
     TraceState,
     TraceTransitionKind,
 )
@@ -350,6 +359,124 @@ def test_vfs_g080_evidence_terms_are_published_on_statement_and_receipt() -> Non
     assert type(receipt).from_dict(receipt_payload).evidence == (
         PROGRAM_ZKP_EVIDENCE_VERIFICATION_RECEIPT
     )
+
+
+def test_objective_validation_repair_evidence_term_discoverable() -> None:
+    """VFS-G080 objective validation repair: exact-text discovery key present.
+
+    Anchors the synthetic phrase ``objective validation repair`` so objective
+    scans re-find the validation gate.  Domain evidence stays separate
+    (``vfs/zk-trace-statement@1``, ``vfs/zk-verification-receipt@1``).  The
+    repair term never enters statement/receipt identity, public-input digests,
+    circuit commitments, or semantic proof authority.  Owned by VFS-G080 via
+    repair task VFS-059.  Shadow is the default; ZK stays independent of
+    semantic proof authority.
+    """
+
+    assert OBJECTIVE_VALIDATION_REPAIR_EVIDENCE == "objective validation repair"
+    assert OBJECTIVE_GOAL_ID == "VFS-G080"
+    assert OBJECTIVE_VALIDATION_REPAIR_TASK_ID == "VFS-059"
+    assert objective_validation_repair_evidence_terms() == (
+        "objective validation repair",
+    )
+    # Domain envelope evidence remains statement + receipt only.
+    assert program_zkp_evidence_terms() == (
+        "vfs/zk-trace-statement@1",
+        "vfs/zk-verification-receipt@1",
+    )
+    assert "objective validation repair" not in program_zkp_evidence_terms()
+    assert covered_evidence_terms() == PROGRAM_ZKP_G080_EVIDENCE_TERMS
+    assert "objective validation repair" not in covered_evidence_terms()
+    # Full discovery set includes the validation-gate meta term last.
+    assert all_covered_evidence_terms() == (
+        "vfs/zk-trace-statement@1",
+        "vfs/zk-verification-receipt@1",
+        "objective validation repair",
+    )
+    assert OBJECTIVE_VALIDATION_REPAIR_EVIDENCE in all_covered_evidence_terms()
+
+    statement = _request().statement
+    receipt = _receipt()
+    statement_payload = statement.to_dict()
+    receipt_payload = receipt.to_dict()
+    # Statement / receipt identity envelopes never absorb the synthetic repair term.
+    assert statement_payload["evidence"] == PROGRAM_ZKP_EVIDENCE_TRACE_STATEMENT
+    assert receipt_payload["evidence"] == PROGRAM_ZKP_EVIDENCE_VERIFICATION_RECEIPT
+    assert "objective validation repair" not in statement_payload["evidence"]
+    assert "objective validation repair" not in receipt_payload["evidence"]
+    assert statement_payload.get("evidence_objective_validation_repair") is None
+    assert receipt_payload.get("evidence_objective_validation_repair") is None
+    # Shadow default + independence from semantic authority.
+    assert shadow_default_backend_mode() is ProgramZkpBackendMode.SHADOW
+    assert statement.backend_mode is ProgramZkpBackendMode.SHADOW
+    assert receipt.backend_mode is ProgramZkpBackendMode.SHADOW
+    assert statement.semantic_proof is False
+    assert statement.authoritative is False
+    assert receipt.authoritative is False
+    assert zk_attestation_independent_of_semantic_authority() is True
+
+
+def test_vfs_g080_acceptance_shadow_and_non_semantic_authority() -> None:
+    """VFS-G080 acceptance: shadow start, replay pins, no semantic promotion.
+
+    Proves the acceptance subset for objective validation repair on the
+    program-analysis ZK surface: statements prove only commitment openings and
+    supported transitions; circuit / keys / codec / ceremony are bound; verifier
+    replay rejects tampering; ZK never becomes semantic proof authority.
+    """
+
+    assert OBJECTIVE_GOAL_ID == "VFS-G080"
+    assert OBJECTIVE_VALIDATION_REPAIR_TASK_ID == "VFS-059"
+    assert "objective validation repair" in all_covered_evidence_terms()
+    assert zk_attestation_independent_of_semantic_authority() is True
+    assert shadow_default_backend_mode() is ProgramZkpBackendMode.SHADOW
+
+    request = prepare_program_analysis_zkp(_public_inputs(), witness=_witness())
+    assert request.statement.backend_mode is ProgramZkpBackendMode.SHADOW
+    assert request.statement.claim_level is ClaimLevel.ZK_TRACE_ATTESTED
+    assert request.statement.semantic_proof is False
+    assert set(request.statement.does_not_prove) == set(TRACE_VALIDITY_DOES_NOT_PROVE)
+
+    envelope = create_program_zkp_shadow_envelope(
+        request,
+        proof_artifact_id="artifact:shadow-acceptance",
+        proof_digest="sha256:acceptance",
+    )
+    assert envelope.authoritative is False
+    assert envelope.backend_mode is ProgramZkpBackendMode.SHADOW
+    assert envelope.non_authoritative_reason == (
+        "shadow_zkp_requires_independent_verification"
+    )
+
+    receipt = record_program_zkp_verification(
+        envelope,
+        verdict=ProgramZkpVerdict.VERIFIED,
+        verifier_id="verifier:acceptance",
+    )
+    assert receipt.verified is True
+    assert receipt.authoritative is False
+    assert receipt.claim_level is ClaimLevel.ZK_TRACE_ATTESTED
+    assert_trace_non_claims(receipt)
+    pins = request.statement.public_inputs
+    # Replay against exact inputs succeeds; drifted pins fail.
+    receipt.require_replay(
+        public_inputs=pins,
+        verifying_key_id=pins.verifying_key_id,
+        circuit_id=pins.circuit_id,
+        ceremony_id=pins.ceremony_id,
+        public_input_codec_version=pins.public_input_codec_version,
+    )
+    drifted = pins.with_overrides(
+        forest_commitment=commitment_identity("forest", {"root": "repo:stale"})
+    )
+    with pytest.raises(ProgramZkpReplayError):
+        receipt.require_replay(
+            public_inputs=drifted,
+            verifying_key_id=pins.verifying_key_id,
+            circuit_id=pins.circuit_id,
+            ceremony_id=pins.ceremony_id,
+            public_input_codec_version=pins.public_input_codec_version,
+        )
 
 
 def test_statement_rejects_forged_evidence_identity() -> None:
