@@ -28,6 +28,7 @@ from ..context.context_compiler import (
     ContextCompilationReceipt,
     ContextCompileResult,
     ContextCompiler,
+    ContextDeltaError,
     ContextDeltaResult,
     ContextExpansionCancelled,
     RequiredContextOverflowError,
@@ -24547,6 +24548,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             chunk_bytes=8_192,
             coverage_ids=diagnostic.unresolved_requirements,
         )
+        retry_context_mode = "semantic_delta"
         provider_window, configured_budget, prompt_byte_limit = (
             self._implementation_provider_context_window_for_task(task)
         )
@@ -24619,6 +24621,67 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             raise ImplementationRetryDeferred(
                 "implementation retry cancelled during compilation"
             ) from exc
+        except ContextDeltaError as exc:
+            # A base capsule can legitimately consume nearly all of the
+            # effective provider window.  Replaying a structured diagnostic
+            # as new evidence then makes the *reconstructed* context exceed
+            # that bound even though the model-facing retry is a small delta.
+            # Preserve the exact parent/diagnostic identities and retry once
+            # with a content-addressed reference only; never truncate or
+            # weaken the compiler's reconstruction checks.
+            resource_limited = any(
+                marker in str(exc).casefold()
+                for marker in (
+                    "reconstructed full context exceeds",
+                    "retry delta exceeds",
+                    "retry delta does not use fewer tokens",
+                )
+            )
+            if not resource_limited:
+                raise
+            cid_only_references = build_text_context_references(
+                canonical_json(
+                    {
+                        "diagnostic_receipt_id": diagnostic.receipt_id,
+                        "failure_content_id": diagnostic.failure_id,
+                    }
+                ),
+                reference_prefix=f"retry-failure-cid-{repair_round}",
+                kind="implementation-failure-cid",
+                repository_id=repository_id,
+                tree_id=tree_id,
+                priority=1_000,
+                chunk_bytes=512,
+                coverage_ids=diagnostic.unresolved_requirements,
+            )
+            try:
+                result = compile_retry_context(
+                    compiler,
+                    parent_capsule,
+                    prior_decision_id=prior_decision_id,
+                    diagnostic_receipt_id=diagnostic.receipt_id,
+                    evidence=(*parent_capsule.evidence, *cid_only_references),
+                    failure_evidence_ids=tuple(
+                        item.reference_id for item in cid_only_references
+                    ),
+                    changed_files=diagnostic.changed_files,
+                    changed_symbols=diagnostic.changed_symbols,
+                    unresolved_requirement_ids=diagnostic.unresolved_requirements,
+                    repair_round=repair_round,
+                    max_repair_rounds=self.implementation_max_repair_rounds,
+                    repository_id=repository_id,
+                    tree_id=tree_id,
+                    cancelled=self.implementation_cancelled,
+                )
+            except ContextExpansionCancelled as fallback_exc:
+                raise ImplementationRetryDeferred(
+                    "implementation retry cancelled during compilation"
+                ) from fallback_exc
+            except ContextDeltaError as fallback_exc:
+                raise ImplementationRetryDeferred(
+                    "implementation retry context budget exhausted"
+                ) from fallback_exc
+            retry_context_mode = "cid_only"
         except RequiredContextOverflowError as exc:
             if prompt_byte_limit is None:
                 raise
@@ -24636,6 +24699,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 "prior_decision_id": prior_decision_id,
                 "diagnostic_receipt_id": diagnostic.receipt_id,
                 "context_receipt_id": result.delta_result.receipt.receipt_id,
+                "context_mode": retry_context_mode,
             },
         )
         return result

@@ -35,6 +35,9 @@ from ipfs_accelerate_py.agent_supervisor.context.context_contracts import (
     ContextReference,
     ContextTier,
 )
+from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
+    implementation_daemon as implementation_daemon_module,
+)
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     ImplementationRetryDeferred,
     PortalImplementationDaemon,
@@ -825,6 +828,124 @@ def test_implementation_daemon_dispatches_delta_and_reuses_diagnostic(
     assert repeated.receipt_id == diagnostic.receipt_id
     with pytest.raises(ImplementationRetryDeferred, match="backoff"):
         restarted._build_implementation_prompt(task, attempt=3)
+
+
+def test_implementation_daemon_retries_context_overflow_with_cid_only_evidence(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+    subprocess.run(
+        ["git", "config", "user.email", "test@example.invalid"],
+        cwd=repo,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "Context Test"],
+        cwd=repo,
+        check=True,
+    )
+    (repo / "README.md").write_text("fixture\n", encoding="utf-8")
+    subprocess.run(["git", "add", "README.md"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-qm", "fixture"], cwd=repo, check=True)
+    state_dir = repo / "state"
+    state_dir.mkdir()
+    task = PortalTask(
+        task_id="ASI-OVERFLOW",
+        title="Retry with bounded content identities",
+        status="ready",
+        completion="manual",
+        priority="P1",
+        track="token-efficiency",
+        outputs=["src/context.py"],
+        validation=["pytest test_context.py"],
+        acceptance="Retry evidence remains content addressed.",
+    )
+
+    def daemon(state_name: str) -> PortalImplementationDaemon:
+        return PortalImplementationDaemon(
+            todo_path=repo / "todo.md",
+            state_path=state_dir / state_name,
+            strategy_path=state_dir / f"{state_name}.strategy",
+            events_path=state_dir / f"{state_name}.events",
+            repo_root=repo,
+            implementation_log_dir=state_dir / "logs",
+            implementation_context_budget=ContextBudget(
+                max_input_tokens=2_000,
+                reserved_output_tokens=100,
+                reserved_tool_tokens=20,
+                max_items=64,
+            ),
+            implementation_context_tokenizer=_tokenizer,
+            implementation_provider_context_window=2_200,
+        )
+
+    original = daemon("base.json")
+    original._build_implementation_prompt(task, attempt=1)
+    original._persist_implementation_context_receipt(task, attempt=1)
+    diagnostic = original.record_implementation_failure_context(
+        task,
+        {
+            "kind": "validation_failure",
+            "reason_codes": ["large-private-diagnostic-body"],
+            "detail": "not selected by normalization",
+        },
+        changed_files=("src/context.py",),
+        unresolved_requirements=("requirement:test",),
+    )
+
+    real_compile_retry = implementation_daemon_module.compile_retry_context
+    evidence_calls: list[tuple[ContextReference, ...]] = []
+
+    def overflow_then_compile(*args, **kwargs):
+        evidence_calls.append(tuple(kwargs["evidence"]))
+        if len(evidence_calls) == 1:
+            raise ContextDeltaError(
+                "reconstructed full context exceeds the effective input budget"
+            )
+        return real_compile_retry(*args, **kwargs)
+
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "compile_retry_context",
+        overflow_then_compile,
+    )
+    restarted = daemon("restarted.json")
+    wire = json.loads(restarted._build_implementation_prompt(task, attempt=2))
+
+    assert len(evidence_calls) == 2
+    full_failure = evidence_calls[0][-1].summary
+    cid_only = evidence_calls[1][-1].summary
+    assert "large-private-diagnostic-body" in full_failure
+    assert diagnostic.receipt_id in cid_only
+    assert "failure_content_id" in cid_only
+    assert "large-private-diagnostic-body" not in cid_only
+    assert len(cid_only.encode("utf-8")) <= 512
+    assert wire["diagnostic_receipt_id"] == diagnostic.receipt_id
+    assert wire["delta_capsule"]["evidence"][0]["kind"] == (
+        "implementation-failure-cid"
+    )
+
+    def always_overflow(*args, **kwargs):
+        raise ContextDeltaError(
+            "reconstructed full context exceeds the effective input budget"
+        )
+
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "compile_retry_context",
+        always_overflow,
+    )
+    with pytest.raises(
+        ImplementationRetryDeferred,
+        match="retry context budget exhausted",
+    ):
+        daemon("budget-blocked.json")._build_implementation_prompt(
+            task,
+            attempt=2,
+        )
 
 
 def test_delta_result_exposes_exact_invariant_core_preservation() -> None:
