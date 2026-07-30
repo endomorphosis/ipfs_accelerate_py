@@ -29,9 +29,42 @@ VFS_CONTRACT_PACK_SCHEMA: Final[str] = (
 VFS_CANONICAL_OPERATION_MATRIX_SCHEMA: Final[str] = (
     "vfs/canonical-operation-matrix@1"
 )
+VFS_DIFFERENTIAL_CONTRACT_WITNESS_SCHEMA: Final[str] = (
+    "vfs/differential-contract-witness@1"
+)
+VFS_CANONICAL_OPERATION_MATRIX_CLAIM_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "vfs-canonical-operation-matrix-claim@1"
+)
 VFS_DRIFT_INVENTORY_SCHEMA: Final[str] = "vfs/drift-inventory@1"
 VFS_CONTRACT_PACK_VERSION: Final[str] = "vfs-contract-pack/v1"
 VFS_CONTRACT_PACK_GOAL_ID: Final[str] = "VFS-026"
+VFS_CANONICAL_OPERATION_MATRIX_GOAL_ID: Final[str] = "VFS-G158"
+VFS_CANONICAL_OPERATION_MATRIX_TASK_ID: Final[str] = "VFS-073"
+VFS_CANONICAL_OPERATION_MATRIX_PARENT_GOAL_ID: Final[str] = "VFS-G090"
+VFS_CANONICAL_OPERATION_MATRIX_OBJECTIVE_REVISION: Final[str] = (
+    "baguqeeramjx4cofpxl4tvz57mno5f3hx6nfxkwp65ydb7il6vjw5hirigdaa"
+)
+VFS_CANONICAL_OPERATION_MATRIX_GOAL_PACKET_ID: Final[str] = (
+    "goal_packet/vfs_drift/ipfs_accelerate_py/1ad8c79bee6a"
+)
+VFS_CANONICAL_OPERATION_MATRIX_PACKET_GOAL_IDS: Final[tuple[str, ...]] = (
+    "VFS-G091",
+    VFS_CANONICAL_OPERATION_MATRIX_GOAL_ID,
+)
+VFS_CANONICAL_OPERATION_MATRIX_PACKET_TASK_IDS: Final[tuple[str, ...]] = (
+    "VFS-077",
+    VFS_CANONICAL_OPERATION_MATRIX_TASK_ID,
+)
+VFS_CANONICAL_OPERATION_MATRIX_EVIDENCE_TERMS: Final[tuple[str, ...]] = (
+    VFS_CANONICAL_OPERATION_MATRIX_SCHEMA,
+)
+VFS_CANONICAL_OPERATION_MATRIX_PACKET_EVIDENCE_TERMS: Final[
+    tuple[str, ...]
+] = (
+    VFS_DIFFERENTIAL_CONTRACT_WITNESS_SCHEMA,
+    VFS_CANONICAL_OPERATION_MATRIX_SCHEMA,
+)
 VFS_DRIFT_INVENTORY_GOAL_ID: Final[str] = "VFS-G090"
 VFS_DRIFT_INVENTORY_TASK_ID: Final[str] = "VFS-045"
 VFS_DRIFT_INVENTORY_OBJECTIVE_REVISION: Final[str] = (
@@ -50,6 +83,29 @@ DRIFT_INVENTORY_IS_COMPLETION_EVIDENCE: Final[bool] = False
 DRIFT_INVENTORY_IS_CORRECTNESS_EVIDENCE: Final[bool] = False
 DRIFT_INVENTORY_AUTHORIZES_REPAIR: Final[bool] = False
 DRIFT_INVENTORY_VARIANT_PRESENCE_IS_DEFECT: Final[bool] = False
+
+# Exact-text discovery anchors bind the implementation surface to the
+# supervisor-fed objective heap without changing contract-pack content identity.
+assert VFS_CANONICAL_OPERATION_MATRIX_SCHEMA == "vfs/canonical-operation-matrix@1"
+assert (
+    VFS_DIFFERENTIAL_CONTRACT_WITNESS_SCHEMA
+    == "vfs/differential-contract-witness@1"
+)
+assert VFS_CANONICAL_OPERATION_MATRIX_GOAL_ID == "VFS-G158"
+assert VFS_CANONICAL_OPERATION_MATRIX_TASK_ID == "VFS-073"
+assert VFS_CANONICAL_OPERATION_MATRIX_PARENT_GOAL_ID == "VFS-G090"
+assert VFS_CANONICAL_OPERATION_MATRIX_PACKET_GOAL_IDS == (
+    "VFS-G091",
+    "VFS-G158",
+)
+assert VFS_CANONICAL_OPERATION_MATRIX_PACKET_TASK_IDS == ("VFS-077", "VFS-073")
+assert VFS_CANONICAL_OPERATION_MATRIX_EVIDENCE_TERMS == (
+    "vfs/canonical-operation-matrix@1",
+)
+assert VFS_CANONICAL_OPERATION_MATRIX_PACKET_EVIDENCE_TERMS == (
+    "vfs/differential-contract-witness@1",
+    "vfs/canonical-operation-matrix@1",
+)
 
 
 class VfsContractPackError(ValueError):
@@ -100,6 +156,11 @@ class VfsInvariantKind(str, Enum):
     AUTHORIZATION = "authorization"
     RESOURCE = "resource"
     DEGRADATION = "degradation"
+
+
+VFS_CANONICAL_OPERATION_MATRIX_REQUIRED_INVARIANTS: Final[
+    tuple[VfsInvariantKind, ...]
+] = tuple(VfsInvariantKind)
 
 
 class PublicSurface(str, Enum):
@@ -2464,6 +2525,246 @@ def canonical_vfs_drift_inventory() -> VfsDriftInventory:
     return build_vfs_drift_inventory()
 
 
+def canonical_operation_matrix_evidence() -> str:
+    """Return the closed VFS-G158 canonical-operation-matrix evidence term."""
+
+    return VFS_CANONICAL_OPERATION_MATRIX_SCHEMA
+
+
+def canonical_operation_matrix_evidence_terms() -> tuple[str, ...]:
+    """Return only the domain evidence authored by this contract-pack module.
+
+    The sibling differential runtime witness remains owned by VFS-G091 and is
+    exposed separately through :func:`packet_evidence_terms`.  Keeping those
+    surfaces distinct prevents a structural matrix claim from being mistaken
+    for runtime conformance evidence.
+    """
+
+    return VFS_CANONICAL_OPERATION_MATRIX_EVIDENCE_TERMS
+
+
+def covered_evidence_terms() -> tuple[str, ...]:
+    """Return the VFS-G158 objective evidence proved by this module."""
+
+    return canonical_operation_matrix_evidence_terms()
+
+
+def packet_evidence_terms() -> tuple[str, ...]:
+    """Return the shared VFS-G091/VFS-G158 goal-packet evidence vocabulary.
+
+    The ordered pair aligns the packet with the objective heap: differential
+    runtime evidence first, then its canonical operation-matrix dependency.
+    This is discovery metadata only and never enters contract-pack identity.
+    """
+
+    return VFS_CANONICAL_OPERATION_MATRIX_PACKET_EVIDENCE_TERMS
+
+
+def all_covered_evidence_terms() -> tuple[str, ...]:
+    """Return packet-wide domain terms for cross-module discovery scanners."""
+
+    return packet_evidence_terms()
+
+
+def assert_vfs_canonical_operation_matrix_complete(
+    pack: VfsContractPack,
+    inventory: VfsDriftInventory | None = None,
+) -> None:
+    """Fail closed unless *pack* proves the complete VFS-G158 matrix.
+
+    This strengthens the generic pack checks with the objective-specific
+    requirements: every canonical operation and semantic dimension is a
+    reviewed resolved expectation, every public surface makes an explicit
+    resolved support decision, and the revision-bound inventory backs
+    duplicate, variant, and manifest findings without selecting a defect or
+    repair.  Explicit unresolved capability issues remain visible.
+    """
+
+    if not isinstance(pack, VfsContractPack):
+        raise TypeError("pack must be a VfsContractPack")
+    pack.__post_init__()
+
+    unresolved_operations = sorted(
+        item.operation.value
+        for item in pack.operations
+        if item.state is not ExpectationState.RESOLVED
+    )
+    if unresolved_operations:
+        raise VfsContractPackError(
+            "canonical operation matrix has unresolved operations: "
+            f"{unresolved_operations}"
+        )
+
+    unresolved_invariants = sorted(
+        item.kind.value
+        for item in pack.invariants
+        if item.kind in VFS_CANONICAL_OPERATION_MATRIX_REQUIRED_INVARIANTS
+        and item.state is not ExpectationState.RESOLVED
+    )
+    if unresolved_invariants:
+        raise VfsContractPackError(
+            "canonical operation matrix has unresolved semantic dimensions: "
+            f"{unresolved_invariants}"
+        )
+
+    unresolved_surface_bindings = sorted(
+        f"{surface.surface.value}:{binding.operation.value}"
+        for surface in pack.surfaces
+        for binding in surface.operations
+        if not binding.support.is_resolved
+    )
+    if unresolved_surface_bindings:
+        raise VfsContractPackError(
+            "canonical operation matrix has unresolved surface bindings: "
+            f"{unresolved_surface_bindings}"
+        )
+
+    selected_inventory = inventory or build_vfs_drift_inventory(pack)
+    if not isinstance(selected_inventory, VfsDriftInventory):
+        raise TypeError("inventory must be a VfsDriftInventory")
+    assert_vfs_drift_inventory_complete(selected_inventory, pack)
+
+    if selected_inventory.repair_decisions:
+        raise VfsContractPackError(
+            "canonical operation evidence cannot contain repair decisions"
+        )
+    if any(
+        finding.defect_label is not None or finding.repair_decision is not None
+        for finding in selected_inventory.findings
+    ):
+        raise VfsContractPackError(
+            "inventory findings cannot be promoted to defect or repair decisions"
+        )
+    variants = tuple(
+        finding
+        for finding in selected_inventory.findings
+        if finding.kind is DriftFindingKind.VARIANT_PRESENCE
+    )
+    if not variants or any(
+        not finding.variant_presence_only
+        or finding.assessment is not DriftAssessment.OBSERVED
+        for finding in variants
+    ):
+        raise VfsContractPackError(
+            "variant presence must remain evidence-backed observation only"
+        )
+
+
+def vfs_canonical_operation_matrix_satisfies_objective(
+    pack: VfsContractPack,
+    inventory: VfsDriftInventory | None = None,
+) -> bool:
+    """Return whether the matrix and drift mapping satisfy VFS-G158."""
+
+    try:
+        assert_vfs_canonical_operation_matrix_complete(pack, inventory)
+    except (AttributeError, KeyError, TypeError, VfsContractPackError):
+        return False
+    return True
+
+
+def prove_vfs_canonical_operation_matrix(
+    pack: VfsContractPack | None = None,
+    inventory: VfsDriftInventory | None = None,
+) -> dict[str, Any]:
+    """Emit a deterministic, portable VFS-G158 structural evidence claim.
+
+    The claim binds the matrix to the exact contract-pack and drift-inventory
+    content IDs.  Its ``satisfied`` flag is structural evidence only: authority
+    remains false and the VFS-G091 runtime witness is explicitly left to the
+    hermetic differential harness.
+    """
+
+    selected_pack = pack or build_vfs_contract_pack()
+    if not isinstance(selected_pack, VfsContractPack):
+        raise TypeError("pack must be a VfsContractPack")
+    selected_inventory = inventory or build_vfs_drift_inventory(selected_pack)
+    if not isinstance(selected_inventory, VfsDriftInventory):
+        raise TypeError("inventory must be a VfsDriftInventory")
+
+    satisfied = vfs_canonical_operation_matrix_satisfies_objective(
+        selected_pack, selected_inventory
+    )
+    finding_kinds = tuple(
+        sorted({item.kind.value for item in selected_inventory.findings})
+    )
+    drift_surface_kinds = tuple(
+        item.value
+        for item in DriftSurfaceKind
+        if any(
+            item in finding.surface_kinds
+            for finding in selected_inventory.findings
+        )
+    )
+    record: dict[str, Any] = {
+        "schema": VFS_CANONICAL_OPERATION_MATRIX_CLAIM_SCHEMA,
+        "evidence": VFS_CANONICAL_OPERATION_MATRIX_SCHEMA,
+        "evidence_terms": list(canonical_operation_matrix_evidence_terms()),
+        "requirement_id": VFS_CANONICAL_OPERATION_MATRIX_SCHEMA,
+        "goal_id": VFS_CANONICAL_OPERATION_MATRIX_GOAL_ID,
+        "parent_goal_id": VFS_CANONICAL_OPERATION_MATRIX_PARENT_GOAL_ID,
+        "task_id": VFS_CANONICAL_OPERATION_MATRIX_TASK_ID,
+        "objective_revision": (
+            VFS_CANONICAL_OPERATION_MATRIX_OBJECTIVE_REVISION
+        ),
+        "goal_packet_id": VFS_CANONICAL_OPERATION_MATRIX_GOAL_PACKET_ID,
+        "packet_goal_ids": list(
+            VFS_CANONICAL_OPERATION_MATRIX_PACKET_GOAL_IDS
+        ),
+        "packet_task_ids": list(
+            VFS_CANONICAL_OPERATION_MATRIX_PACKET_TASK_IDS
+        ),
+        "packet_evidence_terms": list(packet_evidence_terms()),
+        "bindings": {
+            "contract_pack_content_id": selected_pack.content_id,
+            "drift_inventory_content_id": selected_inventory.content_id,
+            "contract_version": selected_pack.contract_version,
+        },
+        "coverage": {
+            "operations": _enum_values(tuple(VfsOperation)),
+            "operation_count": len(selected_pack.operations),
+            "public_surfaces": _enum_values(tuple(PublicSurface)),
+            "public_surface_count": len(selected_pack.surfaces),
+            "required_invariant_kinds": _enum_values(
+                VFS_CANONICAL_OPERATION_MATRIX_REQUIRED_INVARIANTS
+            ),
+            "resolved_invariant_kinds": _enum_values(
+                tuple(
+                    item.kind
+                    for item in selected_pack.invariants
+                    if item.state is ExpectationState.RESOLVED
+                )
+            ),
+            "execution_modes": _enum_values(tuple(ExecutionMode)),
+            "drift_surface_kinds": list(drift_surface_kinds),
+            "drift_finding_kinds": list(finding_kinds),
+            "unresolved_issue_ids": [
+                item.issue_id for item in selected_pack.unresolved_expectations
+            ],
+            "variant_presence_is_defect": False,
+            "repair_decision_count": len(selected_inventory.repair_decisions),
+            "matrix_complete": satisfied,
+        },
+        "sibling_evidence_requirements": [
+            {
+                "evidence": VFS_DIFFERENTIAL_CONTRACT_WITNESS_SCHEMA,
+                "goal_id": "VFS-G091",
+                "task_id": "VFS-077",
+                "status": "external_runtime_witness_required",
+            }
+        ],
+        "satisfied": satisfied,
+        "claim_level": "structural_contract",
+        "claims_runtime_conformance": False,
+        "authoritative": False,
+        "completion_authoritative": False,
+        "semantic_authority": False,
+        "authorizes_repair": False,
+    }
+    record["content_id"] = _content_id(record)
+    return record
+
+
 def assert_vfs_contract_pack_complete(pack: VfsContractPack) -> None:
     """Re-run the fail-closed construction checks for an existing pack."""
 
@@ -2539,10 +2840,22 @@ __all__ = [
     "DRIFT_INVENTORY_IS_CORRECTNESS_EVIDENCE",
     "DRIFT_INVENTORY_VARIANT_PRESENCE_IS_DEFECT",
     "SOURCE_PRECEDENCE",
+    "VFS_CANONICAL_OPERATION_MATRIX_CLAIM_SCHEMA",
+    "VFS_CANONICAL_OPERATION_MATRIX_EVIDENCE_TERMS",
+    "VFS_CANONICAL_OPERATION_MATRIX_GOAL_ID",
+    "VFS_CANONICAL_OPERATION_MATRIX_GOAL_PACKET_ID",
+    "VFS_CANONICAL_OPERATION_MATRIX_OBJECTIVE_REVISION",
+    "VFS_CANONICAL_OPERATION_MATRIX_PACKET_EVIDENCE_TERMS",
+    "VFS_CANONICAL_OPERATION_MATRIX_PACKET_GOAL_IDS",
+    "VFS_CANONICAL_OPERATION_MATRIX_PACKET_TASK_IDS",
+    "VFS_CANONICAL_OPERATION_MATRIX_PARENT_GOAL_ID",
+    "VFS_CANONICAL_OPERATION_MATRIX_REQUIRED_INVARIANTS",
     "VFS_CANONICAL_OPERATION_MATRIX_SCHEMA",
+    "VFS_CANONICAL_OPERATION_MATRIX_TASK_ID",
     "VFS_CONTRACT_PACK_GOAL_ID",
     "VFS_CONTRACT_PACK_SCHEMA",
     "VFS_CONTRACT_PACK_VERSION",
+    "VFS_DIFFERENTIAL_CONTRACT_WITNESS_SCHEMA",
     "VFS_DRIFT_INVENTORY_GOAL_ID",
     "VFS_DRIFT_INVENTORY_OBJECTIVE_REVISION",
     "VFS_DRIFT_INVENTORY_SCHEMA",
@@ -2576,12 +2889,20 @@ __all__ = [
     "VfsErrorCode",
     "VfsInvariantKind",
     "VfsOperation",
+    "all_covered_evidence_terms",
+    "assert_vfs_canonical_operation_matrix_complete",
     "assert_vfs_contract_pack_complete",
     "assert_vfs_drift_inventory_complete",
     "build_vfs_contract_pack",
     "build_vfs_drift_inventory",
+    "canonical_operation_matrix_evidence",
+    "canonical_operation_matrix_evidence_terms",
     "canonical_vfs_contract_pack",
     "canonical_vfs_drift_inventory",
+    "covered_evidence_terms",
+    "packet_evidence_terms",
+    "prove_vfs_canonical_operation_matrix",
     "publish_vfs_contract_pack",
     "publish_vfs_drift_inventory",
+    "vfs_canonical_operation_matrix_satisfies_objective",
 ]
