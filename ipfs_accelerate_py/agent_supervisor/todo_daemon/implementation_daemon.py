@@ -5115,6 +5115,11 @@ class PortalImplementationDaemon:
         """Block for semantic input, using ``timeout`` as the safety deadline."""
 
         coordinator = self._ensure_runtime_wake_coordinator()
+        # A completed pass can write daemon-owned state beneath watched
+        # repository and policy roots.  Establish that durable post-pass
+        # state as the new file cursor before consuming native notifications,
+        # otherwise the daemon can repeatedly wake itself at idle.
+        coordinator.synchronize_file_cursors()
         event = coordinator.wait(timeout=timeout)
         events = [event]
         self._pending_runtime_wake_events.extend(events)
