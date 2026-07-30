@@ -726,7 +726,7 @@ consumer or frontier is unresolved.
 
 ## RPR-022 Define bounded change-propagation records
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
