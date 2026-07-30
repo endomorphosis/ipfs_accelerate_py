@@ -18,9 +18,13 @@ import pytest
 from ipfs_accelerate_py.agent_supervisor.program_analysis_zkp import (
     BN254_SCALAR_FIELD_MODULUS,
     FIELD_ENCODING_BN254_SHA256,
+    OBJECTIVE_GOAL_G081_ID,
+    OBJECTIVE_TASK_G081_ID,
     PROGRAM_CONTRACT_TRACE_CIRCUIT_ID,
     PROGRAM_CONTRACT_TRACE_CIRCUIT_VERSION,
+    PROGRAM_ZKP_CAPABILITY_CONFORMANCE_CLAIM_SCHEMA,
     PROGRAM_ZKP_EVIDENCE_CAPABILITY_CONFORMANCE,
+    PROGRAM_ZKP_G081_EVIDENCE_TERMS,
     PROGRAM_ZKP_PROOF_SCHEMA_ID,
     PUBLIC_INPUT_CODEC_ID,
     PUBLIC_INPUT_CODEC_VERSION,
@@ -38,8 +42,10 @@ from ipfs_accelerate_py.agent_supervisor.program_analysis_zkp import (
     ProgramZkpTamperError,
     ProgramZkpTrust,
     ProgramZkpVerdict,
+    all_program_zkp_evidence_terms,
     build_production_ready_capability_fixture,
     build_program_zkp_public_inputs,
+    capability_conformance_evidence_terms,
     classify_circuit_family,
     commitment_identity,
     create_program_zkp_shadow_envelope,
@@ -50,6 +56,7 @@ from ipfs_accelerate_py.agent_supervisor.program_analysis_zkp import (
     prepare_program_analysis_zkp,
     probe_program_analysis_zkp_capability,
     proof_bytes_are_simulated,
+    prove_zk_capability_conformance,
     record_production_program_zkp_verification,
     record_program_zkp_verification,
     reject_illegal_zk_claim_promotion,
@@ -716,3 +723,174 @@ def test_forged_authoritative_flag_on_shadow_receipt_is_rejected() -> None:
     forged["authoritative"] = True
     with pytest.raises(ProgramZkpTamperError, match="cannot assert authority"):
         type(receipt).from_dict(forged)
+
+
+# ---------------------------------------------------------------------------
+# VFS-G081: capability conformance evidence + proof-system non-substitution
+# ---------------------------------------------------------------------------
+
+
+def test_vfs_g081_capability_conformance_evidence_discoverable() -> None:
+    """Cover vfs/zk-capability-conformance@1 for objective goal VFS-G081.
+
+    Exact-text discovery anchors keep the supervisor backlog aligned with the
+    objective heap.  Capability reports and prove-claims publish the domain
+    evidence term; simulated or placeholder paths never acquire authority.
+    """
+
+    assert PROGRAM_ZKP_EVIDENCE_CAPABILITY_CONFORMANCE == (
+        "vfs/zk-capability-conformance@1"
+    )
+    assert PROGRAM_ZKP_G081_EVIDENCE_TERMS == ("vfs/zk-capability-conformance@1",)
+    assert capability_conformance_evidence_terms() == (
+        "vfs/zk-capability-conformance@1",
+    )
+    assert OBJECTIVE_GOAL_G081_ID == "VFS-G081"
+    assert OBJECTIVE_TASK_G081_ID == "VFS-076"
+    assert "vfs/zk-capability-conformance@1" in all_program_zkp_evidence_terms()
+
+    shadow = probe_program_analysis_zkp_capability()
+    production = build_production_ready_capability_fixture()
+    for report in (shadow, production):
+        assert report.to_dict()["evidence"] == "vfs/zk-capability-conformance@1"
+        claim = prove_zk_capability_conformance(report)
+        assert claim["schema"] == PROGRAM_ZKP_CAPABILITY_CONFORMANCE_CLAIM_SCHEMA
+        assert claim["evidence"] == "vfs/zk-capability-conformance@1"
+        assert claim["requirement_id"] == "vfs/zk-capability-conformance@1"
+        assert claim["goal_id"] == "VFS-G081"
+        assert claim["task_id"] == "VFS-076"
+        assert claim["authoritative"] is False
+        assert claim["completion_authoritative"] is False
+        assert claim["satisfied"] is True
+        assert claim["acceptance_dimensions"]["simulated_backends_blocked"] is True
+        assert claim["acceptance_dimensions"]["placeholder_encodings_blocked"] is True
+        assert claim["acceptance_dimensions"]["no_proof_system_substitution"] is True
+        # Round-trip via public artifact retains the evidence identity.
+        public = report.to_public_artifact()
+        assert public["evidence"] == PROGRAM_ZKP_EVIDENCE_CAPABILITY_CONFORMANCE
+        restored = ProgramZkpCapabilityConformanceReport.from_dict(public)
+        assert restored.capability_epoch == report.capability_epoch
+
+    assert shadow.production_eligible is False
+    assert production.production_eligible is True
+    shadow_claim = prove_zk_capability_conformance(shadow)
+    production_claim = prove_zk_capability_conformance(production)
+    assert shadow_claim["shadow_only"] is True
+    assert production_claim["production_eligible"] is True
+    assert production_claim["rollout_mode"] == ProgramZkpRolloutMode.ENFORCEMENT.value
+
+
+def test_proof_system_substitution_fails_closed() -> None:
+    """Do not silently substitute one proof system for another (VFS-G081).
+
+    A production-eligible capability for program_contract_trace must not
+    authorize an envelope pinned to a different circuit family/id, and a
+    capability that admits an incompatible family cannot mint authority.
+    """
+
+    capability = build_production_ready_capability_fixture()
+    # Envelope claims a TDFOL circuit while the capability admits program_contract_trace.
+    foreign = _crypto_envelope(circuit_id="circuit:tdfol-theorem@1")
+    assert foreign.statement.public_inputs.circuit_id == "circuit:tdfol-theorem@1"
+    with pytest.raises(ProgramZkpAuthorityError, match="proof system substitution"):
+        verify_program_zkp_independently(
+            foreign,
+            capability=capability,
+            verifier_id="verifier:independent@1",
+            proof_bytes=b"ok-proof",
+            verifying_key_material=b"vk-fixture-material-v1",
+            cryptographic_verify=_honest_crypto_verify,
+        )
+
+    # Capability itself for an incompatible family is never production-eligible.
+    tdfol_cap = probe_program_analysis_zkp_capability(
+        backend_mode=ProgramZkpBackendMode.CRYPTOGRAPHIC,
+        circuit_id="circuit:tdfol-theorem@1",
+        circuit_family=ProgramZkpCircuitFamily.TDFOL_ONLY,
+        proving_key_id="pk:tdfol@1",
+        verifying_key_id="vk:tdfol@1",
+        ceremony_id="ceremony:tdfol@1",
+        ceremony_production_eligible=True,
+        independent_verifier_available=True,
+    )
+    assert tdfol_cap.production_eligible is False
+    assert (
+        ProgramZkpAuthorityDenialReason.INCOMPATIBLE_TDFOL_ONLY_CIRCUIT.value
+        in tdfol_cap.denial_reasons
+    )
+    # Even when the envelope matches the (ineligible) capability circuit, no
+    # authoritative receipt may be minted — and verification fails closed on
+    # family substitution against the only production-admitted system.
+    matching_tdfol = _crypto_envelope(circuit_id="circuit:tdfol-theorem@1")
+    with pytest.raises(ProgramZkpAuthorityError, match="proof system substitution"):
+        verify_program_zkp_independently(
+            matching_tdfol,
+            capability=tdfol_cap,
+            verifier_id="verifier:independent@1",
+            proof_bytes=b"ok-proof",
+            verifying_key_material=b"vk-fixture-material-v1",
+            cryptographic_verify=_honest_crypto_verify,
+        )
+
+    # Honest production path still works under exact circuit binding.
+    honest = _crypto_envelope()
+    receipt = verify_program_zkp_independently(
+        honest,
+        capability=capability,
+        verifier_id="verifier:independent@1",
+        proof_bytes=b"ok-proof",
+        verifying_key_material=b"vk-fixture-material-v1",
+        cryptographic_verify=_honest_crypto_verify,
+    )
+    assert receipt.authoritative is True
+    assert receipt.circuit_id == PROGRAM_CONTRACT_TRACE_CIRCUIT_ID
+    assert grants_production_authority(receipt, capability) is True
+
+
+def test_simulated_proof_under_cryptographic_path_fails_closed() -> None:
+    """Simulated SIMZKP layouts never acquire authority on a crypto path."""
+
+    capability = build_production_ready_capability_fixture()
+    envelope = _crypto_envelope()
+    sim_proof = b"SIMZKP\x00\x01" + (b"\x00" * 152)
+    assert proof_bytes_are_simulated(sim_proof) is True
+    with pytest.raises(ProgramZkpAuthorityError, match="simulated proof"):
+        verify_program_zkp_independently(
+            envelope,
+            capability=capability,
+            verifier_id="verifier:independent@1",
+            proof_bytes=sim_proof,
+            verifying_key_material=b"vk-fixture-material-v1",
+            cryptographic_verify=lambda p, k, f: True,
+        )
+    with pytest.raises(ProgramZkpAuthorityError):
+        record_production_program_zkp_verification(
+            envelope,
+            capability=capability,
+            verifier_id="verifier:independent@1",
+            proof_bytes=sim_proof,
+            verifying_key_material=b"vk-fixture-material-v1",
+            cryptographic_verify=lambda p, k, f: True,
+        )
+
+
+def test_forged_capability_conformance_identity_is_rejected() -> None:
+    """Adversarial forgery of capability report content_id fails closed."""
+
+    report = build_production_ready_capability_fixture()
+    payload = report.to_public_artifact()
+    assert payload["evidence"] == "vfs/zk-capability-conformance@1"
+    payload["content_id"] = "baguqeer-forged-capability-epoch"
+    with pytest.raises(ProgramZkpTamperError, match="forged capability"):
+        ProgramZkpCapabilityConformanceReport.from_dict(payload)
+    # Flipping production_eligible without recomputing identity also fails.
+    payload = report.to_public_artifact()
+    payload["production_eligible"] = not report.production_eligible
+    restored = ProgramZkpCapabilityConformanceReport.from_dict(
+        {k: v for k, v in payload.items() if k not in {"content_id", "capability_epoch"}}
+    )
+    # Production eligibility is derived, not caller-asserted.
+    assert restored.production_eligible == report.production_eligible
+    claim = prove_zk_capability_conformance(restored)
+    assert claim["evidence"] == "vfs/zk-capability-conformance@1"
+    assert claim["satisfied"] is True
