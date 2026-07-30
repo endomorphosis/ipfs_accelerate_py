@@ -1152,6 +1152,42 @@ def test_exact_never_expose_sentinel_is_not_treated_as_a_secret() -> None:
     assert ProposalFindingCode.SECRET_CHANGE_FORBIDDEN not in _finding_codes(result)
 
 
+def test_exact_secret_material_classification_is_not_treated_as_a_secret() -> None:
+    result = validate_implementation_proposal(
+        _proposal(
+            _entry(
+                before="VALUE = 1\n",
+                after=(
+                    'VALUE = 2\n'
+                    'FIELD_CLASSIFICATIONS = {"api_key": "secret_material"}\n'
+                ),
+            )
+        ),
+        policy=_policy(),
+    )
+
+    assert result.accepted
+    assert ProposalFindingCode.SECRET_CHANGE_FORBIDDEN not in _finding_codes(result)
+
+
+def test_secret_material_words_inside_concrete_secret_remain_rejected() -> None:
+    result = validate_implementation_proposal(
+        _proposal(
+            _entry(
+                before="VALUE = 1\n",
+                after=(
+                    'VALUE = 2\n'
+                    'api_key = "prod-secret-material-token"\n'
+                ),
+            )
+        ),
+        policy=_policy(),
+    )
+
+    assert not result.accepted
+    assert ProposalFindingCode.SECRET_CHANGE_FORBIDDEN in _finding_codes(result)
+
+
 def test_never_expose_words_inside_concrete_secret_remain_rejected() -> None:
     result = validate_implementation_proposal(
         _proposal(
