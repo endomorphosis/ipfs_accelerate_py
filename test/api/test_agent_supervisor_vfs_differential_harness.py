@@ -2,15 +2,23 @@ import asyncio
 import json
 import socket
 import unicodedata
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
 from ipfs_accelerate_py.agent_supervisor.vfs_contract_pack import (
+    VFS_CANONICAL_OPERATION_MATRIX_SCHEMA,
     VfsInvariantKind,
     VfsOperation,
 )
 from ipfs_accelerate_py.agent_supervisor.vfs_differential_harness import (
+    REQUIRED_PUBLIC_SURFACES,
+    VFS_DIFFERENTIAL_EVIDENCE_KINDS,
+    VFS_DIFFERENTIAL_GOAL_ID,
+    VFS_DIFFERENTIAL_OBJECTIVE_REVISION,
+    VFS_DIFFERENTIAL_PACKET_GOAL_IDS,
+    VFS_DIFFERENTIAL_TASK_ID,
     VFS_DIFFERENTIAL_WITNESS_SCHEMA,
     CallableSurfaceAdapter,
     CanonicalOperationTrace,
@@ -20,6 +28,7 @@ from ipfs_accelerate_py.agent_supervisor.vfs_differential_harness import (
     HermeticNetworkError,
     NormalizationRule,
     ObservationStatus,
+    PublicSurfaceKind,
     SurfaceAvailability,
     SurfaceFamily,
     SurfaceRunContext,
@@ -41,13 +50,14 @@ def _adapter(
     family=SurfaceFamily.VFS,
     availability=SurfaceAvailability.REAL,
     packages=(),
+    public_surface=PublicSurfaceKind.PYTHON,
 ):
     return CallableSurfaceAdapter(
         surface_id=surface_id,
         family=family,
         executor=executor,
         implementation=f"tests.{surface_id}",
-        public_surface="python",
+        public_surface=public_surface,
         availability=availability,
         package_names=packages,
     )
@@ -64,6 +74,7 @@ def test_canonical_trace_is_finite_deterministic_and_selectable():
     assert first == second
     assert first.content_id == second.content_id
     assert len(first.steps) == 12
+    assert first.operation_matrix_schema == VFS_CANONICAL_OPERATION_MATRIX_SCHEMA
     assert len({step.vector_id for step in first.steps}) == len(first.steps)
     assert first.to_record() == second.to_record()
 
@@ -86,6 +97,96 @@ def test_canonical_trace_is_finite_deterministic_and_selectable():
                 "vector:stat:cid-size",
             )
         )
+
+
+def test_packet_evidence_covers_every_public_surface_with_exact_cid_bindings(
+    tmp_path,
+):
+    def compatible_transport(public_surface):
+        def execute(step, _context):
+            if public_surface is PublicSurfaceKind.PYTHON:
+                return step.expected
+            if public_surface in {
+                PublicSurfaceKind.CLI,
+                PublicSurfaceKind.LIBP2P,
+            }:
+                return {"success": True, "data": step.expected}
+            if public_surface in {
+                PublicSurfaceKind.MCP,
+                PublicSurfaceKind.MCP_PLUS_PLUS,
+            }:
+                return {"ok": True, "result": step.expected}
+            if public_surface is PublicSurfaceKind.HTTP:
+                return {"status": 200, "body": step.expected}
+            return step.expected
+
+        return execute
+
+    adapters = tuple(
+        _adapter(
+            f"real-{public_surface.value.replace('+', 'p')}",
+            compatible_transport(public_surface),
+            family=(
+                SurfaceFamily.MANAGER
+                if public_surface is PublicSurfaceKind.BACKEND
+                else SurfaceFamily.HANDLER
+            ),
+            public_surface=public_surface,
+        )
+        for public_surface in REQUIRED_PUBLIC_SURFACES
+    )
+    witness = run_vfs_differential_harness(adapters, temp_parent=tmp_path)
+    record = witness.to_record()
+
+    assert witness.schema == VFS_DIFFERENTIAL_WITNESS_SCHEMA
+    assert witness.goal_id == VFS_DIFFERENTIAL_GOAL_ID == "VFS-G091"
+    assert witness.task_id == VFS_DIFFERENTIAL_TASK_ID == "VFS-077"
+    assert witness.objective_revision == VFS_DIFFERENTIAL_OBJECTIVE_REVISION
+    assert witness.goal_ids == VFS_DIFFERENTIAL_PACKET_GOAL_IDS == (
+        "VFS-G091",
+        "VFS-G158",
+    )
+    assert witness.evidence_kinds == VFS_DIFFERENTIAL_EVIDENCE_KINDS == (
+        "vfs/differential-contract-witness@1",
+        "vfs/canonical-operation-matrix@1",
+    )
+    assert witness.trace.operation_matrix_schema == (
+        VFS_CANONICAL_OPERATION_MATRIX_SCHEMA
+    )
+    assert witness.observed_public_surfaces == REQUIRED_PUBLIC_SURFACES
+    assert witness.missing_public_surfaces == ()
+    assert record["coverage"]["public_surface_coverage_complete"] is True
+    assert witness.authoritative_agreement is True
+    assert witness.findings == ()
+
+    bindings = witness.bindings
+    assert bindings.contract_pack_cid == witness.trace.contract_pack_cid
+    assert bindings.operation_trace_cid == witness.trace.content_id
+    assert bindings.fixture_spec_cid == witness.fixture.content_id
+    assert bindings.fixture_snapshot_cids == tuple(
+        sorted(
+            {
+                observation.fixture_before_cid
+                for run in witness.surface_runs
+                for observation in run.observations
+            }
+        )
+    )
+    assert bindings.toolchain_cids == {
+        run.surface_id: run.runtime.content_id for run in witness.surface_runs
+    }
+    assert bindings.implementation_cids == {
+        run.surface_id: run.implementation_identity.content_id
+        for run in witness.surface_runs
+    }
+    assert bindings.surface_run_cids == {
+        run.surface_id: run.content_id for run in witness.surface_runs
+    }
+    assert bindings.content_id.startswith("sha256:")
+    assert record["bindings"] == bindings.to_record()
+
+    with pytest.raises(VfsDifferentialHarnessError, match="binding CID"):
+        replace(bindings, fixture_spec_cid="sha256:tampered-fixture")
 
 
 def test_fixture_identity_materialization_and_containment(tmp_path):
@@ -382,6 +483,8 @@ def test_mock_and_unavailable_surfaces_are_explicit_non_authorities(tmp_path):
     assert witness.authoritative_surface_ids == ("real-vfs",)
     assert witness.non_authoritative_surface_ids == ("mock-bucket",)
     assert witness.unavailable_surface_ids == ("missing-handler",)
+    assert witness.observed_public_surfaces == (PublicSurfaceKind.PYTHON,)
+    assert PublicSurfaceKind.BACKEND in witness.missing_public_surfaces
     assert witness.authoritative_agreement is True
     assert len(witness.findings) == 1
     assert witness.findings[0].authoritative is False
@@ -476,8 +579,18 @@ def test_witness_records_result_cids_and_is_written_atomically(tmp_path):
 
     assert persisted == witness.to_record()
     assert persisted["cid"] == witness.content_id
+    assert persisted["evidence_kinds"] == [
+        "vfs/differential-contract-witness@1",
+        "vfs/canonical-operation-matrix@1",
+    ]
+    assert persisted["goal_ids"] == ["VFS-G091", "VFS-G158"]
+    assert persisted["task_id"] == "VFS-077"
     assert persisted["trace"]["cid"] == witness.trace.content_id
     assert persisted["fixture"]["cid"] == witness.fixture.content_id
+    assert persisted["bindings"]["fixture_spec_cid"] == witness.fixture.content_id
+    assert persisted["bindings"]["toolchain_cids"] == {
+        "serializable-vfs": witness.surface_runs[0].runtime.content_id
+    }
     assert observation["request_cid"].startswith("sha256:")
     assert observation["raw_result_cid"].startswith("sha256:")
     assert observation["normalized_result_cid"].startswith("sha256:")
@@ -518,6 +631,28 @@ def test_surface_and_run_validation_fail_closed(tmp_path):
             executor=None,
             implementation="tests.invalid",
         )
+    with pytest.raises(VfsDifferentialHarnessError, match="public surface"):
+        _adapter(
+            "invalid-transport",
+            lambda step, _context: step.expected,
+            public_surface="websocket",
+        )
+    unavailable_only = run_vfs_differential_harness(
+        (
+            CallableSurfaceAdapter.unavailable(
+                "missing-only",
+                SurfaceFamily.HANDLER,
+                implementation="tests.missing",
+                reason="not installed",
+                public_surface=PublicSurfaceKind.MCP,
+            ),
+        ),
+        trace=_one_step("vector:stat:cid-size"),
+        temp_parent=tmp_path,
+    )
+    assert unavailable_only.authoritative_surface_ids == ()
+    assert unavailable_only.authoritative_agreement is False
+    assert unavailable_only.observed_public_surfaces == ()
     with pytest.raises(VfsDifferentialHarnessError, match="temp_parent"):
         run_vfs_differential_harness(
             (_adapter("real", lambda step, _context: step.expected),),
