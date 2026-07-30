@@ -1053,3 +1053,123 @@ criterion.
 - Parallel lane: vfs-assurance/vfs
 - Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
 - Gap task: Close the missing objective evidence `vfs/drift-inventory@1` with a narrow, verifiable change.
+
+## VFS-G160 Prove vfs/symbolic-refill-epoch@1 for Refill goals, subgoals, and tasks from fresh symbolic evidence
+
+- Status: active
+- Parent: VFS-G120
+- Fib priority: 5000
+- Track: autonomous-refill
+- Priority: P0
+- Bundle: vfs-assurance/refill
+- Goal: Create concrete implementation, tests, docs, or interface descriptors proving `vfs/symbolic-refill-epoch@1`.
+- Evidence: vfs/symbolic-refill-epoch@1
+- Outputs: ipfs_accelerate_py/agent_supervisor/symbolic_finding_refill.py, ipfs_accelerate_py/agent_supervisor/adaptive_goal_refiner.py, test/api/test_agent_supervisor_symbolic_finding_refill.py
+- Validation: python -m pytest test/api/test_agent_supervisor_symbolic_finding_refill.py -q
+- Acceptance: Only fresh admitted findings produce work ; existing goal families are reused ; new children are bounded by breadth/depth/open-work/cooldown ; replay is a no-op ; unchanged failures back off ; conclusive exhaustion creates no busywork.
+- Refinement depth: 2
+- Embedding query: vfs/symbolic-refill-epoch@1
+- AST query: vfs/symbolic-refill-epoch@1
+- Parallel lane: vfs-assurance/refill
+- Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
+- Gap task: Close the missing objective evidence `vfs/symbolic-refill-epoch@1` with a narrow, verifiable change.
+
+## VFS-G161 Prove vfs/refill-idempotency@1 for Refill goals, subgoals, and tasks from fresh symbolic evidence
+
+- Status: active
+- Parent: VFS-G120
+- Fib priority: 5001
+- Track: autonomous-refill
+- Priority: P0
+- Bundle: vfs-assurance/refill
+- Goal: Create concrete implementation, tests, docs, or interface descriptors proving `vfs/refill-idempotency@1`.
+- Evidence: vfs/refill-idempotency@1
+- Outputs: ipfs_accelerate_py/agent_supervisor/symbolic_finding_refill.py, ipfs_accelerate_py/agent_supervisor/adaptive_goal_refiner.py, test/api/test_agent_supervisor_symbolic_finding_refill.py
+- Validation: python -m pytest test/api/test_agent_supervisor_symbolic_finding_refill.py -q
+- Acceptance: Only fresh admitted findings produce work ; existing goal families are reused ; new children are bounded by breadth/depth/open-work/cooldown ; replay is a no-op ; unchanged failures back off ; conclusive exhaustion creates no busywork.
+- Refinement depth: 2
+- Embedding query: vfs/refill-idempotency@1
+- AST query: vfs/refill-idempotency@1
+- Parallel lane: vfs-assurance/refill
+- Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
+- Gap task: Close the missing objective evidence `vfs/refill-idempotency@1` with a narrow, verifiable change.
+
+## VFS-G162 Prove vfs/adversarial-e2e-gate@1 for Release only evidence-backed results through shadow and assist gates
+
+- Status: active
+- Parent: VFS-G130
+- Fib priority: 5000
+- Track: assurance-rollout
+- Priority: P0
+- Bundle: vfs-assurance/rollout
+- Goal: Create concrete implementation, tests, docs, or interface descriptors proving `vfs/adversarial-e2e-gate@1`.
+- Evidence: vfs/adversarial-e2e-gate@1
+- Outputs: ipfs_accelerate_py/agent_supervisor/vfs_symbolic_rollout.py, test/api/test_vfs_symbolic_assurance_e2e.py
+- Validation: python -m pytest test/api/test_vfs_symbolic_assurance_e2e.py test/api/test_agent_supervisor_program_analysis_zkp_conformance.py -q
+- Acceptance: Reproducible CIDs ; complete inventories ; zero stale authoritative hits ; zero forged proof/ZK authority ; seeded mismatch precision ; deterministic tasks ; Python/CLI/MCP parity ; restart replay ; and rollback are demonstrated on a frozen corpus.
+- Refinement depth: 2
+- Embedding query: vfs/adversarial-e2e-gate@1
+- AST query: vfs/adversarial-e2e-gate@1
+- Parallel lane: vfs-assurance/rollout
+- Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
+- Gap task: Close the missing objective evidence `vfs/adversarial-e2e-gate@1` with a narrow, verifiable change.
+
+## VFS-G163 Prove vfs/shadow-rollout-report@1 for Release only evidence-backed results through shadow and assist gates
+
+- Status: active
+- Parent: VFS-G130
+- Fib priority: 5001
+- Track: assurance-rollout
+- Priority: P0
+- Bundle: vfs-assurance/rollout
+- Goal: Create concrete implementation, tests, docs, or interface descriptors proving `vfs/shadow-rollout-report@1`.
+- Evidence: vfs/shadow-rollout-report@1
+- Outputs: ipfs_accelerate_py/agent_supervisor/vfs_symbolic_rollout.py, test/api/test_vfs_symbolic_assurance_e2e.py
+- Validation: python -m pytest test/api/test_vfs_symbolic_assurance_e2e.py test/api/test_agent_supervisor_program_analysis_zkp_conformance.py -q
+- Acceptance: Reproducible CIDs ; complete inventories ; zero stale authoritative hits ; zero forged proof/ZK authority ; seeded mismatch precision ; deterministic tasks ; Python/CLI/MCP parity ; restart replay ; and rollback are demonstrated on a frozen corpus.
+- Refinement depth: 2
+- Embedding query: vfs/shadow-rollout-report@1
+- AST query: vfs/shadow-rollout-report@1
+- Parallel lane: vfs-assurance/rollout
+- Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
+- Gap task: Close the missing objective evidence `vfs/shadow-rollout-report@1` with a narrow, verifiable change.
+
+## VFS-G164 Prove vfs/symbolic-efficiency-benchmark@1 for Prove low-context symbolic-first operation and bounded resource use
+
+- Status: active
+- Parent: VFS-G121
+- Fib priority: 8000
+- Track: autonomous-refill
+- Priority: P1
+- Bundle: vfs-assurance/refill
+- Goal: Create concrete implementation, tests, docs, or interface descriptors proving `vfs/symbolic-efficiency-benchmark@1`.
+- Evidence: vfs/symbolic-efficiency-benchmark@1
+- Outputs: ipfs_accelerate_py/agent_supervisor/vfs_symbolic_benchmark.py, test/api/test_agent_supervisor_vfs_symbolic_benchmark.py
+- Validation: python -m pytest test/api/test_agent_supervisor_vfs_symbolic_benchmark.py -q
+- Acceptance: Scan ; parse ; identity ; graph ; contract comparison ; cache ; and supported proof stages use zero LLM calls ; paired repair packets reduce median provider input by at least 80 percent versus repository-context baseline without lowering seeded finding coverage ; resource ceilings and cache hit claims are measured.
+- Refinement depth: 3
+- Embedding query: vfs/symbolic-efficiency-benchmark@1
+- AST query: vfs/symbolic-efficiency-benchmark@1
+- Parallel lane: vfs-assurance/refill
+- Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
+- Gap task: Close the missing objective evidence `vfs/symbolic-efficiency-benchmark@1` with a narrow, verifiable change.
+
+## VFS-G165 Prove vfs/swissknife-vfs-pilot@1 for Run the frozen SwissKnife and IPFS Kit VFS pilot
+
+- Status: active
+- Parent: VFS-G131
+- Fib priority: 8000
+- Track: assurance-rollout
+- Priority: P0
+- Bundle: vfs-assurance/rollout
+- Goal: Create concrete implementation, tests, docs, or interface descriptors proving `vfs/swissknife-vfs-pilot@1`.
+- Evidence: vfs/swissknife-vfs-pilot@1
+- Outputs: data/agent_supervisor/ipfs_kit_vfs_symbolic_assurance/pilot, docs/architecture/ipfs_kit_vfs_symbolic_assurance.findings.todo.md
+- Validation: python -m ipfs_accelerate_py.agent_supervisor.vfs_symbolic_pilot --verify
+- Acceptance: Every admitted file is accounted for ; every finding is reproducible from content-addressed evidence ; inconclusive results remain non-actionable ; the repair board is bounded ; deduplicated ; goal-backed ; and independently reviewable.
+- Refinement depth: 3
+- Embedding query: vfs/swissknife-vfs-pilot@1
+- AST query: vfs/swissknife-vfs-pilot@1
+- Parallel lane: vfs-assurance/rollout
+- Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
+- Gap task: Close the missing objective evidence `vfs/swissknife-vfs-pilot@1` with a narrow, verifiable change.
