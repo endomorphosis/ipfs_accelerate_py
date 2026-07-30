@@ -7217,7 +7217,10 @@ def record_codebase_scan_findings(
         strategy["last_codebase_scan_findings"] = []
         strategy["last_codebase_scan_health"] = health.to_dict()
         strategy["last_codebase_scan_exhaustion_quorum"] = quorum.to_dict()
-        if completion_safe:
+        # This task-count marker is scheduler state, not proof authority.  A
+        # healthy exhaustive pass must observe the configured cooldown even
+        # while it awaits a second independent exhaustion-quorum channel.
+        if health_completion_safe:
             strategy["last_drained_codebase_scan_task_count"] = task_count
         write_json(strategy_path, strategy)
         return receipt

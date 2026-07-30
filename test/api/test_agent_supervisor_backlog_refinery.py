@@ -3289,9 +3289,13 @@ def test_backlog_refinery_objective_scan_refills_low_backlog(tmp_path):
     assert (bundle_dir / "index.json").exists()
 
 
-def test_codebase_scan_healthy_exhaustion_records_policy_and_awaits_quorum(tmp_path):
+def test_codebase_scan_healthy_exhaustion_records_policy_and_awaits_quorum(
+    tmp_path,
+    monkeypatch,
+):
     repo = _seed_repo(tmp_path)
     todo_path = repo / "todo.md"
+    strategy_path = repo / "state" / "strategy.json"
     _write_todo(todo_path)
     (repo / "healthy.py").write_text("VALUE = 1\n", encoding="utf-8")
     _git(repo, "add", ".")
@@ -3301,7 +3305,7 @@ def test_codebase_scan_healthy_exhaustion_records_policy_and_awaits_quorum(tmp_p
     receipt = record_codebase_scan_findings(
         todo_path=todo_path,
         state_path=None,
-        strategy_path=repo / "state" / "strategy.json",
+        strategy_path=strategy_path,
         discovery_dir=repo / "discovery",
         repo_root=repo,
         max_findings=5,
@@ -3316,6 +3320,26 @@ def test_codebase_scan_healthy_exhaustion_records_policy_and_awaits_quorum(tmp_p
     assert receipt.metadata["analyzer_health"]["status"] == "healthy"
     assert receipt.metadata["analyzer_canaries"]["passed"] is True
     assert receipt.metadata["expected_git_root_count"] == 1
+    strategy = json.loads(strategy_path.read_text(encoding="utf-8"))
+    assert strategy["last_drained_codebase_scan_task_count"] == 1
+
+    def scan_must_not_run(*_args, **_kwargs):
+        raise AssertionError("healthy single-channel exhaustion bypassed cooldown")
+
+    monkeypatch.setattr(backlog_refinery, "scan_codebase_findings", scan_must_not_run)
+    cooled = record_codebase_scan_findings(
+        todo_path=todo_path,
+        state_path=None,
+        strategy_path=strategy_path,
+        discovery_dir=repo / "discovery",
+        repo_root=repo,
+        max_findings=5,
+        health_thresholds=thresholds,
+    )
+
+    assert cooled.terminal_reason is ScanTerminalReason.COOLDOWN
+    assert cooled.scan_mode == "cooldown"
+    assert cooled.safe_for_completion_reasoning is False
 
 
 def test_codebase_scan_missing_root_fails_closed_without_suppressing_retry(tmp_path, monkeypatch):
