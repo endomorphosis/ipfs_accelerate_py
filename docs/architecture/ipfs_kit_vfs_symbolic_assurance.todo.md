@@ -2005,7 +2005,7 @@ compact references and bounded spans only.
 
 ## VFS-057 Close objective gap packet: VFS-G031, VFS-G141
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
