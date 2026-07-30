@@ -1,0 +1,135 @@
+# Objective Bundle: formal-verification-tactician/vertical-slice
+
+Source todo: docs/architecture/formal_verification_tactician_readiness.todo.md
+Purpose: bundle objective-generated tasks so parallel daemons can work one lane at a time.
+Conflict policy: keep edits inside this bundle when possible; use the LLM merge resolver for semantic conflicts.
+
+## FVT-010 Close formal verification tactician readiness gap: Build the source-to-VC-to-solver vertical slice
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: executable-pipeline
+- Depends on: FVT-003, FVT-002, FVT-005
+- Outputs: ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/pipeline.py, ipfs_datasets_py/tests/integration/logic/software_verification/test_source_vc_smt_pipeline.py
+- Validation: python -m pytest ipfs_datasets_py/tests/integration/logic/software_verification/test_source_vc_smt_pipeline.py -q
+- Evidence inputs: data/agent_supervisor/formal_verification_tactician_readiness/discovery
+- Discovery evidence: /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-07-30-fvt-010-objective-gap-c2c72f33e2e2.md
+- Bundle: formal-verification-tactician/vertical-slice
+- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-vertical-slice.todo.md
+- Bundle strategy: explicit
+- Graph parents: FVT-G000
+- Graph depth: 1
+- Objective heap index: 9
+- Parallel lane: formal-verification-tactician/vertical-slice
+- Conflict policy: Own the new pipeline composition and integration test; reuse existing source, ProgramIR, VC, SMT compiler, runner, and receipt modules without inventing parallel semantic contracts.
+- Predicted files: ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/pipeline.py, ipfs_datasets_py/tests/integration/logic/software_verification/test_source_vc_smt_pipeline.py
+- Changed paths:
+- AST symbols: ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/pipeline.py, ipfs_datasets_py/tests/integration/logic/software_verification/test_source_vc_smt_pipeline.py
+- Interfaces: SourceToVerificationPipeline@1
+- Submodules: ipfs_datasets_py
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: FVT-G011
+- Completion authority: local
+- External authority blockers:
+- Canonical task key: task/v1/254999f6edd3c98a43da5719b99106f12c09221a07f9ffbb6c8ce021d705334f
+- Canonical task CID: baguqeeraevezt5xn2peyuq62k4m3teig6ewasiq2a7477o3mrtqcdvyfgnhq
+- Semantic identity: objective-evidence-obligation/v1/ba118751bde2c1724e8a30b5365ec957b76215f7bc73ec1fd658805a6b2d94ce
+- Acceptance subset: Checked-in buggy/fixed programs generate their own VCs and witnesses, Z3 and CVC5 agree or disagreement is quarantined, every result binds source spans/tree/property/assumptions/tool/bounds/translation, unsupported constructs fail explicitly rather than being erased.
+- Preconditions: objective goal FVT-G011 is schedulable
+- Effects: satisfy evidence requirement: ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/pipeline.py, satisfy evidence requirement: ipfs_datasets_py/tests/integration/logic/software_verification/test_source_vc_smt_pipeline.py
+- Evidence subset: ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/pipeline.py, ipfs_datasets_py/tests/integration/logic/software_verification/test_source_vc_smt_pipeline.py
+- Resource class: cpu-proof-smt
+- Token class: medium
+- Estimated tokens: 0
+- Resources: cpu-proof-smt
+- Merge fate: objective/FVT-G011
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/ba118751bde2c1724e8a30b5365ec957b76215f7bc73ec1fd658805a6b2d94ce
+- Missing evidence: ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/pipeline.py, ipfs_datasets_py/tests/integration/logic/software_verification/test_source_vc_smt_pipeline.py
+- Embedding query: Connect a source snapshot through typed program/contracts, verification-condition generation, backend-neutral SMT obligations, Z3/CVC5 execution, and source-bound proof/counterexample receipts.
+- AST query: ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/pipeline.py, ipfs_datasets_py/tests/integration/logic/software_verification/test_source_vc_smt_pipeline.py
+- Surplus group: objective/FVT-G011
+- Merge key: 6280cd9157f710c5
+- Merge family: objective/FVT-G011
+- Merge role: aggregate
+- Work item count: 2
+- Work scope: goal_subgoal_multi_evidence_batch
+- Goal packet:
+- Goal packet role:
+- Goal packet goals:
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: aggregate
+- Todo vector key: d875ef78752bb9f2
+- Acceptance: Objective scan filed this gap for FVT-G011. Use evidence in /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-07-30-fvt-010-objective-gap-c2c72f33e2e2.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/pipeline.py, ipfs_datasets_py/tests/integration/logic/software_verification/test_source_vc_smt_pipeline.py), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
+
+## FVT-016 Close formal verification tactician readiness gap: Expand source frontends with explicit semantic profiles
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P1
+- Track: source-frontends
+- Depends on: FVT-010
+- Outputs: ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/frontends/registry.py, ipfs_datasets_py/tests/integration/logic/software_verification/test_frontend_semantic_profiles.py
+- Validation: python -m pytest ipfs_datasets_py/tests/integration/logic/software_verification/test_frontend_semantic_profiles.py -q
+- Evidence inputs: data/agent_supervisor/formal_verification_tactician_readiness/discovery
+- Discovery evidence: /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-07-30-fvt-016-objective-gap-e540241d9c19.md
+- Bundle: formal-verification-tactician/vertical-slice
+- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-vertical-slice.todo.md
+- Bundle strategy: explicit
+- Graph parents: FVT-G000
+- Graph depth: 1
+- Objective heap index: 15
+- Parallel lane: formal-verification-tactician/vertical-slice
+- Conflict policy: Own frontend registry, semantic profiles, and coverage tests; implement languages incrementally and never claim whole-language support from a partial parser.
+- Predicted files: ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/frontends/registry.py, ipfs_datasets_py/tests/integration/logic/software_verification/test_frontend_semantic_profiles.py
+- Changed paths:
+- AST symbols: ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/frontends/registry.py, ipfs_datasets_py/tests/integration/logic/software_verification/test_frontend_semantic_profiles.py
+- Interfaces: SourceFrontendSemanticProfile@1
+- Submodules: ipfs_datasets_py
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: FVT-G014
+- Completion authority: local
+- External authority blockers:
+- Canonical task key: task/v1/f643a48769952cf8a36d262447103365f828e301c368f73a1d6f219c3b48c265
+- Canonical task CID: baguqeera6zb2jb3jsuwpri3neyseoebtmx4cryybynupooq5n4qzyo2iyjsq
+- Semantic identity: objective-evidence-obligation/v1/6eabbe3008ed83684933acf9747a589884865cddbe55c7a8a17e68dcf4404f92
+- Acceptance subset: Each language declares parsed constructs, numeric/memory/concurrency/exception behavior, undefined or implementation-defined semantics, unsupported features, and coverage, opaque bodies and regex approximations cannot receive translation authority, source mapping survives the pipeline.
+- Preconditions: objective goal FVT-G014 is schedulable
+- Effects: satisfy evidence requirement: ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/frontends/registry.py, satisfy evidence requirement: ipfs_datasets_py/tests/integration/logic/software_verification/test_frontend_semantic_profiles.py
+- Evidence subset: ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/frontends/registry.py, ipfs_datasets_py/tests/integration/logic/software_verification/test_frontend_semantic_profiles.py
+- Resource class: cpu-parser
+- Token class: medium
+- Estimated tokens: 0
+- Resources: cpu-parser
+- Merge fate: objective/FVT-G014
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/6eabbe3008ed83684933acf9747a589884865cddbe55c7a8a17e68dcf4404f92
+- Missing evidence: ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/frontends/registry.py, ipfs_datasets_py/tests/integration/logic/software_verification/test_frontend_semantic_profiles.py
+- Embedding query: Harden Python and JavaScript/TypeScript frontends and add staged typed frontends for Rust, Go, Java, C/C++, and WASM with source spans, language semantics, and fail-closed supported-fragment coverage.
+- AST query: ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/frontends/registry.py, ipfs_datasets_py/tests/integration/logic/software_verification/test_frontend_semantic_profiles.py
+- Surplus group: objective/FVT-G014
+- Merge key: 52bfb4fa10e0efbc
+- Merge family: objective/FVT-G014
+- Merge role: aggregate
+- Work item count: 2
+- Work scope: goal_subgoal_multi_evidence_batch
+- Goal packet:
+- Goal packet role:
+- Goal packet goals:
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: aggregate
+- Todo vector key: f18522b1478e952e
+- Acceptance: Objective scan filed this gap for FVT-G014. Use evidence in /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-07-30-fvt-016-objective-gap-e540241d9c19.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/frontends/registry.py, ipfs_datasets_py/tests/integration/logic/software_verification/test_frontend_semantic_profiles.py), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.

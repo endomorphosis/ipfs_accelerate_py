@@ -1,0 +1,1889 @@
+{
+  "evaluation_count": 36,
+  "evaluations": [
+    {
+      "analysis_inconclusive": false,
+      "evaluator_version": "objective-plan-evaluator-v1",
+      "goal_id": "FVT-G005",
+      "rejected": [],
+      "router_error": null,
+      "selected": {
+        "branch": {
+          "branch_id": "fallback:FVT-001:focused-1",
+          "dependencies": [
+            "FVT-G000"
+          ],
+          "estimated_cost": 1.0,
+          "expected_objective_delta": 0.7,
+          "predicted_files": [
+            "docs/architecture/formal_verification_readiness_baseline.json",
+            "test/api/test_formal_verification_readiness_baseline.py"
+          ],
+          "predicted_symbols": [
+            "docs/architecture/formal_verification_readiness_baseline.json",
+            "test/api/test_formal_verification_readiness_baseline.py"
+          ],
+          "risk": 0.2,
+          "source": "deterministic_fallback",
+          "summary": "Deterministic focused plan for Establish an executable production-readiness baseline",
+          "validation_commands": [
+            "python -m pytest test/api/test_formal_verification_readiness_baseline.py -q"
+          ],
+          "validation_proof": [
+            "python -m pytest test/api/test_formal_verification_readiness_baseline.py -q exits with status 0"
+          ]
+        },
+        "rationale": [
+          "expected objective delta contributes 385000 millionths",
+          "risk adjustment contributes 200000 millionths",
+          "cost efficiency contributes 75000 millionths",
+          "validation proof contributes 50000 millionths",
+          "total deterministic score is 710000 millionths"
+        ],
+        "score_millionths": 710000
+      },
+      "selection_rationale": [
+        "expected objective delta contributes 385000 millionths",
+        "risk adjustment contributes 200000 millionths",
+        "cost efficiency contributes 75000 millionths",
+        "validation proof contributes 50000 millionths",
+        "total deterministic score is 710000 millionths"
+      ],
+      "source": "deterministic_planner",
+      "task_id": "FVT-001",
+      "used_fallback": false
+    },
+    {
+      "analysis_inconclusive": false,
+      "evaluator_version": "objective-plan-evaluator-v1",
+      "goal_id": "FVT-G007",
+      "rejected": [],
+      "router_error": null,
+      "selected": {
+        "branch": {
+          "branch_id": "fallback:FVT-002:focused-1",
+          "dependencies": [
+            "FVT-G000"
+          ],
+          "estimated_cost": 1.0,
+          "expected_objective_delta": 0.7,
+          "predicted_files": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/counterexamples/contracts.py",
+            "ipfs_datasets_py/ipfs_datasets_py/logic/verification_api.py",
+            "ipfs_datasets_py/tests/unit/logic/test_counterexample_public_boundary.py",
+            "test/api/test_counterexample_cross_repository_contract.py"
+          ],
+          "predicted_symbols": [
+            "ipfs_datasets_py/tests/unit/logic/test_counterexample_public_boundary.py",
+            "test/api/test_counterexample_cross_repository_contract.py"
+          ],
+          "risk": 0.2,
+          "source": "deterministic_fallback",
+          "summary": "Deterministic focused plan for Unify the secret-safe public counterexample boundary",
+          "validation_commands": [
+            "python -m pytest ipfs_datasets_py/tests/unit/logic/test_counterexample_public_boundary.py test/api/test_counterexample_cross_repository_contract.py -q"
+          ],
+          "validation_proof": [
+            "python -m pytest ipfs_datasets_py/tests/unit/logic/test_counterexample_public_boundary.py test/api/test_counterexample_cross_repository_contract.py -q exits with status 0"
+          ]
+        },
+        "rationale": [
+          "expected objective delta contributes 385000 millionths",
+          "risk adjustment contributes 200000 millionths",
+          "cost efficiency contributes 75000 millionths",
+          "validation proof contributes 50000 millionths",
+          "total deterministic score is 710000 millionths"
+        ],
+        "score_millionths": 710000
+      },
+      "selection_rationale": [
+        "expected objective delta contributes 385000 millionths",
+        "risk adjustment contributes 200000 millionths",
+        "cost efficiency contributes 75000 millionths",
+        "validation proof contributes 50000 millionths",
+        "total deterministic score is 710000 millionths"
+      ],
+      "source": "deterministic_planner",
+      "task_id": "FVT-002",
+      "used_fallback": false
+    },
+    {
+      "analysis_inconclusive": false,
+      "evaluator_version": "objective-plan-evaluator-v1",
+      "goal_id": "FVT-G006",
+      "rejected": [],
+      "router_error": null,
+      "selected": {
+        "branch": {
+          "branch_id": "fallback:FVT-003:focused-1",
+          "dependencies": [
+            "FVT-G000"
+          ],
+          "estimated_cost": 1.0,
+          "expected_objective_delta": 0.7,
+          "predicted_files": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/verification_api.py",
+            "ipfs_datasets_py/tests/unit/logic/test_verification_receipt_adversarial.py",
+            "test/api/test_logic_receipt_authority_boundary.py"
+          ],
+          "predicted_symbols": [
+            "ipfs_datasets_py/tests/unit/logic/test_verification_receipt_adversarial.py",
+            "test/api/test_logic_receipt_authority_boundary.py"
+          ],
+          "risk": 0.2,
+          "source": "deterministic_fallback",
+          "summary": "Deterministic focused plan for Make receipt verification and attestation fail closed",
+          "validation_commands": [
+            "python -m pytest ipfs_datasets_py/tests/unit/logic/test_verification_receipt_adversarial.py test/api/test_logic_receipt_authority_boundary.py -q"
+          ],
+          "validation_proof": [
+            "python -m pytest ipfs_datasets_py/tests/unit/logic/test_verification_receipt_adversarial.py test/api/test_logic_receipt_authority_boundary.py -q exits with status 0"
+          ]
+        },
+        "rationale": [
+          "expected objective delta contributes 385000 millionths",
+          "risk adjustment contributes 200000 millionths",
+          "cost efficiency contributes 75000 millionths",
+          "validation proof contributes 50000 millionths",
+          "total deterministic score is 710000 millionths"
+        ],
+        "score_millionths": 710000
+      },
+      "selection_rationale": [
+        "expected objective delta contributes 385000 millionths",
+        "risk adjustment contributes 200000 millionths",
+        "cost efficiency contributes 75000 millionths",
+        "validation proof contributes 50000 millionths",
+        "total deterministic score is 710000 millionths"
+      ],
+      "source": "deterministic_planner",
+      "task_id": "FVT-003",
+      "used_fallback": false
+    },
+    {
+      "analysis_inconclusive": false,
+      "evaluator_version": "objective-plan-evaluator-v1",
+      "goal_id": "FVT-G020",
+      "rejected": [],
+      "router_error": null,
+      "selected": {
+        "branch": {
+          "branch_id": "fallback:FVT-004:focused-1",
+          "dependencies": [
+            "FVT-G000"
+          ],
+          "estimated_cost": 1.0,
+          "expected_objective_delta": 0.7,
+          "predicted_files": [
+            "ipfs_datasets_py/tests/fixtures/logic/proof_tactician/manifest.json",
+            "test/api/test_formal_verification_tactician_corpus_contract.py"
+          ],
+          "predicted_symbols": [
+            "ipfs_datasets_py/tests/fixtures/logic/proof_tactician/manifest.json",
+            "test/api/test_formal_verification_tactician_corpus_contract.py"
+          ],
+          "risk": 0.2,
+          "source": "deterministic_fallback",
+          "summary": "Deterministic focused plan for Establish the goal/proof-gap/counterexample golden corpus",
+          "validation_commands": [
+            "python -m pytest test/api/test_formal_verification_tactician_corpus_contract.py -q"
+          ],
+          "validation_proof": [
+            "python -m pytest test/api/test_formal_verification_tactician_corpus_contract.py -q exits with status 0"
+          ]
+        },
+        "rationale": [
+          "expected objective delta contributes 385000 millionths",
+          "risk adjustment contributes 200000 millionths",
+          "cost efficiency contributes 75000 millionths",
+          "validation proof contributes 50000 millionths",
+          "total deterministic score is 710000 millionths"
+        ],
+        "score_millionths": 710000
+      },
+      "selection_rationale": [
+        "expected objective delta contributes 385000 millionths",
+        "risk adjustment contributes 200000 millionths",
+        "cost efficiency contributes 75000 millionths",
+        "validation proof contributes 50000 millionths",
+        "total deterministic score is 710000 millionths"
+      ],
+      "source": "deterministic_planner",
+      "task_id": "FVT-004",
+      "used_fallback": false
+    },
+    {
+      "analysis_inconclusive": false,
+      "evaluator_version": "objective-plan-evaluator-v1",
+      "goal_id": "FVT-G009",
+      "rejected": [],
+      "router_error": null,
+      "selected": {
+        "branch": {
+          "branch_id": "fallback:FVT-005:focused-1",
+          "dependencies": [
+            "FVT-G000"
+          ],
+          "estimated_cost": 1.0,
+          "expected_objective_delta": 0.7,
+          "predicted_files": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/backends/process.py",
+            "ipfs_datasets_py/tests/integration/logic/backends/test_all_backend_process_isolation.py"
+          ],
+          "predicted_symbols": [
+            "ipfs_datasets_py/tests/integration/logic/backends/test_all_backend_process_isolation.py"
+          ],
+          "risk": 0.2,
+          "source": "deterministic_fallback",
+          "summary": "Deterministic focused plan for Route every external tool through one bounded lifecycle",
+          "validation_commands": [
+            "python -m pytest ipfs_datasets_py/tests/unit/logic/backends/test_process_lifecycle.py ipfs_datasets_py/tests/integration/logic/backends/test_all_backend_process_isolation.py -q"
+          ],
+          "validation_proof": [
+            "python -m pytest ipfs_datasets_py/tests/unit/logic/backends/test_process_lifecycle.py ipfs_datasets_py/tests/integration/logic/backends/test_all_backend_process_isolation.py -q exits with status 0"
+          ]
+        },
+        "rationale": [
+          "expected objective delta contributes 385000 millionths",
+          "risk adjustment contributes 200000 millionths",
+          "cost efficiency contributes 75000 millionths",
+          "validation proof contributes 50000 millionths",
+          "total deterministic score is 710000 millionths"
+        ],
+        "score_millionths": 710000
+      },
+      "selection_rationale": [
+        "expected objective delta contributes 385000 millionths",
+        "risk adjustment contributes 200000 millionths",
+        "cost efficiency contributes 75000 millionths",
+        "validation proof contributes 50000 millionths",
+        "total deterministic score is 710000 millionths"
+      ],
+      "source": "deterministic_planner",
+      "task_id": "FVT-005",
+      "used_fallback": false
+    },
+    {
+      "analysis_inconclusive": false,
+      "evaluator_version": "objective-plan-evaluator-v1",
+      "goal_id": "FVT-G010",
+      "rejected": [],
+      "router_error": null,
+      "selected": {
+        "branch": {
+          "branch_id": "fallback:FVT-006:focused-1",
+          "dependencies": [
+            "FVT-G000"
+          ],
+          "estimated_cost": 1.0,
+          "expected_objective_delta": 0.7,
+          "predicted_files": [
+            "config/formal_verification_toolchains.lock.json",
+            "test/packaging/test_logic_verification_clean_install.py",
+            "ipfs_datasets_py/tests/packaging/test_logic_verification_npm_layout.py"
+          ],
+          "predicted_symbols": [
+            "config/formal_verification_toolchains.lock.json",
+            "test/packaging/test_logic_verification_clean_install.py",
+            "ipfs_datasets_py/tests/packaging/test_logic_verification_npm_layout.py"
+          ],
+          "risk": 0.2,
+          "source": "deterministic_fallback",
+          "summary": "Deterministic focused plan for Qualify clean packages and hermetic offline toolchains",
+          "validation_commands": [
+            "python -m pytest test/packaging/test_logic_verification_clean_install.py ipfs_datasets_py/tests/packaging/test_logic_verification_npm_layout.py -q"
+          ],
+          "validation_proof": [
+            "python -m pytest test/packaging/test_logic_verification_clean_install.py ipfs_datasets_py/tests/packaging/test_logic_verification_npm_layout.py -q exits with status 0"
+          ]
+        },
+        "rationale": [
+          "expected objective delta contributes 385000 millionths",
+          "risk adjustment contributes 200000 millionths",
+          "cost efficiency contributes 75000 millionths",
+          "validation proof contributes 50000 millionths",
+          "total deterministic score is 710000 millionths"
+        ],
+        "score_millionths": 710000
+      },
+      "selection_rationale": [
+        "expected objective delta contributes 385000 millionths",
+        "risk adjustment contributes 200000 millionths",
+        "cost efficiency contributes 75000 millionths",
+        "validation proof contributes 50000 millionths",
+        "total deterministic score is 710000 millionths"
+      ],
+      "source": "deterministic_planner",
+      "task_id": "FVT-006",
+      "used_fallback": false
+    },
+    {
+      "analysis_inconclusive": false,
+      "evaluator_version": "objective-plan-evaluator-v1",
+      "goal_id": "FVT-G021",
+      "rejected": [],
+      "router_error": null,
+      "selected": {
+        "branch": {
+          "branch_id": "fallback:FVT-007:focused-1",
+          "dependencies": [
+            "FVT-G000"
+          ],
+          "estimated_cost": 1.0,
+          "expected_objective_delta": 0.7,
+          "predicted_files": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/tactician/contracts.py",
+            "ipfs_datasets_py/tests/unit/logic/software_verification/tactician/test_contracts.py"
+          ],
+          "predicted_symbols": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/tactician/contracts.py",
+            "ipfs_datasets_py/tests/unit/logic/software_verification/tactician/test_contracts.py"
+          ],
+          "risk": 0.2,
+          "source": "deterministic_fallback",
+          "summary": "Deterministic focused plan for Define closed end-goal, proof-hole, graph, and plan contracts",
+          "validation_commands": [
+            "python -m pytest ipfs_datasets_py/tests/unit/logic/software_verification/tactician/test_contracts.py -q"
+          ],
+          "validation_proof": [
+            "python -m pytest ipfs_datasets_py/tests/unit/logic/software_verification/tactician/test_contracts.py -q exits with status 0"
+          ]
+        },
+        "rationale": [
+          "expected objective delta contributes 385000 millionths",
+          "risk adjustment contributes 200000 millionths",
+          "cost efficiency contributes 75000 millionths",
+          "validation proof contributes 50000 millionths",
+          "total deterministic score is 710000 millionths"
+        ],
+        "score_millionths": 710000
+      },
+      "selection_rationale": [
+        "expected objective delta contributes 385000 millionths",
+        "risk adjustment contributes 200000 millionths",
+        "cost efficiency contributes 75000 millionths",
+        "validation proof contributes 50000 millionths",
+        "total deterministic score is 710000 millionths"
+      ],
+      "source": "deterministic_planner",
+      "task_id": "FVT-007",
+      "used_fallback": false
+    },
+    {
+      "analysis_inconclusive": false,
+      "evaluator_version": "objective-plan-evaluator-v1",
+      "goal_id": "FVT-G040",
+      "rejected": [],
+      "router_error": null,
+      "selected": {
+        "branch": {
+          "branch_id": "fallback:FVT-008:focused-1",
+          "dependencies": [
+            "FVT-G000"
+          ],
+          "estimated_cost": 1.0,
+          "expected_objective_delta": 0.7,
+          "predicted_files": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/counterexamples/minimization.py",
+            "ipfs_datasets_py/tests/integration/logic/software_verification/counterexamples/test_semantic_minimization.py"
+          ],
+          "predicted_symbols": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/counterexamples/minimization.py",
+            "ipfs_datasets_py/tests/integration/logic/software_verification/counterexamples/test_semantic_minimization.py"
+          ],
+          "risk": 0.2,
+          "source": "deterministic_fallback",
+          "summary": "Deterministic focused plan for Implement oracle-preserving semantic counterexample minimizers",
+          "validation_commands": [
+            "python -m pytest ipfs_datasets_py/tests/integration/logic/software_verification/counterexamples/test_semantic_minimization.py -q"
+          ],
+          "validation_proof": [
+            "python -m pytest ipfs_datasets_py/tests/integration/logic/software_verification/counterexamples/test_semantic_minimization.py -q exits with status 0"
+          ]
+        },
+        "rationale": [
+          "expected objective delta contributes 385000 millionths",
+          "risk adjustment contributes 200000 millionths",
+          "cost efficiency contributes 75000 millionths",
+          "validation proof contributes 50000 millionths",
+          "total deterministic score is 710000 millionths"
+        ],
+        "score_millionths": 710000
+      },
+      "selection_rationale": [
+        "expected objective delta contributes 385000 millionths",
+        "risk adjustment contributes 200000 millionths",
+        "cost efficiency contributes 75000 millionths",
+        "validation proof contributes 50000 millionths",
+        "total deterministic score is 710000 millionths"
+      ],
+      "source": "deterministic_planner",
+      "task_id": "FVT-008",
+      "used_fallback": false
+    },
+    {
+      "analysis_inconclusive": false,
+      "evaluator_version": "objective-plan-evaluator-v1",
+      "goal_id": "FVT-G008",
+      "rejected": [],
+      "router_error": null,
+      "selected": {
+        "branch": {
+          "branch_id": "fallback:FVT-009:focused-1",
+          "dependencies": [
+            "FVT-G000"
+          ],
+          "estimated_cost": 1.0,
+          "expected_objective_delta": 0.7,
+          "predicted_files": [
+            "ipfs_accelerate_py/agent_supervisor/planning/formal_replanner.py",
+            "test/api/test_agent_supervisor_formal_replanner_verifier_closure.py"
+          ],
+          "predicted_symbols": [
+            "test/api/test_agent_supervisor_formal_replanner_verifier_closure.py"
+          ],
+          "risk": 0.2,
+          "source": "deterministic_fallback",
+          "summary": "Deterministic focused plan for Require verifier-backed counterexample closure",
+          "validation_commands": [
+            "python -m pytest test/api/test_agent_supervisor_formal_replanner.py test/api/test_agent_supervisor_formal_replanner_verifier_closure.py -q"
+          ],
+          "validation_proof": [
+            "python -m pytest test/api/test_agent_supervisor_formal_replanner.py test/api/test_agent_supervisor_formal_replanner_verifier_closure.py -q exits with status 0"
+          ]
+        },
+        "rationale": [
+          "expected objective delta contributes 385000 millionths",
+          "risk adjustment contributes 200000 millionths",
+          "cost efficiency contributes 75000 millionths",
+          "validation proof contributes 50000 millionths",
+          "total deterministic score is 710000 millionths"
+        ],
+        "score_millionths": 710000
+      },
+      "selection_rationale": [
+        "expected objective delta contributes 385000 millionths",
+        "risk adjustment contributes 200000 millionths",
+        "cost efficiency contributes 75000 millionths",
+        "validation proof contributes 50000 millionths",
+        "total deterministic score is 710000 millionths"
+      ],
+      "source": "deterministic_planner",
+      "task_id": "FVT-009",
+      "used_fallback": false
+    },
+    {
+      "analysis_inconclusive": false,
+      "evaluator_version": "objective-plan-evaluator-v1",
+      "goal_id": "FVT-G011",
+      "rejected": [],
+      "router_error": null,
+      "selected": {
+        "branch": {
+          "branch_id": "fallback:FVT-010:focused-1",
+          "dependencies": [
+            "FVT-G000"
+          ],
+          "estimated_cost": 1.0,
+          "expected_objective_delta": 0.7,
+          "predicted_files": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/pipeline.py",
+            "ipfs_datasets_py/tests/integration/logic/software_verification/test_source_vc_smt_pipeline.py"
+          ],
+          "predicted_symbols": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/pipeline.py",
+            "ipfs_datasets_py/tests/integration/logic/software_verification/test_source_vc_smt_pipeline.py"
+          ],
+          "risk": 0.2,
+          "source": "deterministic_fallback",
+          "summary": "Deterministic focused plan for Build the source-to-VC-to-solver vertical slice",
+          "validation_commands": [
+            "python -m pytest ipfs_datasets_py/tests/integration/logic/software_verification/test_source_vc_smt_pipeline.py -q"
+          ],
+          "validation_proof": [
+            "python -m pytest ipfs_datasets_py/tests/integration/logic/software_verification/test_source_vc_smt_pipeline.py -q exits with status 0"
+          ]
+        },
+        "rationale": [
+          "expected objective delta contributes 385000 millionths",
+          "risk adjustment contributes 200000 millionths",
+          "cost efficiency contributes 75000 millionths",
+          "validation proof contributes 50000 millionths",
+          "total deterministic score is 710000 millionths"
+        ],
+        "score_millionths": 710000
+      },
+      "selection_rationale": [
+        "expected objective delta contributes 385000 millionths",
+        "risk adjustment contributes 200000 millionths",
+        "cost efficiency contributes 75000 millionths",
+        "validation proof contributes 50000 millionths",
+        "total deterministic score is 710000 millionths"
+      ],
+      "source": "deterministic_planner",
+      "task_id": "FVT-010",
+      "used_fallback": false
+    },
+    {
+      "analysis_inconclusive": false,
+      "evaluator_version": "objective-plan-evaluator-v1",
+      "goal_id": "FVT-G022",
+      "rejected": [],
+      "router_error": null,
+      "selected": {
+        "branch": {
+          "branch_id": "fallback:FVT-011:focused-1",
+          "dependencies": [
+            "FVT-G000"
+          ],
+          "estimated_cost": 1.0,
+          "expected_objective_delta": 0.7,
+          "predicted_files": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/tactician/end_goal_formalizer.py",
+            "ipfs_datasets_py/tests/unit/logic/software_verification/tactician/test_end_goal_formalizer.py"
+          ],
+          "predicted_symbols": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/tactician/end_goal_formalizer.py",
+            "ipfs_datasets_py/tests/unit/logic/software_verification/tactician/test_end_goal_formalizer.py"
+          ],
+          "risk": 0.2,
+          "source": "deterministic_fallback",
+          "summary": "Deterministic focused plan for Formalize prose end goals with source-grounded alternatives",
+          "validation_commands": [
+            "python -m pytest ipfs_datasets_py/tests/unit/logic/software_verification/tactician/test_end_goal_formalizer.py -q"
+          ],
+          "validation_proof": [
+            "python -m pytest ipfs_datasets_py/tests/unit/logic/software_verification/tactician/test_end_goal_formalizer.py -q exits with status 0"
+          ]
+        },
+        "rationale": [
+          "expected objective delta contributes 385000 millionths",
+          "risk adjustment contributes 200000 millionths",
+          "cost efficiency contributes 75000 millionths",
+          "validation proof contributes 50000 millionths",
+          "total deterministic score is 710000 millionths"
+        ],
+        "score_millionths": 710000
+      },
+      "selection_rationale": [
+        "expected objective delta contributes 385000 millionths",
+        "risk adjustment contributes 200000 millionths",
+        "cost efficiency contributes 75000 millionths",
+        "validation proof contributes 50000 millionths",
+        "total deterministic score is 710000 millionths"
+      ],
+      "source": "deterministic_planner",
+      "task_id": "FVT-011",
+      "used_fallback": false
+    },
+    {
+      "analysis_inconclusive": false,
+      "evaluator_version": "objective-plan-evaluator-v1",
+      "goal_id": "FVT-G030",
+      "rejected": [],
+      "router_error": null,
+      "selected": {
+        "branch": {
+          "branch_id": "fallback:FVT-012:focused-1",
+          "dependencies": [
+            "FVT-G000"
+          ],
+          "estimated_cost": 1.0,
+          "expected_objective_delta": 0.7,
+          "predicted_files": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/tactician/proof_holes.py",
+            "ipfs_datasets_py/tests/unit/logic/software_verification/tactician/test_proof_holes.py"
+          ],
+          "predicted_symbols": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/tactician/proof_holes.py",
+            "ipfs_datasets_py/tests/unit/logic/software_verification/tactician/test_proof_holes.py"
+          ],
+          "risk": 0.2,
+          "source": "deterministic_fallback",
+          "summary": "Deterministic focused plan for Emit actionable typed proof holes",
+          "validation_commands": [
+            "python -m pytest ipfs_datasets_py/tests/unit/logic/software_verification/tactician/test_proof_holes.py -q"
+          ],
+          "validation_proof": [
+            "python -m pytest ipfs_datasets_py/tests/unit/logic/software_verification/tactician/test_proof_holes.py -q exits with status 0"
+          ]
+        },
+        "rationale": [
+          "expected objective delta contributes 385000 millionths",
+          "risk adjustment contributes 200000 millionths",
+          "cost efficiency contributes 75000 millionths",
+          "validation proof contributes 50000 millionths",
+          "total deterministic score is 710000 millionths"
+        ],
+        "score_millionths": 710000
+      },
+      "selection_rationale": [
+        "expected objective delta contributes 385000 millionths",
+        "risk adjustment contributes 200000 millionths",
+        "cost efficiency contributes 75000 millionths",
+        "validation proof contributes 50000 millionths",
+        "total deterministic score is 710000 millionths"
+      ],
+      "source": "deterministic_planner",
+      "task_id": "FVT-012",
+      "used_fallback": false
+    },
+    {
+      "analysis_inconclusive": false,
+      "evaluator_version": "objective-plan-evaluator-v1",
+      "goal_id": "FVT-G012",
+      "rejected": [],
+      "router_error": null,
+      "selected": {
+        "branch": {
+          "branch_id": "fallback:FVT-013:focused-1",
+          "dependencies": [
+            "FVT-G000"
+          ],
+          "estimated_cost": 1.0,
+          "expected_objective_delta": 0.7,
+          "predicted_files": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/backends/registry.py",
+            "ipfs_datasets_py/ipfs_datasets_py/logic/verification_api.py",
+            "ipfs_datasets_py/tests/integration/logic/test_verification_provider_matrix_api.py",
+            "test/api/test_root_mcp_formal_verification_parity.py"
+          ],
+          "predicted_symbols": [
+            "ipfs_datasets_py/tests/integration/logic/test_verification_provider_matrix_api.py",
+            "test/api/test_root_mcp_formal_verification_parity.py"
+          ],
+          "risk": 0.2,
+          "source": "deterministic_fallback",
+          "summary": "Deterministic focused plan for Execute the full lazy provider matrix through stable surfaces",
+          "validation_commands": [
+            "python -m pytest ipfs_datasets_py/tests/integration/logic/test_verification_provider_matrix_api.py test/api/test_root_mcp_formal_verification_parity.py -q"
+          ],
+          "validation_proof": [
+            "python -m pytest ipfs_datasets_py/tests/integration/logic/test_verification_provider_matrix_api.py test/api/test_root_mcp_formal_verification_parity.py -q exits with status 0"
+          ]
+        },
+        "rationale": [
+          "expected objective delta contributes 385000 millionths",
+          "risk adjustment contributes 200000 millionths",
+          "cost efficiency contributes 75000 millionths",
+          "validation proof contributes 50000 millionths",
+          "total deterministic score is 710000 millionths"
+        ],
+        "score_millionths": 710000
+      },
+      "selection_rationale": [
+        "expected objective delta contributes 385000 millionths",
+        "risk adjustment contributes 200000 millionths",
+        "cost efficiency contributes 75000 millionths",
+        "validation proof contributes 50000 millionths",
+        "total deterministic score is 710000 millionths"
+      ],
+      "source": "deterministic_planner",
+      "task_id": "FVT-013",
+      "used_fallback": false
+    },
+    {
+      "analysis_inconclusive": false,
+      "evaluator_version": "objective-plan-evaluator-v1",
+      "goal_id": "FVT-G023",
+      "rejected": [],
+      "router_error": null,
+      "selected": {
+        "branch": {
+          "branch_id": "fallback:FVT-014:focused-1",
+          "dependencies": [
+            "FVT-G000"
+          ],
+          "estimated_cost": 1.0,
+          "expected_objective_delta": 0.7,
+          "predicted_files": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/tactician/ambiguity.py",
+            "ipfs_datasets_py/tests/unit/logic/software_verification/tactician/test_ambiguity.py"
+          ],
+          "predicted_symbols": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/tactician/ambiguity.py",
+            "ipfs_datasets_py/tests/unit/logic/software_verification/tactician/test_ambiguity.py"
+          ],
+          "risk": 0.2,
+          "source": "deterministic_fallback",
+          "summary": "Deterministic focused plan for Expose ambiguity and require material interpretation selection",
+          "validation_commands": [
+            "python -m pytest ipfs_datasets_py/tests/unit/logic/software_verification/tactician/test_ambiguity.py -q"
+          ],
+          "validation_proof": [
+            "python -m pytest ipfs_datasets_py/tests/unit/logic/software_verification/tactician/test_ambiguity.py -q exits with status 0"
+          ]
+        },
+        "rationale": [
+          "expected objective delta contributes 385000 millionths",
+          "risk adjustment contributes 200000 millionths",
+          "cost efficiency contributes 75000 millionths",
+          "validation proof contributes 50000 millionths",
+          "total deterministic score is 710000 millionths"
+        ],
+        "score_millionths": 710000
+      },
+      "selection_rationale": [
+        "expected objective delta contributes 385000 millionths",
+        "risk adjustment contributes 200000 millionths",
+        "cost efficiency contributes 75000 millionths",
+        "validation proof contributes 50000 millionths",
+        "total deterministic score is 710000 millionths"
+      ],
+      "source": "deterministic_planner",
+      "task_id": "FVT-014",
+      "used_fallback": false
+    },
+    {
+      "analysis_inconclusive": false,
+      "evaluator_version": "objective-plan-evaluator-v1",
+      "goal_id": "FVT-G041",
+      "rejected": [],
+      "router_error": null,
+      "selected": {
+        "branch": {
+          "branch_id": "fallback:FVT-015:focused-1",
+          "dependencies": [
+            "FVT-G000"
+          ],
+          "estimated_cost": 1.0,
+          "expected_objective_delta": 0.7,
+          "predicted_files": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/counterexamples/replay.py",
+            "ipfs_datasets_py/tests/integration/logic/software_verification/counterexamples/test_replay.py"
+          ],
+          "predicted_symbols": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/counterexamples/replay.py",
+            "ipfs_datasets_py/tests/integration/logic/software_verification/counterexamples/test_replay.py"
+          ],
+          "risk": 0.2,
+          "source": "deterministic_fallback",
+          "summary": "Deterministic focused plan for Make every counterexample exactly replayable",
+          "validation_commands": [
+            "python -m pytest ipfs_datasets_py/tests/integration/logic/software_verification/counterexamples/test_replay.py -q"
+          ],
+          "validation_proof": [
+            "python -m pytest ipfs_datasets_py/tests/integration/logic/software_verification/counterexamples/test_replay.py -q exits with status 0"
+          ]
+        },
+        "rationale": [
+          "expected objective delta contributes 385000 millionths",
+          "risk adjustment contributes 200000 millionths",
+          "cost efficiency contributes 75000 millionths",
+          "validation proof contributes 50000 millionths",
+          "total deterministic score is 710000 millionths"
+        ],
+        "score_millionths": 710000
+      },
+      "selection_rationale": [
+        "expected objective delta contributes 385000 millionths",
+        "risk adjustment contributes 200000 millionths",
+        "cost efficiency contributes 75000 millionths",
+        "validation proof contributes 50000 millionths",
+        "total deterministic score is 710000 millionths"
+      ],
+      "source": "deterministic_planner",
+      "task_id": "FVT-015",
+      "used_fallback": false
+    },
+    {
+      "analysis_inconclusive": false,
+      "evaluator_version": "objective-plan-evaluator-v1",
+      "goal_id": "FVT-G014",
+      "rejected": [],
+      "router_error": null,
+      "selected": {
+        "branch": {
+          "branch_id": "fallback:FVT-016:focused-1",
+          "dependencies": [
+            "FVT-G000"
+          ],
+          "estimated_cost": 1.0,
+          "expected_objective_delta": 0.7,
+          "predicted_files": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/frontends/registry.py",
+            "ipfs_datasets_py/tests/integration/logic/software_verification/test_frontend_semantic_profiles.py"
+          ],
+          "predicted_symbols": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/frontends/registry.py",
+            "ipfs_datasets_py/tests/integration/logic/software_verification/test_frontend_semantic_profiles.py"
+          ],
+          "risk": 0.2,
+          "source": "deterministic_fallback",
+          "summary": "Deterministic focused plan for Expand source frontends with explicit semantic profiles",
+          "validation_commands": [
+            "python -m pytest ipfs_datasets_py/tests/integration/logic/software_verification/test_frontend_semantic_profiles.py -q"
+          ],
+          "validation_proof": [
+            "python -m pytest ipfs_datasets_py/tests/integration/logic/software_verification/test_frontend_semantic_profiles.py -q exits with status 0"
+          ]
+        },
+        "rationale": [
+          "expected objective delta contributes 385000 millionths",
+          "risk adjustment contributes 200000 millionths",
+          "cost efficiency contributes 75000 millionths",
+          "validation proof contributes 50000 millionths",
+          "total deterministic score is 710000 millionths"
+        ],
+        "score_millionths": 710000
+      },
+      "selection_rationale": [
+        "expected objective delta contributes 385000 millionths",
+        "risk adjustment contributes 200000 millionths",
+        "cost efficiency contributes 75000 millionths",
+        "validation proof contributes 50000 millionths",
+        "total deterministic score is 710000 millionths"
+      ],
+      "source": "deterministic_planner",
+      "task_id": "FVT-016",
+      "used_fallback": false
+    },
+    {
+      "analysis_inconclusive": false,
+      "evaluator_version": "objective-plan-evaluator-v1",
+      "goal_id": "FVT-G033",
+      "rejected": [],
+      "router_error": null,
+      "selected": {
+        "branch": {
+          "branch_id": "fallback:FVT-017:focused-1",
+          "dependencies": [
+            "FVT-G000"
+          ],
+          "estimated_cost": 1.0,
+          "expected_objective_delta": 0.7,
+          "predicted_files": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/tactician/candidate_synthesis.py",
+            "ipfs_datasets_py/tests/unit/logic/software_verification/tactician/test_candidate_synthesis.py"
+          ],
+          "predicted_symbols": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/tactician/candidate_synthesis.py",
+            "ipfs_datasets_py/tests/unit/logic/software_verification/tactician/test_candidate_synthesis.py"
+          ],
+          "risk": 0.2,
+          "source": "deterministic_fallback",
+          "summary": "Deterministic focused plan for Build the candidate lemma, invariant, contract, and evidence portfolio",
+          "validation_commands": [
+            "python -m pytest ipfs_datasets_py/tests/unit/logic/software_verification/tactician/test_candidate_synthesis.py -q"
+          ],
+          "validation_proof": [
+            "python -m pytest ipfs_datasets_py/tests/unit/logic/software_verification/tactician/test_candidate_synthesis.py -q exits with status 0"
+          ]
+        },
+        "rationale": [
+          "expected objective delta contributes 385000 millionths",
+          "risk adjustment contributes 200000 millionths",
+          "cost efficiency contributes 75000 millionths",
+          "validation proof contributes 50000 millionths",
+          "total deterministic score is 710000 millionths"
+        ],
+        "score_millionths": 710000
+      },
+      "selection_rationale": [
+        "expected objective delta contributes 385000 millionths",
+        "risk adjustment contributes 200000 millionths",
+        "cost efficiency contributes 75000 millionths",
+        "validation proof contributes 50000 millionths",
+        "total deterministic score is 710000 millionths"
+      ],
+      "source": "deterministic_planner",
+      "task_id": "FVT-017",
+      "used_fallback": false
+    },
+    {
+      "analysis_inconclusive": false,
+      "evaluator_version": "objective-plan-evaluator-v1",
+      "goal_id": "FVT-G024",
+      "rejected": [],
+      "router_error": null,
+      "selected": {
+        "branch": {
+          "branch_id": "fallback:FVT-018:focused-1",
+          "dependencies": [
+            "FVT-G000"
+          ],
+          "estimated_cost": 1.0,
+          "expected_objective_delta": 0.7,
+          "predicted_files": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/tactician/goal_compiler.py",
+            "ipfs_datasets_py/tests/integration/logic/software_verification/tactician/test_goal_compiler.py"
+          ],
+          "predicted_symbols": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/tactician/goal_compiler.py",
+            "ipfs_datasets_py/tests/integration/logic/software_verification/tactician/test_goal_compiler.py"
+          ],
+          "risk": 0.2,
+          "source": "deterministic_fallback",
+          "summary": "Deterministic focused plan for Compile confirmed goals into shared verification semantics",
+          "validation_commands": [
+            "python -m pytest ipfs_datasets_py/tests/integration/logic/software_verification/tactician/test_goal_compiler.py -q"
+          ],
+          "validation_proof": [
+            "python -m pytest ipfs_datasets_py/tests/integration/logic/software_verification/tactician/test_goal_compiler.py -q exits with status 0"
+          ]
+        },
+        "rationale": [
+          "expected objective delta contributes 385000 millionths",
+          "risk adjustment contributes 200000 millionths",
+          "cost efficiency contributes 75000 millionths",
+          "validation proof contributes 50000 millionths",
+          "total deterministic score is 710000 millionths"
+        ],
+        "score_millionths": 710000
+      },
+      "selection_rationale": [
+        "expected objective delta contributes 385000 millionths",
+        "risk adjustment contributes 200000 millionths",
+        "cost efficiency contributes 75000 millionths",
+        "validation proof contributes 50000 millionths",
+        "total deterministic score is 710000 millionths"
+      ],
+      "source": "deterministic_planner",
+      "task_id": "FVT-018",
+      "used_fallback": false
+    },
+    {
+      "analysis_inconclusive": false,
+      "evaluator_version": "objective-plan-evaluator-v1",
+      "goal_id": "FVT-G031",
+      "rejected": [],
+      "router_error": null,
+      "selected": {
+        "branch": {
+          "branch_id": "fallback:FVT-019:focused-1",
+          "dependencies": [
+            "FVT-G000"
+          ],
+          "estimated_cost": 1.0,
+          "expected_objective_delta": 0.7,
+          "predicted_files": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/tactician/proof_graph.py",
+            "ipfs_datasets_py/tests/unit/logic/software_verification/tactician/test_proof_graph.py"
+          ],
+          "predicted_symbols": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/tactician/proof_graph.py",
+            "ipfs_datasets_py/tests/unit/logic/software_verification/tactician/test_proof_graph.py"
+          ],
+          "risk": 0.2,
+          "source": "deterministic_fallback",
+          "summary": "Deterministic focused plan for Construct a bounded backward AND/OR obligation graph",
+          "validation_commands": [
+            "python -m pytest ipfs_datasets_py/tests/unit/logic/software_verification/tactician/test_proof_graph.py -q"
+          ],
+          "validation_proof": [
+            "python -m pytest ipfs_datasets_py/tests/unit/logic/software_verification/tactician/test_proof_graph.py -q exits with status 0"
+          ]
+        },
+        "rationale": [
+          "expected objective delta contributes 385000 millionths",
+          "risk adjustment contributes 200000 millionths",
+          "cost efficiency contributes 75000 millionths",
+          "validation proof contributes 50000 millionths",
+          "total deterministic score is 710000 millionths"
+        ],
+        "score_millionths": 710000
+      },
+      "selection_rationale": [
+        "expected objective delta contributes 385000 millionths",
+        "risk adjustment contributes 200000 millionths",
+        "cost efficiency contributes 75000 millionths",
+        "validation proof contributes 50000 millionths",
+        "total deterministic score is 710000 millionths"
+      ],
+      "source": "deterministic_planner",
+      "task_id": "FVT-019",
+      "used_fallback": false
+    },
+    {
+      "analysis_inconclusive": false,
+      "evaluator_version": "objective-plan-evaluator-v1",
+      "goal_id": "FVT-G042",
+      "rejected": [],
+      "router_error": null,
+      "selected": {
+        "branch": {
+          "branch_id": "fallback:FVT-020:focused-1",
+          "dependencies": [
+            "FVT-G000"
+          ],
+          "estimated_cost": 1.0,
+          "expected_objective_delta": 0.7,
+          "predicted_files": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/counterexamples/explanation.py",
+            "ipfs_datasets_py/tests/integration/logic/software_verification/counterexamples/test_explanation.py"
+          ],
+          "predicted_symbols": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/counterexamples/explanation.py",
+            "ipfs_datasets_py/tests/integration/logic/software_verification/counterexamples/test_explanation.py"
+          ],
+          "risk": 0.2,
+          "source": "deterministic_fallback",
+          "summary": "Deterministic focused plan for Explain first divergence, causal slice, and missing proof",
+          "validation_commands": [
+            "python -m pytest ipfs_datasets_py/tests/integration/logic/software_verification/counterexamples/test_explanation.py -q"
+          ],
+          "validation_proof": [
+            "python -m pytest ipfs_datasets_py/tests/integration/logic/software_verification/counterexamples/test_explanation.py -q exits with status 0"
+          ]
+        },
+        "rationale": [
+          "expected objective delta contributes 385000 millionths",
+          "risk adjustment contributes 200000 millionths",
+          "cost efficiency contributes 75000 millionths",
+          "validation proof contributes 50000 millionths",
+          "total deterministic score is 710000 millionths"
+        ],
+        "score_millionths": 710000
+      },
+      "selection_rationale": [
+        "expected objective delta contributes 385000 millionths",
+        "risk adjustment contributes 200000 millionths",
+        "cost efficiency contributes 75000 millionths",
+        "validation proof contributes 50000 millionths",
+        "total deterministic score is 710000 millionths"
+      ],
+      "source": "deterministic_planner",
+      "task_id": "FVT-020",
+      "used_fallback": false
+    },
+    {
+      "analysis_inconclusive": false,
+      "evaluator_version": "objective-plan-evaluator-v1",
+      "goal_id": "FVT-G013",
+      "rejected": [],
+      "router_error": null,
+      "selected": {
+        "branch": {
+          "branch_id": "fallback:FVT-021:focused-1",
+          "dependencies": [
+            "FVT-G000"
+          ],
+          "estimated_cost": 1.0,
+          "expected_objective_delta": 0.7,
+          "predicted_files": [
+            "ipfs_datasets_py/examples/logic/software_verification/README.md",
+            "ipfs_datasets_py/tests/integration/logic/software_verification/test_runnable_examples.py",
+            "docs/architecture/formal_verification_live_example_report.json"
+          ],
+          "predicted_symbols": [
+            "ipfs_datasets_py/examples/logic/software_verification/README.md",
+            "ipfs_datasets_py/tests/integration/logic/software_verification/test_runnable_examples.py"
+          ],
+          "risk": 0.2,
+          "source": "deterministic_fallback",
+          "summary": "Deterministic focused plan for Replace manifest-only examples and synthetic readiness claims",
+          "validation_commands": [
+            "python -m pytest ipfs_datasets_py/tests/integration/logic/software_verification/test_runnable_examples.py -q"
+          ],
+          "validation_proof": [
+            "python -m pytest ipfs_datasets_py/tests/integration/logic/software_verification/test_runnable_examples.py -q exits with status 0"
+          ]
+        },
+        "rationale": [
+          "expected objective delta contributes 385000 millionths",
+          "risk adjustment contributes 200000 millionths",
+          "cost efficiency contributes 75000 millionths",
+          "validation proof contributes 50000 millionths",
+          "total deterministic score is 710000 millionths"
+        ],
+        "score_millionths": 710000
+      },
+      "selection_rationale": [
+        "expected objective delta contributes 385000 millionths",
+        "risk adjustment contributes 200000 millionths",
+        "cost efficiency contributes 75000 millionths",
+        "validation proof contributes 50000 millionths",
+        "total deterministic score is 710000 millionths"
+      ],
+      "source": "deterministic_planner",
+      "task_id": "FVT-021",
+      "used_fallback": false
+    },
+    {
+      "analysis_inconclusive": false,
+      "evaluator_version": "objective-plan-evaluator-v1",
+      "goal_id": "FVT-G043",
+      "rejected": [],
+      "router_error": null,
+      "selected": {
+        "branch": {
+          "branch_id": "fallback:FVT-022:focused-1",
+          "dependencies": [
+            "FVT-G000"
+          ],
+          "estimated_cost": 1.0,
+          "expected_objective_delta": 0.7,
+          "predicted_files": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/counterexamples/equivalence.py",
+            "ipfs_datasets_py/tests/integration/logic/software_verification/counterexamples/test_equivalence.py"
+          ],
+          "predicted_symbols": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/counterexamples/equivalence.py",
+            "ipfs_datasets_py/tests/integration/logic/software_verification/counterexamples/test_equivalence.py"
+          ],
+          "risk": 0.2,
+          "source": "deterministic_fallback",
+          "summary": "Deterministic focused plan for Deduplicate semantic witnesses and quarantine disagreement",
+          "validation_commands": [
+            "python -m pytest ipfs_datasets_py/tests/integration/logic/software_verification/counterexamples/test_equivalence.py -q"
+          ],
+          "validation_proof": [
+            "python -m pytest ipfs_datasets_py/tests/integration/logic/software_verification/counterexamples/test_equivalence.py -q exits with status 0"
+          ]
+        },
+        "rationale": [
+          "expected objective delta contributes 385000 millionths",
+          "risk adjustment contributes 200000 millionths",
+          "cost efficiency contributes 75000 millionths",
+          "validation proof contributes 50000 millionths",
+          "total deterministic score is 710000 millionths"
+        ],
+        "score_millionths": 710000
+      },
+      "selection_rationale": [
+        "expected objective delta contributes 385000 millionths",
+        "risk adjustment contributes 200000 millionths",
+        "cost efficiency contributes 75000 millionths",
+        "validation proof contributes 50000 millionths",
+        "total deterministic score is 710000 millionths"
+      ],
+      "source": "deterministic_planner",
+      "task_id": "FVT-022",
+      "used_fallback": false
+    },
+    {
+      "analysis_inconclusive": false,
+      "evaluator_version": "objective-plan-evaluator-v1",
+      "goal_id": "FVT-G032",
+      "rejected": [],
+      "router_error": null,
+      "selected": {
+        "branch": {
+          "branch_id": "fallback:FVT-023:focused-1",
+          "dependencies": [
+            "FVT-G000"
+          ],
+          "estimated_cost": 1.0,
+          "expected_objective_delta": 0.7,
+          "predicted_files": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/tactician/abduction.py",
+            "ipfs_datasets_py/tests/unit/logic/software_verification/tactician/test_abduction.py"
+          ],
+          "predicted_symbols": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/tactician/abduction.py",
+            "ipfs_datasets_py/tests/unit/logic/software_verification/tactician/test_abduction.py"
+          ],
+          "risk": 0.2,
+          "source": "deterministic_fallback",
+          "summary": "Deterministic focused plan for Find weakest admissible missing premises by bounded abduction",
+          "validation_commands": [
+            "python -m pytest ipfs_datasets_py/tests/unit/logic/software_verification/tactician/test_abduction.py -q"
+          ],
+          "validation_proof": [
+            "python -m pytest ipfs_datasets_py/tests/unit/logic/software_verification/tactician/test_abduction.py -q exits with status 0"
+          ]
+        },
+        "rationale": [
+          "expected objective delta contributes 385000 millionths",
+          "risk adjustment contributes 200000 millionths",
+          "cost efficiency contributes 75000 millionths",
+          "validation proof contributes 50000 millionths",
+          "total deterministic score is 710000 millionths"
+        ],
+        "score_millionths": 710000
+      },
+      "selection_rationale": [
+        "expected objective delta contributes 385000 millionths",
+        "risk adjustment contributes 200000 millionths",
+        "cost efficiency contributes 75000 millionths",
+        "validation proof contributes 50000 millionths",
+        "total deterministic score is 710000 millionths"
+      ],
+      "source": "deterministic_planner",
+      "task_id": "FVT-023",
+      "used_fallback": false
+    },
+    {
+      "analysis_inconclusive": false,
+      "evaluator_version": "objective-plan-evaluator-v1",
+      "goal_id": "FVT-G025",
+      "rejected": [],
+      "router_error": null,
+      "selected": {
+        "branch": {
+          "branch_id": "fallback:FVT-024:focused-1",
+          "dependencies": [
+            "FVT-G000"
+          ],
+          "estimated_cost": 1.0,
+          "expected_objective_delta": 0.7,
+          "predicted_files": [
+            "ipfs_accelerate_py/agent_supervisor/proof/end_goal_development.py",
+            "test/api/test_leanstral_end_goal_formalization_route.py"
+          ],
+          "predicted_symbols": [
+            "test/api/test_leanstral_end_goal_formalization_route.py"
+          ],
+          "risk": 0.2,
+          "source": "deterministic_fallback",
+          "summary": "Deterministic focused plan for Invoke Leanstral goal development only after formalization",
+          "validation_commands": [
+            "python -m pytest test/api/test_agent_supervisor_leanstral_goal_development.py test/api/test_leanstral_end_goal_formalization_route.py -q"
+          ],
+          "validation_proof": [
+            "python -m pytest test/api/test_agent_supervisor_leanstral_goal_development.py test/api/test_leanstral_end_goal_formalization_route.py -q exits with status 0"
+          ]
+        },
+        "rationale": [
+          "expected objective delta contributes 385000 millionths",
+          "risk adjustment contributes 200000 millionths",
+          "cost efficiency contributes 75000 millionths",
+          "validation proof contributes 50000 millionths",
+          "total deterministic score is 710000 millionths"
+        ],
+        "score_millionths": 710000
+      },
+      "selection_rationale": [
+        "expected objective delta contributes 385000 millionths",
+        "risk adjustment contributes 200000 millionths",
+        "cost efficiency contributes 75000 millionths",
+        "validation proof contributes 50000 millionths",
+        "total deterministic score is 710000 millionths"
+      ],
+      "source": "deterministic_planner",
+      "task_id": "FVT-024",
+      "used_fallback": false
+    },
+    {
+      "analysis_inconclusive": false,
+      "evaluator_version": "objective-plan-evaluator-v1",
+      "goal_id": "FVT-G034",
+      "rejected": [],
+      "router_error": null,
+      "selected": {
+        "branch": {
+          "branch_id": "fallback:FVT-025:focused-1",
+          "dependencies": [
+            "FVT-G000"
+          ],
+          "estimated_cost": 1.0,
+          "expected_objective_delta": 0.7,
+          "predicted_files": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/tactician/candidate_validation.py",
+            "ipfs_datasets_py/tests/integration/logic/software_verification/tactician/test_candidate_validation.py"
+          ],
+          "predicted_symbols": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/tactician/candidate_validation.py",
+            "ipfs_datasets_py/tests/integration/logic/software_verification/tactician/test_candidate_validation.py"
+          ],
+          "risk": 0.2,
+          "source": "deterministic_fallback",
+          "summary": "Deterministic focused plan for Independently validate proof-gap candidates",
+          "validation_commands": [
+            "python -m pytest ipfs_datasets_py/tests/integration/logic/software_verification/tactician/test_candidate_validation.py -q"
+          ],
+          "validation_proof": [
+            "python -m pytest ipfs_datasets_py/tests/integration/logic/software_verification/tactician/test_candidate_validation.py -q exits with status 0"
+          ]
+        },
+        "rationale": [
+          "expected objective delta contributes 385000 millionths",
+          "risk adjustment contributes 200000 millionths",
+          "cost efficiency contributes 75000 millionths",
+          "validation proof contributes 50000 millionths",
+          "total deterministic score is 710000 millionths"
+        ],
+        "score_millionths": 710000
+      },
+      "selection_rationale": [
+        "expected objective delta contributes 385000 millionths",
+        "risk adjustment contributes 200000 millionths",
+        "cost efficiency contributes 75000 millionths",
+        "validation proof contributes 50000 millionths",
+        "total deterministic score is 710000 millionths"
+      ],
+      "source": "deterministic_planner",
+      "task_id": "FVT-025",
+      "used_fallback": false
+    },
+    {
+      "analysis_inconclusive": false,
+      "evaluator_version": "objective-plan-evaluator-v1",
+      "goal_id": "FVT-G035",
+      "rejected": [],
+      "router_error": null,
+      "selected": {
+        "branch": {
+          "branch_id": "fallback:FVT-026:focused-1",
+          "dependencies": [
+            "FVT-G000"
+          ],
+          "estimated_cost": 1.0,
+          "expected_objective_delta": 0.7,
+          "predicted_files": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/tactician/proof_plan.py",
+            "test/api/test_goal_directed_proof_plan_ranking.py"
+          ],
+          "predicted_symbols": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/tactician/proof_plan.py",
+            "test/api/test_goal_directed_proof_plan_ranking.py"
+          ],
+          "risk": 0.2,
+          "source": "deterministic_fallback",
+          "summary": "Deterministic focused plan for Rank complete missing-proof plans by authority and utility",
+          "validation_commands": [
+            "python -m pytest test/api/test_goal_directed_proof_plan_ranking.py -q"
+          ],
+          "validation_proof": [
+            "python -m pytest test/api/test_goal_directed_proof_plan_ranking.py -q exits with status 0"
+          ]
+        },
+        "rationale": [
+          "expected objective delta contributes 385000 millionths",
+          "risk adjustment contributes 200000 millionths",
+          "cost efficiency contributes 75000 millionths",
+          "validation proof contributes 50000 millionths",
+          "total deterministic score is 710000 millionths"
+        ],
+        "score_millionths": 710000
+      },
+      "selection_rationale": [
+        "expected objective delta contributes 385000 millionths",
+        "risk adjustment contributes 200000 millionths",
+        "cost efficiency contributes 75000 millionths",
+        "validation proof contributes 50000 millionths",
+        "total deterministic score is 710000 millionths"
+      ],
+      "source": "deterministic_planner",
+      "task_id": "FVT-026",
+      "used_fallback": false
+    },
+    {
+      "analysis_inconclusive": false,
+      "evaluator_version": "objective-plan-evaluator-v1",
+      "goal_id": "FVT-G036",
+      "rejected": [],
+      "router_error": null,
+      "selected": {
+        "branch": {
+          "branch_id": "fallback:FVT-027:focused-1",
+          "dependencies": [
+            "FVT-G000"
+          ],
+          "estimated_cost": 1.0,
+          "expected_objective_delta": 0.7,
+          "predicted_files": [
+            "ipfs_accelerate_py/agent_supervisor/proof/goal_directed_tactician.py",
+            "test/api/test_goal_directed_tactician_integration.py"
+          ],
+          "predicted_symbols": [
+            "ipfs_accelerate_py/agent_supervisor/proof/goal_directed_tactician.py",
+            "test/api/test_goal_directed_tactician_integration.py"
+          ],
+          "risk": 0.2,
+          "source": "deterministic_fallback",
+          "summary": "Deterministic focused plan for Integrate the goal-directed tactician with existing utilities",
+          "validation_commands": [
+            "python -m pytest test/api/test_goal_directed_tactician_integration.py -q"
+          ],
+          "validation_proof": [
+            "python -m pytest test/api/test_goal_directed_tactician_integration.py -q exits with status 0"
+          ]
+        },
+        "rationale": [
+          "expected objective delta contributes 385000 millionths",
+          "risk adjustment contributes 200000 millionths",
+          "cost efficiency contributes 75000 millionths",
+          "validation proof contributes 50000 millionths",
+          "total deterministic score is 710000 millionths"
+        ],
+        "score_millionths": 710000
+      },
+      "selection_rationale": [
+        "expected objective delta contributes 385000 millionths",
+        "risk adjustment contributes 200000 millionths",
+        "cost efficiency contributes 75000 millionths",
+        "validation proof contributes 50000 millionths",
+        "total deterministic score is 710000 millionths"
+      ],
+      "source": "deterministic_planner",
+      "task_id": "FVT-027",
+      "used_fallback": false
+    },
+    {
+      "analysis_inconclusive": false,
+      "evaluator_version": "objective-plan-evaluator-v1",
+      "goal_id": "FVT-G044",
+      "rejected": [],
+      "router_error": null,
+      "selected": {
+        "branch": {
+          "branch_id": "fallback:FVT-028:focused-1",
+          "dependencies": [
+            "FVT-G000"
+          ],
+          "estimated_cost": 1.0,
+          "expected_objective_delta": 0.7,
+          "predicted_files": [
+            "ipfs_accelerate_py/agent_supervisor/proof/counterexample_guided_tactician.py",
+            "test/api/test_counterexample_guided_tactician.py"
+          ],
+          "predicted_symbols": [
+            "ipfs_accelerate_py/agent_supervisor/proof/counterexample_guided_tactician.py",
+            "test/api/test_counterexample_guided_tactician.py"
+          ],
+          "risk": 0.2,
+          "source": "deterministic_fallback",
+          "summary": "Deterministic focused plan for Close the loop with verifier-backed counterexample-guided synthesis",
+          "validation_commands": [
+            "python -m pytest test/api/test_counterexample_guided_tactician.py -q"
+          ],
+          "validation_proof": [
+            "python -m pytest test/api/test_counterexample_guided_tactician.py -q exits with status 0"
+          ]
+        },
+        "rationale": [
+          "expected objective delta contributes 385000 millionths",
+          "risk adjustment contributes 200000 millionths",
+          "cost efficiency contributes 75000 millionths",
+          "validation proof contributes 50000 millionths",
+          "total deterministic score is 710000 millionths"
+        ],
+        "score_millionths": 710000
+      },
+      "selection_rationale": [
+        "expected objective delta contributes 385000 millionths",
+        "risk adjustment contributes 200000 millionths",
+        "cost efficiency contributes 75000 millionths",
+        "validation proof contributes 50000 millionths",
+        "total deterministic score is 710000 millionths"
+      ],
+      "source": "deterministic_planner",
+      "task_id": "FVT-028",
+      "used_fallback": false
+    },
+    {
+      "analysis_inconclusive": false,
+      "evaluator_version": "objective-plan-evaluator-v1",
+      "goal_id": "FVT-G050",
+      "rejected": [],
+      "router_error": null,
+      "selected": {
+        "branch": {
+          "branch_id": "fallback:FVT-029:focused-1",
+          "dependencies": [
+            "FVT-G000"
+          ],
+          "estimated_cost": 1.0,
+          "expected_objective_delta": 0.7,
+          "predicted_files": [
+            "ipfs_datasets_py/ipfs_datasets_py/logic/verification_api.py",
+            "ipfs_datasets_py/tests/integration/logic/test_goal_tactician_public_api.py",
+            "test/api/test_goal_tactician_cli_mcp_parity.py"
+          ],
+          "predicted_symbols": [
+            "ipfs_datasets_py/tests/integration/logic/test_goal_tactician_public_api.py",
+            "test/api/test_goal_tactician_cli_mcp_parity.py"
+          ],
+          "risk": 0.2,
+          "source": "deterministic_fallback",
+          "summary": "Deterministic focused plan for Expose stable goal-directed verification operations everywhere",
+          "validation_commands": [
+            "python -m pytest ipfs_datasets_py/tests/integration/logic/test_goal_tactician_public_api.py test/api/test_goal_tactician_cli_mcp_parity.py -q"
+          ],
+          "validation_proof": [
+            "python -m pytest ipfs_datasets_py/tests/integration/logic/test_goal_tactician_public_api.py test/api/test_goal_tactician_cli_mcp_parity.py -q exits with status 0"
+          ]
+        },
+        "rationale": [
+          "expected objective delta contributes 385000 millionths",
+          "risk adjustment contributes 200000 millionths",
+          "cost efficiency contributes 75000 millionths",
+          "validation proof contributes 50000 millionths",
+          "total deterministic score is 710000 millionths"
+        ],
+        "score_millionths": 710000
+      },
+      "selection_rationale": [
+        "expected objective delta contributes 385000 millionths",
+        "risk adjustment contributes 200000 millionths",
+        "cost efficiency contributes 75000 millionths",
+        "validation proof contributes 50000 millionths",
+        "total deterministic score is 710000 millionths"
+      ],
+      "source": "deterministic_planner",
+      "task_id": "FVT-029",
+      "used_fallback": false
+    },
+    {
+      "analysis_inconclusive": false,
+      "evaluator_version": "objective-plan-evaluator-v1",
+      "goal_id": "FVT-G060",
+      "rejected": [],
+      "router_error": null,
+      "selected": {
+        "branch": {
+          "branch_id": "fallback:FVT-030:focused-1",
+          "dependencies": [
+            "FVT-G000"
+          ],
+          "estimated_cost": 1.0,
+          "expected_objective_delta": 0.7,
+          "predicted_files": [
+            "tools/logic/certify_formal_verification_toolchains.py",
+            "test/integration/test_formal_verification_real_tool_matrix.py",
+            "docs/architecture/formal_verification_toolchain_certificate.json"
+          ],
+          "predicted_symbols": [
+            "tools/logic/certify_formal_verification_toolchains.py",
+            "test/integration/test_formal_verification_real_tool_matrix.py"
+          ],
+          "risk": 0.2,
+          "source": "deterministic_fallback",
+          "summary": "Deterministic focused plan for Certify the real multi-prover matrix in hermetic lanes",
+          "validation_commands": [
+            "python -m pytest test/integration/test_formal_verification_real_tool_matrix.py -q"
+          ],
+          "validation_proof": [
+            "python -m pytest test/integration/test_formal_verification_real_tool_matrix.py -q exits with status 0"
+          ]
+        },
+        "rationale": [
+          "expected objective delta contributes 385000 millionths",
+          "risk adjustment contributes 200000 millionths",
+          "cost efficiency contributes 75000 millionths",
+          "validation proof contributes 50000 millionths",
+          "total deterministic score is 710000 millionths"
+        ],
+        "score_millionths": 710000
+      },
+      "selection_rationale": [
+        "expected objective delta contributes 385000 millionths",
+        "risk adjustment contributes 200000 millionths",
+        "cost efficiency contributes 75000 millionths",
+        "validation proof contributes 50000 millionths",
+        "total deterministic score is 710000 millionths"
+      ],
+      "source": "deterministic_planner",
+      "task_id": "FVT-030",
+      "used_fallback": false
+    },
+    {
+      "analysis_inconclusive": false,
+      "evaluator_version": "objective-plan-evaluator-v1",
+      "goal_id": "FVT-G051",
+      "rejected": [],
+      "router_error": null,
+      "selected": {
+        "branch": {
+          "branch_id": "fallback:FVT-031:focused-1",
+          "dependencies": [
+            "FVT-G000"
+          ],
+          "estimated_cost": 1.0,
+          "expected_objective_delta": 0.7,
+          "predicted_files": [
+            "ipfs_accelerate_py/agent_supervisor/proof/goal_tactician_lifecycle.py",
+            "test/api/test_goal_tactician_supervisor_lifecycle.py",
+            "test/api/test_goal_tactician_supervisor_restart.py"
+          ],
+          "predicted_symbols": [
+            "test/api/test_goal_tactician_supervisor_lifecycle.py",
+            "test/api/test_goal_tactician_supervisor_restart.py"
+          ],
+          "risk": 0.2,
+          "source": "deterministic_fallback",
+          "summary": "Deterministic focused plan for Make proof-tactician supervisor execution restartable and fenced",
+          "validation_commands": [
+            "python -m pytest test/api/test_goal_tactician_supervisor_lifecycle.py test/api/test_goal_tactician_supervisor_restart.py -q"
+          ],
+          "validation_proof": [
+            "python -m pytest test/api/test_goal_tactician_supervisor_lifecycle.py test/api/test_goal_tactician_supervisor_restart.py -q exits with status 0"
+          ]
+        },
+        "rationale": [
+          "expected objective delta contributes 385000 millionths",
+          "risk adjustment contributes 200000 millionths",
+          "cost efficiency contributes 75000 millionths",
+          "validation proof contributes 50000 millionths",
+          "total deterministic score is 710000 millionths"
+        ],
+        "score_millionths": 710000
+      },
+      "selection_rationale": [
+        "expected objective delta contributes 385000 millionths",
+        "risk adjustment contributes 200000 millionths",
+        "cost efficiency contributes 75000 millionths",
+        "validation proof contributes 50000 millionths",
+        "total deterministic score is 710000 millionths"
+      ],
+      "source": "deterministic_planner",
+      "task_id": "FVT-031",
+      "used_fallback": false
+    },
+    {
+      "analysis_inconclusive": false,
+      "evaluator_version": "objective-plan-evaluator-v1",
+      "goal_id": "FVT-G062",
+      "rejected": [],
+      "router_error": null,
+      "selected": {
+        "branch": {
+          "branch_id": "fallback:FVT-032:focused-1",
+          "dependencies": [
+            "FVT-G000"
+          ],
+          "estimated_cost": 1.0,
+          "expected_objective_delta": 0.7,
+          "predicted_files": [
+            "test/security/test_formal_verification_tactician_adversarial.py",
+            "ipfs_datasets_py/tests/security/logic/test_goal_tactician_adversarial.py"
+          ],
+          "predicted_symbols": [
+            "test/security/test_formal_verification_tactician_adversarial.py",
+            "ipfs_datasets_py/tests/security/logic/test_goal_tactician_adversarial.py"
+          ],
+          "risk": 0.2,
+          "source": "deterministic_fallback",
+          "summary": "Deterministic focused plan for Prove soundness, privacy, and robustness adversarially",
+          "validation_commands": [
+            "python -m pytest test/security/test_formal_verification_tactician_adversarial.py ipfs_datasets_py/tests/security/logic/test_goal_tactician_adversarial.py -q"
+          ],
+          "validation_proof": [
+            "python -m pytest test/security/test_formal_verification_tactician_adversarial.py ipfs_datasets_py/tests/security/logic/test_goal_tactician_adversarial.py -q exits with status 0"
+          ]
+        },
+        "rationale": [
+          "expected objective delta contributes 385000 millionths",
+          "risk adjustment contributes 200000 millionths",
+          "cost efficiency contributes 75000 millionths",
+          "validation proof contributes 50000 millionths",
+          "total deterministic score is 710000 millionths"
+        ],
+        "score_millionths": 710000
+      },
+      "selection_rationale": [
+        "expected objective delta contributes 385000 millionths",
+        "risk adjustment contributes 200000 millionths",
+        "cost efficiency contributes 75000 millionths",
+        "validation proof contributes 50000 millionths",
+        "total deterministic score is 710000 millionths"
+      ],
+      "source": "deterministic_planner",
+      "task_id": "FVT-032",
+      "used_fallback": false
+    },
+    {
+      "analysis_inconclusive": false,
+      "evaluator_version": "objective-plan-evaluator-v1",
+      "goal_id": "FVT-G063",
+      "rejected": [],
+      "router_error": null,
+      "selected": {
+        "branch": {
+          "branch_id": "fallback:FVT-033:focused-1",
+          "dependencies": [
+            "FVT-G000"
+          ],
+          "estimated_cost": 1.0,
+          "expected_objective_delta": 0.7,
+          "predicted_files": [
+            "test/benchmarks/test_formal_verification_tactician_benchmark.py",
+            "docs/architecture/formal_verification_tactician_benchmark.json",
+            "ipfs_accelerate_py/agent_supervisor/proof/goal_tactician_metrics.py"
+          ],
+          "predicted_symbols": [
+            "test/benchmarks/test_formal_verification_tactician_benchmark.py",
+            "docs/architecture/formal_verification_tactician_benchmark.json"
+          ],
+          "risk": 0.2,
+          "source": "deterministic_fallback",
+          "summary": "Deterministic focused plan for Benchmark quality, resources, cache behavior, and observability",
+          "validation_commands": [
+            "python -m pytest test/benchmarks/test_formal_verification_tactician_benchmark.py -q"
+          ],
+          "validation_proof": [
+            "python -m pytest test/benchmarks/test_formal_verification_tactician_benchmark.py -q exits with status 0"
+          ]
+        },
+        "rationale": [
+          "expected objective delta contributes 385000 millionths",
+          "risk adjustment contributes 200000 millionths",
+          "cost efficiency contributes 75000 millionths",
+          "validation proof contributes 50000 millionths",
+          "total deterministic score is 710000 millionths"
+        ],
+        "score_millionths": 710000
+      },
+      "selection_rationale": [
+        "expected objective delta contributes 385000 millionths",
+        "risk adjustment contributes 200000 millionths",
+        "cost efficiency contributes 75000 millionths",
+        "validation proof contributes 50000 millionths",
+        "total deterministic score is 710000 millionths"
+      ],
+      "source": "deterministic_planner",
+      "task_id": "FVT-033",
+      "used_fallback": false
+    },
+    {
+      "analysis_inconclusive": false,
+      "evaluator_version": "objective-plan-evaluator-v1",
+      "goal_id": "FVT-G070",
+      "rejected": [],
+      "router_error": null,
+      "selected": {
+        "branch": {
+          "branch_id": "fallback:FVT-034:focused-1",
+          "dependencies": [
+            "FVT-G000"
+          ],
+          "estimated_cost": 1.0,
+          "expected_objective_delta": 0.7,
+          "predicted_files": [
+            "docs/formal_verification_tactician.md",
+            "docs/operations/formal_verification_tactician_runbook.md",
+            "ipfs_datasets_py/docs/logic/proof_tactician_migration.md"
+          ],
+          "predicted_symbols": [
+            "docs/formal_verification_tactician.md",
+            "docs/operations/formal_verification_tactician_runbook.md"
+          ],
+          "risk": 0.2,
+          "source": "deterministic_fallback",
+          "summary": "Deterministic focused plan for Document operation, migration, evidence, and failure handling",
+          "validation_commands": [
+            "python scripts/docs/check_agent_supervisor_docs.py && python -m pytest test/api/test_formal_verification_tactician_docs.py -q"
+          ],
+          "validation_proof": [
+            "python scripts/docs/check_agent_supervisor_docs.py && python -m pytest test/api/test_formal_verification_tactician_docs.py -q exits with status 0"
+          ]
+        },
+        "rationale": [
+          "expected objective delta contributes 385000 millionths",
+          "risk adjustment contributes 200000 millionths",
+          "cost efficiency contributes 75000 millionths",
+          "validation proof contributes 50000 millionths",
+          "total deterministic score is 710000 millionths"
+        ],
+        "score_millionths": 710000
+      },
+      "selection_rationale": [
+        "expected objective delta contributes 385000 millionths",
+        "risk adjustment contributes 200000 millionths",
+        "cost efficiency contributes 75000 millionths",
+        "validation proof contributes 50000 millionths",
+        "total deterministic score is 710000 millionths"
+      ],
+      "source": "deterministic_planner",
+      "task_id": "FVT-034",
+      "used_fallback": false
+    },
+    {
+      "analysis_inconclusive": false,
+      "evaluator_version": "objective-plan-evaluator-v1",
+      "goal_id": "FVT-G080",
+      "rejected": [],
+      "router_error": null,
+      "selected": {
+        "branch": {
+          "branch_id": "fallback:FVT-035:focused-1",
+          "dependencies": [
+            "FVT-G000"
+          ],
+          "estimated_cost": 1.0,
+          "expected_objective_delta": 0.7,
+          "predicted_files": [
+            "docs/architecture/formal_verification_tactician_rollout.md",
+            "test/api/test_formal_verification_tactician_rollout.py"
+          ],
+          "predicted_symbols": [
+            "docs/architecture/formal_verification_tactician_rollout.md",
+            "test/api/test_formal_verification_tactician_rollout.py"
+          ],
+          "risk": 0.2,
+          "source": "deterministic_fallback",
+          "summary": "Deterministic focused plan for Define property-specific rollout, promotion, and rollback",
+          "validation_commands": [
+            "python -m pytest test/api/test_formal_verification_tactician_rollout.py -q"
+          ],
+          "validation_proof": [
+            "python -m pytest test/api/test_formal_verification_tactician_rollout.py -q exits with status 0"
+          ]
+        },
+        "rationale": [
+          "expected objective delta contributes 385000 millionths",
+          "risk adjustment contributes 200000 millionths",
+          "cost efficiency contributes 75000 millionths",
+          "validation proof contributes 50000 millionths",
+          "total deterministic score is 710000 millionths"
+        ],
+        "score_millionths": 710000
+      },
+      "selection_rationale": [
+        "expected objective delta contributes 385000 millionths",
+        "risk adjustment contributes 200000 millionths",
+        "cost efficiency contributes 75000 millionths",
+        "validation proof contributes 50000 millionths",
+        "total deterministic score is 710000 millionths"
+      ],
+      "source": "deterministic_planner",
+      "task_id": "FVT-035",
+      "used_fallback": false
+    },
+    {
+      "analysis_inconclusive": false,
+      "evaluator_version": "objective-plan-evaluator-v1",
+      "goal_id": "FVT-G090",
+      "rejected": [],
+      "router_error": null,
+      "selected": {
+        "branch": {
+          "branch_id": "fallback:FVT-036:focused-1",
+          "dependencies": [
+            "FVT-G000"
+          ],
+          "estimated_cost": 1.0,
+          "expected_objective_delta": 0.7,
+          "predicted_files": [
+            "tools/logic/build_formal_verification_tactician_receipt.py",
+            "test/api/test_formal_verification_tactician_readiness_completion.py",
+            "docs/architecture/formal_verification_tactician_readiness_completion_receipt.json"
+          ],
+          "predicted_symbols": [
+            "tools/logic/build_formal_verification_tactician_receipt.py",
+            "test/api/test_formal_verification_tactician_readiness_completion.py"
+          ],
+          "risk": 0.2,
+          "source": "deterministic_fallback",
+          "summary": "Deterministic focused plan for Issue the final implementation and deployment-readiness receipts",
+          "validation_commands": [
+            "python -m pytest test/api/test_formal_verification_tactician_readiness_completion.py -q"
+          ],
+          "validation_proof": [
+            "python -m pytest test/api/test_formal_verification_tactician_readiness_completion.py -q exits with status 0"
+          ]
+        },
+        "rationale": [
+          "expected objective delta contributes 385000 millionths",
+          "risk adjustment contributes 200000 millionths",
+          "cost efficiency contributes 75000 millionths",
+          "validation proof contributes 50000 millionths",
+          "total deterministic score is 710000 millionths"
+        ],
+        "score_millionths": 710000
+      },
+      "selection_rationale": [
+        "expected objective delta contributes 385000 millionths",
+        "risk adjustment contributes 200000 millionths",
+        "cost efficiency contributes 75000 millionths",
+        "validation proof contributes 50000 millionths",
+        "total deterministic score is 710000 millionths"
+      ],
+      "source": "deterministic_planner",
+      "task_id": "FVT-036",
+      "used_fallback": false
+    }
+  ],
+  "schema": "ipfs_accelerate_py.agent_supervisor.objective_plan_evaluations@1"
+}

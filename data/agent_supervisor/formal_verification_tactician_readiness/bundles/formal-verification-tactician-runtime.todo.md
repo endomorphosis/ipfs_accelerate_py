@@ -1,0 +1,135 @@
+# Objective Bundle: formal-verification-tactician/runtime
+
+Source todo: docs/architecture/formal_verification_tactician_readiness.todo.md
+Purpose: bundle objective-generated tasks so parallel daemons can work one lane at a time.
+Conflict policy: keep edits inside this bundle when possible; use the LLM merge resolver for semantic conflicts.
+
+## FVT-005 Close formal verification tactician readiness gap: Route every external tool through one bounded lifecycle
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: tool-runtime
+- Depends on: FVT-001
+- Outputs: ipfs_datasets_py/ipfs_datasets_py/logic/backends/process.py, ipfs_datasets_py/tests/integration/logic/backends/test_all_backend_process_isolation.py
+- Validation: python -m pytest ipfs_datasets_py/tests/unit/logic/backends/test_process_lifecycle.py ipfs_datasets_py/tests/integration/logic/backends/test_all_backend_process_isolation.py -q
+- Evidence inputs: data/agent_supervisor/formal_verification_tactician_readiness/discovery
+- Discovery evidence: /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-07-30-fvt-005-objective-gap-f1cad0d96b56.md
+- Bundle: formal-verification-tactician/runtime
+- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-runtime.todo.md
+- Bundle strategy: explicit
+- Graph parents: FVT-G000
+- Graph depth: 1
+- Objective heap index: 4
+- Parallel lane: formal-verification-tactician/runtime
+- Conflict policy: Own shared process lifecycle integration and isolation tests; change backend invocation mechanics without changing their formula semantics or result authority.
+- Predicted files: ipfs_datasets_py/ipfs_datasets_py/logic/backends/process.py, ipfs_datasets_py/tests/integration/logic/backends/test_all_backend_process_isolation.py
+- Changed paths:
+- AST symbols: ipfs_datasets_py/tests/integration/logic/backends/test_all_backend_process_isolation.py
+- Interfaces: UniversalBoundedToolLifecycle@1
+- Submodules: ipfs_datasets_py
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: FVT-G009
+- Completion authority: local
+- External authority blockers:
+- Canonical task key: task/v1/8cbc33743c4cb88880906197b2a45fb65b8fde6d96ebee83a9fb6a26fb1de4b6
+- Canonical task CID: baguqeerars6dg5b4js4iraeqmgl3fjc7wzny7xtns3v65a5j7nvcn6y54s3a
+- Semantic identity: objective-evidence-obligation/v1/5128548586682af1fd3ac96e250fc387227cc62b6d729db7279ea3e443dcf39f
+- Acceptance subset: SMT/differential and every other adapter and probe use argument arrays, private workspaces, process-tree termination, wall/memory/CPU/output bounds, cancellation, redaction, and cleanup, adversarial fake tools cannot escape paths, leave children, flood output, or trigger installation/network access.
+- Preconditions: objective goal FVT-G009 is schedulable
+- Effects: satisfy evidence requirement: ipfs_datasets_py/tests/integration/logic/backends/test_all_backend_process_isolation.py
+- Evidence subset: ipfs_datasets_py/tests/integration/logic/backends/test_all_backend_process_isolation.py
+- Resource class: cpu-medium
+- Token class: medium
+- Estimated tokens: 0
+- Resources: cpu-medium
+- Merge fate: objective/FVT-G009
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/5128548586682af1fd3ac96e250fc387227cc62b6d729db7279ea3e443dcf39f
+- Missing evidence: ipfs_datasets_py/tests/integration/logic/backends/test_all_backend_process_isolation.py
+- Embedding query: Remove direct unbounded subprocess execution from concrete backends and version probes and enforce one injected process lifecycle across native, JVM, OCaml/opam, kernel, and WASM tools.
+- AST query: ipfs_datasets_py/tests/integration/logic/backends/test_all_backend_process_isolation.py
+- Surplus group: objective/FVT-G009
+- Merge key: 8abdd21ba89a8dc8
+- Merge family: objective/FVT-G009
+- Merge role: aggregate
+- Work item count: 1
+- Work scope: goal_subgoal_multi_evidence_batch
+- Goal packet:
+- Goal packet role:
+- Goal packet goals:
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: aggregate
+- Todo vector key: 0593c403c4ebb8fe
+- Acceptance: Objective scan filed this gap for FVT-G009. Use evidence in /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-07-30-fvt-005-objective-gap-f1cad0d96b56.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (ipfs_datasets_py/tests/integration/logic/backends/test_all_backend_process_isolation.py), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
+
+## FVT-006 Close formal verification tactician readiness gap: Qualify clean packages and hermetic offline toolchains
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: packaging-toolchains
+- Depends on: FVT-001, FVT-005
+- Outputs: config/formal_verification_toolchains.lock.json, test/packaging/test_logic_verification_clean_install.py, ipfs_datasets_py/tests/packaging/test_logic_verification_npm_layout.py
+- Validation: python -m pytest test/packaging/test_logic_verification_clean_install.py ipfs_datasets_py/tests/packaging/test_logic_verification_npm_layout.py -q
+- Evidence inputs: data/agent_supervisor/formal_verification_tactician_readiness/discovery
+- Discovery evidence: /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-07-30-fvt-006-objective-gap-e87f402b3a76.md
+- Bundle: formal-verification-tactician/runtime
+- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-runtime.todo.md
+- Bundle strategy: explicit
+- Graph parents: FVT-G000
+- Graph depth: 1
+- Objective heap index: 5
+- Parallel lane: formal-verification-tactician/runtime
+- Conflict policy: Own package manifests, toolchain lock, and clean-artifact tests; do not vendor unreviewed binaries or alter solver semantics.
+- Predicted files: config/formal_verification_toolchains.lock.json, test/packaging/test_logic_verification_clean_install.py, ipfs_datasets_py/tests/packaging/test_logic_verification_npm_layout.py
+- Changed paths:
+- AST symbols: config/formal_verification_toolchains.lock.json, test/packaging/test_logic_verification_clean_install.py, ipfs_datasets_py/tests/packaging/test_logic_verification_npm_layout.py
+- Interfaces: FormalVerificationPackagingGate@1, OfflineToolchainLock@1
+- Submodules: ipfs_datasets_py
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: FVT-G010
+- Completion authority: local
+- External authority blockers:
+- Canonical task key: task/v1/36c000b6d9e5d5d07de6455be5ef5f64540d4e48aba61f601199368723fc6b48
+- Canonical task CID: baguqeerag3aabnwz4xk5a7pgivn6l327mrka2tsivotb6yarte3ioi74nnea
+- Semantic identity: objective-evidence-obligation/v1/0ae49e24e6f120985aa64c5c22173ce64ef2d4cc1a970038c27ad7c818acb8e9
+- Acceptance subset: Empty-environment installs import and exercise all stable Python operations, npm declared and built entrypoints agree, namespace/package discovery includes new modules, exact toolchain probes detect shims and version mismatch, offline verification performs no install, download, or network access.
+- Preconditions: objective goal FVT-G010 is schedulable
+- Effects: satisfy evidence requirement: config/formal_verification_toolchains.lock.json, satisfy evidence requirement: test/packaging/test_logic_verification_clean_install.py, satisfy evidence requirement: ipfs_datasets_py/tests/packaging/test_logic_verification_npm_layout.py
+- Evidence subset: config/formal_verification_toolchains.lock.json, test/packaging/test_logic_verification_clean_install.py, ipfs_datasets_py/tests/packaging/test_logic_verification_npm_layout.py
+- Resource class: cpu-install-test
+- Token class: medium
+- Estimated tokens: 0
+- Resources: cpu-install-test
+- Merge fate: objective/FVT-G010
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/0ae49e24e6f120985aa64c5c22173ce64ef2d4cc1a970038c27ad7c818acb8e9
+- Missing evidence: config/formal_verification_toolchains.lock.json, test/packaging/test_logic_verification_clean_install.py, ipfs_datasets_py/tests/packaging/test_logic_verification_npm_layout.py
+- Embedding query: Prove that Python wheel/sdist and TypeScript package artifacts contain every stable verification module and run against exact pinned offline external-tool identities without opportunistic downloads.
+- AST query: config/formal_verification_toolchains.lock.json, test/packaging/test_logic_verification_clean_install.py, ipfs_datasets_py/tests/packaging/test_logic_verification_npm_layout.py
+- Surplus group: objective/FVT-G010
+- Merge key: f632a2c433fbd032
+- Merge family: objective/FVT-G010
+- Merge role: aggregate
+- Work item count: 3
+- Work scope: goal_subgoal_multi_evidence_batch
+- Goal packet:
+- Goal packet role:
+- Goal packet goals:
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: aggregate
+- Todo vector key: 3e81fcc7910824a7
+- Acceptance: Objective scan filed this gap for FVT-G010. Use evidence in /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-07-30-fvt-006-objective-gap-e87f402b3a76.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (config/formal_verification_toolchains.lock.json, test/packaging/test_logic_verification_clean_install.py, ipfs_datasets_py/tests/packaging/test_logic_verification_npm_layout.py), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
