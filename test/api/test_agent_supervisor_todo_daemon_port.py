@@ -6664,8 +6664,310 @@ def test_implementation_daemon_merges_submodule_with_nonoverlapping_dirty_paths(
 
     assert results[0]["merged"] is True
     assert results[0]["preserved_dirty_paths"] == ["child.txt"]
+    validation = results[0]["post_merge_validation"]
+    assert validation["valid"] is True
+    assert validation["checks"]["preserved_dirty_overlay_unchanged"] is True
+    assert validation["dirty_state_sha256"].startswith("sha256:")
+    assert (
+        validation["dirty_state_sha256"]
+        == validation["expected_dirty_state_sha256"]
+    )
     assert _git(submodule, "merge-base", "--is-ancestor", task_commit, "main") == ""
     assert (submodule / "child.txt").read_text(encoding="utf-8") == "preserved local dirt\n"
+
+
+def test_implementation_daemon_post_merge_validation_rejects_changed_or_new_dirt(tmp_path):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    state_dir = tmp_path / "supervisor-state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=["libs/child"],
+    )
+    (submodule / "child.txt").write_text("preserved local dirt\n", encoding="utf-8")
+    snapshot = daemon._capture_dirty_path_snapshot(submodule, ["child.txt"])
+
+    unchanged = daemon._validate_merged_submodule_state(
+        submodule,
+        "libs/child",
+        expected_dirty_snapshot=snapshot,
+    )
+
+    assert snapshot["captured"] is True
+    assert unchanged["valid"] is True
+    assert unchanged["checks"]["clean"] is False
+    assert unchanged["checks"]["preserved_dirty_overlay_unchanged"] is True
+
+    (submodule / "child.txt").write_text("mutated local dirt\n", encoding="utf-8")
+    changed = daemon._validate_merged_submodule_state(
+        submodule,
+        "libs/child",
+        expected_dirty_snapshot=snapshot,
+    )
+
+    assert changed["valid"] is False
+    assert changed["checks"]["preserved_dirty_overlay_unchanged"] is False
+    assert changed["dirty_state_sha256"] != changed["expected_dirty_state_sha256"]
+
+    (submodule / "child.txt").write_text("preserved local dirt\n", encoding="utf-8")
+    (submodule / "unexpected.txt").write_text("new dirt\n", encoding="utf-8")
+    unexpected = daemon._validate_merged_submodule_state(
+        submodule,
+        "libs/child",
+        expected_dirty_snapshot=snapshot,
+    )
+
+    assert unexpected["valid"] is False
+    assert unexpected["dirty_paths"] == ["child.txt", "unexpected.txt"]
+
+    (submodule / "unexpected.txt").unlink()
+    _git(submodule, "restore", "child.txt")
+    disappeared = daemon._validate_merged_submodule_state(
+        submodule,
+        "libs/child",
+        expected_dirty_snapshot=snapshot,
+    )
+
+    assert disappeared["checks"]["clean"] is True
+    assert disappeared["checks"]["preserved_dirty_overlay_unchanged"] is False
+    assert disappeared["valid"] is False
+
+    missing_receipt = daemon._validate_merged_submodule_state(
+        submodule,
+        "libs/child",
+        expected_dirty_snapshot={
+            "captured": False,
+            "paths": [],
+            "sha256": "",
+            "reason": "checkpoint_dirty_snapshot_missing",
+        },
+    )
+
+    assert missing_receipt["valid"] is False
+
+
+def test_implementation_daemon_failed_snapshot_is_retryable_but_cannot_be_bypassed(
+    tmp_path,
+    monkeypatch,
+):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    state_dir = tmp_path / "supervisor-state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=["libs/child"],
+    )
+    parent_branch = "implementation/auto-122"
+    submodule_branch = daemon._submodule_worktree_branch_name(
+        parent_branch,
+        "libs/child",
+    )
+    _git(submodule, "checkout", "-b", submodule_branch)
+    (submodule / "task-owned.txt").write_text("task work\n", encoding="utf-8")
+    _git(submodule, "add", "task-owned.txt")
+    _git(submodule, "commit", "-m", "AUTO-122: task work")
+    task_commit = _git(submodule, "rev-parse", "HEAD")
+    _git(submodule, "checkout", "main")
+    (submodule / "child.txt").write_text("preserved local dirt\n", encoding="utf-8")
+
+    validate = daemon._validate_merged_submodule_state
+
+    def mutate_during_validation(source, submodule_path, **kwargs):
+        (source / "child.txt").write_text("mutated during merge\n", encoding="utf-8")
+        return validate(source, submodule_path, **kwargs)
+
+    monkeypatch.setattr(
+        daemon,
+        "_validate_merged_submodule_state",
+        mutate_during_validation,
+    )
+    failed = daemon._merge_submodule_branches_to_main(
+        parent_branch,
+        task=PortalTask(
+            task_id="AUTO-122",
+            title="Fail closed on changed local dirt",
+            status="todo",
+            completion="manual",
+            priority="P0",
+            track="ops",
+        ),
+        attempt=1,
+    )
+
+    assert failed[0]["merged"] is False
+    assert failed[0]["reason"] == "post_merge_validation_failed"
+    assert failed[0]["expected_dirty_snapshot"]["captured"] is True
+    assert _git(submodule, "merge-base", "--is-ancestor", task_commit, "main") == ""
+    checkpoint_paths = list((state_dir / "merge_checkpoints").glob("*.json"))
+    assert len(checkpoint_paths) == 1
+
+    (submodule / "child.txt").write_text("preserved local dirt\n", encoding="utf-8")
+    monkeypatch.setattr(daemon, "_validate_merged_submodule_state", validate)
+    _git(submodule, "checkout", submodule_branch)
+    wrong_branch_retry = daemon._merge_submodule_branches_to_main(
+        parent_branch,
+        task=PortalTask(
+            task_id="AUTO-122",
+            title="Fail closed on changed local dirt",
+            status="todo",
+            completion="manual",
+            priority="P0",
+            track="ops",
+        ),
+        attempt=2,
+    )
+
+    assert wrong_branch_retry[0]["merged"] is False
+    assert wrong_branch_retry[0]["reason"] == "post_merge_validation_failed"
+    wrong_branch_validation = wrong_branch_retry[0]["post_merge_validation"]
+    assert wrong_branch_validation["checks"]["expected_branch_checked_out"] is False
+    assert wrong_branch_validation["checks"]["head_matches_expected_branch"] is True
+    assert list((state_dir / "merge_checkpoints").glob("*.json")) == checkpoint_paths
+
+    _git(submodule, "checkout", "main")
+    retried = daemon._merge_submodule_branches_to_main(
+        parent_branch,
+        task=PortalTask(
+            task_id="AUTO-122",
+            title="Fail closed on changed local dirt",
+            status="todo",
+            completion="manual",
+            priority="P0",
+            track="ops",
+        ),
+        attempt=3,
+    )
+
+    assert retried[0]["merged"] is True
+    assert retried[0]["reason"] == "already_merged_revalidated"
+    assert retried[0]["post_merge_validation"]["valid"] is True
+    assert list((state_dir / "merge_checkpoints").glob("*.json")) == []
+
+
+def test_implementation_daemon_rejects_staged_preserved_dirt_before_merge(tmp_path):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    state_dir = tmp_path / "supervisor-state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=["libs/child"],
+    )
+    parent_branch = "implementation/auto-123"
+    submodule_branch = daemon._submodule_worktree_branch_name(
+        parent_branch,
+        "libs/child",
+    )
+    _git(submodule, "checkout", "-b", submodule_branch)
+    (submodule / "task-owned.txt").write_text("task work\n", encoding="utf-8")
+    _git(submodule, "add", "task-owned.txt")
+    _git(submodule, "commit", "-m", "AUTO-123: task work")
+    task_commit = _git(submodule, "rev-parse", "HEAD")
+    _git(submodule, "checkout", "main")
+    (submodule / "child.txt").write_text("staged local dirt\n", encoding="utf-8")
+    _git(submodule, "add", "child.txt")
+
+    result = daemon._merge_submodule_branches_to_main(
+        parent_branch,
+        task=PortalTask(
+            task_id="AUTO-123",
+            title="Reject staged local dirt",
+            status="todo",
+            completion="manual",
+            priority="P0",
+            track="ops",
+        ),
+        attempt=1,
+    )
+
+    assert result[0]["merged"] is False
+    assert result[0]["reason"] == "preserved_dirty_snapshot_unavailable"
+    assert (
+        result[0]["expected_dirty_snapshot"]["reason"]
+        == "staged_or_unmerged_dirty_state"
+    )
+    assert subprocess.run(
+        ["git", "merge-base", "--is-ancestor", task_commit, "main"],
+        cwd=submodule,
+        capture_output=True,
+        check=False,
+    ).returncode != 0
+
+
+def test_implementation_daemon_resolver_cannot_rebaseline_unrelated_dirty_path(
+    tmp_path,
+    monkeypatch,
+):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    state_dir = tmp_path / "supervisor-state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=["libs/child"],
+    )
+    parent_branch = "implementation/auto-124"
+    submodule_branch = daemon._submodule_worktree_branch_name(
+        parent_branch,
+        "libs/child",
+    )
+    _git(submodule, "checkout", "-b", submodule_branch)
+    (submodule / "task-owned.txt").write_text("task branch work\n", encoding="utf-8")
+    _git(submodule, "add", "task-owned.txt")
+    _git(submodule, "commit", "-m", "AUTO-124: task work")
+    task_commit = _git(submodule, "rev-parse", "HEAD")
+    _git(submodule, "checkout", "main")
+    (submodule / "task-owned.txt").write_text("overlapping local work\n", encoding="utf-8")
+    (submodule / "child.txt").write_text("preserved local dirt\n", encoding="utf-8")
+
+    def resolver(**_kwargs):
+        (submodule / "task-owned.txt").unlink()
+        (submodule / "child.txt").write_text(
+            "resolver-mutated unrelated dirt\n",
+            encoding="utf-8",
+        )
+        return {"applied": True}
+
+    monkeypatch.setattr(
+        daemon,
+        "_invoke_llm_merge_resolver_for_failed_merge",
+        resolver,
+    )
+    result = daemon._merge_submodule_branches_to_main(
+        parent_branch,
+        task=PortalTask(
+            task_id="AUTO-124",
+            title="Keep resolver authority bounded",
+            status="todo",
+            completion="manual",
+            priority="P0",
+            track="ops",
+        ),
+        attempt=1,
+    )
+
+    assert result[0]["merged"] is False
+    assert result[0]["reason"] == "preserved_dirty_overlay_changed_before_merge"
+    assert (
+        result[0]["expected_dirty_snapshot"]["sha256"]
+        != result[0]["current_dirty_snapshot"]["sha256"]
+    )
+    assert subprocess.run(
+        ["git", "merge-base", "--is-ancestor", task_commit, "main"],
+        cwd=submodule,
+        capture_output=True,
+        check=False,
+    ).returncode != 0
 
 
 def test_implementation_daemon_records_merged_root_submodule_gitlink(tmp_path):

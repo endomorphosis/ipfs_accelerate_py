@@ -21229,7 +21229,89 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 )
                 continue
             default_branch = self._submodule_default_branch(relative, source)
+            previous_failure = checkpoint.failed_submodules.get(full_relative, {})
+            previous_reason = str(previous_failure.get("reason") or "")
+            previous_default_branch = str(
+                previous_failure.get("default_branch") or ""
+            ).strip()
+            if (
+                previous_reason
+                in {
+                    "post_merge_validation_pending",
+                    "post_merge_validation_failed",
+                }
+                and previous_default_branch
+            ):
+                default_branch = previous_default_branch
             if self._git_ref_is_ancestor_in_repo(source, submodule_branch, default_branch):
+                if previous_reason in {
+                    "post_merge_validation_pending",
+                    "post_merge_validation_failed",
+                }:
+                    expected_dirty_snapshot = previous_failure.get(
+                        "expected_dirty_snapshot"
+                    )
+                    if not isinstance(expected_dirty_snapshot, dict):
+                        expected_dirty_snapshot = {
+                            "captured": False,
+                            "paths": [],
+                            "sha256": "",
+                            "reason": "checkpoint_dirty_snapshot_missing",
+                        }
+                    validation = self._validate_merged_submodule_state(
+                        source,
+                        full_relative,
+                        expected_dirty_snapshot=expected_dirty_snapshot,
+                        expected_branch=default_branch,
+                    )
+                    result = {
+                        "path": full_relative,
+                        "branch": submodule_branch,
+                        "default_branch": default_branch,
+                        "merged": bool(validation.get("valid")),
+                        "reason": (
+                            "already_merged_revalidated"
+                            if validation.get("valid")
+                            else "post_merge_validation_failed"
+                        ),
+                        "commit": self._run_git(
+                            ["rev-parse", "HEAD"],
+                            cwd=source,
+                        ).stdout.strip(),
+                        "post_merge_validation": validation,
+                        "expected_dirty_snapshot": expected_dirty_snapshot,
+                    }
+                    if stale_config_repair.get("repairs"):
+                        result["stale_submodule_worktree_config_repair"] = (
+                            stale_config_repair
+                        )
+                    if not validation.get("valid"):
+                        self._record_event(
+                            "submodule_post_merge_validation_failed",
+                            {
+                                "task_id": task.task_id,
+                                "path": full_relative,
+                                "validation": validation,
+                                "retry": True,
+                            },
+                        )
+                    results.append(result)
+                    checkpoint.record_submodule(full_relative, result)
+                    if not result["merged"]:
+                        continue
+                    results.extend(
+                        self._merge_submodule_branches_to_main_in_repo(
+                            repo_path=source,
+                            branch_name=branch_name,
+                            parent_relative=full_relative,
+                            task=task,
+                            attempt=attempt,
+                            baseline_ref=baseline_ref,
+                            changed_submodule_paths=changed_submodule_paths,
+                            checkpoint=checkpoint,
+                        )
+                    )
+                    continue
                 result = {
                     "path": full_relative,
                     "branch": submodule_branch,
@@ -21254,7 +21336,10 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     )
                 )
                 continue
-            dirty = self._run_git(["status", "--porcelain"], cwd=source).stdout.strip()
+            dirty = self._run_git(
+                ["status", "--porcelain", "--untracked-files=all"],
+                cwd=source,
+            ).stdout.strip()
             dirty_paths = self._dirty_status_paths(dirty)
             changed_paths = self._branch_changed_paths_in_repo(
                 source,
@@ -21263,6 +21348,25 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             )
             dirty_overlap = self._overlapping_paths(dirty_paths, changed_paths)
             preserved_dirty_paths = sorted(set(dirty_paths) - set(dirty_overlap))
+            preserved_dirty_snapshot = self._capture_dirty_path_snapshot(
+                source,
+                preserved_dirty_paths,
+            )
+            if not preserved_dirty_snapshot.get("captured"):
+                result = {
+                    "path": full_relative,
+                    "branch": submodule_branch,
+                    "default_branch": default_branch,
+                    "merged": False,
+                    "reason": "preserved_dirty_snapshot_unavailable",
+                    "status": dirty,
+                    "dirty_paths": dirty_overlap,
+                    "preserved_dirty_paths": preserved_dirty_paths,
+                    "expected_dirty_snapshot": preserved_dirty_snapshot,
+                }
+                results.append(result)
+                checkpoint.record_submodule(full_relative, result)
+                continue
             if dirty_overlap:
                 llm_merge_resolver = self._invoke_llm_merge_resolver_for_failed_merge(
                     workspace=source,
@@ -21277,7 +21381,10 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     dirty_paths=dirty_overlap,
                 )
                 if llm_merge_resolver.get("applied", False):
-                    dirty = self._run_git(["status", "--porcelain"], cwd=source).stdout.strip()
+                    dirty = self._run_git(
+                        ["status", "--porcelain", "--untracked-files=all"],
+                        cwd=source,
+                    ).stdout.strip()
                     dirty_paths = self._dirty_status_paths(dirty)
                     changed_paths = self._branch_changed_paths_in_repo(
                         source,
@@ -21368,6 +21475,34 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                         results.append(result)
                         checkpoint.record_submodule(full_relative, result)
                         continue
+            dirty_overlay_matches, current_dirty_snapshot = (
+                self._dirty_snapshot_matches(source, preserved_dirty_snapshot)
+            )
+            if not dirty_overlay_matches:
+                result = {
+                    "path": full_relative,
+                    "branch": submodule_branch,
+                    "default_branch": default_branch,
+                    "merged": False,
+                    "reason": "preserved_dirty_overlay_changed_before_merge",
+                    "preserved_dirty_paths": preserved_dirty_paths,
+                    "expected_dirty_snapshot": preserved_dirty_snapshot,
+                    "current_dirty_snapshot": current_dirty_snapshot,
+                }
+                results.append(result)
+                checkpoint.record_submodule(full_relative, result)
+                continue
+            checkpoint.record_submodule(
+                full_relative,
+                {
+                    "path": full_relative,
+                    "branch": submodule_branch,
+                    "default_branch": default_branch,
+                    "merged": False,
+                    "reason": "post_merge_validation_pending",
+                    "expected_dirty_snapshot": preserved_dirty_snapshot,
+                },
+            )
             merge_command = ["git", "merge", "--ff-only", submodule_branch]
             merge = subprocess.run(
                 merge_command,
@@ -21461,9 +21596,18 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             if merge.returncode == 0:
                 result["commit"] = self._run_git(["rev-parse", "HEAD"], cwd=source).stdout.strip()
                 # Post-merge validation: ensure submodule is in a healthy state
-                validation = self._validate_merged_submodule_state(source, full_relative)
-                if not validation.get("valid"):
+                validation = self._validate_merged_submodule_state(
+                    source,
+                    full_relative,
+                    expected_dirty_snapshot=preserved_dirty_snapshot,
+                    expected_branch=default_branch,
+                )
+                if preserved_dirty_paths or not validation.get("valid"):
                     result["post_merge_validation"] = validation
+                if not validation.get("valid"):
+                    result["merged"] = False
+                    result["reason"] = "post_merge_validation_failed"
+                    result["expected_dirty_snapshot"] = preserved_dirty_snapshot
                     self._record_event("submodule_post_merge_validation_failed", {
                         "task_id": task.task_id,
                         "path": full_relative,
@@ -21472,7 +21616,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             results.append(result)
             # Record in checkpoint for crash recovery
             checkpoint.record_submodule(full_relative, result)
-            if merge.returncode == 0:
+            if result.get("merged"):
                 results.extend(
                     self._merge_submodule_branches_to_main_in_repo(
                         repo_path=source,
@@ -21537,12 +21681,19 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         # Sort by depth ascending (leaves first)
         return sorted(relatives, key=lambda r: (depth.get(r, 0), r))
 
-    def _validate_merged_submodule_state(self, source: Path, submodule_path: str) -> dict[str, Any]:
+    def _validate_merged_submodule_state(
+        self,
+        source: Path,
+        submodule_path: str,
+        *,
+        expected_dirty_snapshot: dict[str, Any] | None = None,
+        expected_branch: str | None = None,
+    ) -> dict[str, Any]:
         """Validate a submodule is in a healthy state after merge.
 
         Checks:
         - Not in detached HEAD state
-        - Working tree is clean (no dirty files)
+        - Working tree is clean, or its pre-existing non-overlapping dirt is unchanged
         - Nested submodules are initialized
         """
         validation: dict[str, Any] = {"valid": True, "path": submodule_path, "checks": {}}
@@ -21552,10 +21703,37 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         validation["checks"]["has_branch"] = bool(branch)
         if not branch:
             validation["valid"] = False
+        if expected_branch is not None:
+            expected_head = subprocess.run(
+                ["git", "rev-parse", expected_branch],
+                cwd=source,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            current_head = subprocess.run(
+                ["git", "rev-parse", "HEAD"],
+                cwd=source,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            branch_matches = branch == expected_branch
+            head_matches = bool(
+                expected_head.returncode == 0
+                and current_head.returncode == 0
+                and expected_head.stdout.strip() == current_head.stdout.strip()
+            )
+            validation["expected_branch"] = expected_branch
+            validation["current_branch"] = branch
+            validation["checks"]["expected_branch_checked_out"] = branch_matches
+            validation["checks"]["head_matches_expected_branch"] = head_matches
+            if not (branch_matches and head_matches):
+                validation["valid"] = False
 
         # Check 2: Working tree is clean
         status = subprocess.run(
-            ["git", "status", "--porcelain"],
+            ["git", "status", "--porcelain", "--untracked-files=all"],
             cwd=source,
             text=True,
             capture_output=True,
@@ -21563,9 +21741,46 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         )
         is_clean = status.returncode == 0 and not status.stdout.strip()
         validation["checks"]["clean"] = is_clean
-        if not is_clean:
+        unmerged_paths = [
+            line[3:].strip()
+            for line in status.stdout.splitlines()
+            if len(line) >= 4
+            and line[:2] in {"AA", "AU", "DD", "DU", "UA", "UD", "UU"}
+        ]
+        validation["checks"]["no_unmerged_paths"] = not unmerged_paths
+        if unmerged_paths:
+            validation["unmerged_paths"] = unmerged_paths[:10]
+        dirty_overlay_matches = False
+        if status.returncode == 0 and expected_dirty_snapshot is not None:
+            dirty_overlay_matches, current_dirty_snapshot = (
+                self._dirty_snapshot_matches(source, expected_dirty_snapshot)
+            )
+            expected_dirty_paths = sorted(
+                {
+                    str(path)
+                    for path in expected_dirty_snapshot.get("paths", [])
+                    if str(path)
+                }
+            )
+            validation["expected_dirty_paths"] = expected_dirty_paths
+            validation["dirty_state_sha256"] = current_dirty_snapshot.get("sha256", "")
+            validation["expected_dirty_state_sha256"] = expected_dirty_snapshot.get(
+                "sha256",
+                "",
+            )
+        dirty_overlay_matches = dirty_overlay_matches and not unmerged_paths
+        validation["checks"]["preserved_dirty_overlay_unchanged"] = (
+            dirty_overlay_matches if expected_dirty_snapshot is not None else is_clean
+        )
+        working_tree_valid = (
+            dirty_overlay_matches
+            if expected_dirty_snapshot is not None
+            else is_clean
+        )
+        validation["checks"]["clean_or_preserved"] = working_tree_valid
+        if not working_tree_valid:
             validation["valid"] = False
-            validation["dirty_paths"] = status.stdout.strip().splitlines()[:10]
+            validation["dirty_paths"] = self._dirty_status_paths(status.stdout)[:10]
 
         # Check 3: Nested submodules exist (if declared)
         try:
@@ -21583,6 +21798,193 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             validation["checks"]["nested_initialized"] = True  # Skip on error
 
         return validation
+
+    def _dirty_snapshot_matches(
+        self,
+        source: Path,
+        expected_dirty_snapshot: dict[str, Any],
+    ) -> tuple[bool, dict[str, Any]]:
+        status = subprocess.run(
+            ["git", "status", "--porcelain", "--untracked-files=all"],
+            cwd=source,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if status.returncode != 0:
+            return False, {
+                "captured": False,
+                "paths": [],
+                "sha256": "",
+                "reason": "status_failed",
+                "returncode": status.returncode,
+                "stderr": status.stderr[-1000:],
+            }
+        current_dirty_paths = sorted(set(self._dirty_status_paths(status.stdout)))
+        current_dirty_snapshot = self._capture_dirty_path_snapshot(
+            source,
+            current_dirty_paths,
+        )
+        expected_dirty_paths = sorted(
+            {
+                str(path)
+                for path in expected_dirty_snapshot.get("paths", [])
+                if str(path)
+            }
+        )
+        matches = bool(
+            expected_dirty_snapshot.get("captured")
+            and current_dirty_snapshot.get("captured")
+            and expected_dirty_paths == current_dirty_paths
+            and expected_dirty_snapshot.get("sha256")
+            == current_dirty_snapshot.get("sha256")
+        )
+        return matches, current_dirty_snapshot
+
+    def _capture_dirty_path_snapshot(
+        self,
+        source: Path,
+        dirty_paths: Sequence[str],
+    ) -> dict[str, Any]:
+        """Content-address the exact dirty overlay that a merge must preserve."""
+
+        paths = sorted(
+            {
+                str(path).strip().rstrip("/")
+                for path in dirty_paths
+                if str(path).strip()
+            }
+        )
+        snapshot: dict[str, Any] = {
+            "captured": False,
+            "paths": paths,
+            "sha256": "",
+        }
+        if not paths:
+            snapshot.update(
+                {
+                    "captured": True,
+                    "sha256": "sha256:" + hashlib.sha256(b"").hexdigest(),
+                }
+            )
+            return snapshot
+        unsafe_paths = [path for path in paths if not self._repo_relative_path_safe(path)]
+        if unsafe_paths:
+            snapshot["reason"] = "unsafe_dirty_path"
+            snapshot["unsafe_paths"] = unsafe_paths
+            return snapshot
+
+        commands = (
+            (
+                "status",
+                ["git", "status", "--porcelain=v1", "-z", "--untracked-files=all", "--", *paths],
+            ),
+            (
+                "worktree_diff",
+                ["git", "diff", "--binary", "--full-index", "--no-ext-diff", "--", *paths],
+            ),
+            (
+                "index_diff",
+                ["git", "diff", "--cached", "--binary", "--full-index", "--no-ext-diff", "--", *paths],
+            ),
+        )
+        digest = hashlib.sha256()
+        for label, command in commands:
+            result = subprocess.run(
+                command,
+                cwd=source,
+                capture_output=True,
+                check=False,
+            )
+            if result.returncode != 0:
+                snapshot["reason"] = f"{label}_failed"
+                snapshot["returncode"] = result.returncode
+                snapshot["stderr"] = result.stderr.decode(
+                    "utf-8",
+                    errors="replace",
+                )[-1000:]
+                return snapshot
+            if label == "status":
+                statuses = [
+                    entry[:2]
+                    for entry in result.stdout.split(b"\0")
+                    if len(entry) >= 3 and entry[2:3] == b" "
+                ]
+                unsupported_statuses = sorted(
+                    {
+                        status.decode("ascii", errors="replace")
+                        for status in statuses
+                        if status not in {b" M", b" D", b" T", b"??"}
+                    }
+                )
+                if unsupported_statuses:
+                    snapshot["reason"] = "staged_or_unmerged_dirty_state"
+                    snapshot["unsupported_statuses"] = unsupported_statuses
+                    return snapshot
+            digest.update(label.encode("ascii"))
+            digest.update(b"\0")
+            digest.update(result.stdout)
+            digest.update(b"\0")
+
+        path_sha256: dict[str, str] = {}
+        for relative in paths:
+            target = source / relative
+            path_digest = hashlib.sha256()
+            if target.is_symlink():
+                path_digest.update(b"symlink\0")
+                path_digest.update(os.readlink(target).encode("utf-8", errors="surrogateescape"))
+            elif target.is_file():
+                path_digest.update(b"file\0")
+                path_digest.update(str(target.stat().st_mode & 0o7777).encode("ascii"))
+                path_digest.update(b"\0")
+                with target.open("rb") as handle:
+                    for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                        path_digest.update(chunk)
+            elif target.is_dir() and self._is_git_worktree(target):
+                nested_head = subprocess.run(
+                    ["git", "rev-parse", "HEAD"],
+                    cwd=target,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+                nested_status = subprocess.run(
+                    ["git", "status", "--porcelain", "--untracked-files=all"],
+                    cwd=target,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+                if (
+                    nested_head.returncode != 0
+                    or nested_status.returncode != 0
+                    or nested_status.stdout.strip()
+                ):
+                    snapshot["reason"] = "dirty_nested_repository_unsupported"
+                    snapshot["unsupported_path"] = relative
+                    return snapshot
+                path_digest.update(b"gitlink\0")
+                path_digest.update(nested_head.stdout.strip().encode("ascii"))
+            elif not target.exists():
+                path_digest.update(b"missing\0")
+            else:
+                snapshot["reason"] = "unsupported_dirty_path_type"
+                snapshot["unsupported_path"] = relative
+                return snapshot
+            path_sha256[relative] = "sha256:" + path_digest.hexdigest()
+            digest.update(relative.encode("utf-8", errors="surrogateescape"))
+            digest.update(b"\0")
+            digest.update(path_sha256[relative].encode("ascii"))
+            digest.update(b"\0")
+
+        snapshot.update(
+            {
+                "captured": True,
+                "sha256": "sha256:" + digest.hexdigest(),
+                "path_sha256": path_sha256,
+            }
+        )
+        return snapshot
 
     @staticmethod
     def _dirty_status_paths(status: str) -> list[str]:
