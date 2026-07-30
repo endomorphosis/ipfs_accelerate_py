@@ -7228,19 +7228,55 @@ class PortalImplementationDaemon:
                 _repository_id, completion_tree_id = (
                     self._implementation_repository_and_tree_ids(task)
                 )
-                self._decision_runtime_completion(
-                    task,
-                    merged_tree_id=completion_tree_id,
-                    evidence={
-                        "passed": bool(
-                            validation_result.get("passed", False)
-                        ),
-                        "completion_authoritative": True,
-                        "repository_tree_id": completion_tree_id,
-                        "validation": dict(validation_result),
-                    },
+                completion_tasks, completion_tasks_error = (
+                    self._completion_tasks_for_declared_output_gate({}, task)
                 )
-                todo_update_result = self._mark_task_or_bundle_completed_in_todo(task)
+                declared_output_invariant = (
+                    self._declared_output_tracking_invariant(
+                        completion_tasks,
+                        workspace_path=workspace_path,
+                    )
+                    if not completion_tasks_error
+                    else {
+                        "passed": False,
+                        "reason": (
+                            "completion_task_contracts_unavailable"
+                        ),
+                        "completion_tasks_error": completion_tasks_error,
+                    }
+                )
+                if declared_output_invariant.get("passed") is not True:
+                    effective_returncode = 1
+                    validation_result = {
+                        **validation_result,
+                        "passed": False,
+                        "returncode": 1,
+                        "reason": (
+                            "declared_outputs_missing_or_untracked"
+                        ),
+                        "declared_output_invariant": (
+                            declared_output_invariant
+                        ),
+                    }
+                else:
+                    self._decision_runtime_completion(
+                        task,
+                        merged_tree_id=completion_tree_id,
+                        evidence={
+                            "passed": bool(
+                                validation_result.get("passed", False)
+                            ),
+                            "completion_authoritative": True,
+                            "repository_tree_id": completion_tree_id,
+                            "validation": dict(validation_result),
+                            "declared_output_invariant": (
+                                declared_output_invariant
+                            ),
+                        },
+                    )
+                    todo_update_result = (
+                        self._mark_task_or_bundle_completed_in_todo(task)
+                    )
             finished_at = utc_now()
             self._record_task_attempt(state, task, attempt)
             state.last_implementation_started_at = started_at
@@ -7650,6 +7686,127 @@ class PortalImplementationDaemon:
             completion_reason="bundle_work_order",
             bundle_work_order=work_order.to_dict(),
         )
+
+    def _mark_reconciled_completion_in_todo(
+        self,
+        task: PortalTask,
+        completion_tasks: Sequence[PortalTask],
+        completion_task_cids: Mapping[str, str],
+    ) -> dict[str, Any]:
+        """Persist reconciliation completion under exact task-revision CIDs."""
+
+        work_order = self._bundle_work_order_for_task(task)
+        return self._mark_tasks_completed_in_todo(
+            [completion_task.task_id for completion_task in completion_tasks],
+            primary_task_id=task.task_id,
+            completion_reason=(
+                "merge_reconciliation_bundle"
+                if work_order is not None
+                else "merge_reconciliation"
+            ),
+            bundle_work_order=(
+                work_order.to_dict()
+                if work_order is not None
+                else None
+            ),
+            expected_task_cids=completion_task_cids,
+        )
+
+    @staticmethod
+    def _reconciled_completion_persisted(
+        todo_update_result: Mapping[str, Any],
+        completion_task_cids: Mapping[str, str],
+    ) -> dict[str, Any]:
+        """Verify exact completion status and receipts were durably written."""
+
+        expected = {
+            str(task_id): str(task_cid)
+            for task_id, task_cid in completion_task_cids.items()
+            if str(task_id) and str(task_cid)
+        }
+        completed_task_ids = {
+            str(task_id)
+            for task_id in (
+                *(
+                    todo_update_result.get("updated_task_ids")
+                    or []
+                ),
+                *(
+                    todo_update_result.get(
+                        "already_completed_task_ids"
+                    )
+                    or []
+                ),
+            )
+            if str(task_id)
+        }
+        raw_receipts = todo_update_result.get("completion_receipts")
+        receipts = (
+            [
+                receipt
+                for receipt in raw_receipts
+                if isinstance(receipt, Mapping)
+            ]
+            if isinstance(raw_receipts, Sequence)
+            and not isinstance(
+                raw_receipts,
+                (str, bytes, bytearray),
+            )
+            else []
+        )
+        receipt_cids = {
+            str(receipt.get("task_id") or ""): str(
+                receipt.get("canonical_task_cid") or ""
+            )
+            for receipt in receipts
+            if str(receipt.get("task_id") or "")
+            and str(receipt.get("status") or "") == "succeeded"
+        }
+        receipt_mismatches = {
+            task_id: {
+                "expected_task_cid": task_cid,
+                "receipt_task_cid": receipt_cids.get(task_id, ""),
+            }
+            for task_id, task_cid in expected.items()
+            if receipt_cids.get(task_id) != task_cid
+        }
+        updated = bool(todo_update_result.get("updated"))
+        commit_result = todo_update_result.get("commit_result")
+        durable_update = bool(
+            not updated
+            or todo_update_result.get("task_source_identity")
+            or (
+                isinstance(commit_result, Mapping)
+                and commit_result.get("committed") is True
+            )
+        )
+        status_persisted = bool(
+            updated
+            or str(todo_update_result.get("reason") or "")
+            == "already_completed"
+        )
+        missing_task_ids = sorted(set(expected) - completed_task_ids)
+        passed = bool(
+            expected
+            and not missing_task_ids
+            and not receipt_mismatches
+            and durable_update
+            and status_persisted
+        )
+        return {
+            "passed": passed,
+            "reason": (
+                "completion_persisted"
+                if passed
+                else "completion_persistence_unproven"
+            ),
+            "expected_task_ids": sorted(expected),
+            "completed_task_ids": sorted(completed_task_ids),
+            "missing_task_ids": missing_task_ids,
+            "receipt_mismatches": receipt_mismatches,
+            "durable_update": durable_update,
+            "status_persisted": status_persisted,
+        }
 
     def _mark_tasks_completed_in_todo(
         self,
@@ -9194,6 +9351,359 @@ class PortalImplementationDaemon:
         )
         return result
 
+    def _completion_tasks_for_declared_output_gate(
+        self,
+        metadata: Mapping[str, Any],
+        primary_task: PortalTask,
+    ) -> tuple[list[PortalTask], dict[str, Any]]:
+        """Resolve every completion member to its current task contract."""
+
+        raw_bindings = metadata.get("completion_task_cids")
+        if isinstance(raw_bindings, Mapping):
+            task_ids = [
+                str(task_id).strip()
+                for task_id in raw_bindings
+                if str(task_id).strip()
+            ]
+        else:
+            work_order = self._bundle_work_order_for_task(primary_task)
+            task_ids = (
+                list(work_order.task_ids)
+                if work_order is not None
+                else [primary_task.task_id]
+            )
+        task_ids = list(dict.fromkeys(task_ids))
+        if not task_ids:
+            return [], {"reason": "completion_task_ids_missing"}
+        try:
+            current_tasks = self._load_tasks()
+        except Exception as exc:
+            return [], {
+                "reason": "completion_task_board_unavailable",
+                "error_type": type(exc).__name__,
+                "error": str(exc)[-1000:],
+            }
+        matches: dict[str, list[PortalTask]] = {
+            task_id: [] for task_id in task_ids
+        }
+        for task in current_tasks:
+            if task.task_id in matches:
+                matches[task.task_id].append(task)
+        missing = sorted(
+            task_id for task_id, items in matches.items() if not items
+        )
+        ambiguous = sorted(
+            task_id for task_id, items in matches.items() if len(items) > 1
+        )
+        if missing or ambiguous:
+            return [], {
+                "reason": "completion_task_identity_unresolved",
+                "missing_task_ids": missing,
+                "ambiguous_task_ids": ambiguous,
+            }
+        return [matches[task_id][0] for task_id in task_ids], {}
+
+    def _historical_completion_tasks_and_binding(
+        self,
+        event: Mapping[str, Any],
+        primary_task: PortalTask,
+    ) -> tuple[list[PortalTask], dict[str, str], dict[str, Any]]:
+        """Resolve and authenticate task revisions carried by a durable event."""
+
+        merge_result = event.get("merge_result")
+        raw_bindings = (
+            merge_result.get("completion_task_cids")
+            if isinstance(merge_result, Mapping)
+            else None
+        )
+        if not isinstance(raw_bindings, Mapping):
+            raw_bindings = event.get("completion_task_cids")
+        if isinstance(raw_bindings, Mapping) and raw_bindings:
+            work_order = self._bundle_work_order_for_task(primary_task)
+            binding_metadata: dict[str, Any] = {
+                "task": {"task_id": primary_task.task_id},
+                "completion_task_cids": raw_bindings,
+            }
+            if work_order is not None:
+                binding_metadata["bundle_work_order"] = work_order.to_dict()
+            binding_error = self._completion_task_revision_binding_error(
+                binding_metadata,
+                require_pending=False,
+            )
+            if binding_error:
+                return [], {}, binding_error
+            completion_tasks, completion_tasks_error = (
+                self._completion_tasks_for_declared_output_gate(
+                    binding_metadata,
+                    primary_task,
+                )
+            )
+            if completion_tasks_error:
+                return [], {}, completion_tasks_error
+            return (
+                completion_tasks,
+                {
+                    str(task_id): str(task_cid)
+                    for task_id, task_cid in raw_bindings.items()
+                },
+                {},
+            )
+
+        historical_task_cid = str(
+            event.get("task_cid")
+            or event.get("canonical_task_cid")
+            or (
+                merge_result.get("canonical_task_cid")
+                if isinstance(merge_result, Mapping)
+                else ""
+            )
+            or ""
+        ).strip()
+        if not historical_task_cid:
+            return [], {}, {
+                "reason": "historical_completion_task_cid_missing"
+            }
+        if self._bundle_work_order_for_task(primary_task) is not None:
+            return [], {}, {
+                "reason": "historical_completion_bundle_binding_missing"
+            }
+        current_task_cid = self._identity_for_task(
+            primary_task
+        ).canonical_task_cid
+        if historical_task_cid != current_task_cid:
+            return [], {}, {
+                "reason": "completion_task_revision_changed",
+                "mismatches": {
+                    primary_task.task_id: {
+                        "expected_task_cid": historical_task_cid,
+                        "current_task_cid": current_task_cid,
+                    }
+                },
+            }
+        return (
+            [primary_task],
+            {primary_task.task_id: historical_task_cid},
+            {},
+        )
+
+    def _immutable_integration_commit(
+        self,
+        result: Mapping[str, Any],
+        *,
+        implementation_commit: str,
+        target_branch: str,
+    ) -> dict[str, Any]:
+        """Prove an immutable integration tree belongs to the target history."""
+
+        integration_ref = str(
+            result.get("merge_commit")
+            or result.get("target_commit")
+            or ""
+        ).strip()
+        integration_commit = (
+            self._resolved_commit_ref(
+                self.repo_root,
+                integration_ref,
+            )
+            if integration_ref
+            else ""
+        )
+        reasons: list[str] = []
+        if not integration_ref:
+            reasons.append("integration_commit_missing")
+        elif not integration_commit:
+            reasons.append("integration_commit_unavailable")
+        else:
+            if implementation_commit and not self._git_ref_is_ancestor(
+                implementation_commit,
+                integration_commit,
+            ):
+                reasons.append(
+                    "implementation_not_ancestor_of_integration_commit"
+                )
+            if target_branch and not self._git_ref_is_ancestor(
+                integration_commit,
+                target_branch,
+            ):
+                reasons.append("integration_commit_not_on_target")
+        return {
+            "passed": not reasons,
+            "integration_ref": integration_ref,
+            "integration_commit": integration_commit,
+            "implementation_commit": implementation_commit,
+            "target_branch": target_branch,
+            "reasons": reasons,
+        }
+
+    def _declared_output_tracking_invariant(
+        self,
+        tasks: Sequence[PortalTask],
+        *,
+        workspace_path: Path | None = None,
+        repository_ref: str = "",
+    ) -> dict[str, Any]:
+        """Prove all declared outputs are tracked in one workspace or tree.
+
+        Workspace checks inspect the index after staging.  Repository checks
+        inspect the exact commit object, including files below managed
+        submodule gitlinks, so ignored files in an implementation worktree
+        cannot become false completion evidence.
+        """
+
+        workspace = (workspace_path or self.repo_root).resolve()
+        exact_ref = str(repository_ref or "").strip()
+        mode = "repository_tree" if exact_ref else "workspace_index"
+        submodule_paths = sorted(
+            {
+                *self.worktree_submodule_paths,
+                *self._declared_submodule_paths(workspace),
+            },
+            key=lambda value: (-len(value.split("/")), value),
+        )
+        checks: list[dict[str, Any]] = []
+        unsafe_outputs: list[dict[str, str]] = []
+        missing_outputs: list[dict[str, str]] = []
+        untracked_outputs: list[dict[str, str]] = []
+
+        for task in tasks:
+            for raw_output in task_declared_output_paths(task):
+                relative = str(raw_output or "").strip().rstrip("/")
+                identity = {
+                    "task_id": task.task_id,
+                    "path": relative,
+                }
+                if (
+                    relative == "."
+                    or not self._repo_relative_path_safe(relative)
+                    or any(ord(character) < 32 for character in relative)
+                ):
+                    unsafe_outputs.append(identity)
+                    checks.append(
+                        {
+                            **identity,
+                            "tracked": False,
+                            "reason": "declared_output_path_unsafe",
+                        }
+                    )
+                    continue
+
+                submodule_path = next(
+                    (
+                        path
+                        for path in submodule_paths
+                        if relative == path
+                        or relative.startswith(f"{path}/")
+                    ),
+                    "",
+                )
+                repository = workspace
+                tracked_path = relative
+                tracked_ref = exact_ref
+                if submodule_path and relative != submodule_path:
+                    repository = workspace / submodule_path
+                    tracked_path = relative[len(submodule_path) + 1 :]
+                    if exact_ref:
+                        tracked_ref = self._gitlink_commit_at_repo_ref(
+                            self.repo_root,
+                            exact_ref,
+                            submodule_path,
+                        )
+
+                if exact_ref:
+                    if submodule_path and relative == submodule_path:
+                        tracked = bool(
+                            self._gitlink_commit_at_repo_ref(
+                                self.repo_root,
+                                exact_ref,
+                                submodule_path,
+                            )
+                        )
+                    elif not tracked_ref or not repository.is_dir():
+                        tracked = False
+                    else:
+                        tracked = (
+                            subprocess.run(
+                                [
+                                    "git",
+                                    "cat-file",
+                                    "-e",
+                                    f"{tracked_ref}:{tracked_path}",
+                                ],
+                                cwd=repository,
+                                stdout=subprocess.DEVNULL,
+                                stderr=subprocess.DEVNULL,
+                                check=False,
+                            ).returncode
+                            == 0
+                        )
+                    exists = tracked
+                else:
+                    candidate = workspace / relative
+                    exists = candidate.exists() or candidate.is_symlink()
+                    tracked = bool(
+                        repository.is_dir()
+                        and subprocess.run(
+                            [
+                                "git",
+                                "ls-files",
+                                "--error-unmatch",
+                                "--",
+                                tracked_path,
+                            ],
+                            cwd=repository,
+                            stdout=subprocess.DEVNULL,
+                            stderr=subprocess.DEVNULL,
+                            check=False,
+                        ).returncode
+                        == 0
+                    )
+
+                reason = (
+                    "declared_output_tracked"
+                    if exists and tracked
+                    else (
+                        "declared_output_missing"
+                        if not exists
+                        else "declared_output_untracked"
+                    )
+                )
+                check = {
+                    **identity,
+                    "repository": (
+                        submodule_path or "."
+                    ),
+                    "tracked_path": tracked_path,
+                    "tracked": tracked,
+                    "exists": exists,
+                    "reason": reason,
+                }
+                if exact_ref:
+                    check["repository_ref"] = tracked_ref
+                checks.append(check)
+                if not exists:
+                    missing_outputs.append(identity)
+                elif not tracked:
+                    untracked_outputs.append(identity)
+
+        passed = not (
+            unsafe_outputs or missing_outputs or untracked_outputs
+        )
+        return {
+            "passed": passed,
+            "reason": (
+                "declared_outputs_tracked"
+                if passed
+                else "declared_outputs_missing_or_untracked"
+            ),
+            "mode": mode,
+            "repository_ref": exact_ref,
+            "task_ids": [task.task_id for task in tasks],
+            "checks": checks,
+            "unsafe_outputs": unsafe_outputs,
+            "missing_outputs": missing_outputs,
+            "untracked_outputs": untracked_outputs,
+        }
+
     def _merge_train_callback(self, request: Any) -> dict[str, Any]:
         """Adapt one durable queue request to the daemon's mature merge path."""
 
@@ -9647,6 +10157,34 @@ class PortalImplementationDaemon:
             )
         if branch_rehydration.get("rehydrated", False):
             result["branch_rehydration"] = branch_rehydration
+        immutable_integration_commit = ""
+        if (
+            result.get("merged") or result.get("already_merged")
+        ) and (
+            candidate_schema
+            == "ipfs_accelerate_py/agent-supervisor/merge-candidate@3"
+        ):
+            integration_commit_proof = self._immutable_integration_commit(
+                result,
+                implementation_commit=implementation_commit,
+                target_branch=target_branch,
+            )
+            result["integration_commit_proof"] = integration_commit_proof
+            if integration_commit_proof.get("passed") is not True:
+                result.update(
+                    {
+                        "merged": False,
+                        "already_merged": False,
+                        "returncode": 2,
+                        "reason": "post_merge_integration_commit_unproven",
+                        "integration_occurred": True,
+                        "completion_skipped": True,
+                    }
+                )
+                return result
+            immutable_integration_commit = str(
+                integration_commit_proof.get("integration_commit") or ""
+            )
         if (
             result.get("merged") or result.get("already_merged")
         ) and (
@@ -9657,7 +10195,7 @@ class PortalImplementationDaemon:
             )
             and bool(raw_changed_submodule_paths)
         ):
-            target_commit = self._run_git(
+            target_commit = immutable_integration_commit or self._run_git(
                 ["rev-parse", target_branch],
                 cwd=self.repo_root,
             ).stdout.strip()
@@ -9684,6 +10222,58 @@ class PortalImplementationDaemon:
                             implementation_commit,
                             target_branch,
                         ),
+                        "completion_skipped": True,
+                        "target_commit": target_commit,
+                    }
+                )
+                return result
+        if (
+            (
+                result.get("merged")
+                or result.get("already_merged")
+            )
+            and candidate_schema
+            == "ipfs_accelerate_py/agent-supervisor/merge-candidate@3"
+        ):
+            completion_tasks, completion_tasks_error = (
+                completion_daemon._completion_tasks_for_declared_output_gate(
+                    metadata,
+                    task,
+                )
+            )
+            if completion_tasks_error:
+                result.update(
+                    {
+                        "merged": False,
+                        "already_merged": False,
+                        "returncode": 2,
+                        "reason": (
+                            "post_merge_declared_output_tasks_unavailable"
+                        ),
+                        "integration_occurred": True,
+                        "completion_skipped": True,
+                        "completion_tasks_error": completion_tasks_error,
+                    }
+                )
+                return result
+            target_commit = immutable_integration_commit
+            declared_output_invariant = (
+                completion_daemon._declared_output_tracking_invariant(
+                    completion_tasks,
+                    repository_ref=target_commit,
+                )
+            )
+            result["post_merge_declared_output_invariant"] = (
+                declared_output_invariant
+            )
+            if declared_output_invariant.get("passed") is not True:
+                result.update(
+                    {
+                        "merged": False,
+                        "already_merged": False,
+                        "returncode": 2,
+                        "reason": "post_merge_declared_outputs_missing",
+                        "integration_occurred": True,
                         "completion_skipped": True,
                         "target_commit": target_commit,
                     }
@@ -11914,23 +12504,100 @@ class PortalImplementationDaemon:
             no_change_completion=no_change_completion,
         )
         if board_completion["complete"]:
-            completion_tree_id = str(
-                merge_result.get("merge_commit")
-                or implementation_commit
-                or baseline_ref
+            if merge_result.get("merged"):
+                completion_target_branch = str(
+                    merge_result.get("target_branch")
+                    or self.resolved_merge_target_branch
+                    or self._main_branch_name()
+                )
+                integration_commit_proof = (
+                    self._immutable_integration_commit(
+                        merge_result,
+                        implementation_commit=implementation_commit,
+                        target_branch=completion_target_branch,
+                    )
+                )
+                completion_tree_id = (
+                    str(
+                        integration_commit_proof.get(
+                            "integration_commit"
+                        )
+                        or ""
+                    )
+                    if integration_commit_proof.get("passed") is True
+                    else ""
+                )
+            else:
+                integration_commit_proof = {}
+                completion_tree_id = self._resolved_commit_ref(
+                    self.repo_root,
+                    baseline_ref,
+                )
+                if completion_tree_id != str(
+                    no_change_guard.get("current_head") or ""
+                ):
+                    completion_tree_id = ""
+            completion_tasks, completion_tasks_error = (
+                self._completion_tasks_for_declared_output_gate({}, task)
             )
-            self._decision_runtime_completion(
-                task,
-                merged_tree_id=completion_tree_id,
-                evidence={
-                    "passed": bool(validation_result.get("passed", False)),
-                    "completion_authoritative": True,
-                    "repository_tree_id": completion_tree_id,
-                    "validation": dict(validation_result),
-                    "board_completion": dict(board_completion),
-                },
+            declared_output_invariant = (
+                self._declared_output_tracking_invariant(
+                    completion_tasks,
+                    repository_ref=completion_tree_id,
+                )
+                if (
+                    not completion_tasks_error
+                    and self._git_commit_exists_in_repo(
+                        self.repo_root,
+                        completion_tree_id,
+                    )
+                )
+                else {
+                    "passed": False,
+                    "reason": "completion_tree_or_task_contract_unavailable",
+                    "repository_ref": completion_tree_id,
+                    "completion_tasks_error": completion_tasks_error,
+                    "integration_commit_proof": (
+                        integration_commit_proof
+                    ),
+                }
             )
-            todo_update_result = self._mark_task_or_bundle_completed_in_todo(task)
+            if declared_output_invariant.get("passed") is not True:
+                board_completion = {
+                    **board_completion,
+                    "complete": False,
+                    "reason": "declared_outputs_missing_or_untracked",
+                    "declared_output_invariant": declared_output_invariant,
+                }
+                returncode = 1
+                validation_result = {
+                    **validation_result,
+                    "passed": False,
+                    "returncode": 1,
+                    "reason": "declared_outputs_missing_or_untracked",
+                    "declared_output_invariant": declared_output_invariant,
+                }
+            else:
+                self._decision_runtime_completion(
+                    task,
+                    merged_tree_id=completion_tree_id,
+                    evidence={
+                        "passed": bool(validation_result.get("passed", False)),
+                        "completion_authoritative": True,
+                        "repository_tree_id": completion_tree_id,
+                        "validation": dict(validation_result),
+                        "board_completion": dict(board_completion),
+                        "declared_output_invariant": (
+                            declared_output_invariant
+                        ),
+                        "integration_commit_proof": (
+                            integration_commit_proof
+                        ),
+                    },
+                )
+                todo_update_result = (
+                    self._mark_task_or_bundle_completed_in_todo(task)
+                )
         elif board_completion.get("pending_merge"):
             self._record_event(
                 "implementation_pending_merge",
@@ -11955,6 +12622,7 @@ class PortalImplementationDaemon:
                     "board_completion": dict(board_completion),
                 },
             )
+        state.last_implementation_returncode = returncode
         self._mark_implementation_finished(state, finished_at=finished_at)
         state.save(self.state_path)
         # Queueing is a successful implementation handoff, but not task
@@ -11984,6 +12652,8 @@ class PortalImplementationDaemon:
                 workspace_setup["prior_attempt_seed"] = dict(prior_seed)
         result = {
             "task_id": task.task_id,
+            "task_cid": self._canonical_ref(task),
+            "canonical_task_cid": self._canonical_ref(task),
             "attempt": attempt,
             "returncode": returncode,
             "log_path": str(log_path),
@@ -14089,6 +14759,19 @@ class PortalImplementationDaemon:
         self._run_git(["add", "-A"], cwd=worktree_path)
         self._remove_generated_paths_from_index(worktree_path)
         self._restore_uncommitted_submodule_pointers(worktree_path, submodule_results)
+        declared_output_invariant = self._declared_output_tracking_invariant(
+            [task],
+            workspace_path=worktree_path,
+        )
+        if declared_output_invariant.get("passed") is not True:
+            result: dict[str, Any] = {
+                "committed": False,
+                "reason": "declared_outputs_missing_or_untracked",
+                "declared_output_invariant": declared_output_invariant,
+            }
+            if submodule_results:
+                result["submodule_results"] = submodule_results
+            return result
         status = self._run_git(["status", "--porcelain"], cwd=worktree_path).stdout.strip()
         staged_status = self._staged_worktree_status(worktree_path)
         if not staged_status:
@@ -22777,6 +23460,15 @@ class PortalImplementationDaemon:
                     "reason": "strategy_deprioritized_task",
                 },
             )
+        try:
+            current_tasks_by_id: dict[str, list[PortalTask]] = {}
+            for current_task in self._load_tasks():
+                current_tasks_by_id.setdefault(
+                    current_task.task_id,
+                    [],
+                ).append(current_task)
+        except Exception:
+            current_tasks_by_id = {}
         for event in selected_candidates:
             task_id = str(event.get("task_id") or "")
             attempt = int(event.get("attempt") or 0)
@@ -22786,14 +23478,42 @@ class PortalImplementationDaemon:
             implementation_commit = str(event.get("implementation_commit") or "")
             if not task_id or not implementation_commit:
                 continue
-            task = PortalTask(
-                task_id=task_id,
-                title=str(event.get("title") or "failed implementation merge"),
-                status="todo",
-                completion="manual",
-                priority="P2",
-                track="ops",
+            task_matches = current_tasks_by_id.get(task_id, [])
+            if len(task_matches) != 1:
+                result = {
+                    "task_id": task_id,
+                    "attempt": attempt,
+                    "branch": branch,
+                    "implementation_commit": implementation_commit,
+                    "resolved": False,
+                    "reason": "reconciliation_task_contract_unavailable",
+                    "task_match_count": len(task_matches),
+                }
+                self._record_event("merge_reconciled", result)
+                results.append(result)
+                continue
+            task = task_matches[0]
+            (
+                completion_tasks,
+                completion_task_cids,
+                completion_tasks_error,
+            ) = self._historical_completion_tasks_and_binding(
+                event,
+                task,
             )
+            if completion_tasks_error:
+                result = {
+                    "task_id": task_id,
+                    "attempt": attempt,
+                    "branch": branch,
+                    "implementation_commit": implementation_commit,
+                    "resolved": False,
+                    "reason": "reconciliation_task_revision_unavailable",
+                    "completion_binding_error": completion_tasks_error,
+                }
+                self._record_event("merge_reconciled", result)
+                results.append(result)
+                continue
             branch_exists = bool(branch and self._git_ref_exists(branch))
             landed_ref_source = ""
             if self._git_ref_is_ancestor(implementation_commit, target_branch):
@@ -22808,10 +23528,22 @@ class PortalImplementationDaemon:
                 # though the rewritten branch has already reached the target.
                 landed_ref_source = "branch"
             if landed_ref_source:
+                landed_commit = (
+                    self._resolved_commit_ref(
+                        self.repo_root,
+                        branch,
+                    )
+                    if landed_ref_source == "branch"
+                    else implementation_commit
+                )
                 # The parent commit can land before its daemon-owned submodule
                 # branches finish merging.  Do not interpret parent ancestry as
                 # proof that nested work is complete: resume the durable
                 # submodule checkpoint first.
+                target_before_reconciliation = self._resolved_commit_ref(
+                    self.repo_root,
+                    target_branch,
+                )
                 submodule_merge_results = self._merge_submodule_branches_to_main(
                     branch,
                     task=task,
@@ -22821,35 +23553,177 @@ class PortalImplementationDaemon:
                 failed_submodules = [
                     item for item in submodule_merge_results if not item.get("merged", False)
                 ]
+                target_commit = self._resolved_commit_ref(
+                    self.repo_root,
+                    target_branch,
+                )
+                historical_integration_record: dict[str, Any] = {}
+                historical_merge_result = event.get("merge_result")
+                if isinstance(historical_merge_result, Mapping):
+                    historical_integration_record.update(
+                        historical_merge_result
+                    )
+                for key in ("merge_commit", "target_commit"):
+                    if (
+                        not historical_integration_record.get(key)
+                        and event.get(key)
+                    ):
+                        historical_integration_record[key] = event.get(key)
+                if (
+                    not failed_submodules
+                    and target_commit
+                    and target_commit != target_before_reconciliation
+                ):
+                    integration_commit_proof = (
+                        self._immutable_integration_commit(
+                            {
+                                "merge_commit": target_commit,
+                            },
+                            implementation_commit=landed_commit,
+                            target_branch=target_branch,
+                        )
+                    )
+                else:
+                    integration_commit_proof = (
+                        self._immutable_integration_commit(
+                            historical_integration_record,
+                            implementation_commit=landed_commit,
+                            target_branch=target_branch,
+                        )
+                    )
+                    target_commit = str(
+                        integration_commit_proof.get(
+                            "integration_commit"
+                        )
+                        or ""
+                    )
+                if not landed_commit:
+                    integration_commit_proof = {
+                        **integration_commit_proof,
+                        "passed": False,
+                        "reasons": [
+                            *(
+                                integration_commit_proof.get("reasons")
+                                or []
+                            ),
+                            "landed_ref_commit_unavailable",
+                        ],
+                    }
+                declared_output_invariant = (
+                    self._declared_output_tracking_invariant(
+                        completion_tasks,
+                        repository_ref=target_commit,
+                    )
+                    if (
+                        not failed_submodules
+                        and not completion_tasks_error
+                        and integration_commit_proof.get("passed") is True
+                        and target_commit
+                    )
+                    else {
+                        "passed": False,
+                        "reason": (
+                            "completion_tree_or_task_contract_unavailable"
+                        ),
+                        "repository_ref": target_commit,
+                        "completion_tasks_error": completion_tasks_error,
+                        "integration_commit_proof": (
+                            integration_commit_proof
+                        ),
+                    }
+                )
                 cleanup_result = (
                     self._cleanup_merged_worktree(worktree_path, branch)
-                    if branch and not failed_submodules
+                    if (
+                        branch
+                        and not failed_submodules
+                        and declared_output_invariant.get("passed") is True
+                    )
                     else {}
                 )
                 cleanup_cleaned = bool(cleanup_result.get("cleaned", False)) if cleanup_result else True
-                resolved = not failed_submodules and cleanup_cleaned
-                todo_update_result = self._mark_task_completed_in_todo(task_id) if resolved else {}
+                integration_ready = bool(
+                    not failed_submodules
+                    and declared_output_invariant.get("passed") is True
+                    and cleanup_cleaned
+                )
+                todo_update_result = (
+                    self._mark_reconciled_completion_in_todo(
+                        task,
+                        completion_tasks,
+                        completion_task_cids,
+                    )
+                    if integration_ready
+                    else {}
+                )
+                completion_persistence = (
+                    self._reconciled_completion_persisted(
+                        todo_update_result,
+                        completion_task_cids,
+                    )
+                    if integration_ready
+                    else {
+                        "passed": False,
+                        "reason": "integration_not_ready",
+                    }
+                )
+                resolved = bool(
+                    integration_ready
+                    and completion_persistence.get("passed") is True
+                )
+                if failed_submodules:
+                    reconciliation_reason = (
+                        "submodule_merge_retry_failed"
+                    )
+                elif declared_output_invariant.get("passed") is not True:
+                    reconciliation_reason = (
+                        "post_merge_declared_outputs_missing"
+                    )
+                elif not cleanup_cleaned:
+                    reconciliation_reason = "cleanup_retry_failed"
+                elif completion_persistence.get("passed") is not True:
+                    reconciliation_reason = (
+                        "completion_persistence_failed"
+                    )
+                elif landed_ref_source == "implementation_commit":
+                    reconciliation_reason = (
+                        "implementation_commit_already_merged"
+                    )
+                else:
+                    reconciliation_reason = (
+                        "implementation_branch_already_merged"
+                    )
                 result = {
                     "task_id": task_id,
                     "attempt": attempt,
                     "branch": branch,
                     "implementation_commit": implementation_commit,
+                    "landed_commit": landed_commit,
+                    "completion_task_cids": completion_task_cids,
                     "landed_ref_source": landed_ref_source,
                     "resolved": resolved,
-                    "reason": (
-                        "submodule_merge_retry_failed"
-                        if failed_submodules
-                        else (
-                            "implementation_commit_already_merged"
-                            if landed_ref_source == "implementation_commit"
-                            else "implementation_branch_already_merged"
-                        )
-                        if cleanup_cleaned
-                        else "cleanup_retry_failed"
-                    ),
+                    "reason": reconciliation_reason,
                     "submodule_merge_results": submodule_merge_results,
                     "cleanup_result": cleanup_result,
+                    "post_merge_declared_output_invariant": (
+                        declared_output_invariant
+                    ),
+                    "integration_commit_proof": (
+                        integration_commit_proof
+                    ),
+                    "completion_persistence": completion_persistence,
                 }
+                if (
+                    not failed_submodules
+                    and declared_output_invariant.get("passed") is not True
+                ):
+                    result.update(
+                        {
+                            "integration_occurred": True,
+                            "completion_skipped": True,
+                            "target_commit": target_commit,
+                        }
+                    )
                 if todo_update_result:
                     result["todo_update_result"] = todo_update_result
                 self._record_event("merge_reconciled", result)
@@ -22921,26 +23795,126 @@ class PortalImplementationDaemon:
                 continue
             cleanup_result = {}
             cleanup_cleaned = True
+            declared_output_invariant: dict[str, Any] = {}
             if merge_result.get("merged"):
-                cleanup_result = self._cleanup_merged_worktree(worktree_path, branch)
-                cleanup_cleaned = bool(cleanup_result.get("cleaned", False))
-            resolved = bool(merge_result.get("merged")) and cleanup_cleaned
+                integration_commit_proof = (
+                    self._immutable_integration_commit(
+                        merge_result,
+                        implementation_commit=implementation_commit,
+                        target_branch=target_branch,
+                    )
+                )
+                target_commit = str(
+                    integration_commit_proof.get(
+                        "integration_commit"
+                    )
+                    or ""
+                )
+                declared_output_invariant = (
+                    self._declared_output_tracking_invariant(
+                        completion_tasks,
+                        repository_ref=target_commit,
+                    )
+                    if (
+                        not completion_tasks_error
+                        and integration_commit_proof.get("passed") is True
+                        and target_commit
+                    )
+                    else {
+                        "passed": False,
+                        "reason": (
+                            "completion_tree_or_task_contract_unavailable"
+                        ),
+                        "repository_ref": target_commit,
+                        "completion_tasks_error": completion_tasks_error,
+                        "integration_commit_proof": (
+                            integration_commit_proof
+                        ),
+                    }
+                )
+                if declared_output_invariant.get("passed") is True:
+                    cleanup_result = self._cleanup_merged_worktree(
+                        worktree_path,
+                        branch,
+                    )
+                    cleanup_cleaned = bool(
+                        cleanup_result.get("cleaned", False)
+                    )
+            integration_ready = bool(
+                merge_result.get("merged")
+                and declared_output_invariant.get("passed") is True
+                and cleanup_cleaned
+            )
+            todo_update_result = (
+                self._mark_reconciled_completion_in_todo(
+                    task,
+                    completion_tasks,
+                    completion_task_cids,
+                )
+                if integration_ready
+                else {}
+            )
+            completion_persistence = (
+                self._reconciled_completion_persisted(
+                    todo_update_result,
+                    completion_task_cids,
+                )
+                if integration_ready
+                else {
+                    "passed": False,
+                    "reason": "integration_not_ready",
+                }
+            )
+            resolved = bool(
+                integration_ready
+                and completion_persistence.get("passed") is True
+            )
             reason = "merge_retried" if resolved else "merge_retry_failed"
-            if merge_result.get("merged") and not cleanup_cleaned:
+            if (
+                merge_result.get("merged")
+                and declared_output_invariant.get("passed") is not True
+            ):
+                reason = "post_merge_declared_outputs_missing"
+            elif merge_result.get("merged") and not cleanup_cleaned:
                 reason = "cleanup_retry_failed"
-            todo_update_result = self._mark_task_completed_in_todo(task_id) if resolved else {}
+            elif (
+                integration_ready
+                and completion_persistence.get("passed") is not True
+            ):
+                reason = "completion_persistence_failed"
             result = {
                 "task_id": task_id,
                 "attempt": attempt,
                 "branch": branch,
                 "implementation_commit": implementation_commit,
+                "completion_task_cids": completion_task_cids,
                 "merge_ref": merge_ref,
                 "merge_ref_source": merge_ref_source,
                 "resolved": resolved,
                 "reason": reason,
                 "merge_result": merge_result,
                 "cleanup_result": cleanup_result,
+                "post_merge_declared_output_invariant": (
+                    declared_output_invariant
+                ),
+                "integration_commit_proof": (
+                    integration_commit_proof
+                    if merge_result.get("merged")
+                    else {}
+                ),
+                "completion_persistence": completion_persistence,
             }
+            if (
+                merge_result.get("merged")
+                and declared_output_invariant.get("passed") is not True
+            ):
+                result.update(
+                    {
+                        "integration_occurred": True,
+                        "completion_skipped": True,
+                        "target_commit": target_commit,
+                    }
+                )
             if todo_update_result:
                 result["todo_update_result"] = todo_update_result
             self._record_event("merge_reconciled", result)
@@ -23747,6 +24721,59 @@ class PortalImplementationDaemon:
     def _successfully_merged_task_ids(self) -> set[str]:
         task_ids: set[str] = set()
         target_branch = self._main_branch_name()
+        try:
+            current_tasks_by_id: dict[str, list[PortalTask]] = {}
+            for current_task in self._load_tasks():
+                current_tasks_by_id.setdefault(
+                    current_task.task_id,
+                    [],
+                ).append(current_task)
+        except Exception:
+            # Historical completion is not authoritative when its current task
+            # contracts cannot be resolved.
+            return task_ids
+
+        output_gate_cache: dict[
+            tuple[tuple[str, ...], str],
+            bool,
+        ] = {}
+
+        def declared_outputs_are_tracked(
+            completion_ids: Sequence[str],
+            *,
+            repository_ref: str,
+        ) -> bool:
+            normalized_ids = tuple(
+                dict.fromkeys(
+                    str(task_id).strip()
+                    for task_id in completion_ids
+                    if str(task_id).strip()
+                )
+            )
+            cache_key = (normalized_ids, repository_ref)
+            if cache_key in output_gate_cache:
+                return output_gate_cache[cache_key]
+            matches = [
+                current_tasks_by_id.get(task_id, [])
+                for task_id in normalized_ids
+            ]
+            passed = bool(
+                normalized_ids
+                and repository_ref
+                and all(len(items) == 1 for items in matches)
+                and self._git_commit_exists_in_repo(
+                    self.repo_root,
+                    repository_ref,
+                )
+                and self._declared_output_tracking_invariant(
+                    [items[0] for items in matches],
+                    repository_ref=repository_ref,
+                ).get("passed")
+                is True
+            )
+            output_gate_cache[cache_key] = passed
+            return passed
+
         for event in self._iter_events():
             event_type = str(event.get("type") or "")
             task_id = str(event.get("task_id") or "")
@@ -23769,49 +24796,46 @@ class PortalImplementationDaemon:
                 continue
             if implementation_commit and not self._git_ref_is_ancestor(implementation_commit, target_branch):
                 continue
-            raw_bindings = (
-                (event.get("merge_result") or {}).get(
-                    "completion_task_cids"
-                )
-                if isinstance(event.get("merge_result"), Mapping)
-                else None
+            merge_result = event.get("merge_result")
+            integration_record: dict[str, Any] = {}
+            if isinstance(merge_result, Mapping):
+                integration_record.update(merge_result)
+            for key in ("merge_commit", "target_commit"):
+                if not integration_record.get(key) and event.get(key):
+                    integration_record[key] = event.get(key)
+            integration_commit_proof = self._immutable_integration_commit(
+                integration_record,
+                implementation_commit=implementation_commit,
+                target_branch=target_branch,
             )
-            if not isinstance(raw_bindings, Mapping):
-                raw_bindings = event.get("completion_task_cids")
-            if isinstance(raw_bindings, Mapping) and raw_bindings:
-                binding_metadata = {
-                    "completion_task_cids": raw_bindings
-                }
-                if self._completion_task_revision_binding_error(
-                    binding_metadata,
-                    require_pending=False,
-                ):
-                    continue
-                task_ids.update(
-                    str(bound_task_id)
-                    for bound_task_id in raw_bindings
-                    if str(bound_task_id)
-                )
+            if integration_commit_proof.get("passed") is not True:
                 continue
-            event_task_cid = str(
-                event.get("task_cid")
-                or event.get("canonical_task_cid")
-                or ""
+            event_tree_id = str(
+                integration_commit_proof.get("integration_commit") or ""
             )
-            if not event_task_cid:
+            primary_matches = current_tasks_by_id.get(task_id, [])
+            if len(primary_matches) != 1:
                 continue
-            current_cids, binding_error = (
-                self._current_completion_task_cids(
-                    [task_id],
-                    require_pending=False,
-                )
+            (
+                completion_tasks,
+                _completion_task_cids,
+                completion_binding_error,
+            ) = self._historical_completion_tasks_and_binding(
+                event,
+                primary_matches[0],
             )
-            if (
-                binding_error
-                or current_cids.get(task_id) != event_task_cid
+            if completion_binding_error:
+                continue
+            bound_task_ids = [
+                completion_task.task_id
+                for completion_task in completion_tasks
+            ]
+            if not declared_outputs_are_tracked(
+                bound_task_ids,
+                repository_ref=event_tree_id,
             ):
                 continue
-            task_ids.add(task_id)
+            task_ids.update(bound_task_ids)
         return task_ids
 
     def _task_has_recent_no_change_outcome(

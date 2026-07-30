@@ -6626,10 +6626,18 @@ def test_merge_candidate_v3_threads_completion_cids_into_todo_mutation(
             ],
         }
 
+    def integrate_candidate(selected_branch, *_args, **_kwargs):
+        _git(repo, "merge", "--ff-only", selected_branch)
+        return {
+            "merged": True,
+            "returncode": 0,
+            "merge_commit": _git(repo, "rev-parse", "HEAD"),
+        }
+
     monkeypatch.setattr(
         daemon,
         "_merge_branch_to_main",
-        lambda *_args, **_kwargs: {"merged": True, "returncode": 0},
+        integrate_candidate,
     )
     monkeypatch.setattr(
         daemon,
@@ -6725,10 +6733,18 @@ def test_merge_candidate_v3_refuses_markdown_completion_when_revision_changes_at
         with real_locked_taskboard(path) as taskboard:
             yield taskboard
 
+    def integrate_candidate(selected_branch, *_args, **_kwargs):
+        _git(repo, "merge", "--ff-only", selected_branch)
+        return {
+            "merged": True,
+            "returncode": 0,
+            "merge_commit": _git(repo, "rev-parse", "HEAD"),
+        }
+
     monkeypatch.setattr(
         daemon,
         "_merge_branch_to_main",
-        lambda *_args, **_kwargs: {"merged": True, "returncode": 0},
+        integrate_candidate,
     )
     monkeypatch.setattr(
         implementation_daemon_module,
@@ -6851,10 +6867,18 @@ def test_merge_candidate_v3_refuses_atomic_bundle_completion_when_member_revisio
         with real_locked_taskboard(path) as taskboard:
             yield taskboard
 
+    def integrate_candidate(selected_branch, *_args, **_kwargs):
+        _git(repo, "merge", "--ff-only", selected_branch)
+        return {
+            "merged": True,
+            "returncode": 0,
+            "merge_commit": _git(repo, "rev-parse", "HEAD"),
+        }
+
     monkeypatch.setattr(
         daemon,
         "_merge_branch_to_main",
-        lambda *_args, **_kwargs: {"merged": True, "returncode": 0},
+        integrate_candidate,
     )
     monkeypatch.setattr(
         implementation_daemon_module,
@@ -8642,6 +8666,23 @@ def test_implementation_daemon_retries_submodule_after_parent_commit_already_lan
         priority="P0",
         track="ops",
     )
+    daemon._load_tasks = lambda: [task]  # type: ignore[method-assign]
+    task_cid = daemon._identity_for_task(task).canonical_task_cid
+    daemon._mark_reconciled_completion_in_todo = (  # type: ignore[method-assign]
+        lambda *_args, **_kwargs: {
+            "updated": False,
+            "reason": "already_completed",
+            "updated_task_ids": [],
+            "already_completed_task_ids": [task.task_id],
+            "completion_receipts": [
+                {
+                    "task_id": task.task_id,
+                    "canonical_task_cid": task_cid,
+                    "status": "succeeded",
+                }
+            ],
+        }
+    )
     first = daemon._merge_branch_to_main("implementation/auto-116", task, 1)
 
     assert first["merged"] is False
@@ -8659,6 +8700,9 @@ def test_implementation_daemon_retries_submodule_after_parent_commit_already_lan
         "implementation_finished",
         {
             "task_id": task.task_id,
+            "task_cid": daemon._identity_for_task(
+                task
+            ).canonical_task_cid,
             "attempt": 1,
             "branch": "implementation/auto-116",
             "implementation_commit": implementation_commit,
@@ -8701,6 +8745,7 @@ def test_implementation_daemon_reconciles_rewritten_branch_already_landed(tmp_pa
     rewritten_commit = _git(repo, "rev-parse", "HEAD")
     _git(repo, "checkout", "main")
     _git(repo, "merge", "--no-ff", "--no-edit", branch)
+    rewritten_merge_commit = _git(repo, "rev-parse", "HEAD")
 
     todo_path = repo / "todo.md"
     todo_path.write_text(
@@ -8720,13 +8765,18 @@ def test_implementation_daemon_reconciles_rewritten_branch_already_landed(tmp_pa
         repo_root=repo,
         task_header_prefix="AUTO-",
     )
+    task = daemon._load_tasks()[0]
     daemon._record_event(
         "implementation_finished",
         {
             "task_id": "AUTO-117",
+            "task_cid": daemon._identity_for_task(
+                task
+            ).canonical_task_cid,
             "attempt": 1,
             "branch": branch,
             "implementation_commit": original_implementation_commit,
+            "target_commit": rewritten_merge_commit,
             "merge_result": {
                 "attempted": True,
                 "merged": False,
@@ -8743,6 +8793,91 @@ def test_implementation_daemon_reconciles_rewritten_branch_already_landed(tmp_pa
     assert _git(repo, "merge-base", "--is-ancestor", rewritten_commit, "main") == ""
     assert not daemon._git_ref_is_ancestor(original_implementation_commit, "main")
     assert "- Status: completed" in todo_path.read_text(encoding="utf-8")
+
+
+def test_implementation_daemon_rejects_rewritten_branch_with_stale_target_commit(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "base.txt").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "base.txt")
+    _git(repo, "commit", "-m", "base")
+
+    branch = "implementation/auto-118"
+    _git(repo, "checkout", "-b", branch)
+    (repo / "feature.txt").write_text("feature\n", encoding="utf-8")
+    _git(repo, "add", "feature.txt")
+    _git(repo, "commit", "-m", "AUTO-118: feature")
+    original_implementation_commit = _git(repo, "rev-parse", "HEAD")
+
+    _git(repo, "checkout", "main")
+    (repo / "concurrent.txt").write_text("concurrent\n", encoding="utf-8")
+    _git(repo, "add", "concurrent.txt")
+    _git(repo, "commit", "-m", "concurrent target change")
+    stale_target_commit = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", branch)
+    _git(repo, "rebase", "main")
+    rewritten_commit = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "main")
+    _git(repo, "merge", "--no-ff", "--no-edit", branch)
+
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        "## AUTO-118 Reject stale integration tree\n\n"
+        "- Status: todo\n"
+        "- Completion: manual\n",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "todo.md")
+    _git(repo, "commit", "-m", "add task board")
+    state_dir = tmp_path / "supervisor-state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="AUTO-",
+    )
+    task = daemon._load_tasks()[0]
+    daemon._cleanup_merged_worktree = lambda *_args, **_kwargs: {  # type: ignore[method-assign]
+        "cleaned": True,
+    }
+    daemon._record_event(
+        "implementation_finished",
+        {
+            "task_id": task.task_id,
+            "task_cid": daemon._identity_for_task(
+                task
+            ).canonical_task_cid,
+            "attempt": 1,
+            "branch": branch,
+            "implementation_commit": original_implementation_commit,
+            "target_commit": stale_target_commit,
+            "merge_result": {
+                "attempted": True,
+                "merged": False,
+                "reason": "merge_retry_failed",
+            },
+        },
+    )
+
+    reconciliation = daemon._reconcile_failed_merges()
+
+    assert reconciliation[-1]["resolved"] is False
+    assert reconciliation[-1]["landed_ref_source"] == "branch"
+    assert reconciliation[-1]["landed_commit"] == rewritten_commit
+    assert reconciliation[-1]["integration_commit_proof"]["passed"] is False
+    assert (
+        "implementation_not_ancestor_of_integration_commit"
+        in reconciliation[-1]["integration_commit_proof"]["reasons"]
+    )
+    assert "- Status: todo" in todo_path.read_text(encoding="utf-8")
 
 
 def test_todo_daemon_runtime_is_ported_to_accelerate_package():
@@ -13655,8 +13790,18 @@ def test_implementation_daemon_records_merge_reconcile_exception(tmp_path):
         "implementation_commit": "abc123",
         "title": "Recover failed merge",
     }
+    task = PortalTask(
+        task_id="ACCEL-002",
+        title="Recover failed merge",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="ops",
+    )
+    event["task_cid"] = daemon._identity_for_task(task).canonical_task_cid
 
     daemon._failed_merge_candidates = lambda skip_task_ids=None: [event]  # type: ignore[method-assign]
+    daemon._load_tasks = lambda: [task]  # type: ignore[method-assign]
     daemon._main_branch_name = lambda: "main"  # type: ignore[method-assign]
     daemon._git_ref_is_ancestor = lambda ancestor, descendant: False  # type: ignore[method-assign]
     daemon._git_ref_exists = lambda ref: True  # type: ignore[method-assign]
@@ -13790,12 +13935,32 @@ def test_implementation_daemon_reconciles_missing_branch_from_commit_ref(tmp_pat
         "implementation_commit": "abc123",
         "title": "Recover missing branch merge",
     }
+    task = PortalTask(
+        task_id="ACCEL-005",
+        title="Recover missing branch merge",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="ops",
+    )
+    event["task_cid"] = daemon._identity_for_task(task).canonical_task_cid
     merged_refs: list[str] = []
 
     daemon._failed_merge_candidates = lambda skip_task_ids=None: [event]  # type: ignore[method-assign]
+    daemon._load_tasks = lambda: [task]  # type: ignore[method-assign]
     daemon._main_branch_name = lambda: "main"  # type: ignore[method-assign]
     daemon._git_ref_is_ancestor = lambda ancestor, descendant: False  # type: ignore[method-assign]
     daemon._git_ref_exists = lambda ref: ref == "abc123"  # type: ignore[method-assign]
+    daemon._resolved_commit_ref = lambda repo_path, ref: "merge456"  # type: ignore[method-assign]
+    daemon._declared_output_tracking_invariant = lambda tasks, **kwargs: {  # type: ignore[method-assign]
+        "passed": True,
+        "repository_ref": "merge456",
+    }
+    daemon._immutable_integration_commit = lambda *args, **kwargs: {  # type: ignore[method-assign]
+        "passed": True,
+        "integration_commit": "merge456",
+        "reasons": [],
+    }
 
     def fake_merge(ref, task, attempt, baseline_ref=""):
         merged_refs.append(ref)
@@ -13807,6 +13972,22 @@ def test_implementation_daemon_reconciles_missing_branch_from_commit_ref(tmp_pat
         "branch": branch,
         "worktree_path": str(worktree_path or ""),
     }
+    task_cid = daemon._identity_for_task(task).canonical_task_cid
+    daemon._mark_reconciled_completion_in_todo = (  # type: ignore[method-assign]
+        lambda *_args, **_kwargs: {
+            "updated": False,
+            "reason": "already_completed",
+            "updated_task_ids": [],
+            "already_completed_task_ids": [task.task_id],
+            "completion_receipts": [
+                {
+                    "task_id": task.task_id,
+                    "canonical_task_cid": task_cid,
+                    "status": "succeeded",
+                }
+            ],
+        }
+    )
 
     result = daemon._reconcile_failed_merges()
 
@@ -13837,11 +14018,31 @@ def test_implementation_daemon_reconciled_merge_requires_cleanup_success(tmp_pat
         "worktree_path": str(repo / "worktrees" / "accel-006"),
         "title": "Retry merge cleanup",
     }
+    task = PortalTask(
+        task_id="ACCEL-006",
+        title="Retry merge cleanup",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="ops",
+    )
+    event["task_cid"] = daemon._identity_for_task(task).canonical_task_cid
 
     daemon._failed_merge_candidates = lambda skip_task_ids=None: [event]  # type: ignore[method-assign]
+    daemon._load_tasks = lambda: [task]  # type: ignore[method-assign]
     daemon._main_branch_name = lambda: "main"  # type: ignore[method-assign]
     daemon._git_ref_is_ancestor = lambda ancestor, descendant: False  # type: ignore[method-assign]
     daemon._git_ref_exists = lambda ref: ref == "implementation/accel-006"  # type: ignore[method-assign]
+    daemon._resolved_commit_ref = lambda repo_path, ref: "merge456"  # type: ignore[method-assign]
+    daemon._declared_output_tracking_invariant = lambda tasks, **kwargs: {  # type: ignore[method-assign]
+        "passed": True,
+        "repository_ref": "merge456",
+    }
+    daemon._immutable_integration_commit = lambda *args, **kwargs: {  # type: ignore[method-assign]
+        "passed": True,
+        "integration_commit": "merge456",
+        "reasons": [],
+    }
     daemon._merge_branch_to_main = lambda branch, task, attempt, baseline_ref="": {  # type: ignore[method-assign]
         "merged": True,
         "merge_commit": "merge456",
@@ -14117,8 +14318,24 @@ def test_implementation_daemon_limits_merge_reconciliation_per_pass(tmp_path):
         for index in range(1, 5)
     ]
     merged_branches: list[str] = []
+    tasks = [
+        PortalTask(
+            task_id=f"ACCEL-{index:03d}",
+            title="Recover failed merge",
+            status="todo",
+            completion="manual",
+            priority="P1",
+            track="ops",
+        )
+        for index in range(1, 5)
+    ]
+    for event, task in zip(events, tasks, strict=True):
+        event["task_cid"] = daemon._identity_for_task(
+            task
+        ).canonical_task_cid
 
     daemon._failed_merge_candidates = lambda skip_task_ids=None: events  # type: ignore[method-assign]
+    daemon._load_tasks = lambda: tasks  # type: ignore[method-assign]
     daemon._main_branch_name = lambda: "main"  # type: ignore[method-assign]
     daemon._git_ref_is_ancestor = lambda ancestor, descendant: False  # type: ignore[method-assign]
     daemon._git_ref_exists = lambda ref: True  # type: ignore[method-assign]
@@ -14307,10 +14524,31 @@ def test_implementation_daemon_retries_cleanup_failures_for_already_merged_branc
             "branch": "implementation/accel-004",
         },
     }
+    task = PortalTask(
+        task_id="ACCEL-004",
+        title="Retry merge cleanup",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="ops",
+    )
+    event["task_cid"] = daemon._identity_for_task(task).canonical_task_cid
+    event["target_commit"] = "merge456"
 
     daemon._failed_merge_candidates = lambda skip_task_ids=None: [event]  # type: ignore[method-assign]
+    daemon._load_tasks = lambda: [task]  # type: ignore[method-assign]
     daemon._main_branch_name = lambda: "main"  # type: ignore[method-assign]
     daemon._git_ref_is_ancestor = lambda ancestor, descendant: True  # type: ignore[method-assign]
+    daemon._resolved_commit_ref = lambda repo_path, ref: "merge456"  # type: ignore[method-assign]
+    daemon._declared_output_tracking_invariant = lambda tasks, **kwargs: {  # type: ignore[method-assign]
+        "passed": True,
+        "repository_ref": "merge456",
+    }
+    daemon._immutable_integration_commit = lambda *args, **kwargs: {  # type: ignore[method-assign]
+        "passed": True,
+        "integration_commit": "merge456",
+        "reasons": [],
+    }
     daemon._cleanup_merged_worktree = lambda worktree_path, branch: {  # type: ignore[method-assign]
         "cleaned": False,
         "reason": "worktree_remove_failed",
