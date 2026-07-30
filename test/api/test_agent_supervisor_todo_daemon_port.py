@@ -12846,6 +12846,236 @@ def test_implementation_daemon_reconciles_merge_lock_deferrals(tmp_path):
     assert "ACCEL-003" not in daemon._unresolved_merge_failures_by_task()
 
 
+def test_merge_branch_rechecks_ancestry_under_lock_before_resolver(
+    tmp_path: Path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "base.txt").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "base.txt")
+    _git(repo, "commit", "-m", "base")
+    branch = "implementation/accel-003"
+    _git(repo, "checkout", "-b", branch)
+    (repo / "feature.txt").write_text("feature\n", encoding="utf-8")
+    _git(repo, "add", "feature.txt")
+    _git(repo, "commit", "-m", "feature")
+    _git(repo, "checkout", "main")
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "missing.todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=[],
+        llm_merge_resolver_command="resolver",
+    )
+    task = PortalTask(
+        task_id="ACCEL-003",
+        title="Do not resolve an integrated candidate",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="ops",
+    )
+
+    def integrate_during_preflight(selected_branch, target_branch):
+        _git(repo, "merge", "--no-ff", "--no-edit", selected_branch)
+        # Move the branch after integrating the exact candidate.  The lock-held
+        # recheck must use the captured candidate commit as well as the live
+        # branch ref, otherwise this race can still reach the resolver.
+        _git(repo, "checkout", selected_branch)
+        (repo / "later.txt").write_text("later\n", encoding="utf-8")
+        _git(repo, "add", "later.txt")
+        _git(repo, "commit", "-m", "later divergent branch tip")
+        _git(repo, "checkout", target_branch)
+        return {
+            "attempted": False,
+            "reason": "branch_already_merged",
+            "branch": selected_branch,
+            "target_branch": target_branch,
+        }
+
+    monkeypatch.setattr(
+        daemon,
+        "_rebase_stale_submodule_pointers",
+        integrate_during_preflight,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_prepare_main_merge_workspace",
+        lambda *_args, **_kwargs: pytest.fail(
+            "an already-integrated candidate must not prepare a resolver workspace"
+        ),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_invoke_llm_merge_resolver_for_failed_merge",
+        lambda *_args, **_kwargs: pytest.fail(
+            "an already-integrated candidate must not invoke the resolver"
+        ),
+    )
+
+    result = daemon._merge_branch_to_main(branch, task, 1)
+
+    assert result["merged"] is True
+    assert result["attempted"] is False
+    assert result["reason"] == "branch_already_merged"
+    assert result["completion_recheck"]["candidate_ancestor"] is True
+    assert result["completion_recheck"]["branch_ancestor"] is False
+    assert not [
+        event
+        for event in daemon._iter_events()
+        if event["type"] in {"merge_started", "llm_merge_resolver_invoked"}
+    ]
+
+
+def test_completed_task_status_without_ancestry_is_not_merge_proof(
+    tmp_path: Path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "base.txt").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "base.txt")
+    _git(repo, "commit", "-m", "base")
+    branch = "implementation/accel-004"
+    _git(repo, "checkout", "-b", branch)
+    (repo / "feature.txt").write_text("feature\n", encoding="utf-8")
+    _git(repo, "add", "feature.txt")
+    _git(repo, "commit", "-m", "feature")
+    _git(repo, "checkout", "main")
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "missing.todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=[],
+        llm_merge_resolver_command="",
+    )
+    task = PortalTask(
+        task_id="ACCEL-004",
+        title="Do not trust a board projection as merge proof",
+        status="completed",
+        completion="manual",
+        priority="P0",
+        track="ops",
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_prepare_main_merge_workspace",
+        lambda *_args, **_kwargs: {
+            "available": False,
+            "reason": "test_workspace_unavailable",
+        },
+    )
+
+    result = daemon._merge_branch_to_main(branch, task, 1)
+
+    assert result["attempted"] is True
+    assert result["merged"] is False
+    assert result["reason"] == "test_workspace_unavailable"
+    assert daemon._git_ref_is_ancestor(branch, "main") is False
+
+
+def test_merge_reconciliation_backs_off_live_lock_contention(
+    tmp_path: Path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "missing.todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+    )
+    event = {
+        "task_id": "ACCEL-003",
+        "attempt": 2,
+        "branch": "implementation/accel-003",
+        "implementation_commit": "def456",
+        "title": "Defer a busy merge",
+    }
+    merge_calls: list[str] = []
+    monotonic_now = [100.0]
+    monkeypatch.setattr(
+        implementation_daemon_module.time,
+        "monotonic",
+        lambda: monotonic_now[0],
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_failed_merge_candidates",
+        lambda skip_task_ids=None: [event],
+    )
+    monkeypatch.setattr(daemon, "_main_branch_name", lambda: "main")
+    monkeypatch.setattr(
+        daemon,
+        "_git_ref_is_ancestor",
+        lambda ancestor, descendant: False,
+    )
+    monkeypatch.setattr(daemon, "_git_ref_exists", lambda ref: True)
+    monkeypatch.setattr(
+        daemon,
+        "_reconciliation_blocking_dirty_paths",
+        lambda *_args, **_kwargs: ([], []),
+    )
+
+    def lock_busy(branch, task, attempt, baseline_ref=""):
+        merge_calls.append(branch)
+        return {
+            "attempted": False,
+            "merged": False,
+            "reason": "lock_exists",
+            "lock_owner_pid": 12345,
+        }
+
+    monkeypatch.setattr(daemon, "_merge_branch_to_main", lock_busy)
+
+    first = daemon._reconcile_failed_merges()
+    monotonic_now[0] = 129.0
+    second = daemon._reconcile_failed_merges()
+    monotonic_now[0] = 131.0
+    third = daemon._reconcile_failed_merges()
+
+    assert first[0]["reason"] == "merge_lock_busy"
+    assert first[0]["retry_after_seconds"] == (
+        implementation_daemon_module
+        .TRANSIENT_MERGE_RECONCILIATION_BACKOFF_SECONDS
+    )
+    assert second == []
+    assert third[0]["reason"] == "merge_lock_busy"
+    assert merge_calls == [
+        "implementation/accel-003",
+        "implementation/accel-003",
+    ]
+    events = daemon._iter_events()
+    assert not [event for event in events if event["type"] == "merge_reconciled"]
+    assert [
+        event
+        for event in events
+        if event["type"] == "merge_reconciliation_deferred"
+        and event["reason"] in {
+            "merge_lock_busy",
+            "transient_merge_lock_backoff",
+        }
+    ]
+
+
 def test_implementation_daemon_blocks_unresolved_merge_failures_instead_of_retry_loop(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()

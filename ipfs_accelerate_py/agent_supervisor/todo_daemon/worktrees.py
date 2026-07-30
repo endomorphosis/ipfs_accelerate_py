@@ -511,6 +511,7 @@ class WorktreePool:
             "cold_acquisitions": 0,
             "warm_acquisitions": 0,
             "rejected_entries": 0,
+            "reclaimed_dead_leases": 0,
             "released_entries": 0,
             "discarded_entries": 0,
             "setup_seconds": 0.0,
@@ -574,7 +575,8 @@ class WorktreePool:
         self.state_root.mkdir(parents=True, exist_ok=True)
         self._metrics["acquisitions"] += 1
         acquired_started = time.monotonic()
-        invalidation_reasons: list[str] = []
+        reclaimed_dead_leases = self._reclaim_dead_leases()
+        invalidation_reasons = ["dead_lease_owner"] * len(reclaimed_dead_leases)
         for state in self._states():
             if not self._state_matches(state, cache_key=normalized_key, base_commit=base_commit, dependencies=dependencies):
                 continue
@@ -1009,33 +1011,123 @@ class WorktreePool:
             os.close(descriptor)
 
     def _try_claim(self, state: Mapping[str, Any]) -> Optional[Path]:
+        # Import locally so the lower-level worktree module does not eagerly
+        # load the merge/proof stack merely to construct a pool.
+        from ..merge.checkout_lock import serialized_lock_update
+
         lock_path = self._lock_path(state)
-        if state.get("state") != "idle":
-            try:
-                state_owner_pid = int(state.get("lease_pid") or 0)
-            except (TypeError, ValueError):
-                state_owner_pid = 0
-            if state_owner_pid and pid_is_alive(state_owner_pid):
-                return None
-        try:
-            self._create_lock(lock_path)
-            return lock_path
-        except FileExistsError:
-            lock = read_json_object(lock_path)
-            try:
-                owner_pid = int(lock.get("pid") or 0)
-            except (TypeError, ValueError):
-                owner_pid = 0
-            if owner_pid and pid_is_alive(owner_pid):
-                return None
-            # A dead claimant never authorizes immediate reuse.  Reclaiming the
-            # lock merely permits the normal clean/stale validation below.
-            self._remove_lock(lock_path)
+        # The advisory guard covers the complete inspect/remove/recreate
+        # transaction.  Without it, two dead-owner reclaimers can both inspect
+        # the stale record before either removes it; the loser can then unlink
+        # the winner's newly-created live ownership record.
+        with serialized_lock_update(lock_path):
+            if state.get("state") != "idle":
+                try:
+                    state_owner_pid = int(state.get("lease_pid") or 0)
+                except (TypeError, ValueError):
+                    state_owner_pid = 0
+                if state_owner_pid and pid_is_alive(state_owner_pid):
+                    return None
             try:
                 self._create_lock(lock_path)
                 return lock_path
             except FileExistsError:
-                return None
+                lock = read_json_object(lock_path)
+                try:
+                    owner_pid = int(lock.get("pid") or 0)
+                except (TypeError, ValueError):
+                    owner_pid = 0
+                if owner_pid and pid_is_alive(owner_pid):
+                    return None
+                # A dead claimant never authorizes immediate reuse.  Reclaiming
+                # the lock merely permits the normal clean/stale validation
+                # below.
+                self._remove_lock(lock_path)
+                try:
+                    self._create_lock(lock_path)
+                    return lock_path
+                except FileExistsError:
+                    return None
+
+    def _reclaim_dead_leases(self) -> list[dict[str, Any]]:
+        """Discard missing-workspace dead leases after exclusively fencing them.
+
+        Reclamation is intentionally independent of cache key and base commit:
+        a crashed task commonly leaves a lease bound to a baseline that no
+        future acquisition will request.  Unknown owners (missing/non-positive
+        PIDs), live state owners, live lock claimants, and existing workspaces
+        that may contain recoverable crash output remain untouched.
+        """
+
+        reclaimed: list[dict[str, Any]] = []
+        for observed in self._states():
+            if observed.get("state") not in {"leased", "initializing"}:
+                continue
+            try:
+                observed_owner_pid = int(observed.get("lease_pid") or 0)
+            except (TypeError, ValueError):
+                observed_owner_pid = 0
+            if (
+                observed_owner_pid <= 0
+                or pid_is_alive(observed_owner_pid)
+                or not self._workspace_path_is_absent(observed)
+            ):
+                continue
+
+            lock_path = self._try_claim(observed)
+            if lock_path is None:
+                continue
+            try:
+                entry_id = str(observed.get("lease_token") or "")
+                current = self._read_state(entry_id)
+                if (
+                    current.get("schema") != WORKTREE_POOL_SCHEMA
+                    or str(current.get("lease_token") or "") != entry_id
+                    or current.get("state") not in {"leased", "initializing"}
+                ):
+                    continue
+                try:
+                    current_owner_pid = int(current.get("lease_pid") or 0)
+                except (TypeError, ValueError):
+                    current_owner_pid = 0
+                # Re-check under the claimed sidecar.  A live owner that won a
+                # race before the claim must never lose its checkout.  Existing
+                # crash output remains available to the supervisor rescue path.
+                if (
+                    current_owner_pid <= 0
+                    or pid_is_alive(current_owner_pid)
+                    or not self._workspace_path_is_absent(current)
+                ):
+                    continue
+                discard = self._discard_state(current)
+                self._record_rejection("dead_lease_owner")
+                self._metrics["reclaimed_dead_leases"] += 1
+                self._metrics["discarded_entries"] += 1
+                reclaimed.append(
+                    {
+                        "entry_id": entry_id,
+                        "state": str(current.get("state") or ""),
+                        "lease_pid": current_owner_pid,
+                        "path": str(current.get("path") or ""),
+                        "discard": discard,
+                    }
+                )
+            finally:
+                self._remove_lock(lock_path)
+        return reclaimed
+
+    @staticmethod
+    def _workspace_path_is_absent(state: Mapping[str, Any]) -> bool:
+        raw_path = str(state.get("path") or "").strip()
+        if not raw_path:
+            return False
+        try:
+            Path(raw_path).lstat()
+        except FileNotFoundError:
+            return True
+        except (OSError, ValueError):
+            return False
+        return False
 
     @staticmethod
     def _remove_lock(lock_path: Path) -> None:

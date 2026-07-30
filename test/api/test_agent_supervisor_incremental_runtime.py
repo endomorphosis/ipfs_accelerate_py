@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from hashlib import sha256
 import json
+import os
 import subprocess
+import threading
 import time
 from dataclasses import asdict
 from pathlib import Path
@@ -430,6 +432,201 @@ def test_dirty_workspace_is_discarded_instead_of_shared(tmp_path: Path) -> None:
     assert next_lease.reused is False
     assert not (next_lease.path / "secret.txt").exists()
     assert next_lease.release()["pooled"] is True
+
+
+def test_worktree_pool_reclaims_dead_leased_and_initializing_entries(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    (repo / "app.py").write_text("VALUE = 1\n", encoding="utf-8")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "seed")
+    worktree_root = tmp_path / "pool"
+    pool = WorktreePool(repo_root=repo, worktree_root=worktree_root)
+
+    stale_leased = pool.acquire(
+        cache_key="stale-leased",
+        base_ref="main",
+        branch_name="implementation/stale-leased",
+    )
+    stale_initializing = pool.acquire(
+        cache_key="stale-initializing",
+        base_ref="main",
+        branch_name="implementation/stale-initializing",
+    )
+    stale_entries = (
+        (stale_leased, "leased", 2_147_483_646),
+        (stale_initializing, "initializing", 2_147_483_645),
+    )
+    for lease, state_name, dead_pid in stale_entries:
+        state_path = worktree_root / ".pool-state" / f"{lease.entry_id}.json"
+        lock_path = worktree_root / ".pool-state" / f"{lease.entry_id}.lock"
+        state = json.loads(state_path.read_text(encoding="utf-8"))
+        state["state"] = state_name
+        state["lease_pid"] = dead_pid
+        state_path.write_text(json.dumps(state), encoding="utf-8")
+        lock_path.write_text(json.dumps({"pid": dead_pid}), encoding="utf-8")
+
+    # Missing crashed workspaces must not strand their sidecars.
+    for lease, _state_name, _dead_pid in stale_entries:
+        _git(repo, "worktree", "remove", "--force", str(lease.path))
+        assert not lease.path.exists()
+
+    # Change the baseline and cache key so reclamation cannot depend on a
+    # future acquisition matching either stale entry.
+    (repo / "app.py").write_text("VALUE = 2\n", encoding="utf-8")
+    _git(repo, "add", "app.py")
+    _git(repo, "commit", "-m", "advance baseline")
+    fresh = pool.acquire(
+        cache_key="fresh",
+        base_ref="main",
+        branch_name="implementation/fresh",
+    )
+
+    for lease, _state_name, _dead_pid in stale_entries:
+        assert not (worktree_root / ".pool-state" / f"{lease.entry_id}.json").exists()
+        assert not (worktree_root / ".pool-state" / f"{lease.entry_id}.lock").exists()
+        assert not lease.path.exists()
+    assert fresh.invalidation_reasons == (
+        "dead_lease_owner",
+        "dead_lease_owner",
+    )
+    assert pool.metrics["reclaimed_dead_leases"] == 2
+    assert fresh.release(reusable=False)["released"] is True
+
+
+def test_worktree_pool_reclamation_preserves_live_and_recoverable_owners(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    (repo / "app.py").write_text("VALUE = 1\n", encoding="utf-8")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "seed")
+    worktree_root = tmp_path / "pool"
+    pool = WorktreePool(repo_root=repo, worktree_root=worktree_root)
+
+    live_owner = pool.acquire(
+        cache_key="live-owner",
+        base_ref="main",
+        branch_name="implementation/live-owner",
+    )
+    live_claimant = pool.acquire(
+        cache_key="live-claimant",
+        base_ref="main",
+        branch_name="implementation/live-claimant",
+    )
+    recoverable_crash = pool.acquire(
+        cache_key="recoverable-crash",
+        base_ref="main",
+        branch_name="implementation/recoverable-crash",
+    )
+    claimant_state_path = (
+        worktree_root / ".pool-state" / f"{live_claimant.entry_id}.json"
+    )
+    claimant_state = json.loads(claimant_state_path.read_text(encoding="utf-8"))
+    claimant_state["lease_pid"] = 2_147_483_644
+    claimant_state_path.write_text(json.dumps(claimant_state), encoding="utf-8")
+    # Keep the sidecar lock owned by this live process.  Reclamation must lose
+    # this race even though the state record itself names a dead PID.
+    recoverable_state_path = (
+        worktree_root / ".pool-state" / f"{recoverable_crash.entry_id}.json"
+    )
+    recoverable_lock_path = (
+        worktree_root / ".pool-state" / f"{recoverable_crash.entry_id}.lock"
+    )
+    recoverable_state = json.loads(
+        recoverable_state_path.read_text(encoding="utf-8")
+    )
+    recoverable_state["lease_pid"] = 2_147_483_643
+    recoverable_state_path.write_text(
+        json.dumps(recoverable_state),
+        encoding="utf-8",
+    )
+    recoverable_lock_path.write_text(
+        json.dumps({"pid": 2_147_483_643}),
+        encoding="utf-8",
+    )
+    # An existing dead-owner checkout may hold recoverable crash output and is
+    # therefore reserved for the supervisor rescue path.
+
+    fresh = pool.acquire(
+        cache_key="fresh",
+        base_ref="main",
+        branch_name="implementation/fresh",
+    )
+
+    for lease in (live_owner, live_claimant, recoverable_crash):
+        assert (worktree_root / ".pool-state" / f"{lease.entry_id}.json").exists()
+        assert (worktree_root / ".pool-state" / f"{lease.entry_id}.lock").exists()
+        assert lease.path.exists()
+    assert fresh.invalidation_reasons == ()
+    assert pool.metrics["reclaimed_dead_leases"] == 0
+    assert fresh.release(reusable=False)["released"] is True
+    assert recoverable_crash.release(reusable=False)["released"] is True
+    assert live_claimant.release(reusable=False)["released"] is True
+    assert live_owner.release(reusable=False)["released"] is True
+
+
+def test_worktree_pool_serializes_dead_lock_replacement_between_claimants(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    (repo / "app.py").write_text("VALUE = 1\n", encoding="utf-8")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "seed")
+    worktree_root = tmp_path / "pool"
+    pool = WorktreePool(repo_root=repo, worktree_root=worktree_root)
+    stale = pool.acquire(
+        cache_key="stale",
+        base_ref="main",
+        branch_name="implementation/stale",
+    )
+    state_path = worktree_root / ".pool-state" / f"{stale.entry_id}.json"
+    lock_path = worktree_root / ".pool-state" / f"{stale.entry_id}.lock"
+    dead_pid = 2_147_483_646
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    state["lease_pid"] = dead_pid
+    state_path.write_text(json.dumps(state), encoding="utf-8")
+    lock_path.write_text(json.dumps({"pid": dead_pid}), encoding="utf-8")
+
+    contenders = (
+        WorktreePool(repo_root=repo, worktree_root=worktree_root),
+        WorktreePool(repo_root=repo, worktree_root=worktree_root),
+    )
+    start = threading.Barrier(len(contenders) + 1)
+    claims: list[Path | None] = []
+
+    def claim(contender: WorktreePool) -> None:
+        start.wait()
+        claims.append(contender._try_claim(state))
+
+    threads = [
+        threading.Thread(target=claim, args=(contender,))
+        for contender in contenders
+    ]
+    for thread in threads:
+        thread.start()
+    start.wait()
+    for thread in threads:
+        thread.join(timeout=10)
+        assert not thread.is_alive()
+
+    assert sum(claim is not None for claim in claims) == 1
+    live_payload = lock_path.read_bytes()
+    assert json.loads(live_payload)["pid"] == os.getpid()
+    live_inode = lock_path.stat().st_ino
+
+    # Once a claimant owns the durable lock, another claim attempt must neither
+    # succeed nor unlink/recreate that live ownership record.
+    assert pool._try_claim(state) is None
+    assert lock_path.read_bytes() == live_payload
+    assert lock_path.stat().st_ino == live_inode
+
+    pool._remove_lock(lock_path)
+    assert pool._discard_state(state)["removed"] is True
 
 
 def test_implementation_daemon_uses_stable_pooled_path_for_populated_submodules(tmp_path: Path) -> None:

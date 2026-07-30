@@ -259,6 +259,7 @@ TRANSIENT_MERGE_LOCK_REASONS = frozenset(
     }
 )
 TRANSIENT_MERGE_RETRY_BUDGET_WHEN_DISABLED = 1
+TRANSIENT_MERGE_RECONCILIATION_BACKOFF_SECONDS = 30.0
 IMPLEMENTATION_TASK_CLAIM_LOCK_KIND = "implementation_task_claim"
 IMPLEMENTATION_TASK_CLAIM_LOCK_DIRNAME = "implementation-task-claims"
 WORKTREE_LIFECYCLE_LEASE_SECONDS_ENV = (
@@ -2875,6 +2876,7 @@ class PortalImplementationDaemon:
             if merge_reconciliation_max_age_seconds is None
             else int(merge_reconciliation_max_age_seconds)
         )
+        self._merge_reconciliation_retry_not_before: dict[str, float] = {}
         self.merged_worktree_cleanup_max = (
             _env_int(DAEMON_MERGED_WORKTREE_CLEANUP_MAX_ENV, DEFAULT_DAEMON_MERGED_WORKTREE_CLEANUP_MAX)
             if merged_worktree_cleanup_max is None
@@ -17087,6 +17089,39 @@ class PortalImplementationDaemon:
             "results": results,
         }
 
+    def _merge_candidate_completion_recheck(
+        self,
+        branch_name: str,
+        task: PortalTask,
+        target_branch: str,
+        *,
+        candidate_commit: str = "",
+    ) -> dict[str, Any]:
+        """Recheck authoritative integration while holding the merge lock."""
+
+        candidate_ancestor = bool(
+            candidate_commit
+            and self._git_ref_exists(candidate_commit)
+            and self._git_ref_is_ancestor(candidate_commit, target_branch)
+        )
+        branch_ancestor = bool(
+            branch_name
+            and self._git_ref_exists(branch_name)
+            and self._git_ref_is_ancestor(branch_name, target_branch)
+        )
+        return {
+            "terminal": candidate_ancestor or branch_ancestor,
+            "candidate_commit": candidate_commit,
+            "candidate_ancestor": candidate_ancestor,
+            "branch_ancestor": branch_ancestor,
+            # Retain the caller's observation for diagnostics only.  A board
+            # projection or queue receipt cannot prove that this exact ref
+            # landed, so neither may promote ``merged``.
+            "task_completed_observed": (
+                normalize_status(task.status) == "completed"
+            ),
+        }
+
     def _merge_branch_to_main(
         self,
         branch_name: str,
@@ -17100,6 +17135,10 @@ class PortalImplementationDaemon:
         self._preserve_generated_nested_worktree_directories()
         stale_submodule_worktree_config_repair = self._repair_stale_submodule_worktree_configs(self.repo_root)
         target_branch = self._main_branch_name()
+        candidate_commit = self._resolve_git_commit_in_repo(
+            self.repo_root,
+            branch_name,
+        )
         # Attempt to rebase stale submodule pointers before merge
         submodule_rebase = self._rebase_stale_submodule_pointers(branch_name, target_branch)
         if submodule_rebase.get("rebased"):
@@ -17152,6 +17191,36 @@ class PortalImplementationDaemon:
         removed_untracked: dict[str, bytes] = {}
         try:
             self._write_lock_metadata(lock_fd, lock_metadata)
+            completion_recheck = self._merge_candidate_completion_recheck(
+                branch_name,
+                task,
+                target_branch,
+                candidate_commit=candidate_commit,
+            )
+            if completion_recheck["terminal"]:
+                target_commit = self._run_git(
+                    ["rev-parse", target_branch],
+                    cwd=self.repo_root,
+                ).stdout.strip()
+                result = {
+                    "attempted": False,
+                    "merged": True,
+                    "returncode": 0,
+                    "branch": branch_name,
+                    "target_branch": target_branch,
+                    "started_at": started_at,
+                    "finished_at": utc_now(),
+                    "merge_commit": target_commit,
+                    "stdout": "",
+                    "stderr": "",
+                    "reason": "branch_already_merged",
+                    "already_merged": True,
+                    "completion_recheck": completion_recheck,
+                    "identical_untracked_paths": [],
+                    "submodule_merge_results": [],
+                }
+                self._record_event("merge_finished", result)
+                return result
             workspace_result = self._prepare_main_merge_workspace(target_branch, branch_name)
             llm_workspace_resolver: dict[str, Any] = {}
             if not workspace_result.get("available", False):
@@ -21089,15 +21158,36 @@ class PortalImplementationDaemon:
                         "candidate_count": len(candidates),
                     },
                 )
+        now_monotonic = time.monotonic()
+        active_commits = {
+            str(event.get("implementation_commit") or "")
+            for event in candidates
+            if str(event.get("implementation_commit") or "")
+        }
+        self._merge_reconciliation_retry_not_before = {
+            commit: retry_at
+            for commit, retry_at in self._merge_reconciliation_retry_not_before.items()
+            if commit in active_commits and retry_at > now_monotonic
+        }
+        retry_candidates: list[dict[str, Any]] = []
+        for event in candidates:
+            implementation_commit = str(event.get("implementation_commit") or "")
+            retry_at = self._merge_reconciliation_retry_not_before.get(
+                implementation_commit,
+                0.0,
+            )
+            if retry_at <= now_monotonic:
+                retry_candidates.append(event)
+
         max_merges = int(self.merge_reconciliation_max_merges)
         selected_candidates = self._select_failed_merge_candidates_for_reconciliation(
-            candidates,
+            retry_candidates,
             max_merges,
             deprioritized_task_ids=deprioritized_task_ids,
         )
         deferred_by_strategy = [
             str(event.get("task_id") or "")
-            for event in candidates
+            for event in retry_candidates
             if str(event.get("task_id") or "") in deprioritized_task_ids
         ]
         if deferred_by_strategy:
@@ -21237,6 +21327,33 @@ class PortalImplementationDaemon:
                 self._record_event("merge_reconcile_exception", result)
                 results.append(result)
                 continue
+            if self._merge_result_is_transient_lock_deferral(merge_result):
+                retry_after_seconds = (
+                    TRANSIENT_MERGE_RECONCILIATION_BACKOFF_SECONDS
+                )
+                self._merge_reconciliation_retry_not_before[
+                    implementation_commit
+                ] = time.monotonic() + retry_after_seconds
+                result = {
+                    "task_id": task_id,
+                    "attempt": attempt,
+                    "branch": branch,
+                    "implementation_commit": implementation_commit,
+                    "merge_ref": merge_ref,
+                    "merge_ref_source": merge_ref_source,
+                    "resolved": False,
+                    "reason": "merge_lock_busy",
+                    "retry_after_seconds": retry_after_seconds,
+                    "merge_result": merge_result,
+                    "cleanup_result": {},
+                }
+                self._record_event("merge_reconciliation_deferred", result)
+                results.append(result)
+                continue
+            self._merge_reconciliation_retry_not_before.pop(
+                implementation_commit,
+                None,
+            )
             cleanup_result = {}
             cleanup_cleaned = True
             if merge_result.get("merged"):
@@ -21263,13 +21380,14 @@ class PortalImplementationDaemon:
                 result["todo_update_result"] = todo_update_result
             self._record_event("merge_reconciled", result)
             results.append(result)
-        if max_merges > 0 and len(candidates) > len(selected_candidates):
+        if max_merges > 0 and len(retry_candidates) > len(selected_candidates):
             self._record_event(
                 "merge_reconciliation_deferred",
                 {
-                    "candidate_count": len(candidates),
+                    "candidate_count": len(retry_candidates),
                     "processed_count": len(selected_candidates),
-                    "deferred_count": len(candidates) - len(selected_candidates),
+                    "deferred_count": len(retry_candidates)
+                    - len(selected_candidates),
                     "max_merges": max_merges,
                 },
             )
