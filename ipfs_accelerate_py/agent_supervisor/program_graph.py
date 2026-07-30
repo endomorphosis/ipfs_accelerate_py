@@ -23,6 +23,12 @@ packet with VFS-G041 (minimal call-slice queries) shares construction
 identity preservation so query indexes may optimize without rewriting
 ``graph_id`` / node / edge content addresses.
 
+Language-edge resolution (``vfs/language-edge-resolution@1``, VFS-G021 /
+VFS-G143) is co-owned with :mod:`program_ast_adapters`: call/import/export/
+resolve edges must cite a source span and resolver rule; ambiguous,
+unsupported, collision, and re-export sites stay explicit and cannot mint
+forged ``resolved_static`` direct call edges.
+
 Composition policy (VFS-008 / VFS-G040): compose the semantic-dependency and
 code-evidence graph contracts without mutating GraphRAG or contract
 extraction.  Separate canonical graph construction from optional GraphRAG
@@ -68,6 +74,11 @@ PROGRAM_GRAPH_FRONTIER_SCHEMA = (
 # Canonical construction lives here; optional GraphRAG ranking is a separate
 # evidence surface (vfs/graphrag-projection@1) and must not author these records.
 PROGRAM_GRAPH_EVIDENCE: Final[str] = "vfs/program-graph@1"
+# Language-edge resolution co-owned with program_ast_adapters (VFS-G021 / G143).
+LANGUAGE_EDGE_RESOLUTION_EVIDENCE: Final[str] = "vfs/language-edge-resolution@1"
+LANGUAGE_EDGE_RESOLUTION_GOAL_ID: Final[str] = "VFS-G021"
+LANGUAGE_EDGE_RESOLUTION_CHILD_GOAL_ID: Final[str] = "VFS-G143"
+LANGUAGE_EDGE_RESOLUTION_TASK_ID: Final[str] = "VFS-069"
 # Synthetic objective-heap evidence term for VFS-G040 / VFS-G144 validation-gate
 # work.  Exact-text discovery key only — never part of graph_id identity payload.
 OBJECTIVE_VALIDATION_REPAIR_EVIDENCE: Final[str] = "objective validation repair"
@@ -78,6 +89,30 @@ OBJECTIVE_GOAL_ID: Final[str] = "VFS-G040"
 OBJECTIVE_VALIDATION_REPAIR_GOAL_ID: Final[str] = "VFS-G144"
 # Shared goal-packet surface: call-slice queries + validation repair.
 OBJECTIVE_GOAL_PACKET_IDS: Final[tuple[str, ...]] = ("VFS-G041", "VFS-G144")
+
+# Edge kinds that participate in language-edge resolution provenance checks.
+_LANGUAGE_EDGE_KINDS: Final[frozenset[str]] = frozenset(
+    {
+        "imports",
+        "exports",
+        "calls",
+        "resolves_to",
+        "references",
+        "registers",
+        "uses_transport",
+    }
+)
+LANGUAGE_EDGE_RESOLUTION_INVARIANTS: Final[tuple[str, ...]] = (
+    "every language edge cites a source span and resolver rule",
+    "ambiguous and unsupported constructs remain explicit",
+    "adversarial name collisions cannot become forged direct calls",
+    "re-exports cannot become forged direct calls",
+)
+
+assert LANGUAGE_EDGE_RESOLUTION_EVIDENCE == "vfs/language-edge-resolution@1"
+assert LANGUAGE_EDGE_RESOLUTION_GOAL_ID == "VFS-G021"
+assert LANGUAGE_EDGE_RESOLUTION_CHILD_GOAL_ID == "VFS-G143"
+assert LANGUAGE_EDGE_RESOLUTION_TASK_ID == "VFS-069"
 
 DEFAULT_MAX_GRAPH_NODES = 250_000
 DEFAULT_MAX_GRAPH_EDGES = 1_000_000
@@ -1604,9 +1639,21 @@ def make_edge(
     span: SourceSpan | Mapping[str, Any] | None = None,
     resolver_status: ResolverStatus | str = ResolverStatus.UNRESOLVED,
     record: Mapping[str, Any] | None = None,
+    resolver_rule: str = "",
 ) -> ProgramGraphEdge:
-    """Construct one validated program-graph edge."""
+    """Construct one validated program-graph edge.
 
+    When ``resolver_rule`` is supplied it is stored on the edge record as
+    ``rule_id`` so language-edge resolution provenance remains explicit.
+    """
+
+    payload = dict(record or {})
+    rule = str(resolver_rule or payload.get("rule_id") or payload.get("resolver_rule") or "").strip()
+    if rule:
+        if not rule.startswith("rule:"):
+            rule = f"rule:{rule}"
+        payload.setdefault("rule_id", rule)
+        payload.setdefault("resolver_rule", rule)
     return ProgramGraphEdge(
         source=source,
         target=target,
@@ -1619,8 +1666,203 @@ def make_edge(
             resolver_status=resolver_status,
         ),
         component_id=component_id,
-        record=record or {},
+        record=payload,
     )
+
+
+def edge_cites_source_span_and_resolver_rule(edge: ProgramGraphEdge) -> bool:
+    """True when a language edge carries a source span and resolver rule."""
+
+    if not isinstance(edge, ProgramGraphEdge):
+        return False
+    span = edge.binding.span
+    if span.line_start <= 0 and span.line_end <= 0:
+        return False
+    record = dict(edge.record or {})
+    rule = str(record.get("rule_id") or record.get("resolver_rule") or "").strip()
+    return bool(rule) and rule.startswith("rule:")
+
+
+def language_edge_forged_direct_call_reason(edge: ProgramGraphEdge) -> str:
+    """Return a non-empty reason when a resolved call edge is forged.
+
+    Name collisions, re-exports, dynamic mechanisms, and non-terminal statuses
+    must never appear as ``resolved_static`` ``calls`` / ``resolves_to`` edges.
+    """
+
+    if not isinstance(edge, ProgramGraphEdge):
+        return "not_an_edge"
+    kind = edge.kind.value if isinstance(edge.kind, ProgramEdgeKind) else str(edge.kind)
+    if kind not in {"calls", "resolves_to"}:
+        return ""
+    status = edge.binding.resolver_status
+    record = dict(edge.record or {})
+    reason = str(
+        record.get("reason")
+        or record.get("reason_code")
+        or record.get("mechanism")
+        or ""
+    ).strip().lower()
+    rule = str(record.get("rule_id") or record.get("resolver_rule") or "").lower()
+    collision_markers = (
+        "same_name_collision",
+        "name_collision",
+        "member_collision",
+        "reexport_collision",
+        "re_export",
+        "reexport",
+        "alias_collision",
+    )
+    dynamic_markers = (
+        "dynamic",
+        "dependency_injection",
+        "callback",
+        "monkey_patch",
+        "subprocess",
+        "http",
+        "rpc",
+        "libp2p",
+        "mcp",
+    )
+    if any(marker in reason or marker in rule for marker in collision_markers):
+        if status is ResolverStatus.RESOLVED_STATIC:
+            return "forged_direct_call_from_collision_or_reexport"
+    if any(marker in reason or marker in rule for marker in dynamic_markers):
+        if status is ResolverStatus.RESOLVED_STATIC:
+            return "forged_direct_call_from_dynamic_construct"
+    if status is ResolverStatus.RESOLVED_STATIC and not edge_cites_source_span_and_resolver_rule(
+        edge
+    ):
+        return "resolved_static_without_span_or_rule"
+    return ""
+
+
+def graph_satisfies_language_edge_resolution(graph: ProgramGraph) -> bool:
+    """Machine-check language-edge provenance on one program graph.
+
+    Every call/import/export/resolve edge must cite a source span and
+    resolver rule.  Ambiguous/unsupported/collision/re-export sites must not
+    be promoted to forged ``resolved_static`` direct calls.
+    """
+
+    if not isinstance(graph, ProgramGraph):
+        raise TypeError("graph must be a ProgramGraph")
+    for edge in graph.edges:
+        kind = edge.kind.value if isinstance(edge.kind, ProgramEdgeKind) else str(edge.kind)
+        if kind not in _LANGUAGE_EDGE_KINDS:
+            continue
+        if not edge_cites_source_span_and_resolver_rule(edge):
+            return False
+        if language_edge_forged_direct_call_reason(edge):
+            return False
+        status = edge.binding.resolver_status
+        if status in {
+            ResolverStatus.AMBIGUOUS,
+            ResolverStatus.UNSUPPORTED,
+            ResolverStatus.UNKNOWN,
+            ResolverStatus.EXTERNAL,
+            ResolverStatus.CANDIDATE,
+            ResolverStatus.UNRESOLVED,
+        }:
+            # Frontier statuses are explicit and allowed; they must not claim
+            # terminal direct-call authority.
+            if status is ResolverStatus.RESOLVED_STATIC:
+                return False
+    return True
+
+
+def language_edge_resolution_evidence_terms() -> tuple[str, ...]:
+    """Return the closed VFS-G021 / VFS-G143 language-edge evidence term.
+
+    Exact identity: ``vfs/language-edge-resolution@1``.  Co-owned with
+    :mod:`program_ast_adapters`; never mixes into ``graph_id`` identity.
+    """
+
+    return (LANGUAGE_EDGE_RESOLUTION_EVIDENCE,)
+
+
+def prove_language_edge_resolution(
+    graph: ProgramGraph | None = None,
+) -> dict[str, Any]:
+    """Emit a portable ``vfs/language-edge-resolution@1`` graph-side claim.
+
+    When a graph is supplied, every language edge is checked for span +
+    resolver-rule provenance and anti-forgery invariants.  Without a graph the
+    claim binds the discovery key and invariants only.
+    """
+
+    language_edges: list[dict[str, Any]] = []
+    missing_rule = 0
+    missing_span = 0
+    forged = 0
+    by_status: dict[str, int] = {}
+    by_kind: dict[str, int] = {}
+    satisfied = True
+    if graph is not None:
+        if not isinstance(graph, ProgramGraph):
+            raise TypeError("graph must be a ProgramGraph")
+        satisfied = graph_satisfies_language_edge_resolution(graph)
+        for edge in graph.edges:
+            kind = (
+                edge.kind.value
+                if isinstance(edge.kind, ProgramEdgeKind)
+                else str(edge.kind)
+            )
+            if kind not in _LANGUAGE_EDGE_KINDS:
+                continue
+            status = edge.binding.resolver_status.value
+            by_status[status] = by_status.get(status, 0) + 1
+            by_kind[kind] = by_kind.get(kind, 0) + 1
+            record = dict(edge.record or {})
+            rule = str(
+                record.get("rule_id") or record.get("resolver_rule") or ""
+            ).strip()
+            span = edge.binding.span
+            if not rule:
+                missing_rule += 1
+            if span.line_start <= 0 and span.line_end <= 0:
+                missing_span += 1
+            forge_reason = language_edge_forged_direct_call_reason(edge)
+            if forge_reason:
+                forged += 1
+            language_edges.append(
+                {
+                    "edge_id": edge.edge_id,
+                    "kind": kind,
+                    "source": edge.source,
+                    "target": edge.target,
+                    "resolver_status": status,
+                    "rule_id": rule,
+                    "span": span.to_dict(),
+                    "forged_reason": forge_reason,
+                }
+            )
+    return {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "language-edge-resolution-graph-claim@1"
+        ),
+        "evidence": LANGUAGE_EDGE_RESOLUTION_EVIDENCE,
+        "evidence_terms": list(language_edge_resolution_evidence_terms()),
+        "requirement_id": LANGUAGE_EDGE_RESOLUTION_EVIDENCE,
+        "goal_id": LANGUAGE_EDGE_RESOLUTION_GOAL_ID,
+        "child_goal_id": LANGUAGE_EDGE_RESOLUTION_CHILD_GOAL_ID,
+        "task_id": LANGUAGE_EDGE_RESOLUTION_TASK_ID,
+        "satisfied": satisfied,
+        "graph_id": graph.graph_id if graph is not None else None,
+        "forest_id": graph.forest_id if graph is not None else None,
+        "language_edge_count": len(language_edges),
+        "missing_rule_count": missing_rule,
+        "missing_span_count": missing_span,
+        "forged_direct_call_count": forged,
+        "by_status": dict(sorted(by_status.items())),
+        "by_kind": dict(sorted(by_kind.items())),
+        "language_edges": language_edges,
+        "invariants": list(LANGUAGE_EDGE_RESOLUTION_INVARIANTS),
+        "authoritative": False,
+        "completion_authoritative": False,
+        "forges_direct_calls": False,
+    }
 
 
 def build_program_graph(
@@ -1765,6 +2007,11 @@ __all__ = [
     "GraphFrontierItem",
     "GraphIndex",
     "IllegalCycleError",
+    "LANGUAGE_EDGE_RESOLUTION_CHILD_GOAL_ID",
+    "LANGUAGE_EDGE_RESOLUTION_EVIDENCE",
+    "LANGUAGE_EDGE_RESOLUTION_GOAL_ID",
+    "LANGUAGE_EDGE_RESOLUTION_INVARIANTS",
+    "LANGUAGE_EDGE_RESOLUTION_TASK_ID",
     "OBJECTIVE_GOAL_ID",
     "OBJECTIVE_GOAL_PACKET_IDS",
     "OBJECTIVE_VALIDATION_REPAIR_EVIDENCE",
@@ -1793,8 +2040,13 @@ __all__ = [
     "build_program_graph",
     "canonical_program_json",
     "digest_hex",
+    "edge_cites_source_span_and_resolver_rule",
+    "graph_satisfies_language_edge_resolution",
+    "language_edge_forged_direct_call_reason",
+    "language_edge_resolution_evidence_terms",
     "objective_validation_repair_evidence_terms",
     "program_graph_evidence_terms",
+    "prove_language_edge_resolution",
     "make_binding",
     "make_edge",
     "make_node",
