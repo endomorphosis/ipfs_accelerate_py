@@ -1938,7 +1938,7 @@ compact references and bounded spans only.
 
 ## VFS-056 Close objective gap: Prove vfs/exhaustive-index-receipt@1 for Prove and repair IPFS Kit VFS contracts from a content-addressed SwissKnife program graph
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
