@@ -2449,7 +2449,7 @@ compact references and bounded spans only.
 
 ## VFS-064 Close objective gap: Exhaustively inventory and incrementally parse the SwissKnife corpus
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
