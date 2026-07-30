@@ -1,4 +1,9 @@
-"""Tests for exhaustive Git-aware multi-repository corpus inventories."""
+"""Tests for exhaustive Git-aware multi-repository corpus inventories.
+
+Covers ``vfs/exhaustive-file-inventory@1`` (VFS-G138) and packet co-binding
+with ``vfs/incremental-ast-index@1`` under goal packet
+``goal_packet/corpus_index/ipfs_accelerate_py/26d54d2206f9``.
+"""
 
 from __future__ import annotations
 
@@ -9,13 +14,29 @@ from pathlib import Path
 import pytest
 
 from ipfs_accelerate_py.agent_supervisor.repository_corpus_index import (
+    CORPUS_INDEX_G020_EVIDENCE_TERMS,
+    EXHAUSTIVE_FILE_INVENTORY_EVIDENCE,
+    EXHAUSTIVE_FILE_INVENTORY_INVARIANTS,
+    GOAL_PACKET_ID,
+    INCREMENTAL_AST_INDEX_EVIDENCE,
+    OBJECTIVE_DOMAIN_EVIDENCE_TERMS,
+    OBJECTIVE_GOAL_ID,
+    OBJECTIVE_PARENT_GOAL_ID,
+    OBJECTIVE_TASK_ID,
+    PACKET_GOAL_IDS,
     CorpusClassification,
     EntryOrigin,
     InventoryLimits,
     RepositoryCorpusIndex,
     RepositoryCorpusIndexError,
+    all_covered_evidence_terms,
     build_repository_corpus_index,
+    covered_evidence_terms,
+    exhaustive_file_inventory_evidence_terms,
     inventory_repository_descriptor,
+    inventory_satisfies_exhaustive_file_inventory,
+    packet_evidence_terms,
+    prove_exhaustive_file_inventory,
 )
 from ipfs_accelerate_py.agent_supervisor.repository_forest import (
     AuthorityMode,
@@ -461,3 +482,165 @@ def test_forged_round_trip_identity_is_rejected(tmp_path: Path) -> None:
     with pytest.raises(RepositoryCorpusIndexError) as excinfo:
         RepositoryCorpusIndex.from_dict(payload)
     assert excinfo.value.reason_code == "inventory_cid_mismatch"
+
+
+# ---------------------------------------------------------------------------
+# VFS-G138 / VFS-G020 packet evidence: vfs/exhaustive-file-inventory@1
+# ---------------------------------------------------------------------------
+
+
+def test_exhaustive_file_inventory_evidence_terms_are_bound() -> None:
+    """Prove vfs/exhaustive-file-inventory@1 and packet co-binding."""
+
+    assert EXHAUSTIVE_FILE_INVENTORY_EVIDENCE == "vfs/exhaustive-file-inventory@1"
+    assert INCREMENTAL_AST_INDEX_EVIDENCE == "vfs/incremental-ast-index@1"
+    assert OBJECTIVE_DOMAIN_EVIDENCE_TERMS == ("vfs/exhaustive-file-inventory@1",)
+    assert CORPUS_INDEX_G020_EVIDENCE_TERMS == (
+        "vfs/exhaustive-file-inventory@1",
+        "vfs/incremental-ast-index@1",
+    )
+    assert exhaustive_file_inventory_evidence_terms() == OBJECTIVE_DOMAIN_EVIDENCE_TERMS
+    assert covered_evidence_terms() == exhaustive_file_inventory_evidence_terms()
+    assert packet_evidence_terms() == CORPUS_INDEX_G020_EVIDENCE_TERMS
+    assert all_covered_evidence_terms() == packet_evidence_terms()
+    assert OBJECTIVE_GOAL_ID == "VFS-G138"
+    assert OBJECTIVE_PARENT_GOAL_ID == "VFS-G020"
+    assert OBJECTIVE_TASK_ID == "VFS-063"
+    assert PACKET_GOAL_IDS == ("VFS-G138", "VFS-G139")
+    assert GOAL_PACKET_ID == (
+        "goal_packet/corpus_index/ipfs_accelerate_py/26d54d2206f9"
+    )
+    assert "included and excluded populations publish with reasons" in (
+        EXHAUSTIVE_FILE_INVENTORY_INVARIANTS
+    )
+
+
+def test_inventory_receipt_binds_exhaustive_file_inventory_evidence(
+    tmp_path: Path,
+) -> None:
+    repo = _init_repo(
+        tmp_path / "swissknife",
+        {
+            "src/services/ipfs.ts": "export async function stat() {}\n",
+            "src/components/App.tsx": "export const App = () => <main />;\n",
+            "schemas/mcp.schema.json": '{"type":"object"}\n',
+            "docs/vfs.md": "# VFS\n",
+            "vendor/dep.js": "module.exports = {};\n",
+        },
+    )
+    result = inventory_repository_descriptor(_descriptor(repo))
+
+    assert result.exhaustive is True
+    assert inventory_satisfies_exhaustive_file_inventory(result) is True
+    assert result.satisfies_exhaustive_file_inventory() is True
+
+    payload = result.to_dict()
+    assert payload["evidence"] == "vfs/exhaustive-file-inventory@1"
+    assert payload["evidence_terms"] == ["vfs/exhaustive-file-inventory@1"]
+    assert payload["goal_id"] == "VFS-G138"
+    assert payload["parent_goal_id"] == "VFS-G020"
+    assert payload["task_id"] == "VFS-063"
+    assert payload["goal_packet"] == GOAL_PACKET_ID
+    assert payload["packet_goal_ids"] == ["VFS-G138", "VFS-G139"]
+    # Evidence metadata must not alter content-addressed inventory identity.
+    cold = inventory_repository_descriptor(_descriptor(repo))
+    assert cold.inventory_cid == result.inventory_cid
+    assert "evidence" not in result.to_portable_dict()
+
+    claim = prove_exhaustive_file_inventory(result)
+    assert claim == result.to_evidence_claim()
+    assert claim["evidence"] == "vfs/exhaustive-file-inventory@1"
+    assert claim["requirement_id"] == "vfs/exhaustive-file-inventory@1"
+    assert claim["satisfied"] is True
+    assert claim["exhaustive"] is True
+    assert claim["inventory_cid"] == result.inventory_cid
+    assert claim["included_entry_count"] == len(result.included_entries)
+    assert claim["excluded_entry_count"] == len(result.excluded_entries)
+    assert claim["included_entry_count"] >= 1
+    assert claim["excluded_entry_count"] >= 1
+    assert all(
+        entry["path"] and entry.get("classifications") is not None
+        for entry in claim["populations"]["included"]
+    )
+    assert all(
+        entry["path"] and entry["reason_codes"]
+        for entry in claim["populations"]["excluded"]
+    )
+    assert set(claim["packet_evidence_terms"]) == {
+        "vfs/exhaustive-file-inventory@1",
+        "vfs/incremental-ast-index@1",
+    }
+    assert claim["authoritative"] is False
+    assert claim["completion_authoritative"] is False
+
+
+def test_unexplained_skips_and_truncation_block_exhaustive_inventory(
+    tmp_path: Path,
+) -> None:
+    """Truncation and stale descriptors prevent an exhaustive verdict."""
+
+    repo = _init_repo(
+        tmp_path / "repo",
+        {
+            "src/a.ts": "export const a = 1;\n",
+            "src/b.ts": "export const b = 2;\n",
+            "src/c.ts": "export const c = 3;\n",
+        },
+    )
+    full = inventory_repository_descriptor(_descriptor(repo))
+    assert full.exhaustive is True
+    assert inventory_satisfies_exhaustive_file_inventory(full) is True
+
+    bounded = inventory_repository_descriptor(
+        _descriptor(repo),
+        limits=InventoryLimits(max_entries=1, max_manifest_bytes=4096),
+    )
+    assert bounded.exhaustive is False
+    assert bounded.reason_codes
+    assert any(
+        code in bounded.reason_codes
+        for code in (
+            "manifest_entry_bound_exceeded",
+            "manifest_entries_truncated",
+            "manifest_byte_bound_exceeded",
+        )
+    )
+    # Truncated receipts remain structurally valid (populations reasoned) but
+    # must not claim a satisfied exhaustive-file-inventory verdict.
+    assert inventory_satisfies_exhaustive_file_inventory(bounded) is True
+    claim = prove_exhaustive_file_inventory(bounded)
+    assert claim["satisfied"] is False
+    assert claim["exhaustive"] is False
+    assert claim["reason_codes"]
+
+    # Stale descriptors fail closed rather than forging an exhaustive scan.
+    clean_descriptor = _descriptor(repo)
+    (repo / "src/a.ts").write_text("export const a = 99;\n", encoding="utf-8")
+    stale = inventory_repository_descriptor(clean_descriptor)
+    assert stale.exhaustive is False
+    assert "stale_repository_descriptor" in stale.reason_codes
+    assert prove_exhaustive_file_inventory(stale)["satisfied"] is False
+
+
+def test_incremental_committed_entry_reuse_preserves_inventory_identity(
+    tmp_path: Path,
+) -> None:
+    """Unchanged committed blobs are reused without altering inventory_cid."""
+
+    repo = _init_repo(
+        tmp_path / "repo",
+        {
+            "src/stable.ts": "export const stable = 1;\n",
+            "src/other.ts": "export const other = 1;\n",
+        },
+    )
+    first = inventory_repository_descriptor(_descriptor(repo))
+    second = inventory_repository_descriptor(
+        _descriptor(repo), previous_index=first
+    )
+    assert second.inventory_cid == first.inventory_cid
+    assert second.reused_entry_count == len(first.entries)
+    assert second.exhaustive is True
+    claim = prove_exhaustive_file_inventory(second)
+    assert claim["reused_entry_count"] == second.reused_entry_count
+    assert claim["satisfied"] is True

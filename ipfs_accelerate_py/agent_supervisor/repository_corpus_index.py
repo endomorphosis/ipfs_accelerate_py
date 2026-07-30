@@ -10,6 +10,13 @@ every discovered entry has a complete explanation.  Path ambiguity, escaping
 symlinks, unreadable content, forbidden dirty state, unavailable Git objects,
 or a manifest bound all fail the exhaustive verdict rather than being hidden
 as a successful partial scan.
+
+The executable evidence surface ``vfs/exhaustive-file-inventory@1`` (VFS-G138)
+is the discovery key for this module.  Packet sibling
+``vfs/incremental-ast-index@1`` (VFS-G139) is co-owned with
+:mod:`program_ast_adapters` under parent goal VFS-G020 / goal packet
+``goal_packet/corpus_index/ipfs_accelerate_py/26d54d2206f9``.  Evidence labels
+and goal metadata never participate in inventory CIDs or entry identities.
 """
 
 from __future__ import annotations
@@ -24,7 +31,7 @@ from collections import Counter
 from dataclasses import dataclass, replace
 from enum import Enum
 from pathlib import Path, PurePosixPath
-from typing import Any, Iterable, Mapping, Sequence
+from typing import Any, Final, Iterable, Mapping, Sequence
 
 from .proof.formal_verification_contracts import canonical_json_bytes, content_identity
 from .repository_forest import (
@@ -46,6 +53,52 @@ REPOSITORY_INVENTORY_SCHEMA = (
 )
 INVENTORY_LIMITS_SCHEMA = (
     "ipfs_accelerate_py.agent_supervisor.repository-inventory-limits@1"
+)
+
+# Exact objective-heap discovery keys and supervisor-fed packet bindings.
+# Domain evidence owned by this module (VFS-G138).
+EXHAUSTIVE_FILE_INVENTORY_EVIDENCE: Final[str] = "vfs/exhaustive-file-inventory@1"
+# Packet sibling (VFS-G139) co-covered with program_ast_adapters.
+INCREMENTAL_AST_INDEX_EVIDENCE: Final[str] = "vfs/incremental-ast-index@1"
+OBJECTIVE_GOAL_ID: Final[str] = "VFS-G138"
+PACKET_SIBLING_GOAL_ID: Final[str] = "VFS-G139"
+OBJECTIVE_PARENT_GOAL_ID: Final[str] = "VFS-G020"
+OBJECTIVE_TASK_ID: Final[str] = "VFS-063"
+GOAL_PACKET_ID: Final[str] = (
+    "goal_packet/corpus_index/ipfs_accelerate_py/26d54d2206f9"
+)
+OBJECTIVE_DOMAIN_EVIDENCE_TERMS: Final[tuple[str, ...]] = (
+    EXHAUSTIVE_FILE_INVENTORY_EVIDENCE,
+)
+# Parent VFS-G020 / packet aggregate evidence surface (inventory + AST index).
+CORPUS_INDEX_G020_EVIDENCE_TERMS: Final[tuple[str, ...]] = (
+    EXHAUSTIVE_FILE_INVENTORY_EVIDENCE,
+    INCREMENTAL_AST_INDEX_EVIDENCE,
+)
+PACKET_GOAL_IDS: Final[tuple[str, ...]] = (
+    OBJECTIVE_GOAL_ID,
+    PACKET_SIBLING_GOAL_ID,
+)
+# Acceptance invariants published with every inventory evidence claim.
+EXHAUSTIVE_FILE_INVENTORY_INVARIANTS: Final[tuple[str, ...]] = (
+    "included and excluded populations publish with reasons",
+    "unexplained skips block exhaustive verdict",
+    "truncation and path ambiguity fail closed",
+    "forged exhaustive flags fail closed",
+    "unchanged committed entries are reusable",
+)
+
+# Keep exact-text discovery anchors aligned with the objective heap.
+assert EXHAUSTIVE_FILE_INVENTORY_EVIDENCE == "vfs/exhaustive-file-inventory@1"
+assert INCREMENTAL_AST_INDEX_EVIDENCE == "vfs/incremental-ast-index@1"
+assert OBJECTIVE_GOAL_ID == "VFS-G138"
+assert PACKET_SIBLING_GOAL_ID == "VFS-G139"
+assert OBJECTIVE_PARENT_GOAL_ID == "VFS-G020"
+assert OBJECTIVE_TASK_ID == "VFS-063"
+assert OBJECTIVE_DOMAIN_EVIDENCE_TERMS == ("vfs/exhaustive-file-inventory@1",)
+assert CORPUS_INDEX_G020_EVIDENCE_TERMS == (
+    "vfs/exhaustive-file-inventory@1",
+    "vfs/incremental-ast-index@1",
 )
 
 _GIT_OBJECT_RE = re.compile(r"(?:[0-9a-f]{40}|[0-9a-f]{64})\Z")
@@ -750,6 +803,15 @@ class RepositoryCorpusIndex:
         # Reuse is an execution diagnostic, never portable identity material.
         payload["reused_entry_count"] = self.reused_entry_count
         payload["entries"] = [item.to_dict() for item in self.entries]
+        # Objective evidence bindings are diagnostic metadata only; they never
+        # participate in inventory_cid / portable identity material.
+        payload["evidence"] = EXHAUSTIVE_FILE_INVENTORY_EVIDENCE
+        payload["evidence_terms"] = list(OBJECTIVE_DOMAIN_EVIDENCE_TERMS)
+        payload["goal_id"] = OBJECTIVE_GOAL_ID
+        payload["goal_packet"] = GOAL_PACKET_ID
+        payload["packet_goal_ids"] = list(PACKET_GOAL_IDS)
+        payload["parent_goal_id"] = OBJECTIVE_PARENT_GOAL_ID
+        payload["task_id"] = OBJECTIVE_TASK_ID
         return payload
 
     @classmethod
@@ -770,6 +832,22 @@ class RepositoryCorpusIndex:
         if claimed and claimed != result.inventory_cid:
             raise RepositoryCorpusIndexError("inventory_cid_mismatch")
         return result
+
+    def satisfies_exhaustive_file_inventory(self) -> bool:
+        """Return whether this receipt meets ``vfs/exhaustive-file-inventory@1``.
+
+        Exhaustive inventories must publish included and excluded populations
+        with reasons, must not claim exhaustiveness when reason codes or
+        truncated repositories exist, and must keep every emitted entry fully
+        accounted (canonical path + decision reason).
+        """
+
+        return inventory_satisfies_exhaustive_file_inventory(self)
+
+    def to_evidence_claim(self) -> dict[str, Any]:
+        """Portable VFS-G138 evidence claim bound to this inventory receipt."""
+
+        return prove_exhaustive_file_inventory(self)
 
 
 # Compatibility name used by the plan's "receipt" terminology.
@@ -1887,10 +1965,163 @@ enumerate_repository_corpus = build_repository_corpus_index
 index_repository_corpus = build_repository_corpus_index
 
 
+# ---------------------------------------------------------------------------
+# Objective evidence discovery (VFS-G138 / VFS-G020 packet)
+# ---------------------------------------------------------------------------
+
+
+def exhaustive_file_inventory_evidence_terms() -> tuple[str, ...]:
+    """Return the closed VFS-G138 domain evidence term for exhaustive inventory.
+
+    Domain identity (``vfs/exhaustive-file-inventory@1``) is authored only by
+    this module.  Packet sibling ``vfs/incremental-ast-index@1`` is exposed via
+    :func:`packet_evidence_terms` so discovery scanners can cover the
+    corpus-index goal packet without mixing labels into inventory CIDs.
+    """
+
+    return OBJECTIVE_DOMAIN_EVIDENCE_TERMS
+
+
+def covered_evidence_terms() -> tuple[str, ...]:
+    """Return domain objective evidence terms this inventory surface proves.
+
+    Mirrors :func:`exhaustive_file_inventory_evidence_terms`.  Packet-wide
+    coverage (inventory + incremental AST index) is via
+    :func:`packet_evidence_terms` / :func:`all_covered_evidence_terms`.
+    """
+
+    return exhaustive_file_inventory_evidence_terms()
+
+
+def packet_evidence_terms() -> tuple[str, ...]:
+    """Return VFS-G020 packet evidence terms co-owned with AST adapters.
+
+    Ordered as ``vfs/exhaustive-file-inventory@1`` then
+    ``vfs/incremental-ast-index@1``.  Labels never enter inventory identity.
+    """
+
+    return CORPUS_INDEX_G020_EVIDENCE_TERMS
+
+
+def all_covered_evidence_terms() -> tuple[str, ...]:
+    """Alias of :func:`packet_evidence_terms` for discovery scanners."""
+
+    return packet_evidence_terms()
+
+
+def inventory_satisfies_exhaustive_file_inventory(
+    index: RepositoryCorpusIndex | Mapping[str, Any],
+) -> bool:
+    """Machine-check VFS-G138 acceptance against one inventory receipt.
+
+    * Included and excluded populations publish with reason codes.
+    * Unexplained skips (reason-less entries) are rejected by construction;
+      this helper re-asserts every emitted entry carries reasons.
+    * Truncation / non-exhaustive repository summaries fail closed.
+    * Forged exhaustive flags (exhaustive with reasons) are rejected by the
+      receipt constructor; this helper re-checks the live object.
+    """
+
+    if isinstance(index, Mapping):
+        index = RepositoryCorpusIndex.from_dict(index)
+    if not isinstance(index, RepositoryCorpusIndex):
+        raise TypeError("inventory must be a RepositoryCorpusIndex")
+    if index.exhaustive and index.reason_codes:
+        return False
+    if index.exhaustive and any(not item.exhaustive for item in index.repositories):
+        return False
+    for entry in index.entries:
+        if not entry.canonical_path or not entry.relative_path:
+            return False
+        if not entry.reason_codes:
+            return False
+        if entry.included and entry.inclusion != InclusionDecision.INCLUDED.value:
+            return False
+        if not entry.included and entry.inclusion != InclusionDecision.EXCLUDED.value:
+            return False
+    if index.exhaustive:
+        if any(item.omitted_entry_count for item in index.repositories):
+            return False
+        if index.reason_codes:
+            return False
+    return True
+
+
+def prove_exhaustive_file_inventory(
+    index: RepositoryCorpusIndex | Mapping[str, Any],
+) -> dict[str, Any]:
+    """Emit a portable VFS-G138 evidence claim for one inventory receipt.
+
+    The claim binds ``vfs/exhaustive-file-inventory@1`` to the content-addressed
+    inventory without embedding goal metadata into ``inventory_cid``.
+    """
+
+    if isinstance(index, Mapping):
+        index = RepositoryCorpusIndex.from_dict(index)
+    if not isinstance(index, RepositoryCorpusIndex):
+        raise TypeError("inventory must be a RepositoryCorpusIndex")
+    satisfied = inventory_satisfies_exhaustive_file_inventory(index)
+    included = index.included_entries
+    excluded = index.excluded_entries
+    return {
+        "schema": "ipfs_accelerate_py/agent-supervisor/exhaustive-file-inventory-claim@1",
+        "evidence": EXHAUSTIVE_FILE_INVENTORY_EVIDENCE,
+        "evidence_terms": list(OBJECTIVE_DOMAIN_EVIDENCE_TERMS),
+        "packet_evidence_terms": list(CORPUS_INDEX_G020_EVIDENCE_TERMS),
+        "requirement_id": EXHAUSTIVE_FILE_INVENTORY_EVIDENCE,
+        "goal_id": OBJECTIVE_GOAL_ID,
+        "parent_goal_id": OBJECTIVE_PARENT_GOAL_ID,
+        "packet_goal_ids": list(PACKET_GOAL_IDS),
+        "goal_packet": GOAL_PACKET_ID,
+        "task_id": OBJECTIVE_TASK_ID,
+        "inventory_cid": index.inventory_cid,
+        "forest_id": index.forest_id,
+        "exhaustive": index.exhaustive,
+        "satisfied": satisfied and index.exhaustive,
+        "reason_codes": list(index.reason_codes),
+        "included_entry_count": len(included),
+        "excluded_entry_count": len(excluded),
+        "reused_entry_count": index.reused_entry_count,
+        "repository_count": len(index.repositories),
+        "populations": {
+            "included": [
+                {
+                    "path": item.relative_path,
+                    "classifications": list(item.classifications),
+                    "origin": item.origin,
+                }
+                for item in included
+            ],
+            "excluded": [
+                {
+                    "path": item.relative_path,
+                    "reason_codes": list(item.reason_codes),
+                    "origin": item.origin,
+                }
+                for item in excluded
+            ],
+        },
+        "invariants": list(EXHAUSTIVE_FILE_INVENTORY_INVARIANTS),
+        "authoritative": False,
+        "completion_authoritative": False,
+    }
+
+
 __all__ = [
     "CORPUS_ENTRY_SCHEMA",
     "CORPUS_INDEX_SCHEMA",
+    "CORPUS_INDEX_G020_EVIDENCE_TERMS",
+    "EXHAUSTIVE_FILE_INVENTORY_EVIDENCE",
+    "EXHAUSTIVE_FILE_INVENTORY_INVARIANTS",
+    "GOAL_PACKET_ID",
+    "INCREMENTAL_AST_INDEX_EVIDENCE",
     "INVENTORY_LIMITS_SCHEMA",
+    "OBJECTIVE_DOMAIN_EVIDENCE_TERMS",
+    "OBJECTIVE_GOAL_ID",
+    "OBJECTIVE_PARENT_GOAL_ID",
+    "OBJECTIVE_TASK_ID",
+    "PACKET_GOAL_IDS",
+    "PACKET_SIBLING_GOAL_ID",
     "REPOSITORY_INVENTORY_SCHEMA",
     "CorpusClassification",
     "CorpusEntry",
@@ -1903,10 +2134,16 @@ __all__ = [
     "RepositoryCorpusIndex",
     "RepositoryCorpusIndexError",
     "RepositoryInventory",
+    "all_covered_evidence_terms",
     "build_repository_corpus_index",
     "classify_corpus_path",
+    "covered_evidence_terms",
     "enumerate_repository_corpus",
+    "exhaustive_file_inventory_evidence_terms",
     "index_repository_corpus",
     "inventory_repository_descriptor",
     "inventory_repository_forest",
+    "inventory_satisfies_exhaustive_file_inventory",
+    "packet_evidence_terms",
+    "prove_exhaustive_file_inventory",
 ]
