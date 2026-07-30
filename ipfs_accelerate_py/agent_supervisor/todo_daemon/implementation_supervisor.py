@@ -1293,9 +1293,11 @@ class PortalImplementationSupervisor:
             return []
 
         observed_at = time.time() if now_ts is None else float(now_ts)
+        # Operational provider deferrals sleep for five minutes; leave one
+        # additional cooldown interval for scheduler jitter and the next pass.
         freshness_seconds = min(
             1800.0,
-            max(300.0, float(self.config.check_interval) * 4.0),
+            max(600.0, float(self.config.check_interval) * 4.0),
         )
         runnable: list[dict[str, Any]] = []
         for peer_dir in peer_dirs:

@@ -10580,9 +10580,13 @@ def test_implementation_supervisor_watchdog_defers_maintenance_for_peer_lane_wor
     peer_state_dir.mkdir(parents=True)
     state_path = state_dir / "portal_00_task_state.json"
     TodoTaskState(ready_count=0, selectable_ready_count=0).save(state_path)
-    now = datetime.now(timezone.utc)
+    observed_at = time.time()
+    backoff_heartbeat = datetime.fromtimestamp(
+        observed_at - 307,
+        tz=timezone.utc,
+    )
     TodoTaskState(
-        heartbeat_at=now.isoformat(),
+        heartbeat_at=backoff_heartbeat.isoformat(),
         ready_count=1,
         selectable_ready_count=1,
         ready_task_ids=["AUTO-PEER-001"],
@@ -10609,6 +10613,7 @@ def test_implementation_supervisor_watchdog_defers_maintenance_for_peer_lane_wor
         "_run_once_with_maintenance",
         lambda _update_phase: calls.append("maintenance") or {"stuck": False},
     )
+    monkeypatch.setattr(time, "time", lambda: observed_at)
 
     decision = supervisor._supervisor_loop_watchdog_decision(None, Child(), {})
 
