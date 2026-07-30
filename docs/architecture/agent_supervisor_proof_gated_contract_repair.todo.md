@@ -819,7 +819,7 @@ consumer or frontier is unresolved.
 
 ## RPR-025 Implement a snapshot-bound typed program dependency graph
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
