@@ -1,0 +1,1058 @@
+{
+  "schema_version": "offline-toolchain-lock/v1",
+  "interface": "OfflineToolchainLock@1",
+  "packaging_gate_interface": "FormalVerificationPackagingGate@1",
+  "goal_id": "FVT-G010",
+  "task_id": "FVT-006",
+  "program": "formal-verification-tactician/readiness",
+  "description": "Hermetic offline lock of external formal-verification tool identities. Verification and packaging gates must bind exact pinned versions, detect shim/toolchain mismatches, and never install, download, or open network sockets during offline verification.",
+  "binding_mode": "declarative_pin_inventory",
+  "registry_interface": "VerificationToolchainRegistry@1",
+  "install_policy": {
+    "schema_version": "verification-toolchain-install-policy/v1",
+    "never_on_import": true,
+    "never_on_capability_discovery": true,
+    "requires_explicit_yes": true,
+    "requires_pin_or_declared_gap": true,
+    "requires_checksum_for_managed_artifacts": true,
+    "forbid_system_package_mutation_in_tests": true,
+    "forbid_curl_pipe_shell": true
+  },
+  "offline_verification_policy": {
+    "forbid_install": true,
+    "forbid_download": true,
+    "forbid_network": true,
+    "forbid_curl_pipe_shell": true,
+    "forbid_system_package_mutation": true,
+    "require_exact_pin_match_for_production_certification": true,
+    "path_presence_is_not_usability": true,
+    "shim_toolchain_mismatch_fails_closed": true
+  },
+  "detection_rules": {
+    "lean_shim_toolchain_mismatch": {
+      "id": "lean_shim_toolchain_mismatch",
+      "severity": "high",
+      "description": "Elan/default selection names a Lean toolchain that is not fully installed offline, so lean/lake on PATH can still trigger a network download during reconstruction.",
+      "inputs": [
+        "selected_toolchain",
+        "installed_toolchains",
+        "lean_executable_path",
+        "lean_version_string"
+      ],
+      "predicate": "selected_toolchain is non-empty AND selected_toolchain not in installed_toolchains",
+      "effect": {
+        "usable": false,
+        "production_certified": false,
+        "offline_verification": "fail_closed_without_install_or_fetch"
+      }
+    },
+    "locked_version_mismatch": {
+      "id": "locked_version_mismatch",
+      "severity": "high",
+      "description": "Observed tool version string does not contain the locked pin version. Hermetic offline certification requires an exact pin match.",
+      "inputs": [
+        "locked_version",
+        "observed_version_string"
+      ],
+      "predicate": "locked_version not reflected in observed_version_string",
+      "effect": {
+        "production_certified": false,
+        "offline_verification": "fail_closed_without_upgrade_or_download"
+      }
+    }
+  },
+  "managed_pin_versions": {
+    "cvc5": "1.3.3",
+    "vampire": "5.0.1",
+    "eprover": "3.2.5",
+    "apalache": "0.58.3",
+    "tamarin": "1.12.0",
+    "maude": "3.5.1",
+    "proverif": "2.05",
+    "lean": "v4.31.0",
+    "coq": "9.1.1",
+    "isabelle": "Isabelle2025-2",
+    "ergoai": "3.0",
+    "opam": "2.5.2"
+  },
+  "checksummed_release_inventory": {
+    "apalache": {
+      "version": "0.58.3",
+      "url": "https://github.com/apalache-mc/apalache/releases/download/v0.58.3/apalache-0.58.3.tgz",
+      "sha256": "ba622db9538aebf942cc7a7815f942a6b2b419012707e16dfdc25a73ff95d0a5"
+    },
+    "tamarin": {
+      "version": "1.12.0",
+      "url": "https://github.com/tamarin-prover/tamarin-prover/releases/download/1.12.0/tamarin-prover-1.12.0-linux64-ubuntu.tar.gz",
+      "sha256": "201be06f469e47cff554df6ca93db8366fc2c69d70c61fcbd1370a1074b469c6"
+    },
+    "tamarin_source": {
+      "version": "1.12.0",
+      "url": "https://github.com/tamarin-prover/tamarin-prover/archive/refs/tags/1.12.0.tar.gz",
+      "sha256": "35f0262e770db3632fcb297deb6ecc2d7c724c693fecfe97892e8224fa161956"
+    },
+    "maude": {
+      "version": "3.5.1",
+      "url": "https://github.com/maude-lang/Maude/releases/download/Maude3.5.1/Maude-3.5.1-linux-x86_64.zip",
+      "sha256": "72ed1ca87e3b3d0dfc6ee1436baf154bf04c45ff97d521bec040c5e8dfc8f92c"
+    },
+    "proverif": {
+      "version": "2.05",
+      "url": "https://proverif.inria.fr/proverif2.05.tar.gz",
+      "sha256": "4871f53c32ab4a04669a060c4886ba5d9080496963fb980a9a62d2c429ceabc4"
+    },
+    "eprover": {
+      "version": "3.2.5",
+      "url": "https://wwwlehre.dhbw-stuttgart.de/~sschulz/WORK/E_DOWNLOAD/V_3.2/E.tgz",
+      "sha256": "074c8e5fc3062476341ce790fd15ad8004d322d6b6627844bd2768a8830bd4ae"
+    },
+    "cvc5": {
+      "version": "1.3.3",
+      "url": "",
+      "sha256": ""
+    },
+    "vampire": {
+      "version": "5.0.1",
+      "url": "",
+      "sha256": ""
+    },
+    "lean": {
+      "version": "v4.31.0",
+      "url": "",
+      "sha256": ""
+    },
+    "rocq": {
+      "version": "9.1.1",
+      "url": "",
+      "sha256": ""
+    },
+    "isabelle": {
+      "version": "Isabelle2025-2",
+      "url": "",
+      "sha256": ""
+    },
+    "opam": {
+      "version": "2.5.2",
+      "url": "",
+      "sha256": ""
+    },
+    "stack": {
+      "version": "3.11.1",
+      "url": "",
+      "sha256": ""
+    }
+  },
+  "tools": [
+    {
+      "tool_id": "z3",
+      "display_name": "Z3 SMT solver",
+      "availability": "python_package",
+      "runtime": "python",
+      "resource_class": "solver",
+      "executable_candidates": [
+        "z3"
+      ],
+      "families": [
+        "smt",
+        "software_verification"
+      ],
+      "installer_entry": "ensure_z3",
+      "pins": [
+        {
+          "schema_version": "verification-toolchain-pin/v1",
+          "tool_id": "z3",
+          "version": ">=4.12.0,<5.0.0",
+          "artifact_url": "",
+          "sha256": "",
+          "platform": "any",
+          "notes": "Python package pin",
+          "is_checksummed": false
+        }
+      ],
+      "gap_id": null,
+      "offline_probe": {
+        "method": "bounded_version_argv",
+        "argv": [
+          "--version"
+        ],
+        "timeout_seconds": 5,
+        "network": false
+      },
+      "network_during_verification": false,
+      "install_during_verification": false,
+      "download_during_verification": false
+    },
+    {
+      "tool_id": "cvc5",
+      "display_name": "CVC5 SMT solver",
+      "availability": "managed_pin",
+      "runtime": "native",
+      "resource_class": "solver",
+      "executable_candidates": [
+        "cvc5"
+      ],
+      "families": [
+        "smt",
+        "software_verification"
+      ],
+      "installer_entry": "ensure_cvc5",
+      "pins": [
+        {
+          "schema_version": "verification-toolchain-pin/v1",
+          "tool_id": "cvc5",
+          "version": "1.3.3",
+          "artifact_url": "",
+          "sha256": "",
+          "platform": "any",
+          "notes": "Platform-specific static binary digests in prover_installer",
+          "is_checksummed": false
+        }
+      ],
+      "gap_id": null,
+      "offline_probe": {
+        "method": "bounded_version_argv",
+        "argv": [
+          "--version"
+        ],
+        "timeout_seconds": 5,
+        "network": false
+      },
+      "network_during_verification": false,
+      "install_during_verification": false,
+      "download_during_verification": false
+    },
+    {
+      "tool_id": "vampire",
+      "display_name": "Vampire ATP",
+      "availability": "managed_pin",
+      "runtime": "native",
+      "resource_class": "atp",
+      "executable_candidates": [
+        "vampire"
+      ],
+      "families": [
+        "atp"
+      ],
+      "installer_entry": "ensure_vampire",
+      "pins": [
+        {
+          "schema_version": "verification-toolchain-pin/v1",
+          "tool_id": "vampire",
+          "version": "5.0.1",
+          "artifact_url": "",
+          "sha256": "",
+          "platform": "any",
+          "notes": "",
+          "is_checksummed": false
+        }
+      ],
+      "gap_id": null,
+      "offline_probe": {
+        "method": "bounded_version_argv",
+        "argv": [
+          "--version"
+        ],
+        "timeout_seconds": 5,
+        "network": false
+      },
+      "network_during_verification": false,
+      "install_during_verification": false,
+      "download_during_verification": false
+    },
+    {
+      "tool_id": "eprover",
+      "display_name": "E theorem prover",
+      "availability": "managed_pin",
+      "runtime": "native",
+      "resource_class": "atp",
+      "executable_candidates": [
+        "eprover"
+      ],
+      "families": [
+        "atp"
+      ],
+      "installer_entry": "ensure_eprover",
+      "pins": [
+        {
+          "schema_version": "verification-toolchain-pin/v1",
+          "tool_id": "eprover",
+          "version": "3.2.5",
+          "artifact_url": "https://wwwlehre.dhbw-stuttgart.de/~sschulz/WORK/E_DOWNLOAD/V_3.2/E.tgz",
+          "sha256": "074c8e5fc3062476341ce790fd15ad8004d322d6b6627844bd2768a8830bd4ae",
+          "platform": "any",
+          "notes": "",
+          "is_checksummed": true
+        }
+      ],
+      "gap_id": null,
+      "offline_probe": {
+        "method": "bounded_version_argv",
+        "argv": [
+          "--version"
+        ],
+        "timeout_seconds": 5,
+        "network": false
+      },
+      "network_during_verification": false,
+      "install_during_verification": false,
+      "download_during_verification": false
+    },
+    {
+      "tool_id": "apalache",
+      "display_name": "Apalache symbolic model checker",
+      "availability": "managed_pin",
+      "runtime": "jvm",
+      "resource_class": "jvm",
+      "executable_candidates": [
+        "apalache-mc",
+        "apalache"
+      ],
+      "families": [
+        "tla",
+        "state_model"
+      ],
+      "installer_entry": "ensure_apalache",
+      "pins": [
+        {
+          "schema_version": "verification-toolchain-pin/v1",
+          "tool_id": "apalache",
+          "version": "0.58.3",
+          "artifact_url": "https://github.com/apalache-mc/apalache/releases/download/v0.58.3/apalache-0.58.3.tgz",
+          "sha256": "ba622db9538aebf942cc7a7815f942a6b2b419012707e16dfdc25a73ff95d0a5",
+          "platform": "any",
+          "notes": "",
+          "is_checksummed": true
+        }
+      ],
+      "gap_id": null,
+      "offline_probe": {
+        "method": "bounded_version_argv",
+        "argv": [
+          "--version"
+        ],
+        "timeout_seconds": 5,
+        "network": false
+      },
+      "network_during_verification": false,
+      "install_during_verification": false,
+      "download_during_verification": false
+    },
+    {
+      "tool_id": "tlc",
+      "display_name": "TLC explicit-state model checker",
+      "availability": "declared_gap",
+      "runtime": "jvm",
+      "resource_class": "jvm",
+      "executable_candidates": [
+        "tlc",
+        "tlc2",
+        "tla2tools"
+      ],
+      "families": [
+        "tla",
+        "state_model"
+      ],
+      "installer_entry": "",
+      "pins": [],
+      "gap_id": "tlc",
+      "offline_probe": {
+        "method": "bounded_version_argv",
+        "argv": [
+          "--version"
+        ],
+        "timeout_seconds": 5,
+        "network": false
+      },
+      "network_during_verification": false,
+      "install_during_verification": false,
+      "download_during_verification": false
+    },
+    {
+      "tool_id": "tamarin",
+      "display_name": "Tamarin protocol prover",
+      "availability": "managed_pin",
+      "runtime": "native",
+      "resource_class": "protocol",
+      "executable_candidates": [
+        "tamarin-prover"
+      ],
+      "families": [
+        "protocol"
+      ],
+      "installer_entry": "ensure_tamarin",
+      "pins": [
+        {
+          "schema_version": "verification-toolchain-pin/v1",
+          "tool_id": "tamarin",
+          "version": "1.12.0",
+          "artifact_url": "https://github.com/tamarin-prover/tamarin-prover/releases/download/1.12.0/tamarin-prover-1.12.0-linux64-ubuntu.tar.gz",
+          "sha256": "201be06f469e47cff554df6ca93db8366fc2c69d70c61fcbd1370a1074b469c6",
+          "platform": "any",
+          "notes": "",
+          "is_checksummed": true
+        }
+      ],
+      "gap_id": null,
+      "offline_probe": {
+        "method": "bounded_version_argv",
+        "argv": [
+          "--version"
+        ],
+        "timeout_seconds": 5,
+        "network": false
+      },
+      "network_during_verification": false,
+      "install_during_verification": false,
+      "download_during_verification": false
+    },
+    {
+      "tool_id": "maude",
+      "display_name": "Maude rewrite engine",
+      "availability": "managed_pin",
+      "runtime": "native",
+      "resource_class": "protocol",
+      "executable_candidates": [
+        "maude"
+      ],
+      "families": [
+        "protocol"
+      ],
+      "installer_entry": "ensure_maude",
+      "pins": [
+        {
+          "schema_version": "verification-toolchain-pin/v1",
+          "tool_id": "maude",
+          "version": "3.5.1",
+          "artifact_url": "https://github.com/maude-lang/Maude/releases/download/Maude3.5.1/Maude-3.5.1-linux-x86_64.zip",
+          "sha256": "72ed1ca87e3b3d0dfc6ee1436baf154bf04c45ff97d521bec040c5e8dfc8f92c",
+          "platform": "any",
+          "notes": "",
+          "is_checksummed": true
+        }
+      ],
+      "gap_id": null,
+      "offline_probe": {
+        "method": "bounded_version_argv",
+        "argv": [
+          "--version"
+        ],
+        "timeout_seconds": 5,
+        "network": false
+      },
+      "network_during_verification": false,
+      "install_during_verification": false,
+      "download_during_verification": false
+    },
+    {
+      "tool_id": "proverif",
+      "display_name": "ProVerif protocol analyzer",
+      "availability": "managed_pin",
+      "runtime": "opam",
+      "resource_class": "protocol",
+      "executable_candidates": [
+        "proverif"
+      ],
+      "families": [
+        "protocol"
+      ],
+      "installer_entry": "ensure_proverif",
+      "pins": [
+        {
+          "schema_version": "verification-toolchain-pin/v1",
+          "tool_id": "proverif",
+          "version": "2.05",
+          "artifact_url": "https://proverif.inria.fr/proverif2.05.tar.gz",
+          "sha256": "4871f53c32ab4a04669a060c4886ba5d9080496963fb980a9a62d2c429ceabc4",
+          "platform": "any",
+          "notes": "",
+          "is_checksummed": true
+        }
+      ],
+      "gap_id": null,
+      "offline_probe": {
+        "method": "bounded_version_argv",
+        "argv": [
+          "--version"
+        ],
+        "timeout_seconds": 5,
+        "network": false
+      },
+      "network_during_verification": false,
+      "install_during_verification": false,
+      "download_during_verification": false
+    },
+    {
+      "tool_id": "lean",
+      "display_name": "Lean 4 kernel",
+      "availability": "managed_pin",
+      "runtime": "native",
+      "resource_class": "kernel",
+      "executable_candidates": [
+        "lean"
+      ],
+      "families": [
+        "kernel",
+        "reconstruction"
+      ],
+      "installer_entry": "ensure_lean",
+      "pins": [
+        {
+          "schema_version": "verification-toolchain-pin/v1",
+          "tool_id": "lean",
+          "version": "v4.31.0",
+          "artifact_url": "",
+          "sha256": "",
+          "platform": "any",
+          "notes": "",
+          "is_checksummed": false
+        }
+      ],
+      "gap_id": null,
+      "offline_probe": {
+        "method": "bounded_version_and_elan_toolchain_census",
+        "argv": [
+          "--version"
+        ],
+        "timeout_seconds": 5,
+        "network": false,
+        "toolchain_source": "filesystem:~/.elan/toolchains",
+        "locked_toolchain": "leanprover/lean4:v4.31.0"
+      },
+      "network_during_verification": false,
+      "install_during_verification": false,
+      "download_during_verification": false
+    },
+    {
+      "tool_id": "coq",
+      "display_name": "Rocq/Coq kernel",
+      "availability": "managed_pin",
+      "runtime": "opam",
+      "resource_class": "opam",
+      "executable_candidates": [
+        "coqc",
+        "rocq"
+      ],
+      "families": [
+        "kernel",
+        "reconstruction"
+      ],
+      "installer_entry": "ensure_coq",
+      "pins": [
+        {
+          "schema_version": "verification-toolchain-pin/v1",
+          "tool_id": "rocq",
+          "version": "9.1.1",
+          "artifact_url": "",
+          "sha256": "",
+          "platform": "any",
+          "notes": "",
+          "is_checksummed": false
+        }
+      ],
+      "gap_id": null,
+      "offline_probe": {
+        "method": "bounded_version_argv",
+        "argv": [
+          "--version"
+        ],
+        "timeout_seconds": 5,
+        "network": false
+      },
+      "network_during_verification": false,
+      "install_during_verification": false,
+      "download_during_verification": false
+    },
+    {
+      "tool_id": "isabelle",
+      "display_name": "Isabelle reconstruction kernel",
+      "availability": "managed_pin",
+      "runtime": "native",
+      "resource_class": "kernel",
+      "executable_candidates": [
+        "isabelle"
+      ],
+      "families": [
+        "kernel",
+        "reconstruction",
+        "hammer"
+      ],
+      "installer_entry": "ensure_isabelle",
+      "pins": [
+        {
+          "schema_version": "verification-toolchain-pin/v1",
+          "tool_id": "isabelle",
+          "version": "Isabelle2025-2",
+          "artifact_url": "",
+          "sha256": "",
+          "platform": "any",
+          "notes": "",
+          "is_checksummed": false
+        }
+      ],
+      "gap_id": null,
+      "offline_probe": {
+        "method": "bounded_version_argv",
+        "argv": [
+          "--version"
+        ],
+        "timeout_seconds": 5,
+        "network": false
+      },
+      "network_during_verification": false,
+      "install_during_verification": false,
+      "download_during_verification": false
+    },
+    {
+      "tool_id": "hyperltl",
+      "display_name": "HyperLTL external engine",
+      "availability": "declared_gap",
+      "runtime": "native",
+      "resource_class": "hyperproperty",
+      "executable_candidates": [
+        "hyperltl",
+        "hyperltl-sat"
+      ],
+      "families": [
+        "hyperproperty"
+      ],
+      "installer_entry": "",
+      "pins": [],
+      "gap_id": "hyper_tools",
+      "offline_probe": {
+        "method": "bounded_version_argv",
+        "argv": [
+          "--version"
+        ],
+        "timeout_seconds": 5,
+        "network": false
+      },
+      "network_during_verification": false,
+      "install_during_verification": false,
+      "download_during_verification": false
+    },
+    {
+      "tool_id": "autohyper",
+      "display_name": "AutoHyper external engine",
+      "availability": "declared_gap",
+      "runtime": "native",
+      "resource_class": "hyperproperty",
+      "executable_candidates": [
+        "AutoHyper",
+        "autohyper"
+      ],
+      "families": [
+        "hyperproperty"
+      ],
+      "installer_entry": "",
+      "pins": [],
+      "gap_id": "hyper_tools",
+      "offline_probe": {
+        "method": "bounded_version_argv",
+        "argv": [
+          "--version"
+        ],
+        "timeout_seconds": 5,
+        "network": false
+      },
+      "network_during_verification": false,
+      "install_during_verification": false,
+      "download_during_verification": false
+    },
+    {
+      "tool_id": "mchyper",
+      "display_name": "MCHyper external engine",
+      "availability": "declared_gap",
+      "runtime": "native",
+      "resource_class": "hyperproperty",
+      "executable_candidates": [
+        "mchyper",
+        "MCHyper"
+      ],
+      "families": [
+        "hyperproperty"
+      ],
+      "installer_entry": "",
+      "pins": [],
+      "gap_id": "hyper_tools",
+      "offline_probe": {
+        "method": "bounded_version_argv",
+        "argv": [
+          "--version"
+        ],
+        "timeout_seconds": 5,
+        "network": false
+      },
+      "network_during_verification": false,
+      "install_during_verification": false,
+      "download_during_verification": false
+    },
+    {
+      "tool_id": "datalog-authorization",
+      "display_name": "In-process Datalog authorization engine",
+      "availability": "in_process",
+      "runtime": "in_process",
+      "resource_class": "authorization",
+      "executable_candidates": [],
+      "families": [
+        "authorization",
+        "datalog"
+      ],
+      "installer_entry": "",
+      "pins": [],
+      "gap_id": null,
+      "offline_probe": {
+        "method": "bounded_version_argv",
+        "argv": [
+          "--version"
+        ],
+        "timeout_seconds": 5,
+        "network": false
+      },
+      "network_during_verification": false,
+      "install_during_verification": false,
+      "download_during_verification": false
+    },
+    {
+      "tool_id": "secpal-authorization",
+      "display_name": "In-process SecPAL-style authorization engine",
+      "availability": "in_process",
+      "runtime": "in_process",
+      "resource_class": "authorization",
+      "executable_candidates": [],
+      "families": [
+        "authorization",
+        "secpal"
+      ],
+      "installer_entry": "",
+      "pins": [],
+      "gap_id": null,
+      "offline_probe": {
+        "method": "bounded_version_argv",
+        "argv": [
+          "--version"
+        ],
+        "timeout_seconds": 5,
+        "network": false
+      },
+      "network_during_verification": false,
+      "install_during_verification": false,
+      "download_during_verification": false
+    },
+    {
+      "tool_id": "souffle",
+      "display_name": "External Souffl\u00e9 Datalog engine",
+      "availability": "declared_gap",
+      "runtime": "native",
+      "resource_class": "authorization",
+      "executable_candidates": [
+        "souffle"
+      ],
+      "families": [
+        "authorization",
+        "datalog"
+      ],
+      "installer_entry": "",
+      "pins": [],
+      "gap_id": "datalog_secpal_external",
+      "offline_probe": {
+        "method": "bounded_version_argv",
+        "argv": [
+          "--version"
+        ],
+        "timeout_seconds": 5,
+        "network": false
+      },
+      "network_during_verification": false,
+      "install_during_verification": false,
+      "download_during_verification": false
+    },
+    {
+      "tool_id": "secpal",
+      "display_name": "External SecPAL engine",
+      "availability": "declared_gap",
+      "runtime": "native",
+      "resource_class": "authorization",
+      "executable_candidates": [
+        "secpal"
+      ],
+      "families": [
+        "authorization",
+        "secpal"
+      ],
+      "installer_entry": "",
+      "pins": [],
+      "gap_id": "datalog_secpal_external",
+      "offline_probe": {
+        "method": "bounded_version_argv",
+        "argv": [
+          "--version"
+        ],
+        "timeout_seconds": 5,
+        "network": false
+      },
+      "network_during_verification": false,
+      "install_during_verification": false,
+      "download_during_verification": false
+    },
+    {
+      "tool_id": "runtime-mtl",
+      "display_name": "In-process runtime MTL monitor",
+      "availability": "in_process",
+      "runtime": "in_process",
+      "resource_class": "monitor",
+      "executable_candidates": [],
+      "families": [
+        "temporal",
+        "runtime_mtl"
+      ],
+      "installer_entry": "",
+      "pins": [],
+      "gap_id": null,
+      "offline_probe": {
+        "method": "bounded_version_argv",
+        "argv": [
+          "--version"
+        ],
+        "timeout_seconds": 5,
+        "network": false
+      },
+      "network_during_verification": false,
+      "install_during_verification": false,
+      "download_during_verification": false
+    },
+    {
+      "tool_id": "runtime-mtl-external",
+      "display_name": "External runtime MTL monitor (gap)",
+      "availability": "declared_gap",
+      "runtime": "native",
+      "resource_class": "monitor",
+      "executable_candidates": [
+        "runtime-mtl",
+        "mtl-monitor"
+      ],
+      "families": [
+        "temporal",
+        "runtime_mtl"
+      ],
+      "installer_entry": "",
+      "pins": [],
+      "gap_id": "runtime_mtl_external",
+      "offline_probe": {
+        "method": "bounded_version_argv",
+        "argv": [
+          "--version"
+        ],
+        "timeout_seconds": 5,
+        "network": false
+      },
+      "network_during_verification": false,
+      "install_during_verification": false,
+      "download_during_verification": false
+    },
+    {
+      "tool_id": "symbolicai",
+      "display_name": "SymbolicAI advisor",
+      "availability": "advisor_only",
+      "runtime": "python",
+      "resource_class": "advisor",
+      "executable_candidates": [],
+      "families": [
+        "advisor"
+      ],
+      "installer_entry": "ensure_symbolicai",
+      "pins": [
+        {
+          "schema_version": "verification-toolchain-pin/v1",
+          "tool_id": "symbolicai",
+          "version": ">=1.14.0,<2.0.0",
+          "artifact_url": "",
+          "sha256": "",
+          "platform": "any",
+          "notes": "",
+          "is_checksummed": false
+        }
+      ],
+      "gap_id": null,
+      "offline_probe": {
+        "method": "bounded_version_argv",
+        "argv": [
+          "--version"
+        ],
+        "timeout_seconds": 5,
+        "network": false
+      },
+      "network_during_verification": false,
+      "install_during_verification": false,
+      "download_during_verification": false
+    },
+    {
+      "tool_id": "ergoai",
+      "display_name": "ErgoAI/ErgoEngine",
+      "availability": "managed_pin",
+      "runtime": "native",
+      "resource_class": "atp",
+      "executable_candidates": [
+        "ergoai",
+        "runErgo.sh",
+        "runergo"
+      ],
+      "families": [
+        "flogic",
+        "atp"
+      ],
+      "installer_entry": "ensure_ergoai",
+      "pins": [
+        {
+          "schema_version": "verification-toolchain-pin/v1",
+          "tool_id": "ergoai",
+          "version": "3.0",
+          "artifact_url": "",
+          "sha256": "",
+          "platform": "any",
+          "notes": "",
+          "is_checksummed": false
+        }
+      ],
+      "gap_id": null,
+      "offline_probe": {
+        "method": "bounded_version_argv",
+        "argv": [
+          "--version"
+        ],
+        "timeout_seconds": 5,
+        "network": false
+      },
+      "network_during_verification": false,
+      "install_during_verification": false,
+      "download_during_verification": false
+    },
+    {
+      "tool_id": "zkp-circuit",
+      "display_name": "Production ZKP circuit binding",
+      "availability": "declared_gap",
+      "runtime": "in_process",
+      "resource_class": "circuit",
+      "executable_candidates": [],
+      "families": [
+        "attestation",
+        "zkp"
+      ],
+      "installer_entry": "",
+      "pins": [],
+      "gap_id": "circuit_witness",
+      "offline_probe": {
+        "method": "bounded_version_argv",
+        "argv": [
+          "--version"
+        ],
+        "timeout_seconds": 5,
+        "network": false
+      },
+      "network_during_verification": false,
+      "install_during_verification": false,
+      "download_during_verification": false
+    },
+    {
+      "tool_id": "opam",
+      "display_name": "Managed OPAM binary",
+      "availability": "managed_pin",
+      "runtime": "native",
+      "resource_class": "opam",
+      "executable_candidates": [
+        "opam"
+      ],
+      "families": [
+        "kernel",
+        "protocol"
+      ],
+      "installer_entry": "",
+      "pins": [
+        {
+          "schema_version": "verification-toolchain-pin/v1",
+          "tool_id": "opam",
+          "version": "2.5.2",
+          "artifact_url": "",
+          "sha256": "",
+          "platform": "any",
+          "notes": "",
+          "is_checksummed": false
+        }
+      ],
+      "gap_id": null,
+      "offline_probe": {
+        "method": "bounded_version_argv",
+        "argv": [
+          "--version"
+        ],
+        "timeout_seconds": 5,
+        "network": false
+      },
+      "network_during_verification": false,
+      "install_during_verification": false,
+      "download_during_verification": false
+    },
+    {
+      "tool_id": "java",
+      "display_name": "Host JVM (java)",
+      "availability": "external_optional",
+      "runtime": "jvm",
+      "resource_class": "jvm",
+      "executable_candidates": [
+        "java"
+      ],
+      "families": [
+        "tla",
+        "state_model"
+      ],
+      "installer_entry": "",
+      "pins": [],
+      "gap_id": null,
+      "offline_probe": {
+        "method": "bounded_version_argv",
+        "argv": [
+          "-version"
+        ],
+        "timeout_seconds": 5,
+        "network": false
+      },
+      "network_during_verification": false,
+      "install_during_verification": false,
+      "download_during_verification": false
+    }
+  ],
+  "stable_python_operations": [
+    "list_logic_families",
+    "list_providers",
+    "provider_capabilities",
+    "compile_verification_artifact",
+    "check",
+    "monitor",
+    "run_portfolio",
+    "explain_counterexample",
+    "verify_receipt",
+    "attest_receipt",
+    "advise",
+    "probe_provider",
+    "install_provider"
+  ],
+  "stable_python_modules": [
+    "ipfs_datasets_py.logic.verification_api",
+    "ipfs_datasets_py.logic.backends.toolchains",
+    "ipfs_datasets_py.logic.backends.process",
+    "ipfs_datasets_py.logic.backends.registry",
+    "ipfs_datasets_py.logic.software_verification.vc",
+    "ipfs_datasets_py.logic.software_verification.contracts",
+    "ipfs_datasets_py.logic.software_verification.receipts",
+    "ipfs_datasets_py.logic.software_verification.monitoring.runtime_mtl"
+  ],
+  "typescript_packages": [
+    {
+      "name": "@ipfs-datasets/logic-runtime-mtl",
+      "path": "ipfs_datasets_py/typescript/logic-runtime-mtl",
+      "source_entrypoint": "src/index.ts",
+      "built_entrypoint": "dist/src/index.js",
+      "built_types": "dist/src/index.d.ts",
+      "interface": "RuntimeMTLMonitor@1"
+    }
+  ]
+}
