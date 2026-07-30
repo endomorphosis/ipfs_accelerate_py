@@ -9,6 +9,7 @@ import shlex
 import signal
 import subprocess
 import sys
+import threading
 import time
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
@@ -162,11 +163,13 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor i
     parse_args as parse_implementation_supervisor_args,
     supervisor_config_from_args,
 )
+from ipfs_accelerate_py.agent_supervisor.todo_daemon import core as todo_core_module
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.core import (
     ManagedDaemonSpec,
     pid_alive,
     stop_daemon,
     terminate_pid_tree,
+    write_json,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.runner import TodoDaemonRunner
 from ipfs_accelerate_py.agent_supervisor.todo_daemon import supervisor as todo_supervisor_module
@@ -7416,6 +7419,66 @@ def test_supervisor_status_write_repairs_directory_status_path(tmp_path):
     backups = list(state_dir.glob("supervisor_status.json.directory-backup-*"))
     assert len(backups) == 1
     assert (backups[0] / "fragment").exists()
+
+
+def test_shared_status_json_writer_never_publishes_truncated_document(
+    tmp_path,
+    monkeypatch,
+):
+    status_path = tmp_path / "supervisor_status.json"
+    write_json(status_path, {"generation": 0})
+    both_writers_ready = threading.Event()
+    allow_replace = threading.Event()
+    replace_lock = threading.Lock()
+    replacement_sources: list[Path] = []
+    writer_errors: list[BaseException] = []
+    real_replace = todo_core_module.os.replace
+
+    def gated_replace(source, destination):
+        if Path(destination) == status_path:
+            with replace_lock:
+                replacement_sources.append(Path(source))
+                if len(replacement_sources) == 2:
+                    both_writers_ready.set()
+            if not allow_replace.wait(timeout=5):
+                raise TimeoutError("test did not release atomic JSON replacements")
+        return real_replace(source, destination)
+
+    def writer(generation):
+        try:
+            write_json(
+                status_path,
+                {"generation": generation, "payload": "x" * 100_000},
+            )
+        except BaseException as exc:  # pragma: no cover - asserted below
+            writer_errors.append(exc)
+
+    monkeypatch.setattr(todo_core_module.os, "replace", gated_replace)
+    threads = [
+        threading.Thread(target=writer, args=(generation,), daemon=True)
+        for generation in (1, 2)
+    ]
+    for thread in threads:
+        thread.start()
+    try:
+        assert both_writers_ready.wait(timeout=5)
+        published = json.loads(status_path.read_text(encoding="utf-8"))
+        assert published == {"generation": 0}
+        assert len(set(replacement_sources)) == 2
+        assert all(source.parent == status_path.parent for source in replacement_sources)
+        assert {
+            json.loads(source.read_text(encoding="utf-8"))["generation"]
+            for source in replacement_sources
+        } == {1, 2}
+    finally:
+        allow_replace.set()
+        for thread in threads:
+            thread.join(timeout=5)
+
+    assert all(thread.is_alive() is False for thread in threads)
+    assert writer_errors == []
+    assert json.loads(status_path.read_text(encoding="utf-8"))["generation"] in {1, 2}
+    assert list(tmp_path.glob(".supervisor_status.json.*.tmp")) == []
 
 
 def test_stop_daemon_moves_directory_pid_markers(tmp_path):

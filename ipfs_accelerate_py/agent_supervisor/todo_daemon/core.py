@@ -15,6 +15,7 @@ import signal
 import subprocess
 import sys
 import time
+import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -131,9 +132,15 @@ def write_json(path: Path, payload: Mapping[str, Any]) -> None:
     if path.is_dir():
         backup_path = unique_backup_path(path, "directory-backup")
         path.rename(backup_path)
-    with path.open("w", encoding="utf-8") as handle:
-        json.dump(dict(payload), handle, indent=2, sort_keys=True)
-        handle.write("\n")
+    tmp = path.with_name(f".{path.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp")
+    try:
+        with tmp.open("x", encoding="utf-8") as handle:
+            json.dump(dict(payload), handle, indent=2, sort_keys=True)
+            handle.write("\n")
+        os.replace(tmp, path)
+    finally:
+        if tmp.exists():
+            tmp.unlink()
 
 
 def parse_timestamp(value: Any) -> Optional[datetime]:
