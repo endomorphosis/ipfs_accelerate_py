@@ -2267,3 +2267,48 @@ compact references and bounded spans only.
 - Candidate kind: validation_gate
 - Todo vector key: 0caa2a5e36e6187c
 - Acceptance: Objective scan filed this gap for VFS-G030. Use evidence in /home/barberb/.local/state/ipfs_accelerate_py/ipfs_kit_vfs_symbolic_assurance/projection/discovery/2026-07-30-vfs-060-objective-gap-163d03533eb2.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (objective validation repair), and keep the supervisor-fed backlog aligned with the objective heap.  Keep immutable object identity separate from mutable current-tree projections.
+
+## VFS-061 Review swallowed exception path in ipfs_accelerate_py/agent_supervisor/program_analysis_cache.py:1966
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: runtime
+- Depends on: 
+- Outputs: data/agent_supervisor/ipfs_kit_vfs_symbolic_assurance/codebase_finding.json, ipfs_accelerate_py/agent_supervisor/program_analysis_cache.py
+- Validation: python3 -m py_compile ipfs_accelerate_py/agent_supervisor/program_analysis_cache.py
+- Board namespace: ipfs-kit-vfs-symbolic-assurance-v1
+- Graph parents: VFS-G031, VFS-G030, VFS-G000
+- Graph depth: 3
+- Goal id: VFS-G145
+- Goal lineage: VFS-G145, VFS-G031, VFS-G030, VFS-G000
+- Goal registration: existing
+- Canonical task key: task/v1/2d0e1bb71028e2dad752f6f338e4efc70210b6959dd8b0b9a0fce66a841f9e6b
+- Canonical task CID: baguqeerafuhbxnyqfdrnvv2s63ztrzhpy4bbbnuvtxmlbona7ttgvba7tzvq
+- Semantic identity: 2d0e1bb71028e2dad752f6f338e4efc70210b6959dd8b0b9a0fce66a841f9e6b
+- Acceptance subset: Resolve swallowed_exception at ipfs_accelerate_py/agent_supervisor/program_analysis_cache.py:1966
+- Preconditions: ipfs_accelerate_py/agent_supervisor/program_analysis_cache.py exists and the scan evidence remains applicable
+- Effects: resolve swallowed_exception in ipfs_accelerate_py/agent_supervisor/program_analysis_cache.py and pass focused validation
+- Evidence subset: ipfs_accelerate_py/agent_supervisor/program_analysis_cache.py:1966, /home/barberb/.local/state/ipfs_accelerate_py/ipfs_kit_vfs_symbolic_assurance/projection/discovery/2026-07-30-vfs-061-codebase-scan-54632d475f3a.md
+- Resource class: cpu-small
+- Token class: small
+- Resources: python, focused validation runner
+- Merge fate: ipfs_accelerate_py/agent_supervisor/program_analysis_cache.py
+- Rejection reasons: none
+- Missing evidence: Review swallowed exception path in ipfs_accelerate_py/agent_supervisor/program_analysis_cache.py:1966
+- Candidate kind: codebase_scan
+- Todo vector key: 54632d475f3a12aa
+- Bundle: codebase/runtime/ipfs_accelerate_py-agent_supervisor-program_analysis_cache
+- Bundle shard: /home/barberb/.local/state/ipfs_accelerate_py/ipfs_kit_vfs_symbolic_assurance/projection/bundles/codebase-runtime-ipfs_accelerate_py-agent_supervisor-program_analysis_cache.todo.md
+- Bundle strategy: codebase_file_ast
+- Parallel lane: codebase/runtime/ipfs_accelerate_py-agent_supervisor-program_analysis_cache
+- Conflict policy: serialize findings for the same file; allow independent file bundles to run concurrently
+- Predicted files: ipfs_accelerate_py/agent_supervisor/program_analysis_cache.py
+- AST symbols: __bool__, __future__, __future__.annotations, __init__, _canonical_json_bytes, _closest_program_candidate, _coerce_key, _completion_validator, _difference_reasons, _extract_program_key, _identity_component, _index_path, _lookup_runtime, _now_ms, _persist_component_index, _put_runtime_artifact, _rebuild_component_index, _register_index, _runtime_namespace, _sha256_text, _unregister_index, _wrapped_producer, all covered evidence terms, all_covered_evidence_terms, analysis analysis cache, analysis analysis cache analysiscache, analysis analysis cache analysiscacheentry, analysis analysis cache analysiscachekey, analysis analysis cache analysiscachelookupresult, analysis analysis cache analysiscachelookupstatus, analysis analysis cache analysiscachereason, analysis analysis cache analysisoutcome, analysis analysis cache analysisreceipt, analysis analysis cache compact analysis receipt, analysis analysis cache receiptvalidationerror, analysis cache coordinator, analysis cache coordinator analysiscachecoordinator, analysis cache coordinator cachecoordinationresult, analysis cache coordinator cachepublication, analysis.analysis_cache, analysis.analysis_cache.analysiscache, analysis.analysis_cache.analysiscacheentry, analysis.analysis_cache.analysiscachekey, analysis.analysis_cache.analysiscachelookupresult, analysis.analysis_cache.analysiscachelookupstatus, analysis.analysis_cache.analysiscachereason, analysis.analysis_cache.analysisoutcome, analysis.analysis_cache.analysisreceipt, analysis.analysis_cache.compact_analysis_receipt, analysis.analysis_cache.receiptvalidationerror, analysis.cache_coordinator, analysis.cache_coordinator.analysiscachecoordinator, analysis.cache_coordinator.cachecoordinationresult, analysis.cache_coordinator.cachepublication, bool, build program analysis cache key, build result binding, build_program_analysis_cache_key, build_result_binding, cache key, cache_key, canonical json bytes, canonical program analysis json, canonical_program_analysis_json, clear, closest program candidate, coerce, coerce key, collections abc, collections abc callable, collections abc mapping, collections abc sequence, collections.abc, collections.abc.callable, collections.abc.mapping, collections.abc.sequence, compact program analysis receipt, compact_program_analysis_receipt, completion evidence, completion validator
+- AST symbol scope: file
+- Merge key: codebase/runtime/ipfs_accelerate_py-agent_supervisor-program_analysis_cache
+- Merge family: ipfs_accelerate_py/agent_supervisor/program_analysis_cache.py
+- Merge role: codebase_scan
+- Work item count: 1
+- Work scope: codebase_file_ast
+- Acceptance: Goal-scoped refill admitted this finding from ipfs_accelerate_py/agent_supervisor/program_analysis_cache.py:1966 for VFS-G145. Use evidence in /home/barberb/.local/state/ipfs_accelerate_py/ipfs_kit_vfs_symbolic_assurance/projection/discovery/2026-07-30-vfs-061-codebase-scan-54632d475f3a.md, make only the smallest change required by that goal lineage, add or update focused validation when appropriate, and do not expand into adjacent cleanup.
