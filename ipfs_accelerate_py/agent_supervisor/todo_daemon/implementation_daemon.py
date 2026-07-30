@@ -12932,6 +12932,11 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "worktree_path": str(worktree_path),
             **release_result,
         }
+        if result.get("released", False):
+            result["lifecycle_finalize"] = self._finalize_worktree_lifecycle(
+                worktree_path,
+                reason=f"pool_lease_released_{reason}",
+            )
         self._record_event("worktree_pool_lease_released", result)
         return result
 

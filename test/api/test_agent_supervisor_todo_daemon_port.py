@@ -8220,6 +8220,77 @@ def test_implementation_daemon_fences_preparing_worktree_from_peer_merged_cleanu
     assert FENCED_WORKTREE_LIFECYCLE_REQUIREMENT_ID
 
 
+def test_pooled_worktree_release_finalizes_lifecycle_before_reuse(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    state_dir = repo / "state"
+    workspace = repo / "worktrees" / "pooled"
+    workspace.mkdir(parents=True)
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        worktree_root=repo / "worktrees",
+        worktree_pool_enabled=False,
+    )
+    record = daemon.worktree_lifecycle.begin_preparing(
+        task_id="ACCEL-001",
+        canonical_task_cid="task:accel-001",
+        attempt=1,
+        lane_id=daemon._worktree_lifecycle_lane_id(),
+        workspace_path=workspace,
+        branch="implementation/accel-001-attempt-1",
+        merge_target="main",
+        state_dir=str(state_dir.resolve()),
+    )
+    record = daemon.worktree_lifecycle.mark_active(
+        record.workspace_path,
+        lease_id=record.lease_id,
+        expected_fence=record.fence,
+    )
+    daemon._active_worktree_lifecycle = record
+    daemon._worktree_pool_leases[workspace.resolve()] = SimpleNamespace(
+        release=lambda *, reusable=True: {
+            "released": True,
+            "pooled": bool(reusable),
+            "reason": "clean_prepared_workspace",
+        }
+    )
+
+    released = daemon._release_pooled_worktree_lease(
+        workspace,
+        reason="implementation_command_failed",
+    )
+
+    assert released["released"] is True
+    assert released["lifecycle_finalize"]["finalized"] is True
+    assert daemon.worktree_lifecycle.load_workspace(workspace) is None
+    assert daemon._active_worktree_lifecycle is None
+
+    provisional = repo / "worktrees" / "next-provisional"
+    next_record = daemon.worktree_lifecycle.begin_preparing(
+        task_id="ACCEL-002",
+        canonical_task_cid="task:accel-002",
+        attempt=1,
+        lane_id=daemon._worktree_lifecycle_lane_id(),
+        workspace_path=provisional,
+        branch="implementation/accel-002-attempt-1",
+        merge_target="main",
+        state_dir=str(state_dir.resolve()),
+    )
+    daemon._active_worktree_lifecycle = next_record
+    rebound = daemon._sync_worktree_lifecycle_workspace(
+        next_record,
+        workspace,
+    )
+    assert Path(rebound.workspace_path) == workspace.resolve()
+
+
 def test_implementation_daemon_reclaims_dead_same_lane_owner_on_opt_in_restart(
     tmp_path,
     monkeypatch,
