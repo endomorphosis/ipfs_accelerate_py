@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import re
+import sys as _sys
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import Enum
@@ -2751,3 +2752,11 @@ __all__ = [
     "validate_objective_typed_goals",
     "validate_goal",
 ]
+
+
+# The package-root compatibility importer supports the retired flat module
+# path during the domain-layout cutover. Publish the canonical module object
+# under that name so both import paths share dataclass and exception identity.
+_sys.modules[
+    "ipfs_accelerate_py.agent_supervisor.goal_quality"
+] = _sys.modules[__name__]
