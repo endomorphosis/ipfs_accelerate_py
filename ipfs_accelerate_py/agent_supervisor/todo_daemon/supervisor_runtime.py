@@ -1156,7 +1156,7 @@ def run_process_group_stream(
     if group_alive():
         try:
             os.killpg(process.pid, signal.SIGTERM)
-        except (OSError, RuntimeError):
+        except OSError:
             pass
         deadline = time.monotonic() + max(0.0, float(termination_grace_seconds))
         while group_alive() and time.monotonic() < deadline:
@@ -1439,7 +1439,7 @@ def adopt_supervised_child(spec: SupervisedChildSpec) -> SupervisedChild | None:
             adopted_log_path = latest_log_path.resolve(strict=True)
             if adopted_log_path.is_file():
                 log_path = adopted_log_path
-        except OSError:
+        except (OSError, RuntimeError):
             pass
     log_path.parent.mkdir(parents=True, exist_ok=True)
     return SupervisedChild(

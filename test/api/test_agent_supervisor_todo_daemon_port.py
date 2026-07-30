@@ -2212,6 +2212,40 @@ def test_supervisor_runtime_adopts_matching_child_pid_marker(tmp_path, monkeypat
     assert child.latest_log_path == latest_log_path
 
 
+def test_supervisor_runtime_adoption_ignores_invalid_latest_log_symlink(
+    tmp_path, monkeypatch
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    pid_path = repo / "state" / "child.pid"
+    pid_path.parent.mkdir()
+    pid_path.write_text("2468\n", encoding="utf-8")
+    latest_log_path = repo / "logs" / "latest.log"
+    latest_log_path.parent.mkdir()
+    latest_log_path.symlink_to(latest_log_path.name)
+
+    monkeypatch.setattr(supervisor_runtime, "pid_alive", lambda pid: int(pid) == 2468)
+    monkeypatch.setattr(
+        supervisor_runtime,
+        "process_args",
+        lambda pid: "python worker.py --implement" if int(pid) == 2468 else "",
+    )
+
+    child = adopt_supervised_child(
+        SupervisedChildSpec(
+            repo_root=repo,
+            command=("python", "worker.py", "--implement"),
+            log_path=Path("logs/new-supervisor-run.log"),
+            child_pid_path=Path("state/child.pid"),
+            latest_log_path=Path("logs/latest.log"),
+        )
+    )
+
+    assert child is not None
+    assert child.log_path == repo / "logs" / "new-supervisor-run.log"
+    assert child.latest_log_path == latest_log_path
+
+
 def test_supervisor_loop_adopts_existing_child_before_launch(tmp_path, monkeypatch) -> None:
     from ipfs_accelerate_py.agent_supervisor.todo_daemon import supervisor_loop as supervisor_loop_module
 
