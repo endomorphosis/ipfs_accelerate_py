@@ -1326,6 +1326,58 @@ def test_daemon_bridges_verified_compiled_context_as_ids_and_handles(
     assert bounded_summary not in json.dumps(payload, sort_keys=True)
 
 
+def test_daemon_aggregates_deferred_context_into_one_manifest_handle(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _daemon(tmp_path, monkeypatch)
+    task = _task(metadata={"Context budget tokens": "2048"})
+    vector_context = {
+        "index_path": daemon.repo_root / "todo_vector_index.json",
+        "record": {
+            "vector_key": "e44b02152505d700",
+            "merge_key": "2df3a77c9695e2c6",
+        },
+    }
+    monkeypatch.setattr(
+        daemon,
+        "_render_todo_vector_context",
+        lambda _task: "symbolic contract evidence " * 10_000,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_load_todo_vector_context",
+        lambda _task: vector_context,
+    )
+    compiled = daemon._compile_implementation_context(task, attempt=1)
+    assert len(compiled.capsule.expansion_references) > 1
+
+    packet = daemon.build_production_contract_packet_for_task(
+        task,
+        snapshot_id=f"git-commit:{compiled.capsule.tree_id}",
+        attempt=1,
+    )
+
+    payload = dict(packet.provider_input_payload)
+    deferred_handles = [
+        handle
+        for handle in payload["expansion_handles"]
+        if handle.get("disposition") == "deferred_manifest"
+    ]
+    assert len(deferred_handles) == 1
+    assert deferred_handles[0]["reference_count"] == len(
+        compiled.capsule.expansion_references
+    )
+    assert deferred_handles[0]["reference_manifest_id"].startswith("baguqeera")
+    assert all(
+        handle.get("disposition") != "deferred"
+        for handle in payload["expansion_handles"]
+    )
+    encoded = json.dumps(payload, sort_keys=True)
+    assert "symbolic contract evidence" not in encoded
+    assert len(encoded.encode("utf-8")) < 8_192
+
+
 def test_daemon_omits_compiled_context_from_a_different_snapshot(
     tmp_path,
     monkeypatch: pytest.MonkeyPatch,

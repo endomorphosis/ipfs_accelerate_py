@@ -251,6 +251,14 @@ PRODUCTION_CONTEXT_REFERENCE_HANDLE_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/"
     "production-context-reference-handle@1"
 )
+PRODUCTION_CONTEXT_REFERENCE_MANIFEST_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "production-context-reference-manifest@1"
+)
+PRODUCTION_CONTEXT_REFERENCE_MANIFEST_CONTENT_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "production-context-reference-manifest-content@1"
+)
 # Env overrides for injectable production providers (tests/operators).
 PRODUCTION_PROVIDER_ROUTE_ENABLED_ENV = (
     "IPFS_ACCELERATE_AGENT_PRODUCTION_PROVIDER_ROUTE"
@@ -18189,6 +18197,59 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         }
         return {"handle_id": content_identity(body), **body}
 
+    @staticmethod
+    def _production_context_reference_manifest_handle(
+        references: Sequence[ContextReference],
+        *,
+        disposition: str,
+        provider_context_id: str,
+        repository_id: str,
+        tree_id: str,
+    ) -> dict[str, Any] | None:
+        """Bind an arbitrary reference set without copying an unbounded list."""
+
+        ordered = tuple(sorted(references, key=lambda item: item.reference_id))
+        if not ordered:
+            return None
+        manifest = {
+            "schema": PRODUCTION_CONTEXT_REFERENCE_MANIFEST_CONTENT_SCHEMA,
+            "provider_context_id": provider_context_id,
+            "disposition": disposition,
+            "references": [
+                {
+                    "reference_id": reference.reference_id,
+                    "reference_content_id": reference.reference_content_id,
+                    "referenced_content_id": reference.referenced_content_id,
+                }
+                for reference in ordered
+            ],
+        }
+        coverage_ids = sorted(
+            {
+                coverage_id
+                for reference in ordered
+                for coverage_id in reference.coverage_ids
+            }
+        )
+        coverage_manifest = {
+            "schema": PRODUCTION_CONTEXT_REFERENCE_MANIFEST_CONTENT_SCHEMA,
+            "provider_context_id": provider_context_id,
+            "disposition": f"{disposition}_coverage",
+            "coverage_ids": coverage_ids,
+        }
+        body: dict[str, Any] = {
+            "schema": PRODUCTION_CONTEXT_REFERENCE_MANIFEST_SCHEMA,
+            "provider_context_id": provider_context_id,
+            "disposition": disposition,
+            "repository_id": repository_id,
+            "tree_id": tree_id,
+            "reference_count": len(ordered),
+            "reference_manifest_id": content_identity(manifest),
+            "coverage_count": len(coverage_ids),
+            "coverage_manifest_id": content_identity(coverage_manifest),
+        }
+        return {"handle_id": content_identity(body), **body}
+
     def _verified_production_context_packet_fields(
         self,
         task: PortalTask,
@@ -18344,7 +18405,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
 
         binding["status"] = "verified"
         binding_handle = {"handle_id": content_identity(binding), **binding}
-        handles = [
+        handles: list[dict[str, Any]] = [
             binding_handle,
             *(
                 self._production_context_reference_handle(
@@ -18353,14 +18414,18 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 )
                 for reference in selected_references
             ),
-            *(
-                self._production_context_reference_handle(
-                    reference,
-                    selected=False,
-                )
-                for reference in deferred_references
-            ),
         ]
+        deferred_manifest_handle = (
+            self._production_context_reference_manifest_handle(
+                deferred_references,
+                disposition="deferred_manifest",
+                provider_context_id=provider_context_id,
+                repository_id=capsule.repository_id,
+                tree_id=capsule.tree_id,
+            )
+        )
+        if deferred_manifest_handle is not None:
+            handles.append(deferred_manifest_handle)
         contract_ids = {
             binding_handle["handle_id"],
             *context_ids,
@@ -28621,14 +28686,28 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                             )
                             self._last_implementation_retry = previous_last_retry
                             raise retry_error
+                        try:
+                            dispatch_base = self._compile_implementation_context(
+                                task, attempt
+                            )
+                        except Exception as current_error:
+                            if previous_base is None:
+                                self._implementation_base_contexts.pop(key, None)
+                            else:
+                                self._implementation_base_contexts[key] = previous_base
+                            self._last_implementation_context = (
+                                previous_last_context
+                            )
+                            self._last_implementation_retry = previous_last_retry
+                            raise retry_error from current_error
                         self._invalidate_implementation_retry_state(
                             task,
                             diagnostic=diagnostic,
                             old_parent=parent,
-                            new_base=current_base,
+                            new_base=dispatch_base,
                             reason="prompt_policy_revision_changed",
                         )
-                        result = current_base
+                        result = dispatch_base
                         rendered = render_context_capsule(result.capsule)
                     else:
                         rendered = render_retry_context(result.capsule)

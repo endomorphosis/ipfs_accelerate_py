@@ -1161,7 +1161,7 @@ def test_implementation_daemon_rebases_budget_blocked_retry_after_policy_change(
 
     assert wire["stage"] == "implementation"
     assert "delta_capsule" not in wire
-    assert wire["goal"]["attempt"] == 1
+    assert wire["goal"]["attempt"] == 2
     assert diagnostic.receipt_id not in json.dumps(wire, sort_keys=True)
     assert new_parent is not None
     assert new_parent[0].policy_revision != old_parent[0].policy_revision
@@ -1187,6 +1187,14 @@ def test_implementation_daemon_rebases_budget_blocked_retry_after_policy_change(
     assert rebase_event["reason"] == "prompt_policy_revision_changed"
     assert rebase_event["old_context_receipt_id"] == old_parent[1]
     assert rebase_event["new_context_receipt_id"] == new_parent[1]
+    packet = restarted.build_production_contract_packet_for_task(
+        task,
+        snapshot_id=f"git-commit:{new_parent[0].tree_id}",
+        attempt=2,
+    )
+    assert new_parent[0].capsule_id in (
+        packet.provider_input_payload["goal"]["contract_ids"]
+    )
 
 
 def test_delta_result_exposes_exact_invariant_core_preservation() -> None:
