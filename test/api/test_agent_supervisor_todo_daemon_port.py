@@ -13529,6 +13529,95 @@ def test_bounded_merge_proof_projection_contains_no_floats():
     )
 
 
+def test_failed_ephemeral_attempt_finalizes_worktree_lifecycle(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+        implementation_command="fake-agent",
+        use_ephemeral_worktree=True,
+        worktree_root=repo / "worktrees",
+        worktree_pool_enabled=False,
+    )
+    task = PortalTask(
+        task_id="ACCEL-012",
+        title="Release a failed provider lifecycle claim",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="ops",
+        outputs=["README.md"],
+    )
+    state = TodoTaskState()
+
+    def fake_seed(worktree_path, _branch_name, *, task=None):
+        worktree_path.mkdir(parents=True)
+        return "baseline-commit"
+
+    monkeypatch.setattr(daemon, "_create_seeded_worktree", fake_seed)
+    monkeypatch.setattr(
+        daemon,
+        "_require_implementation_protected_snapshot",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_implementation_protected_path_violation",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_finalize_implementation_protected_path_fence",
+        lambda **_kwargs: {},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_record_task_queue_outcome",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_record_failed_attempt_retry_context",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "run_process_group_stream",
+        lambda command, **_kwargs: subprocess.CompletedProcess(command, 1),
+    )
+
+    result = daemon._run_implementation_in_ephemeral_worktree(
+        task=task,
+        state=state,
+        attempt=1,
+        started_at=datetime.now(timezone.utc).isoformat(),
+        log_path=state_dir / "implementation.log",
+        prompt="implement",
+    )
+
+    assert result["returncode"] == 1
+    assert result["merge_result"].get("queued") is not True
+    assert result["lifecycle_finalize"]["finalized"] is True
+    assert result["lifecycle_finalize"]["reason"] == (
+        "implementation_attempt_finished"
+    )
+    assert daemon._active_worktree_lifecycle is None
+    assert (
+        daemon.worktree_lifecycle.load_workspace(result["worktree_path"])
+        is None
+    )
+
+
 def test_provider_superproject_commit_is_queued_before_todo_completion(
     tmp_path,
     monkeypatch,

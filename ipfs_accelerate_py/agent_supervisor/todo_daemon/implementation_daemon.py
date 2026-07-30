@@ -7790,6 +7790,11 @@ class PortalImplementationDaemon:
             result["branch"] = branch_name
         if cleanup_result:
             result["cleanup_result"] = cleanup_result
+        if worktree_path is not None:
+            result["lifecycle_finalize"] = self._finalize_worktree_lifecycle(
+                worktree_path,
+                reason="provider_capacity_deferred",
+            )
         self._record_event("implementation_provider_exhausted", result)
         return result
 
@@ -13982,6 +13987,10 @@ class PortalImplementationDaemon:
                     )
                     self._active_worktree_lifecycle = lifecycle_record
                 except (FenceMismatchError, OwnershipError, WorktreeLifecycleError) as exc:
+                    lifecycle_finalize = self._finalize_worktree_lifecycle(
+                        worktree_path,
+                        reason="active_transition_failed",
+                    )
                     return lifecycle_race_result(
                         reason="worktree_lifecycle_active_transition_failed",
                         task_id=task.task_id,
@@ -13990,6 +13999,7 @@ class PortalImplementationDaemon:
                             "error": str(exc)[-1000:],
                             "worktree_path": str(worktree_path),
                             "branch": branch_name,
+                            "lifecycle_finalize": lifecycle_finalize,
                         },
                     )
             self._mark_implementation_started(
@@ -15151,6 +15161,27 @@ class PortalImplementationDaemon:
         if completion_receipt_degraded:
             result["completion_receipt_degraded"] = (
                 completion_receipt_degraded
+            )
+        if not merge_result.get("queued"):
+            prior_lifecycle_finalize = (
+                cleanup_result.get("lifecycle_finalize")
+                if isinstance(cleanup_result, Mapping)
+                else None
+            )
+            result["lifecycle_finalize"] = (
+                {
+                    **dict(prior_lifecycle_finalize),
+                    "prior_reason": str(
+                        prior_lifecycle_finalize.get("reason") or ""
+                    ),
+                    "reason": "implementation_attempt_finished",
+                }
+                if isinstance(prior_lifecycle_finalize, Mapping)
+                and prior_lifecycle_finalize.get("finalized") is True
+                else self._finalize_worktree_lifecycle(
+                    worktree_path,
+                    reason="implementation_attempt_finished",
+                )
             )
         self._record_event("implementation_finished", result)
         return result
