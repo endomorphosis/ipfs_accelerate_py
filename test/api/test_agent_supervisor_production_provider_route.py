@@ -1591,6 +1591,187 @@ def test_daemon_recompiles_targeted_evidence_against_production_worktree(
     assert packet.provider_input_payload["goal"]["context_snapshot_matches"] is True
 
 
+def test_production_context_reads_pinned_blob_after_dirty_path_mutations(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _daemon(tmp_path, monkeypatch)
+    target = daemon.repo_root / PATH
+    secret = daemon.repo_root / "unrelated-secret.py"
+    target.write_text(
+        "# pinned baseline\nPINNED_BLOB_MARKER = True\n",
+        encoding="utf-8",
+    )
+    secret.write_text(
+        "UNRELATED_SECRET_MARKER = True\n",
+        encoding="utf-8",
+    )
+    _git(daemon.repo_root, "add", PATH, "unrelated-secret.py")
+    _git(daemon.repo_root, "commit", "-m", "pinned evidence baseline")
+    baseline = _git_output(daemon.repo_root, "rev-parse", "HEAD")
+    task = _task()
+
+    target.unlink()
+    deleted = daemon._compile_implementation_context(
+        task,
+        attempt=1,
+        repository_root=daemon.repo_root,
+        expected_tree_id=baseline,
+        include_control_plane_context=False,
+    )
+
+    target.mkdir()
+    type_changed = daemon._compile_implementation_context(
+        task,
+        attempt=1,
+        repository_root=daemon.repo_root,
+        expected_tree_id=baseline,
+        include_control_plane_context=False,
+    )
+
+    target.rmdir()
+    target.symlink_to(secret)
+    symlinked = daemon._compile_implementation_context(
+        task,
+        attempt=1,
+        repository_root=daemon.repo_root,
+        expected_tree_id=baseline,
+        include_control_plane_context=False,
+    )
+
+    for compiled in (deleted, type_changed, symlinked):
+        selected = "\n".join(
+            reference.summary
+            for reference in compiled.capsule.evidence
+            if reference.path == PATH
+        )
+        assert "PINNED_BLOB_MARKER" in selected
+        assert "UNRELATED_SECRET_MARKER" not in selected
+        assert compiled.capsule.tree_id == baseline
+
+
+def test_production_context_does_not_follow_committed_symbolic_link(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _daemon(tmp_path, monkeypatch)
+    link_path = "declared-link.py"
+    secret = daemon.repo_root / "unrelated-secret.py"
+    secret.write_text(
+        "COMMITTED_SYMLINK_SECRET_MARKER = True\n",
+        encoding="utf-8",
+    )
+    (daemon.repo_root / link_path).symlink_to(secret.name)
+    _git(daemon.repo_root, "add", link_path, secret.name)
+    _git(daemon.repo_root, "commit", "-m", "committed evidence symlink")
+    baseline = _git_output(daemon.repo_root, "rev-parse", "HEAD")
+    task = _task(outputs=[link_path], validation=[])
+
+    compiled = daemon._compile_implementation_context(
+        task,
+        attempt=1,
+        repository_root=daemon.repo_root,
+        expected_tree_id=baseline,
+        include_control_plane_context=False,
+    )
+    selected = "\n".join(
+        reference.summary
+        for reference in compiled.capsule.evidence
+        if reference.path == link_path
+    )
+
+    assert "Git object type: symbolic-link" in selected
+    assert "symbolic link target not followed" in selected
+    assert "COMMITTED_SYMLINK_SECRET_MARKER" not in selected
+    assert all(
+        reference.path != secret.name
+        for reference in compiled.capsule.evidence
+    )
+
+
+def test_production_context_reports_nested_gitlink_without_calling_it_absent(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _daemon(tmp_path, monkeypatch)
+    gitlink_path = "vendor/child"
+    nested_path = f"{gitlink_path}/package/module.py"
+    gitlink_commit = "a" * 40
+    _git(
+        daemon.repo_root,
+        "update-index",
+        "--add",
+        "--cacheinfo",
+        "160000",
+        gitlink_commit,
+        gitlink_path,
+    )
+    _git(daemon.repo_root, "commit", "-m", "opaque gitlink baseline")
+    baseline = _git_output(daemon.repo_root, "rev-parse", "HEAD")
+    task = _task(outputs=[nested_path], validation=[])
+
+    compiled = daemon._compile_implementation_context(
+        task,
+        attempt=1,
+        repository_root=daemon.repo_root,
+        expected_tree_id=baseline,
+        include_control_plane_context=False,
+    )
+    selected = "\n".join(
+        reference.summary
+        for reference in compiled.capsule.evidence
+        if reference.path == nested_path
+    )
+
+    assert "Git object type: gitlink" in selected
+    assert f"Gitlink commit: {gitlink_commit}" in selected
+    assert f"Git boundary path: {gitlink_path}" in selected
+    assert "unavailable in superproject object database" in selected
+    assert "path is absent" not in selected
+    assert ": file" not in selected
+
+
+def test_production_context_baseline_resolution_fails_closed(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _daemon(tmp_path, monkeypatch)
+    baseline = _git_output(daemon.repo_root, "rev-parse", "HEAD")
+
+    with pytest.raises(RuntimeError, match="immutable baseline"):
+        daemon._require_production_context_baseline_ref("")
+
+    real_run = subprocess.run
+
+    def fail_head_resolution(arguments, *args, **kwargs):
+        if list(arguments) == [
+            "git",
+            "rev-parse",
+            "--verify",
+            "HEAD^{commit}",
+        ]:
+            return subprocess.CompletedProcess(
+                arguments,
+                128,
+                stdout="",
+                stderr="forced resolver failure",
+            )
+        return real_run(arguments, *args, **kwargs)
+
+    monkeypatch.setattr(subprocess, "run", fail_head_resolution)
+    with pytest.raises(
+        RuntimeError,
+        match="cannot resolve the immutable production context snapshot",
+    ):
+        daemon._compile_implementation_context(
+            _task(),
+            attempt=1,
+            repository_root=daemon.repo_root,
+            expected_tree_id=baseline,
+            include_control_plane_context=False,
+        )
+
+
 def test_daemon_keeps_immutable_context_valid_when_source_head_advances(
     tmp_path,
     monkeypatch: pytest.MonkeyPatch,
