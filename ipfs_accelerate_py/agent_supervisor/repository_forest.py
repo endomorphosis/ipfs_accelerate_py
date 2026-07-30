@@ -11,6 +11,12 @@ replay with the same forest identity.
 
 Root and path resolution is fail-closed: missing roots, escaping paths, and
 symlink escapes reject rather than silently broaden scope.
+
+The executable evidence surface ``vfs/repository-forest-replay@1`` (VFS-G140,
+parent VFS-G011) freezes the multi-repository forest into a host-free portable
+projection and validates that identical trees and policy reproduce the same
+portable forest CID while commit, tree, gitlink, overlay, or policy drift
+changes it.  Unavailable required roots fail closed with a typed reason.
 """
 
 from __future__ import annotations
@@ -23,7 +29,7 @@ import unicodedata
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path, PurePosixPath
-from typing import Any, Iterable, Mapping, Sequence
+from typing import Any, Final, Iterable, Mapping, Sequence
 
 from .merge.checkout_lock import checkout_repository_id
 from .proof.formal_verification_contracts import content_identity
@@ -67,11 +73,49 @@ ANALYZER_PROFILE_SCHEMA = (
     "ipfs_accelerate_py.agent_supervisor.analyzer-profile@1"
 )
 
+# Exact objective-heap discovery key for freeze/replay (VFS-G140 / VFS-G011).
+REPOSITORY_FOREST_REPLAY_EVIDENCE: Final[str] = "vfs/repository-forest-replay@1"
+REPOSITORY_FOREST_REPLAY_CLAIM_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/repository-forest-replay-claim@1"
+)
+OBJECTIVE_GOAL_ID: Final[str] = "VFS-G140"
+OBJECTIVE_PARENT_GOAL_ID: Final[str] = "VFS-G011"
+OBJECTIVE_TASK_ID: Final[str] = "VFS-070"
+OBJECTIVE_DOMAIN_EVIDENCE_TERMS: Final[tuple[str, ...]] = (
+    REPOSITORY_FOREST_REPLAY_EVIDENCE,
+)
+# Acceptance invariants published with every forest-replay evidence claim.
+REPOSITORY_FOREST_REPLAY_INVARIANTS: Final[tuple[str, ...]] = (
+    "identical trees and policy reproduce the same portable forest CID",
+    "a changed commit changes portable forest identity",
+    "a changed tree changes portable forest identity",
+    "a changed gitlink changes portable forest identity",
+    "a changed dirty overlay changes portable forest identity",
+    "a changed policy changes portable forest identity",
+    "unavailable required roots fail closed with a typed reason",
+    "portable projections exclude host locators and credentials",
+)
+
+# Keep exact-text discovery anchors aligned with the objective heap.
+assert REPOSITORY_FOREST_REPLAY_EVIDENCE == "vfs/repository-forest-replay@1"
+assert OBJECTIVE_GOAL_ID == "VFS-G140"
+assert OBJECTIVE_PARENT_GOAL_ID == "VFS-G011"
+assert OBJECTIVE_TASK_ID == "VFS-070"
+assert OBJECTIVE_DOMAIN_EVIDENCE_TERMS == ("vfs/repository-forest-replay@1",)
+
 DEFAULT_SWISSKNIFE_ROOT = "/home/barberb/swissknife"
 DEFAULT_SWISSKNIFE_ALIAS = "swissknife"
 DEFAULT_ACCELERATOR_ALIAS = "ipfs_accelerate_py"
 DEFAULT_KIT_ALIAS = "ipfs_kit_py"
 DEFAULT_DATASETS_ALIAS = "ipfs_datasets_py"
+
+# Canonical four-repository alias set for the initial VFS assurance forest.
+INITIAL_FOUR_REPOSITORY_ALIASES: Final[tuple[str, ...]] = (
+    DEFAULT_ACCELERATOR_ALIAS,
+    DEFAULT_DATASETS_ALIAS,
+    DEFAULT_KIT_ALIAS,
+    DEFAULT_SWISSKNIFE_ALIAS,
+)
 
 _GIT_OBJECT_RE = re.compile(r"(?:[0-9a-f]{40}|[0-9a-f]{64})\Z")
 _ALIAS_RE = re.compile(r"^[A-Za-z][A-Za-z0-9._-]{0,127}\Z")
