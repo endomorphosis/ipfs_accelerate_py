@@ -135,6 +135,72 @@ def test_timestamped_projection_overrides_undated_legacy_lane_state() -> None:
     assert snapshot["phases"]["blocked"]["items"][0]["task_cid"] == IDENTITY["task_cid"]
 
 
+def test_terminal_projection_deduplicates_provider_history_and_clears_live_backpressure() -> None:
+    snapshot = build_scheduler_snapshot(
+        [
+            {
+                "type": "implementation_started",
+                "timestamp": "2026-01-01T00:00:00Z",
+                **IDENTITY,
+                "provider_id": "provider:grok",
+            },
+            {
+                "type": "scheduler_state",
+                "timestamp": "2026-01-01T00:01:00Z",
+                **IDENTITY,
+                "provider_id": "did:supervisor",
+                "state": "completed",
+                "phase": "idle",
+            },
+            {
+                "type": "resource_schedule_observed",
+                "timestamp": "2026-01-01T00:01:00Z",
+                "resource_schedule": {
+                    "observed_at_ms": 60_000,
+                    "configured_max_lanes": 4,
+                    "effective_slots": 4,
+                    "available_slots": 4,
+                    "admitted_count": 0,
+                    "active_lease_count": 0,
+                    "decisions": [],
+                    "backpressure_reasons": [],
+                    "backpressure_counts": {},
+                    "adaptive_metrics": {
+                        "stages": [
+                            {
+                                "stage": "inference",
+                                "scheduled": 12,
+                                "admitted": 8,
+                                "backpressured": 4,
+                                "backpressure_reasons": {
+                                    "provider_concurrency": 4
+                                },
+                            }
+                        ],
+                        "backpressure_reasons": {
+                            "provider_concurrency": 4
+                        },
+                    },
+                },
+            },
+        ]
+    )
+
+    assert snapshot["phase_counts"]["active"] == 0
+    assert snapshot["phase_counts"]["idle"] == 1
+    assert len(snapshot["task_states"]) == 1
+    assert len(snapshot["metrics"]) == 2
+    assert snapshot["resource_admission"]["backpressured_count"] == 0
+    assert snapshot["resource_admission"]["backpressure_reasons"] == []
+    assert snapshot["resource_admission"]["backpressure_reason_counts"] == {}
+    assert (
+        snapshot["resource_admission"]["by_stage"]["inference"][
+            "backpressured"
+        ]
+        == 4
+    )
+
+
 def test_rates_usage_and_identity_grouping_are_zero_safe_and_canonical() -> None:
     other = {**IDENTITY, "task_cid": "task:other", "provider_id": "provider:other"}
     events = [

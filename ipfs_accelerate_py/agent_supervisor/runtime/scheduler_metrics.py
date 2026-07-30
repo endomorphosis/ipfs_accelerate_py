@@ -471,23 +471,29 @@ def _resource_admission_projection(
         elif stage in metrics_by_stage:
             metrics_by_stage[stage]["backpressure_reason_counts"] = reason_counts
 
-    aggregate_reason_counts = _resource_reason_counts(
-        payload.get("backpressure_reason_counts")
-        or payload.get("backpressure_counts")
-        or (
+    # A live schedule's explicit empty histogram is authoritative.  Falling
+    # through to cumulative adaptive metrics here makes resolved historical
+    # pressure look like current backpressure after the queue drains.
+    if "backpressure_reason_counts" in payload:
+        aggregate_reason_counts = _resource_reason_counts(
+            payload.get("backpressure_reason_counts")
+        )
+    elif "backpressure_counts" in payload:
+        aggregate_reason_counts = _resource_reason_counts(
+            payload.get("backpressure_counts")
+        )
+    elif "backpressure_reasons" in payload:
+        aggregate_reason_counts = _resource_reason_counts(
             payload.get("backpressure_reasons")
-            if isinstance(payload.get("backpressure_reasons"), Mapping)
-            else None
         )
-        or (
+    elif isinstance(raw_adaptive_metrics.get("backpressure_reasons"), Mapping):
+        aggregate_reason_counts = _resource_reason_counts(
             raw_adaptive_metrics.get("backpressure_reasons")
-            if isinstance(
-                raw_adaptive_metrics.get("backpressure_reasons"), Mapping
-            )
-            else None
         )
-        or payload.get("reason_counts")
-    )
+    else:
+        aggregate_reason_counts = _resource_reason_counts(
+            payload.get("reason_counts")
+        )
     decision_reason_counts: dict[str, int] = {}
     decision_stage_reason_counts: dict[str, dict[str, int]] = {}
     backpressured_decisions = 0
@@ -648,10 +654,27 @@ def _resource_admission_projection(
         payload.get("configured_max_lanes"),
         _resource_integer(_resource_mapping(payload.get("policy")).get("max_lanes")),
     )
-    backpressured_count = _resource_integer(
-        payload.get("backpressured_count"), backpressured_decisions
+    live_backpressure_declared = any(
+        name in payload
+        for name in (
+            "backpressured_count",
+            "decisions",
+            "backpressure_reason_counts",
+            "backpressure_counts",
+            "backpressure_reasons",
+        )
     )
-    if not backpressured_count:
+    if "backpressured_count" in payload:
+        backpressured_count = _resource_integer(
+            payload.get("backpressured_count")
+        )
+    elif "decisions" in payload:
+        backpressured_count = backpressured_decisions
+    elif live_backpressure_declared:
+        backpressured_count = sum(aggregate_reason_counts.values())
+    else:
+        backpressured_count = 0
+    if not live_backpressure_declared:
         backpressured_count = sum(
             _resource_integer(row.get("backpressured"))
             for row in metrics_by_stage.values()
@@ -2017,6 +2040,7 @@ class _Accumulator:
     merge_started_at: datetime | None = None
     merge_inflight: bool = False
     completed: bool = False
+    last_event_sequence: int = -1
 
 
 @dataclass(frozen=True)
@@ -2130,7 +2154,7 @@ def scheduler_snapshot(
     inherited_by_task: dict[str, dict[str, str]] = {}
     inherited_by_lane: dict[str, dict[str, str]] = {}
 
-    for _index, event, occurred in unique:
+    for event_sequence, (_index, event, occurred) in enumerate(unique):
         kind = _event_type(event)
         if kind in _REFILL_SCAN_EVENT_TYPES or _scan_receipt_projection(event, kind) is not None:
             # A repository scan is supervisor-level evidence, not a scheduler
@@ -2203,6 +2227,7 @@ def scheduler_snapshot(
             accumulators[key] = current
 
         current.last_event_type = kind
+        current.last_event_sequence = event_sequence
         if occurred is not None:
             current.last_event_at = occurred.isoformat()
         current.display_task_id = str(event.get("task_id") or current.display_task_id)
@@ -2349,8 +2374,10 @@ def scheduler_snapshot(
             current.status = "blocked"
 
     rows: list[dict[str, Any]] = []
-    task_states: list[dict[str, Any]] = []
-    phase_items: dict[str, list[dict[str, Any]]] = {phase: [] for phase in SCHEDULER_PHASES}
+    state_candidates: dict[
+        tuple[str, ...],
+        tuple[int, dict[str, Any]],
+    ] = {}
     for key in sorted(accumulators):
         current = accumulators[key]
         metrics = current.metrics
@@ -2398,8 +2425,30 @@ def scheduler_snapshot(
         if goal_diagnostic is not None:
             # Additive nested data leaves all v1 task-state keys intact.
             state["goal_completion"] = dict(goal_diagnostic)
-        task_states.append(state)
-        phase_items[current.phase].append(state)
+        canonical_task_cid = current.identity["task_cid"]
+        state_key = (
+            ("task", canonical_task_cid)
+            if canonical_task_cid != UNKNOWN_IDENTITY
+            else ("identity", *key)
+        )
+        previous = state_candidates.get(state_key)
+        candidate = (current.last_event_sequence, state)
+        if previous is None or candidate[0] > previous[0]:
+            state_candidates[state_key] = candidate
+
+    # Metrics remain dimensioned by provider/tree/template/resource class, but
+    # current scheduler phase is a task-level gauge.  Select the latest state
+    # for each canonical task so a terminal lease projection supersedes active
+    # history emitted under an earlier provider or lane identity.
+    task_states = sorted(
+        (candidate[1] for candidate in state_candidates.values()),
+        key=_identity_key,
+    )
+    phase_items: dict[str, list[dict[str, Any]]] = {
+        phase: [] for phase in SCHEDULER_PHASES
+    }
+    for state in task_states:
+        phase_items[state["phase"]].append(state)
 
     dimensions_all = normalize_metric_identity({}, {
         "goal_cid": "all", "subgoal_cid": "all", "task_cid": "all",
