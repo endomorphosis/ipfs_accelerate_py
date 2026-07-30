@@ -13123,40 +13123,83 @@ class PortalImplementationDaemon:
             return {"ok": False, "reason": reason, "path": path}
 
         root_gitlink_changes = self._prior_seed_changed_gitlinks(
-            worktree_path, baseline_ref, seed_ref
+            worktree_path, merge_base, seed_ref
         )
         if root_gitlink_changes is None:
             return failure("prior_seed_root_gitlink_check_failed")
-        gitlinks: list[dict[str, str]] = []
+        gitlinks: list[dict[str, Any]] = []
+        configured_root_gitlinks: set[str] = set()
         for relative in self.worktree_submodule_paths:
-            baseline_revision = self._gitlink_commit_at_repo_ref(worktree_path, baseline_ref, relative)
-            seed_revision = self._gitlink_commit_at_repo_ref(worktree_path, seed_ref, relative)
+            baseline_revision = self._gitlink_commit_at_repo_ref(
+                worktree_path,
+                baseline_ref,
+                relative,
+            )
+            seed_revision = self._gitlink_commit_at_repo_ref(
+                worktree_path,
+                seed_ref,
+                relative,
+            )
+            prior_base_revision = self._gitlink_commit_at_repo_ref(
+                worktree_path,
+                merge_base,
+                relative,
+            )
+            if baseline_revision or seed_revision or prior_base_revision:
+                configured_root_gitlinks.add(relative)
             if not baseline_revision and not seed_revision:
+                if prior_base_revision:
+                    # Both sides independently removed the configured direct
+                    # dependency. The seed shape is already present on target.
+                    continue
                 # A configured nested path is not directly visible through its
-                # outer gitlink. Reject a changed outer checkout rather than
-                # claiming that an unreconciled nested dependency was seeded.
+                # outer gitlink. Attribute an outer checkout change to the seed
+                # only when it differs from the common ancestor; target-only
+                # advances must not make an otherwise reusable retry block.
                 parts = PurePosixPath(relative).parts
                 for size in range(len(parts) - 1, 0, -1):
                     outer = "/".join(parts[:size])
-                    outer_baseline = self._gitlink_commit_at_repo_ref(
-                        worktree_path, baseline_ref, outer
+                    outer_prior_base = self._gitlink_commit_at_repo_ref(
+                        worktree_path,
+                        merge_base,
+                        outer,
                     )
                     outer_seed = self._gitlink_commit_at_repo_ref(
                         worktree_path, seed_ref, outer
                     )
-                    if outer_baseline or outer_seed:
-                        if outer_baseline != outer_seed:
-                            return failure("nested_configured_submodule_seed_changed", relative)
+                    if outer_prior_base or outer_seed:
+                        if outer_prior_base != outer_seed:
+                            return failure(
+                                "nested_configured_submodule_seed_changed",
+                                relative,
+                            )
                         break
                 continue
-            if not baseline_revision or not seed_revision:
+            seed_matches_prior_base = seed_revision == prior_base_revision
+            seed_matches_baseline = seed_revision == baseline_revision
+            if not baseline_revision:
+                # The target removed this configured dependency while the seed
+                # left the common-ancestor shape untouched. There is no target
+                # checkout to reconcile and no seed-side delta to replay.
+                if seed_matches_prior_base:
+                    continue
+                return failure("configured_submodule_shape_changed", relative)
+            if not seed_revision and not seed_matches_prior_base:
+                # A dependency absent from the seed is safe only when it was
+                # also absent from the common ancestor (a target-only add).
                 return failure("configured_submodule_shape_changed", relative)
             gitlinks.append({
                 "path": relative,
                 "baseline_revision": baseline_revision,
                 "seed_revision": seed_revision,
+                "prior_base_revision": prior_base_revision,
+                "seed_change_already_integrated": (
+                    seed_matches_prior_base or seed_matches_baseline
+                ),
             })
-        covered_gitlinks = {item["path"] for item in gitlinks}
+        covered_gitlinks = configured_root_gitlinks | {
+            item["path"] for item in gitlinks
+        }
         unconfigured_gitlinks = sorted(set(root_gitlink_changes) - covered_gitlinks)
         if unconfigured_gitlinks:
             return failure(
@@ -13171,6 +13214,10 @@ class PortalImplementationDaemon:
             relative = item["path"]
             baseline_revision = item["baseline_revision"]
             seed_revision = item["seed_revision"]
+            prior_base_revision = item["prior_base_revision"]
+            seed_change_already_integrated = bool(
+                item["seed_change_already_integrated"]
+            )
             allowed_local_paths: list[str] = []
             for scope_path in scope_paths:
                 if scope_path == relative:
@@ -13197,10 +13244,30 @@ class PortalImplementationDaemon:
                 plans.append({
                     **item,
                     "mode": "skip_out_of_scope",
-                    "prior_base_revision": baseline_revision,
                     "allowed_paths": [],
                     "replayed_paths": [],
                     "skipped_paths": [relative],
+                    "patch": b"",
+                })
+                continue
+            if (
+                not seed_change_already_integrated
+                and seed_revision
+                and self._git_ref_is_ancestor_in_repo(
+                    target,
+                    seed_revision,
+                    baseline_revision,
+                )
+            ):
+                seed_change_already_integrated = True
+            if seed_change_already_integrated:
+                plans.append({
+                    **item,
+                    "mode": "preserve_baseline",
+                    "seed_change_already_integrated": True,
+                    "allowed_paths": allowed_local_paths,
+                    "replayed_paths": [],
+                    "skipped_paths": [],
                     "patch": b"",
                 })
                 continue
@@ -13208,72 +13275,69 @@ class PortalImplementationDaemon:
                 return failure("prior_seed_submodule_commit_missing", relative)
 
             patch = b""
-            prior_base_revision = seed_revision
             changed_paths: tuple[str, ...] = ()
-            if not self._git_ref_is_ancestor_in_repo(target, seed_revision, baseline_revision):
-                prior_base_revision = self._gitlink_commit_at_repo_ref(
-                    worktree_path, merge_base, relative
+            if not prior_base_revision or not self._git_commit_exists_in_repo(
+                target,
+                prior_base_revision,
+            ):
+                return failure("prior_seed_submodule_base_missing", relative)
+            nested_changes = self._prior_seed_changed_gitlinks(
+                target, prior_base_revision, seed_revision
+            )
+            if nested_changes is None:
+                return failure(
+                    "prior_seed_nested_gitlink_check_failed",
+                    relative,
                 )
-                if not prior_base_revision or not self._git_commit_exists_in_repo(
-                    target, prior_base_revision
-                ):
-                    return failure("prior_seed_submodule_base_missing", relative)
-                nested_changes = self._prior_seed_changed_gitlinks(
-                    target, prior_base_revision, seed_revision
-                )
-                if nested_changes is None:
-                    return failure(
-                        "prior_seed_nested_gitlink_check_failed",
-                        relative,
-                    )
-                def allowed(path: str) -> bool:
-                    return "." in allowed_local_paths or any(
-                        self._path_matches_prefix(path, prefix)
-                        for prefix in allowed_local_paths
-                    )
 
-                authorized_nested_changes = tuple(
-                    path for path in nested_changes if allowed(path)
+            def allowed(path: str) -> bool:
+                return "." in allowed_local_paths or any(
+                    self._path_matches_prefix(path, prefix)
+                    for prefix in allowed_local_paths
                 )
-                if authorized_nested_changes:
-                    return failure(
-                        "prior_seed_nested_gitlink_changed",
-                        relative,
-                    )
-                discovered_paths = self._prior_seed_changed_paths(
-                    target,
-                    prior_base_revision,
-                    seed_revision,
+
+            authorized_nested_changes = tuple(
+                path for path in nested_changes if allowed(path)
+            )
+            if authorized_nested_changes:
+                return failure(
+                    "prior_seed_nested_gitlink_changed",
+                    relative,
                 )
-                if discovered_paths is None:
-                    return failure(
-                        "prior_seed_submodule_path_check_failed",
-                        relative,
-                    )
-                changed_paths = discovered_paths
-                replayed_paths = tuple(path for path in changed_paths if allowed(path))
-                if replayed_paths:
-                    diff = subprocess.run(
-                        [
-                            "git",
-                            "diff",
-                            "--binary",
-                            "--full-index",
-                            prior_base_revision,
-                            seed_revision,
-                            "--",
-                            *[
-                                f":(top,literal){path}"
-                                for path in replayed_paths
-                            ],
+            discovered_paths = self._prior_seed_changed_paths(
+                target,
+                prior_base_revision,
+                seed_revision,
+            )
+            if discovered_paths is None:
+                return failure(
+                    "prior_seed_submodule_path_check_failed",
+                    relative,
+                )
+            changed_paths = discovered_paths
+            replayed_paths = tuple(path for path in changed_paths if allowed(path))
+            if replayed_paths:
+                diff = subprocess.run(
+                    [
+                        "git",
+                        "diff",
+                        "--binary",
+                        "--full-index",
+                        prior_base_revision,
+                        seed_revision,
+                        "--",
+                        *[
+                            f":(top,literal){path}"
+                            for path in replayed_paths
                         ],
-                        cwd=target,
-                        capture_output=True,
-                        check=False,
-                    )
-                    if diff.returncode != 0:
-                        return failure("prior_seed_submodule_diff_failed", relative)
-                    patch = diff.stdout
+                    ],
+                    cwd=target,
+                    capture_output=True,
+                    check=False,
+                )
+                if diff.returncode != 0:
+                    return failure("prior_seed_submodule_diff_failed", relative)
+                patch = diff.stdout
             replayed_paths = tuple(
                 path
                 for path in changed_paths
