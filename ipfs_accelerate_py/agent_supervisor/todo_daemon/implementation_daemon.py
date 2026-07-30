@@ -158,6 +158,7 @@ from .contract_packet_provider_router import (
     build_production_contract_packet,
     build_production_provider_route_evaluation,
     evaluate_production_provider_receipt,
+    validate_production_review_chain_binding,
 )
 from .task_execution_policy import (
     MAX_TASK_CONTEXT_BYTES,
@@ -248,7 +249,10 @@ PRODUCTION_CODEX_PROVIDER_ENV = (
 )
 PRODUCTION_GROK_MODEL_ENV = "IPFS_ACCELERATE_AGENT_GROK_MODEL"
 PRODUCTION_CODEX_MODEL_ENV = "IPFS_ACCELERATE_AGENT_CODEX_MODEL"
-DEFAULT_PRODUCTION_MCP_ENDPOINT = "https://127.0.0.1:9002/mcp"
+TRUSTED_EXTERNAL_MERGE_WORKTREE_ENV = (
+    "IPFS_ACCELERATE_AGENT_TRUSTED_EXTERNAL_MERGE_WORKTREE"
+)
+DEFAULT_PRODUCTION_MCP_ENDPOINT = "https://localhost:9002/mcp"
 DEFAULT_PRODUCTION_GROK_PROVIDER = "grok_cli"
 DEFAULT_PRODUCTION_CODEX_PROVIDER = "codex_cli"
 DEFAULT_PRODUCTION_GROK_MODEL = "grok-4.5"
@@ -9574,6 +9578,184 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             return "scope_adjudication_paths_mismatch"
         return ""
 
+    def _production_provider_review_merge_evidence(
+        self,
+        *,
+        metadata: Mapping[str, Any],
+        task: PortalTask,
+        implementation_commit: str,
+        merge_commit: str,
+        repository_tree_id: str,
+    ) -> dict[str, Any]:
+        receipt = metadata.get("provider_execution_receipt")
+        raw_binding = metadata.get("admitted_review_chain_binding")
+        declared = bool(
+            metadata.get("production_provider_route")
+            or receipt is not None
+            or raw_binding is not None
+        )
+        if not declared:
+            return {"present": False, "admitted": False, "reason": "not_applicable"}
+        if not isinstance(receipt, Mapping) or not isinstance(
+            raw_binding,
+            Mapping,
+        ):
+            return {
+                "present": True,
+                "admitted": False,
+                "reason": ProviderReason.REVIEW_CHAIN_UNBOUND.value,
+            }
+
+        baseline_ref = str(metadata.get("baseline_ref") or "").strip()
+        implementation_tree = self._candidate_repository_tree(
+            implementation_commit
+        )
+        merge_tree = self._candidate_repository_tree(merge_commit)
+        if (
+            not baseline_ref
+            or not implementation_tree
+            or not merge_tree
+            or repository_tree_id != f"git-tree:{merge_tree}"
+        ):
+            return {
+                "present": True,
+                "admitted": False,
+                "reason": ProviderReason.REVIEW_CHAIN_UNBOUND.value,
+            }
+        changed = subprocess.run(
+            [
+                "git",
+                "diff",
+                "--name-only",
+                "--no-renames",
+                baseline_ref,
+                implementation_commit,
+                "--",
+            ],
+            cwd=self.repo_root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if changed.returncode != 0:
+            return {
+                "present": True,
+                "admitted": False,
+                "reason": ProviderReason.REVIEW_CHAIN_UNBOUND.value,
+            }
+        try:
+            changed_paths = tuple(
+                sorted(
+                    {
+                        self._canonical_production_write_path(line)
+                        for line in changed.stdout.splitlines()
+                        if line.strip()
+                    }
+                )
+            )
+            receipt_packet = receipt.get("packet")
+            expected_snapshot = (
+                str(receipt_packet.get("snapshot_id") or "")
+                if isinstance(receipt_packet, Mapping)
+                else ""
+            )
+            initial_valid, initial_reason = (
+                validate_production_review_chain_binding(
+                    raw_binding,
+                    receipt,
+                    expected_task_id=task.task_id,
+                    expected_snapshot_id=expected_snapshot,
+                    expected_implementation_commit=implementation_commit,
+                    expected_implementation_tree_id=implementation_tree,
+                    expected_changed_paths=changed_paths,
+                )
+            )
+            if not initial_valid:
+                return {
+                    "present": True,
+                    "admitted": False,
+                    "reason": initial_reason,
+                }
+            binding = ProductionReviewChainBinding(
+                receipt_id=str(raw_binding.get("receipt_id") or ""),
+                task_id=str(raw_binding.get("task_id") or ""),
+                packet_id=str(raw_binding.get("packet_id") or ""),
+                packet_cid=str(raw_binding.get("packet_cid") or ""),
+                snapshot_id=str(raw_binding.get("snapshot_id") or ""),
+                review_chain_digest=str(
+                    raw_binding.get("review_chain_digest") or ""
+                ),
+                selected_proposal_digest=str(
+                    raw_binding.get("selected_proposal_digest") or ""
+                ),
+                implementation_proposal_digest=str(
+                    raw_binding.get("implementation_proposal_digest") or ""
+                ),
+                review_proposal_digest=str(
+                    raw_binding.get("review_proposal_digest") or ""
+                ),
+                writer_lease_id=str(
+                    raw_binding.get("writer_lease_id") or ""
+                ),
+                write_performed=bool(raw_binding.get("write_performed")),
+                review_presence=str(
+                    raw_binding.get("review_presence") or ""
+                ),
+                provider_result_admitted=bool(
+                    raw_binding.get("provider_result_admitted")
+                ),
+                implementation_commit=implementation_commit,
+                implementation_tree_id=implementation_tree,
+                changed_paths=changed_paths,
+                merge_commit=merge_commit,
+                merge_tree_id=merge_tree,
+                disposition=str(raw_binding.get("disposition") or ""),
+            )
+        except (ProviderRoutingError, TypeError, ValueError):
+            return {
+                "present": True,
+                "admitted": False,
+                "reason": ProviderReason.REVIEW_CHAIN_UNBOUND.value,
+            }
+
+        valid, reason = validate_production_review_chain_binding(
+            binding,
+            receipt,
+            expected_task_id=task.task_id,
+            expected_snapshot_id=expected_snapshot,
+            expected_implementation_commit=implementation_commit,
+            expected_implementation_tree_id=implementation_tree,
+            expected_changed_paths=changed_paths,
+            expected_merge_commit=merge_commit,
+            expected_merge_tree_id=merge_tree,
+        )
+        if not valid:
+            return {"present": True, "admitted": False, "reason": reason}
+
+        binding_payload = binding.to_dict()
+        return {
+            "present": True,
+            "admitted": True,
+            "reason": reason,
+            "binding": binding_payload,
+            "gate_evidence": {
+                "provider_review": bound_gate_evidence(
+                    "provider_review",
+                    task_id=task.task_id,
+                    implementation_commit=implementation_commit,
+                    merge_commit=merge_commit,
+                    repository_tree_id=repository_tree_id,
+                    satisfied=True,
+                    review_presence=ReviewPresence.INDEPENDENT.value,
+                    provider_result_admitted=True,
+                    review_receipt_id=binding.receipt_id,
+                    review_chain_binding_id=str(
+                        binding_payload.get("binding_id") or ""
+                    ),
+                )
+            },
+        }
+
     def _merge_train_callback(self, request: Any) -> dict[str, Any]:
         """Adapt one durable queue request to the daemon's mature merge path."""
 
@@ -9759,7 +9941,16 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             isinstance(raw_gitlink_recording, dict)
             and raw_gitlink_recording.get("ok") is False
         )
-        if missing_changed_submodule_paths:
+        deferred_merge_reasons = {
+            *TRANSIENT_MERGE_LOCK_REASONS,
+            "main_branch_checked_out_elsewhere",
+            "main_merge_worktree_dirty",
+        }
+        if missing_changed_submodule_paths and (
+            result.get("merged", False)
+            or str(result.get("reason") or "")
+            not in deferred_merge_reasons
+        ):
             previous_reason = str(result.get("reason") or "submodule_merge_results_missing")
             result.update(
                 {
@@ -9775,6 +9966,16 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     },
                 }
             )
+        elif missing_changed_submodule_paths:
+            result["submodule_verification"] = {
+                "verified": False,
+                "deferred": True,
+                "expected_paths": sorted(changed_submodule_paths or ()),
+                "reported_paths": sorted(reported_submodule_paths),
+                "previous_reason": str(
+                    result.get("reason") or "merge_callback_deferred"
+                ),
+            }
         target_branch = self._main_branch_name()
         if (
             not result.get("merged", False)
@@ -9848,17 +10049,30 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     or implementation_commit
                 )
                 completion_tree = self._candidate_repository_tree(completion_commit)
+                repository_tree_id = (
+                    f"git-tree:{completion_tree}"
+                    if completion_tree
+                    else ""
+                )
+                provider_review_binding = (
+                    self._production_provider_review_merge_evidence(
+                        metadata=metadata,
+                        task=task,
+                        implementation_commit=implementation_commit,
+                        merge_commit=completion_commit,
+                        repository_tree_id=repository_tree_id,
+                    )
+                )
                 acceptance_result = (
                     completion_daemon.apply_post_merge_authoritative_acceptance(
                         task,
                         implementation_commit=implementation_commit,
                         merge_commit=completion_commit,
-                        repository_tree_id=(
-                            f"git-tree:{completion_tree}"
-                            if completion_tree
-                            else ""
-                        ),
+                        repository_tree_id=repository_tree_id,
                         validation_result=validation_proof,
+                        gate_evidence=dict(
+                            provider_review_binding.get("gate_evidence") or {}
+                        ),
                         model_invocation_observed=bool(
                             metadata.get("model_invocation_observed")
                         ),
@@ -9893,6 +10107,11 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 result["todo_update_result"] = todo_update_result
                 result["acceptance_result"] = acceptance_result
                 result["completion_authoritative"] = authoritatively_completed
+                result["production_provider_review_binding"] = {
+                    key: value
+                    for key, value in provider_review_binding.items()
+                    if key != "gate_evidence"
+                }
         return result
 
     def _rehydrate_merge_request_branch(
@@ -10094,6 +10313,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             worktree_path,
             reason="merge_queue_handoff",
         )
+        changed_submodule_paths = self._committed_submodule_paths(
+            commit_result.get("submodule_results") or []
+        )
         request, merge_result = self._enqueue_merge_candidate(
             branch_name=branch_name,
             implementation_commit=implementation_commit,
@@ -10103,14 +10325,15 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             ),
             task=task,
             attempt=attempt,
-            changed_submodule_paths=self._committed_submodule_paths(
-                commit_result.get("submodule_results") or []
-            ),
+            changed_submodule_paths=changed_submodule_paths,
             validation_result=dict(validation_result),
             worktree_pool_handoff=bool(pool_handoff.get("released", False)),
         )
         if pool_handoff.get("attempted", False):
             merge_result["worktree_pool_handoff"] = pool_handoff
+        merge_result["changed_submodule_paths"] = sorted(
+            changed_submodule_paths
+        )
         try:
             train_result = self._consume_one_merge_candidate()
         except Exception as exc:
@@ -18127,10 +18350,27 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     return result
                 self._run_git(["worktree", "remove", "--force", str(checked_out_path)], cwd=self.repo_root)
                 continue
-            # Target is checked out outside the managed merge-worktree root
-            # (common for shared agent/main worktrees). Reuse a clean checkout
-            # so parallel lanes can merge instead of looping on
-            # main_branch_checked_out_elsewhere (SCA-615 / SCA-632).
+            # An operator may dedicate one external checkout to the merge
+            # train. Never mutate an arbitrary clean checkout merely because
+            # it happens to hold the target branch.
+            trusted_external_text = os.environ.get(
+                TRUSTED_EXTERNAL_MERGE_WORKTREE_ENV,
+                "",
+            ).strip()
+            trusted_external = (
+                self._path_compare_key(Path(trusted_external_text))
+                if trusted_external_text
+                else None
+            )
+            checked_out_key = self._path_compare_key(checked_out_path)
+            if trusted_external is None or checked_out_key != trusted_external:
+                return {
+                    "available": False,
+                    "reason": "main_branch_checked_out_elsewhere",
+                    "target_branch": target_branch,
+                    "worktree_path": str(checked_out_path),
+                    "trusted_external_worktree_required": True,
+                }
             dirty_paths = sorted(self._dirty_worktree_paths(checked_out_path))
             generated_restore = self._restore_generated_dirty_paths(
                 checked_out_path,
@@ -18156,6 +18396,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 "ephemeral": False,
                 "target_branch": target_branch,
                 "reused_external_checkout": True,
+                "trusted_external_checkout": True,
             }
 
         merge_root.mkdir(parents=True, exist_ok=True)
@@ -22352,6 +22593,62 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 blocking.append(relative)
         return blocking, nonblocking
 
+    def _reconciliation_task(self, task_id: str) -> PortalTask | None:
+        try:
+            tasks = self._load_tasks()
+        except (OSError, UnicodeDecodeError, TaskSourceError, ValueError):
+            return None
+        return next(
+            (task for task in tasks if task.task_id == task_id),
+            None,
+        )
+
+    def _apply_reconciled_authoritative_acceptance(
+        self,
+        *,
+        task: PortalTask,
+        event: Mapping[str, Any],
+        implementation_commit: str,
+        merge_commit: str,
+    ) -> dict[str, Any]:
+        merge_tree = self._candidate_repository_tree(merge_commit)
+        validation_result = event.get("validation_result")
+        validation = (
+            dict(validation_result)
+            if isinstance(validation_result, Mapping)
+            else {}
+        )
+        acceptance = self.apply_post_merge_authoritative_acceptance(
+            task,
+            implementation_commit=implementation_commit,
+            merge_commit=merge_commit,
+            repository_tree_id=f"git-tree:{merge_tree}" if merge_tree else "",
+            validation_result=validation,
+            model_invocation_observed=bool(
+                event.get(
+                    "model_invocation_observed",
+                    not self._task_uses_typed_local_execution(task),
+                )
+            ),
+        )
+        authoritatively_completed = bool(
+            acceptance.get("authoritatively_completed")
+        )
+        self._decision_runtime_completion(
+            task,
+            merged_tree_id=merge_commit,
+            evidence={
+                "passed": bool(validation.get("passed", False)),
+                "completion_authoritative": authoritatively_completed,
+                "validation": validation,
+                "acceptance": dict(acceptance),
+                "merge_reconciliation": True,
+            },
+        )
+        if authoritatively_completed:
+            self._record_task_queue_outcome(task, 0)
+        return acceptance
+
     def _reconcile_failed_merges(
         self,
         *,
@@ -22430,25 +22727,55 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             implementation_commit = str(event.get("implementation_commit") or "")
             if not task_id or not implementation_commit:
                 continue
-            task = PortalTask(
+            authoritative_task = self._reconciliation_task(task_id)
+            task = authoritative_task or PortalTask(
                 task_id=task_id,
-                title=str(event.get("title") or "failed implementation merge"),
+                title=str(
+                    event.get("title") or "failed implementation merge"
+                ),
                 status="todo",
                 completion="manual",
                 priority="P2",
                 track="ops",
+            )
+            merge_result_event = event.get("merge_result")
+            raw_changed_submodule_paths = (
+                merge_result_event.get("changed_submodule_paths")
+                or event.get("changed_submodule_paths")
+                if isinstance(merge_result_event, Mapping)
+                else event.get("changed_submodule_paths")
+            )
+            changed_submodule_paths = (
+                {
+                    str(path).strip("/")
+                    for path in raw_changed_submodule_paths
+                    if str(path).strip("/")
+                }
+                if isinstance(raw_changed_submodule_paths, (list, tuple, set))
+                else None
             )
             if self._git_ref_is_ancestor(implementation_commit, target_branch):
                 # The parent commit can land before its daemon-owned submodule
                 # branches finish merging.  Do not interpret parent ancestry as
                 # proof that nested work is complete: resume the durable
                 # submodule checkpoint first.
-                submodule_merge_results = self._merge_submodule_branches_to_main(
-                    branch,
-                    task=task,
-                    attempt=attempt,
-                    baseline_ref=str(event.get("baseline_ref") or ""),
-                ) if branch else []
+                submodule_merge_kwargs: dict[str, Any] = {
+                    "task": task,
+                    "attempt": attempt,
+                    "baseline_ref": str(event.get("baseline_ref") or ""),
+                }
+                if changed_submodule_paths is not None:
+                    submodule_merge_kwargs["changed_submodule_paths"] = (
+                        changed_submodule_paths
+                    )
+                submodule_merge_results = (
+                    self._merge_submodule_branches_to_main(
+                        branch,
+                        **submodule_merge_kwargs,
+                    )
+                    if branch
+                    else []
+                )
                 failed_submodules = [
                     item for item in submodule_merge_results if not item.get("merged", False)
                 ]
@@ -22459,7 +22786,24 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 )
                 cleanup_cleaned = bool(cleanup_result.get("cleaned", False)) if cleanup_result else True
                 resolved = not failed_submodules and cleanup_cleaned
-                todo_update_result = self._mark_task_completed_in_todo(task_id) if resolved else {}
+                acceptance_result: dict[str, Any] = {}
+                todo_update_result: dict[str, Any] = {}
+                if resolved and authoritative_task is not None:
+                    merge_commit = self._run_git(
+                        ["rev-parse", target_branch],
+                        cwd=self.repo_root,
+                    ).stdout.strip()
+                    acceptance_result = (
+                        self._apply_reconciled_authoritative_acceptance(
+                            task=authoritative_task,
+                            event=event,
+                            implementation_commit=implementation_commit,
+                            merge_commit=merge_commit,
+                        )
+                    )
+                    todo_update_result = dict(
+                        acceptance_result.get("todo_update_result") or {}
+                    )
                 result = {
                     "task_id": task_id,
                     "attempt": attempt,
@@ -22475,6 +22819,13 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     ),
                     "submodule_merge_results": submodule_merge_results,
                     "cleanup_result": cleanup_result,
+                    "changed_submodule_paths": sorted(
+                        changed_submodule_paths or ()
+                    ),
+                    "acceptance_result": acceptance_result,
+                    "completion_authoritative": bool(
+                        acceptance_result.get("authoritatively_completed")
+                    ),
                 }
                 if todo_update_result:
                     result["todo_update_result"] = todo_update_result
@@ -22524,11 +22875,18 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 detail=merge_ref,
             )
             try:
+                merge_kwargs: dict[str, Any] = {
+                    "baseline_ref": str(event.get("baseline_ref") or ""),
+                }
+                if changed_submodule_paths is not None:
+                    merge_kwargs["changed_submodule_paths"] = (
+                        changed_submodule_paths
+                    )
                 merge_result = self._merge_branch_to_main(
                     merge_ref,
                     task,
                     attempt,
-                    baseline_ref=str(event.get("baseline_ref") or ""),
+                    **merge_kwargs,
                 )
             except Exception as exc:
                 result = {
@@ -22555,7 +22913,25 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             reason = "merge_retried" if resolved else "merge_retry_failed"
             if merge_result.get("merged") and not cleanup_cleaned:
                 reason = "cleanup_retry_failed"
-            todo_update_result = self._mark_task_completed_in_todo(task_id) if resolved else {}
+            acceptance_result: dict[str, Any] = {}
+            todo_update_result: dict[str, Any] = {}
+            if resolved and authoritative_task is not None:
+                merge_commit = str(
+                    merge_result.get("merge_commit")
+                    or self._run_git(
+                        ["rev-parse", target_branch],
+                        cwd=self.repo_root,
+                    ).stdout.strip()
+                )
+                acceptance_result = self._apply_reconciled_authoritative_acceptance(
+                    task=authoritative_task,
+                    event=event,
+                    implementation_commit=implementation_commit,
+                    merge_commit=merge_commit,
+                )
+                todo_update_result = dict(
+                    acceptance_result.get("todo_update_result") or {}
+                )
             result = {
                 "task_id": task_id,
                 "attempt": attempt,
@@ -22567,6 +22943,13 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 "reason": reason,
                 "merge_result": merge_result,
                 "cleanup_result": cleanup_result,
+                "changed_submodule_paths": sorted(
+                    changed_submodule_paths or ()
+                ),
+                "acceptance_result": acceptance_result,
+                "completion_authoritative": bool(
+                    acceptance_result.get("authoritatively_completed")
+                ),
             }
             if todo_update_result:
                 result["todo_update_result"] = todo_update_result

@@ -5781,6 +5781,11 @@ def test_implementation_daemon_rehydrates_cleaned_merge_queue_branch(
             "target_binding_schema": MERGE_TARGET_BINDING_SCHEMA,
             "target_repository_id": daemon.merge_target_repository_id,
             "target_branch": daemon.resolved_merge_target_branch,
+            "validation_proof": {
+                "passed": True,
+                "returncode": 0,
+                "selection": {"scope": "pre_merge"},
+            },
             "task": {
                 "task_id": "REF-040",
                 "title": "Recover merge handoff",
@@ -5798,7 +5803,8 @@ def test_implementation_daemon_rehydrates_cleaned_merge_queue_branch(
     assert result["branch_rehydration"]["rehydrated"] is True
     assert observed == {"branch": branch_name, "commit": candidate}
     assert _git(repo, "rev-parse", branch_name) == candidate
-    assert "- Status: completed" in todo_path.read_text(encoding="utf-8")
+    assert result["completion_authoritative"] is False
+    assert "- Status: todo" in todo_path.read_text(encoding="utf-8")
 
     (repo / "later.txt").write_text("later\n", encoding="utf-8")
     _git(repo, "add", "later.txt")
@@ -5872,6 +5878,11 @@ def test_merge_train_accepts_commit_integrated_by_merge_resolver(tmp_path: Path,
             "target_binding_schema": MERGE_TARGET_BINDING_SCHEMA,
             "target_repository_id": daemon.merge_target_repository_id,
             "target_branch": daemon.resolved_merge_target_branch,
+            "validation_proof": {
+                "passed": True,
+                "returncode": 0,
+                "selection": {"scope": "pre_merge"},
+            },
             "task": {
                 "task_id": "REF-041",
                 "title": "Accept resolver merge",
@@ -5892,7 +5903,8 @@ def test_merge_train_accepts_commit_integrated_by_merge_resolver(tmp_path: Path,
         "merge_branch_missing_after_resolver"
     )
     assert _git(repo, "merge-base", "--is-ancestor", candidate, "main") == ""
-    assert "- Status: completed" in todo_path.read_text(encoding="utf-8")
+    assert result["completion_authoritative"] is False
+    assert "- Status: todo" in todo_path.read_text(encoding="utf-8")
 
 
 def test_merge_train_rejects_resolver_merge_with_unverified_changed_submodule(
@@ -5953,6 +5965,11 @@ def test_merge_train_rejects_resolver_merge_with_unverified_changed_submodule(
             "target_binding_schema": MERGE_TARGET_BINDING_SCHEMA,
             "target_repository_id": daemon.merge_target_repository_id,
             "target_branch": daemon.resolved_merge_target_branch,
+            "validation_proof": {
+                "passed": True,
+                "returncode": 0,
+                "selection": {"scope": "pre_merge"},
+            },
             "changed_submodule_paths": ["libs/child"],
             "task": {
                 "task_id": "REF-042",
@@ -5979,6 +5996,88 @@ def test_merge_train_rejects_resolver_merge_with_unverified_changed_submodule(
     }
     assert _git(repo, "merge-base", "--is-ancestor", candidate, "main") == ""
     assert "- Status: todo" in todo_path.read_text(encoding="utf-8")
+
+
+def test_merge_train_preserves_external_target_checkout_deferral_reason(
+    tmp_path: Path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "base")
+    candidate = _git(repo, "rev-parse", "HEAD")
+
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        "## REF-043 Defer occupied target\n\n"
+        "- Status: todo\n"
+        "- Completion: manual\n",
+        encoding="utf-8",
+    )
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="REF-",
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_merge_branch_to_main",
+        lambda *_args, **_kwargs: {
+            "attempted": True,
+            "merged": False,
+            "returncode": 2,
+            "reason": "main_branch_checked_out_elsewhere",
+            "submodule_merge_results": [],
+        },
+    )
+    request = SimpleNamespace(
+        branch_name="implementation/ref-043",
+        commit_sha=candidate,
+        task_id="REF-043",
+        priority="P0",
+        attempt=1,
+        metadata={
+            "target_binding_schema": MERGE_TARGET_BINDING_SCHEMA,
+            "target_repository_id": daemon.merge_target_repository_id,
+            "target_branch": daemon.resolved_merge_target_branch,
+            "validation_proof": {
+                "passed": True,
+                "returncode": 0,
+                "selection": {"scope": "pre_merge"},
+            },
+            "changed_submodule_paths": ["libs/child"],
+            "task": {
+                "task_id": "REF-043",
+                "title": "Defer occupied target",
+                "status": "todo",
+                "completion": "manual",
+                "priority": "P0",
+                "track": "ops",
+            },
+        },
+    )
+
+    result = daemon._merge_train_callback(request)
+
+    assert result["merged"] is False
+    assert result["reason"] == "main_branch_checked_out_elsewhere"
+    assert result["submodule_verification"] == {
+        "verified": False,
+        "deferred": True,
+        "expected_paths": ["libs/child"],
+        "reported_paths": [],
+        "previous_reason": "main_branch_checked_out_elsewhere",
+    }
 
 
 def _seed_parent_with_divergent_gitlinks(
@@ -8637,12 +8736,16 @@ def test_bundle_runtime_taskboard_preserves_reviewed_shard_digest_on_shared_comp
     assert [
         task.status
         for task in parse_task_file(lane.runtime_todo_path, "## ACCEL-")
-    ] == ["completed", "todo"]
+    ] == ["todo", "blocked"]
     assert result["shared_completed_task_ids"] == ["ACCEL-001"]
-    assert result["merged_status_repair"]["updated_task_ids"] == ["ACCEL-001"]
+    assert result["merged_status_repair"] == {
+        "updated": False,
+        "reason": "authoritative_completion_evidence_required",
+        "pending_task_ids": ["ACCEL-001"],
+    }
     state = TodoTaskState.load(daemon.state_path)
-    assert state.task_statuses["ACCEL-001"] == "completed"
-    assert state.task_statuses["ACCEL-002"] == "ready"
+    assert state.task_statuses["ACCEL-001"] == "ready"
+    assert state.task_statuses["ACCEL-002"] == "blocked"
     runtime_after_completion = lane.runtime_todo_path.read_bytes()
 
     reused = materialize_bundle_lane_taskboard(lane, repo_root=repo)
@@ -20530,6 +20633,64 @@ def test_implementation_daemon_reconciles_generated_dirty_submodule_overlap_with
     assert not capture_path.exists()
     assert _git(repo, "status", "--porcelain", "--", "libs/child") == ""
     assert _git(submodule, "status", "--porcelain") == ""
+
+
+def test_external_main_worktree_requires_exact_operator_trust(
+    tmp_path: Path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "base")
+    _git(repo, "checkout", "-b", "driver")
+    external = tmp_path / "external-main"
+    _git(repo, "worktree", "add", str(external), "main")
+
+    todo_path = tmp_path / "todo.md"
+    todo_path.write_text("# Tasks\n", encoding="utf-8")
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_root=tmp_path / "managed-worktrees",
+    )
+    env_name = (
+        implementation_daemon_module.TRUSTED_EXTERNAL_MERGE_WORKTREE_ENV
+    )
+    monkeypatch.delenv(env_name, raising=False)
+
+    untrusted = daemon._prepare_main_merge_workspace(
+        "main",
+        "implementation/ref-044",
+    )
+
+    assert untrusted["available"] is False
+    assert untrusted["reason"] == "main_branch_checked_out_elsewhere"
+    assert untrusted["trusted_external_worktree_required"] is True
+
+    monkeypatch.setenv(env_name, str(external))
+    trusted = daemon._prepare_main_merge_workspace(
+        "main",
+        "implementation/ref-044",
+    )
+
+    assert trusted == {
+        "available": True,
+        "path": str(external),
+        "ephemeral": False,
+        "target_branch": "main",
+        "reused_external_checkout": True,
+        "trusted_external_checkout": True,
+    }
 
 
 def test_implementation_daemon_repairs_dirty_managed_main_merge_worktree(tmp_path):

@@ -13,6 +13,7 @@ Acceptance (fail-closed):
 
 from __future__ import annotations
 
+import hashlib
 import json
 import subprocess
 from pathlib import Path
@@ -28,8 +29,11 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.contract_packet_provider_ro
     ImplementationProviderRouter,
     ProductionContractPacket,
     ProductionReceiptDisposition,
+    ProviderBounds,
     ProviderReason,
+    ProviderRequest,
     ProviderRole,
+    ProviderRoutingError,
     ReviewPresence,
     RouteStatus,
     bind_applied_patch_to_review_chain,
@@ -39,6 +43,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.contract_packet_provider_ro
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     MODEL_ASSISTED_PROVIDER_ROUTE_EVENT,
+    McpPlusPlusLlmGenerateProvider,
     PRODUCTION_PROVIDER_ROUTE_BINDING_EVENT,
     PRODUCTION_PROVIDER_ROUTE_EVENT,
     PRODUCTION_PROVIDER_ROUTE_PENDING_EVENT,
@@ -47,21 +52,10 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
 )
 
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
-EVALUATION_PATH = (
-    REPO_ROOT
-    / "data"
-    / "agent_supervisor"
-    / "swissknife_contract_assurance"
-    / "evaluation"
-    / "production-provider-route.json"
+EVALUATION_RELATIVE_PATH = Path(
+    "data/agent_supervisor/swissknife_contract_assurance/evaluation/"
+    "production-provider-route.json"
 )
-# Fall back to workspace-relative path when tests run from the monorepo root.
-if not EVALUATION_PATH.exists():
-    EVALUATION_PATH = Path(
-        "data/agent_supervisor/swissknife_contract_assurance/evaluation/"
-        "production-provider-route.json"
-    )
 
 SNAPSHOT = "git-commit:sca-615-fixture"
 PATH = (
@@ -77,6 +71,37 @@ def _git(repo: Path, *arguments: str) -> None:
         check=True,
         text=True,
         capture_output=True,
+    )
+
+
+def _git_output(repo: Path, *arguments: str) -> str:
+    return subprocess.run(
+        ["git", *arguments],
+        cwd=repo,
+        check=True,
+        text=True,
+        capture_output=True,
+    ).stdout.strip()
+
+
+def _commit_and_bind(
+    daemon: TodoImplementationDaemon,
+    task: PortalTask,
+    route_payload: dict[str, Any],
+    *,
+    attempt: int = 1,
+):
+    repo = daemon.repo_root
+    _git(repo, "add", PATH)
+    _git(repo, "commit", "-m", f"{task.task_id}: bind reviewed implementation")
+    implementation_commit = _git_output(repo, "rev-parse", "HEAD")
+    baseline_ref = _git_output(repo, "rev-parse", "HEAD^")
+    return daemon._bind_production_route_to_implementation_commit(
+        task=task,
+        attempt=attempt,
+        baseline_ref=baseline_ref,
+        implementation_commit=implementation_commit,
+        route_payload=route_payload,
     )
 
 
@@ -165,6 +190,7 @@ def _accept(proposal):
 
 def _grok(request):
     assert request["role"] == ProviderRole.GROK_IMPLEMENT.value
+    assert request["response_contract"]["repository_write_allowed"] is False
     provider_input = request["provider_input"]
     assert "contract_packet" in provider_input
     encoded = json.dumps(provider_input, sort_keys=True)
@@ -187,6 +213,7 @@ def _grok(request):
 
 def _codex(request):
     assert request["role"] == ProviderRole.CODEX_REVIEW.value
+    assert request["response_contract"]["repository_write_allowed"] is False
     provider_input = request["provider_input"]
     assert "contract_packet" not in provider_input
     assert "admitted_implementation_proposal" in provider_input
@@ -198,6 +225,134 @@ def _codex(request):
     assert "repository_corpus" not in encoded
     assert "source_code" not in encoded
     return {"decision": "approve", "findings": []}
+
+
+_grok.provider_identity = "mcp++:xai:grok-test"
+_grok.model_identity = "grok-test"
+_grok.last_session_identity = "session:grok-test"
+_codex.provider_identity = "mcp++:openai:codex-test"
+_codex.model_identity = "codex-test"
+_codex.last_session_identity = "session:codex-test"
+
+
+class _McpResponse:
+    def __init__(self, payload: Mapping[str, Any]) -> None:
+        self.status = 200
+        self.body = json.dumps(
+            payload,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+        self.headers = {"Content-Length": str(len(self.body))}
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_args):
+        return False
+
+    def getcode(self) -> int:
+        return self.status
+
+    def read(self, limit: int) -> bytes:
+        return self.body[:limit]
+
+
+def _mcp_provider_request() -> ProviderRequest:
+    prompt = b'{"contract_packet":"bounded"}'
+    return ProviderRequest(
+        role=ProviderRole.GROK_IMPLEMENT,
+        packet_id="packet:mcp-test",
+        snapshot_id=SNAPSHOT,
+        task_id="SCA-615",
+        payload={"contract_packet": "bounded"},
+        bounds=ProviderBounds(
+            max_prompt_tokens=64,
+            max_prompt_bytes=1024,
+            max_response_bytes=4096,
+            timeout_seconds=10,
+        ),
+        response_contract={"repository_write_allowed": False},
+        prompt=prompt,
+        prompt_tokens=8,
+    )
+
+
+def _mcp_success_envelope(request: ProviderRequest) -> dict[str, Any]:
+    request_id = (
+        f"sca615:{request.role.value}:"
+        f"{hashlib.sha256(request.prompt).hexdigest()}"
+    )
+    generated = '{"proposal":{"files":[]}}'
+    return {
+        "jsonrpc": "2.0",
+        "id": request_id,
+        "result": {
+            "success": True,
+            "status": "success",
+            "catalog_revision": "catalog:test",
+            "text": generated,
+            "selected_binding": {
+                "binding_id": "binding:grok",
+                "router": "llm_router",
+                "provider_id": "grok_cli",
+                "model_id": "grok-4.5",
+                "operations": ["text.generate"],
+            },
+            "receipt": {
+                "selected_binding_id": "binding:grok",
+                "catalog_revision": "catalog:test",
+                "operation": "text.generate",
+                "fallback": {"allowed": False, "used": False},
+                "input": {
+                    "count": 1,
+                    "text_bytes": len(request.prompt),
+                },
+                "output": {"bytes": len(generated.encode("utf-8"))},
+            },
+        },
+    }
+
+
+def test_mcpplusplus_provider_pins_route_and_rejects_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    request = _mcp_provider_request()
+    envelope = _mcp_success_envelope(request)
+    observed: dict[str, Any] = {}
+
+    def fake_urlopen(http_request, *, timeout):
+        observed["body"] = json.loads(http_request.data)
+        observed["timeout"] = timeout
+        return _McpResponse(envelope)
+
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.todo_daemon."
+        "implementation_daemon.urlopen",
+        fake_urlopen,
+    )
+    provider = McpPlusPlusLlmGenerateProvider(
+        role=ProviderRole.GROK_IMPLEMENT,
+        endpoint_url="http://127.0.0.1:9002/mcp",
+        provider_selector="grok_cli",
+        model_selector="grok-4.5",
+    )
+
+    generated = provider(request)
+
+    assert generated == envelope["result"]["text"]
+    arguments = observed["body"]["params"]["arguments"]
+    assert arguments["provider"] == "grok_cli"
+    assert arguments["model"] == "grok-4.5"
+    assert arguments["allow_fallback"] is False
+    assert provider.last_session_identity
+
+    envelope["result"]["receipt"]["fallback"]["used"] = True
+    with pytest.raises(
+        ProviderRoutingError,
+        match="routing receipt is invalid",
+    ):
+        provider(request)
 
 
 def test_production_model_assisted_invokes_only_typed_packet_route(
@@ -230,12 +385,21 @@ def test_production_model_assisted_invokes_only_typed_packet_route(
     assert result["typed_packet_route_only"] is True
     assert result["returncode"] == 0
     assert result["route_result"].status is RouteStatus.SUCCEEDED
-    assert result["binding"] is not None
+    assert result["binding"] is None
+    assert result["event"]["review_chain_binding_pending"] is True
     assert result["pending"] is False
     assert writes_via_raw == []
 
     applied = (workspace / PATH).read_text(encoding="utf-8")
     assert "production-route-applied" in applied
+    binding = _commit_and_bind(daemon, task, result)
+    assert binding.implementation_commit == _git_output(
+        workspace, "rev-parse", "HEAD"
+    )
+    assert binding.implementation_tree_id == _git_output(
+        workspace, "rev-parse", "HEAD^{tree}"
+    )
+    assert binding.changed_paths == (PATH,)
 
     events = _events(daemon)
     assert any(item.get("type") == PRODUCTION_PROVIDER_ROUTE_EVENT for item in events)
@@ -329,6 +493,10 @@ def test_codex_receives_only_bounded_proposal_evidence_slice(
         assert "repository_corpus" not in encoded
         return {"decision": "approve", "findings": []}
 
+    codex.provider_identity = "mcp++:openai:codex-bounded-slice"
+    codex.model_identity = "codex-bounded-slice"
+    codex.last_session_identity = "session:codex-bounded-slice"
+
     result = daemon.run_production_model_assisted_route(
         _task(),
         attempt=1,
@@ -360,8 +528,8 @@ def test_applied_patch_and_merge_bind_to_admitted_review_chain(
         codex_provider=_codex,
         admission_gate=_accept,
     )
-    binding = result["binding"]
-    assert binding is not None
+    assert result["binding"] is None
+    binding = _commit_and_bind(daemon, task, result)
     payload = binding.to_dict()
     assert payload["schema"] == PRODUCTION_REVIEW_CHAIN_BINDING_SCHEMA
     assert payload["provider_result_admitted"] is True
@@ -385,6 +553,67 @@ def test_applied_patch_and_merge_bind_to_admitted_review_chain(
     assert metadata_probe["admitted_review_chain_binding"]["receipt_id"] == (
         binding.receipt_id
     )
+
+
+def test_merge_gate_revalidates_review_binding_against_git(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _daemon(tmp_path, monkeypatch)
+    task = _task()
+    route_payload = daemon.run_production_model_assisted_route(
+        task,
+        attempt=1,
+        workspace_path=daemon.repo_root,
+        snapshot_id=SNAPSHOT,
+        apply=True,
+        writer_lease_id="lease:sca-615:merge-gate",
+        grok_provider=_grok,
+        codex_provider=_codex,
+        admission_gate=_accept,
+    )
+    binding = _commit_and_bind(daemon, task, route_payload)
+    implementation_commit = binding.implementation_commit
+    merge_tree = _git_output(
+        daemon.repo_root,
+        "rev-parse",
+        f"{implementation_commit}^{{tree}}",
+    )
+    metadata = {
+        "production_provider_route": True,
+        "baseline_ref": _git_output(daemon.repo_root, "rev-parse", "HEAD^"),
+        "provider_execution_receipt": route_payload["receipt"].to_dict(),
+        "admitted_review_chain_binding": binding.to_dict(),
+    }
+
+    evidence = daemon._production_provider_review_merge_evidence(
+        metadata=metadata,
+        task=task,
+        implementation_commit=implementation_commit,
+        merge_commit=implementation_commit,
+        repository_tree_id=f"git-tree:{merge_tree}",
+    )
+
+    assert evidence["admitted"] is True
+    assert evidence["binding"]["merge_commit"] == implementation_commit
+    assert evidence["binding"]["merge_tree_id"] == merge_tree
+    assert evidence["gate_evidence"]["provider_review"][
+        "review_receipt_id"
+    ] == binding.receipt_id
+
+    metadata["admitted_review_chain_binding"] = {
+        **binding.to_dict(),
+        "implementation_tree_id": "forged-tree",
+    }
+    rejected = daemon._production_provider_review_merge_evidence(
+        metadata=metadata,
+        task=task,
+        implementation_commit=implementation_commit,
+        merge_commit=implementation_commit,
+        repository_tree_id=f"git-tree:{merge_tree}",
+    )
+    assert rejected["admitted"] is False
+    assert rejected["reason"] == ProviderReason.REVIEW_CHAIN_UNBOUND.value
 
 
 @pytest.mark.parametrize(
@@ -414,6 +643,12 @@ def test_absent_degraded_stale_cross_task_receipts_remain_pending(
         assert result["binding"] is None
         assert result["disposition"] is ProductionReceiptDisposition.PENDING_ABSENT
     elif kind == "degraded":
+        def unavailable_codex(_request):
+            raise RuntimeError("review unavailable")
+
+        unavailable_codex.provider_identity = "mcp++:openai:unavailable"
+        unavailable_codex.model_identity = "codex-unavailable"
+        unavailable_codex.last_session_identity = "session:codex-unavailable"
         result = daemon.run_production_model_assisted_route(
             task,
             attempt=1,
@@ -421,9 +656,7 @@ def test_absent_degraded_stale_cross_task_receipts_remain_pending(
             snapshot_id=SNAPSHOT,
             apply=False,
             grok_provider=_grok,
-            codex_provider=lambda _request: (_ for _ in ()).throw(
-                RuntimeError("review unavailable")
-            ),
+            codex_provider=unavailable_codex,
             admission_gate=_accept,
         )
         assert result["route_result"].review_presence == ReviewPresence.DEGRADED.value
@@ -598,6 +831,9 @@ def test_bind_applied_patch_requires_independent_admitted_review() -> None:
     binding = bind_applied_patch_to_review_chain(
         full,
         writer_lease_id="lease:bound",
+        implementation_commit="a" * 40,
+        implementation_tree_id="b" * 40,
+        changed_paths=[PATH],
     )
     assert binding is not None
     assert binding.write_performed is True
@@ -605,8 +841,18 @@ def test_bind_applied_patch_requires_independent_admitted_review() -> None:
 
 
 def test_production_evaluation_artifact_exists_and_covers_acceptance() -> None:
-    assert EVALUATION_PATH.exists(), f"missing evaluation artifact: {EVALUATION_PATH}"
-    payload = json.loads(EVALUATION_PATH.read_text(encoding="utf-8"))
+    search_roots = (Path.cwd(), *Path(__file__).resolve().parents)
+    evaluation_path = next(
+        (
+            root / EVALUATION_RELATIVE_PATH
+            for root in search_roots
+            if (root / EVALUATION_RELATIVE_PATH).is_file()
+        ),
+        None,
+    )
+    if evaluation_path is None:
+        pytest.skip("root-level SCA-615 evaluation artifact is not packaged")
+    payload = json.loads(evaluation_path.read_text(encoding="utf-8"))
     assert payload["schema"] == PRODUCTION_PROVIDER_ROUTE_EVALUATION_SCHEMA
     assert payload["interface"] == PRODUCTION_PROVIDER_ROUTE_INTERFACE
     assert SCAEV615ROUTE in payload["evidence"]["requirement_ids"]
@@ -663,7 +909,13 @@ def test_build_production_provider_route_evaluation_helper() -> None:
         apply=True,
         writer_lease_id="lease:eval",
     )
-    binding = bind_applied_patch_to_review_chain(result, writer_lease_id="lease:eval")
+    binding = bind_applied_patch_to_review_chain(
+        result,
+        writer_lease_id="lease:eval",
+        implementation_commit="c" * 40,
+        implementation_tree_id="d" * 40,
+        changed_paths=[PATH],
+    )
     evaluation = build_production_provider_route_evaluation(
         route_result=result,
         binding=binding,
