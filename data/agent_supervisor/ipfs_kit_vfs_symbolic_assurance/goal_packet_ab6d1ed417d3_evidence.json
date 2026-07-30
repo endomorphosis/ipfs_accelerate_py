@@ -1,0 +1,39 @@
+{
+  "adversarial_e2e_passed": true,
+  "adversarial_e2e_report_id": "sha256:5cb952ea3d9fe7289389f616c98a2b414490c2ec2a1427b2ac0e3d1396548422",
+  "authoritative": false,
+  "completion_authoritative": false,
+  "covered_evidence_terms": [
+    "vfs/exhaustive-index-receipt@1",
+    "vfs/contract-assurance-root@1"
+  ],
+  "evidence_claim_references": [
+    "vfs/exhaustive-index-receipt@1",
+    "vfs/contract-assurance-root@1"
+  ],
+  "fixture_cid": "sha256:136501f1ba1a3c0e89973f7f138ee41f1a6ada91ac0aabc648ea947a14b4d8f2",
+  "forest_id": "sha256:136501f1ba1a3c0e89973f7f138ee41f1a6ada91ac0aabc648ea947a14b4d8f2",
+  "goal_packet": "goal_packet/vfs_symbolic_assurance/general/ab6d1ed417d3",
+  "healthy_exhaustion_receipt_id": "healthy-exhaustion:3a7ceae70716cfd8591d4b13d861125dfc0edf0fb0bce6e99122da37de49ecfb",
+  "leaf_receipts": {
+    "vfs/contract-assurance-root@1": "receipts/contract_assurance_root.receipt.json",
+    "vfs/exhaustive-index-receipt@1": "receipts/exhaustive_index_receipt.receipt.json"
+  },
+  "packet_goals": [
+    "VFS-G133",
+    "VFS-G134"
+  ],
+  "policy_id": "policy:vfs-symbolic-rollout@1",
+  "policy_revision": "sha256:frozen-vfs-symbolic-policy",
+  "primary_task_id": "VFS-056",
+  "receipt_id": "goal-packet-evidence:ab6d1ed417d3:sha256:136501f1ba1",
+  "repository_tree": "sha256:31db96185d07b13c287a5fc57a8b18bc3dbac55624d16645244b8ae810890bc1",
+  "requirement_ids": [
+    "vfs/exhaustive-index-receipt@1",
+    "vfs/contract-assurance-root@1"
+  ],
+  "safe_for_completion_reasoning": false,
+  "schema": "ipfs_accelerate_py.agent_supervisor.vfs-symbolic-assurance.goal-packet-evidence@1",
+  "status": "nominated",
+  "tree_id": "sha256:31db96185d07b13c287a5fc57a8b18bc3dbac55624d16645244b8ae810890bc1"
+}

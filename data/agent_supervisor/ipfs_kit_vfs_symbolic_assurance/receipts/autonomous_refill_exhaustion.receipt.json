@@ -1,0 +1,102 @@
+{
+  "adversarial_gates": {
+    "bounded_refill": {
+      "expected": "refill-within-admission-ceilings",
+      "gate_id": "bounded_refill",
+      "observation_id": "sha256:1afa88fa7f634431fe87eb00b496d44b00ecfe70c7097dc71e73e3032580153f",
+      "passed": true
+    },
+    "refill_exhaustion": {
+      "expected": "healthy-exhaustion-no-busywork",
+      "gate_id": "refill_exhaustion",
+      "observation_id": "sha256:c953f1ae83fcefb7988edbc6735c6b83332ddf22a7e9fdbd8f41d1fd4e7fa2bf",
+      "passed": true
+    }
+  },
+  "authoritative": false,
+  "binding": {
+    "behavior_id": "behavior:vfs-symbolic-assurance-rollout@1",
+    "capability_id": "capability:vfs-symbolic-local@1",
+    "capability_revision": "sha256:frozen-vfs-symbolic-capability",
+    "forest_id": "sha256:136501f1ba1a3c0e89973f7f138ee41f1a6ada91ac0aabc648ea947a14b4d8f2",
+    "objective_id": "VFS-G130",
+    "objective_revision": "VFS-G130@vfs-036",
+    "policy_id": "policy:vfs-symbolic-rollout@1",
+    "policy_revision": "sha256:frozen-vfs-symbolic-policy",
+    "repository_id": "repository:ipfs-accelerate-py@fixture",
+    "tree_id": "sha256:31db96185d07b13c287a5fc57a8b18bc3dbac55624d16645244b8ae810890bc1"
+  },
+  "bundle": "vfs-assurance/root",
+  "completion_authoritative": false,
+  "evidence_claim_references": [
+    "vfs/autonomous-refill-exhaustion@1"
+  ],
+  "evidence_id": "healthy-exhaustion:3a7ceae70716cfd8591d4b13d861125dfc0edf0fb0bce6e99122da37de49ecfb",
+  "fixture_cid": "sha256:136501f1ba1a3c0e89973f7f138ee41f1a6ada91ac0aabc648ea947a14b4d8f2",
+  "forest_id": "sha256:136501f1ba1a3c0e89973f7f138ee41f1a6ada91ac0aabc648ea947a14b4d8f2",
+  "goal_id": "VFS-G135",
+  "goal_packet": "goal_packet/vfs_symbolic_assurance/general/13f52635926c",
+  "healthy_exhaustion": {
+    "conclusive": true,
+    "coverage_complete": true,
+    "evidence_cids": [
+      "sha256:136501f1ba1a3c0e89973f7f138ee41f1a6ada91ac0aabc648ea947a14b4d8f2",
+      "sha256:5cb952ea3d9fe7289389f616c98a2b414490c2ec2a1427b2ac0e3d1396548422",
+      "gate:refill_exhaustion",
+      "gate:bounded_refill"
+    ],
+    "healthy": true,
+    "objective_forest_id": "sha256:136501f1ba1a3c0e89973f7f138ee41f1a6ada91ac0aabc648ea947a14b4d8f2",
+    "objective_forest_revision": "sha256:136501f1ba1a3c0e89973f7f138ee41f1a6ada91ac0aabc648ea947a14b4d8f2",
+    "policy_id": "policy:vfs-symbolic-rollout@1",
+    "policy_revision": "sha256:frozen-vfs-symbolic-policy",
+    "receipt_id": "healthy-exhaustion:3a7ceae70716cfd8591d4b13d861125dfc0edf0fb0bce6e99122da37de49ecfb",
+    "repository_id": "repository:ipfs-accelerate-py@fixture",
+    "tree_id": "sha256:31db96185d07b13c287a5fc57a8b18bc3dbac55624d16645244b8ae810890bc1"
+  },
+  "invariants": [
+    "drained work triggers bounded evidence-driven refill or conclusive exhaustion",
+    "refill never authorizes completion or execution",
+    "no busywork after healthy exhaustion",
+    "stale or ambiguous findings cannot create work",
+    "replay of the same healthy exhaustion receipt is a no-op"
+  ],
+  "policy_id": "policy:vfs-symbolic-rollout@1",
+  "policy_revision": "sha256:frozen-vfs-symbolic-policy",
+  "producers": [
+    "ipfs_accelerate_py/agent_supervisor/symbolic_finding_refill.py",
+    "ipfs_accelerate_py/agent_supervisor/vfs_symbolic_rollout.py"
+  ],
+  "receipt_id": "healthy-exhaustion:3a7ceae70716cfd8591d4b13d861125dfc0edf0fb0bce6e99122da37de49ecfb",
+  "refill_interfaces": {
+    "authorizes_completion": false,
+    "authorizes_execution": false,
+    "healthy_exhausted_reason": "healthy_exhausted",
+    "refill_idempotency": "vfs/refill-idempotency@1",
+    "symbolic_finding_refill": "vfs/symbolic-finding-refill@1",
+    "symbolic_refill_epoch": "vfs/symbolic-refill-epoch@1"
+  },
+  "related_goal_packets": [
+    "goal_packet/vfs_symbolic_assurance/general/13f52635926c",
+    "goal_packet/vfs_symbolic_assurance/general/7414e86c1a7c",
+    "goal_packet/vfs_symbolic_assurance/general/ab6d1ed417d3"
+  ],
+  "repository_id": "repository:ipfs-accelerate-py@fixture",
+  "repository_tree": "sha256:31db96185d07b13c287a5fc57a8b18bc3dbac55624d16645244b8ae810890bc1",
+  "requirement_id": "vfs/autonomous-refill-exhaustion@1",
+  "requirement_ids": [
+    "vfs/autonomous-refill-exhaustion@1"
+  ],
+  "safe_for_completion_reasoning": false,
+  "schema": "vfs/autonomous-refill-exhaustion@1",
+  "schema_version": 1,
+  "source_path": "data/agent_supervisor/ipfs_kit_vfs_symbolic_assurance/receipts/autonomous_refill_exhaustion.receipt.json",
+  "status": "nominated",
+  "task_id": "VFS-055",
+  "track": "vfs-symbolic-assurance",
+  "tree_id": "sha256:31db96185d07b13c287a5fc57a8b18bc3dbac55624d16645244b8ae810890bc1",
+  "validation_surfaces": [
+    "test/api/test_agent_supervisor_symbolic_finding_refill.py",
+    "test/api/test_vfs_symbolic_assurance_e2e.py"
+  ]
+}
