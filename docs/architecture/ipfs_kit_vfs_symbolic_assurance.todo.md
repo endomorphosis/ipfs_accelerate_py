@@ -3073,7 +3073,7 @@ compact references and bounded spans only.
 
 ## VFS-074 Close objective gap: Prove vfs/kernel-proof-receipt@1 for Translate supported code contracts into kernel-checkable proof obligations
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
