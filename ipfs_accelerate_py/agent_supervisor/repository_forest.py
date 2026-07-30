@@ -22,6 +22,7 @@ changes it.  Unavailable required roots fail closed with a typed reason.
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import re
 import subprocess
@@ -2066,6 +2067,353 @@ def empty_dirty_overlay_digest() -> str:
     return _EMPTY_OVERLAY_DIGEST
 
 
+# Host-local keys that must never appear in portable freeze projections.
+_PORTABLE_HOST_KEY_DENYLIST: Final[frozenset[str]] = frozenset(
+    {
+        "root_path",
+        "resolved_root_path",
+        "local_locator",
+        "local_repository_binding_id",
+        "credential",
+        "credentials",
+        "password",
+        "token",
+        "secret",
+        "api_key",
+        "auth_token",
+        "private_key",
+    }
+)
+
+
+def initial_four_repository_forest_policy(
+    *,
+    accelerator_root: str | Path,
+    swissknife_root: str | Path = DEFAULT_SWISSKNIFE_ROOT,
+    kit_root: str | Path | None = None,
+    datasets_root: str | Path | None = None,
+    analyzer_profile: AnalyzerProfile | Mapping[str, Any] | None = None,
+    require_all_four: bool = True,
+) -> ForestPolicy:
+    """Policy for the frozen initial four-repository VFS assurance forest.
+
+    Always names SwissKnife, accelerator (sole write), kit, and datasets.
+    When ``require_all_four`` is true every root is required so unavailable
+    checkouts fail closed with a typed reason (VFS-G011 / VFS-G140).
+    """
+
+    accelerator = Path(accelerator_root)
+    kit_path = Path(kit_root) if kit_root is not None else accelerator / DEFAULT_KIT_ALIAS
+    datasets_path = (
+        Path(datasets_root)
+        if datasets_root is not None
+        else accelerator / DEFAULT_DATASETS_ALIAS
+    )
+    required = bool(require_all_four)
+    roots = (
+        ForestRootSpec(
+            alias=DEFAULT_SWISSKNIFE_ALIAS,
+            root_path=swissknife_root,
+            authority=RepositoryAuthority(mode=AuthorityMode.READ_ONLY.value),
+            required=True,
+        ),
+        ForestRootSpec(
+            alias=DEFAULT_ACCELERATOR_ALIAS,
+            root_path=accelerator,
+            authority=RepositoryAuthority(mode=AuthorityMode.READ_WRITE.value),
+            required=True,
+        ),
+        ForestRootSpec(
+            alias=DEFAULT_KIT_ALIAS,
+            root_path=kit_path,
+            authority=RepositoryAuthority(mode=AuthorityMode.READ_ONLY.value),
+            required=required,
+        ),
+        ForestRootSpec(
+            alias=DEFAULT_DATASETS_ALIAS,
+            root_path=datasets_path,
+            authority=RepositoryAuthority(mode=AuthorityMode.READ_ONLY.value),
+            required=required,
+        ),
+    )
+    return ForestPolicy(
+        roots=roots,
+        sole_write_alias=DEFAULT_ACCELERATOR_ALIAS,
+        analyzer_profile=analyzer_profile,
+    )
+
+
+def build_initial_four_repository_forest(
+    *,
+    accelerator_root: str | Path,
+    swissknife_root: str | Path = DEFAULT_SWISSKNIFE_ROOT,
+    kit_root: str | Path | None = None,
+    datasets_root: str | Path | None = None,
+    analyzer_profile: AnalyzerProfile | Mapping[str, Any] | None = None,
+    require_all_four: bool = True,
+    fail_on_missing_required: bool = True,
+    follow_symlinks: bool = True,
+    max_gitlink_depth: int = _MAX_GITLINK_DEPTH,
+) -> RepositoryForest:
+    """Materialize the initial four-repository forest for freeze/replay.
+
+    Binds each configured root through :func:`build_repository_forest` so
+    sibling checkouts never share Git authority.  Required missing roots fail
+    closed with a typed :class:`RepositoryForestError` reason code.
+    """
+
+    policy = initial_four_repository_forest_policy(
+        accelerator_root=accelerator_root,
+        swissknife_root=swissknife_root,
+        kit_root=kit_root,
+        datasets_root=datasets_root,
+        analyzer_profile=analyzer_profile,
+        require_all_four=require_all_four,
+    )
+    return build_repository_forest(
+        policy,
+        follow_symlinks=follow_symlinks,
+        max_gitlink_depth=max_gitlink_depth,
+        fail_on_missing_required=fail_on_missing_required,
+    )
+
+
+def freeze_repository_forest(forest: RepositoryForest) -> dict[str, Any]:
+    """Freeze a forest into a host-free portable projection.
+
+    The projection is the executable freeze surface for
+    ``vfs/repository-forest-replay@1``: local locators, absolute paths, and
+    credentials are excluded so equivalent relocations replay with the same
+    portable forest CID.
+    """
+
+    if not isinstance(forest, RepositoryForest):
+        raise TypeError("forest must be a RepositoryForest")
+    portable = forest.to_portable_dict()
+    if not portable_projection_excludes_host_state(portable):
+        raise RepositoryForestError(
+            "portable_host_state_leaked",
+            "portable forest projection must exclude host locators and credentials",
+        )
+    return portable
+
+
+def replay_repository_forest(
+    portable: Mapping[str, Any] | str | Path,
+) -> RepositoryForest:
+    """Replay a portable forest projection and recompute identity.
+
+    Accepts an in-memory mapping or a JSON file path.  A mismatched claimed
+    ``forest_id`` fails closed with ``forest_id_mismatch``.
+    """
+
+    if isinstance(portable, Mapping):
+        payload: Mapping[str, Any] = portable
+    else:
+        path = Path(portable)
+        try:
+            raw = json.loads(path.read_text(encoding="utf-8"))
+        except OSError as exc:
+            raise RepositoryForestError(
+                "portable_projection_unreadable",
+                "portable forest projection could not be read",
+            ) from exc
+        except json.JSONDecodeError as exc:
+            raise RepositoryForestError(
+                "portable_projection_invalid",
+                "portable forest projection is not valid JSON",
+            ) from exc
+        if not isinstance(raw, Mapping):
+            raise RepositoryForestError(
+                "invalid_portable_forest",
+                "portable projection root must be an object",
+            )
+        payload = raw
+    return RepositoryForest.from_portable_dict(payload)
+
+
+def portable_projection_excludes_host_state(
+    portable: Mapping[str, Any] | Sequence[Any] | Any,
+) -> bool:
+    """Return True when a portable projection has no host-local state keys."""
+
+    if isinstance(portable, Mapping):
+        for key, value in portable.items():
+            key_text = str(key)
+            lowered = key_text.lower()
+            if key_text in _PORTABLE_HOST_KEY_DENYLIST or lowered in _PORTABLE_HOST_KEY_DENYLIST:
+                return False
+            if any(
+                token in lowered
+                for token in (
+                    "password",
+                    "credential",
+                    "secret",
+                    "api_key",
+                    "private_key",
+                    "auth_token",
+                )
+            ):
+                return False
+            if not portable_projection_excludes_host_state(value):
+                return False
+        return True
+    if isinstance(portable, Sequence) and not isinstance(
+        portable, (str, bytes, bytearray)
+    ):
+        return all(portable_projection_excludes_host_state(item) for item in portable)
+    return True
+
+
+def repository_forest_replay_evidence_terms() -> tuple[str, ...]:
+    """Return the closed VFS-G140 domain evidence term for forest freeze/replay.
+
+    Domain identity (``vfs/repository-forest-replay@1``) is authored only by
+    this module.  Goal/task labels are metadata and never enter portable
+    forest CIDs, descriptor identities, or dirty overlay digests.
+    """
+
+    return OBJECTIVE_DOMAIN_EVIDENCE_TERMS
+
+
+def covered_evidence_terms() -> tuple[str, ...]:
+    """Return domain objective evidence terms this forest surface proves.
+
+    Mirrors :func:`repository_forest_replay_evidence_terms` for discovery
+    scanners that look for a uniform ``covered_evidence_terms`` hook.
+    """
+
+    return repository_forest_replay_evidence_terms()
+
+
+def all_covered_evidence_terms() -> tuple[str, ...]:
+    """Return all evidence terms this module proves (domain only)."""
+
+    return covered_evidence_terms()
+
+
+def forest_satisfies_repository_forest_replay(
+    forest: RepositoryForest | Mapping[str, Any],
+    *,
+    twin: RepositoryForest | Mapping[str, Any] | None = None,
+    require_four_aliases: bool = False,
+) -> bool:
+    """Machine-check VFS-G011 / VFS-G140 freeze/replay acceptance on a forest.
+
+    * Portable freeze/replay preserves ``forest_id``.
+    * Portable projections exclude host locators and credentials.
+    * Optional twin forests with identical trees/policy share identity.
+    * Optional four-alias gate checks the initial VFS assurance alias set.
+    """
+
+    if isinstance(forest, Mapping):
+        forest = RepositoryForest.from_portable_dict(forest)
+    if not isinstance(forest, RepositoryForest):
+        raise TypeError("forest must be a RepositoryForest")
+    if not forest.descriptors:
+        return False
+    if not forest.forest_id or not forest.policy_cid:
+        return False
+    if not forest.sole_write_alias:
+        return False
+    try:
+        write_desc = forest.write_descriptor()
+    except RepositoryForestError:
+        return False
+    if not write_desc.authority.is_writable:
+        return False
+    portable = freeze_repository_forest(forest)
+    if not portable_projection_excludes_host_state(portable):
+        return False
+    if str(portable.get("forest_id") or "") != forest.forest_id:
+        return False
+    try:
+        replayed = replay_repository_forest(portable)
+    except RepositoryForestError:
+        return False
+    if replayed.forest_id != forest.forest_id:
+        return False
+    if not forests_share_portable_identity(forest, replayed):
+        return False
+    if twin is not None:
+        if isinstance(twin, Mapping):
+            twin = RepositoryForest.from_portable_dict(twin)
+        if not isinstance(twin, RepositoryForest):
+            raise TypeError("twin must be a RepositoryForest")
+        if twin.forest_id != forest.forest_id:
+            return False
+        if not forests_share_portable_identity(forest, twin):
+            return False
+    if require_four_aliases:
+        observed = {item.alias for item in forest.descriptors}
+        expected = set(INITIAL_FOUR_REPOSITORY_ALIASES)
+        if observed != expected:
+            return False
+    return True
+
+
+def prove_repository_forest_replay(
+    forest: RepositoryForest | Mapping[str, Any],
+    *,
+    twin: RepositoryForest | Mapping[str, Any] | None = None,
+    require_four_aliases: bool = False,
+) -> dict[str, Any]:
+    """Emit a portable VFS-G140 evidence claim for one frozen forest.
+
+    Binds ``vfs/repository-forest-replay@1`` to the content-addressed forest
+    without embedding goal metadata into ``forest_id`` or descriptor CIDs.
+    """
+
+    if isinstance(forest, Mapping):
+        forest = RepositoryForest.from_portable_dict(forest)
+    if not isinstance(forest, RepositoryForest):
+        raise TypeError("forest must be a RepositoryForest")
+    twin_forest: RepositoryForest | None = None
+    if twin is not None:
+        if isinstance(twin, Mapping):
+            twin_forest = RepositoryForest.from_portable_dict(twin)
+        elif isinstance(twin, RepositoryForest):
+            twin_forest = twin
+        else:
+            raise TypeError("twin must be a RepositoryForest")
+    satisfied = forest_satisfies_repository_forest_replay(
+        forest,
+        twin=twin_forest,
+        require_four_aliases=require_four_aliases,
+    )
+    portable = freeze_repository_forest(forest)
+    replayed = replay_repository_forest(portable)
+    aliases = tuple(item.alias for item in forest.descriptors)
+    return {
+        "schema": REPOSITORY_FOREST_REPLAY_CLAIM_SCHEMA,
+        "evidence": REPOSITORY_FOREST_REPLAY_EVIDENCE,
+        "evidence_terms": list(OBJECTIVE_DOMAIN_EVIDENCE_TERMS),
+        "requirement_id": REPOSITORY_FOREST_REPLAY_EVIDENCE,
+        "goal_id": OBJECTIVE_GOAL_ID,
+        "parent_goal_id": OBJECTIVE_PARENT_GOAL_ID,
+        "task_id": OBJECTIVE_TASK_ID,
+        "forest_id": forest.forest_id,
+        "policy_cid": forest.policy_cid,
+        "sole_write_alias": forest.sole_write_alias,
+        "aliases": list(aliases),
+        "descriptor_count": len(forest.descriptors),
+        "replayed_forest_id": replayed.forest_id,
+        "portable_host_state_excluded": portable_projection_excludes_host_state(
+            portable
+        ),
+        "identical_trees_and_policy_share_cid": (
+            twin_forest is None or twin_forest.forest_id == forest.forest_id
+        ),
+        "four_repository_aliases": list(INITIAL_FOUR_REPOSITORY_ALIASES),
+        "require_four_aliases": bool(require_four_aliases),
+        "satisfied": satisfied,
+        "reason_codes": list(forest.reason_codes),
+        "invariants": list(REPOSITORY_FOREST_REPLAY_INVARIANTS),
+        "authoritative": False,
+        "completion_authoritative": False,
+    }
+
+
 __all__ = [
     "ANALYZER_PROFILE_SCHEMA",
     "AUTHORITY_SCHEMA",
@@ -2085,12 +2433,20 @@ __all__ = [
     "GITLINK_ENTRY_SCHEMA",
     "GitlinkClosureEntry",
     "IGNORE_POLICY_SCHEMA",
+    "INITIAL_FOUR_REPOSITORY_ALIASES",
     "IgnorePolicy",
     "LOCAL_LOCATOR_SCHEMA",
     "LocalLocator",
+    "OBJECTIVE_DOMAIN_EVIDENCE_TERMS",
+    "OBJECTIVE_GOAL_ID",
+    "OBJECTIVE_PARENT_GOAL_ID",
+    "OBJECTIVE_TASK_ID",
     "PORTABLE_CLOSURE_SCHEMA",
     "PortableGitClosure",
     "REPOSITORY_DESCRIPTOR_SCHEMA",
+    "REPOSITORY_FOREST_REPLAY_CLAIM_SCHEMA",
+    "REPOSITORY_FOREST_REPLAY_EVIDENCE",
+    "REPOSITORY_FOREST_REPLAY_INVARIANTS",
     "REPOSITORY_FOREST_SCHEMA",
     "REPOSITORY_ID_SCHEMA",
     "RepositoryAuthority",
@@ -2099,14 +2455,24 @@ __all__ = [
     "RepositoryForestError",
     "RepositoryIdentity",
     "UnicodeNormalizationForm",
+    "all_covered_evidence_terms",
+    "build_initial_four_repository_forest",
     "build_repository_descriptor",
     "build_repository_forest",
     "compute_dirty_overlay_digest",
+    "covered_evidence_terms",
     "empty_dirty_overlay_digest",
+    "forest_satisfies_repository_forest_replay",
     "forests_share_portable_identity",
+    "freeze_repository_forest",
+    "initial_four_repository_forest_policy",
     "initial_vfs_assurance_forest_policy",
     "inspect_gitlink_closure",
     "make_repository_id",
     "path_within_repository",
+    "portable_projection_excludes_host_state",
+    "prove_repository_forest_replay",
+    "replay_repository_forest",
+    "repository_forest_replay_evidence_terms",
     "resolve_repository_root",
 ]

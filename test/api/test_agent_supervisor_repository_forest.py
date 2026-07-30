@@ -13,21 +13,41 @@ from ipfs_accelerate_py.agent_supervisor.repository_forest import (
     AuthorityMode,
     CaseUnicodePolicy,
     DEFAULT_ACCELERATOR_ALIAS,
+    DEFAULT_DATASETS_ALIAS,
+    DEFAULT_KIT_ALIAS,
     DEFAULT_SWISSKNIFE_ALIAS,
     DEFAULT_SWISSKNIFE_ROOT,
     ForestPolicy,
     ForestRootSpec,
+    INITIAL_FOUR_REPOSITORY_ALIASES,
     IgnorePolicy,
+    OBJECTIVE_DOMAIN_EVIDENCE_TERMS,
+    OBJECTIVE_GOAL_ID,
+    OBJECTIVE_PARENT_GOAL_ID,
+    OBJECTIVE_TASK_ID,
+    REPOSITORY_FOREST_REPLAY_CLAIM_SCHEMA,
+    REPOSITORY_FOREST_REPLAY_EVIDENCE,
+    REPOSITORY_FOREST_REPLAY_INVARIANTS,
     RepositoryAuthority,
     RepositoryForest,
     RepositoryForestError,
+    all_covered_evidence_terms,
+    build_initial_four_repository_forest,
     build_repository_descriptor,
     build_repository_forest,
+    covered_evidence_terms,
     empty_dirty_overlay_digest,
+    forest_satisfies_repository_forest_replay,
     forests_share_portable_identity,
+    freeze_repository_forest,
+    initial_four_repository_forest_policy,
     initial_vfs_assurance_forest_policy,
     make_repository_id,
     path_within_repository,
+    portable_projection_excludes_host_state,
+    prove_repository_forest_replay,
+    replay_repository_forest,
+    repository_forest_replay_evidence_terms,
     resolve_repository_root,
 )
 
@@ -560,3 +580,270 @@ def test_dirty_overlay_forbidden_still_marks_dirty(tmp_path: Path) -> None:
     assert descriptor.dirty is True
     assert descriptor.dirty_overlay_digest == empty_dirty_overlay_digest()
     assert "dirty_overlay_forbidden" in descriptor.reason_codes
+
+
+# ---------------------------------------------------------------------------
+# VFS-G140 / VFS-G011 evidence: vfs/repository-forest-replay@1
+# ---------------------------------------------------------------------------
+
+
+def _four_root_paths(tmp_path: Path) -> dict[str, Path]:
+    """Hermetic four independent Git roots for freeze/replay fixtures."""
+
+    return {
+        "swissknife": _init_repo(tmp_path / "swissknife", name="swissknife"),
+        "accelerator": _init_repo(tmp_path / "accelerator", name="accelerator"),
+        "kit": _init_repo(tmp_path / "kit", name="kit"),
+        "datasets": _init_repo(tmp_path / "datasets", name="datasets"),
+    }
+
+
+def test_repository_forest_replay_evidence_terms_are_bound() -> None:
+    """Prove vfs/repository-forest-replay@1 discovery anchors and goal bindings."""
+
+    assert REPOSITORY_FOREST_REPLAY_EVIDENCE == "vfs/repository-forest-replay@1"
+    assert OBJECTIVE_DOMAIN_EVIDENCE_TERMS == ("vfs/repository-forest-replay@1",)
+    assert repository_forest_replay_evidence_terms() == OBJECTIVE_DOMAIN_EVIDENCE_TERMS
+    assert covered_evidence_terms() == repository_forest_replay_evidence_terms()
+    assert all_covered_evidence_terms() == covered_evidence_terms()
+    assert OBJECTIVE_GOAL_ID == "VFS-G140"
+    assert OBJECTIVE_PARENT_GOAL_ID == "VFS-G011"
+    assert OBJECTIVE_TASK_ID == "VFS-070"
+    assert set(INITIAL_FOUR_REPOSITORY_ALIASES) == {
+        DEFAULT_ACCELERATOR_ALIAS,
+        DEFAULT_DATASETS_ALIAS,
+        DEFAULT_KIT_ALIAS,
+        DEFAULT_SWISSKNIFE_ALIAS,
+    }
+    assert "identical trees and policy reproduce the same portable forest CID" in (
+        REPOSITORY_FOREST_REPLAY_INVARIANTS
+    )
+    assert "unavailable required roots fail closed with a typed reason" in (
+        REPOSITORY_FOREST_REPLAY_INVARIANTS
+    )
+    assert REPOSITORY_FOREST_REPLAY_CLAIM_SCHEMA.endswith(
+        "repository-forest-replay-claim@1"
+    )
+
+
+def test_four_repository_freeze_and_replay_preserves_forest_cid(
+    tmp_path: Path,
+) -> None:
+    """Identical trees and policy reproduce the same portable forest CID."""
+
+    roots = _four_root_paths(tmp_path)
+    forest = build_initial_four_repository_forest(
+        accelerator_root=roots["accelerator"],
+        swissknife_root=roots["swissknife"],
+        kit_root=roots["kit"],
+        datasets_root=roots["datasets"],
+        require_all_four=True,
+    )
+    assert {item.alias for item in forest.descriptors} == set(
+        INITIAL_FOUR_REPOSITORY_ALIASES
+    )
+    assert forest.sole_write_alias == DEFAULT_ACCELERATOR_ALIAS
+    assert forest.write_descriptor().authority.mode == AuthorityMode.READ_WRITE.value
+
+    portable = freeze_repository_forest(forest)
+    encoded = json.dumps(portable, sort_keys=True)
+    for path in roots.values():
+        assert str(path) not in encoded
+    assert portable_projection_excludes_host_state(portable)
+    assert "root_path" not in encoded
+    assert "local_locator" not in encoded
+
+    replayed = replay_repository_forest(portable)
+    assert replayed.forest_id == forest.forest_id
+    assert forests_share_portable_identity(forest, replayed)
+    assert forest_satisfies_repository_forest_replay(
+        forest,
+        require_four_aliases=True,
+    )
+
+    # Relocated checkouts with identical trees/policies share portable identity.
+    relocated_base = tmp_path / "relocated"
+    relocated: dict[str, Path] = {}
+    for alias, src in roots.items():
+        dest = relocated_base / alias
+        shutil.copytree(src, dest)
+        relocated[alias] = dest
+    twin = build_initial_four_repository_forest(
+        accelerator_root=relocated["accelerator"],
+        swissknife_root=relocated["swissknife"],
+        kit_root=relocated["kit"],
+        datasets_root=relocated["datasets"],
+        require_all_four=True,
+    )
+    assert twin.forest_id == forest.forest_id
+    assert forest_satisfies_repository_forest_replay(forest, twin=twin, require_four_aliases=True)
+
+    claim = prove_repository_forest_replay(
+        forest,
+        twin=twin,
+        require_four_aliases=True,
+    )
+    assert claim["schema"] == REPOSITORY_FOREST_REPLAY_CLAIM_SCHEMA
+    assert claim["evidence"] == "vfs/repository-forest-replay@1"
+    assert claim["evidence_terms"] == ["vfs/repository-forest-replay@1"]
+    assert claim["goal_id"] == "VFS-G140"
+    assert claim["parent_goal_id"] == "VFS-G011"
+    assert claim["task_id"] == "VFS-070"
+    assert claim["satisfied"] is True
+    assert claim["forest_id"] == forest.forest_id
+    assert claim["replayed_forest_id"] == forest.forest_id
+    assert claim["portable_host_state_excluded"] is True
+    assert claim["identical_trees_and_policy_share_cid"] is True
+    assert set(claim["aliases"]) == set(INITIAL_FOUR_REPOSITORY_ALIASES)
+    for invariant in REPOSITORY_FOREST_REPLAY_INVARIANTS:
+        assert invariant in claim["invariants"]
+    # Goal labels must not enter portable forest identity.
+    assert "VFS-G140" not in forest.forest_id
+    assert "vfs/repository-forest-replay@1" not in forest.forest_id
+
+
+def test_changed_commit_tree_overlay_or_policy_changes_forest_cid(
+    tmp_path: Path,
+) -> None:
+    """A changed commit, tree, gitlink, overlay, or policy changes forest CID."""
+
+    roots = _four_root_paths(tmp_path)
+    baseline = build_initial_four_repository_forest(
+        accelerator_root=roots["accelerator"],
+        swissknife_root=roots["swissknife"],
+        kit_root=roots["kit"],
+        datasets_root=roots["datasets"],
+    )
+    baseline_id = baseline.forest_id
+
+    # Commit / tree change on the sole-write root.
+    (roots["accelerator"] / "README.md").write_text(
+        "# accelerator advanced\n",
+        encoding="utf-8",
+    )
+    _git(roots["accelerator"], "add", "README.md")
+    _git(roots["accelerator"], "commit", "-m", "advance accelerator")
+    after_commit = build_initial_four_repository_forest(
+        accelerator_root=roots["accelerator"],
+        swissknife_root=roots["swissknife"],
+        kit_root=roots["kit"],
+        datasets_root=roots["datasets"],
+    )
+    assert after_commit.forest_id != baseline_id
+    after_commit_id = after_commit.forest_id
+
+    # Dirty overlay change.
+    (roots["accelerator"] / "scratch.txt").write_text("dirty\n", encoding="utf-8")
+    after_overlay = build_initial_four_repository_forest(
+        accelerator_root=roots["accelerator"],
+        swissknife_root=roots["swissknife"],
+        kit_root=roots["kit"],
+        datasets_root=roots["datasets"],
+    )
+    assert after_overlay.forest_id != after_commit_id
+    (roots["accelerator"] / "scratch.txt").unlink()
+
+    # Policy change (analyzer profile) alters forest identity via policy_cid.
+    profile_a = initial_four_repository_forest_policy(
+        accelerator_root=roots["accelerator"],
+        swissknife_root=roots["swissknife"],
+        kit_root=roots["kit"],
+        datasets_root=roots["datasets"],
+        analyzer_profile={"profile_name": "policy-a"},
+    )
+    profile_b = initial_four_repository_forest_policy(
+        accelerator_root=roots["accelerator"],
+        swissknife_root=roots["swissknife"],
+        kit_root=roots["kit"],
+        datasets_root=roots["datasets"],
+        analyzer_profile={"profile_name": "policy-b"},
+    )
+    forest_a = build_repository_forest(profile_a)
+    forest_b = build_repository_forest(profile_b)
+    assert forest_a.policy_cid != forest_b.policy_cid
+    assert forest_a.forest_id != forest_b.forest_id
+
+    # Gitlink change on one root changes that descriptor and forest identity.
+    child = _init_repo(tmp_path / "child-sub", name="child-sub")
+    before_gitlink = build_initial_four_repository_forest(
+        accelerator_root=roots["accelerator"],
+        swissknife_root=roots["swissknife"],
+        kit_root=roots["kit"],
+        datasets_root=roots["datasets"],
+    )
+    _add_submodule(roots["kit"], child, "nested-child")
+    after_gitlink = build_initial_four_repository_forest(
+        accelerator_root=roots["accelerator"],
+        swissknife_root=roots["swissknife"],
+        kit_root=roots["kit"],
+        datasets_root=roots["datasets"],
+    )
+    assert after_gitlink.forest_id != before_gitlink.forest_id
+    kit_desc = after_gitlink.descriptor_for_alias(DEFAULT_KIT_ALIAS)
+    assert len(kit_desc.portable_closure.gitlinks) >= 1
+
+
+def test_unavailable_required_four_repository_root_fails_closed(
+    tmp_path: Path,
+) -> None:
+    """Unavailable required roots fail closed with a typed reason."""
+
+    roots = _four_root_paths(tmp_path)
+    missing_kit = tmp_path / "absent-kit"
+    with pytest.raises(RepositoryForestError) as excinfo:
+        build_initial_four_repository_forest(
+            accelerator_root=roots["accelerator"],
+            swissknife_root=roots["swissknife"],
+            kit_root=missing_kit,
+            datasets_root=roots["datasets"],
+            require_all_four=True,
+            fail_on_missing_required=True,
+        )
+    assert excinfo.value.reason_code == "missing_root"
+    assert DEFAULT_KIT_ALIAS in str(excinfo.value)
+
+    # Optional kit may be skipped when not required.
+    optional = build_initial_four_repository_forest(
+        accelerator_root=roots["accelerator"],
+        swissknife_root=roots["swissknife"],
+        kit_root=missing_kit,
+        datasets_root=roots["datasets"],
+        require_all_four=False,
+        fail_on_missing_required=True,
+    )
+    assert DEFAULT_KIT_ALIAS not in {item.alias for item in optional.descriptors}
+    assert any(code.startswith(f"{DEFAULT_KIT_ALIAS}:") for code in optional.reason_codes)
+
+
+def test_replay_forest_id_mismatch_fails_closed(tmp_path: Path) -> None:
+    """Tampered portable forest_id is rejected on replay."""
+
+    roots = _four_root_paths(tmp_path)
+    forest = build_initial_four_repository_forest(
+        accelerator_root=roots["accelerator"],
+        swissknife_root=roots["swissknife"],
+        kit_root=roots["kit"],
+        datasets_root=roots["datasets"],
+    )
+    portable = freeze_repository_forest(forest)
+    portable["forest_id"] = "baguqeera" + ("0" * 50)
+    with pytest.raises(RepositoryForestError) as excinfo:
+        replay_repository_forest(portable)
+    assert excinfo.value.reason_code == "forest_id_mismatch"
+
+
+def test_freeze_replay_round_trip_via_json_file(tmp_path: Path) -> None:
+    """Portable freeze can be serialized to disk and replayed from path."""
+
+    roots = _four_root_paths(tmp_path)
+    forest = build_initial_four_repository_forest(
+        accelerator_root=roots["accelerator"],
+        swissknife_root=roots["swissknife"],
+        kit_root=roots["kit"],
+        datasets_root=roots["datasets"],
+    )
+    portable = freeze_repository_forest(forest)
+    path = tmp_path / "forest-portable.json"
+    path.write_text(json.dumps(portable, sort_keys=True), encoding="utf-8")
+    replayed = replay_repository_forest(path)
+    assert replayed.forest_id == forest.forest_id
