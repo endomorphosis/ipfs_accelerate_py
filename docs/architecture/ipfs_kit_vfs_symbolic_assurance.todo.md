@@ -3475,7 +3475,7 @@ compact references and bounded spans only.
 
 ## VFS-080 Close objective gap: Prove vfs/symbolic-refill-epoch@1 for Refill goals, subgoals, and tasks from fresh symbolic evidence
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
