@@ -62,6 +62,7 @@ class SupervisorLoopConfig:
     watchdog_stale_after_seconds: float = 180.0
     watchdog_log_heartbeat_fallback: bool = False
     watchdog_startup_grace_seconds: float = 30.0
+    watchdog_accept_fresh_child_log: bool = False
     stop_grace_seconds: float = 10.0
     max_restarts: int = 0
     latest_log_path: Optional[Path] = None
@@ -136,6 +137,7 @@ class SupervisorLoop:
                     config.watchdog_log_heartbeat_fallback
                 ),
                 "watchdog_startup_grace_seconds": config.watchdog_startup_grace_seconds,
+                "watchdog_accept_fresh_child_log": config.watchdog_accept_fresh_child_log,
                 "stop_grace_seconds": config.stop_grace_seconds,
                 **dict(config.status_static_fields),
             },
@@ -250,15 +252,52 @@ class SupervisorLoop:
             current_status,
             stale_after_seconds=self.config.watchdog_stale_after_seconds,
         )
-        if heartbeat.stale or (heartbeat.heartbeat_at is None and self.config.watchdog_stale_after_seconds <= 0):
-            if not (
-                heartbeat.stale
+        heartbeat_failed = heartbeat.stale or (
+            heartbeat.heartbeat_at is None
+            and self.config.watchdog_stale_after_seconds <= 0
+        )
+        if heartbeat_failed:
+            log_fallback_enabled = self.config.watchdog_accept_fresh_child_log
+            raw_log_path = getattr(child, "log_path", None) if log_fallback_enabled else None
+            log_path = Path(raw_log_path) if raw_log_path else None
+            if log_path is not None and not log_path.is_absolute():
+                log_path = self.config.spec.repo_root / log_path
+            log_age_seconds: Optional[float] = None
+            if log_path is not None:
+                try:
+                    log_age_seconds = max(
+                        0.0,
+                        time.time() - log_path.stat().st_mtime,
+                    )
+                except OSError:
+                    pass
+            log_fresh = bool(
+                log_age_seconds is not None
+                and log_age_seconds <= self.config.watchdog_stale_after_seconds
+            )
+            if (
+                not log_fresh
+                and heartbeat.stale
                 and self.config.watchdog_log_heartbeat_fallback
-                and self._child_log_heartbeat_is_fresh()
             ):
+                log_fresh = self._child_log_heartbeat_is_fresh()
+            if not log_fresh:
+                detail = heartbeat.to_payload()
+                detail.update(
+                    {
+                        "child_log_path": str(log_path) if log_path else "",
+                        "child_log_age_seconds": (
+                            None
+                            if log_age_seconds is None
+                            else round(log_age_seconds, 3)
+                        ),
+                        "child_log_fresh": False,
+                        "child_log_fallback_enabled": log_fallback_enabled,
+                    }
+                )
                 return SupervisorLoopDecision.recycle(
                     "stale_heartbeat",
-                    detail=heartbeat.to_payload(),
+                    detail=detail,
                 )
         try:
             threshold = float(

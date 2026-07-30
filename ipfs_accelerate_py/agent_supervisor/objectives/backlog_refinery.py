@@ -6951,6 +6951,178 @@ def release_completed_guardrail_blocks(
             packet_dependency_repairs
         )
 
+    newly_retired_retry_task_ids: set[str] = set()
+    source_completed_retry_repairs = {
+        task_id: (source_task_id, failure_kind)
+        for task_id, (
+            source_task_id,
+            failure_kind,
+        ) in retry_budget_repair_sources_by_task_id.items()
+        if task_id
+        and statuses.get(task_id) != "completed"
+        and statuses.get(source_task_id) == "completed"
+    }
+    if source_completed_retry_repairs:
+        todo_text, retired_task_ids = mark_task_statuses_in_todo_text(
+            todo_text,
+            list(source_completed_retry_repairs),
+            task_prefix=task_prefix,
+            status="completed",
+        )
+        if retired_task_ids:
+            todo_path.write_text(todo_text, encoding="utf-8")
+            todo_changed = True
+            statuses.update(
+                {task_id: "completed" for task_id in retired_task_ids}
+            )
+            retired_task_id_set = set(retired_task_ids)
+            newly_retired_retry_task_ids.update(retired_task_id_set)
+            retired_source_task_ids = {
+                source_completed_retry_repairs[task_id][0]
+                for task_id in retired_task_ids
+            }
+            pending_retry_repair_sources.difference_update(
+                retired_source_task_ids
+            )
+            blocked_tasks = [
+                task_id
+                for task_id in blocked_tasks
+                if task_id not in retired_task_id_set
+                and task_id not in retired_source_task_ids
+            ]
+            raw_retry_budget_findings = strategy.get(
+                "retry_budget_findings"
+            )
+            if isinstance(raw_retry_budget_findings, list):
+                strategy["retry_budget_findings"] = [
+                    finding
+                    for finding in raw_retry_budget_findings
+                    if not (
+                        isinstance(finding, Mapping)
+                        and (
+                            str(finding.get("source_task_id") or "")
+                            in retired_source_task_ids
+                            or str(finding.get("follow_up_task_id") or "")
+                            in retired_task_id_set
+                        )
+                    )
+                ]
+            strategy[
+                "last_source_completed_retry_repair_retired_task_ids"
+            ] = retired_task_ids
+            releases.extend(
+                {
+                    "source_task_id": source_completed_retry_repairs[
+                        task_id
+                    ][0],
+                    "follow_up_task_id": task_id,
+                    "guardrail_kind": "retry_budget",
+                    "failure_kind": source_completed_retry_repairs[
+                        task_id
+                    ][1],
+                    "reason": "source_completed_repair_retired",
+                }
+                for task_id in retired_task_ids
+            )
+
+    # A peer lane may have retired the board task after this lane loaded its
+    # strategy.  Reconcile that stale local projection even when no Markdown
+    # status mutation remains for this pass.
+    completed_source_retry_repairs = {
+        task_id: (source_task_id, failure_kind)
+        for task_id, (
+            source_task_id,
+            failure_kind,
+        ) in retry_budget_repair_sources_by_task_id.items()
+        if task_id
+        and statuses.get(task_id) == "completed"
+        and statuses.get(source_task_id) == "completed"
+    }
+    if completed_source_retry_repairs:
+        completed_retry_task_ids = set(completed_source_retry_repairs)
+        completed_retry_source_ids = {
+            source_task_id
+            for source_task_id, _failure_kind
+            in completed_source_retry_repairs.values()
+        }
+        pending_retry_repair_sources.difference_update(
+            completed_retry_source_ids
+        )
+        stale_projection_task_ids: set[str] = set()
+        retained_blocked_tasks: list[str] = []
+        for blocked_task_id in blocked_tasks:
+            if blocked_task_id in completed_retry_task_ids:
+                stale_projection_task_ids.add(blocked_task_id)
+                continue
+            if blocked_task_id in completed_retry_source_ids:
+                stale_projection_task_ids.update(
+                    task_id
+                    for task_id, (
+                        source_task_id,
+                        _failure_kind,
+                    ) in completed_source_retry_repairs.items()
+                    if source_task_id == blocked_task_id
+                )
+                continue
+            retained_blocked_tasks.append(blocked_task_id)
+        blocked_tasks = retained_blocked_tasks
+
+        raw_retry_budget_findings = strategy.get(
+            "retry_budget_findings"
+        )
+        if isinstance(raw_retry_budget_findings, list):
+            retained_retry_budget_findings: list[Any] = []
+            for finding in raw_retry_budget_findings:
+                if not isinstance(finding, Mapping):
+                    retained_retry_budget_findings.append(finding)
+                    continue
+                finding_source_task_id = str(
+                    finding.get("source_task_id") or ""
+                )
+                finding_follow_up_task_id = str(
+                    finding.get("follow_up_task_id") or ""
+                )
+                matching_task_ids = {
+                    task_id
+                    for task_id, (
+                        source_task_id,
+                        _failure_kind,
+                    ) in completed_source_retry_repairs.items()
+                    if task_id == finding_follow_up_task_id
+                    or source_task_id == finding_source_task_id
+                }
+                if matching_task_ids:
+                    stale_projection_task_ids.update(matching_task_ids)
+                    continue
+                retained_retry_budget_findings.append(finding)
+            strategy["retry_budget_findings"] = (
+                retained_retry_budget_findings
+            )
+
+        projection_repair_task_ids = sorted(
+            stale_projection_task_ids - newly_retired_retry_task_ids
+        )
+        if projection_repair_task_ids:
+            strategy[
+                "last_repaired_source_completed_retry_projection_task_ids"
+            ] = projection_repair_task_ids
+            releases.extend(
+                {
+                    "source_task_id": (
+                        completed_source_retry_repairs[task_id][0]
+                    ),
+                    "follow_up_task_id": task_id,
+                    "guardrail_kind": "retry_budget",
+                    "failure_kind": (
+                        completed_source_retry_repairs[task_id][1]
+                    ),
+                    "reason": (
+                        "source_completed_retry_repair_projection_repaired"
+                    ),
+                }
+                for task_id in projection_repair_task_ids
+            )
+
     current_reconciliation_records = reconciliation_guardrail_records(
         reconciliation_result=reconciliation_result,
         cleanup_result=cleanup_result,

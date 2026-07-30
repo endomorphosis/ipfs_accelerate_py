@@ -527,6 +527,44 @@ class PortalImplementationSupervisor:
     def _supervisor_status_path(self) -> Path:
         return self.config.state_dir / f"{self.config.state_prefix}_supervisor_status.json"
 
+    def _write_signal_shutdown_status(
+        self,
+        *,
+        stop_signal: int,
+        cleanup: Mapping[str, Any],
+        interrupted_reconciliation: Mapping[str, Any],
+    ) -> None:
+        """Replace the last running heartbeat with a terminal signal status."""
+
+        status_path = self._supervisor_status_path()
+        payload = load_json_dict(status_path) or {}
+        payload.update(
+            {
+                "schema": (
+                    "ipfs_accelerate_py.agent_supervisor."
+                    "todo_implementation_supervisor.supervisor"
+                ),
+                "status": "stopped",
+                "updated_at": utc_now(),
+                "supervisor_pid": os.getpid(),
+                "supervisor_pid_alive": False,
+                "daemon_pid": None,
+                "daemon_pid_alive": False,
+                "active_worker_count": 0,
+                "active_worker_pids": [],
+                "worker_descendant_count": 0,
+                "stalled_without_active_worker": False,
+                "stop_signal": int(stop_signal),
+                "last_exit_code": 128 + int(stop_signal),
+                "last_recycle_reason": "supervisor_signal_shutdown",
+                "managed_daemon_cleanup": dict(cleanup),
+                "interrupted_implementation_reconciliation": dict(
+                    interrupted_reconciliation
+                ),
+            }
+        )
+        write_json_atomic(status_path, payload)
+
     def _supervisor_maintenance_timeout_seconds(self) -> float:
         return max(
             float(self.config.stale_seconds),
@@ -1916,6 +1954,14 @@ class PortalImplementationSupervisor:
                     )
                 except OSError:
                     logger.exception("Could not record supervisor signal shutdown")
+                try:
+                    self._write_signal_shutdown_status(
+                        stop_signal=stop_signal,
+                        cleanup=cleanup,
+                        interrupted_reconciliation=interrupted_reconciliation,
+                    )
+                except OSError:
+                    logger.exception("Could not record terminal supervisor status")
             if handlers_installed:
                 signal.signal(signal.SIGTERM, previous_term)
                 signal.signal(signal.SIGINT, previous_int)
@@ -2053,6 +2099,7 @@ class PortalImplementationSupervisor:
             # each pass and therefore supplies independent child liveness.
             watchdog_log_heartbeat_fallback=True,
             watchdog_startup_grace_seconds=self._watchdog_startup_grace_seconds(),
+            watchdog_accept_fresh_child_log=True,
             stop_grace_seconds=15.0,
             max_restarts=max(0, int(self.config.max_restarts)),
             status_static_fields={
@@ -8953,6 +9000,13 @@ class PortalImplementationSupervisor:
             max_blocked_tasks=self.config.objective_task_janitor_max_blocked_tasks,
             max_deprioritized_tasks=self.config.objective_task_janitor_max_deprioritized_tasks,
             max_reopened_goals=self.config.objective_task_janitor_max_reopened_goals,
+            # Missing-work reopening relies on completion reconciliation to
+            # retire goals after their finite task has passed.  When an
+            # operator explicitly disables that reconciliation, forcing every
+            # active goal without an open task regenerates already-completed
+            # work forever.  Keep contradiction-driven reopening enabled, but
+            # let the ordinary low-backlog scan discover genuinely new work.
+            reopen_missing_work_goals=self.config.objective_reconcile_goal_completion,
             contradictions=contradictions,
         )
         if result.get("changed"):
@@ -8973,6 +9027,9 @@ class PortalImplementationSupervisor:
             "materialized_blocked_task_ids": list(materialized.get("blocked_task_ids") or []),
             "materialized_reason_task_ids": list(materialized.get("reason_task_ids") or []),
             "reopened_goal_ids": list(result.get("reopened_goal_ids") or []),
+            "missing_work_reopen_enabled": bool(
+                result.get("missing_work_reopen_enabled")
+            ),
             "contradiction_reopened_goal_ids": list(
                 result.get("contradiction_reopened_goal_ids") or []
             ),

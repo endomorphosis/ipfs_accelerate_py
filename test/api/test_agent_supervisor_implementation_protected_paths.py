@@ -194,6 +194,50 @@ def _protected_git_worktree_daemon(
     return daemon, repo, workspace, protected
 
 
+def _temporary_shared_merge(
+    repo: Path,
+    protected: Path,
+    *,
+    protected_content: str | None = None,
+) -> tuple[str, str]:
+    """Advance the shared branch through a merge that a caller can roll back."""
+
+    base = _git(repo, "rev-parse", "HEAD")
+    shared_branch = _git(repo, "branch", "--show-current")
+    _git(repo, "checkout", "-b", "temporary-sibling")
+    sibling_source = repo / "src" / "temporary_sibling.py"
+    sibling_source.parent.mkdir(parents=True)
+    sibling_source.write_text("VALUE = 'temporary'\n", encoding="utf-8")
+    _git(repo, "add", "src/temporary_sibling.py")
+    if protected_content is not None:
+        protected.write_text(protected_content, encoding="utf-8")
+        _git(repo, "add", POLICY_PATH)
+    _git(
+        repo,
+        "-c",
+        "user.name=Fixture",
+        "-c",
+        "user.email=fixture@example.invalid",
+        "commit",
+        "-m",
+        "temporary sibling implementation",
+    )
+    _git(repo, "checkout", shared_branch)
+    _git(
+        repo,
+        "-c",
+        "user.name=Implementation Daemon",
+        "-c",
+        "user.email=implementation-daemon@example.invalid",
+        "merge",
+        "--no-ff",
+        "temporary-sibling",
+        "-m",
+        "temporary sibling merge",
+    )
+    return base, _git(repo, "rev-parse", "HEAD")
+
+
 def _persist_active_attempt_state(
     daemon: PortalImplementationDaemon,
     *,
@@ -674,22 +718,9 @@ def test_crash_snapshot_reconciliation_blocks_before_merge_consumption(
 def test_crash_snapshot_reconciliation_accepts_device_renumbering_only(
     tmp_path: Path,
 ) -> None:
-    protected = tmp_path / POLICY_PATH
-    protected.parent.mkdir(parents=True)
-    protected.write_text("unchanged\n", encoding="utf-8")
-    daemon = _daemon(tmp_path)
-    daemon.worktree_root = tmp_path / "worktrees"
-    workspace = daemon.worktree_root / "attempt"
-    workspace.mkdir(parents=True)
-    # Ephemeral workspaces must have a stable Git HEAD for protected-path fences.
-    _git(workspace, "init")
-    _git(workspace, "config", "user.email", "test@example.com")
-    _git(workspace, "config", "user.name", "test")
-    workspace_protected = workspace / POLICY_PATH
-    workspace_protected.parent.mkdir(parents=True)
-    workspace_protected.write_text("unchanged\n", encoding="utf-8")
-    _git(workspace, "add", POLICY_PATH)
-    _git(workspace, "commit", "-m", "seed protected path")
+    daemon, _repo, workspace, _protected = _protected_git_worktree_daemon(
+        tmp_path
+    )
     daemon._require_implementation_protected_snapshot(
         task=_task(outputs=["src/example.py"]),
         attempt=1,
@@ -1048,6 +1079,292 @@ def test_ephemeral_fence_accepts_concurrent_daemon_owned_completion_commit(
     assert len(accepted) == 1
     assert accepted[0]["before_head"] != accepted[0]["after_head"]
     assert accepted[0]["protected_paths"] == [POLICY_PATH]
+
+
+def test_ephemeral_fence_accepts_trusted_update_after_temporary_merge_rollback(
+    tmp_path: Path,
+) -> None:
+    daemon, repo, workspace, protected = _protected_git_worktree_daemon(tmp_path)
+    base, before_head = _temporary_shared_merge(repo, protected)
+    task = _task(outputs=["src/example.py"])
+    before = daemon._require_implementation_protected_snapshot(
+        task=task,
+        attempt=1,
+        workspace_path=workspace,
+    )
+
+    _git(repo, "reset", "--hard", base)
+    protected.write_text("completed by another lane\n", encoding="utf-8")
+    _git(repo, "add", POLICY_PATH)
+    _git(
+        repo,
+        "-c",
+        "user.name=Implementation Daemon",
+        "-c",
+        "user.email=implementation-daemon@example.invalid",
+        "commit",
+        "-m",
+        "EX-OTHER: mark todo completed",
+    )
+    after_head = _git(repo, "rev-parse", "HEAD")
+    ancestry = subprocess.run(
+        ["git", "merge-base", "--is-ancestor", before_head, after_head],
+        cwd=repo,
+        check=False,
+    )
+    assert ancestry.returncode == 1
+
+    violation = daemon._implementation_protected_path_violation(
+        task=task,
+        attempt=1,
+        workspace_path=workspace,
+        before=before,
+    )
+
+    assert violation == {}
+    assert not daemon._implementation_protected_incident_path().exists()
+    events = [
+        json.loads(line)
+        for line in daemon.events_path.read_text(encoding="utf-8").splitlines()
+    ]
+    accepted = [
+        event
+        for event in events
+        if event["type"]
+        == "implementation_protected_path_concurrent_update_accepted"
+    ]
+    assert len(accepted) == 1
+    assert accepted[0]["before_head"] == before_head
+    assert accepted[0]["after_head"] == after_head
+    assert accepted[0]["history_kind"] == "diverged_trusted_after_side"
+    assert accepted[0]["merge_base"]
+    assert accepted[0]["history_protected_paths"] == [POLICY_PATH]
+
+
+def test_ephemeral_fence_rejects_diverged_before_side_protected_change(
+    tmp_path: Path,
+) -> None:
+    daemon, repo, workspace, protected = _protected_git_worktree_daemon(tmp_path)
+    base, _before_head = _temporary_shared_merge(
+        repo,
+        protected,
+        protected_content="temporary protected change\n",
+    )
+    task = _task(outputs=["src/example.py"])
+    before = daemon._require_implementation_protected_snapshot(
+        task=task,
+        attempt=1,
+        workspace_path=workspace,
+    )
+
+    _git(repo, "reset", "--hard", base)
+    protected.write_text("completed by another lane\n", encoding="utf-8")
+    _git(repo, "add", POLICY_PATH)
+    _git(
+        repo,
+        "-c",
+        "user.name=Implementation Daemon",
+        "-c",
+        "user.email=implementation-daemon@example.invalid",
+        "commit",
+        "-m",
+        "EX-OTHER: mark todo completed",
+    )
+
+    violation = daemon._implementation_protected_path_violation(
+        task=task,
+        attempt=1,
+        workspace_path=workspace,
+        before=before,
+    )
+
+    assert violation["reason"] == "implementation_protected_path_mutated"
+    assert violation["protected_paths"] == [POLICY_PATH]
+    assert daemon._implementation_protected_incident_path().exists()
+
+
+def test_ephemeral_fence_rejects_diverged_untrusted_after_side_commit(
+    tmp_path: Path,
+) -> None:
+    daemon, repo, workspace, protected = _protected_git_worktree_daemon(tmp_path)
+    base, _before_head = _temporary_shared_merge(repo, protected)
+    task = _task(outputs=["src/example.py"])
+    before = daemon._require_implementation_protected_snapshot(
+        task=task,
+        attempt=1,
+        workspace_path=workspace,
+    )
+
+    _git(repo, "reset", "--hard", base)
+    protected.write_text("untrusted update\n", encoding="utf-8")
+    _git(repo, "add", POLICY_PATH)
+    _git(
+        repo,
+        "-c",
+        "user.name=Untrusted",
+        "-c",
+        "user.email=untrusted@example.invalid",
+        "commit",
+        "-m",
+        "change protected policy",
+    )
+
+    violation = daemon._implementation_protected_path_violation(
+        task=task,
+        attempt=1,
+        workspace_path=workspace,
+        before=before,
+    )
+
+    assert violation["reason"] == "implementation_protected_path_mutated"
+    assert violation["protected_paths"] == [POLICY_PATH]
+    assert daemon._implementation_protected_incident_path().exists()
+
+
+def test_latched_diverged_incident_auto_clears_with_preserved_trusted_proof(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon, repo, workspace, protected = _protected_git_worktree_daemon(tmp_path)
+    base, _before_head = _temporary_shared_merge(repo, protected)
+    task = _task(outputs=["src/example.py"])
+    before = daemon._require_implementation_protected_snapshot(
+        task=task,
+        attempt=1,
+        workspace_path=workspace,
+    )
+
+    _git(repo, "reset", "--hard", base)
+    protected.write_text("completed by another lane\n", encoding="utf-8")
+    _git(repo, "add", POLICY_PATH)
+    _git(
+        repo,
+        "-c",
+        "user.name=Implementation Daemon",
+        "-c",
+        "user.email=implementation-daemon@example.invalid",
+        "commit",
+        "-m",
+        "EX-OTHER: mark todo completed",
+    )
+
+    authorizer = daemon._authorized_concurrent_protected_path_update
+    monkeypatch.setattr(
+        daemon,
+        "_authorized_concurrent_protected_path_update",
+        lambda **_kwargs: {},
+    )
+    violation = daemon._implementation_protected_path_violation(
+        task=task,
+        attempt=1,
+        workspace_path=workspace,
+        before=before,
+    )
+    assert violation["reason"] == "implementation_protected_path_mutated"
+    assert daemon._implementation_protected_incident_path().exists()
+    monkeypatch.setattr(
+        daemon,
+        "_authorized_concurrent_protected_path_update",
+        authorizer,
+    )
+
+    result = daemon._reconcile_implementation_protected_path_fence()
+
+    assert result["blocked"] is False
+    assert result["reason"] == (
+        "implementation_protected_path_incident_auto_cleared"
+    )
+    assert not daemon._implementation_protected_incident_path().exists()
+    assert not daemon._implementation_protected_active_snapshot_path().exists()
+    receipt_path = Path(result["receipt_path"])
+    receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    assert receipt["schema"] == (
+        "implementation-protected-path-auto-clearance-v1"
+    )
+    assert receipt["incident"]["reason"] == (
+        "implementation_protected_path_mutated"
+    )
+    assert receipt["active_snapshot"]["task_id"] == task.task_id
+    assert receipt["authorization"]["history_kind"] == (
+        "diverged_trusted_after_side"
+    )
+    events = [
+        json.loads(line)
+        for line in daemon.events_path.read_text(encoding="utf-8").splitlines()
+    ]
+    assert events[-1]["type"] == (
+        "implementation_protected_path_incident_auto_cleared"
+    )
+
+
+def test_latched_diverged_incident_with_malformed_attempt_stays_latched(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon, repo, workspace, protected = _protected_git_worktree_daemon(tmp_path)
+    base, _before_head = _temporary_shared_merge(repo, protected)
+    task = _task(outputs=["src/example.py"])
+    before = daemon._require_implementation_protected_snapshot(
+        task=task,
+        attempt=1,
+        workspace_path=workspace,
+    )
+
+    _git(repo, "reset", "--hard", base)
+    protected.write_text("completed by another lane\n", encoding="utf-8")
+    _git(repo, "add", POLICY_PATH)
+    _git(
+        repo,
+        "-c",
+        "user.name=Implementation Daemon",
+        "-c",
+        "user.email=implementation-daemon@example.invalid",
+        "commit",
+        "-m",
+        "EX-OTHER: mark todo completed",
+    )
+
+    monkeypatch.setattr(
+        daemon,
+        "_authorized_concurrent_protected_path_update",
+        lambda **_kwargs: {},
+    )
+    violation = daemon._implementation_protected_path_violation(
+        task=task,
+        attempt=1,
+        workspace_path=workspace,
+        before=before,
+    )
+    assert violation["reason"] == "implementation_protected_path_mutated"
+
+    incident_path = daemon._implementation_protected_incident_path()
+    active_path = daemon._implementation_protected_active_snapshot_path()
+    incident = json.loads(incident_path.read_text(encoding="utf-8"))
+    active = json.loads(active_path.read_text(encoding="utf-8"))
+    incident["attempt"] = "malformed"
+    active["attempt"] = "malformed"
+    incident_path.write_text(
+        json.dumps(incident, sort_keys=True),
+        encoding="utf-8",
+    )
+    active_path.write_text(
+        json.dumps(active, sort_keys=True),
+        encoding="utf-8",
+    )
+    incident_before = incident_path.read_bytes()
+    active_before = active_path.read_bytes()
+
+    result = daemon._reconcile_implementation_protected_path_fence()
+
+    assert result["blocked"] is True
+    assert result["reason"] == "implementation_protected_path_incident_latched"
+    assert incident_path.read_bytes() == incident_before
+    assert active_path.read_bytes() == active_before
+    assert not list(
+        incident_path.parent.glob(
+            "implementation-protected-path-auto-clearance-*.json"
+        )
+    )
 
 
 def test_ephemeral_fence_accepts_tagged_generated_board_commit(
@@ -3304,11 +3621,19 @@ def test_stale_lock_cleanup_preserves_implementation_lease_protocol_files(
     update_guard_path = (
         tmp_path / "state" / ".implementation.lock.update.lock"
     )
+    event_log_lock_path = daemon.events_path.with_name(
+        f".{daemon.events_path.name}.lock"
+    )
+    lane_event_log_lock_path = (
+        tmp_path / "state" / ".lane_supervisor_events.jsonl.lock"
+    )
     generic_lock_path = tmp_path / "state" / "merge-repair.lock"
     implementation_lock_path.parent.mkdir(parents=True)
     for path in (
         implementation_lock_path,
         update_guard_path,
+        event_log_lock_path,
+        lane_event_log_lock_path,
         generic_lock_path,
     ):
         path.write_text("stale\n", encoding="utf-8")
@@ -3318,6 +3643,8 @@ def test_stale_lock_cleanup_preserves_implementation_lease_protocol_files(
 
     assert implementation_lock_path.exists()
     assert update_guard_path.exists()
+    assert event_log_lock_path.exists()
+    assert lane_event_log_lock_path.exists()
     assert generic_lock_path.exists()
     managed = {
         item["lock_path"]
@@ -3327,6 +3654,15 @@ def test_stale_lock_cleanup_preserves_implementation_lease_protocol_files(
     assert managed == {
         str(implementation_lock_path),
         str(update_guard_path),
+    }
+    event_log_managed = {
+        item["lock_path"]
+        for item in result["skipped"]
+        if item.get("reason") == "managed_by_event_log_flock_protocol"
+    }
+    assert event_log_managed == {
+        str(event_log_lock_path),
+        str(lane_event_log_lock_path),
     }
     assert {
         item["lock_path"]
@@ -3369,7 +3705,7 @@ def test_stale_lock_cleanup_preserves_flocks_and_removes_git_transaction_locks(
     assert {
         item["lock_path"]
         for item in result["skipped"]
-        if item.get("reason") == "persistent_state_flock"
+        if item.get("reason") == "managed_by_event_log_flock_protocol"
     } == {str(path) for path in event_lock_paths}
     assert {item["lock_path"] for item in result["removed"]} == {
         str(path) for path in transient_git_lock_paths
