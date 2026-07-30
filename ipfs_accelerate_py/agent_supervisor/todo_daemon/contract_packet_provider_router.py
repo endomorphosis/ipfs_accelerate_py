@@ -1479,6 +1479,12 @@ class ImplementationProviderRouter:
         identity = str(getattr(provider, "provider_identity", "") or "").strip()
         return identity
 
+    @staticmethod
+    def _provider_model_identity(provider: ProviderCallable | None) -> str:
+        if provider is None:
+            return ""
+        return str(getattr(provider, "model_identity", "") or "").strip()
+
     @classmethod
     def _providers_are_independent(
         cls,
@@ -1495,12 +1501,51 @@ class ImplementationProviderRouter:
             implementation_provider
         )
         review_identity = cls._provider_execution_identity(review_provider)
+        implementation_model = cls._provider_model_identity(
+            implementation_provider
+        )
+        review_model = cls._provider_model_identity(review_provider)
         if require_attested_identity and (
-            not implementation_identity or not review_identity
+            not implementation_identity
+            or not review_identity
+            or not implementation_model
+            or not review_model
         ):
             return False
-        if implementation_identity and review_identity:
-            return implementation_identity != review_identity
+        if implementation_identity and review_identity and (
+            implementation_identity == review_identity
+        ):
+            return False
+        if implementation_model and review_model and (
+            implementation_model == review_model
+        ):
+            return False
+        return True
+
+    @staticmethod
+    def _attempts_are_independent(
+        implementation_attempt: ProviderAttempt | None,
+        review_attempt: ProviderAttempt | None,
+    ) -> bool:
+        if implementation_attempt is None or review_attempt is None:
+            return False
+        for attribute in (
+            "provider_identity",
+            "model_identity",
+            "session_identity",
+        ):
+            implementation_value = str(
+                getattr(implementation_attempt, attribute, "") or ""
+            ).strip()
+            review_value = str(
+                getattr(review_attempt, attribute, "") or ""
+            ).strip()
+            if (
+                not implementation_value
+                or not review_value
+                or implementation_value == review_value
+            ):
+                return False
         return True
 
     @property
@@ -2169,6 +2214,22 @@ class ImplementationProviderRouter:
                 review=review,
             )
 
+        if self.require_independent_review_for_write:
+            attempt_by_role = {item.role: item for item in attempts}
+            if not self._attempts_are_independent(
+                attempt_by_role.get(ProviderRole.GROK_IMPLEMENT),
+                attempt_by_role.get(ProviderRole.CODEX_REVIEW),
+            ):
+                return self._result(
+                    status=RouteStatus.REJECTED,
+                    reason_code=ProviderReason.PROVIDERS_NOT_INDEPENDENT.value,
+                    packet_id=packet_id,
+                    packet=packet_identity,
+                    implementation_proposal=grok,
+                    review_proposal=review,
+                    attempts=attempts,
+                )
+
         decision = str(review.payload.get("decision") or "approve").strip().casefold()
         if decision in {"reject", "decline", "changes_required"}:
             return self._result(
@@ -2621,8 +2682,10 @@ def validate_provider_execution_receipt(
             or grok_identity == codex_identity
             or not grok_model
             or not codex_model
+            or grok_model == codex_model
             or not grok_session
             or not codex_session
+            or grok_session == codex_session
         ):
             return None, ProviderReason.PROVIDERS_NOT_INDEPENDENT.value
         implementation_digest = str(

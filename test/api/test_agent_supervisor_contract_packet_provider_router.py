@@ -804,6 +804,41 @@ def test_strict_production_mode_rejects_identical_provider_identities() -> None:
     assert calls == []
 
 
+def test_strict_production_mode_rejects_shared_session_before_write() -> None:
+    writes = []
+
+    def grok(request):
+        return _grok(request)
+
+    def codex(request):
+        return _codex(request)
+
+    grok.provider_identity = "mcp++:xai:grok-session-test"
+    grok.model_identity = "grok-session-test"
+    grok.last_session_identity = "session:shared"
+    codex.provider_identity = "mcp++:openai:codex-session-test"
+    codex.model_identity = "codex-session-test"
+    codex.last_session_identity = "session:shared"
+
+    result = ImplementationProviderRouter(
+        grok_provider=grok,
+        codex_provider=codex,
+        admission_gate=_accept,
+        writer=lambda proposal, lease: writes.append((proposal, lease)),
+        require_independent_review_for_write=True,
+    ).route(
+        _Packet(),
+        current_snapshot_id=SNAPSHOT,
+        apply=True,
+        writer_lease_id="lease:shared-session",
+    )
+
+    assert result.status is RouteStatus.REJECTED
+    assert result.reason_code == ProviderReason.PROVIDERS_NOT_INDEPENDENT.value
+    assert result.write_performed is False
+    assert writes == []
+
+
 def test_strict_production_mode_never_writes_without_successful_review() -> None:
     def degraded_codex(_request):
         raise RuntimeError("review transport failed")
