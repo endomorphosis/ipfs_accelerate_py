@@ -2513,3 +2513,19 @@ compact references and bounded spans only.
 - Candidate kind: validation_gate
 - Todo vector key: 291a2caf1f452b86
 - Acceptance: Objective scan filed this gap for VFS-G020. Use evidence in /home/barberb/.local/state/ipfs_accelerate_py/ipfs_kit_vfs_symbolic_assurance/projection/discovery/2026-07-30-vfs-064-objective-gap-922d439dc0c6.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (objective validation repair), and keep the supervisor-fed backlog aligned with the objective heap.  Split inventory, language adapters, and incremental persistence by conflict domain.
+
+## VFS-065 Resolve 3 preflight-conflicting backlogged worktree merges
+
+- Status: blocked
+- Completion: manual
+- Is schedulable: false
+- Review only: true
+- Blocked reason: operator_reconciliation_required
+- Priority: P1
+- Track: ops
+- Fingerprint: 8157ddba1d6022f76c604e744d80397904765334
+- Dedupe key: reconciliation_guardrail:preflight_merge_conflict
+- Depends on:
+- Outputs: /home/barberb/.local/state/ipfs_accelerate_py/ipfs_kit_vfs_symbolic_assurance/state/discovery, docs/architecture/ipfs_kit_vfs_symbolic_assurance.todo.md
+- Validation: test -f /home/barberb/.local/state/ipfs_accelerate_py/ipfs_kit_vfs_symbolic_assurance/state/discovery/2026-07-30-vfs-065-reconciliation-8157ddba1d60.md
+- Acceptance: Reconciliation guardrail filed this because 3 branch or worktree cleanup candidates are blocked by preflight_merge_conflict. This task is intentionally operator-gated because unknown dirty checkout content must not be committed, stashed, or discarded automatically. Use evidence and the machine-readable reconciliation plan in /home/barberb/.local/state/ipfs_accelerate_py/ipfs_kit_vfs_symbolic_assurance/state/discovery/2026-07-30-vfs-065-reconciliation-8157ddba1d60.md, reconcile the dirty checkout or dirty worktree group deliberately, then rerun the supervisor cleanup/reconciliation pass and confirm that the blocked candidate count decreases.
