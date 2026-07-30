@@ -8951,6 +8951,109 @@ def test_implementation_daemon_defers_provider_quota_without_consuming_attempt(t
     assert not any(event["type"] == "implementation_finished" for event in events)
 
 
+def test_production_provider_operational_failure_does_not_consume_attempt(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    todo_path = repo / "todo.md"
+    todo_path.write_text("# Todos\n", encoding="utf-8")
+    (repo / "target.py").write_text("VALUE = 1\n", encoding="utf-8")
+    _git(repo, "add", "todo.md", "target.py")
+    _git(repo, "commit", "-m", "seed")
+    state_path = repo / "state" / "task_state.json"
+    monkeypatch.setenv(
+        "IPFS_ACCELERATE_AGENT_PRODUCTION_PROVIDER_ROUTE",
+        "1",
+    )
+    monkeypatch.setenv(
+        "IPFS_ACCELERATE_AGENT_PROVIDER_CAPACITY_BACKOFF_SECONDS",
+        "60",
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_path,
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+        use_ephemeral_worktree=True,
+        worktree_root=repo / "worktrees",
+        worktree_pool_enabled=False,
+        production_grok_provider=lambda _request: {},
+        production_codex_provider=lambda _request: {},
+    )
+    task = PortalTask(
+        task_id="ACCEL-001",
+        title="Retry malformed production response",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="ops",
+        outputs=["target.py"],
+        validation=["true"],
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_build_implementation_prompt",
+        lambda *_args, **_kwargs: "{}",
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_persist_implementation_context_receipt",
+        lambda *_args, **_kwargs: repo / "state" / "context.json",
+    )
+    monkeypatch.setattr(
+        daemon,
+        "run_production_model_assisted_route",
+        lambda *_args, **_kwargs: {
+            "route_result": SimpleNamespace(
+                reason_code="provider_response_malformed"
+            ),
+            "event": {
+                "reason_code": "provider_response_malformed",
+                "provider_result_admitted": False,
+                "review_presence": "review_absent",
+                "write_performed": False,
+            },
+            "disposition": "pending_not_admitted",
+            "disposition_reason": "admitted_review_chain_unbound",
+            "pending": True,
+            "returncode": 1,
+        },
+    )
+
+    result = daemon._run_implementation(task, TodoTaskState())
+    persisted = TodoTaskState.load(state_path)
+    canonical_task_cid = daemon._canonical_ref(task)
+
+    assert result["deferred"] is True
+    assert result["reason"] == "production_provider_route_deferred"
+    assert result["provider_reason_code"] == "provider_response_malformed"
+    assert result["attempt_consumed"] is False
+    assert persisted.implementation_attempts == {}
+    assert persisted.implementation_attempts_by_cid == {}
+    assert daemon.task_queue.is_cooled_down(canonical_task_cid)
+    events = [
+        json.loads(line)
+        for line in (repo / "state" / "events.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    assert any(
+        event["type"] == "implementation_retry_deferred"
+        and event.get("provider_reason_code") == "provider_response_malformed"
+        and event.get("attempt_consumed") is False
+        for event in events
+    )
+
+
 def test_provider_capacity_backoff_passes_do_not_grow_state_or_events(
     tmp_path,
     monkeypatch,
@@ -12009,6 +12112,83 @@ def test_implementation_daemon_defers_merge_reconciliation_when_main_checkout_di
     events = [json.loads(line) for line in (repo / "state" / "events.jsonl").read_text(encoding="utf-8").splitlines()]
     assert events[-1]["type"] == "merge_reconciliation_deferred"
     assert events[-1]["reason"] == "main_checkout_dirty"
+
+
+def test_merge_reconciliation_ignores_dirty_root_for_managed_target_worktree(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(
+        ["git", "init", "-b", "main"],
+        cwd=repo,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.email", "agent@example.invalid"],
+        cwd=repo,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "Agent"],
+        cwd=repo,
+        check=True,
+    )
+    (repo / "README.md").write_text("clean\n", encoding="utf-8")
+    subprocess.run(["git", "add", "README.md"], cwd=repo, check=True)
+    subprocess.run(
+        ["git", "commit", "-m", "Initial"],
+        cwd=repo,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "branch", "agent/target"],
+        cwd=repo,
+        check=True,
+    )
+    (repo / "dirty.txt").write_text("operator work\n", encoding="utf-8")
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+        merge_target_branch="agent/target",
+    )
+    event = {
+        "type": "implementation_finished",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "task_id": "ACCEL-002",
+        "attempt": 1,
+        "branch": "implementation/accel-002",
+        "implementation_commit": "abc123",
+        "title": "Recover failed merge",
+    }
+    merge_attempts: list[str] = []
+
+    daemon._failed_merge_candidates = lambda skip_task_ids=None: [event]  # type: ignore[method-assign]
+    daemon._git_ref_is_ancestor = lambda ancestor, descendant: False  # type: ignore[method-assign]
+    daemon._git_ref_exists = lambda ref: True  # type: ignore[method-assign]
+
+    def merge(branch, task, attempt, **_kwargs):
+        merge_attempts.append(branch)
+        return {
+            "attempted": True,
+            "merged": False,
+            "reason": "fixture_merge_result",
+        }
+
+    daemon._merge_branch_to_main = merge  # type: ignore[method-assign]
+
+    result = daemon._reconcile_failed_merges()
+
+    assert merge_attempts == ["implementation/accel-002"]
+    assert all(item.get("reason") != "main_checkout_dirty" for item in result)
+    assert (repo / "dirty.txt").read_text(encoding="utf-8") == "operator work\n"
 
 
 def test_implementation_daemon_preserves_nonconflicting_git_sync_recovery_note(tmp_path):

@@ -202,6 +202,7 @@ def test_registration_is_cold_bounded_and_includes_compatibility_aliases(
     embedding_schema = registry.tools["embeddings_generate"]["input_schema"]
     assert text_schema["additionalProperties"] is False
     assert text_schema["properties"]["timeout"]["maximum"] == 120.0
+    assert text_schema["properties"]["response_schema"]["type"] == "object"
     assert (
         embedding_schema["properties"]["texts"]["maxItems"]
         == text_embedding.MAX_INPUT_ITEMS
@@ -275,6 +276,95 @@ def test_text_routes_through_llm_router_with_revision_receipt_and_mcp_parity(
     assert calls[0][1]["model_name"] == "chat-model"
     assert calls[0][1]["allow_local_fallback"] is False
     assert calls[0][1]["disable_model_retry"] is True
+
+
+def test_text_structured_cli_route_is_schema_bound_and_isolated(
+    install_manager,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    install_manager(
+        _snapshot(
+            _records(
+                "grok_cli",
+                "llm_router",
+                Operation.TEXT_GENERATE,
+                model_name="grok-4.5",
+            ),
+            _records(
+                "text-provider",
+                "llm_router",
+                Operation.TEXT_GENERATE,
+                model_name="chat-model",
+            ),
+        )
+    )
+    calls: list[Dict[str, Any]] = []
+
+    def fake_generate(_prompt: str, **kwargs: Any) -> str:
+        calls.append(dict(kwargs))
+        return '{"proposal":{"patch":"READY"}}'
+
+    monkeypatch.setattr(text_embedding.llm_router, "generate_text", fake_generate)
+    monkeypatch.setattr(
+        text_embedding.llm_router,
+        "get_last_generation_trace",
+        lambda: {
+            "effective_provider_name": "grok_cli",
+            "effective_model_name": "grok-4.5",
+            "fallback_used": False,
+        },
+    )
+    schema = {
+        "type": "object",
+        "properties": {
+            "proposal": {
+                "type": "object",
+                "properties": {"patch": {"type": "string"}},
+                "required": ["patch"],
+                "additionalProperties": False,
+            }
+        },
+        "required": ["proposal"],
+        "additionalProperties": False,
+    }
+
+    result = _run(
+        text_embedding.llm_generate(
+            "Return one proposal.",
+            provider="grok_cli",
+            model="grok-4.5",
+            response_schema=schema,
+        )
+    )
+
+    assert result["success"] is True
+    assert calls[0]["isolated_workdir"] is True
+    assert calls[0]["response_schema"] == schema
+
+    invalid = _run(
+        text_embedding.llm_generate(
+            "Return one proposal.",
+            provider="grok_cli",
+            model="grok-4.5",
+            response_schema={
+                "type": "object",
+                "$ref": "https://example.invalid/schema.json",
+            },
+        )
+    )
+    assert invalid["error"]["code"] == "invalid_request"
+    assert len(calls) == 1
+
+    unsupported = _run(
+        text_embedding.llm_generate(
+            "Return one proposal.",
+            provider="text-provider",
+            model="chat-model",
+            response_schema=schema,
+        )
+    )
+    assert unsupported["error"]["code"] == "invalid_request"
+    assert len(calls) == 1
 
 
 def test_embeddings_route_through_canonical_router_and_validate_dimensions(

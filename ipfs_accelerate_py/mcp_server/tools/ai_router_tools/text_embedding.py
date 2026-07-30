@@ -30,6 +30,15 @@ MAX_STREAM_CHUNKS = 1_024
 MAX_RECEIPT_CANDIDATES = 16
 MAX_POLICY_ENTRIES = 64
 MAX_SELECTOR_BYTES = 256
+_STRUCTURED_ISOLATED_CLI_PROVIDERS = frozenset(
+    {
+        "codex",
+        "codex_cli",
+        "grok",
+        "grok_cli",
+        "xai_cli",
+    }
+)
 
 _TEXT_OPERATION = "text.generate"
 _EMBEDDING_OPERATION = "embedding.generate"
@@ -115,6 +124,19 @@ def _bounded_policy(value: Any) -> Optional[Dict[str, Any]]:
     # ResolutionRequest performs canonical key and scalar validation.  Copying
     # here prevents a caller from mutating the constraints during resolution.
     return dict(value)
+
+
+def _bounded_response_schema(value: Any) -> Optional[Dict[str, Any]]:
+    if value is None:
+        return None
+    try:
+        normalized = llm_router._normalize_cli_response_schema(value)
+    except llm_router.LLMRouterError as exc:
+        raise _RequestError(
+            "invalid_request",
+            "response_schema must be a bounded, self-contained object schema.",
+        ) from exc
+    return dict(normalized) if normalized is not None else None
 
 
 def _bounded_timeout(value: Any) -> float:
@@ -586,6 +608,7 @@ async def llm_generate(
     allow_fallback: bool = False,
     stream: bool = False,
     max_stream_chunks: int = MAX_STREAM_CHUNKS,
+    response_schema: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Resolve and invoke ``llm_router.generate_text`` with bounded I/O."""
 
@@ -599,6 +622,7 @@ async def llm_generate(
         provider_value = _bounded_selector(provider, "provider")
         device_value = _bounded_selector(device, "device")
         policy_value = _bounded_policy(policy)
+        response_schema_value = _bounded_response_schema(response_schema)
         timeout_value = _bounded_timeout(timeout)
         output_limit = _bounded_output_limit(max_output_bytes)
         _validate_streaming(stream, max_stream_chunks)
@@ -651,8 +675,22 @@ async def llm_generate(
             output_limit = min(output_limit, catalog_output_limit)
         invocation_provider = _invocation_provider(selected)
         invocation_model = _invocation_model(selected)
+        invocation_provider_key = invocation_provider.strip().casefold()
+        structured_cli = (
+            invocation_provider_key in _STRUCTURED_ISOLATED_CLI_PROVIDERS
+        )
+        if response_schema_value is not None and not structured_cli:
+            raise _RequestError(
+                "invalid_request",
+                "response_schema is supported only by isolated CLI providers.",
+            )
 
         def call() -> Tuple[Any, Any]:
+            provider_options: Dict[str, Any] = {}
+            if structured_cli:
+                provider_options["isolated_workdir"] = True
+                if response_schema_value is not None:
+                    provider_options["response_schema"] = response_schema_value
             value = llm_router.generate_text(
                 prompt_value,
                 model_name=invocation_model,
@@ -661,6 +699,7 @@ async def llm_generate(
                 disable_model_retry=True,
                 max_tokens=max_tokens,
                 temperature=float(temperature),
+                **provider_options,
             )
             return value, getattr(llm_router, "get_last_generation_trace", None)
 
@@ -1100,6 +1139,11 @@ def register_native_ai_router_tools(manager: Any) -> None:
                 "minimum": 0,
                 "maximum": 2,
                 "default": 0.7,
+            },
+            "response_schema": {
+                "type": "object",
+                "maxProperties": 64,
+                "additionalProperties": True,
             },
         }
     )
