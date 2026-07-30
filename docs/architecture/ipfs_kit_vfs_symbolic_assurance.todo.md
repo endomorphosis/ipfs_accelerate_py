@@ -3006,7 +3006,7 @@ compact references and bounded spans only.
 
 ## VFS-073 Close objective gap: Prove vfs/canonical-operation-matrix@1 for Establish and check the canonical IPFS Kit VFS behavioral contract
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
