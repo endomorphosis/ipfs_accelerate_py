@@ -44,6 +44,48 @@ CONTRACT_REPAIR_PACKET_VERSION: Final[int] = 1
 COMPACT_REPAIR_PACKET_EVIDENCE: Final[str] = "vfs/compact-repair-packet@1"
 DELTA_REPAIR_CONTEXT_EVIDENCE: Final[str] = "vfs/delta-repair-context@1"
 
+# Objective-heap discovery anchors for VFS-G110 / VFS-078.
+# Labels never enter packet_id / delta_id content identities.
+OBJECTIVE_GOAL_ID: Final[str] = "VFS-G110"
+OBJECTIVE_PARENT_GOAL_ID: Final[str] = "VFS-G000"
+OBJECTIVE_TASK_ID: Final[str] = "VFS-078"
+OBJECTIVE_DOMAIN_EVIDENCE_TERMS: Final[tuple[str, ...]] = (
+    COMPACT_REPAIR_PACKET_EVIDENCE,
+    DELTA_REPAIR_CONTEXT_EVIDENCE,
+)
+COMPACT_REPAIR_PACKET_CLAIM_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/compact-repair-packet-claim@1"
+)
+DELTA_REPAIR_CONTEXT_CLAIM_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/delta-repair-context-claim@1"
+)
+REPAIR_CONTEXT_MEASUREMENT_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/repair-context-measurement@1"
+)
+COMPACT_REPAIR_PACKET_INVARIANTS: Final[tuple[str, ...]] = (
+    "default canonical JSON is at most 16 KiB plus bounded source spans",
+    "required authority and acceptance fields survive provider budgets",
+    "expansion is handle-based; full source/AST/graph/proof/witness stay out",
+    "model output remains a proposal without semantic or completion authority",
+)
+DELTA_REPAIR_CONTEXT_INVARIANTS: Final[tuple[str, ...]] = (
+    "delta retry binds prior decision and packet identity",
+    "retries transmit only changed or explicitly requested evidence",
+    "stale parent bindings and expansion handles fail closed",
+    "reconstruction preserves the invariant core from the parent packet",
+)
+
+# Keep exact-text discovery anchors aligned with the objective heap.
+assert COMPACT_REPAIR_PACKET_EVIDENCE == "vfs/compact-repair-packet@1"
+assert DELTA_REPAIR_CONTEXT_EVIDENCE == "vfs/delta-repair-context@1"
+assert OBJECTIVE_GOAL_ID == "VFS-G110"
+assert OBJECTIVE_PARENT_GOAL_ID == "VFS-G000"
+assert OBJECTIVE_TASK_ID == "VFS-078"
+assert OBJECTIVE_DOMAIN_EVIDENCE_TERMS == (
+    "vfs/compact-repair-packet@1",
+    "vfs/delta-repair-context@1",
+)
+
 REPAIR_PACKET_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/contract-repair-packet@1"
 )
@@ -2694,11 +2736,435 @@ def compile_contract_repair_packet(
     return (compiler or _DEFAULT_COMPILER).compile(request)
 
 
+# ---------------------------------------------------------------------------
+# Objective-heap evidence surface (VFS-G110 / VFS-078)
+# ---------------------------------------------------------------------------
+
+
+def compact_repair_packet_evidence() -> str:
+    """Return the closed ``vfs/compact-repair-packet@1`` evidence term."""
+
+    return COMPACT_REPAIR_PACKET_EVIDENCE
+
+
+def delta_repair_context_evidence() -> str:
+    """Return the closed ``vfs/delta-repair-context@1`` evidence term."""
+
+    return DELTA_REPAIR_CONTEXT_EVIDENCE
+
+
+def compact_repair_packet_evidence_terms() -> tuple[str, ...]:
+    """Return the compact-packet evidence surface for discovery scanners."""
+
+    return (COMPACT_REPAIR_PACKET_EVIDENCE,)
+
+
+def delta_repair_context_evidence_terms() -> tuple[str, ...]:
+    """Return the delta-retry evidence surface for discovery scanners."""
+
+    return (DELTA_REPAIR_CONTEXT_EVIDENCE,)
+
+
+def covered_evidence_terms() -> tuple[str, ...]:
+    """Return domain objective evidence terms this repair surface proves.
+
+    Covers ``vfs/compact-repair-packet@1`` and ``vfs/delta-repair-context@1``
+    for VFS-G110.  Goal/task labels stay metadata and never enter packet or
+    delta content identities.
+    """
+
+    return OBJECTIVE_DOMAIN_EVIDENCE_TERMS
+
+
+def all_covered_evidence_terms() -> tuple[str, ...]:
+    """Alias of :func:`covered_evidence_terms` for cross-module discovery."""
+
+    return covered_evidence_terms()
+
+
+def packet_satisfies_compact_repair_packet(
+    packet: ContractRepairPacket | CompiledRepairPacket | Mapping[str, Any],
+) -> bool:
+    """Machine-check VFS-G110 compact-packet acceptance on one packet."""
+
+    if isinstance(packet, CompiledRepairPacket):
+        packet_obj = packet.packet
+    elif isinstance(packet, ContractRepairPacket):
+        packet_obj = packet
+    else:
+        try:
+            packet_obj = ContractRepairPacket.from_dict(packet)
+        except (ContractRepairPacketError, TypeError, ValueError):
+            return False
+    if not isinstance(packet_obj, ContractRepairPacket):
+        return False
+    if not packet_obj.required_core_present:
+        return False
+    if packet_obj.packet_byte_count > DEFAULT_MAX_PACKET_BYTES:
+        return False
+    if packet_obj.to_dict().get("required_fields_truncated") is True:
+        return False
+    if packet_obj.to_dict().get("model_output_is_proposal") is not True:
+        return False
+    authority = packet_obj.authority.to_dict()
+    if authority.get("semantic_authority") is True:
+        return False
+    if authority.get("completion_authoritative") is True:
+        return False
+    if authority.get("proof_authoritative") is True:
+        return False
+    payload = packet_obj.to_dict()
+    for flag in (
+        "embeds_full_source",
+        "embeds_full_ast",
+        "embeds_full_graph",
+        "embeds_full_proof",
+        "embeds_full_witness",
+    ):
+        if payload.get(flag) is True:
+            return False
+    for field_name in REQUIRED_CORE_FIELDS:
+        if field_name not in payload or payload[field_name] in (None, "", [], {}):
+            return False
+    return True
+
+
+def delta_satisfies_delta_repair_context(
+    delta: RepairPacketDelta | Mapping[str, Any],
+    *,
+    parent: ContractRepairPacket | CompiledRepairPacket | Mapping[str, Any]
+    | None = None,
+) -> bool:
+    """Machine-check VFS-G110 delta-retry acceptance on one delta packet."""
+
+    if isinstance(delta, Mapping):
+        try:
+            delta_obj = RepairPacketDelta.from_dict(delta)
+        except (ContractRepairPacketError, TypeError, ValueError):
+            return False
+    elif isinstance(delta, RepairPacketDelta):
+        delta_obj = delta
+    else:
+        return False
+    if delta_obj.status is RepairPacketStatus.INVALIDATED:
+        return False
+    if not delta_obj.changed_evidence and not delta_obj.requested_evidence:
+        return False
+    payload = delta_obj.to_dict()
+    if payload.get("omits_inherited_invariant_core") is not True:
+        return False
+    if payload.get("evidence") != DELTA_REPAIR_CONTEXT_EVIDENCE:
+        return False
+    # Delta must not re-emit the full invariant core.
+    for core_field in ("task_id", "acceptance", "edit_scope", "validation_commands"):
+        if core_field in payload:
+            return False
+    if parent is not None:
+        if isinstance(parent, CompiledRepairPacket):
+            parent_obj = parent.packet
+        elif isinstance(parent, ContractRepairPacket):
+            parent_obj = parent
+        else:
+            try:
+                parent_obj = ContractRepairPacket.from_dict(parent)
+            except (ContractRepairPacketError, TypeError, ValueError):
+                return False
+        if delta_obj.parent_packet_id != parent_obj.packet_id:
+            return False
+        if delta_obj.parent_tree_id != parent_obj.tree_id:
+            return False
+        if delta_obj.parent_forest_id != parent_obj.forest_id:
+            return False
+        if delta_obj.delta_byte_count >= parent_obj.total_byte_count:
+            return False
+    return True
+
+
+def measure_repair_context(
+    packet: ContractRepairPacket | CompiledRepairPacket | Mapping[str, Any],
+    *,
+    symbolic_analysis: Mapping[str, Any] | Sequence[Any] | None = None,
+    repository_files: Sequence[Mapping[str, Any]] | Sequence[str] | None = None,
+) -> dict[str, Any]:
+    """Measure symbolic analysis context and provider packet context separately.
+
+    Symbolic analysis measurements cover deterministic finding/contract/call-slice
+    material used to *build* the packet.  Provider measurements cover only the
+    model-facing compact packet (and optional repository baseline).  The two
+    budgets never share a single blended total so supervisors can gate analysis
+    cost independently of provider input size (VFS-G110 refinement).
+    """
+
+    if isinstance(packet, CompiledRepairPacket):
+        packet_obj = packet.packet
+        compiled = packet
+    elif isinstance(packet, ContractRepairPacket):
+        packet_obj = packet
+        compiled = None
+    else:
+        packet_obj = ContractRepairPacket.from_dict(packet)
+        compiled = None
+
+    if symbolic_analysis is None:
+        # Reconstruct the minimal symbolic analysis view from packet refs only
+        # (no full source/AST/graph/proof bodies).
+        symbolic_analysis = {
+            "finding_ids": list(packet_obj.finding_ids),
+            "expected_contract_ref": packet_obj.expected_contract_ref,
+            "observed_contract_ref": packet_obj.observed_contract_ref,
+            "call_slice": packet_obj.call_slice.to_dict(),
+            "counterexample_slice": packet_obj.counterexample_slice.to_dict(),
+            "symbols": list(packet_obj.symbols),
+            "interfaces": list(packet_obj.interfaces),
+            "expansion_handle_ids": [
+                item.handle_id for item in packet_obj.expansion_handles
+            ],
+            "source_span_refs": [
+                {
+                    "path": span.path,
+                    "content_id": span.content_id,
+                    "start_line": span.start_line,
+                    "end_line": span.end_line,
+                }
+                for span in packet_obj.source_spans
+            ],
+        }
+    if isinstance(symbolic_analysis, Mapping):
+        symbolic_payload = _thaw(symbolic_analysis)
+    else:
+        symbolic_payload = list(symbolic_analysis)
+    symbolic_bytes = len(canonical_json_bytes(symbolic_payload))
+    symbolic_tokens = estimate_tokens(symbolic_payload)
+
+    provider_payload = packet_obj.provider_payload()
+    provider_bytes = packet_obj.total_byte_count
+    provider_tokens = packet_obj.estimated_tokens
+    provider_core_bytes = packet_obj.packet_byte_count
+    provider_span_bytes = packet_obj.span_byte_count
+
+    baseline_tokens = 0
+    if repository_files is not None:
+        baseline_tokens = repository_context_baseline_tokens(
+            repository_files=repository_files
+        )
+
+    cheaper_than_baseline = (
+        baseline_tokens > 0
+        and packet_is_cheaper_than_baseline(
+            compiled or packet_obj,
+            baseline_tokens=baseline_tokens,
+            minimum_reduction_ratio=0.0,
+        )
+    )
+
+    return {
+        "schema": REPAIR_CONTEXT_MEASUREMENT_SCHEMA,
+        "version": CONTRACT_REPAIR_PACKET_VERSION,
+        "packet_id": packet_obj.packet_id,
+        "goal_id": OBJECTIVE_GOAL_ID,
+        "task_id": OBJECTIVE_TASK_ID,
+        "evidence_terms": list(OBJECTIVE_DOMAIN_EVIDENCE_TERMS),
+        # Separate measurement surfaces — never blended into one total.
+        "symbolic_analysis": {
+            "byte_count": symbolic_bytes,
+            "estimated_tokens": symbolic_tokens,
+            "includes_full_source": False,
+            "includes_full_ast": False,
+            "includes_full_graph": False,
+            "includes_full_proof": False,
+            "includes_full_witness": False,
+        },
+        "provider_context": {
+            "byte_count": provider_bytes,
+            "core_byte_count": provider_core_bytes,
+            "span_byte_count": provider_span_bytes,
+            "estimated_tokens": provider_tokens,
+            "max_packet_bytes": DEFAULT_MAX_PACKET_BYTES,
+            "within_default_budget": provider_core_bytes
+            <= DEFAULT_MAX_PACKET_BYTES,
+            "model_output_is_proposal": True,
+            "payload_keys": sorted(provider_payload.keys()),
+        },
+        "repository_baseline": {
+            "estimated_tokens": baseline_tokens,
+            "packet_cheaper_than_baseline": cheaper_than_baseline,
+        },
+        "measurements_are_separate": True,
+        "authoritative": False,
+        "completion_authoritative": False,
+    }
+
+
+def prove_compact_repair_packet(
+    packet: ContractRepairPacket | CompiledRepairPacket | Mapping[str, Any],
+    *,
+    symbolic_analysis: Mapping[str, Any] | Sequence[Any] | None = None,
+    repository_files: Sequence[Mapping[str, Any]] | Sequence[str] | None = None,
+) -> dict[str, Any]:
+    """Emit a portable ``vfs/compact-repair-packet@1`` evidence claim."""
+
+    if isinstance(packet, CompiledRepairPacket):
+        packet_obj = packet.packet
+        receipt = packet.receipt
+    elif isinstance(packet, ContractRepairPacket):
+        packet_obj = packet
+        receipt = None
+    else:
+        packet_obj = ContractRepairPacket.from_dict(packet)
+        receipt = None
+
+    satisfied = packet_satisfies_compact_repair_packet(packet_obj)
+    measurement = measure_repair_context(
+        packet_obj,
+        symbolic_analysis=symbolic_analysis,
+        repository_files=repository_files,
+    )
+    return {
+        "schema": COMPACT_REPAIR_PACKET_CLAIM_SCHEMA,
+        "evidence": COMPACT_REPAIR_PACKET_EVIDENCE,
+        "evidence_terms": list(compact_repair_packet_evidence_terms()),
+        "requirement_id": COMPACT_REPAIR_PACKET_EVIDENCE,
+        "goal_id": OBJECTIVE_GOAL_ID,
+        "parent_goal_id": OBJECTIVE_PARENT_GOAL_ID,
+        "task_id": OBJECTIVE_TASK_ID,
+        "packet_id": packet_obj.packet_id,
+        "receipt_id": receipt.receipt_id if receipt is not None else "",
+        "decision_id": packet_obj.decision_id,
+        "tree_id": packet_obj.tree_id,
+        "forest_id": packet_obj.forest_id,
+        "policy_id": packet_obj.policy_id,
+        "packet_byte_count": packet_obj.packet_byte_count,
+        "span_byte_count": packet_obj.span_byte_count,
+        "total_byte_count": packet_obj.total_byte_count,
+        "estimated_tokens": packet_obj.estimated_tokens,
+        "required_core_present": packet_obj.required_core_present,
+        "model_output_is_proposal": True,
+        "within_default_budget": (
+            packet_obj.packet_byte_count <= DEFAULT_MAX_PACKET_BYTES
+        ),
+        "measurement": measurement,
+        "satisfied": satisfied,
+        "invariants": list(COMPACT_REPAIR_PACKET_INVARIANTS),
+        "authoritative": False,
+        "completion_authoritative": False,
+        "semantic_authority": False,
+    }
+
+
+def prove_delta_repair_context(
+    delta: RepairPacketDelta | Mapping[str, Any],
+    *,
+    parent: ContractRepairPacket
+    | CompiledRepairPacket
+    | Mapping[str, Any]
+    | None = None,
+) -> dict[str, Any]:
+    """Emit a portable ``vfs/delta-repair-context@1`` evidence claim."""
+
+    if isinstance(delta, Mapping):
+        delta_obj = RepairPacketDelta.from_dict(delta)
+    else:
+        delta_obj = delta
+    if not isinstance(delta_obj, RepairPacketDelta):
+        raise TypeError("delta must be a RepairPacketDelta")
+
+    parent_obj: ContractRepairPacket | None = None
+    if parent is not None:
+        if isinstance(parent, CompiledRepairPacket):
+            parent_obj = parent.packet
+        elif isinstance(parent, ContractRepairPacket):
+            parent_obj = parent
+        else:
+            parent_obj = ContractRepairPacket.from_dict(parent)
+
+    satisfied = delta_satisfies_delta_repair_context(
+        delta_obj, parent=parent_obj
+    )
+    return {
+        "schema": DELTA_REPAIR_CONTEXT_CLAIM_SCHEMA,
+        "evidence": DELTA_REPAIR_CONTEXT_EVIDENCE,
+        "evidence_terms": list(delta_repair_context_evidence_terms()),
+        "requirement_id": DELTA_REPAIR_CONTEXT_EVIDENCE,
+        "goal_id": OBJECTIVE_GOAL_ID,
+        "parent_goal_id": OBJECTIVE_PARENT_GOAL_ID,
+        "task_id": OBJECTIVE_TASK_ID,
+        "delta_id": delta_obj.delta_id,
+        "parent_packet_id": delta_obj.parent_packet_id,
+        "parent_decision_id": delta_obj.parent_decision_id,
+        "parent_tree_id": delta_obj.parent_tree_id,
+        "parent_forest_id": delta_obj.parent_forest_id,
+        "parent_policy_id": delta_obj.parent_policy_id,
+        "changed_evidence_count": len(delta_obj.changed_evidence),
+        "requested_evidence_count": len(delta_obj.requested_evidence),
+        "delta_byte_count": delta_obj.delta_byte_count,
+        "estimated_tokens": delta_obj.estimated_tokens,
+        "omits_inherited_invariant_core": True,
+        "status": delta_obj.status.value,
+        "parent_packet_total_byte_count": (
+            parent_obj.total_byte_count if parent_obj is not None else 0
+        ),
+        "cheaper_than_parent_replay": (
+            parent_obj is not None
+            and delta_obj.delta_byte_count < parent_obj.total_byte_count
+        ),
+        "satisfied": satisfied,
+        "invariants": list(DELTA_REPAIR_CONTEXT_INVARIANTS),
+        "authoritative": False,
+        "completion_authoritative": False,
+        "semantic_authority": False,
+    }
+
+
+def prove_repair_packet_evidence(
+    packet: ContractRepairPacket | CompiledRepairPacket | Mapping[str, Any],
+    *,
+    delta: RepairPacketDelta | Mapping[str, Any] | None = None,
+    symbolic_analysis: Mapping[str, Any] | Sequence[Any] | None = None,
+    repository_files: Sequence[Mapping[str, Any]] | Sequence[str] | None = None,
+) -> dict[str, Any]:
+    """Emit the full VFS-G110 evidence set (compact packet + optional delta)."""
+
+    compact_claim = prove_compact_repair_packet(
+        packet,
+        symbolic_analysis=symbolic_analysis,
+        repository_files=repository_files,
+    )
+    delta_claim: dict[str, Any] | None = None
+    if delta is not None:
+        delta_claim = prove_delta_repair_context(delta, parent=packet)
+    terms = list(OBJECTIVE_DOMAIN_EVIDENCE_TERMS)
+    if delta_claim is None:
+        terms = list(compact_repair_packet_evidence_terms())
+    satisfied = bool(compact_claim.get("satisfied"))
+    if delta_claim is not None:
+        satisfied = satisfied and bool(delta_claim.get("satisfied"))
+    return {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/repair-packet-evidence-claim@1"
+        ),
+        "evidence_terms": terms
+        if delta_claim is not None
+        else list(compact_repair_packet_evidence_terms()),
+        "all_evidence_terms": list(OBJECTIVE_DOMAIN_EVIDENCE_TERMS),
+        "goal_id": OBJECTIVE_GOAL_ID,
+        "parent_goal_id": OBJECTIVE_PARENT_GOAL_ID,
+        "task_id": OBJECTIVE_TASK_ID,
+        "compact_repair_packet": compact_claim,
+        "delta_repair_context": delta_claim,
+        "measurement": compact_claim.get("measurement"),
+        "satisfied": satisfied,
+        "authoritative": False,
+        "completion_authoritative": False,
+    }
+
+
 __all__ = [
     "BOUNDED_SOURCE_SPAN_SCHEMA",
     "BYTES_PER_TOKEN",
     "CALL_SLICE_REF_SCHEMA",
+    "COMPACT_REPAIR_PACKET_CLAIM_SCHEMA",
     "COMPACT_REPAIR_PACKET_EVIDENCE",
+    "COMPACT_REPAIR_PACKET_INVARIANTS",
     "CONTRACT_REPAIR_PACKET_VERSION",
     "BoundedSourceSpan",
     "CallSliceRef",
@@ -2714,12 +3180,19 @@ __all__ = [
     "DEFAULT_MAX_SPAN_BYTES",
     "DEFAULT_MAX_SPAN_COUNT",
     "DEFAULT_MAX_SPAN_LINES",
+    "DELTA_REPAIR_CONTEXT_CLAIM_SCHEMA",
     "DELTA_REPAIR_CONTEXT_EVIDENCE",
+    "DELTA_REPAIR_CONTEXT_INVARIANTS",
     "DeltaEvidenceItem",
     "DeltaEvidenceKind",
     "ExpansionHandleKind",
+    "OBJECTIVE_DOMAIN_EVIDENCE_TERMS",
+    "OBJECTIVE_GOAL_ID",
+    "OBJECTIVE_PARENT_GOAL_ID",
+    "OBJECTIVE_TASK_ID",
     "OMITTED",
     "REDACTED",
+    "REPAIR_CONTEXT_MEASUREMENT_SCHEMA",
     "REPAIR_EXPANSION_HANDLE_SCHEMA",
     "REPAIR_PACKET_DELTA_SCHEMA",
     "REPAIR_PACKET_RECEIPT_SCHEMA",
@@ -2735,12 +3208,24 @@ __all__ = [
     "RepairPacketReceipt",
     "RepairPacketRequest",
     "RepairPacketStatus",
+    "all_covered_evidence_terms",
+    "compact_repair_packet_evidence",
+    "compact_repair_packet_evidence_terms",
     "compile_contract_repair_packet",
     "compile_repair_packet",
     "compile_repair_packet_delta",
+    "covered_evidence_terms",
+    "delta_repair_context_evidence",
+    "delta_repair_context_evidence_terms",
+    "delta_satisfies_delta_repair_context",
     "estimate_tokens",
     "expand_repair_handle",
+    "measure_repair_context",
     "packet_is_cheaper_than_baseline",
+    "packet_satisfies_compact_repair_packet",
+    "prove_compact_repair_packet",
+    "prove_delta_repair_context",
+    "prove_repair_packet_evidence",
     "reconstruct_repair_packet",
     "repository_context_baseline_tokens",
 ]
