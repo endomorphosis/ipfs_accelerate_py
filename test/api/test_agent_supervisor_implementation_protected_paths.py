@@ -788,6 +788,96 @@ def test_validated_no_change_guard_accepts_exact_unchanged_baseline() -> None:
     assert guard["reasons"] == []
 
 
+def _empty_patch_rejection(*, baseline: str = "baseline") -> SimpleNamespace:
+    return SimpleNamespace(
+        accepted=False,
+        findings=(
+            SimpleNamespace(code=SimpleNamespace(value="empty_patch")),
+            SimpleNamespace(code=SimpleNamespace(value="missing_required_field")),
+        ),
+        proposal=SimpleNamespace(
+            candidate_diff=(),
+            changed_paths=(),
+            declared_paths=(),
+            repository_tree_id=baseline,
+            baseline_id=baseline,
+        ),
+    )
+
+
+def test_no_change_proposal_bypass_accepts_existing_output_at_exact_baseline(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _daemon(tmp_path)
+    output = tmp_path / "tests/unit/search/test_sharded_car"
+    output.mkdir(parents=True)
+    monkeypatch.setattr(
+        daemon,
+        "_run_git",
+        lambda *_args, **_kwargs: subprocess.CompletedProcess(
+            ["git"], 0, stdout="baseline\n", stderr=""
+        ),
+    )
+
+    proof = daemon._validated_no_change_proposal_bypass(
+        tmp_path,
+        _task(outputs=["tests/unit/search/test_sharded_car"]),
+        baseline_ref="baseline",
+        proposal_validation=_empty_patch_rejection(),
+    )
+
+    assert proof["allowed"] is True
+    assert proof["reasons"] == []
+
+
+@pytest.mark.parametrize(
+    ("mutation", "expected_reason"),
+    [
+        ("missing_output", "declared_outputs_missing"),
+        ("unexpected_finding", "unexpected_proposal_findings"),
+        ("changed_candidate", "candidate_not_empty"),
+        ("changed_head", "head_not_exact_baseline"),
+    ],
+)
+def test_no_change_proposal_bypass_fails_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mutation: str,
+    expected_reason: str,
+) -> None:
+    daemon = _daemon(tmp_path)
+    output = tmp_path / "src/example.py"
+    output.parent.mkdir(parents=True)
+    if mutation != "missing_output":
+        output.write_text("already implemented\n", encoding="utf-8")
+    proposal_validation = _empty_patch_rejection()
+    if mutation == "unexpected_finding":
+        proposal_validation.findings += (
+            SimpleNamespace(code=SimpleNamespace(value="path_outside_scope")),
+        )
+    elif mutation == "changed_candidate":
+        proposal_validation.proposal.candidate_diff = (object(),)
+    current_head = "other" if mutation == "changed_head" else "baseline"
+    monkeypatch.setattr(
+        daemon,
+        "_run_git",
+        lambda *_args, **_kwargs: subprocess.CompletedProcess(
+            ["git"], 0, stdout=f"{current_head}\n", stderr=""
+        ),
+    )
+
+    proof = daemon._validated_no_change_proposal_bypass(
+        tmp_path,
+        _task(outputs=["src/example.py"]),
+        baseline_ref="baseline",
+        proposal_validation=proposal_validation,
+    )
+
+    assert proof["allowed"] is False
+    assert expected_reason in proof["reasons"]
+
+
 def test_crash_snapshot_reconciliation_blocks_before_merge_consumption(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

@@ -6489,13 +6489,30 @@ class PortalImplementationDaemon:
                     task,
                     baseline_ref=baseline_ref,
                 )
+                no_change_proposal_bypass = (
+                    self._validated_no_change_proposal_bypass(
+                        workspace_path,
+                        task,
+                        baseline_ref=baseline_ref,
+                        proposal_validation=proposal_validation,
+                    )
+                )
                 validation_result = self._run_validation_commands(
                     workspace_path,
                     task,
                     log_path,
                     state=state,
-                    proposal_validation=proposal_validation,
+                    proposal_validation=(
+                        None
+                        if no_change_proposal_bypass["allowed"]
+                        else proposal_validation
+                    ),
                 )
+                if no_change_proposal_bypass["allowed"]:
+                    validation_result = {
+                        **validation_result,
+                        "no_change_proposal_bypass": no_change_proposal_bypass,
+                    }
                 validation_result = self._apply_implementation_failure_review(
                     task=task,
                     attempt=attempt,
@@ -6505,6 +6522,15 @@ class PortalImplementationDaemon:
                     proposal_validation=proposal_validation,
                     baseline_ref=baseline_ref,
                     state=state,
+                )
+                validation_result = (
+                    self._verify_post_validation_candidate_binding(
+                        workspace_path,
+                        task,
+                        baseline_ref=baseline_ref,
+                        proposal_validation=proposal_validation,
+                        validation_result=validation_result,
+                    )
                 )
                 protected_path_violation = (
                     self._implementation_protected_path_violation(
@@ -8833,13 +8859,30 @@ class PortalImplementationDaemon:
                         task,
                         baseline_ref=baseline_ref,
                     )
+                    no_change_proposal_bypass = (
+                        self._validated_no_change_proposal_bypass(
+                            worktree_path,
+                            task,
+                            baseline_ref=baseline_ref,
+                            proposal_validation=proposal_validation,
+                        )
+                    )
                     validation_result = self._run_validation_commands(
                         worktree_path,
                         task,
                         log_path,
                         state=state,
-                        proposal_validation=proposal_validation,
+                        proposal_validation=(
+                            None
+                            if no_change_proposal_bypass["allowed"]
+                            else proposal_validation
+                        ),
                     )
+                    if no_change_proposal_bypass["allowed"]:
+                        validation_result = {
+                            **validation_result,
+                            "no_change_proposal_bypass": no_change_proposal_bypass,
+                        }
                     validation_result = self._apply_implementation_failure_review(
                         task=task,
                         attempt=attempt,
@@ -9107,13 +9150,30 @@ class PortalImplementationDaemon:
                         task,
                         baseline_ref=baseline_ref,
                     )
+                    no_change_proposal_bypass = (
+                        self._validated_no_change_proposal_bypass(
+                            worktree_path,
+                            task,
+                            baseline_ref=baseline_ref,
+                            proposal_validation=proposal_validation,
+                        )
+                    )
                     validation_result = self._run_validation_commands(
                         worktree_path,
                         task,
                         log_path,
                         state=state,
-                        proposal_validation=proposal_validation,
+                        proposal_validation=(
+                            None
+                            if no_change_proposal_bypass["allowed"]
+                            else proposal_validation
+                        ),
                     )
+                    if no_change_proposal_bypass["allowed"]:
+                        validation_result = {
+                            **validation_result,
+                            "no_change_proposal_bypass": no_change_proposal_bypass,
+                        }
                     validation_result = self._apply_implementation_failure_review(
                         task=task,
                         attempt=attempt,
@@ -9586,6 +9646,119 @@ class PortalImplementationDaemon:
             "expected_branch": expected_branch,
             "current_branch": current_branch,
             "validated_changed_files": normalized_changed_files,
+        }
+
+    def _validated_no_change_proposal_bypass(
+        self,
+        workspace_path: Path,
+        task: PortalTask,
+        *,
+        baseline_ref: str,
+        proposal_validation: Any,
+    ) -> dict[str, Any]:
+        """Permit tests, but no mutation, for an already-satisfied task.
+
+        An empty patch is not an authorized implementation proposal.  When all
+        declared outputs already exist at the exact baseline, however, the
+        daemon may run the ordinary full validation path and let the existing
+        post-validation candidate binding and no-change completion guards prove
+        that nothing changed.  Every other rejected proposal remains rejected.
+        """
+
+        proposal = getattr(proposal_validation, "proposal", None)
+        findings = tuple(
+            getattr(proposal_validation, "findings", ()) or ()
+        )
+        finding_codes = sorted(
+            {
+                str(
+                    getattr(
+                        getattr(finding, "code", ""),
+                        "value",
+                        getattr(finding, "code", ""),
+                    )
+                    or ""
+                ).strip()
+                for finding in findings
+            }
+            - {""}
+        )
+        candidate_diff = tuple(
+            getattr(proposal, "candidate_diff", ()) or ()
+        )
+        changed_paths = tuple(
+            getattr(proposal, "changed_paths", ()) or ()
+        )
+        declared_paths = tuple(
+            getattr(proposal, "declared_paths", ()) or ()
+        )
+        current_head = ""
+        head_error = ""
+        try:
+            current_head = self._run_git(
+                ["rev-parse", "HEAD"],
+                cwd=workspace_path,
+            ).stdout.strip()
+        except (OSError, RuntimeError, subprocess.SubprocessError) as exc:
+            head_error = type(exc).__name__
+
+        missing_outputs: list[str] = []
+        unsafe_outputs: list[str] = []
+        workspace_resolved = workspace_path.resolve()
+        for raw_output in task.outputs:
+            output = str(raw_output or "").strip()
+            if not output:
+                continue
+            output_path = workspace_path / output
+            try:
+                resolved = output_path.resolve()
+                resolved.relative_to(workspace_resolved)
+            except (OSError, RuntimeError, ValueError):
+                unsafe_outputs.append(output)
+                continue
+            if not output_path.exists():
+                missing_outputs.append(output)
+
+        proposal_tree_id = str(
+            getattr(proposal, "repository_tree_id", "") or ""
+        ).strip()
+        proposal_baseline_id = str(
+            getattr(proposal, "baseline_id", "") or ""
+        ).strip()
+        reasons: list[str] = []
+        if bool(getattr(proposal_validation, "accepted", False)):
+            reasons.append("proposal_not_rejected")
+        if finding_codes != ["empty_patch", "missing_required_field"]:
+            reasons.append("unexpected_proposal_findings")
+        if candidate_diff or changed_paths or declared_paths:
+            reasons.append("candidate_not_empty")
+        if not task.outputs:
+            reasons.append("outputs_not_declared")
+        if missing_outputs:
+            reasons.append("declared_outputs_missing")
+        if unsafe_outputs:
+            reasons.append("declared_outputs_unsafe")
+        if not baseline_ref:
+            reasons.append("baseline_missing")
+        if head_error or current_head != baseline_ref:
+            reasons.append("head_not_exact_baseline")
+        if proposal_tree_id != baseline_ref:
+            reasons.append("proposal_tree_not_exact_baseline")
+        if proposal_baseline_id != baseline_ref:
+            reasons.append("proposal_baseline_not_exact")
+
+        return {
+            "allowed": not reasons,
+            "reasons": reasons,
+            "finding_codes": finding_codes,
+            "baseline_ref": baseline_ref,
+            "current_head": current_head,
+            "proposal_repository_tree_id": proposal_tree_id,
+            "proposal_baseline_id": proposal_baseline_id,
+            "missing_outputs": missing_outputs,
+            "unsafe_outputs": unsafe_outputs,
+            "proof_authoritative": False,
+            "completion_authoritative": False,
         }
 
     def _missing_validation_workspace_result(
