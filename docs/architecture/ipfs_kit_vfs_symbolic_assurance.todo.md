@@ -1672,7 +1672,7 @@ compact references and bounded spans only.
 
 ## VFS-052 Close objective gap: Prove vfs/repository-forest-receipt@1 for Prove and repair IPFS Kit VFS contracts from a content-addressed SwissKnife program graph
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
