@@ -2604,7 +2604,7 @@ compact references and bounded spans only.
 
 ## VFS-067 Close objective gap: Prove vfs/repository-descriptor@1 for Bind every observation to an explicit multi-repository authority forest
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
