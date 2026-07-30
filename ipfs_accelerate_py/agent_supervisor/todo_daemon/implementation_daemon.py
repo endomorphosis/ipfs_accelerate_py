@@ -26544,6 +26544,83 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             return base.capsule, base.receipt.receipt_id
         return self._implementation_loaded_parents.get(key)
 
+    def _invalidate_implementation_retry_state(
+        self,
+        task: PortalTask,
+        *,
+        diagnostic: ImplementationDiagnosticReceipt,
+        old_parent: tuple[ContextCapsule, str],
+        new_base: ContextCompileResult,
+        reason: str,
+    ) -> None:
+        """Discard a receipt-bound diagnosis after its base policy is obsolete."""
+
+        key = self._canonical_ref(task)
+        stem = self._implementation_context_file_stem(task)
+        sidecars = (
+            self.implementation_log_dir
+            / f"{stem}-diagnostic-receipt.json",
+            self.implementation_log_dir / f"{stem}-diagnostic-state.json",
+        )
+
+        def discard_sidecars() -> tuple[str, ...]:
+            removed: list[str] = []
+            for path in sidecars:
+                payload = load_json_dict(path)
+                if payload is not None:
+                    bound_receipt_id = str(
+                        payload.get("receipt_id")
+                        or payload.get("diagnostic_receipt_id")
+                        or ""
+                    )
+                    if bound_receipt_id not in (
+                        "",
+                        diagnostic.receipt_id,
+                    ):
+                        continue
+                if path.exists():
+                    path.unlink()
+                    removed.append(str(path))
+            return tuple(removed)
+
+        removed_sidecars = self._decision_runtime_mutation(
+            "file_mutation",
+            {
+                "operation": "invalidate_implementation_retry_state",
+                "task_id": task.task_id,
+                "diagnostic_receipt_id": diagnostic.receipt_id,
+                "reason": reason,
+                "paths": tuple(str(path) for path in sidecars),
+            },
+            discard_sidecars,
+        )
+        current_diagnostic = self._implementation_diagnostics.get(key)
+        if (
+            current_diagnostic is not None
+            and current_diagnostic.receipt_id == diagnostic.receipt_id
+        ):
+            self._implementation_diagnostics.pop(key, None)
+            self._implementation_diagnostic_repeats.pop(key, None)
+            self._implementation_retry_not_before.pop(key, None)
+        loaded_parent = self._implementation_loaded_parents.get(key)
+        if loaded_parent is not None and loaded_parent[1] == old_parent[1]:
+            self._implementation_loaded_parents.pop(key, None)
+        self._last_implementation_retry = None
+        self._record_event(
+            "implementation_retry_parent_rebased",
+            {
+                "task_id": task.task_id,
+                "reason": reason,
+                "diagnostic_receipt_id": diagnostic.receipt_id,
+                "old_context_receipt_id": old_parent[1],
+                "old_policy_revision": old_parent[0].policy_revision,
+                "new_context_receipt_id": new_base.receipt.receipt_id,
+                "new_policy_revision": new_base.capsule.policy_revision,
+                "removed_sidecars": tuple(removed_sidecars or ()),
+                "completion_authoritative": False,
+            },
+        )
+
     def record_implementation_failure_context(
         self,
         task: PortalTask,
@@ -27378,10 +27455,70 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                                 int(not_before - time.time() + 0.999),
                             ),
                         )
-                    result = self._compile_implementation_retry_context(
-                        task, attempt, diagnostic
-                    )
-                    rendered = render_retry_context(result.capsule)
+                    previous_base = self._implementation_base_contexts.get(key)
+                    previous_last_context = self._last_implementation_context
+                    previous_last_retry = self._last_implementation_retry
+                    try:
+                        result = self._compile_implementation_retry_context(
+                            task, attempt, diagnostic
+                        )
+                    except ImplementationRetryDeferred as retry_error:
+                        if (
+                            retry_error.reason
+                            != "implementation retry context budget exhausted"
+                        ):
+                            raise
+                        parent_capsule, _ = parent
+                        parent_attempt = (
+                            parent_capsule.goal.get("attempt")
+                            if isinstance(parent_capsule.goal, Mapping)
+                            else None
+                        )
+                        if (
+                            isinstance(parent_attempt, bool)
+                            or not isinstance(parent_attempt, int)
+                            or parent_attempt < 1
+                            or parent_attempt >= attempt
+                        ):
+                            parent_attempt = 1
+                        try:
+                            current_base = self._compile_implementation_context(
+                                task, parent_attempt
+                            )
+                        except Exception as current_error:
+                            if previous_base is None:
+                                self._implementation_base_contexts.pop(key, None)
+                            else:
+                                self._implementation_base_contexts[key] = previous_base
+                            self._last_implementation_context = (
+                                previous_last_context
+                            )
+                            self._last_implementation_retry = previous_last_retry
+                            raise retry_error from current_error
+                        if (
+                            current_base.capsule.policy_revision
+                            == parent_capsule.policy_revision
+                        ):
+                            if previous_base is None:
+                                self._implementation_base_contexts.pop(key, None)
+                            else:
+                                self._implementation_base_contexts[key] = previous_base
+                            self._last_implementation_context = (
+                                previous_last_context
+                            )
+                            self._last_implementation_retry = previous_last_retry
+                            raise retry_error
+                        self._invalidate_implementation_retry_state(
+                            task,
+                            diagnostic=diagnostic,
+                            old_parent=parent,
+                            new_base=current_base,
+                            reason="prompt_policy_revision_changed",
+                        )
+                        result = current_base
+                        rendered = render_context_capsule(result.capsule)
+                    else:
+                        rendered = render_retry_context(result.capsule)
         if not rendered:
             result = self._compile_implementation_context(task, attempt)
             rendered = render_context_capsule(result.capsule)

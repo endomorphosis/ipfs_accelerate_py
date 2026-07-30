@@ -943,10 +943,17 @@ def test_implementation_daemon_retries_context_overflow_with_cid_only_evidence(
         ImplementationRetryDeferred,
         match="retry context budget exhausted",
     ):
-        daemon("budget-blocked.json")._build_implementation_prompt(
+        budget_blocked = daemon("budget-blocked.json")
+        budget_blocked._build_implementation_prompt(
             task,
             attempt=2,
         )
+    assert (
+        state_dir / "logs" / "asi-overflow-diagnostic-receipt.json"
+    ).exists()
+    assert budget_blocked._implementation_parent(task)[1] == (
+        diagnostic.prior_decision_id
+    )
 
     def required_context_overflow(*args, **kwargs):
         raise RequiredContextOverflowError(
@@ -996,6 +1003,133 @@ def test_implementation_daemon_retries_context_overflow_with_cid_only_evidence(
             task,
             attempt=2,
         )
+
+
+def test_implementation_daemon_rebases_budget_blocked_retry_after_policy_change(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+    subprocess.run(
+        ["git", "config", "user.email", "test@example.invalid"],
+        cwd=repo,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "Context Test"],
+        cwd=repo,
+        check=True,
+    )
+    (repo / "README.md").write_text("fixture\n", encoding="utf-8")
+    subprocess.run(["git", "add", "README.md"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-qm", "fixture"], cwd=repo, check=True)
+    state_dir = repo / "state"
+    state_dir.mkdir()
+    log_dir = state_dir / "logs"
+    task = PortalTask(
+        task_id="ASI-STALE-POLICY",
+        title="Rebase a stale retry parent",
+        status="ready",
+        completion="manual",
+        priority="P1",
+        track="token-efficiency",
+        outputs=["src/context.py"],
+        validation=["pytest test_context.py"],
+        acceptance="Only current prompt policy reaches the provider.",
+    )
+
+    def daemon(state_name: str) -> PortalImplementationDaemon:
+        return PortalImplementationDaemon(
+            todo_path=repo / "todo.md",
+            state_path=state_dir / state_name,
+            strategy_path=state_dir / f"{state_name}.strategy",
+            events_path=state_dir / f"{state_name}.events",
+            repo_root=repo,
+            implementation_log_dir=log_dir,
+            implementation_context_budget=ContextBudget(
+                max_input_tokens=2_000,
+                reserved_output_tokens=100,
+                reserved_tool_tokens=20,
+                max_items=64,
+            ),
+            implementation_context_tokenizer=_tokenizer,
+            implementation_provider_context_window=2_200,
+        )
+
+    original = daemon("base.json")
+    original._build_implementation_prompt(task, attempt=1)
+    original._persist_implementation_context_receipt(task, attempt=1)
+    old_parent = original._implementation_parent(task)
+    assert old_parent is not None
+    diagnostic = original.record_implementation_failure_context(
+        task,
+        {
+            "kind": "validation_failure",
+            "reason_codes": ["stale-policy"],
+        },
+        changed_files=("src/context.py",),
+    )
+
+    original_appendix = (
+        PortalImplementationDaemon._implementation_prompt_policy_appendix
+    )
+
+    def revised_appendix(self, selected_task):
+        return (
+            original_appendix(self, selected_task)
+            + "- Current retry-parent policy revision.\n"
+        )
+
+    def always_overflow(*args, **kwargs):
+        raise ContextDeltaError(
+            "reconstructed full context exceeds the effective input budget"
+        )
+
+    monkeypatch.setattr(
+        PortalImplementationDaemon,
+        "_implementation_prompt_policy_appendix",
+        revised_appendix,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "compile_retry_context",
+        always_overflow,
+    )
+
+    restarted = daemon("restarted.json")
+    wire = json.loads(restarted._build_implementation_prompt(task, attempt=2))
+    new_parent = restarted._implementation_parent(task)
+
+    assert wire["stage"] == "implementation"
+    assert "delta_capsule" not in wire
+    assert wire["goal"]["attempt"] == 1
+    assert diagnostic.receipt_id not in json.dumps(wire, sort_keys=True)
+    assert new_parent is not None
+    assert new_parent[0].policy_revision != old_parent[0].policy_revision
+    assert restarted._last_implementation_retry is None
+    assert restarted._canonical_ref(task) not in (
+        restarted._implementation_diagnostics
+    )
+    assert not (
+        log_dir / "asi-stale-policy-diagnostic-receipt.json"
+    ).exists()
+    assert not (
+        log_dir / "asi-stale-policy-diagnostic-state.json"
+    ).exists()
+    events = [
+        json.loads(line)
+        for line in restarted.events_path.read_text(encoding="utf-8").splitlines()
+    ]
+    rebase_event = next(
+        event
+        for event in events
+        if event["type"] == "implementation_retry_parent_rebased"
+    )
+    assert rebase_event["reason"] == "prompt_policy_revision_changed"
+    assert rebase_event["old_context_receipt_id"] == old_parent[1]
+    assert rebase_event["new_context_receipt_id"] == new_parent[1]
 
 
 def test_delta_result_exposes_exact_invariant_core_preservation() -> None:
