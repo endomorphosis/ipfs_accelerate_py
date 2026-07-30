@@ -1102,6 +1102,112 @@ def test_daemon_builds_bounded_production_packet(
     assert "repository_corpus" not in json.dumps(payload)
 
 
+def test_daemon_bridges_verified_compiled_context_as_ids_and_handles(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _daemon(tmp_path, monkeypatch)
+    task = _task()
+    bounded_summary = (
+        "task=SCA-615; vector=cid:vector; merge=cid:merge; "
+        f"artifact=sha256:{'a' * 64}"
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_render_todo_vector_context",
+        lambda _task: bounded_summary,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_load_todo_vector_context",
+        lambda _task: {},
+    )
+    compiled = daemon._compile_implementation_context(task, attempt=1)
+    snapshot = f"git-commit:{compiled.capsule.tree_id}"
+
+    packet = daemon.build_production_contract_packet_for_task(
+        task,
+        snapshot_id=snapshot,
+        attempt=1,
+    )
+
+    payload = dict(packet.provider_input_payload)
+    contract_ids = set(payload["goal"]["contract_ids"])
+    selected = compiled.capsule.evidence[0]
+    assert compiled.capsule.capsule_id in contract_ids
+    assert compiled.receipt.receipt_id in contract_ids
+    assert selected.reference_content_id in contract_ids
+    assert selected.referenced_content_id in contract_ids
+    binding = payload["expansion_handles"][0]
+    assert binding["status"] == "verified"
+    assert binding["task_id"] == task.task_id
+    assert binding["production_snapshot_id"] == snapshot
+    selected_handle = next(
+        item
+        for item in payload["expansion_handles"]
+        if item.get("reference_id") == selected.reference_id
+    )
+    assert selected_handle["disposition"] == "selected"
+    assert "summary" not in selected_handle
+    assert bounded_summary not in json.dumps(payload, sort_keys=True)
+
+
+def test_daemon_omits_compiled_context_from_a_different_snapshot(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _daemon(tmp_path, monkeypatch)
+    task = _task()
+    daemon._compile_implementation_context(task, attempt=1)
+
+    packet = daemon.build_production_contract_packet_for_task(
+        task,
+        snapshot_id=SNAPSHOT,
+        attempt=1,
+    )
+
+    payload = dict(packet.provider_input_payload)
+    assert payload["goal"]["contract_ids"] == []
+    assert payload["goal"]["obligation_ids"] == []
+    assert payload["expansion_handles"][0]["status"] == (
+        "omitted_snapshot_mismatch"
+    )
+    assert payload["expansion_handles"][0]["context_snapshot_id"] != SNAPSHOT
+
+
+def test_daemon_rejects_cross_task_or_tampered_compiled_context(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _daemon(tmp_path, monkeypatch)
+    task = _task()
+    compiled = daemon._compile_implementation_context(task, attempt=1)
+    snapshot = f"git-commit:{compiled.capsule.tree_id}"
+
+    with pytest.raises(
+        ProviderRoutingError,
+        match="stale or cross-task",
+    ) as cross_task:
+        daemon.build_production_contract_packet_for_task(
+            _task(task_id="SCA-OTHER"),
+            snapshot_id=snapshot,
+            attempt=1,
+        )
+    assert cross_task.value.reason_code == ProviderReason.PACKET_MALFORMED.value
+
+    object.__setattr__(compiled.capsule, "objective_id", "SCA-TAMPERED")
+    with pytest.raises(
+        ProviderRoutingError,
+        match="canonical verification",
+    ) as tampered:
+        daemon.build_production_contract_packet_for_task(
+            task,
+            snapshot_id=snapshot,
+            attempt=1,
+        )
+    assert tampered.value.reason_code == ProviderReason.PACKET_MALFORMED.value
+
+
 def test_build_production_provider_route_evaluation_helper() -> None:
     packet = build_production_contract_packet(
         task_id="SCA-615",

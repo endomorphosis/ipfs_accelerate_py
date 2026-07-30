@@ -31,9 +31,11 @@ from ..context.context_compiler import (
     ContextCompileResult,
     ContextCompiler,
     ContextDeltaError,
+    ContextDeltaReceipt,
     ContextDeltaResult,
     ContextExpansionCancelled,
     RequiredContextOverflowError,
+    RetryContextCapsule,
     RetryContextResult,
     build_text_context_references,
     compile_retry_context,
@@ -44,6 +46,8 @@ from ..context.context_contracts import (
     ABSOLUTE_MAX_CONTEXT_BYTES,
     ContextBudget,
     ContextCapsule,
+    ContextDeltaCapsule,
+    ContextReference,
 )
 from ..proof.formal_verification_contracts import canonical_json, content_identity
 from ipfs_accelerate_py.model_catalog.identity import (
@@ -237,6 +241,14 @@ PRODUCTION_PROVIDER_ROUTE_BINDING_EVENT = (
 )
 PRODUCTION_PROVIDER_ROUTE_PENDING_EVENT = (
     "production_provider_receipt_pending"
+)
+PRODUCTION_IMPLEMENTATION_CONTEXT_BINDING_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "production-implementation-context-binding@1"
+)
+PRODUCTION_CONTEXT_REFERENCE_HANDLE_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "production-context-reference-handle@1"
 )
 # Env overrides for injectable production providers (tests/operators).
 PRODUCTION_PROVIDER_ROUTE_ENABLED_ENV = (
@@ -17938,6 +17950,13 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "track": str(task.track or ""),
             "attempt": int(attempt),
         }
+        contract_ids, obligation_ids, expansion_handles = (
+            self._verified_production_context_packet_fields(
+                task,
+                snapshot_id=snapshot_id,
+                attempt=attempt,
+            )
+        )
         return build_production_contract_packet(
             task_id=task.task_id,
             snapshot_id=snapshot_id,
@@ -17945,11 +17964,234 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             read_paths=write_paths,
             validation_commands=tuple(task.validation or ()),
             acceptance_criteria=str(task.acceptance or ""),
-            contract_ids=(),
-            obligation_ids=(),
-            expansion_handles=(),
+            contract_ids=contract_ids,
+            obligation_ids=obligation_ids,
+            expansion_handles=expansion_handles,
             packet_id=f"packet:production:{task.task_id}:attempt-{int(attempt)}",
             extra_goal=extra_goal,
+        )
+
+    @staticmethod
+    def _production_context_reference_handle(
+        reference: ContextReference,
+        *,
+        selected: bool,
+    ) -> dict[str, Any]:
+        """Project one verified reference without copying its summary/body."""
+
+        body: dict[str, Any] = {
+            "schema": PRODUCTION_CONTEXT_REFERENCE_HANDLE_SCHEMA,
+            "reference_id": reference.reference_id,
+            "reference_content_id": reference.reference_content_id,
+            "referenced_content_id": reference.referenced_content_id,
+            "kind": reference.kind,
+            "tier": reference.tier.value,
+            "disposition": "selected" if selected else "deferred",
+            "repository_id": reference.repository_id,
+            "tree_id": reference.tree_id,
+            "path": reference.path,
+            "byte_count": int(reference.byte_count),
+            "coverage_ids": list(reference.coverage_ids),
+        }
+        return {"handle_id": content_identity(body), **body}
+
+    def _verified_production_context_packet_fields(
+        self,
+        task: PortalTask,
+        *,
+        snapshot_id: str,
+        attempt: int,
+    ) -> tuple[tuple[str, ...], tuple[str, ...], tuple[dict[str, Any], ...]]:
+        """Bridge a formally verified compiler result into a bounded packet.
+
+        Context compiled against the packet's exact Git root contributes only
+        content IDs and compact handles.  A source/target root mismatch is
+        recorded as an omission handle instead of falsely claiming that stale
+        context applies to the production snapshot.
+        """
+
+        current = self._last_implementation_context
+        if current is None:
+            return (), (), ()
+
+        try:
+            if isinstance(current, ContextCompileResult):
+                capsule = ContextCapsule.from_dict(current.capsule.to_record())
+                receipt = ContextCompilationReceipt.from_dict(
+                    current.receipt.to_record()
+                )
+                verified: ContextCompileResult | ContextDeltaResult = (
+                    ContextCompileResult(
+                        capsule=capsule,
+                        receipt=receipt,
+                        decisions=receipt.decisions,
+                    )
+                )
+                selected_references = capsule.evidence
+                deferred_references = capsule.expansion_references
+                context_mode = "base"
+                provider_context_id = capsule.capsule_id
+                context_ids = (
+                    capsule.capsule_id,
+                    receipt.receipt_id,
+                    capsule.invariant_core_id,
+                )
+                retry_capsule = None
+            elif isinstance(current, ContextDeltaResult):
+                verified = ContextDeltaResult(
+                    parent_capsule=ContextCapsule.from_dict(
+                        current.parent_capsule.to_record()
+                    ),
+                    delta_capsule=ContextDeltaCapsule.from_dict(
+                        current.delta_capsule.to_record()
+                    ),
+                    reconstructed_capsule=ContextCapsule.from_dict(
+                        current.reconstructed_capsule.to_record()
+                    ),
+                    receipt=ContextDeltaReceipt.from_dict(
+                        current.receipt.to_record()
+                    ),
+                    decisions=current.receipt.decisions,
+                )
+                retry = self._last_implementation_retry
+                if retry is None:
+                    raise ValueError(
+                        "compiled delta is missing its semantic retry binding"
+                    )
+                retry_capsule = RetryContextCapsule.from_dict(
+                    retry.capsule.to_record()
+                )
+                RetryContextResult(
+                    capsule=retry_capsule,
+                    delta_result=verified,
+                )
+                capsule = verified.parent_capsule
+                selected_references = verified.delta_capsule.evidence
+                deferred_references = ()
+                context_mode = "retry"
+                provider_context_id = retry_capsule.capsule_id
+                context_ids = (
+                    retry_capsule.capsule_id,
+                    verified.parent_capsule.capsule_id,
+                    verified.delta_capsule.capsule_id,
+                    verified.reconstructed_capsule.capsule_id,
+                    verified.receipt.receipt_id,
+                    verified.parent_capsule.invariant_core_id,
+                    retry_capsule.diagnostic_receipt_id,
+                )
+            else:
+                raise TypeError("implementation context has an unsupported type")
+        except (TypeError, ValueError) as exc:
+            raise ProviderRoutingError(
+                "compiled implementation context failed canonical verification",
+                reason_code=ProviderReason.PACKET_MALFORMED,
+            ) from exc
+
+        expected_repository_id, current_source_tree_id = (
+            self._implementation_repository_and_tree_ids(task)
+        )
+        expected_revision = self._canonical_ref(task)
+        goal = capsule.goal if isinstance(capsule.goal, Mapping) else {}
+        if (
+            capsule.repository_id != expected_repository_id
+            or capsule.tree_id != current_source_tree_id
+            or capsule.objective_id != task.task_id
+            or capsule.objective_revision != expected_revision
+            or goal.get("task_id") != task.task_id
+        ):
+            raise ProviderRoutingError(
+                "compiled implementation context is stale or cross-task",
+                reason_code=ProviderReason.PACKET_MALFORMED,
+            )
+        if context_mode == "base":
+            compiled_attempt = goal.get("attempt")
+            if (
+                isinstance(compiled_attempt, bool)
+                or compiled_attempt != int(attempt)
+            ):
+                raise ProviderRoutingError(
+                    "compiled implementation context attempt does not match",
+                    reason_code=ProviderReason.PACKET_MALFORMED,
+                )
+        elif (
+            retry_capsule is None
+            or retry_capsule.repair_round != max(1, int(attempt) - 1)
+        ):
+            raise ProviderRoutingError(
+                "compiled retry context attempt does not match",
+                reason_code=ProviderReason.PACKET_MALFORMED,
+            )
+
+        expected_context_snapshot = f"git-commit:{capsule.tree_id}"
+        binding: dict[str, Any] = {
+            "schema": PRODUCTION_IMPLEMENTATION_CONTEXT_BINDING_SCHEMA,
+            "task_id": task.task_id,
+            "task_cid": expected_revision,
+            "attempt": int(attempt),
+            "context_mode": context_mode,
+            "provider_context_id": provider_context_id,
+            "context_receipt_id": verified.receipt.receipt_id,
+            "repository_id": capsule.repository_id,
+            "context_tree_id": capsule.tree_id,
+            "context_snapshot_id": expected_context_snapshot,
+            "production_snapshot_id": snapshot_id,
+        }
+        if snapshot_id != expected_context_snapshot:
+            binding.update(
+                {
+                    "status": "omitted_snapshot_mismatch",
+                    "omission_reason": (
+                        "compiled_context_not_bound_to_production_snapshot"
+                    ),
+                }
+            )
+            return (), (), (
+                {"handle_id": content_identity(binding), **binding},
+            )
+
+        binding["status"] = "verified"
+        binding_handle = {"handle_id": content_identity(binding), **binding}
+        handles = [
+            binding_handle,
+            *(
+                self._production_context_reference_handle(
+                    reference,
+                    selected=True,
+                )
+                for reference in selected_references
+            ),
+            *(
+                self._production_context_reference_handle(
+                    reference,
+                    selected=False,
+                )
+                for reference in deferred_references
+            ),
+        ]
+        contract_ids = {
+            binding_handle["handle_id"],
+            *context_ids,
+            *(
+                identifier
+                for reference in selected_references
+                for identifier in (
+                    reference.reference_content_id,
+                    reference.referenced_content_id,
+                )
+                if identifier
+            ),
+        }
+        obligation_ids = {
+            coverage_id
+            for reference in selected_references
+            for coverage_id in reference.coverage_ids
+        }
+        if retry_capsule is not None:
+            obligation_ids.update(retry_capsule.unresolved_requirement_ids)
+        return (
+            tuple(sorted(contract_ids)),
+            tuple(sorted(obligation_ids)),
+            tuple(handles),
         )
 
     def _production_admission_gate(self, proposal: Any) -> dict[str, Any]:
