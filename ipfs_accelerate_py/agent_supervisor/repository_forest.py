@@ -2139,6 +2139,19 @@ def repository_identity_packet_evidence_terms() -> tuple[str, ...]:
     return REPOSITORY_IDENTITY_PACKET_EVIDENCE_TERMS
 
 
+def packet_evidence_terms() -> tuple[str, ...]:
+    """Return VFS-G136/VFS-G137 packet domain evidence terms.
+
+    Ordered as ``vfs/repository-descriptor@1`` then
+    ``vfs/repository-forest-manifest@1``.  Labels never enter descriptor or
+    forest identity.  Replay evidence (``vfs/repository-forest-replay@1``)
+    remains on :func:`repository_forest_replay_evidence_terms` and is folded
+    into :func:`all_covered_evidence_terms` for cross-module discovery.
+    """
+
+    return repository_identity_packet_evidence_terms()
+
+
 def repository_identity_completion_goal_bindings() -> dict[str, list[str]]:
     """Return fresh supervisor completion bindings aligned to the objective heap."""
 
@@ -2616,15 +2629,31 @@ def repository_forest_replay_evidence_terms() -> tuple[str, ...]:
 def covered_evidence_terms() -> tuple[str, ...]:
     """Return domain objective evidence terms this forest surface proves.
 
-    Mirrors :func:`repository_forest_replay_evidence_terms` for discovery
-    scanners that look for a uniform ``covered_evidence_terms`` hook.
+    Covers the repository-identity packet (``vfs/repository-descriptor@1``,
+    ``vfs/repository-forest-manifest@1`` for VFS-G136/VFS-G137) and freeze
+    replay (``vfs/repository-forest-replay@1`` for VFS-G140).  Packet-only
+    discovery stays on :func:`packet_evidence_terms`; replay-only discovery
+    stays on :func:`repository_forest_replay_evidence_terms`.  Labels never
+    enter portable descriptor or forest CIDs.
     """
 
-    return repository_forest_replay_evidence_terms()
+    return tuple(
+        dict.fromkeys(
+            (
+                *repository_identity_packet_evidence_terms(),
+                *repository_forest_replay_evidence_terms(),
+            )
+        )
+    )
 
 
 def all_covered_evidence_terms() -> tuple[str, ...]:
-    """Return all evidence terms this module proves (domain only)."""
+    """Return all domain evidence terms this module proves for discovery scanners.
+
+    Mirrors :func:`covered_evidence_terms` so supervisors that import either
+    hook observe the same closed set for the repository-identity packet and
+    forest-replay surfaces.
+    """
 
     return covered_evidence_terms()
 
@@ -2823,6 +2852,7 @@ __all__ = [
     "initial_vfs_assurance_forest_policy",
     "inspect_gitlink_closure",
     "make_repository_id",
+    "packet_evidence_terms",
     "path_within_repository",
     "portable_projection_excludes_host_state",
     "prove_repository_descriptor",

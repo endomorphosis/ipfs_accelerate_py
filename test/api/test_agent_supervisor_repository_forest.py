@@ -57,6 +57,7 @@ from ipfs_accelerate_py.agent_supervisor.repository_forest import (
     make_repository_id,
     path_within_repository,
     portable_projection_excludes_host_state,
+    packet_evidence_terms,
     prove_repository_descriptor,
     prove_repository_forest_manifest,
     prove_repository_forest_replay,
@@ -623,7 +624,10 @@ def test_repository_forest_replay_evidence_terms_are_bound() -> None:
     assert REPOSITORY_FOREST_REPLAY_EVIDENCE == "vfs/repository-forest-replay@1"
     assert OBJECTIVE_DOMAIN_EVIDENCE_TERMS == ("vfs/repository-forest-replay@1",)
     assert repository_forest_replay_evidence_terms() == OBJECTIVE_DOMAIN_EVIDENCE_TERMS
-    assert covered_evidence_terms() == repository_forest_replay_evidence_terms()
+    # Replay remains a first-class domain term; the shared covered hooks also
+    # publish the co-located repository-identity packet evidence terms.
+    assert REPOSITORY_FOREST_REPLAY_EVIDENCE in covered_evidence_terms()
+    assert REPOSITORY_FOREST_REPLAY_EVIDENCE in all_covered_evidence_terms()
     assert all_covered_evidence_terms() == covered_evidence_terms()
     assert OBJECTIVE_GOAL_ID == "VFS-G140"
     assert OBJECTIVE_PARENT_GOAL_ID == "VFS-G011"
@@ -895,6 +899,17 @@ def test_repository_identity_packet_evidence_terms_match_objective_heap() -> Non
         repository_identity_packet_evidence_terms()
         == REPOSITORY_IDENTITY_PACKET_EVIDENCE_TERMS
     )
+    assert packet_evidence_terms() == REPOSITORY_IDENTITY_PACKET_EVIDENCE_TERMS
+    # Uniform discovery hooks must publish both packet terms (VFS-G136/G137)
+    # so supervisor-fed scans stay aligned with the objective heap.
+    assert covered_evidence_terms() == (
+        "vfs/repository-descriptor@1",
+        "vfs/repository-forest-manifest@1",
+        "vfs/repository-forest-replay@1",
+    )
+    assert all_covered_evidence_terms() == covered_evidence_terms()
+    assert "vfs/repository-descriptor@1" in all_covered_evidence_terms()
+    assert "vfs/repository-forest-manifest@1" in all_covered_evidence_terms()
     assert REPOSITORY_DESCRIPTOR_GOAL_ID == "VFS-G136"
     assert REPOSITORY_FOREST_MANIFEST_GOAL_ID == "VFS-G137"
     assert REPOSITORY_IDENTITY_PACKET_GOAL_IDS == ("VFS-G136", "VFS-G137")
