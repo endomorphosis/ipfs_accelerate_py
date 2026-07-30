@@ -4749,6 +4749,89 @@ def test_validation_rebinds_declared_generated_output_at_fixed_point(
     ) == '{"coverage":1}'
 
 
+def test_declared_output_directory_preserves_nested_ignored_fixture(
+    tmp_path: Path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / ".gitignore").write_text(
+        "*.json\n__pycache__/\n",
+        encoding="utf-8",
+    )
+    _git(repo, "add", ".gitignore")
+    _git(repo, "commit", "-m", "base")
+    baseline = _git(repo, "rev-parse", "HEAD")
+    fixture_dir = repo / "test" / "fixtures" / "corpus"
+    fixture_dir.mkdir(parents=True)
+    (fixture_dir / "manifest.json").write_text(
+        '{"cases":[]}\n',
+        encoding="utf-8",
+    )
+    cache_dir = fixture_dir / "__pycache__"
+    cache_dir.mkdir()
+    (cache_dir / "builder.pyc").write_bytes(b"generated")
+    state_dir = tmp_path / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=[],
+    )
+    task = PortalTask(
+        task_id="AUTO-123",
+        title="Generate a deterministic fixture corpus",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="analysis",
+        outputs=["test/fixtures/corpus"],
+        validation=["python -m pytest"],
+        acceptance="The ignored fixture is preserved with the candidate.",
+    )
+
+    proposal_validation = daemon._validate_implementation_patch(
+        repo,
+        task,
+        baseline_ref=baseline,
+    )
+
+    assert proposal_validation.accepted is True
+    assert proposal_validation.proposal.changed_paths == (
+        "test/fixtures/corpus/manifest.json",
+    )
+    assert _git(repo, "diff", "--cached", "--name-only") == (
+        "test/fixtures/corpus/manifest.json"
+    )
+
+    commit_result = daemon._commit_worktree_changes_unchecked(
+        repo,
+        task,
+        1,
+        baseline_ref=baseline,
+    )
+
+    assert commit_result["committed"] is True
+    assert _git(
+        repo,
+        "show",
+        f"{commit_result['commit']}:test/fixtures/corpus/manifest.json",
+    ) == '{"cases":[]}'
+    committed_paths = _git(
+        repo,
+        "show",
+        "--name-only",
+        "--format=",
+        str(commit_result["commit"]),
+    ).splitlines()
+    assert not any(path.endswith("builder.pyc") for path in committed_paths)
+
+
 def test_validation_rebind_rejects_generated_change_outside_task_scope(
     tmp_path: Path,
     monkeypatch,

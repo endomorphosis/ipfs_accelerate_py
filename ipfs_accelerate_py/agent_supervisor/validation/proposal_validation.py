@@ -610,6 +610,20 @@ class ParsedPatchFile:
     binary: bool = False
 
 
+_EMPTY_GIT_BLOB_IDS = (
+    "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
+    "473a0f4c3be8a93681a267e3b1e9a7dcda1185436fe141f7749120a303721813",
+)
+
+
+def _is_empty_git_blob_id(value: str) -> bool:
+    """Return whether an abbreviated SHA-1/SHA-256 object id is the empty blob."""
+
+    return bool(value) and any(
+        blob_id.startswith(value) for blob_id in _EMPTY_GIT_BLOB_IDS
+    )
+
+
 def parse_unified_patch(
     patch_text: str,
     *,
@@ -651,6 +665,8 @@ def parse_unified_patch(
         binary = False
         saw_content = False
         saw_old_header = saw_new_header = False
+        saw_new_file_mode = saw_deleted_file_mode = False
+        index_old_hash = index_new_hash = ""
         index += 1
         while index < len(lines) and not lines[index].startswith("diff --git "):
             current = lines[index]
@@ -664,8 +680,10 @@ def parse_unified_patch(
                     raise ProposalValidationError("binary patch payloads are forbidden")
             if current.startswith("new file mode "):
                 operation = "add"
+                saw_new_file_mode = True
             elif current.startswith("deleted file mode "):
                 operation = "delete"
+                saw_deleted_file_mode = True
             elif current.startswith(("old mode ", "new mode ")):
                 operation = "type_change"
             elif current.startswith("rename from "):
@@ -728,9 +746,20 @@ def parse_unified_patch(
                     raise ProposalValidationError("truncated unified-diff hunk")
                 saw_content = saw_content or additions > 0 or deletions > 0
                 continue
+            elif current.startswith("index "):
+                match = re.fullmatch(
+                    r"index ([0-9a-fA-F]{4,64})\.\.([0-9a-fA-F]{4,64})"
+                    r"(?: \d+)?",
+                    current,
+                )
+                if match is None or index_old_hash or index_new_hash:
+                    raise ProposalValidationError(
+                        "malformed or duplicate Git patch index metadata"
+                    )
+                index_old_hash = match.group(1).lower()
+                index_new_hash = match.group(2).lower()
             elif current and not binary and not current.startswith(
                 (
-                    "index ",
                     "similarity index ",
                     "dissimilarity index ",
                     r"\ No newline at end of file",
@@ -741,10 +770,29 @@ def parse_unified_patch(
                 # of the patch envelope.
                 raise ProposalValidationError("unrecognized Git patch content")
             index += 1
-        if operation in {"add", "delete", "modify"} and not binary and not (
-            saw_old_header and saw_new_header and saw_content
-        ):
-            raise ProposalValidationError("text patch section requires headers and an effectful hunk")
+        if operation in {"add", "delete", "modify"} and not binary:
+            effectful_hunk = saw_old_header and saw_new_header and saw_content
+            empty_file_add = (
+                operation == "add"
+                and saw_new_file_mode
+                and not saw_deleted_file_mode
+                and bool(index_old_hash)
+                and set(index_old_hash) == {"0"}
+                and _is_empty_git_blob_id(index_new_hash)
+            )
+            empty_file_delete = (
+                operation == "delete"
+                and saw_deleted_file_mode
+                and not saw_new_file_mode
+                and _is_empty_git_blob_id(index_old_hash)
+                and bool(index_new_hash)
+                and set(index_new_hash) == {"0"}
+            )
+            if not (effectful_hunk or empty_file_add or empty_file_delete):
+                raise ProposalValidationError(
+                    "text patch section requires headers and an effectful hunk "
+                    "or canonical empty-file metadata"
+                )
         files.append(
             ParsedPatchFile(
                 old_path=old_path,
@@ -2786,30 +2834,6 @@ _NEVER_EXPOSE_SENTINEL_RE = re.compile(
     r"""(?ix)^(?:should|must)[_-]?never[_-]?"""
     r"""(?:appear|persist|log|store|commit)$"""
 )
-
-
-def _introduces_secret_content(
-    before_source: str | None,
-    after_source: str | None,
-) -> bool:
-    """Return whether a candidate adds or changes secret-like content.
-
-    Candidate entries contain the complete before and after source. Scanning
-    only the latter rejects unrelated edits whenever a file already contains
-    a secret-like environment lookup. Compare match populations so unchanged
-    pre-existing content does not acquire new secret-mutation authority.
-    """
-
-    before_matches = Counter(
-        match.group(0) for match in _SECRET_CONTENT_RE.finditer(before_source or "")
-    )
-    after_matches = Counter(
-        match.group(0) for match in _SECRET_CONTENT_RE.finditer(after_source or "")
-    )
-    return any(
-        count > before_matches.get(value, 0)
-        for value, count in after_matches.items()
-    )
 
 
 _TEST_SKIP_RE = re.compile(

@@ -372,6 +372,8 @@ DEFAULT_IMPLEMENTATION_PROPOSAL_OUTPUT_BYTES = 2_500_000
 DEFAULT_IMPLEMENTATION_PROPOSAL_FILE_BYTES = 1_048_576
 MAX_IMPLEMENTATION_PROPOSAL_MATERIALIZED_BYTES = 16_000_000
 MAX_IMPLEMENTATION_PROPOSAL_SERIALIZED_BYTES = 24_000_000
+MAX_DECLARED_IGNORED_OUTPUT_FILES = 256
+MAX_DECLARED_OUTPUT_SCAN_FILES = 4_096
 PROPOSAL_ARTIFACT_ENVELOPE_METADATA_KEY = "proposal artifact envelope"
 PROPOSAL_ARTIFACT_ENVELOPE_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/task-artifact-envelope@1"
@@ -13686,14 +13688,14 @@ class PortalImplementationDaemon:
         workspace_path: Path,
         task: PortalTask,
     ) -> tuple[str, ...]:
-        """Bind exact task-owned ignored files into the candidate diff.
+        """Bind task-owned ignored files into the candidate diff.
 
         Generated evidence commonly lives below repository-wide ignored data
         roots.  Git otherwise omits those validated files from both proposal
         collection and ``git add -A``, allowing worktree cleanup to discard
-        them.  Only exact declared regular files are force-added; directories,
-        symlinks, submodule contents, and paths escaping the checkout remain
-        ineligible.
+        them.  Exact regular files and bounded regular descendants of declared
+        directories are eligible.  Symlinks, generated worktree artifacts,
+        submodule contents, and paths escaping the checkout remain ineligible.
         """
 
         try:
@@ -13709,7 +13711,8 @@ class PortalImplementationDaemon:
             for path in (*self.worktree_submodule_paths, *tracked_gitlinks)
             if path.strip("/")
         }
-        staged: list[str] = []
+        candidates: set[str] = set()
+        scanned_files = 0
         for relative in self._proposal_scope_paths(task):
             parts = Path(relative).parts
             if (
@@ -13723,13 +13726,95 @@ class PortalImplementationDaemon:
             ):
                 continue
             target = workspace_path / relative
-            if target.is_symlink() or not target.is_file():
+            if target.is_symlink():
+                continue
+            if target.is_file():
+                candidates.add(relative)
+                continue
+            if not target.is_dir():
+                continue
+
+            for directory, directory_names, file_names in os.walk(
+                target,
+                topdown=True,
+                followlinks=False,
+            ):
+                directory_path = Path(directory)
+                retained_directories: list[str] = []
+                for name in sorted(directory_names):
+                    child = directory_path / name
+                    if child.is_symlink():
+                        continue
+                    try:
+                        child_relative = (
+                            child.resolve(strict=True)
+                            .relative_to(workspace_root)
+                            .as_posix()
+                        )
+                    except (OSError, RuntimeError, ValueError):
+                        continue
+                    child_parts = Path(child_relative).parts
+                    if (
+                        not self._repo_relative_path_safe(child_relative)
+                        or ".git" in child_parts
+                        or self._path_is_generated_worktree_artifact(child_relative)
+                        or any(
+                            self._path_matches_prefix(child_relative, prefix)
+                            for prefix in submodule_boundaries
+                        )
+                    ):
+                        continue
+                    retained_directories.append(name)
+                directory_names[:] = retained_directories
+
+                for name in sorted(file_names):
+                    child = directory_path / name
+                    try:
+                        child_stat = child.lstat()
+                    except OSError:
+                        continue
+                    if not stat_module.S_ISREG(child_stat.st_mode):
+                        continue
+                    scanned_files += 1
+                    if scanned_files > MAX_DECLARED_OUTPUT_SCAN_FILES:
+                        raise RuntimeError(
+                            "declared output directories exceed the bounded "
+                            f"{MAX_DECLARED_OUTPUT_SCAN_FILES}-file scan"
+                        )
+                    try:
+                        child_relative = (
+                            child.resolve(strict=True)
+                            .relative_to(workspace_root)
+                            .as_posix()
+                        )
+                    except (OSError, RuntimeError, ValueError):
+                        continue
+                    child_parts = Path(child_relative).parts
+                    if (
+                        not self._repo_relative_path_safe(child_relative)
+                        or ".git" in child_parts
+                        or self._path_is_generated_worktree_artifact(child_relative)
+                        or any(
+                            self._path_matches_prefix(child_relative, prefix)
+                            for prefix in submodule_boundaries
+                        )
+                    ):
+                        continue
+                    candidates.add(child_relative)
+
+        ignored_candidates: list[str] = []
+        ignored_bytes = 0
+        for relative in sorted(candidates):
+            target = workspace_path / relative
+            if target.is_symlink():
                 continue
             try:
+                target_stat = target.lstat()
                 target.resolve(strict=True).relative_to(workspace_root)
             except (OSError, RuntimeError, ValueError):
                 continue
-
+            if not stat_module.S_ISREG(target_stat.st_mode):
+                continue
             ignored = subprocess.run(
                 ["git", "check-ignore", "--quiet", "--", relative],
                 cwd=workspace_path,
@@ -13743,6 +13828,21 @@ class PortalImplementationDaemon:
                 raise RuntimeError(
                     f"cannot determine ignored output status for {relative}"
                 )
+            ignored_candidates.append(relative)
+            ignored_bytes += target_stat.st_size
+            if len(ignored_candidates) > MAX_DECLARED_IGNORED_OUTPUT_FILES:
+                raise RuntimeError(
+                    "declared ignored outputs exceed the bounded "
+                    f"{MAX_DECLARED_IGNORED_OUTPUT_FILES}-file limit"
+                )
+            if ignored_bytes > MAX_IMPLEMENTATION_PROPOSAL_MATERIALIZED_BYTES:
+                raise RuntimeError(
+                    "declared ignored outputs exceed the bounded materialized "
+                    "proposal byte limit"
+                )
+
+        staged: list[str] = []
+        for relative in ignored_candidates:
             add = subprocess.run(
                 ["git", "add", "-f", "--", relative],
                 cwd=workspace_path,

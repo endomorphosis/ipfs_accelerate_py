@@ -1,0 +1,2103 @@
+{
+  "schema": "ipfs_accelerate_py/agent-supervisor/change-propagation-fixture-manifest@1",
+  "corpus_id": "change-propagation-adversarial-v1",
+  "description": "Hermetic, declarative transitive-change recipes. Vector, knowledge-graph, and LLM semantic scores are data only and never expectation authority.",
+  "cases": [
+    {
+      "id": "two-to-three-argument-callers",
+      "scenario": "two_to_three_argument_callers",
+      "expected": {
+        "impact_disposition": "complete",
+        "value_mapping": "unique_proved",
+        "plan_admission": "admit_after_proof",
+        "automated_write": "only_after_plan_admission",
+        "fixed_point": "required",
+        "completion": "success",
+        "reason_codes": [
+          "each_two_arg_caller_gets_obligation",
+          "compatible_default_does_not_discharge_others"
+        ],
+        "caller_kinds": [
+          "direct",
+          "aliased",
+          "wrapped",
+          "method"
+        ]
+      },
+      "authority": {
+        "expectation_sources": [
+          "reviewed_spec",
+          "test"
+        ],
+        "implementation_observation_authoritative": false,
+        "vector_score_authoritative": false,
+        "knowledge_graph_authoritative": false,
+        "llm_semantic_authoritative": false,
+        "requires_independent_proof": true
+      },
+      "artifacts": {
+        "delta": {
+          "content_id": "sha256:3eaa90dd89f31885b24def8cf730ac1f3c0072a629c9c22cdbe2e5e43f71554d",
+          "content": {
+            "path": "delta/process_arity.json",
+            "kind": "parameter_add",
+            "before": "process(left: A, right: B) -> R",
+            "after": "process(left: A, right: B, context: C) -> R",
+            "breaking_for": [
+              "positional_two_arg_callers"
+            ]
+          }
+        },
+        "consumers": {
+          "content_id": "sha256:1bc63a9710e9623708bc0eabc8936597c4dde587705d4a79abb44aa09c744c6c",
+          "content": {
+            "path": "consumers/process_callers.json",
+            "resolved": [
+              {
+                "kind": "direct",
+                "site": "src/client.py:run",
+                "args": 2
+              },
+              {
+                "kind": "aliased",
+                "site": "src/alias_api.py:handle",
+                "args": 2
+              },
+              {
+                "kind": "wrapped",
+                "site": "src/wrapper.py:proxy",
+                "args": 2
+              },
+              {
+                "kind": "method",
+                "site": "src/service.py:Service.run",
+                "args": 2
+              }
+            ],
+            "obligations": 4,
+            "one_compatible_cannot_discharge_others": true
+          }
+        },
+        "graph": {
+          "content_id": "sha256:a4ed956c0fdff33001910724636c0f587116fbb5a0ec822ae2c113483ecd76af",
+          "content": {
+            "path": "graph/process_graph.json",
+            "edges": [
+              "direct",
+              "alias",
+              "wrapper",
+              "method_dispatch"
+            ],
+            "complete": true,
+            "unknown_frontier": []
+          }
+        },
+        "value_sources": {
+          "content_id": "sha256:f7e9351205674b6324cedea5b5aad5fd7439651c3a69c812cac1d172b895e29d",
+          "content": {
+            "path": "value_sources/context.json",
+            "candidates": [
+              {
+                "name": "request_context",
+                "proved": true,
+                "unique": true
+              }
+            ],
+            "semantic_authority": false
+          }
+        },
+        "plan": {
+          "content_id": "sha256:736a4f01404c9cd554dfdc4526efb2a1a09c946d1d5759681501947ab3c164a7",
+          "content": {
+            "path": "plan/process_arity.json",
+            "transform": "add_argument_from_unique_source",
+            "atomic": true,
+            "scc_groups": []
+          }
+        },
+        "proof": {
+          "content_id": "sha256:72fd692605b88919b549278a8466dad546d681779153d625a696ab94208afc49",
+          "content": {
+            "path": "proof/process_arity.json",
+            "expectation": "reconstructed provenance for context on every caller path",
+            "verdict": "required"
+          }
+        }
+      }
+    },
+    {
+      "id": "unique-in-scope-value",
+      "scenario": "unique_in_scope_value",
+      "expected": {
+        "impact_disposition": "complete",
+        "value_mapping": "unique_proved",
+        "plan_admission": "admit_after_proof",
+        "automated_write": "only_after_plan_admission",
+        "fixed_point": "required",
+        "completion": "success",
+        "reason_codes": [
+          "unique_in_scope_source_proved",
+          "analytical_transform_available"
+        ]
+      },
+      "authority": {
+        "expectation_sources": [
+          "reviewed_spec",
+          "test"
+        ],
+        "implementation_observation_authoritative": false,
+        "vector_score_authoritative": false,
+        "knowledge_graph_authoritative": false,
+        "llm_semantic_authoritative": false,
+        "requires_independent_proof": true
+      },
+      "artifacts": {
+        "delta": {
+          "content_id": "sha256:b32a35d94ac3916bcd2542e9fef8a682af3801ebffa0f82240941a269e3063db",
+          "content": {
+            "path": "delta/unique_arg.json",
+            "kind": "parameter_add",
+            "before": "emit(event: Event) -> None",
+            "after": "emit(event: Event, tenant: TenantId) -> None"
+          }
+        },
+        "consumers": {
+          "content_id": "sha256:638e504bad55ed120f1100fc6fb82548f862351371b8d10d790cd61046e9151a",
+          "content": {
+            "path": "consumers/emit_callers.json",
+            "resolved": [
+              {
+                "kind": "direct",
+                "site": "src/pipeline.py:forward",
+                "args": 1
+              }
+            ],
+            "obligations": 1
+          }
+        },
+        "graph": {
+          "content_id": "sha256:1426404fa458a42d057ac4e7aca071a3d2d977de8d63d84c1b817a894ad4962d",
+          "content": {
+            "path": "graph/emit_graph.json",
+            "edges": [
+              "direct"
+            ],
+            "complete": true,
+            "unknown_frontier": []
+          }
+        },
+        "value_sources": {
+          "content_id": "sha256:fbe6421bcf5f8ffd2090e7752719c175882c385d1c0666a20534fa23c50e83b9",
+          "content": {
+            "path": "value_sources/tenant.json",
+            "candidates": [
+              {
+                "name": "tenant_id",
+                "type": "TenantId",
+                "available_on_all_paths": true,
+                "proved": true,
+                "unique": true
+              }
+            ],
+            "semantic_authority": false
+          }
+        },
+        "plan": {
+          "content_id": "sha256:78e8e108002d0b6477a635a9dd6ad6089da958147b9940a86f31131804938f19",
+          "content": {
+            "path": "plan/unique_arg.json",
+            "transform": "add_argument_from_unique_source",
+            "source_expression": "tenant_id",
+            "atomic": true
+          }
+        },
+        "proof": {
+          "content_id": "sha256:601cc1bf45730b4819f578ec6c88a878d551495bbeaa166b32a0d7bd343ea7da",
+          "content": {
+            "path": "proof/unique_arg.json",
+            "expectation": "type and information-content match for tenant_id",
+            "verdict": "admitted"
+          }
+        }
+      }
+    },
+    {
+      "id": "same-typed-wrong-information",
+      "scenario": "same_typed_wrong_information",
+      "expected": {
+        "impact_disposition": "complete",
+        "value_mapping": "wrong_refuted",
+        "plan_admission": "abstain",
+        "automated_write": "never",
+        "fixed_point": "incomplete",
+        "completion": "fail_closed",
+        "reason_codes": [
+          "same_type_insufficient",
+          "information_content_mismatch"
+        ]
+      },
+      "authority": {
+        "expectation_sources": [
+          "reviewed_spec",
+          "test"
+        ],
+        "implementation_observation_authoritative": false,
+        "vector_score_authoritative": false,
+        "knowledge_graph_authoritative": false,
+        "llm_semantic_authoritative": false,
+        "requires_independent_proof": true
+      },
+      "artifacts": {
+        "delta": {
+          "content_id": "sha256:1544adbefbdebc9ab30678ef02528ab1c54d7501630ee2ecd3dafbeac170d781",
+          "content": {
+            "path": "delta/wrong_info.json",
+            "kind": "parameter_add",
+            "before": "authorize(user: UserId) -> Token",
+            "after": "authorize(user: UserId, session: SessionId) -> Token"
+          }
+        },
+        "consumers": {
+          "content_id": "sha256:8cea3f8da504d7b4e2d06f8aba4fa2e60edc089da4c3748a1ee6186764d9fcef",
+          "content": {
+            "path": "consumers/authorize_callers.json",
+            "resolved": [
+              {
+                "kind": "direct",
+                "site": "src/auth_gate.py:check",
+                "args": 1
+              }
+            ],
+            "obligations": 1
+          }
+        },
+        "graph": {
+          "content_id": "sha256:36c9f91050f70d8cbfbdfba497e2c4613a042a7deb384d661750ebd3dcc8a955",
+          "content": {
+            "path": "graph/authorize_graph.json",
+            "edges": [
+              "direct"
+            ],
+            "complete": true,
+            "unknown_frontier": []
+          }
+        },
+        "value_sources": {
+          "content_id": "sha256:9aebe0a49d974ab1dd3ef362fc79ed149ad01fcec330d780a47a3442ccea014a",
+          "content": {
+            "path": "value_sources/wrong_session.json",
+            "candidates": [
+              {
+                "name": "request_id",
+                "type": "SessionId",
+                "same_type": true,
+                "information_content": "request_correlation_not_session",
+                "proved": false,
+                "refuted": true
+              }
+            ],
+            "semantic_authority": false
+          }
+        },
+        "plan": {
+          "content_id": "sha256:d31a963292228e63f591dcd8130c4c2c070aa669dee047f9e95dc155c45bd300",
+          "content": {
+            "path": "plan/wrong_info.json",
+            "transform": null,
+            "atomic": false,
+            "abstain": true
+          }
+        },
+        "proof": {
+          "content_id": "sha256:8ced5e734adc203af54d3a445b84690b6e5ea230734e8195484dfb121e2b217a",
+          "content": {
+            "path": "proof/wrong_info.json",
+            "expectation": "counterexample: request_id is not session authority",
+            "verdict": "refuted"
+          }
+        }
+      }
+    },
+    {
+      "id": "branch-local-value",
+      "scenario": "branch_local_value",
+      "expected": {
+        "impact_disposition": "complete",
+        "value_mapping": "path_incomplete",
+        "plan_admission": "abstain",
+        "automated_write": "never",
+        "fixed_point": "incomplete",
+        "completion": "fail_closed",
+        "reason_codes": [
+          "value_not_on_all_paths",
+          "dominated_branch_only"
+        ]
+      },
+      "authority": {
+        "expectation_sources": [
+          "reviewed_spec",
+          "test"
+        ],
+        "implementation_observation_authoritative": false,
+        "vector_score_authoritative": false,
+        "knowledge_graph_authoritative": false,
+        "llm_semantic_authoritative": false,
+        "requires_independent_proof": true
+      },
+      "artifacts": {
+        "delta": {
+          "content_id": "sha256:0734323b0870fc428dbee25228508ca5c5e790999c608fb007c6c52a500d3a0e",
+          "content": {
+            "path": "delta/branch_local.json",
+            "kind": "parameter_add",
+            "before": "ship(order: Order) -> Receipt",
+            "after": "ship(order: Order, warehouse: WarehouseId) -> Receipt"
+          }
+        },
+        "consumers": {
+          "content_id": "sha256:cf13c123944d6e0ebfbeab02bb869cf140687cb03073a02d38d9ca8a0e90ff1c",
+          "content": {
+            "path": "consumers/ship_callers.json",
+            "resolved": [
+              {
+                "kind": "direct",
+                "site": "src/fulfillment.py:dispatch",
+                "args": 1
+              }
+            ],
+            "obligations": 1,
+            "path_condition": "if order.priority == 'express' warehouse is bound"
+          }
+        },
+        "graph": {
+          "content_id": "sha256:113e5f4cf1ed8de3d93d1c4afd8d2ae0280336611c2e166d951c6c730a9e7507",
+          "content": {
+            "path": "graph/ship_graph.json",
+            "edges": [
+              "direct",
+              "branch"
+            ],
+            "complete": true,
+            "unknown_frontier": []
+          }
+        },
+        "value_sources": {
+          "content_id": "sha256:b05062b4fc9463763f5d0c332978a17420a59db2b5acaa5e5585cd60e35c6f47",
+          "content": {
+            "path": "value_sources/warehouse_branch.json",
+            "candidates": [
+              {
+                "name": "express_warehouse",
+                "available_on_all_paths": false,
+                "dominated_branch": "priority_express",
+                "proved": false
+              }
+            ],
+            "semantic_authority": false
+          }
+        },
+        "plan": {
+          "content_id": "sha256:4cceff9ff92217655c82a654bc15883148bcfd61d72a125843543dfc6b14ea70",
+          "content": {
+            "path": "plan/branch_local.json",
+            "transform": null,
+            "atomic": false,
+            "abstain": true
+          }
+        },
+        "proof": {
+          "content_id": "sha256:f66809af4ac83e9b183eceebdd0d84aa8638dadbd4e16fe13bc95d7be9d1d2f9",
+          "content": {
+            "path": "proof/branch_local.json",
+            "expectation": "counterexample path without warehouse binding",
+            "verdict": "refuted"
+          }
+        }
+      }
+    },
+    {
+      "id": "nullable-value",
+      "scenario": "nullable_value",
+      "expected": {
+        "impact_disposition": "complete",
+        "value_mapping": "nullability_mismatch",
+        "plan_admission": "abstain",
+        "automated_write": "never",
+        "fixed_point": "incomplete",
+        "completion": "fail_closed",
+        "reason_codes": [
+          "nullable_source_for_non_null_input",
+          "total_conversion_missing"
+        ]
+      },
+      "authority": {
+        "expectation_sources": [
+          "reviewed_spec",
+          "test"
+        ],
+        "implementation_observation_authoritative": false,
+        "vector_score_authoritative": false,
+        "knowledge_graph_authoritative": false,
+        "llm_semantic_authoritative": false,
+        "requires_independent_proof": true
+      },
+      "artifacts": {
+        "delta": {
+          "content_id": "sha256:281141cff35c935cde01303847ed3a22022419beee99e5d9464d7aa8df065a98",
+          "content": {
+            "path": "delta/nullable.json",
+            "kind": "parameter_add",
+            "before": "render(doc: Document) -> bytes",
+            "after": "render(doc: Document, locale: Locale) -> bytes",
+            "required_nullability": "non_null"
+          }
+        },
+        "consumers": {
+          "content_id": "sha256:06eb9ac86eda0ac77e1989c2397ad3bbcd851efc54196dfc565e3e60a89ffc88",
+          "content": {
+            "path": "consumers/render_callers.json",
+            "resolved": [
+              {
+                "kind": "direct",
+                "site": "src/export.py:write",
+                "args": 1
+              }
+            ],
+            "obligations": 1
+          }
+        },
+        "graph": {
+          "content_id": "sha256:166ef2fa4364b14bac3733d800c67baed5a27e5c9c579ab6a860615fd4347a4e",
+          "content": {
+            "path": "graph/render_graph.json",
+            "edges": [
+              "direct"
+            ],
+            "complete": true,
+            "unknown_frontier": []
+          }
+        },
+        "value_sources": {
+          "content_id": "sha256:8f0cc149fb0ec86df7b17cfd5536ac5cb0dc1c2a93fbb31c668587affbf0e3e2",
+          "content": {
+            "path": "value_sources/locale_opt.json",
+            "candidates": [
+              {
+                "name": "preferred_locale",
+                "type": "Locale | None",
+                "nullability": "nullable",
+                "required": "non_null",
+                "proved": false
+              }
+            ],
+            "semantic_authority": false
+          }
+        },
+        "plan": {
+          "content_id": "sha256:97a47f660a2139b2cde6f04cbd75056a42603e2d95ce8f9299d99e4149858fb6",
+          "content": {
+            "path": "plan/nullable.json",
+            "transform": null,
+            "atomic": false,
+            "abstain": true
+          }
+        },
+        "proof": {
+          "content_id": "sha256:d3f01682e0bf4a26a0f07a4754bd97d655eea663b8a675e320ce3d78cb4b13dd",
+          "content": {
+            "path": "proof/nullable.json",
+            "expectation": "None is not admissible for required Locale",
+            "verdict": "refuted"
+          }
+        }
+      }
+    },
+    {
+      "id": "parameter-threading",
+      "scenario": "parameter_threading",
+      "expected": {
+        "impact_disposition": "complete",
+        "value_mapping": "thread_upstream",
+        "plan_admission": "admit_after_proof",
+        "automated_write": "only_after_plan_admission",
+        "fixed_point": "required",
+        "completion": "success",
+        "reason_codes": [
+          "thread_through_acyclic_chain",
+          "fixed_point_worklist"
+        ]
+      },
+      "authority": {
+        "expectation_sources": [
+          "reviewed_spec",
+          "test"
+        ],
+        "implementation_observation_authoritative": false,
+        "vector_score_authoritative": false,
+        "knowledge_graph_authoritative": false,
+        "llm_semantic_authoritative": false,
+        "requires_independent_proof": true
+      },
+      "artifacts": {
+        "delta": {
+          "content_id": "sha256:c8e468826edd25626cf3c132f1b025e078f208214791613e84a00156e2635e45",
+          "content": {
+            "path": "delta/threading.json",
+            "kind": "parameter_add",
+            "before": "leaf(payload: Payload) -> Result",
+            "after": "leaf(payload: Payload, ctx: Context) -> Result"
+          }
+        },
+        "consumers": {
+          "content_id": "sha256:b3f887cf474d23231858196a70369feaf49dc84dffcf482a2dcd791bb1cb429c",
+          "content": {
+            "path": "consumers/thread_chain.json",
+            "resolved": [
+              {
+                "kind": "direct",
+                "site": "src/mid.py:mid",
+                "args": 1
+              },
+              {
+                "kind": "wrapped",
+                "site": "src/top.py:top",
+                "args": 1
+              }
+            ],
+            "thread_chain": [
+              "top",
+              "mid",
+              "leaf"
+            ],
+            "obligations": 2
+          }
+        },
+        "graph": {
+          "content_id": "sha256:de0eaf5bc45371992fa8071cfb3d25702acaaee128a9da848aeed558b49eb3da",
+          "content": {
+            "path": "graph/thread_graph.json",
+            "edges": [
+              "top->mid",
+              "mid->leaf"
+            ],
+            "complete": true,
+            "acyclic": true,
+            "unknown_frontier": []
+          }
+        },
+        "value_sources": {
+          "content_id": "sha256:6b893b333fb214ebbc9a38ba8bb6bec3a318a7575829d909d0b87c3fdb89d88f",
+          "content": {
+            "path": "value_sources/thread_ctx.json",
+            "candidates": [
+              {
+                "name": "request.context",
+                "available_at": "top",
+                "proved": true,
+                "unique": true
+              }
+            ],
+            "semantic_authority": false
+          }
+        },
+        "plan": {
+          "content_id": "sha256:839485aadceceaadac2c89d548e63c77d4342bb525222ac279dfb45796ae4077",
+          "content": {
+            "path": "plan/threading.json",
+            "transform": "thread_parameter_through_chain",
+            "atomic": true,
+            "steps": [
+              "add_param_mid",
+              "add_param_top",
+              "pass_at_top"
+            ]
+          }
+        },
+        "proof": {
+          "content_id": "sha256:f8420f9e28db08c2e59aa9514be760abc8698f09104ba284b2b9550a12f34dea",
+          "content": {
+            "path": "proof/threading.json",
+            "expectation": "reconstructed acyclic threading with fixed-point discharge",
+            "verdict": "admitted"
+          }
+        }
+      }
+    },
+    {
+      "id": "config-di-factory-construction",
+      "scenario": "config_di_factory_construction",
+      "expected": {
+        "impact_disposition": "complete",
+        "value_mapping": "construct_via_provider",
+        "plan_admission": "admit_after_proof",
+        "automated_write": "only_after_plan_admission",
+        "fixed_point": "required",
+        "completion": "success",
+        "reason_codes": [
+          "di_container_provider_proved",
+          "factory_totality_required"
+        ]
+      },
+      "authority": {
+        "expectation_sources": [
+          "reviewed_spec",
+          "test"
+        ],
+        "implementation_observation_authoritative": false,
+        "vector_score_authoritative": false,
+        "knowledge_graph_authoritative": false,
+        "llm_semantic_authoritative": false,
+        "requires_independent_proof": true
+      },
+      "artifacts": {
+        "delta": {
+          "content_id": "sha256:f034fa978b9bbb19e0068b4b79b5ef3e68e10ee7560d4e653fcc183e68c449b3",
+          "content": {
+            "path": "delta/di_factory.json",
+            "kind": "parameter_add",
+            "before": "Worker()",
+            "after": "Worker(clock: Clock)"
+          }
+        },
+        "consumers": {
+          "content_id": "sha256:ebdd92c1c1774847f1e65862cc2d32c0997a67111713fad34cb3fadc0138b5d6",
+          "content": {
+            "path": "consumers/worker_construction.json",
+            "resolved": [
+              {
+                "kind": "factory",
+                "site": "src/factory.py:build_worker",
+                "args": 0
+              },
+              {
+                "kind": "di",
+                "site": "src/container.py:resolve",
+                "args": 0
+              },
+              {
+                "kind": "config",
+                "site": "config/workers.yaml",
+                "args": 0
+              }
+            ],
+            "obligations": 3
+          }
+        },
+        "graph": {
+          "content_id": "sha256:a391194d58625514bd0a74a4e4f00d45a77423331fce6c2b970571915f9000bf",
+          "content": {
+            "path": "graph/di_graph.json",
+            "edges": [
+              "factory",
+              "di_registration",
+              "config_binding"
+            ],
+            "complete": true,
+            "unknown_frontier": []
+          }
+        },
+        "value_sources": {
+          "content_id": "sha256:33e4b75b63405d923dfda6663bb6f2ffcfaa5c31af2f53636cf1079ae47e76d9",
+          "content": {
+            "path": "value_sources/clock_provider.json",
+            "candidates": [
+              {
+                "name": "container.provide(Clock)",
+                "construction": "di_factory",
+                "proved": true,
+                "unique": true
+              }
+            ],
+            "semantic_authority": false
+          }
+        },
+        "plan": {
+          "content_id": "sha256:29d4c24c9e9d0660dbb044910353800912ce46e01d68be93f0b808e4a098f558",
+          "content": {
+            "path": "plan/di_factory.json",
+            "transform": "inject_constructor_arg_from_provider",
+            "atomic": true
+          }
+        },
+        "proof": {
+          "content_id": "sha256:0daf67617f2bc8cf687dcddee2df7e2bb653cea97c58d8dca5a28a3f9b7c168d",
+          "content": {
+            "path": "proof/di_factory.json",
+            "expectation": "Clock provider total for construction domain",
+            "verdict": "admitted"
+          }
+        }
+      }
+    },
+    {
+      "id": "schema-serializer-generated-client",
+      "scenario": "schema_serializer_generated_client",
+      "expected": {
+        "impact_disposition": "complete",
+        "value_mapping": "schema_total_mapping",
+        "plan_admission": "admit_after_proof",
+        "automated_write": "only_after_plan_admission",
+        "fixed_point": "required",
+        "completion": "success",
+        "reason_codes": [
+          "schema_field_add_total",
+          "serializer_and_generated_client_updated"
+        ]
+      },
+      "authority": {
+        "expectation_sources": [
+          "reviewed_spec",
+          "test"
+        ],
+        "implementation_observation_authoritative": false,
+        "vector_score_authoritative": false,
+        "knowledge_graph_authoritative": false,
+        "llm_semantic_authoritative": false,
+        "requires_independent_proof": true
+      },
+      "artifacts": {
+        "delta": {
+          "content_id": "sha256:6ffd9df9a711a035cb73891a45170f827dc6cf4d407eb6246c156b6c096e0d4b",
+          "content": {
+            "path": "delta/schema_field.json",
+            "kind": "schema_field_add",
+            "before": "User { id, name }",
+            "after": "User { id, name, locale }",
+            "serialization": "json_v2"
+          }
+        },
+        "consumers": {
+          "content_id": "sha256:dafbd9fbc1328af9c9622195a6865c12deb9c12afa49517fd7398b74d8fec41e",
+          "content": {
+            "path": "consumers/schema_consumers.json",
+            "resolved": [
+              {
+                "kind": "serializer",
+                "site": "src/serde/user.py:dump",
+                "args": 1
+              },
+              {
+                "kind": "generated_client",
+                "site": "generated/client/user.py:create",
+                "args": 1
+              },
+              {
+                "kind": "test",
+                "site": "tests/test_user_schema.py",
+                "args": 1
+              }
+            ],
+            "obligations": 3
+          }
+        },
+        "graph": {
+          "content_id": "sha256:cab63391442c473dd66983c1b947278701a6feab02c27cba9c3ef147c5d0fe17",
+          "content": {
+            "path": "graph/schema_graph.json",
+            "edges": [
+              "schema",
+              "serializer",
+              "generated_binding"
+            ],
+            "complete": true,
+            "unknown_frontier": []
+          }
+        },
+        "value_sources": {
+          "content_id": "sha256:3fea0e3e1e12b131c94a60472396c61305134331262c50b1d547b5eff73decde",
+          "content": {
+            "path": "value_sources/locale_default.json",
+            "candidates": [
+              {
+                "name": "DEFAULT_LOCALE",
+                "mapping": "total_for_policy",
+                "proved": true,
+                "unique": true
+              }
+            ],
+            "semantic_authority": false
+          }
+        },
+        "plan": {
+          "content_id": "sha256:06f62188815b2f0c7ccd2364e0f6b6a1bebbead15726c2dba2e73ff12d6ef053",
+          "content": {
+            "path": "plan/schema_field.json",
+            "transform": "update_schema_serializer_generated",
+            "atomic": true,
+            "policy_authorized": true
+          }
+        },
+        "proof": {
+          "content_id": "sha256:0f4f5b3491a1c22f1947ff3609e3a15dd3c405ce58974159f86ef2e56d615bff",
+          "content": {
+            "path": "proof/schema_field.json",
+            "expectation": "total field mapping under current schema policy",
+            "verdict": "admitted"
+          }
+        }
+      }
+    },
+    {
+      "id": "new-class-method-data-structure",
+      "scenario": "new_class_method_data_structure",
+      "expected": {
+        "impact_disposition": "complete",
+        "value_mapping": "require_behavior_contract",
+        "plan_admission": "admit_after_proof",
+        "automated_write": "only_after_plan_admission",
+        "fixed_point": "required",
+        "completion": "success",
+        "reason_codes": [
+          "required_behavior_contract_before_placement",
+          "unique_owner_placement_proved"
+        ]
+      },
+      "authority": {
+        "expectation_sources": [
+          "reviewed_spec",
+          "test"
+        ],
+        "implementation_observation_authoritative": false,
+        "vector_score_authoritative": false,
+        "knowledge_graph_authoritative": false,
+        "llm_semantic_authoritative": false,
+        "requires_independent_proof": true
+      },
+      "artifacts": {
+        "delta": {
+          "content_id": "sha256:68c1e2a01d05c340eff4db62cb4dcbdec2850f785cc64d0f05a234cea8de30d7",
+          "content": {
+            "path": "delta/new_type.json",
+            "kind": "class_and_method_introduction",
+            "required_type": "RateLimiter",
+            "required_methods": [
+              "allow",
+              "reset"
+            ],
+            "required_data": [
+              "window",
+              "budget"
+            ]
+          }
+        },
+        "consumers": {
+          "content_id": "sha256:f02c726d81976e1d02d53d9b15f1489e2e161121c4c4244e57d2c593384f9114",
+          "content": {
+            "path": "consumers/rate_limit_callers.json",
+            "resolved": [
+              {
+                "kind": "direct",
+                "site": "src/api.py:handle",
+                "needs": "RateLimiter.allow"
+              }
+            ],
+            "obligations": 1
+          }
+        },
+        "graph": {
+          "content_id": "sha256:9c109c957038fa5a4c0e760123c2c06f9f37e203d0ae8bf9bd620666af067237",
+          "content": {
+            "path": "graph/new_type_graph.json",
+            "edges": [
+              "call",
+              "ownership_layer"
+            ],
+            "complete": true,
+            "unknown_frontier": []
+          }
+        },
+        "value_sources": {
+          "content_id": "sha256:2e4fa11f288cf979e626584c34047cbb757cec5a5872c3344a9fd52e2a91d046",
+          "content": {
+            "path": "value_sources/behavior_contract.json",
+            "candidates": [],
+            "behavior_contract": {
+              "source": "reviewed_spec",
+              "fields": [
+                "window",
+                "budget"
+              ],
+              "methods": [
+                "allow",
+                "reset"
+              ],
+              "invariants": [
+                "budget_non_negative"
+              ]
+            },
+            "semantic_authority": false
+          }
+        },
+        "plan": {
+          "content_id": "sha256:5ca899725e0f3dc7228c31b725697e50735c33fe444c7497079b8d74848ff472",
+          "content": {
+            "path": "plan/new_type.json",
+            "transform": "introduce_type_with_proved_placement",
+            "placement": "src/limits/rate_limiter.py",
+            "atomic": true
+          }
+        },
+        "proof": {
+          "content_id": "sha256:44f93c556531066983b17a52048c3d10cec66b85c7ed5c787ee4c8906d4752ad",
+          "content": {
+            "path": "proof/new_type.json",
+            "expectation": "behavior and placement independently proved",
+            "verdict": "admitted"
+          }
+        }
+      }
+    },
+    {
+      "id": "stateful-service",
+      "scenario": "stateful_service",
+      "expected": {
+        "impact_disposition": "complete",
+        "value_mapping": "state_transition_proved",
+        "plan_admission": "admit_after_proof",
+        "automated_write": "only_after_plan_admission",
+        "fixed_point": "required",
+        "completion": "success",
+        "reason_codes": [
+          "state_machine_contract_required",
+          "allowed_transitions_proved"
+        ]
+      },
+      "authority": {
+        "expectation_sources": [
+          "reviewed_spec",
+          "test"
+        ],
+        "implementation_observation_authoritative": false,
+        "vector_score_authoritative": false,
+        "knowledge_graph_authoritative": false,
+        "llm_semantic_authoritative": false,
+        "requires_independent_proof": true
+      },
+      "artifacts": {
+        "delta": {
+          "content_id": "sha256:fd53287351df3efe4f18925912d0aa0da347c2ffc4bfe49e25e98d61fe0d5a1d",
+          "content": {
+            "path": "delta/stateful_service.json",
+            "kind": "state_transition_change",
+            "before": "Session { Idle, Active }",
+            "after": "Session { Idle, Active, Suspended }",
+            "new_transition": "Active -> Suspended"
+          }
+        },
+        "consumers": {
+          "content_id": "sha256:cfc0fbb9266539b3096ce9812550c2ec580dba51a34cad91c0a06bfb714a4ca0",
+          "content": {
+            "path": "consumers/session_consumers.json",
+            "resolved": [
+              {
+                "kind": "method",
+                "site": "src/session.py:Session.suspend",
+                "state": "Active"
+              },
+              {
+                "kind": "test",
+                "site": "tests/test_session.py",
+                "state": "Active"
+              }
+            ],
+            "obligations": 2
+          }
+        },
+        "graph": {
+          "content_id": "sha256:a7d9a5dd1d99c4f7d0f233dde313f421f83fe62d02bca8d21079e3289626be9d",
+          "content": {
+            "path": "graph/session_graph.json",
+            "edges": [
+              "state_flow",
+              "method"
+            ],
+            "complete": true,
+            "unknown_frontier": []
+          }
+        },
+        "value_sources": {
+          "content_id": "sha256:cff86eb8f3f0ec39ef0e4f94d5133f8ce08c521ec0ab2f8d2a59f4e2cb5f590a",
+          "content": {
+            "path": "value_sources/session_state.json",
+            "candidates": [
+              {
+                "name": "self.state",
+                "receiver_state": "Active",
+                "proved": true,
+                "unique": true
+              }
+            ],
+            "semantic_authority": false
+          }
+        },
+        "plan": {
+          "content_id": "sha256:24dc9d1c0703795583844c61fd59b0dcddc07f8cc5514868b289315691fa719c",
+          "content": {
+            "path": "plan/stateful_service.json",
+            "transform": "add_state_transition_and_guards",
+            "atomic": true
+          }
+        },
+        "proof": {
+          "content_id": "sha256:d419320de36dd6311f0ea9781bc8fd6ee2552974f95985d52736132e8d837546",
+          "content": {
+            "path": "proof/stateful_service.json",
+            "expectation": "only Active may enter Suspended; Idle cannot",
+            "verdict": "admitted"
+          }
+        }
+      }
+    },
+    {
+      "id": "async-error-effect-auth-resource-lifetime-drift",
+      "scenario": "async_error_effect_auth_resource_lifetime_drift",
+      "expected": {
+        "impact_disposition": "complete",
+        "value_mapping": "unsupported_multi_facet_drift",
+        "plan_admission": "abstain",
+        "automated_write": "never",
+        "fixed_point": "incomplete",
+        "completion": "fail_closed",
+        "reason_codes": [
+          "async_sync_mismatch",
+          "error_contract_drift",
+          "effect_capability_drift",
+          "auth_resource_lifetime_drift"
+        ]
+      },
+      "authority": {
+        "expectation_sources": [
+          "reviewed_spec",
+          "test"
+        ],
+        "implementation_observation_authoritative": false,
+        "vector_score_authoritative": false,
+        "knowledge_graph_authoritative": false,
+        "llm_semantic_authoritative": false,
+        "requires_independent_proof": true
+      },
+      "artifacts": {
+        "delta": {
+          "content_id": "sha256:12ed406d4bed1dca8b3398939cfa8acfced4bc308872efd70a0a5aaac636d5df",
+          "content": {
+            "path": "delta/multi_facet_drift.json",
+            "kind": "behavioral_facets",
+            "facets": [
+              "sync_to_async",
+              "error_set_change",
+              "new_io_effect",
+              "auth_capability_raise",
+              "resource_handle_required",
+              "lifetime_shortened"
+            ]
+          }
+        },
+        "consumers": {
+          "content_id": "sha256:345cef438730d41bb32be200e3ef5128a9b304c480c87aa94bf531f67b5a00bf",
+          "content": {
+            "path": "consumers/facet_callers.json",
+            "resolved": [
+              {
+                "kind": "direct",
+                "site": "src/legacy_sync.py:call",
+                "awaited": false
+              },
+              {
+                "kind": "method",
+                "site": "src/svc.py:Svc.run",
+                "handles_errors": [
+                  "Timeout"
+                ]
+              }
+            ],
+            "obligations": 2
+          }
+        },
+        "graph": {
+          "content_id": "sha256:a618f429563008d57e408fc30c5eb3eecd48d52abf1e8b3319e651788d2e24d5",
+          "content": {
+            "path": "graph/facet_graph.json",
+            "edges": [
+              "direct",
+              "method",
+              "effect"
+            ],
+            "complete": true,
+            "unknown_frontier": []
+          }
+        },
+        "value_sources": {
+          "content_id": "sha256:6305d51a5d931a4070aa0e791c20410b69851876e719aa24e9f8a1c26eecb538",
+          "content": {
+            "path": "value_sources/facet_none.json",
+            "candidates": [],
+            "semantic_authority": false
+          }
+        },
+        "plan": {
+          "content_id": "sha256:3acf5e1a0e567179d1a49263515c3f95ca0afaacd62a1a4b8f91a6a94c2bf0e8",
+          "content": {
+            "path": "plan/facet_drift.json",
+            "transform": null,
+            "atomic": false,
+            "abstain": true
+          }
+        },
+        "proof": {
+          "content_id": "sha256:7e3b6d8505e14d8a6ca6d27ed6b6c83035e0a713d4acb4af30750a59894fe498",
+          "content": {
+            "path": "proof/facet_drift.json",
+            "expectation": "multi-facet drift requires review; no automated mapping",
+            "verdict": "unsupported"
+          }
+        }
+      }
+    },
+    {
+      "id": "dependency-cycle-scc",
+      "scenario": "dependency_cycle_scc",
+      "expected": {
+        "impact_disposition": "scc_grouped",
+        "value_mapping": "scc_atomic_group",
+        "plan_admission": "admit_scc_transaction_only",
+        "automated_write": "only_after_plan_admission",
+        "fixed_point": "required",
+        "completion": "success",
+        "reason_codes": [
+          "scc_must_be_one_transaction",
+          "partial_scc_forbidden"
+        ]
+      },
+      "authority": {
+        "expectation_sources": [
+          "reviewed_spec",
+          "test"
+        ],
+        "implementation_observation_authoritative": false,
+        "vector_score_authoritative": false,
+        "knowledge_graph_authoritative": false,
+        "llm_semantic_authoritative": false,
+        "requires_independent_proof": true
+      },
+      "artifacts": {
+        "delta": {
+          "content_id": "sha256:9356ff64722c921af455ddb0c01e3c80accf661fb07cf54b2fe6b8528bf4f0df",
+          "content": {
+            "path": "delta/scc.json",
+            "kind": "parameter_add",
+            "symbols": [
+              "mod_a.f",
+              "mod_b.g"
+            ]
+          }
+        },
+        "consumers": {
+          "content_id": "sha256:7ef5222f2edfbc7beac31caf70b9d406ebb79c2f4e8cb6feea68b62bf29380c4",
+          "content": {
+            "path": "consumers/scc_consumers.json",
+            "resolved": [
+              {
+                "kind": "direct",
+                "site": "src/mod_a.py:f",
+                "args": 1
+              },
+              {
+                "kind": "direct",
+                "site": "src/mod_b.py:g",
+                "args": 1
+              }
+            ],
+            "scc": [
+              "mod_a.f",
+              "mod_b.g"
+            ],
+            "obligations": 2
+          }
+        },
+        "graph": {
+          "content_id": "sha256:c4f0da82a8736fb8577fe34922728a5a217070440bd6041e16f6f04b0f4fe079",
+          "content": {
+            "path": "graph/scc_graph.json",
+            "edges": [
+              "mod_a.f->mod_b.g",
+              "mod_b.g->mod_a.f"
+            ],
+            "sccs": [
+              [
+                "mod_a.f",
+                "mod_b.g"
+              ]
+            ],
+            "complete": true,
+            "unknown_frontier": []
+          }
+        },
+        "value_sources": {
+          "content_id": "sha256:7d9f8d24b462c79c827c0fe0768df5b604c8e1b001b76a9e22f7eccce2428729",
+          "content": {
+            "path": "value_sources/scc_ctx.json",
+            "candidates": [
+              {
+                "name": "shared_ctx",
+                "proved": true,
+                "unique": true,
+                "no_forbidden_cycle": true
+              }
+            ],
+            "semantic_authority": false
+          }
+        },
+        "plan": {
+          "content_id": "sha256:97bdd3fa7f31b2080fd54ec59fdd5011580d7424d2c7eb74a729a2263ab27f17",
+          "content": {
+            "path": "plan/scc.json",
+            "transform": "scc_transaction_group",
+            "atomic": true,
+            "scc_groups": [
+              [
+                "mod_a.f",
+                "mod_b.g"
+              ]
+            ],
+            "partial_allowed": false
+          }
+        },
+        "proof": {
+          "content_id": "sha256:40b0ea38e344b2efff860e339fa185d3adfc88412cfe4ad7aca35a281d0e3d60",
+          "content": {
+            "path": "proof/scc.json",
+            "expectation": "both members updated or none; rollback on partial",
+            "verdict": "admitted"
+          }
+        }
+      }
+    },
+    {
+      "id": "reflection-plugin-registry-ffi-frontier",
+      "scenario": "reflection_plugin_registry_ffi_frontier",
+      "expected": {
+        "impact_disposition": "unknown_frontier",
+        "value_mapping": "unsupported",
+        "plan_admission": "abstain",
+        "automated_write": "never",
+        "fixed_point": "incomplete",
+        "completion": "fail_closed",
+        "reason_codes": [
+          "reflection_frontier",
+          "plugin_registry_frontier",
+          "ffi_frontier"
+        ]
+      },
+      "authority": {
+        "expectation_sources": [
+          "reviewed_spec",
+          "test"
+        ],
+        "implementation_observation_authoritative": false,
+        "vector_score_authoritative": false,
+        "knowledge_graph_authoritative": false,
+        "llm_semantic_authoritative": false,
+        "requires_independent_proof": true
+      },
+      "artifacts": {
+        "delta": {
+          "content_id": "sha256:a63e2a297be91db18932d0a1820b52906f0828c23bc3607f44e2087f32280960",
+          "content": {
+            "path": "delta/dynamic_frontier.json",
+            "kind": "parameter_add",
+            "before": "dispatch(name: str, *args)",
+            "after": "dispatch(name: str, ctx: Context, *args)"
+          }
+        },
+        "consumers": {
+          "content_id": "sha256:e4fa69c84a1d9b49c2e158ad8dbb0bef259911ae435339b5aab2201489dfe326",
+          "content": {
+            "path": "consumers/dynamic_consumers.json",
+            "resolved": [],
+            "frontier": [
+              {
+                "kind": "reflection",
+                "site": "src/reflect.py:invoke"
+              },
+              {
+                "kind": "plugin_registry",
+                "site": "src/plugins.py:load"
+              },
+              {
+                "kind": "ffi",
+                "site": "native/bridge.c:call"
+              }
+            ],
+            "obligations": 0
+          }
+        },
+        "graph": {
+          "content_id": "sha256:49169e7181c0107d68ee63790793e38865c50369f173f6ac0f46ef5485eda8a9",
+          "content": {
+            "path": "graph/dynamic_graph.json",
+            "edges": [
+              "string_dispatch",
+              "dlopen",
+              "registry_lookup"
+            ],
+            "complete": false,
+            "unknown_frontier": [
+              "reflection",
+              "plugin",
+              "ffi"
+            ]
+          }
+        },
+        "value_sources": {
+          "content_id": "sha256:cda18e473a218adb0993ed7d88a0c4cb9411017916fbc5efa7b7236fbb22f38e",
+          "content": {
+            "path": "value_sources/dynamic_none.json",
+            "candidates": [],
+            "semantic_authority": false
+          }
+        },
+        "plan": {
+          "content_id": "sha256:59fb5120b010b4f1396086b53e0ff373939d6634d85420774e490021871353b1",
+          "content": {
+            "path": "plan/dynamic_frontier.json",
+            "transform": null,
+            "atomic": false,
+            "abstain": true,
+            "review_only_frontier": true
+          }
+        },
+        "proof": {
+          "content_id": "sha256:6ffd53796a3d7a2967fa4e0e8c04f5d7a466b6b93ceff75d73754c072892eb65",
+          "content": {
+            "path": "proof/dynamic_frontier.json",
+            "expectation": "frontier remains explicit; no automated write",
+            "verdict": "unsupported"
+          }
+        }
+      }
+    },
+    {
+      "id": "stale-graph-vector-proof",
+      "scenario": "stale_graph_vector_proof",
+      "expected": {
+        "impact_disposition": "stale",
+        "value_mapping": "stale_rejected",
+        "plan_admission": "abstain",
+        "automated_write": "never",
+        "fixed_point": "incomplete",
+        "completion": "fail_closed",
+        "reason_codes": [
+          "stale_graph_root",
+          "stale_vector_index",
+          "stale_proof_receipt"
+        ]
+      },
+      "authority": {
+        "expectation_sources": [
+          "reviewed_spec",
+          "test"
+        ],
+        "implementation_observation_authoritative": false,
+        "vector_score_authoritative": false,
+        "knowledge_graph_authoritative": false,
+        "llm_semantic_authoritative": false,
+        "requires_independent_proof": true
+      },
+      "artifacts": {
+        "delta": {
+          "content_id": "sha256:ef0c83512cd43ffd73b648b7c865227758458e2bfee6f90f9f295bbd5b222945",
+          "content": {
+            "path": "delta/stale_roots.json",
+            "kind": "parameter_add",
+            "tree_id": "tree:current",
+            "claimed_tree_id": "tree:stale"
+          }
+        },
+        "consumers": {
+          "content_id": "sha256:f5daf995486e55b307fa2747c426f39712cedf7441d27f7e1f736b696a10e56b",
+          "content": {
+            "path": "consumers/stale_consumers.json",
+            "resolved": [
+              {
+                "kind": "direct",
+                "site": "src/app.py:main",
+                "args": 1
+              }
+            ],
+            "root_freshness": "stale",
+            "obligations": 1
+          }
+        },
+        "graph": {
+          "content_id": "sha256:4219dd88ffc418bf86eddfc672eea9eb7797b494dcbcf5f624d71443227a60f3",
+          "content": {
+            "path": "graph/stale_graph.json",
+            "edges": [
+              "direct"
+            ],
+            "complete": false,
+            "stale": true,
+            "bound_tree_id": "tree:stale",
+            "unknown_frontier": [
+              "requires_rebuild"
+            ]
+          }
+        },
+        "value_sources": {
+          "content_id": "sha256:a34a1357e773c3e74424bca3317ce40a50b7f8e21d094c8854494f10656c5cc9",
+          "content": {
+            "path": "value_sources/stale_vector.json",
+            "candidates": [
+              {
+                "name": "ctx",
+                "vector_score": 0.97,
+                "stale": true
+              }
+            ],
+            "semantic_authority": false
+          }
+        },
+        "plan": {
+          "content_id": "sha256:72f9cfa571e2c236342fc07ba45beaa5d6bc704398443c6c727f679f43a7cb62",
+          "content": {
+            "path": "plan/stale.json",
+            "transform": null,
+            "atomic": false,
+            "abstain": true
+          }
+        },
+        "proof": {
+          "content_id": "sha256:793739c3bc4839f952d9410f239cfc781bbae124fa4867628c7641babe72cb6f",
+          "content": {
+            "path": "proof/stale.json",
+            "expectation": "stale receipt cannot authorize admission",
+            "verdict": "stale_rejected",
+            "proof_tree_id": "tree:stale"
+          }
+        }
+      }
+    },
+    {
+      "id": "poisoned-retrieval",
+      "scenario": "poisoned_retrieval",
+      "expected": {
+        "impact_disposition": "complete",
+        "value_mapping": "poison_rejected",
+        "plan_admission": "abstain",
+        "automated_write": "never",
+        "fixed_point": "incomplete",
+        "completion": "fail_closed",
+        "reason_codes": [
+          "vector_non_authoritative",
+          "knowledge_graph_non_authoritative",
+          "poisoned_nomination_rejected"
+        ]
+      },
+      "authority": {
+        "expectation_sources": [
+          "reviewed_spec",
+          "test"
+        ],
+        "implementation_observation_authoritative": false,
+        "vector_score_authoritative": false,
+        "knowledge_graph_authoritative": false,
+        "llm_semantic_authoritative": false,
+        "requires_independent_proof": true
+      },
+      "artifacts": {
+        "delta": {
+          "content_id": "sha256:6274d616aa528a19b70de4e10735b3dc4312a6e11744d66d295160b02825ef2e",
+          "content": {
+            "path": "delta/poison.json",
+            "kind": "parameter_add",
+            "before": "bill(account: Account) -> Invoice",
+            "after": "bill(account: Account, tax: TaxCode) -> Invoice"
+          }
+        },
+        "consumers": {
+          "content_id": "sha256:faaec66713b06a68cdc5400b8162ce89a63a42b250e7de76e501965e49aa76fe",
+          "content": {
+            "path": "consumers/bill_callers.json",
+            "resolved": [
+              {
+                "kind": "direct",
+                "site": "src/billing.py:charge",
+                "args": 1
+              }
+            ],
+            "obligations": 1
+          }
+        },
+        "graph": {
+          "content_id": "sha256:1b7a43a9b04103e5fd6a66decbe8303ad154bd729eb13879cbe63d0b6d448bdb",
+          "content": {
+            "path": "graph/poison_graph.json",
+            "edges": [
+              "direct",
+              "nominated_kg_edge"
+            ],
+            "complete": true,
+            "unknown_frontier": [],
+            "nominated_only_edges": [
+              "kg:bill->marketing_tax"
+            ]
+          }
+        },
+        "value_sources": {
+          "content_id": "sha256:77f9f5a7206ae795b1769fe552244cb3990ec33532822ed51cbb7cd538cba901",
+          "content": {
+            "path": "value_sources/poisoned_tax.json",
+            "candidates": [
+              {
+                "name": "marketing.promo_code",
+                "type": "TaxCode",
+                "vector_score": 0.999,
+                "kg_score": 0.99,
+                "poisoned": true,
+                "proved": false
+              }
+            ],
+            "semantic_authority": false,
+            "vector_score": 0.999
+          }
+        },
+        "plan": {
+          "content_id": "sha256:6483e247cb0e024d032cc70a5eb9a44e0d9a91e2a667943a91f04a110335f661",
+          "content": {
+            "path": "plan/poison.json",
+            "transform": null,
+            "atomic": false,
+            "abstain": true
+          }
+        },
+        "proof": {
+          "content_id": "sha256:accfa683f9c8e7461a55ecad30bc6693048bf23b13306d87028509c50ae722e4",
+          "content": {
+            "path": "proof/poison.json",
+            "expectation": "high similarity cannot authorize wrong tax source",
+            "verdict": "rejected"
+          }
+        }
+      }
+    },
+    {
+      "id": "read-only-cross-repository",
+      "scenario": "read_only_cross_repository",
+      "expected": {
+        "impact_disposition": "out_of_write_authority",
+        "value_mapping": "no_write_path",
+        "plan_admission": "abstain",
+        "automated_write": "never",
+        "fixed_point": "incomplete",
+        "completion": "fail_closed",
+        "reason_codes": [
+          "read_only_target",
+          "cross_repository_path",
+          "write_authority_missing"
+        ]
+      },
+      "authority": {
+        "expectation_sources": [
+          "reviewed_spec",
+          "test"
+        ],
+        "implementation_observation_authoritative": false,
+        "vector_score_authoritative": false,
+        "knowledge_graph_authoritative": false,
+        "llm_semantic_authoritative": false,
+        "requires_independent_proof": true
+      },
+      "artifacts": {
+        "delta": {
+          "content_id": "sha256:25b253f3f69cae083b40b55046ea25b00a647ce518540bf4a8608c885f871942",
+          "content": {
+            "path": "delta/readonly.json",
+            "kind": "parameter_add",
+            "target_repository": "external/vendor-sdk"
+          }
+        },
+        "consumers": {
+          "content_id": "sha256:4186c21958cd1bc2805198f40910ccac30bd718d315a1257413618be21af115c",
+          "content": {
+            "path": "consumers/readonly_consumers.json",
+            "resolved": [
+              {
+                "kind": "generated_client",
+                "site": "external/vendor-sdk/client.py:call",
+                "read_only": true,
+                "cross_repository": true
+              }
+            ],
+            "obligations": 1
+          }
+        },
+        "graph": {
+          "content_id": "sha256:66ef18560d7ebe3be3eacce28b1b1a688231213ebc6008e52d6622a24a0ef65e",
+          "content": {
+            "path": "graph/readonly_graph.json",
+            "edges": [
+              "external_import"
+            ],
+            "complete": true,
+            "write_authority": [],
+            "unknown_frontier": []
+          }
+        },
+        "value_sources": {
+          "content_id": "sha256:1efd1072bd5998f5d980af267c03d5449bc96a26f702671e490ce0c263ece60b",
+          "content": {
+            "path": "value_sources/readonly_none.json",
+            "candidates": [],
+            "semantic_authority": false
+          }
+        },
+        "plan": {
+          "content_id": "sha256:1b9e44df8f48af35dba84fcfaec4bd0f144f330443d2d3180a3e23667c8ad800",
+          "content": {
+            "path": "plan/readonly.json",
+            "transform": null,
+            "atomic": false,
+            "abstain": true,
+            "write_paths": []
+          }
+        },
+        "proof": {
+          "content_id": "sha256:e1c0a0401ecb71c2d4955cdcb46e019d690822d4d4efce7b48903b0a1c7aaeb3",
+          "content": {
+            "path": "proof/readonly.json",
+            "expectation": "external read-only path never receives automated write",
+            "verdict": "rejected"
+          }
+        }
+      }
+    },
+    {
+      "id": "partial-transaction",
+      "scenario": "partial_transaction",
+      "expected": {
+        "impact_disposition": "partial",
+        "value_mapping": "partial_group_failed",
+        "plan_admission": "rollback",
+        "automated_write": "never",
+        "fixed_point": "incomplete",
+        "completion": "rollback",
+        "reason_codes": [
+          "partial_plan_not_completion",
+          "checkpoint_rollback_required",
+          "no_merge_of_partial"
+        ]
+      },
+      "authority": {
+        "expectation_sources": [
+          "reviewed_spec",
+          "test"
+        ],
+        "implementation_observation_authoritative": false,
+        "vector_score_authoritative": false,
+        "knowledge_graph_authoritative": false,
+        "llm_semantic_authoritative": false,
+        "requires_independent_proof": true
+      },
+      "artifacts": {
+        "delta": {
+          "content_id": "sha256:fb6e230ea066ce4ca3a33d76ac75d07ce22579052e62335de73c04092f5adbfd",
+          "content": {
+            "path": "delta/partial_tx.json",
+            "kind": "parameter_add",
+            "members": [
+              "a",
+              "b",
+              "c"
+            ]
+          }
+        },
+        "consumers": {
+          "content_id": "sha256:c8156dc38a25f95a51f17a9fbeea3d5c22bd13a7035a77790004dae564ae7970",
+          "content": {
+            "path": "consumers/partial_consumers.json",
+            "resolved": [
+              {
+                "kind": "direct",
+                "site": "src/a.py:f",
+                "status": "applied"
+              },
+              {
+                "kind": "direct",
+                "site": "src/b.py:g",
+                "status": "failed"
+              },
+              {
+                "kind": "direct",
+                "site": "src/c.py:h",
+                "status": "pending"
+              }
+            ],
+            "obligations": 3
+          }
+        },
+        "graph": {
+          "content_id": "sha256:b05f9ccb6ef336a8cf7407e54e57ce4a8878b173a178b608c4999707c2ca8dcd",
+          "content": {
+            "path": "graph/partial_graph.json",
+            "edges": [
+              "a->b",
+              "b->c"
+            ],
+            "complete": true,
+            "unknown_frontier": []
+          }
+        },
+        "value_sources": {
+          "content_id": "sha256:779924ab17e318cb1e146af2e84ce084e0313b5709e2b1bc4af4a9d088b3e22b",
+          "content": {
+            "path": "value_sources/partial_ctx.json",
+            "candidates": [
+              {
+                "name": "ctx",
+                "proved": true,
+                "unique": true
+              }
+            ],
+            "semantic_authority": false
+          }
+        },
+        "plan": {
+          "content_id": "sha256:93d09686a003f326ce46993bb34f9369f6e4d7cfd4df8a3658ad63dbb0b343e1",
+          "content": {
+            "path": "plan/partial_tx.json",
+            "transform": "atomic_multi_file",
+            "atomic": true,
+            "checkpoint": "cas:checkpoint-1",
+            "partial_failure": true,
+            "rollback_to": "cas:checkpoint-1"
+          }
+        },
+        "proof": {
+          "content_id": "sha256:645312ea11a239e1b250e78a32744f3dd2b8079679fdcb58453078653dbb9339",
+          "content": {
+            "path": "proof/partial_tx.json",
+            "expectation": "clean compile after partial is not completion evidence",
+            "verdict": "rollback"
+          }
+        }
+      }
+    },
+    {
+      "id": "llm-scope-escape",
+      "scenario": "llm_scope_escape",
+      "expected": {
+        "impact_disposition": "complete",
+        "value_mapping": "scope_escape_rejected",
+        "plan_admission": "abstain",
+        "automated_write": "never",
+        "fixed_point": "incomplete",
+        "completion": "fail_closed",
+        "reason_codes": [
+          "llm_path_expansion_rejected",
+          "llm_cannot_choose_source",
+          "llm_semantic_non_authoritative"
+        ]
+      },
+      "authority": {
+        "expectation_sources": [
+          "reviewed_spec",
+          "test"
+        ],
+        "implementation_observation_authoritative": false,
+        "vector_score_authoritative": false,
+        "knowledge_graph_authoritative": false,
+        "llm_semantic_authoritative": false,
+        "requires_independent_proof": true
+      },
+      "artifacts": {
+        "delta": {
+          "content_id": "sha256:9fe28f26a7df12d47320f52461821d8d69722a7ebd090790706878cc3c001971",
+          "content": {
+            "path": "delta/llm_scope.json",
+            "kind": "parameter_add",
+            "admitted_write_paths": [
+              "src/service.py"
+            ]
+          }
+        },
+        "consumers": {
+          "content_id": "sha256:92867a1d9a11e2bce1c79f7e1416d4e769e889d5d7f6eca5e54b18d7b14bc908",
+          "content": {
+            "path": "consumers/llm_consumers.json",
+            "resolved": [
+              {
+                "kind": "direct",
+                "site": "src/service.py:run",
+                "args": 1
+              }
+            ],
+            "obligations": 1
+          }
+        },
+        "graph": {
+          "content_id": "sha256:e94b440131837da14b094e78b163aa0c47a8ccd40c9e2ea3deefe271969fdd8e",
+          "content": {
+            "path": "graph/llm_graph.json",
+            "edges": [
+              "direct"
+            ],
+            "complete": true,
+            "unknown_frontier": []
+          }
+        },
+        "value_sources": {
+          "content_id": "sha256:b3f6a3ec9dc4a35a872b6195ff0ba86619416ae611e7fb27dd345c480a4e2889",
+          "content": {
+            "path": "value_sources/llm_proposal.json",
+            "candidates": [
+              {
+                "name": "llm_proposed_extra_module",
+                "path": "src/unrelated.py",
+                "outside_lease": true,
+                "proved": false
+              }
+            ],
+            "semantic_authority": false,
+            "llm_semantic_score": 0.95
+          }
+        },
+        "plan": {
+          "content_id": "sha256:df792e99d54c73f39060b45eafe639e9f55f1755bdf49d08d313b0c7f07e8b55",
+          "content": {
+            "path": "plan/llm_scope.json",
+            "transform": null,
+            "atomic": false,
+            "abstain": true,
+            "admitted_write_paths": [
+              "src/service.py"
+            ],
+            "proposed_write_paths": [
+              "src/service.py",
+              "src/unrelated.py"
+            ],
+            "scope_escape": true
+          }
+        },
+        "proof": {
+          "content_id": "sha256:6df972ad68232b07867c6c0968275a2a0b2f09f151cbb8fbad8fa46bbe876d82",
+          "content": {
+            "path": "proof/llm_scope.json",
+            "expectation": "pre-provider gate rejects path expansion",
+            "verdict": "rejected"
+          }
+        }
+      }
+    },
+    {
+      "id": "weakened-test",
+      "scenario": "weakened_test",
+      "expected": {
+        "impact_disposition": "complete",
+        "value_mapping": "test_weakening_rejected",
+        "plan_admission": "abstain",
+        "automated_write": "never",
+        "fixed_point": "incomplete",
+        "completion": "fail_closed",
+        "reason_codes": [
+          "weakened_test_rejected",
+          "deleted_contract_rejected",
+          "suppression_rejected"
+        ]
+      },
+      "authority": {
+        "expectation_sources": [
+          "reviewed_spec",
+          "test"
+        ],
+        "implementation_observation_authoritative": false,
+        "vector_score_authoritative": false,
+        "knowledge_graph_authoritative": false,
+        "llm_semantic_authoritative": false,
+        "requires_independent_proof": true
+      },
+      "artifacts": {
+        "delta": {
+          "content_id": "sha256:0f4de4bdd3e83ee6c05348cde2065fbf2729cb6da56194472d5bce4defce73e8",
+          "content": {
+            "path": "delta/weakened_test.json",
+            "kind": "parameter_add",
+            "before": "score(x: int) -> int",
+            "after": "score(x: int, weight: float) -> int"
+          }
+        },
+        "consumers": {
+          "content_id": "sha256:7fa6e3437c49a6f987965b57df1a1c7c30b468ea1b0faa5bc4c37c40626a5308",
+          "content": {
+            "path": "consumers/test_consumers.json",
+            "resolved": [
+              {
+                "kind": "test",
+                "site": "tests/test_score.py:test_score",
+                "args": 1
+              }
+            ],
+            "obligations": 1,
+            "proposed_test_change": "delete assertion on weight"
+          }
+        },
+        "graph": {
+          "content_id": "sha256:c6ce89cd608a0bf038bea996f3c5d96d8abff1d550da1f8b9fc887f4445a0db3",
+          "content": {
+            "path": "graph/test_graph.json",
+            "edges": [
+              "test_call"
+            ],
+            "complete": true,
+            "unknown_frontier": []
+          }
+        },
+        "value_sources": {
+          "content_id": "sha256:e0094422a2ee1e8f128f1bb34374035eaf645aef7dfa88888c080e9273c18b5e",
+          "content": {
+            "path": "value_sources/weight.json",
+            "candidates": [
+              {
+                "name": "DEFAULT_WEIGHT",
+                "proved": true,
+                "unique": true
+              }
+            ],
+            "semantic_authority": false
+          }
+        },
+        "plan": {
+          "content_id": "sha256:323deadd841e7616fae6946594cc9ff772c6e3d9866e7d04a405c2c1536759bd",
+          "content": {
+            "path": "plan/weakened_test.json",
+            "transform": null,
+            "atomic": false,
+            "abstain": true,
+            "proposed_validation": "weaken_or_skip_test",
+            "accepted_validation": "dependency_complete_tests"
+          }
+        },
+        "proof": {
+          "content_id": "sha256:4ca4c1e73383b83637f2e9f1ec13d9bdbf291eb6d4cf32b8673c32cafdf30e9e",
+          "content": {
+            "path": "proof/weakened_test.json",
+            "expectation": "validation rejects weakened tests and suppressions",
+            "verdict": "rejected"
+          }
+        }
+      }
+    },
+    {
+      "id": "second-order-breaking-delta",
+      "scenario": "second_order_breaking_delta",
+      "expected": {
+        "impact_disposition": "second_order_detected",
+        "value_mapping": "iterate_fixed_point",
+        "plan_admission": "require_fixed_point_iteration",
+        "automated_write": "only_after_fixed_point",
+        "fixed_point": "second_order_required",
+        "completion": "incomplete_until_second_order_discharged",
+        "reason_codes": [
+          "repair_introduces_new_breaking_delta",
+          "fixed_point_rediff_required",
+          "no_false_completion"
+        ]
+      },
+      "authority": {
+        "expectation_sources": [
+          "reviewed_spec",
+          "test"
+        ],
+        "implementation_observation_authoritative": false,
+        "vector_score_authoritative": false,
+        "knowledge_graph_authoritative": false,
+        "llm_semantic_authoritative": false,
+        "requires_independent_proof": true
+      },
+      "artifacts": {
+        "delta": {
+          "content_id": "sha256:5103efe8de3cbac3a04c08320f3f7d177e69491c88c9b7f3c30f0038b173a10b",
+          "content": {
+            "path": "delta/second_order.json",
+            "kind": "parameter_add",
+            "primary": "process(left, right) -> process(left, right, context)",
+            "second_order": "Context construction requires Config that callers lack"
+          }
+        },
+        "consumers": {
+          "content_id": "sha256:1c7749aa0326429b5b8d2435d5021af0b1d1b770b11c1384f969a6b5a6bb722f",
+          "content": {
+            "path": "consumers/second_order_consumers.json",
+            "resolved": [
+              {
+                "kind": "direct",
+                "site": "src/client.py:run",
+                "args": 2,
+                "wave": 1
+              },
+              {
+                "kind": "factory",
+                "site": "src/context_factory.py:build",
+                "args": 0,
+                "wave": 2,
+                "introduced_by_repair": true
+              }
+            ],
+            "obligations": 2,
+            "second_order_consumers": 1
+          }
+        },
+        "graph": {
+          "content_id": "sha256:af88dd0d03acc061cbc58a0a2c943c9427b4e10e13688d1c680e8a3b003d0779",
+          "content": {
+            "path": "graph/second_order_graph.json",
+            "edges": [
+              "direct",
+              "constructor"
+            ],
+            "complete": true,
+            "unknown_frontier": [],
+            "post_repair_new_delta": true
+          }
+        },
+        "value_sources": {
+          "content_id": "sha256:ae30d0965789f1b50936ad8f67005e3793f6aade4b13f61cbcc3e0a9814880f0",
+          "content": {
+            "path": "value_sources/second_order.json",
+            "candidates": [
+              {
+                "name": "request_context",
+                "wave": 1,
+                "proved": true
+              },
+              {
+                "name": "app_config",
+                "wave": 2,
+                "proved": false,
+                "missing": true
+              }
+            ],
+            "semantic_authority": false
+          }
+        },
+        "plan": {
+          "content_id": "sha256:4255833c258dad2569d3e1fae7c5648b9ecedde6e6dc88e0bf110a68540fcf72",
+          "content": {
+            "path": "plan/second_order.json",
+            "transform": "fixed_point_iteration",
+            "atomic": true,
+            "waves": 2,
+            "completion_blocked_until": "wave_2_discharged"
+          }
+        },
+        "proof": {
+          "content_id": "sha256:88e5384e079a7edd8521d5b2dcf4ba1bfd02837c57707a9a953df31058425e2e",
+          "content": {
+            "path": "proof/second_order.json",
+            "expectation": "rediff detects new delta; bound exhaustion is incomplete",
+            "verdict": "incomplete"
+          }
+        }
+      }
+    }
+  ]
+}
