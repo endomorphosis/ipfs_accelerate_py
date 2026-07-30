@@ -25,9 +25,19 @@ from ipfs_accelerate_py.agent_supervisor.repository_forest import (
     OBJECTIVE_GOAL_ID,
     OBJECTIVE_PARENT_GOAL_ID,
     OBJECTIVE_TASK_ID,
+    REPOSITORY_DESCRIPTOR_EVIDENCE,
+    REPOSITORY_DESCRIPTOR_GOAL_ID,
+    REPOSITORY_DESCRIPTOR_TASK_ID,
+    REPOSITORY_FOREST_MANIFEST_EVIDENCE,
+    REPOSITORY_FOREST_MANIFEST_GOAL_ID,
+    REPOSITORY_FOREST_MANIFEST_TASK_ID,
     REPOSITORY_FOREST_REPLAY_CLAIM_SCHEMA,
     REPOSITORY_FOREST_REPLAY_EVIDENCE,
     REPOSITORY_FOREST_REPLAY_INVARIANTS,
+    REPOSITORY_IDENTITY_GOAL_PACKET_ID,
+    REPOSITORY_IDENTITY_PACKET_EVIDENCE_TERMS,
+    REPOSITORY_IDENTITY_PACKET_GOAL_IDS,
+    REPOSITORY_IDENTITY_PACKET_TASK_ID,
     RepositoryAuthority,
     RepositoryForest,
     RepositoryForestError,
@@ -36,7 +46,9 @@ from ipfs_accelerate_py.agent_supervisor.repository_forest import (
     build_repository_descriptor,
     build_repository_forest,
     covered_evidence_terms,
+    descriptor_satisfies_repository_descriptor,
     empty_dirty_overlay_digest,
+    forest_satisfies_repository_forest_manifest,
     forest_satisfies_repository_forest_replay,
     forests_share_portable_identity,
     freeze_repository_forest,
@@ -45,9 +57,16 @@ from ipfs_accelerate_py.agent_supervisor.repository_forest import (
     make_repository_id,
     path_within_repository,
     portable_projection_excludes_host_state,
+    prove_repository_descriptor,
+    prove_repository_forest_manifest,
     prove_repository_forest_replay,
+    prove_repository_identity_packet,
     replay_repository_forest,
+    repository_descriptor_evidence_terms,
+    repository_forest_manifest_evidence_terms,
     repository_forest_replay_evidence_terms,
+    repository_identity_completion_goal_bindings,
+    repository_identity_packet_evidence_terms,
     resolve_repository_root,
 )
 
@@ -847,3 +866,175 @@ def test_freeze_replay_round_trip_via_json_file(tmp_path: Path) -> None:
     path.write_text(json.dumps(portable, sort_keys=True), encoding="utf-8")
     replayed = replay_repository_forest(path)
     assert replayed.forest_id == forest.forest_id
+
+
+# ---------------------------------------------------------------------------
+# VFS-G136 / VFS-G137 repository-identity packet evidence
+# ---------------------------------------------------------------------------
+
+
+def test_repository_identity_packet_evidence_terms_match_objective_heap() -> None:
+    """Bind both packet evidence terms to their supervisor goal/task lineage."""
+
+    assert REPOSITORY_DESCRIPTOR_EVIDENCE == "vfs/repository-descriptor@1"
+    assert (
+        REPOSITORY_FOREST_MANIFEST_EVIDENCE
+        == "vfs/repository-forest-manifest@1"
+    )
+    assert REPOSITORY_IDENTITY_PACKET_EVIDENCE_TERMS == (
+        "vfs/repository-descriptor@1",
+        "vfs/repository-forest-manifest@1",
+    )
+    assert repository_descriptor_evidence_terms() == (
+        "vfs/repository-descriptor@1",
+    )
+    assert repository_forest_manifest_evidence_terms() == (
+        "vfs/repository-forest-manifest@1",
+    )
+    assert (
+        repository_identity_packet_evidence_terms()
+        == REPOSITORY_IDENTITY_PACKET_EVIDENCE_TERMS
+    )
+    assert REPOSITORY_DESCRIPTOR_GOAL_ID == "VFS-G136"
+    assert REPOSITORY_FOREST_MANIFEST_GOAL_ID == "VFS-G137"
+    assert REPOSITORY_IDENTITY_PACKET_GOAL_IDS == ("VFS-G136", "VFS-G137")
+    assert REPOSITORY_IDENTITY_PACKET_TASK_ID == "VFS-066"
+    assert REPOSITORY_DESCRIPTOR_TASK_ID == "VFS-067"
+    assert REPOSITORY_FOREST_MANIFEST_TASK_ID == "VFS-068"
+    assert REPOSITORY_IDENTITY_GOAL_PACKET_ID == (
+        "goal_packet/repository_identity/ipfs_accelerate_py/786b6c4ff552"
+    )
+    assert repository_identity_completion_goal_bindings() == {
+        "VFS-G136": ["vfs/repository-descriptor@1"],
+        "VFS-G137": ["vfs/repository-forest-manifest@1"],
+    }
+
+
+def test_descriptor_evidence_claim_binds_every_identity_component(
+    tmp_path: Path,
+) -> None:
+    repo = _init_repo(tmp_path / "repo")
+    descriptor = build_repository_descriptor(
+        repo,
+        alias=DEFAULT_ACCELERATOR_ALIAS,
+        authority=RepositoryAuthority(mode=AuthorityMode.READ_WRITE.value),
+    )
+
+    assert descriptor_satisfies_repository_descriptor(descriptor) is True
+    claim = prove_repository_descriptor(descriptor)
+    assert claim["evidence"] == "vfs/repository-descriptor@1"
+    assert claim["evidence_terms"] == ["vfs/repository-descriptor@1"]
+    assert claim["packet_evidence_terms"] == [
+        "vfs/repository-descriptor@1",
+        "vfs/repository-forest-manifest@1",
+    ]
+    assert claim["goal_id"] == "VFS-G136"
+    assert claim["parent_goal_id"] == "VFS-G010"
+    assert claim["task_id"] == "VFS-067"
+    assert claim["packet_task_id"] == "VFS-066"
+    assert claim["descriptor_cid"] == descriptor.descriptor_cid
+    assert claim["repository_id"] == descriptor.repository_id
+    assert claim["identity_components"] == {
+        "commit": descriptor.commit,
+        "tree": descriptor.tree,
+        "gitlink_closure_cid": (
+            descriptor.portable_closure.gitlink_closure_cid
+        ),
+        "gitlink_closure_complete": True,
+        "dirty": False,
+        "dirty_overlay_digest": descriptor.dirty_overlay_digest,
+        "ignore_policy_cid": descriptor.ignore_policy.policy_cid,
+        "case_unicode_policy_cid": descriptor.case_unicode_policy.policy_cid,
+        "authority_cid": descriptor.authority.authority_cid,
+    }
+    assert claim["satisfied"] is True
+    assert claim["authoritative"] is False
+    assert claim["completion_authoritative"] is False
+
+    # Evidence labels and local checkout paths do not alter portable identity.
+    encoded = json.dumps(claim, sort_keys=True)
+    assert str(repo) not in encoded
+    assert "local_locator" not in encoded
+    assert "evidence" not in descriptor.to_portable_dict()
+
+
+def test_four_repository_forest_emits_complete_packet_claim(
+    tmp_path: Path,
+) -> None:
+    swiss = _init_repo(tmp_path / DEFAULT_SWISSKNIFE_ALIAS)
+    accelerator = _init_repo(tmp_path / DEFAULT_ACCELERATOR_ALIAS)
+    kit = _init_repo(tmp_path / DEFAULT_KIT_ALIAS)
+    datasets = _init_repo(tmp_path / DEFAULT_DATASETS_ALIAS)
+    forest = build_repository_forest(
+        initial_vfs_assurance_forest_policy(
+            accelerator_root=accelerator,
+            swissknife_root=swiss,
+            kit_root=kit,
+            datasets_root=datasets,
+        )
+    )
+
+    assert forest_satisfies_repository_forest_manifest(forest) is True
+    manifest_claim = prove_repository_forest_manifest(forest)
+    assert manifest_claim["evidence"] == "vfs/repository-forest-manifest@1"
+    assert manifest_claim["evidence_terms"] == [
+        "vfs/repository-forest-manifest@1"
+    ]
+    assert manifest_claim["goal_id"] == "VFS-G137"
+    assert manifest_claim["task_id"] == "VFS-068"
+    assert manifest_claim["forest_id"] == forest.forest_id
+    assert manifest_claim["portable_manifest"] == forest.to_portable_dict()
+    assert manifest_claim["reason_codes"] == []
+    assert manifest_claim["satisfied"] is True
+
+    packet = prove_repository_identity_packet(forest)
+    assert packet["evidence_terms"] == [
+        "vfs/repository-descriptor@1",
+        "vfs/repository-forest-manifest@1",
+    ]
+    assert packet["goal_packet"] == REPOSITORY_IDENTITY_GOAL_PACKET_ID
+    assert packet["packet_goal_ids"] == ["VFS-G136", "VFS-G137"]
+    assert packet["packet_task_id"] == "VFS-066"
+    assert packet["task_ids"] == ["VFS-067", "VFS-068"]
+    assert packet["completion_goal_bindings"] == {
+        "VFS-G136": ["vfs/repository-descriptor@1"],
+        "VFS-G137": ["vfs/repository-forest-manifest@1"],
+    }
+    descriptor_claims = packet["claims"]["vfs/repository-descriptor@1"]
+    assert len(descriptor_claims) == 4
+    assert all(item["satisfied"] for item in descriptor_claims)
+    assert (
+        packet["claims"]["vfs/repository-forest-manifest@1"]
+        == manifest_claim
+    )
+    assert packet["satisfied"] is True
+    assert packet["completion_authoritative"] is False
+
+    encoded = json.dumps(packet, sort_keys=True)
+    for root in (swiss, accelerator, kit, datasets):
+        assert str(root) not in encoded
+    assert "local_locator" not in encoded
+
+    # Portable replay preserves both forest identity and evidence satisfaction.
+    replayed_packet = prove_repository_identity_packet(
+        forest.to_portable_dict()
+    )
+    assert replayed_packet["forest_id"] == packet["forest_id"]
+    assert replayed_packet["satisfied"] is True
+
+
+def test_incomplete_initial_forest_cannot_satisfy_manifest_evidence(
+    tmp_path: Path,
+) -> None:
+    swiss = _init_repo(tmp_path / "swissknife")
+    accelerator = _init_repo(tmp_path / "accelerator")
+    forest = build_repository_forest(_two_root_policy(swiss, accelerator))
+
+    assert forest_satisfies_repository_forest_manifest(forest) is False
+    claim = prove_repository_forest_manifest(forest)
+    assert claim["satisfied"] is False
+    assert claim["reason_codes"] == [
+        "missing_repository:ipfs_datasets_py",
+        "missing_repository:ipfs_kit_py",
+    ]
+    assert prove_repository_identity_packet(forest)["satisfied"] is False
