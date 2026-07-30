@@ -121,6 +121,43 @@ def _managed_daemon_child_environment() -> dict[str, str]:
     return {"PYTHONPATH": pythonpath} if pythonpath else {}
 
 
+def _projection_is_quiescent_for_heartbeat_fallback(
+    status: Mapping[str, Any],
+) -> bool:
+    """Recognize an idle content-addressed task projection without masking work."""
+
+    required_fields = {
+        "active_task_id",
+        "implementation_in_progress",
+        "ready_count",
+        "selectable_ready_count",
+        "eligible_ready_count",
+        "blocked_count",
+        "selection_idle_reason",
+    }
+    if not required_fields.issubset(status):
+        return False
+    active_task_id = status["active_task_id"]
+    if not isinstance(active_task_id, str) or active_task_id:
+        return False
+    if status["implementation_in_progress"] is not False:
+        return False
+    if status["selection_idle_reason"] != (
+        "no_shard_selectable_ready_tasks"
+    ):
+        return False
+    for field_name in (
+        "ready_count",
+        "selectable_ready_count",
+        "eligible_ready_count",
+        "blocked_count",
+    ):
+        value = status[field_name]
+        if isinstance(value, bool) or not isinstance(value, int) or value != 0:
+            return False
+    return True
+
+
 class ObjectiveRefillTimeoutError(TimeoutError):
     """Raised when supervisor-owned objective refill exceeds its local budget."""
 
@@ -2153,6 +2190,9 @@ class PortalImplementationSupervisor:
             poll_seconds=min(1.0, max(0.01, float(self.config.check_interval))),
             watchdog_stale_after_seconds=watchdog_stale_after_seconds,
             watchdog_startup_grace_seconds=self._watchdog_startup_grace_seconds(),
+            watchdog_quiescent_status_predicate=(
+                _projection_is_quiescent_for_heartbeat_fallback
+            ),
             stop_grace_seconds=15.0,
             max_restarts=max(0, int(self.config.max_restarts)),
             status_static_fields={
