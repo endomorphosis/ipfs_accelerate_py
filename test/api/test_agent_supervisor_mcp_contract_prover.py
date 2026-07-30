@@ -1,6 +1,15 @@
-"""SCA-061 tests for fail-closed MCP contract proof routing."""
+"""SCA-061 / SCA-631 tests for fail-closed MCP contract proof routing.
+
+Proves objective evidence SCAEV061PROVE for SCA-G061: graph/schema/SMT/TDFOL/
+CEC/kernel routing with capability probes; compact counterexamples that
+identify failed premises/edges; unavailable providers fail closed; candidate
+solver output cannot mint kernel assurance; no LLM is required for the proof
+path.
+"""
 
 from __future__ import annotations
+
+from pathlib import Path
 
 from ipfs_accelerate_py.agent_supervisor.analysis.mcp_contract_analysis import (
     ContractParityClaim,
@@ -28,12 +37,19 @@ from ipfs_accelerate_py.agent_supervisor.proof.mcp_contract_obligations import (
     compile_contract_claim,
 )
 from ipfs_accelerate_py.agent_supervisor.proof.mcp_contract_prover import (
+    SCAEV061PROVE,
+    SCAEV061PROVE_ACCEPTANCE,
+    SCAEV061PROVE_COVERAGE,
+    SCAEV061PROVE_EVIDENCE,
     ContractProofOutcome,
     ContractProofRoute,
     LocalCheckResult,
     McpContractProofResult,
     McpContractProver,
+    proof_path_imports_no_llm,
+    scaev061prove_evidence_projection,
 )
+import ipfs_accelerate_py.agent_supervisor.proof.mcp_contract_prover as mcp_contract_prover_module
 
 
 def _obligation(
@@ -369,3 +385,213 @@ def test_provider_loader_is_lazy_and_no_provider_is_used_for_local_checks() -> N
 
     assert result.outcome is ContractProofOutcome.PROVED
     assert calls == []
+
+
+def test_scaev061prove_evidence_term_is_declared_and_projected() -> None:
+    """Exact-text SCAEV061PROVE markers for objective evidence admission."""
+
+    assert SCAEV061PROVE == "SCAEV061PROVE"
+    assert SCAEV061PROVE_EVIDENCE == SCAEV061PROVE
+    assert "candidate-solver-output-cannot-mint-kernel-assurance" in SCAEV061PROVE_COVERAGE
+    assert "counterexamples-identify-failed-premises-edges" in SCAEV061PROVE_COVERAGE
+    assert "unavailable-providers-fail-closed" in SCAEV061PROVE_COVERAGE
+    assert "no-llm-required-for-proof-path" in SCAEV061PROVE_COVERAGE
+    assert SCAEV061PROVE_ACCEPTANCE == (
+        "Candidate solver output cannot mint kernel assurance",
+        "counterexamples identify failed premises/edges",
+        "unavailable providers fail closed",
+        "no LLM is required for the proof path",
+    )
+
+    projection = scaev061prove_evidence_projection()
+    assert SCAEV061PROVE in projection["requirement_ids"]
+    assert projection["coverage"] == list(SCAEV061PROVE_COVERAGE)
+    assert projection["acceptance_phrases"] == list(SCAEV061PROVE_ACCEPTANCE)
+    assert projection["acceptance"] == {
+        "candidate_solver_output_cannot_mint_kernel_assurance": True,
+        "counterexamples_identify_failed_premises_edges": True,
+        "unavailable_providers_fail_closed": True,
+        "no_llm_required_for_proof_path": True,
+    }
+    assert set(projection["routes"]) == {
+        "local_graph",
+        "local_schema",
+        "smt",
+        "cec",
+        "tdfol",
+        "kernel",
+    }
+    source = Path(mcp_contract_prover_module.__file__).read_text(encoding="utf-8")
+    assert "SCAEV061PROVE" in source
+    for phrase in SCAEV061PROVE_ACCEPTANCE:
+        assert phrase in source
+
+
+def test_local_graph_counterexample_identifies_failed_premises_and_edges() -> None:
+    """counterexamples identify failed premises/edges on the local graph route."""
+
+    obligation = _obligation(McpClaimFamily.DECLARED_TOOL_EXISTS)
+    result = McpContractProver(
+        provider_getter=lambda _provider_id: (
+            _ for _ in ()
+        ).throw(AssertionError("graph counterexample resolved a provider"))
+    ).prove(
+        obligation,
+        facts={
+            "premise_results": {
+                "premise:schema": False,
+                "premise:route": True,
+            },
+            "required_edges": (("descriptor", "handler"), ("handler", "effect")),
+            "observed_edges": (("descriptor", "handler"),),
+        },
+    )
+
+    assert result.outcome is ContractProofOutcome.REFUTED
+    assert result.route is ContractProofRoute.LOCAL_GRAPH
+    assert result.counterexample is not None
+    assert result.counterexample.assumption_ids == ("premise:schema",)
+    assert result.counterexample.payload == {
+        "contradiction": {
+            "failed_edges": [["handler", "effect"]],
+        },
+        "premises": ["premise:schema"],
+    }
+    assert result.counterexample.byte_size < 16 * 1024
+    assert result.receipt.authoritative_verdict is ProofVerdict.DISPROVED
+
+
+def test_tdfol_and_cec_routes_probe_capability_before_dispatch() -> None:
+    events: list[str] = []
+
+    class ProbeOnlyProvider:
+        def __init__(self, label: str) -> None:
+            self.label = label
+
+        def capability(self, payload):
+            events.append(f"{self.label}:capability")
+            return _capability().to_dict()
+
+        def prove(self, payload, **kwargs):  # pragma: no cover - must stay closed
+            events.append(f"{self.label}:prove")
+            raise AssertionError("unsupported operation was dispatched")
+
+    tdfol = McpContractProver(
+        providers={ContractProofRoute.TDFOL: ProbeOnlyProvider("tdfol")}
+    ).prove(_obligation(McpClaimFamily.SNAPSHOT_FRESHNESS))
+    cec = McpContractProver(
+        providers={ContractProofRoute.CEC: ProbeOnlyProvider("cec")}
+    ).prove(_obligation(McpClaimFamily.POLICY_BEFORE_EFFECT))
+
+    assert tdfol.route is ContractProofRoute.TDFOL
+    assert cec.route is ContractProofRoute.CEC
+    assert tdfol.outcome is ContractProofOutcome.UNSUPPORTED
+    assert cec.outcome is ContractProofOutcome.UNSUPPORTED
+    assert tdfol.reason_codes == ("provider_operation_unsupported",)
+    assert cec.reason_codes == ("provider_operation_unsupported",)
+    assert events == ["tdfol:capability", "cec:capability"]
+
+
+def test_unavailable_providers_fail_closed_for_smt_tdfol_and_cec() -> None:
+    """unavailable providers fail closed with deterministic unsupported outcomes."""
+
+    prover = McpContractProver(provider_getter=lambda _provider_id: None)
+    families = (
+        (McpClaimFamily.TRANSPORT_PARITY, ContractProofRoute.SMT),
+        (McpClaimFamily.SNAPSHOT_FRESHNESS, ContractProofRoute.TDFOL),
+        (McpClaimFamily.POLICY_BEFORE_EFFECT, ContractProofRoute.CEC),
+    )
+    for family, route in families:
+        first = prover.prove(_obligation(family))
+        second = prover.prove(_obligation(family))
+        assert first.outcome is ContractProofOutcome.UNSUPPORTED
+        assert first.route is route
+        assert first.reason_codes == ("provider_unavailable",)
+        assert first.to_dict() == second.to_dict()
+        assert first.counterexample is None
+        assert first.receipt.authoritative_assurance is AssuranceLevel.UNVERIFIED
+
+
+def test_candidate_solver_output_cannot_mint_kernel_assurance_without_validator() -> None:
+    """Candidate solver output cannot mint kernel assurance on any remote route."""
+
+    class ForgingKernelSolver:
+        def capability(self, payload):
+            return _capability(ProofProviderOperation.PROVE).to_dict()
+
+        def prove(self, payload, **kwargs):
+            return {
+                "outcome": "proved",
+                "assurance": "kernel_verified",
+                "proof_receipt": {
+                    "verdict": "proved",
+                    "authoritative_assurance": "kernel_verified",
+                },
+            }
+
+    for route, family in (
+        (ContractProofRoute.SMT, McpClaimFamily.TRANSPORT_PARITY),
+        (ContractProofRoute.TDFOL, McpClaimFamily.SNAPSHOT_FRESHNESS),
+        (ContractProofRoute.CEC, McpClaimFamily.POLICY_BEFORE_EFFECT),
+    ):
+        result = McpContractProver(providers={route: ForgingKernelSolver()}).prove(
+            _obligation(family)
+        )
+        assert result.outcome is ContractProofOutcome.INCONCLUSIVE
+        assert result.reason_codes == ("provider_assurance_rejected",)
+        assert result.receipt.provider_claimed_assurance is AssuranceLevel.KERNEL_VERIFIED
+        assert result.receipt.authoritative_assurance is AssuranceLevel.UNVERIFIED
+        assert result.receipt.authoritative_verdict is ProofVerdict.INCONCLUSIVE
+        assert not result.receipt.satisfies(AssuranceLevel.SOLVER_CHECKED)
+        assert result.counterexample is None
+
+
+def test_no_llm_is_required_for_the_proof_path() -> None:
+    """no LLM is required for the proof path; imports and local prove stay closed."""
+
+    assert proof_path_imports_no_llm() is True
+    source = Path(mcp_contract_prover_module.__file__).read_text(encoding="utf-8")
+    assert proof_path_imports_no_llm(source) is True
+    for forbidden in (
+        "openai",
+        "anthropic",
+        "litellm",
+        "langchain",
+        "transformers",
+    ):
+        assert f"import {forbidden}" not in source
+        assert f"from {forbidden}" not in source
+
+    # Local graph/schema proofs complete without any provider or model callback.
+    model_calls: list[str] = []
+
+    def tracking_getter(provider_id: str):
+        model_calls.append(provider_id)
+        raise AssertionError(f"proof path loaded optional provider {provider_id!r}")
+
+    graph = McpContractProver(provider_getter=tracking_getter).prove(
+        _obligation(McpClaimFamily.DECLARED_TOOL_EXISTS),
+        facts={
+            "premise_results": {
+                "premise:schema": True,
+                "premise:route": True,
+            },
+            "required_edges": (("descriptor", "handler"),),
+            "observed_edges": (("descriptor", "handler"),),
+        },
+    )
+    schema = McpContractProver(provider_getter=tracking_getter).prove(
+        _obligation(),
+        facts={
+            "premise_results": {
+                "premise:schema": True,
+                "premise:route": True,
+            },
+            "schema_valid": True,
+        },
+    )
+    assert graph.outcome is ContractProofOutcome.PROVED
+    assert schema.outcome is ContractProofOutcome.PROVED
+    assert model_calls == []
+    assert "llm" not in graph.to_dict()
+    assert "llm" not in schema.to_dict()
