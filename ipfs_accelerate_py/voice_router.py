@@ -2216,6 +2216,41 @@ class VoiceTurnResult:
             metadata=dict(metadata or {}),
         )
 
+    def enqueue_validated_cache_miss_candidate(
+        self,
+        *,
+        sink: object,
+        validation_receipt_id: str,
+        audio_descriptor: Mapping[str, object],
+        response_id: str = "",
+        template_text: str = "",
+        slot_bindings: Optional[Mapping[str, object]] = None,
+        surface: str = "",
+        metadata: Optional[Mapping[str, object]] = None,
+    ) -> Optional["QueuedVoiceCacheMissCandidate"]:
+        """Durably stage this validated miss in the package-owned local queue.
+
+        Website and telephone wrappers call this only after independent audio
+        validation.  Cache hits return ``None`` and the sink has no remote
+        publication capability.
+        """
+
+        from .voice_response_dag_sink import (
+            enqueue_validated_cache_miss_candidate,
+        )
+
+        return enqueue_validated_cache_miss_candidate(
+            self,
+            sink=sink,
+            validation_receipt_id=validation_receipt_id,
+            audio_descriptor=audio_descriptor,
+            response_id=response_id,
+            template_text=template_text,
+            slot_bindings=slot_bindings,
+            surface=surface,
+            metadata=metadata,
+        )
+
     def to_dict(self, *, include_audio: bool = False) -> Dict[str, object]:
         payload: Dict[str, object] = {
             "contract_version": VOICE_TURN_CONTRACT_VERSION,
@@ -4517,6 +4552,21 @@ def process_voice_turn(
         else None,
         metadata={
             "intent": plan.intent if plan is not None else None,
+            "response_template": plan.template if plan is not None else None,
+            "surface": (
+                {
+                    "web": "website",
+                    "website": "website",
+                    "sip": "telephone",
+                    "telephone": "telephone",
+                    "telephony": "telephone",
+                    "twilio": "telephone",
+                }.get(
+                    str(request.context.get("surface") or "")
+                    .strip()
+                    .casefold()
+                )
+            ),
             "template_confidence": plan.confidence if plan is not None else None,
             "fallback_reasons": fallback_tuple,
             "precomputed_audio": (
@@ -7130,6 +7180,14 @@ from .voice_cache_miss import (  # noqa: E402
     VoiceCacheMissEventError,
     build_voice_cache_miss_event,
 )
+from .voice_response_dag_sink import (  # noqa: E402
+    LOCAL_RESPONSE_DAG_QUEUE_SCHEMA_VERSION,
+    LocalResponseDAGQueue,
+    LocalResponseDAGQueueError,
+    LocalResponseDAGQueueReceipt,
+    QueuedVoiceCacheMissCandidate,
+    enqueue_validated_cache_miss_candidate,
+)
 
 __all__ = [
     # Core voice (TTS + STT)
@@ -7193,6 +7251,12 @@ __all__ = [
     "VoiceCacheMissEvent",
     "VoiceCacheMissEventError",
     "build_voice_cache_miss_event",
+    "LOCAL_RESPONSE_DAG_QUEUE_SCHEMA_VERSION",
+    "LocalResponseDAGQueue",
+    "LocalResponseDAGQueueError",
+    "LocalResponseDAGQueueReceipt",
+    "QueuedVoiceCacheMissCandidate",
+    "enqueue_validated_cache_miss_candidate",
     # Exact precomputed audio runtime resolution (G019)
     "PrecomputedAudioResolution",
     "PrecomputedVoiceAudioResolver",
