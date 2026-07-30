@@ -48,6 +48,9 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.contract_packet_provider_ro
     build_production_provider_route_evaluation,
     evaluate_production_provider_receipt,
 )
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.authoritative_completion import (
+    promote_authoritative_completion,
+)
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     MODEL_ASSISTED_PROVIDER_ROUTE_EVENT,
     McpPlusPlusLlmGenerateProvider,
@@ -246,6 +249,44 @@ _grok.last_session_identity = "session:grok-test"
 _codex.provider_identity = "mcp++:openai:codex-test"
 _codex.model_identity = "codex-test"
 _codex.last_session_identity = "session:codex-test"
+
+
+def _validated_no_change_result(baseline_ref: str) -> dict[str, Any]:
+    fingerprint = (
+        "sha256:"
+        "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    )
+    return {
+        "attempted": True,
+        "passed": True,
+        "returncode": 0,
+        "target_commit": baseline_ref,
+        "selection": {
+            "scope": "pre_merge",
+            "changed_files": [],
+            "selected_count": 1,
+        },
+        "candidate_binding": {
+            "verified": True,
+            "reason": "validated_no_change_candidate",
+            "expected_fingerprint": fingerprint,
+            "current_fingerprint": fingerprint,
+        },
+        "proposal_gate": {
+            "attempted": False,
+            "accepted": True,
+            "reason": "validated_no_change_candidate",
+            "changed_paths": [],
+        },
+        "results": [
+            {
+                "command": "test -f reviewed-output.md",
+                "returncode": 0,
+                "timed_out": False,
+                "cache_hit": False,
+            }
+        ],
+    }
 
 
 class _McpResponse:
@@ -899,6 +940,9 @@ def test_merge_gate_revalidates_review_binding_against_git(
     assert evidence["gate_evidence"]["provider_review"][
         "review_receipt_id"
     ] == binding.receipt_id
+    assert evidence["gate_evidence"]["provider_review"][
+        "review_presence"
+    ] == "independent"
 
     metadata["admitted_review_chain_binding"] = {
         **binding.to_dict(),
@@ -913,6 +957,276 @@ def test_merge_gate_revalidates_review_binding_against_git(
     )
     assert rejected["admitted"] is False
     assert rejected["reason"] == ProviderReason.REVIEW_CHAIN_UNBOUND.value
+
+
+def test_validated_no_change_binds_exact_target_review_and_all_completion_gates(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _daemon(tmp_path, monkeypatch)
+    task = _task()
+    target = daemon.repo_root / PATH
+    target.write_text("# production-route-applied\n", encoding="utf-8")
+    _git(daemon.repo_root, "add", PATH)
+    _git(daemon.repo_root, "commit", "-m", "already satisfy reviewed task")
+    baseline_ref = _git_output(daemon.repo_root, "rev-parse", "HEAD")
+    snapshot_id = f"git-commit:{baseline_ref}"
+
+    route_payload = daemon.run_production_model_assisted_route(
+        task,
+        attempt=3,
+        workspace_path=daemon.repo_root,
+        baseline_ref=baseline_ref,
+        snapshot_id=snapshot_id,
+        apply=True,
+        writer_lease_id="lease:sca-615:no-change",
+        grok_provider=_grok,
+        codex_provider=_codex,
+        admission_gate=_accept,
+    )
+    assert _git_output(
+        daemon.repo_root,
+        "status",
+        "--short",
+        "--",
+        PATH,
+    ) == ""
+
+    raw_validation = _validated_no_change_result(baseline_ref)
+    no_change_guard = daemon._validated_no_change_completion_guard(
+        baseline_ref=baseline_ref,
+        current_head=baseline_ref,
+        expected_branch="implementation/sca-615-attempt-3",
+        current_branch="implementation/sca-615-attempt-3",
+        validation_result=raw_validation,
+    )
+    tree = _git_output(daemon.repo_root, "rev-parse", "HEAD^{tree}")
+    repository_tree_id = f"git-tree:{tree}"
+    validation_binding = (
+        daemon._validated_no_change_post_merge_validation_evidence(
+            task=task,
+            baseline_ref=baseline_ref,
+            repository_tree_id=repository_tree_id,
+            validation_result=raw_validation,
+            no_change_guard=no_change_guard,
+        )
+    )
+    assert validation_binding["admitted"] is True
+
+    review_binding = (
+        daemon._production_provider_validated_no_change_evidence(
+            task=task,
+            baseline_ref=baseline_ref,
+            repository_tree_id=repository_tree_id,
+            production_route_payload=route_payload,
+            validation_result=validation_binding["validation_result"],
+        )
+    )
+    assert review_binding["admitted"] is True
+
+    receipt = daemon.build_task_implementation_receipt(
+        task,
+        implementation_commit=baseline_ref,
+        merge_commit=baseline_ref,
+        repository_tree_id=repository_tree_id,
+        merged=True,
+        validation_result=validation_binding["validation_result"],
+        gate_evidence=review_binding["gate_evidence"],
+        model_invocation_observed=True,
+    )
+    promoted, gate = promote_authoritative_completion(
+        receipt,
+        expected_task_id=task.task_id,
+    )
+
+    assert gate.admitted is True
+    assert gate.completion_authoritative is True
+    assert gate.pending_gates == ()
+    assert promoted.implementation_commit == baseline_ref
+    assert promoted.validation_passed is True
+    assert promoted.gate_evidence["provider_review"]["route_kind"] == (
+        "validated_no_change_at_exact_target"
+    )
+
+
+def test_implementation_run_completes_reviewed_validated_no_change_task(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _daemon(tmp_path, monkeypatch)
+    target = daemon.repo_root / PATH
+    target.write_text("# production-route-applied\n", encoding="utf-8")
+    _git(daemon.repo_root, "add", PATH)
+    _git(daemon.repo_root, "commit", "-m", "already satisfy reviewed task")
+    task = _task(validation=[f"test -f {PATH}"])
+    daemon.use_ephemeral_worktree = True
+    daemon._production_grok_provider = _grok
+    daemon._production_codex_provider = _codex
+    daemon._compile_implementation_context(task, 1)
+    monkeypatch.setattr(
+        daemon,
+        "_build_implementation_prompt",
+        lambda *_args, **_kwargs: "typed packet route",
+    )
+    admitted: list[tuple[Any, Any]] = []
+
+    def mark_completed(
+        _task_value,
+        *,
+        authoritative_receipt,
+        authoritative_gate,
+    ):
+        admitted.append((authoritative_receipt, authoritative_gate))
+        return {
+            "updated": True,
+            "updated_task_ids": [task.task_id],
+            "reason": "updated",
+        }
+
+    monkeypatch.setattr(
+        daemon,
+        "_mark_task_or_bundle_completed_in_todo",
+        mark_completed,
+    )
+
+    result = daemon._run_implementation(task, PortalTaskState())
+
+    assert result["returncode"] == 0
+    assert result["implementation_commit"] == ""
+    assert result["commit_result"]["reason"] == "no_changes"
+    assert result["board_completion"]["complete"] is True
+    assert result["board_completion"]["acceptance_pending"] is False
+    assert result["todo_update_result"]["updated_task_ids"] == [task.task_id]
+    assert len(admitted) == 1
+    receipt, gate = admitted[0]
+    assert receipt.completion_authoritative is True
+    assert receipt.implementation_commit == result["baseline_ref"]
+    assert gate.admitted is True
+    assert gate.pending_gates == ()
+    events = _events(daemon)
+    bound = [
+        item
+        for item in events
+        if item.get("type") == "validated_no_change_acceptance_bound"
+    ]
+    assert len(bound) == 1
+    assert bound[0]["provider_review_bound"] is True
+    assert bound[0]["validation_receipt_id"].startswith("b")
+
+
+def test_validated_no_change_rejects_cached_or_changed_validation(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _daemon(tmp_path, monkeypatch)
+    task = _task()
+    baseline_ref = _git_output(daemon.repo_root, "rev-parse", "HEAD")
+    tree = _git_output(daemon.repo_root, "rev-parse", "HEAD^{tree}")
+    repository_tree_id = f"git-tree:{tree}"
+    raw_validation = _validated_no_change_result(baseline_ref)
+    guard = daemon._validated_no_change_completion_guard(
+        baseline_ref=baseline_ref,
+        current_head=baseline_ref,
+        expected_branch="implementation/sca-615-attempt-3",
+        current_branch="implementation/sca-615-attempt-3",
+        validation_result=raw_validation,
+    )
+
+    cached = {
+        **raw_validation,
+        "results": [
+            {
+                **raw_validation["results"][0],
+                "cache_hit": True,
+            }
+        ],
+    }
+    cached_result = daemon._validated_no_change_post_merge_validation_evidence(
+        task=task,
+        baseline_ref=baseline_ref,
+        repository_tree_id=repository_tree_id,
+        validation_result=cached,
+        no_change_guard=guard,
+    )
+    changed = {
+        **raw_validation,
+        "selection": {
+            **raw_validation["selection"],
+            "changed_files": [PATH],
+        },
+    }
+    changed_result = daemon._validated_no_change_post_merge_validation_evidence(
+        task=task,
+        baseline_ref=baseline_ref,
+        repository_tree_id=repository_tree_id,
+        validation_result=changed,
+        no_change_guard=guard,
+    )
+
+    assert cached_result == {
+        "admitted": False,
+        "reason": "validated_no_change_execution_unbound",
+    }
+    assert changed_result == {
+        "admitted": False,
+        "reason": "validated_no_change_selection_unbound",
+    }
+
+
+def test_validated_no_change_rejects_stale_provider_route(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon = _daemon(tmp_path, monkeypatch)
+    task = _task()
+    target = daemon.repo_root / PATH
+    target.write_text("# production-route-applied\n", encoding="utf-8")
+    _git(daemon.repo_root, "add", PATH)
+    _git(daemon.repo_root, "commit", "-m", "already satisfy reviewed task")
+    baseline_ref = _git_output(daemon.repo_root, "rev-parse", "HEAD")
+    route_payload = daemon.run_production_model_assisted_route(
+        task,
+        attempt=3,
+        workspace_path=daemon.repo_root,
+        baseline_ref=baseline_ref,
+        snapshot_id=f"git-commit:{baseline_ref}",
+        apply=True,
+        writer_lease_id="lease:sca-615:no-change-stale",
+        grok_provider=_grok,
+        codex_provider=_codex,
+        admission_gate=_accept,
+    )
+    tree = _git_output(daemon.repo_root, "rev-parse", "HEAD^{tree}")
+    validation = {
+        "schema": (
+            "ipfs_accelerate_py/agent-supervisor/"
+            "post-merge-validation-evidence@1"
+        ),
+        "task_id": task.task_id,
+        "target_commit": baseline_ref,
+        "repository_tree_id": f"git-tree:{tree}",
+        "validation_scope": "post_merge",
+        "passed": True,
+        "stale": False,
+        "validation_receipt_id": "validation:fixture",
+    }
+    stale_route = {
+        **route_payload,
+        "snapshot_id": "git-commit:stale",
+    }
+
+    result = daemon._production_provider_validated_no_change_evidence(
+        task=task,
+        baseline_ref=baseline_ref,
+        repository_tree_id=f"git-tree:{tree}",
+        production_route_payload=stale_route,
+        validation_result=validation,
+    )
+
+    assert result == {
+        "admitted": False,
+        "reason": ProviderReason.REVIEW_CHAIN_UNBOUND.value,
+    }
 
 
 @pytest.mark.parametrize(

@@ -10642,7 +10642,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     merge_commit=merge_commit,
                     repository_tree_id=repository_tree_id,
                     satisfied=True,
-                    review_presence=ReviewPresence.INDEPENDENT.value,
+                    review_presence="independent",
                     provider_result_admitted=True,
                     review_receipt_id=binding.receipt_id,
                     review_chain_binding_id=str(
@@ -12431,15 +12431,92 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 or baseline_ref
             )
             completion_tree = self._candidate_repository_tree(completion_commit)
+            acceptance_implementation_commit = implementation_commit
+            acceptance_validation_result: Mapping[str, Any] = validation_result
+            acceptance_gate_evidence: dict[str, Any] = {}
+            if no_change_completion:
+                no_change_validation = (
+                    self._validated_no_change_post_merge_validation_evidence(
+                        task=task,
+                        baseline_ref=baseline_ref,
+                        repository_tree_id=(
+                            f"git-tree:{completion_tree}"
+                            if completion_tree
+                            else ""
+                        ),
+                        validation_result=validation_result,
+                        no_change_guard=no_change_guard,
+                    )
+                )
+                if no_change_validation.get("admitted"):
+                    acceptance_implementation_commit = completion_commit
+                    acceptance_validation_result = dict(
+                        no_change_validation["validation_result"]
+                    )
+                    if use_production_route:
+                        no_change_review = (
+                            self._production_provider_validated_no_change_evidence(
+                                task=task,
+                                baseline_ref=baseline_ref,
+                                repository_tree_id=(
+                                    f"git-tree:{completion_tree}"
+                                    if completion_tree
+                                    else ""
+                                ),
+                                production_route_payload=production_route_payload,
+                                validation_result=acceptance_validation_result,
+                            )
+                        )
+                        if no_change_review.get("admitted"):
+                            acceptance_gate_evidence.update(
+                                no_change_review["gate_evidence"]
+                            )
+                    self._record_event(
+                        "validated_no_change_acceptance_bound",
+                        {
+                            "task_id": task.task_id,
+                            "attempt": attempt,
+                            "baseline_ref": baseline_ref,
+                            "repository_tree_id": (
+                                f"git-tree:{completion_tree}"
+                                if completion_tree
+                                else ""
+                            ),
+                            "validation_receipt_id": str(
+                                acceptance_validation_result.get(
+                                    "validation_receipt_id"
+                                )
+                                or ""
+                            ),
+                            "provider_review_bound": bool(
+                                acceptance_gate_evidence.get(
+                                    "provider_review"
+                                )
+                            ),
+                        },
+                    )
+                else:
+                    self._record_event(
+                        "validated_no_change_acceptance_rejected",
+                        {
+                            "task_id": task.task_id,
+                            "attempt": attempt,
+                            "baseline_ref": baseline_ref,
+                            "reason": str(
+                                no_change_validation.get("reason") or ""
+                            ),
+                        },
+                    )
             model_invocation_observed = bool(
                 not deterministic_only and implementation_started
             )
             acceptance_result = self.apply_post_merge_authoritative_acceptance(
                 task,
-                implementation_commit=implementation_commit,
+                implementation_commit=acceptance_implementation_commit,
                 merge_commit=completion_commit,
                 repository_tree_id=f"git-tree:{completion_tree}" if completion_tree else "",
-                validation_result=validation_result,
+                validation_result=acceptance_validation_result,
+                gate_evidence=acceptance_gate_evidence,
                 model_invocation_observed=model_invocation_observed,
             )
             authoritatively_completed = bool(
@@ -12653,6 +12730,289 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "expected_branch": expected_branch,
             "current_branch": current_branch,
             "validated_changed_files": normalized_changed_files,
+        }
+
+    def _validated_no_change_post_merge_validation_evidence(
+        self,
+        *,
+        task: PortalTask,
+        baseline_ref: str,
+        repository_tree_id: str,
+        validation_result: Mapping[str, Any],
+        no_change_guard: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Bind an uncached no-op validation to the exact target Git tree."""
+
+        def reject(reason: str) -> dict[str, Any]:
+            return {"admitted": False, "reason": reason}
+
+        baseline = str(baseline_ref or "").strip()
+        tree = self._candidate_repository_tree(baseline)
+        if (
+            not baseline
+            or not tree
+            or repository_tree_id != f"git-tree:{tree}"
+        ):
+            return reject("validated_no_change_git_binding_missing")
+
+        guard = dict(no_change_guard or {})
+        if (
+            guard.get("allowed") is not True
+            or str(guard.get("baseline_ref") or "") != baseline
+            or str(guard.get("current_head") or "") != baseline
+            or not str(guard.get("expected_branch") or "")
+            or guard.get("current_branch") != guard.get("expected_branch")
+            or guard.get("validated_changed_files") != []
+            or guard.get("reasons") != []
+        ):
+            return reject("validated_no_change_guard_unbound")
+
+        selection = validation_result.get("selection")
+        candidate_binding = validation_result.get("candidate_binding")
+        proposal_gate = validation_result.get("proposal_gate")
+        results = validation_result.get("results")
+        if (
+            validation_result.get("attempted") is not True
+            or validation_result.get("passed") is not True
+            or validation_result.get("returncode") != 0
+            or validation_result.get("target_commit") != baseline
+            or validation_result.get("stale") is True
+            or validation_result.get("validation_stale") is True
+            or validation_result.get("freshness_authoritative") is False
+        ):
+            return reject("validated_no_change_validation_failed")
+        if (
+            not isinstance(selection, Mapping)
+            or selection.get("scope") != "pre_merge"
+            or selection.get("changed_files") != []
+            or not isinstance(selection.get("selected_count"), int)
+            or isinstance(selection.get("selected_count"), bool)
+            or int(selection["selected_count"]) < 1
+        ):
+            return reject("validated_no_change_selection_unbound")
+        if (
+            not isinstance(candidate_binding, Mapping)
+            or candidate_binding.get("verified") is not True
+            or candidate_binding.get("reason")
+            != "validated_no_change_candidate"
+            or not str(
+                candidate_binding.get("expected_fingerprint") or ""
+            )
+            or candidate_binding.get("expected_fingerprint")
+            != candidate_binding.get("current_fingerprint")
+        ):
+            return reject("validated_no_change_candidate_unbound")
+        if (
+            not isinstance(proposal_gate, Mapping)
+            or proposal_gate.get("accepted") is not True
+            or proposal_gate.get("attempted") is not False
+            or proposal_gate.get("reason")
+            != "validated_no_change_candidate"
+            or proposal_gate.get("changed_paths") != []
+        ):
+            return reject("validated_no_change_proposal_unbound")
+        if (
+            not isinstance(results, Sequence)
+            or isinstance(results, (str, bytes, bytearray))
+            or not results
+            or int(selection["selected_count"]) != len(results)
+        ):
+            return reject("validated_no_change_execution_missing")
+        for result in results:
+            if (
+                not isinstance(result, Mapping)
+                or not str(result.get("command") or "")
+                or result.get("returncode") != 0
+                or result.get("timed_out") is True
+                or result.get("cache_hit") is not False
+            ):
+                return reject("validated_no_change_execution_unbound")
+
+        source_validation_binding = {
+            "task_id": task.task_id,
+            "target_commit": baseline,
+            "selection": {
+                "scope": "pre_merge",
+                "changed_files": [],
+                "selected_count": int(selection["selected_count"]),
+            },
+            "candidate_binding": {
+                "verified": True,
+                "reason": "validated_no_change_candidate",
+                "expected_fingerprint": str(
+                    candidate_binding["expected_fingerprint"]
+                ),
+                "current_fingerprint": str(
+                    candidate_binding["current_fingerprint"]
+                ),
+            },
+            "proposal_gate": {
+                "attempted": False,
+                "accepted": True,
+                "reason": "validated_no_change_candidate",
+                "changed_paths": [],
+            },
+            "results": [
+                {
+                    "command": str(result.get("command") or ""),
+                    "validation_id": str(
+                        result.get("validation_id") or ""
+                    ),
+                    "returncode": 0,
+                    "timed_out": bool(result.get("timed_out", False)),
+                    "cache_hit": False,
+                    "cache_key": str(result.get("cache_key") or ""),
+                    "validation_result_digest": str(
+                        result.get("validation_result_digest") or ""
+                    ),
+                }
+                for result in results
+            ],
+        }
+        evidence = {
+            "schema": POST_MERGE_VALIDATION_EVIDENCE_SCHEMA,
+            "task_id": task.task_id,
+            "target_commit": baseline,
+            "repository_tree_id": repository_tree_id,
+            "validation_scope": "post_merge",
+            "passed": True,
+            "stale": False,
+            "validation_origin": "validated_no_change_at_exact_target",
+            "source_validation_scope": "pre_merge",
+            "source_validation_digest": content_identity(
+                source_validation_binding
+            ),
+            "uncached_execution_count": len(results),
+        }
+        evidence["validation_receipt_id"] = content_identity(evidence)
+        return {
+            "admitted": True,
+            "reason": "validated_no_change_at_exact_target",
+            "validation_result": evidence,
+        }
+
+    def _production_provider_validated_no_change_evidence(
+        self,
+        *,
+        task: PortalTask,
+        baseline_ref: str,
+        repository_tree_id: str,
+        production_route_payload: Mapping[str, Any],
+        validation_result: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Bind admitted independent review to an exact validated no-op."""
+
+        def reject(reason: str) -> dict[str, Any]:
+            return {"admitted": False, "reason": reason}
+
+        baseline = str(baseline_ref or "").strip()
+        expected_snapshot = f"git-commit:{baseline}"
+        if (
+            not baseline
+            or validation_result.get("schema")
+            != POST_MERGE_VALIDATION_EVIDENCE_SCHEMA
+            or validation_result.get("task_id") != task.task_id
+            or validation_result.get("target_commit") != baseline
+            or validation_result.get("repository_tree_id")
+            != repository_tree_id
+            or validation_result.get("validation_scope") != "post_merge"
+            or validation_result.get("passed") is not True
+            or validation_result.get("stale") is not False
+            or not str(validation_result.get("validation_receipt_id") or "")
+        ):
+            return reject("validated_no_change_validation_receipt_unbound")
+
+        route_result = production_route_payload.get("route_result")
+        route_receipt = production_route_payload.get("receipt")
+        route_event = production_route_payload.get("event")
+        if (
+            not isinstance(route_result, ImplementationRoutingResult)
+            or route_result.status is not RouteStatus.SUCCEEDED
+            or route_result.provider_result_admitted is not True
+            or route_result.review_presence
+            != ReviewPresence.INDEPENDENT.value
+            or route_result.write_performed is not True
+            or not str(route_result.writer_lease_id or "")
+            or production_route_payload.get("pending") is not False
+            or production_route_payload.get("snapshot_id")
+            != expected_snapshot
+            or production_route_payload.get("disposition")
+            is not ProductionReceiptDisposition.ADMITTED
+            or not isinstance(route_event, Mapping)
+            or route_event.get("task_id") != task.task_id
+            or route_event.get("snapshot_id") != expected_snapshot
+            or route_event.get("provider_result_admitted") is not True
+            or route_event.get("review_presence")
+            != ReviewPresence.INDEPENDENT.value
+            or route_event.get("write_performed") is not True
+        ):
+            return reject(ProviderReason.REVIEW_CHAIN_UNBOUND.value)
+
+        provider_receipt = route_result.provider_receipt
+        provider_payload = provider_receipt.to_dict()
+        route_receipt_payload = (
+            route_receipt.to_dict()
+            if callable(getattr(route_receipt, "to_dict", None))
+            else (
+                dict(route_receipt)
+                if isinstance(route_receipt, Mapping)
+                else {}
+            )
+        )
+        if (
+            not provider_payload
+            or route_receipt_payload != provider_payload
+        ):
+            return reject(ProviderReason.REVIEW_CHAIN_UNBOUND.value)
+        disposition, reason = evaluate_production_provider_receipt(
+            provider_receipt,
+            expected_task_id=task.task_id,
+            expected_snapshot_id=expected_snapshot,
+            current_snapshot_id=expected_snapshot,
+        )
+        receipt_id = str(provider_payload.get("receipt_id") or "")
+        if (
+            disposition is not ProductionReceiptDisposition.ADMITTED
+            or not receipt_id
+        ):
+            return reject(reason)
+
+        validation_receipt_id = str(
+            validation_result["validation_receipt_id"]
+        )
+        review_binding_id = content_identity(
+            {
+                "schema": (
+                    "ipfs_accelerate_py/agent-supervisor/"
+                    "validated-no-change-review-binding@1"
+                ),
+                "task_id": task.task_id,
+                "target_commit": baseline,
+                "repository_tree_id": repository_tree_id,
+                "provider_receipt_cid": content_identity(provider_payload),
+                "review_receipt_id": receipt_id,
+                "validation_receipt_id": validation_receipt_id,
+            }
+        )
+        return {
+            "admitted": True,
+            "reason": reason,
+            "gate_evidence": {
+                "provider_review": bound_gate_evidence(
+                    "provider_review",
+                    task_id=task.task_id,
+                    implementation_commit=baseline,
+                    merge_commit=baseline,
+                    repository_tree_id=repository_tree_id,
+                    satisfied=True,
+                    review_presence="independent",
+                    provider_result_admitted=True,
+                    review_receipt_id=receipt_id,
+                    review_chain_binding_id=review_binding_id,
+                    validation_receipt_id=validation_receipt_id,
+                    route_kind="validated_no_change_at_exact_target",
+                )
+            },
         }
 
     def _missing_validation_workspace_result(
