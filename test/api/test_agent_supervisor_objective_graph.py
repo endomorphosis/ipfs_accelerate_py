@@ -2834,6 +2834,304 @@ def test_generate_objective_todos_projects_goal_dependencies_to_task_ids(tmp_pat
     assert indexed_task["dependency_task_ids"] == ["ACCEL-001"]
 
 
+def test_generate_objective_todos_serializes_normalized_overlapping_scope(
+    tmp_path,
+):
+    repo, objective_path, todo_path = _seed_repo(tmp_path)
+    discovery_dir = repo / "data" / "agent_supervisor" / "discovery"
+    bundle_dir = repo / "data" / "agent_supervisor" / "objective_bundles"
+    todo_path.write_text(
+        todo_path.read_text(encoding="utf-8").rstrip()
+        + """
+
+## ACCEL-002 Prior active writer
+
+- Status: todo
+- Depends on: ACCEL-001
+- Predicted files: .//src
+
+## ACCEL-003 Settled writer
+
+- Status: completed
+- Depends on:
+- Predicted files: src/runtime_router.py
+
+## ACCEL-004 Blocked writer
+
+- Status: blocked
+- Depends on:
+- Predicted files: src/runtime_router.py
+""",
+        encoding="utf-8",
+    )
+    finding = ObjectiveFinding(
+        fingerprint="normalized-overlap-gap",
+        goal_id="VAIOS-G000",
+        title="Repair normalized overlap",
+        summary="Repair normalized overlap",
+        priority="P0",
+        track="runtime",
+        missing_evidence=["normalized overlap proof"],
+        present_evidence={},
+        evidence_methods=[],
+        objective_path=str(objective_path),
+        outputs=["./src/runtime_router.py"],
+        predicted_files=["./src/runtime_router.py/"],
+        validation="true",
+        dependencies=["ACCEL-001"],
+    )
+
+    records = generate_objective_todos(
+        repo_root=repo,
+        objective_path=objective_path,
+        todo_path=todo_path,
+        discovery_dir=discovery_dir,
+        bundle_dir=bundle_dir,
+        task_prefix="ACCEL-",
+        precomputed_findings=[finding],
+        persist_ast_dataset=False,
+        write_todo_vector_index=False,
+    )
+
+    assert [record.task_id for record in records] == ["ACCEL-005"]
+    assert records[0].depends_on == ("ACCEL-001", "ACCEL-002")
+    assert records[0].finding.dependencies == ["ACCEL-001", "ACCEL-002"]
+    generated = todo_path.read_text(encoding="utf-8")
+    assert "- Depends on: ACCEL-001, ACCEL-002" in generated
+    assert "ACCEL-003, ACCEL-004" not in generated
+
+
+def test_generate_objective_todos_serializes_earlier_finding_in_locked_batch(
+    tmp_path,
+):
+    repo, objective_path, todo_path = _seed_repo(tmp_path)
+    discovery_dir = repo / "data" / "agent_supervisor" / "discovery"
+    bundle_dir = repo / "data" / "agent_supervisor" / "objective_bundles"
+
+    def finding(fingerprint: str, path: str) -> ObjectiveFinding:
+        return ObjectiveFinding(
+            fingerprint=fingerprint,
+            goal_id="VAIOS-G000",
+            title=f"Repair {fingerprint}",
+            summary=f"Repair {fingerprint}",
+            priority="P0",
+            track="runtime",
+            missing_evidence=[f"{fingerprint} proof"],
+            present_evidence={},
+            evidence_methods=[],
+            objective_path=str(objective_path),
+            outputs=[path],
+            predicted_files=[path],
+            validation="true",
+            dependencies=["ACCEL-001"],
+        )
+
+    records = generate_objective_todos(
+        repo_root=repo,
+        objective_path=objective_path,
+        todo_path=todo_path,
+        discovery_dir=discovery_dir,
+        bundle_dir=bundle_dir,
+        task_prefix="ACCEL-",
+        precomputed_findings=[
+            finding("batch-writer-a", "src/shared.py"),
+            finding("batch-writer-b", "./src/shared.py"),
+        ],
+        persist_ast_dataset=False,
+        write_todo_vector_index=False,
+    )
+
+    assert [record.task_id for record in records] == [
+        "ACCEL-002",
+        "ACCEL-003",
+    ]
+    assert records[0].depends_on == ("ACCEL-001",)
+    assert records[1].depends_on == ("ACCEL-001", "ACCEL-002")
+    assert (
+        todo_path.read_text(encoding="utf-8")
+        .split("## ACCEL-003 ", 1)[1]
+        .split("## ", 1)[0]
+        .find("- Depends on: ACCEL-001, ACCEL-002")
+        >= 0
+    )
+
+
+def test_generate_objective_todos_rejects_overlap_dependency_cycle(tmp_path):
+    repo, objective_path, todo_path = _seed_repo(tmp_path)
+    discovery_dir = repo / "data" / "agent_supervisor" / "discovery"
+    bundle_dir = repo / "data" / "agent_supervisor" / "objective_bundles"
+    todo_path.write_text(
+        todo_path.read_text(encoding="utf-8").rstrip()
+        + """
+
+## ACCEL-002 Forward-dependent writer
+
+- Status: todo
+- Depends on: ACCEL-003
+- Predicted files: src
+""",
+        encoding="utf-8",
+    )
+    original_board = todo_path.read_bytes()
+    finding = ObjectiveFinding(
+        fingerprint="cyclic-overlap-gap",
+        goal_id="VAIOS-G000",
+        title="Reject cyclic overlap",
+        summary="Reject cyclic overlap",
+        priority="P0",
+        track="runtime",
+        missing_evidence=["cyclic overlap proof"],
+        present_evidence={},
+        evidence_methods=[],
+        objective_path=str(objective_path),
+        outputs=["src/shared.py"],
+        predicted_files=["src/shared.py"],
+        validation="true",
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            "objective gap admission would create a dependency cycle "
+            "for ACCEL-003 through: ACCEL-002"
+        ),
+    ):
+        generate_objective_todos(
+            repo_root=repo,
+            objective_path=objective_path,
+            todo_path=todo_path,
+            discovery_dir=discovery_dir,
+            bundle_dir=bundle_dir,
+            task_prefix="ACCEL-",
+            precomputed_findings=[finding],
+            persist_ast_dataset=False,
+            write_todo_vector_index=False,
+        )
+
+    assert todo_path.read_bytes() == original_board
+    assert not discovery_dir.exists()
+    assert not bundle_dir.exists()
+
+
+def test_generate_objective_todos_late_batch_cycle_has_no_discovery_side_effects(
+    tmp_path,
+):
+    repo, objective_path, todo_path = _seed_repo(tmp_path)
+    discovery_dir = repo / "data" / "agent_supervisor" / "discovery"
+    bundle_dir = repo / "data" / "agent_supervisor" / "objective_bundles"
+    todo_path.write_text(
+        todo_path.read_text(encoding="utf-8").rstrip()
+        + """
+
+## ACCEL-002 Forward-dependent writer
+
+- Status: todo
+- Depends on: ACCEL-004
+- Predicted files: src/cycle.py
+""",
+        encoding="utf-8",
+    )
+    original_board = todo_path.read_bytes()
+
+    def finding(fingerprint: str, path: str) -> ObjectiveFinding:
+        return ObjectiveFinding(
+            fingerprint=fingerprint,
+            goal_id="VAIOS-G000",
+            title=f"Repair {fingerprint}",
+            summary=f"Repair {fingerprint}",
+            priority="P0",
+            track="runtime",
+            missing_evidence=[f"{fingerprint} proof"],
+            present_evidence={},
+            evidence_methods=[],
+            objective_path=str(objective_path),
+            outputs=[path],
+            predicted_files=[path],
+            validation="true",
+        )
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            "objective gap admission would create a dependency cycle "
+            "for ACCEL-004 through: ACCEL-002"
+        ),
+    ):
+        generate_objective_todos(
+            repo_root=repo,
+            objective_path=objective_path,
+            todo_path=todo_path,
+            discovery_dir=discovery_dir,
+            bundle_dir=bundle_dir,
+            task_prefix="ACCEL-",
+            precomputed_findings=[
+                finding("first-safe-gap", "src/first.py"),
+                finding("late-cyclic-gap", "src/cycle.py"),
+            ],
+            persist_ast_dataset=False,
+            write_todo_vector_index=False,
+        )
+
+    assert todo_path.read_bytes() == original_board
+    assert not discovery_dir.exists()
+    assert not bundle_dir.exists()
+
+
+def test_generate_objective_todos_rollback_preserves_preexisting_discovery_dir(
+    tmp_path,
+    monkeypatch,
+):
+    repo, objective_path, todo_path = _seed_repo(tmp_path)
+    discovery_dir = repo / "data" / "agent_supervisor" / "discovery"
+    bundle_dir = repo / "data" / "agent_supervisor" / "objective_bundles"
+    discovery_dir.mkdir(parents=True)
+    original_board = todo_path.read_bytes()
+    finding = ObjectiveFinding(
+        fingerprint="rollback-preserves-discovery-dir",
+        goal_id="VAIOS-G000",
+        title="Preserve discovery directory",
+        summary="Preserve discovery directory",
+        priority="P0",
+        track="runtime",
+        missing_evidence=["rollback directory preservation proof"],
+        present_evidence={},
+        evidence_methods=[],
+        objective_path=str(objective_path),
+        outputs=["src/runtime_router.py"],
+        predicted_files=["src/runtime_router.py"],
+        validation="true",
+    )
+
+    def fail_taskboard_replacement(*_args, **_kwargs):
+        raise OSError("simulated taskboard replacement failure")
+
+    monkeypatch.setattr(
+        objective_graph_module,
+        "replace_locked_taskboard",
+        fail_taskboard_replacement,
+    )
+    with pytest.raises(
+        OSError,
+        match="simulated taskboard replacement failure",
+    ):
+        generate_objective_todos(
+            repo_root=repo,
+            objective_path=objective_path,
+            todo_path=todo_path,
+            discovery_dir=discovery_dir,
+            bundle_dir=bundle_dir,
+            task_prefix="ACCEL-",
+            precomputed_findings=[finding],
+            persist_ast_dataset=False,
+            write_todo_vector_index=False,
+        )
+
+    assert todo_path.read_bytes() == original_board
+    assert discovery_dir.is_dir()
+    assert not list(discovery_dir.iterdir())
+    assert not bundle_dir.exists()
+
+
 def test_manual_review_finding_without_edit_targets_is_visible_but_not_executable(
     tmp_path,
 ):
