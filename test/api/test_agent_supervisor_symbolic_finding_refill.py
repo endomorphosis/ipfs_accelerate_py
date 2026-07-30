@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import importlib.util
 from dataclasses import replace
+from pathlib import Path
 
 import pytest
 
@@ -21,9 +23,19 @@ from ipfs_accelerate_py.agent_supervisor.program_assurance_contracts import (
     FindingStatus,
 )
 from ipfs_accelerate_py.agent_supervisor.symbolic_finding_refill import (
+    OBJECTIVE_GOAL_G160_ID,
+    OBJECTIVE_GOAL_G161_ID,
+    OBJECTIVE_PARENT_GOAL_ID,
+    OBJECTIVE_TASK_G160_ID,
+    OBJECTIVE_TASK_G161_ID,
+    OBJECTIVE_TASK_PACKET_ID,
     REFILL_AUTHORIZES_COMPLETION,
     REFILL_AUTHORIZES_EXECUTION,
+    REFILL_IDEMPOTENCY_CLAIM_SCHEMA,
+    REFILL_IDEMPOTENCY_EVIDENCE,
     REFILL_IDEMPOTENCY_SCHEMA,
+    SYMBOLIC_REFILL_EPOCH_CLAIM_SCHEMA,
+    SYMBOLIC_REFILL_EPOCH_EVIDENCE,
     SYMBOLIC_REFILL_EPOCH_SCHEMA,
     BacklogRefinery,
     FindingDisposition,
@@ -36,8 +48,47 @@ from ipfs_accelerate_py.agent_supervisor.symbolic_finding_refill import (
     SupervisorBacklogSnapshot,
     SymbolicFindingRefillPolicy,
     TaskKind,
+    all_covered_evidence_terms,
+    covered_evidence_terms,
+    packet_evidence_terms,
+    prove_autonomous_refill_packet,
+    prove_refill_idempotency,
+    prove_symbolic_refill_epoch,
+    refill_idempotency_acceptance_dimensions,
+    refill_idempotency_evidence,
+    refill_idempotency_evidence_terms,
     refill_symbolic_findings,
+    symbolic_refill_epoch_acceptance_dimensions,
+    symbolic_refill_epoch_evidence,
+    symbolic_refill_epoch_evidence_terms,
+    verify_refill_idempotency,
+    verify_symbolic_refill_epoch,
 )
+
+
+def _load_adaptive_goal_refiner_bridge():
+    """Load the declared bridge module by path.
+
+    Package-root ``adaptive_goal_refiner`` is a landed alias of
+    ``objectives.adaptive_goal_refiner``.  The task-declared bridge file at
+    ``agent_supervisor/adaptive_goal_refiner.py`` still owns the
+    autonomous-refill discovery surface for VFS-G160/G161.
+    """
+
+    path = (
+        Path(__file__).resolve().parents[2]
+        / "ipfs_accelerate_py"
+        / "agent_supervisor"
+        / "adaptive_goal_refiner.py"
+    )
+    spec = importlib.util.spec_from_file_location(
+        "ipfs_accelerate_py.agent_supervisor._adaptive_goal_refiner_bridge",
+        path,
+    )
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def _binding() -> RefillBinding:
@@ -571,3 +622,194 @@ def test_hard_policy_limits_are_fail_closed():
         SymbolicFindingRefillPolicy(max_findings_per_pass=9)
     with pytest.raises(ValueError):
         SymbolicFindingRefillPolicy(max_surplus_per_goal=3)
+
+
+def test_vfs_g160_symbolic_refill_epoch_evidence_discoverable(tmp_path):
+    """Prove vfs/symbolic-refill-epoch@1 for VFS-G160 / VFS-080.
+
+    Parent VFS-G120 acceptance is demonstrated only through the epoch
+    receipt: fresh admissions, family reuse, hard ceilings, content-addressed
+    state transition, and non-authoritative proposals.
+    """
+
+    assert SYMBOLIC_REFILL_EPOCH_EVIDENCE == "vfs/symbolic-refill-epoch@1"
+    assert SYMBOLIC_REFILL_EPOCH_SCHEMA == "vfs/symbolic-refill-epoch@1"
+    assert symbolic_refill_epoch_evidence() == "vfs/symbolic-refill-epoch@1"
+    assert symbolic_refill_epoch_evidence_terms() == (
+        "vfs/symbolic-refill-epoch@1",
+    )
+    assert OBJECTIVE_GOAL_G160_ID == "VFS-G160"
+    assert OBJECTIVE_TASK_G160_ID == "VFS-080"
+    assert OBJECTIVE_PARENT_GOAL_ID == "VFS-G120"
+    assert "vfs/symbolic-refill-epoch@1" in covered_evidence_terms()
+    assert "vfs/symbolic-refill-epoch@1" in packet_evidence_terms()
+    assert "vfs/symbolic-refill-epoch@1" in all_covered_evidence_terms()
+    bridge = _load_adaptive_goal_refiner_bridge()
+    assert bridge.symbolic_refill_epoch_evidence() == "vfs/symbolic-refill-epoch@1"
+    assert bridge.OBJECTIVE_TASK_G160_ID == "VFS-080"
+    assert "vfs/symbolic-refill-epoch@1" in bridge.covered_evidence_terms()
+
+    finding = _finding(1)
+    ledger, receipts = _ledger(tmp_path, finding)
+    admitted = _refill(ledger, receipts)
+    later = _refill(ledger, receipts, now=101)
+
+    assert verify_symbolic_refill_epoch(admitted)
+    assert admitted.epoch_evidence is not None
+    payload = admitted.epoch_evidence.to_record()
+    assert payload["schema"] == "vfs/symbolic-refill-epoch@1"
+    assert payload["epoch_id"] == admitted.refill_epoch_id
+    assert payload["changed"]
+    assert payload["fresh_receipt_ids"] == (receipts[0].receipt_id,)
+    assert payload["emitted_task_ids"] == (admitted.new_tasks[0].task_id,)
+    # Observation time changes the epoch without rewriting task identity.
+    assert later.refill_epoch_id != admitted.refill_epoch_id
+    assert later.new_tasks[0].task_id == admitted.new_tasks[0].task_id
+    assert later.idempotency_id == admitted.idempotency_id
+
+    dimensions = symbolic_refill_epoch_acceptance_dimensions(admitted)
+    assert all(dimensions.values())
+    assert dimensions["fresh_admitted_only"]
+    assert dimensions["goal_family_reuse_or_bounded_child"]
+    assert dimensions["breadth_depth_open_work_cooldown"]
+    assert dimensions["prior_and_result_state_tracked"]
+    assert dimensions["epoch_distinct_from_task_identity"]
+    assert dimensions["binding_identity"]
+    assert dimensions["non_authoritative"]
+
+    claim = prove_symbolic_refill_epoch(admitted)
+    assert claim["schema"] == SYMBOLIC_REFILL_EPOCH_CLAIM_SCHEMA
+    assert claim["evidence"] == "vfs/symbolic-refill-epoch@1"
+    assert claim["evidence_terms"] == ["vfs/symbolic-refill-epoch@1"]
+    assert claim["goal_id"] == "VFS-G160"
+    assert claim["parent_goal_id"] == "VFS-G120"
+    assert claim["task_id"] == "VFS-080"
+    assert claim["packet_task_id"] == OBJECTIVE_TASK_PACKET_ID
+    assert claim["packet_goal_ids"] == ["VFS-G160", "VFS-G161"]
+    assert claim["satisfied"] is True
+    assert claim["verified"] is True
+    assert claim["authoritative"] is False
+    assert claim["completion_authoritative"] is False
+    assert claim["semantic_authority"] is False
+    assert claim["authorizes_execution"] is False
+    assert claim["authorizes_completion"] is False
+    assert all(claim["acceptance_dimensions"].values())
+    assert claim["binding_id"] == _binding().binding_id
+    assert claim["epoch_id"] == admitted.refill_epoch_id
+
+    # Gate-only epochs still verify without creating work.
+    cooling = _refill(
+        ledger,
+        receipts,
+        state=RefillState(next_allowed_epoch=101),
+        now=100,
+    )
+    assert cooling.reason is RefillReason.COOLDOWN
+    assert verify_symbolic_refill_epoch(cooling)
+    cool_claim = prove_symbolic_refill_epoch(cooling)
+    assert cool_claim["verified"] is True
+    assert cool_claim["changed"] is False
+    assert cool_claim["acceptance_dimensions"]["non_authoritative"]
+    assert cool_claim["acceptance_dimensions"]["breadth_depth_open_work_cooldown"]
+
+    # Stale/rejected receipts create no work; epoch still evidences the pass.
+    stale_receipt = AppendReceipt(
+        outcome=AppendOutcome.REJECTED,
+        finding_cid=finding.finding_cid,
+        sequence=100,
+        semantic_key_id=finding.semantic_key_id,
+        admission=FindingAdmissionState.STALE,
+        reasons=("evidence is stale",),
+    )
+    retained = _refill(ledger, (stale_receipt,))
+    assert not retained.new_tasks
+    assert verify_symbolic_refill_epoch(retained)
+    retained_claim = prove_symbolic_refill_epoch(retained)
+    assert retained_claim["verified"] is True
+    assert retained_claim["acceptance_dimensions"]["fresh_admitted_only"]
+    assert retained_claim["changed"] is False
+
+
+def test_vfs_g161_refill_idempotency_evidence_discoverable(tmp_path):
+    """Prove vfs/refill-idempotency@1 for VFS-G161 / VFS-083."""
+
+    assert REFILL_IDEMPOTENCY_EVIDENCE == "vfs/refill-idempotency@1"
+    assert REFILL_IDEMPOTENCY_SCHEMA == "vfs/refill-idempotency@1"
+    assert refill_idempotency_evidence() == "vfs/refill-idempotency@1"
+    assert refill_idempotency_evidence_terms() == ("vfs/refill-idempotency@1",)
+    assert OBJECTIVE_GOAL_G161_ID == "VFS-G161"
+    assert OBJECTIVE_TASK_G161_ID == "VFS-083"
+    assert "vfs/refill-idempotency@1" in covered_evidence_terms()
+    assert "vfs/refill-idempotency@1" in packet_evidence_terms()
+    bridge = _load_adaptive_goal_refiner_bridge()
+    assert bridge.refill_idempotency_evidence() == "vfs/refill-idempotency@1"
+    assert bridge.OBJECTIVE_TASK_G161_ID == "VFS-083"
+
+    finding = _finding(1)
+    ledger, receipts = _ledger(tmp_path, finding)
+    admitted = _refill(ledger, receipts)
+    replay = _refill(
+        ledger,
+        receipts,
+        state=admitted.state,
+        now=admitted.state.next_allowed_epoch,
+    )
+
+    assert verify_refill_idempotency(admitted)
+    assert verify_refill_idempotency(replay)
+    assert admitted.idempotency_id == replay.idempotency_id
+    assert replay.idempotency_evidence is not None
+    assert replay.idempotency_evidence.replay_noop
+
+    dimensions = refill_idempotency_acceptance_dimensions(replay)
+    assert all(dimensions.values())
+    assert dimensions["replay_noop_when_replayed"]
+    assert dimensions["wall_clock_excluded"]
+
+    claim = prove_refill_idempotency(replay)
+    assert claim["schema"] == REFILL_IDEMPOTENCY_CLAIM_SCHEMA
+    assert claim["evidence"] == "vfs/refill-idempotency@1"
+    assert claim["goal_id"] == "VFS-G161"
+    assert claim["parent_goal_id"] == "VFS-G120"
+    assert claim["task_id"] == "VFS-083"
+    assert claim["packet_goal_ids"] == ["VFS-G160", "VFS-G161"]
+    assert claim["satisfied"] is True
+    assert claim["verified"] is True
+    assert claim["replay_noop"] is True
+    assert claim["idempotency_id"] == admitted.idempotency_id
+    assert claim["authoritative"] is False
+    assert claim["completion_authoritative"] is False
+
+
+def test_autonomous_refill_packet_covers_g160_and_g161_together(tmp_path):
+    """Packet claim covers both autonomous-refill evidence terms cohesively."""
+
+    finding = _finding(1)
+    ledger, receipts = _ledger(tmp_path, finding)
+    admitted = _refill(ledger, receipts)
+    packet = prove_autonomous_refill_packet(admitted)
+
+    assert packet["evidence_terms"] == [
+        "vfs/symbolic-refill-epoch@1",
+        "vfs/refill-idempotency@1",
+    ]
+    assert packet["all_evidence_terms"] == list(covered_evidence_terms())
+    assert packet["goal_ids"] == ["VFS-G160", "VFS-G161"]
+    assert packet["parent_goal_id"] == "VFS-G120"
+    assert packet["task_ids"] == ["VFS-080", "VFS-083"]
+    assert packet["packet_task_id"] == "VFS-079"
+    assert packet["satisfied"] is True
+    assert packet["authorizes_execution"] is False
+    assert packet["authorizes_completion"] is False
+    assert packet["symbolic_refill_epoch"]["evidence"] == (
+        "vfs/symbolic-refill-epoch@1"
+    )
+    assert packet["refill_idempotency"]["evidence"] == "vfs/refill-idempotency@1"
+    assert all(packet["symbolic_refill_epoch"]["acceptance_dimensions"].values())
+    assert all(packet["refill_idempotency"]["acceptance_dimensions"].values())
+
+    # Declared adaptive_goal_refiner bridge re-exports the same discovery surface.
+    bridge = _load_adaptive_goal_refiner_bridge()
+    assert bridge.packet_evidence_terms() == packet_evidence_terms()
+    assert bridge.prove_autonomous_refill_packet(admitted)["satisfied"] is True
+    assert bridge.OBJECTIVE_PACKET_GOAL_IDS == ("VFS-G160", "VFS-G161")
