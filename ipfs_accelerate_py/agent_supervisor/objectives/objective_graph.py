@@ -9099,6 +9099,159 @@ def _objective_goal_task_ids_from_todo(
     return task_ids_by_goal
 
 
+@dataclass(frozen=True)
+class _ObjectiveTodoTaskScope:
+    """Dependency and write-scope fields needed during locked admission."""
+
+    task_id: str
+    status: str
+    dependencies: tuple[str, ...]
+    predicted_files: tuple[str, ...]
+
+    @property
+    def is_nonterminal(self) -> bool:
+        return self.status not in {"completed", "blocked"}
+
+
+def _normalize_objective_todo_status(value: Any) -> str:
+    """Match the implementation daemon's board-status normalization."""
+
+    normalized = (
+        str(value or "")
+        .strip()
+        .casefold()
+        .replace("-", "_")
+        .replace(" ", "_")
+    )
+    if normalized in {"done", "complete", "completed"}:
+        return "completed"
+    if normalized in {"blocked", "on_hold"}:
+        return "blocked"
+    if normalized in {"active", "in_progress"}:
+        return "in_progress"
+    if normalized in {"ready", "todo", "queued", ""}:
+        return "todo"
+    return normalized
+
+
+def _objective_todo_csv(value: Any) -> list[str]:
+    return [
+        item
+        for item in split_terms(str(value or ""))
+        if item.casefold() not in {"none", "n/a"}
+    ]
+
+
+def _normalize_objective_predicted_files(values: Iterable[Any]) -> tuple[str, ...]:
+    return tuple(
+        sorted(
+            {
+                normalized
+                for value in values
+                for normalized in [normalize_identity_path(value)]
+                if normalized and normalized.casefold() not in {"none", "n/a"}
+            }
+        )
+    )
+
+
+def _objective_todo_task_scopes(
+    todo_text: str,
+    *,
+    task_prefix: str,
+) -> list[_ObjectiveTodoTaskScope]:
+    """Parse the same task headings and metadata used by the todo daemon."""
+
+    prefix = normalize_task_id_prefix(task_prefix)
+    header = re.compile(
+        rf"^##\s+(?P<task_id>{re.escape(prefix)}\d+)(?=\s|$)"
+    )
+    scopes: list[_ObjectiveTodoTaskScope] = []
+    current_task_id = ""
+    metadata: dict[str, str] = {}
+
+    def flush() -> None:
+        nonlocal current_task_id, metadata
+        if not current_task_id:
+            return
+        scopes.append(
+            _ObjectiveTodoTaskScope(
+                task_id=current_task_id,
+                status=_normalize_objective_todo_status(
+                    metadata.get("status", "todo")
+                ),
+                dependencies=tuple(
+                    dict.fromkeys(
+                        _objective_todo_csv(metadata.get("depends on", ""))
+                    )
+                ),
+                predicted_files=_normalize_objective_predicted_files(
+                    _objective_todo_csv(
+                        metadata.get("predicted files", "")
+                    )
+                ),
+            )
+        )
+        current_task_id = ""
+        metadata = {}
+
+    for line in todo_text.splitlines():
+        if line.startswith("## "):
+            flush()
+            match = header.match(line)
+            current_task_id = (
+                match.group("task_id") if match is not None else ""
+            )
+            continue
+        stripped = line.strip()
+        if (
+            current_task_id
+            and stripped.startswith("- ")
+            and ":" in stripped
+        ):
+            name, value = stripped[2:].split(":", 1)
+            metadata[name.strip().casefold()] = value.strip()
+    flush()
+    return scopes
+
+
+def _objective_predicted_scopes_overlap(
+    left: Sequence[str],
+    right: Sequence[str],
+) -> bool:
+    """Use component-boundary overlap semantics after path normalization."""
+
+    for left_path in left:
+        left_parts = Path(left_path).parts
+        for right_path in right:
+            right_parts = Path(right_path).parts
+            common = min(len(left_parts), len(right_parts))
+            if left_parts[:common] == right_parts[:common]:
+                return True
+    return False
+
+
+def _objective_dependency_reaches(
+    dependencies_by_task: Mapping[str, Sequence[str]],
+    *,
+    start: str,
+    target: str,
+) -> bool:
+    """Return whether ``start`` already depends transitively on ``target``."""
+
+    pending = [start]
+    visited: set[str] = set()
+    while pending:
+        task_id = pending.pop()
+        if task_id == target:
+            return True
+        if task_id in visited:
+            continue
+        visited.add(task_id)
+        pending.extend(dependencies_by_task.get(task_id, ()))
+    return False
+
+
 def canonical_task_cids_from_todo(todo_text: str) -> set[str]:
     """Return canonical task identities already materialized on a board."""
 
@@ -10101,6 +10254,14 @@ def generate_objective_todos(
         materialized_task_ids = set(
             task_ids_from_todo(todo_text, task_prefix=task_prefix)
         )
+        admitted_task_scopes = _objective_todo_task_scopes(
+            todo_text,
+            task_prefix=task_prefix,
+        )
+        dependencies_by_task: dict[str, tuple[str, ...]] = {
+            scope.task_id: scope.dependencies
+            for scope in admitted_task_scopes
+        }
 
         def finding_obligation_segments(
             finding: ObjectiveFinding,
@@ -10212,6 +10373,45 @@ def generate_objective_todos(
                         task_ids_by_goal.get(dependency) or [dependency]
                     )
             projected_dependencies = _unique_strings(projected_dependencies)
+            candidate_status = _normalize_objective_todo_status(
+                objective_finding_execution_state(finding)[0]
+            )
+            candidate_predicted_files = (
+                _normalize_objective_predicted_files(
+                    finding.predicted_files or finding.outputs
+                )
+            )
+            if candidate_status not in {"completed", "blocked"}:
+                overlapping_task_ids = sorted(
+                    scope.task_id
+                    for scope in admitted_task_scopes
+                    if scope.is_nonterminal
+                    and _objective_predicted_scopes_overlap(
+                        candidate_predicted_files,
+                        scope.predicted_files,
+                    )
+                )
+                projected_dependencies = _unique_strings(
+                    [
+                        *projected_dependencies,
+                        *overlapping_task_ids,
+                    ]
+                )
+            cycle_dependencies = [
+                dependency
+                for dependency in projected_dependencies
+                if _objective_dependency_reaches(
+                    dependencies_by_task,
+                    start=dependency,
+                    target=task_id,
+                )
+            ]
+            if cycle_dependencies:
+                raise ValueError(
+                    "objective gap admission would create a dependency cycle "
+                    f"for {task_id} through: "
+                    + ", ".join(sorted(cycle_dependencies))
+                )
             projected_finding = replace(
                 finding,
                 dependencies=projected_dependencies,
@@ -10231,6 +10431,15 @@ def generate_objective_todos(
             todo_text = todo_text.rstrip() + "\n\n" + task_block.strip() + "\n"
             materialized_task_ids.add(task_id)
             task_ids_by_goal.setdefault(finding.goal_id, []).append(task_id)
+            admitted_task_scopes.append(
+                _ObjectiveTodoTaskScope(
+                    task_id=task_id,
+                    status=candidate_status,
+                    dependencies=tuple(projected_dependencies),
+                    predicted_files=candidate_predicted_files,
+                )
+            )
+            dependencies_by_task[task_id] = tuple(projected_dependencies)
             records.append(
                 ObjectiveTaskRecord(
                     task_id=task_id,
