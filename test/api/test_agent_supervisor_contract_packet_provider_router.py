@@ -199,7 +199,11 @@ def test_no_provider_receives_repository_path_corpus_or_expansion_bodies() -> No
         "response_contract",
         "authority",
     }
-    assert seen[0]["response_contract"]["required"] == ["patch"]
+    assert seen[0]["response_contract"]["required"] == ["proposal"]
+    assert seen[0]["response_contract"]["proposal_contract"]["required_any"] == [
+        "patch",
+        "files",
+    ]
     assert seen[1]["response_contract"]["required"] == ["decision", "findings"]
     assert seen[0]["authority"]["repository_write_allowed"] is False
 
@@ -831,6 +835,28 @@ def test_strict_production_mode_never_writes_without_successful_review() -> None
         assert result.write_performed is False
         assert result.writer_lease_id == ""
         assert writes == []
+
+
+def test_strict_production_mode_never_writes_deterministic_fallback() -> None:
+    writes = []
+    result = ImplementationProviderRouter(
+        deterministic_provider=lambda _request: {
+            "proposal": {"patch": "deterministic"}
+        },
+        admission_gate=_accept,
+        writer=lambda proposal, lease: writes.append((proposal, lease)),
+        require_independent_review_for_write=True,
+    ).route(
+        _Packet(),
+        current_snapshot_id=SNAPSHOT,
+        apply=True,
+        writer_lease_id="lease:strict-production",
+    )
+
+    assert result.status is RouteStatus.FALLBACK
+    assert result.provider_result_admitted is False
+    assert result.write_performed is False
+    assert writes == []
 
 
 def test_review_chain_binding_requires_exact_commit_tree_and_paths() -> None:

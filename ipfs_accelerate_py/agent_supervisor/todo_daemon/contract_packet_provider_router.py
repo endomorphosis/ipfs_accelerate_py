@@ -10,10 +10,10 @@ The route is strictly sequential:
 ``packet -> Grok proposal -> admission -> Codex review/repair -> admission``
 
 An optional writer receives only the final admitted proposal and an explicit
-writer lease ID.  Grok and Codex have independent quota latches, so exhaustion
-of the review provider can safely fall back to the already-admitted Grok
-proposal.  A caller may also configure a deterministic, no-model proposal
-provider for local fallback.
+writer lease ID.  Grok and Codex have independent quota latches.  Generic
+callers may inspect a degraded Grok fallback, while production callers require
+independent review before any write.  A caller may also configure a
+deterministic, no-model proposal provider for local fallback.
 """
 
 from __future__ import annotations
@@ -514,6 +514,47 @@ def _reject_provider_authority(value: Any, *, location: str = "response") -> Non
             _reject_provider_authority(item, location=f"{location}[{index}]")
 
 
+def _response_contract(role: ProviderRole) -> Mapping[str, Any]:
+    common = {
+        "encoding": "canonical-json-object",
+        "additional_text_forbidden": True,
+        "provider_output_tier": "proposal",
+        "repository_write_allowed": False,
+        "proof_authoritative": False,
+        "completion_authoritative": False,
+    }
+    if role is ProviderRole.CODEX_REVIEW:
+        return MappingProxyType(
+            {
+                **common,
+                "required": ["decision", "findings"],
+                "decision_values": [
+                    "approve",
+                    "reject",
+                    "changes_required",
+                    "repair",
+                    "replace",
+                ],
+                "repair_contract": {
+                    "proposal_required_for": ["repair", "replace"],
+                    "proposal_type": "object",
+                },
+            }
+        )
+    return MappingProxyType(
+        {
+            **common,
+            "required": ["proposal"],
+            "proposal_contract": {
+                "type": "object",
+                "required_any": ["patch", "files"],
+                "patch_format": "unified-diff",
+                "path_scope": "contract-packet.scope.write_paths",
+            },
+        }
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class ProviderRequest(Mapping[str, Any]):
     """Canonical provider request.
@@ -529,6 +570,7 @@ class ProviderRequest(Mapping[str, Any]):
     task_id: str
     payload: Mapping[str, Any]
     bounds: ProviderBounds
+    response_contract: Mapping[str, Any]
     prompt: bytes
     prompt_tokens: int
 
@@ -542,6 +584,7 @@ class ProviderRequest(Mapping[str, Any]):
             "task_id": self.task_id,
             "provider_input": dict(self.payload),
             "bounds": self.bounds.to_dict(),
+            "response_contract": dict(self.response_contract),
             "authority": {
                 "provider_output_tier": "proposal",
                 "repository_write_allowed": False,
@@ -656,6 +699,9 @@ class ProviderAttempt:
     role: ProviderRole
     status: str
     reason_code: str
+    provider_identity: str = ""
+    model_identity: str = ""
+    session_identity: str = ""
     prompt_bytes: int = 0
     prompt_tokens: int = 0
     response_bytes: int = 0
@@ -667,6 +713,9 @@ class ProviderAttempt:
             "role": self.role.value,
             "status": self.status,
             "reason_code": self.reason_code,
+            "provider_identity": self.provider_identity,
+            "model_identity": self.model_identity,
+            "session_identity": self.session_identity,
             "prompt_bytes": self.prompt_bytes,
             "prompt_tokens": self.prompt_tokens,
             "response_bytes": self.response_bytes,
@@ -705,6 +754,9 @@ class ReviewChainStep:
     status: str
     reason_code: str
     admitted: bool = False
+    provider_identity: str = ""
+    model_identity: str = ""
+    session_identity: str = ""
     response_digest: str = ""
     prompt_bytes: int = 0
     prompt_tokens: int = 0
@@ -716,6 +768,9 @@ class ReviewChainStep:
             "status": self.status,
             "reason_code": self.reason_code,
             "admitted": self.admitted,
+            "provider_identity": self.provider_identity,
+            "model_identity": self.model_identity,
+            "session_identity": self.session_identity,
             "response_digest": self.response_digest,
             "prompt_bytes": self.prompt_bytes,
             "prompt_tokens": self.prompt_tokens,
@@ -1056,6 +1111,13 @@ class ImplementationRoutingResult:
                     status=step_status,
                     reason_code=proposal.admission_reason or default_reason,
                     admitted=proposal.admitted,
+                    provider_identity=(
+                        attempt.provider_identity if attempt else ""
+                    ),
+                    model_identity=attempt.model_identity if attempt else "",
+                    session_identity=(
+                        attempt.session_identity if attempt else ""
+                    ),
                     response_digest=proposal.response_digest,
                     prompt_bytes=attempt.prompt_bytes if attempt else 0,
                     prompt_tokens=attempt.prompt_tokens if attempt else 0,
@@ -1080,6 +1142,9 @@ class ImplementationRoutingResult:
                     status=step_status,
                     reason_code=step_reason,
                     admitted=False,
+                    provider_identity=attempt.provider_identity,
+                    model_identity=attempt.model_identity,
+                    session_identity=attempt.session_identity,
                     response_digest=attempt.response_digest,
                     prompt_bytes=attempt.prompt_bytes,
                     prompt_tokens=attempt.prompt_tokens,
@@ -1383,6 +1448,7 @@ class ImplementationProviderRouter:
     grok_quota: ProviderQuotaLatch = field(default_factory=ProviderQuotaLatch)
     codex_quota: ProviderQuotaLatch = field(default_factory=ProviderQuotaLatch)
     deterministic_quota: ProviderQuotaLatch = field(default_factory=ProviderQuotaLatch)
+    require_independent_review_for_write: bool = False
     token_counter: TokenCounter = _default_token_count
     _writer_lock: threading.Lock = field(
         default_factory=threading.Lock,
@@ -1403,6 +1469,39 @@ class ImplementationProviderRouter:
                 raise TypeError(f"{name} must be ProviderQuotaLatch or an integer")
         if not callable(self.token_counter):
             raise TypeError("token_counter must be callable")
+        if not isinstance(self.require_independent_review_for_write, bool):
+            raise TypeError("require_independent_review_for_write must be bool")
+
+    @staticmethod
+    def _provider_execution_identity(provider: ProviderCallable | None) -> str:
+        if provider is None:
+            return ""
+        identity = str(getattr(provider, "provider_identity", "") or "").strip()
+        return identity
+
+    @classmethod
+    def _providers_are_independent(
+        cls,
+        implementation_provider: ProviderCallable | None,
+        review_provider: ProviderCallable | None,
+        *,
+        require_attested_identity: bool = False,
+    ) -> bool:
+        if implementation_provider is None or review_provider is None:
+            return True
+        if implementation_provider is review_provider:
+            return False
+        implementation_identity = cls._provider_execution_identity(
+            implementation_provider
+        )
+        review_identity = cls._provider_execution_identity(review_provider)
+        if require_attested_identity and (
+            not implementation_identity or not review_identity
+        ):
+            return False
+        if implementation_identity and review_identity:
+            return implementation_identity != review_identity
+        return True
 
     @property
     def quota_state(self) -> Mapping[str, Mapping[str, Any]]:
@@ -1524,6 +1623,7 @@ class ImplementationProviderRouter:
                     "proof_authoritative": False,
                     "completion_authoritative": False,
                 }
+        response_contract = _response_contract(role)
         envelope = {
             "schema": IMPLEMENTATION_PROVIDER_REQUEST_SCHEMA,
             "interface": IMPLEMENTATION_PROVIDER_ROUTER_INTERFACE,
@@ -1533,6 +1633,7 @@ class ImplementationProviderRouter:
             "task_id": task_id,
             "provider_input": payload,
             "bounds": self.bounds.to_dict(),
+            "response_contract": dict(response_contract),
             "authority": {
                 "provider_output_tier": "proposal",
                 "repository_write_allowed": False,
@@ -1574,6 +1675,7 @@ class ImplementationProviderRouter:
             task_id=task_id,
             payload=MappingProxyType(payload),
             bounds=self.bounds,
+            response_contract=response_contract,
             prompt=prompt,
             prompt_tokens=prompt_tokens,
         )
@@ -1624,6 +1726,13 @@ class ImplementationProviderRouter:
             role=request.role,
             status="succeeded",
             reason_code=ProviderReason.ROUTED.value,
+            provider_identity=str(
+                getattr(provider, "provider_identity", "") or ""
+            ),
+            model_identity=str(getattr(provider, "model_identity", "") or ""),
+            session_identity=str(
+                getattr(provider, "last_session_identity", "") or ""
+            ),
             prompt_bytes=len(request.prompt),
             prompt_tokens=request.prompt_tokens,
             response_bytes=len(encoded),
@@ -1752,6 +1861,18 @@ class ImplementationProviderRouter:
                     packet=packet_identity,
                     implementation_proposal=admitted,
                     attempts=attempts,
+                )
+            if self.require_independent_review_for_write and apply:
+                return self._result(
+                    status=RouteStatus.FALLBACK,
+                    reason_code=fallback_reason or ProviderReason.LOCAL_ONLY.value,
+                    packet_id=packet_id,
+                    packet=packet_identity,
+                    selected_proposal=admitted,
+                    implementation_proposal=admitted,
+                    attempts=attempts,
+                    write_performed=False,
+                    writer_lease_id="",
                 )
             wrote, write_reason = self._write(
                 admitted,
@@ -1913,9 +2034,10 @@ class ImplementationProviderRouter:
 
         # Grok cannot self-review: implementer and reviewer must be independent
         # callables.  A lane label is not a receipt of independence.
-        if (
-            self.codex_provider is not None
-            and self.grok_provider is self.codex_provider
+        if not self._providers_are_independent(
+            self.grok_provider,
+            self.codex_provider,
+            require_attested_identity=self.require_independent_review_for_write,
         ):
             return self._result(
                 status=RouteStatus.REJECTED,
@@ -2124,6 +2246,19 @@ class ImplementationProviderRouter:
         writer_lease_id: str,
         review: ProviderProposal | None = None,
     ) -> ImplementationRoutingResult:
+        if self.require_independent_review_for_write:
+            return self._result(
+                status=RouteStatus.FALLBACK,
+                reason_code=reason_code,
+                packet_id=grok.packet_id,
+                packet=packet,
+                selected_proposal=grok,
+                implementation_proposal=grok,
+                review_proposal=review,
+                attempts=attempts,
+                write_performed=False,
+                writer_lease_id="",
+            )
         wrote, write_reason = self._write(
             grok,
             apply=apply,
@@ -2208,11 +2343,14 @@ class ProductionReviewChainBinding:
     review_presence: str
     provider_result_admitted: bool
     implementation_commit: str = ""
+    implementation_tree_id: str = ""
+    changed_paths: tuple[str, ...] = ()
     merge_commit: str = ""
+    merge_tree_id: str = ""
     disposition: str = ProductionReceiptDisposition.ADMITTED.value
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        body = {
             "schema": PRODUCTION_REVIEW_CHAIN_BINDING_SCHEMA,
             "interface": PRODUCTION_PROVIDER_ROUTE_INTERFACE,
             "receipt_id": self.receipt_id,
@@ -2229,11 +2367,15 @@ class ProductionReviewChainBinding:
             "review_presence": self.review_presence,
             "provider_result_admitted": self.provider_result_admitted,
             "implementation_commit": self.implementation_commit,
+            "implementation_tree_id": self.implementation_tree_id,
+            "changed_paths": list(self.changed_paths),
             "merge_commit": self.merge_commit,
+            "merge_tree_id": self.merge_tree_id,
             "disposition": self.disposition,
             "completion_authoritative": False,
             "proof_authoritative": False,
         }
+        return {"binding_id": _packet_content_id(body), **body}
 
 
 def review_chain_content_digest(
@@ -2250,6 +2392,283 @@ def review_chain_content_digest(
         else:
             raise TypeError("review chain steps must be ReviewChainStep or mapping")
     return _packet_content_id({"review_chain": steps})
+
+
+_PROVIDER_RECEIPT_KEYS: Final[frozenset[str]] = frozenset(
+    {
+        "schema",
+        "interface",
+        "receipt_id",
+        "status",
+        "reason_code",
+        "provider",
+        "packet",
+        "review_chain",
+        "review_presence",
+        "admission",
+        "attempts",
+        "writer_lease_id",
+        "write_performed",
+        "fallback",
+        "selected_proposal_digest",
+        "implementation_proposal_digest",
+        "review_proposal_digest",
+        "proof_authoritative",
+        "completion_authoritative",
+    }
+)
+_PACKET_IDENTITY_KEYS: Final[frozenset[str]] = frozenset(
+    {"packet_id", "packet_cid", "packet_bytes", "snapshot_id", "task_id"}
+)
+_PROVIDER_ADMISSION_KEYS: Final[frozenset[str]] = frozenset(
+    {
+        "proposal_only",
+        "repository_write_allowed",
+        "completion_authoritative",
+        "proof_authoritative",
+        "provider_result_admitted",
+        "independent_review",
+        "review_presence",
+        "self_review",
+        "writer_lease_bound",
+    }
+)
+_PROVIDER_ATTEMPT_KEYS: Final[frozenset[str]] = frozenset(
+    {
+        "role",
+        "status",
+        "reason_code",
+        "provider_identity",
+        "model_identity",
+        "session_identity",
+        "prompt_bytes",
+        "prompt_tokens",
+        "response_bytes",
+        "prompt_digest",
+        "response_digest",
+        "prompt_embedded",
+        "response_embedded",
+    }
+)
+_REVIEW_CHAIN_STEP_KEYS: Final[frozenset[str]] = frozenset(
+    {
+        "role",
+        "status",
+        "reason_code",
+        "admitted",
+        "provider_identity",
+        "model_identity",
+        "session_identity",
+        "response_digest",
+        "prompt_bytes",
+        "prompt_tokens",
+        "response_bytes",
+    }
+)
+_PRODUCTION_BINDING_KEYS: Final[frozenset[str]] = frozenset(
+    {
+        "binding_id",
+        "schema",
+        "interface",
+        "receipt_id",
+        "task_id",
+        "packet_id",
+        "packet_cid",
+        "snapshot_id",
+        "review_chain_digest",
+        "selected_proposal_digest",
+        "implementation_proposal_digest",
+        "review_proposal_digest",
+        "writer_lease_id",
+        "write_performed",
+        "review_presence",
+        "provider_result_admitted",
+        "implementation_commit",
+        "implementation_tree_id",
+        "changed_paths",
+        "merge_commit",
+        "merge_tree_id",
+        "disposition",
+        "completion_authoritative",
+        "proof_authoritative",
+    }
+)
+
+
+def validate_provider_execution_receipt(
+    receipt: ProviderExecutionReceipt | Mapping[str, Any] | None,
+) -> tuple[dict[str, Any] | None, str]:
+    """Recompute and structurally validate one provider receipt.
+
+    Provider-supplied booleans are not admission evidence.  The receipt must
+    have the exact schema, a valid content identity, internally consistent
+    proposal/review digests, and distinct non-empty execution identities when
+    it claims independent review.
+    """
+
+    if receipt is None:
+        return None, ProviderReason.RECEIPT_ABSENT.value
+    if isinstance(receipt, ProviderExecutionReceipt):
+        payload = receipt.to_dict()
+    elif isinstance(receipt, Mapping):
+        payload = dict(receipt)
+    else:
+        return None, ProviderReason.PACKET_MALFORMED.value
+    if set(payload) != set(_PROVIDER_RECEIPT_KEYS):
+        return None, ProviderReason.PACKET_MALFORMED.value
+    if (
+        payload.get("schema") != PROVIDER_EXECUTION_RECEIPT_SCHEMA
+        or payload.get("interface") != PROVIDER_EXECUTION_RECEIPT_INTERFACE
+        or payload.get("proof_authoritative") is not False
+        or payload.get("completion_authoritative") is not False
+    ):
+        return None, ProviderReason.PACKET_MALFORMED.value
+    receipt_id = str(payload.get("receipt_id") or "")
+    body = {key: value for key, value in payload.items() if key != "receipt_id"}
+    try:
+        expected_receipt_id = _packet_content_id(body)
+    except (ProviderRoutingError, TypeError, ValueError):
+        return None, ProviderReason.PACKET_MALFORMED.value
+    if not receipt_id or receipt_id != expected_receipt_id:
+        return None, ProviderReason.PACKET_MALFORMED.value
+
+    packet = payload.get("packet")
+    if not isinstance(packet, Mapping) or set(packet) != set(_PACKET_IDENTITY_KEYS):
+        return None, ProviderReason.PACKET_MALFORMED.value
+    for key in ("packet_id", "packet_cid", "snapshot_id", "task_id"):
+        if not str(packet.get(key) or "").strip():
+            return None, ProviderReason.PACKET_MALFORMED.value
+    packet_bytes = packet.get("packet_bytes")
+    if (
+        isinstance(packet_bytes, bool)
+        or not isinstance(packet_bytes, int)
+        or packet_bytes < 1
+    ):
+        return None, ProviderReason.PACKET_MALFORMED.value
+
+    chain = payload.get("review_chain")
+    attempts = payload.get("attempts")
+    admission = payload.get("admission")
+    if (
+        not isinstance(chain, list)
+        or not isinstance(attempts, list)
+        or not isinstance(admission, Mapping)
+        or set(admission) != set(_PROVIDER_ADMISSION_KEYS)
+    ):
+        return None, ProviderReason.PACKET_MALFORMED.value
+    for item in chain:
+        if (
+            not isinstance(item, Mapping)
+            or set(item) != set(_REVIEW_CHAIN_STEP_KEYS)
+        ):
+            return None, ProviderReason.PACKET_MALFORMED.value
+    for item in attempts:
+        if (
+            not isinstance(item, Mapping)
+            or set(item) != set(_PROVIDER_ATTEMPT_KEYS)
+        ):
+            return None, ProviderReason.PACKET_MALFORMED.value
+
+    presence = str(payload.get("review_presence") or "")
+    admitted = bool(admission.get("provider_result_admitted"))
+    if (
+        presence != str(admission.get("review_presence") or "")
+        or admission.get("proposal_only") is not True
+        or admission.get("completion_authoritative") is not False
+        or admission.get("proof_authoritative") is not False
+        or payload.get("write_performed") not in {True, False}
+        or admission.get("repository_write_allowed")
+        is not payload.get("write_performed")
+        or admission.get("writer_lease_bound")
+        is not bool(payload.get("write_performed"))
+        or (
+            bool(payload.get("write_performed"))
+            and not str(payload.get("writer_lease_id") or "").strip()
+        )
+        or (
+            not bool(payload.get("write_performed"))
+            and str(payload.get("writer_lease_id") or "")
+        )
+    ):
+        return None, ProviderReason.REVIEW_CHAIN_UNBOUND.value
+    if presence == ReviewPresence.INDEPENDENT.value or admitted:
+        by_role = {
+            str(item.get("role") or ""): item
+            for item in chain
+            if isinstance(item, Mapping)
+        }
+        grok = by_role.get(ProviderRole.GROK_IMPLEMENT.value)
+        codex = by_role.get(ProviderRole.CODEX_REVIEW.value)
+        if (
+            len(chain) != 2
+            or not isinstance(grok, Mapping)
+            or not isinstance(codex, Mapping)
+            or grok.get("status") != "succeeded"
+            or codex.get("status") != "succeeded"
+            or grok.get("admitted") is not True
+            or codex.get("admitted") is not True
+        ):
+            return None, ProviderReason.REVIEW_CHAIN_UNBOUND.value
+        grok_identity = str(grok.get("provider_identity") or "").strip()
+        codex_identity = str(codex.get("provider_identity") or "").strip()
+        grok_model = str(grok.get("model_identity") or "").strip()
+        codex_model = str(codex.get("model_identity") or "").strip()
+        grok_session = str(grok.get("session_identity") or "").strip()
+        codex_session = str(codex.get("session_identity") or "").strip()
+        if (
+            not grok_identity
+            or not codex_identity
+            or grok_identity == codex_identity
+            or not grok_model
+            or not codex_model
+            or not grok_session
+            or not codex_session
+        ):
+            return None, ProviderReason.PROVIDERS_NOT_INDEPENDENT.value
+        implementation_digest = str(
+            payload.get("implementation_proposal_digest") or ""
+        )
+        review_digest = str(payload.get("review_proposal_digest") or "")
+        selected_digest = str(payload.get("selected_proposal_digest") or "")
+        if (
+            not implementation_digest
+            or implementation_digest != str(grok.get("response_digest") or "")
+            or not review_digest
+            or review_digest != str(codex.get("response_digest") or "")
+            or selected_digest not in {implementation_digest, review_digest}
+        ):
+            return None, ProviderReason.REVIEW_CHAIN_UNBOUND.value
+        if (
+            admission.get("independent_review") is not True
+            or admission.get("self_review") is not False
+            or admission.get("completion_authoritative") is not False
+            or admission.get("proof_authoritative") is not False
+        ):
+            return None, ProviderReason.REVIEW_CHAIN_UNBOUND.value
+        attempts_by_role = {
+            str(item.get("role") or ""): item
+            for item in attempts
+            if item.get("status") == "succeeded"
+        }
+        if set(attempts_by_role) != {
+            ProviderRole.GROK_IMPLEMENT.value,
+            ProviderRole.CODEX_REVIEW.value,
+        }:
+            return None, ProviderReason.REVIEW_CHAIN_UNBOUND.value
+        for step in (grok, codex):
+            attempt = attempts_by_role[str(step.get("role") or "")]
+            for key in (
+                "provider_identity",
+                "model_identity",
+                "session_identity",
+                "response_digest",
+                "prompt_bytes",
+                "prompt_tokens",
+                "response_bytes",
+            ):
+                if step.get(key) != attempt.get(key):
+                    return None, ProviderReason.REVIEW_CHAIN_UNBOUND.value
+    return payload, ""
 
 
 def evaluate_production_provider_receipt(
@@ -2271,14 +2690,11 @@ def evaluate_production_provider_receipt(
             ProductionReceiptDisposition.PENDING_ABSENT,
             ProviderReason.RECEIPT_ABSENT.value,
         )
-    if isinstance(receipt, ProviderExecutionReceipt):
-        payload = receipt.to_dict()
-    elif isinstance(receipt, Mapping):
-        payload = dict(receipt)
-    else:
+    payload, validation_reason = validate_provider_execution_receipt(receipt)
+    if payload is None:
         return (
             ProductionReceiptDisposition.REJECTED,
-            ProviderReason.PACKET_MALFORMED.value,
+            validation_reason or ProviderReason.PACKET_MALFORMED.value,
         )
 
     task_id = str(expected_task_id or "").strip()
@@ -2374,7 +2790,10 @@ def bind_applied_patch_to_review_chain(
     *,
     writer_lease_id: str = "",
     implementation_commit: str = "",
+    implementation_tree_id: str = "",
+    changed_paths: Sequence[str] = (),
     merge_commit: str = "",
+    merge_tree_id: str = "",
 ) -> ProductionReviewChainBinding | None:
     """Bind apply/merge identity to the admitted independent review chain.
 
@@ -2384,20 +2803,33 @@ def bind_applied_patch_to_review_chain(
 
     if route_result is None:
         return None
-    if not route_result.provider_result_admitted:
+    if (
+        not route_result.provider_result_admitted
+        or not route_result.write_performed
+    ):
         return None
     if route_result.review_presence != ReviewPresence.INDEPENDENT.value:
         return None
     receipt = route_result.provider_receipt
+    validated_receipt, _reason = validate_provider_execution_receipt(receipt)
+    if validated_receipt is None:
+        return None
     packet = route_result.packet
     packet_id = packet.packet_id if packet is not None else route_result.packet_id
     packet_cid = packet.packet_cid if packet is not None else ""
     snapshot_id = packet.snapshot_id if packet is not None else ""
     task_id = packet.task_id if packet is not None else ""
     chain_digest = review_chain_content_digest(route_result.review_chain)
-    lease = writer_lease_id or (
-        route_result.writer_lease_id if route_result.write_performed else ""
+    lease = str(
+        writer_lease_id or route_result.writer_lease_id or ""
+    ).strip()
+    commit = str(implementation_commit or "").strip()
+    tree_id = str(implementation_tree_id or "").strip()
+    paths = tuple(
+        sorted({str(path).strip() for path in changed_paths if str(path).strip()})
     )
+    if not lease or not commit or not tree_id or not paths:
+        return None
     return ProductionReviewChainBinding(
         receipt_id=receipt.receipt_id,
         task_id=task_id,
@@ -2408,14 +2840,113 @@ def bind_applied_patch_to_review_chain(
         selected_proposal_digest=receipt.selected_proposal_digest,
         implementation_proposal_digest=receipt.implementation_proposal_digest,
         review_proposal_digest=receipt.review_proposal_digest,
-        writer_lease_id=lease if route_result.write_performed else "",
-        write_performed=bool(route_result.write_performed),
+        writer_lease_id=lease,
+        write_performed=True,
         review_presence=route_result.review_presence,
         provider_result_admitted=True,
-        implementation_commit=str(implementation_commit or ""),
+        implementation_commit=commit,
+        implementation_tree_id=tree_id,
+        changed_paths=paths,
         merge_commit=str(merge_commit or ""),
+        merge_tree_id=str(merge_tree_id or ""),
         disposition=ProductionReceiptDisposition.ADMITTED.value,
     )
+
+
+def validate_production_review_chain_binding(
+    binding: ProductionReviewChainBinding | Mapping[str, Any] | None,
+    receipt: ProviderExecutionReceipt | Mapping[str, Any] | None,
+    *,
+    expected_task_id: str,
+    expected_snapshot_id: str,
+    expected_implementation_commit: str = "",
+    expected_implementation_tree_id: str = "",
+    expected_changed_paths: Sequence[str] = (),
+    expected_merge_commit: str = "",
+    expected_merge_tree_id: str = "",
+) -> tuple[bool, str]:
+    """Validate an apply/merge binding against its immutable provider receipt."""
+
+    receipt_payload, reason = validate_provider_execution_receipt(receipt)
+    if receipt_payload is None:
+        return False, reason
+    if isinstance(binding, ProductionReviewChainBinding):
+        payload = binding.to_dict()
+    elif isinstance(binding, Mapping):
+        payload = dict(binding)
+    else:
+        return False, ProviderReason.REVIEW_CHAIN_UNBOUND.value
+    if set(payload) != set(_PRODUCTION_BINDING_KEYS):
+        return False, ProviderReason.REVIEW_CHAIN_UNBOUND.value
+    binding_id = str(payload.get("binding_id") or "")
+    binding_body = {
+        key: value for key, value in payload.items() if key != "binding_id"
+    }
+    try:
+        expected_binding_id = _packet_content_id(binding_body)
+    except (ProviderRoutingError, TypeError, ValueError):
+        return False, ProviderReason.REVIEW_CHAIN_UNBOUND.value
+    if (
+        not binding_id
+        or binding_id != expected_binding_id
+        or payload.get("schema") != PRODUCTION_REVIEW_CHAIN_BINDING_SCHEMA
+        or payload.get("interface") != PRODUCTION_PROVIDER_ROUTE_INTERFACE
+        or payload.get("completion_authoritative") is not False
+        or payload.get("proof_authoritative") is not False
+    ):
+        return False, ProviderReason.REVIEW_CHAIN_UNBOUND.value
+    packet = receipt_payload["packet"]
+    if (
+        payload.get("receipt_id") != receipt_payload.get("receipt_id")
+        or str(payload.get("task_id") or "") != str(expected_task_id or "")
+        or str(packet.get("task_id") or "") != str(expected_task_id or "")
+        or str(payload.get("packet_id") or "") != str(packet.get("packet_id") or "")
+        or str(payload.get("packet_cid") or "") != str(packet.get("packet_cid") or "")
+        or str(payload.get("snapshot_id") or "") != str(expected_snapshot_id or "")
+        or str(packet.get("snapshot_id") or "") != str(expected_snapshot_id or "")
+        or payload.get("provider_result_admitted") is not True
+        or payload.get("review_presence") != ReviewPresence.INDEPENDENT.value
+        or payload.get("write_performed") is not True
+        or not str(payload.get("writer_lease_id") or "")
+        or payload.get("disposition")
+        != ProductionReceiptDisposition.ADMITTED.value
+    ):
+        return False, ProviderReason.REVIEW_CHAIN_UNBOUND.value
+    chain = receipt_payload.get("review_chain") or []
+    if payload.get("review_chain_digest") != review_chain_content_digest(chain):
+        return False, ProviderReason.REVIEW_CHAIN_UNBOUND.value
+    for binding_key, receipt_key in (
+        ("selected_proposal_digest", "selected_proposal_digest"),
+        ("implementation_proposal_digest", "implementation_proposal_digest"),
+        ("review_proposal_digest", "review_proposal_digest"),
+    ):
+        if not payload.get(binding_key) or payload.get(binding_key) != receipt_payload.get(
+            receipt_key
+        ):
+            return False, ProviderReason.REVIEW_CHAIN_UNBOUND.value
+    expected_commit = str(expected_implementation_commit or "").strip()
+    expected_tree = str(expected_implementation_tree_id or "").strip()
+    expected_paths = sorted(
+        {str(path).strip() for path in expected_changed_paths if str(path).strip()}
+    )
+    if not expected_commit or not expected_tree or not expected_paths:
+        return False, ProviderReason.REVIEW_CHAIN_UNBOUND.value
+    if payload.get("implementation_commit") != expected_commit:
+        return False, ProviderReason.REVIEW_CHAIN_UNBOUND.value
+    if payload.get("implementation_tree_id") != expected_tree:
+        return False, ProviderReason.REVIEW_CHAIN_UNBOUND.value
+    if sorted(payload.get("changed_paths") or []) != expected_paths:
+        return False, ProviderReason.REVIEW_CHAIN_UNBOUND.value
+    expected_merge = str(expected_merge_commit or "").strip()
+    expected_merge_tree = str(expected_merge_tree_id or "").strip()
+    if bool(expected_merge) != bool(expected_merge_tree):
+        return False, ProviderReason.REVIEW_CHAIN_UNBOUND.value
+    if expected_merge and (
+        payload.get("merge_commit") != expected_merge
+        or payload.get("merge_tree_id") != expected_merge_tree
+    ):
+        return False, ProviderReason.REVIEW_CHAIN_UNBOUND.value
+    return True, ProviderReason.ROUTED.value
 
 
 def build_production_contract_packet(
@@ -2617,6 +3148,7 @@ def route_contract_packet(
     writer: WriterCallable | None = None,
     apply: bool = False,
     writer_lease_id: str = "",
+    require_independent_review_for_write: bool = False,
     local_only: bool = False,
     bounds: ProviderBounds | Mapping[str, Any] | None = None,
     grok_quota: ProviderQuotaLatch | int | None = None,
@@ -2631,6 +3163,7 @@ def route_contract_packet(
         admission_gate=admission_gate,
         writer=writer,
         bounds=bounds or ProviderBounds(),
+        require_independent_review_for_write=require_independent_review_for_write,
         grok_quota=(
             grok_quota if grok_quota is not None else ProviderQuotaLatch()
         ),
@@ -2707,4 +3240,6 @@ __all__ = [
     "redact_provider_data",
     "review_chain_content_digest",
     "route_contract_packet",
+    "validate_production_review_chain_binding",
+    "validate_provider_execution_receipt",
 ]
