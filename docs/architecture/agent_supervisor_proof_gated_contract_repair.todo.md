@@ -1470,7 +1470,7 @@ consumer or frontier is unresolved.
 
 ## RPR-046 Add propagation metrics, rollout flags, CLI, guide, and rollback
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
