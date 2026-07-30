@@ -546,6 +546,34 @@ def _production_provider_response_schema(
         "additionalProperties": False,
     }
     if role is ProviderRole.CODEX_REVIEW:
+        # Codex strict structured output requires every property of every
+        # object schema to be required.  Preserve the semantic optionality of
+        # a repair proposal with an explicit null branch: an approval/rejection
+        # returns null, while repair/replace returns the fully shaped object.
+        # Empty patch/files values are only transport sentinels; the existing
+        # admission policy still rejects an unusable repair proposal.
+        codex_proposal = {
+            "type": "object",
+            "properties": {
+                "patch": {"type": "string", "maxLength": 262144},
+                "files": {
+                    "type": "array",
+                    "maxItems": 64,
+                    "items": replacement,
+                },
+                "declared_paths": {
+                    "type": "array",
+                    "maxItems": 64,
+                    "items": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 1024,
+                    },
+                },
+            },
+            "required": ["patch", "files", "declared_paths"],
+            "additionalProperties": False,
+        }
         return {
             "type": "object",
             "properties": {
@@ -564,9 +592,14 @@ def _production_provider_response_schema(
                     "maxItems": 128,
                     "items": {"type": "string", "maxLength": 4096},
                 },
-                "proposal": proposal,
+                "proposal": {
+                    "anyOf": [
+                        codex_proposal,
+                        {"type": "null"},
+                    ],
+                },
             },
-            "required": ["decision", "findings"],
+            "required": ["decision", "findings", "proposal"],
             "additionalProperties": False,
         }
     if role is ProviderRole.GROK_IMPLEMENT:

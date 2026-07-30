@@ -57,6 +57,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
     PortalTask,
     PortalTaskState,
     TodoImplementationDaemon,
+    _production_provider_response_schema,
     parse_task_file,
 )
 
@@ -372,6 +373,33 @@ def test_mcpplusplus_provider_pins_route_and_rejects_fallback(
         match="routing receipt is invalid",
     ):
         provider(request)
+
+
+def test_mcpplusplus_codex_review_schema_is_strict_output_compatible() -> None:
+    schema = _production_provider_response_schema(ProviderRole.CODEX_REVIEW)
+
+    def assert_strict_objects(node: Any) -> None:
+        if isinstance(node, Mapping):
+            if node.get("type") == "object":
+                assert node.get("additionalProperties") is False
+                assert set(node.get("required", ())) == set(
+                    node.get("properties", {})
+                )
+            for value in node.values():
+                assert_strict_objects(value)
+        elif isinstance(node, list):
+            for value in node:
+                assert_strict_objects(value)
+
+    assert schema["required"] == ["decision", "findings", "proposal"]
+    proposal_union = schema["properties"]["proposal"]["anyOf"]
+    assert proposal_union[1] == {"type": "null"}
+    assert proposal_union[0]["required"] == [
+        "patch",
+        "files",
+        "declared_paths",
+    ]
+    assert_strict_objects(schema)
 
 
 def test_production_model_assisted_invokes_only_typed_packet_route(
