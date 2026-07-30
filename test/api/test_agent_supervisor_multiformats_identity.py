@@ -3,30 +3,46 @@
 from __future__ import annotations
 
 import hashlib
-import json
 import math
 from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
-
-from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
-    content_identity,
+from ipfs_datasets_py.utils.cid_utils import (
+    canonical_dag_json_bytes as package_canonical_dag_json_bytes,
 )
+from ipfs_datasets_py.utils.cid_utils import (
+    cid_for_bytes as package_cid_for_bytes,
+)
+from ipfs_datasets_py.utils.cid_utils import (
+    cid_for_dag_json as package_cid_for_dag_json,
+)
+from ipfs_datasets_py.utils.cid_utils import (
+    validate_cid as package_validate_cid,
+)
+
 from ipfs_accelerate_py.agent_supervisor.multiformats_identity import (
     ALLOWED_CODECS,
     CID_BASE,
+    CID_PROFILE_EVIDENCE,
+    CID_PROFILE_GOAL_ID,
+    CID_PROFILE_SCHEMA,
+    CID_PROFILE_TASK_ID,
     CID_VERSION,
     DIGEST_SIZE,
     IDENTITY_LINK_SCHEMA,
+    MH_TYPE,
+    CIDProfile,
     IdentityKind,
     IdentityLink,
-    MH_TYPE,
     MultiformatsIdentityError,
     canonical_dag_json_bytes,
     cid_for_bytes,
     cid_for_dag_json,
     cid_from_sha256_digest,
+    cid_profile,
+    cid_profile_evidence_terms,
+    covered_evidence_terms,
     digest_hex_from_cid,
     independent_round_trip_cid,
     independent_round_trip_dag_json,
@@ -41,13 +57,9 @@ from ipfs_accelerate_py.agent_supervisor.multiformats_identity import (
     require_canonical_dag_json_bytes,
     validate_cid,
 )
-from ipfs_datasets_py.utils.cid_utils import (
-    canonical_dag_json_bytes as package_canonical_dag_json_bytes,
-    cid_for_bytes as package_cid_for_bytes,
-    cid_for_dag_json as package_cid_for_dag_json,
-    validate_cid as package_validate_cid,
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
+    content_identity,
 )
-
 
 # Well-known IPFS / multiformats raw sha2-256 CIDv1 vectors (base32).
 KNOWN_EMPTY_RAW_CID = (
@@ -348,6 +360,43 @@ def test_profile_constants() -> None:
     assert MH_TYPE == "sha2-256"
     assert DIGEST_SIZE == 32
     assert ALLOWED_CODECS == frozenset({"raw", "dag-json"})
+
+
+def test_vfs_g141_cid_profile_is_executable_packet_evidence() -> None:
+    """VFS-G141: expose the frozen profile without changing identity bytes."""
+
+    profile = cid_profile()
+    assert profile is cid_profile()
+    assert profile == CIDProfile()
+    assert profile.to_dict() == {
+        "schema": CID_PROFILE_SCHEMA,
+        "evidence": CID_PROFILE_EVIDENCE,
+        "version": 1,
+        "base": "base32",
+        "codecs": ("dag-json", "raw"),
+        "multihash_type": "sha2-256",
+        "digest_size": 32,
+    }
+    assert CID_PROFILE_EVIDENCE == "vfs/cid-profile@1"
+    assert CID_PROFILE_GOAL_ID == "VFS-G141"
+    assert CID_PROFILE_TASK_ID == "VFS-057"
+    assert cid_profile_evidence_terms() == ("vfs/cid-profile@1",)
+    assert covered_evidence_terms() == cid_profile_evidence_terms()
+
+    # The descriptor is closed: callers cannot negotiate a weaker profile.
+    with pytest.raises(MultiformatsIdentityError, match="profile is frozen"):
+        CIDProfile(base="base58btc")
+    with pytest.raises(MultiformatsIdentityError, match="profile is frozen"):
+        CIDProfile(digest_size=16)
+
+    # Evidence metadata is not an identity input.  Existing direct and
+    # compatibility identities continue to address only canonical payload.
+    value = {"packet": "VFS-057", "goal": "VFS-G141"}
+    cid = cid_for_dag_json(value)
+    assert cid == package_cid_for_dag_json(value)
+    link = link_content_identity(content_identity(value), value=value)
+    assert link.cid == cid
+    assert CID_PROFILE_EVIDENCE not in canonical_dag_json_bytes(value).decode()
 
 
 def test_runtime_artifact_mismatched_payload_rejected() -> None:

@@ -18,15 +18,26 @@ from ipfs_accelerate_py.agent_supervisor.analysis.cache_coordinator import (
 )
 from ipfs_accelerate_py.agent_supervisor.program_analysis_cache import (
     CACHE_INVALIDATION_PROOF_EVIDENCE,
+    CID_PROFILE_EVIDENCE,
+    CID_PROFILE_GOAL_ID,
     DEPENDENCY_CACHE_EVIDENCE,
+    OBJECTIVE_GAP_TASK_ID,
+    OBJECTIVE_GOAL_ID,
+    OBJECTIVE_GOAL_PACKET_IDS,
+    OBJECTIVE_VALIDATION_REPAIR_EVIDENCE,
+    OBJECTIVE_VALIDATION_REPAIR_GOAL_ID,
     ProgramAnalysisAuthority,
     ProgramAnalysisCache,
     ProgramAnalysisCacheKey,
     ProgramAnalysisCacheReason,
     ProgramAnalysisComponentKind,
     ProgramAnalysisLookupStatus,
+    all_covered_evidence_terms,
     build_program_analysis_cache_key,
     compact_program_analysis_receipt,
+    objective_validation_repair_evidence_terms,
+    packet_evidence_terms,
+    program_analysis_cache_evidence_terms,
 )
 from ipfs_accelerate_py.agent_supervisor.runtime.runtime_cas import (
     RuntimeAuthority,
@@ -668,6 +679,70 @@ def test_build_key_aliases_and_evidence_constants(tmp_path: Path) -> None:
     )
     assert compact["program_key"]["component_kind"] == "zk"
     assert compact["component_kind"] == "zk"
+
+
+def test_vfs_057_packet_evidence_is_discoverable_but_not_cache_authority(
+    tmp_path: Path,
+) -> None:
+    """VFS-G031/G141 markers stay outside identities and authority claims."""
+
+    assert OBJECTIVE_GAP_TASK_ID == "VFS-057"
+    assert OBJECTIVE_GOAL_ID == "VFS-G031"
+    assert OBJECTIVE_VALIDATION_REPAIR_GOAL_ID == "VFS-G145"
+    assert CID_PROFILE_GOAL_ID == "VFS-G141"
+    assert OBJECTIVE_GOAL_PACKET_IDS == ("VFS-G031", "VFS-G141")
+    assert OBJECTIVE_VALIDATION_REPAIR_EVIDENCE == "objective validation repair"
+    assert CID_PROFILE_EVIDENCE == "vfs/cid-profile@1"
+    assert packet_evidence_terms() == (
+        "objective validation repair",
+        "vfs/cid-profile@1",
+    )
+    assert program_analysis_cache_evidence_terms() == (
+        "vfs/dependency-cache@1",
+        "vfs/cache-invalidation-proof@1",
+    )
+    assert objective_validation_repair_evidence_terms() == (
+        "objective validation repair",
+    )
+    assert all_covered_evidence_terms() == (
+        "vfs/dependency-cache@1",
+        "vfs/cache-invalidation-proof@1",
+        "vfs/cid-profile@1",
+        "objective validation repair",
+    )
+
+    # Synthetic discovery metadata must not change a key, enter a receipt, or
+    # grant completion authority.  All four closed namespaces remain distinct.
+    serialized_key = _key().to_dict()
+    encoded_key = json.dumps(serialized_key, sort_keys=True)
+    assert all(term not in encoded_key for term in packet_evidence_terms())
+
+    cache = ProgramAnalysisCache(tmp_path)
+    artifact_ids: set[str] = set()
+    for ordinal, authority in enumerate(ProgramAnalysisAuthority, start=1):
+        key = _key(authority=authority)
+        stored = cache.put(key, _receipt(ordinal=ordinal))
+        assert stored.stored
+        assert stored.runtime_artifact is not None
+        artifact_ids.add(stored.runtime_artifact.artifact_id)
+        encoded_runtime_payload = json.dumps(
+            stored.runtime_artifact.payload, sort_keys=True
+        )
+        assert all(
+            term not in encoded_runtime_payload
+            for term in packet_evidence_terms()
+        )
+
+        hit = cache.lookup(key)
+        assert hit.hit
+        assert hit.receipt is not None
+        encoded_receipt = json.dumps(hit.receipt, sort_keys=True)
+        assert all(term not in encoded_receipt for term in packet_evidence_terms())
+        assert hit.is_completion_evidence is (
+            authority is ProgramAnalysisAuthority.AUTHORITATIVE
+        )
+
+    assert len(artifact_ids) == len(ProgramAnalysisAuthority)
 
 
 def test_zero_stale_authoritative_hits_under_concurrency_and_restart(
