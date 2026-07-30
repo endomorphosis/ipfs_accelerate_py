@@ -21,6 +21,7 @@ from ipfs_accelerate_py.agent_supervisor.runtime.scheduler_metrics import (
     normalize_metric_identity,
     project_goal_completion_diagnostics,
     read_scheduler_snapshot,
+    scheduler_state_events,
     write_scheduler_snapshot,
 )
 from ipfs_accelerate_py.agent_supervisor.rescue.supervisor_watchdog import SupervisorWatchdog
@@ -133,6 +134,124 @@ def test_timestamped_projection_overrides_undated_legacy_lane_state() -> None:
     assert snapshot["phase_counts"]["ready"] == 0
     assert snapshot["phase_counts"]["blocked"] == 1
     assert snapshot["phases"]["blocked"]["items"][0]["task_cid"] == IDENTITY["task_cid"]
+
+
+def test_terminal_projection_deduplicates_provider_history_and_clears_live_backpressure() -> None:
+    snapshot = build_scheduler_snapshot(
+        [
+            {
+                "type": "implementation_started",
+                "timestamp": "2026-01-01T00:00:00Z",
+                **IDENTITY,
+                "provider_id": "provider:grok",
+            },
+            {
+                "type": "scheduler_state",
+                "timestamp": "2026-01-01T00:01:00Z",
+                **IDENTITY,
+                "provider_id": "did:supervisor",
+                "state": "completed",
+                "phase": "idle",
+            },
+            {
+                "type": "resource_schedule_observed",
+                "timestamp": "2026-01-01T00:01:00Z",
+                "resource_schedule": {
+                    "observed_at_ms": 60_000,
+                    "configured_max_lanes": 4,
+                    "effective_slots": 4,
+                    "available_slots": 4,
+                    "admitted_count": 0,
+                    "active_lease_count": 0,
+                    "decisions": [],
+                    "backpressure_reasons": [],
+                    "backpressure_counts": {},
+                    "adaptive_metrics": {
+                        "stages": [
+                            {
+                                "stage": "inference",
+                                "scheduled": 12,
+                                "admitted": 8,
+                                "backpressured": 4,
+                                "backpressure_reasons": {
+                                    "provider_concurrency": 4
+                                },
+                            }
+                        ],
+                        "backpressure_reasons": {
+                            "provider_concurrency": 4
+                        },
+                    },
+                },
+            },
+        ]
+    )
+
+    assert snapshot["phase_counts"]["active"] == 0
+    assert snapshot["phase_counts"]["idle"] == 1
+    assert len(snapshot["task_states"]) == 1
+    assert len(snapshot["metrics"]) == 2
+    assert snapshot["resource_admission"]["backpressured_count"] == 0
+    assert snapshot["resource_admission"]["backpressure_reasons"] == []
+    assert snapshot["resource_admission"]["backpressure_reason_counts"] == {}
+    assert (
+        snapshot["resource_admission"]["by_stage"]["inference"][
+            "backpressured"
+        ]
+        == 4
+    )
+
+
+def test_authoritative_projection_replaces_historical_child_task_identities() -> None:
+    child_identity = {
+        **IDENTITY,
+        "task_cid": "task:child-attempt",
+        "repository_tree_id": "tree:attempt",
+    }
+    bundle_identity = {
+        **IDENTITY,
+        "task_cid": "task:bundle-projection",
+        "repository_tree_id": "tree:merged",
+        "state": "completed",
+    }
+
+    snapshot = build_scheduler_snapshot(
+        [
+            {
+                "type": "implementation_started",
+                "timestamp": "2026-01-01T00:00:00Z",
+                **child_identity,
+            },
+            *scheduler_state_events(
+                [bundle_identity],
+                timestamp="2026-01-01T00:01:00Z",
+            ),
+        ]
+    )
+
+    assert len(snapshot["metrics"]) == 2
+    assert snapshot["phase_counts"]["active"] == 0
+    assert snapshot["phase_counts"]["idle"] == 1
+    assert [
+        (state["task_cid"], state["status"])
+        for state in snapshot["task_states"]
+    ] == [("task:bundle-projection", "completed")]
+
+
+def test_empty_authoritative_projection_clears_historical_live_state() -> None:
+    snapshot = build_scheduler_snapshot(
+        [
+            _event("implementation_started", "2026-01-01T00:00:00Z"),
+            *scheduler_state_events(
+                [],
+                timestamp="2026-01-01T00:01:00Z",
+            ),
+        ]
+    )
+
+    assert len(snapshot["metrics"]) == 1
+    assert snapshot["task_states"] == []
+    assert all(count == 0 for count in snapshot["phase_counts"].values())
 
 
 def test_rates_usage_and_identity_grouping_are_zero_safe_and_canonical() -> None:

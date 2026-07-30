@@ -976,6 +976,136 @@ def test_sensitive_file_change_is_rejected_even_when_path_is_in_scope() -> None:
     assert ProposalFindingCode.SECRET_CHANGE_FORBIDDEN in _finding_codes(result)
 
 
+def test_in_scope_test_source_is_not_rejected_only_for_sensitive_filename() -> None:
+    path = "tests/security/test_wallet_processor_secrets.py"
+    before = (
+        "def test_secret_reference_is_indirect():\n"
+        '    secret_ref = "vault://wallet/provider-key"\n'
+        '    assert secret_ref.startswith("vault://")\n'
+    )
+    after = before.replace(
+        'assert secret_ref.startswith("vault://")',
+        'assert secret_ref == "vault://wallet/provider-key"',
+    )
+
+    result = validate_implementation_proposal(
+        _proposal(_entry(path, before=before, after=after)),
+        policy=_policy(
+            allowed_paths=(path,),
+            task_owned_paths=(path,),
+        ),
+    )
+
+    assert result.accepted
+    assert ProposalFindingCode.SECRET_CHANGE_FORBIDDEN not in _finding_codes(result)
+
+
+@pytest.mark.parametrize(
+    "introduced_content",
+    [
+        '    api_key = "abcdefghijklmnop"\n',
+        (
+            '    private_key = """-----BEGIN PRIVATE KEY-----\n'
+            "abcdefghijklmnop\n"
+            '-----END PRIVATE KEY-----"""\n'
+        ),
+    ],
+    ids=("concrete-secret", "private-key"),
+)
+def test_in_scope_sensitive_test_source_still_rejects_secret_content(
+    introduced_content: str,
+) -> None:
+    path = "tests/security/test_wallet_processor_secrets.py"
+    before = (
+        "def test_secret_reference_is_indirect():\n"
+        '    secret_ref = "vault://wallet/provider-key"\n'
+        '    assert secret_ref.startswith("vault://")\n'
+    )
+    after = (
+        "def test_secret_reference_is_indirect():\n"
+        '    secret_ref = "vault://wallet/provider-key"\n'
+        f"{introduced_content}"
+        '    assert secret_ref.startswith("vault://")\n'
+    )
+
+    result = validate_implementation_proposal(
+        _proposal(_entry(path, before=before, after=after)),
+        policy=_policy(
+            allowed_paths=(path,),
+            task_owned_paths=(path,),
+        ),
+    )
+
+    assert not result.accepted
+    assert ProposalFindingCode.SECRET_CHANGE_FORBIDDEN in _finding_codes(result)
+
+
+@pytest.mark.parametrize(
+    "canary",
+    (
+        "literal-secret-value",
+        "super-secret-value",
+        "env://WALLET_RPC_TOKEN",
+    ),
+)
+def test_in_scope_security_test_accepts_explicit_synthetic_secret_canary(
+    canary: str,
+) -> None:
+    path = "tests/security/test_wallet_processor_secrets.py"
+    before = (
+        "def test_inline_secret_is_rejected():\n"
+        "    options = {}\n"
+        "    assert options == {}\n"
+    )
+    after = (
+        "def test_inline_secret_is_rejected():\n"
+        f'    options = {{"api_key": "{canary}"}}\n'
+        f'    assert options["api_key"] == "{canary}"\n'
+    )
+
+    result = validate_implementation_proposal(
+        _proposal(_entry(path, before=before, after=after)),
+        policy=_policy(
+            allowed_paths=(path,),
+            task_owned_paths=(path,),
+        ),
+    )
+
+    assert result.accepted
+    assert ProposalFindingCode.SECRET_CHANGE_FORBIDDEN not in _finding_codes(result)
+
+
+@pytest.mark.parametrize(
+    "canary",
+    (
+        "literal-secret-value",
+        "super-secret-value",
+        "env://WALLET_RPC_TOKEN",
+    ),
+)
+def test_production_source_still_rejects_synthetic_secret_canary(
+    canary: str,
+) -> None:
+    path = "ipfs_accelerate_py/agent_supervisor/canary.py"
+
+    result = validate_implementation_proposal(
+        _proposal(
+            _entry(
+                path,
+                before="OPTIONS = {}\n",
+                after=f'OPTIONS = {{"api_key": "{canary}"}}\n',
+            )
+        ),
+        policy=_policy(
+            allowed_paths=(path,),
+            task_owned_paths=(path,),
+        ),
+    )
+
+    assert not result.accepted
+    assert ProposalFindingCode.SECRET_CHANGE_FORBIDDEN in _finding_codes(result)
+
+
 def test_unrelated_change_with_preexisting_secret_like_content_is_accepted() -> None:
     before = 'api_key = _coalesce_env("EXAMPLE_API_KEY")\nVALUE = 1\n'
     after = 'api_key = _coalesce_env("EXAMPLE_API_KEY")\nVALUE = 2\n'
@@ -995,6 +1125,42 @@ def test_new_secret_like_content_remains_rejected() -> None:
             _entry(
                 before="VALUE = 1\n",
                 after='VALUE = 2\napi_key = "abcdefghijklmnop"\n',
+            )
+        ),
+        policy=_policy(),
+    )
+
+    assert not result.accepted
+    assert ProposalFindingCode.SECRET_CHANGE_FORBIDDEN in _finding_codes(result)
+
+
+def test_exact_never_expose_sentinel_is_not_treated_as_a_secret() -> None:
+    result = validate_implementation_proposal(
+        _proposal(
+            _entry(
+                before="VALUE = 1\n",
+                after=(
+                    'VALUE = 2\n'
+                    'payload = {"api_key": "should-never-appear"}\n'
+                ),
+            )
+        ),
+        policy=_policy(),
+    )
+
+    assert result.accepted
+    assert ProposalFindingCode.SECRET_CHANGE_FORBIDDEN not in _finding_codes(result)
+
+
+def test_never_expose_words_inside_concrete_secret_remain_rejected() -> None:
+    result = validate_implementation_proposal(
+        _proposal(
+            _entry(
+                before="VALUE = 1\n",
+                after=(
+                    'VALUE = 2\n'
+                    'api_key = "prod-should-never-appear-token"\n'
+                ),
             )
         ),
         policy=_policy(),

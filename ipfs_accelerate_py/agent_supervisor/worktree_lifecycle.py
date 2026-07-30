@@ -650,35 +650,7 @@ class WorktreeLifecycleStore:
             attempt=attempt,
         )
 
-        with serialized_lock_update(record_path):
-            existing = self.load_workspace(workspace)
-            if existing is not None and existing.is_nonterminal:
-                liveness = owner_liveness(existing.owner, proc_root=self.proc_root)
-                expired = now >= float(existing.expires_at)
-                if liveness is OwnerLiveness.ALIVE:
-                    raise DuplicateAttemptError(
-                        f"workspace already claimed by live owner pid={existing.owner.pid}"
-                    )
-                if liveness is OwnerLiveness.UNKNOWN:
-                    raise DuplicateAttemptError(
-                        "workspace claim exists and process inspection is unavailable"
-                    )
-                if not expired and not allow_replace_stale:
-                    raise DuplicateAttemptError(
-                        "workspace claim exists and lease has not expired"
-                    )
-                if not expired:
-                    # Owner is dead but lease still valid: only reclaim after
-                    # expiry (acceptance: stale reclamation requires expiry).
-                    raise DuplicateAttemptError(
-                        "workspace claim lease has not expired for stale owner"
-                    )
-                # Dead + expired → reclaim with fence advancement below.
-                next_fence = int(existing.fence) + 1
-            else:
-                next_fence = 1 if existing is None else int(existing.fence) + 1
-
-            # Also refuse when the same task/attempt is nonterminal elsewhere.
+        def reject_conflicting_task_attempt() -> None:
             other = self.load_task_attempt(
                 canonical_task_cid=canonical_task_cid,
                 task_id=task_id,
@@ -701,41 +673,81 @@ class WorktreeLifecycleStore:
                         "task/attempt claim lease has not expired"
                     )
 
-            record = WorkspaceLifecycleRecord(
-                task_id=str(task_id),
-                canonical_task_cid=str(canonical_task_cid or ""),
-                attempt=int(attempt),
-                lane_id=str(lane_id or ""),
-                state=WorkspaceLifecycleState.PREPARING,
-                owner=owner_identity,
-                lease_id=lease,
-                fence=next_fence,
-                workspace_path=workspace,
-                branch=branch_name,
-                merge_target=str(merge_target or ""),
-                created_at=now if existing is None else float(existing.created_at),
-                updated_at=now,
-                expires_at=now + self.lease_seconds,
-                repo_root=str(self.repo_root.resolve(strict=False)),
-                state_dir=str(state_dir or ""),
-                terminal_reason="",
-            )
-            _atomic_write_json(record_path, record.to_dict())
-            _atomic_write_json(
-                index_path,
-                {
-                    "schema": WORKTREE_LIFECYCLE_SCHEMA,
-                    "workspace_path": workspace,
-                    "record_id": record.record_id,
-                    "task_id": record.task_id,
-                    "canonical_task_cid": record.canonical_task_cid,
-                    "attempt": record.attempt,
-                    "fence": record.fence,
-                    "lease_id": record.lease_id,
-                    "state": record.state.value,
-                },
-            )
-            return record
+        # Serialize same-task acquisition on the stable task/attempt index
+        # before touching the timestamp-derived workspace record path.  A
+        # rejected retry must not create one durable advisory guard per
+        # provisional workspace name.
+        with serialized_lock_update(index_path):
+            reject_conflicting_task_attempt()
+            with serialized_lock_update(record_path):
+                existing = self.load_workspace(workspace)
+                if existing is not None and existing.is_nonterminal:
+                    liveness = owner_liveness(existing.owner, proc_root=self.proc_root)
+                    expired = now >= float(existing.expires_at)
+                    if liveness is OwnerLiveness.ALIVE:
+                        raise DuplicateAttemptError(
+                            f"workspace already claimed by live owner pid={existing.owner.pid}"
+                        )
+                    if liveness is OwnerLiveness.UNKNOWN:
+                        raise DuplicateAttemptError(
+                            "workspace claim exists and process inspection is unavailable"
+                        )
+                    if not expired and not allow_replace_stale:
+                        raise DuplicateAttemptError(
+                            "workspace claim exists and lease has not expired"
+                        )
+                    if not expired:
+                        # Owner is dead but lease still valid: only reclaim after
+                        # expiry (acceptance: stale reclamation requires expiry).
+                        raise DuplicateAttemptError(
+                            "workspace claim lease has not expired for stale owner"
+                        )
+                    # Dead + expired → reclaim with fence advancement below.
+                    next_fence = int(existing.fence) + 1
+                else:
+                    next_fence = (
+                        1 if existing is None else int(existing.fence) + 1
+                    )
+
+                # Re-read under both guards before publishing the claim.
+                reject_conflicting_task_attempt()
+                record = WorkspaceLifecycleRecord(
+                    task_id=str(task_id),
+                    canonical_task_cid=str(canonical_task_cid or ""),
+                    attempt=int(attempt),
+                    lane_id=str(lane_id or ""),
+                    state=WorkspaceLifecycleState.PREPARING,
+                    owner=owner_identity,
+                    lease_id=lease,
+                    fence=next_fence,
+                    workspace_path=workspace,
+                    branch=branch_name,
+                    merge_target=str(merge_target or ""),
+                    created_at=(
+                        now if existing is None else float(existing.created_at)
+                    ),
+                    updated_at=now,
+                    expires_at=now + self.lease_seconds,
+                    repo_root=str(self.repo_root.resolve(strict=False)),
+                    state_dir=str(state_dir or ""),
+                    terminal_reason="",
+                )
+                _atomic_write_json(record_path, record.to_dict())
+                _atomic_write_json(
+                    index_path,
+                    {
+                        "schema": WORKTREE_LIFECYCLE_SCHEMA,
+                        "workspace_path": workspace,
+                        "record_id": record.record_id,
+                        "task_id": record.task_id,
+                        "canonical_task_cid": record.canonical_task_cid,
+                        "attempt": record.attempt,
+                        "fence": record.fence,
+                        "lease_id": record.lease_id,
+                        "state": record.state.value,
+                    },
+                )
+                return record
 
     # -------------------------------------------------------------- transitions
 

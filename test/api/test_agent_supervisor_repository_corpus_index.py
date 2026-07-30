@@ -1,0 +1,463 @@
+"""Tests for exhaustive Git-aware multi-repository corpus inventories."""
+
+from __future__ import annotations
+
+import os
+import subprocess
+from pathlib import Path
+
+import pytest
+
+from ipfs_accelerate_py.agent_supervisor.repository_corpus_index import (
+    CorpusClassification,
+    EntryOrigin,
+    InventoryLimits,
+    RepositoryCorpusIndex,
+    RepositoryCorpusIndexError,
+    build_repository_corpus_index,
+    inventory_repository_descriptor,
+)
+from ipfs_accelerate_py.agent_supervisor.repository_forest import (
+    AuthorityMode,
+    CaseUnicodePolicy,
+    ForestPolicy,
+    ForestRootSpec,
+    IgnorePolicy,
+    RepositoryAuthority,
+    build_repository_descriptor,
+    build_repository_forest,
+)
+
+
+def _git(repo: Path, *arguments: str) -> str:
+    completed = subprocess.run(
+        ["git", *arguments],
+        cwd=repo,
+        text=True,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=True,
+    )
+    return completed.stdout.strip()
+
+
+def _init_repo(path: Path, files: dict[str, bytes | str]) -> Path:
+    path.mkdir(parents=True)
+    _git(path, "init")
+    _git(path, "checkout", "-b", "main")
+    _git(path, "config", "user.name", "Corpus Test")
+    _git(path, "config", "user.email", "corpus@example.invalid")
+    for relative, content in files.items():
+        target = path / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if isinstance(content, bytes):
+            target.write_bytes(content)
+        else:
+            target.write_text(content, encoding="utf-8")
+    _git(path, "add", ".")
+    _git(path, "commit", "-m", "seed corpus")
+    return path
+
+
+def _descriptor(
+    repo: Path,
+    *,
+    alias: str = "swissknife",
+    ignore_policy: IgnorePolicy | None = None,
+    case_policy: CaseUnicodePolicy | None = None,
+):
+    return build_repository_descriptor(
+        repo,
+        alias=alias,
+        authority=RepositoryAuthority(mode=AuthorityMode.READ_ONLY.value),
+        ignore_policy=ignore_policy,
+        case_unicode_policy=case_policy,
+    )
+
+
+def _entry(index: RepositoryCorpusIndex, path: str, origin: str = "committed"):
+    return next(
+        item
+        for item in index.entries
+        if item.relative_path == path and item.origin == origin
+    )
+
+
+def test_swissknife_typescript_tree_is_exhaustive_and_classified(
+    tmp_path: Path,
+) -> None:
+    repo = _init_repo(
+        tmp_path / "swissknife",
+        {
+            "src/services/ipfs.ts": "export async function stat() {}\n",
+            "src/components/App.tsx": "export const App = () => <main />;\n",
+            "src/generated/client.generated.ts": "export const SDK = {};\n",
+            "schemas/mcp.schema.json": '{"type":"object"}\n',
+            "docs/vfs.md": "# VFS\n",
+            "tests/ipfs.spec.ts": "test('ipfs', () => {});\n",
+            "tests/fixtures/sample.ts": "export const sample = 1;\n",
+            "vendor/dependency.js": "module.exports = {};\n",
+            "dist/bundle.js": "(()=>{})();\n",
+            "archives/sdk.tar.gz": b"\x1f\x8barchive",
+            "assets/logo.png": b"\x89PNG\r\n\x1a\n\x00",
+        },
+    )
+    result = inventory_repository_descriptor(_descriptor(repo))
+
+    assert result.exhaustive is True
+    assert result.reason_codes == ()
+    assert len(result.entries) == 11
+    assert _entry(result, "src/services/ipfs.ts").included
+    assert _entry(result, "src/components/App.tsx").included
+    generated = _entry(result, "src/generated/client.generated.ts")
+    assert generated.included
+    assert CorpusClassification.GENERATED_SOURCE.value in generated.classifications
+    assert CorpusClassification.SCHEMA.value in _entry(
+        result, "schemas/mcp.schema.json"
+    ).classifications
+    assert CorpusClassification.DOCS.value in _entry(
+        result, "docs/vfs.md"
+    ).classifications
+    test_entry = _entry(result, "tests/ipfs.spec.ts")
+    assert {"source", "tests"}.issubset(test_entry.classifications)
+    fixture = _entry(result, "tests/fixtures/sample.ts")
+    assert {"source", "tests", "fixtures"}.issubset(fixture.classifications)
+    assert _entry(result, "vendor/dependency.js").reason_codes == (
+        "vendored_dependency",
+    )
+    assert "build_output" in _entry(result, "dist/bundle.js").reason_codes
+    assert {"archive", "binary"}.issubset(
+        _entry(result, "archives/sdk.tar.gz").classifications
+    )
+    assert "binary" in _entry(result, "assets/logo.png").classifications
+    assert all(item.blob_oid and item.canonical_path for item in result.entries)
+    assert result.repositories[0].observed_entry_count == len(result.entries)
+
+
+def test_committed_content_comes_from_git_and_dirty_overlay_supersedes_it(
+    tmp_path: Path,
+) -> None:
+    repo = _init_repo(tmp_path / "repo", {"src/tool.ts": "export const x = 1;\n"})
+    clean_descriptor = _descriptor(repo)
+    committed_oid = _git(repo, "rev-parse", "HEAD:src/tool.ts")
+    (repo / "src/tool.ts").write_text("export const x = 2;\n", encoding="utf-8")
+    (repo / "src/new.tsx").write_text("export const New = <p />;\n", encoding="utf-8")
+    dirty_descriptor = _descriptor(repo)
+
+    stale = inventory_repository_descriptor(clean_descriptor)
+    assert stale.exhaustive is False
+    assert stale.reason_codes == ("stale_repository_descriptor",)
+
+    result = inventory_repository_descriptor(dirty_descriptor)
+    committed = _entry(result, "src/tool.ts", EntryOrigin.COMMITTED.value)
+    overlay = _entry(result, "src/tool.ts", EntryOrigin.DIRTY_OVERLAY.value)
+    untracked = _entry(result, "src/new.tsx", EntryOrigin.DIRTY_OVERLAY.value)
+    assert result.exhaustive
+    assert committed.blob_oid == committed_oid
+    assert committed.content_sha256 != overlay.content_sha256
+    assert committed.included is False
+    assert "superseded_by_dirty_overlay" in committed.reason_codes
+    assert overlay.included and untracked.included
+    assert overlay.base_blob_oid == committed_oid
+
+
+def test_dirty_overlay_must_be_explicitly_allowed(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path / "repo", {"src/tool.ts": "export {};\n"})
+    (repo / "dirty.ts").write_text("export const dirty = true;\n", encoding="utf-8")
+    descriptor = _descriptor(
+        repo,
+        ignore_policy=IgnorePolicy(allow_dirty_overlay=False),
+    )
+    result = inventory_repository_descriptor(descriptor)
+    assert result.exhaustive is False
+    assert "dirty_overlay_forbidden" in result.reason_codes
+    dirty = _entry(result, "dirty.ts", EntryOrigin.DIRTY_OVERLAY.value)
+    assert dirty.included is False
+    assert "dirty_overlay_forbidden" in dirty.reason_codes
+
+
+def test_submodule_and_symlink_are_accounted_without_following(
+    tmp_path: Path,
+) -> None:
+    child = _init_repo(tmp_path / "child", {"child.ts": "export {};\n"})
+    parent = _init_repo(tmp_path / "parent", {"src/main.ts": "export {};\n"})
+    _git(
+        parent,
+        "-c",
+        "protocol.file.allow=always",
+        "submodule",
+        "add",
+        str(child),
+        "packages/child",
+    )
+    (parent / "inside-link").symlink_to("src/main.ts")
+    (parent / "escape-link").symlink_to("../outside.ts")
+    _git(parent, "add", ".")
+    _git(parent, "commit", "-m", "gitlink and links")
+
+    result = inventory_repository_descriptor(_descriptor(parent))
+    submodule = _entry(result, "packages/child")
+    assert submodule.mode == "160000"
+    assert submodule.object_type == "submodule"
+    assert submodule.classifications == ("submodule",)
+    assert submodule.reason_codes == ("submodule_gitlink",)
+    assert _entry(result, "inside-link").classifications == ("symlink",)
+    escaped = _entry(result, "escape-link")
+    assert "symlink_target_escape" in escaped.reason_codes
+    assert result.exhaustive is False
+    assert "symlink_target_escape" in result.reason_codes
+
+
+def test_unicode_and_case_collisions_fail_closed(tmp_path: Path) -> None:
+    repo = _init_repo(
+        tmp_path / "repo",
+        {
+            "src/Alpha.ts": "export const upper = 1;\n",
+            "src/alpha.ts": "export const lower = 1;\n",
+            "src/café.ts": "export const composed = 1;\n",
+            "src/cafe\u0301.ts": "export const decomposed = 1;\n",
+        },
+    )
+    descriptor = _descriptor(
+        repo,
+        case_policy=CaseUnicodePolicy(
+            case_sensitive=False,
+            unicode_normalization="NFC",
+            reject_encoding_collisions=True,
+        ),
+    )
+    result = inventory_repository_descriptor(descriptor)
+    assert result.exhaustive is False
+    assert "canonical_path_collision" in result.reason_codes
+    collided = [
+        item
+        for item in result.entries
+        if "canonical_path_collision" in item.reason_codes
+    ]
+    assert len(collided) == 4
+    assert not any(item.included for item in collided)
+
+
+def test_ignored_output_is_enumerated_and_policy_controls_admission(
+    tmp_path: Path,
+) -> None:
+    repo = _init_repo(
+        tmp_path / "repo",
+        {
+            ".gitignore": "ignored/\n",
+            "src/main.ts": "export {};\n",
+        },
+    )
+    ignored = repo / "ignored"
+    ignored.mkdir()
+    (ignored / "cache.ts").write_text("export const cache = 1;\n", encoding="utf-8")
+
+    excluded = inventory_repository_descriptor(_descriptor(repo))
+    ignored_entry = _entry(excluded, "ignored/cache.ts", EntryOrigin.IGNORED.value)
+    assert {"ignored", "source"}.issubset(ignored_entry.classifications)
+    assert ignored_entry.included is False
+    assert "gitignored_by_policy" in ignored_entry.reason_codes
+    assert excluded.exhaustive
+
+    admitted_descriptor = _descriptor(
+        repo,
+        ignore_policy=IgnorePolicy(include_gitignored=True),
+    )
+    admitted = inventory_repository_descriptor(admitted_descriptor)
+    admitted_entry = _entry(admitted, "ignored/cache.ts", EntryOrigin.IGNORED.value)
+    assert admitted_entry.included
+    assert admitted.exhaustive
+    assert admitted.inventory_cid != excluded.inventory_cid
+
+
+def test_binary_oversized_and_archive_decisions(tmp_path: Path) -> None:
+    repo = _init_repo(
+        tmp_path / "repo",
+        {
+            "src/large.ts": "x" * 65,
+            "src/binary.ts": b"export\x00const x = 1;",
+            "release.zip": b"PK\x03\x04payload",
+        },
+    )
+    result = inventory_repository_descriptor(
+        _descriptor(repo),
+        limits=InventoryLimits(max_parser_bytes=64),
+    )
+    large = _entry(result, "src/large.ts")
+    assert {"source", "oversized"}.issubset(large.classifications)
+    assert large.reason_codes == ("parser_size_limit",)
+    binary = _entry(result, "src/binary.ts")
+    assert {"source", "binary"}.issubset(binary.classifications)
+    assert binary.reason_codes == ("binary_not_parser_input",)
+    archive = _entry(result, "release.zip")
+    assert {"archive", "binary"}.issubset(archive.classifications)
+
+
+def test_deterministic_order_round_trip_and_incremental_reuse(
+    tmp_path: Path,
+) -> None:
+    repo = _init_repo(
+        tmp_path / "repo",
+        {
+            "z.ts": "export const z = 1;\n",
+            "a.ts": "export const a = 1;\n",
+            "nested/m.tsx": "export const M = <m />;\n",
+        },
+    )
+    descriptor = _descriptor(repo)
+    first = inventory_repository_descriptor(descriptor)
+    second = inventory_repository_descriptor(descriptor, previous_index=first)
+    assert [item.relative_path for item in first.entries] == [
+        "a.ts",
+        "nested/m.tsx",
+        "z.ts",
+    ]
+    assert first.inventory_cid == second.inventory_cid
+    assert first.to_portable_dict() == second.to_portable_dict()
+    assert second.reused_entry_count == len(second.entries)
+    replay = RepositoryCorpusIndex.from_dict(second.to_dict())
+    assert replay.inventory_cid == first.inventory_cid
+    assert replay.to_dict() == second.to_dict()
+
+
+def test_incremental_reuse_invalidates_changed_blob_only(tmp_path: Path) -> None:
+    repo = _init_repo(
+        tmp_path / "repo",
+        {"a.ts": "export const a = 1;\n", "b.ts": "export const b = 1;\n"},
+    )
+    first = inventory_repository_descriptor(_descriptor(repo))
+    (repo / "a.ts").write_text("export const a = 2;\n", encoding="utf-8")
+    _git(repo, "add", "a.ts")
+    _git(repo, "commit", "-m", "change a")
+    descriptor = _descriptor(repo)
+    second = inventory_repository_descriptor(descriptor, previous_index=first)
+    # Descriptor binding changed, so cross-tree cache authority is rejected.
+    assert second.reused_entry_count == 0
+    assert _entry(second, "a.ts").blob_oid != _entry(first, "a.ts").blob_oid
+    assert _entry(second, "b.ts").blob_oid == _entry(first, "b.ts").blob_oid
+
+
+def test_bounded_manifest_reports_every_omission(tmp_path: Path) -> None:
+    repo = _init_repo(
+        tmp_path / "repo",
+        {f"src/file_{index:02d}.ts": f"export const x{index} = {index};\n" for index in range(8)},
+    )
+    result = inventory_repository_descriptor(
+        _descriptor(repo),
+        limits=InventoryLimits(max_entries=3),
+    )
+    summary = result.repositories[0]
+    assert result.exhaustive is False
+    assert "manifest_entry_bound_exceeded" in result.reason_codes
+    assert "manifest_entries_truncated" in result.reason_codes
+    assert len(result.entries) == 3
+    assert summary.observed_entry_count == 8
+    assert summary.emitted_entry_count == 3
+    assert summary.omitted_entry_count == 5
+    assert [item.relative_path for item in result.entries] == [
+        "src/file_00.ts",
+        "src/file_01.ts",
+        "src/file_02.ts",
+    ]
+
+
+def test_multiple_descriptors_remain_independently_bound(tmp_path: Path) -> None:
+    swiss = _init_repo(tmp_path / "swiss", {"src/app.tsx": "export const A=<a/>;\n"})
+    accelerator = _init_repo(
+        tmp_path / "accelerator", {"module.py": "VALUE = 1\n"}
+    )
+    forest = build_repository_forest(
+        ForestPolicy(
+            roots=(
+                ForestRootSpec(
+                    alias="swissknife",
+                    root_path=swiss,
+                    authority=RepositoryAuthority(
+                        mode=AuthorityMode.READ_ONLY.value
+                    ),
+                ),
+                ForestRootSpec(
+                    alias="ipfs_accelerate_py",
+                    root_path=accelerator,
+                    authority=RepositoryAuthority(
+                        mode=AuthorityMode.READ_WRITE.value
+                    ),
+                ),
+            ),
+            sole_write_alias="ipfs_accelerate_py",
+        )
+    )
+    result = build_repository_corpus_index(forest)
+    assert result.exhaustive
+    assert result.forest_id == forest.forest_id
+    assert [item.repository_alias for item in result.repositories] == [
+        "ipfs_accelerate_py",
+        "swissknife",
+    ]
+    assert {
+        (item.repository_alias, item.canonical_path)
+        for item in result.entries
+    } == {
+        ("ipfs_accelerate_py", "ipfs_accelerate_py/module.py"),
+        ("swissknife", "swissknife/src/app.tsx"),
+    }
+    assert len({item.repository_id for item in result.entries}) == 2
+
+
+def test_deleted_and_renamed_overlay_paths_are_explicit(tmp_path: Path) -> None:
+    repo = _init_repo(
+        tmp_path / "repo",
+        {
+            "src/deleted.ts": "export const gone = 1;\n",
+            "src/old.ts": "export const renamed = 1;\n",
+        },
+    )
+    os.unlink(repo / "src/deleted.ts")
+    os.rename(repo / "src/old.ts", repo / "src/new.ts")
+    descriptor = _descriptor(repo)
+    result = inventory_repository_descriptor(descriptor)
+    deleted = _entry(result, "src/deleted.ts", EntryOrigin.DIRTY_OVERLAY.value)
+    renamed_from = _entry(result, "src/old.ts", EntryOrigin.DIRTY_OVERLAY.value)
+    renamed_to = _entry(result, "src/new.ts", EntryOrigin.DIRTY_OVERLAY.value)
+    assert deleted.object_type == "deleted"
+    assert renamed_from.object_type == "deleted"
+    assert renamed_to.included
+    assert result.exhaustive
+
+
+def test_policy_exclusions_are_reasoned(tmp_path: Path) -> None:
+    repo = _init_repo(
+        tmp_path / "repo",
+        {
+            "src/public.ts": "export {};\n",
+            "src/private.ts": "export {};\n",
+            "docs/readme.md": "# read\n",
+        },
+    )
+    descriptor = _descriptor(
+        repo,
+        ignore_policy=IgnorePolicy(
+            include_patterns=("src/**",),
+            exclude_patterns=("src/private.ts",),
+        ),
+    )
+    result = inventory_repository_descriptor(descriptor)
+    assert _entry(result, "src/public.ts").included
+    assert "excluded_by_policy" in _entry(
+        result, "src/private.ts"
+    ).reason_codes
+    assert "not_included_by_policy" in _entry(
+        result, "docs/readme.md"
+    ).reason_codes
+    assert result.exhaustive
+
+
+def test_forged_round_trip_identity_is_rejected(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path / "repo", {"src/app.ts": "export {};\n"})
+    result = inventory_repository_descriptor(_descriptor(repo))
+    payload = result.to_dict()
+    payload["entries"][0]["size"] += 1
+    with pytest.raises(RepositoryCorpusIndexError) as excinfo:
+        RepositoryCorpusIndex.from_dict(payload)
+    assert excinfo.value.reason_code == "inventory_cid_mismatch"

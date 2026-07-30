@@ -35,7 +35,11 @@ from ..analysis.analyzer_health import (
     classify_analyzer_health,
     run_analyzer_canaries,
 )
-from ..merge.checkout_lock import BACKLOG_REFINERY_AUTHOR_EMAIL
+from ..merge.checkout_lock import (
+    BACKLOG_REFINERY_AUTHOR_EMAIL,
+    checkout_mutation_lock_path,
+    generated_protected_board_commit_subject,
+)
 from ..runtime.event_log import read_jsonl_events
 from .goal_completion import (
     DEFAULT_CLOCK_SKEW_SECONDS,
@@ -1966,15 +1970,36 @@ def generated_dirty_commit_blocker(repo: Path) -> dict[str, Any] | None:
             "merge_head_path": str(merge_head),
         }
 
-    try:
-        from ipfs_accelerate_py.agent_supervisor.merge.checkout_lock import (
-            checkout_mutation_lock_path,
-        )
-    except ImportError:
-        return None
-
     lock_path = checkout_mutation_lock_path(repo)
     if lock_path.exists():
+        try:
+            lock_metadata = json.loads(lock_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError, TypeError):
+            lock_metadata = {}
+        try:
+            lock_pid = int(
+                lock_metadata.get("pid") or 0
+                if isinstance(lock_metadata, Mapping)
+                else 0
+            )
+        except (TypeError, ValueError):
+            lock_pid = 0
+        lock_repo_root = (
+            str(lock_metadata.get("repo_root") or "").strip()
+            if isinstance(lock_metadata, Mapping)
+            else ""
+        )
+        owned_generated_repair = (
+            isinstance(lock_metadata, Mapping)
+            and str(lock_metadata.get("kind") or "") == "merge"
+            and str(lock_metadata.get("operation") or "")
+            == "generated_dirty_repair"
+            and lock_pid == os.getpid()
+            and bool(lock_repo_root)
+            and Path(lock_repo_root).resolve() == repo.resolve()
+        )
+        if owned_generated_repair:
+            return None
         return {
             "repo": str(repo),
             "reason": "checkout_mutation_lock_exists",
@@ -2276,7 +2301,13 @@ def _status_line_is_clean_gitlink_update(repo: Path, line: str) -> tuple[bool, s
     return bool(child_root), child_root
 
 
-def _commit_selected_dirty_paths(repo: Path, paths: Sequence[str], *, subject: str) -> dict[str, Any]:
+def _commit_selected_dirty_paths(
+    repo: Path,
+    paths: Sequence[str],
+    *,
+    subject: str,
+    protected_board_paths: Sequence[str] = (),
+) -> dict[str, Any]:
     selected_paths = [path for path in dict.fromkeys(paths) if repo_relative_path_safe(path)]
     if not selected_paths:
         return {
@@ -2314,16 +2345,41 @@ def _commit_selected_dirty_paths(repo: Path, paths: Sequence[str], *, subject: s
             "repo": str(repo),
             "selected_paths": selected_paths,
         }
+    protected_selected_paths = sorted(
+        set(selected_paths).intersection(
+            {
+                normalize_status_path(path)
+                for path in protected_board_paths
+                if normalize_status_path(path)
+            }
+        )
+    )
+    protected_board_commit = bool(protected_selected_paths)
+    commit_subject = (
+        generated_protected_board_commit_subject(subject)
+        if protected_board_commit
+        else subject
+    )
+    author_name = (
+        "Accelerator Backlog Refinery"
+        if protected_board_commit
+        else "Agent Supervisor"
+    )
+    author_email = (
+        BACKLOG_REFINERY_AUTHOR_EMAIL
+        if protected_board_commit
+        else "agent-supervisor@example.invalid"
+    )
     commit = subprocess.run(
         [
             "git",
             "-c",
-            "user.name=Agent Supervisor",
+            f"user.name={author_name}",
             "-c",
-            "user.email=agent-supervisor@example.invalid",
+            f"user.email={author_email}",
             "commit",
             "-m",
-            subject,
+            commit_subject,
             "--",
             *selected_paths,
         ],
@@ -2341,6 +2397,8 @@ def _commit_selected_dirty_paths(repo: Path, paths: Sequence[str], *, subject: s
             "returncode": commit.returncode,
             "stdout": commit.stdout[-4000:],
             "stderr": commit.stderr[-4000:],
+            "protected_board_paths": protected_selected_paths,
+            "protected_board_commit": protected_board_commit,
         }
     ref = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo, text=True, capture_output=True, check=False)
     return {
@@ -2349,6 +2407,10 @@ def _commit_selected_dirty_paths(repo: Path, paths: Sequence[str], *, subject: s
         "selected_paths": selected_paths,
         "commit": ref.stdout.strip(),
         "stdout": commit.stdout[-4000:],
+        "author_email": author_email,
+        "subject": commit_subject,
+        "protected_board_paths": protected_selected_paths,
+        "protected_board_commit": protected_board_commit,
     }
 
 
@@ -2357,6 +2419,7 @@ def commit_generated_dirty_outputs(
     repo_root: Path,
     generated_paths: Sequence[str] = (),
     generated_prefixes: Sequence[str] = (),
+    protected_paths: Sequence[str] = (),
     candidate_git_roots: Sequence[Path | str] = (),
     subject: str = "Agent: commit generated supervisor outputs",
     include_clean_submodule_gitlinks: bool = True,
@@ -2430,6 +2493,11 @@ def commit_generated_dirty_outputs(
             generated_paths=generated_paths,
             generated_prefixes=generated_prefixes,
         )
+        repo_protected_paths, _ = generated_status_filters_for_git_root(
+            repo_root=repo_root,
+            git_root=git_root,
+            generated_paths=protected_paths,
+        )
         selected: list[str] = []
         selected_reasons: dict[str, str] = {}
         for line in status:
@@ -2494,7 +2562,12 @@ def commit_generated_dirty_outputs(
                 }
             )
             continue
-        result = _commit_selected_dirty_paths(git_root, selected, subject=subject)
+        result = _commit_selected_dirty_paths(
+            git_root,
+            selected,
+            subject=subject,
+            protected_board_paths=repo_protected_paths,
+        )
         result["selected_reasons"] = selected_reasons
         result["status_short_before"] = status[:50]
         selected_path_count += len(selected)
@@ -3753,19 +3826,31 @@ def dependency_guardrail_records(tasks: Sequence[Any]) -> list[dict[str, Any]]:
     }
     records: list[dict[str, Any]] = duplicate_task_id_records(tasks)
 
-    def reachable_cycle(start: str) -> list[str]:
-        path: list[str] = []
+    def cycle_containing(start: str) -> list[str]:
+        """Return a dependency cycle only when ``start`` is a member.
+
+        A task which merely waits on a cyclic prerequisite is blocked by that
+        prerequisite, but its own metadata is not cyclic.  Filing a separate
+        repair for every downstream waiter obscures the root defect and can
+        exhaust the bounded repair-task budget before the cycle member is
+        reached.
+        """
+
+        path = [start]
 
         def visit(node: str) -> list[str]:
-            if node in path:
-                index = path.index(node)
-                return [*path[index:], node]
-            path.append(node)
             for dependency in dependency_graph.get(node, []):
+                if dependency == start:
+                    return [*path, start]
+                if dependency in path:
+                    # This is a reachable cycle which does not contain the
+                    # source task.  Its own members receive their own records.
+                    continue
+                path.append(dependency)
                 cycle = visit(dependency)
+                path.pop()
                 if cycle:
                     return cycle
-            path.pop()
             return []
 
         return visit(start)
@@ -3780,7 +3865,7 @@ def dependency_guardrail_records(tasks: Sequence[Any]) -> list[dict[str, Any]]:
             if dep not in task_ids and dep not in task_ids_by_goal
         )
         self_references = sorted(dep for dep in dependencies if dep == task.task_id)
-        dependency_cycle = reachable_cycle(task.task_id)
+        dependency_cycle = cycle_containing(task.task_id)
         if not missing and not self_references and not dependency_cycle:
             continue
         fingerprint = sha1(
@@ -4645,6 +4730,20 @@ def reconciliation_guardrail_task_block(
 
 
 def reconciliation_record_matches_block(block: str, record: Mapping[str, Any]) -> bool:
+    status_match = re.search(
+        r"^-\s*Status:\s*(\S+)\s*$",
+        block,
+        flags=re.IGNORECASE | re.MULTILINE,
+    )
+    if status_match is not None and status_match.group(1).casefold().replace("-", "_") in {
+        "complete",
+        "completed",
+        "done",
+        "succeeded",
+    }:
+        # A resolved guardrail remains on the append-only board as evidence,
+        # but it must not suppress or absorb a later regression.
+        return False
     fingerprint = str(record.get("fingerprint") or "")
     dedupe_key = str(record.get("dedupe_key") or "")
     kind = str(record.get("kind") or "")
@@ -4672,6 +4771,303 @@ def reconciliation_record_matches_block(block: str, record: Mapping[str, Any]) -
     ):
         return True
     return False
+
+
+def reconciliation_guardrail_blocks(
+    todo_text: str,
+    *,
+    task_prefix: str = DEFAULT_TASK_ID_PREFIX,
+    include_completed: bool = False,
+) -> list[dict[str, str]]:
+    """Return active, supervisor-owned reconciliation guardrail cards.
+
+    Retirement is intentionally limited to cards carrying the exact generated
+    blocked-reason and reconciliation dedupe namespace.  Similar hand-authored
+    tasks remain outside automatic completion authority.
+    """
+
+    records: list[dict[str, str]] = []
+    heading_pattern = task_id_pattern(task_prefix)
+    for _start, _end, block in task_blocks_with_spans(todo_text):
+        heading = heading_pattern.match(block)
+        if heading is None:
+            continue
+        blocked_reason = re.search(
+            r"^-\s*Blocked reason:\s*(\S+)\s*$",
+            block,
+            flags=re.IGNORECASE | re.MULTILINE,
+        )
+        dedupe_key = re.search(
+            r"^-\s*Dedupe key:\s*(\S+)\s*$",
+            block,
+            flags=re.IGNORECASE | re.MULTILINE,
+        )
+        status = re.search(
+            r"^-\s*Status:\s*(\S+)\s*$",
+            block,
+            flags=re.IGNORECASE | re.MULTILINE,
+        )
+        if (
+            blocked_reason is None
+            or blocked_reason.group(1).casefold()
+            != "operator_reconciliation_required"
+            or dedupe_key is None
+            or not dedupe_key.group(1).startswith(
+                "reconciliation_guardrail:"
+            )
+        ):
+            continue
+        normalized_status = (
+            status.group(1).casefold().replace("-", "_")
+            if status is not None
+            else ""
+        )
+        if not include_completed and normalized_status in {
+            "complete",
+            "completed",
+            "done",
+            "succeeded",
+        }:
+            continue
+        fingerprint = re.search(
+            r"^-\s*Fingerprint:\s*(\S+)\s*$",
+            block,
+            flags=re.IGNORECASE | re.MULTILINE,
+        )
+        records.append(
+            {
+                "task_id": heading.group(1),
+                "status": normalized_status,
+                "dedupe_key": dedupe_key.group(1),
+                "fingerprint": (
+                    fingerprint.group(1)
+                    if fingerprint is not None
+                    else ""
+                ),
+            }
+        )
+    return records
+
+
+def resolved_reconciliation_guardrail_keys(
+    *,
+    reconciliation_result: Mapping[str, Any] | None = None,
+    cleanup_result: Mapping[str, Any] | None = None,
+    replay_result: Mapping[str, Any] | None = None,
+) -> set[str]:
+    """Return guardrail identities backed by a conclusive clean rescan.
+
+    A missing/disabled scan, unavailable checkout status, any effective dirty
+    status (including staged or unknown status), and all cleanup/preflight
+    guardrails currently fail closed.  A main-checkout guardrail can also
+    retire when an exact rescan proves that its blocked candidate population
+    reached zero and the replay and cleanup passes completed without residual
+    work.  That second proof deliberately permits unrelated parent-checkout
+    dirt because there is no longer a candidate for it to block.
+    """
+
+    reconciliation = (
+        dict(reconciliation_result)
+        if isinstance(reconciliation_result, Mapping)
+        else {}
+    )
+    if (
+        reconciliation.get("attempted") is True
+        and reconciliation.get("main_checkout_status_available") is True
+        and reconciliation.get("main_checkout_dirty") is False
+        and isinstance(reconciliation.get("main_status_short"), list)
+        and not reconciliation.get("main_status_short")
+    ):
+        return {"reconciliation_guardrail:main_checkout_dirty"}
+    if (
+        _zero_candidate_reconciliation_is_conclusive(reconciliation)
+        and _reconciliation_replay_is_conclusive(replay_result)
+        and _worktree_cleanup_is_conclusive(cleanup_result)
+    ):
+        return {"reconciliation_guardrail:main_checkout_dirty"}
+    return set()
+
+
+def _explicit_nonnegative_int(
+    record: Mapping[str, Any],
+    key: str,
+) -> int | None:
+    """Return an explicitly encoded non-negative integer, excluding booleans."""
+
+    if key not in record:
+        return None
+    value = record[key]
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        return None
+    return value
+
+
+def _zero_candidate_reconciliation_is_conclusive(
+    reconciliation: Mapping[str, Any],
+) -> bool:
+    """Prove that reconciliation found no candidate or residual blocker."""
+
+    zero_count_fields = (
+        "candidate_count",
+        "processed_count",
+        "reconciled_count",
+        "preflight_blocked_count",
+        "preflight_resolver_escalation_count",
+        "cleanup_count",
+        "skipped_count",
+    )
+    main_status_short = reconciliation.get("main_status_short")
+    main_checkout_dirty = reconciliation.get("main_checkout_dirty")
+    if (
+        reconciliation.get("attempted") is not True
+        or reconciliation.get("main_checkout_status_available") is not True
+        or reconciliation.get("main_checkout_status_error") != ""
+        or not isinstance(main_checkout_dirty, bool)
+        or not isinstance(main_status_short, list)
+        or main_checkout_dirty != bool(main_status_short)
+        or any(
+            _explicit_nonnegative_int(reconciliation, key) != 0
+            for key in zero_count_fields
+        )
+        or reconciliation.get("candidates") != []
+        or reconciliation.get("processed") != []
+        or reconciliation.get("skipped") != []
+    ):
+        return False
+    return not any(
+        reconciliation.get(key)
+        for key in ("error", "errors", "exception_type")
+    )
+
+
+def _reconciliation_replay_is_conclusive(
+    replay_result: Mapping[str, Any] | None,
+) -> bool:
+    """Prove that every replay candidate is settled without deferral."""
+
+    if not isinstance(replay_result, Mapping):
+        return False
+    replay = dict(replay_result)
+    counts = {
+        key: _explicit_nonnegative_int(replay, key)
+        for key in (
+            "pending_count",
+            "processed_count",
+            "completed_count",
+            "failed_count",
+            "deferred_count",
+        )
+    }
+    if any(value is None for value in counts.values()):
+        return False
+    pending_count = counts["pending_count"]
+    processed_count = counts["processed_count"]
+    completed_count = counts["completed_count"]
+    reason = str(replay.get("reason") or "")
+    if (
+        pending_count != processed_count
+        or counts["failed_count"] != 0
+        or counts["deferred_count"] != 0
+        or any(replay.get(key) for key in ("error", "errors", "exception_type"))
+    ):
+        return False
+    results = replay.get("results")
+    if (
+        reason
+        not in {
+            "no_pending_reconciliation_replays",
+            "reconciliation_replays_processed",
+        }
+        or not isinstance(results, list)
+        or len(results) != pending_count
+        or len(results) != processed_count
+    ):
+        return False
+    if reason == "no_pending_reconciliation_replays":
+        return (
+            replay.get("attempted") is False
+            and not results
+            and not any(counts.values())
+        )
+    if replay.get("attempted") is not True or not results:
+        return False
+
+    completed_results = 0
+    for result in results:
+        if (
+            not isinstance(result, Mapping)
+            or result.get("attempted") is not True
+            or result.get("settled") is not True
+            or (
+                result.get("completed") is not True
+                and result.get("queued") is not True
+            )
+            or any(
+                result.get(key)
+                for key in ("error", "errors", "exception_type")
+            )
+        ):
+            return False
+        if result.get("completed") is True:
+            completed_results += 1
+    return completed_count == completed_results
+
+
+def _worktree_cleanup_is_conclusive(
+    cleanup_result: Mapping[str, Any] | None,
+) -> bool:
+    """Prove that cleanup observed no dirty, skipped, or failed worktree."""
+
+    if not isinstance(cleanup_result, Mapping):
+        return False
+    cleanup = dict(cleanup_result)
+    skipped_count = _explicit_nonnegative_int(cleanup, "skipped_count")
+    removed_count = _explicit_nonnegative_int(cleanup, "removed_count")
+    dirty_groups = cleanup.get("dirty_worktree_groups", {})
+    removed = cleanup.get("removed")
+    if (
+        cleanup.get("attempted") is not True
+        or _explicit_nonnegative_int(cleanup, "prune_returncode") != 0
+        or skipped_count != 0
+        or removed_count is None
+        or cleanup.get("skipped") != []
+        or not isinstance(dirty_groups, Mapping)
+        or bool(dirty_groups)
+        or not isinstance(removed, list)
+        or len(removed) != removed_count
+        or cleanup.get("reason")
+        or any(cleanup.get(key) for key in ("error", "errors", "exception_type"))
+    ):
+        return False
+    return all(_worktree_cleanup_removal_is_conclusive(item) for item in removed)
+
+
+def _worktree_cleanup_removal_is_conclusive(item: Any) -> bool:
+    """Prove one cleanup removal, including any branch deletion, succeeded."""
+
+    if (
+        not isinstance(item, Mapping)
+        or item.get("removed") is not True
+        or _explicit_nonnegative_int(item, "returncode") != 0
+        or any(
+            item.get(key)
+            for key in ("error", "errors", "exception_type")
+        )
+    ):
+        return False
+    branch_delete = item.get("branch_delete")
+    if branch_delete in (None, {}):
+        return True
+    return (
+        isinstance(branch_delete, Mapping)
+        and branch_delete.get("attempted") is True
+        and branch_delete.get("deleted") is True
+        and _explicit_nonnegative_int(branch_delete, "returncode") == 0
+        and not any(
+            branch_delete.get(key)
+            for key in ("error", "errors", "exception_type")
+        )
+    )
 
 
 def reconciliation_guardrail_refresh_is_noise(block: str, record: Mapping[str, Any]) -> bool:
@@ -5178,12 +5574,184 @@ is appended for normal daemon parsing.
     return path
 
 
+def _bounded_validation_failure_paths(
+    failed_test_paths: Sequence[str],
+    *,
+    limit: int = 16,
+) -> list[str]:
+    """Return safe exact failed-test paths suitable for task authority."""
+
+    raw_values: Sequence[Any]
+    if isinstance(failed_test_paths, (str, bytes, bytearray)):
+        raw_values = (failed_test_paths,)
+    else:
+        raw_values = failed_test_paths
+    paths: list[str] = []
+    for raw_path in raw_values:
+        normalized = str(raw_path or "").strip().replace("\\", "/")
+        while normalized.startswith("./"):
+            normalized = normalized[2:]
+        parts = tuple(part for part in normalized.split("/") if part)
+        canonical_path = "/".join(parts)
+        suffix = Path(canonical_path).suffix.lower()
+        test_named = bool(parts) and (
+            any(part.lower() in {"test", "tests", "e2e"} for part in parts[:-1])
+            or parts[-1].lower().startswith("test_")
+            or "_test." in parts[-1].lower()
+            or ".spec." in parts[-1].lower()
+            or ".test." in parts[-1].lower()
+        )
+        if (
+            not normalized
+            or normalized.startswith("/")
+            or "\0" in normalized
+            or "\n" in normalized
+            or "\r" in normalized
+            or any(character in normalized for character in "*?[")
+            or ".." in parts
+            or (parts and parts[0].endswith(":"))
+            or suffix
+            not in {
+                ".cjs",
+                ".cts",
+                ".js",
+                ".jsx",
+                ".mjs",
+                ".mts",
+                ".py",
+                ".pyi",
+                ".ts",
+                ".tsx",
+            }
+            or not test_named
+            or canonical_path in paths
+        ):
+            continue
+        paths.append(canonical_path)
+        if len(paths) >= max(1, int(limit)):
+            break
+    return paths
+
+
+def _focused_npm_playwright_retry_command(
+    command: str,
+    *,
+    failed_test_paths: Sequence[str],
+) -> str:
+    """Narrow an npm-prefix Playwright clause to exact reported test files.
+
+    The original command is returned unchanged unless every transformation is
+    source-bound and shell-safe. This preserves the fail-closed fallback for
+    unknown runners, unqualified paths, and complex shell expressions.
+    """
+
+    exact_paths = _bounded_validation_failure_paths(failed_test_paths)
+    if not exact_paths:
+        return command
+    try:
+        tokens = shlex.split(command, posix=True)
+    except ValueError:
+        return command
+    if not tokens or any(
+        token in {"|", "||", ";", "&", ">", ">>", "<", "<<"}
+        or "$(" in token
+        or "`" in token
+        or "\n" in token
+        for token in tokens
+    ):
+        return command
+
+    clauses: list[list[str]] = []
+    current: list[str] = []
+    for token in tokens:
+        if token == "&&":
+            if not current:
+                return command
+            clauses.append(current)
+            current = []
+            continue
+        current.append(token)
+    if not current:
+        return command
+    clauses.append(current)
+
+    focused = False
+    rendered_clauses: list[str] = []
+    for clause in clauses:
+        executable = Path(clause[0]).name.lower().removesuffix(".cmd")
+        if executable != "npm" or "test" not in clause:
+            rendered_clauses.append(shlex.join(clause))
+            continue
+        prefix = ""
+        for index, token in enumerate(clause):
+            if token == "--prefix" and index + 1 < len(clause):
+                prefix = clause[index + 1]
+                break
+            if token.startswith("--prefix="):
+                prefix = token.split("=", 1)[1]
+                break
+        prefix = prefix.strip().replace("\\", "/").strip("/")
+        if (
+            not prefix
+            or prefix in {".", ".."}
+            or ".." in prefix.split("/")
+            or prefix.split("/", 1)[0].endswith(":")
+        ):
+            rendered_clauses.append(shlex.join(clause))
+            continue
+
+        runner_paths: list[str] = []
+        for path in exact_paths:
+            expected_prefix = f"{prefix}/"
+            if not path.startswith(expected_prefix):
+                continue
+            relative = path[len(expected_prefix) :]
+            relative_parts = tuple(
+                part for part in relative.split("/") if part
+            )
+            suffix = Path(relative).suffix.lower()
+            test_named = (
+                any(part in {"test", "tests", "e2e"} for part in relative_parts)
+                or ".spec." in relative
+                or ".test." in relative
+            )
+            if (
+                not relative
+                or ".." in relative_parts
+                or suffix
+                not in {
+                    ".cjs",
+                    ".cts",
+                    ".js",
+                    ".jsx",
+                    ".mjs",
+                    ".mts",
+                    ".ts",
+                    ".tsx",
+                }
+                or not test_named
+            ):
+                continue
+            if relative not in runner_paths:
+                runner_paths.append(relative)
+        if not runner_paths:
+            rendered_clauses.append(shlex.join(clause))
+            continue
+        rendered_clauses.append(shlex.join([*clause, *runner_paths]))
+        focused = True
+
+    if not focused:
+        return command
+    return " && ".join(rendered_clauses)
+
+
 def validation_retry_task_block(
     *,
     task_id: str,
     source_task: Any,
     failed_command: str,
     discovery_path: Path,
+    failed_test_paths: Sequence[str] = (),
     depends_on: Sequence[str] = (),
     discovery_output_path: str = DEFAULT_DISCOVERY_OUTPUT_PATH,
     launch_playwright_validation_gate: bool = False,
@@ -5191,10 +5759,25 @@ def validation_retry_task_block(
     outputs = list(getattr(source_task, "outputs", []) or [])
     if discovery_output_path not in outputs:
         outputs.append(discovery_output_path)
-    validation_command = safe_retry_validation_command(failed_command, discovery_path=discovery_path)
-    validation_target_paths = infer_validation_impact_paths(
-        validation_command
+    exact_failure_paths = _bounded_validation_failure_paths(
+        failed_test_paths
     )
+    for path in exact_failure_paths:
+        if path not in outputs:
+            outputs.append(path)
+    validation_command = safe_retry_validation_command(
+        failed_command,
+        discovery_path=discovery_path,
+    )
+    validation_command = _focused_npm_playwright_retry_command(
+        validation_command,
+        failed_test_paths=exact_failure_paths,
+    )
+    validation_target_paths = list(exact_failure_paths)
+    if not validation_target_paths:
+        validation_target_paths.extend(
+            infer_validation_impact_paths(validation_command)
+        )
     validation_scope_acceptance = (
         " The declared validation target paths "
         f"({', '.join(validation_target_paths)}) are bounded diagnostic and "
@@ -5208,6 +5791,13 @@ def validation_retry_task_block(
         if launch_playwright_validation_gate
         else ""
     )
+    validation_failure_metadata = (
+        "- Validation failure paths: "
+        + ", ".join(exact_failure_paths)
+        + "\n"
+        if exact_failure_paths
+        else ""
+    )
     return f"""## {task_id} Resolve validation retry-budget failure for {source_task.task_id}
 
 - Status: todo
@@ -5217,6 +5807,7 @@ def validation_retry_task_block(
 - Depends on: {", ".join(depends_on)}
 - Outputs: {", ".join(outputs)}
 - Validation: {validation_command}
+{validation_failure_metadata.rstrip()}
 - Acceptance: Retry-budget guardrail filed this from repeated validation failures in {source_task.task_id}. Use evidence in {discovery_path} to fix the validation blocker, then mark this repair task completed so the supervisor can release {source_task.task_id} from strategy blocked_tasks.{validation_scope_acceptance}{launch_gate_acceptance}
 """
 
@@ -5473,6 +6064,9 @@ def record_retry_budget_findings(
                 source_task=task,
                 failed_command=validation_command,
                 discovery_path=discovery_path,
+                failed_test_paths=(
+                    latest_validation.get("failed_test_paths") or ()
+                ),
                 depends_on=depends_on,
                 discovery_output_path=discovery_output_path,
                 launch_playwright_validation_gate=launch_playwright_validation_gate,
@@ -5589,11 +6183,25 @@ def record_dependency_guardrail_findings(
     strategy = load_strategy(strategy_path)
     blocked_tasks = [str(item) for item in strategy.get("blocked_tasks", []) if str(item).strip()]
     seen = {str(item) for item in strategy.get("dependency_guardrail_seen_fingerprints", []) if str(item).strip()}
+    open_dependency_repair_sources: set[str] = set()
+    for task in tasks:
+        match = re.match(
+            r"^Resolve dependency guardrail for (\S+)\s*$",
+            str(getattr(task, "title", "") or "").strip(),
+        )
+        if match is None:
+            continue
+        if (
+            str(getattr(task, "status", "") or "").lower()
+            in {"complete", "completed", "done", "succeeded"}
+        ):
+            continue
+        open_dependency_repair_sources.add(match.group(1))
     records = [
         record
         for record in dependency_guardrail_records(tasks)
-        if str(record.get("fingerprint") or "") not in seen
-        and f"dependency guardrail for {record.get('source_task_id')}" not in todo_text
+        if str(record.get("source_task_id") or "")
+        not in open_dependency_repair_sources
     ][:max_findings]
     if not records:
         return []
@@ -5643,7 +6251,26 @@ def record_dependency_guardrail_findings(
         seen | {str(record.get("fingerprint") or "") for record in records if record.get("fingerprint")}
     )
     strategy["last_dependency_guardrail_at"] = utc_now()
-    strategy["dependency_guardrail_findings"] = findings
+    prior_findings = [
+        dict(item)
+        for item in strategy.get("dependency_guardrail_findings", [])
+        if isinstance(item, Mapping)
+    ]
+    findings_by_identity: dict[str, dict[str, Any]] = {}
+    for item in [*prior_findings, *findings]:
+        identity = str(item.get("fingerprint") or "").strip()
+        if not identity:
+            identity = "|".join(
+                [
+                    str(item.get("source_task_id") or "").strip(),
+                    str(item.get("follow_up_task_id") or "").strip(),
+                ]
+            )
+        if identity:
+            findings_by_identity[identity] = item
+    strategy["dependency_guardrail_findings"] = list(
+        findings_by_identity.values()
+    )
     write_json(strategy_path, strategy)
     if commit_outputs:
         generated_paths.insert(0, todo_path)
@@ -5685,23 +6312,21 @@ def record_reconciliation_guardrail_findings(
         for item in strategy.get("reconciliation_guardrail_seen_fingerprints", [])
         if str(item).strip()
     }
+    active_guardrail_blocks = [
+        block
+        for _start, _end, block in task_blocks_with_spans(todo_text)
+        if not re.search(
+            r"^-\s*Status:\s*(?:complete|completed|done|succeeded)\s*$",
+            block,
+            flags=re.IGNORECASE | re.MULTILINE,
+        )
+    ]
 
     def already_present(record: Mapping[str, Any]) -> bool:
-        fingerprint = str(record.get("fingerprint") or "")
-        dedupe_key = str(record.get("dedupe_key") or "")
-        if fingerprint and fingerprint in todo_text:
-            return True
-        if dedupe_key and dedupe_key in todo_text:
-            return True
-        kind = str(record.get("kind") or "")
-        reason = str(record.get("reason") or "")
-        if kind == "main_checkout_dirty" and "Resolve dirty main checkout blocking" in todo_text:
-            return True
-        if kind == "dirty_backlogged_worktree" and f"dirty backlogged worktrees blocked by {reason}" in todo_text:
-            return True
-        if kind == "preflight_merge_conflict" and "preflight-conflicting backlogged worktree merges" in todo_text:
-            return True
-        return False
+        return any(
+            reconciliation_record_matches_block(block, record)
+            for block in active_guardrail_blocks
+        )
 
     filter_repo_root = (repo_root or todo_path.parent).resolve()
     generated_paths, generated_prefixes = generated_guardrail_status_filters(
@@ -5809,17 +6434,175 @@ def completed_retry_budget_repairs_by_source(tasks: Sequence[Any]) -> dict[str, 
     return repairs
 
 
+def repair_generated_packet_internal_dependencies(
+    todo_text: str,
+    *,
+    task_prefix: str = DEFAULT_TASK_ID_PREFIX,
+) -> tuple[str, list[dict[str, Any]]]:
+    """Remove proven packet-internal goal prerequisites from aggregates.
+
+    Objective packet aggregates intentionally collapse several goals into one
+    execution unit.  Older projections retained a packet goal in ``Depends
+    on`` even when the same aggregate carried explicit completion evidence for
+    that goal.  The goal-to-task projection then produced a self-cycle.
+
+    This repair is deliberately narrow: it accepts only active, schedulable,
+    generated packet aggregates with canonical packet identities and non-empty
+    evidence bindings.  Ambiguous or hand-authored metadata is left unchanged
+    for the normal fail-closed dependency guardrail.
+    """
+
+    replacements: list[tuple[int, int, str]] = []
+    repairs: list[dict[str, Any]] = []
+
+    def field(block: str, label: str) -> str:
+        match = re.search(
+            rf"^-\s*{re.escape(label)}:\s*(.*?)\s*$",
+            block,
+            flags=re.IGNORECASE | re.MULTILINE,
+        )
+        return match.group(1).strip() if match is not None else ""
+
+    for start, end, block in task_blocks_with_spans(todo_text):
+        heading = task_id_pattern(task_prefix).match(block)
+        if heading is None:
+            continue
+        task_id = heading.group(1)
+        status = field(block, "Status").casefold().replace("-", "_")
+        if status in {"complete", "completed", "done", "succeeded"}:
+            continue
+        if (
+            field(block, "Candidate kind").casefold()
+            != "goal_packet_aggregate"
+            or field(block, "Goal packet role").casefold()
+            != "packet_aggregate"
+            or field(block, "Is schedulable").casefold() != "true"
+            or field(block, "Review only").casefold() != "false"
+        ):
+            continue
+        semantic_identity = field(block, "Semantic identity")
+        evidence_obligation_key = field(block, "Evidence obligation key")
+        if (
+            not semantic_identity.startswith(
+                "objective-evidence-packet/v1/"
+            )
+            or not evidence_obligation_key.startswith(
+                "objective-evidence-packet/v1/"
+            )
+        ):
+            continue
+        packet_key = field(block, "Goal packet")
+        packet_goal_ids = {
+            goal_id
+            for goal_id in split_csv(field(block, "Goal packet goals"))
+            if goal_id
+        }
+        if not packet_key or not packet_goal_ids:
+            continue
+        try:
+            raw_bindings = json.loads(
+                field(block, "Completion goal bindings")
+            )
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(raw_bindings, Mapping):
+            continue
+        evidenced_packet_goals = {
+            str(goal_id).strip()
+            for goal_id, requirements in raw_bindings.items()
+            if str(goal_id).strip() in packet_goal_ids
+            and isinstance(requirements, list)
+            and any(str(requirement).strip() for requirement in requirements)
+        }
+        if not evidenced_packet_goals:
+            continue
+        dependencies = split_csv(field(block, "Depends on"))
+        removed_dependencies = [
+            dependency
+            for dependency in dependencies
+            if dependency in evidenced_packet_goals
+        ]
+        if not removed_dependencies:
+            continue
+        retained_dependencies = [
+            dependency
+            for dependency in dependencies
+            if dependency not in evidenced_packet_goals
+        ]
+        updated_block, replacement_count = re.subn(
+            r"^-\s*Depends on:.*$",
+            f"- Depends on: {', '.join(retained_dependencies)}",
+            block,
+            count=1,
+            flags=re.IGNORECASE | re.MULTILINE,
+        )
+        if replacement_count != 1:
+            continue
+        repair_fingerprint = sha256(
+            json.dumps(
+                {
+                    "task_id": task_id,
+                    "packet_key": packet_key,
+                    "removed_dependencies": removed_dependencies,
+                    "retained_dependencies": retained_dependencies,
+                    "semantic_identity": semantic_identity,
+                },
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode("utf-8")
+        ).hexdigest()
+        replacements.append((start, end, updated_block))
+        repairs.append(
+            {
+                "source_task_id": task_id,
+                "follow_up_task_id": "",
+                "guardrail_kind": "dependency_guardrail",
+                "reason": "objective_packet_internal_dependency_removed",
+                "packet_key": packet_key,
+                "removed_dependencies": removed_dependencies,
+                "retained_dependencies": retained_dependencies,
+                "repair_fingerprint": repair_fingerprint,
+            }
+        )
+
+    if not replacements:
+        return todo_text, []
+    updated_parts: list[str] = []
+    cursor = 0
+    for start, end, updated_block in replacements:
+        updated_parts.append(todo_text[cursor:start])
+        updated_parts.append(updated_block)
+        cursor = end
+    updated_parts.append(todo_text[cursor:])
+    return "".join(updated_parts), repairs
+
+
 def release_completed_guardrail_blocks(
     *,
     todo_path: Path,
     strategy_path: Path,
+    reconciliation_result: Mapping[str, Any] | None = None,
+    cleanup_result: Mapping[str, Any] | None = None,
+    replay_result: Mapping[str, Any] | None = None,
     task_prefix: str = DEFAULT_TASK_ID_PREFIX,
+    commit_outputs: bool = False,
+    repo_root: Path | None = None,
+    commit_subject: str = "Agent: retire resolved guardrail tasks",
 ) -> list[dict[str, Any]]:
     """Unblock source tasks after guardrail repair or stale strategy state clears."""
 
     if not todo_path.exists() or not strategy_path.exists():
         return []
-    todo_text = todo_path.read_text(encoding="utf-8")
+    with locked_taskboard(todo_path) as taskboard:
+        todo_text = taskboard.read()
+        todo_text, packet_dependency_repairs = (
+            repair_generated_packet_internal_dependencies(
+                todo_text,
+                task_prefix=task_prefix,
+            )
+        )
+        if packet_dependency_repairs:
+            replace_locked_taskboard(taskboard, todo_text)
     statuses = task_statuses_from_todo_text(todo_text, task_prefix=task_prefix)
     if not statuses:
         return []
@@ -5843,8 +6626,171 @@ def release_completed_guardrail_blocks(
     }
     strategy = load_strategy(strategy_path)
     blocked_tasks = [str(item) for item in strategy.get("blocked_tasks", []) if str(item).strip()]
+    todo_changed = bool(packet_dependency_repairs)
 
-    releases: list[dict[str, Any]] = []
+    releases: list[dict[str, Any]] = list(packet_dependency_repairs)
+    if packet_dependency_repairs:
+        strategy["last_objective_packet_dependency_repair_at"] = utc_now()
+        strategy["last_objective_packet_dependency_repairs"] = list(
+            packet_dependency_repairs
+        )
+
+    current_reconciliation_records = reconciliation_guardrail_records(
+        reconciliation_result=reconciliation_result,
+        cleanup_result=cleanup_result,
+    )
+    active_reconciliation_keys = {
+        str(record.get("dedupe_key") or "")
+        for record in current_reconciliation_records
+        if str(record.get("dedupe_key") or "").strip()
+    }
+    resolved_reconciliation_keys = (
+        resolved_reconciliation_guardrail_keys(
+            reconciliation_result=reconciliation_result,
+            cleanup_result=cleanup_result,
+            replay_result=replay_result,
+        )
+        - active_reconciliation_keys
+    )
+    resolved_reconciliation_cards = [
+        card
+        for card in reconciliation_guardrail_blocks(
+            todo_text,
+            task_prefix=task_prefix,
+            include_completed=True,
+        )
+        if card["dedupe_key"] in resolved_reconciliation_keys
+    ]
+    if resolved_reconciliation_cards:
+        terminal_statuses = {
+            "complete",
+            "completed",
+            "done",
+            "succeeded",
+        }
+        active_reconciliation_cards = [
+            card
+            for card in resolved_reconciliation_cards
+            if card["status"] not in terminal_statuses
+        ]
+        retired_ids = [
+            card["task_id"] for card in active_reconciliation_cards
+        ]
+        todo_text, retired_task_ids = mark_task_statuses_in_todo_text(
+            todo_text,
+            retired_ids,
+            task_prefix=task_prefix,
+            status="completed",
+        )
+        if retired_task_ids:
+            todo_path.write_text(todo_text, encoding="utf-8")
+            todo_changed = True
+            statuses.update(
+                {task_id: "completed" for task_id in retired_task_ids}
+            )
+        retired_set = set(retired_task_ids)
+        already_completed_set = {
+            card["task_id"]
+            for card in resolved_reconciliation_cards
+            if card["status"] in terminal_statuses
+        }
+        authoritative_resolved_ids = (
+            retired_set | already_completed_set
+        )
+        resolved_cards_by_id = {
+            card["task_id"]: card
+            for card in resolved_reconciliation_cards
+            if card["task_id"] in authoritative_resolved_ids
+        }
+        stale_projection_ids: set[str] = set()
+        resolved_fingerprints = {
+            card["fingerprint"]
+            for card in resolved_cards_by_id.values()
+            if card["fingerprint"]
+        }
+        raw_reconciliation_findings = strategy.get(
+            "reconciliation_guardrail_findings"
+        )
+        if isinstance(raw_reconciliation_findings, list):
+            retained_reconciliation_findings: list[Any] = []
+            for finding in raw_reconciliation_findings:
+                finding_task_id = (
+                    str(finding.get("follow_up_task_id") or "")
+                    if isinstance(finding, Mapping)
+                    else ""
+                )
+                if finding_task_id in authoritative_resolved_ids:
+                    stale_projection_ids.add(finding_task_id)
+                    fingerprint = str(
+                        finding.get("fingerprint") or ""
+                    )
+                    if fingerprint:
+                        resolved_fingerprints.add(fingerprint)
+                    continue
+                retained_reconciliation_findings.append(finding)
+            strategy["reconciliation_guardrail_findings"] = (
+                retained_reconciliation_findings
+            )
+        seen_fingerprints = strategy.get(
+            "reconciliation_guardrail_seen_fingerprints"
+        )
+        if isinstance(seen_fingerprints, list):
+            present_seen = {
+                str(fingerprint) for fingerprint in seen_fingerprints
+            }
+            for task_id, card in resolved_cards_by_id.items():
+                if card["fingerprint"] in present_seen:
+                    stale_projection_ids.add(task_id)
+            strategy["reconciliation_guardrail_seen_fingerprints"] = [
+                str(fingerprint)
+                for fingerprint in seen_fingerprints
+                if str(fingerprint) not in resolved_fingerprints
+            ]
+        stale_projection_ids.update(
+            task_id
+            for task_id in blocked_tasks
+            if task_id in authoritative_resolved_ids
+        )
+        blocked_tasks = [
+            task_id
+            for task_id in blocked_tasks
+            if task_id not in authoritative_resolved_ids
+        ]
+        if retired_task_ids:
+            strategy[
+                "last_resolved_reconciliation_guardrail_task_ids"
+            ] = retired_task_ids
+            releases.extend(
+                {
+                    "source_task_id": card["task_id"],
+                    "follow_up_task_id": "",
+                    "guardrail_kind": "reconciliation_guardrail",
+                    "reason": "reconciliation_finding_resolved",
+                    "dedupe_key": card["dedupe_key"],
+                }
+                for card in resolved_reconciliation_cards
+                if card["task_id"] in retired_set
+            )
+        projection_repair_ids = sorted(
+            stale_projection_ids - retired_set
+        )
+        if projection_repair_ids:
+            strategy[
+                "last_repaired_reconciliation_guardrail_projection_ids"
+            ] = projection_repair_ids
+            releases.extend(
+                {
+                    "source_task_id": task_id,
+                    "follow_up_task_id": "",
+                    "guardrail_kind": "reconciliation_guardrail",
+                    "reason": "resolved_reconciliation_projection_repaired",
+                    "dedupe_key": resolved_cards_by_id[task_id][
+                        "dedupe_key"
+                    ],
+                }
+                for task_id in projection_repair_ids
+            )
+
     deduplicated_blocked_tasks = list(dict.fromkeys(blocked_tasks))
     if len(deduplicated_blocked_tasks) != len(blocked_tasks):
         duplicate_ids = sorted(
@@ -5878,6 +6824,21 @@ def release_completed_guardrail_blocks(
         for record in active_dependency_records
         if str(record.get("source_task_id") or "").strip()
     }
+    resolved_dependency_repair_tasks: dict[str, str] = {}
+    for task in tasks:
+        match = re.match(
+            r"^Resolve dependency guardrail for (\S+)\s*$",
+            str(getattr(task, "title", "") or "").strip(),
+        )
+        if match is None:
+            continue
+        source_task_id = match.group(1)
+        if (
+            str(getattr(task, "status", "") or "").lower()
+            not in {"complete", "completed", "done", "succeeded"}
+            and source_task_id not in active_dependency_sources
+        ):
+            resolved_dependency_repair_tasks[task.task_id] = source_task_id
     raw_dependency_findings = strategy.get("dependency_guardrail_findings")
     if isinstance(raw_dependency_findings, list):
         retained_dependency_findings: list[Any] = []
@@ -5889,7 +6850,15 @@ def release_completed_guardrail_blocks(
             source_task_id = str(raw_record.get("source_task_id") or "")
             follow_up_task_id = str(raw_record.get("follow_up_task_id") or "")
             fingerprint = str(raw_record.get("fingerprint") or "")
-            if fingerprint and fingerprint not in active_dependency_fingerprints:
+            source_resolved = (
+                bool(source_task_id)
+                and source_task_id not in active_dependency_sources
+            )
+            fingerprint_resolved = (
+                bool(fingerprint)
+                and fingerprint not in active_dependency_fingerprints
+            )
+            if source_resolved or fingerprint_resolved:
                 if source_task_id in active_dependency_sources:
                     retained_dependency_findings.append(raw_record)
                     continue
@@ -5915,6 +6884,7 @@ def release_completed_guardrail_blocks(
         ("dependency_guardrail", strategy.get("dependency_guardrail_findings")),
     )
     active_guardrail_sources: set[str] = set()
+    active_retry_budget_sources: set[str] = set()
     for guardrail_kind, raw_records in guardrail_groups:
         if not isinstance(raw_records, list):
             continue
@@ -5926,6 +6896,8 @@ def release_completed_guardrail_blocks(
             if not source_task_id or not follow_up_task_id:
                 continue
             active_guardrail_sources.add(source_task_id)
+            if guardrail_kind == "retry_budget":
+                active_retry_budget_sources.add(source_task_id)
             if source_task_id not in blocked_tasks:
                 continue
             if statuses.get(follow_up_task_id) != "completed":
@@ -6058,8 +7030,68 @@ def release_completed_guardrail_blocks(
         )
         if retired_task_ids:
             todo_path.write_text(todo_text, encoding="utf-8")
+            todo_changed = True
             statuses.update({task_id: "completed" for task_id in retired_task_ids})
             strategy["last_recursive_retry_repair_retired_task_ids"] = retired_task_ids
+
+    if resolved_dependency_repair_tasks:
+        todo_text, retired_task_ids = mark_task_statuses_in_todo_text(
+            todo_text,
+            list(resolved_dependency_repair_tasks),
+            task_prefix=task_prefix,
+            status="completed",
+        )
+        if retired_task_ids:
+            todo_path.write_text(todo_text, encoding="utf-8")
+            todo_changed = True
+            statuses.update({task_id: "completed" for task_id in retired_task_ids})
+            strategy["last_resolved_dependency_guardrail_task_ids"] = (
+                retired_task_ids
+            )
+            strategy["dependency_guardrail_seen_fingerprints"] = sorted(
+                active_dependency_fingerprints
+            )
+            janitor_owned_sources = {
+                str(receipt.get("task_id") or "")
+                for receipt in strategy.get("objective_task_janitor_receipts", [])
+                if isinstance(receipt, Mapping)
+                and str(receipt.get("action") or "") == "block"
+                and str(receipt.get("task_id") or "")
+            }
+            quarantined_sources = {
+                str(record.get("task_id") or "")
+                for record in strategy.get("autonomous_unstall_quarantines", [])
+                if isinstance(record, Mapping)
+                and str(record.get("task_id") or "")
+            }
+            retired_dependency_sources = {
+                resolved_dependency_repair_tasks[task_id]
+                for task_id in retired_task_ids
+                if task_id in resolved_dependency_repair_tasks
+            }
+            releasable_dependency_sources = (
+                retired_dependency_sources
+                - active_retry_budget_sources
+                - pending_retry_repair_sources
+                - janitor_owned_sources
+                - quarantined_sources
+            )
+            if releasable_dependency_sources:
+                blocked_tasks = [
+                    task_id
+                    for task_id in blocked_tasks
+                    if task_id not in releasable_dependency_sources
+                ]
+            releases.extend(
+                {
+                    "source_task_id": source_task_id,
+                    "follow_up_task_id": task_id,
+                    "guardrail_kind": "dependency_guardrail",
+                    "reason": "resolved_repair_task_retired",
+                }
+                for task_id, source_task_id in resolved_dependency_repair_tasks.items()
+                if task_id in retired_task_ids
+            )
 
     if not releases:
         return []
@@ -6067,6 +7099,15 @@ def release_completed_guardrail_blocks(
     strategy["last_guardrail_unblock_at"] = utc_now()
     strategy["guardrail_unblock_releases"] = releases
     write_json(strategy_path, strategy)
+    if commit_outputs and todo_changed:
+        commit_results = commit_generated_outputs(
+            [todo_path],
+            repo_root=repo_root or todo_path.parent,
+            subject=commit_subject,
+        )
+        if commit_results:
+            strategy["last_guardrail_unblock_commit_results"] = commit_results
+            write_json(strategy_path, strategy)
     return releases
 
 

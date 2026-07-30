@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 
 import ipfs_accelerate_py.agent_supervisor.objectives.objective_graph as objective_graph_module
+import ipfs_accelerate_py.agent_supervisor.objectives.objective_tracker as objective_tracker_module
 from ipfs_accelerate_py.agent_supervisor import (
     build_bundle_task_payloads,
     generate_objective_todos,
@@ -54,11 +55,13 @@ from ipfs_accelerate_py.agent_supervisor.objectives.objective_graph import (
     materialize_task_planning_graph,
     objective_fingerprint,
     objective_finding_conflict_record,
+    objective_finding_evidence_output_paths,
     objective_finding_task_identity,
     tracked_files,
     write_bundle_shards,
 )
 from ipfs_accelerate_py.agent_supervisor.objectives.objective_tracker import (
+    append_launch_readiness_goals,
     append_refinement_goals,
     completion_tree_identity,
     migrate_legacy_objective_goals,
@@ -392,6 +395,162 @@ def test_objective_scanner_excludes_sensitive_root_without_reading_it(
         scan_exclude_paths=["private_inputs"],
     )
     assert stale_cached_evidence == {"HSSLEV_PRIVATE_INPUT": []}
+
+
+def test_completed_objective_card_refills_only_a_genuine_path_residual(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    objective_path = repo / "objective.md"
+    todo_path = repo / "todo.md"
+    discovery_dir = repo / "generated" / "discovery"
+    bundle_dir = repo / "generated" / "bundles"
+    analyzer = "data/policy/analyzer-profile-v1.json"
+    resource_bounds = "data/policy/resource-bounds-v1.json"
+    objective_path.write_text(
+        f"""# Objective Heap
+
+## TEST-G050 Pin execution policy
+
+- Status: active
+- Parent:
+- Track: trust
+- Priority: P0
+- Bundle: objective/trust
+- Goal: Pin both execution policy artifacts.
+- Evidence: {analyzer}, {resource_bounds}
+- Outputs: {analyzer}, {resource_bounds}
+- Validation: true
+- Gap task: Add each missing policy artifact.
+""",
+        encoding="utf-8",
+    )
+    todo_path.write_text("# Objective Todo\n", encoding="utf-8")
+    _git(repo, "add", "objective.md", "todo.md")
+    _git(repo, "commit", "-m", "seed objective")
+
+    original = generate_objective_todos(
+        repo_root=repo,
+        objective_path=objective_path,
+        todo_path=todo_path,
+        discovery_dir=discovery_dir,
+        bundle_dir=bundle_dir,
+        task_prefix="TEST-",
+        max_findings=1,
+        scan_exclude_paths=["data"],
+        persist_ast_dataset=False,
+        write_todo_vector_index=False,
+    )
+    assert [record.finding.missing_evidence for record in original] == [
+        [analyzer, resource_bounds]
+    ]
+    todo_path.write_text(
+        todo_path.read_text(encoding="utf-8").replace(
+            "- Status: todo",
+            "- Status: completed",
+            1,
+        ),
+        encoding="utf-8",
+    )
+
+    analyzer_path = repo / analyzer
+    analyzer_path.parent.mkdir(parents=True)
+    analyzer_path.write_text('{"schema":"analyzer@1"}\n', encoding="utf-8")
+    validation_path = repo / "tests" / "test_execution_profile.py"
+    validation_path.parent.mkdir()
+    validation_path.write_text(
+        f'RESOURCE_BOUNDS = "{resource_bounds}"\n',
+        encoding="utf-8",
+    )
+    _git(repo, "add", analyzer, "tests/test_execution_profile.py")
+    _git(repo, "commit", "-m", "complete only analyzer profile")
+
+    evidence = evidence_index(
+        repo,
+        objective_path=objective_path,
+        terms=[analyzer, resource_bounds],
+        scan_exclude_paths=["data"],
+    )
+    assert evidence == {
+        analyzer: [f"{analyzer} (path)"],
+        resource_bounds: [],
+    }
+
+    residual = generate_objective_todos(
+        repo_root=repo,
+        objective_path=objective_path,
+        todo_path=todo_path,
+        discovery_dir=discovery_dir,
+        bundle_dir=bundle_dir,
+        task_prefix="TEST-",
+        max_findings=1,
+        scan_exclude_paths=["data"],
+        persist_ast_dataset=False,
+        write_todo_vector_index=False,
+    )
+    assert [record.task_id for record in residual] == ["TEST-002"]
+    assert [record.finding.missing_evidence for record in residual] == [
+        [resource_bounds]
+    ]
+    assert todo_path.read_text(encoding="utf-8").count("## TEST-") == 2
+
+    replay = generate_objective_todos(
+        repo_root=repo,
+        objective_path=objective_path,
+        todo_path=todo_path,
+        discovery_dir=discovery_dir,
+        bundle_dir=bundle_dir,
+        task_prefix="TEST-",
+        max_findings=1,
+        scan_exclude_paths=["data"],
+        persist_ast_dataset=False,
+        write_todo_vector_index=False,
+    )
+    assert replay == []
+    assert todo_path.read_text(encoding="utf-8").count("## TEST-") == 2
+
+
+def test_declared_path_evidence_requires_a_tracked_regular_file(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    objective_path = repo / "objective.md"
+    objective_path.write_text("# Objective Heap\n", encoding="utf-8")
+    policy_dir = repo / "data" / "policy"
+    policy_dir.mkdir(parents=True)
+    tracked = policy_dir / "tracked.json"
+    tracked.write_text('{"tracked":true}\n', encoding="utf-8")
+    untracked = policy_dir / "untracked.json"
+    untracked.write_text('{"tracked":false}\n', encoding="utf-8")
+    symlink = policy_dir / "alias.json"
+    symlink.symlink_to("tracked.json")
+    _git(repo, "add", "objective.md", "data/policy/tracked.json", "data/policy/alias.json")
+    _git(repo, "commit", "-m", "seed path evidence")
+
+    evidence = evidence_index(
+        repo,
+        objective_path=objective_path,
+        terms=[
+            "data/policy/tracked.json",
+            "data/policy/untracked.json",
+            "data/policy/alias.json",
+        ],
+        scan_exclude_paths=["data"],
+    )
+
+    assert evidence == {
+        "data/policy/tracked.json": ["data/policy/tracked.json (path)"],
+        "data/policy/untracked.json": [],
+        "data/policy/alias.json": [],
+    }
 
 
 def test_objective_scanner_enforces_source_protected_roots_in_repo_and_submodule(
@@ -1167,6 +1326,248 @@ def test_refinement_does_not_repeat_an_ancestor_evidence_obligation(tmp_path):
 
     assert result.appended_goal_ids == []
     assert objective_path.read_text(encoding="utf-8").count("## G1.1") == 1
+
+
+def test_refinement_admits_complete_candidate_with_bound_acceptance(tmp_path):
+    objective_path = tmp_path / "objective.md"
+    objective_path.write_text(
+        """# Goals
+
+## VFS-G000 Root
+
+- Status: active
+- Parent:
+- Evidence: root-proof
+""",
+        encoding="utf-8",
+    )
+    finding = ObjectiveFinding(
+        fingerprint="root-contract-gap",
+        goal_id="VFS-G000",
+        title="Root",
+        summary="Close root contract gap",
+        priority="P0",
+        track="contract",
+        missing_evidence=["vfs/contract-proof@1"],
+        present_evidence={},
+        evidence_methods=[],
+        objective_path=str(objective_path),
+        outputs=["src/vfs.py", "test/test_vfs.py"],
+        validation="python -m pytest test/test_vfs.py -q",
+        acceptance_subset=[
+            "The VFS contract receipt is current and bound to the tested implementation."
+        ],
+    )
+
+    result = append_refinement_goals(objective_path, [finding])
+
+    assert result.appended_goal_ids == ["VFS-G001"]
+    goals = {
+        goal.goal_id: goal
+        for goal in parse_goal_heap(objective_path.read_text(encoding="utf-8"))
+    }
+    assert goals["VFS-G001"].fields["acceptance"] == (
+        "The VFS contract receipt is current and bound to the tested implementation."
+    )
+
+
+def test_refinement_rejects_invalid_rendered_candidate_without_mutation(
+    tmp_path,
+    monkeypatch,
+):
+    objective_path = tmp_path / "objective.md"
+    original = b"""# Goals
+
+## VFS-G000 Root
+
+- Status: active
+- Parent:
+- Evidence: root-proof
+"""
+    objective_path.write_bytes(original)
+    finding = ObjectiveFinding(
+        fingerprint="root-contract-gap",
+        goal_id="VFS-G000",
+        title="Root",
+        summary="Close root contract gap",
+        priority="P0",
+        track="contract",
+        missing_evidence=["vfs/contract-proof@1"],
+        present_evidence={},
+        evidence_methods=[],
+        objective_path=str(objective_path),
+        outputs=["src/vfs.py", "test/test_vfs.py"],
+        validation="python -m pytest test/test_vfs.py -q",
+        acceptance_subset=["The VFS contract receipt is current."],
+    )
+    real_render = objective_tracker_module.render_goal_block
+
+    def render_without_acceptance(**kwargs):
+        rendered = real_render(**kwargs)
+        return "\n".join(
+            line
+            for line in rendered.splitlines()
+            if not line.startswith("- Acceptance:")
+        ) + "\n"
+
+    monkeypatch.setattr(
+        objective_tracker_module,
+        "render_goal_block",
+        render_without_acceptance,
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=r"VFS-G001 is missing fields: .*acceptance",
+    ):
+        append_refinement_goals(objective_path, [finding])
+
+    assert objective_path.read_bytes() == original
+
+
+def test_refinement_atomic_rewrite_failure_preserves_original_bytes(
+    tmp_path,
+    monkeypatch,
+):
+    objective_path = tmp_path / "objective.md"
+    original = b"""# Goals
+
+## VFS-G000 Root
+
+- Status: active
+- Parent:
+- Evidence: root-proof
+"""
+    objective_path.write_bytes(original)
+    finding = ObjectiveFinding(
+        fingerprint="root-contract-gap",
+        goal_id="VFS-G000",
+        title="Root",
+        summary="Close root contract gap",
+        priority="P0",
+        track="contract",
+        missing_evidence=["vfs/contract-proof@1"],
+        present_evidence={},
+        evidence_methods=[],
+        objective_path=str(objective_path),
+        outputs=["src/vfs.py", "test/test_vfs.py"],
+        validation="python -m pytest test/test_vfs.py -q",
+        acceptance_subset=["The VFS contract receipt is current."],
+    )
+
+    def interrupted_rewrite(_path, _text):
+        raise InterruptedError("simulated interruption before atomic rename")
+
+    monkeypatch.setattr(
+        objective_tracker_module,
+        "_atomic_rewrite",
+        interrupted_rewrite,
+    )
+
+    with pytest.raises(InterruptedError, match="simulated interruption"):
+        append_refinement_goals(objective_path, [finding])
+
+    assert objective_path.read_bytes() == original
+
+
+def test_refinement_without_acceptance_subset_fails_closed(tmp_path):
+    objective_path = tmp_path / "objective.md"
+    original = b"""# Goals
+
+## VFS-G000 Root
+
+- Status: active
+- Parent:
+- Evidence: root-proof
+"""
+    objective_path.write_bytes(original)
+    finding = ObjectiveFinding(
+        fingerprint="root-contract-gap",
+        goal_id="VFS-G000",
+        title="Root",
+        summary="Close root contract gap",
+        priority="P0",
+        track="contract",
+        missing_evidence=["vfs/contract-proof@1"],
+        present_evidence={},
+        evidence_methods=[],
+        objective_path=str(objective_path),
+        outputs=["src/vfs.py", "test/test_vfs.py"],
+        validation="python -m pytest test/test_vfs.py -q",
+    )
+
+    with pytest.raises(ValueError, match="has no acceptance subset"):
+        append_refinement_goals(objective_path, [finding])
+
+    assert objective_path.read_bytes() == original
+
+
+def test_objective_gap_scope_limits_forced_refinement_family(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    objective_path = repo / "objective.md"
+    objective_path.write_text(
+        """# Goals
+
+## VFS-G001 First family
+
+- Status: active
+- Parent:
+- Evidence: missing-first-proof
+- Acceptance: First proof is current.
+
+## VFS-G002 Forced family
+
+- Status: active
+- Parent:
+- Evidence: missing-forced-proof
+- Acceptance: Forced proof is current.
+""",
+        encoding="utf-8",
+    )
+
+    findings = scan_objective_gaps(
+        repo,
+        objective_path=objective_path,
+        max_findings=8,
+        force_goal_ids=["VFS-G002"],
+        scope_goal_ids=["VFS-G002"],
+    )
+
+    assert findings
+    assert {finding.goal_id for finding in findings} == {"VFS-G002"}
+
+
+def test_launch_readiness_generated_goals_include_acceptance(tmp_path):
+    objective_path = tmp_path / "objective.md"
+    objective_path.write_text(
+        """# Goals
+
+## VFS-G000 Root
+
+- Status: active
+- Parent:
+- Evidence: root-proof
+""",
+        encoding="utf-8",
+    )
+
+    result = append_launch_readiness_goals(
+        objective_path,
+        repo_root=tmp_path,
+        max_goals=2,
+        goal_prefix="VFS-G",
+    )
+
+    goals = {
+        goal.goal_id: goal
+        for goal in parse_goal_heap(objective_path.read_text(encoding="utf-8"))
+    }
+    assert len(result.appended_goal_ids) == 2
+    assert all(
+        str(goals[goal_id].fields.get("acceptance") or "").strip()
+        for goal_id in result.appended_goal_ids
+    )
 
 
 def test_completion_gate_work_identity_ignores_actionable_prose_churn():
@@ -2184,6 +2585,76 @@ def test_goal_packet_aggregate_does_not_mix_active_and_review_only_scope():
     )
 
 
+def test_generate_objective_todos_omits_evidenced_packet_internal_dependencies(
+    tmp_path,
+):
+    repo, objective_path, todo_path = _seed_repo(tmp_path)
+    objective_path.write_text(
+        """# Objective Heap
+
+## VAIOS-G101 Packet anchor
+
+- Status: active
+- Parent:
+- Evidence: anchor.json
+
+## VAIOS-G102 Packet member
+
+- Status: active
+- Parent:
+- Evidence: member.json
+""",
+        encoding="utf-8",
+    )
+    finding = ObjectiveFinding(
+        fingerprint="packet-aggregate",
+        goal_id="VAIOS-G101",
+        title="Packet aggregate",
+        summary="Implement packet aggregate",
+        priority="P1",
+        track="runtime",
+        missing_evidence=["anchor.json", "member.json"],
+        present_evidence={},
+        evidence_methods=[],
+        objective_path=str(objective_path),
+        outputs=["src/runtime_router.py"],
+        validation="true",
+        dependencies=[
+            "ACCEL-001",
+            "VAIOS-G101",
+            "VAIOS-G102",
+        ],
+        candidate_kind="goal_packet_aggregate",
+        goal_packet_key="goal_packet/runtime/shared",
+        goal_packet_role="packet_aggregate",
+        goal_packet_goal_ids=["VAIOS-G101", "VAIOS-G102"],
+        completion_goal_bindings={
+            "VAIOS-G101": ["anchor.json"],
+            "VAIOS-G102": ["member.json"],
+        },
+        semantic_identity="objective-evidence-packet/v1/packet",
+        dedupe_key="objective-evidence-packet/v1/packet",
+    )
+
+    records = generate_objective_todos(
+        repo_root=repo,
+        objective_path=objective_path,
+        todo_path=todo_path,
+        discovery_dir=repo / "discovery",
+        bundle_dir=repo / "bundles",
+        task_prefix="ACCEL-",
+        precomputed_findings=[finding],
+        persist_ast_dataset=False,
+        write_todo_vector_index=False,
+    )
+
+    assert len(records) == 1
+    assert records[0].depends_on == ("ACCEL-001",)
+    generated_block = records[0].task_block
+    assert "- Depends on: ACCEL-001" in generated_block
+    assert "Depends on: ACCEL-001, VAIOS-G101" not in generated_block
+
+
 def test_objective_graph_scanner_semantic_ast_bundles_implicit_goals(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -2527,6 +2998,798 @@ def test_generate_objective_todos_writes_bundle_shards_and_payloads(tmp_path):
     assert task_ids == ["queued-1"]
     assert submitted[0]["task_type"] == "codex.todo_bundle"
     assert submitted[0]["payload"]["bundle_key"] == "objective/ops/root"
+
+
+def test_generate_objective_todos_projects_dscon_path_evidence_as_typed_outputs(
+    tmp_path,
+):
+    repo, objective_path, todo_path = _seed_repo(tmp_path)
+    discovery_dir = (
+        repo
+        / "data"
+        / "datasets_contract_analysis"
+        / "agent_supervisor"
+        / "discovery"
+    )
+    bundle_dir = (
+        repo
+        / "data"
+        / "datasets_contract_analysis"
+        / "agent_supervisor"
+        / "objective_bundles"
+    )
+    manifests = [
+        "data/datasets_contract_analysis/manifests/repository-root.json",
+        "data/datasets_contract_analysis/manifests/coverage.json",
+    ]
+    outputs = [
+        "ipfs_datasets_py/processors/datasets/repository.py",
+        "ipfs_datasets_py/processors/datasets/coverage.py",
+        "test/datasets/test_repository_coverage.py",
+    ]
+    finding = ObjectiveFinding(
+        fingerprint="dscon-g020-repository-inventory",
+        goal_id="DSCON-G020",
+        title="Inventory repository coverage",
+        summary="Close objective gap: Inventory repository coverage",
+        priority="P0",
+        track="datasets-contract-analysis",
+        missing_evidence=[
+            *manifests,
+            "operator approval",
+            "123456789012345678901234567890",
+            "https://example.invalid/receipt.json",
+            "../outside.json",
+            "data/*/forged.json",
+            "objective-heap.md",
+            (
+                "data/datasets_contract_analysis/agent_supervisor/"
+                "discovery/forged.json"
+            ),
+        ],
+        present_evidence={},
+        evidence_methods=[],
+        objective_path="objective-heap.md",
+        outputs=outputs,
+        validation="python -m pytest -q test/datasets/test_repository_coverage.py",
+        evidence_subset=[
+            *manifests,
+            "operator approval",
+            "123456789012345678901234567890",
+            "https://example.invalid/receipt.json",
+            "../outside.json",
+            "data/*/forged.json",
+            "objective-heap.md",
+            (
+                "data/datasets_contract_analysis/agent_supervisor/"
+                "discovery/forged.json"
+            ),
+        ],
+        bundle_key="objective/datasets/repository-inventory",
+    )
+
+    records = generate_objective_todos(
+        repo_root=repo,
+        objective_path=objective_path,
+        todo_path=todo_path,
+        discovery_dir=discovery_dir,
+        bundle_dir=bundle_dir,
+        task_prefix="DSCON-",
+        precomputed_findings=[finding],
+        persist_ast_dataset=False,
+        write_todo_vector_index=False,
+        discovery_output_path=(
+            "data/datasets_contract_analysis/agent_supervisor/discovery"
+        ),
+    )
+
+    assert len(records) == 1
+    assert records[0].evidence_outputs == tuple(manifests)
+    generated_block = todo_path.read_text(encoding="utf-8").split(
+        "## DSCON-001 ",
+        1,
+    )[1]
+    assert f"- Outputs: {', '.join(outputs)}" in generated_block
+    assert f"- Evidence outputs: {', '.join(manifests)}" in generated_block
+    index = json.loads(
+        (bundle_dir / "index.json").read_text(encoding="utf-8")
+    )
+    task = index["bundles"][
+        "objective/datasets/repository-inventory"
+    ]["tasks"][0]
+    assert task["evidence_outputs"] == sorted(manifests)
+    assert task["outputs"] == [*outputs, *sorted(manifests)]
+    assert set(task["files"]) == {*outputs, *manifests}
+    assert "objective-heap.md" not in task["files"]
+    assert not any(
+        "agent_supervisor/discovery" in path for path in task["files"]
+    )
+
+    assert (
+        objective_finding_task_identity("DSCON-001", finding).canonical_task_cid
+        != objective_finding_task_identity(
+            "DSCON-001",
+            finding,
+            evidence_outputs=[],
+        ).canonical_task_cid
+    )
+
+
+def _seed_legacy_dscon_evidence_output_card(tmp_path):
+    repo, objective_path, todo_path = _seed_repo(tmp_path)
+    discovery_dir = (
+        repo
+        / "data"
+        / "datasets_contract_analysis"
+        / "agent_supervisor"
+        / "discovery"
+    )
+    bundle_dir = (
+        repo
+        / "data"
+        / "datasets_contract_analysis"
+        / "agent_supervisor"
+        / "bundles"
+    )
+    manifests = [
+        "data/datasets_contract_analysis/manifests/repository-root.json",
+        "data/datasets_contract_analysis/manifests/coverage.json",
+    ]
+    finding = ObjectiveFinding(
+        fingerprint="4f91244e4ecbba7c3c22c1c2a2f1da27e59c41a0",
+        goal_id="DSCON-G020",
+        title="Build recursive tracked-object and coverage manifests",
+        summary=(
+            "Implement datasets symbolic contract objective: "
+            "Build recursive tracked-object and coverage manifests"
+        ),
+        priority="P0",
+        track="bootstrap",
+        missing_evidence=manifests,
+        present_evidence={},
+        evidence_methods=[],
+        objective_path="objective-heap.md",
+        outputs=[
+            "ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/repository.py",
+            "ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/coverage.py",
+            (
+                "ipfs_datasets_py/tests/unit/logic/software_contracts/"
+                "test_repository_manifest.py"
+            ),
+        ],
+        validation=(
+            "python -m pytest -q "
+            "ipfs_datasets_py/tests/unit/logic/software_contracts/"
+            "test_repository_manifest.py"
+        ),
+        evidence_subset=manifests,
+        bundle_key="datasets-contract/bootstrap",
+        parallel_lane="bootstrap-coverage",
+        dedupe_key=(
+            "objective-evidence-obligation/v1/"
+            "f56244a68715f27b32683260e3b53b8ff915bc8dcefee0b3c5b91b6b8f2dbd96"
+        ),
+        semantic_identity=(
+            "objective-evidence-obligation/v1/"
+            "f56244a68715f27b32683260e3b53b8ff915bc8dcefee0b3c5b91b6b8f2dbd96"
+        ),
+    )
+    created = generate_objective_todos(
+        repo_root=repo,
+        objective_path=objective_path,
+        todo_path=todo_path,
+        discovery_dir=discovery_dir,
+        bundle_dir=bundle_dir,
+        task_prefix="DSCON-",
+        precomputed_findings=[finding],
+        persist_ast_dataset=False,
+        write_todo_vector_index=True,
+        discovery_output_path=(
+            "data/datasets_contract_analysis/agent_supervisor/discovery"
+        ),
+    )
+    assert len(created) == 1
+    task_id = created[0].task_id
+    current_identity = objective_finding_task_identity(task_id, finding)
+    legacy_identity = objective_finding_task_identity(
+        task_id,
+        finding,
+        evidence_outputs=[],
+    )
+
+    def downgrade(markdown):
+        downgraded = markdown.replace(
+            f"- Evidence outputs: {', '.join(manifests)}\n",
+            "",
+            1,
+        )
+        downgraded = downgraded.replace(
+            current_identity.canonical_task_key,
+            legacy_identity.canonical_task_key,
+            1,
+        )
+        downgraded = downgraded.replace(
+            current_identity.canonical_task_cid,
+            legacy_identity.canonical_task_cid,
+            1,
+        )
+        obligation_line = f"- Evidence obligation key: {finding.dedupe_key}"
+        return downgraded.replace(
+            obligation_line,
+            (
+                obligation_line
+                + "\n- Projection history: preserve this operator note"
+            ),
+            1,
+        )
+
+    todo_path.write_text(
+        downgrade(todo_path.read_text(encoding="utf-8")),
+        encoding="utf-8",
+    )
+    shard_path = bundle_dir / "datasets-contract-bootstrap.todo.md"
+    shard_path.write_text(
+        downgrade(shard_path.read_text(encoding="utf-8")),
+        encoding="utf-8",
+    )
+    discovery_text = created[0].discovery_path.read_text(encoding="utf-8")
+    for line in (
+        f"Evidence outputs: {', '.join(manifests)}\n",
+        f"Canonical task key: {current_identity.canonical_task_key}\n",
+        f"Canonical task CID: {current_identity.canonical_task_cid}\n",
+    ):
+        discovery_text = discovery_text.replace(line, "", 1)
+    created[0].discovery_path.write_text(discovery_text, encoding="utf-8")
+    return {
+        "repo": repo,
+        "objective_path": objective_path,
+        "todo_path": todo_path,
+        "discovery_dir": discovery_dir,
+        "bundle_dir": bundle_dir,
+        "shard_path": shard_path,
+        "vector_path": bundle_dir / "todo_vector_index.json",
+        "finding": finding,
+        "manifests": manifests,
+        "task_id": task_id,
+        "legacy_identity": legacy_identity,
+        "current_identity": current_identity,
+        "discovery_path": created[0].discovery_path,
+    }
+
+
+def test_objective_refill_reprojects_legacy_dscon_card_and_artifacts_in_place(
+    tmp_path,
+):
+    seeded = _seed_legacy_dscon_evidence_output_card(tmp_path)
+    old_vector_bytes = seeded["vector_path"].read_bytes()
+    old_vector = json.loads(
+        seeded["vector_path"].read_text(encoding="utf-8")
+    )
+    old_vector_task = next(
+        item
+        for item in old_vector["records"]
+        if item["task_id"] == seeded["task_id"]
+    )
+
+    refilled = generate_objective_todos(
+        repo_root=seeded["repo"],
+        objective_path=seeded["objective_path"],
+        todo_path=seeded["todo_path"],
+        discovery_dir=seeded["discovery_dir"],
+        bundle_dir=seeded["bundle_dir"],
+        task_prefix="DSCON-",
+        precomputed_findings=[seeded["finding"]],
+        persist_ast_dataset=False,
+        write_todo_vector_index=True,
+        discovery_output_path=(
+            "data/datasets_contract_analysis/agent_supervisor/discovery"
+        ),
+    )
+
+    # Obligation dedupe still reports zero newly generated tasks.  The exact
+    # existing display ID is rotated under the generator's taskboard lock.
+    assert refilled == []
+    todo_text = seeded["todo_path"].read_text(encoding="utf-8")
+    assert todo_text.count(f"## {seeded['task_id']} ") == 1
+    assert "- Status: todo" in todo_text
+    assert "- Projection history: preserve this operator note" in todo_text
+    assert (
+        f"- Evidence outputs: {', '.join(seeded['manifests'])}"
+        in todo_text
+    )
+    assert seeded["current_identity"].canonical_task_key in todo_text
+    assert seeded["current_identity"].canonical_task_cid in todo_text
+    assert seeded["legacy_identity"].canonical_task_cid not in todo_text
+
+    discovery_text = seeded["discovery_path"].read_text(encoding="utf-8")
+    assert (
+        f"Evidence outputs: {', '.join(seeded['manifests'])}"
+        in discovery_text
+    )
+    assert (
+        f"Canonical task CID: {seeded['current_identity'].canonical_task_cid}"
+        in discovery_text
+    )
+    shard_text = seeded["shard_path"].read_text(encoding="utf-8")
+    assert "- Projection history: preserve this operator note" in shard_text
+    assert (
+        f"- Evidence outputs: {', '.join(seeded['manifests'])}"
+        in shard_text
+    )
+
+    bundle_index = json.loads(
+        (seeded["bundle_dir"] / "index.json").read_text(encoding="utf-8")
+    )
+    indexed_task = bundle_index["bundles"][
+        "datasets-contract/bootstrap"
+    ]["tasks"][0]
+    assert indexed_task["task_id"] == seeded["task_id"]
+    assert (
+        indexed_task["canonical_task_cid"]
+        == seeded["current_identity"].canonical_task_cid
+    )
+    assert indexed_task["evidence_outputs"] == sorted(seeded["manifests"])
+
+    new_vector = json.loads(
+        seeded["vector_path"].read_text(encoding="utf-8")
+    )
+    new_vector_task = next(
+        item
+        for item in new_vector["records"]
+        if item["task_id"] == seeded["task_id"]
+    )
+    assert seeded["vector_path"].read_bytes() != old_vector_bytes
+    assert new_vector_task["task_id"] == old_vector_task["task_id"]
+
+    generated_artifacts = {
+        path: path.read_bytes()
+        for path in (
+            seeded["todo_path"],
+            seeded["discovery_path"],
+            seeded["shard_path"],
+            seeded["bundle_dir"] / "index.json",
+            seeded["vector_path"],
+        )
+    }
+    repeated = generate_objective_todos(
+        repo_root=seeded["repo"],
+        objective_path=seeded["objective_path"],
+        todo_path=seeded["todo_path"],
+        discovery_dir=seeded["discovery_dir"],
+        bundle_dir=seeded["bundle_dir"],
+        task_prefix="DSCON-",
+        precomputed_findings=[seeded["finding"]],
+        persist_ast_dataset=False,
+        write_todo_vector_index=True,
+        discovery_output_path=(
+            "data/datasets_contract_analysis/agent_supervisor/discovery"
+        ),
+    )
+    assert repeated == []
+    assert {
+        path: path.read_bytes() for path in generated_artifacts
+    } == generated_artifacts
+
+
+def test_normal_refill_sweeps_seen_legacy_card_once(tmp_path):
+    repo, objective_path, todo_path = _seed_repo(tmp_path)
+    discovery_dir = (
+        repo
+        / "data"
+        / "datasets_contract_analysis"
+        / "agent_supervisor"
+        / "discovery"
+    )
+    bundle_dir = (
+        repo
+        / "data"
+        / "datasets_contract_analysis"
+        / "agent_supervisor"
+        / "bundles"
+    )
+    manifests = [
+        "data/datasets_contract_analysis/manifests/repository-root.json",
+        "data/datasets_contract_analysis/manifests/coverage.json",
+    ]
+    objective_path.write_text(
+        f"""# Objective Heap
+
+## DSCON-G020 Build recursive tracked-object and coverage manifests
+
+- Status: active
+- Parent:
+- Fib priority: 1
+- Track: bootstrap
+- Priority: P0
+- Bundle: datasets-contract/bootstrap
+- Goal: Build recursive tracked-object and coverage manifests.
+- Evidence: {", ".join(manifests)}
+- Outputs: ipfs_datasets_py/ipfs_datasets_py/logic/software_contracts/repository.py, ipfs_datasets_py/tests/unit/logic/software_contracts/test_repository_manifest.py
+- Validation: true
+- Gap task: Generate deterministic repository coverage manifests.
+""",
+        encoding="utf-8",
+    )
+    created = generate_objective_todos(
+        repo_root=repo,
+        objective_path=objective_path,
+        todo_path=todo_path,
+        discovery_dir=discovery_dir,
+        bundle_dir=bundle_dir,
+        task_prefix="DSCON-",
+        max_findings=4,
+        persist_ast_dataset=False,
+        write_todo_vector_index=False,
+        discovery_output_path=(
+            "data/datasets_contract_analysis/agent_supervisor/discovery"
+        ),
+    )
+    assert len(created) == 1
+    record = created[0]
+    finding = record.finding
+    current_identity = objective_finding_task_identity(
+        record.task_id,
+        finding,
+    )
+    legacy_identity = objective_finding_task_identity(
+        record.task_id,
+        finding,
+        evidence_outputs=[],
+    )
+
+    def downgrade(markdown):
+        value = markdown.replace(
+            f"- Evidence outputs: {', '.join(manifests)}\n",
+            "",
+            1,
+        )
+        value = value.replace(
+            current_identity.canonical_task_key,
+            legacy_identity.canonical_task_key,
+            1,
+        )
+        return value.replace(
+            current_identity.canonical_task_cid,
+            legacy_identity.canonical_task_cid,
+            1,
+        )
+
+    todo_path.write_text(
+        downgrade(todo_path.read_text(encoding="utf-8")),
+        encoding="utf-8",
+    )
+    shard_path = bundle_dir / "datasets-contract-bootstrap.todo.md"
+    shard_path.write_text(
+        downgrade(shard_path.read_text(encoding="utf-8")),
+        encoding="utf-8",
+    )
+    discovery_text = record.discovery_path.read_text(encoding="utf-8")
+    for line in (
+        f"Evidence outputs: {', '.join(manifests)}\n",
+        f"Canonical task key: {current_identity.canonical_task_key}\n",
+        f"Canonical task CID: {current_identity.canonical_task_cid}\n",
+    ):
+        discovery_text = discovery_text.replace(line, "", 1)
+    record.discovery_path.write_text(discovery_text, encoding="utf-8")
+
+    # This is the real daemon path: discovery has already recorded the
+    # fingerprint, so the ordinary new-task scan returns no candidate.
+    assert scan_objective_gaps(
+        repo,
+        objective_path=objective_path,
+        max_findings=4,
+        seen_fingerprints=[finding.fingerprint],
+    ) == []
+    refilled = generate_objective_todos(
+        repo_root=repo,
+        objective_path=objective_path,
+        todo_path=todo_path,
+        discovery_dir=discovery_dir,
+        bundle_dir=bundle_dir,
+        task_prefix="DSCON-",
+        max_findings=4,
+        seen_fingerprints=[finding.fingerprint],
+        persist_ast_dataset=False,
+        write_todo_vector_index=False,
+        discovery_output_path=(
+            "data/datasets_contract_analysis/agent_supervisor/discovery"
+        ),
+    )
+
+    assert refilled == []
+    migrated = todo_path.read_text(encoding="utf-8")
+    assert migrated.count(f"## {record.task_id} ") == 1
+    assert f"- Evidence outputs: {', '.join(manifests)}" in migrated
+    assert current_identity.canonical_task_cid in migrated
+    assert legacy_identity.canonical_task_cid not in migrated
+
+    generated_artifacts = {
+        path: path.read_bytes()
+        for path in (
+            todo_path,
+            record.discovery_path,
+            shard_path,
+            bundle_dir / "index.json",
+        )
+    }
+    repeated = generate_objective_todos(
+        repo_root=repo,
+        objective_path=objective_path,
+        todo_path=todo_path,
+        discovery_dir=discovery_dir,
+        bundle_dir=bundle_dir,
+        task_prefix="DSCON-",
+        max_findings=4,
+        seen_fingerprints=[finding.fingerprint],
+        persist_ast_dataset=False,
+        write_todo_vector_index=False,
+        discovery_output_path=(
+            "data/datasets_contract_analysis/agent_supervisor/discovery"
+        ),
+    )
+    assert repeated == []
+    assert {
+        path: path.read_bytes() for path in generated_artifacts
+    } == generated_artifacts
+
+
+def test_retained_reprojection_fingerprint_cannot_be_starved_by_surplus(
+    tmp_path,
+):
+    repo, objective_path, _todo_path = _seed_repo(tmp_path)
+    objective_path.write_text(
+        """# Objective Heap
+
+## DSCON-G001 Early wide goal
+
+- Status: active
+- Parent:
+- Fib priority: 1
+- Track: bootstrap
+- Priority: P0
+- Goal: Fill the ordinary candidate pool first.
+- Evidence: data/manifests/early-a.json, data/manifests/early-b.json, data/manifests/early-c.json
+- Outputs: src/early.py
+- Validation: true
+
+## DSCON-G999 Late retained goal
+
+- Status: active
+- Parent:
+- Fib priority: 999
+- Track: drift
+- Priority: P3
+- Goal: Retain this exact legacy migration candidate.
+- Evidence: data/manifests/late.json
+- Outputs: src/late.py
+- Validation: true
+""",
+        encoding="utf-8",
+    )
+    all_findings = scan_objective_gaps(
+        repo,
+        objective_path=objective_path,
+        max_findings=16,
+        surplus_findings_per_goal=3,
+        surplus_min_terms_per_todo=1,
+    )
+    retained = next(
+        finding
+        for finding in all_findings
+        if finding.goal_id == "DSCON-G999"
+    )
+
+    constrained = scan_objective_gaps(
+        repo,
+        objective_path=objective_path,
+        max_findings=1,
+        seen_fingerprints=[retained.fingerprint],
+        retain_fingerprints=[retained.fingerprint],
+        surplus_findings_per_goal=3,
+        surplus_min_terms_per_todo=1,
+    )
+
+    assert constrained[0].fingerprint == retained.fingerprint
+    assert constrained[0].goal_id == "DSCON-G999"
+    assert len(
+        [
+            finding
+            for finding in constrained
+            if finding.fingerprint == retained.fingerprint
+        ]
+    ) == 1
+
+
+def test_objective_refill_repairs_artifacts_after_interrupted_card_rotation(
+    tmp_path,
+    monkeypatch,
+):
+    seeded = _seed_legacy_dscon_evidence_output_card(tmp_path)
+    write_bundles = objective_graph_module.write_bundle_shards
+
+    def interrupt_after_board(**_kwargs):
+        raise RuntimeError("simulated interruption after locked board rotation")
+
+    monkeypatch.setattr(
+        objective_graph_module,
+        "write_bundle_shards",
+        interrupt_after_board,
+    )
+    with pytest.raises(RuntimeError, match="simulated interruption"):
+        generate_objective_todos(
+            repo_root=seeded["repo"],
+            objective_path=seeded["objective_path"],
+            todo_path=seeded["todo_path"],
+            discovery_dir=seeded["discovery_dir"],
+            bundle_dir=seeded["bundle_dir"],
+            task_prefix="DSCON-",
+            precomputed_findings=[seeded["finding"]],
+            persist_ast_dataset=False,
+            write_todo_vector_index=True,
+            discovery_output_path=(
+                "data/datasets_contract_analysis/agent_supervisor/discovery"
+            ),
+        )
+    assert seeded["current_identity"].canonical_task_cid in (
+        seeded["todo_path"].read_text(encoding="utf-8")
+    )
+    assert "Evidence outputs:" not in (
+        seeded["discovery_path"].read_text(encoding="utf-8")
+    )
+
+    monkeypatch.setattr(
+        objective_graph_module,
+        "write_bundle_shards",
+        write_bundles,
+    )
+    recovered = generate_objective_todos(
+        repo_root=seeded["repo"],
+        objective_path=seeded["objective_path"],
+        todo_path=seeded["todo_path"],
+        discovery_dir=seeded["discovery_dir"],
+        bundle_dir=seeded["bundle_dir"],
+        task_prefix="DSCON-",
+        precomputed_findings=[seeded["finding"]],
+        persist_ast_dataset=False,
+        write_todo_vector_index=True,
+        discovery_output_path=(
+            "data/datasets_contract_analysis/agent_supervisor/discovery"
+        ),
+    )
+    assert recovered == []
+    assert (
+        f"Canonical task CID: "
+        f"{seeded['current_identity'].canonical_task_cid}"
+        in seeded["discovery_path"].read_text(encoding="utf-8")
+    )
+    assert (
+        seeded["current_identity"].canonical_task_cid
+        in seeded["shard_path"].read_text(encoding="utf-8")
+    )
+
+
+@pytest.mark.parametrize("status", ["completed", "in_progress", "running"])
+def test_objective_refill_does_not_reproject_terminal_or_active_cards(
+    tmp_path,
+    status,
+):
+    seeded = _seed_legacy_dscon_evidence_output_card(tmp_path)
+    board = seeded["todo_path"].read_text(encoding="utf-8").replace(
+        "- Status: todo",
+        f"- Status: {status}",
+        1,
+    )
+    seeded["todo_path"].write_text(board, encoding="utf-8")
+    before = {
+        path: path.read_bytes()
+        for path in (
+            seeded["todo_path"],
+            seeded["discovery_path"],
+            seeded["shard_path"],
+            seeded["bundle_dir"] / "index.json",
+            seeded["vector_path"],
+        )
+    }
+
+    records = generate_objective_todos(
+        repo_root=seeded["repo"],
+        objective_path=seeded["objective_path"],
+        todo_path=seeded["todo_path"],
+        discovery_dir=seeded["discovery_dir"],
+        bundle_dir=seeded["bundle_dir"],
+        task_prefix="DSCON-",
+        precomputed_findings=[seeded["finding"]],
+        persist_ast_dataset=False,
+        write_todo_vector_index=True,
+        discovery_output_path=(
+            "data/datasets_contract_analysis/agent_supervisor/discovery"
+        ),
+    )
+
+    assert records == []
+    assert {path: path.read_bytes() for path in before} == before
+
+
+def test_objective_refill_fails_closed_for_ambiguous_legacy_card_binding(
+    tmp_path,
+):
+    seeded = _seed_legacy_dscon_evidence_output_card(tmp_path)
+    board = seeded["todo_path"].read_text(encoding="utf-8")
+    original_block = board.split(f"## {seeded['task_id']} ", 1)[1]
+    ambiguous_block = (
+        f"## DSCON-099 {original_block}"
+    )
+    seeded["todo_path"].write_text(
+        board.rstrip() + "\n\n" + ambiguous_block,
+        encoding="utf-8",
+    )
+    before = seeded["todo_path"].read_bytes()
+
+    records = generate_objective_todos(
+        repo_root=seeded["repo"],
+        objective_path=seeded["objective_path"],
+        todo_path=seeded["todo_path"],
+        discovery_dir=seeded["discovery_dir"],
+        bundle_dir=seeded["bundle_dir"],
+        task_prefix="DSCON-",
+        precomputed_findings=[seeded["finding"]],
+        persist_ast_dataset=False,
+        write_todo_vector_index=False,
+        discovery_output_path=(
+            "data/datasets_contract_analysis/agent_supervisor/discovery"
+        ),
+    )
+
+    assert records == []
+    assert seeded["todo_path"].read_bytes() == before
+
+
+@pytest.mark.parametrize(
+    "unsafe_requirement",
+    [
+        "operator approval",
+        "123456789012345678901234567890",
+        "https://example.invalid/proof.json",
+        "/absolute/proof.json",
+        r"C:\proof.json",
+        "../proof.json",
+        "./proof.json",
+        "data/proof.json/",
+        "data//proof.json",
+        "data/*/proof.json",
+        "data/\nproof.json",
+        ".git/config.json",
+        "operator/approval",
+    ],
+)
+def test_objective_evidence_output_projection_rejects_noncanonical_authority(
+    unsafe_requirement,
+):
+    finding = ObjectiveFinding(
+        fingerprint="unsafe-path-evidence",
+        goal_id="DSCON-G020",
+        title="Reject unsafe path evidence",
+        summary="Reject unsafe path evidence",
+        priority="P0",
+        track="datasets-contract-analysis",
+        missing_evidence=[
+            "data/manifests/coverage.json",
+            unsafe_requirement,
+        ],
+        present_evidence={},
+        evidence_methods=[],
+        objective_path="docs/objectives.md",
+        outputs=["src/coverage.py"],
+        validation="true",
+        evidence_subset=[
+            "data/manifests/coverage.json",
+            unsafe_requirement,
+        ],
+    )
+
+    assert objective_finding_evidence_output_paths(finding) == [
+        "data/manifests/coverage.json"
+    ]
 
 
 def test_generate_objective_todos_projects_goal_dependencies_to_task_ids(tmp_path):

@@ -25,6 +25,7 @@ from ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor import (
 from ipfs_accelerate_py.agent_supervisor.runtime.event_log import append_jsonl_event
 from ipfs_accelerate_py.agent_supervisor.merge.lease_coordination import (
     LeaseCoordinator,
+    LeaseExpiredError,
     profile_g_cid,
 )
 from ipfs_accelerate_py.agent_supervisor import leased_lane as leased_lane_module
@@ -1865,6 +1866,80 @@ def test_manifest_excludes_superseded_bundle_revisions(tmp_path: Path) -> None:
         assert len(coordinator.list_tasks(task_cids={current["tasks"][0]["task_cid"]})) == 1
 
 
+def test_stop_manifest_excludes_superseded_bundle_revisions(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Terminal projection must not resurrect every historical lease row."""
+
+    repo = tmp_path / "repo"
+    index = repo / "index.json"
+    launcher = _FakeLauncher()
+    _write_index(index, "T-1")
+    scheduler = _scheduler(tmp_path, index, launcher)
+    current_task_cid = scheduler._plan()[0].task_cid
+    rows = [
+        {"task_cid": "historical-task-cid", "state": "completed"},
+        {"task_cid": current_task_cid, "state": "completed"},
+    ]
+    observed_queries: list[tuple[set[str] | None, bool]] = []
+
+    class _ProjectionCoordinator:
+        def __init__(self, _path: Path) -> None:
+            pass
+
+        def __enter__(self) -> Any:
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+        def list_tasks(
+            self,
+            *,
+            task_cids: set[str] | None = None,
+            include_claimability: bool = False,
+        ) -> list[dict[str, Any]]:
+            observed_queries.append(
+                (
+                    set(task_cids) if task_cids is not None else None,
+                    include_claimability,
+                )
+            )
+            if task_cids is None:
+                return list(rows)
+            return [row for row in rows if row["task_cid"] in task_cids]
+
+    def project_manifest(
+        *,
+        discovered: Any,
+        task_projection: Any,
+        **_kwargs: Any,
+    ) -> dict[str, Any]:
+        projected = list(task_projection)
+        return {
+            "planned_count": len(discovered),
+            "completed_count": sum(
+                item.get("state") == "completed" for item in projected
+            ),
+            "tasks": projected,
+        }
+
+    monkeypatch.setattr(
+        bundle_supervisor_module,
+        "LeaseCoordinator",
+        _ProjectionCoordinator,
+    )
+    monkeypatch.setattr(scheduler, "_write_live_manifest", project_manifest)
+
+    terminal = scheduler.stop()
+
+    assert terminal["planned_count"] == 1
+    assert terminal["completed_count"] == 1
+    assert terminal["tasks"] == [rows[1]]
+    assert observed_queries == [({current_task_cid}, True)]
+
+
 def test_live_bundle_revision_blocks_replacement_with_the_same_bundle_key(
     tmp_path: Path,
 ) -> None:
@@ -2028,6 +2103,278 @@ def test_leased_lane_publishes_terminal_and_blocked_projection(tmp_path: Path) -
             eligible_task_cids=(blocked_grant.task_cid,),
             requested_lease_ms=5_000,
         ) is None
+
+
+def test_leased_lane_retries_transient_duckdb_lock_before_lease_expiry(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    duckdb = pytest.importorskip("duckdb")
+    coordination = tmp_path / "coordination.sqlite3"
+    bundle = {
+        "bundle_key": "objective/test/transient-coordination-lock",
+        "tasks": [{"task_id": "T-TRANSIENT-LOCK"}],
+    }
+    with LeaseCoordinator(coordination) as coordinator:
+        registered = coordinator.register_bundle(bundle)
+        grant = coordinator.claim(
+            registered["task_cid"],
+            "did:web:worker.example",
+            requested_lease_ms=5_000,
+        )
+
+    original_heartbeat = LeaseCoordinator.heartbeat
+    heartbeat_calls = 0
+    retry_succeeded = False
+
+    def flaky_heartbeat(self, current_grant, **kwargs):
+        nonlocal heartbeat_calls, retry_succeeded
+        heartbeat_calls += 1
+        if heartbeat_calls == 2:
+            raise duckdb.IOException(
+                'IO Error: Could not set lock on file "coordination.sqlite3": '
+                "Conflicting lock is held"
+            )
+        result = original_heartbeat(self, current_grant, **kwargs)
+        if heartbeat_calls == 3:
+            retry_succeeded = True
+        return result
+
+    class Process:
+        pid = 43_211
+        returncode: int | None = None
+        fenced_while_alive = False
+
+        def poll(self):
+            if retry_succeeded and self.returncode is None:
+                self.returncode = 0
+            return self.returncode
+
+        def wait(self, timeout=None):
+            return self.returncode
+
+    process = Process()
+
+    def stop_tree(candidate, *, timeout=5.0, fence_descendants=False):
+        assert candidate is process
+        assert fence_descendants is True
+        candidate.fenced_while_alive = candidate.returncode is None
+        if candidate.returncode is None:
+            candidate.returncode = -signal.SIGTERM
+
+    monkeypatch.setattr(LeaseCoordinator, "heartbeat", flaky_heartbeat)
+    monkeypatch.setattr(
+        leased_lane_module.subprocess,
+        "Popen",
+        lambda _command, **_kwargs: process,
+    )
+    monkeypatch.setattr(leased_lane_module, "_terminate_child", stop_tree)
+
+    result = run_leased_lane_result(
+        coordination_path=coordination,
+        grant=grant,
+        command=(sys.executable, "-c", "pass"),
+        lease_ms=5_000,
+        heartbeat_interval=0.01,
+        resource_sampler=lambda **_kwargs: {},
+    )
+
+    assert heartbeat_calls >= 4
+    assert retry_succeeded is True
+    assert process.fenced_while_alive is False
+    assert result.successful is True
+    assert result.claim_cid == grant.claim_cid
+    assert result.fencing_token == grant.fencing_token
+    with LeaseCoordinator(coordination) as coordinator:
+        receipts = coordinator.list_receipts(grant.task_cid)
+    assert len(receipts) == 1
+    assert receipts[0]["receipt"]["status"] == "succeeded"
+
+
+def test_leased_lane_fences_when_duckdb_lock_persists_to_lease_deadline(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    duckdb = pytest.importorskip("duckdb")
+    coordination = tmp_path / "coordination.sqlite3"
+    with LeaseCoordinator(coordination) as coordinator:
+        registered = coordinator.register_bundle(
+            {
+                "bundle_key": "objective/test/persistent-coordination-lock",
+                "tasks": [{"task_id": "T-PERSISTENT-LOCK"}],
+            }
+        )
+        grant = coordinator.claim(
+            registered["task_cid"],
+            "did:web:worker.example",
+            requested_lease_ms=5_000,
+        )
+
+    lock_error = duckdb.IOException(
+        'IO Error: Could not set lock on file "coordination.sqlite3": '
+        "Conflicting lock is held"
+    )
+    original_heartbeat = LeaseCoordinator.heartbeat
+    heartbeat_calls = 0
+    renew_calls = 0
+
+    def locked_heartbeat(self, current_grant, **kwargs):
+        nonlocal heartbeat_calls
+        heartbeat_calls += 1
+        if heartbeat_calls == 1:
+            return original_heartbeat(self, current_grant, **kwargs)
+        raise lock_error
+
+    def locked_renew(self, current_grant, **kwargs):
+        nonlocal renew_calls
+        renew_calls += 1
+        raise lock_error
+
+    retry_deadline_ms = (
+        grant.lease_expires_at_ms
+        - leased_lane_module._LEASE_EXPIRY_SAFETY_MARGIN_MS
+    )
+    clock_values = iter(
+        (
+            retry_deadline_ms - 4_000,
+            retry_deadline_ms - 3_900,
+            retry_deadline_ms - 1_700,
+            retry_deadline_ms - 1_600,
+            retry_deadline_ms - 1_200,
+            retry_deadline_ms - 600,
+            retry_deadline_ms,
+        )
+    )
+    clock_calls = 0
+
+    def advancing_clock() -> int:
+        nonlocal clock_calls
+        clock_calls += 1
+        return next(clock_values, retry_deadline_ms)
+
+    class Process:
+        pid = 43_212
+        returncode: int | None = None
+        fenced_while_alive = False
+
+        def poll(self):
+            return self.returncode
+
+        def wait(self, timeout=None):
+            return self.returncode
+
+    process = Process()
+
+    def stop_tree(candidate, *, timeout=5.0, fence_descendants=False):
+        assert candidate is process
+        assert fence_descendants is True
+        candidate.fenced_while_alive = candidate.returncode is None
+        candidate.returncode = -signal.SIGTERM
+
+    monkeypatch.setattr(LeaseCoordinator, "heartbeat", locked_heartbeat)
+    monkeypatch.setattr(LeaseCoordinator, "renew", locked_renew)
+    monkeypatch.setattr(leased_lane_module, "_now_ms", advancing_clock)
+    monkeypatch.setattr(
+        leased_lane_module.subprocess,
+        "Popen",
+        lambda _command, **_kwargs: process,
+    )
+    monkeypatch.setattr(leased_lane_module, "_terminate_child", stop_tree)
+
+    result = run_leased_lane_result(
+        coordination_path=coordination,
+        grant=grant,
+        command=(sys.executable, "-c", "pass"),
+        lease_ms=5_000,
+        heartbeat_interval=0.01,
+        resource_sampler=lambda **_kwargs: {},
+    )
+
+    assert heartbeat_calls == 2
+    assert renew_calls == 1
+    assert clock_calls >= 7
+    assert process.fenced_while_alive is True
+    assert result.successful is False
+    assert result.disposition == "failed"
+    assert result.exit_code == leased_lane_module.START_FAILED_EXIT_CODE
+    assert result.lease_released is True
+    assert result.fencing_token == grant.fencing_token
+    with LeaseCoordinator(coordination) as coordinator:
+        assert coordinator.list_receipts(grant.task_cid) == []
+
+
+def test_leased_lane_does_not_retry_lease_error(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    coordination = tmp_path / "coordination.sqlite3"
+    with LeaseCoordinator(coordination) as coordinator:
+        registered = coordinator.register_bundle(
+            {
+                "bundle_key": "objective/test/lease-loss",
+                "tasks": [{"task_id": "T-LEASE-LOSS"}],
+            }
+        )
+        grant = coordinator.claim(
+            registered["task_cid"],
+            "did:web:worker.example",
+            requested_lease_ms=5_000,
+        )
+
+    original_heartbeat = LeaseCoordinator.heartbeat
+    heartbeat_calls = 0
+
+    def expired_heartbeat(self, current_grant, **kwargs):
+        nonlocal heartbeat_calls
+        heartbeat_calls += 1
+        if heartbeat_calls == 1:
+            return original_heartbeat(self, current_grant, **kwargs)
+        raise LeaseExpiredError("lease has expired")
+
+    class Process:
+        pid = 43_213
+        returncode: int | None = None
+        fenced_while_alive = False
+
+        def poll(self):
+            return self.returncode
+
+        def wait(self, timeout=None):
+            return self.returncode
+
+    process = Process()
+
+    def stop_tree(candidate, *, timeout=5.0, fence_descendants=False):
+        assert candidate is process
+        assert fence_descendants is True
+        candidate.fenced_while_alive = candidate.returncode is None
+        candidate.returncode = -signal.SIGTERM
+
+    monkeypatch.setattr(LeaseCoordinator, "heartbeat", expired_heartbeat)
+    monkeypatch.setattr(
+        leased_lane_module.subprocess,
+        "Popen",
+        lambda _command, **_kwargs: process,
+    )
+    monkeypatch.setattr(leased_lane_module, "_terminate_child", stop_tree)
+
+    result = run_leased_lane_result(
+        coordination_path=coordination,
+        grant=grant,
+        command=(sys.executable, "-c", "pass"),
+        lease_ms=5_000,
+        heartbeat_interval=0.01,
+        resource_sampler=lambda **_kwargs: {},
+    )
+
+    assert heartbeat_calls == 2
+    assert process.fenced_while_alive is True
+    assert result.successful is False
+    assert result.disposition == "fenced"
+    assert result.exit_code == leased_lane_module.FENCED_EXIT_CODE
+    assert result.fencing_token == grant.fencing_token
+    with LeaseCoordinator(coordination) as coordinator:
+        assert coordinator.list_receipts(grant.task_cid) == []
 
 
 @pytest.mark.parametrize("attempt_exhausted", [False, True])
@@ -2491,7 +2838,7 @@ def test_leased_lane_signal_terminates_detached_descendants(tmp_path: Path) -> N
         [
             sys.executable,
             "-m",
-            "ipfs_accelerate_py.agent_supervisor.leased_lane",
+            "ipfs_accelerate_py.agent_supervisor.merge.leased_lane",
             "--coordination-path",
             str(coordination),
             "--grant-json",

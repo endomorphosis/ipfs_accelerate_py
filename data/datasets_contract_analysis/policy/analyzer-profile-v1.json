@@ -1,0 +1,110 @@
+{
+  "schema": "datasets_contract_analysis/analyzer-profile@1",
+  "profile_id": "datasets-contract-hermetic-v1",
+  "goal_id": "DSCON-G050",
+  "resource_class": "cpu-medium",
+  "resource_bounds_evidence": "data/datasets_contract_analysis/policy/resource-bounds-v1.json",
+  "tools": [
+    {
+      "name": "cpython",
+      "kind": "executable",
+      "locator": "python3.12",
+      "version": "3.12.3",
+      "identity": "sha256:1a301bb1763139d48ae638d97b11edf56de6cd185e1b054eae6dc28c271c0c5f",
+      "roles": [
+        "parser",
+        "python"
+      ],
+      "required": true
+    },
+    {
+      "name": "node",
+      "kind": "executable",
+      "locator": "node",
+      "version": "18.19.1",
+      "identity": "sha256:2b0f6efd95c31c5538cc0a9042d5d13b7328cffcfdcc409f2e2ef336c4402086",
+      "roles": [
+        "node"
+      ],
+      "required": true
+    },
+    {
+      "name": "typescript-parser",
+      "kind": "reviewed-manifest",
+      "locator": "typescript@5.6.3",
+      "version": "5.6.3",
+      "identity": "sha256:7372ce6f9939dbc90ebcbd3874dfdecae9440dc503ecf2cf61510ccea54da4f4",
+      "roles": [
+        "parser",
+        "typescript"
+      ],
+      "required": true
+    },
+    {
+      "name": "cvc5",
+      "kind": "executable",
+      "locator": "cvc5",
+      "version": "1.3.3+git.8ff882e",
+      "identity": "sha256:85827e46576d68570c520a2b2927fe1d260d0bfb2b93919f53f50ed29ee1e419",
+      "roles": [
+        "proof",
+        "solver"
+      ],
+      "required": true
+    }
+  ],
+  "locks": [
+    {
+      "path": "ipfs_accelerate_py/requirements.txt",
+      "identity": "sha256:e8cc081a9ca36e37f6542f378cf6741d026124a0502f5ea5696529252fa7e040"
+    },
+    {
+      "path": "ipfs_datasets_py/requirements.txt",
+      "identity": "sha256:86bc49ed9aea4cfc3b97f70417cb4282c5ac58f34b6f9dce36062c7e63fe7e45"
+    },
+    {
+      "path": "ipfs_datasets_py/requirements-theorem-provers.txt",
+      "identity": "sha256:d164f1e1553dfc0c46c41503fb8a8bd4d3f3a2c352fd0ea74da1a53d18b8e867"
+    }
+  ],
+  "resource_bounds": {
+    "schema": "datasets_contract_analysis/resource-bounds@1",
+    "class": "cpu-medium",
+    "max_blob_bytes": 8388608,
+    "max_files": 50000,
+    "max_ast_nodes": 5000000,
+    "max_edges": 10000000,
+    "max_scc_nodes": 10000,
+    "max_recursion_depth": 128,
+    "max_timeout_ms": 900000,
+    "max_memory_bytes": 4294967296,
+    "max_proof_bytes": 8388608,
+    "max_receipt_bytes": 1048576,
+    "max_findings": 10000,
+    "max_tasks": 1000,
+    "max_prompt_bytes": 8192,
+    "max_prompt_tokens": 2048
+  },
+  "sandbox": {
+    "network": "deny",
+    "auto_install": "deny",
+    "home_cache": "deny",
+    "credentials": "deny",
+    "read_roots": [
+      "."
+    ],
+    "write_roots": [
+      "data/datasets_contract_analysis/runtime",
+      "data/datasets_contract_analysis/scans",
+      "data/datasets_contract_analysis/receipts"
+    ],
+    "environment_allowlist": [
+      "LANG",
+      "LC_ALL",
+      "PATH",
+      "PYTHONHASHSEED",
+      "SOURCE_DATE_EPOCH",
+      "TZ"
+    ]
+  }
+}

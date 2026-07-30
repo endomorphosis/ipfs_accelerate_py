@@ -51,6 +51,24 @@ def test_task_identity_changes_when_semantic_acceptance_changes() -> None:
     assert canonical_task_identity(first).canonical_task_cid != canonical_task_identity(second).canonical_task_cid
 
 
+def test_task_identity_binds_explicit_evidence_outputs() -> None:
+    first = _task("REF-001")
+    second = _task("REF-001")
+    first["metadata"] = {
+        **first["metadata"],
+        "evidence outputs": "data/manifests/coverage.json",
+    }
+    second["metadata"] = {
+        **second["metadata"],
+        "evidence outputs": "data/manifests/repository-root.json",
+    }
+
+    assert (
+        canonical_task_identity(first).canonical_task_cid
+        != canonical_task_identity(second).canonical_task_cid
+    )
+
+
 def test_explicit_dedupe_key_migrates_legacy_aliases_idempotently() -> None:
     first = _task("REF-001")
     second = _task("OTHER-002")

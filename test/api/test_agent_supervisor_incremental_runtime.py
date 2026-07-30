@@ -479,12 +479,24 @@ def test_implementation_daemon_releases_pool_lease_before_merge_queue_handoff(tm
     _git(repo, "add", ".")
     _git(repo, "commit", "-m", "seed")
     worktree_root = tmp_path / "pool"
+    todo_path = tmp_path / "tasks.md"
+    todo_path.write_text(
+        "## INC-001 Release pooled merge handoff\n\n"
+        "- Status: todo\n"
+        "- Completion: manual\n"
+        "- Priority: P1\n"
+        "- Track: runtime\n"
+        "- Outputs: feature.py\n"
+        "- Validation: python -m py_compile feature.py\n",
+        encoding="utf-8",
+    )
     daemon = PortalImplementationDaemon(
-        todo_path=tmp_path / "tasks.md",
+        todo_path=todo_path,
         state_path=tmp_path / "state.json",
         strategy_path=tmp_path / "strategy.json",
         events_path=tmp_path / "events.jsonl",
         repo_root=repo,
+        task_header_prefix="## INC-",
         implement=True,
         implementation_command=(
             "python -c \"from pathlib import Path; "
@@ -494,16 +506,7 @@ def test_implementation_daemon_releases_pool_lease_before_merge_queue_handoff(tm
         worktree_root=worktree_root,
     )
     daemon._consume_one_merge_candidate = lambda: None  # type: ignore[method-assign]
-    task = PortalTask(
-        task_id="INC-001",
-        title="Release pooled merge handoff",
-        status="todo",
-        completion="manual",
-        priority="P1",
-        track="runtime",
-        outputs=["feature.py"],
-        validation=["python -m py_compile feature.py"],
-    )
+    task = daemon._load_tasks()[0]
 
     result = daemon._run_implementation(task, PortalTaskState())
 
@@ -512,8 +515,18 @@ def test_implementation_daemon_releases_pool_lease_before_merge_queue_handoff(tm
     assert merge_result["queued"] is True
     assert handoff["released"] is True
     assert handoff["pooled"] is True
+    assert handoff["lifecycle_finalize"]["finalized"] is True
+    assert handoff["lifecycle_finalize"]["reason"] == "pooled_merge_queue_handoff"
     assert daemon._worktree_pool_leases == {}
     assert list((worktree_root / ".pool-state").glob("*.lock")) == []
+    assert (
+        daemon.worktree_lifecycle.load_task_attempt(
+            canonical_task_cid=daemon._canonical_ref(task),
+            task_id=task.task_id,
+            attempt=1,
+        )
+        is None
+    )
     queued = daemon.merge_queue.dequeue(consumer_id="merge-train:test")
     assert queued is not None
     assert queued.metadata["worktree_path"] == ""
@@ -555,6 +568,149 @@ def test_failed_implementation_does_not_pin_pooled_worktree(tmp_path: Path) -> N
     assert result["cleanup_result"]["pool_release"]["released"] is True
     assert daemon._worktree_pool_leases == {}
     assert list((worktree_root / ".pool-state").glob("*.lock")) == []
+
+
+def test_pooled_provider_deferral_releases_same_attempt_lifecycle(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "seed")
+    worktree_root = tmp_path / "pool"
+    daemon = PortalImplementationDaemon(
+        todo_path=tmp_path / "tasks.md",
+        state_path=tmp_path / "state.json",
+        strategy_path=tmp_path / "strategy.json",
+        events_path=tmp_path / "events.jsonl",
+        repo_root=repo,
+        implement=True,
+        implementation_command=(
+            "python -c \"print(\\\"ERROR: You've hit your usage limit.\\\"); "
+            "raise SystemExit(1)\""
+        ),
+        use_ephemeral_worktree=True,
+        worktree_root=worktree_root,
+    )
+    task = PortalTask(
+        task_id="INC-003",
+        title="Release deferred pooled implementation lifecycle",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="runtime",
+    )
+
+    first = daemon._run_implementation(task, PortalTaskState())
+
+    assert first["deferred"] is True
+    assert first["reason"] == "provider_capacity_exhausted"
+    assert first["attempt_consumed"] is False
+    assert first["cleanup_result"]["pool_release"]["released"] is True
+    assert first["cleanup_result"]["lifecycle_finalize"]["finalized"] is True
+    assert (
+        daemon.worktree_lifecycle.load_task_attempt(
+            canonical_task_cid=daemon._canonical_ref(task),
+            task_id=task.task_id,
+            attempt=1,
+        )
+        is None
+    )
+
+    daemon._active_provider_capacity_backoff = lambda: {}  # type: ignore[method-assign]
+    daemon.implementation_command = "python -c \"raise SystemExit(7)\""
+    second = daemon._run_implementation(
+        task,
+        PortalTaskState.load(daemon.state_path),
+    )
+
+    assert second["returncode"] == 7
+    assert second.get("reason") != "worktree_lifecycle_claim_exists"
+
+
+def test_nonpooled_provider_exit_finalizes_preserved_worktree_lifecycle(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "seed")
+    worktree_root = tmp_path / "worktrees"
+    daemon = PortalImplementationDaemon(
+        todo_path=tmp_path / "tasks.md",
+        state_path=tmp_path / "state.json",
+        strategy_path=tmp_path / "strategy.json",
+        events_path=tmp_path / "events.jsonl",
+        repo_root=repo,
+        implement=True,
+        implementation_command=(
+            "python -c \"print(\\\"ERROR: You've hit your usage limit.\\\"); "
+            "raise SystemExit(1)\""
+        ),
+        use_ephemeral_worktree=True,
+        worktree_root=worktree_root,
+        worktree_pool_enabled=False,
+    )
+    task = PortalTask(
+        task_id="INC-004",
+        title="Release deferred non-pooled implementation lifecycle",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="runtime",
+    )
+
+    first = daemon._run_implementation(task, PortalTaskState())
+
+    assert first["deferred"] is True
+    assert first["reason"] == "provider_capacity_exhausted"
+    assert first["attempt_consumed"] is False
+    assert first["cleanup_result"]["reason"] == (
+        "failed_implementation_worktree_preserved"
+    )
+    assert first["cleanup_result"]["cleaned"] is False
+    assert first["cleanup_result"]["lifecycle_finalize"]["finalized"] is True
+    first_worktree = Path(first["worktree_path"])
+    assert first_worktree.exists()
+    assert (
+        daemon.worktree_lifecycle.load_task_attempt(
+            canonical_task_cid=daemon._canonical_ref(task),
+            task_id=task.task_id,
+            attempt=1,
+        )
+        is None
+    )
+
+    # Remove the intentionally preserved diagnostic checkout so an immediate
+    # same-attempt retry cannot collide with the timestamp-derived branch.
+    _git(repo, "worktree", "remove", "--force", str(first_worktree))
+    _git(repo, "branch", "-D", first["branch"])
+    daemon._active_provider_capacity_backoff = lambda: {}  # type: ignore[method-assign]
+    daemon.implementation_command = "python -c \"raise SystemExit(7)\""
+
+    second = daemon._run_implementation(
+        task,
+        PortalTaskState.load(daemon.state_path),
+    )
+
+    assert second["returncode"] == 7
+    assert second.get("reason") != "worktree_lifecycle_claim_exists"
+    assert second["cleanup_result"]["reason"] == (
+        "failed_implementation_worktree_preserved"
+    )
+    assert second["cleanup_result"]["cleaned"] is False
+    assert second["cleanup_result"]["lifecycle_finalize"]["finalized"] is True
+    assert Path(second["worktree_path"]).exists()
+    assert (
+        daemon.worktree_lifecycle.load_task_attempt(
+            canonical_task_cid=daemon._canonical_ref(task),
+            task_id=task.task_id,
+            attempt=1,
+        )
+        is None
+    )
 
 
 def test_missing_pooled_workspace_is_discarded_after_setup_race(
@@ -703,3 +859,62 @@ def test_supervisor_does_not_fence_a_dead_pooled_worktree_lease(
     assert lease.path.resolve() not in owners
     release = lease.release(reusable=False)
     assert release["released"] is True
+
+
+def test_supervisor_does_not_cleanup_an_idle_pooled_worktree(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "seed")
+    worktree_root = tmp_path / "pool"
+    pool = WorktreePool(repo_root=repo, worktree_root=worktree_root)
+    lease = pool.acquire(
+        cache_key="idle-pool-entry",
+        base_ref="main",
+        branch_name="implementation/idle-pool-entry",
+    )
+    idle_path = lease.path
+    entry_id = lease.entry_id
+    release = lease.release(reusable=True)
+    assert release["released"] is True
+    assert release["pooled"] is True
+
+    state_dir = tmp_path / "state" / "lane-0"
+    supervisor = PortalImplementationSupervisor(
+        PortalSupervisorConfig(
+            todo_path=tmp_path / "tasks.md",
+            state_path=state_dir / "task_state.json",
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "events.jsonl",
+            state_dir=state_dir,
+            repo_root=repo,
+            worktree_root=worktree_root,
+        )
+    )
+    supervisor._list_process_commands = lambda: []  # type: ignore[method-assign]
+
+    result = supervisor.cleanup_backlogged_worktrees()
+
+    idle_skip = next(
+        item
+        for item in result["skipped"]
+        if item["reason"] == "idle_worktree_pool_entry"
+    )
+    assert idle_skip["path"] == str(idle_path)
+    assert idle_skip["owner_source"] == "worktree_pool_lease"
+    assert idle_skip["owner_lease_state"] == "idle"
+    assert idle_skip["owner_pool_state_path"].endswith(f"{entry_id}.json")
+    assert result["removed_count"] == 0
+    assert idle_path.exists()
+
+    warm = pool.acquire(
+        cache_key="idle-pool-entry",
+        base_ref="main",
+        branch_name="implementation/reused-idle-pool-entry",
+    )
+    assert warm.reused is True
+    assert warm.path == idle_path
+    assert warm.release(reusable=False)["released"] is True

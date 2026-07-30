@@ -70,6 +70,7 @@ from .objective_graph import (
 )
 from ..validation.validation_commands import split_validation_commands
 from ..proof.formal_verification_contracts import content_identity
+from ..merge.checkout_lock import objective_admission_lock_path
 from ..validation.validation_runtime import (
     build_validation_environment,
     validation_shell_command,
@@ -2393,6 +2394,159 @@ def render_goal_block(*, goal_id: str, title: str, fields: dict[str, str]) -> st
     return "\n".join(rows).rstrip() + "\n"
 
 
+_GENERATED_OBJECTIVE_REQUIRED_FIELDS = frozenset(
+    {
+        "status",
+        "parent",
+        "fib_priority",
+        "track",
+        "priority",
+        "bundle",
+        "goal",
+        "evidence",
+        "outputs",
+        "validation",
+        "acceptance",
+        "gap_task",
+    }
+)
+_GENERATED_OBJECTIVE_NONEMPTY_FIELDS = (
+    _GENERATED_OBJECTIVE_REQUIRED_FIELDS - {"parent"}
+)
+
+
+def _validate_generated_objective_candidate(
+    *,
+    prior_text: str,
+    candidate_text: str,
+    appended_goal_ids: Sequence[str],
+) -> None:
+    """Fail closed before replacing an objective heap with generated goals.
+
+    Generated objective maintenance is append-only at this boundary.  Parse
+    the complete candidate with the same native parser used by the graph and
+    scheduler, preserve the exact prior goal sequence, and require each new
+    goal to carry the structural fields needed by downstream completion and
+    board validators.  In particular, an evidence label is not an acceptance
+    contract: generated goals must state both.
+    """
+
+    expected_appended_ids = [str(item).strip() for item in appended_goal_ids]
+    if (
+        not expected_appended_ids
+        or any(not item for item in expected_appended_ids)
+        or len(expected_appended_ids) != len(set(expected_appended_ids))
+    ):
+        raise ValueError(
+            "generated objective candidate requires unique appended goal ids"
+        )
+
+    prior_goals = parse_goal_heap(prior_text)
+    candidate_goals = parse_goal_heap(candidate_text)
+    prior_ids = [goal.goal_id for goal in prior_goals]
+    candidate_ids = [goal.goal_id for goal in candidate_goals]
+    expected_ids = [*prior_ids, *expected_appended_ids]
+    if candidate_ids != expected_ids:
+        raise ValueError(
+            "generated objective candidate changed the native goal sequence: "
+            f"expected {expected_ids!r}, parsed {candidate_ids!r}"
+        )
+    if len(candidate_ids) != len(set(candidate_ids)):
+        raise ValueError("generated objective candidate contains duplicate goal ids")
+
+    goals_by_id = {goal.goal_id: goal for goal in candidate_goals}
+    for goal_id in expected_appended_ids:
+        goal = goals_by_id[goal_id]
+        missing = sorted(_GENERATED_OBJECTIVE_REQUIRED_FIELDS - set(goal.fields))
+        if missing:
+            raise ValueError(
+                f"generated objective goal {goal_id} is missing fields: {missing}"
+            )
+        empty = sorted(
+            key
+            for key in _GENERATED_OBJECTIVE_NONEMPTY_FIELDS
+            if not str(goal.fields.get(key) or "").strip()
+        )
+        if empty:
+            raise ValueError(
+                f"generated objective goal {goal_id} has empty fields: {empty}"
+            )
+        parents = tuple(goal.parent_goal_ids)
+        unknown_parents = sorted(
+            parent for parent in parents if parent not in goals_by_id
+        )
+        if unknown_parents:
+            raise ValueError(
+                f"generated objective goal {goal_id} has unknown parents: "
+                f"{unknown_parents}"
+            )
+
+    # A generated root is valid only when creating a new document.  Every
+    # append to an existing heap must retain explicit lineage.
+    if prior_ids:
+        root_appends = [
+            goal_id
+            for goal_id in expected_appended_ids
+            if not goals_by_id[goal_id].parent_goal_ids
+        ]
+        if root_appends:
+            raise ValueError(
+                "generated objective candidate introduced additional roots: "
+                f"{root_appends}"
+            )
+
+    visiting: set[str] = set()
+    visited: set[str] = set()
+
+    def visit(goal_id: str) -> None:
+        if goal_id in visited:
+            return
+        if goal_id in visiting:
+            raise ValueError(
+                f"generated objective candidate contains a parent cycle at {goal_id}"
+            )
+        visiting.add(goal_id)
+        for parent in goals_by_id[goal_id].parent_goal_ids:
+            if parent in goals_by_id:
+                visit(parent)
+        visiting.remove(goal_id)
+        visited.add(goal_id)
+
+    for goal_id in candidate_ids:
+        visit(goal_id)
+
+
+def _write_generated_objective_candidate(
+    objective_path: Path,
+    *,
+    prior_text: str,
+    candidate_text: str,
+    appended_goal_ids: Sequence[str],
+) -> None:
+    """Validate a complete generated heap, then durably replace it."""
+
+    from ..task_sources.duckdb_state import exclusive_file_lock
+
+    lock_path = objective_admission_lock_path(objective_path)
+    with exclusive_file_lock(lock_path, timeout_seconds=30.0):
+        current_text = (
+            objective_path.read_text(encoding="utf-8")
+            if objective_path.exists()
+            else ""
+        )
+        if current_text != prior_text:
+            raise ValueError(
+                "generated objective candidate is stale; refusing to overwrite "
+                "a concurrently changed objective heap"
+            )
+        _validate_generated_objective_candidate(
+            prior_text=prior_text,
+            candidate_text=candidate_text,
+            appended_goal_ids=appended_goal_ids,
+        )
+        _atomic_rewrite(objective_path, candidate_text)
+
+
 def rewrite_goal_fields(text: str, updates: Mapping[str, Mapping[str, str]]) -> str:
     """Rewrite selected markdown goal fields without reparsing the whole file."""
 
@@ -3164,9 +3318,7 @@ def objective_materialization_tree_identity(
 ) -> RepositoryTreeIdentity:
     """Return a tree fence which ignores only this transaction's own files."""
 
-    lock_path = objective_path.with_name(
-        f".{objective_path.name}.admission.lock"
-    )
+    lock_path = objective_admission_lock_path(objective_path)
     return _control_tree_identity(
         repo_root,
         excluded_paths=(
@@ -3769,7 +3921,7 @@ def commit_objective_goal_materialization(
     repo_root = repo_root.resolve()
     if objective_path == journal_path:
         raise ValueError("journal_path must be separate from objective_path")
-    lock_path = objective_path.with_name(f".{objective_path.name}.admission.lock")
+    lock_path = objective_admission_lock_path(objective_path)
 
     from ..task_sources.duckdb_state import exclusive_file_lock
 
@@ -5128,6 +5280,10 @@ def ensure_objective_tracking_document(
                     "Evidence": ", ".join(root_evidence),
                     "Outputs": "ipfs_accelerate_py/agent_supervisor, docs",
                     "Validation": f"test -f {objective_path.as_posix()}",
+                    "Acceptance": (
+                        "Every declared root evidence obligation is current and "
+                        "the declared validation command passes."
+                    ),
                     "Refinement depth": "0",
                     "Conflict policy": "prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts",
                     "Gap task": "Refine this root objective into concrete child goals with code, tests, docs, and runtime evidence.",
@@ -5136,7 +5292,12 @@ def ensure_objective_tracking_document(
             "",
         ]
     )
-    objective_path.write_text(text, encoding="utf-8")
+    _write_generated_objective_candidate(
+        objective_path,
+        prior_text="",
+        candidate_text=text,
+        appended_goal_ids=[root_goal_id],
+    )
     return ObjectiveTrackingResult(objective_path=objective_path, created=True, appended_goal_ids=[root_goal_id])
 
 
@@ -5604,6 +5765,10 @@ def append_interoperability_goals(
             "Evidence": ", ".join(evidence_terms),
             "Outputs": ", ".join([test_path, doc_path, left, right, *descriptor_terms[:4]]),
             "Validation": "python -m pytest tests/integration -q",
+            "Acceptance": (
+                f"`{left}` and `{right}` expose compatible runtime and interface "
+                "contracts, and the declared integration validation passes."
+            ),
             "Refinement depth": "1",
             "Embedding query": (
                 f"{left} {right} interoperability integration test interface descriptor "
@@ -5632,7 +5797,18 @@ def append_interoperability_goals(
             break
 
     if appended_blocks:
-        objective_path.write_text(text.rstrip() + "\n\n" + "\n\n".join(block.strip() for block in appended_blocks) + "\n", encoding="utf-8")
+        candidate_text = (
+            text.rstrip()
+            + "\n\n"
+            + "\n\n".join(block.strip() for block in appended_blocks)
+            + "\n"
+        )
+        _write_generated_objective_candidate(
+            objective_path,
+            prior_text=text,
+            candidate_text=candidate_text,
+            appended_goal_ids=appended_goal_ids,
+        )
     return ObjectiveTrackingResult(objective_path=objective_path, created=False, appended_goal_ids=appended_goal_ids)
 
 
@@ -5928,6 +6104,10 @@ def append_launch_readiness_goals(
             "Evidence": str(template["evidence"]),
             "Outputs": str(template["outputs"]),
             "Validation": str(template["validation"]),
+            "Acceptance": (
+                "The declared launch-readiness evidence and outputs are current, "
+                "and every declared validation command passes."
+            ),
             "Refinement depth": "1",
             "Embedding query": str(template["embedding_query"]),
             "AST query": str(template["ast_query"]),
@@ -5945,9 +6125,17 @@ def append_launch_readiness_goals(
             break
 
     if appended_blocks:
-        objective_path.write_text(
-            text.rstrip() + "\n\n" + "\n\n".join(block.strip() for block in appended_blocks) + "\n",
-            encoding="utf-8",
+        candidate_text = (
+            text.rstrip()
+            + "\n\n"
+            + "\n\n".join(block.strip() for block in appended_blocks)
+            + "\n"
+        )
+        _write_generated_objective_candidate(
+            objective_path,
+            prior_text=text,
+            candidate_text=candidate_text,
+            appended_goal_ids=appended_goal_ids,
         )
     return ObjectiveTrackingResult(objective_path=objective_path, created=False, appended_goal_ids=appended_goal_ids)
 
@@ -5974,6 +6162,15 @@ def refinement_title(parent_title: str, evidence: str) -> str:
 
 def refinement_fields(finding: ObjectiveFinding, *, evidence: str, depth: int, sibling_index: int) -> dict[str, str]:
     outputs = ", ".join(finding.outputs) if finding.outputs else "ipfs_accelerate_py/agent_supervisor, docs, tests"
+    acceptance_subset = [
+        " ".join(str(item).strip().split())
+        for item in finding.acceptance_subset
+        if str(item).strip()
+    ]
+    if not acceptance_subset:
+        raise ValueError(
+            f"objective refinement for {finding.goal_id} has no acceptance subset"
+        )
     return {
         "Status": "active",
         "Parent": finding.goal_id,
@@ -5985,6 +6182,7 @@ def refinement_fields(finding: ObjectiveFinding, *, evidence: str, depth: int, s
         "Evidence": evidence,
         "Outputs": outputs,
         "Validation": finding.validation,
+        "Acceptance": " ; ".join(dict.fromkeys(acceptance_subset)),
         "Refinement depth": str(depth),
         "Embedding query": evidence,
         "AST query": evidence,
@@ -6095,7 +6293,18 @@ def append_refinement_goals(
                 break
 
     if appended_blocks:
-        objective_path.write_text(text.rstrip() + "\n\n" + "\n\n".join(block.strip() for block in appended_blocks) + "\n", encoding="utf-8")
+        candidate_text = (
+            text.rstrip()
+            + "\n\n"
+            + "\n\n".join(block.strip() for block in appended_blocks)
+            + "\n"
+        )
+        _write_generated_objective_candidate(
+            objective_path,
+            prior_text=text,
+            candidate_text=candidate_text,
+            appended_goal_ids=appended_goal_ids,
+        )
     return ObjectiveTrackingResult(objective_path=objective_path, created=False, appended_goal_ids=appended_goal_ids)
 
 

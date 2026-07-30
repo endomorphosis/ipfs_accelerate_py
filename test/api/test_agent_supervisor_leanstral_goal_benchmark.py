@@ -212,6 +212,10 @@ def _baseline_evidence(
         objective_path=str(objective),
         outputs=["src/fixture.py", "test/test_fixture.py"],
         validation="python -m pytest test/test_fixture.py -q",
+        acceptance_subset=[
+            f"Produce current, validated evidence for {item}."
+            for item in visible
+        ],
     )
     result = append_refinement_goals(
         objective,

@@ -1717,6 +1717,24 @@ def write_prover_matrix_projection(
     return payload
 
 
+def project_matrix_entry_to_canonical(entry: ProverMatrixEntry) -> dict[str, Any]:
+    """Project one matrix entry through the supervisor canonical logic adapter."""
+
+    from ..canonical_logic_adapter import get_canonical_logic_adapter
+
+    return get_canonical_logic_adapter().project_matrix_entry(entry)
+
+
+def project_matrix_snapshot_to_canonical(
+    snapshot: ProverMatrixSnapshot,
+) -> dict[str, Any]:
+    """Project a full matrix snapshot for canonical provider/capability consumers."""
+
+    from ..canonical_logic_adapter import get_canonical_logic_adapter
+
+    return get_canonical_logic_adapter().project_matrix_snapshot(snapshot)
+
+
 def _write_prover_matrix_duckdb(
     path: Path,
     payload: Mapping[str, Any],

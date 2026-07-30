@@ -210,6 +210,41 @@ def test_required_context_fails_closed_instead_of_truncating() -> None:
         _compile(evidence=(required,))
 
 
+def test_provider_input_byte_limit_defers_optional_content_as_reference() -> None:
+    unconstrained = ContextCompiler(
+        _budget(max_input_tokens=2_000),
+        tokenizer=_tokenizer,
+        provider_context_window=2_100,
+    ).compile(**BINDING, **CORE)
+    base_bytes = len(render_context_capsule(unconstrained.capsule).encode("utf-8"))
+    optional = _reference(
+        "large-optional",
+        1,
+        priority=100,
+        summary="bounded evidence " * 256,
+    )
+    compiler = ContextCompiler(
+        _budget(max_input_tokens=2_000),
+        tokenizer=_tokenizer,
+        provider_context_window=2_100,
+        provider_max_input_bytes=base_bytes + 256,
+    )
+
+    result = compiler.compile(**BINDING, **CORE, evidence=(optional,))
+
+    assert len(render_context_capsule(result.capsule).encode("utf-8")) <= (
+        base_bytes + 256
+    )
+    assert result.capsule.evidence == ()
+    assert tuple(
+        item.reference_id for item in result.capsule.expansion_references
+    ) == ("large-optional",)
+    assert result.decisions[0].reason is ExclusionReason.TOKEN_BUDGET
+    assert result.capsule.expansion_references[0].referenced_content_id == (
+        optional.referenced_content_id
+    )
+
+
 def test_canonical_provider_input_defeats_forged_reference_token_count() -> None:
     compiler = ContextCompiler(
         _budget(max_input_tokens=100),

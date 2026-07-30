@@ -161,6 +161,32 @@ def _protected_git_worktree_daemon(
     return daemon, repo, workspace, protected
 
 
+def _persist_active_attempt_state(
+    daemon: PortalImplementationDaemon,
+    *,
+    task: PortalTask,
+    workspace: Path,
+    attempt: int = 1,
+) -> PortalTaskState:
+    identity = daemon._identity_for_task(task)
+    state = PortalTaskState()
+    state.implementation_in_progress = True
+    state.active_task_id = task.task_id
+    state.active_task_key = identity.canonical_task_key
+    state.active_task_cid = identity.canonical_task_cid
+    state.active_task_title = task.title
+    state.active_task_track = task.track
+    state.active_attempt = attempt
+    state.active_phase = "implementing"
+    state.active_worktree_path = str(workspace)
+    state.active_branch = "lane"
+    state.last_implementation_task_id = task.task_id
+    state.last_implementation_task_key = identity.canonical_task_key
+    state.last_implementation_task_cid = identity.canonical_task_cid
+    state.save(daemon.state_path)
+    return state
+
+
 def test_normalize_implementation_protected_paths_is_exact_and_fail_closed(
     tmp_path: Path,
 ) -> None:
@@ -787,6 +813,127 @@ def test_crash_reconciliation_rejects_missing_ephemeral_workspace_when_shared_ch
     assert result["reason"] == "implementation_protected_path_mutated"
     assert result["incident"]["protected_paths"] == [POLICY_PATH]
     assert daemon._implementation_protected_incident_path().exists()
+
+
+def test_quiesced_shutdown_reconciles_fence_before_operator_board_revision(
+    tmp_path: Path,
+) -> None:
+    daemon, _repo, workspace, protected = _protected_git_worktree_daemon(
+        tmp_path
+    )
+    task = _task(outputs=["src/example.py"])
+    daemon._require_implementation_protected_snapshot(
+        task=task,
+        attempt=1,
+        workspace_path=workspace,
+    )
+    _persist_active_attempt_state(
+        daemon,
+        task=task,
+        workspace=workspace,
+    )
+
+    result = daemon.reconcile_quiesced_active_attempt()
+
+    assert result["reconciled"] is True
+    assert result["blocked"] is False
+    assert result["reason"] == "quiesced_active_attempt_reconciled"
+    assert (
+        result["protected_path_reconciliation"]["reason"]
+        == "crash_reconciliation_unchanged"
+    )
+    assert not daemon._implementation_protected_active_snapshot_path().exists()
+    assert not daemon._implementation_protected_incident_path().exists()
+    state = PortalTaskState.load(daemon.state_path)
+    assert state.implementation_in_progress is False
+    assert state.active_task_id == ""
+    assert state.active_task_cid == ""
+    assert state.active_attempt == 0
+    assert state.active_worktree_path == ""
+
+    protected.write_text("operator board revision after clean stop\n", encoding="utf-8")
+    restart = daemon._reconcile_implementation_protected_path_fence()
+
+    assert restart == {"blocked": False, "reason": "no_active_snapshot"}
+    assert not daemon._implementation_protected_incident_path().exists()
+
+
+def test_quiesced_shutdown_preserves_real_protected_path_incident(
+    tmp_path: Path,
+) -> None:
+    daemon, _repo, workspace, protected = _protected_git_worktree_daemon(
+        tmp_path
+    )
+    task = _task(outputs=["src/example.py"])
+    daemon._require_implementation_protected_snapshot(
+        task=task,
+        attempt=1,
+        workspace_path=workspace,
+    )
+    _persist_active_attempt_state(
+        daemon,
+        task=task,
+        workspace=workspace,
+    )
+    protected.write_text("implementation-time mutation\n", encoding="utf-8")
+
+    result = daemon.reconcile_quiesced_active_attempt()
+
+    assert result["reconciled"] is False
+    assert result["blocked"] is True
+    assert result["reason"] == "protected_path_reconciliation_blocked"
+    assert (
+        result["protected_path_reconciliation"]["reason"]
+        == "implementation_protected_path_mutated"
+    )
+    assert daemon._implementation_protected_active_snapshot_path().exists()
+    assert daemon._implementation_protected_incident_path().exists()
+    state = PortalTaskState.load(daemon.state_path)
+    assert state.implementation_in_progress is True
+    assert state.active_task_id == task.task_id
+
+
+def test_quiesced_shutdown_refuses_live_implementation_lock(
+    tmp_path: Path,
+) -> None:
+    daemon, _repo, workspace, _protected = _protected_git_worktree_daemon(
+        tmp_path
+    )
+    task = _task(outputs=["src/example.py"])
+    daemon._require_implementation_protected_snapshot(
+        task=task,
+        attempt=1,
+        workspace_path=workspace,
+    )
+    _persist_active_attempt_state(
+        daemon,
+        task=task,
+        workspace=workspace,
+    )
+    lock_path = daemon._implementation_lock_path()
+    lock_path.write_text(
+        json.dumps(
+            {
+                "kind": "implementation",
+                "pid": os.getpid(),
+                "state_dir": str(daemon.state_path.parent.resolve()),
+                "task_id": task.task_id,
+                "attempt": 1,
+            },
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    result = daemon.reconcile_quiesced_active_attempt()
+
+    assert result["reconciled"] is False
+    assert result["blocked"] is True
+    assert result["reason"] == "implementation_lock_owner_still_active"
+    assert daemon._implementation_protected_active_snapshot_path().exists()
+    assert not daemon._implementation_protected_incident_path().exists()
+    assert PortalTaskState.load(daemon.state_path).implementation_in_progress
 
 
 def test_ephemeral_snapshot_rejects_checkout_without_git_identity(
@@ -1780,6 +1927,87 @@ def test_supervisor_commits_generated_updates_to_protected_todo_board(
     )
 
 
+def test_supervisor_commits_resolved_guardrail_retirement_to_protected_board(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    todo_path = repo / "tasks.todo.md"
+    todo_path.write_text(
+        """# Tasks
+
+## EX-001 Ready source
+
+- Status: todo
+- Depends on:
+- Outputs: src/example.py
+
+## EX-002 Resolve dependency guardrail for EX-001
+
+- Status: todo
+- Depends on:
+- Outputs: tasks.todo.md
+""",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "tasks.todo.md")
+    _git(
+        repo,
+        "-c",
+        "user.name=Fixture",
+        "-c",
+        "user.email=fixture@example.invalid",
+        "commit",
+        "-m",
+        "initial",
+    )
+    args = parse_implementation_supervisor_args(
+        [
+            "--todo-path",
+            str(todo_path),
+            "--state-dir",
+            str(repo / "state"),
+            "--task-prefix",
+            "## EX-",
+            "--implementation-protected-path",
+            "tasks.todo.md",
+        ]
+    )
+    supervisor = PortalImplementationSupervisor(
+        supervisor_config_from_args(args, repo_root=repo)
+    )
+    supervisor.config.strategy_path.parent.mkdir(parents=True, exist_ok=True)
+    supervisor.config.strategy_path.write_text(
+        json.dumps(
+            {
+                "blocked_tasks": ["EX-001"],
+                "dependency_guardrail_findings": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    releases = supervisor.release_completed_guardrail_blocks()
+
+    assert releases == [
+        {
+            "source_task_id": "EX-001",
+            "follow_up_task_id": "EX-002",
+            "guardrail_kind": "dependency_guardrail",
+            "reason": "resolved_repair_task_retired",
+        }
+    ]
+    assert "- Status: completed" in todo_path.read_text(encoding="utf-8").split(
+        "## EX-002", 1
+    )[1]
+    assert _git(repo, "status", "--porcelain", "--", "tasks.todo.md") == ""
+    assert _git(repo, "log", "-1", "--pretty=%ae") == BACKLOG_REFINERY_AUTHOR_EMAIL
+    assert _git(repo, "log", "-1", "--pretty=%s").endswith(
+        "[agent-supervisor:generated-protected-board]"
+    )
+
+
 def test_supervisor_blocks_maintenance_while_protected_snapshot_is_active(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1807,7 +2035,7 @@ def test_supervisor_blocks_maintenance_while_protected_snapshot_is_active(
     assert not (tmp_path / "state" / "implementation.lock").exists()
 
 
-def test_supervisor_live_daemon_lock_blocks_before_maintenance_mutation(
+def test_supervisor_live_daemon_lock_blocks_objective_refill_before_mutation(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1839,7 +2067,7 @@ def test_supervisor_live_daemon_lock_blocks_before_maintenance_mutation(
 
     result = supervisor._run_once_with_maintenance(
         phases.append,
-        include_refill=False,
+        include_refill=True,
     )
 
     assert result["maintenance_blocked"] is True
@@ -1858,9 +2086,15 @@ def test_supervisor_maintenance_lease_is_visible_and_removed_on_success(
     lock_path = tmp_path / "state" / "implementation.lock"
     observed: dict[str, object] = {}
 
-    def maintenance_body(_update_phase, *, include_refill: bool):
+    def maintenance_body(
+        _update_phase,
+        *,
+        include_refill: bool,
+        implementation_maintenance_lease=None,
+    ):
         observed.update(json.loads(lock_path.read_text(encoding="utf-8")))
         assert include_refill is False
+        assert implementation_maintenance_lease == observed
         assert _daemon(tmp_path)._implementation_lock_owner_is_active(observed)
         return {"stuck": False, "completed_count": 0}
 
@@ -1890,11 +2124,16 @@ def test_supervisor_maintenance_lease_is_removed_on_exception(
     supervisor = _supervisor(tmp_path)
     lock_path = tmp_path / "state" / "implementation.lock"
 
-    def failing_maintenance(_update_phase, *, include_refill: bool):
+    def failing_maintenance(
+        _update_phase,
+        *,
+        include_refill: bool,
+        implementation_maintenance_lease=None,
+    ):
         assert include_refill is False
-        assert json.loads(lock_path.read_text(encoding="utf-8"))[
-            "lease_role"
-        ] == "supervisor_maintenance"
+        metadata = json.loads(lock_path.read_text(encoding="utf-8"))
+        assert implementation_maintenance_lease == metadata
+        assert metadata["lease_role"] == "supervisor_maintenance"
         raise RuntimeError("maintenance failed")
 
     monkeypatch.setattr(
@@ -1921,9 +2160,15 @@ def test_supervisor_maintenance_lease_uses_effective_state_path_parent(
     effective_lock_path = effective_state_path.parent / "implementation.lock"
     configured_lock_path = tmp_path / "state" / "implementation.lock"
 
-    def maintenance_body(_update_phase, *, include_refill: bool):
+    def maintenance_body(
+        _update_phase,
+        *,
+        include_refill: bool,
+        implementation_maintenance_lease=None,
+    ):
         assert include_refill is False
         metadata = json.loads(effective_lock_path.read_text(encoding="utf-8"))
+        assert implementation_maintenance_lease == metadata
         assert metadata["state_path"] == str(effective_state_path.resolve())
         assert _daemon(
             tmp_path,
@@ -2013,7 +2258,7 @@ def test_stale_lock_cleanup_preserves_implementation_lease_protocol_files(
 
     assert implementation_lock_path.exists()
     assert update_guard_path.exists()
-    assert not generic_lock_path.exists()
+    assert generic_lock_path.exists()
     managed = {
         item["lock_path"]
         for item in result["skipped"]
@@ -2022,6 +2267,52 @@ def test_stale_lock_cleanup_preserves_implementation_lease_protocol_files(
     assert managed == {
         str(implementation_lock_path),
         str(update_guard_path),
+    }
+    assert {
+        item["lock_path"]
+        for item in result["skipped"]
+        if item.get("reason") == "persistent_state_flock"
+    } == {str(generic_lock_path)}
+
+
+def test_stale_lock_cleanup_preserves_flocks_and_removes_git_transaction_locks(
+    tmp_path: Path,
+) -> None:
+    daemon = _daemon(tmp_path)
+    state_dir = tmp_path / "state"
+    git_dir = tmp_path / ".git"
+    git_ref_dir = git_dir / "refs" / "heads"
+    state_dir.mkdir(parents=True)
+    git_ref_dir.mkdir(parents=True)
+    event_lock_paths = (
+        state_dir / ".events.jsonl.lock",
+        state_dir / ".portal_supervisor_events.jsonl.lock",
+    )
+    transient_git_lock_paths = (
+        git_dir / "index.lock",
+        git_ref_dir / "main.lock",
+    )
+    persistent_git_flock_path = git_dir / "agent-llm-resolver.lock"
+    for path in (
+        *event_lock_paths,
+        *transient_git_lock_paths,
+        persistent_git_flock_path,
+    ):
+        path.write_text("stale\n", encoding="utf-8")
+        os.utime(path, (1, 1))
+
+    result = daemon._cleanup_stale_locks(max_age_seconds=1)
+
+    assert all(path.exists() for path in event_lock_paths)
+    assert persistent_git_flock_path.exists()
+    assert not any(path.exists() for path in transient_git_lock_paths)
+    assert {
+        item["lock_path"]
+        for item in result["skipped"]
+        if item.get("reason") == "persistent_state_flock"
+    } == {str(path) for path in event_lock_paths}
+    assert {item["lock_path"] for item in result["removed"]} == {
+        str(path) for path in transient_git_lock_paths
     }
 
 
@@ -2110,7 +2401,7 @@ def test_serialized_lock_update_has_windows_backend(
     monkeypatch.setattr(checkout_lock_module, "msvcrt", FakeMsvcrt)
     lock_path = tmp_path / "state" / "implementation.lock"
 
-    with serialized_lock_update(lock_path):
+    with checkout_lock_module.serialized_lock_update(lock_path):
         assert calls == [(FakeMsvcrt.LK_NBLCK, 1)]
 
     assert calls == [
