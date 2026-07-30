@@ -97,6 +97,12 @@ CODE_PROOF_REQUIRED_PUBLIC_BINDING_KEYS = (
 
 # Reviewed disposition for the core codebase-proof program (CBP-G200).
 CORE_CODE_PROOF_ZK_USE_CASE_ID = "cbp-core-codebase-proof"
+# Reviewed use case for datasets Groth16/ProveKit verified-receipt attestation
+# (SCA-G082 / SCAEV082REALZK).  Distinct from core CBP, which remains
+# not_applicable.  Authorizes only already kernel-verified receipt predicates.
+DATASETS_VERIFIED_RECEIPT_ZK_USE_CASE_ID = (
+    "swissknife-datasets-verified-receipt-attestation"
+)
 ZK_BACKEND_FAMILIES_REQUIRING_DECISION = frozenset(
     {
         "groth16",
@@ -2732,6 +2738,59 @@ def core_code_proof_zk_use_case_decision() -> ZkUseCaseDecisionRecord:
     return CORE_CODE_PROOF_ZK_USE_CASE_DECISION
 
 
+# Terminal reviewed decision authorizing datasets cryptographic backends for the
+# approved already-verified receipt predicate only (receipt possession / membership
+# / private reviewed predicates).  Never authorizes source-code correctness claims.
+DATASETS_VERIFIED_RECEIPT_ZK_USE_CASE_DECISION = ZkUseCaseDecisionRecord(
+    use_case_id=DATASETS_VERIFIED_RECEIPT_ZK_USE_CASE_ID,
+    disposition=ZkUseCaseDisposition.APPROVED,
+    blocks_core_cbp=False,
+    reviewed_by="swissknife-contract-assurance-architecture-review",
+    reviewed_at="2026-07-29T00:00:00Z",
+    rationale=(
+        "A third-party verifier outside the operator domain may need to check "
+        "that the prover knows a canonical opening of an already kernel-verified "
+        "proof receipt without receiving the receipt preimage.  That is a "
+        "qualifying private-witness / cross-trust-boundary need for receipt "
+        "possession or membership predicates only."
+    ),
+    protected_witness_summary=(
+        "Private witness is the receipt preimage/opening or membership path; "
+        "it must never enter public envelopes, caches, logs, or context capsules."
+    ),
+    trust_boundary_summary=(
+        "Prover holds the verified receipt opening inside the operator domain; "
+        "the independent verifier is a separate trust domain that only sees "
+        "public receipt/setup/backend bindings and the cryptographic proof."
+    ),
+    disclosure_risk_summary=(
+        "Without ZK, proving receipt possession to an external party discloses "
+        "the full receipt and any attached private premises.  Cryptographic "
+        "attestation hides the opening while binding public receipt and setup "
+        "identities."
+    ),
+    replay_freshness_summary=(
+        "Proofs bind current receipt, policy, backend-policy, setup, verification "
+        "key, and challenge/expiry identities; key expiry or root drift ends "
+        "reuse.  Kernel receipt freshness remains a separate gate."
+    ),
+    why_signed_receipts_insufficient=(
+        "Signed or kernel receipts authenticate operator claims but reveal the "
+        "full public statement and evidence.  They cannot convince a distrusting "
+        "third party that a private opening was used correctly without disclosure."
+    ),
+    qualifying_private_witness=True,
+    qualifying_cross_trust_boundary=True,
+    approved_backend_families=("groth16", "provekit"),
+)
+
+
+def datasets_verified_receipt_zk_use_case_decision() -> ZkUseCaseDecisionRecord:
+    """Return the immutable reviewed decision for datasets verified-receipt ZK."""
+
+    return DATASETS_VERIFIED_RECEIPT_ZK_USE_CASE_DECISION
+
+
 def build_code_proof_public_bindings(
     receipt: ProofReceipt,
     *,
@@ -2894,6 +2953,8 @@ __all__ = [
     "CODE_PROOF_REQUIRED_PUBLIC_BINDING_KEYS",
     "CORE_CODE_PROOF_ZK_USE_CASE_DECISION",
     "CORE_CODE_PROOF_ZK_USE_CASE_ID",
+    "DATASETS_VERIFIED_RECEIPT_ZK_USE_CASE_DECISION",
+    "DATASETS_VERIFIED_RECEIPT_ZK_USE_CASE_ID",
     "PROOF_ATTESTATION_CONTRACT_VERSION",
     "PROOF_ATTESTATION_ENVELOPE_SCHEMA",
     "PROOF_ATTESTATION_RECORD_SCHEMA",
@@ -2964,6 +3025,7 @@ __all__ = [
     "build_attestation_statement",
     "core_code_proof_zk_use_case_decision",
     "create_attestation_envelope",
+    "datasets_verified_receipt_zk_use_case_decision",
     "evaluate_backend_health",
     "execute_cryptographic_attestation",
     "gate_cryptographic_backend",
