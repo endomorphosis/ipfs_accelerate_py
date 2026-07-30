@@ -159,6 +159,8 @@ _RESOLVER_EVENTS = frozenset(
 _COMPLETION_EVENTS = frozenset(
     {"task_completed", "task_succeeded", "completed", "merge_completed"}
 )
+_SCHEDULER_STATE_PROJECTION_EVENT = "scheduler_state_projection"
+_SCHEDULER_STATE_PROJECTION_SCOPE = "authoritative_current"
 
 _RESOURCE_PROJECTION_KEYS = (
     "resource_admission",
@@ -907,6 +909,18 @@ def _identity_key(identity: Mapping[str, str]) -> tuple[str, ...]:
         identity["template_id"],
         identity["resource_class"],
     )
+
+
+def _task_state_key(
+    identity: Mapping[str, str],
+    identity_key: tuple[str, ...] | None = None,
+) -> tuple[str, ...]:
+    """Return the logical identity used by current scheduler-state gauges."""
+
+    canonical_task_cid = identity["task_cid"]
+    if canonical_task_cid != UNKNOWN_IDENTITY:
+        return ("task", canonical_task_cid)
+    return ("identity", *(identity_key or _identity_key(identity)))
 
 
 def _metric_defaults(identity: Mapping[str, str]) -> dict[str, Any]:
@@ -2153,9 +2167,26 @@ def scheduler_snapshot(
     accumulators: dict[tuple[str, ...], _Accumulator] = {}
     inherited_by_task: dict[str, dict[str, str]] = {}
     inherited_by_lane: dict[str, dict[str, str]] = {}
+    latest_projection: tuple[int, str] | None = None
+    for event_sequence, (_index, event, _occurred) in enumerate(unique):
+        if (
+            _event_type(event) == _SCHEDULER_STATE_PROJECTION_EVENT
+            and str(event.get("scheduler_projection_scope") or "")
+            == _SCHEDULER_STATE_PROJECTION_SCOPE
+        ):
+            latest_projection = (
+                event_sequence,
+                str(event.get("scheduler_projection_id") or ""),
+            )
+    authoritative_state_keys: set[tuple[str, ...]] = set()
 
     for event_sequence, (_index, event, occurred) in enumerate(unique):
         kind = _event_type(event)
+        if kind == _SCHEDULER_STATE_PROJECTION_EVENT:
+            # This envelope declares the complete current task set. It is
+            # supervisor evidence and must never manufacture an anonymous
+            # scheduler task or contribute to cumulative task metrics.
+            continue
         if kind in _REFILL_SCAN_EVENT_TYPES or _scan_receipt_projection(event, kind) is not None:
             # A repository scan is supervisor-level evidence, not a scheduler
             # task.  It contributes to scan_metrics but must not manufacture an
@@ -2221,6 +2252,16 @@ def scheduler_snapshot(
         if lane_alias:
             inherited_by_lane[lane_alias] = identity
         key = _identity_key(identity)
+        if (
+            latest_projection is not None
+            and event_sequence > latest_projection[0]
+            and str(event.get("scheduler_projection_id") or "")
+            == latest_projection[1]
+            and str(event.get("scheduler_projection_scope") or "")
+            == _SCHEDULER_STATE_PROJECTION_SCOPE
+            and kind in {"scheduler_state", "scheduler_lane_state"}
+        ):
+            authoritative_state_keys.add(_task_state_key(identity, key))
         current = accumulators.get(key)
         if current is None:
             current = _Accumulator(identity=identity, metrics=_metric_defaults(identity))
@@ -2425,12 +2466,9 @@ def scheduler_snapshot(
         if goal_diagnostic is not None:
             # Additive nested data leaves all v1 task-state keys intact.
             state["goal_completion"] = dict(goal_diagnostic)
-        canonical_task_cid = current.identity["task_cid"]
-        state_key = (
-            ("task", canonical_task_cid)
-            if canonical_task_cid != UNKNOWN_IDENTITY
-            else ("identity", *key)
-        )
+        state_key = _task_state_key(current.identity, key)
+        if latest_projection is not None and state_key not in authoritative_state_keys:
+            continue
         previous = state_candidates.get(state_key)
         candidate = (current.last_event_sequence, state)
         if previous is None or candidate[0] > previous[0]:
@@ -2742,7 +2780,18 @@ def scheduler_state_events(
     """Project lease/lane state into lifecycle events for the shared reducer."""
 
     occurred_at = timestamp or _now_iso()
-    events: list[dict[str, Any]] = []
+    projection_id = occurred_at
+    projection_metadata = {
+        "scheduler_projection_id": projection_id,
+        "scheduler_projection_scope": _SCHEDULER_STATE_PROJECTION_SCOPE,
+    }
+    events: list[dict[str, Any]] = [
+        {
+            "type": _SCHEDULER_STATE_PROJECTION_EVENT,
+            "timestamp": occurred_at,
+            **projection_metadata,
+        }
+    ]
     for raw in tasks:
         task = dict(raw)
         state = str(task.get("state") or task.get("lease_state") or "ready").lower()
@@ -2754,11 +2803,27 @@ def scheduler_state_events(
             state = "active"
         if state not in SCHEDULER_PHASES:
             state = "ready"
-        events.append({**task, "type": "scheduler_state", "timestamp": occurred_at, "phase": state})
+        events.append(
+            {
+                **task,
+                "type": "scheduler_state",
+                "timestamp": occurred_at,
+                "phase": state,
+                **projection_metadata,
+            }
+        )
     for raw in lanes:
         lane = dict(raw)
         phase = str(lane.get("phase") or lane.get("active_phase") or lane.get("state") or "active").lower()
-        events.append({**lane, "type": "scheduler_lane_state", "timestamp": occurred_at, "phase": phase})
+        events.append(
+            {
+                **lane,
+                "type": "scheduler_lane_state",
+                "timestamp": occurred_at,
+                "phase": phase,
+                **projection_metadata,
+            }
+        )
     return events
 
 
