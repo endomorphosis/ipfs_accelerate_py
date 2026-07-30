@@ -16,10 +16,17 @@ from ipfs_accelerate_py.agent_supervisor.vfs_symbolic_benchmark import (
     GateStatus,
     InvalidationMeasurement,
     InventoryMeasurement,
+    OBJECTIVE_DOMAIN_EVIDENCE_TERMS,
+    OBJECTIVE_GOAL_ID,
+    OBJECTIVE_PARENT_GOAL_ID,
+    OBJECTIVE_TASK_ID,
     ProviderPacketMeasurement,
     REQUIRED_CACHE_STAGES,
     REQUIRED_SCAN_MODES,
     ResourceMeasurement,
+    SYMBOLIC_BENCHMARK_EVIDENCE_SCHEMA,
+    SYMBOLIC_EFFICIENCY_BENCHMARK_EVIDENCE,
+    SYMBOLIC_EFFICIENCY_BENCHMARK_INVARIANTS,
     ScanMode,
     SymbolicBenchmarkError,
     SymbolicBenchmarkObservation,
@@ -27,8 +34,15 @@ from ipfs_accelerate_py.agent_supervisor.vfs_symbolic_benchmark import (
     SymbolicEfficiencyBenchmarkReport,
     TaskMeasurement,
     ToolchainIdentity,
+    all_covered_evidence_terms,
     build_symbolic_efficiency_report,
+    covered_evidence_terms,
     evaluate_symbolic_efficiency,
+    prove_symbolic_efficiency_benchmark,
+    prove_symbolic_efficiency_benchmark_evidence,
+    report_satisfies_symbolic_efficiency_benchmark,
+    symbolic_efficiency_benchmark_evidence,
+    symbolic_efficiency_benchmark_evidence_terms,
     verify_symbolic_efficiency_report,
 )
 
@@ -460,3 +474,125 @@ def test_observation_contract_rejects_incomplete_or_unbounded_input() -> None:
     population_json["population_id"] = "sha256:" + "0" * 64
     with pytest.raises(SymbolicBenchmarkError, match="population ID mismatch"):
         SymbolicBenchmarkPopulation.from_dict(population_json)
+
+
+# ---------------------------------------------------------------------------
+# VFS-G164 / VFS-086 objective evidence surface
+# ---------------------------------------------------------------------------
+
+
+def test_covered_evidence_terms_bind_vfs_g164_terms() -> None:
+    assert symbolic_efficiency_benchmark_evidence() == (
+        "vfs/symbolic-efficiency-benchmark@1"
+    )
+    assert SYMBOLIC_EFFICIENCY_BENCHMARK_EVIDENCE == (
+        "vfs/symbolic-efficiency-benchmark@1"
+    )
+    assert SYMBOLIC_BENCHMARK_EVIDENCE_SCHEMA == (
+        "vfs/symbolic-efficiency-benchmark@1"
+    )
+    assert symbolic_efficiency_benchmark_evidence_terms() == (
+        SYMBOLIC_EFFICIENCY_BENCHMARK_EVIDENCE,
+    )
+    assert covered_evidence_terms() == OBJECTIVE_DOMAIN_EVIDENCE_TERMS
+    assert all_covered_evidence_terms() == covered_evidence_terms()
+    assert OBJECTIVE_DOMAIN_EVIDENCE_TERMS == (
+        "vfs/symbolic-efficiency-benchmark@1",
+    )
+    assert OBJECTIVE_GOAL_ID == "VFS-G164"
+    assert OBJECTIVE_PARENT_GOAL_ID == "VFS-G121"
+    assert OBJECTIVE_TASK_ID == "VFS-086"
+    assert "zero LLM calls" in SYMBOLIC_EFFICIENCY_BENCHMARK_INVARIANTS[0]
+    assert any(
+        "80 percent" in item for item in SYMBOLIC_EFFICIENCY_BENCHMARK_INVARIANTS
+    )
+
+
+def test_prove_symbolic_efficiency_benchmark_for_passed_population() -> None:
+    population = _population()
+    report = evaluate_symbolic_efficiency(population)
+
+    assert report_satisfies_symbolic_efficiency_benchmark(
+        report,
+        population=population,
+    )
+    assert report_satisfies_symbolic_efficiency_benchmark(
+        report.to_dict(),
+        population=population,
+    )
+
+    claim = prove_symbolic_efficiency_benchmark(population)
+    assert claim["evidence"] == "vfs/symbolic-efficiency-benchmark@1"
+    assert claim["evidence_terms"] == ["vfs/symbolic-efficiency-benchmark@1"]
+    assert claim["all_evidence_terms"] == list(OBJECTIVE_DOMAIN_EVIDENCE_TERMS)
+    assert claim["goal_id"] == "VFS-G164"
+    assert claim["parent_goal_id"] == "VFS-G121"
+    assert claim["task_id"] == "VFS-086"
+    assert claim["satisfied"] is True
+    assert claim["conclusion"] == BenchmarkConclusion.PASSED.value
+    assert claim["deterministic_llm_calls"] == 0
+    assert claim["provider_byte_reduction_basis_points"] >= 8_000
+    assert claim["provider_token_reduction_basis_points"] >= 8_000
+    assert claim["authoritative"] is False
+    assert claim["completion_authoritative"] is False
+    assert claim["promotion_authoritative"] is False
+    assert claim["semantic_authority"] is False
+    assert claim["population_id"] == population.population_id
+    assert claim["report_id"] == report.report_id
+    assert set(claim["gate_status"]) == {gate.name for gate in report.gates}
+    assert all(
+        status == GateStatus.PASSED.value
+        for status in claim["gate_status"].values()
+    )
+    assert claim["invariants"] == list(SYMBOLIC_EFFICIENCY_BENCHMARK_INVARIANTS)
+
+    bundled = prove_symbolic_efficiency_benchmark_evidence(
+        population,
+        report=report,
+    )
+    assert bundled == claim
+    assert "vfs/symbolic-efficiency-benchmark@1" in bundled["evidence_terms"]
+
+
+def test_prove_fails_closed_for_insufficient_or_failed_populations() -> None:
+    insufficient = evaluate_symbolic_efficiency(_population(samples_per_mode=1))
+    assert not report_satisfies_symbolic_efficiency_benchmark(insufficient)
+    insufficient_claim = prove_symbolic_efficiency_benchmark(
+        _population(samples_per_mode=1)
+    )
+    assert insufficient_claim["satisfied"] is False
+    assert insufficient_claim["conclusion"] == (
+        BenchmarkConclusion.INSUFFICIENT_SAMPLES.value
+    )
+    assert insufficient_claim["authoritative"] is False
+    assert insufficient_claim["promotion_authoritative"] is False
+
+    changed: list[SymbolicBenchmarkObservation] = []
+    for observation in _population().observations:
+        packet = replace(
+            observation.packet,
+            baseline_input_bytes=60_000,
+            packet_input_bytes=15_000,
+        )
+        changed.append(replace(observation, packet=packet))
+    failed_population = SymbolicBenchmarkPopulation(
+        profile=PROFILE,
+        observations=tuple(changed),
+    )
+    failed_report = evaluate_symbolic_efficiency(failed_population)
+    assert failed_report.conclusion is BenchmarkConclusion.FAILED
+    assert not report_satisfies_symbolic_efficiency_benchmark(
+        failed_report,
+        population=failed_population,
+    )
+    failed_claim = prove_symbolic_efficiency_benchmark(failed_population)
+    assert failed_claim["satisfied"] is False
+    assert "provider-byte-reduction" in failed_claim["failure_codes"]
+    assert failed_claim["evidence"] == "vfs/symbolic-efficiency-benchmark@1"
+    assert failed_claim["completion_authoritative"] is False
+
+    with pytest.raises(SymbolicBenchmarkError, match="complete population"):
+        prove_symbolic_efficiency_benchmark(
+            _population(),
+            report=failed_report.to_dict(),
+        )
