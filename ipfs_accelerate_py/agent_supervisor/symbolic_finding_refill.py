@@ -89,9 +89,10 @@ SYMBOLIC_REFILL_EPOCH_INVARIANTS: Final[tuple[str, ...]] = (
 )
 REFILL_IDEMPOTENCY_INVARIANTS: Final[tuple[str, ...]] = (
     "replay of the same operation is a no-op",
+    "goal, subgoal, and task identities survive replay",
     "unchanged failures back off without re-emitting tasks",
     "taskboard restoration preserves semantic task identity",
-    "idempotency id excludes observation time and emitted task ids",
+    "idempotency id excludes observation time and emitted work ids",
     "conclusive healthy exhaustion creates no busywork",
 )
 
@@ -453,6 +454,7 @@ class RefillState:
     last_refill_epoch: int = 0
     next_allowed_epoch: int = 0
     seen_receipt_ids: tuple[str, ...] = ()
+    semantic_goal_ids: tuple[tuple[str, str], ...] = ()
     semantic_task_ids: tuple[tuple[str, str], ...] = ()
     diagnostic_states: tuple[tuple[str, str, int], ...] = ()
     review_task_ids: tuple[tuple[str, str], ...] = ()
@@ -461,7 +463,7 @@ class RefillState:
         if self.last_sequence < -1:
             raise SymbolicFindingRefillError("last_sequence cannot be below -1")
         object.__setattr__(self, "seen_receipt_ids", _unique(self.seen_receipt_ids))
-        for name in ("semantic_task_ids", "review_task_ids"):
+        for name in ("semantic_goal_ids", "semantic_task_ids", "review_task_ids"):
             pairs = tuple(sorted((str(key), str(value)) for key, value in getattr(self, name)))
             if len({key for key, _ in pairs}) != len(pairs):
                 raise SymbolicFindingRefillError(f"{name} contains duplicate keys")
@@ -484,6 +486,7 @@ def _state_id(state: RefillState) -> str:
             "last_refill_epoch": state.last_refill_epoch,
             "next_allowed_epoch": state.next_allowed_epoch,
             "seen_receipt_ids": state.seen_receipt_ids,
+            "semantic_goal_ids": state.semantic_goal_ids,
             "semantic_task_ids": state.semantic_task_ids,
             "diagnostic_states": state.diagnostic_states,
             "review_task_ids": state.review_task_ids,
@@ -625,11 +628,13 @@ class SymbolicRefillEpochEvidence:
 
 @dataclass(frozen=True)
 class RefillIdempotencyEvidence:
-    """Replay witness for the stable work identity of a refill operation."""
+    """Replay witness for stable goal, subgoal, and task work identity."""
 
     binding: RefillBinding
     epoch_id: str
     operation_receipt_ids: tuple[str, ...] = ()
+    emitted_goal_ids: tuple[str, ...] = ()
+    resolved_goal_ids: tuple[str, ...] = ()
     emitted_task_ids: tuple[str, ...] = ()
     resolved_task_ids: tuple[str, ...] = ()
     replay_receipt_ids: tuple[str, ...] = ()
@@ -638,6 +643,8 @@ class RefillIdempotencyEvidence:
         object.__setattr__(self, "epoch_id", _required_text(self.epoch_id, "epoch_id"))
         for name in (
             "operation_receipt_ids",
+            "emitted_goal_ids",
+            "resolved_goal_ids",
             "emitted_task_ids",
             "resolved_task_ids",
             "replay_receipt_ids",
@@ -647,6 +654,10 @@ class RefillIdempotencyEvidence:
             raise SymbolicFindingRefillError(
                 "replay receipt ids must be included in operation receipt ids"
             )
+        if not set(self.emitted_goal_ids).issubset(self.resolved_goal_ids):
+            raise SymbolicFindingRefillError(
+                "emitted goal ids must be included in resolved goal ids"
+            )
         if not set(self.emitted_task_ids).issubset(self.resolved_task_ids):
             raise SymbolicFindingRefillError(
                 "emitted task ids must be included in resolved task ids"
@@ -654,9 +665,9 @@ class RefillIdempotencyEvidence:
 
     @property
     def idempotency_id(self) -> str:
-        # Output task IDs and observation time are deliberately excluded.  The
-        # same evidence bound to the same objective revision is one operation,
-        # whether this is the materializing pass or a persisted-state replay.
+        # Output goal/task IDs and observation time are deliberately excluded.
+        # The same evidence bound to the same objective revision is one
+        # operation, whether this is materialization or persisted-state replay.
         return _stable_id(
             "refill-idempotency",
             {
@@ -668,7 +679,11 @@ class RefillIdempotencyEvidence:
 
     @property
     def replay_noop(self) -> bool:
-        return bool(self.replay_receipt_ids) and not self.emitted_task_ids
+        return (
+            bool(self.replay_receipt_ids)
+            and not self.emitted_goal_ids
+            and not self.emitted_task_ids
+        )
 
     def to_record(self) -> dict[str, Any]:
         return {
@@ -678,6 +693,8 @@ class RefillIdempotencyEvidence:
             "binding": self.binding.to_record(),
             "binding_id": self.binding.binding_id,
             "operation_receipt_ids": self.operation_receipt_ids,
+            "emitted_goal_ids": self.emitted_goal_ids,
+            "resolved_goal_ids": self.resolved_goal_ids,
             "emitted_task_ids": self.emitted_task_ids,
             "resolved_task_ids": self.resolved_task_ids,
             "replay_receipt_ids": self.replay_receipt_ids,
@@ -981,6 +998,7 @@ def refill_symbolic_findings(
             now=now,
         )
 
+    semantic_goal_ids = dict(state.semantic_goal_ids)
     semantic_task_ids = dict(state.semantic_task_ids)
     review_task_ids = dict(state.review_task_ids)
     diagnostic_states = {
@@ -1026,6 +1044,7 @@ def refill_symbolic_findings(
             last_refill_epoch=now,
             next_allowed_epoch=now + policy.cooldown_seconds,
             seen_receipt_ids=seen,
+            semantic_goal_ids=state.semantic_goal_ids,
             semantic_task_ids=state.semantic_task_ids,
             diagnostic_states=state.diagnostic_states,
             review_task_ids=state.review_task_ids,
@@ -1080,12 +1099,20 @@ def refill_symbolic_findings(
     for task in tasks:
         finding_key = str(_task_value(task, "finding_semantic_key", "") or "")
         task_id = str(_task_value(task, "task_id", "") or "")
+        goal_id = str(_task_value(task, "goal_id", "") or "")
+        if finding_key and goal_id:
+            prior_goal_id = semantic_goal_ids.get(finding_key)
+            if prior_goal_id and prior_goal_id != goal_id:
+                raise SymbolicFindingRefillError(
+                    "taskboard goal identity differs from refill replay state"
+                )
+            semantic_goal_ids.setdefault(finding_key, goal_id)
         if finding_key and task_id and finding_key not in exhausted_finding_keys:
             existing_by_finding_key[finding_key] = task_id
             # Import the authoritative taskboard identity into the next replay
-            # state.  The objective heap and supervisor-fed backlog then share
-            # one semantic-task mapping even when the caller restored a task
-            # before restoring planner state.
+            # state.  Its goal identity is imported above, so the objective
+            # heap and supervisor-fed backlog share one semantic work mapping
+            # even when the caller restored a task before planner state.
             semantic_task_ids.setdefault(finding_key, task_id)
 
     diagnostics: list[RefillDiagnostic] = []
@@ -1286,6 +1313,7 @@ def refill_symbolic_findings(
         )
         new_tasks.append(task)
         emitted_ids[finding.semantic_key_id] = task.task_id
+        semantic_goal_ids[finding.semantic_key_id] = task.goal_id
         semantic_task_ids[finding.semantic_key_id] = task.task_id
         if task.kind is TaskKind.UNBLOCK_REVIEW:
             review_task_ids[finding.semantic_key_id] = task.task_id
@@ -1314,6 +1342,7 @@ def refill_symbolic_findings(
         last_refill_epoch=now,
         next_allowed_epoch=now + policy.cooldown_seconds * backoff_factor,
         seen_receipt_ids=tuple(seen),
+        semantic_goal_ids=tuple(semantic_goal_ids.items()),
         semantic_task_ids=tuple(semantic_task_ids.items()),
         diagnostic_states=tuple(
             (key, signature, count)
@@ -1388,6 +1417,16 @@ def _finish(
         diagnostic_dispositions=diagnostic_dispositions,
         open_work_before=open_work,
     )
+    goal_ids_by_finding = dict(state.semantic_goal_ids)
+    resolved_goal_ids = _unique(
+        tuple(
+            goal_ids_by_finding[key]
+            for key in operation_semantic_keys
+            if key in goal_ids_by_finding
+        )
+    )
+    emitted_goal_ids = tuple(goal.goal_id for goal in goals)
+    resolved_goal_ids = _unique((*resolved_goal_ids, *emitted_goal_ids))
     task_ids_by_finding = dict(state.semantic_task_ids)
     resolved_task_ids = _unique(
         tuple(
@@ -1413,6 +1452,8 @@ def _finish(
         binding=binding,
         epoch_id=epoch_evidence.epoch_id,
         operation_receipt_ids=operation_receipt_ids,
+        emitted_goal_ids=emitted_goal_ids,
+        resolved_goal_ids=resolved_goal_ids,
         emitted_task_ids=emitted_task_ids,
         resolved_task_ids=resolved_task_ids,
         replay_receipt_ids=replay_receipt_ids,
@@ -1455,6 +1496,11 @@ class SupervisorBacklogSnapshot:
     def __post_init__(self) -> None:
         object.__setattr__(self, "goals", tuple(self.goals))
         object.__setattr__(self, "tasks", tuple(self.tasks))
+        goals_by_id = {goal.goal_id: goal for goal in self.goals}
+        if len(goals_by_id) != len(self.goals):
+            raise SymbolicFindingRefillError(
+                "backlog snapshot objective heap contains duplicate goal ids"
+            )
         matching_roots = tuple(
             goal
             for goal in self.goals
@@ -1464,6 +1510,70 @@ class SupervisorBacklogSnapshot:
             raise SymbolicFindingRefillError(
                 "backlog snapshot must contain its exact refinement goal once"
             )
+        state_goal_ids = dict(self.state.semantic_goal_ids)
+        state_task_ids = dict(self.state.semantic_task_ids)
+        if any(goal_id not in goals_by_id for goal_id in state_goal_ids.values()):
+            raise SymbolicFindingRefillError(
+                "backlog replay state references a goal absent from the objective heap"
+            )
+        for task in self.tasks:
+            task_id = _required_text(_task_value(task, "task_id"), "task_id")
+            finding_key = _required_text(
+                _task_value(task, "finding_semantic_key"),
+                "finding_semantic_key",
+            )
+            goal_id = _required_text(_task_value(task, "goal_id"), "goal_id")
+            goal = goals_by_id.get(goal_id)
+            if goal is None:
+                raise SymbolicFindingRefillError(
+                    f"taskboard task {task_id} references a goal absent from "
+                    "the objective heap"
+                )
+            task_parent = str(_task_value(task, "parent_goal_id", "") or "")
+            task_ancestors = tuple(
+                _task_value(task, "ancestor_goal_ids", ()) or ()
+            )
+            task_family = str(_task_value(task, "root_cause_family", "") or "")
+            if (
+                task_parent != goal.parent_goal_id
+                or task_ancestors != goal.ancestor_goal_ids
+                or task_family != goal.root_cause_family
+            ):
+                raise SymbolicFindingRefillError(
+                    f"taskboard task {task_id} lineage differs from objective "
+                    f"goal {goal_id}"
+                )
+            for field_name in (
+                "repository_id",
+                "tree_id",
+                "policy_id",
+                "policy_revision",
+                "objective_forest_id",
+                "objective_forest_revision",
+            ):
+                if _task_value(task, field_name) != getattr(
+                    self.binding, field_name
+                ):
+                    raise RefillBindingError(
+                        f"taskboard task {task_id} {field_name} differs from "
+                        "the objective-heap binding"
+                    )
+            if (
+                finding_key in state_goal_ids
+                and state_goal_ids[finding_key] != goal_id
+            ):
+                raise SymbolicFindingRefillError(
+                    f"taskboard task {task_id} goal identity differs from "
+                    "replay state"
+                )
+            if (
+                _task_open(task)
+                and finding_key in state_task_ids
+                and state_task_ids[finding_key] != task_id
+            ):
+                raise SymbolicFindingRefillError(
+                    f"taskboard task {task_id} identity differs from replay state"
+                )
 
     @property
     def evidence_methods(self) -> tuple[str, ...]:
@@ -1596,9 +1706,9 @@ def verify_symbolic_refill_epoch(outcome: RefillOutcome) -> bool:
         and record.get("reason") == outcome.reason.value
         and record.get("open_work_before") == outcome.open_work_before
         and tuple(record.get("emitted_task_ids") or ())
-        == tuple(task.task_id for task in outcome.new_tasks)
+        == _unique(tuple(task.task_id for task in outcome.new_tasks))
         and tuple(record.get("emitted_goal_ids") or ())
-        == tuple(goal.goal_id for goal in outcome.new_goals)
+        == _unique(tuple(goal.goal_id for goal in outcome.new_goals))
         and bool(record.get("changed")) is bool(outcome.changed)
         and not REFILL_AUTHORIZES_EXECUTION
         and not REFILL_AUTHORIZES_COMPLETION
@@ -1624,11 +1734,26 @@ def verify_refill_idempotency(outcome: RefillOutcome) -> bool:
         == outcome.idempotency_id
         and record.get("epoch_id") == outcome.refill_epoch_id
         and record.get("binding_id") == outcome.binding.binding_id
+        and tuple(record.get("emitted_goal_ids") or ())
+        == _unique(tuple(goal.goal_id for goal in outcome.new_goals))
+        and tuple(record.get("emitted_task_ids") or ())
+        == _unique(tuple(task.task_id for task in outcome.new_tasks))
+        and set(record.get("emitted_goal_ids") or ()).issubset(
+            set(record.get("resolved_goal_ids") or ())
+        )
         and set(record.get("emitted_task_ids") or ()).issubset(
             set(record.get("resolved_task_ids") or ())
         )
         and set(record.get("replay_receipt_ids") or ()).issubset(
             set(record.get("operation_receipt_ids") or ())
+        )
+        and all(
+            task.goal_id in set(record.get("resolved_goal_ids") or ())
+            for task in outcome.new_tasks
+        )
+        and (
+            not record.get("resolved_task_ids")
+            or bool(record.get("resolved_goal_ids"))
         )
         and bool(record.get("replay_noop")) is bool(evidence.replay_noop)
     )
@@ -1761,7 +1886,9 @@ def refill_idempotency_acceptance_dimensions(
             "evidence_identity": False,
             "stable_operation_id": False,
             "replay_noop_when_replayed": False,
+            "resolved_goals_cover_emitted": False,
             "resolved_covers_emitted": False,
+            "goal_task_identity_paired": False,
             "wall_clock_excluded": False,
             "non_authoritative": False,
             "outcome_verified": False,
@@ -1775,13 +1902,23 @@ def refill_idempotency_acceptance_dimensions(
         "replay_noop_when_replayed": (
             not evidence.replay_receipt_ids or evidence.replay_noop
         ),
+        "resolved_goals_cover_emitted": set(evidence.emitted_goal_ids).issubset(
+            set(evidence.resolved_goal_ids)
+        ),
         "resolved_covers_emitted": set(evidence.emitted_task_ids).issubset(
             set(evidence.resolved_task_ids)
         ),
+        "goal_task_identity_paired": (
+            (not evidence.resolved_task_ids or bool(evidence.resolved_goal_ids))
+            and all(
+                task.goal_id in evidence.resolved_goal_ids
+                for task in outcome.new_tasks
+            )
+        ),
         "wall_clock_excluded": (
             # Identity payload deliberately omits observation time; emitted
-            # task ids are recorded for diagnostics but do not feed the
-            # stable operation id (see RefillIdempotencyEvidence.idempotency_id).
+            # goal/task ids are diagnostic outputs and do not feed the stable
+            # operation id (see RefillIdempotencyEvidence.idempotency_id).
             "observed_at_epoch" not in record
             and evidence.idempotency_id
             == _stable_id(
@@ -1872,7 +2009,7 @@ def prove_refill_idempotency(outcome: RefillOutcome) -> dict[str, Any]:
 
     * the same binding and operation receipts yield one stable idempotency id;
     * replay of consumed receipts is a no-op with ``replay_noop``;
-    * resolved task ids cover every emitted id;
+    * resolved goal/subgoal and task ids cover every emitted work id;
     * observation time never feeds the operation identity.
     """
 
@@ -1900,6 +2037,8 @@ def prove_refill_idempotency(outcome: RefillOutcome) -> dict[str, Any]:
         "epoch_id": evidence.epoch_id,
         "binding_id": outcome.binding.binding_id,
         "operation_receipt_ids": list(evidence.operation_receipt_ids),
+        "emitted_goal_ids": list(evidence.emitted_goal_ids),
+        "resolved_goal_ids": list(evidence.resolved_goal_ids),
         "emitted_task_ids": list(evidence.emitted_task_ids),
         "resolved_task_ids": list(evidence.resolved_task_ids),
         "replay_receipt_ids": list(evidence.replay_receipt_ids),
