@@ -182,6 +182,48 @@ def test_host_pressure_applies_backpressure_before_exhaustion(
 
 
 @pytest.mark.parametrize(
+    ("advertised_resource_classes", "required_resource_class"),
+    [
+        (("cpu-small",), "cpu-proof-sanitize"),
+        ((ProofResourceClass.TYPE_CHECK.value,), "cpu-install-test"),
+    ],
+)
+def test_cpu_extension_resource_classes_use_advertised_local_cpu_capacity(
+    advertised_resource_classes: tuple[str, ...],
+    required_resource_class: str,
+) -> None:
+    scheduler = ResourceScheduler(ResourcePolicy(max_lanes=4))
+
+    decision = scheduler.evaluate(
+        LaneResourceRequirements(
+            lane_id=required_resource_class,
+            resource_class=required_resource_class,
+        ),
+        host=_host(resource_classes=advertised_resource_classes),
+    )
+
+    assert decision.admitted is True
+    assert "resource_class_mismatch" not in decision.reasons
+
+
+def test_cpu_extension_resource_classes_do_not_bypass_host_capabilities() -> None:
+    scheduler = ResourceScheduler(ResourcePolicy(max_lanes=4))
+
+    decision = scheduler.evaluate(
+        LaneResourceRequirements(
+            lane_id="toolchain",
+            resource_class="cpu-install-test",
+            required_capabilities=("host:container-runtime",),
+        ),
+        host=_host(resource_classes=(ProofResourceClass.VALIDATION.value,)),
+    )
+
+    assert decision.admitted is False
+    assert "resource_class_mismatch" not in decision.reasons
+    assert "host_capability_mismatch" in decision.reasons
+
+
+@pytest.mark.parametrize(
     ("provider_overrides", "requirement_overrides", "policy_overrides", "reason"),
     [
         ({"healthy": False}, {}, {}, "provider_unhealthy"),

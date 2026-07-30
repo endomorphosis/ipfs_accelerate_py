@@ -2754,6 +2754,21 @@ class ResourceScheduler:
             and host.resource_classes
             and requirement.resource_class not in host.resource_classes
         ):
+            # Planner-defined CPU subclasses (for example
+            # ``cpu-proof-sanitize`` or ``cpu-install-test``) still execute on
+            # the local CPU pool.  Requiring every descriptive subclass to be
+            # copied into host telemetry makes otherwise ordinary CPU work
+            # permanently unschedulable.  Keep accelerator/provider classes
+            # fail-closed, and retain the independent capability check below
+            # for subclasses that require features such as AVX or containers.
+            cpu_extension_compatible = (
+                requirement.resource_class.startswith("cpu-")
+                and "cpu" in host.capabilities
+                and any(
+                    resource_class.startswith("cpu-")
+                    for resource_class in host.resource_classes
+                )
+            )
             legacy_compatible = (
                 requirement.resource_class in LEGACY_RESOURCE_CLASSES
                 and bool(set(host.resource_classes).intersection(PROOF_RESOURCE_CLASSES))
@@ -2761,7 +2776,7 @@ class ResourceScheduler:
                 requirement.resource_class in PROOF_RESOURCE_CLASSES
                 and bool(set(host.resource_classes).intersection(LEGACY_RESOURCE_CLASSES))
             )
-            if not legacy_compatible:
+            if not (cpu_extension_compatible or legacy_compatible):
                 reasons.append("resource_class_mismatch")
         if requirement.provider_required:
             host_required = {
