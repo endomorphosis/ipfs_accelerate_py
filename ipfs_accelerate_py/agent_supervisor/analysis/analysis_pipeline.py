@@ -290,6 +290,10 @@ class AnalysisPipelinePolicy:
     # When false (default), the pipeline never materializes @2 packets and
     # legacy analysis/provider behavior is unchanged.
     enable_proof_gated_contract_repair: bool = False
+    # Opt-in cutover for transactional change-propagation (RPR-044).
+    # When false (default), the pipeline never mutates via the propagation
+    # transaction path and legacy analysis/repair behavior is unchanged.
+    enable_change_propagation: bool = False
     consensus_policy: AnalysisConsensusPolicy = field(
         default_factory=AnalysisConsensusPolicy
     )
@@ -302,6 +306,7 @@ class AnalysisPipelinePolicy:
             "require_local_completion",
             "cache_negative_results",
             "enable_proof_gated_contract_repair",
+            "enable_change_propagation",
         ):
             if not isinstance(getattr(self, name), bool):
                 raise ValueError(f"{name} must be a boolean")
@@ -355,6 +360,7 @@ class AnalysisPipelinePolicy:
             "enable_proof_gated_contract_repair": (
                 self.enable_proof_gated_contract_repair
             ),
+            "enable_change_propagation": self.enable_change_propagation,
             "consensus_policy": self.consensus_policy.to_dict(),
         }
 
@@ -3665,6 +3671,50 @@ class AnalysisPipeline:
             nomination_receipt_id=request.nomination_receipt_id,
         )
 
+    def run_change_propagation(
+        self,
+        request: "Mapping[str, Any] | Any",
+    ) -> Any:
+        """Feature-gated change-propagation route (RPR-044).
+
+        Lazy-imports the versioned pipeline so cold analysis imports stay free
+        of transaction/validator/provider wiring.  Mutations always go through
+        :class:`ChangePropagationTransaction` and completion through
+        :class:`ChangePropagationValidator`; analytical success never invokes
+        an optional datasets provider.
+        """
+
+        # Hard invariant: this route never consults the optional analysis
+        # datasets provider for target selection or plan admission.
+        from .change_propagation_pipeline import (
+            ChangePropagationPipeline,
+            ChangePropagationPipelinePolicy,
+            ChangePropagationPipelineRequest,
+            ChangePropagationPipelineResult,
+        )
+
+        if not self.policy.enable_change_propagation:
+            return ChangePropagationPipelineResult(
+                enabled=False,
+                stage="disabled",
+                disposition="disabled",
+                detail="enable_change_propagation is false",
+                provider_invoked=False,
+            )
+
+        policy = ChangePropagationPipelinePolicy(
+            enable_change_propagation=True,
+        )
+        pipeline = ChangePropagationPipeline(policy=policy)
+        if not isinstance(request, ChangePropagationPipelineRequest):
+            if not isinstance(request, Mapping):
+                raise TypeError(
+                    "change propagation request must be a mapping or "
+                    "ChangePropagationPipelineRequest"
+                )
+            request = ChangePropagationPipelineRequest.from_mapping(request)
+        return pipeline.run(request)
+
     async def aanalyze(
         self,
         request: AnalysisPipelineRequest | Mapping[str, Any],
@@ -3803,3 +3853,4 @@ __all__ = [
     "SupervisorAnalysisPipeline",
     "make_analysis_stage_receipt",
 ]
+

@@ -1,10 +1,12 @@
 """Bounded projection of MCP contract edit packets into a repair task board.
 
 ``ContractMismatchRefinery`` is deliberately not a source scanner.  It accepts
-the narrow, already-admitted ``CodeEditPacket@1`` produced by SCA-100 and,
-after decision validation, the proof-gated ``ContractRepairEditPacket@2``
-path.  Both project accelerator-owned packets into agent-supervisor Markdown
-tasks without letting a provider expand write scope.
+the narrow, already-admitted ``CodeEditPacket@1`` produced by SCA-100,
+after decision validation the proof-gated ``ContractRepairEditPacket@2``
+path, and (when enabled) plan-bound ``ChangePropagationEditPacket@1`` work
+projected through :class:`ChangePropagationTaskSource`.  All project
+accelerator-owned packets into agent-supervisor Markdown tasks without
+letting a provider expand write scope.
 
 The projection is safe to run repeatedly:
 
@@ -331,6 +333,10 @@ class ContractMismatchRefineryPolicy:
     # Default true so the integration cutover can project admitted @2 packets;
     # validation still fails closed without an admitted decision binding.
     accept_proof_gated_packets: bool = True
+    # When true, accept ChangePropagationEditPacket@1 via the task source.
+    # Default true so the RPR-044 cutover can project admitted propagation
+    # packets; scope still equals packet write authority.
+    accept_change_propagation_packets: bool = True
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -369,6 +375,11 @@ class ContractMismatchRefineryPolicy:
         if not isinstance(self.accept_proof_gated_packets, bool):
             raise ContractMismatchRefineryError(
                 "accept_proof_gated_packets must be a boolean",
+                reason_code=ContractMismatchRefineryReason.MALFORMED_PACKET,
+            )
+        if not isinstance(self.accept_change_propagation_packets, bool):
+            raise ContractMismatchRefineryError(
+                "accept_change_propagation_packets must be a boolean",
                 reason_code=ContractMismatchRefineryReason.MALFORMED_PACKET,
             )
 
@@ -899,6 +910,23 @@ def _is_contract_repair_edit_packet(
     )
 
 
+def _is_change_propagation_edit_packet(raw: Any) -> bool:
+    """Detect ChangePropagationEditPacket@1 without a hard top-level import."""
+
+    # Lazy type check: avoid importing the packet module on cold refinery load
+    # unless a mapping schema/interface claims the propagation shape.
+    if isinstance(raw, Mapping):
+        schema = str(raw.get("schema") or "")
+        interface = str(raw.get("interface") or "")
+        return (
+            "change-propagation-edit-packet@1" in schema
+            or interface == "ChangePropagationEditPacket@1"
+            or "change_propagation_edit_packet" in schema
+        )
+    type_name = type(raw).__name__
+    return type_name == "ChangePropagationEditPacket"
+
+
 def _coerce_mcp_or_repair_packet(
     raw: McpContractEditPacket | ContractRepairEditPacket | Mapping[str, Any],
 ) -> McpContractEditPacket | ContractRepairEditPacket:
@@ -908,6 +936,13 @@ def _coerce_mcp_or_repair_packet(
         raise ContractMismatchRefineryError(
             "packet must be a mapping or typed packet",
             reason_code=ContractMismatchRefineryReason.MALFORMED_PACKET,
+        )
+    if _is_change_propagation_edit_packet(raw):
+        # Propagation packets use a dedicated projection path; do not coerce
+        # them into MCP / @2 repair packets.
+        raise ContractMismatchRefineryError(
+            "ChangePropagationEditPacket@1 must use project_change_propagation",
+            reason_code=ContractMismatchRefineryReason.UNSUPPORTED_FINDING,
         )
     if _is_contract_repair_edit_packet(raw):
         return ContractRepairEditPacket.from_dict(raw)
@@ -1365,6 +1400,73 @@ class ContractMismatchRefinery:
         self, policy: ContractMismatchRefineryPolicy | None = None
     ) -> None:
         self.policy = policy or ContractMismatchRefineryPolicy()
+
+    def project_change_propagation(
+        self,
+        packet: Any,
+        *,
+        current_roots: Any = None,
+        current_tree_id: str | None = None,
+        provider_outputs: Sequence[str] | None = None,
+    ) -> Any:
+        """Project one admitted ChangePropagationEditPacket@1 into tasks.
+
+        Task and writer scopes are taken solely from the packet write
+        allowlist (via ChangePropagationTaskSource).  Providers cannot expand
+        paths.  Disabled by policy when ``accept_change_propagation_packets``
+        is false.  Lazy-imports the task source so cold refinery loads stay
+        free of the propagation stack.
+        """
+
+        if not self.policy.accept_change_propagation_packets:
+            raise ContractMismatchRefineryError(
+                "change-propagation packets are disabled by policy",
+                reason_code=ContractMismatchRefineryReason.UNSUPPORTED_FINDING,
+            )
+
+        from .change_propagation_task_source import (
+            ChangePropagationTaskProjectionReason,
+            ChangePropagationTaskSource,
+        )
+
+        source = ChangePropagationTaskSource(
+            current_roots=current_roots,
+            current_tree_id=current_tree_id,
+        )
+        projection = source.project(
+            packet,
+            current_roots=current_roots,
+            current_tree_id=current_tree_id,
+            provider_outputs=provider_outputs,
+        )
+        # Scope invariant: projected write scope must equal packet admits.
+        admitted = tuple(getattr(packet, "permitted_write_paths", ()) or ())
+        if not admitted and isinstance(packet, Mapping):
+            admitted = tuple(packet.get("permitted_write_paths") or ())
+        if admitted and getattr(projection, "reason", None) is (
+            ChangePropagationTaskProjectionReason.EMITTED
+        ):
+            projected_scope = tuple(
+                getattr(projection, "write_scope", None)
+                or getattr(projection, "predicted_files", ())
+                or ()
+            )
+            if not projected_scope:
+                # Fall back to union of step task write paths.
+                paths: list[str] = []
+                for task in (
+                    getattr(projection, "step_tasks", None)
+                    or getattr(projection, "tasks", None)
+                    or ()
+                ):
+                    paths.extend(getattr(task, "write_paths", ()) or ())
+                projected_scope = tuple(paths)
+            if tuple(sorted(set(projected_scope))) != tuple(sorted(admitted)):
+                raise ContractMismatchRefineryError(
+                    "projected task scopes must equal admitted packet write paths",
+                    reason_code=ContractMismatchRefineryReason.SCOPE_EXPANSION,
+                )
+        return projection
 
     def refine(
         self,
