@@ -19,6 +19,15 @@ schema, and witness bodies live in content-addressed artifacts; these records
 carry compact facts and references only.
 
 Identities are derived from canonical DAG-JSON and are never caller-supplied.
+
+Objective validation repair for VFS-G050 anchors the synthetic discovery term
+``objective validation repair`` so supervisor scans re-find the validation
+gate after the domain evidence surfaces (``vfs/contract-ir@1``,
+``vfs/contract-source-precedence@1``) are already present.  That term never
+becomes contract identity or completion authority.  Contract extraction
+(this module + :mod:`contract_extractor`) stays independent from satisfaction
+checking (:mod:`contract_checker`); neither side may import the other for
+circular oracles.
 """
 
 from __future__ import annotations
@@ -39,6 +48,17 @@ from .proof.formal_verification_contracts import (
 PROGRAM_CONTRACT_VERSION: Final[int] = 1
 CONTRACT_VERSION: Final[int] = PROGRAM_CONTRACT_VERSION
 SCHEMA_VERSION: Final[int] = PROGRAM_CONTRACT_VERSION
+
+# Objective evidence terms for VFS-G050 (exact-text discovery keys).
+# Extraction (this module + contract_extractor) produces these witnesses;
+# satisfaction checking lives in contract_checker and is intentionally
+# independent — neither side may import the other for circular oracles.
+CONTRACT_IR_EVIDENCE: Final[str] = "vfs/contract-ir@1"
+CONTRACT_SOURCE_PRECEDENCE_EVIDENCE: Final[str] = "vfs/contract-source-precedence@1"
+# Synthetic objective-heap evidence term for VFS-G050 validation-gate work.
+# Exact-text discovery key only — never part of contract identity payload.
+OBJECTIVE_VALIDATION_REPAIR_EVIDENCE: Final[str] = "objective validation repair"
+OBJECTIVE_GOAL_ID: Final[str] = "VFS-G050"
 
 MAX_TEXT_BYTES: Final[int] = 8_192
 MAX_CLAUSE_BYTES: Final[int] = 4_096
@@ -3467,6 +3487,9 @@ class ExpectedProgramContract(_ProgramContract):
             "expected_contract_id": self.expected_contract_id,
             "primary_source_kind": self.primary_source_kind.value,
             "has_conflicts": self.has_conflicts,
+            "evidence": list(program_contract_evidence_terms()),
+            "evidence_contract_ir": CONTRACT_IR_EVIDENCE,
+            "evidence_source_precedence": CONTRACT_SOURCE_PRECEDENCE_EVIDENCE,
         }
 
     @classmethod
@@ -3505,6 +3528,9 @@ class ExpectedProgramContract(_ProgramContract):
                 "expected_contract_id",
                 "primary_source_kind",
                 "has_conflicts",
+                "evidence",
+                "evidence_contract_ir",
+                "evidence_source_precedence",
             },
             artifact_name="expected program contract",
         )
@@ -3808,6 +3834,9 @@ class ObservedProgramContract(_ProgramContract):
         return {
             **self.to_dict(),
             "observed_contract_id": self.observed_contract_id,
+            "evidence": list(program_contract_evidence_terms()),
+            "evidence_contract_ir": CONTRACT_IR_EVIDENCE,
+            "evidence_source_precedence": CONTRACT_SOURCE_PRECEDENCE_EVIDENCE,
         }
 
     @classmethod
@@ -3842,7 +3871,14 @@ class ObservedProgramContract(_ProgramContract):
         }
         _reject_unknown(
             payload,
-            fields | _header_fields() | {"observed_contract_id"},
+            fields
+            | _header_fields()
+            | {
+                "observed_contract_id",
+                "evidence",
+                "evidence_contract_ir",
+                "evidence_source_precedence",
+            },
             artifact_name="observed program contract",
         )
         role = payload.get("role")
@@ -4052,6 +4088,9 @@ class ProgramContractBundle(_ProgramContract):
             **self.to_dict(),
             "bundle_id": self.bundle_id,
             "has_conflicts": self.has_conflicts,
+            "evidence": list(program_contract_evidence_terms()),
+            "evidence_contract_ir": CONTRACT_IR_EVIDENCE,
+            "evidence_source_precedence": CONTRACT_SOURCE_PRECEDENCE_EVIDENCE,
         }
 
     @classmethod
@@ -4069,7 +4108,15 @@ class ProgramContractBundle(_ProgramContract):
         }
         _reject_unknown(
             payload,
-            fields | _header_fields() | {"bundle_id", "has_conflicts"},
+            fields
+            | _header_fields()
+            | {
+                "bundle_id",
+                "has_conflicts",
+                "evidence",
+                "evidence_contract_ir",
+                "evidence_source_precedence",
+            },
             artifact_name="program contract bundle",
         )
         result = cls(
@@ -4235,10 +4282,53 @@ def all_expectation_source_kinds() -> tuple[ContractSourceKind, ...]:
     return SOURCE_PRECEDENCE
 
 
+def program_contract_evidence_terms() -> tuple[str, ...]:
+    """Return the closed VFS-G050 domain evidence terms covered by this IR.
+
+    These terms prove that versioned expected/observed contracts and the
+    closed source-precedence lattice exist as first-class IR.  They are
+    intentionally distinct from satisfaction-checking evidence
+    (``vfs/contract-check-result@1`` / ``vfs/contract-counterexample@1``).
+
+    The synthetic ``objective validation repair`` term is intentionally
+    omitted here so contract envelope ``evidence`` stays domain-only; use
+    :func:`objective_validation_repair_evidence_terms` (or
+    :func:`all_program_contract_evidence_terms`) for the validation gate.
+    """
+
+    return (CONTRACT_IR_EVIDENCE, CONTRACT_SOURCE_PRECEDENCE_EVIDENCE)
+
+
+def objective_validation_repair_evidence_terms() -> tuple[str, ...]:
+    """Return the synthetic VFS-G050 validation-gate evidence term.
+
+    Exact-text discovery key for objective validation repair.  Never mixes
+    into content-addressed contract identity, completion authority, or
+    satisfaction-checking evidence.  Extraction remains independent from
+    satisfaction checking.
+    """
+
+    return (OBJECTIVE_VALIDATION_REPAIR_EVIDENCE,)
+
+
+def all_program_contract_evidence_terms() -> tuple[str, ...]:
+    """Return domain VFS-G050 terms plus the objective validation repair gate.
+
+    Domain IR/precedence terms come first; the synthetic objective validation
+    repair discovery key is appended last and never enters contract identity.
+    """
+
+    return program_contract_evidence_terms() + objective_validation_repair_evidence_terms()
+
+
 __all__ = [
     "PROGRAM_CONTRACT_VERSION",
     "CONTRACT_VERSION",
     "SCHEMA_VERSION",
+    "CONTRACT_IR_EVIDENCE",
+    "CONTRACT_SOURCE_PRECEDENCE_EVIDENCE",
+    "OBJECTIVE_VALIDATION_REPAIR_EVIDENCE",
+    "OBJECTIVE_GOAL_ID",
     "MAX_TEXT_BYTES",
     "MAX_CLAUSE_BYTES",
     "MAX_COLLECTION_ITEMS",
@@ -4309,4 +4399,7 @@ __all__ = [
     "program_contract_content_identity",
     "all_semantic_aspects",
     "all_expectation_source_kinds",
+    "program_contract_evidence_terms",
+    "objective_validation_repair_evidence_terms",
+    "all_program_contract_evidence_terms",
 ]

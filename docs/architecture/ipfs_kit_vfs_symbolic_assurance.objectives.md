@@ -713,3 +713,143 @@ criterion.
 - Parallel lane: vfs-assurance/cas
 - Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
 - Gap task: Close the missing objective evidence `vfs/dependency-cache@1` with a narrow, verifiable change.
+
+## VFS-G143 Prove vfs/language-edge-resolution@1 for Resolve dynamic language features without inventing call edges
+
+- Status: active
+- Parent: VFS-G021
+- Fib priority: 8000
+- Track: corpus-index
+- Priority: P0
+- Bundle: vfs-assurance/index
+- Goal: Create concrete implementation, tests, docs, or interface descriptors proving `vfs/language-edge-resolution@1`.
+- Evidence: vfs/language-edge-resolution@1
+- Outputs: ipfs_accelerate_py/agent_supervisor/program_ast_adapters.py, ipfs_accelerate_py/agent_supervisor/program_graph.py, test/api/test_agent_supervisor_program_ast_adapters.py
+- Validation: python -m pytest test/api/test_agent_supervisor_program_ast_adapters.py test/api/test_agent_supervisor_program_graph.py -q
+- Acceptance: Every edge cites a source span and resolver rule ; ambiguous and unsupported constructs remain explicit ; adversarial name collisions and re-exports cannot become forged direct calls.
+- Refinement depth: 3
+- Embedding query: vfs/language-edge-resolution@1
+- AST query: vfs/language-edge-resolution@1
+- Parallel lane: vfs-assurance/index
+- Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
+- Gap task: Close the missing objective evidence `vfs/language-edge-resolution@1` with a narrow, verifiable change.
+
+## VFS-G144 Prove objective validation repair for Project a provenance-preserving program and GraphRAG evidence graph
+
+- Status: active
+- Parent: VFS-G040
+- Fib priority: 5000
+- Track: program-graph
+- Priority: P0
+- Bundle: vfs-assurance/graph
+- Goal: Create concrete implementation, tests, docs, or interface descriptors proving `objective validation repair`.
+- Evidence: objective validation repair
+- Outputs: ipfs_accelerate_py/agent_supervisor/program_graph.py, ipfs_accelerate_py/agent_supervisor/ipfs_datasets_program_graph_provider.py, test/api/test_agent_supervisor_program_graph.py
+- Validation: python -m pytest test/api/test_agent_supervisor_program_graph.py test/api/test_agent_supervisor_ipfs_datasets_program_graph_provider.py -q
+- Acceptance: Node and edge provenance is content bound ; graph chunks are deterministic and bounded ; retrieval returns compact references and ranking reasons ; provider absence degrades explicitly ; GraphRAG output cannot create completion or proof authority.
+- Refinement depth: 2
+- Embedding query: objective validation repair
+- AST query: objective validation repair
+- Parallel lane: vfs-assurance/graph
+- Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
+- Gap task: Close the missing objective evidence `objective validation repair` with a narrow, verifiable change.
+
+## VFS-G145 Prove objective validation repair for Prove transitive cache invalidation and bounded storage
+
+- Status: active
+- Parent: VFS-G031
+- Fib priority: 8000
+- Track: content-addressing
+- Priority: P0
+- Bundle: vfs-assurance/cas
+- Goal: Create concrete implementation, tests, docs, or interface descriptors proving `objective validation repair`.
+- Evidence: objective validation repair
+- Outputs: ipfs_accelerate_py/agent_supervisor/program_analysis_cache.py, test/api/test_agent_supervisor_program_analysis_cache.py
+- Validation: python -m pytest test/api/test_agent_supervisor_program_analysis_cache.py test/api/test_agent_supervisor_runtime_cas.py -q
+- Acceptance: Every changed identity dimension has a test ; unrelated components remain reusable ; concurrent exact misses collapse ; failed flights clean up ; retained artifacts and compact receipts stay within declared count and byte bounds.
+- Refinement depth: 3
+- Embedding query: objective validation repair
+- AST query: objective validation repair
+- Parallel lane: vfs-assurance/cas
+- Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
+- Gap task: Close the missing objective evidence `objective validation repair` with a narrow, verifiable change.
+
+## VFS-G146 Prove objective validation repair for Extract versioned expected and observed contracts without circular reasoning
+
+- Status: active
+- Parent: VFS-G050
+- Fib priority: 5000
+- Track: contract-ir
+- Priority: P0
+- Bundle: vfs-assurance/contracts
+- Goal: Create concrete implementation, tests, docs, or interface descriptors proving `objective validation repair`.
+- Evidence: objective validation repair
+- Outputs: ipfs_accelerate_py/agent_supervisor/program_contracts.py, ipfs_accelerate_py/agent_supervisor/contract_extractor.py, test/api/test_agent_supervisor_contract_extractor.py
+- Validation: python -m pytest test/api/test_agent_supervisor_program_contracts.py test/api/test_agent_supervisor_contract_extractor.py -q
+- Acceptance: Contract sources and conflicts are explicit ; implementation observations cannot define their own expectation ; inputs ; outputs ; errors ; effects ; authorization ; idempotence ; ordering ; atomicity ; resources ; and degradation are represented or marked unsupported.
+- Refinement depth: 2
+- Embedding query: objective validation repair
+- AST query: objective validation repair
+- Parallel lane: vfs-assurance/contracts
+- Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
+- Gap task: Close the missing objective evidence `objective validation repair` with a narrow, verifiable change.
+
+## VFS-G147 Prove objective validation repair for Answer minimal call-slice and contract-impact queries
+
+- Status: active
+- Parent: VFS-G041
+- Fib priority: 8000
+- Track: program-graph
+- Priority: P1
+- Bundle: vfs-assurance/graph
+- Goal: Create concrete implementation, tests, docs, or interface descriptors proving `objective validation repair`.
+- Evidence: objective validation repair
+- Outputs: ipfs_accelerate_py/agent_supervisor/program_graph_queries.py, test/api/test_agent_supervisor_program_graph_queries.py
+- Validation: python -m pytest test/api/test_agent_supervisor_program_graph_queries.py -q
+- Acceptance: Seeded transitive callers/callees and MCP paths are complete within scope ; unrelated source is omitted ; limits never silently convert an incomplete slice into a complete result.
+- Refinement depth: 3
+- Embedding query: objective validation repair
+- AST query: objective validation repair
+- Parallel lane: vfs-assurance/graph
+- Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
+- Gap task: Close the missing objective evidence `objective validation repair` with a narrow, verifiable change.
+
+## VFS-G148 Prove objective validation repair for Prove whether SwissKnife MCP++ calls reach the intended IPFS implementation
+
+- Status: active
+- Parent: VFS-G060
+- Fib priority: 5000
+- Track: mcp-interop
+- Priority: P0
+- Bundle: vfs-assurance/mcplusplus
+- Goal: Create concrete implementation, tests, docs, or interface descriptors proving `objective validation repair`.
+- Evidence: objective validation repair
+- Outputs: ipfs_accelerate_py/agent_supervisor/mcplusplus_contract_resolver.py, test/api/test_agent_supervisor_mcplusplus_contract_resolver.py
+- Validation: python -m pytest test/api/test_agent_supervisor_mcplusplus_contract_resolver.py -q
+- Acceptance: Same-name helpers ; mocks ; static payloads ; copied manifests ; and fallbacks do not prove invocation ; ambiguous/dynamic registrations remain explicit ; Python/TypeScript/schema names and errors are checked for parity.
+- Refinement depth: 2
+- Embedding query: objective validation repair
+- AST query: objective validation repair
+- Parallel lane: vfs-assurance/mcplusplus
+- Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
+- Gap task: Close the missing objective evidence `objective validation repair` with a narrow, verifiable change.
+
+## VFS-G149 Prove objective validation repair for Exhaustively inventory and incrementally parse the SwissKnife corpus
+
+- Status: active
+- Parent: VFS-G020
+- Fib priority: 5000
+- Track: corpus-index
+- Priority: P0
+- Bundle: vfs-assurance/index
+- Goal: Create concrete implementation, tests, docs, or interface descriptors proving `objective validation repair`.
+- Evidence: objective validation repair
+- Outputs: ipfs_accelerate_py/agent_supervisor/repository_corpus_index.py, ipfs_accelerate_py/agent_supervisor/program_ast_adapters.py, test/api/test_agent_supervisor_repository_corpus_index.py
+- Validation: python -m pytest test/api/test_agent_supervisor_repository_corpus_index.py test/api/test_agent_supervisor_program_ast_adapters.py -q
+- Acceptance: The scan publishes included and excluded populations with reasons ; TypeScript/TSX/JavaScript/Python/JSON/Markdown inputs have provenance ; unchanged blobs are reused ; unexplained skips ; parser failures ; and truncation prevent an exhaustive verdict.
+- Refinement depth: 2
+- Embedding query: objective validation repair
+- AST query: objective validation repair
+- Parallel lane: vfs-assurance/index
+- Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
+- Gap task: Close the missing objective evidence `objective validation repair` with a narrow, verifiable change.

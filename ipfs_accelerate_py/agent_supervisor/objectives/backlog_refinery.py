@@ -24,7 +24,7 @@ from dataclasses import asdict, dataclass, field, fields, replace
 from datetime import datetime, timedelta, timezone
 from enum import Enum
 from hashlib import sha1, sha256
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Callable, Iterable, Mapping, Sequence
 
 from ..analysis.analyzer_health import (
@@ -62,6 +62,7 @@ from .objective_graph import (
     parse_goal_heap,
     repo_relative_path,
     safe_bundle_key,
+    taskboard_namespace_from_todo,
 )
 from .scan_receipts import (
     DEFAULT_EXHAUSTION_QUORUM_SIZE,
@@ -77,7 +78,11 @@ from .scan_receipts import (
     scan_configuration_revision,
     scan_identity,
 )
-from ..task_sources.task_identity import TaskIdentity, canonical_task_identity
+from ..task_sources.task_identity import (
+    TaskIdentity,
+    canonical_task_identity,
+    normalize_board_namespace,
+)
 from ..todo_daemon.implementation_daemon import (
     is_retry_budget_repair_task,
     parse_task_file,
@@ -203,6 +208,24 @@ SELF_IMPROVEMENT_SUCCESSOR_RECORDS_KEY = (
 CODEBASE_SCAN_ANALYZER_VERSION = "codebase-annotation-analyzer/v1"
 CODEBASE_AUDIT_SCANNER_VERSION = "codebase-audit/v1"
 CODEBASE_SCAN_REASON_SAMPLE_LIMIT = 10
+
+
+def _bounded_unique_representative_paths(paths: Iterable[Any]) -> list[str]:
+    """Return stable, non-empty path samples accepted by scan receipts."""
+
+    representatives: list[str] = []
+    seen: set[str] = set()
+    for raw_path in paths:
+        path = str(raw_path or "").strip()
+        if not path or path in seen:
+            continue
+        seen.add(path)
+        representatives.append(path)
+        if len(representatives) >= CODEBASE_SCAN_REASON_SAMPLE_LIMIT:
+            break
+    return representatives
+
+
 CODEBASE_SCAN_MAX_FILE_BYTES = int(os.environ.get("IPFS_ACCELERATE_AGENT_CODEBASE_SCAN_MAX_FILE_BYTES", "262144"))
 CODEBASE_SCAN_SUFFIXES = {
     ".cjs",
@@ -477,7 +500,7 @@ class CodebaseScanInventory:
                 {
                     "reason_code": reason_code,
                     "count": len(paths),
-                    "representative_paths": paths[:CODEBASE_SCAN_REASON_SAMPLE_LIMIT],
+                    "representative_paths": _bounded_unique_representative_paths(paths),
                 }
                 for reason_code, paths in sorted(grouped.items())
             ]
@@ -541,9 +564,7 @@ class CodebaseRefillAdmission:
             {
                 "reason_code": reason_code,
                 "count": len(paths),
-                "representative_paths": [
-                    path for path in paths if path
-                ][:CODEBASE_SCAN_REASON_SAMPLE_LIMIT],
+                "representative_paths": _bounded_unique_representative_paths(paths),
             }
             for reason_code, paths in sorted(grouped.items())
         ]
@@ -3585,6 +3606,7 @@ def codebase_scan_task_block(
     bundle_key: str = "",
     bundle_shard: str = "",
     ast_symbols: Sequence[str] = (),
+    board_namespace: str = "codebase-scan",
 ) -> str:
     outputs = [discovery_output_path, finding.root_relative_path]
     identity = codebase_finding_task_identity(finding)
@@ -3646,7 +3668,8 @@ def codebase_scan_task_block(
 - Track: {finding.track}
 - Depends on: {", ".join(depends_on)}
 - Outputs: {", ".join(outputs)}
-- Validation: {finding.validation}{planning}
+- Validation: {finding.validation}
+- Board namespace: {normalize_board_namespace(board_namespace)}{planning}
 - Acceptance: Goal-scoped refill admitted this finding from {finding.root_relative_path}:{finding.line_number} for {goal_id or "an explicitly unscoped legacy board"}. Use evidence in {discovery_path}, make only the smallest change required by that goal lineage, add or update focused validation when appropriate, and do not expand into adjacent cleanup.
 """
 
@@ -4702,6 +4725,132 @@ worktree cleanup skip count decreases.
     return path
 
 
+@dataclass(frozen=True)
+class ReconciliationGuardrailBoardProfile:
+    """Strict task-board metadata inherited by reconciliation guardrails."""
+
+    board_namespace: str = ""
+    goal_id: str = ""
+    graph_parents: str = ""
+    bundle: str = ""
+    parallel_lane: str = ""
+    resource_class: str = ""
+
+
+def reconciliation_guardrail_board_profile(
+    todo_path: Path,
+    *,
+    task_prefix: str = DEFAULT_TASK_ID_PREFIX,
+) -> ReconciliationGuardrailBoardProfile:
+    """Return a root-bound complete profile that is already board-valid.
+
+    Reconciliation findings are operational tasks, but they still belong to
+    the board that discovered them.  Copying one internally consistent profile
+    avoids inventing a namespace, goal, bundle, lane, or resource vocabulary
+    that a strict board validator may reject.  A profile is only admitted when
+    every strict field is present on the same existing task.
+    """
+
+    try:
+        tasks = parse_task_file(todo_path, task_header_prefix(task_prefix))
+    except (OSError, UnicodeDecodeError):
+        return ReconciliationGuardrailBoardProfile()
+    profiles: list[ReconciliationGuardrailBoardProfile] = []
+    parent_counts: dict[str, int] = {}
+    for task in tasks:
+        metadata = getattr(task, "metadata", {}) or {}
+        profile = ReconciliationGuardrailBoardProfile(
+            board_namespace=str(metadata.get("board namespace") or "").strip(),
+            goal_id=str(metadata.get("goal id") or "").strip(),
+            graph_parents=str(metadata.get("graph parents") or "").strip(),
+            bundle=str(metadata.get("bundle") or "").strip(),
+            parallel_lane=str(metadata.get("parallel lane") or "").strip(),
+            resource_class=str(metadata.get("resource class") or "").strip(),
+        )
+        if all(
+            (
+                profile.board_namespace,
+                profile.goal_id,
+                profile.bundle,
+                profile.parallel_lane,
+                profile.resource_class,
+            )
+        ):
+            profiles.append(profile)
+            for parent in split_csv(str(metadata.get("graph parents") or "")):
+                parent_counts[parent] = parent_counts.get(parent, 0) + 1
+    # Operational review-only findings belong to the board root, not to the
+    # most recently active implementation goal.  Binding them to a leaf goal
+    # could otherwise make an operator cleanup artifact look like objective
+    # completion evidence.
+    for profile in profiles:
+        if re.search(r"(?:^|[-_])G0+$", profile.goal_id, flags=re.IGNORECASE):
+            return profile
+    for root_goal_id in sorted(
+        parent_counts,
+        key=lambda item: (-parent_counts[item], item),
+    ):
+        for profile in profiles:
+            if profile.goal_id == root_goal_id:
+                return profile
+    if profiles:
+        return profiles[-1]
+    return ReconciliationGuardrailBoardProfile()
+
+
+def reconciliation_guardrail_safe_outputs(
+    values: Sequence[Path | str],
+    *,
+    repo_root: Path,
+) -> tuple[str, ...]:
+    """Normalize output declarations and reject paths outside the repository."""
+
+    try:
+        root = repo_root.resolve()
+    except OSError:
+        root = repo_root
+    outputs: list[str] = []
+    for raw_value in values:
+        value = str(raw_value or "").strip().replace("\\", "/")
+        if not value or "\x00" in value:
+            continue
+        candidate = Path(value)
+        if candidate.is_absolute():
+            try:
+                value = candidate.resolve().relative_to(root).as_posix()
+            except (OSError, ValueError):
+                continue
+        path = PurePosixPath(value)
+        if (
+            path.is_absolute()
+            or not path.parts
+            or ".." in path.parts
+            or path.as_posix() in {".", ".."}
+            or (path.parts and path.parts[0].endswith(":"))
+        ):
+            continue
+        normalized = path.as_posix()
+        if normalized not in outputs:
+            outputs.append(normalized)
+    return tuple(outputs)
+
+
+def _reconciliation_guardrail_profile_lines(
+    profile: ReconciliationGuardrailBoardProfile | None,
+) -> list[str]:
+    if profile is None:
+        return []
+    fields = (
+        ("Board namespace", profile.board_namespace),
+        ("Goal id", profile.goal_id),
+        ("Graph parents", profile.graph_parents),
+        ("Bundle", profile.bundle),
+        ("Parallel lane", profile.parallel_lane),
+        ("Resource class", profile.resource_class),
+    )
+    return [f"- {label}: {value}" for label, value in fields if value]
+
+
 def reconciliation_guardrail_task_block(
     *,
     task_id: str,
@@ -4709,8 +4858,17 @@ def reconciliation_guardrail_task_block(
     discovery_path: Path,
     todo_output_path: str,
     discovery_output_path: str = DEFAULT_DISCOVERY_OUTPUT_PATH,
+    board_profile: ReconciliationGuardrailBoardProfile | None = None,
+    repo_root: Path | None = None,
 ) -> str:
-    outputs = [discovery_output_path, todo_output_path]
+    outputs = reconciliation_guardrail_safe_outputs(
+        (discovery_output_path, todo_output_path),
+        repo_root=repo_root or Path.cwd(),
+    )
+    profile_lines = _reconciliation_guardrail_profile_lines(board_profile)
+    profile_markdown = "\n".join(profile_lines)
+    if profile_markdown:
+        profile_markdown = f"\n{profile_markdown}"
     return f"""## {task_id} {record.get("summary")}
 
 - Status: blocked
@@ -4723,7 +4881,7 @@ def reconciliation_guardrail_task_block(
 - Fingerprint: {record.get("fingerprint") or ""}
 - Dedupe key: {record.get("dedupe_key") or ""}
 - Depends on:
-- Outputs: {", ".join(outputs)}
+- Outputs: {", ".join(outputs)}{profile_markdown}
 - Validation: test -f {shlex.quote(str(discovery_path))}
 - Acceptance: Reconciliation guardrail filed this because {record.get("candidate_count")} branch or worktree cleanup candidates are blocked by {record.get("reason")}. This task is intentionally operator-gated because unknown dirty checkout content must not be committed, stashed, or discarded automatically. Use evidence and the machine-readable reconciliation plan in {discovery_path}, reconcile the dirty checkout or dirty worktree group deliberately, then rerun the supervisor cleanup/reconciliation pass and confirm that the blocked candidate count decreases.
 """
@@ -5132,9 +5290,94 @@ def reconciliation_task_validation_path(block: str) -> Path | None:
     return Path(parts[0])
 
 
+def _task_block_metadata_value(block: str, label: str) -> str:
+    match = re.search(
+        rf"^-\s+{re.escape(label)}:\s*(.*?)\s*$",
+        block,
+        flags=re.MULTILINE | re.IGNORECASE,
+    )
+    return match.group(1).strip() if match else ""
+
+
+def _upsert_task_block_metadata(
+    block: str,
+    label: str,
+    value: str,
+    *,
+    after: str,
+) -> tuple[str, bool]:
+    replacement = f"- {label}: {value}"
+    pattern = rf"^-\s+{re.escape(label)}:\s*.*$"
+    if re.search(pattern, block, flags=re.MULTILINE | re.IGNORECASE):
+        updated = re.sub(
+            pattern,
+            replacement,
+            block,
+            count=1,
+            flags=re.MULTILINE | re.IGNORECASE,
+        )
+        return updated, updated != block
+    anchor = re.search(
+        rf"^-\s+{re.escape(after)}:\s*.*$",
+        block,
+        flags=re.MULTILINE | re.IGNORECASE,
+    )
+    if anchor is None:
+        anchor = re.search(r"^##\s+\S+.*$", block, flags=re.MULTILINE)
+    if anchor is None:
+        return block, False
+    updated = block[: anchor.end()] + f"\n{replacement}" + block[anchor.end() :]
+    return updated, True
+
+
+def reconciliation_guardrail_block_needs_refresh(
+    block: str,
+    *,
+    board_profile: ReconciliationGuardrailBoardProfile | None = None,
+    output_paths: Sequence[str] = (),
+) -> bool:
+    """Return whether a matching persistent blocker needs semantic repair."""
+
+    required = (
+        ("Status", "blocked"),
+        ("Completion", "manual"),
+        ("Is schedulable", "false"),
+        ("Review only", "true"),
+        ("Blocked reason", "operator_reconciliation_required"),
+    )
+    if any(_task_block_metadata_value(block, label).lower() != value for label, value in required):
+        return True
+    if output_paths:
+        current_outputs = tuple(
+            item.strip()
+            for item in _task_block_metadata_value(block, "Outputs").split(",")
+            if item.strip()
+        )
+        if current_outputs != tuple(output_paths):
+            return True
+    if board_profile is not None:
+        expected_profile = (
+            ("Board namespace", board_profile.board_namespace),
+            ("Goal id", board_profile.goal_id),
+            ("Graph parents", board_profile.graph_parents),
+            ("Bundle", board_profile.bundle),
+            ("Parallel lane", board_profile.parallel_lane),
+            ("Resource class", board_profile.resource_class),
+        )
+        if any(
+            value and _task_block_metadata_value(block, label) != value
+            for label, value in expected_profile
+        ):
+            return True
+    return False
+
+
 def refresh_reconciliation_guardrail_block(
     block: str,
     record: Mapping[str, Any],
+    *,
+    board_profile: ReconciliationGuardrailBoardProfile | None = None,
+    output_paths: Sequence[str] = (),
 ) -> tuple[str, str, Path | None, bool]:
     heading_match = re.match(r"^##\s+(\S+)\s+[^\n]*", block)
     if not heading_match:
@@ -5151,6 +5394,22 @@ def refresh_reconciliation_guardrail_block(
     if updated != block:
         changed = True
     block = updated
+    canonical_fields = (
+        ("Status", "blocked", "heading"),
+        ("Completion", "manual", "Status"),
+        ("Is schedulable", "false", "Completion"),
+        ("Review only", "true", "Is schedulable"),
+        ("Blocked reason", "operator_reconciliation_required", "Review only"),
+    )
+    for label, value, after in canonical_fields:
+        updated, field_changed = _upsert_task_block_metadata(
+            block,
+            label,
+            value,
+            after=after,
+        )
+        changed = changed or field_changed
+        block = updated
     fingerprint = str(record.get("fingerprint") or "")
     dedupe_key = str(record.get("dedupe_key") or "")
     if fingerprint and re.search(r"^- Fingerprint:", block, flags=re.MULTILINE):
@@ -5175,6 +5434,37 @@ def refresh_reconciliation_guardrail_block(
         )
         changed = changed or updated != block
         block = updated
+    if output_paths:
+        updated, field_changed = _upsert_task_block_metadata(
+            block,
+            "Outputs",
+            ", ".join(output_paths),
+            after="Depends on",
+        )
+        changed = changed or field_changed
+        block = updated
+    profile_anchor = "Outputs"
+    if board_profile is not None:
+        profile_fields = (
+            ("Board namespace", board_profile.board_namespace),
+            ("Goal id", board_profile.goal_id),
+            ("Graph parents", board_profile.graph_parents),
+            ("Bundle", board_profile.bundle),
+            ("Parallel lane", board_profile.parallel_lane),
+            ("Resource class", board_profile.resource_class),
+        )
+        for label, value in profile_fields:
+            if not value:
+                continue
+            updated, field_changed = _upsert_task_block_metadata(
+                block,
+                label,
+                value,
+                after=profile_anchor,
+            )
+            changed = changed or field_changed
+            block = updated
+            profile_anchor = label
     validation_path = reconciliation_task_validation_path(block)
     if validation_path is not None:
         replacement = (
@@ -5194,6 +5484,8 @@ def refresh_existing_reconciliation_guardrails(
     *,
     todo_text: str,
     records: Sequence[Mapping[str, Any]],
+    board_profile: ReconciliationGuardrailBoardProfile | None = None,
+    output_paths: Sequence[str] = (),
 ) -> tuple[str, list[dict[str, Any]]]:
     blocks = task_blocks_with_spans(todo_text)
     if not blocks:
@@ -5206,11 +5498,22 @@ def refresh_existing_reconciliation_guardrails(
                 block = replacements[(start, end)]
             if not reconciliation_record_matches_block(block, record):
                 continue
-            if reconciliation_guardrail_refresh_is_noise(block, record):
+            needs_refresh = reconciliation_guardrail_block_needs_refresh(
+                block,
+                board_profile=board_profile,
+                output_paths=output_paths,
+            )
+            if reconciliation_guardrail_refresh_is_noise(block, record) and not needs_refresh:
                 validation_path = reconciliation_task_validation_path(block)
                 if not reconciliation_guardrail_discovery_needs_repair(validation_path):
                     break
-            refreshed_block, task_id, validation_path, changed = refresh_reconciliation_guardrail_block(block, record)
+            was_completed = _task_block_metadata_value(block, "Status").lower() == "completed"
+            refreshed_block, task_id, validation_path, changed = refresh_reconciliation_guardrail_block(
+                block,
+                record,
+                board_profile=board_profile,
+                output_paths=output_paths,
+            )
             discovery_changed = False
             if validation_path is not None and task_id:
                 try:
@@ -5239,6 +5542,7 @@ def refresh_existing_reconciliation_guardrails(
                         "candidate_count": int(record.get("candidate_count") or 0),
                         "discovery_path": str(validation_path or ""),
                         "refreshed": True,
+                        "reopened": was_completed,
                     }
                 )
             break
@@ -6336,6 +6640,18 @@ def record_reconciliation_guardrail_findings(
         additional_generated_paths=additional_generated_status_paths,
         additional_generated_prefixes=additional_generated_status_prefixes,
     )
+    board_profile = reconciliation_guardrail_board_profile(
+        todo_path,
+        task_prefix=task_prefix,
+    )
+    try:
+        todo_output_path = todo_path.resolve().relative_to(filter_repo_root).as_posix()
+    except ValueError:
+        todo_output_path = todo_path.as_posix()
+    guardrail_output_paths = reconciliation_guardrail_safe_outputs(
+        (discovery_output_path, todo_output_path),
+        repo_root=filter_repo_root,
+    )
     all_records = reconciliation_guardrail_records(
         reconciliation_result=reconciliation_result,
         cleanup_result=cleanup_result,
@@ -6345,6 +6661,8 @@ def record_reconciliation_guardrail_findings(
     refreshed_todo_text, refreshes = refresh_existing_reconciliation_guardrails(
         todo_text=todo_text,
         records=all_records,
+        board_profile=board_profile,
+        output_paths=guardrail_output_paths,
     )
     if refreshes:
         todo_text = refreshed_todo_text
@@ -6358,10 +6676,6 @@ def record_reconciliation_guardrail_findings(
     if not records and not refreshes:
         return []
 
-    try:
-        todo_output_path = todo_path.resolve().relative_to((repo_root or todo_path.parent).resolve()).as_posix()
-    except ValueError:
-        todo_output_path = todo_path.as_posix()
     findings: list[dict[str, Any]] = []
     generated_paths: list[Path] = []
     for record in records:
@@ -6378,6 +6692,8 @@ def record_reconciliation_guardrail_findings(
             discovery_path=discovery_path,
             todo_output_path=todo_output_path,
             discovery_output_path=discovery_output_path,
+            board_profile=board_profile,
+            repo_root=filter_repo_root,
         )
         todo_text = todo_text.rstrip() + "\n\n" + task_block.strip() + "\n"
         findings.append(
@@ -7869,7 +8185,10 @@ def record_codebase_scan_findings(
         strategy["last_codebase_scan_findings"] = []
         strategy["last_codebase_scan_health"] = health.to_dict()
         strategy["last_codebase_scan_exhaustion_quorum"] = quorum.to_dict()
-        if completion_safe:
+        # This task-count marker is scheduler state, not proof authority.  A
+        # healthy exhaustive pass must observe the configured cooldown even
+        # while it awaits a second independent exhaustion-quorum channel.
+        if health_completion_safe:
             strategy["last_drained_codebase_scan_task_count"] = task_count
         write_json(strategy_path, strategy)
         return receipt
@@ -7883,6 +8202,7 @@ def record_codebase_scan_findings(
     detected_count = len(findings)
     with locked_taskboard(todo_path) as taskboard:
         todo_text = taskboard.read()
+        board_namespace = taskboard_namespace_from_todo(todo_text, todo_path)
         latest_seen = codebase_scan_fingerprint_hints(
             todo_text,
             discovery_dir=discovery_dir,
@@ -7930,6 +8250,7 @@ def record_codebase_scan_findings(
                 bundle_key=bundle_key,
                 bundle_shard=bundle_shard,
                 ast_symbols=ast_symbols,
+                board_namespace=board_namespace,
             )
             todo_text = todo_text.rstrip() + "\n\n" + task_block.strip() + "\n"
             finding_record = {
@@ -7941,6 +8262,7 @@ def record_codebase_scan_findings(
                 "canonical_task_key": identity.canonical_task_key,
                 "canonical_task_cid": identity.canonical_task_cid,
                 "semantic_identity": identity.semantic_fingerprint,
+                "board_namespace": board_namespace,
                 "objective_goal_ids": list(finding.objective_goal_ids),
             }
             if bundle_key:
@@ -7955,6 +8277,7 @@ def record_codebase_scan_findings(
                         "task_block": task_block,
                         "task_payload": {
                             "task_id": follow_up_task_id,
+                            "board_namespace": board_namespace,
                             "canonical_task_key": identity.canonical_task_key,
                             "canonical_task_cid": identity.canonical_task_cid,
                             "semantic_identity": identity.semantic_fingerprint,

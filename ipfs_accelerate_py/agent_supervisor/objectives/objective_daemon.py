@@ -3765,6 +3765,17 @@ def build_arg_parser() -> argparse.ArgumentParser:
             "multiple sensitive roots."
         ),
     )
+    parser.add_argument(
+        "--protected-output-path",
+        dest="protected_output_paths",
+        action="append",
+        default=[],
+        help=(
+            "Exact repo-relative file that generated implementation tasks must "
+            "treat as read-only context instead of an output. Repeat for "
+            "multiple supervisor-owned control-plane files."
+        ),
+    )
     parser.add_argument("--task-prefix", default=DEFAULT_TASK_PREFIX)
     parser.add_argument("--objective-summary-prefix", default=DEFAULT_OBJECTIVE_TASK_SUMMARY_PREFIX)
     parser.add_argument("--discovery-output-path", default=DEFAULT_DISCOVERY_OUTPUT_PATH)
@@ -3972,6 +3983,18 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
     repo_root = args.repo_root.resolve()
+    protected_output_paths = tuple(
+        str(item).strip()
+        for item in (
+            getattr(
+                args,
+                "protected_output_paths",
+                getattr(args, "protected_output_path", ()),
+            )
+            or ()
+        )
+        if str(item).strip()
+    )
     scan_exclude_paths = resolve_scan_exclude_paths(
         repo_root,
         getattr(args, "scan_exclude_path", ()) or (),
@@ -4179,6 +4202,7 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
         evidence_repository_tree=evidence_repository_tree,
         scan_exclude_paths=scan_exclude_paths,
         trust_recorded_external_completion=completion_reconciliation_enabled,
+        protected_output_paths=protected_output_paths,
     )
     plan_evaluation_path = (
         getattr(args, "plan_evaluation_path", None) or state_root / "plan_evaluations.json"
@@ -4487,6 +4511,7 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
                         trust_recorded_external_completion=(
                             completion_reconciliation_enabled
                         ),
+                        protected_output_paths=protected_output_paths,
                     )
                     records.extend(objective_generation_materialized_records)
                     generated_plan_decisions = plan_objective_records(
@@ -4533,6 +4558,8 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
         "graph_path": repo_relative_path(repo_root, graph_path),
         "scan_exclude_paths": scan_exclude_metadata,
         "scan_exclude_path_count": len(scan_exclude_metadata),
+        "protected_output_paths": list(protected_output_paths),
+        "protected_output_path_count": len(protected_output_paths),
         "source_protected_scan_policy": source_protected_scan_policy(),
         "objective_completion_reconciliation_enabled": (
             completion_reconciliation_enabled

@@ -517,6 +517,12 @@ def test_implementation_daemon_releases_pool_lease_before_merge_queue_handoff(tm
     assert handoff["pooled"] is True
     assert handoff["lifecycle_finalize"]["finalized"] is True
     assert handoff["lifecycle_finalize"]["reason"] == "pooled_merge_queue_handoff"
+    assert merge_result["worktree_lifecycle_handoff"]["finalized"] is True
+    assert daemon._active_worktree_lifecycle is None
+    assert (
+        daemon.worktree_lifecycle.load_workspace(Path(result["worktree_path"]))
+        is None
+    )
     assert daemon._worktree_pool_leases == {}
     assert list((worktree_root / ".pool-state").glob("*.lock")) == []
     assert (
@@ -566,6 +572,17 @@ def test_failed_implementation_does_not_pin_pooled_worktree(tmp_path: Path) -> N
     assert result["returncode"] == 7
     assert result["cleanup_result"]["reason"] == "failed_implementation_pool_lease_released"
     assert result["cleanup_result"]["pool_release"]["released"] is True
+    assert (
+        result["cleanup_result"]["pool_release"]["lifecycle_finalize"][
+            "finalized"
+        ]
+        is True
+    )
+    assert daemon._active_worktree_lifecycle is None
+    assert (
+        daemon.worktree_lifecycle.load_workspace(Path(result["worktree_path"]))
+        is None
+    )
     assert daemon._worktree_pool_leases == {}
     assert list((worktree_root / ".pool-state").glob("*.lock")) == []
 

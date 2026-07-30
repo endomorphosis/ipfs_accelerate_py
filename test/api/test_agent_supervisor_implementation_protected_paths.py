@@ -22,6 +22,8 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
 from ipfs_accelerate_py.agent_supervisor.todo_daemon import supervisor_runtime
 from ipfs_accelerate_py.agent_supervisor.merge.checkout_lock import (
     BACKLOG_REFINERY_AUTHOR_EMAIL,
+    checkout_lock_metadata,
+    checkout_mutation_lock_path,
     generated_protected_board_commit_subject,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon_runner import (
@@ -90,6 +92,37 @@ def _supervisor(
             repo_root=tmp_path,
             state_path=state_path,
         )
+    )
+
+
+def _generated_protected_supervisor(
+    tmp_path: Path,
+) -> tuple[PortalImplementationSupervisor, Path, Path]:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "config", "user.name", "Fixture")
+    _git(repo, "config", "user.email", "fixture@example.invalid")
+    todo_path = repo / "tasks.todo.md"
+    todo_path.write_text("# Tasks\n", encoding="utf-8")
+    _git(repo, "add", "tasks.todo.md")
+    _git(repo, "commit", "-m", "initial")
+    args = parse_implementation_supervisor_args(
+        [
+            "--todo-path",
+            str(todo_path),
+            "--state-dir",
+            str(tmp_path / "state"),
+            "--implementation-protected-path",
+            "tasks.todo.md",
+        ]
+    )
+    return (
+        PortalImplementationSupervisor(
+            supervisor_config_from_args(args, repo_root=repo)
+        ),
+        repo,
+        todo_path,
     )
 
 
@@ -1054,6 +1087,549 @@ def test_ephemeral_fence_accepts_tagged_generated_board_commit(
     assert not daemon._implementation_protected_incident_path().exists()
 
 
+@pytest.mark.parametrize("trusted", [True, False])
+def test_ephemeral_fence_waits_for_checkout_transaction_before_verifying(
+    tmp_path: Path,
+    trusted: bool,
+) -> None:
+    daemon, repo, workspace, protected = _protected_git_worktree_daemon(
+        tmp_path
+    )
+    task = _task(outputs=["src/example.py"])
+    before = daemon._require_implementation_protected_snapshot(
+        task=task,
+        attempt=1,
+        workspace_path=workspace,
+    )
+    lock_path = checkout_mutation_lock_path(repo)
+    transaction_visible = threading.Event()
+
+    def commit_peer_update() -> None:
+        lock_fd = os.open(
+            lock_path,
+            os.O_CREAT | os.O_EXCL | os.O_WRONLY,
+        )
+        metadata = checkout_lock_metadata(
+            kind="merge",
+            repo_root=repo,
+            owner_script="",
+            extra={
+                "operation": "generated_board_update",
+                "lease_id": "peer-generated-board-transaction",
+            },
+        )
+        os.write(
+            lock_fd,
+            json.dumps(metadata, sort_keys=True).encode("utf-8"),
+        )
+        os.close(lock_fd)
+        protected.write_text("peer transaction\n", encoding="utf-8")
+        transaction_visible.set()
+        time.sleep(0.1)
+        _git(repo, "add", POLICY_PATH)
+        if trusted:
+            author_name = "Accelerator Backlog Refinery"
+            author_email = BACKLOG_REFINERY_AUTHOR_EMAIL
+            subject = generated_protected_board_commit_subject(
+                "Agent: persist serialized generated board"
+            )
+        else:
+            author_name = "Untrusted User"
+            author_email = "untrusted@example.invalid"
+            subject = "edit protected board"
+        _git(
+            repo,
+            "-c",
+            f"user.name={author_name}",
+            "-c",
+            f"user.email={author_email}",
+            "commit",
+            "-m",
+            subject,
+        )
+        lock_path.unlink()
+
+    worker = threading.Thread(target=commit_peer_update)
+    worker.start()
+    assert transaction_visible.wait(timeout=2)
+    started = time.monotonic()
+    violation = daemon._implementation_protected_path_violation(
+        task=task,
+        attempt=1,
+        workspace_path=workspace,
+        before=before,
+    )
+    waited_seconds = time.monotonic() - started
+    worker.join(timeout=2)
+
+    assert not worker.is_alive()
+    assert waited_seconds >= 0.05
+    if trusted:
+        assert violation == {}
+        assert not daemon._implementation_protected_incident_path().exists()
+    else:
+        assert violation["reason"] == (
+            "implementation_protected_path_mutated"
+        )
+        assert daemon._implementation_protected_incident_path().exists()
+
+
+def test_protected_verification_release_preserves_replacement_lock(
+    tmp_path: Path,
+) -> None:
+    daemon = _daemon(tmp_path)
+    lock_result = (
+        daemon._acquire_implementation_protected_verification_lock(
+            task_id="EX-001",
+            attempt=1,
+            workspace_path=tmp_path,
+        )
+    )
+    assert lock_result["acquired"] is True
+    lock_path = Path(lock_result["lock_path"])
+    replacement = checkout_lock_metadata(
+        kind="merge",
+        repo_root=tmp_path,
+        owner_script="",
+        extra={
+            "operation": "replacement_transaction",
+            "lease_id": "replacement-lease",
+        },
+    )
+    lock_path.unlink()
+    lock_path.write_text(
+        json.dumps(replacement, sort_keys=True),
+        encoding="utf-8",
+    )
+
+    assert (
+        daemon._release_implementation_protected_verification_lock(
+            lock_result
+        )
+        is False
+    )
+    assert json.loads(lock_path.read_text(encoding="utf-8")) == replacement
+
+
+def test_protected_verification_lock_timeout_defers_without_latching(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon, _repo, workspace, _protected = (
+        _protected_git_worktree_daemon(tmp_path)
+    )
+    task = _task(outputs=["src/example.py"])
+    before = daemon._require_implementation_protected_snapshot(
+        task=task,
+        attempt=1,
+        workspace_path=workspace,
+    )
+    lock_path = Path(
+        daemon._acquire_implementation_protected_verification_lock(
+            task_id="EX-PEER",
+            attempt=1,
+            workspace_path=workspace,
+        )["lock_path"]
+    )
+    replacement = checkout_lock_metadata(
+        kind="merge",
+        repo_root=daemon.repo_root,
+        owner_script="",
+        extra={
+            "operation": "generated_board_update",
+            "lease_id": "live-peer-lease",
+        },
+    )
+    lock_path.unlink()
+    lock_path.write_text(
+        json.dumps(replacement, sort_keys=True),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "IMPLEMENTATION_PROTECTED_VERIFICATION_LOCK_TIMEOUT_SECONDS",
+        0.0,
+    )
+
+    violation = daemon._implementation_protected_path_violation(
+        task=task,
+        attempt=1,
+        workspace_path=workspace,
+        before=before,
+    )
+
+    assert violation["reason"] == (
+        "implementation_protected_path_verification_lock_timeout"
+    )
+    assert violation["verification_deferred"] is True
+    assert {
+        item["scope"] for item in violation["mutations"]
+    } == {"shared_checkout"}
+    assert not daemon._implementation_protected_incident_path().exists()
+    assert json.loads(lock_path.read_text(encoding="utf-8")) == replacement
+    lock_path.unlink()
+
+
+def test_shared_terminal_verification_deferral_does_not_consume_attempt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    protected = tmp_path / POLICY_PATH
+    protected.parent.mkdir(parents=True)
+    protected.write_text("unchanged\n", encoding="utf-8")
+    daemon = _daemon(tmp_path)
+    task = _task(outputs=["src/example.py"])
+    canonical_task_cid = daemon._canonical_ref(task)
+    state = PortalTaskState(
+        implementation_attempts={task.task_id: 2},
+        implementation_attempts_by_cid={canonical_task_cid: 2},
+    )
+    queue_outcomes: list[int] = []
+    diagnostics: list[str] = []
+    deferral = {
+        "reason": "implementation_protected_path_verification_lock_timeout",
+        "task_id": task.task_id,
+        "attempt": 3,
+        "workspace_path": str(tmp_path),
+        "protected_paths": [POLICY_PATH],
+        # Keep this empty so the regression depends on the explicit signal,
+        # not the older shared-checkout-only mutation-scope heuristic.
+        "mutations": [],
+        "verification_deferred": True,
+    }
+
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "run_process_group_stream",
+        lambda *_args, **_kwargs: subprocess.CompletedProcess(
+            ["fake-agent"],
+            0,
+        ),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_implementation_protected_path_violation",
+        lambda **_kwargs: dict(deferral),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_record_task_queue_outcome",
+        lambda _task, returncode, **_kwargs: queue_outcomes.append(returncode),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_record_failed_attempt_retry_context",
+        lambda *_args, **_kwargs: diagnostics.append("retry") or None,
+    )
+
+    result = daemon._run_implementation(task, state)
+
+    assert result["returncode"] == 1
+    assert result["reason"] == deferral["reason"]
+    assert result["deferred"] is True
+    assert result["attempt_consumed"] is False
+    assert "diagnostic_receipt_id" not in result
+    assert queue_outcomes == []
+    assert diagnostics == []
+    assert state.implementation_attempts == {task.task_id: 2}
+    assert state.implementation_attempts_by_cid == {canonical_task_cid: 2}
+    persisted = PortalTaskState.load(daemon.state_path)
+    assert persisted.implementation_attempts == {task.task_id: 2}
+    assert persisted.implementation_attempts_by_cid == {
+        canonical_task_cid: 2
+    }
+
+
+def test_ephemeral_verification_lock_deferral_does_not_consume_attempt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon, _repo, _workspace, _protected = (
+        _protected_git_worktree_daemon(tmp_path)
+    )
+    task = _task(outputs=["src/example.py"])
+    canonical_task_cid = daemon._canonical_ref(task)
+    state = PortalTaskState(
+        implementation_attempts={task.task_id: 2},
+        implementation_attempts_by_cid={canonical_task_cid: 2},
+    )
+    queue_outcomes: list[int] = []
+    diagnostics: list[str] = []
+    verification_deferred = False
+
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "run_process_group_stream",
+        lambda *_args, **_kwargs: subprocess.CompletedProcess(
+            ["fake-agent"],
+            0,
+        ),
+    )
+
+    def defer_verification(**_kwargs):
+        nonlocal verification_deferred
+        verification_deferred = True
+        return {
+            "acquired": False,
+            "reason": "lock_exists",
+            "lock_path": str(checkout_mutation_lock_path(daemon.repo_root)),
+            "waited_seconds": 0.0,
+        }
+
+    monkeypatch.setattr(
+        daemon,
+        "_acquire_implementation_protected_verification_lock",
+        defer_verification,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_preserve_interrupted_worktree",
+        lambda *_args, **_kwargs: pytest.fail(
+            "verification deferral attempted candidate commit or rescue ref"
+        ),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_cleanup_merged_worktree",
+        lambda *_args, **_kwargs: pytest.fail(
+            "verification deferral attempted worktree or branch cleanup"
+        ),
+    )
+    original_run_git = daemon._run_git
+
+    def reject_post_verification_git(*args, **kwargs):
+        if verification_deferred:
+            pytest.fail(
+                "verification deferral attempted a shared Git mutation"
+            )
+        return original_run_git(*args, **kwargs)
+
+    monkeypatch.setattr(daemon, "_run_git", reject_post_verification_git)
+    monkeypatch.setattr(
+        daemon,
+        "_record_task_queue_outcome",
+        lambda _task, returncode, **_kwargs: queue_outcomes.append(returncode),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_record_failed_attempt_retry_context",
+        lambda *_args, **_kwargs: diagnostics.append("retry") or None,
+    )
+
+    result = daemon._run_implementation_in_ephemeral_worktree(
+        task=task,
+        state=state,
+        attempt=3,
+        started_at="2026-07-29T00:00:00+00:00",
+        log_path=tmp_path / "state" / "ephemeral-deferral.log",
+        prompt="implement",
+    )
+
+    assert result["returncode"] == 1
+    assert result["reason"] == (
+        "implementation_protected_path_verification_lock_timeout"
+    )
+    assert result["protected_path_violation"]["verification_deferred"] is True
+    assert result["deferred"] is True
+    assert result["attempt_consumed"] is False
+    assert "diagnostic_receipt_id" not in result
+    retained = result["failed_preservation_result"]
+    assert retained["retained"] is True
+    assert retained["preserved"] is False
+    assert retained["reason"] == (
+        "verification_deferred_checkout_lease_active"
+    )
+    assert retained["commit_result"]["committed"] is False
+    assert retained["cleanup_result"] == {
+        "cleaned": False,
+        "reason": "verification_deferred_checkout_lease_active",
+        "retained": True,
+    }
+    retained_path = Path(result["worktree_path"])
+    assert retained_path.exists()
+    lifecycle = daemon.worktree_lifecycle.load_workspace(retained_path)
+    assert lifecycle is not None
+    assert lifecycle.is_terminal
+    assert lifecycle.terminal_reason == (
+        "verification_deferred_checkout_lease_unavailable"
+    )
+    assert daemon._active_worktree_lifecycle is None
+    cleanup_authorization = daemon.worktree_lifecycle.authorize_cleanup(
+        workspace_path=retained_path,
+        branch=result["branch"],
+    )
+    assert cleanup_authorization.allowed
+    assert cleanup_authorization.reason == "terminal_record"
+    retry_lifecycle = daemon.worktree_lifecycle.begin_preparing(
+        task_id=task.task_id,
+        canonical_task_cid=canonical_task_cid,
+        attempt=3,
+        lane_id=daemon._worktree_lifecycle_lane_id(),
+        workspace_path=tmp_path / "worktrees" / "retry-attempt-3",
+        branch=f"{result['branch']}-retry",
+        merge_target="main",
+        state_dir=str(daemon.state_path.parent),
+    )
+    assert retry_lifecycle.state.value == "preparing"
+    assert queue_outcomes == []
+    assert diagnostics == []
+    assert state.implementation_attempts == {task.task_id: 2}
+    assert state.implementation_attempts_by_cid == {canonical_task_cid: 2}
+    persisted = PortalTaskState.load(daemon.state_path)
+    assert persisted.implementation_attempts == {task.task_id: 2}
+    assert persisted.implementation_attempts_by_cid == {
+        canonical_task_cid: 2
+    }
+
+
+def test_protected_verification_double_snapshot_workspace_race_latches_mutation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon, _repo, workspace, _protected = (
+        _protected_git_worktree_daemon(tmp_path)
+    )
+    task = _task(outputs=["src/example.py"])
+    before = daemon._require_implementation_protected_snapshot(
+        task=task,
+        attempt=1,
+        workspace_path=workspace,
+    )
+    unchanged_after = json.loads(json.dumps(before))
+    (workspace / POLICY_PATH).write_text(
+        "changed-between-verification-snapshots\n",
+        encoding="utf-8",
+    )
+    changed_after = daemon._implementation_protected_path_snapshot(workspace)
+    snapshots = iter((unchanged_after, changed_after))
+
+    monkeypatch.setattr(
+        daemon,
+        "_acquire_implementation_protected_verification_lock",
+        lambda **_kwargs: {
+            "acquired": True,
+            "reason": "acquired",
+            "lock_path": str(checkout_mutation_lock_path(daemon.repo_root)),
+            "waited_seconds": 0.0,
+        },
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_release_implementation_protected_verification_lock",
+        lambda _lock_result: True,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_implementation_protected_path_snapshot",
+        lambda _workspace_path: next(snapshots),
+    )
+
+    violation = daemon._implementation_protected_path_violation(
+        task=task,
+        attempt=1,
+        workspace_path=workspace,
+        before=before,
+    )
+
+    assert violation["reason"] == "implementation_protected_path_mutated"
+    assert violation.get("verification_deferred", False) is False
+    assert {
+        item["scope"] for item in violation["mutations"]
+    } == {"workspace"}
+    assert daemon._implementation_protected_incident_path().exists()
+
+
+def test_reconciliation_accepts_trusted_board_commit_that_lands_after_latch(
+    tmp_path: Path,
+) -> None:
+    daemon, repo, workspace, protected = _protected_git_worktree_daemon(tmp_path)
+    task = _task(outputs=["src/example.py"])
+    before = daemon._require_implementation_protected_snapshot(
+        task=task,
+        attempt=1,
+        workspace_path=workspace,
+    )
+
+    protected.write_text("generated update awaiting persistence\n", encoding="utf-8")
+    violation = daemon._implementation_protected_path_violation(
+        task=task,
+        attempt=1,
+        workspace_path=workspace,
+        before=before,
+    )
+    assert violation["reason"] == "implementation_protected_path_mutated"
+    assert daemon._implementation_protected_incident_path().exists()
+
+    _git(repo, "add", POLICY_PATH)
+    _git(
+        repo,
+        "-c",
+        "user.name=Accelerator Backlog Refinery",
+        "-c",
+        f"user.email={BACKLOG_REFINERY_AUTHOR_EMAIL}",
+        "commit",
+        "-m",
+        generated_protected_board_commit_subject(
+            "Agent: persist delayed generated board"
+        ),
+    )
+
+    result = daemon._reconcile_implementation_protected_path_fence()
+
+    assert result["cleared"] is True
+    assert result["auto"] is True
+    assert result["blocked"] is False
+    assert result["reason"] == "trusted_concurrent_protected_path_update"
+    assert result["protected_paths"] == [POLICY_PATH]
+    assert not daemon._implementation_protected_incident_path().exists()
+    assert not daemon._implementation_protected_active_snapshot_path().exists()
+    receipt = json.loads(Path(result["receipt_path"]).read_text(encoding="utf-8"))
+    assert receipt["schema"] == (
+        "implementation-protected-path-trusted-concurrent-clearance-v1"
+    )
+    assert receipt["commits"][0]["author_email"] == BACKLOG_REFINERY_AUTHOR_EMAIL
+
+
+def test_reconciliation_keeps_late_untrusted_board_commit_latched(
+    tmp_path: Path,
+) -> None:
+    daemon, repo, workspace, protected = _protected_git_worktree_daemon(tmp_path)
+    task = _task(outputs=["src/example.py"])
+    before = daemon._require_implementation_protected_snapshot(
+        task=task,
+        attempt=1,
+        workspace_path=workspace,
+    )
+
+    protected.write_text("untrusted delayed update\n", encoding="utf-8")
+    violation = daemon._implementation_protected_path_violation(
+        task=task,
+        attempt=1,
+        workspace_path=workspace,
+        before=before,
+    )
+    assert violation["reason"] == "implementation_protected_path_mutated"
+
+    _git(repo, "add", POLICY_PATH)
+    _git(
+        repo,
+        "-c",
+        "user.name=Untrusted User",
+        "-c",
+        "user.email=untrusted@example.invalid",
+        "commit",
+        "-m",
+        "edit protected board",
+    )
+
+    result = daemon._reconcile_implementation_protected_path_fence()
+
+    assert result["blocked"] is True
+    assert result["reason"] == "implementation_protected_path_incident_latched"
+    assert daemon._implementation_protected_incident_path().exists()
+    assert daemon._implementation_protected_active_snapshot_path().exists()
+
+
 def test_ephemeral_fence_rejects_untrusted_shared_checkout_commit(
     tmp_path: Path,
 ) -> None:
@@ -1925,6 +2501,490 @@ def test_supervisor_commits_generated_updates_to_protected_todo_board(
     assert _git(repo, "log", "-1", "--pretty=%s").endswith(
         "[agent-supervisor:generated-protected-board]"
     )
+    assert not checkout_mutation_lock_path(repo).exists()
+
+
+@pytest.mark.parametrize("commit_untrusted", [False, True])
+def test_generated_board_producer_retains_lease_for_unsafe_protected_output(
+    tmp_path: Path,
+    commit_untrusted: bool,
+) -> None:
+    supervisor, repo, todo_path = _generated_protected_supervisor(
+        tmp_path
+    )
+
+    def unsafe_producer() -> list[str]:
+        todo_path.write_text("# Tasks\n\n## EX-002 Unsafe\n", encoding="utf-8")
+        if commit_untrusted:
+            _git(repo, "add", "tasks.todo.md")
+            _git(repo, "commit", "-m", "untrusted generated update")
+        return ["EX-002"]
+
+    expected_reason = (
+        "protected_generated_history_untrusted"
+        if commit_untrusted
+        else "protected_generated_outputs_dirty"
+    )
+    with pytest.raises(RuntimeError, match=expected_reason):
+        supervisor._run_generated_board_producer(
+            producer="unsafe-test",
+            commit_outputs=True,
+            callback=unsafe_producer,
+        )
+
+    lock_path = checkout_mutation_lock_path(repo)
+    assert lock_path.exists()
+    assert json.loads(lock_path.read_text(encoding="utf-8"))["lease_id"]
+    events = [
+        json.loads(line)
+        for line in supervisor.config.events_path.read_text(
+            encoding="utf-8"
+        ).splitlines()
+    ]
+    assert events[-1]["type"] == "checkout_mutation_lease_retained"
+    assert events[-1]["release_guard"]["reason"] == expected_reason
+
+    unrelated_called = False
+
+    def unrelated_producer() -> list[str]:
+        nonlocal unrelated_called
+        unrelated_called = True
+        return []
+
+    with pytest.raises(
+        RuntimeError,
+        match="checkout_mutation_protected_recovery_required",
+    ):
+        supervisor._run_generated_board_producer(
+            producer="unrelated-test",
+            commit_outputs=True,
+            callback=unrelated_producer,
+        )
+    assert unrelated_called is False
+
+
+def test_generated_board_same_producer_retry_releases_retained_lease(
+    tmp_path: Path,
+) -> None:
+    supervisor, repo, todo_path = _generated_protected_supervisor(tmp_path)
+
+    def dirty_producer() -> list[str]:
+        todo_path.write_text("# Tasks\n\n## EX-002 Retry\n", encoding="utf-8")
+        return ["dirty"]
+
+    with pytest.raises(
+        RuntimeError,
+        match="protected_generated_outputs_dirty",
+    ):
+        supervisor._run_generated_board_producer(
+            producer="retry-test",
+            commit_outputs=True,
+            callback=dirty_producer,
+        )
+
+    def trusted_retry() -> list[str]:
+        _git(repo, "add", "tasks.todo.md")
+        _git(
+            repo,
+            "-c",
+            "user.name=Agent Supervisor",
+            "-c",
+            f"user.email={BACKLOG_REFINERY_AUTHOR_EMAIL}",
+            "commit",
+            "-m",
+            generated_protected_board_commit_subject("retry generated output"),
+        )
+        return ["recovered"]
+
+    assert supervisor.config.generated_dirty_repair_enabled is False
+    assert supervisor._run_generated_board_producer(
+        producer="retry-test",
+        commit_outputs=True,
+        callback=trusted_retry,
+    ) == ["recovered"]
+    assert not checkout_mutation_lock_path(repo).exists()
+    assert supervisor._current_supervisor_checkout_lease() is None
+
+
+def test_generated_dirty_repair_recovers_retained_lease_when_disabled(
+    tmp_path: Path,
+) -> None:
+    supervisor, repo, todo_path = _generated_protected_supervisor(tmp_path)
+
+    with pytest.raises(
+        RuntimeError,
+        match="protected_generated_outputs_dirty",
+    ):
+        supervisor._run_generated_board_producer(
+            producer="repair-test",
+            commit_outputs=True,
+            callback=lambda: todo_path.write_text(
+                "# Tasks\n\n## EX-002 Repair\n",
+                encoding="utf-8",
+            ),
+        )
+
+    assert supervisor.config.generated_dirty_repair_enabled is False
+    result = supervisor.repair_generated_dirty_checkouts()
+
+    assert result["committed_count"] == 1
+    assert not checkout_mutation_lock_path(repo).exists()
+    assert supervisor._current_supervisor_checkout_lease() is None
+
+
+def test_fresh_generated_dirty_repair_journals_before_callback_and_retains(
+    tmp_path: Path,
+) -> None:
+    supervisor, repo, todo_path = _generated_protected_supervisor(tmp_path)
+    todo_path.write_text(
+        "# Tasks\n\n## EX-002 Fresh repair\n",
+        encoding="utf-8",
+    )
+    observed_journal: dict[str, object] = {}
+
+    def incomplete_repair() -> list[str]:
+        lease = checkout_lock_module.read_checkout_mutation_lease(
+            checkout_mutation_lock_path(repo)
+        )
+        assert lease is not None
+        observed_journal.update(lease.metadata)
+        return ["still-dirty"]
+
+    with pytest.raises(
+        RuntimeError,
+        match="protected_generated_outputs_dirty",
+    ):
+        supervisor._run_generated_board_producer(
+            producer="generated-dirty-repair",
+            commit_outputs=True,
+            operation="generated_dirty_repair",
+            callback=incomplete_repair,
+        )
+
+    assert observed_journal["protected_recovery_required"] is True
+    assert (
+        observed_journal["protected_recovery_owner"]
+        == "implementation_supervisor"
+    )
+    assert checkout_mutation_lock_path(repo).exists()
+    assert supervisor._retained_generated_checkout_lease() is True
+
+
+def test_generated_board_callback_exception_survives_guard_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    supervisor, repo, _todo_path = _generated_protected_supervisor(tmp_path)
+    real_guard = supervisor._generated_protected_release_guard
+    guard_calls = 0
+
+    def fail_guard(snapshot) -> dict[str, object]:
+        nonlocal guard_calls
+        guard_calls += 1
+        if guard_calls == 1:
+            return real_guard(snapshot)
+        raise RuntimeError("guard exploded")
+
+    monkeypatch.setattr(
+        supervisor,
+        "_generated_protected_release_guard",
+        fail_guard,
+    )
+
+    with pytest.raises(ValueError, match="producer sentinel"):
+        supervisor._run_generated_board_producer(
+            producer="exception-test",
+            commit_outputs=True,
+            callback=lambda: (_ for _ in ()).throw(
+                ValueError("producer sentinel")
+            ),
+        )
+
+    assert checkout_mutation_lock_path(repo).exists()
+    assert supervisor._supervisor_checkout_transaction_depth() == 0
+    assert supervisor._retained_generated_checkout_lease() is True
+
+
+def test_generated_board_replacement_failed_release_is_not_durable(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    supervisor, repo, _todo_path = _generated_protected_supervisor(tmp_path)
+    monkeypatch.setattr(
+        supervisor,
+        "_release_supervisor_checkout_lease",
+        lambda *_args, **_kwargs: False,
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="checkout_mutation_lease_release_failed",
+    ):
+        supervisor._run_generated_board_producer(
+            producer="replacement-test",
+            commit_outputs=True,
+            callback=lambda: ["unchanged"],
+        )
+
+    assert checkout_mutation_lock_path(repo).exists()
+    assert supervisor._retained_generated_checkout_lease() is True
+    assert supervisor._current_supervisor_checkout_lease() is not None
+
+
+def test_generated_board_snapshot_exception_releases_without_fake_nesting(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    supervisor, repo, _todo_path = _generated_protected_supervisor(tmp_path)
+    callback_called = False
+
+    def fail_snapshot() -> dict[str, object]:
+        raise RuntimeError("snapshot exploded")
+
+    def callback() -> list[str]:
+        nonlocal callback_called
+        callback_called = True
+        return []
+
+    monkeypatch.setattr(
+        supervisor,
+        "_generated_protected_release_guard_snapshot",
+        fail_snapshot,
+    )
+
+    with pytest.raises(RuntimeError, match="snapshot exploded"):
+        supervisor._run_generated_board_producer(
+            producer="snapshot-test",
+            commit_outputs=True,
+            callback=callback,
+        )
+
+    assert callback_called is False
+    assert not checkout_mutation_lock_path(repo).exists()
+    assert supervisor._current_supervisor_checkout_lease() is None
+    assert supervisor._supervisor_checkout_transaction_depth() == 0
+
+
+def test_supervisor_adopts_and_recovers_journal_after_restart(
+    tmp_path: Path,
+) -> None:
+    supervisor, repo, todo_path = _generated_protected_supervisor(tmp_path)
+    observed_journal: dict[str, object] = {}
+
+    def interrupted_producer() -> list[str]:
+        lease = checkout_lock_module.read_checkout_mutation_lease(
+            checkout_mutation_lock_path(repo)
+        )
+        assert lease is not None
+        observed_journal.update(lease.metadata)
+        todo_path.write_text(
+            "# Tasks\n\n## EX-002 Restart recovery\n",
+            encoding="utf-8",
+        )
+        return ["EX-002"]
+
+    with pytest.raises(
+        RuntimeError,
+        match="protected_generated_outputs_dirty",
+    ):
+        supervisor._run_generated_board_producer(
+            producer="restart-test",
+            commit_outputs=True,
+            callback=interrupted_producer,
+        )
+
+    assert observed_journal["protected_recovery_required"] is True
+    assert (
+        observed_journal["protected_recovery_owner"]
+        == "implementation_supervisor"
+    )
+    guard = dict(observed_journal["protected_release_guard"])
+    guard_id = guard.pop("guard_id")
+    assert checkout_lock_module.content_identity(guard) == guard_id
+    intent = dict(observed_journal["protected_recovery_intent"])
+    intent_id = intent.pop("intent_id")
+    assert checkout_lock_module.content_identity(intent) == intent_id
+    assert intent["operation"] == "generated_board_update"
+    assert intent["producer"] == "restart-test"
+    assert intent["protected_paths"] == ["tasks.todo.md"]
+
+    stale = checkout_lock_module.read_checkout_mutation_lease(
+        checkout_mutation_lock_path(repo)
+    )
+    assert stale is not None
+    dead_owner = checkout_lock_module.update_checkout_mutation_lease(
+        stale,
+        {
+            **dict(stale.metadata),
+            "pid": 2_147_483_647,
+        },
+    )
+    assert dead_owner is not None
+
+    restarted = PortalImplementationSupervisor(supervisor.config)
+    result = restarted._recover_retained_generated_checkout_lease()
+
+    assert result["recovered"] is True
+    assert result["retained_lease"] is False
+    assert result["adoption"]["adopted"] is True
+    assert not checkout_mutation_lock_path(repo).exists()
+    assert _git(repo, "status", "--porcelain", "--", "tasks.todo.md") == ""
+    assert _git(repo, "log", "-1", "--pretty=%ae") == (
+        BACKLOG_REFINERY_AUTHOR_EMAIL
+    )
+
+
+@pytest.mark.parametrize("commit_parent_gitlink", [False, True])
+def test_generated_protected_release_guard_covers_submodule_and_gitlink(
+    tmp_path: Path,
+    commit_parent_gitlink: bool,
+) -> None:
+    child_source = tmp_path / "child-source"
+    child_source.mkdir()
+    _git(child_source, "init")
+    child_todo = child_source / "tasks.todo.md"
+    child_todo.write_text("# Tasks\n", encoding="utf-8")
+    _git(child_source, "add", "tasks.todo.md")
+    _git(
+        child_source,
+        "-c",
+        "user.name=Fixture",
+        "-c",
+        "user.email=fixture@example.invalid",
+        "commit",
+        "-m",
+        "initial child",
+    )
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(
+        repo,
+        "-c",
+        "protocol.file.allow=always",
+        "submodule",
+        "add",
+        str(child_source),
+        "deps/child",
+    )
+    _git(repo, "add", ".gitmodules", "deps/child")
+    _git(
+        repo,
+        "-c",
+        "user.name=Fixture",
+        "-c",
+        "user.email=fixture@example.invalid",
+        "commit",
+        "-m",
+        "initial parent",
+    )
+    todo_path = repo / "deps/child/tasks.todo.md"
+    args = parse_implementation_supervisor_args(
+        [
+            "--todo-path",
+            str(todo_path),
+            "--state-dir",
+            str(tmp_path / "state"),
+            "--implementation-protected-path",
+            "deps/child/tasks.todo.md",
+        ]
+    )
+    supervisor = PortalImplementationSupervisor(
+        supervisor_config_from_args(args, repo_root=repo)
+    )
+    subject = generated_protected_board_commit_subject("submodule update")
+
+    def producer() -> list[str]:
+        todo_path.write_text("# Tasks\n\n## EX-002 Child\n", encoding="utf-8")
+        _git(todo_path.parent, "add", "tasks.todo.md")
+        _git(
+            todo_path.parent,
+            "-c",
+            "user.name=Agent Supervisor",
+            "-c",
+            f"user.email={BACKLOG_REFINERY_AUTHOR_EMAIL}",
+            "commit",
+            "-m",
+            subject,
+        )
+        if commit_parent_gitlink:
+            _git(repo, "add", "deps/child")
+            _git(
+                repo,
+                "-c",
+                "user.name=Agent Supervisor",
+                "-c",
+                f"user.email={BACKLOG_REFINERY_AUTHOR_EMAIL}",
+                "commit",
+                "-m",
+                subject,
+            )
+        return ["EX-002"]
+
+    if commit_parent_gitlink:
+        assert supervisor._run_generated_board_producer(
+            producer="submodule-test",
+            commit_outputs=True,
+            callback=producer,
+        ) == ["EX-002"]
+        assert not checkout_mutation_lock_path(repo).exists()
+    else:
+        with pytest.raises(
+            RuntimeError,
+            match="protected_generated_outputs_dirty",
+        ):
+            supervisor._run_generated_board_producer(
+                producer="submodule-test",
+                commit_outputs=True,
+                callback=producer,
+            )
+        events = [
+            json.loads(line)
+            for line in supervisor.config.events_path.read_text(
+                encoding="utf-8"
+            ).splitlines()
+        ]
+        scopes = events[-1]["release_guard"]["scope_results"]
+        assert {Path(scope["git_root"]) for scope in scopes} == {
+            repo.resolve(),
+            todo_path.parent.resolve(),
+        }
+        parent_scope = next(
+            scope for scope in scopes if Path(scope["git_root"]) == repo.resolve()
+        )
+        assert parent_scope["reason"] == "protected_generated_outputs_dirty"
+
+
+def test_maintenance_recovers_retained_checkout_before_other_mutations(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    supervisor = _supervisor(tmp_path)
+    phases: list[str] = []
+    monkeypatch.setattr(
+        supervisor,
+        "_recover_retained_generated_checkout_lease",
+        lambda: {
+            "attempted": True,
+            "recovered": False,
+            "retained_lease": True,
+        },
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "ensure_event_log_file",
+        lambda: pytest.fail("maintenance mutated state before recovery"),
+    )
+
+    result = supervisor._run_once_with_maintenance_under_lease(
+        phases.append,
+        include_refill=False,
+    )
+
+    assert phases == ["retained_generated_checkout_recovery"]
+    assert result["maintenance_blocked"] is True
+    assert result["reason"] == "checkout_mutation_protected_recovery_required"
 
 
 def test_supervisor_commits_resolved_guardrail_retirement_to_protected_board(

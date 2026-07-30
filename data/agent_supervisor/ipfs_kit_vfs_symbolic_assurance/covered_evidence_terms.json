@@ -1,0 +1,28 @@
+{
+  "authoritative": false,
+  "bundle": "vfs-assurance/root",
+  "completion_authoritative": false,
+  "covered_evidence_terms": [
+    "vfs/contract-assurance-root@1",
+    "vfs/repository-forest-receipt@1",
+    "vfs/exhaustive-index-receipt@1",
+    "vfs/autonomous-refill-exhaustion@1"
+  ],
+  "package": "data/agent_supervisor/ipfs_kit_vfs_symbolic_assurance",
+  "primary_evidence_term": "vfs/contract-assurance-root@1",
+  "primary_goal_id": "VFS-G134",
+  "related_packets": [
+    "goal_packet/vfs_symbolic_assurance/general/13f52635926c",
+    "goal_packet/vfs_symbolic_assurance/general/7414e86c1a7c",
+    "goal_packet/vfs_symbolic_assurance/general/ab6d1ed417d3"
+  ],
+  "safe_for_completion_reasoning": false,
+  "schema": "ipfs_accelerate_py.agent_supervisor.vfs-symbolic-assurance.covered-evidence-terms@1",
+  "task_id": "VFS-062",
+  "term_receipts": {
+    "vfs/autonomous-refill-exhaustion@1": "receipts/autonomous_refill_exhaustion.receipt.json",
+    "vfs/contract-assurance-root@1": "receipts/contract_assurance_root.receipt.json",
+    "vfs/exhaustive-index-receipt@1": "receipts/exhaustive_index_receipt.receipt.json",
+    "vfs/repository-forest-receipt@1": "receipts/repository_forest_receipt.receipt.json"
+  }
+}

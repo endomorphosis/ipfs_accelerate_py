@@ -42,9 +42,11 @@ from .scan_receipts import (
 )
 from ..task_sources.task_identity import (
     TaskIdentity,
+    board_namespace_from_path,
     canonical_bundle_identity,
     canonical_content_cid,
     canonical_task_identity,
+    normalize_board_namespace,
     normalize_identity_path,
     normalize_identity_text,
 )
@@ -2000,6 +2002,7 @@ class ObjectiveTaskRecord:
     depends_on: tuple[str, ...] = ()
     evidence_outputs: tuple[str, ...] | None = None
     reprojected: bool = False
+    board_namespace: str = "objective-graph"
 
 
 @dataclass(frozen=True)
@@ -9332,6 +9335,30 @@ def _objective_todo_metadata_blocks(todo_text: str) -> list[dict[str, str]]:
     return blocks
 
 
+def taskboard_namespace_from_todo(todo_text: str, todo_path: str | Path) -> str:
+    """Return one canonical provenance namespace for generated board entries.
+
+    A task board's explicit metadata is authoritative when present.  Falling
+    back to the todo filename keeps legacy boards deterministic without
+    coupling displayed provenance to the semantic task-identity namespace.
+    Conflicting explicit values are rejected so a generator cannot silently
+    add another inconsistent task to an already ambiguous board.
+    """
+
+    explicit_namespaces = {
+        normalize_board_namespace(value)
+        for fields in _objective_todo_metadata_blocks(todo_text)
+        for value in [fields.get("board namespace", "").strip()]
+        if value
+    }
+    if len(explicit_namespaces) > 1:
+        rendered = ", ".join(sorted(explicit_namespaces))
+        raise ValueError(f"conflicting board namespaces in {todo_path}: {rendered}")
+    if explicit_namespaces:
+        return next(iter(explicit_namespaces))
+    return board_namespace_from_path(todo_path)
+
+
 def _legacy_task_obligations(
     fields: Mapping[str, str],
     *,
@@ -9851,6 +9878,7 @@ def _prepare_objective_evidence_reprojection(
     task_prefix: str,
     finding: ObjectiveFinding,
     evidence_outputs: Sequence[str],
+    require_idle: bool = True,
 ) -> _ObjectiveEvidenceReprojection | None:
     """Prove and prepare one unique legacy-card evidence projection.
 
@@ -9890,7 +9918,7 @@ def _prepare_objective_evidence_reprojection(
         .replace("-", "_")
         .replace(" ", "_")
     )
-    if status not in _EVIDENCE_REPROJECTION_IDLE_STATUSES:
+    if require_idle and status not in _EVIDENCE_REPROJECTION_IDLE_STATUSES:
         return None
     if (
         block.one("goal id") != finding.goal_id
@@ -10330,6 +10358,66 @@ def apply_objective_finding_execution_policy(
     )
 
 
+def project_protected_objective_outputs(
+    finding: ObjectiveFinding,
+    protected_output_paths: Iterable[str | Path] = (),
+) -> ObjectiveFinding:
+    """Move exact protected edit targets onto the read-only context surface.
+
+    Objective heaps are supervisor-owned control-plane inputs.  A goal can
+    legitimately cite another protected control-plane file as evidence, but a
+    generated implementation task must never advertise that file as an output
+    or predicted edit target.  Keep exact normalized matches in
+    ``context_paths`` so planners can still read the evidence without crossing
+    the implementation write boundary.
+    """
+
+    protected = {
+        normalized
+        for value in protected_output_paths
+        for normalized in [normalize_identity_path(value)]
+        if normalized
+    }
+    if not protected:
+        return finding
+
+    protected_context: list[str] = []
+
+    def admitted(values: Sequence[str]) -> list[str]:
+        projected: list[str] = []
+        for value in values:
+            rendered = str(value).strip()
+            normalized = normalize_identity_path(rendered)
+            if not normalized:
+                continue
+            if normalized in protected:
+                if normalized not in protected_context:
+                    protected_context.append(normalized)
+                continue
+            if rendered not in projected:
+                projected.append(rendered)
+        return projected
+
+    outputs = admitted(finding.outputs)
+    predicted_files = admitted(finding.predicted_files)
+    changed_paths = admitted(finding.changed_paths)
+    if (
+        outputs == finding.outputs
+        and predicted_files == finding.predicted_files
+        and changed_paths == finding.changed_paths
+    ):
+        return finding
+    return replace(
+        finding,
+        outputs=outputs,
+        predicted_files=predicted_files,
+        changed_paths=changed_paths,
+        context_paths=_unique_strings(
+            [*finding.context_paths, *protected_context]
+        ),
+    )
+
+
 def render_task_block(
     *,
     task_id: str,
@@ -10339,7 +10427,13 @@ def render_task_block(
     bundle_shard: str = "",
     discovery_output_path: str = DEFAULT_DISCOVERY_OUTPUT_PATH,
     evidence_outputs: Sequence[str] | None = None,
+    board_namespace: str = "objective-graph",
+    protected_output_paths: Iterable[str | Path] = (),
 ) -> str:
+    finding = project_protected_objective_outputs(
+        finding,
+        protected_output_paths,
+    )
     manual_review_required = objective_finding_requires_manual_review(finding)
     task_status, task_is_schedulable, task_review_only = (
         objective_finding_execution_state(finding)
@@ -10447,6 +10541,7 @@ def render_task_block(
 - Depends on: {", ".join(dependency_ids)}
 - Outputs: {", ".join(unique_outputs)}{evidence_outputs_line}
 - Validation: {finding.validation}
+- Board namespace: {normalize_board_namespace(board_namespace)}
 - Evidence inputs: {discovery_output_path}
 - Discovery evidence: {discovery_path}
 - Bundle: {finding.bundle_key}
@@ -10459,6 +10554,7 @@ def render_task_block(
 - Conflict policy: {finding.conflict_policy}
 - Predicted files: {", ".join(finding.predicted_files or finding.outputs)}
 - Changed paths: {", ".join(finding.changed_paths)}
+- Context paths: {", ".join(finding.context_paths)}
 - AST symbols: {", ".join(finding.ast_symbols)}
 - Interfaces: {", ".join(finding.interfaces)}
 - Submodules: {", ".join(finding.submodules)}
@@ -10678,6 +10774,9 @@ def write_bundle_shards(
                     evidence_outputs=evidence_outputs,
                 ),
                 "task_id": record.task_id,
+                "board_namespace": normalize_board_namespace(
+                    record.board_namespace
+                ),
                 "canonical_task_key": identity.canonical_task_key,
                 "canonical_task_cid": identity.canonical_task_cid,
                 "goal_id": record.finding.goal_id,
@@ -10823,6 +10922,7 @@ def generate_objective_todos(
     evidence_repository_tree: str = "",
     evidence_policy_id: str = "",
     trust_recorded_external_completion: bool = True,
+    protected_output_paths: Iterable[str | Path] = (),
 ) -> list[ObjectiveTaskRecord]:
     """Append generated objective gap tasks and write bundle shards."""
 
@@ -10830,6 +10930,14 @@ def generate_objective_todos(
     # pass a Markdown heading prefix (``"## AUTO-"``).  Everything below this
     # point deals only in canonical display-ID prefixes.
     task_prefix = normalize_task_id_prefix(task_prefix)
+    protected_output_paths = tuple(
+        dict.fromkeys(
+            normalized
+            for value in protected_output_paths
+            for normalized in [normalize_identity_path(value)]
+            if normalized
+        )
+    )
     records: list[ObjectiveTaskRecord] = []
     seen_fingerprints = tuple(seen_fingerprints)
     force_goal_ids = tuple(force_goal_ids)
@@ -10933,7 +11041,12 @@ def generate_objective_todos(
         )
 
     findings = [
-        apply_objective_finding_execution_policy(finding)
+        apply_objective_finding_execution_policy(
+            project_protected_objective_outputs(
+                finding,
+                protected_output_paths,
+            )
+        )
         for finding in findings
         if execution_allowed(finding)
     ]
@@ -10955,8 +11068,11 @@ def generate_objective_todos(
         reprojection_candidates.append(projected)
 
     reprojected_records: list[ObjectiveTaskRecord] = []
+    preserve_ineligible_reprojection_artifacts = False
     with locked_taskboard(todo_path) as taskboard:
         todo_text = taskboard.read() or "# Objective Todo\n"
+        board_namespace = taskboard_namespace_from_todo(todo_text, todo_path)
+        existing_canonical_task_cids = canonical_task_cids_from_todo(todo_text)
         objective_goals = parse_goal_heap(
             objective_path.read_text(encoding="utf-8")
         )
@@ -11013,6 +11129,55 @@ def generate_objective_todos(
                 evidence_outputs=evidence_outputs,
             )
             if projection is None:
+                ineligible_projection = (
+                    _prepare_objective_evidence_reprojection(
+                        todo_text,
+                        task_prefix=task_prefix,
+                        finding=finding,
+                        evidence_outputs=evidence_outputs,
+                        require_idle=False,
+                    )
+                )
+                if ineligible_projection is not None:
+                    original_blocks = [
+                        block
+                        for block in _objective_task_blocks(
+                            todo_text,
+                            task_prefix=task_prefix,
+                        )
+                        if block.task_id == ineligible_projection.task_id
+                    ]
+                    original_block = (
+                        original_blocks[0]
+                        if len(original_blocks) == 1
+                        else None
+                    )
+                    discovery_path = (
+                        _resolve_generated_artifact_path(
+                            str(
+                                original_block.one(
+                                    "discovery evidence"
+                                )
+                                or ""
+                            ),
+                            repo_root=repo_root,
+                            artifact_root=discovery_dir,
+                            require_file=True,
+                        )
+                        if original_block is not None
+                        else None
+                    )
+                    preserve_ineligible_reprojection_artifacts = (
+                        ineligible_projection.changed
+                        or discovery_path is None
+                        or not _objective_reprojection_committed(
+                            discovery_path,
+                            identity=ineligible_projection.identity,
+                            evidence_outputs=(
+                                ineligible_projection.evidence_outputs
+                            ),
+                        )
+                    )
                 continue
             original_blocks = [
                 block
@@ -11081,6 +11246,7 @@ def generate_objective_todos(
                     depends_on=projected_dependencies,
                     evidence_outputs=projection.evidence_outputs,
                     reprojected=True,
+                    board_namespace=board_namespace,
                 )
             )
 
@@ -11248,6 +11414,8 @@ def generate_objective_todos(
                 bundle_shard=shard_relative,
                 discovery_output_path=discovery_output_path,
                 evidence_outputs=evidence_outputs,
+                board_namespace=board_namespace,
+                protected_output_paths=protected_output_paths,
             )
             todo_text = todo_text.rstrip() + "\n\n" + task_block.strip() + "\n"
             materialized_task_ids.add(task_id)
@@ -11260,6 +11428,7 @@ def generate_objective_todos(
                     discovery_path=discovery_path,
                     depends_on=tuple(projected_dependencies),
                     evidence_outputs=tuple(evidence_outputs),
+                    board_namespace=board_namespace,
                 )
             )
 
@@ -11267,24 +11436,68 @@ def generate_objective_todos(
             replace_locked_taskboard(taskboard, todo_text)
 
     artifact_records = [*reprojected_records, *records]
-    if not artifact_records:
+    if preserve_ineligible_reprojection_artifacts and not artifact_records:
         return []
-    bundle_result = write_bundle_shards(
-        bundle_dir=bundle_dir,
-        repo_root=repo_root,
-        todo_path=todo_path,
-        records=artifact_records,
+    bundle_index_path = bundle_dir / "index.json"
+    if artifact_records:
+        bundle_result = write_bundle_shards(
+            bundle_dir=bundle_dir,
+            repo_root=repo_root,
+            todo_path=todo_path,
+            records=artifact_records,
+        )
+        bundle_index_path = bundle_result.index_path
+    index_path = todo_vector_index_path or bundle_dir / "todo_vector_index.json"
+    projection_artifacts_exist = (
+        index_path.exists() or bundle_index_path.exists()
     )
-    if write_todo_vector_index:
-        from ..task_sources.todo_vector_index import write_todo_vector_index as write_index
+    vector_projection_stale = not index_path.exists()
+    if (
+        write_todo_vector_index
+        and projection_artifacts_exist
+        and not artifact_records
+        and index_path.exists()
+    ):
+        try:
+            from ..task_sources.todo_vector_index import (
+                parse_todo_vector_records,
+            )
+
+            existing_vector_payload = json.loads(
+                index_path.read_text(encoding="utf-8")
+            )
+            projected_vector_records = [
+                record.to_dict()
+                for record in parse_todo_vector_records(
+                    repo_root=repo_root,
+                    todo_path=todo_path,
+                    task_header_prefix=task_markdown_heading_prefix(
+                        task_prefix
+                    ),
+                )
+            ]
+            vector_projection_stale = (
+                not isinstance(existing_vector_payload, Mapping)
+                or existing_vector_payload.get("records")
+                != projected_vector_records
+            )
+        except (OSError, TypeError, ValueError, json.JSONDecodeError):
+            vector_projection_stale = True
+    if write_todo_vector_index and (
+        artifact_records
+        or (projection_artifacts_exist and vector_projection_stale)
+    ):
+        from ..task_sources.todo_vector_index import (
+            write_todo_vector_index as write_index,
+        )
 
         write_index(
             repo_root=repo_root,
             todo_path=todo_path,
-            index_path=todo_vector_index_path or bundle_dir / "todo_vector_index.json",
+            index_path=index_path,
             task_header_prefix=task_markdown_heading_prefix(task_prefix),
             objective_path=objective_path,
-            bundle_index_path=bundle_result.index_path,
+            bundle_index_path=bundle_index_path,
             dataset_dir=(dataset_dir or bundle_dir.parent / "objective_datasets") if persist_ast_dataset else None,
             dataset_id=f"{task_prefix.rstrip('-').lower()}-todo-vector-index",
             persist_dataset=persist_ast_dataset,

@@ -57,6 +57,7 @@ from ipfs_accelerate_py.agent_supervisor.objectives.objective_graph import (
     objective_finding_conflict_record,
     objective_finding_evidence_output_paths,
     objective_finding_task_identity,
+    taskboard_namespace_from_todo,
     tracked_files,
     write_bundle_shards,
 )
@@ -2954,8 +2955,10 @@ def test_generate_objective_todos_writes_bundle_shards_and_payloads(tmp_path):
 
     assert len(records) == 1
     assert records[0].task_id == "ACCEL-002"
+    assert records[0].board_namespace == "todo.md"
     todo_text = todo_path.read_text(encoding="utf-8")
     assert "## ACCEL-002 Close objective gap" in todo_text
+    assert "- Board namespace: todo.md" in todo_text
     assert "- Bundle: objective/ops/root" in todo_text
     generated_block = todo_text.split("## ACCEL-002 ", 1)[1]
     outputs_line = next(
@@ -2968,10 +2971,14 @@ def test_generate_objective_todos_writes_bundle_shards_and_payloads(tmp_path):
 
     shard = bundle_dir / "objective-ops-root.todo.md"
     assert shard.exists()
-    assert "## ACCEL-002 Close objective gap" in shard.read_text(encoding="utf-8")
+    shard_text = shard.read_text(encoding="utf-8")
+    assert "## ACCEL-002 Close objective gap" in shard_text
+    assert "- Board namespace: todo.md" in shard_text
     index_path = bundle_dir / "index.json"
     index = json.loads(index_path.read_text(encoding="utf-8"))
-    assert index["bundles"]["objective/ops/root"]["tasks"][0]["task_id"] == "ACCEL-002"
+    indexed_task = index["bundles"]["objective/ops/root"]["tasks"][0]
+    assert indexed_task["task_id"] == "ACCEL-002"
+    assert indexed_task["board_namespace"] == "todo.md"
     assert index["task_conflict_graph"]["surfaces"]
     assert index["task_planning_graph"]["planning_decisions"] == []
     dataset_manifest = bundle_dir.parent / "objective_datasets" / "accel-objective-ast.manifest.json"
@@ -3792,6 +3799,54 @@ def test_objective_evidence_output_projection_rejects_noncanonical_authority(
     ]
 
 
+def test_generate_objective_todos_inherits_explicit_board_namespace(tmp_path):
+    repo, objective_path, todo_path = _seed_repo(tmp_path)
+    todo_path.write_text(
+        todo_path.read_text(encoding="utf-8").replace(
+            "- Validation: true",
+            "- Validation: true\n"
+            "- Board namespace: ipfs-kit-vfs-symbolic-assurance-v1",
+        ),
+        encoding="utf-8",
+    )
+    discovery_dir = repo / "data" / "agent_supervisor" / "discovery"
+    bundle_dir = repo / "data" / "agent_supervisor" / "objective_bundles"
+
+    records = generate_objective_todos(
+        repo_root=repo,
+        objective_path=objective_path,
+        todo_path=todo_path,
+        discovery_dir=discovery_dir,
+        bundle_dir=bundle_dir,
+        task_prefix="ACCEL-",
+        max_findings=1,
+    )
+
+    namespace = "ipfs-kit-vfs-symbolic-assurance-v1"
+    assert records[0].board_namespace == namespace
+    assert f"- Board namespace: {namespace}" in records[0].task_block
+    index = json.loads((bundle_dir / "index.json").read_text(encoding="utf-8"))
+    indexed_task = index["bundles"]["objective/ops/root"]["tasks"][0]
+    assert indexed_task["board_namespace"] == namespace
+
+
+def test_taskboard_namespace_rejects_conflicting_explicit_metadata(tmp_path):
+    todo_path = tmp_path / "todo.md"
+    todo_text = """# Todos
+
+## AUTO-001 First
+
+- Board namespace: first-v1
+
+## AUTO-002 Second
+
+- Board namespace: second-v1
+"""
+
+    with pytest.raises(ValueError, match="conflicting board namespaces"):
+        taskboard_namespace_from_todo(todo_text, todo_path)
+
+
 def test_generate_objective_todos_projects_goal_dependencies_to_task_ids(tmp_path):
     repo, objective_path, todo_path = _seed_repo(tmp_path)
     discovery_dir = repo / "data" / "agent_supervisor" / "discovery"
@@ -4231,6 +4286,65 @@ def test_bundle_regeneration_preserves_projected_task_status(tmp_path):
     regenerated_task = regenerated["bundles"]["objective/ops/root"]["tasks"][0]
     assert regenerated_task["status"] == "completed"
     assert regenerated["completed_task_ids"] == ["ACCEL-002"]
+
+
+def test_empty_objective_scan_refreshes_existing_todo_and_bundle_projections(tmp_path):
+    repo, objective_path, todo_path = _seed_repo(tmp_path)
+    discovery_dir = repo / "data" / "agent_supervisor" / "discovery"
+    bundle_dir = repo / "data" / "agent_supervisor" / "objective_bundles"
+    records = generate_objective_todos(
+        repo_root=repo,
+        objective_path=objective_path,
+        todo_path=todo_path,
+        discovery_dir=discovery_dir,
+        bundle_dir=bundle_dir,
+        task_prefix="ACCEL-",
+        max_findings=1,
+        persist_ast_dataset=False,
+    )
+    task_id = records[0].task_id
+    todo_text = todo_path.read_text(encoding="utf-8")
+    before_task, task_block = todo_text.split(f"## {task_id} ", 1)
+    todo_path.write_text(
+        before_task
+        + f"## {task_id} "
+        + task_block.replace(
+            "- Status: todo",
+            "- Status: completed",
+            1,
+        ),
+        encoding="utf-8",
+    )
+
+    repeated = generate_objective_todos(
+        repo_root=repo,
+        objective_path=objective_path,
+        todo_path=todo_path,
+        discovery_dir=discovery_dir,
+        bundle_dir=bundle_dir,
+        task_prefix="ACCEL-",
+        max_findings=1,
+        persist_ast_dataset=False,
+    )
+
+    assert repeated == []
+    vector_index = json.loads(
+        (bundle_dir / "todo_vector_index.json").read_text(encoding="utf-8")
+    )
+    assert vector_index["active_task_count"] == 0
+    assert {
+        record["task_id"]: record["status"]
+        for record in vector_index["records"]
+    }[task_id] == "completed"
+    bundle_index = json.loads(
+        (bundle_dir / "index.json").read_text(encoding="utf-8")
+    )
+    bundle_tasks = {
+        task["task_id"]: task
+        for bundle in bundle_index["bundles"].values()
+        for task in bundle["tasks"]
+    }
+    assert bundle_tasks[task_id]["status"] == "completed"
 
 
 def test_generate_objective_todos_reserves_ids_from_discovery_artifacts(tmp_path):

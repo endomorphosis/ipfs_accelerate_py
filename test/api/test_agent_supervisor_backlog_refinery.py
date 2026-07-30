@@ -1044,6 +1044,14 @@ def test_codebase_scan_writes_file_local_ast_bundle(tmp_path):
         encoding="utf-8",
     )
     _write_todo(todo_path)
+    todo_path.write_text(
+        todo_path.read_text(encoding="utf-8").replace(
+            "- Validation: test -f README.md",
+            "- Validation: test -f README.md\n"
+            "- Board namespace: swissknife-vfs-assurance-v1",
+        ),
+        encoding="utf-8",
+    )
     _git(repo, "add", "todo.md", "src/runtime.py")
     _git(repo, "commit", "-m", "seed repo")
 
@@ -1060,15 +1068,20 @@ def test_codebase_scan_writes_file_local_ast_bundle(tmp_path):
     )
 
     assert findings[0]["bundle_key"] == "codebase/runtime/src-runtime"
+    assert findings[0]["board_namespace"] == "swissknife-vfs-assurance-v1"
     shard_path = bundle_dir / "codebase-runtime-src-runtime.todo.md"
-    assert "## AUTO-002 Resolve code annotation" in shard_path.read_text(encoding="utf-8")
+    shard_text = shard_path.read_text(encoding="utf-8")
+    assert "## AUTO-002 Resolve code annotation" in shard_text
+    assert "- Board namespace: swissknife-vfs-assurance-v1" in shard_text
     todo_text = todo_path.read_text(encoding="utf-8")
+    assert "- Board namespace: swissknife-vfs-assurance-v1" in todo_text
     assert "- Bundle: codebase/runtime/src-runtime" in todo_text
     assert "- AST symbols:" in todo_text
     assert "- AST symbol scope: file" in todo_text
     assert "route_request" in todo_text
     index = json.loads((bundle_dir / "index.json").read_text(encoding="utf-8"))
     member = index["bundles"]["codebase/runtime/src-runtime"]["tasks"][0]
+    assert member["board_namespace"] == "swissknife-vfs-assurance-v1"
     assert member["candidate_kind"] == "codebase_scan"
     assert member["goal_registration"] == "unscoped_legacy"
     assert member["paths"] == ["src/runtime.py"]
@@ -1420,6 +1433,46 @@ def test_backlog_refinery_goal_alignment_uses_declared_goal_outputs_and_records_
     assert tuple(inventory.findings) == raw_findings
     assert inventory.rejected_candidate_count == 0
     assert inventory.complete is True
+
+
+def test_codebase_admission_reason_summary_deduplicates_representative_paths():
+    first = CodebaseFinding(
+        fingerprint="a" * 40,
+        kind="swallowed_exception",
+        priority="P2",
+        track="runtime",
+        root_relative_path="src/runtime.py",
+        line_number=9,
+        snippet="except OSError: pass",
+        summary="Review first swallowed exception path",
+        validation="python3 -m py_compile src/runtime.py",
+    )
+    second = replace(
+        first,
+        fingerprint="b" * 40,
+        line_number=19,
+        summary="Review second swallowed exception path",
+    )
+    inventory = CodebaseScanInventory(
+        findings=[first, second],
+        raw_candidate_count=2,
+    )
+
+    admission = admit_codebase_refill_candidates(
+        inventory,
+        objective_goals=(),
+        max_findings=5,
+        objective_scope_configured=True,
+    )
+
+    assert admission.rejected_candidate_count == 2
+    assert admission.reason_summaries() == [
+        {
+            "reason_code": "no_schedulable_goal",
+            "count": 2,
+            "representative_paths": ["src/runtime.py"],
+        }
+    ]
 
 
 def test_goal_alignment_selects_specific_subgoal_and_rejects_ambiguous_siblings():
@@ -4474,9 +4527,13 @@ def test_backlog_refinery_objective_scan_refills_low_backlog(tmp_path):
     assert (bundle_dir / "index.json").exists()
 
 
-def test_codebase_scan_healthy_exhaustion_records_policy_and_awaits_quorum(tmp_path):
+def test_codebase_scan_healthy_exhaustion_records_policy_and_awaits_quorum(
+    tmp_path,
+    monkeypatch,
+):
     repo = _seed_repo(tmp_path)
     todo_path = repo / "todo.md"
+    strategy_path = repo / "state" / "strategy.json"
     _write_todo(todo_path)
     (repo / "healthy.py").write_text("VALUE = 1\n", encoding="utf-8")
     _git(repo, "add", ".")
@@ -4486,7 +4543,7 @@ def test_codebase_scan_healthy_exhaustion_records_policy_and_awaits_quorum(tmp_p
     receipt = record_codebase_scan_findings(
         todo_path=todo_path,
         state_path=None,
-        strategy_path=repo / "state" / "strategy.json",
+        strategy_path=strategy_path,
         discovery_dir=repo / "discovery",
         repo_root=repo,
         max_findings=5,
@@ -4501,6 +4558,26 @@ def test_codebase_scan_healthy_exhaustion_records_policy_and_awaits_quorum(tmp_p
     assert receipt.metadata["analyzer_health"]["status"] == "healthy"
     assert receipt.metadata["analyzer_canaries"]["passed"] is True
     assert receipt.metadata["expected_git_root_count"] == 1
+    strategy = json.loads(strategy_path.read_text(encoding="utf-8"))
+    assert strategy["last_drained_codebase_scan_task_count"] == 1
+
+    def scan_must_not_run(*_args, **_kwargs):
+        raise AssertionError("healthy single-channel exhaustion bypassed cooldown")
+
+    monkeypatch.setattr(backlog_refinery, "scan_codebase_findings", scan_must_not_run)
+    cooled = record_codebase_scan_findings(
+        todo_path=todo_path,
+        state_path=None,
+        strategy_path=strategy_path,
+        discovery_dir=repo / "discovery",
+        repo_root=repo,
+        max_findings=5,
+        health_thresholds=thresholds,
+    )
+
+    assert cooled.terminal_reason is ScanTerminalReason.COOLDOWN
+    assert cooled.scan_mode == "cooldown"
+    assert cooled.safe_for_completion_reasoning is False
 
 
 def test_codebase_scan_missing_root_fails_closed_without_suppressing_retry(tmp_path, monkeypatch):
