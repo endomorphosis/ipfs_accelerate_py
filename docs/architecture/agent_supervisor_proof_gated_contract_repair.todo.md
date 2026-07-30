@@ -1098,7 +1098,7 @@ consumer or frontier is unresolved.
 
 ## RPR-034 Synthesize required behavior for new support types
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
