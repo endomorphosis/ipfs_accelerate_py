@@ -1309,14 +1309,17 @@ def test_declined_review_feedback_is_bounded_persisted_and_replayed_after_restar
     with pytest.raises(ValueError, match="identity"):
         daemon._validate_production_review_feedback(forged)
 
-    with pytest.raises(ProviderRoutingError) as stale:
-        daemon.build_production_contract_packet_for_task(
-            task,
-            snapshot_id="git-commit:different-snapshot",
-            attempt=2,
-            context_capsule=daemon._current_implementation_context_capsule(),
-        )
-    assert stale.value.reason_code == ProviderReason.PACKET_STALE.value
+    advanced = daemon.build_production_contract_packet_for_task(
+        task,
+        snapshot_id="git-commit:different-snapshot",
+        attempt=2,
+        context_capsule=daemon._current_implementation_context_capsule(),
+    )
+    advanced_payload = dict(advanced.provider_input_payload)
+    assert "prior_review_feedback" not in advanced_payload["goal"]
+    assert advanced_payload["expansion_handles"][0]["status"] == (
+        "omitted_snapshot_mismatch"
+    )
 
 
 def test_production_packet_forwards_only_compiler_selected_targeted_evidence(

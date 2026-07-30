@@ -18390,6 +18390,11 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 "persisted production review feedback failed verification",
                 reason_code=ProviderReason.PACKET_MALFORMED,
             ) from exc
+        if feedback["snapshot_id"] != snapshot_id:
+            # A deployment or independently merged task can advance the target
+            # between retries. Never replay feedback across that boundary, but
+            # do not make a valid stale artifact fatal to the new snapshot.
+            return None
         retry = self._last_implementation_retry
         if (
             feedback["task_id"] != task.task_id
