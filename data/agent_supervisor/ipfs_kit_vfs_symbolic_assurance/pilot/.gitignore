@@ -1,0 +1,3 @@
+# Runtime lock files from bounded store / finding ledger (empty; break unified-diff proposal parsing)
+**/.bounded-store.lock
+**/.ledger.lock
