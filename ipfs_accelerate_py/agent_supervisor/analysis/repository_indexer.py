@@ -64,6 +64,8 @@ from .polyglot_ast_provider import (
     language_for_path,
 )
 from .repository_snapshot import (
+    MULTI_ROOT_PROVIDER_INDEX_EVIDENCE,
+    MULTI_ROOT_REPOSITORY_SNAPSHOT_INTERFACE,
     CoverageDisposition,
     CoverageKind,
     DependencyIdentity,
@@ -2291,6 +2293,7 @@ class MultiRootRepositoryIndex:
         return {
             "schema": MULTI_ROOT_REPOSITORY_INDEX_SCHEMA,
             "indexer_version": REPOSITORY_INDEXER_VERSION,
+            "evidence_id": MULTI_ROOT_PROVIDER_INDEX_EVIDENCE,
             "multi_root_snapshot_id": self.multi_root_snapshot.multi_root_id,
             "providers": [item.compact_dict() for item in self.providers],
             "contradictions": [item.to_dict() for item in self.contradictions],
@@ -2319,7 +2322,8 @@ class MultiRootRepositoryIndex:
         return {
             "schema": PROVIDER_INDEX_SCHEMA,
             "schema_version": 1,
-            "interface": "MultiRootRepositorySnapshot@1",
+            "interface": MULTI_ROOT_REPOSITORY_SNAPSHOT_INTERFACE,
+            "evidence_id": MULTI_ROOT_PROVIDER_INDEX_EVIDENCE,
             "indexer_version": REPOSITORY_INDEXER_VERSION,
             "multi_root_id": self.multi_root_id,
             "multi_root_snapshot_id": self.multi_root_snapshot.multi_root_id,
@@ -2616,6 +2620,117 @@ def write_provider_index_baseline(
     return path
 
 
+def provider_index_baseline_from_snapshot(
+    multi_root_snapshot: MultiRootRepositorySnapshot,
+    *,
+    notes: str = "",
+) -> dict[str, Any]:
+    """Build a compact SCAEV043MULTIROOT baseline from path ledgers only.
+
+    Full AST/CAS index publication is optional: this projection records each
+    provider root's origin/commit/tree/dirty/path identity and explicit
+    contradictions without embedding source bodies.  Snapshot-only rows report
+    partial health so exhaustive parity stays blocked until independent
+    analyzer health is published.
+    """
+
+    providers: list[dict[str, Any]] = []
+    for obs in multi_root_snapshot.providers:
+        health_status = "partial" if obs.indexed else ""
+        providers.append(
+            {
+                "package": obs.package,
+                "scope_path": obs.scope_path,
+                "status": obs.status.value,
+                "indexed": bool(obs.indexed),
+                "opaque_gitlink": bool(obs.opaque_gitlink),
+                "origin_url": obs.origin_url,
+                "gitlink_commit_id": obs.gitlink_commit_id,
+                "head_commit_id": obs.head_commit_id,
+                "head_tree_id": obs.head_tree_id,
+                "index_tree_id": obs.index_tree_id,
+                "dirty": bool(obs.dirty),
+                "version_divergent": bool(obs.version_divergent),
+                "moved": bool(obs.moved),
+                "snapshot_id": (
+                    obs.snapshot.snapshot_id if obs.snapshot is not None else ""
+                ),
+                "index_id": "",
+                "health_status": health_status,
+                "tracked_path_count": (
+                    obs.snapshot.stats.tracked_path_count
+                    if obs.snapshot is not None
+                    else 0
+                ),
+                "semantic_path_count": (
+                    obs.snapshot.stats.semantic_path_count
+                    if obs.snapshot is not None
+                    else 0
+                ),
+                "symbol_count": 0,
+                "reason_code": obs.reason_code,
+                "contradictions": [item.to_dict() for item in obs.contradictions],
+            }
+        )
+
+    default_notes = (
+        "Baseline binds multi-root provider package source ledgers "
+        "(ipfs_accelerate_py, ipfs_kit_py, ipfs_datasets_py) as content-addressed "
+        "roots instead of opaque gitlinks (SCAEV043MULTIROOT / SCA-G043). Full "
+        "AST/CAS index publication is exercised by "
+        "test_agent_supervisor_multi_root_repository_index.py; this artifact "
+        "records exact origin/commit/tree/dirty/path identities and explicit "
+        "contradictions. Snapshot-only rows report partial health so exhaustive "
+        "parity stays blocked until independent analyzer health is published."
+    )
+    return {
+        "schema": PROVIDER_INDEX_SCHEMA,
+        "schema_version": 1,
+        "interface": MULTI_ROOT_REPOSITORY_SNAPSHOT_INTERFACE,
+        "evidence_id": MULTI_ROOT_PROVIDER_INDEX_EVIDENCE,
+        "indexer_version": REPOSITORY_INDEXER_VERSION,
+        "multi_root_id": multi_root_snapshot.multi_root_id,
+        "multi_root_snapshot_id": multi_root_snapshot.multi_root_id,
+        "scope_id": multi_root_snapshot.scope_id,
+        "scope_policy_id": multi_root_snapshot.scope_policy_id,
+        "cross_root_join_policy": "package_module_function_exact",
+        "bodies_in_cas": True,
+        "primary_snapshot_distinct": True,
+        "exhaustive_parity_allowed": False,
+        "all_providers_indexed": multi_root_snapshot.all_providers_indexed,
+        "all_providers_healthy": False,
+        "any_opaque_gitlink": any(
+            item.opaque_gitlink for item in multi_root_snapshot.providers
+        ),
+        "has_blocking_contradictions": (
+            multi_root_snapshot.has_blocking_contradictions
+        ),
+        "providers": providers,
+        "contradictions": [
+            item.to_dict() for item in multi_root_snapshot.contradictions
+        ],
+        "notes": str(notes or default_notes),
+    }
+
+
+def write_provider_index_baseline_from_snapshot(
+    multi_root_snapshot: MultiRootRepositorySnapshot,
+    destination: Path | str,
+    *,
+    notes: str = "",
+) -> Path:
+    """Atomically publish a snapshot-only SCAEV043MULTIROOT baseline."""
+
+    path = Path(destination)
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    payload = provider_index_baseline_from_snapshot(
+        multi_root_snapshot, notes=notes
+    )
+    encoded = canonical_repository_index_bytes(payload) + b"\n"
+    _atomic_write(path, encoded, replace=True)
+    return path
+
+
 __all__ = [
     "CROSS_ROOT_SYMBOL_IDENTITY_SCHEMA",
     "CrossRootSymbolIdentity",
@@ -2625,6 +2740,7 @@ __all__ = [
     "DEFAULT_MAX_PARSER_SOURCE_BYTES",
     "DEFAULT_MAX_SOURCE_BYTES",
     "HARD_MAX_COMPACT_ROW_BYTES",
+    "MULTI_ROOT_PROVIDER_INDEX_EVIDENCE",
     "MULTI_ROOT_REPOSITORY_INDEX_SCHEMA",
     "MultiRootRepositoryIndex",
     "PROVIDER_INDEX_BASELINE_RELATIVE",
@@ -2654,5 +2770,7 @@ __all__ = [
     "join_cross_root_symbols",
     "make_cross_root_symbol",
     "module_name_for_package_path",
+    "provider_index_baseline_from_snapshot",
     "write_provider_index_baseline",
+    "write_provider_index_baseline_from_snapshot",
 ]

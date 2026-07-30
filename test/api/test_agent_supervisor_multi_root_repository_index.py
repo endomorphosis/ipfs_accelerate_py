@@ -1,4 +1,9 @@
-"""Multi-root provider package index: sources, not opaque Gitlinks (SCA-216)."""
+"""Multi-root provider package index: sources, not opaque Gitlinks (SCAEV043MULTIROOT).
+
+Covers SCA-G043 / SCA-216: scan and index configured provider package trees
+(ipfs_accelerate_py, ipfs_kit_py, ipfs_datasets_py) as content-addressed roots
+instead of opaque Gitlink identities.
+"""
 
 from __future__ import annotations
 
@@ -14,6 +19,7 @@ from ipfs_accelerate_py.agent_supervisor.analysis.analyzer_health import (
 )
 from ipfs_accelerate_py.agent_supervisor.analysis.repository_indexer import (
     CROSS_ROOT_SYMBOL_IDENTITY_SCHEMA,
+    MULTI_ROOT_PROVIDER_INDEX_EVIDENCE,
     MULTI_ROOT_REPOSITORY_INDEX_SCHEMA,
     PROVIDER_INDEX_SCHEMA,
     CrossRootSymbolIdentity,
@@ -25,10 +31,13 @@ from ipfs_accelerate_py.agent_supervisor.analysis.repository_indexer import (
     join_cross_root_symbols,
     make_cross_root_symbol,
     module_name_for_package_path,
+    provider_index_baseline_from_snapshot,
     write_provider_index_baseline,
+    write_provider_index_baseline_from_snapshot,
 )
 from ipfs_accelerate_py.agent_supervisor.analysis.repository_snapshot import (
     DEFAULT_PROVIDER_PACKAGE_SPECS,
+    MULTI_ROOT_PROVIDER_INDEX_EVIDENCE as SNAPSHOT_MULTI_ROOT_EVIDENCE,
     MULTI_ROOT_REPOSITORY_SNAPSHOT_INTERFACE,
     MULTI_ROOT_REPOSITORY_SNAPSHOT_SCHEMA,
     CoverageKind,
@@ -197,6 +206,10 @@ def test_default_provider_package_specs_cover_three_packages() -> None:
     assert all(
         item.package_dirname == item.package for item in DEFAULT_PROVIDER_PACKAGE_SPECS
     )
+    # Objective evidence obligation SCA-G043 / SCAEV043MULTIROOT.
+    assert MULTI_ROOT_PROVIDER_INDEX_EVIDENCE == "SCAEV043MULTIROOT"
+    assert SNAPSHOT_MULTI_ROOT_EVIDENCE == "SCAEV043MULTIROOT"
+    assert MULTI_ROOT_PROVIDER_INDEX_EVIDENCE == SNAPSHOT_MULTI_ROOT_EVIDENCE
 
 
 def test_provider_package_sources_are_indexed_not_opaque(
@@ -212,6 +225,8 @@ def test_provider_package_sources_are_indexed_not_opaque(
     assert multi.schema_version == 1
     assert MULTI_ROOT_REPOSITORY_SNAPSHOT_SCHEMA in multi.to_dict()["schema"]
     assert multi.to_dict()["interface"] == MULTI_ROOT_REPOSITORY_SNAPSHOT_INTERFACE
+    assert multi.to_dict()["evidence_id"] == "SCAEV043MULTIROOT"
+    assert multi.compact_dict()["evidence_id"] == MULTI_ROOT_PROVIDER_INDEX_EVIDENCE
     assert len(multi.providers) == 3
     assert multi.all_providers_indexed is True
     assert multi.has_blocking_contradictions is False
@@ -489,6 +504,7 @@ def test_multi_root_index_keeps_bodies_in_cas_and_blocks_partial_parity(
     assert multi_index.all_providers_indexed is True
     assert multi_index.any_opaque_gitlink is False
     assert multi_index.to_dict()["schema"] == MULTI_ROOT_REPOSITORY_INDEX_SCHEMA
+    assert multi_index.to_dict()["evidence_id"] == "SCAEV043MULTIROOT"
     assert multi_index.to_dict()["bodies_in_cas"] is True
     assert multi_index.to_dict()["cross_root_join_policy"] == (
         "package_module_function_exact"
@@ -649,6 +665,7 @@ def test_provider_index_baseline_is_compact_and_body_free(
 
     assert payload["schema"] == PROVIDER_INDEX_SCHEMA
     assert payload["interface"] == MULTI_ROOT_REPOSITORY_SNAPSHOT_INTERFACE
+    assert payload["evidence_id"] == "SCAEV043MULTIROOT"
     assert payload["bodies_in_cas"] is True
     assert payload["primary_snapshot_distinct"] is True
     assert payload["cross_root_join_policy"] == "package_module_function_exact"
@@ -676,6 +693,46 @@ def test_provider_index_baseline_is_compact_and_body_free(
     encoded = destination.read_text(encoding="utf-8")
     assert "def dispatch" not in encoded
     assert "return value + 1" not in encoded
+
+
+def test_snapshot_only_provider_index_baseline_binds_scaev043(
+    tmp_path: Path,
+) -> None:
+    """Snapshot-only baseline still proves SCAEV043MULTIROOT without full AST."""
+
+    superproject, _ = _build_superproject(tmp_path)
+    multi = build_multi_root_repository_snapshot(
+        superproject,
+        scope_policy=_policy_for_fixture(),
+        include_primary_snapshot=False,
+    )
+    payload = provider_index_baseline_from_snapshot(multi)
+    assert payload["evidence_id"] == "SCAEV043MULTIROOT"
+    assert payload["bodies_in_cas"] is True
+    assert payload["cross_root_join_policy"] == "package_module_function_exact"
+    assert payload["all_providers_indexed"] is True
+    assert payload["exhaustive_parity_allowed"] is False
+    assert {item["package"] for item in payload["providers"]} == {
+        "ipfs_accelerate_py",
+        "ipfs_kit_py",
+        "ipfs_datasets_py",
+    }
+    for item in payload["providers"]:
+        assert item["indexed"] is True
+        assert item["opaque_gitlink"] is False
+        assert item["snapshot_id"]
+        assert item["head_commit_id"]
+        assert item["head_tree_id"]
+        assert item["health_status"] == "partial"
+        assert item["index_id"] == ""
+        assert item["tracked_path_count"] >= 1
+
+    destination = tmp_path / "provider-index.json"
+    write_provider_index_baseline_from_snapshot(multi, destination)
+    on_disk = json.loads(destination.read_text(encoding="utf-8"))
+    assert on_disk["evidence_id"] == MULTI_ROOT_PROVIDER_INDEX_EVIDENCE
+    assert "SCAEV043MULTIROOT" in on_disk["notes"]
+    assert "def dispatch" not in destination.read_text(encoding="utf-8")
 
 
 def test_build_provider_package_snapshot_scopes_paths(tmp_path: Path) -> None:
@@ -714,6 +771,7 @@ def test_repo_provider_index_baseline_artifact_exists_or_is_writable() -> None:
         pytest.skip("provider-index.json baseline not yet published in this tree")
     payload = json.loads(baseline.read_text(encoding="utf-8"))
     assert payload.get("schema") == PROVIDER_INDEX_SCHEMA
+    assert payload.get("evidence_id") == "SCAEV043MULTIROOT"
     assert payload.get("bodies_in_cas") is True
     assert payload.get("cross_root_join_policy") == "package_module_function_exact"
     packages = {item["package"] for item in payload.get("providers", ())}
@@ -727,3 +785,7 @@ def test_repo_provider_index_baseline_artifact_exists_or_is_writable() -> None:
         # Opaque-only roots are explicit when present.
         if item.get("opaque_gitlink"):
             assert item.get("indexed") is False
+        # Each provider root carries origin/commit/tree ledger fields.
+        assert "head_commit_id" in item
+        assert "head_tree_id" in item
+        assert "status" in item
