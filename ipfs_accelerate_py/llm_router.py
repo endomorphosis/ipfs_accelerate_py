@@ -165,6 +165,10 @@ class LLMRouterError(RuntimeError):
     """
 
 
+class LLMRouterOutputError(LLMRouterError):
+    """A provider completed without one usable text response."""
+
+
 class UsageCapacityError(LLMRouterError):
     """Raised when usage-aware admission denies capacity before or during dispatch."""
 
@@ -2608,6 +2612,51 @@ def _clean_grok_cli_output(text: str) -> str:
 _MAX_CLI_RESPONSE_SCHEMA_BYTES = 16 * 1024
 _MAX_CLI_RESPONSE_SCHEMA_DEPTH = 16
 _MAX_CLI_RESPONSE_SCHEMA_ITEMS = 1024
+_BOUNDED_GROK_SYSTEM_PROMPT = (
+    "You are a bounded JSON proposal generator. You have no tool, repository, "
+    "network, or write authority. Never call tools or request more context. "
+    "Use only the user prompt. Return exactly one JSON value conforming to the "
+    "supplied schema, with no markdown or commentary."
+)
+_BOUNDED_GROK_FORBIDDEN_COMMAND_FLAGS = frozenset(
+    {
+        "--agent",
+        "--agents",
+        "--allow",
+        "--allowedTools",
+        "--always-approve",
+        "--continue",
+        "--cwd",
+        "--deny",
+        "--disallowed-tools",
+        "--disallowedTools",
+        "--fork-session",
+        "--json-schema",
+        "--max-turns",
+        "--model",
+        "--output-format",
+        "--permission-mode",
+        "--prompt-file",
+        "--prompt-json",
+        "--resume",
+        "--rules",
+        "--sandbox",
+        "--single",
+        "--session-id",
+        "--system-prompt",
+        "--system-prompt-override",
+        "--tools",
+        "--worktree",
+        "--worktree-ref",
+        "--yolo",
+        "-c",
+        "-m",
+        "-p",
+        "-r",
+        "-s",
+        "-w",
+    }
+)
 _FORBIDDEN_CLI_RESPONSE_SCHEMA_KEYS = frozenset(
     {
         "$anchor",
@@ -5163,6 +5212,25 @@ def _get_grok_cli_provider() -> Optional[LLMProvider]:
                 raise LLMRouterError(
                     "bounded Grok calls require the official structured CLI"
                 )
+            if isolated_workdir:
+                if len(base_parts) != 1:
+                    raise LLMRouterError(
+                        "bounded Grok calls cannot override isolated controls: "
+                        "the base command must contain only the executable"
+                    )
+                overridden = sorted(
+                    flag
+                    for flag in _BOUNDED_GROK_FORBIDDEN_COMMAND_FLAGS
+                    if any(
+                        part == flag or part.startswith(flag + "=")
+                        for part in base_parts[1:]
+                    )
+                )
+                if overridden:
+                    raise LLMRouterError(
+                        "bounded Grok calls cannot override isolated controls: "
+                        + ",".join(overridden)
+                    )
 
             extra_env: Dict[str, Optional[str]] = {}
             if not os.getenv("XAI_API_KEY", "").strip():
@@ -5254,7 +5322,7 @@ def _get_grok_cli_provider() -> Optional[LLMProvider]:
                 cmd.extend(["--permission-mode", permission_mode])
 
             tools = (
-                "__mcp_bounded_no_tools__"
+                "read_file"
                 if isolated_workdir
                 else kwargs.pop(
                     "grok_tools",
@@ -5264,12 +5332,23 @@ def _get_grok_cli_provider() -> Optional[LLMProvider]:
                     ),
                 )
             )
-            if isolated_workdir and "--tools" in cmd:
-                raise LLMRouterError(
-                    "bounded Grok calls cannot override the disabled tool set"
-                )
             if "--tools" not in cmd:
                 cmd.extend(["--tools", str(tools or "")])
+            if isolated_workdir:
+                # Grok 0.2.114 treats an empty or unknown --tools allowlist as
+                # the default tool set.  Select one real tool, remove it with
+                # the documented denylist, and retain a permission-level
+                # fail-closed guard for always-on meta tools.
+                cmd.extend(
+                    [
+                        "--disallowed-tools",
+                        "read_file,Agent",
+                        "--deny",
+                        "*",
+                        "--system-prompt-override",
+                        _BOUNDED_GROK_SYSTEM_PROMPT,
+                    ]
+                )
 
             reasoning_effort = str(
                 kwargs.pop(
@@ -5394,11 +5473,13 @@ def _get_grok_cli_provider() -> Optional[LLMProvider]:
                     cleaned_text = _clean_grok_cli_output(text)
                     if cleaned_text:
                         return cleaned_text
-                    raise LLMRouterError("Grok CLI returned no response text")
+                    raise LLMRouterOutputError(
+                        "Grok CLI returned no response text"
+                    )
             cleaned = _clean_grok_cli_output(proc.stdout or "")
             if cleaned:
                 return cleaned
-            raise LLMRouterError("Grok CLI returned no response text")
+            raise LLMRouterOutputError("Grok CLI returned no response text")
 
     return _GrokCLIProvider()
 

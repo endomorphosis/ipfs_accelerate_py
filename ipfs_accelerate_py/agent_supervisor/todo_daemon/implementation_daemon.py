@@ -169,6 +169,7 @@ from .contract_packet_provider_router import (
     build_production_contract_packet,
     build_production_provider_route_evaluation,
     evaluate_production_provider_receipt,
+    redact_provider_data,
     validate_provider_execution_receipt,
     validate_production_review_chain_binding,
 )
@@ -260,6 +261,18 @@ PRODUCTION_CONTEXT_REFERENCE_MANIFEST_CONTENT_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/"
     "production-context-reference-manifest-content@1"
 )
+PRODUCTION_REVIEW_FEEDBACK_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "production-review-feedback@1"
+)
+PRODUCTION_REVIEW_FEEDBACK_REPLAY_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "production-review-feedback-replay@1"
+)
+PRODUCTION_REVIEW_FEEDBACK_MAX_FINDINGS = 4
+PRODUCTION_REVIEW_FEEDBACK_MAX_FINDING_BYTES = 256
+PRODUCTION_REVIEW_FEEDBACK_MAX_BYTES = 3_072
+PRODUCTION_REVIEW_FEEDBACK_REPLAY_MAX_BYTES = 3_584
 # Env overrides for injectable production providers (tests/operators).
 PRODUCTION_PROVIDER_ROUTE_ENABLED_ENV = (
     "IPFS_ACCELERATE_AGENT_PRODUCTION_PROVIDER_ROUTE"
@@ -11359,6 +11372,11 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             # merge metadata is built from it.
             worktree_path = self._effective_pooled_worktree_path(worktree_path)
             if use_production_route:
+                baseline_ref = (
+                    self._require_production_context_baseline_ref(
+                        baseline_ref
+                    )
+                )
                 production_context = self._compile_implementation_context(
                     task,
                     attempt,
@@ -12584,6 +12602,11 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 validation_result=validation_result,
                 exception_result=exception_result,
                 timeout_result=timeout_result,
+                production_route_payload=(
+                    production_route_payload
+                    if use_production_route
+                    else None
+                ),
             )
             if attempt_consumed
             else None
@@ -18037,6 +18060,380 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             return f"git-commit:{head}"
         return f"workspace:{cwd.resolve()}"
 
+    @staticmethod
+    def _require_production_context_baseline_ref(value: Any) -> str:
+        """Require the immutable worktree commit before compiling context."""
+
+        baseline_ref = str(value or "").strip()
+        if not baseline_ref:
+            raise RuntimeError(
+                "production worktree did not resolve an immutable "
+                "baseline commit"
+            )
+        return baseline_ref
+
+    @staticmethod
+    def _bounded_production_review_finding(value: Any) -> tuple[str, bool]:
+        """Return one redacted single-line finding and whether it was cut."""
+
+        if not isinstance(value, str):
+            return "", True
+        redacted = redact_provider_data(value)
+        if not isinstance(redacted, str):
+            return "", True
+        normalized = re.sub(r"\s+", " ", redacted).strip()
+        if not normalized:
+            return "", bool(value)
+        encoded = normalized.encode("utf-8")
+        if len(encoded) <= PRODUCTION_REVIEW_FEEDBACK_MAX_FINDING_BYTES:
+            return normalized, False
+        bounded = encoded[
+            :PRODUCTION_REVIEW_FEEDBACK_MAX_FINDING_BYTES
+        ].decode("utf-8", errors="ignore").rstrip()
+        return bounded, True
+
+    def _build_production_review_feedback(
+        self,
+        task: PortalTask,
+        *,
+        attempt: int,
+        route_payload: Mapping[str, Any] | None,
+    ) -> dict[str, Any] | None:
+        """Project an admitted Codex decline to bounded diagnostic evidence."""
+
+        if not isinstance(route_payload, Mapping):
+            return None
+        route_result = route_payload.get("route_result")
+        if not isinstance(route_result, ImplementationRoutingResult):
+            return None
+        if (
+            route_result.reason_code
+            != ProviderReason.REVIEW_DECLINED.value
+            or route_result.review_presence
+            != ReviewPresence.DECLINED.value
+        ):
+            return None
+        review = route_result.review_proposal
+        implementation = route_result.implementation_proposal
+        packet = route_result.packet
+        if (
+            isinstance(attempt, bool)
+            or not isinstance(attempt, int)
+            or attempt < 1
+        ):
+            return None
+        expected_packet_id = (
+            f"packet:production:{task.task_id}:attempt-{attempt}"
+        )
+        if (
+            review is None
+            or implementation is None
+            or packet is None
+            or not review.admitted
+            or packet.task_id != task.task_id
+            or packet.packet_id != expected_packet_id
+            or review.task_id != task.task_id
+            or implementation.task_id != task.task_id
+            or review.packet_id != packet.packet_id
+            or implementation.packet_id != packet.packet_id
+            or review.snapshot_id != packet.snapshot_id
+            or implementation.snapshot_id != packet.snapshot_id
+        ):
+            return None
+        decision = str(review.payload.get("decision") or "").strip().casefold()
+        if decision not in {"reject", "decline", "changes_required"}:
+            return None
+
+        raw_findings = review.payload.get("findings", ())
+        malformed_findings = (
+            isinstance(raw_findings, (str, bytes, Mapping))
+            or not isinstance(raw_findings, Sequence)
+        )
+        finding_values = () if malformed_findings else tuple(raw_findings)
+        findings: list[dict[str, Any]] = []
+        truncated = malformed_findings
+        for source_ordinal, raw_finding in enumerate(finding_values, start=1):
+            text, finding_truncated = self._bounded_production_review_finding(
+                raw_finding
+            )
+            truncated = truncated or finding_truncated
+            if not text:
+                continue
+            if len(findings) >= PRODUCTION_REVIEW_FEEDBACK_MAX_FINDINGS:
+                truncated = True
+                continue
+            finding_body = {
+                "source_ordinal": source_ordinal,
+                "text": text,
+            }
+            findings.append(
+                {
+                    "finding_id": content_identity(finding_body),
+                    **finding_body,
+                }
+            )
+        if len(findings) < len(finding_values):
+            truncated = True
+
+        receipt = route_result.provider_receipt
+        body: dict[str, Any] = {
+            "schema": PRODUCTION_REVIEW_FEEDBACK_SCHEMA,
+            "task_id": task.task_id,
+            "task_revision": self._canonical_ref(task),
+            "source_attempt": int(attempt),
+            "packet_id": packet.packet_id,
+            "snapshot_id": packet.snapshot_id,
+            "provider_receipt_id": receipt.receipt_id,
+            "implementation_proposal_digest": (
+                implementation.response_digest
+            ),
+            "review_proposal_digest": review.response_digest,
+            "decision": decision,
+            "source_finding_count": (
+                len(finding_values) if not malformed_findings else 0
+            ),
+            "included_finding_count": len(findings),
+            "truncated": bool(truncated),
+            "findings": findings,
+        }
+        while findings:
+            candidate = {
+                "feedback_id": content_identity(body),
+                **body,
+            }
+            if (
+                len(canonical_json(candidate).encode("utf-8"))
+                <= PRODUCTION_REVIEW_FEEDBACK_MAX_BYTES
+            ):
+                return candidate
+            findings.pop()
+            body["included_finding_count"] = len(findings)
+            body["truncated"] = True
+        candidate = {
+            "feedback_id": content_identity(body),
+            **body,
+        }
+        if (
+            len(canonical_json(candidate).encode("utf-8"))
+            > PRODUCTION_REVIEW_FEEDBACK_MAX_BYTES
+        ):
+            return None
+        return candidate
+
+    @staticmethod
+    def _validate_production_review_feedback(
+        payload: Any,
+    ) -> dict[str, Any]:
+        """Verify a persisted feedback artifact without trusting sidecars."""
+
+        if not isinstance(payload, Mapping):
+            raise TypeError("production review feedback must be an object")
+        allowed = {
+            "feedback_id",
+            "schema",
+            "task_id",
+            "task_revision",
+            "source_attempt",
+            "packet_id",
+            "snapshot_id",
+            "provider_receipt_id",
+            "implementation_proposal_digest",
+            "review_proposal_digest",
+            "decision",
+            "source_finding_count",
+            "included_finding_count",
+            "truncated",
+            "findings",
+        }
+        if set(payload) != allowed:
+            raise ValueError(
+                "production review feedback fields are incomplete or unsupported"
+            )
+        if payload.get("schema") != PRODUCTION_REVIEW_FEEDBACK_SCHEMA:
+            raise ValueError("production review feedback schema is unsupported")
+        for key in (
+            "feedback_id",
+            "task_id",
+            "task_revision",
+            "packet_id",
+            "snapshot_id",
+            "provider_receipt_id",
+            "implementation_proposal_digest",
+            "review_proposal_digest",
+        ):
+            value = payload.get(key)
+            if (
+                not isinstance(value, str)
+                or not value
+                or value != value.strip()
+            ):
+                raise ValueError(f"production review feedback {key} is invalid")
+        source_attempt = payload.get("source_attempt")
+        source_count = payload.get("source_finding_count")
+        included_count = payload.get("included_finding_count")
+        if (
+            isinstance(source_attempt, bool)
+            or not isinstance(source_attempt, int)
+            or source_attempt < 1
+        ):
+            raise ValueError(
+                "production review feedback source_attempt is invalid"
+            )
+        for key, value in (
+            ("source_finding_count", source_count),
+            ("included_finding_count", included_count),
+        ):
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, int)
+                or value < 0
+            ):
+                raise ValueError(
+                    f"production review feedback {key} is invalid"
+                )
+        if payload.get("decision") not in {
+            "reject",
+            "decline",
+            "changes_required",
+        }:
+            raise ValueError("production review feedback decision is invalid")
+        if not isinstance(payload.get("truncated"), bool):
+            raise TypeError("production review feedback truncation is invalid")
+        raw_findings = payload.get("findings")
+        if (
+            not isinstance(raw_findings, list)
+            or len(raw_findings)
+            > PRODUCTION_REVIEW_FEEDBACK_MAX_FINDINGS
+            or included_count != len(raw_findings)
+            or source_count < included_count
+        ):
+            raise ValueError("production review feedback findings are invalid")
+        findings: list[dict[str, Any]] = []
+        last_ordinal = 0
+        for raw_finding in raw_findings:
+            if (
+                not isinstance(raw_finding, Mapping)
+                or set(raw_finding)
+                != {"finding_id", "source_ordinal", "text"}
+            ):
+                raise ValueError(
+                    "production review feedback finding is malformed"
+                )
+            ordinal = raw_finding.get("source_ordinal")
+            text = raw_finding.get("text")
+            finding_id = raw_finding.get("finding_id")
+            if (
+                isinstance(ordinal, bool)
+                or not isinstance(ordinal, int)
+                or ordinal <= last_ordinal
+                or ordinal < 1
+                or not isinstance(text, str)
+                or not text
+                or text != re.sub(r"\s+", " ", text).strip()
+                or len(text.encode("utf-8"))
+                > PRODUCTION_REVIEW_FEEDBACK_MAX_FINDING_BYTES
+                or redact_provider_data(text) != text
+            ):
+                raise ValueError(
+                    "production review feedback finding is not bounded"
+                )
+            finding_body = {
+                "source_ordinal": ordinal,
+                "text": text,
+            }
+            if finding_id != content_identity(finding_body):
+                raise ValueError(
+                    "production review feedback finding identity is forged"
+                )
+            findings.append({"finding_id": finding_id, **finding_body})
+            last_ordinal = ordinal
+        if source_count > included_count and not payload["truncated"]:
+            raise ValueError(
+                "production review feedback truncation claim is inconsistent"
+            )
+        body = {key: payload[key] for key in allowed if key != "feedback_id"}
+        if payload["feedback_id"] != content_identity(body):
+            raise ValueError("production review feedback identity is forged")
+        normalized = {"feedback_id": payload["feedback_id"], **body}
+        if (
+            len(canonical_json(normalized).encode("utf-8"))
+            > PRODUCTION_REVIEW_FEEDBACK_MAX_BYTES
+        ):
+            raise ValueError("production review feedback exceeds its byte bound")
+        return json.loads(canonical_json(normalized))
+
+    def _production_review_feedback_replay(
+        self,
+        task: PortalTask,
+        *,
+        attempt: int,
+        snapshot_id: str,
+    ) -> dict[str, Any] | None:
+        """Return feedback only for its exact receipt-bound next retry."""
+
+        if attempt <= 1:
+            return None
+        key = self._canonical_ref(task)
+        diagnostic = self._implementation_diagnostics.get(key)
+        if diagnostic is None:
+            self._load_implementation_retry_state(task)
+            diagnostic = self._implementation_diagnostics.get(key)
+        if diagnostic is None:
+            return None
+        raw_feedback = diagnostic.failure.get("production_review_feedback")
+        if raw_feedback is None:
+            return None
+        try:
+            feedback = self._validate_production_review_feedback(raw_feedback)
+        except (TypeError, ValueError) as exc:
+            raise ProviderRoutingError(
+                "persisted production review feedback failed verification",
+                reason_code=ProviderReason.PACKET_MALFORMED,
+            ) from exc
+        retry = self._last_implementation_retry
+        if (
+            feedback["task_id"] != task.task_id
+            or feedback["task_revision"] != key
+            or feedback["source_attempt"] != int(attempt) - 1
+            or feedback["packet_id"]
+            != (
+                f"packet:production:{task.task_id}:"
+                f"attempt-{int(attempt) - 1}"
+            )
+            or feedback["snapshot_id"] != snapshot_id
+            or retry is None
+            or retry.capsule.diagnostic_receipt_id
+            != diagnostic.receipt_id
+            or retry.capsule.prior_decision_id
+            != diagnostic.prior_decision_id
+            or retry.capsule.repository_id != diagnostic.repository_id
+            or retry.capsule.tree_id != diagnostic.tree_id
+            or snapshot_id != f"git-commit:{diagnostic.tree_id}"
+        ):
+            raise ProviderRoutingError(
+                "production review feedback is stale or cross-task",
+                reason_code=ProviderReason.PACKET_STALE,
+            )
+        body = {
+            "schema": PRODUCTION_REVIEW_FEEDBACK_REPLAY_SCHEMA,
+            "diagnostic_receipt_id": diagnostic.receipt_id,
+            "target_attempt": int(attempt),
+            "feedback": feedback,
+        }
+        replay = {
+            "replay_id": content_identity(body),
+            **body,
+        }
+        if (
+            len(canonical_json(replay).encode("utf-8"))
+            > PRODUCTION_REVIEW_FEEDBACK_REPLAY_MAX_BYTES
+        ):
+            raise ProviderRoutingError(
+                "production review feedback replay exceeds its byte bound",
+                reason_code=ProviderReason.PROMPT_TOO_LARGE,
+            )
+        return replay
+
     def _production_context_evidence_handles(
         self,
         task: PortalTask,
@@ -18174,6 +18571,13 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 TARGETED_IMPLEMENTATION_EVIDENCE_POLICY
             ),
         }
+        review_feedback_replay = self._production_review_feedback_replay(
+            task,
+            attempt=attempt,
+            snapshot_id=snapshot_id,
+        )
+        if review_feedback_replay is not None:
+            extra_goal["prior_review_feedback"] = review_feedback_replay
         verified_contract_ids, verified_obligation_ids, expansion_handles = (
             self._verified_production_context_packet_fields(
                 task,
@@ -18207,6 +18611,19 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             dict.fromkeys(
                 (
                     *verified_contract_ids,
+                    *(
+                        (
+                            review_feedback_replay["replay_id"],
+                            review_feedback_replay[
+                                "diagnostic_receipt_id"
+                            ],
+                            review_feedback_replay["feedback"][
+                                "feedback_id"
+                            ],
+                        )
+                        if review_feedback_replay is not None
+                        else ()
+                    ),
                     *self._compact_value_list(
                         self._task_metadata_value(
                             task,
@@ -26731,22 +27148,27 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         *,
         repository_root: Path | None = None,
     ) -> tuple[Path, str] | None:
-        """Resolve one task-declared evidence path without permitting escape."""
+        """Return one lexical task path without following mutable symlinks."""
 
         text = str(value or "").strip().strip("`'\"")
         if not text or "\x00" in text:
             return None
         context_root = (repository_root or self.repo_root).resolve()
         path = Path(text)
-        candidate = path if path.is_absolute() else context_root / path
         try:
-            resolved = candidate.resolve(strict=False)
-            relative = resolved.relative_to(context_root).as_posix()
-        except (OSError, RuntimeError, ValueError):
+            relative_path = (
+                path.relative_to(context_root)
+                if path.is_absolute()
+                else path
+            )
+        except ValueError:
             return None
+        if any(part == ".." for part in relative_path.parts):
+            return None
+        relative = relative_path.as_posix()
         if not relative or relative == ".":
             return None
-        return resolved, relative
+        return context_root / relative_path, relative
 
     def _implementation_evidence_source_tasks(
         self,
@@ -26818,6 +27240,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         *,
         source_tasks: Sequence[PortalTask],
         repository_root: Path | None = None,
+        snapshot_ref: str = "",
     ) -> tuple[tuple[Path, str, str, int], ...]:
         """Select only task-declared files, diagnostics, and directory indexes."""
 
@@ -26879,7 +27302,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                         path_token,
                         repository_root=repository_root,
                     )
-                    if resolved is None or not resolved[0].exists():
+                    if resolved is None:
                         continue
                     add(
                         path_token,
@@ -26902,13 +27325,276 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         )
         return tuple(ordered[:TARGETED_IMPLEMENTATION_EVIDENCE_MAX_PATHS])
 
+    def _implementation_snapshot_entry(
+        self,
+        *,
+        repository_root: Path,
+        snapshot_ref: str,
+        relative: str,
+        _inspect_ancestors: bool = True,
+    ) -> dict[str, str]:
+        """Inspect one literal path in a pinned Git tree without dereferencing it."""
+
+        result = subprocess.run(
+            [
+                "git",
+                "--literal-pathspecs",
+                "ls-tree",
+                "-z",
+                "-l",
+                snapshot_ref,
+                "--",
+                relative,
+            ],
+            cwd=repository_root,
+            capture_output=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            return {
+                "state": "lookup_error",
+                "detail": bytes(result.stderr or b"")
+                .decode("utf-8", errors="replace")[-200:],
+            }
+        records = [
+            record
+            for record in bytes(result.stdout or b"").split(b"\0")
+            if record
+        ]
+        if not records:
+            if _inspect_ancestors:
+                parts = Path(relative).parts
+                for end in range(len(parts) - 1, 0, -1):
+                    boundary_path = Path(*parts[:end]).as_posix()
+                    boundary = self._implementation_snapshot_entry(
+                        repository_root=repository_root,
+                        snapshot_ref=snapshot_ref,
+                        relative=boundary_path,
+                        _inspect_ancestors=False,
+                    )
+                    boundary_kind = (
+                        self._implementation_snapshot_entry_kind(boundary)
+                    )
+                    if (
+                        boundary.get("state") == "present"
+                        and boundary_kind in {"gitlink", "symbolic-link"}
+                    ):
+                        return {
+                            **boundary,
+                            "state": "boundary",
+                            "boundary_path": boundary_path,
+                        }
+            return {"state": "absent"}
+        if len(records) != 1:
+            return {
+                "state": "lookup_error",
+                "detail": "literal Git path lookup returned multiple entries",
+            }
+        metadata, separator, raw_name = records[0].partition(b"\t")
+        fields = metadata.decode("ascii", errors="replace").split()
+        name = raw_name.decode("utf-8", errors="surrogateescape")
+        if (
+            not separator
+            or len(fields) < 3
+            or name != relative
+        ):
+            return {
+                "state": "lookup_error",
+                "detail": "literal Git path lookup returned a malformed entry",
+            }
+        return {
+            "state": "present",
+            "mode": fields[0],
+            "object_type": fields[1],
+            "object_id": fields[2],
+            "size": fields[3] if len(fields) > 3 else "-",
+        }
+
+    @staticmethod
+    def _implementation_snapshot_entry_kind(
+        entry: Mapping[str, str],
+    ) -> str:
+        mode = str(entry.get("mode") or "")
+        object_type = str(entry.get("object_type") or "")
+        if mode == "160000" or object_type == "commit":
+            return "gitlink"
+        if mode == "120000":
+            return "symbolic-link"
+        if object_type == "tree":
+            return "directory"
+        if object_type == "blob":
+            return "file"
+        return object_type or "unknown"
+
+    @staticmethod
+    def _implementation_symbolic_link_evidence(
+        *,
+        relative: str,
+        object_id: str,
+        boundary_path: str = "",
+    ) -> str:
+        boundary = str(boundary_path or "").strip()
+        return "\n".join(
+            (
+                f"Task evidence path: {relative}",
+                "Git object type: symbolic-link",
+                f"Git object id: {object_id}",
+                *(
+                    (f"Git boundary path: {boundary}",)
+                    if boundary and boundary != relative
+                    else ()
+                ),
+                (
+                    "State: path crosses a symbolic link; target not followed "
+                    "and referent content omitted"
+                    if boundary and boundary != relative
+                    else (
+                        "State: symbolic link target not followed; referent "
+                        "content omitted"
+                    )
+                ),
+            )
+        )
+
+    def _implementation_gitlink_evidence(
+        self,
+        *,
+        repository_root: Path,
+        relative: str,
+        object_id: str,
+        boundary_path: str = "",
+    ) -> str:
+        available = subprocess.run(
+            ["git", "cat-file", "-e", f"{object_id}^{{commit}}"],
+            cwd=repository_root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        state = (
+            "gitlink marks a separate repository; submodule content omitted"
+            if available.returncode == 0
+            else (
+                "gitlink target object unavailable in superproject object "
+                "database; submodule content omitted"
+            )
+        )
+        return "\n".join(
+            (
+                f"Task evidence path: {relative}",
+                "Git object type: gitlink",
+                f"Gitlink commit: {object_id}",
+                *(
+                    (f"Git boundary path: {boundary_path}",)
+                    if boundary_path and boundary_path != relative
+                    else ()
+                ),
+                f"State: {state}",
+            )
+        )
+
+    @staticmethod
+    def _implementation_live_path_uses_symlink(
+        path: Path,
+        *,
+        repository_root: Path,
+    ) -> bool:
+        """Whether a live evidence path traverses any mutable symlink."""
+
+        try:
+            lexical = path.absolute()
+            resolved = path.resolve(strict=False)
+            resolved.relative_to(repository_root)
+        except (OSError, RuntimeError, ValueError):
+            return True
+        return resolved != lexical
+
     def _implementation_directory_evidence(
         self,
         path: Path,
         *,
         relative: str,
+        repository_root: Path | None = None,
+        tree_object_id: str = "",
     ) -> str:
         entries: list[str] = []
+        if tree_object_id:
+            context_root = (repository_root or self.repo_root).resolve()
+            listed = subprocess.run(
+                ["git", "ls-tree", "-z", "-l", tree_object_id],
+                cwd=context_root,
+                capture_output=True,
+                check=False,
+            )
+            if listed.returncode != 0:
+                detail = bytes(listed.stderr or b"").decode(
+                    "utf-8", errors="replace"
+                )[-200:]
+                return "\n".join(
+                    (
+                        f"Task evidence path: {relative}",
+                        "Git object type: directory",
+                        f"State: unreadable tree object ({detail})",
+                    )
+                )
+            records = [
+                record
+                for record in bytes(listed.stdout or b"").split(b"\0")
+                if record
+            ]
+            for record in records[:64]:
+                metadata, separator, raw_name = record.partition(b"\t")
+                fields = metadata.decode(
+                    "ascii", errors="replace"
+                ).split()
+                if not separator or len(fields) < 3:
+                    continue
+                child_entry = {
+                    "mode": fields[0],
+                    "object_type": fields[1],
+                }
+                child_type = self._implementation_snapshot_entry_kind(
+                    child_entry
+                )
+                name = raw_name.decode("utf-8", errors="replace")
+                size = fields[3] if len(fields) > 3 else "-"
+                suffix = (
+                    f" ({size} bytes)"
+                    if child_type == "file" and size != "-"
+                    else ""
+                )
+                entries.append(
+                    f"- {json.dumps(name, ensure_ascii=False)}: "
+                    f"{child_type}{suffix}"
+                )
+            has_more = len(records) > 64
+            return "\n".join(
+                (
+                    f"Task evidence directory index: {relative}",
+                    "Git object type: directory",
+                    (
+                        f"Entry count: at least {len(records)}"
+                        if has_more
+                        else f"Entry count: {len(records)}"
+                    ),
+                    f"Entries omitted: {str(has_more).lower()}",
+                    *entries,
+                )
+            )
+        context_root = (repository_root or self.repo_root).resolve()
+        if self._implementation_live_path_uses_symlink(
+            path,
+            repository_root=context_root,
+        ):
+            return "\n".join(
+                (
+                    f"Task evidence path: {relative}",
+                    (
+                        "State: live symbolic-link traversal omitted; "
+                        "referent content not read"
+                    ),
+                )
+            )
         try:
             sampled_children = heapq.nsmallest(
                 65,
@@ -26924,7 +27610,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         for child in children:
             try:
                 child_type = (
-                    "directory"
+                    "symbolic-link"
+                    if child.is_symlink()
+                    else "directory"
                     if child.is_dir()
                     else "file"
                     if child.is_file()
@@ -26956,11 +27644,84 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         *,
         relative: str,
         search_terms: Sequence[str],
+        repository_root: Path | None = None,
+        object_id: str = "",
     ) -> str:
         hasher = hashlib.sha256()
         sampled = bytearray()
-        try:
-            with path.open("rb") as handle:
+        file_size = 0
+        context_root = (repository_root or self.repo_root).resolve()
+        if object_id:
+            size_result = subprocess.run(
+                ["git", "cat-file", "-s", object_id],
+                cwd=context_root,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            try:
+                file_size = int(str(size_result.stdout or "").strip())
+            except (TypeError, ValueError):
+                file_size = -1
+            if size_result.returncode != 0 or file_size < 0:
+                detail = str(size_result.stderr or "")[-200:]
+                return "\n".join(
+                    (
+                        f"Task evidence path: {relative}",
+                        "Git object type: file",
+                        f"State: unreadable blob size ({detail})",
+                    )
+                )
+            process = subprocess.Popen(
+                ["git", "cat-file", "blob", object_id],
+                cwd=context_root,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+            assert process.stdout is not None
+            while True:
+                block = process.stdout.read(64 * 1_024)
+                if not block:
+                    break
+                hasher.update(block)
+                remaining = (
+                    TARGETED_IMPLEMENTATION_EVIDENCE_MAX_READ_BYTES
+                    - len(sampled)
+                )
+                if remaining > 0:
+                    sampled.extend(block[:remaining])
+            _stdout, stderr = process.communicate()
+            if process.returncode != 0:
+                detail = stderr.decode("utf-8", errors="replace")[-200:]
+                return "\n".join(
+                    (
+                        f"Task evidence path: {relative}",
+                        "Git object type: file",
+                        f"State: unreadable blob object ({detail})",
+                    )
+                )
+        else:
+            if self._implementation_live_path_uses_symlink(
+                path,
+                repository_root=context_root,
+            ):
+                return "\n".join(
+                    (
+                        f"Task evidence path: {relative}",
+                        (
+                            "State: live symbolic-link traversal omitted; "
+                            "referent content not read"
+                        ),
+                    )
+                )
+            try:
+                handle = path.open("rb")
+            except OSError as exc:
+                return (
+                    f"Task evidence path: {relative}\n"
+                    f"State: unreadable file ({type(exc).__name__})"
+                )
+            with handle:
                 while True:
                     block = handle.read(64 * 1_024)
                     if not block:
@@ -26972,15 +27733,10 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     )
                     if remaining > 0:
                         sampled.extend(block[:remaining])
-        except OSError as exc:
-            return (
-                f"Task evidence path: {relative}\n"
-                f"State: unreadable file ({type(exc).__name__})"
-            )
-        try:
-            file_size = path.stat().st_size
-        except OSError:
-            file_size = len(sampled)
+            try:
+                file_size = path.stat().st_size
+            except OSError:
+                file_size = len(sampled)
         content_id = f"sha256:{hasher.hexdigest()}"
         if b"\x00" in sampled:
             return "\n".join(
@@ -27062,7 +27818,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         repository_id: str,
         tree_id: str,
         repository_root: Path | None = None,
+        snapshot_ref: str = "",
     ) -> tuple[Any, ...]:
+        context_root = (repository_root or self.repo_root).resolve()
         source_tasks = self._implementation_evidence_source_tasks(task)
         search_terms = self._implementation_evidence_search_terms(
             source_tasks
@@ -27077,19 +27835,100 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             self._implementation_evidence_candidates(
                 task,
                 source_tasks=source_tasks,
-                repository_root=repository_root,
+                repository_root=context_root,
+                snapshot_ref=snapshot_ref,
             )
         ):
-            if path.is_dir():
+            if snapshot_ref:
+                entry = self._implementation_snapshot_entry(
+                    repository_root=context_root,
+                    snapshot_ref=snapshot_ref,
+                    relative=relative,
+                )
+                entry_state = str(entry.get("state") or "")
+                entry_kind = self._implementation_snapshot_entry_kind(entry)
+                object_id = str(entry.get("object_id") or "")
+                if entry_state == "lookup_error":
+                    evidence_text = "\n".join(
+                        (
+                            f"Task evidence path: {relative}",
+                            (
+                                "State: Git snapshot lookup failed "
+                                f"({str(entry.get('detail') or '')})"
+                            ),
+                        )
+                    )
+                elif entry_state == "absent":
+                    evidence_text = "\n".join(
+                        (
+                            f"Task evidence path: {relative}",
+                            "State: path is absent from the bound Git snapshot",
+                        )
+                    )
+                elif entry_kind == "directory":
+                    evidence_text = self._implementation_directory_evidence(
+                        path,
+                        relative=relative,
+                        repository_root=context_root,
+                        tree_object_id=object_id,
+                    )
+                elif entry_kind == "file":
+                    evidence_text = self._implementation_file_evidence(
+                        path,
+                        relative=relative,
+                        search_terms=search_terms,
+                        repository_root=context_root,
+                        object_id=object_id,
+                    )
+                elif entry_kind == "symbolic-link":
+                    evidence_text = (
+                        self._implementation_symbolic_link_evidence(
+                            relative=relative,
+                            object_id=object_id,
+                            boundary_path=str(
+                                entry.get("boundary_path") or ""
+                            ),
+                        )
+                    )
+                elif entry_kind == "gitlink":
+                    evidence_text = self._implementation_gitlink_evidence(
+                        repository_root=context_root,
+                        relative=relative,
+                        object_id=object_id,
+                        boundary_path=str(
+                            entry.get("boundary_path") or ""
+                        ),
+                    )
+                else:
+                    evidence_text = "\n".join(
+                        (
+                            f"Task evidence path: {relative}",
+                            f"Git object type: {entry_kind}",
+                            (
+                                "State: unsupported Git snapshot object; "
+                                "content omitted"
+                            ),
+                        )
+                    )
+            elif path.is_symlink():
+                evidence_text = "\n".join(
+                    (
+                        f"Task evidence path: {relative}",
+                        "State: live symbolic link content omitted",
+                    )
+                )
+            elif path.is_dir():
                 evidence_text = self._implementation_directory_evidence(
                     path,
                     relative=relative,
+                    repository_root=context_root,
                 )
             elif path.is_file():
                 evidence_text = self._implementation_file_evidence(
                     path,
                     relative=relative,
                     search_terms=search_terms,
+                    repository_root=context_root,
                 )
             else:
                 evidence_text = "\n".join(
@@ -27329,6 +28168,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         repository_id = "repository:sha256:" + hashlib.sha256(
             repository_material.encode("utf-8")
         ).hexdigest()
+        expected = str(expected_tree_id or "").strip()
         head = subprocess.run(
             ["git", "rev-parse", "--verify", "HEAD^{commit}"],
             cwd=context_root,
@@ -27338,10 +28178,13 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         )
         tree_id = str(head.stdout or "").strip()
         if head.returncode != 0 or not tree_id:
+            if expected:
+                raise RuntimeError(
+                    "cannot resolve the immutable production context snapshot"
+                )
             tree_id = "tree:sha256:" + hashlib.sha256(
                 self._canonical_ref(task).encode("utf-8")
             ).hexdigest()
-        expected = str(expected_tree_id or "").strip()
         if expected and tree_id != expected:
             raise RuntimeError(
                 "implementation context root does not match the expected "
@@ -27624,6 +28467,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "checkpoint_manifest",
             "failure_review",
             "next_attempt_prompt_addendum",
+            "production_review_feedback",
         ):
             value = failure.get(key)
             if value not in (None, "", (), [], {}):
@@ -27924,6 +28768,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         validation_result: Mapping[str, Any] | None = None,
         exception_result: Mapping[str, Any] | None = None,
         timeout_result: Mapping[str, Any] | None = None,
+        production_route_payload: Mapping[str, Any] | None = None,
     ) -> ImplementationDiagnosticReceipt | None:
         if returncode == 0:
             return None
@@ -27967,6 +28812,34 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "returncode": int(returncode),
             "validation_result": validation,
         }
+        route_event = (
+            production_route_payload.get("event")
+            if isinstance(production_route_payload, Mapping)
+            else None
+        )
+        source_attempt = (
+            route_event.get("attempt")
+            if isinstance(route_event, Mapping)
+            else 0
+        )
+        if (
+            isinstance(source_attempt, bool)
+            or not isinstance(source_attempt, int)
+        ):
+            source_attempt = 0
+        review_feedback = self._build_production_review_feedback(
+            task,
+            attempt=source_attempt,
+            route_payload=production_route_payload,
+        )
+        if review_feedback is not None:
+            failure.update(
+                {
+                    "kind": ProviderReason.REVIEW_DECLINED.value,
+                    "reason": ProviderReason.REVIEW_DECLINED.value,
+                    "production_review_feedback": review_feedback,
+                }
+            )
         review = validation.get("failure_review")
         if isinstance(review, Mapping):
             failure["failure_review"] = {
@@ -28444,6 +29317,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             repository_id=repository_id,
             tree_id=tree_id,
             repository_root=context_root,
+            snapshot_ref=str(expected_tree_id or "").strip(),
         )
         if vector_text:
             context = self._load_todo_vector_context(task)
