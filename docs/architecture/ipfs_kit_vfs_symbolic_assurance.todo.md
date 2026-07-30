@@ -3341,7 +3341,7 @@ compact references and bounded spans only.
 
 ## VFS-078 Close objective gap: Give Grok and Codex only compact CID-addressed repair packets
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
