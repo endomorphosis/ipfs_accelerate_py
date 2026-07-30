@@ -9,6 +9,7 @@ authoritative validation.
 from __future__ import annotations
 
 import threading
+from dataclasses import replace
 from typing import Any
 
 import pytest
@@ -21,6 +22,7 @@ from ipfs_accelerate_py.agent_supervisor.code_contract_logic import (
     FormalLogicVocabulary,
     PredicateRelation,
     SupportedPredicateKind,
+    TranslationRejectedError,
     TranslationStatus,
     all_covered_evidence_terms as logic_all_covered_evidence_terms,
     covered_evidence_terms as logic_covered_evidence_terms,
@@ -28,6 +30,7 @@ from ipfs_accelerate_py.agent_supervisor.code_contract_logic import (
     pinned_translator_identity,
     translate_contract,
     translation_stage_owner,
+    verify_translation_result,
 )
 from ipfs_accelerate_py.agent_supervisor.code_contract_prover import (
     ADMITTED_BACKEND_IDS,
@@ -68,6 +71,7 @@ from ipfs_accelerate_py.agent_supervisor.code_contract_prover import (
     pinned_prover_identity,
     proof_stage_owners,
     validate_solver_portfolio,
+    verify_kernel_proof_receipt,
 )
 from ipfs_accelerate_py.agent_supervisor.program_contracts import (
     Assumption,
@@ -710,31 +714,47 @@ def test_inconsistent_assumptions_fail_closed_at_compile() -> None:
         )
 
 
-def test_omitted_effects_rejection_code_available() -> None:
-    # The prove pipeline retains effect relation ids when present.
+def test_partial_effect_omission_fails_closed_before_solver_compilation() -> None:
+    """Dropping one of several effects cannot hide behind another retained effect."""
+
     translation = translated()
-    effect_predicates = [
-        p
-        for p in translation.predicates
-        if p.relation is PredicateRelation.HAS_EFFECT
-    ]
-    assert effect_predicates
-    compiled = compile_obligation_requests(translation)
-    # At least one compiled claim should record effect relation when kind=effect.
-    effect_compiled = [
-        item
-        for item in compiled
-        if SupportedPredicateKind.EFFECT.value in item.predicate_kinds
-        or item.effect_relation_ids
-    ]
-    assert effect_compiled or any(
-        SupportedPredicateKind.EFFECT.value
-        in (
-            (c.metadata.to_dict() if hasattr(c.metadata, "to_dict") else {}).get("kind", "")
-            for c in translation.claims
-        )
-        for _ in (0,)
+    effect_claims = tuple(
+        claim
+        for claim in translation.claims
+        if claim.metadata.to_dict().get("relation")
+        == PredicateRelation.HAS_EFFECT.value
     )
+    assert len(effect_claims) >= 2
+    omitted = effect_claims[0]
+    forged = replace(
+        translation,
+        claims=tuple(
+            claim for claim in translation.claims if claim is not omitted
+        ),
+    )
+
+    with pytest.raises(ProveRejectedError) as exc:
+        compile_obligation_requests(forged)
+    assert exc.value.code is NonConclusiveReason.OMITTED_EFFECTS
+
+
+def test_logic_translation_evidence_is_recomputed_from_complete_envelope() -> None:
+    """VFS-G154 evidence binds every predicate, assumption, claim, and residual."""
+
+    translation = translated()
+    assert verify_translation_result(translation) is translation
+    assert translation.receipt.evidence == LOGIC_TRANSLATION_EVIDENCE
+
+    forged = replace(translation, claims=translation.claims[:-1])
+    with pytest.raises(TranslationRejectedError, match="bindings"):
+        verify_translation_result(forged)
+
+    with pytest.raises(TranslationRejectedError) as exc:
+        replace(
+            translation.receipt,
+            evidence="vfs/unreviewed-translation@1",
+        )
+    assert exc.value.code.value == "invalid_input"
 
 
 def test_disproof_via_sat_counterexample() -> None:
@@ -887,6 +907,65 @@ def test_result_serialization_round_trip() -> None:
     assert again.status is result.status
     assert len(again.attempts) == len(result.attempts)
     assert again.validation.receipt_id == result.validation.receipt_id
+
+
+def test_kernel_proof_receipt_evidence_revalidates_all_authority_bindings() -> None:
+    """VFS-G155 evidence is a replayable receipt, not a solver self-report."""
+
+    result = fixture_prover().prove_translation(translated())
+    verified = verify_kernel_proof_receipt(result)
+    assert verified.receipt_id == result.validation.receipt_id
+    assert verified.evidence_kind == KERNEL_PROOF_RECEIPT_EVIDENCE
+    assert verified.conclusive
+
+    missing_evidence = result.validation.to_dict()
+    missing_evidence.pop("evidence_kind")
+    with pytest.raises(CodeContractProverError, match="evidence_kind"):
+        ValidationReceipt.from_dict(missing_evidence)
+
+    wrong_theorem = replace(
+        result,
+        validation=replace(result.validation, claim_digest="0" * 64),
+    )
+    with pytest.raises(ProveRejectedError) as exc:
+        verify_kernel_proof_receipt(wrong_theorem)
+    assert exc.value.code is NonConclusiveReason.WRONG_THEOREM
+
+    stale = replace(result, prover_identity="b" + "a" * 58)
+    with pytest.raises(ProveRejectedError) as exc:
+        verify_kernel_proof_receipt(stale)
+    assert exc.value.code is NonConclusiveReason.STALE_TOOLCHAIN
+
+
+def test_kernel_proof_receipt_replay_revokes_lost_capability() -> None:
+    result = fixture_prover().prove_translation(translated())
+    lost = ProbeReport(
+        probes=result.probe_report.probes,
+        admitted_backend_ids=(),
+        missing_backend_ids=tuple(ADMITTED_BACKEND_IDS),
+        availability=BackendAvailability.UNAVAILABLE,
+        detail="capability snapshot revoked",
+    )
+    replayed = verify_kernel_proof_receipt(result, probe_report=lost)
+    assert not replayed.conclusive
+    assert replayed.reason is NonConclusiveReason.CAPABILITY_LOSS
+
+
+def test_kernel_proof_receipt_rejects_wrong_theorem_counterexample() -> None:
+    """A counterexample has the same theorem-binding requirement as a proof."""
+
+    result = fixture_prover(
+        outcomes={"cvc5": "sat", "z3": "sat"}
+    ).prove_translation(translated())
+    source = result.attempts[0]
+    wrong_request = replace(source, request_digest="f" * 64)
+    validation = validate_solver_portfolio(
+        compiled=result.compiled,
+        attempts=(wrong_request,),
+        probe_report=result.probe_report,
+    )
+    assert validation.status is ProveStatus.ERROR
+    assert validation.reason is NonConclusiveReason.WRONG_THEOREM
 
 
 def test_prover_version_and_identity_stable() -> None:

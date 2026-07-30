@@ -1022,8 +1022,13 @@ class ConformanceReceipt(CanonicalContract):
         object.__setattr__(
             self,
             "evidence",
-            _text(self.evidence, "evidence", required=False) or LOGIC_TRANSLATION_EVIDENCE,
+            _text(self.evidence, "evidence"),
         )
+        if self.evidence != LOGIC_TRANSLATION_EVIDENCE:
+            raise TranslationRejectedError(
+                RejectionCode.INVALID_INPUT,
+                "conformance receipt does not carry the pinned logic-translation evidence",
+            )
         object.__setattr__(
             self, "metadata", MappingProxyType(_mapping(self.metadata, "metadata"))
         )
@@ -1092,7 +1097,7 @@ class ConformanceReceipt(CanonicalContract):
             translator_identity=payload.get("translator_identity", ""),
             round_trip_ok=bool(payload.get("round_trip_ok", False)),
             status=payload.get("status", ""),
-            evidence=payload.get("evidence", LOGIC_TRANSLATION_EVIDENCE),
+            evidence=payload.get("evidence", ""),
             reconstructed_predicate_cids=tuple(
                 payload.get("reconstructed_predicate_cids") or ()
             ),
@@ -2373,6 +2378,127 @@ def verify_conformance_receipt(
     return receipt
 
 
+def verify_translation_result(
+    result: TranslationResult | Mapping[str, Any],
+    *,
+    expected_translator_identity: str | None = None,
+    require_round_trip: bool = True,
+) -> TranslationResult:
+    """Independently verify a complete ``vfs/logic-translation@1`` envelope.
+
+    A conformance receipt is evidence only when it is bound to the exact
+    predicates, assumptions, unsupported residuals, IR claims, and obligations
+    carried by the result.  This verifier deliberately recomputes those
+    bindings instead of trusting receipt metadata or a caller-selected claim.
+    """
+
+    if isinstance(result, Mapping):
+        result = TranslationResult.from_dict(result)
+    if not isinstance(result, TranslationResult):
+        raise CodeContractLogicError("result must be TranslationResult")
+    if result.status is not TranslationStatus.TRANSLATED:
+        raise TranslationRejectedError(
+            RejectionCode.INVALID_INPUT,
+            f"translation status is {result.status.value}, not translated",
+        )
+
+    receipt = verify_conformance_receipt(
+        result.receipt,
+        expected_translator_identity=expected_translator_identity,
+        require_round_trip=require_round_trip,
+    )
+    if receipt.evidence != LOGIC_TRANSLATION_EVIDENCE:
+        raise TranslationRejectedError(
+            RejectionCode.INVALID_INPUT,
+            "translation receipt evidence is not vfs/logic-translation@1",
+        )
+    if receipt.status is not result.status:
+        raise TranslationRejectedError(
+            RejectionCode.INVALID_INPUT,
+            "translation result and receipt statuses differ",
+        )
+    if receipt.request_cid != result.request_cid:
+        raise TranslationRejectedError(
+            RejectionCode.INVALID_INPUT,
+            "translation receipt is bound to a different request",
+        )
+    if receipt.source_contract_cid != result.source_contract_cid:
+        raise TranslationRejectedError(
+            RejectionCode.INVALID_INPUT,
+            "translation receipt is bound to a different source contract",
+        )
+
+    predicate_cids = tuple(predicate.predicate_id for predicate in result.predicates)
+    claim_digests = tuple(sorted(claim.digest for claim in result.claims))
+    obligation_digests = tuple(
+        sorted(
+            obligation.digest
+            for claim in result.claims
+            for obligation in claim.obligations
+        )
+    )
+    assumption_cids = tuple(
+        assumption.assumption_cid for assumption in result.assumptions
+    )
+    unsupported_cids = tuple(item.content_id for item in result.unsupported)
+    bindings = (
+        ("predicate", receipt.predicate_cids, predicate_cids),
+        ("claim", receipt.claim_digests, claim_digests),
+        ("obligation", receipt.obligation_digests, obligation_digests),
+        ("assumption", receipt.assumption_cids, assumption_cids),
+        ("unsupported residual", receipt.unsupported_cids, unsupported_cids),
+    )
+    for name, retained, recomputed in bindings:
+        if retained != recomputed:
+            raise TranslationRejectedError(
+                RejectionCode.ROUND_TRIP_FAILURE,
+                f"translation receipt {name} bindings do not match the result",
+            )
+
+    if not result.predicates or len(result.predicates) != len(result.claims):
+        raise TranslationRejectedError(
+            RejectionCode.ROUND_TRIP_FAILURE,
+            "translated predicates and IR claims are not one-to-one",
+        )
+    for predicate, claim in zip(result.predicates, result.claims):
+        if predicate.support is not SupportStatus.SUPPORTED:
+            raise TranslationRejectedError(
+                RejectionCode.SILENT_APPROXIMATION,
+                "translated result includes a predicate without supported semantics",
+            )
+        if claim.declaration_id != predicate.predicate_id:
+            raise TranslationRejectedError(
+                RejectionCode.ROUND_TRIP_FAILURE,
+                "IR claim is bound to a different source predicate",
+            )
+        for obligation in claim.obligations:
+            if tuple(obligation.assumption_ids) != tuple(predicate.assumption_cids):
+                raise TranslationRejectedError(
+                    RejectionCode.UNBOUND_AXIOM,
+                    "IR obligation assumptions differ from its source predicate",
+                )
+
+    round_trip_ok, reconstructed = round_trip_predicates(
+        result.predicates, result.claims
+    )
+    if require_round_trip and not round_trip_ok:
+        raise TranslationRejectedError(
+            RejectionCode.ROUND_TRIP_FAILURE,
+            "IR claims do not reconstruct the translated predicates",
+        )
+    if receipt.reconstructed_predicate_cids != reconstructed:
+        raise TranslationRejectedError(
+            RejectionCode.ROUND_TRIP_FAILURE,
+            "receipt reconstruction bindings do not match independently reconstructed predicates",
+        )
+    if result.rejection_codes or receipt.rejection_codes:
+        raise TranslationRejectedError(
+            RejectionCode.INVALID_INPUT,
+            "a successful translation cannot retain rejection codes",
+        )
+    return result
+
+
 def _rejected_result(
     request: TranslationRequest,
     code: RejectionCode,
@@ -2617,4 +2743,5 @@ __all__ = [
     "translation_stage_owner",
     "translator_identity",
     "verify_conformance_receipt",
+    "verify_translation_result",
 ]
