@@ -5,7 +5,7 @@ ABBY-VOICE-G016 residual evidence inventory (AUTO-026 gap closure):
 - persisted attempt/backoff/lease state — ``test_owned_heartbeat_extends_lease_and_expired_claim_recovers``,
   ``test_backoff_blocks_claim_and_expired_final_attempt_fails``, and the DuckDB migration test.
 - owner heartbeats — ``test_owned_heartbeat_extends_lease_and_expired_claim_recovers``.
-- IndexTTS/Whisper batch-size-one policy — ``test_audio_adapters_are_physical_batch_size_one``.
+- IndexTTS/Whisper batch-size-one policy — ``test_single_only_audio_adapters_are_physical_batch_size_one``.
 - existing sibling isolation and single-flight receipts — preserved by the provider batch
   suite imported in the validation gate; this module asserts the audio batch-size-one and
   compatibility surface that those receipts protect.
@@ -404,10 +404,60 @@ def test_audio_provider_batch_key_covers_every_compatibility_dimension(
 
 @pytest.mark.parametrize(
     "provider_id",
-    ["abby_indextts", "index-tts", "IndexTTSHTTP", "whisper", "HuggingFaceWhisperHTTP"],
+    [
+        "abby_indextts",
+        "abby-index-tts",
+        "publicus",
+        "publicus_indextts",
+        "publicus-indextts",
+        "publicus_tts",
+    ],
 )
-def test_audio_adapters_are_physical_batch_size_one(provider_id):
-    """IndexTTS/Whisper batch-size-one policy keeps physical provider calls at one member."""
+def test_publicus_audio_aliases_use_physical_multi_member_batches(provider_id):
+    """Canonical Publicus aliases retain the adapter's real batch wire contract."""
+
+    request_ids = tuple(f"item-{index}" for index in range(4))
+    calls: list[tuple[str, ...]] = []
+
+    def dispatch(requests):
+        members = tuple(requests)
+        calls.append(tuple(member.request_id for member in members))
+        return [member.request_id for member in members]
+
+    with ProviderBatchScheduler(
+        dispatch,
+        config=ProviderBatchSchedulerConfig(
+            max_batch_size=4,
+            batch_window_ms=20,
+            provider_limits={provider_id: 1},
+        ),
+    ) as scheduler:
+        results = scheduler.execute_many(
+            [
+                _provider_request(request_id, provider_id=provider_id)
+                for request_id in request_ids
+            ],
+            wait_timeout=2,
+        )
+
+    assert calls == [request_ids]
+    assert all(result.successful for result in results)
+    assert scheduler.metrics().max_observed_batch_size == 4
+
+
+@pytest.mark.parametrize(
+    "provider_id",
+    [
+        "index-tts",
+        "IndexTTSHTTP",
+        "indextts",
+        "whisper",
+        "HuggingFaceWhisperHTTP",
+        "unknown-indextts",
+    ],
+)
+def test_single_only_audio_adapters_are_physical_batch_size_one(provider_id):
+    """IndexTTS/Whisper batch-size-one policy retains safe generic behavior."""
 
     calls: list[tuple[str, ...]] = []
 
