@@ -38,6 +38,7 @@ from typing import Any, Protocol, TypeAlias, runtime_checkable
 from unittest import mock
 
 from .vfs_contract_pack import (
+    VFS_CANONICAL_OPERATION_MATRIX_SCHEMA,
     CanonicalVector,
     VfsContractPack,
     VfsErrorCode,
@@ -46,10 +47,18 @@ from .vfs_contract_pack import (
     build_vfs_contract_pack,
 )
 
-
 VFS_DIFFERENTIAL_WITNESS_SCHEMA = "vfs/differential-contract-witness@1"
 VFS_DIFFERENTIAL_TRACE_SCHEMA = "vfs/canonical-operation-trace@1"
-VFS_DIFFERENTIAL_GOAL_ID = "VFS-027"
+VFS_DIFFERENTIAL_GOAL_ID = "VFS-G091"
+VFS_DIFFERENTIAL_TASK_ID = "VFS-077"
+VFS_DIFFERENTIAL_OBJECTIVE_REVISION = (
+    "baguqeeraum7l4fdbqgbeprgieb3ffifd72a74vivgjjrpy5gdykb4ubuv5pa"
+)
+VFS_DIFFERENTIAL_PACKET_GOAL_IDS = ("VFS-G091", "VFS-G158")
+VFS_DIFFERENTIAL_EVIDENCE_KINDS = (
+    VFS_DIFFERENTIAL_WITNESS_SCHEMA,
+    VFS_CANONICAL_OPERATION_MATRIX_SCHEMA,
+)
 MAX_TRACE_STEPS = 256
 
 
@@ -65,6 +74,21 @@ class SurfaceFamily(str, Enum):
     MANAGER = "manager"
     BUCKET = "bucket"
     HANDLER = "handler"
+
+
+class PublicSurfaceKind(str, Enum):
+    """Closed operation transports required by the differential objective."""
+
+    PYTHON = "python"
+    CLI = "cli"
+    MCP = "mcp"
+    MCP_PLUS_PLUS = "mcp++"
+    HTTP = "http"
+    LIBP2P = "libp2p"
+    BACKEND = "backend"
+
+
+REQUIRED_PUBLIC_SURFACES = tuple(PublicSurfaceKind)
 
 
 class SurfaceAvailability(str, Enum):
@@ -251,6 +275,7 @@ class CanonicalOperationTrace:
     steps: tuple[TraceStep, ...]
     contract_pack_cid: str
     schema: str = VFS_DIFFERENTIAL_TRACE_SCHEMA
+    operation_matrix_schema: str = VFS_CANONICAL_OPERATION_MATRIX_SCHEMA
 
     def __post_init__(self) -> None:
         if not self.steps:
@@ -266,6 +291,11 @@ class CanonicalOperationTrace:
             raise VfsDifferentialHarnessError(
                 f"unsupported differential trace schema: {self.schema!r}"
             )
+        if self.operation_matrix_schema != VFS_CANONICAL_OPERATION_MATRIX_SCHEMA:
+            raise VfsDifferentialHarnessError(
+                "unsupported canonical operation matrix schema: "
+                f"{self.operation_matrix_schema!r}"
+            )
         if not isinstance(self.contract_pack_cid, str) or not self.contract_pack_cid:
             raise VfsDifferentialHarnessError(
                 "trace contract_pack_cid must be non-empty"
@@ -274,6 +304,7 @@ class CanonicalOperationTrace:
     def to_record(self) -> dict[str, Any]:
         return {
             "schema": self.schema,
+            "operation_matrix_schema": self.operation_matrix_schema,
             "contract_pack_cid": self.contract_pack_cid,
             "steps": [step.to_record() for step in self.steps],
         }
@@ -537,7 +568,7 @@ class SurfaceAdapter(Protocol):
     family: SurfaceFamily
     availability: SurfaceAvailability
     implementation: str
-    public_surface: str
+    public_surface: PublicSurfaceKind | str
     package_names: tuple[str, ...]
     unavailable_reason: str | None
 
@@ -554,7 +585,7 @@ class CallableSurfaceAdapter:
     family: SurfaceFamily
     executor: SurfaceExecutor | None
     implementation: str
-    public_surface: str = "python"
+    public_surface: PublicSurfaceKind | str = PublicSurfaceKind.PYTHON
     availability: SurfaceAvailability = SurfaceAvailability.REAL
     package_names: tuple[str, ...] = ()
     unavailable_reason: str | None = None
@@ -577,10 +608,13 @@ class CallableSurfaceAdapter:
             raise VfsDifferentialHarnessError(
                 "surface implementation must be non-empty"
             )
-        if not isinstance(self.public_surface, str) or not self.public_surface.strip():
+        try:
+            public_surface = PublicSurfaceKind(self.public_surface)
+        except (TypeError, ValueError) as exc:
             raise VfsDifferentialHarnessError(
-                "surface public_surface must be non-empty"
-            )
+                f"unsupported public surface: {self.public_surface!r}"
+            ) from exc
+        object.__setattr__(self, "public_surface", public_surface)
         if self.availability is SurfaceAvailability.UNAVAILABLE:
             if self.executor is not None:
                 raise VfsDifferentialHarnessError(
@@ -616,7 +650,7 @@ class CallableSurfaceAdapter:
         *,
         implementation: str,
         reason: str,
-        public_surface: str = "python",
+        public_surface: PublicSurfaceKind | str = PublicSurfaceKind.PYTHON,
         package_names: Sequence[str] = (),
     ) -> "CallableSurfaceAdapter":
         return cls(
@@ -1167,7 +1201,7 @@ class SurfaceRun:
     availability: SurfaceAvailability
     authoritative: bool
     implementation: str
-    public_surface: str
+    public_surface: PublicSurfaceKind
     unavailable_reason: str | None
     runtime: RuntimeIdentity
     implementation_identity: ImplementationIdentity
@@ -1181,7 +1215,7 @@ class SurfaceRun:
             "availability": self.availability.value,
             "authoritative": self.authoritative,
             "implementation": self.implementation,
-            "public_surface": self.public_surface,
+            "public_surface": self.public_surface.value,
             "unavailable_reason": self.unavailable_reason,
             "runtime": self.runtime.to_record(),
             "implementation_identity": self.implementation_identity.to_record(),
@@ -1218,6 +1252,88 @@ class DriftFinding:
             "description": self.description,
             "cid": self.content_id,
         }
+
+
+@dataclass(frozen=True)
+class WitnessBindings:
+    """Exact content bindings needed to reproduce and audit a witness."""
+
+    contract_pack_cid: str
+    operation_trace_cid: str
+    fixture_spec_cid: str
+    fixture_snapshot_cids: tuple[str, ...]
+    toolchain_cids: Mapping[str, str]
+    implementation_cids: Mapping[str, str]
+    surface_run_cids: Mapping[str, str]
+    content_id: str
+
+    def __post_init__(self) -> None:
+        scalar_cids = {
+            "contract_pack_cid": self.contract_pack_cid,
+            "operation_trace_cid": self.operation_trace_cid,
+            "fixture_spec_cid": self.fixture_spec_cid,
+            "content_id": self.content_id,
+        }
+        for field_name, value in scalar_cids.items():
+            if not isinstance(value, str) or not value:
+                raise VfsDifferentialHarnessError(
+                    f"witness binding {field_name} must be non-empty"
+                )
+        snapshots = tuple(sorted(set(self.fixture_snapshot_cids)))
+        if snapshots != self.fixture_snapshot_cids:
+            raise VfsDifferentialHarnessError(
+                "fixture snapshot CIDs must be unique and sorted"
+            )
+        mappings = (
+            ("toolchain_cids", "toolchain", self.toolchain_cids),
+            ("implementation_cids", "implementation", self.implementation_cids),
+            ("surface_run_cids", "surface run", self.surface_run_cids),
+        )
+        surface_ids: set[str] | None = None
+        for field_name, label, values in mappings:
+            if not isinstance(values, Mapping):
+                raise VfsDifferentialHarnessError(
+                    f"{label} CID bindings must be a mapping"
+                )
+            normalized = {key: value for key, value in sorted(values.items())}
+            if any(
+                not isinstance(key, str)
+                or not key
+                or not isinstance(value, str)
+                or not value
+                for key, value in normalized.items()
+            ):
+                raise VfsDifferentialHarnessError(
+                    f"{label} CID bindings require non-empty string pairs"
+                )
+            object.__setattr__(self, field_name, normalized)
+            current_ids = set(normalized)
+            if surface_ids is None:
+                surface_ids = current_ids
+            elif current_ids != surface_ids:
+                raise VfsDifferentialHarnessError(
+                    "toolchain, implementation, and surface run bindings "
+                    "must cover identical surface IDs"
+                )
+        expected_content_id = _content_id(self._record_without_cid())
+        if self.content_id != expected_content_id:
+            raise VfsDifferentialHarnessError(
+                "witness binding CID does not match its exact dependencies"
+            )
+
+    def _record_without_cid(self) -> dict[str, Any]:
+        return {
+            "contract_pack_cid": self.contract_pack_cid,
+            "operation_trace_cid": self.operation_trace_cid,
+            "fixture_spec_cid": self.fixture_spec_cid,
+            "fixture_snapshot_cids": list(self.fixture_snapshot_cids),
+            "toolchain_cids": dict(self.toolchain_cids),
+            "implementation_cids": dict(self.implementation_cids),
+            "surface_run_cids": dict(self.surface_run_cids),
+        }
+
+    def to_record(self) -> dict[str, Any]:
+        return {**self._record_without_cid(), "cid": self.content_id}
 
 
 def _drift_kinds(step: TraceStep, observation: SurfaceObservation) -> tuple[DriftKind, ...]:
@@ -1266,6 +1382,10 @@ def _drift_kinds(step: TraceStep, observation: SurfaceObservation) -> tuple[Drif
 class DifferentialWitness:
     schema: str
     goal_id: str
+    task_id: str
+    objective_revision: str
+    evidence_kinds: tuple[str, ...]
+    goal_ids: tuple[str, ...]
     trace: CanonicalOperationTrace
     fixture: FixtureSpec
     surface_runs: tuple[SurfaceRun, ...]
@@ -1275,17 +1395,215 @@ class DifferentialWitness:
     unavailable_surface_ids: tuple[str, ...]
     authoritative_agreement: bool
     all_cleanup_succeeded: bool
+    bindings: WitnessBindings
     content_id: str
+
+    def __post_init__(self) -> None:
+        expected_identity = (
+            (self.schema, VFS_DIFFERENTIAL_WITNESS_SCHEMA, "schema"),
+            (self.goal_id, VFS_DIFFERENTIAL_GOAL_ID, "goal_id"),
+            (self.task_id, VFS_DIFFERENTIAL_TASK_ID, "task_id"),
+            (
+                self.objective_revision,
+                VFS_DIFFERENTIAL_OBJECTIVE_REVISION,
+                "objective_revision",
+            ),
+            (
+                self.evidence_kinds,
+                VFS_DIFFERENTIAL_EVIDENCE_KINDS,
+                "evidence_kinds",
+            ),
+            (
+                self.goal_ids,
+                VFS_DIFFERENTIAL_PACKET_GOAL_IDS,
+                "goal_ids",
+            ),
+        )
+        for actual, expected, field_name in expected_identity:
+            if actual != expected:
+                raise VfsDifferentialHarnessError(
+                    f"{field_name} must be {expected!r}, got {actual!r}"
+                )
+        expected_authoritative_ids = tuple(
+            run.surface_id
+            for run in self.surface_runs
+            if run.availability is SurfaceAvailability.REAL
+        )
+        expected_non_authoritative_ids = tuple(
+            run.surface_id
+            for run in self.surface_runs
+            if run.availability is SurfaceAvailability.MOCK
+        )
+        expected_unavailable_ids = tuple(
+            run.surface_id
+            for run in self.surface_runs
+            if run.availability is SurfaceAvailability.UNAVAILABLE
+        )
+        expected_cleanup = all(
+            observation.cleanup.succeeded
+            for run in self.surface_runs
+            for observation in run.observations
+        )
+        expected_agreement = (
+            bool(expected_authoritative_ids)
+            and not any(finding.authoritative for finding in self.findings)
+            and expected_cleanup
+        )
+        expected_classification = (
+            (
+                self.authoritative_surface_ids,
+                expected_authoritative_ids,
+                "authoritative surface IDs",
+            ),
+            (
+                self.non_authoritative_surface_ids,
+                expected_non_authoritative_ids,
+                "non-authoritative surface IDs",
+            ),
+            (
+                self.unavailable_surface_ids,
+                expected_unavailable_ids,
+                "unavailable surface IDs",
+            ),
+            (
+                self.all_cleanup_succeeded,
+                expected_cleanup,
+                "cleanup status",
+            ),
+            (
+                self.authoritative_agreement,
+                expected_agreement,
+                "authoritative agreement",
+            ),
+        )
+        for actual, expected, label in expected_classification:
+            if actual != expected:
+                raise VfsDifferentialHarnessError(
+                    f"witness {label} does not match its surface runs"
+                )
+        expected_toolchains = {
+            run.surface_id: run.runtime.content_id for run in self.surface_runs
+        }
+        expected_implementations = {
+            run.surface_id: run.implementation_identity.content_id
+            for run in self.surface_runs
+        }
+        expected_runs = {
+            run.surface_id: run.content_id for run in self.surface_runs
+        }
+        expected_snapshots = tuple(
+            sorted(
+                {
+                    observation.fixture_before_cid
+                    for run in self.surface_runs
+                    for observation in run.observations
+                }
+            )
+        )
+        expected_bindings = (
+            (
+                self.bindings.contract_pack_cid,
+                self.trace.contract_pack_cid,
+                "contract pack",
+            ),
+            (
+                self.bindings.operation_trace_cid,
+                self.trace.content_id,
+                "operation trace",
+            ),
+            (
+                self.bindings.fixture_spec_cid,
+                self.fixture.content_id,
+                "fixture spec",
+            ),
+            (
+                self.bindings.fixture_snapshot_cids,
+                expected_snapshots,
+                "fixture snapshots",
+            ),
+            (
+                dict(self.bindings.toolchain_cids),
+                expected_toolchains,
+                "toolchains",
+            ),
+            (
+                dict(self.bindings.implementation_cids),
+                expected_implementations,
+                "implementations",
+            ),
+            (
+                dict(self.bindings.surface_run_cids),
+                expected_runs,
+                "surface runs",
+            ),
+        )
+        for actual, expected, label in expected_bindings:
+            if actual != expected:
+                raise VfsDifferentialHarnessError(
+                    f"witness {label} are not bound to the recorded run"
+                )
+        if any(
+            observation.fixture_spec_cid != self.fixture.content_id
+            for run in self.surface_runs
+            for observation in run.observations
+        ):
+            raise VfsDifferentialHarnessError(
+                "an observation is bound to a different fixture recipe"
+            )
+        unsigned_record = self.to_record()
+        unsigned_record.pop("cid")
+        if self.content_id != _content_id(unsigned_record):
+            raise VfsDifferentialHarnessError(
+                "differential witness CID does not match its record"
+            )
+
+    @property
+    def observed_public_surfaces(self) -> tuple[PublicSurfaceKind, ...]:
+        return tuple(
+            surface
+            for surface in REQUIRED_PUBLIC_SURFACES
+            if any(
+                run.public_surface is surface
+                and run.availability is SurfaceAvailability.REAL
+                for run in self.surface_runs
+            )
+        )
+
+    @property
+    def missing_public_surfaces(self) -> tuple[PublicSurfaceKind, ...]:
+        observed = set(self.observed_public_surfaces)
+        return tuple(
+            surface for surface in REQUIRED_PUBLIC_SURFACES if surface not in observed
+        )
 
     def to_record(self) -> dict[str, Any]:
         return {
             "schema": self.schema,
+            "evidence_kinds": list(self.evidence_kinds),
             "goal_id": self.goal_id,
+            "goal_ids": list(self.goal_ids),
+            "task_id": self.task_id,
+            "objective_revision": self.objective_revision,
             "authority": {
                 "completion": False,
                 "correctness": False,
                 "repair": False,
             },
+            "coverage": {
+                "required_public_surfaces": [
+                    surface.value for surface in REQUIRED_PUBLIC_SURFACES
+                ],
+                "observed_public_surfaces": [
+                    surface.value for surface in self.observed_public_surfaces
+                ],
+                "missing_public_surfaces": [
+                    surface.value for surface in self.missing_public_surfaces
+                ],
+                "public_surface_coverage_complete": (
+                    not self.missing_public_surfaces
+                ),
+            },
+            "bindings": self.bindings.to_record(),
             "trace": {**self.trace.to_record(), "cid": self.trace.content_id},
             "fixture": {**self.fixture.to_record(), "cid": self.fixture.content_id},
             "surface_runs": [run.to_record() for run in self.surface_runs],
@@ -1453,6 +1771,12 @@ def _surface_run(
     *,
     temp_parent: Path | None,
 ) -> SurfaceRun:
+    try:
+        public_surface = PublicSurfaceKind(adapter.public_surface)
+    except (TypeError, ValueError) as exc:
+        raise VfsDifferentialHarnessError(
+            f"unsupported public surface: {adapter.public_surface!r}"
+        ) from exc
     runtime = capture_runtime_identity(adapter.package_names)
     implementation = _implementation_identity(adapter)
     observations: tuple[SurfaceObservation, ...]
@@ -1471,7 +1795,7 @@ def _surface_run(
         "availability": adapter.availability.value,
         "authoritative": adapter.availability is SurfaceAvailability.REAL,
         "implementation": adapter.implementation,
-        "public_surface": adapter.public_surface,
+        "public_surface": public_surface.value,
         "unavailable_reason": adapter.unavailable_reason,
         "runtime": runtime.to_record(),
         "implementation_identity": implementation.to_record(),
@@ -1483,11 +1807,52 @@ def _surface_run(
         availability=adapter.availability,
         authoritative=adapter.availability is SurfaceAvailability.REAL,
         implementation=adapter.implementation,
-        public_surface=adapter.public_surface,
+        public_surface=public_surface,
         unavailable_reason=adapter.unavailable_reason,
         runtime=runtime,
         implementation_identity=implementation,
         observations=observations,
+        content_id=_content_id(record),
+    )
+
+
+def _build_witness_bindings(
+    trace: CanonicalOperationTrace,
+    fixture: FixtureSpec,
+    runs: Sequence[SurfaceRun],
+) -> WitnessBindings:
+    record = {
+        "contract_pack_cid": trace.contract_pack_cid,
+        "operation_trace_cid": trace.content_id,
+        "fixture_spec_cid": fixture.content_id,
+        "fixture_snapshot_cids": sorted(
+            {
+                observation.fixture_before_cid
+                for run in runs
+                for observation in run.observations
+            }
+        ),
+        "toolchain_cids": {
+            run.surface_id: run.runtime.content_id
+            for run in sorted(runs, key=lambda item: item.surface_id)
+        },
+        "implementation_cids": {
+            run.surface_id: run.implementation_identity.content_id
+            for run in sorted(runs, key=lambda item: item.surface_id)
+        },
+        "surface_run_cids": {
+            run.surface_id: run.content_id
+            for run in sorted(runs, key=lambda item: item.surface_id)
+        },
+    }
+    return WitnessBindings(
+        contract_pack_cid=trace.contract_pack_cid,
+        operation_trace_cid=trace.content_id,
+        fixture_spec_cid=fixture.content_id,
+        fixture_snapshot_cids=tuple(record["fixture_snapshot_cids"]),
+        toolchain_cids=record["toolchain_cids"],
+        implementation_cids=record["implementation_cids"],
+        surface_run_cids=record["surface_run_cids"],
         content_id=_content_id(record),
     )
 
@@ -1647,6 +2012,7 @@ def run_vfs_differential_harness(
         for adapter in adapters
     )
     findings = _build_findings(selected_trace, runs)
+    bindings = _build_witness_bindings(selected_trace, selected_fixture, runs)
     authoritative_ids = tuple(
         run.surface_id for run in runs if run.availability is SurfaceAvailability.REAL
     )
@@ -1663,13 +2029,44 @@ def run_vfs_differential_harness(
         for run in runs
         for observation in run.observations
     )
-    agreement = all(
+    agreement = bool(authoritative_ids) and all(
         not finding.authoritative for finding in findings
     ) and all_cleanup
+    observed_public_surfaces = tuple(
+        surface
+        for surface in REQUIRED_PUBLIC_SURFACES
+        if any(
+            run.public_surface is surface
+            and run.availability is SurfaceAvailability.REAL
+            for run in runs
+        )
+    )
+    missing_public_surfaces = tuple(
+        surface
+        for surface in REQUIRED_PUBLIC_SURFACES
+        if surface not in set(observed_public_surfaces)
+    )
     record = {
         "schema": VFS_DIFFERENTIAL_WITNESS_SCHEMA,
+        "evidence_kinds": list(VFS_DIFFERENTIAL_EVIDENCE_KINDS),
         "goal_id": VFS_DIFFERENTIAL_GOAL_ID,
+        "goal_ids": list(VFS_DIFFERENTIAL_PACKET_GOAL_IDS),
+        "task_id": VFS_DIFFERENTIAL_TASK_ID,
+        "objective_revision": VFS_DIFFERENTIAL_OBJECTIVE_REVISION,
         "authority": {"completion": False, "correctness": False, "repair": False},
+        "coverage": {
+            "required_public_surfaces": [
+                surface.value for surface in REQUIRED_PUBLIC_SURFACES
+            ],
+            "observed_public_surfaces": [
+                surface.value for surface in observed_public_surfaces
+            ],
+            "missing_public_surfaces": [
+                surface.value for surface in missing_public_surfaces
+            ],
+            "public_surface_coverage_complete": not missing_public_surfaces,
+        },
+        "bindings": bindings.to_record(),
         "trace": {**selected_trace.to_record(), "cid": selected_trace.content_id},
         "fixture": {**selected_fixture.to_record(), "cid": selected_fixture.content_id},
         "surface_runs": [run.to_record() for run in runs],
@@ -1683,6 +2080,10 @@ def run_vfs_differential_harness(
     return DifferentialWitness(
         schema=VFS_DIFFERENTIAL_WITNESS_SCHEMA,
         goal_id=VFS_DIFFERENTIAL_GOAL_ID,
+        task_id=VFS_DIFFERENTIAL_TASK_ID,
+        objective_revision=VFS_DIFFERENTIAL_OBJECTIVE_REVISION,
+        evidence_kinds=VFS_DIFFERENTIAL_EVIDENCE_KINDS,
+        goal_ids=VFS_DIFFERENTIAL_PACKET_GOAL_IDS,
         trace=selected_trace,
         fixture=selected_fixture,
         surface_runs=runs,
@@ -1692,6 +2093,7 @@ def run_vfs_differential_harness(
         unavailable_surface_ids=unavailable_ids,
         authoritative_agreement=agreement,
         all_cleanup_succeeded=all_cleanup,
+        bindings=bindings,
         content_id=_content_id(record),
     )
 
@@ -1732,7 +2134,12 @@ def write_differential_witness(
 
 __all__ = [
     "MAX_TRACE_STEPS",
+    "REQUIRED_PUBLIC_SURFACES",
+    "VFS_DIFFERENTIAL_EVIDENCE_KINDS",
     "VFS_DIFFERENTIAL_GOAL_ID",
+    "VFS_DIFFERENTIAL_OBJECTIVE_REVISION",
+    "VFS_DIFFERENTIAL_PACKET_GOAL_IDS",
+    "VFS_DIFFERENTIAL_TASK_ID",
     "VFS_DIFFERENTIAL_TRACE_SCHEMA",
     "VFS_DIFFERENTIAL_WITNESS_SCHEMA",
     "CallableSurfaceAdapter",
@@ -1748,6 +2155,7 @@ __all__ = [
     "ImplementationIdentity",
     "NormalizationRule",
     "ObservationStatus",
+    "PublicSurfaceKind",
     "RuntimeIdentity",
     "SurfaceAdapter",
     "SurfaceAvailability",
@@ -1758,6 +2166,7 @@ __all__ = [
     "TraceStep",
     "TreeSnapshot",
     "VfsDifferentialHarnessError",
+    "WitnessBindings",
     "build_canonical_operation_trace",
     "build_default_fixture",
     "capture_runtime_identity",
