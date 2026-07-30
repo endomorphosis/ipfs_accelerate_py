@@ -4169,7 +4169,10 @@ class DynamicBundleScheduler:
             markdown = operational_todo_path.read_text(encoding="utf-8")
         except OSError:
             markdown = ""
-        from ..todo_daemon.implementation_daemon import parse_task_file
+        from ..todo_daemon.implementation_daemon import (
+            TASK_ATTEMPT_LIMIT_IDLE_REASON,
+            parse_task_file,
+        )
 
         task_prefix = str(self.lane_options.get("task_prefix") or DEFAULT_TASK_PREFIX)
         portal_tasks = (
@@ -4241,6 +4244,17 @@ class DynamicBundleScheduler:
                 statuses.get(task_id, board_statuses.get(task_id, ""))
                 for task_id in lane.task_ids
             ]
+            if (
+                state_matches_board
+                and not active
+                and str(state.get("selection_idle_reason") or "")
+                == TASK_ATTEMPT_LIMIT_IDLE_REASON
+            ):
+                # An ordinary empty queue remains persistent. This exact reason
+                # means every selectable member exhausted its bounded retry
+                # budget, so after the wrapper settles and exits the scheduler
+                # must not launch the unchanged execution slice again.
+                return "blocked"
             if state_matches_board and not active and execution_statuses:
                 if all(status in {"complete", "completed"} for status in execution_statuses):
                     return "completed"
@@ -4448,25 +4462,59 @@ class DynamicBundleScheduler:
         )
         return process
 
+    @staticmethod
+    def _reap_exited_handle(handle: Any) -> bool:
+        """Collect an already-exited wrapper without sending it a signal."""
+
+        poll = getattr(handle, "poll", None)
+        try:
+            if callable(poll) and poll() is None:
+                return False
+            if not callable(poll) and hasattr(handle, "alive") and bool(handle.alive):
+                return False
+        except OSError:
+            return False
+        wait = getattr(handle, "wait", None)
+        if not callable(wait):
+            return True
+        try:
+            wait(timeout=0)
+        except (OSError, subprocess.TimeoutExpired):
+            return False
+        return True
+
     def _reap(self, coordinator: LeaseCoordinator) -> list[str]:
+        """Reap wrappers only after their fenced execution boundary exits.
+
+        The leased wrapper is the settlement authority for live work: it binds
+        exact durable evidence, fences descendants, publishes its receipt, and
+        exits.  Mutable task-board projections must not let the scheduler
+        manufacture that receipt or release capacity prematurely.
+        """
+
         reaped: list[str] = []
         for task_cid, running in list(self._running.items()):
             try:
                 alive = bool(self._process_alive(running.handle))
             except (OSError, RuntimeError):
                 alive = False
-            disposition = self._disposition(running.spec) if alive else ""
-            if alive and not disposition:
+            if alive:
                 continue
-            if disposition:
-                try:
-                    self._settle_grant(coordinator, running.grant, disposition=disposition)
-                except LeaseError:
-                    pass
-            self._terminate_handle(running.handle)
-            # The leased-lane wrapper normally publishes a receipt first.  A
+
+            # ``process_alive`` has independently observed wrapper exit. Reap
+            # only its already-terminal status; never terminate or force-kill
+            # here because that could bypass the wrapper's descendant fence.
+            if not self._reap_exited_handle(running.handle):
+                continue
+            receipts = coordinator.list_receipts(task_cid)
+            terminal_status = (
+                str(receipts[-1].get("receipt", {}).get("status") or "")
+                if receipts
+                else ""
+            )
+            # The leased-lane wrapper normally publishes a receipt first. A
             # crashed wrapper does not, so explicitly release its still-current
-            # grant and make the lane immediately reclaimable.
+            # grant only after wrapper exit makes reuse safe.
             try:
                 if coordinator.active_lease(task_cid) is not None:
                     coordinator.release(running.grant, reason="worker drained or exited")
@@ -4477,8 +4525,8 @@ class DynamicBundleScheduler:
                 self.resource_scheduler.record_stage_completion(
                     running.resource_lease.requirement.stage,
                     duration_ms=self._running_stage_duration_ms(running),
-                    accepted=disposition == "completed",
-                    cancelled=not bool(disposition),
+                    accepted=terminal_status == "succeeded",
+                    cancelled=terminal_status in {"", "cancelled"},
                 )
             del self._running[task_cid]
             reaped.append(task_cid)
