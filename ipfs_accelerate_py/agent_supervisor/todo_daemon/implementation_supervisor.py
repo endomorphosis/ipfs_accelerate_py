@@ -1998,6 +1998,10 @@ class PortalImplementationSupervisor:
             heartbeat_seconds=max(0.01, float(self.config.check_interval)),
             poll_seconds=min(1.0, max(0.01, float(self.config.check_interval))),
             watchdog_stale_after_seconds=watchdog_stale_after_seconds,
+            # Delta-only task state intentionally remains byte-stable during
+            # idle observation windows. The managed daemon log is updated by
+            # each pass and therefore supplies independent child liveness.
+            watchdog_log_heartbeat_fallback=True,
             watchdog_startup_grace_seconds=self._watchdog_startup_grace_seconds(),
             stop_grace_seconds=15.0,
             max_restarts=max(0, int(self.config.max_restarts)),

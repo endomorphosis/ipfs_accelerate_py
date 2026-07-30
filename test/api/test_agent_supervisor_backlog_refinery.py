@@ -1427,6 +1427,46 @@ def test_backlog_refinery_goal_alignment_uses_declared_goal_outputs_and_records_
     assert inventory.complete is True
 
 
+def test_codebase_admission_reason_summary_deduplicates_representative_paths():
+    first = CodebaseFinding(
+        fingerprint="a" * 40,
+        kind="swallowed_exception",
+        priority="P2",
+        track="runtime",
+        root_relative_path="src/runtime.py",
+        line_number=9,
+        snippet="except OSError: pass",
+        summary="Review first swallowed exception path",
+        validation="python3 -m py_compile src/runtime.py",
+    )
+    second = replace(
+        first,
+        fingerprint="b" * 40,
+        line_number=19,
+        summary="Review second swallowed exception path",
+    )
+    inventory = CodebaseScanInventory(
+        findings=[first, second],
+        raw_candidate_count=2,
+    )
+
+    admission = admit_codebase_refill_candidates(
+        inventory,
+        objective_goals=(),
+        max_findings=5,
+        objective_scope_configured=True,
+    )
+
+    assert admission.rejected_candidate_count == 2
+    assert admission.reason_summaries() == [
+        {
+            "reason_code": "no_schedulable_goal",
+            "count": 2,
+            "representative_paths": ["src/runtime.py"],
+        }
+    ]
+
+
 def test_goal_alignment_selects_specific_subgoal_and_rejects_ambiguous_siblings():
     goals = parse_goal_heap(
         """# Objective heap

@@ -5,6 +5,7 @@ import base64
 import hashlib
 import json
 import logging
+import math
 import os
 import posixpath
 import re
@@ -448,8 +449,15 @@ def _bounded_merge_proof_value(
         or normalized_name.endswith("_output")
     ):
         return None
-    if value is None or isinstance(value, (bool, int, float)):
+    if value is None or isinstance(value, (bool, int)):
         return value
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            return "<non-finite-number>"
+        # Formal proof contracts reject binary floating point values. Keep
+        # diagnostic telemetry as its exact, deterministic decimal text
+        # without allowing it to weaken a content-addressed proof boundary.
+        return format(value, ".17g")
     if isinstance(value, str):
         return value[:MAX_MERGE_PROOF_METADATA_TEXT]
     enum_value = getattr(value, "value", None)
@@ -10597,6 +10605,358 @@ class PortalImplementationDaemon:
             return "scope_adjudication_paths_mismatch"
         return ""
 
+    def _declared_submodule_paths_at_commit(
+        self,
+        repo: Path,
+        commit: str,
+    ) -> list[str]:
+        """Return safe submodule paths from an immutable repository tree."""
+
+        result = subprocess.run(
+            [
+                "git",
+                "config",
+                "--blob",
+                f"{commit}:.gitmodules",
+                "--get-regexp",
+                r"^submodule\..*\.path$",
+            ],
+            cwd=repo,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            return []
+        paths: list[str] = []
+        for line in result.stdout.splitlines():
+            _key, separator, raw_path = line.partition(" ")
+            path = raw_path.strip().strip("/") if separator else ""
+            if path and self._repo_relative_path_safe(path):
+                paths.append(path)
+        return sorted(set(paths))
+
+    @staticmethod
+    def _gitlink_commit_at_tree(
+        repo: Path,
+        commit: str,
+        relative: str,
+    ) -> str:
+        """Resolve one exact gitlink without consulting a mutable checkout."""
+
+        result = subprocess.run(
+            ["git", "ls-tree", "-z", commit, "--", relative],
+            cwd=repo,
+            text=False,
+            capture_output=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            return ""
+        for raw_entry in result.stdout.split(b"\0"):
+            if not raw_entry:
+                continue
+            metadata, separator, raw_path = raw_entry.partition(b"\t")
+            if not separator:
+                continue
+            try:
+                path = raw_path.decode("utf-8")
+                mode, object_type, object_id = metadata.decode("ascii").split()
+            except (UnicodeDecodeError, ValueError):
+                continue
+            if (
+                path == relative
+                and mode == "160000"
+                and object_type == "commit"
+            ):
+                return object_id
+        return ""
+
+    @staticmethod
+    def _resolve_commit_in_git_dir(git_dir: Path, ref: str) -> str:
+        result = subprocess.run(
+            [
+                "git",
+                "--git-dir",
+                str(git_dir),
+                "rev-parse",
+                "--verify",
+                f"{ref}^{{commit}}",
+            ],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        return result.stdout.strip() if result.returncode == 0 else ""
+
+    @staticmethod
+    def _git_dir_commit_is_ancestor(
+        git_dir: Path,
+        ancestor: str,
+        descendant: str,
+    ) -> bool:
+        result = subprocess.run(
+            [
+                "git",
+                "--git-dir",
+                str(git_dir),
+                "merge-base",
+                "--is-ancestor",
+                ancestor,
+                descendant,
+            ],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        return result.returncode == 0
+
+    def _changed_submodule_durability_preflight(
+        self,
+        *,
+        branch_name: str,
+        implementation_commit: str,
+        changed_submodule_paths: set[str] | None,
+    ) -> dict[str, Any]:
+        """Prove changed gitlinks are durable before mutating the target.
+
+        A linked implementation worktree may have its own nested submodule
+        object database. Merely resolving a gitlink there is insufficient:
+        deleting that worktree can make an already-merged parent impossible to
+        clone or even check out locally. For each changed repository, traverse
+        the immutable candidate tree and require its object and task branch in
+        the canonical ``<common-dir>/modules`` store used by the merge target.
+        The canonical checkout must use that same store so the subsequent
+        submodule merge cannot silently omit the path.
+        """
+
+        expected_paths = sorted(changed_submodule_paths or ())
+        receipt: dict[str, Any] = {
+            "attempted": bool(expected_paths),
+            "verified": True,
+            "implementation_commit": implementation_commit,
+            "expected_paths": expected_paths,
+            "paths": [],
+            "failures": [],
+            "requirement": "canonical_object_and_task_branch",
+        }
+        if not expected_paths:
+            return receipt
+
+        root_common_dir = self._git_common_dir(self.repo_root)
+        if root_common_dir is None:
+            failures = [
+                {
+                    "path": path,
+                    "reason": "canonical_parent_git_dir_unavailable",
+                }
+                for path in expected_paths
+            ]
+            receipt.update(
+                {
+                    "verified": False,
+                    "failures": failures,
+                }
+            )
+            return receipt
+        receipt["canonical_parent_git_dir"] = str(root_common_dir)
+
+        path_receipts: list[dict[str, Any]] = []
+        failures: list[dict[str, Any]] = []
+        for full_relative in expected_paths:
+            path_receipt: dict[str, Any] = {
+                "path": full_relative,
+                "verified": False,
+                "hops": [],
+            }
+            path_receipts.append(path_receipt)
+            if not self._repo_relative_path_safe(full_relative):
+                failure = {
+                    "path": full_relative,
+                    "reason": "changed_submodule_path_invalid",
+                }
+                path_receipt["reason"] = failure["reason"]
+                failures.append(failure)
+                continue
+
+            remaining = full_relative
+            parent_repo = self.repo_root
+            parent_commit = implementation_commit
+            parent_git_dir = root_common_dir
+            traversed = ""
+            while remaining:
+                declared_paths = self._declared_submodule_paths_at_commit(
+                    parent_repo,
+                    parent_commit,
+                )
+                candidates = [
+                    path
+                    for path in declared_paths
+                    if remaining == path or remaining.startswith(f"{path}/")
+                ]
+                if not candidates:
+                    failure = {
+                        "path": full_relative,
+                        "reason": "changed_path_not_declared_gitlink",
+                        "unresolved_suffix": remaining,
+                        "parent_commit": parent_commit,
+                    }
+                    path_receipt["reason"] = failure["reason"]
+                    failures.append(failure)
+                    break
+
+                child_relative = max(
+                    candidates,
+                    key=lambda path: (len(PurePosixPath(path).parts), len(path)),
+                )
+                gitlink_commit = self._gitlink_commit_at_tree(
+                    parent_repo,
+                    parent_commit,
+                    child_relative,
+                )
+                full_child_path = (
+                    f"{traversed}/{child_relative}"
+                    if traversed
+                    else child_relative
+                )
+                if not gitlink_commit:
+                    failure = {
+                        "path": full_relative,
+                        "reason": "candidate_gitlink_missing",
+                        "gitlink_path": full_child_path,
+                        "parent_commit": parent_commit,
+                    }
+                    path_receipt["reason"] = failure["reason"]
+                    failures.append(failure)
+                    break
+
+                canonical_git_dir = (
+                    parent_git_dir / "modules" / child_relative
+                ).resolve()
+                child_repo = (parent_repo / child_relative).resolve()
+                canonical_commit = self._resolve_commit_in_git_dir(
+                    canonical_git_dir,
+                    gitlink_commit,
+                )
+                child_common_dir = (
+                    self._git_common_dir(child_repo)
+                    if self._is_git_worktree(child_repo)
+                    else None
+                )
+                canonical_checkout = (
+                    child_common_dir is not None
+                    and child_common_dir == canonical_git_dir
+                )
+                hop = {
+                    "path": full_child_path,
+                    "gitlink_commit": gitlink_commit,
+                    "canonical_git_dir": str(canonical_git_dir),
+                    "canonical_object_available": (
+                        canonical_commit == gitlink_commit
+                    ),
+                    "canonical_checkout": canonical_checkout,
+                    "checkout_git_dir": str(child_common_dir or ""),
+                }
+                path_receipt["hops"].append(hop)
+
+                if canonical_commit != gitlink_commit:
+                    failure = {
+                        "path": full_relative,
+                        "reason": "canonical_gitlink_object_missing",
+                        "gitlink_path": full_child_path,
+                        "gitlink_commit": gitlink_commit,
+                        "canonical_git_dir": str(canonical_git_dir),
+                    }
+                    path_receipt["reason"] = failure["reason"]
+                    failures.append(failure)
+                    break
+                if not canonical_checkout:
+                    failure = {
+                        "path": full_relative,
+                        "reason": "canonical_submodule_checkout_unavailable",
+                        "gitlink_path": full_child_path,
+                        "canonical_git_dir": str(canonical_git_dir),
+                        "checkout_git_dir": str(child_common_dir or ""),
+                    }
+                    path_receipt["reason"] = failure["reason"]
+                    failures.append(failure)
+                    break
+
+                if remaining == child_relative:
+                    task_branch = self._submodule_worktree_branch_name(
+                        branch_name,
+                        full_child_path,
+                    )
+                    task_branch_ref = f"refs/heads/{task_branch}"
+                    task_branch_commit = self._resolve_commit_in_git_dir(
+                        canonical_git_dir,
+                        task_branch_ref,
+                    )
+                    branch_contains_gitlink = bool(
+                        task_branch_commit
+                        and self._git_dir_commit_is_ancestor(
+                            canonical_git_dir,
+                            gitlink_commit,
+                            task_branch_commit,
+                        )
+                    )
+                    path_receipt.update(
+                        {
+                            "gitlink_commit": gitlink_commit,
+                            "canonical_git_dir": str(canonical_git_dir),
+                            "task_branch": task_branch,
+                            "task_branch_commit": task_branch_commit,
+                            "task_branch_contains_gitlink": (
+                                branch_contains_gitlink
+                            ),
+                        }
+                    )
+                    if not task_branch_commit:
+                        failure = {
+                            "path": full_relative,
+                            "reason": "canonical_task_branch_missing",
+                            "gitlink_commit": gitlink_commit,
+                            "task_branch": task_branch,
+                            "canonical_git_dir": str(canonical_git_dir),
+                        }
+                        path_receipt["reason"] = failure["reason"]
+                        failures.append(failure)
+                    elif not branch_contains_gitlink:
+                        failure = {
+                            "path": full_relative,
+                            "reason": "canonical_task_branch_does_not_contain_gitlink",
+                            "gitlink_commit": gitlink_commit,
+                            "task_branch": task_branch,
+                            "task_branch_commit": task_branch_commit,
+                            "canonical_git_dir": str(canonical_git_dir),
+                        }
+                        path_receipt["reason"] = failure["reason"]
+                        failures.append(failure)
+                    else:
+                        path_receipt.update(
+                            {
+                                "verified": True,
+                                "reason": "canonical_task_branch_verified",
+                                "durability": "canonical_task_branch",
+                            }
+                        )
+                    break
+
+                remaining = remaining.removeprefix(f"{child_relative}/")
+                traversed = full_child_path
+                parent_repo = child_repo
+                parent_commit = gitlink_commit
+                parent_git_dir = canonical_git_dir
+
+        receipt.update(
+            {
+                "verified": not failures,
+                "paths": path_receipts,
+                "failures": failures,
+            }
+        )
+        return receipt
+
     def _merge_train_callback(self, request: Any) -> dict[str, Any]:
         """Adapt one durable queue request to the daemon's mature merge path."""
 
@@ -10743,6 +11103,56 @@ class PortalImplementationDaemon:
             if isinstance(raw_changed_submodule_paths, list)
             else None
         )
+        submodule_durability_preflight = (
+            self._changed_submodule_durability_preflight(
+                branch_name=branch_name,
+                implementation_commit=implementation_commit,
+                changed_submodule_paths=changed_submodule_paths,
+            )
+        )
+        if not submodule_durability_preflight.get("verified", False):
+            failed_paths = sorted(
+                {
+                    str(item.get("path") or "").strip("/")
+                    for item in submodule_durability_preflight.get(
+                        "failures",
+                        [],
+                    )
+                    if isinstance(item, Mapping)
+                    and str(item.get("path") or "").strip("/")
+                }
+            )
+            result = {
+                "attempted": False,
+                "merged": False,
+                "returncode": 2,
+                "reason": "changed_submodule_durability_unverified",
+                "branch": branch_name,
+                "missing_changed_submodule_paths": failed_paths,
+                "submodule_durability_preflight": (
+                    submodule_durability_preflight
+                ),
+                "submodule_verification": {
+                    "verified": False,
+                    "stage": "pre_merge_durability",
+                    "expected_paths": sorted(changed_submodule_paths or ()),
+                    "reported_paths": [],
+                    "previous_reason": (
+                        "changed_submodule_durability_unverified"
+                    ),
+                },
+            }
+            if branch_rehydration.get("rehydrated", False):
+                result["branch_rehydration"] = branch_rehydration
+            self._record_event(
+                "merge_candidate_submodule_durability_rejected",
+                {
+                    "task_id": task.task_id,
+                    "attempt": int(request.attempt or 0),
+                    **result,
+                },
+            )
+            return result
         result = self._merge_branch_to_main(
             branch_name,
             task,
@@ -10750,6 +11160,10 @@ class PortalImplementationDaemon:
             baseline_ref=str(metadata.get("baseline_ref") or ""),
             changed_submodule_paths=changed_submodule_paths,
         )
+        if submodule_durability_preflight.get("attempted", False):
+            result["submodule_durability_preflight"] = (
+                submodule_durability_preflight
+            )
         raw_submodule_merge_results = result.get("submodule_merge_results", [])
         submodule_merge_results = (
             raw_submodule_merge_results
@@ -12156,59 +12570,128 @@ class PortalImplementationDaemon:
             no_change_completion=no_change_completion,
         )
         completion_published_in_transaction = False
+        completion_finalized_by_merge_callback = False
+        completion_receipt_degraded: dict[str, Any] = {}
         if board_completion["complete"]:
             completion_tree_id = str(
                 merge_result.get("merge_commit")
                 or implementation_commit
                 or baseline_ref
             )
+            projected_validation = _bounded_merge_proof_value(
+                validation_result,
+                field_name="validation",
+            )
             completion_evidence = {
                 "passed": bool(validation_result.get("passed", False)),
                 "completion_authoritative": True,
                 "repository_tree_id": completion_tree_id,
-                "validation": dict(validation_result),
+                "validation": (
+                    projected_validation
+                    if isinstance(projected_validation, Mapping)
+                    else {}
+                ),
                 "board_completion": dict(board_completion),
             }
-            completion_intent = self._completion_publication_intent(
-                task,
-                merged_tree_id=completion_tree_id,
-                evidence=completion_evidence,
+            merge_todo_update_result = merge_result.get(
+                "todo_update_result"
             )
-            todo_update_result = self._mark_task_or_bundle_completed_in_todo(
-                task,
-                completion_intent=completion_intent,
-            )
-            completion_published_in_transaction = bool(
-                isinstance(
-                    todo_update_result.get("completion_publication"),
-                    Mapping,
+            if (
+                isinstance(merge_todo_update_result, Mapping)
+                and self._todo_completion_is_durable(
+                    merge_todo_update_result
                 )
-                and todo_update_result["completion_publication"].get(
-                    "published"
-                )
-            )
-            if self._todo_completion_is_durable(todo_update_result):
-                if not completion_published_in_transaction:
-                    self._decision_runtime_completion(
-                        task,
-                        merged_tree_id=completion_tree_id,
-                        evidence=completion_evidence,
+            ):
+                # An immediate merge-train callback owns terminal board
+                # publication. Replaying it here produces a second intent
+                # from richer runtime telemetry and can turn an already
+                # integrated task into a false implementation failure.
+                todo_update_result = dict(merge_todo_update_result)
+                completion_finalized_by_merge_callback = True
+                completion_published_in_transaction = bool(
+                    isinstance(
+                        todo_update_result.get(
+                            "completion_publication"
+                        ),
+                        Mapping,
                     )
-            else:
-                board_completion = {
-                    **dict(board_completion),
-                    "complete": False,
-                    "pending_durability": True,
-                    "reason": "protected_board_completion_not_durable",
-                }
-                returncode = 1
-                state.last_implementation_returncode = returncode
-                attempt_consumed = False
-                self._restore_task_attempt(
-                    state,
-                    task,
-                    max(0, attempt - 1),
+                    and todo_update_result[
+                        "completion_publication"
+                    ].get("published")
                 )
+            else:
+                completion_intent = self._completion_publication_intent(
+                    task,
+                    merged_tree_id=completion_tree_id,
+                    evidence=completion_evidence,
+                )
+                todo_update_result = (
+                    self._mark_task_or_bundle_completed_in_todo(
+                        task,
+                        completion_intent=completion_intent,
+                    )
+                )
+                completion_published_in_transaction = bool(
+                    isinstance(
+                        todo_update_result.get(
+                            "completion_publication"
+                        ),
+                        Mapping,
+                    )
+                    and todo_update_result[
+                        "completion_publication"
+                    ].get("published")
+                )
+                if self._todo_completion_is_durable(
+                    todo_update_result
+                ):
+                    if not completion_published_in_transaction:
+                        try:
+                            self._decision_runtime_completion(
+                                task,
+                                merged_tree_id=completion_tree_id,
+                                evidence=completion_evidence,
+                            )
+                        except Exception as exc:
+                            # The merge and board mutation are already
+                            # durable. Preserve that authoritative outcome
+                            # while surfacing optional receipt degradation.
+                            completion_receipt_degraded = {
+                                "degraded": True,
+                                "reason": (
+                                    "completion_receipt_projection_failed"
+                                ),
+                                "exception_type": type(exc).__name__,
+                                "error": str(exc)[-4000:],
+                            }
+                            self._record_event(
+                                "completion_receipt_degraded",
+                                {
+                                    "task_id": task.task_id,
+                                    "attempt": attempt,
+                                    "merged_tree_id": (
+                                        completion_tree_id
+                                    ),
+                                    **completion_receipt_degraded,
+                                },
+                            )
+                else:
+                    board_completion = {
+                        **dict(board_completion),
+                        "complete": False,
+                        "pending_durability": True,
+                        "reason": (
+                            "protected_board_completion_not_durable"
+                        ),
+                    }
+                    returncode = 1
+                    state.last_implementation_returncode = returncode
+                    attempt_consumed = False
+                    self._restore_task_attempt(
+                        state,
+                        task,
+                        max(0, attempt - 1),
+                    )
         elif board_completion.get("pending_merge"):
             self._record_event(
                 "implementation_pending_merge",
@@ -12242,6 +12725,7 @@ class PortalImplementationDaemon:
             not merge_result.get("queued")
             and attempt_consumed
             and not completion_published_in_transaction
+            and not completion_finalized_by_merge_callback
         ):
             outcome_returncode = returncode
             outcome_reason = str(
@@ -12315,6 +12799,10 @@ class PortalImplementationDaemon:
             result["diagnostic_receipt_id"] = diagnostic.receipt_id
         if todo_update_result:
             result["todo_update_result"] = todo_update_result
+        if completion_receipt_degraded:
+            result["completion_receipt_degraded"] = (
+                completion_receipt_degraded
+            )
         self._record_event("implementation_finished", result)
         return result
 
@@ -17848,21 +18336,49 @@ class PortalImplementationDaemon:
             elif removed_untracked:
                 self._restore_removed_untracked_paths(removed_untracked, cwd=merge_workspace)
             failed_submodules = [item for item in submodule_merge_results if not item.get("merged", False)]
+            reported_submodule_paths = {
+                str(item.get("path") or "").strip("/")
+                for item in submodule_merge_results
+                if isinstance(item, dict)
+                and str(item.get("path") or "").strip("/")
+            }
+            missing_changed_submodule_paths = sorted(
+                set(changed_submodule_paths or ()) - reported_submodule_paths
+            )
+            missing_submodule_results = [
+                {
+                    "path": path,
+                    "merged": False,
+                    "reason": "changed_submodule_merge_result_missing",
+                }
+                for path in missing_changed_submodule_paths
+            ]
+            transactional_submodule_failures = [
+                *failed_submodules,
+                *missing_submodule_results,
+            ]
             submodule_failure_rollback: dict[str, Any] = {}
-            if failed_submodules and merge_returncode == 0:
+            if transactional_submodule_failures and merge_returncode == 0:
                 submodule_failure_rollback = self._rollback_parent_merge_after_submodule_failure(
                     merge_workspace,
                     pre_merge_commit=pre_merge_commit,
-                    failed_submodules=failed_submodules,
+                    failed_submodules=transactional_submodule_failures,
                 )
                 if submodule_failure_rollback.get("rolled_back", False):
                     merge_commit = ""
             effective_returncode = merge_returncode
-            effective_merged = merge_returncode == 0 and not failed_submodules
+            effective_merged = (
+                merge_returncode == 0
+                and not transactional_submodule_failures
+            )
             result = {
                 "attempted": True,
                 "merged": effective_merged,
-                "returncode": 2 if failed_submodules else effective_returncode,
+                "returncode": (
+                    2
+                    if transactional_submodule_failures
+                    else effective_returncode
+                ),
                 "branch": branch_name,
                 "target_branch": target_branch,
                 "command": command,
@@ -17882,6 +18398,17 @@ class PortalImplementationDaemon:
                     "merged_gitlink_recording": merged_gitlink_recording,
                     "submodule_failure_rollback": submodule_failure_rollback,
                     "submodule_merge_results": submodule_merge_results,
+            }
+            if missing_changed_submodule_paths:
+                result["missing_changed_submodule_paths"] = (
+                    missing_changed_submodule_paths
+                )
+                result["submodule_verification"] = {
+                    "verified": False,
+                    "stage": "post_merge_result",
+                    "expected_paths": sorted(changed_submodule_paths or ()),
+                    "reported_paths": sorted(reported_submodule_paths),
+                    "rollback": submodule_failure_rollback,
                 }
             if stale_submodule_worktree_config_repair.get("repairs"):
                 result["stale_submodule_worktree_config_repair"] = stale_submodule_worktree_config_repair
@@ -17898,6 +18425,8 @@ class PortalImplementationDaemon:
             if failed_submodules:
                 result["submodule_merge_failed"] = True
                 result["reason"] = "submodule_merge_failed"
+            elif missing_changed_submodule_paths:
+                result["reason"] = "changed_submodule_merge_unverified"
             elif not merged_gitlink_recording.get("ok", True):
                 result["reason"] = "submodule_gitlink_recording_failed"
             self._record_event("merge_finished", result)
@@ -18250,13 +18779,35 @@ class PortalImplementationDaemon:
         unpublishable merge ancestry, allowing the failed task to retry.
         """
 
-        paths = sorted(
-            {
-                str(item.get("path") or "").strip().strip("/")
-                for item in failed_submodules
-                if str(item.get("path") or "").strip().strip("/") in self.worktree_submodule_paths
-            }
-        )
+        declared_root_paths = set(self._declared_submodule_paths(workspace))
+        configured_root_paths = {
+            *self.worktree_submodule_paths,
+            *declared_root_paths,
+        }
+        paths: list[str] = []
+        for item in failed_submodules:
+            failed_path = str(item.get("path") or "").strip().strip("/")
+            matching_declared_roots = [
+                root
+                for root in declared_root_paths
+                if failed_path == root or failed_path.startswith(f"{root}/")
+            ]
+            matching_roots = matching_declared_roots or [
+                root
+                for root in configured_root_paths
+                if failed_path == root or failed_path.startswith(f"{root}/")
+            ]
+            if matching_roots:
+                paths.append(
+                    max(
+                        matching_roots,
+                        key=lambda path: (
+                            len(PurePosixPath(path).parts),
+                            len(path),
+                        ),
+                    )
+                )
+        paths = sorted(set(paths))
         if not pre_merge_commit or not paths:
             return {
                 "attempted": False,

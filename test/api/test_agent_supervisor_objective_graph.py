@@ -3269,6 +3269,65 @@ def test_bundle_regeneration_preserves_projected_task_status(tmp_path):
     assert regenerated["completed_task_ids"] == ["ACCEL-002"]
 
 
+def test_empty_objective_scan_refreshes_existing_todo_and_bundle_projections(tmp_path):
+    repo, objective_path, todo_path = _seed_repo(tmp_path)
+    discovery_dir = repo / "data" / "agent_supervisor" / "discovery"
+    bundle_dir = repo / "data" / "agent_supervisor" / "objective_bundles"
+    records = generate_objective_todos(
+        repo_root=repo,
+        objective_path=objective_path,
+        todo_path=todo_path,
+        discovery_dir=discovery_dir,
+        bundle_dir=bundle_dir,
+        task_prefix="ACCEL-",
+        max_findings=1,
+        persist_ast_dataset=False,
+    )
+    task_id = records[0].task_id
+    todo_text = todo_path.read_text(encoding="utf-8")
+    before_task, task_block = todo_text.split(f"## {task_id} ", 1)
+    todo_path.write_text(
+        before_task
+        + f"## {task_id} "
+        + task_block.replace(
+            "- Status: todo",
+            "- Status: completed",
+            1,
+        ),
+        encoding="utf-8",
+    )
+
+    repeated = generate_objective_todos(
+        repo_root=repo,
+        objective_path=objective_path,
+        todo_path=todo_path,
+        discovery_dir=discovery_dir,
+        bundle_dir=bundle_dir,
+        task_prefix="ACCEL-",
+        max_findings=1,
+        persist_ast_dataset=False,
+    )
+
+    assert repeated == []
+    vector_index = json.loads(
+        (bundle_dir / "todo_vector_index.json").read_text(encoding="utf-8")
+    )
+    assert vector_index["active_task_count"] == 0
+    assert {
+        record["task_id"]: record["status"]
+        for record in vector_index["records"]
+    }[task_id] == "completed"
+    bundle_index = json.loads(
+        (bundle_dir / "index.json").read_text(encoding="utf-8")
+    )
+    bundle_tasks = {
+        task["task_id"]: task
+        for bundle in bundle_index["bundles"].values()
+        for task in bundle["tasks"]
+    }
+    assert bundle_tasks[task_id]["status"] == "completed"
+
+
 def test_generate_objective_todos_reserves_ids_from_discovery_artifacts(tmp_path):
     repo, objective_path, todo_path = _seed_repo(tmp_path)
     discovery_dir = repo / "data" / "agent_supervisor" / "discovery"

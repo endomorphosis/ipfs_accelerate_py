@@ -208,6 +208,24 @@ SELF_IMPROVEMENT_SUCCESSOR_RECORDS_KEY = (
 CODEBASE_SCAN_ANALYZER_VERSION = "codebase-annotation-analyzer/v1"
 CODEBASE_AUDIT_SCANNER_VERSION = "codebase-audit/v1"
 CODEBASE_SCAN_REASON_SAMPLE_LIMIT = 10
+
+
+def _bounded_unique_representative_paths(paths: Iterable[Any]) -> list[str]:
+    """Return stable, non-empty path samples accepted by scan receipts."""
+
+    representatives: list[str] = []
+    seen: set[str] = set()
+    for raw_path in paths:
+        path = str(raw_path or "").strip()
+        if not path or path in seen:
+            continue
+        seen.add(path)
+        representatives.append(path)
+        if len(representatives) >= CODEBASE_SCAN_REASON_SAMPLE_LIMIT:
+            break
+    return representatives
+
+
 CODEBASE_SCAN_MAX_FILE_BYTES = int(os.environ.get("IPFS_ACCELERATE_AGENT_CODEBASE_SCAN_MAX_FILE_BYTES", "262144"))
 CODEBASE_SCAN_SUFFIXES = {
     ".cjs",
@@ -482,7 +500,7 @@ class CodebaseScanInventory:
                 {
                     "reason_code": reason_code,
                     "count": len(paths),
-                    "representative_paths": paths[:CODEBASE_SCAN_REASON_SAMPLE_LIMIT],
+                    "representative_paths": _bounded_unique_representative_paths(paths),
                 }
                 for reason_code, paths in sorted(grouped.items())
             ]
@@ -546,9 +564,7 @@ class CodebaseRefillAdmission:
             {
                 "reason_code": reason_code,
                 "count": len(paths),
-                "representative_paths": [
-                    path for path in paths if path
-                ][:CODEBASE_SCAN_REASON_SAMPLE_LIMIT],
+                "representative_paths": _bounded_unique_representative_paths(paths),
             }
             for reason_code, paths in sorted(grouped.items())
         ]

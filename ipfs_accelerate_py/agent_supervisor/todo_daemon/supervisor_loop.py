@@ -60,6 +60,7 @@ class SupervisorLoopConfig:
     heartbeat_seconds: float = 30.0
     poll_seconds: float = 1.0
     watchdog_stale_after_seconds: float = 180.0
+    watchdog_log_heartbeat_fallback: bool = False
     watchdog_startup_grace_seconds: float = 30.0
     stop_grace_seconds: float = 10.0
     max_restarts: int = 0
@@ -131,6 +132,9 @@ class SupervisorLoop:
                 "supervisor_heartbeat_seconds": config.heartbeat_seconds,
                 "supervisor_poll_seconds": config.poll_seconds,
                 "watchdog_stale_after_seconds": config.watchdog_stale_after_seconds,
+                "watchdog_log_heartbeat_fallback": (
+                    config.watchdog_log_heartbeat_fallback
+                ),
                 "watchdog_startup_grace_seconds": config.watchdog_startup_grace_seconds,
                 "stop_grace_seconds": config.stop_grace_seconds,
                 **dict(config.status_static_fields),
@@ -247,10 +251,15 @@ class SupervisorLoop:
             stale_after_seconds=self.config.watchdog_stale_after_seconds,
         )
         if heartbeat.stale or (heartbeat.heartbeat_at is None and self.config.watchdog_stale_after_seconds <= 0):
-            return SupervisorLoopDecision.recycle(
-                "stale_heartbeat",
-                detail=heartbeat.to_payload(),
-            )
+            if not (
+                heartbeat.stale
+                and self.config.watchdog_log_heartbeat_fallback
+                and self._child_log_heartbeat_is_fresh()
+            ):
+                return SupervisorLoopDecision.recycle(
+                    "stale_heartbeat",
+                    detail=heartbeat.to_payload(),
+                )
         try:
             threshold = float(
                 current_status.get("worktree_no_child_stall_seconds")
@@ -270,6 +279,24 @@ class SupervisorLoop:
                 detail=worker_status,
             )
         return SupervisorLoopDecision.keep_running()
+
+    def _child_log_heartbeat_is_fresh(self) -> bool:
+        """Use daemon-owned log activity as an explicit liveness fallback."""
+
+        # ``last_log_path`` is assigned from the exact current run before the
+        # child is launched or adopted. Do not consult a generic "latest"
+        # symlink here: a recently modified prior-run log must never extend the
+        # liveness lease of a different child.
+        if not self.last_log_path:
+            return False
+        path = Path(self.last_log_path)
+        if not path.is_absolute():
+            path = self.config.spec.repo_root / path
+        try:
+            age_seconds = max(0.0, time.time() - path.stat().st_mtime)
+        except OSError:
+            return False
+        return age_seconds <= self.config.watchdog_stale_after_seconds
 
     def _worker_status_with_disappearance_grace(
         self,

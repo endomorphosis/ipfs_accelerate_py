@@ -10358,19 +10358,28 @@ def generate_objective_todos(
         if records:
             replace_locked_taskboard(taskboard, todo_text)
 
-    if not records:
-        return []
-    bundle_result = write_bundle_shards(bundle_dir=bundle_dir, repo_root=repo_root, todo_path=todo_path, records=records)
-    if write_todo_vector_index:
+    bundle_index_path = bundle_dir / "index.json"
+    if records:
+        bundle_result = write_bundle_shards(
+            bundle_dir=bundle_dir,
+            repo_root=repo_root,
+            todo_path=todo_path,
+            records=records,
+        )
+        bundle_index_path = bundle_result.index_path
+    index_path = todo_vector_index_path or bundle_dir / "todo_vector_index.json"
+    if write_todo_vector_index and (
+        records or index_path.exists() or bundle_index_path.exists()
+    ):
         from ..task_sources.todo_vector_index import write_todo_vector_index as write_index
 
         write_index(
             repo_root=repo_root,
             todo_path=todo_path,
-            index_path=todo_vector_index_path or bundle_dir / "todo_vector_index.json",
+            index_path=index_path,
             task_header_prefix=task_markdown_heading_prefix(task_prefix),
             objective_path=objective_path,
-            bundle_index_path=bundle_result.index_path,
+            bundle_index_path=bundle_index_path,
             dataset_dir=(dataset_dir or bundle_dir.parent / "objective_datasets") if persist_ast_dataset else None,
             dataset_id=f"{task_prefix.rstrip('-').lower()}-todo-vector-index",
             persist_dataset=persist_ast_dataset,
