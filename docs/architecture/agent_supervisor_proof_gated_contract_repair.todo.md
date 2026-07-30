@@ -1160,7 +1160,7 @@ consumer or frontier is unresolved.
 
 ## RPR-036 Prove, refute, and reconstruct missing-value and behavior mappings
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
