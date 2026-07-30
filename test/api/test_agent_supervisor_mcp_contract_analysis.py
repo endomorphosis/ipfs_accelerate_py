@@ -1,4 +1,9 @@
-"""SCA-051 tests for deterministic MCP++ contract parity analysis."""
+"""SCA-051 / SCA-629 tests for MCP++ contract parity (SCAEV051PARITY).
+
+Proves objective evidence SCAEV051PARITY for SCA-G051: schema, argument,
+result, policy, transport, discovery/execution, compatibility, and the six
+failure-state distinctions remain non-collapsible across routes.
+"""
 
 from __future__ import annotations
 
@@ -7,8 +12,12 @@ from copy import deepcopy
 import pytest
 
 from ipfs_accelerate_py.agent_supervisor.analysis.mcp_contract_analysis import (
+    DEFAULT_FAILURE_STATES,
     MCP_CONTRACT_ANALYSIS_INTERFACE,
     PARITY_CLAIM_FAMILIES,
+    SCAEV051PARITY,
+    SCAEV051PARITY_COVERAGE,
+    SCAEV051PARITY_EVIDENCE,
     ContractParityClaim,
     McpContractAnalysis,
     McpContractAnalysisError,
@@ -17,6 +26,7 @@ from ipfs_accelerate_py.agent_supervisor.analysis.mcp_contract_analysis import (
     ReviewedAlias,
     analyze_mcp_contract,
     analyze_mcp_contracts,
+    scaev051_parity_evidence,
 )
 from ipfs_accelerate_py.agent_supervisor.analysis.mcp_contract_catalog import (
     McpClaimFamily,
@@ -474,3 +484,92 @@ def test_alias_and_claim_serialization_validate_authority_and_identity() -> None
     report = analyze_mcp_contract(_expected(), _observed())
     claim = report.claim(McpClaimFamily.ARGUMENTS_PRESERVED)
     assert ContractParityClaim.from_dict(claim.to_dict()) == claim
+
+
+def test_scaev051parity_evidence_markers_and_coverage() -> None:
+    """Exact-text SCAEV051PARITY markers for objective evidence admission."""
+
+    assert SCAEV051PARITY == "SCAEV051PARITY"
+    assert SCAEV051PARITY_EVIDENCE == SCAEV051PARITY
+    payload = scaev051_parity_evidence()
+    assert payload["evidence"] == SCAEV051PARITY
+    assert payload["requirement_ids"] == [SCAEV051PARITY]
+    assert payload["coverage"] == list(SCAEV051PARITY_COVERAGE)
+    assert payload["interface"] == MCP_CONTRACT_ANALYSIS_INTERFACE
+    assert set(payload["claim_families"]) == {
+        family.value for family in PARITY_CLAIM_FAMILIES
+    }
+    assert tuple(payload["failure_states"]) == DEFAULT_FAILURE_STATES
+    assert DEFAULT_FAILURE_STATES == (
+        "unsupported",
+        "unavailable",
+        "denied",
+        "timed_out",
+        "malformed",
+        "partial",
+    )
+    assert "discovery-execution-parity-tools-list-call" in SCAEV051PARITY_COVERAGE
+    assert "transport-parity" in SCAEV051PARITY_COVERAGE
+    assert any("failure-state-distinctions" in item for item in SCAEV051PARITY_COVERAGE)
+
+
+def test_each_default_failure_state_loss_is_independently_refuted() -> None:
+    """SCAEV051PARITY: the six failure distinctions never silently drop."""
+
+    for lost in DEFAULT_FAILURE_STATES:
+        observed = _observed()
+        reduced = [state for state in FAILURES if state != lost]
+        for route in observed["routes"]:
+            route["failure_states"] = list(reduced)
+            route["failure_mapping"] = {state: state for state in reduced}
+
+        report = analyze_mcp_contract(_expected(), observed)
+        claim = report.claim(McpClaimFamily.FAILURE_PARITY)
+        assert claim.state is ParityState.REFUTED, lost
+        assert "failure_state_lost" in claim.reason_codes
+        assert any(
+            item.expected == lost and item.reason_code == "failure_state_lost"
+            for item in claim.counterexamples
+        ), lost
+
+
+def test_transport_discovery_list_call_route_drift_is_refuted() -> None:
+    """SCAEV051PARITY: per-transport tools/list must agree with tools/call."""
+
+    observed = _observed()
+    observed["discovery"] = {
+        "tools": [OPERATION],
+        "transports": {
+            "stdio": [OPERATION],
+            "http": [OPERATION],
+        },
+    }
+    observed["routes"][1]["callable"] = False
+    observed["routes"][1]["discoverable"] = True
+
+    report = analyze_mcp_contract(_expected(), observed)
+    claim = report.claim(McpClaimFamily.DISCOVERY_EXECUTION_PARITY)
+    assert claim.state is ParityState.REFUTED
+    assert "tools_list_call_route_drift" in claim.reason_codes
+    assert any(
+        item.boundary_id == "route:http"
+        and item.reason_code == "tools_list_call_route_drift"
+        for item in claim.counterexamples
+    )
+
+
+def test_missing_transport_route_and_shared_semantics_are_distinguished() -> None:
+    """SCAEV051PARITY: absent transport routes are not treated as parity."""
+
+    expected = _expected()
+    expected["transports"] = ["http", "stdio", "ws"]
+    observed = _observed()
+
+    report = analyze_mcp_contract(expected, observed)
+    claim = report.claim(McpClaimFamily.TRANSPORT_PARITY)
+    assert claim.state is ParityState.REFUTED
+    assert "transport_route_missing" in claim.reason_codes
+    assert any(
+        item.boundary_id == "ws" and item.reason_code == "transport_route_missing"
+        for item in claim.counterexamples
+    )

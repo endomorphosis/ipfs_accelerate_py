@@ -4,8 +4,15 @@ Interface: ``McpContractAnalysis@1``
 
 The analyzer consumes a reviewed expected operation contract, observed route
 contracts, and (optionally) an exact :mod:`mcp_invocation_trace`.  It emits one
-typed claim for every parity dimension owned by SCA-051.  Missing or partial
-evidence is preserved as such; it is never coerced into a successful claim.
+typed claim for every parity dimension owned by SCA-051 / SCAEV051PARITY.
+Missing or partial evidence is preserved as such; it is never coerced into a
+successful claim.
+
+Evidence subset (SCAEV051PARITY): schema, argument, result, policy, transport,
+discovery/execution, compatibility, and failure-state parity across SwissKnife
+and each provider package.  The six failure distinctions
+(unsupported / unavailable / denied / timed_out / malformed / partial) are
+never collapsed.
 
 The accepted operation dictionaries are deliberately small and serializable.
 An expected contract may contain ``input_schema``, ``output_schema``,
@@ -53,6 +60,20 @@ MCP_REVIEWED_ALIAS_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/mcp-reviewed-alias@1"
 )
 MCP_CONTRACT_ANALYSIS_VERSION: Final = "1"
+
+# Objective evidence for SCA-G051 / SCA-629 (parity track).
+SCAEV051PARITY: Final = "SCAEV051PARITY"
+SCAEV051PARITY_EVIDENCE: Final = SCAEV051PARITY
+SCAEV051PARITY_COVERAGE: Final = (
+    "descriptor-schema-matches",
+    "arguments-preserved-required-defaults",
+    "result-error-envelope-preserved",
+    "policy-before-effect",
+    "no-compatibility-bypass",
+    "transport-parity",
+    "discovery-execution-parity-tools-list-call",
+    "failure-state-distinctions-unsupported-unavailable-denied-timed_out-malformed-partial",
+)
 
 DEFAULT_FAILURE_STATES: Final[tuple[str, ...]] = (
     "unsupported",
@@ -2236,6 +2257,25 @@ analyze_contract_parity = analyze_mcp_contract
 check_schema_variance = analyze_schema_variance
 
 
+def scaev051_parity_evidence() -> dict[str, Any]:
+    """Return the exact SCAEV051PARITY evidence admission payload.
+
+    Objective scanners and completion gates admit this term only when the
+    analyzer surface and the eight parity claim families are present together.
+    """
+
+    return {
+        "evidence": SCAEV051PARITY,
+        "requirement_ids": [SCAEV051PARITY],
+        "coverage": list(SCAEV051PARITY_COVERAGE),
+        "interface": MCP_CONTRACT_ANALYSIS_INTERFACE,
+        "claim_families": [family.value for family in PARITY_CLAIM_FAMILIES],
+        "failure_states": list(DEFAULT_FAILURE_STATES),
+        "goal_ids": ["SCA-G051"],
+        "task_ids": ["SCA-051", "SCA-629"],
+    }
+
+
 __all__ = [
     "DEFAULT_FAILURE_STATES",
     "MCP_CONTRACT_ANALYSIS_INTERFACE",
@@ -2245,6 +2285,9 @@ __all__ = [
     "MCP_CONTRACT_COUNTEREXAMPLE_SCHEMA",
     "MCP_REVIEWED_ALIAS_SCHEMA",
     "PARITY_CLAIM_FAMILIES",
+    "SCAEV051PARITY",
+    "SCAEV051PARITY_COVERAGE",
+    "SCAEV051PARITY_EVIDENCE",
     "SUPPORTED_JSON_SCHEMA_KEYWORDS",
     "ContractAnalysisState",
     "ContractCounterexample",
@@ -2263,4 +2306,5 @@ __all__ = [
     "analyze_mcp_contracts",
     "analyze_schema_variance",
     "check_schema_variance",
+    "scaev051_parity_evidence",
 ]
