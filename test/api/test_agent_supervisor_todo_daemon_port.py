@@ -9200,7 +9200,14 @@ def test_implementation_daemon_retries_submodule_after_parent_commit_already_lan
     assert not checkpoint_path.exists()
 
 
-def test_implementation_daemon_reconciles_rewritten_branch_already_landed(tmp_path):
+@pytest.mark.parametrize(
+    "integration_record_location",
+    ["top_level", "nested_train_callback"],
+)
+def test_implementation_daemon_reconciles_rewritten_branch_already_landed(
+    tmp_path,
+    integration_record_location,
+):
     repo = tmp_path / "repo"
     repo.mkdir()
     _git(repo, "init")
@@ -9248,23 +9255,35 @@ def test_implementation_daemon_reconciles_rewritten_branch_already_landed(tmp_pa
         task_header_prefix="AUTO-",
     )
     task = daemon._load_tasks()[0]
+    implementation_event = {
+        "task_id": "AUTO-117",
+        "task_cid": daemon._identity_for_task(
+            task
+        ).canonical_task_cid,
+        "attempt": 1,
+        "branch": branch,
+        "implementation_commit": original_implementation_commit,
+        "merge_result": {
+            "attempted": True,
+            "merged": False,
+            "reason": "merge_retry_failed",
+        },
+    }
+    if integration_record_location == "top_level":
+        implementation_event["target_commit"] = rewritten_merge_commit
+    else:
+        implementation_event["merge_result"]["train_result"] = {
+            "integrated": False,
+            "merge_result": {
+                "merged": False,
+                "reason": "post_merge_integration_commit_unproven",
+                "integration_occurred": True,
+                "merge_commit": rewritten_merge_commit,
+            },
+        }
     daemon._record_event(
         "implementation_finished",
-        {
-            "task_id": "AUTO-117",
-            "task_cid": daemon._identity_for_task(
-                task
-            ).canonical_task_cid,
-            "attempt": 1,
-            "branch": branch,
-            "implementation_commit": original_implementation_commit,
-            "target_commit": rewritten_merge_commit,
-            "merge_result": {
-                "attempted": True,
-                "merged": False,
-                "reason": "merge_retry_failed",
-            },
-        },
+        implementation_event,
     )
 
     reconciliation = daemon._reconcile_failed_merges()
@@ -9272,9 +9291,11 @@ def test_implementation_daemon_reconciles_rewritten_branch_already_landed(tmp_pa
     assert reconciliation[-1]["resolved"] is True
     assert reconciliation[-1]["reason"] == "implementation_branch_already_merged"
     assert reconciliation[-1]["landed_ref_source"] == "branch"
+    assert reconciliation[-1]["merge_commit"] == rewritten_merge_commit
     assert _git(repo, "merge-base", "--is-ancestor", rewritten_commit, "main") == ""
     assert not daemon._git_ref_is_ancestor(original_implementation_commit, "main")
     assert "- Status: completed" in todo_path.read_text(encoding="utf-8")
+    assert daemon._successfully_merged_task_ids() == {"AUTO-117"}
 
 
 def test_implementation_daemon_rejects_rewritten_branch_with_stale_target_commit(
