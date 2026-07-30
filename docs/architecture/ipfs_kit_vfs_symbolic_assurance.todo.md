@@ -2872,7 +2872,7 @@ compact references and bounded spans only.
 
 ## VFS-071 Close objective gap: Prove vfs/logic-translation@1 for Translate supported code contracts into kernel-checkable proof obligations
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
