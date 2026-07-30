@@ -757,6 +757,7 @@ compact references and bounded spans only.
 - Depends on:
 - Outputs: ipfs_accelerate_py/agent_supervisor/program_graph.py, ipfs_accelerate_py/agent_supervisor/ipfs_datasets_program_graph_provider.py, test/api/test_agent_supervisor_program_graph.py
 - Validation: python -m pytest test/api/test_agent_supervisor_program_graph.py test/api/test_agent_supervisor_ipfs_datasets_program_graph_provider.py -q
+- Board namespace: ipfs-kit-vfs-symbolic-assurance-v1
 - Evidence inputs: data/agent_supervisor/ipfs_kit_vfs_symbolic_assurance/objective_gap.json
 - Discovery evidence: /home/barberb/.local/state/ipfs_accelerate_py/ipfs_kit_vfs_symbolic_assurance/projection/discovery/2026-07-29-vfs-038-objective-gap-a8d534fac2ef.md
 - Bundle: vfs-assurance/graph
@@ -822,6 +823,7 @@ compact references and bounded spans only.
 - Depends on:
 - Outputs: ipfs_accelerate_py/agent_supervisor/program_analysis_cache.py, test/api/test_agent_supervisor_program_analysis_cache.py
 - Validation: python -m pytest test/api/test_agent_supervisor_program_analysis_cache.py test/api/test_agent_supervisor_runtime_cas.py -q
+- Board namespace: ipfs-kit-vfs-symbolic-assurance-v1
 - Evidence inputs: data/agent_supervisor/ipfs_kit_vfs_symbolic_assurance/objective_gap.json
 - Discovery evidence: /home/barberb/.local/state/ipfs_accelerate_py/ipfs_kit_vfs_symbolic_assurance/projection/discovery/2026-07-29-vfs-039-objective-gap-654a09c56097.md
 - Bundle: vfs-assurance/cas
@@ -887,6 +889,7 @@ compact references and bounded spans only.
 - Depends on:
 - Outputs: ipfs_accelerate_py/agent_supervisor/program_contracts.py, ipfs_accelerate_py/agent_supervisor/contract_extractor.py, test/api/test_agent_supervisor_contract_extractor.py
 - Validation: python -m pytest test/api/test_agent_supervisor_program_contracts.py test/api/test_agent_supervisor_contract_extractor.py -q
+- Board namespace: ipfs-kit-vfs-symbolic-assurance-v1
 - Evidence inputs: data/agent_supervisor/ipfs_kit_vfs_symbolic_assurance/objective_gap.json
 - Discovery evidence: /home/barberb/.local/state/ipfs_accelerate_py/ipfs_kit_vfs_symbolic_assurance/projection/discovery/2026-07-29-vfs-040-objective-gap-931c42921d4d.md
 - Bundle: vfs-assurance/contracts
@@ -952,6 +955,7 @@ compact references and bounded spans only.
 - Depends on:
 - Outputs: ipfs_accelerate_py/agent_supervisor/program_graph_queries.py, test/api/test_agent_supervisor_program_graph_queries.py
 - Validation: python -m pytest test/api/test_agent_supervisor_program_graph_queries.py -q
+- Board namespace: ipfs-kit-vfs-symbolic-assurance-v1
 - Evidence inputs: data/agent_supervisor/ipfs_kit_vfs_symbolic_assurance/objective_gap.json
 - Discovery evidence: /home/barberb/.local/state/ipfs_accelerate_py/ipfs_kit_vfs_symbolic_assurance/projection/discovery/2026-07-29-vfs-041-objective-gap-08d1abfb6e39.md
 - Bundle: vfs-assurance/graph
@@ -1017,6 +1021,7 @@ compact references and bounded spans only.
 - Depends on:
 - Outputs: ipfs_accelerate_py/agent_supervisor/mcplusplus_contract_resolver.py, test/api/test_agent_supervisor_mcplusplus_contract_resolver.py
 - Validation: python -m pytest test/api/test_agent_supervisor_mcplusplus_contract_resolver.py -q
+- Board namespace: ipfs-kit-vfs-symbolic-assurance-v1
 - Evidence inputs: data/agent_supervisor/ipfs_kit_vfs_symbolic_assurance/objective_gap.json
 - Discovery evidence: /home/barberb/.local/state/ipfs_accelerate_py/ipfs_kit_vfs_symbolic_assurance/projection/discovery/2026-07-29-vfs-042-objective-gap-21067e52faa2.md
 - Bundle: vfs-assurance/mcplusplus
@@ -1082,6 +1087,7 @@ compact references and bounded spans only.
 - Depends on:
 - Outputs: ipfs_accelerate_py/agent_supervisor/contract_checker.py, test/api/test_agent_supervisor_contract_checker.py
 - Validation: python -m pytest test/api/test_agent_supervisor_contract_checker.py -q
+- Board namespace: ipfs-kit-vfs-symbolic-assurance-v1
 - Evidence inputs: data/agent_supervisor/ipfs_kit_vfs_symbolic_assurance/objective_gap.json
 - Discovery evidence: /home/barberb/.local/state/ipfs_accelerate_py/ipfs_kit_vfs_symbolic_assurance/projection/discovery/2026-07-29-vfs-043-objective-gap-a032b95120c3.md
 - Bundle: vfs-assurance/contracts
@@ -1147,6 +1153,7 @@ compact references and bounded spans only.
 - Depends on:
 - Outputs: ipfs_accelerate_py/agent_supervisor/program_analysis_zkp.py, ipfs_datasets_py/ipfs_datasets_py/logic/zkp/provekit/circuits/program_contract_trace, test/api/test_agent_supervisor_program_analysis_zkp.py
 - Validation: python -m pytest test/api/test_agent_supervisor_program_analysis_zkp.py -q
+- Board namespace: ipfs-kit-vfs-symbolic-assurance-v1
 - Evidence inputs: data/agent_supervisor/ipfs_kit_vfs_symbolic_assurance/objective_gap.json
 - Discovery evidence: /home/barberb/.local/state/ipfs_accelerate_py/ipfs_kit_vfs_symbolic_assurance/projection/discovery/2026-07-29-vfs-044-objective-gap-3767d9ad4e33.md
 - Bundle: vfs-assurance/zkp
@@ -1212,6 +1219,7 @@ compact references and bounded spans only.
 - Depends on:
 - Outputs: ipfs_accelerate_py/agent_supervisor/vfs_contract_pack.py, test/api/test_agent_supervisor_vfs_contract_pack.py
 - Validation: python -m pytest test/api/test_agent_supervisor_vfs_contract_pack.py -q
+- Board namespace: ipfs-kit-vfs-symbolic-assurance-v1
 - Evidence inputs: data/agent_supervisor/ipfs_kit_vfs_symbolic_assurance/objective_gap.json
 - Discovery evidence: /home/barberb/.local/state/ipfs_accelerate_py/ipfs_kit_vfs_symbolic_assurance/projection/discovery/2026-07-29-vfs-045-objective-gap-7d8fe2dc6af6.md
 - Bundle: vfs-assurance/vfs
@@ -1277,6 +1285,7 @@ compact references and bounded spans only.
 - Depends on:
 - Outputs: ipfs_accelerate_py/agent_supervisor/program_graph.py, ipfs_accelerate_py/agent_supervisor/ipfs_datasets_program_graph_provider.py, test/api/test_agent_supervisor_program_graph.py
 - Validation: python -m pytest test/api/test_agent_supervisor_program_graph.py test/api/test_agent_supervisor_ipfs_datasets_program_graph_provider.py -q
+- Board namespace: ipfs-kit-vfs-symbolic-assurance-v1
 - Evidence inputs: data/agent_supervisor/ipfs_kit_vfs_symbolic_assurance/objective_gap.json
 - Discovery evidence: /home/barberb/.local/state/ipfs_accelerate_py/ipfs_kit_vfs_symbolic_assurance/projection/discovery/2026-07-29-vfs-046-objective-gap-7682b15c115f.md
 - Bundle: vfs-assurance/graph
@@ -1342,6 +1351,7 @@ compact references and bounded spans only.
 - Depends on:
 - Outputs: ipfs_accelerate_py/agent_supervisor/program_contracts.py, ipfs_accelerate_py/agent_supervisor/contract_extractor.py, test/api/test_agent_supervisor_contract_extractor.py
 - Validation: python -m pytest test/api/test_agent_supervisor_program_contracts.py test/api/test_agent_supervisor_contract_extractor.py -q
+- Board namespace: ipfs-kit-vfs-symbolic-assurance-v1
 - Evidence inputs: data/agent_supervisor/ipfs_kit_vfs_symbolic_assurance/objective_gap.json
 - Discovery evidence: /home/barberb/.local/state/ipfs_accelerate_py/ipfs_kit_vfs_symbolic_assurance/projection/discovery/2026-07-29-vfs-047-objective-gap-25a7f8cd0023.md
 - Bundle: vfs-assurance/contracts
@@ -1407,6 +1417,7 @@ compact references and bounded spans only.
 - Depends on:
 - Outputs: ipfs_accelerate_py/agent_supervisor/contract_checker.py, test/api/test_agent_supervisor_contract_checker.py
 - Validation: python -m pytest test/api/test_agent_supervisor_contract_checker.py -q
+- Board namespace: ipfs-kit-vfs-symbolic-assurance-v1
 - Evidence inputs: data/agent_supervisor/ipfs_kit_vfs_symbolic_assurance/objective_gap.json
 - Discovery evidence: /home/barberb/.local/state/ipfs_accelerate_py/ipfs_kit_vfs_symbolic_assurance/projection/discovery/2026-07-29-vfs-048-objective-gap-13c844ef5602.md
 - Bundle: vfs-assurance/contracts
@@ -1472,6 +1483,7 @@ compact references and bounded spans only.
 - Depends on:
 - Outputs: ipfs_accelerate_py/agent_supervisor/contract_findings.py, ipfs_accelerate_py/agent_supervisor/finding_task_source.py, test/api/test_agent_supervisor_contract_findings.py
 - Validation: python -m pytest test/api/test_agent_supervisor_contract_findings.py test/api/test_agent_supervisor_finding_task_source.py -q
+- Board namespace: ipfs-kit-vfs-symbolic-assurance-v1
 - Evidence inputs: data/agent_supervisor/ipfs_kit_vfs_symbolic_assurance/objective_gap.json
 - Discovery evidence: /home/barberb/.local/state/ipfs_accelerate_py/ipfs_kit_vfs_symbolic_assurance/projection/discovery/2026-07-29-vfs-049-objective-gap-260539e90ba1.md
 - Bundle: vfs-assurance/findings
@@ -1537,6 +1549,7 @@ compact references and bounded spans only.
 - Depends on:
 - Outputs: ipfs_accelerate_py/agent_supervisor/finding_task_source.py, test/api/test_agent_supervisor_finding_task_source.py
 - Validation: python -m pytest test/api/test_agent_supervisor_finding_task_source.py -q
+- Board namespace: ipfs-kit-vfs-symbolic-assurance-v1
 - Evidence inputs: data/agent_supervisor/ipfs_kit_vfs_symbolic_assurance/objective_gap.json
 - Discovery evidence: /home/barberb/.local/state/ipfs_accelerate_py/ipfs_kit_vfs_symbolic_assurance/projection/discovery/2026-07-29-vfs-050-objective-gap-e38498304f71.md
 - Bundle: vfs-assurance/findings
@@ -1602,6 +1615,7 @@ compact references and bounded spans only.
 - Depends on:
 - Outputs: scripts/ops/agent_supervisor/ipfs_kit_vfs_symbolic_assurance_control.sh, test/api/test_vfs_symbolic_assurance_control.py
 - Validation: python -m pytest test/api/test_vfs_symbolic_assurance_control.py -q
+- Board namespace: ipfs-kit-vfs-symbolic-assurance-v1
 - Evidence inputs: data/agent_supervisor/ipfs_kit_vfs_symbolic_assurance/objective_gap.json
 - Discovery evidence: /home/barberb/.local/state/ipfs_accelerate_py/ipfs_kit_vfs_symbolic_assurance/projection/discovery/2026-07-29-vfs-051-objective-gap-8720834c9248.md
 - Bundle: vfs-assurance/repair
@@ -1665,8 +1679,9 @@ compact references and bounded spans only.
 - Priority: P0
 - Track: vfs-symbolic-assurance
 - Depends on:
-- Outputs: docs/architecture/IPFS_KIT_VFS_SYMBOLIC_ASSURANCE_PLAN.md, docs/architecture/ipfs_kit_vfs_symbolic_assurance.todo.md, data/agent_supervisor/ipfs_kit_vfs_symbolic_assurance
+- Outputs: data/agent_supervisor/ipfs_kit_vfs_symbolic_assurance
 - Validation: python -m pytest test/api/test_vfs_symbolic_assurance_e2e.py -q
+- Board namespace: ipfs-kit-vfs-symbolic-assurance-v1
 - Evidence inputs: data/agent_supervisor/ipfs_kit_vfs_symbolic_assurance/objective_gap.json
 - Discovery evidence: /home/barberb/.local/state/ipfs_accelerate_py/ipfs_kit_vfs_symbolic_assurance/projection/discovery/2026-07-29-vfs-052-objective-gap-a318dedf612e.md
 - Bundle: vfs-assurance/root
@@ -1677,8 +1692,9 @@ compact references and bounded spans only.
 - Objective heap index: 27
 - Parallel lane: vfs-assurance/root
 - Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
-- Predicted files: docs/architecture/IPFS_KIT_VFS_SYMBOLIC_ASSURANCE_PLAN.md, docs/architecture/ipfs_kit_vfs_symbolic_assurance.todo.md, data/agent_supervisor/ipfs_kit_vfs_symbolic_assurance
+- Predicted files: data/agent_supervisor/ipfs_kit_vfs_symbolic_assurance
 - Changed paths:
+- Context paths: docs/architecture/IPFS_KIT_VFS_SYMBOLIC_ASSURANCE_PLAN.md, docs/architecture/ipfs_kit_vfs_symbolic_assurance.todo.md
 - AST symbols: vfs/repository-forest-receipt@1
 - Interfaces:
 - Submodules:
@@ -1732,6 +1748,7 @@ compact references and bounded spans only.
 - Depends on:
 - Outputs: ipfs_accelerate_py/agent_supervisor/code_contract_logic.py, ipfs_accelerate_py/agent_supervisor/code_contract_prover.py, test/api/test_agent_supervisor_code_contract_prover.py
 - Validation: python -m pytest test/api/test_agent_supervisor_code_contract_logic.py test/api/test_agent_supervisor_code_contract_prover.py -q
+- Board namespace: ipfs-kit-vfs-symbolic-assurance-v1
 - Evidence inputs: data/agent_supervisor/ipfs_kit_vfs_symbolic_assurance/objective_gap.json
 - Discovery evidence: /home/barberb/.local/state/ipfs_accelerate_py/ipfs_kit_vfs_symbolic_assurance/projection/discovery/2026-07-29-vfs-053-objective-gap-3b1c2418f6e7.md
 - Bundle: vfs-assurance/proof
@@ -1797,6 +1814,7 @@ compact references and bounded spans only.
 - Depends on:
 - Outputs: ipfs_accelerate_py/agent_supervisor/program_graph.py, ipfs_accelerate_py/agent_supervisor/ipfs_datasets_program_graph_provider.py, test/api/test_agent_supervisor_program_graph.py
 - Validation: python -m pytest test/api/test_agent_supervisor_program_graph.py test/api/test_agent_supervisor_ipfs_datasets_program_graph_provider.py -q
+- Board namespace: ipfs-kit-vfs-symbolic-assurance-v1
 - Evidence inputs: data/agent_supervisor/ipfs_kit_vfs_symbolic_assurance/objective_gap.json
 - Discovery evidence: /home/barberb/.local/state/ipfs_accelerate_py/ipfs_kit_vfs_symbolic_assurance/projection/discovery/2026-07-29-vfs-054-objective-gap-abcab1b61e70.md
 - Bundle: vfs-assurance/graph
@@ -1860,8 +1878,9 @@ compact references and bounded spans only.
 - Priority: P0
 - Track: vfs-symbolic-assurance
 - Depends on:
-- Outputs: docs/architecture/IPFS_KIT_VFS_SYMBOLIC_ASSURANCE_PLAN.md, docs/architecture/ipfs_kit_vfs_symbolic_assurance.todo.md, data/agent_supervisor/ipfs_kit_vfs_symbolic_assurance
+- Outputs: data/agent_supervisor/ipfs_kit_vfs_symbolic_assurance
 - Validation: python -m pytest test/api/test_vfs_symbolic_assurance_e2e.py -q
+- Board namespace: ipfs-kit-vfs-symbolic-assurance-v1
 - Evidence inputs: data/agent_supervisor/ipfs_kit_vfs_symbolic_assurance/objective_gap.json
 - Discovery evidence: /home/barberb/.local/state/ipfs_accelerate_py/ipfs_kit_vfs_symbolic_assurance/projection/discovery/2026-07-29-vfs-055-objective-gap-78d3dfc7b17c.md
 - Bundle: vfs-assurance/root
@@ -1872,8 +1891,9 @@ compact references and bounded spans only.
 - Objective heap index: 28
 - Parallel lane: vfs-assurance/root
 - Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
-- Predicted files: docs/architecture/IPFS_KIT_VFS_SYMBOLIC_ASSURANCE_PLAN.md, docs/architecture/ipfs_kit_vfs_symbolic_assurance.todo.md, data/agent_supervisor/ipfs_kit_vfs_symbolic_assurance
+- Predicted files: data/agent_supervisor/ipfs_kit_vfs_symbolic_assurance
 - Changed paths:
+- Context paths: docs/architecture/IPFS_KIT_VFS_SYMBOLIC_ASSURANCE_PLAN.md, docs/architecture/ipfs_kit_vfs_symbolic_assurance.todo.md
 - AST symbols: vfs/autonomous-refill-exhaustion@1
 - Interfaces:
 - Submodules:
@@ -1925,8 +1945,9 @@ compact references and bounded spans only.
 - Priority: P0
 - Track: vfs-symbolic-assurance
 - Depends on:
-- Outputs: docs/architecture/IPFS_KIT_VFS_SYMBOLIC_ASSURANCE_PLAN.md, docs/architecture/ipfs_kit_vfs_symbolic_assurance.todo.md, data/agent_supervisor/ipfs_kit_vfs_symbolic_assurance
+- Outputs: data/agent_supervisor/ipfs_kit_vfs_symbolic_assurance
 - Validation: python -m pytest test/api/test_vfs_symbolic_assurance_e2e.py -q
+- Board namespace: ipfs-kit-vfs-symbolic-assurance-v1
 - Evidence inputs: data/agent_supervisor/ipfs_kit_vfs_symbolic_assurance/objective_gap.json
 - Discovery evidence: /home/barberb/.local/state/ipfs_accelerate_py/ipfs_kit_vfs_symbolic_assurance/projection/discovery/2026-07-29-vfs-056-objective-gap-199adc3743de.md
 - Bundle: vfs-assurance/root
@@ -1937,8 +1958,9 @@ compact references and bounded spans only.
 - Objective heap index: 29
 - Parallel lane: vfs-assurance/root
 - Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
-- Predicted files: docs/architecture/IPFS_KIT_VFS_SYMBOLIC_ASSURANCE_PLAN.md, docs/architecture/ipfs_kit_vfs_symbolic_assurance.todo.md, data/agent_supervisor/ipfs_kit_vfs_symbolic_assurance
+- Predicted files: data/agent_supervisor/ipfs_kit_vfs_symbolic_assurance
 - Changed paths:
+- Context paths: docs/architecture/IPFS_KIT_VFS_SYMBOLIC_ASSURANCE_PLAN.md, docs/architecture/ipfs_kit_vfs_symbolic_assurance.todo.md
 - AST symbols: vfs/exhaustive-index-receipt@1
 - Interfaces:
 - Submodules:
@@ -1992,6 +2014,7 @@ compact references and bounded spans only.
 - Depends on:
 - Outputs: ipfs_accelerate_py/agent_supervisor/program_analysis_cache.py, test/api/test_agent_supervisor_program_analysis_cache.py, ipfs_accelerate_py/agent_supervisor/multiformats_identity.py, test/api/test_agent_supervisor_multiformats_identity.py
 - Validation: python -m pytest test/api/test_agent_supervisor_program_analysis_cache.py test/api/test_agent_supervisor_runtime_cas.py -q
+- Board namespace: ipfs-kit-vfs-symbolic-assurance-v1
 - Evidence inputs: data/agent_supervisor/ipfs_kit_vfs_symbolic_assurance/objective_gap.json
 - Discovery evidence: /home/barberb/.local/state/ipfs_accelerate_py/ipfs_kit_vfs_symbolic_assurance/projection/discovery/2026-07-29-vfs-057-objective-gap-c978170e627b.md
 - Bundle: vfs-assurance/cas
@@ -2057,6 +2080,7 @@ compact references and bounded spans only.
 - Depends on:
 - Outputs: test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py, ipfs_accelerate_py/agent_supervisor/mcplusplus_runtime_witness.py
 - Validation: python -m pytest test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py -q
+- Board namespace: ipfs-kit-vfs-symbolic-assurance-v1
 - Evidence inputs: data/agent_supervisor/ipfs_kit_vfs_symbolic_assurance/objective_gap.json
 - Discovery evidence: /home/barberb/.local/state/ipfs_accelerate_py/ipfs_kit_vfs_symbolic_assurance/projection/discovery/2026-07-29-vfs-058-objective-gap-663575ebb290.md
 - Bundle: vfs-assurance/mcplusplus
@@ -2122,6 +2146,7 @@ compact references and bounded spans only.
 - Depends on:
 - Outputs: ipfs_accelerate_py/agent_supervisor/program_analysis_zkp.py, ipfs_datasets_py/ipfs_datasets_py/logic/zkp/provekit/circuits/program_contract_trace, test/api/test_agent_supervisor_program_analysis_zkp.py
 - Validation: python -m pytest test/api/test_agent_supervisor_program_analysis_zkp.py -q
+- Board namespace: ipfs-kit-vfs-symbolic-assurance-v1
 - Evidence inputs: data/agent_supervisor/ipfs_kit_vfs_symbolic_assurance/objective_gap.json
 - Discovery evidence: /home/barberb/.local/state/ipfs_accelerate_py/ipfs_kit_vfs_symbolic_assurance/projection/discovery/2026-07-29-vfs-059-objective-gap-129de255cd91.md
 - Bundle: vfs-assurance/zkp
