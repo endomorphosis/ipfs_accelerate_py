@@ -3676,7 +3676,7 @@ compact references and bounded spans only.
 
 ## VFS-083 Close objective gap: Prove vfs/refill-idempotency@1 for Refill goals, subgoals, and tasks from fresh symbolic evidence
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
