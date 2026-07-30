@@ -1253,7 +1253,7 @@ consumer or frontier is unresolved.
 
 ## RPR-039 Admit one complete atomic transitive repair plan
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
