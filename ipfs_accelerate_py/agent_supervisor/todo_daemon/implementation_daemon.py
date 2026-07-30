@@ -168,6 +168,7 @@ from .contract_packet_provider_router import (
     build_production_contract_packet,
     build_production_provider_route_evaluation,
     evaluate_production_provider_receipt,
+    redact_provider_data,
     validate_provider_execution_receipt,
     validate_production_review_chain_binding,
 )
@@ -259,6 +260,18 @@ PRODUCTION_CONTEXT_REFERENCE_MANIFEST_CONTENT_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/"
     "production-context-reference-manifest-content@1"
 )
+PRODUCTION_REVIEW_FEEDBACK_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "production-review-feedback@1"
+)
+PRODUCTION_REVIEW_FEEDBACK_REPLAY_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "production-review-feedback-replay@1"
+)
+PRODUCTION_REVIEW_FEEDBACK_MAX_FINDINGS = 4
+PRODUCTION_REVIEW_FEEDBACK_MAX_FINDING_BYTES = 256
+PRODUCTION_REVIEW_FEEDBACK_MAX_BYTES = 3_072
+PRODUCTION_REVIEW_FEEDBACK_REPLAY_MAX_BYTES = 3_584
 # Env overrides for injectable production providers (tests/operators).
 PRODUCTION_PROVIDER_ROUTE_ENABLED_ENV = (
     "IPFS_ACCELERATE_AGENT_PRODUCTION_PROVIDER_ROUTE"
@@ -12581,6 +12594,11 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 validation_result=validation_result,
                 exception_result=exception_result,
                 timeout_result=timeout_result,
+                production_route_payload=(
+                    production_route_payload
+                    if use_production_route
+                    else None
+                ),
             )
             if attempt_consumed
             else None
@@ -18034,6 +18052,368 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             return f"git-commit:{head}"
         return f"workspace:{cwd.resolve()}"
 
+    @staticmethod
+    def _bounded_production_review_finding(value: Any) -> tuple[str, bool]:
+        """Return one redacted single-line finding and whether it was cut."""
+
+        if not isinstance(value, str):
+            return "", True
+        redacted = redact_provider_data(value)
+        if not isinstance(redacted, str):
+            return "", True
+        normalized = re.sub(r"\s+", " ", redacted).strip()
+        if not normalized:
+            return "", bool(value)
+        encoded = normalized.encode("utf-8")
+        if len(encoded) <= PRODUCTION_REVIEW_FEEDBACK_MAX_FINDING_BYTES:
+            return normalized, False
+        bounded = encoded[
+            :PRODUCTION_REVIEW_FEEDBACK_MAX_FINDING_BYTES
+        ].decode("utf-8", errors="ignore").rstrip()
+        return bounded, True
+
+    def _build_production_review_feedback(
+        self,
+        task: PortalTask,
+        *,
+        attempt: int,
+        route_payload: Mapping[str, Any] | None,
+    ) -> dict[str, Any] | None:
+        """Project an admitted Codex decline to bounded diagnostic evidence."""
+
+        if not isinstance(route_payload, Mapping):
+            return None
+        route_result = route_payload.get("route_result")
+        if not isinstance(route_result, ImplementationRoutingResult):
+            return None
+        if (
+            route_result.reason_code
+            != ProviderReason.REVIEW_DECLINED.value
+            or route_result.review_presence
+            != ReviewPresence.DECLINED.value
+        ):
+            return None
+        review = route_result.review_proposal
+        implementation = route_result.implementation_proposal
+        packet = route_result.packet
+        if (
+            isinstance(attempt, bool)
+            or not isinstance(attempt, int)
+            or attempt < 1
+        ):
+            return None
+        expected_packet_id = (
+            f"packet:production:{task.task_id}:attempt-{attempt}"
+        )
+        if (
+            review is None
+            or implementation is None
+            or packet is None
+            or not review.admitted
+            or packet.task_id != task.task_id
+            or packet.packet_id != expected_packet_id
+            or review.task_id != task.task_id
+            or implementation.task_id != task.task_id
+            or review.packet_id != packet.packet_id
+            or implementation.packet_id != packet.packet_id
+            or review.snapshot_id != packet.snapshot_id
+            or implementation.snapshot_id != packet.snapshot_id
+        ):
+            return None
+        decision = str(review.payload.get("decision") or "").strip().casefold()
+        if decision not in {"reject", "decline", "changes_required"}:
+            return None
+
+        raw_findings = review.payload.get("findings", ())
+        malformed_findings = (
+            isinstance(raw_findings, (str, bytes, Mapping))
+            or not isinstance(raw_findings, Sequence)
+        )
+        finding_values = () if malformed_findings else tuple(raw_findings)
+        findings: list[dict[str, Any]] = []
+        truncated = malformed_findings
+        for source_ordinal, raw_finding in enumerate(finding_values, start=1):
+            text, finding_truncated = self._bounded_production_review_finding(
+                raw_finding
+            )
+            truncated = truncated or finding_truncated
+            if not text:
+                continue
+            if len(findings) >= PRODUCTION_REVIEW_FEEDBACK_MAX_FINDINGS:
+                truncated = True
+                continue
+            finding_body = {
+                "source_ordinal": source_ordinal,
+                "text": text,
+            }
+            findings.append(
+                {
+                    "finding_id": content_identity(finding_body),
+                    **finding_body,
+                }
+            )
+        if len(findings) < len(finding_values):
+            truncated = True
+
+        receipt = route_result.provider_receipt
+        body: dict[str, Any] = {
+            "schema": PRODUCTION_REVIEW_FEEDBACK_SCHEMA,
+            "task_id": task.task_id,
+            "task_revision": self._canonical_ref(task),
+            "source_attempt": int(attempt),
+            "packet_id": packet.packet_id,
+            "snapshot_id": packet.snapshot_id,
+            "provider_receipt_id": receipt.receipt_id,
+            "implementation_proposal_digest": (
+                implementation.response_digest
+            ),
+            "review_proposal_digest": review.response_digest,
+            "decision": decision,
+            "source_finding_count": (
+                len(finding_values) if not malformed_findings else 0
+            ),
+            "included_finding_count": len(findings),
+            "truncated": bool(truncated),
+            "findings": findings,
+        }
+        while findings:
+            candidate = {
+                "feedback_id": content_identity(body),
+                **body,
+            }
+            if (
+                len(canonical_json(candidate).encode("utf-8"))
+                <= PRODUCTION_REVIEW_FEEDBACK_MAX_BYTES
+            ):
+                return candidate
+            findings.pop()
+            body["included_finding_count"] = len(findings)
+            body["truncated"] = True
+        candidate = {
+            "feedback_id": content_identity(body),
+            **body,
+        }
+        if (
+            len(canonical_json(candidate).encode("utf-8"))
+            > PRODUCTION_REVIEW_FEEDBACK_MAX_BYTES
+        ):
+            return None
+        return candidate
+
+    @staticmethod
+    def _validate_production_review_feedback(
+        payload: Any,
+    ) -> dict[str, Any]:
+        """Verify a persisted feedback artifact without trusting sidecars."""
+
+        if not isinstance(payload, Mapping):
+            raise TypeError("production review feedback must be an object")
+        allowed = {
+            "feedback_id",
+            "schema",
+            "task_id",
+            "task_revision",
+            "source_attempt",
+            "packet_id",
+            "snapshot_id",
+            "provider_receipt_id",
+            "implementation_proposal_digest",
+            "review_proposal_digest",
+            "decision",
+            "source_finding_count",
+            "included_finding_count",
+            "truncated",
+            "findings",
+        }
+        if set(payload) != allowed:
+            raise ValueError(
+                "production review feedback fields are incomplete or unsupported"
+            )
+        if payload.get("schema") != PRODUCTION_REVIEW_FEEDBACK_SCHEMA:
+            raise ValueError("production review feedback schema is unsupported")
+        for key in (
+            "feedback_id",
+            "task_id",
+            "task_revision",
+            "packet_id",
+            "snapshot_id",
+            "provider_receipt_id",
+            "implementation_proposal_digest",
+            "review_proposal_digest",
+        ):
+            value = payload.get(key)
+            if (
+                not isinstance(value, str)
+                or not value
+                or value != value.strip()
+            ):
+                raise ValueError(f"production review feedback {key} is invalid")
+        source_attempt = payload.get("source_attempt")
+        source_count = payload.get("source_finding_count")
+        included_count = payload.get("included_finding_count")
+        if (
+            isinstance(source_attempt, bool)
+            or not isinstance(source_attempt, int)
+            or source_attempt < 1
+        ):
+            raise ValueError(
+                "production review feedback source_attempt is invalid"
+            )
+        for key, value in (
+            ("source_finding_count", source_count),
+            ("included_finding_count", included_count),
+        ):
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, int)
+                or value < 0
+            ):
+                raise ValueError(
+                    f"production review feedback {key} is invalid"
+                )
+        if payload.get("decision") not in {
+            "reject",
+            "decline",
+            "changes_required",
+        }:
+            raise ValueError("production review feedback decision is invalid")
+        if not isinstance(payload.get("truncated"), bool):
+            raise TypeError("production review feedback truncation is invalid")
+        raw_findings = payload.get("findings")
+        if (
+            not isinstance(raw_findings, list)
+            or len(raw_findings)
+            > PRODUCTION_REVIEW_FEEDBACK_MAX_FINDINGS
+            or included_count != len(raw_findings)
+            or source_count < included_count
+        ):
+            raise ValueError("production review feedback findings are invalid")
+        findings: list[dict[str, Any]] = []
+        last_ordinal = 0
+        for raw_finding in raw_findings:
+            if (
+                not isinstance(raw_finding, Mapping)
+                or set(raw_finding)
+                != {"finding_id", "source_ordinal", "text"}
+            ):
+                raise ValueError(
+                    "production review feedback finding is malformed"
+                )
+            ordinal = raw_finding.get("source_ordinal")
+            text = raw_finding.get("text")
+            finding_id = raw_finding.get("finding_id")
+            if (
+                isinstance(ordinal, bool)
+                or not isinstance(ordinal, int)
+                or ordinal <= last_ordinal
+                or ordinal < 1
+                or not isinstance(text, str)
+                or not text
+                or text != re.sub(r"\s+", " ", text).strip()
+                or len(text.encode("utf-8"))
+                > PRODUCTION_REVIEW_FEEDBACK_MAX_FINDING_BYTES
+                or redact_provider_data(text) != text
+            ):
+                raise ValueError(
+                    "production review feedback finding is not bounded"
+                )
+            finding_body = {
+                "source_ordinal": ordinal,
+                "text": text,
+            }
+            if finding_id != content_identity(finding_body):
+                raise ValueError(
+                    "production review feedback finding identity is forged"
+                )
+            findings.append({"finding_id": finding_id, **finding_body})
+            last_ordinal = ordinal
+        if source_count > included_count and not payload["truncated"]:
+            raise ValueError(
+                "production review feedback truncation claim is inconsistent"
+            )
+        body = {key: payload[key] for key in allowed if key != "feedback_id"}
+        if payload["feedback_id"] != content_identity(body):
+            raise ValueError("production review feedback identity is forged")
+        normalized = {"feedback_id": payload["feedback_id"], **body}
+        if (
+            len(canonical_json(normalized).encode("utf-8"))
+            > PRODUCTION_REVIEW_FEEDBACK_MAX_BYTES
+        ):
+            raise ValueError("production review feedback exceeds its byte bound")
+        return json.loads(canonical_json(normalized))
+
+    def _production_review_feedback_replay(
+        self,
+        task: PortalTask,
+        *,
+        attempt: int,
+        snapshot_id: str,
+    ) -> dict[str, Any] | None:
+        """Return feedback only for its exact receipt-bound next retry."""
+
+        if attempt <= 1:
+            return None
+        key = self._canonical_ref(task)
+        diagnostic = self._implementation_diagnostics.get(key)
+        if diagnostic is None:
+            self._load_implementation_retry_state(task)
+            diagnostic = self._implementation_diagnostics.get(key)
+        if diagnostic is None:
+            return None
+        raw_feedback = diagnostic.failure.get("production_review_feedback")
+        if raw_feedback is None:
+            return None
+        try:
+            feedback = self._validate_production_review_feedback(raw_feedback)
+        except (TypeError, ValueError) as exc:
+            raise ProviderRoutingError(
+                "persisted production review feedback failed verification",
+                reason_code=ProviderReason.PACKET_MALFORMED,
+            ) from exc
+        retry = self._last_implementation_retry
+        if (
+            feedback["task_id"] != task.task_id
+            or feedback["task_revision"] != key
+            or feedback["source_attempt"] != int(attempt) - 1
+            or feedback["packet_id"]
+            != (
+                f"packet:production:{task.task_id}:"
+                f"attempt-{int(attempt) - 1}"
+            )
+            or feedback["snapshot_id"] != snapshot_id
+            or retry is None
+            or retry.capsule.diagnostic_receipt_id
+            != diagnostic.receipt_id
+            or retry.capsule.prior_decision_id
+            != diagnostic.prior_decision_id
+            or retry.capsule.repository_id != diagnostic.repository_id
+            or retry.capsule.tree_id != diagnostic.tree_id
+            or snapshot_id != f"git-commit:{diagnostic.tree_id}"
+        ):
+            raise ProviderRoutingError(
+                "production review feedback is stale or cross-task",
+                reason_code=ProviderReason.PACKET_STALE,
+            )
+        body = {
+            "schema": PRODUCTION_REVIEW_FEEDBACK_REPLAY_SCHEMA,
+            "diagnostic_receipt_id": diagnostic.receipt_id,
+            "target_attempt": int(attempt),
+            "feedback": feedback,
+        }
+        replay = {
+            "replay_id": content_identity(body),
+            **body,
+        }
+        if (
+            len(canonical_json(replay).encode("utf-8"))
+            > PRODUCTION_REVIEW_FEEDBACK_REPLAY_MAX_BYTES
+        ):
+            raise ProviderRoutingError(
+                "production review feedback replay exceeds its byte bound",
+                reason_code=ProviderReason.PROMPT_TOO_LARGE,
+            )
+        return replay
+
     def _production_context_evidence_handles(
         self,
         task: PortalTask,
@@ -18145,6 +18525,13 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 TARGETED_IMPLEMENTATION_EVIDENCE_POLICY
             ),
         }
+        review_feedback_replay = self._production_review_feedback_replay(
+            task,
+            attempt=attempt,
+            snapshot_id=snapshot_id,
+        )
+        if review_feedback_replay is not None:
+            extra_goal["prior_review_feedback"] = review_feedback_replay
         verified_contract_ids, verified_obligation_ids, expansion_handles = (
             self._verified_production_context_packet_fields(
                 task,
@@ -18179,6 +18566,19 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             dict.fromkeys(
                 (
                     *verified_contract_ids,
+                    *(
+                        (
+                            review_feedback_replay["replay_id"],
+                            review_feedback_replay[
+                                "diagnostic_receipt_id"
+                            ],
+                            review_feedback_replay["feedback"][
+                                "feedback_id"
+                            ],
+                        )
+                        if review_feedback_replay is not None
+                        else ()
+                    ),
                     *self._compact_value_list(
                         self._task_metadata_value(
                             task,
@@ -27552,6 +27952,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "checkpoint_manifest",
             "failure_review",
             "next_attempt_prompt_addendum",
+            "production_review_feedback",
         ):
             value = failure.get(key)
             if value not in (None, "", (), [], {}):
@@ -27852,6 +28253,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         validation_result: Mapping[str, Any] | None = None,
         exception_result: Mapping[str, Any] | None = None,
         timeout_result: Mapping[str, Any] | None = None,
+        production_route_payload: Mapping[str, Any] | None = None,
     ) -> ImplementationDiagnosticReceipt | None:
         if returncode == 0:
             return None
@@ -27895,6 +28297,34 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "returncode": int(returncode),
             "validation_result": validation,
         }
+        route_event = (
+            production_route_payload.get("event")
+            if isinstance(production_route_payload, Mapping)
+            else None
+        )
+        source_attempt = (
+            route_event.get("attempt")
+            if isinstance(route_event, Mapping)
+            else 0
+        )
+        if (
+            isinstance(source_attempt, bool)
+            or not isinstance(source_attempt, int)
+        ):
+            source_attempt = 0
+        review_feedback = self._build_production_review_feedback(
+            task,
+            attempt=source_attempt,
+            route_payload=production_route_payload,
+        )
+        if review_feedback is not None:
+            failure.update(
+                {
+                    "kind": ProviderReason.REVIEW_DECLINED.value,
+                    "reason": ProviderReason.REVIEW_DECLINED.value,
+                    "production_review_feedback": review_feedback,
+                }
+            )
         review = validation.get("failure_review")
         if isinstance(review, Mapping):
             failure["failure_review"] = {
