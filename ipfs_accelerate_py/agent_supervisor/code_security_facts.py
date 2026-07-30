@@ -1460,6 +1460,64 @@ GeneratedCodeSecurityFacts = CodeSecurityFactSet
 extract_changed_diff_security_facts = extract_code_security_facts
 extract_generated_code_security_facts = extract_code_security_facts
 
+# Narrow compatibility surface for software-verification security domain
+# adapters (LFV SecuritySoftwareVerificationAdapter@1).  Facts remain
+# observational: they never authorize completion or prove source correctness.
+SOFTWARE_VERIFICATION_SECURITY_FACT_COMPAT = (
+    "ipfs_accelerate_py/agent-supervisor/software-verification-security-fact-compat@1"
+)
+
+
+def security_observation_for_software_verification(
+    changed_diff: (
+        ChangedCodeDiff
+        | Mapping[str, Any]
+        | Sequence[ChangedCodeDiff | Mapping[str, Any]]
+    ),
+) -> CodeSecurityFactSet:
+    """Extract non-authoritative security observations for shared IR lowering.
+
+    Compatibility helper used by
+    ``ipfs_datasets_py.logic.software_verification.domain_adapters``.  The
+    returned fact set never grants proof, completion, or execution authority.
+    """
+
+    result = extract_code_security_facts(changed_diff)
+    if result.authorizes_completion or result.grants_authority:
+        raise CodeSecurityFactError(
+            "code security facts must not authorize completion or grant authority "
+            "when reused by software-verification domain adapters"
+        )
+    return result
+
+
+def security_observation_payload(
+    fact_set: CodeSecurityFactSet | Mapping[str, Any],
+) -> dict[str, Any]:
+    """Compact observational payload for SecuritySoftwareVerificationAdapter."""
+
+    if isinstance(fact_set, CodeSecurityFactSet):
+        payload = fact_set.to_dict()
+    elif isinstance(fact_set, Mapping):
+        payload = dict(fact_set)
+    else:
+        raise CodeSecurityFactError(
+            "fact_set must be a CodeSecurityFactSet or mapping"
+        )
+    return {
+        "compat": SOFTWARE_VERIFICATION_SECURITY_FACT_COMPAT,
+        "authoritative": False,
+        "authorizes_completion": False,
+        "grants_authority": False,
+        "status": payload.get("status"),
+        "tree_id": payload.get("tree_id"),
+        "diff_id": payload.get("diff_id"),
+        "fact_count": len(payload.get("facts") or ()),
+        "diagnostic_count": len(payload.get("diagnostics") or ()),
+        "facts": payload.get("facts") or [],
+        "diagnostics": payload.get("diagnostics") or [],
+    }
+
 
 __all__ = [
     "CODE_SECURITY_BINDING_SCHEMA",
@@ -1468,6 +1526,7 @@ __all__ = [
     "CODE_SECURITY_FACT_SCHEMA",
     "CODE_SECURITY_FACT_SET_SCHEMA",
     "CODE_SECURITY_SCOPE_SCHEMA",
+    "SOFTWARE_VERIFICATION_SECURITY_FACT_COMPAT",
     "ChangedCodeDiff",
     "CodeSecurityDiff",
     "CodeFactDelta",
@@ -1491,4 +1550,6 @@ __all__ = [
     "extract_changed_diff_security_facts",
     "extract_code_security_facts",
     "extract_generated_code_security_facts",
+    "security_observation_for_software_verification",
+    "security_observation_payload",
 ]

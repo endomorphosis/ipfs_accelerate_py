@@ -3011,6 +3011,43 @@ adapt_source_evidence = adapt_program_source
 adapt_source_to_ast_record = build_program_ast_blob_record
 build_mixed_program_evidence_index = build_program_evidence_index
 
+# Narrow compatibility surface for software-verification source adapters
+# (LFV SourceSoftwareVerificationAdapter@1).  This does not introduce a second
+# AST schema; it only freezes the evidence contract those adapters reuse.
+SOFTWARE_VERIFICATION_PROGRAM_AST_COMPAT = (
+    "ipfs_accelerate_py/agent-supervisor/software-verification-program-ast-compat@1"
+)
+
+
+def program_evidence_for_software_verification(
+    source: str,
+    *,
+    path: str = "",
+    language: str = "",
+    blob_identity: str = "",
+    previous: ProgramASTAdapterResult | ASTBlobRecord | None = None,
+    generated: bool = False,
+    max_source_bytes: int = DEFAULT_MAX_SOURCE_BYTES,
+    max_facts: int = DEFAULT_MAX_FACTS,
+) -> ProgramASTAdapterResult:
+    """Return program-AST evidence for shared software-verification lowering.
+
+    Compatibility helper used by
+    ``ipfs_datasets_py.logic.software_verification.source_adapters``.  The
+    result is observational: success never implies a proof or backend verdict.
+    """
+
+    return adapt_program_source(
+        source,
+        path=path,
+        language=language,
+        blob_identity=blob_identity,
+        previous=previous,
+        generated=generated,
+        max_source_bytes=max_source_bytes,
+        max_facts=max_facts,
+    )
+
 
 __all__ = [
     "DEFAULT_MAX_FACTS",
@@ -3022,6 +3059,7 @@ __all__ = [
     "PROGRAM_EVIDENCE_FACT_SCHEMA",
     "PROGRAM_EVIDENCE_INDEX_SCHEMA",
     "PYTHON_ADAPTER_VERSION",
+    "SOFTWARE_VERIFICATION_PROGRAM_AST_COMPAT",
     "AdapterDiagnostic",
     "ProgramASTAdapterResult",
     "ProgramEvidenceFact",
@@ -3039,4 +3077,5 @@ __all__ = [
     "build_program_ast_blob_record",
     "build_program_evidence_index",
     "detect_program_language",
+    "program_evidence_for_software_verification",
 ]
