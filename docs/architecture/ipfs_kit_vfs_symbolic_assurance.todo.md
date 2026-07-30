@@ -2379,3 +2379,70 @@ compact references and bounded spans only.
 - Candidate kind: aggregate
 - Todo vector key: 63f05cefbeb5ebcb
 - Acceptance: Objective scan filed this gap for VFS-G134. Use evidence in /home/barberb/.local/state/ipfs_accelerate_py/ipfs_kit_vfs_symbolic_assurance/projection/discovery/2026-07-30-vfs-062-objective-gap-63a470e6d548.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (vfs/contract-assurance-root@1), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
+
+## VFS-063 Close objective gap packet: VFS-G138, VFS-G139
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: corpus-index
+- Depends on:
+- Outputs: ipfs_accelerate_py/agent_supervisor/repository_corpus_index.py, ipfs_accelerate_py/agent_supervisor/program_ast_adapters.py, test/api/test_agent_supervisor_repository_corpus_index.py
+- Validation: python -m pytest test/api/test_agent_supervisor_repository_corpus_index.py test/api/test_agent_supervisor_program_ast_adapters.py -q
+- Board namespace: ipfs-kit-vfs-symbolic-assurance-v1
+- Evidence inputs: data/agent_supervisor/ipfs_kit_vfs_symbolic_assurance/objective_gap.json
+- Discovery evidence: /home/barberb/.local/state/ipfs_accelerate_py/ipfs_kit_vfs_symbolic_assurance/projection/discovery/2026-07-30-vfs-063-objective-gap-b3a07b4c08a8.md
+- Bundle: vfs-assurance/index
+- Bundle shard: /home/barberb/.local/state/ipfs_accelerate_py/ipfs_kit_vfs_symbolic_assurance/projection/bundles/vfs-assurance-index.todo.md
+- Bundle strategy: explicit
+- Graph parents: VFS-G020
+- Graph depth: 2
+- Objective heap index: 31
+- Parallel lane: vfs-assurance/index
+- Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
+- Predicted files: ipfs_accelerate_py/agent_supervisor/repository_corpus_index.py, ipfs_accelerate_py/agent_supervisor/program_ast_adapters.py, test/api/test_agent_supervisor_repository_corpus_index.py
+- Changed paths:
+- Context paths: ipfs_accelerate_py/agent_supervisor/repository_corpus_index.py, ipfs_accelerate_py/agent_supervisor/program_ast_adapters.py, test/api/test_agent_supervisor_repository_corpus_index.py
+- AST symbols: vfs/exhaustive-file-inventory@1, vfs/incremental-ast-index@1
+- Interfaces:
+- Submodules:
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: VFS-G138
+- Completion authority: local
+- External authority blockers:
+- Canonical task key: task/v1/32cfb97970f138ee72678ab6535049e4dcd10dfb39ebf87ddba2fb4d9c1adb23
+- Canonical task CID: baguqeeraglh3s6lq6e4o44thrk3fgucj4toncdp3hhv7q7o3ul5u3ha23mrq
+- Semantic identity: objective-evidence-packet/v1/38b880bfee31a3f3fac2a9dbd1115c7834b4bb8b6a2e18bb61b182b01905d18b
+- Acceptance subset: The scan publishes included and excluded populations with reasons, TypeScript/TSX/JavaScript/Python/JSON/Markdown inputs have provenance, unchanged blobs are reused, unexplained skips, parser failures, and truncation prevent an exhaustive verdict.
+- Preconditions: objective goal VFS-G138 is schedulable, objective goal VFS-G139 is schedulable
+- Effects: satisfy evidence requirement: vfs/exhaustive-file-inventory@1, satisfy evidence requirement: vfs/incremental-ast-index@1
+- Evidence subset: vfs/exhaustive-file-inventory@1, vfs/incremental-ast-index@1
+- Resource class: cpu-medium
+- Token class: medium
+- Estimated tokens: 0
+- Resources: cpu-medium
+- Merge fate: goal_packet/corpus_index/ipfs_accelerate_py/26d54d2206f9
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-packet/v1/38b880bfee31a3f3fac2a9dbd1115c7834b4bb8b6a2e18bb61b182b01905d18b
+- Missing evidence: vfs/exhaustive-file-inventory@1, vfs/incremental-ast-index@1
+- Embedding query: goal packet goal_packet/corpus_index/ipfs_accelerate_py/26d54d2206f9; vfs/exhaustive-file-inventory@1; vfs/incremental-ast-index@1; Prove vfs/exhaustive-file-inventory@1 for Exhaustively inventory and incrementally parse the SwissKnife corpus; Prove vfs/incremental-ast-index@1 for Exhaustively inventory and incrementally parse the SwissKnife corpus
+- AST query: vfs/exhaustive-file-inventory@1, vfs/incremental-ast-index@1
+- Surplus group: goal_packet/corpus_index/ipfs_accelerate_py/26d54d2206f9
+- Merge key: 249021a10b44e37c
+- Merge family: goal_packet/corpus_index/ipfs_accelerate_py/26d54d2206f9
+- Merge role: packet_aggregate
+- Work item count: 2
+- Work scope: goal_subgoal_packet_aggregate; vector_ast_bundle
+- Goal packet: goal_packet/corpus_index/ipfs_accelerate_py/26d54d2206f9
+- Goal packet role: packet_aggregate
+- Goal packet goals: VFS-G138, VFS-G139
+- Goal packet task count: 3
+- Goal packet work item count: 2
+- Completion goal bindings: {"VFS-G138":["vfs/exhaustive-file-inventory@1"],"VFS-G139":["vfs/incremental-ast-index@1"]}
+- Completion task bindings: baguqeerapxs5cixxkgolpzjbodlbl5u3gnti55ro2wk3jftavxbs6ksjulkq, baguqeeralwy4hyotm4slkb7xrwfwpjjp6zc5n4yxhgpaxm6vcek2kajf2qyq
+- Candidate kind: goal_packet_aggregate
+- Todo vector key: 969114db760237ab
+- Acceptance: Objective scan filed this gap for VFS-G138. Use evidence in /home/barberb/.local/state/ipfs_accelerate_py/ipfs_kit_vfs_symbolic_assurance/projection/discovery/2026-07-30-vfs-063-objective-gap-b3a07b4c08a8.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (vfs/exhaustive-file-inventory@1, vfs/incremental-ast-index@1), and keep the supervisor-fed backlog aligned with the objective heap. This task is part of goal_packet/corpus_index/ipfs_accelerate_py/26d54d2206f9; implement a complete, cohesive change that fully advances the packet goals (VFS-G138, VFS-G139) and covers all the shared packet evidence in one comprehensive pass. Refine the objective heap if the gap needs smaller child goals.
