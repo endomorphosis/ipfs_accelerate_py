@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import shlex
+import shutil
 import signal
 import subprocess
 import sys
@@ -19974,6 +19975,128 @@ def test_implementation_supervisor_cleans_merged_backlogged_worktrees(tmp_path):
         check=False,
     )
     assert branch_exists.returncode != 0
+
+
+def test_implementation_supervisor_prunes_stale_declared_submodule_worktrees_after_parent_cleanup(
+    tmp_path,
+):
+    child_source = tmp_path / "datasets-source"
+    child_source.mkdir()
+    _git(child_source, "init")
+    _git(child_source, "checkout", "-b", "main")
+    _git(child_source, "config", "user.name", "Test User")
+    _git(child_source, "config", "user.email", "test@example.invalid")
+    (child_source / "dataset.py").write_text("VALUE = 'base'\n", encoding="utf-8")
+    _git(child_source, "add", "dataset.py")
+    _git(child_source, "commit", "-m", "base")
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "base")
+    _git(
+        repo,
+        "-c",
+        "protocol.file.allow=always",
+        "submodule",
+        "add",
+        str(child_source),
+        "ipfs_datasets_py",
+    )
+    _git(repo, "commit", "-am", "add managed datasets submodule")
+
+    branch = "implementation/submodule-prune"
+    _git(repo, "branch", branch)
+    worktree_root = repo / "worktrees"
+    worktree_path = worktree_root / "submodule-prune"
+    _git(repo, "worktree", "add", str(worktree_path), branch)
+    managed_source = repo / "ipfs_datasets_py"
+    stale_target = worktree_path / "ipfs_datasets_py"
+    _git(managed_source, "worktree", "add", "--detach", str(stale_target), "HEAD")
+    valid_target = tmp_path / "valid-datasets-worktree"
+    _git(managed_source, "worktree", "add", "--detach", str(valid_target), "HEAD")
+
+    state_dir = repo / "state"
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=repo / "todo.md",
+            state_path=state_dir / "task_state.json",
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "events.jsonl",
+            state_dir=state_dir,
+            repo_root=repo,
+            worktree_root=worktree_root,
+            worktree_submodule_paths=("ipfs_datasets_py",),
+        )
+    )
+
+    result = supervisor.cleanup_backlogged_worktrees()
+
+    assert result["removed_count"] == 1
+    prune = result["managed_submodule_worktree_prune"]
+    assert prune["successful_repository_count"] == 1
+    assert prune["failed_count"] == 0
+    assert not stale_target.exists()
+    listing = _git(managed_source, "worktree", "list", "--porcelain")
+    assert str(stale_target) not in listing
+    assert str(valid_target) in listing
+    assert valid_target.exists()
+
+
+def test_implementation_supervisor_bounds_submodule_prune_and_ignores_nested_repo(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    nested_repo = repo / "tools" / "arbitrary"
+    nested_repo.mkdir(parents=True)
+    _git(nested_repo, "init")
+    _git(nested_repo, "checkout", "-b", "main")
+    _git(nested_repo, "config", "user.name", "Test User")
+    _git(nested_repo, "config", "user.email", "test@example.invalid")
+    (nested_repo / "tool.py").write_text("VALUE = 'tool'\n", encoding="utf-8")
+    _git(nested_repo, "add", "tool.py")
+    _git(nested_repo, "commit", "-m", "base")
+    stale_target = tmp_path / "stale-arbitrary-worktree"
+    _git(nested_repo, "worktree", "add", "--detach", str(stale_target), "HEAD")
+    shutil.rmtree(stale_target)
+
+    limit = implementation_supervisor_module.MAX_MANAGED_SUBMODULE_WORKTREE_PRUNES_PER_PASS
+    configured = ("tools/arbitrary",) + tuple(
+        f"missing-submodule-{index}" for index in range(limit)
+    )
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=repo / "todo.md",
+            state_path=repo / "state" / "task_state.json",
+            strategy_path=repo / "state" / "strategy.json",
+            events_path=repo / "state" / "events.jsonl",
+            state_dir=repo / "state",
+            repo_root=repo,
+            worktree_root=repo / "worktrees",
+            worktree_submodule_paths=configured,
+        )
+    )
+
+    result = supervisor._prune_managed_submodule_worktrees()
+
+    assert result["considered_count"] == limit
+    assert result["truncated_count"] == 1
+    assert result["successful_repository_count"] == 0
+    assert result["skipped"][0] == {
+        "path": "tools/arbitrary",
+        "reason": "unmanaged_repository",
+    }
+    listing = _git(nested_repo, "worktree", "list", "--porcelain")
+    assert str(stale_target) in listing
+    assert "prunable" in listing
 
 
 def test_implementation_supervisor_defers_worktree_cleanup_behind_checkout_lock(

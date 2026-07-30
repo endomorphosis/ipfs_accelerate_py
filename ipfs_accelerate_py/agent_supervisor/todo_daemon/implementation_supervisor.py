@@ -90,6 +90,8 @@ DEFAULT_OBJECTIVE_SURPLUS_MIN_TERMS_PER_TODO = int(
 DEFAULT_WORKTREE_SCAN_CACHE_TTL_SECONDS = float(
     os.environ.get("IPFS_ACCELERATE_AGENT_WORKTREE_SCAN_CACHE_TTL_SECONDS", "900")
 )
+MAX_MANAGED_SUBMODULE_WORKTREE_PRUNES_PER_PASS = 32
+MANAGED_SUBMODULE_WORKTREE_PRUNE_TIMEOUT_SECONDS = 30.0
 
 
 class ObjectiveRefillTimeoutError(TimeoutError):
@@ -6205,6 +6207,7 @@ class PortalImplementationSupervisor:
                 }
             )
 
+        managed_submodule_prune = self._prune_managed_submodule_worktrees()
         skip_summary = self._cleanup_skip_summary(skipped)
         result = {
             "attempted": True,
@@ -6222,9 +6225,156 @@ class PortalImplementationSupervisor:
             "skipped": skipped[:50],
             "scan_cache_hit_count": scan_cache_hit_count,
             "scan_cache_written": self._write_worktree_scan_cache(scan_cache),
+            "managed_submodule_worktree_prune": managed_submodule_prune,
         }
-        if removed or skip_summary["dirty_worktree_groups"]:
+        if (
+            removed
+            or skip_summary["dirty_worktree_groups"]
+            or managed_submodule_prune.get("failed_count")
+        ):
             self._record_event("merged_worktree_cleanup", result)
+        return result
+
+    def _prune_managed_submodule_worktrees(self) -> dict[str, Any]:
+        """Prune stale registrations in explicitly managed submodule repositories.
+
+        Removing a parent worktree also removes nested submodule worktree
+        directories, but Git does not remove those paths from each submodule's
+        own worktree registry. Limit this follow-up to a bounded set of exact
+        configured paths which Git identifies as submodule worktrees.
+        """
+
+        configured = tuple(
+            dict.fromkeys(
+                str(value).strip().rstrip("/")
+                for value in self.config.worktree_submodule_paths
+                if str(value).strip().rstrip("/")
+            )
+        )
+        limit = MAX_MANAGED_SUBMODULE_WORKTREE_PRUNES_PER_PASS
+        selected = configured[:limit]
+        result: dict[str, Any] = {
+            "attempted": bool(configured),
+            "configured_count": len(configured),
+            "considered_count": len(selected),
+            "max_repositories_per_pass": limit,
+            "truncated_count": max(0, len(configured) - len(selected)),
+            "successful_repository_count": 0,
+            "failed_count": 0,
+            "skipped_count": 0,
+            "repositories": [],
+            "skipped": [],
+        }
+        if not configured:
+            result["reason"] = "no_managed_submodules_configured"
+            return result
+
+        repo_root = self.config.repo_root
+        try:
+            root_resolved = repo_root.resolve(strict=True)
+        except (OSError, RuntimeError):
+            result["failed_count"] = 1
+            result["reason"] = "repo_root_unresolvable"
+            return result
+
+        for relative in selected:
+            detail = {"path": relative}
+            relative_path = Path(relative)
+            if (
+                relative_path.is_absolute()
+                or "\0" in relative
+                or ".." in relative_path.parts
+                or not relative_path.parts
+            ):
+                result["skipped"].append({**detail, "reason": "unsafe_relative_path"})
+                continue
+
+            candidate = repo_root.joinpath(*relative_path.parts)
+            cursor = repo_root
+            symlinked = False
+            for part in relative_path.parts:
+                cursor /= part
+                if cursor.is_symlink():
+                    symlinked = True
+                    break
+            if symlinked:
+                result["skipped"].append({**detail, "reason": "symlinked_path"})
+                continue
+
+            try:
+                candidate_resolved = candidate.resolve(strict=True)
+                candidate_resolved.relative_to(root_resolved)
+            except FileNotFoundError:
+                result["skipped"].append({**detail, "reason": "submodule_not_initialized"})
+                continue
+            except (OSError, RuntimeError, ValueError):
+                result["skipped"].append({**detail, "reason": "path_outside_repo"})
+                continue
+            if not candidate_resolved.is_dir():
+                result["skipped"].append({**detail, "reason": "submodule_not_directory"})
+                continue
+
+            try:
+                identity = subprocess.run(
+                    ["git", "rev-parse", "--show-superproject-working-tree"],
+                    cwd=candidate_resolved,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                    timeout=MANAGED_SUBMODULE_WORKTREE_PRUNE_TIMEOUT_SECONDS,
+                )
+                if identity.returncode != 0 or not identity.stdout.strip():
+                    raise ValueError("not a submodule worktree")
+                superproject = Path(identity.stdout.strip()).resolve(strict=True)
+                superproject.relative_to(root_resolved)
+            except (
+                FileNotFoundError,
+                OSError,
+                RuntimeError,
+                ValueError,
+                subprocess.TimeoutExpired,
+            ):
+                result["skipped"].append({**detail, "reason": "unmanaged_repository"})
+                continue
+
+            try:
+                prune = subprocess.run(
+                    ["git", "worktree", "prune", "--expire", "now"],
+                    cwd=candidate_resolved,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                    timeout=MANAGED_SUBMODULE_WORKTREE_PRUNE_TIMEOUT_SECONDS,
+                )
+            except (OSError, subprocess.TimeoutExpired) as exc:
+                result["repositories"].append(
+                    {
+                        **detail,
+                        "repo_path": str(candidate_resolved),
+                        "pruned": False,
+                        "reason": "prune_failed",
+                        "error": str(exc)[-1000:],
+                    }
+                )
+                continue
+            result["repositories"].append(
+                {
+                    **detail,
+                    "repo_path": str(candidate_resolved),
+                    "pruned": prune.returncode == 0,
+                    "returncode": prune.returncode,
+                    "stdout": prune.stdout[-4000:],
+                    "stderr": prune.stderr[-4000:],
+                }
+            )
+
+        result["successful_repository_count"] = sum(
+            bool(item.get("pruned")) for item in result["repositories"]
+        )
+        result["failed_count"] = sum(
+            not bool(item.get("pruned")) for item in result["repositories"]
+        )
+        result["skipped_count"] = len(result["skipped"])
         return result
 
     @staticmethod
