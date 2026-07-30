@@ -18,7 +18,7 @@ import tempfile
 import threading
 import time
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path, PurePosixPath
 from typing import Any, Callable, Iterable, Mapping, Sequence
 from urllib.parse import unquote, urlsplit
@@ -288,6 +288,32 @@ PROVIDER_CAPACITY_PATTERNS = (
         ),
     ),
 )
+PROVIDER_DECLARED_RETRY_AT_PATTERN = re.compile(
+    r"\btry\s+again\s+at\s+"
+    r"(?P<month>[A-Za-z]{3,9})\.?\s+"
+    r"(?P<day>[0-9]{1,2})(?:st|nd|rd|th)?"
+    r"(?:,\s*|\s+)"
+    r"(?P<year>[0-9]{4})\s+"
+    r"(?P<hour>0?[1-9]|1[0-2]):(?P<minute>[0-5][0-9])"
+    r"(?::(?P<second>[0-5][0-9]))?\s*"
+    r"(?P<meridiem>a\.?m\.?|p\.?m\.?)"
+    r"(?:\s+(?P<timezone>Z|UTC|GMT|[+-][0-9]{2}:?[0-9]{2}))?",
+    re.IGNORECASE,
+)
+PROVIDER_RETRY_MONTHS = {
+    "jan": 1,
+    "feb": 2,
+    "mar": 3,
+    "apr": 4,
+    "may": 5,
+    "jun": 6,
+    "jul": 7,
+    "aug": 8,
+    "sep": 9,
+    "oct": 10,
+    "nov": 11,
+    "dec": 12,
+}
 IMPLEMENTATION_PROVIDER_ENV = "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER"
 _GOOSE_BIN_ENV = "IPFS_ACCELERATE_AGENT_GOOSE_BIN"
 _GOOSE_MODEL_ENV = "IPFS_ACCELERATE_AGENT_GOOSE_MODEL"
@@ -1348,7 +1374,129 @@ def parse_timestamp(value: str) -> datetime | None:
     return parsed
 
 
-def classify_provider_capacity_failure(text: str) -> dict[str, Any]:
+def _provider_capacity_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def parse_provider_declared_retry_at(
+    text: str,
+    *,
+    now: datetime | None = None,
+) -> datetime | None:
+    """Return the latest valid future provider reset declared in ``text``.
+
+    Provider CLIs currently emit English reset horizons without a timezone,
+    for example ``try again at Aug 5th, 2026 4:09 AM``. Treat an omitted
+    timezone as UTC so the persisted deadline is deterministic across lanes.
+    """
+
+    reference = now or _provider_capacity_now()
+    if reference.tzinfo is None:
+        reference = reference.replace(tzinfo=timezone.utc)
+    else:
+        reference = reference.astimezone(timezone.utc)
+    candidates: list[datetime] = []
+    for match in PROVIDER_DECLARED_RETRY_AT_PATTERN.finditer(str(text or "")):
+        month = PROVIDER_RETRY_MONTHS.get(
+            str(match.group("month") or "").lower()[:3]
+        )
+        if month is None:
+            continue
+        meridiem = re.sub(
+            r"[^apm]",
+            "",
+            str(match.group("meridiem") or "").lower(),
+        )
+        hour = int(match.group("hour"))
+        if meridiem == "pm" and hour != 12:
+            hour += 12
+        elif meridiem == "am" and hour == 12:
+            hour = 0
+        timezone_text = str(match.group("timezone") or "").upper()
+        declared_timezone = timezone.utc
+        if timezone_text and timezone_text not in {"Z", "UTC", "GMT"}:
+            compact_offset = timezone_text.replace(":", "")
+            sign = 1 if compact_offset.startswith("+") else -1
+            try:
+                offset_hours = int(compact_offset[1:3])
+                offset_minutes = int(compact_offset[3:5])
+                if offset_hours > 23 or offset_minutes > 59:
+                    continue
+                declared_timezone = timezone(
+                    sign
+                    * timedelta(
+                        hours=offset_hours,
+                        minutes=offset_minutes,
+                    )
+                )
+            except (ValueError, OverflowError):
+                continue
+        try:
+            candidate = datetime(
+                int(match.group("year")),
+                month,
+                int(match.group("day")),
+                hour,
+                int(match.group("minute")),
+                int(match.group("second") or 0),
+                tzinfo=declared_timezone,
+            ).astimezone(timezone.utc)
+        except (ValueError, OverflowError):
+            continue
+        if candidate > reference:
+            candidates.append(candidate)
+    return max(candidates) if candidates else None
+
+
+def _provider_labels_from_implementation_command(
+    command: str | Sequence[Any],
+) -> list[str]:
+    """Infer only providers named by the concrete implementation command."""
+
+    if isinstance(command, str):
+        try:
+            items = shlex.split(command)
+        except ValueError:
+            return []
+    else:
+        items = [str(item) for item in command]
+    labels: list[str] = []
+    for item in items:
+        lowered = str(item or "").strip().lower()
+        if not lowered:
+            continue
+        basename = Path(lowered).name
+        normalized = basename.removesuffix(".exe")
+        provider_labels: tuple[str, ...] = ()
+        if normalized == "codex":
+            provider_labels = ("codex",)
+        elif normalized in {"copilot", "github-copilot"}:
+            provider_labels = ("copilot",)
+        elif (
+            normalized in {"grok", "grok-cli", "grok_cli_runner.py"}
+            or lowered.endswith(".grok_cli_runner")
+        ):
+            provider_labels = ("grok",)
+        elif (
+            normalized in {
+                "goose",
+                "goose-cli",
+                "meta_spark_goose_runner.py",
+            }
+            or lowered.endswith(".meta_spark_goose_runner")
+        ):
+            provider_labels = ("goose", "meta_spark")
+        for provider in provider_labels:
+            if provider not in labels:
+                labels.append(provider)
+    return labels
+
+
+def classify_provider_capacity_failure(
+    text: str,
+    *,
+    provider_labels: Sequence[str] = (),
+) -> dict[str, Any]:
     """Classify provider quota/capacity failures without treating them as code failures."""
 
     # Worktree pool races can dispose the workspace between setup and provider
@@ -1362,11 +1510,32 @@ def classify_provider_capacity_failure(text: str) -> dict[str, Any]:
 
     providers = [provider for provider, pattern in PROVIDER_CAPACITY_PATTERNS if pattern.search(text)]
     unique_providers = list(dict.fromkeys(providers))
-    return {
+    command_providers = list(
+        dict.fromkeys(
+            str(provider).strip().lower()
+            for provider in provider_labels
+            if str(provider).strip()
+        )
+    )
+    if command_providers and unique_providers:
+        attributed = [
+            provider
+            for provider in unique_providers
+            if provider != "provider" and provider in command_providers
+        ]
+        if not attributed and "provider" in unique_providers:
+            attributed = command_providers
+        unique_providers = attributed
+    result = {
         "exhausted": bool(unique_providers),
         "providers": unique_providers,
         "reason": "provider_capacity_exhausted" if unique_providers else "",
     }
+    retry_at = parse_provider_declared_retry_at(text)
+    if unique_providers and retry_at is not None:
+        result["retry_at"] = retry_at.isoformat()
+        result["retry_at_source"] = "provider_declared"
+    return result
 
 
 @dataclass(frozen=True)
@@ -6424,7 +6593,12 @@ class PortalImplementationDaemon:
         except ValueError:
             return DEFAULT_PROVIDER_CAPACITY_BACKOFF_SECONDS
 
-    def _provider_capacity_failure_from_log(self, log_path: Path) -> dict[str, Any]:
+    def _provider_capacity_failure_from_log(
+        self,
+        log_path: Path,
+        *,
+        command: Sequence[str] = (),
+    ) -> dict[str, Any]:
         try:
             with log_path.open("rb") as handle:
                 handle.seek(0, os.SEEK_END)
@@ -6433,13 +6607,24 @@ class PortalImplementationDaemon:
                 text = handle.read().decode("utf-8", errors="replace")
         except OSError:
             return {"exhausted": False, "providers": [], "reason": ""}
-        classified = classify_provider_capacity_failure(text)
+        classified = classify_provider_capacity_failure(
+            text,
+            provider_labels=_provider_labels_from_implementation_command(
+                command
+            ),
+        )
         if not classified["exhausted"]:
             return classified
         evidence = [
             line.strip()
             for line in text.splitlines()
-            if any(pattern.search(line) for _provider, pattern in PROVIDER_CAPACITY_PATTERNS)
+            if (
+                any(
+                    pattern.search(line)
+                    for _provider, pattern in PROVIDER_CAPACITY_PATTERNS
+                )
+                or PROVIDER_DECLARED_RETRY_AT_PATTERN.search(line)
+            )
         ]
         classified["evidence"] = evidence[-4:]
         return classified
@@ -6447,6 +6632,15 @@ class PortalImplementationDaemon:
     def _current_implementation_provider_labels(self) -> set[str]:
         """Return coarse provider labels for the active implementation runner."""
 
+        explicit_command = self.implementation_command or os.environ.get(
+            "IMPLEMENTATION_DAEMON_COMMAND",
+            "",
+        ).strip()
+        explicit_labels = _provider_labels_from_implementation_command(
+            explicit_command
+        )
+        if explicit_labels:
+            return {*explicit_labels, "provider"}
         provider = (
             os.environ.get(IMPLEMENTATION_PROVIDER_ENV, "").strip().lower() or "auto"
         )
@@ -6491,7 +6685,7 @@ class PortalImplementationDaemon:
         Provider labels isolate codex/goose/grok latches from each other.
         """
 
-        now = datetime.now(timezone.utc)
+        now = _provider_capacity_now()
         current_labels = self._current_implementation_provider_labels()
         for event in reversed(self._iter_events()):
             event_type = str(event.get("type") or "")
@@ -6538,10 +6732,27 @@ class PortalImplementationDaemon:
         cleanup_result: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         finished_at = utc_now()
-        retry_at = datetime.fromtimestamp(
-            time.time() + self._provider_capacity_backoff_seconds(),
-            tz=timezone.utc,
-        ).isoformat()
+        now = _provider_capacity_now()
+        if now.tzinfo is None:
+            now = now.replace(tzinfo=timezone.utc)
+        else:
+            now = now.astimezone(timezone.utc)
+        declared_retry_at = parse_timestamp(
+            str(failure.get("retry_at") or "")
+        )
+        if declared_retry_at is not None:
+            declared_retry_at = declared_retry_at.astimezone(timezone.utc)
+        if declared_retry_at is not None and declared_retry_at > now:
+            retry_at = declared_retry_at.isoformat()
+            retry_at_source = "provider_declared"
+        else:
+            retry_at = (
+                now
+                + timedelta(
+                    seconds=self._provider_capacity_backoff_seconds()
+                )
+            ).isoformat()
+            retry_at_source = "configured_backoff"
         state.last_implementation_started_at = started_at
         state.last_implementation_finished_at = finished_at
         state.last_implementation_returncode = returncode
@@ -6563,6 +6774,7 @@ class PortalImplementationDaemon:
             "providers": list(failure.get("providers") or []),
             "evidence": list(failure.get("evidence") or []),
             "retry_at": retry_at,
+            "retry_at_source": retry_at_source,
             "attempt_consumed": False,
         }
         if worktree_path is not None:
@@ -6907,7 +7119,10 @@ class PortalImplementationDaemon:
                     "protected_path_violation": protected_path_violation,
                 }
             elif completed.returncode != 0:
-                provider_failure = self._provider_capacity_failure_from_log(log_path)
+                provider_failure = self._provider_capacity_failure_from_log(
+                    log_path,
+                    command=command,
+                )
                 if provider_failure.get("exhausted", False):
                     protected_path_violation = (
                         self._finalize_implementation_protected_path_fence(
@@ -10789,7 +11004,10 @@ class PortalImplementationDaemon:
                     failed_preservation_result.get("cleanup_result") or cleanup_result
                 )
             elif returncode != 0:
-                provider_failure = self._provider_capacity_failure_from_log(log_path)
+                provider_failure = self._provider_capacity_failure_from_log(
+                    log_path,
+                    command=command,
+                )
                 protected_path_violation = (
                     self._finalize_implementation_protected_path_fence(
                         task=task,
