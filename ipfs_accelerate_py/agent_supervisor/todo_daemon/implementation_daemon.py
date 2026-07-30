@@ -120,7 +120,7 @@ from ..validation_scheduler import (
 from .diagnostics import summarize_test_failure
 from .runner import TodoDaemonHooks, TodoDaemonRunner
 from .supervisor_runtime import run_process_group_stream
-from .worktrees import WorktreeLease, WorktreePool
+from .worktrees import WORKTREE_POOL_SCHEMA, WorktreeLease, WorktreePool
 
 REPO_ROOT = Path.cwd()
 
@@ -4622,7 +4622,382 @@ class PortalImplementationDaemon:
         )
         return result
 
-    def reconcile_quiesced_active_attempt(self) -> dict[str, Any]:
+    @staticmethod
+    def _shutdown_metadata_pid(metadata: Mapping[str, Any] | None) -> int:
+        try:
+            return int((metadata or {}).get("pid") or 0)
+        except (TypeError, ValueError):
+            return 0
+
+    def _shutdown_claim_mismatch_reason(
+        self,
+        metadata: Mapping[str, Any] | None,
+        *,
+        expected_kind: str,
+        owner_pid: int,
+        state: PortalTaskState,
+        resource_path: str = "",
+    ) -> str:
+        """Return why a shutdown claim is not exactly owned by ``state``."""
+
+        if metadata is None:
+            return "malformed_metadata"
+        if str(metadata.get("kind") or "") != expected_kind:
+            return "kind_mismatch"
+        if self._shutdown_metadata_pid(metadata) != owner_pid:
+            return "owner_pid_mismatch"
+        if process_is_running(owner_pid):
+            return "owner_still_active"
+
+        state_dir = str(metadata.get("state_dir") or "").strip()
+        if not state_dir:
+            return "state_dir_missing"
+        try:
+            if Path(state_dir).resolve() != self.state_path.parent.resolve():
+                return "state_dir_mismatch"
+        except (OSError, RuntimeError):
+            return "state_dir_invalid"
+
+        repo_root = str(metadata.get("repo_root") or "").strip()
+        if repo_root:
+            try:
+                if Path(repo_root).resolve() != self.repo_root.resolve():
+                    return "repo_root_mismatch"
+            except (OSError, RuntimeError):
+                return "repo_root_invalid"
+
+        if (
+            state.active_task_id
+            and str(metadata.get("task_id") or "") != state.active_task_id
+        ):
+            return "task_id_mismatch"
+        if (
+            state.active_task_cid
+            and str(metadata.get("canonical_task_cid") or "")
+            != state.active_task_cid
+        ):
+            return "canonical_task_cid_mismatch"
+        try:
+            claim_attempt = int(metadata.get("attempt") or 0)
+        except (TypeError, ValueError):
+            return "attempt_invalid"
+        if state.active_attempt <= 0 or claim_attempt != state.active_attempt:
+            return "attempt_mismatch"
+        if not str(metadata.get("lease_id") or ""):
+            return "lease_id_missing"
+        if resource_path:
+            if (
+                str(metadata.get("resource_kind") or "") != "submodule"
+                or str(metadata.get("resource_path") or "") != resource_path
+            ):
+                return "resource_path_mismatch"
+        return ""
+
+    def _shutdown_pool_state_mismatch_reason(
+        self,
+        pool: WorktreePool,
+        pool_state: Mapping[str, Any] | None,
+        *,
+        owner_pid: int,
+        state: PortalTaskState,
+        workspace_path: Path,
+    ) -> str:
+        """Return why a pooled lease is not the interrupted attempt's lease."""
+
+        if not isinstance(pool_state, Mapping):
+            return "malformed_metadata"
+        if pool_state.get("schema") != WORKTREE_POOL_SCHEMA:
+            return "schema_mismatch"
+        lease_token = str(pool_state.get("lease_token") or "")
+        if not lease_token:
+            return "lease_token_missing"
+        if pool_state.get("state") not in {"leased", "initializing"}:
+            return "lease_state_mismatch"
+        try:
+            lease_pid = int(pool_state.get("lease_pid") or 0)
+        except (TypeError, ValueError):
+            return "lease_pid_invalid"
+        if lease_pid != owner_pid:
+            return "owner_pid_mismatch"
+
+        raw_path = str(pool_state.get("path") or "").strip()
+        if not raw_path:
+            return "workspace_path_missing"
+        try:
+            candidate_path = Path(raw_path).resolve()
+            candidate_path.relative_to(pool.worktree_root)
+        except (OSError, RuntimeError, ValueError):
+            return "workspace_path_invalid"
+        if candidate_path == pool.worktree_root:
+            return "workspace_path_invalid"
+        if candidate_path != workspace_path:
+            return "workspace_path_mismatch"
+
+        raw_repo_root = str(pool_state.get("repo_root") or "").strip()
+        if not raw_repo_root:
+            return "repo_root_missing"
+        try:
+            if Path(raw_repo_root).resolve() != self.repo_root.resolve():
+                return "repo_root_mismatch"
+        except (OSError, RuntimeError):
+            return "repo_root_invalid"
+        if (
+            state.active_branch
+            and str(pool_state.get("branch") or "") != state.active_branch
+        ):
+            return "branch_mismatch"
+        return ""
+
+    def _detach_shutdown_pool_lease(
+        self,
+        state: PortalTaskState,
+        *,
+        owner_pid: int,
+    ) -> dict[str, Any]:
+        """Detach dead pool metadata while preserving the candidate checkout."""
+
+        result: dict[str, Any] = {
+            "detached": False,
+            "reason": "pool_state_not_found",
+            "workspace_path": state.active_worktree_path,
+            "workspace_preserved": False,
+            "preserved": [],
+        }
+        raw_workspace_path = str(state.active_worktree_path or "").strip()
+        if not raw_workspace_path:
+            result["reason"] = "active_worktree_path_missing"
+            return result
+        try:
+            workspace_path = Path(raw_workspace_path).resolve()
+            workspace_path.relative_to(self.worktree_root)
+        except (OSError, RuntimeError, ValueError):
+            result["reason"] = "active_worktree_path_invalid"
+            return result
+        if workspace_path == self.worktree_root:
+            result["reason"] = "active_worktree_path_invalid"
+            return result
+
+        result["workspace_path"] = str(workspace_path)
+        result["workspace_preserved"] = workspace_path.exists()
+        pool = self.worktree_pool
+        if pool is None:
+            state_root = self.worktree_root / ".pool-state"
+            if not state_root.exists():
+                result["reason"] = "pool_state_directory_missing"
+                return result
+            pool = WorktreePool(
+                repo_root=self.repo_root,
+                worktree_root=self.worktree_root,
+            )
+
+        for candidate in pool._states():
+            raw_candidate_path = str(candidate.get("path") or "").strip()
+            try:
+                candidate_path = Path(raw_candidate_path).resolve()
+            except (OSError, RuntimeError):
+                continue
+            if candidate_path != workspace_path:
+                continue
+
+            mismatch = self._shutdown_pool_state_mismatch_reason(
+                pool,
+                candidate,
+                owner_pid=owner_pid,
+                state=state,
+                workspace_path=workspace_path,
+            )
+            entry_id = str(candidate.get("lease_token") or "")
+            entry = {
+                "entry_id": entry_id,
+                "path": str(candidate_path),
+            }
+            if mismatch:
+                result["preserved"].append({**entry, "reason": mismatch})
+                result["reason"] = "pool_state_preserved"
+                continue
+
+            lock_path = pool._try_claim(candidate)
+            if lock_path is None:
+                result["preserved"].append(
+                    {**entry, "reason": "lease_or_claim_owner_active"}
+                )
+                result["reason"] = "pool_state_preserved"
+                continue
+            try:
+                current = pool._read_state(entry_id)
+                mismatch = (
+                    "malformed_metadata"
+                    if not isinstance(current, Mapping)
+                    else (
+                        "lease_token_mismatch"
+                        if str(current.get("lease_token") or "") != entry_id
+                        else self._shutdown_pool_state_mismatch_reason(
+                            pool,
+                            current,
+                            owner_pid=owner_pid,
+                            state=state,
+                            workspace_path=workspace_path,
+                        )
+                    )
+                )
+                if mismatch:
+                    result["preserved"].append(
+                        {**entry, "reason": f"changed_during_cleanup:{mismatch}"}
+                    )
+                    result["reason"] = "pool_state_preserved"
+                    continue
+                pool._state_path(entry_id).unlink()
+                result.update(
+                    {
+                        "detached": True,
+                        "reason": "dead_lease_metadata_detached",
+                        "entry_id": entry_id,
+                        "workspace_preserved": workspace_path.exists(),
+                    }
+                )
+                return result
+            except (OSError, RuntimeError) as exc:
+                result["preserved"].append(
+                    {
+                        **entry,
+                        "reason": "pool_state_cleanup_failed",
+                        "error_type": type(exc).__name__,
+                    }
+                )
+                result["reason"] = "pool_state_preserved"
+                return result
+            finally:
+                pool._remove_lock(lock_path)
+        return result
+
+    def _reconcile_shutdown_coordination_artifacts(
+        self,
+        state: PortalTaskState,
+        *,
+        expected_owner_pid: int,
+        implementation_lock: Mapping[str, Any] | None,
+    ) -> dict[str, Any]:
+        """Remove only coordination artifacts proven to belong to a dead owner."""
+
+        lock_owner_pid = self._shutdown_metadata_pid(implementation_lock)
+        owner_pid = int(expected_owner_pid or lock_owner_pid or 0)
+        receipt: dict[str, Any] = {
+            "attempted": False,
+            "owner_pid": owner_pid,
+            "task_claims": {"cleared": [], "preserved": []},
+            "resource_claims": {"cleared": [], "preserved": []},
+            "worktree_pool": {
+                "detached": False,
+                "reason": "not_attempted",
+                "workspace_path": state.active_worktree_path,
+                "workspace_preserved": bool(
+                    state.active_worktree_path
+                    and Path(state.active_worktree_path).exists()
+                ),
+                "preserved": [],
+            },
+        }
+        if owner_pid <= 0:
+            receipt["reason"] = "owner_pid_unavailable"
+            return receipt
+        if (
+            expected_owner_pid > 0
+            and lock_owner_pid > 0
+            and expected_owner_pid != lock_owner_pid
+        ):
+            receipt["reason"] = "implementation_lock_owner_pid_mismatch"
+            return receipt
+        if process_is_running(owner_pid):
+            receipt["reason"] = "owner_still_active"
+            return receipt
+        if (
+            state.active_attempt <= 0
+            or not (state.active_task_id or state.active_task_cid)
+        ):
+            receipt["reason"] = "active_attempt_identity_incomplete"
+            return receipt
+
+        receipt["attempted"] = True
+        receipt["reason"] = "dead_owner_artifacts_reconciled"
+        task_claim_paths: list[Path] = []
+        if state.active_task_cid:
+            task_claim_paths.append(
+                self._implementation_task_claim_path(
+                    state.active_task_id,
+                    canonical_task_cid=state.active_task_cid,
+                )
+            )
+        if state.active_task_id:
+            task_claim_paths.append(
+                self._implementation_task_claim_path(state.active_task_id)
+            )
+        for claim_path in dict.fromkeys(task_claim_paths):
+            if not claim_path.exists():
+                continue
+            metadata = load_json_dict(claim_path)
+            mismatch = self._shutdown_claim_mismatch_reason(
+                metadata,
+                expected_kind=IMPLEMENTATION_TASK_CLAIM_LOCK_KIND,
+                owner_pid=owner_pid,
+                state=state,
+            )
+            item = {"path": str(claim_path)}
+            if mismatch:
+                receipt["task_claims"]["preserved"].append(
+                    {**item, "reason": mismatch}
+                )
+                continue
+            if self._release_implementation_task_claim(claim_path, metadata):
+                receipt["task_claims"]["cleared"].append(item)
+            else:
+                receipt["task_claims"]["preserved"].append(
+                    {**item, "reason": "changed_during_cleanup"}
+                )
+
+        for resource_path in self.worktree_submodule_paths:
+            claim_path = self._implementation_resource_claim_path(
+                resource_path
+            )
+            if not claim_path.exists():
+                continue
+            metadata = load_json_dict(claim_path)
+            mismatch = self._shutdown_claim_mismatch_reason(
+                metadata,
+                expected_kind=IMPLEMENTATION_RESOURCE_CLAIM_LOCK_KIND,
+                owner_pid=owner_pid,
+                state=state,
+                resource_path=resource_path,
+            )
+            item = {
+                "path": str(claim_path),
+                "resource_path": resource_path,
+            }
+            if mismatch:
+                receipt["resource_claims"]["preserved"].append(
+                    {**item, "reason": mismatch}
+                )
+                continue
+            if self._release_implementation_resource_claim(
+                claim_path,
+                metadata,
+            ):
+                receipt["resource_claims"]["cleared"].append(item)
+            else:
+                receipt["resource_claims"]["preserved"].append(
+                    {**item, "reason": "changed_during_cleanup"}
+                )
+
+        receipt["worktree_pool"] = self._detach_shutdown_pool_lease(
+            state,
+            owner_pid=owner_pid,
+        )
+        return receipt
+
+    def reconcile_quiesced_active_attempt(
+        self,
+        *,
+        expected_owner_pid: int = 0,
+    ) -> dict[str, Any]:
         """Finalize an interrupted attempt after proving no worker owns it.
 
         Supervisor shutdown can terminate the daemon between provider exit and
@@ -4651,6 +5026,23 @@ class PortalImplementationDaemon:
             return result
 
         lock_path = self._implementation_lock_path()
+        # Lock replacement uses this same update guard.  Retain it through the
+        # state transition so a restarting daemon cannot publish a new lease
+        # between our quiescence proof and stale-owner cleanup.
+        with serialized_lock_update(lock_path):
+            return self._reconcile_quiesced_active_attempt_locked(
+                lock_path=lock_path,
+                expected_owner_pid=max(0, int(expected_owner_pid or 0)),
+            )
+
+    def _reconcile_quiesced_active_attempt_locked(
+        self,
+        *,
+        lock_path: Path,
+        expected_owner_pid: int,
+    ) -> dict[str, Any]:
+        """Reconcile while holding the implementation-lease update guard."""
+
         lock = load_json_dict(lock_path)
         if lock_path.exists() and lock is None:
             result = {
@@ -4709,8 +5101,48 @@ class PortalImplementationDaemon:
             or state.active_worktree_path
             or state.active_branch
         )
+        coordination_cleanup: dict[str, Any] = {
+            "attempted": False,
+            "reason": "no_active_state",
+        }
         attempt_recovery: dict[str, Any] = {}
         if had_active_state:
+            # A non-cooperating writer may still replace the lease file.
+            # Revalidate the exact snapshot immediately before mutating state.
+            current_lock = load_json_dict(lock_path)
+            if lock_path.exists() != (lock is not None) or current_lock != lock:
+                result = {
+                    "reconciled": False,
+                    "blocked": True,
+                    "reason": "implementation_lock_changed_during_reconciliation",
+                    "lock_path": str(lock_path),
+                }
+                self._record_event(
+                    "implementation_shutdown_reconciliation_blocked",
+                    result,
+                )
+                return result
+            coordination_cleanup = (
+                self._reconcile_shutdown_coordination_artifacts(
+                    state,
+                    expected_owner_pid=expected_owner_pid,
+                    implementation_lock=lock,
+                )
+            )
+            current_lock = load_json_dict(lock_path)
+            if lock_path.exists() != (lock is not None) or current_lock != lock:
+                result = {
+                    "reconciled": False,
+                    "blocked": True,
+                    "reason": "implementation_lock_changed_during_reconciliation",
+                    "lock_path": str(lock_path),
+                    "coordination_cleanup": coordination_cleanup,
+                }
+                self._record_event(
+                    "implementation_shutdown_reconciliation_blocked",
+                    result,
+                )
+                return result
             attempt_recovery = consume_stale_active_attempt(state)
             self._clear_active_execution_state(state, clear_task=True)
             reconciled_at = utc_now()
@@ -4722,6 +5154,20 @@ class PortalImplementationDaemon:
 
         stale_lock_cleared = False
         if lock_path.exists():
+            current_lock = load_json_dict(lock_path)
+            if current_lock != lock:
+                result = {
+                    "reconciled": False,
+                    "blocked": True,
+                    "reason": "implementation_lock_changed_during_reconciliation",
+                    "lock_path": str(lock_path),
+                    "state_reconciled": had_active_state,
+                }
+                self._record_event(
+                    "implementation_shutdown_reconciliation_blocked",
+                    result,
+                )
+                return result
             stale_lock_cleared = self._clear_stale_lock(
                 lock_path,
                 lock_kind="implementation",
@@ -4743,6 +5189,7 @@ class PortalImplementationDaemon:
             "protected_path_reconciliation": (
                 protected_path_reconciliation
             ),
+            "coordination_cleanup": coordination_cleanup,
             "stale_lock_cleared": stale_lock_cleared,
         }
         self._record_event(
@@ -4843,6 +5290,16 @@ class PortalImplementationDaemon:
                 == repair_task_id
             ):
                 continue
+            source_task = tasks_by_id.get(source_task_id)
+            if (
+                source_task is not None
+                and normalize_status(source_task.status) == "completed"
+            ):
+                # A peer lane may retire a generated repair after the source
+                # task completed through its normal merge path.  That no-op
+                # retirement must not erase the completed task's attempt
+                # history or queue outcome.
+                continue
             if (
                 state.implementation_in_progress
                 and state.active_task_id == source_task_id
@@ -4858,7 +5315,6 @@ class PortalImplementationDaemon:
                 continue
 
             canonical_task_cids: set[str] = set()
-            source_task = tasks_by_id.get(source_task_id)
             if source_task is not None:
                 canonical_task_cids.add(self._canonical_ref(source_task))
             stored_identity = state.task_identities.get(source_task_id, {})

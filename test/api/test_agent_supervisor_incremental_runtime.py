@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from hashlib import sha256
 import json
+import os
 import subprocess
+import threading
 import time
 from dataclasses import asdict
 from pathlib import Path
@@ -430,6 +432,90 @@ def test_dirty_workspace_is_discarded_instead_of_shared(tmp_path: Path) -> None:
     assert next_lease.reused is False
     assert not (next_lease.path / "secret.txt").exists()
     assert next_lease.release()["pooled"] is True
+
+
+def test_stale_pool_lock_takeover_preserves_a_live_contender(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    (repo / "app.py").write_text("VALUE = 'clean'\n", encoding="utf-8")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "seed")
+    worktree_root = tmp_path / "pool"
+    first_pool = WorktreePool(
+        repo_root=repo,
+        worktree_root=worktree_root,
+    )
+    second_pool = WorktreePool(
+        repo_root=repo,
+        worktree_root=worktree_root,
+    )
+    state = {
+        "lease_token": "stale-takeover-race",
+        "state": "leased",
+        "lease_pid": 0,
+    }
+    first_pool.state_root.mkdir(parents=True, exist_ok=True)
+    lock_path = first_pool._lock_path(state)
+    lock_path.write_text(json.dumps({"pid": 0}), encoding="utf-8")
+
+    stale_remove_reached = threading.Event()
+    allow_stale_remove = threading.Event()
+    second_finished = threading.Event()
+    original_remove = first_pool._remove_lock
+
+    def pause_before_stale_remove(path: Path) -> None:
+        stale_remove_reached.set()
+        if not allow_stale_remove.wait(timeout=5):
+            raise AssertionError("timed out waiting to resume stale takeover")
+        original_remove(path)
+
+    monkeypatch.setattr(first_pool, "_remove_lock", pause_before_stale_remove)
+    results: dict[str, Path | None] = {}
+    errors: list[BaseException] = []
+
+    def claim(
+        name: str,
+        pool: WorktreePool,
+        *,
+        finished: threading.Event | None = None,
+    ) -> None:
+        try:
+            results[name] = pool._try_claim(state)
+        except Exception as exc:  # pragma: no cover - asserted below
+            errors.append(exc)
+        finally:
+            if finished is not None:
+                finished.set()
+
+    first = threading.Thread(
+        target=claim,
+        args=("first", first_pool),
+    )
+    first.start()
+    assert stale_remove_reached.wait(timeout=5)
+
+    second = threading.Thread(
+        target=claim,
+        args=("second", second_pool),
+        kwargs={"finished": second_finished},
+    )
+    second.start()
+    contender_was_serialized = not second_finished.wait(timeout=0.2)
+    allow_stale_remove.set()
+    first.join(timeout=5)
+    second.join(timeout=5)
+
+    assert not first.is_alive()
+    assert not second.is_alive()
+    assert errors == []
+    assert contender_was_serialized is True
+    assert results["first"] == lock_path
+    assert results["second"] is None
+    assert json.loads(lock_path.read_text(encoding="utf-8"))["pid"] == os.getpid()
+    original_remove(lock_path)
 
 
 def test_implementation_daemon_uses_stable_pooled_path_for_populated_submodules(tmp_path: Path) -> None:

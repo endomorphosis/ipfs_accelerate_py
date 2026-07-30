@@ -15,6 +15,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Iterator, Mapping, Optional, Sequence
 
+from ..checkout_lock import serialized_lock_update
 from .engine import CommandResult, run_command
 from .git_utils import (
     git_worktree_paths_from_porcelain as _shared_git_worktree_paths_from_porcelain,
@@ -1010,32 +1011,42 @@ class WorktreePool:
 
     def _try_claim(self, state: Mapping[str, Any]) -> Optional[Path]:
         lock_path = self._lock_path(state)
-        if state.get("state") != "idle":
+        guard_identity = hashlib.sha256(
+            str(lock_path.resolve(strict=False)).encode("utf-8")
+        ).hexdigest()
+        guard_target = (
+            self.state_root
+            / ".claim-update-guards"
+            / guard_identity
+        )
+        with serialized_lock_update(guard_target):
             try:
-                state_owner_pid = int(state.get("lease_pid") or 0)
-            except (TypeError, ValueError):
-                state_owner_pid = 0
-            if state_owner_pid and pid_is_alive(state_owner_pid):
-                return None
-        try:
-            self._create_lock(lock_path)
-            return lock_path
-        except FileExistsError:
-            lock = read_json_object(lock_path)
-            try:
-                owner_pid = int(lock.get("pid") or 0)
-            except (TypeError, ValueError):
-                owner_pid = 0
-            if owner_pid and pid_is_alive(owner_pid):
-                return None
-            # A dead claimant never authorizes immediate reuse.  Reclaiming the
-            # lock merely permits the normal clean/stale validation below.
-            self._remove_lock(lock_path)
-            try:
+                if state.get("state") != "idle":
+                    try:
+                        state_owner_pid = int(state.get("lease_pid") or 0)
+                    except (TypeError, ValueError):
+                        state_owner_pid = 0
+                    if state_owner_pid and pid_is_alive(state_owner_pid):
+                        return None
                 self._create_lock(lock_path)
                 return lock_path
             except FileExistsError:
-                return None
+                lock = read_json_object(lock_path)
+                try:
+                    owner_pid = int(lock.get("pid") or 0)
+                except (TypeError, ValueError):
+                    owner_pid = 0
+                if owner_pid and pid_is_alive(owner_pid):
+                    return None
+                # Every pool contender uses this entry-specific advisory guard.
+                # Consequently the stale record cannot be replaced between
+                # this owner check and unlink by another `_try_claim` caller.
+                self._remove_lock(lock_path)
+                try:
+                    self._create_lock(lock_path)
+                    return lock_path
+                except FileExistsError:
+                    return None
 
     @staticmethod
     def _remove_lock(lock_path: Path) -> None:

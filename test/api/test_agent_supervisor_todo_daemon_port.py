@@ -8754,7 +8754,9 @@ def test_implementation_supervisor_signal_cleans_managed_daemon_before_exit(
     monkeypatch.setattr(
         supervisor,
         "_reconcile_interrupted_implementation_after_shutdown",
-        lambda: reconciliation_calls.append(True)
+        lambda *, expected_owner_pid: reconciliation_calls.append(
+            expected_owner_pid
+        )
         or {
             "reconciled": True,
             "blocked": False,
@@ -8772,7 +8774,7 @@ def test_implementation_supervisor_signal_cleans_managed_daemon_before_exit(
 
     assert exc_info.value.code == 128 + signal.SIGTERM
     assert cleanup_calls == [True]
-    assert reconciliation_calls == [True]
+    assert reconciliation_calls == [4321]
     assert recorded == [
         (
             "supervisor_signal_shutdown",
