@@ -20209,7 +20209,7 @@ class PortalImplementationDaemon:
         if declared_output_invariant.get("passed") is not True:
             result: dict[str, Any] = {
                 "committed": False,
-                "reason": "declared_outputs_missing_or_untracked",
+                "reason": "expected_output_ignored_or_unstaged",
                 "declared_output_invariant": declared_output_invariant,
             }
             if submodule_results:
@@ -22631,6 +22631,518 @@ class PortalImplementationDaemon:
             "examination_id": content_identity(examination),
         }
 
+    def _exact_proposal_expected_output_paths(
+        self,
+        task: PortalTask,
+    ) -> tuple[str, ...]:
+        """Return safe, exact output declarations eligible for enforcement.
+
+        Directory and glob declarations retain their existing scope semantics,
+        but they are never candidates for force-add.  This gate intentionally
+        handles only literal repository-relative paths so a declared output
+        can never become a broad Git pathspec.
+        """
+
+        completion_scope = completion_gap_edit_scope(
+            task,
+            repo_root=self.repo_root,
+        )
+        raw_paths = (
+            tuple(completion_scope)
+            if completion_scope is not None
+            else task_declared_output_paths(task)
+        )
+        normalized: set[str] = set()
+        for raw_path in raw_paths:
+            path = str(raw_path or "").strip().replace("\\", "/")
+            while path.startswith("./"):
+                path = path[2:]
+            if (
+                not path
+                or path in {".", ".."}
+                or path.startswith("/")
+                or path.endswith("/")
+                or any(character in path for character in "*?[")
+                or any(
+                    ord(character) < 32 or ord(character) == 127
+                    for character in path
+                )
+                or not self._repo_relative_path_safe(path)
+                or posixpath.normpath(path) != path
+            ):
+                continue
+            normalized.add(path)
+        return tuple(sorted(normalized))
+
+    @staticmethod
+    def _literal_git_paths(
+        command: Sequence[str],
+        *,
+        cwd: Path,
+    ) -> tuple[str, ...]:
+        """Run one read-only literal-path Git query and decode NUL paths."""
+
+        result = subprocess.run(
+            ["git", "--literal-pathspecs", *command],
+            cwd=cwd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+        if result.returncode != 0:
+            return ()
+        return tuple(
+            item.decode("utf-8", errors="surrogateescape")
+            for item in result.stdout.split(b"\0")
+            if item
+        )
+
+    def _output_present_at_baseline(
+        self,
+        workspace_path: Path,
+        *,
+        baseline_ref: str,
+        relative: str,
+    ) -> bool:
+        """Return whether an exact output or its tree exists at the baseline."""
+
+        if not baseline_ref:
+            return False
+        submodule_path = next(
+            (
+                path
+                for path in sorted(
+                    (
+                        str(value).strip("/")
+                        for value in self.worktree_submodule_paths
+                        if str(value).strip("/")
+                    ),
+                    key=lambda value: (-len(value.split("/")), value),
+                )
+                if relative.startswith(f"{path}/")
+            ),
+            "",
+        )
+        if submodule_path:
+            child_ref = subprocess.run(
+                [
+                    "git",
+                    "rev-parse",
+                    f"{baseline_ref}:{submodule_path}",
+                ],
+                cwd=workspace_path,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+            )
+            child_root = workspace_path / submodule_path
+            child_relative = relative[len(submodule_path) + 1 :]
+            if (
+                child_ref.returncode != 0
+                or not child_ref.stdout.strip()
+                or not self._is_git_worktree(child_root)
+            ):
+                return False
+            paths = self._literal_git_paths(
+                (
+                    "ls-tree",
+                    "-r",
+                    "--name-only",
+                    "-z",
+                    child_ref.stdout.strip(),
+                    "--",
+                    child_relative,
+                ),
+                cwd=child_root,
+            )
+            return any(
+                path == child_relative
+                or path.startswith(f"{child_relative.rstrip('/')}/")
+                for path in paths
+            )
+        paths = self._literal_git_paths(
+            (
+                "ls-tree",
+                "-r",
+                "--name-only",
+                "-z",
+                baseline_ref,
+                "--",
+                relative,
+            ),
+            cwd=workspace_path,
+        )
+        return any(
+            path == relative
+            or path.startswith(f"{relative.rstrip('/')}/")
+            for path in paths
+        )
+
+    def _exact_path_is_indexed(
+        self,
+        workspace_path: Path,
+        relative: str,
+    ) -> bool:
+        """Return whether the index contains the exact literal path."""
+
+        records = self._literal_git_paths(
+            ("ls-files", "-z", "--", relative),
+            cwd=workspace_path,
+        )
+        return relative in records
+
+    @staticmethod
+    def _path_crosses_live_symlink(
+        workspace_path: Path,
+        relative: str,
+    ) -> bool:
+        """Refuse force-add through any live symlink component."""
+
+        current = workspace_path
+        for part in PurePosixPath(relative).parts:
+            current = current / part
+            try:
+                identity = current.lstat()
+            except FileNotFoundError:
+                break
+            except OSError:
+                return True
+            if stat_module.S_ISLNK(identity.st_mode):
+                return True
+        return False
+
+    def _prepare_proposal_expected_outputs(
+        self,
+        workspace_path: Path,
+        task: PortalTask,
+        *,
+        baseline_ref: str,
+        scope_paths: Sequence[str],
+    ) -> dict[str, Any]:
+        """Stage only exact ignored outputs and capture fail-closed evidence."""
+
+        expected_paths = self._exact_proposal_expected_output_paths(task)
+        protected_paths = tuple(
+            str(path).strip("/")
+            for path in self.implementation_protected_paths
+            if str(path).strip("/")
+        )
+        submodule_paths = tuple(
+            str(path).strip("/")
+            for path in self.worktree_submodule_paths
+            if str(path).strip("/")
+        )
+        default_forbidden = (".git", ".git/", ".env", ".ssh/")
+        checks: list[dict[str, Any]] = []
+
+        for relative in expected_paths:
+            target = workspace_path / relative
+            exists = target.exists() or target.is_symlink()
+            baseline_present = self._output_present_at_baseline(
+                workspace_path,
+                baseline_ref=baseline_ref,
+                relative=relative,
+            )
+            indexed = self._exact_path_is_indexed(
+                workspace_path,
+                relative,
+            )
+            ignored_result = subprocess.run(
+                [
+                    "git",
+                    "check-ignore",
+                    "--no-index",
+                    "-z",
+                    "--stdin",
+                ],
+                cwd=workspace_path,
+                input=relative.encode(
+                    "utf-8",
+                    errors="surrogateescape",
+                )
+                + b"\0",
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+            )
+            ignored = ignored_result.returncode == 0
+            protected = any(
+                self._path_matches_scope(relative, path)
+                for path in protected_paths
+            )
+            forbidden = any(
+                self._path_matches_scope(relative, path)
+                for path in default_forbidden
+            )
+            submodule_bound = any(
+                self._path_matches_prefix(relative, path)
+                for path in submodule_paths
+            )
+            symlink_bound = self._path_crosses_live_symlink(
+                workspace_path,
+                relative,
+            )
+            in_scope = any(
+                self._path_matches_scope(relative, path)
+                for path in scope_paths
+            )
+            regular_file = bool(
+                exists and target.is_file() and not target.is_symlink()
+            )
+            needs_candidate = not baseline_present
+            force_stage_required = bool(
+                needs_candidate and ignored and not indexed
+            )
+            force_stage_attempted = False
+            force_stage_succeeded = False
+            issue = ""
+
+            if not exists:
+                issue = "expected_output_missing"
+            elif force_stage_required:
+                if (
+                    protected
+                    or forbidden
+                    or submodule_bound
+                    or symlink_bound
+                    or not in_scope
+                    or not regular_file
+                ):
+                    issue = "expected_output_force_add_forbidden"
+                else:
+                    force_stage_attempted = True
+                    staged = subprocess.run(
+                        [
+                            "git",
+                            "--literal-pathspecs",
+                            "add",
+                            "--force",
+                            "--",
+                            relative,
+                        ],
+                        cwd=workspace_path,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        check=False,
+                    )
+                    force_stage_succeeded = bool(
+                        staged.returncode == 0
+                        and self._exact_path_is_indexed(
+                            workspace_path,
+                            relative,
+                        )
+                    )
+                    if not force_stage_succeeded:
+                        issue = "expected_output_force_add_failed"
+
+            checks.append(
+                {
+                    "path": relative,
+                    "exists": exists,
+                    "baseline_present": baseline_present,
+                    "indexed_before": indexed,
+                    "ignored": ignored,
+                    "in_scope": in_scope,
+                    "protected": protected,
+                    "forbidden": forbidden,
+                    "submodule_bound": submodule_bound,
+                    "symlink_bound": symlink_bound,
+                    "regular_file": regular_file,
+                    "needs_candidate": needs_candidate,
+                    "force_stage_required": force_stage_required,
+                    "force_stage_attempted": force_stage_attempted,
+                    "force_stage_succeeded": force_stage_succeeded,
+                    "issue": issue,
+                }
+            )
+
+        staged_paths = set(self._staged_worktree_paths(workspace_path))
+        for check in checks:
+            relative = str(check["path"])
+            check["staged"] = relative in staged_paths
+            if (
+                check["force_stage_required"]
+                and (
+                    not check["staged"]
+                    or not self._exact_path_is_indexed(
+                        workspace_path,
+                        relative,
+                    )
+                )
+                and not check["issue"]
+            ):
+                check["issue"] = "expected_output_ignored_or_unstaged"
+
+        return {
+            "schema": (
+                "ipfs_accelerate_py/agent-supervisor/"
+                "proposal-expected-output-preflight@1"
+            ),
+            "expected_paths": list(expected_paths),
+            "staged_paths": sorted(staged_paths),
+            "checks": checks,
+            "proof_authoritative": False,
+            "completion_authoritative": False,
+        }
+
+    def _proposal_expected_output_issues(
+        self,
+        preflight: Mapping[str, Any],
+        *,
+        changed_paths: Sequence[str],
+        candidate_entries: Sequence[Any] = (),
+    ) -> tuple[dict[str, str], ...]:
+        """Compare expected filesystem, candidate, and staged path evidence."""
+
+        expected_paths = {
+            str(path).strip("/")
+            for path in (preflight.get("expected_paths") or ())
+            if str(path).strip("/")
+        }
+        authorized_renames = {
+            (
+                str(getattr(entry, "old_path", "") or "").strip("/"),
+                str(getattr(entry, "new_path", "") or "").strip("/"),
+            )
+            for entry in candidate_entries
+            if str(
+                getattr(
+                    getattr(entry, "change_kind", ""),
+                    "value",
+                    getattr(entry, "change_kind", ""),
+                )
+                or ""
+            )
+            == "rename"
+        }
+        changed = tuple(
+            sorted(
+                {
+                    str(path).strip("/")
+                    for path in changed_paths
+                    if str(path).strip("/")
+                }
+            )
+        )
+        issues: list[dict[str, str]] = []
+        for raw_check in preflight.get("checks") or ():
+            if not isinstance(raw_check, Mapping):
+                continue
+            relative = str(raw_check.get("path") or "").strip("/")
+            if not relative:
+                continue
+            reason = str(raw_check.get("issue") or "").strip()
+            if (
+                reason == "expected_output_missing"
+                and any(
+                    old_path == relative
+                    and new_path in expected_paths
+                    for old_path, new_path in authorized_renames
+                )
+            ):
+                # Output declarations also form the immutable rename fence.
+                # When both exact endpoints are declared, the old path is
+                # intentionally absent from the candidate filesystem.
+                reason = ""
+            represented = any(
+                self._path_matches_scope(path, relative)
+                for path in changed
+            )
+            if (
+                not reason
+                and raw_check.get("needs_candidate") is True
+                and not represented
+            ):
+                reason = "expected_output_absent_from_proposal"
+            if (
+                not reason
+                and raw_check.get("force_stage_required") is True
+                and raw_check.get("staged") is not True
+            ):
+                reason = "expected_output_ignored_or_unstaged"
+            if reason:
+                issues.append({"path": relative, "reason": reason})
+        return tuple(
+            {
+                "path": path,
+                "reason": reason,
+            }
+            for path, reason in sorted(
+                {
+                    (
+                        str(issue["path"]),
+                        str(issue["reason"]),
+                    )
+                    for issue in issues
+                }
+            )
+        )
+
+    @staticmethod
+    def _reject_proposal_for_expected_output_issues(
+        proposal_validation: Any,
+        issues: Sequence[Mapping[str, str]],
+    ) -> Any:
+        """Attach stable typed findings to a content-bound proposal result."""
+
+        if not issues:
+            return proposal_validation
+        from ..validation.proposal_validation import (
+            ProposalFindingCode,
+            ProposalGate,
+            ProposalValidationFinding,
+            ProposalValidationReceipt,
+            ProposalValidationResult,
+        )
+
+        proposal = proposal_validation.proposal
+        policy = proposal_validation.policy
+        prior_receipt = proposal_validation.receipt
+        expected_findings = tuple(
+            ProposalValidationFinding(
+                code=ProposalFindingCode.EXPECTED_OUTPUT_IGNORED_OR_UNSTAGED,
+                gate=ProposalGate.PATH,
+                path=str(issue.get("path") or ""),
+                message=(
+                    "declared expected output is missing, forbidden, "
+                    "ignored, unstaged, or absent from the candidate: "
+                    f"{str(issue.get('reason') or 'unmet')}"
+                ),
+            )
+            for issue in issues
+        )
+        expected_keys = {
+            (finding.code, finding.path) for finding in expected_findings
+        }
+        findings = (
+            *expected_findings,
+            *(
+                finding
+                for finding in proposal_validation.findings
+                if (finding.code, finding.path) not in expected_keys
+            ),
+        )[: policy.max_findings]
+        receipt = ProposalValidationReceipt(
+            proposal_id=proposal.proposal_id,
+            policy_id=policy.policy_id,
+            repository_tree_id=proposal.repository_tree_id,
+            objective_id=proposal.objective_id,
+            diff_digest=proposal.diff_digest,
+            allowed_paths=policy.allowed_paths,
+            changed_paths=proposal.changed_paths,
+            accepted=False,
+            findings=findings,
+            gate_trace=prior_receipt.gate_trace,
+            expensive_node_ids=(),
+            expensive_checks_started=0,
+        )
+        return ProposalValidationResult(
+            proposal=proposal,
+            policy=policy,
+            receipt=receipt,
+        )
+
     def _validate_implementation_patch(
         self,
         workspace_path: Path,
@@ -22674,6 +23186,12 @@ class PortalImplementationDaemon:
         scope_paths = self._proposal_scope_paths(task)
         # A missing output declaration grants no mutation authority.
         allowed_paths = scope_paths or (".proposal-scope-not-declared",)
+        expected_output_preflight = self._prepare_proposal_expected_outputs(
+            workspace_path,
+            task,
+            baseline_ref=baseline_ref,
+            scope_paths=scope_paths,
+        )
         collection_error = ""
         submodule_expansions: tuple[dict[str, Any], ...] = ()
         try:
@@ -22699,6 +23217,11 @@ class PortalImplementationDaemon:
                     if path
                 }
             )
+        )
+        expected_output_issues = self._proposal_expected_output_issues(
+            expected_output_preflight,
+            changed_paths=changed_paths,
+            candidate_entries=entries,
         )
         rationale_refs = tuple(
             sorted(
@@ -22896,6 +23419,7 @@ class PortalImplementationDaemon:
             ),
             symlink_paths=symlink_paths,
             submodule_paths=submodule_paths,
+            protected_paths=tuple(self.implementation_protected_paths),
             allowed_validation_commands=allowed_validation_commands,
             require_structured_details=True,
             require_patch_text=True,
@@ -22903,6 +23427,10 @@ class PortalImplementationDaemon:
             **local_envelope_limits,
         )
         result = validate_implementation_proposal(proposal, policy=policy)
+        result = self._reject_proposal_for_expected_output_issues(
+            result,
+            expected_output_issues,
+        )
         finding_codes = tuple(
             sorted(
                 {
@@ -23010,6 +23538,31 @@ class PortalImplementationDaemon:
             ),
         )
         if record_event:
+            self._record_event(
+                "implementation_expected_outputs_checked",
+                {
+                    "task_id": task.task_id,
+                    "proposal_id": proposal.proposal_id,
+                    "expected_paths": (
+                        expected_output_preflight.get("expected_paths") or []
+                    )[:256],
+                    "staged_paths": (
+                        expected_output_preflight.get("staged_paths") or []
+                    )[:256],
+                    "force_staged_paths": [
+                        str(check.get("path") or "")
+                        for check in (
+                            expected_output_preflight.get("checks") or []
+                        )
+                        if isinstance(check, Mapping)
+                        and check.get("force_stage_succeeded") is True
+                    ][:256],
+                    "issues": list(expected_output_issues)[:256],
+                    "passed": not expected_output_issues,
+                    "proof_authoritative": False,
+                    "completion_authoritative": False,
+                },
+            )
             self._record_event(
                 "implementation_proposal_validated"
                 if result.accepted
