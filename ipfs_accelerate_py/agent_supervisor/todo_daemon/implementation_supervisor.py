@@ -1188,6 +1188,7 @@ class PortalSupervisorConfig:
     objective_scan_min_open_tasks: int = 0
     objective_scan_max_findings: int = 5
     objective_scan_cooldown_seconds: int = 21600
+    objective_scan_exclude_paths: tuple[str, ...] = field(default_factory=tuple)
     objective_refill_timeout_seconds: float = 0.0
     objective_scan_depends_on: tuple[str, ...] = field(default_factory=tuple)
     objective_max_refinement_children: int = 3
@@ -10264,6 +10265,10 @@ class PortalImplementationSupervisor:
                 "IPFS_ACCELERATE_COMPLETION_EVIDENCE_PATH": str(
                     evidence_path if evidence_path is not None else ""
                 ),
+                "IPFS_ACCELERATE_COMPLETION_SCAN_EXCLUDE_PATHS": json.dumps(
+                    list(self.config.objective_scan_exclude_paths),
+                    separators=(",", ":"),
+                ),
             }
         )
         started_at = utc_now()
@@ -10367,6 +10372,7 @@ class PortalImplementationSupervisor:
             completion_evidence_records=evidence_records,
             completion_gate_records=gate_records,
             completion_control_paths=control_paths,
+            scan_exclude_paths=self.config.objective_scan_exclude_paths,
             require_artifact_binding=bool(control_paths),
         )
         return {
@@ -11448,6 +11454,7 @@ class PortalImplementationSupervisor:
                 self.config.objective_summary_prefix or DEFAULT_OBJECTIVE_TASK_SUMMARY_PREFIX
             ),
             discovery_output_path=discovery_output_path,
+            scan_exclude_path=list(self.config.objective_scan_exclude_paths),
             depends_on=list(self.config.objective_scan_depends_on),
             seen_fingerprint=sorted(seen_fingerprints),
             force_goal_id=sorted(set(force_goal_ids)),
@@ -14257,6 +14264,16 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--objective-scan-max-findings", type=int, default=5)
     parser.add_argument("--objective-scan-cooldown-seconds", type=int, default=21600)
     parser.add_argument(
+        "--objective-scan-exclude-path",
+        action="append",
+        default=[],
+        help=(
+            "Repo-relative operational or control path excluded from objective "
+            "evidence scans and completion-tree identity. May be repeated or "
+            "comma-separated."
+        ),
+    )
+    parser.add_argument(
         "--objective-refill-timeout-seconds",
         type=float,
         default=0.0,
@@ -14524,6 +14541,9 @@ def supervisor_config_from_args(
         objective_scan_min_open_tasks=args.objective_scan_min_open_tasks,
         objective_scan_max_findings=args.objective_scan_max_findings,
         objective_scan_cooldown_seconds=args.objective_scan_cooldown_seconds,
+        objective_scan_exclude_paths=split_csv_values(
+            args.objective_scan_exclude_path
+        ),
         objective_refill_timeout_seconds=args.objective_refill_timeout_seconds,
         objective_scan_depends_on=split_csv_values(args.objective_scan_depends_on),
         objective_max_refinement_children=args.objective_max_refinement_children,

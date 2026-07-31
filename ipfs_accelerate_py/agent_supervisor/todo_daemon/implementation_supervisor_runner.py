@@ -1181,6 +1181,7 @@ class ObjectiveRefillDefaults:
     objective_scan_min_open_tasks: int | None = None
     objective_scan_max_findings: int | None = None
     objective_scan_cooldown_seconds: int | None = None
+    objective_scan_exclude_paths: Sequence[str] = ()
     objective_refill_timeout_seconds: int | None = None
     objective_todo_vector_index_path: Path | None = None
     objective_surplus_findings_per_goal: int | None = None
@@ -1234,6 +1235,7 @@ def build_objective_refill_defaults_from_paths(
     objective_scan_min_open_tasks: int | None = None,
     objective_scan_max_findings: int | None = None,
     objective_scan_cooldown_seconds: int | None = None,
+    objective_scan_exclude_paths: Sequence[str] = (),
     objective_refill_timeout_seconds: int | None = None,
     objective_todo_vector_index_path_key: str | None = None,
     objective_todo_vector_index_path: Path | str | None = None,
@@ -1285,6 +1287,7 @@ def build_objective_refill_defaults_from_paths(
         objective_scan_min_open_tasks=objective_scan_min_open_tasks,
         objective_scan_max_findings=objective_scan_max_findings,
         objective_scan_cooldown_seconds=objective_scan_cooldown_seconds,
+        objective_scan_exclude_paths=objective_scan_exclude_paths,
         objective_refill_timeout_seconds=objective_refill_timeout_seconds,
         objective_todo_vector_index_path=_optional_path_from_mapping(
             paths,
@@ -1396,6 +1399,7 @@ def build_objective_refill_defaults_factory(
     objective_scan_min_open_tasks: int | None = None,
     objective_scan_max_findings: int | None = None,
     objective_scan_cooldown_seconds: int | None = None,
+    objective_scan_exclude_paths: Sequence[str] = (),
     objective_refill_timeout_seconds: int | None = None,
     objective_todo_vector_index_path_key: str | None = None,
     objective_todo_vector_index_path: Path | str | None = None,
@@ -1442,6 +1446,7 @@ def build_objective_refill_defaults_factory(
             objective_scan_min_open_tasks=objective_scan_min_open_tasks,
             objective_scan_max_findings=objective_scan_max_findings,
             objective_scan_cooldown_seconds=objective_scan_cooldown_seconds,
+            objective_scan_exclude_paths=objective_scan_exclude_paths,
             objective_refill_timeout_seconds=objective_refill_timeout_seconds,
             objective_todo_vector_index_path_key=objective_todo_vector_index_path_key,
             objective_todo_vector_index_path=objective_todo_vector_index_path,
@@ -1528,6 +1533,7 @@ def build_namespace_objective_refill_defaults_factory(
     objective_scan_min_open_tasks: int | None = None,
     objective_scan_max_findings: int | None = None,
     objective_scan_cooldown_seconds: int | None = None,
+    objective_scan_exclude_paths: Sequence[str] = (),
     objective_refill_timeout_seconds: int | None = None,
     objective_surplus_findings_per_goal: int | None = None,
     objective_surplus_min_terms_per_todo: int | None = None,
@@ -1574,6 +1580,7 @@ def build_namespace_objective_refill_defaults_factory(
         objective_scan_min_open_tasks=objective_scan_min_open_tasks,
         objective_scan_max_findings=objective_scan_max_findings,
         objective_scan_cooldown_seconds=objective_scan_cooldown_seconds,
+        objective_scan_exclude_paths=objective_scan_exclude_paths,
         objective_refill_timeout_seconds=objective_refill_timeout_seconds,
         objective_surplus_findings_per_goal=objective_surplus_findings_per_goal,
         objective_surplus_min_terms_per_todo=objective_surplus_min_terms_per_todo,
@@ -1734,6 +1741,12 @@ def apply_portal_implementation_supervisor_defaults(
             "--objective-scan-cooldown-seconds",
             objective.objective_scan_cooldown_seconds,
         )
+        if objective.objective_scan_exclude_paths:
+            args = with_repeated_default(
+                args,
+                "--objective-scan-exclude-path",
+                objective.objective_scan_exclude_paths,
+            )
         args = _with_optional_default(
             args,
             "--objective-refill-timeout-seconds",
