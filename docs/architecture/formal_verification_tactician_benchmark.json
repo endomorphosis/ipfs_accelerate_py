@@ -1,0 +1,250 @@
+{
+  "acceptance": {
+    "cache_hits_preserve_authority_and_identity": true,
+    "hard_correctness_privacy_authority_100_percent": true,
+    "metrics_from_cohort_receipts": true,
+    "progress_exposes_holes_witnesses_critical_path_budgets_next_actions": true,
+    "timing_observational_unless_calibrated": true
+  },
+  "cohort_id": "formal-verification-tactician/real-tool-quality",
+  "conflict_policy": "Own benchmark, report, and tactician metrics; do not turn unstable timing ratios or tool availability into correctness gates.",
+  "description": "Receipt-derived quality, resource, cache, and observability benchmark for the formal verification goal tactician. Metrics are additive counts and recomputed rates from cohort run receipts; hard correctness/privacy/authority gates require 100 percent; timing is observational unless calibrated; cache hits preserve authority and exact identity; progress exposes unresolved holes, witnesses, critical path, budgets, and next actions.",
+  "generated_at": "2026-07-30T20:00:00Z",
+  "goal_id": "FVT-G063",
+  "hard_gates": [
+    "correctness",
+    "privacy",
+    "authority"
+  ],
+  "interface": "GoalTacticianBenchmark@1",
+  "metric_dimensions": [
+    "formalization",
+    "proof_gap_recall_precision",
+    "plan_solvability",
+    "proof_authority",
+    "counterexample_replay_reduction_explanation",
+    "provider_agreement",
+    "resources",
+    "cancellation",
+    "cache_correctness",
+    "supervisor_progress"
+  ],
+  "metrics_interface": "GoalTacticianMetrics@1",
+  "observational_fields": [
+    "wall_time_ms",
+    "cpu_time_ms",
+    "memory_peak_bytes",
+    "solver_latency_ms",
+    "kernel_latency_ms",
+    "model_latency_ms",
+    "cache_latency_ms",
+    "cancellation_latency_ms"
+  ],
+  "program": "formal-verification-tactician/readiness",
+  "report": {
+    "acceptance": {
+      "cache_hits_preserve_authority_and_identity": true,
+      "hard_correctness_privacy_authority_100_percent": true,
+      "metrics_from_cohort_receipts": true,
+      "progress_exposes_holes_witnesses_critical_path_budgets_next_actions": true,
+      "timing_observational_unless_calibrated": true
+    },
+    "bounded": true,
+    "cohort_id": "formal-verification-tactician/real-tool-quality",
+    "conflict_policy": "Own benchmark, report, and tactician metrics; do not turn unstable timing ratios or tool availability into correctness gates.",
+    "contains_private_witnesses": false,
+    "contains_prompts": false,
+    "contains_proof_transcripts": false,
+    "gates": {
+      "hard": {
+        "authority": {
+          "actual_bps": 10000,
+          "required_bps": 10000,
+          "status": "pass"
+        },
+        "correctness": {
+          "actual_bps": 10000,
+          "required_bps": 10000,
+          "status": "pass"
+        },
+        "privacy": {
+          "actual_bps": 10000,
+          "required_bps": 10000,
+          "status": "pass"
+        }
+      },
+      "timing": {
+        "calibrated": false,
+        "fields": [
+          "wall_time_ms",
+          "cpu_time_ms",
+          "memory_peak_bytes",
+          "solver_latency_ms",
+          "kernel_latency_ms",
+          "model_latency_ms",
+          "cache_latency_ms",
+          "cancellation_latency_ms"
+        ],
+        "status": "observational"
+      },
+      "tool_availability": {
+        "reason": "tool availability is not a correctness gate for this benchmark surface",
+        "status": "not_applicable"
+      }
+    },
+    "generated_at": "2026-07-30T20:00:00Z",
+    "goal_id": "FVT-G063",
+    "interface": "GoalTacticianBenchmark@1",
+    "metrics": {
+      "cache": {
+        "hit_authority_preserved_count": 1,
+        "hit_count": 1,
+        "hit_identity_preserved_count": 1,
+        "hit_rate_bps": 5000,
+        "hits_preserve_authority_and_identity": true,
+        "lookup_count": 2,
+        "miss_count": 1,
+        "rejection_count": 0
+      },
+      "counterexamples": {
+        "count": 3,
+        "explained_count": 2,
+        "explanation_bps": 6666,
+        "reduced_count": 3,
+        "reduction_bps": 10000,
+        "replay_bps": 10000,
+        "replayable_count": 3
+      },
+      "evidence_classes": [
+        "fixture"
+      ],
+      "formalization": {
+        "attempted_count": 3,
+        "required_count": 3,
+        "succeeded_count": 3,
+        "success_bps": 10000,
+        "success_rate": 1.0
+      },
+      "hard_gates": {
+        "authority_bps": 10000,
+        "correctness_bps": 10000,
+        "gate_names": [
+          "correctness",
+          "privacy",
+          "authority"
+        ],
+        "passed": true,
+        "privacy_bps": 10000,
+        "required_bps": 10000
+      },
+      "interface": "GoalTacticianMetrics@1",
+      "plan_solvability": {
+        "admitted_count": 2,
+        "solvability_bps": 8125,
+        "solvability_rate": 0.8125,
+        "steps_solvable": 13,
+        "steps_total": 16
+      },
+      "progress": {
+        "budgets": {
+          "cpu_ms_remaining": 0,
+          "memory_bytes_remaining": 16777216,
+          "token_remaining": 100
+        },
+        "cancelled_run_count": 1,
+        "critical_path_length": 3,
+        "critical_path_step_ids": [
+          "step:formalize",
+          "step:plan",
+          "step:prove"
+        ],
+        "next_actions": [
+          "reduce-counterexample",
+          "rank-proof-plan",
+          "emit-completion-receipt",
+          "resume-from-checkpoint",
+          "raise-cpu-budget"
+        ],
+        "open_plan_count": 2,
+        "schema": "ipfs_accelerate_py/agent-supervisor/goal-tactician-progress@1",
+        "unresolved_hole_count": 2,
+        "unresolved_hole_ids": [
+          "hole:invariant-strengthening",
+          "hole:budget-exhausted"
+        ],
+        "witness_count": 2,
+        "witness_ids": [
+          "witness:cx-1",
+          "witness:cx-2"
+        ]
+      },
+      "proof_authority": {
+        "authoritative_kernel_or_above_count": 2,
+        "authority_boundary_violation_count": 0,
+        "false_completion_count": 0,
+        "privacy_violation_count": 0
+      },
+      "proof_gap": {
+        "false_negative": 1,
+        "false_positive": 0,
+        "precision": 1.0,
+        "precision_bps": 10000,
+        "recall": 0.909091,
+        "recall_bps": 9090,
+        "true_negative": 7,
+        "true_positive": 10
+      },
+      "provider_agreement": {
+        "agreement_bps": 10000,
+        "agreement_pairs": 5,
+        "agreement_rate": 1.0,
+        "query_pairs": 5
+      },
+      "receipt_count": 3,
+      "resources": {
+        "calibrated_timing": false,
+        "cancellation_honor_bps": 10000,
+        "cancellation_honored_count": 1,
+        "cancelled_count": 1,
+        "cpu_time_total_ms": 1240,
+        "memory_peak_bytes_max": 67108864,
+        "observational_fields": [
+          "wall_time_ms",
+          "cpu_time_ms",
+          "memory_peak_bytes",
+          "solver_latency_ms",
+          "kernel_latency_ms",
+          "model_latency_ms",
+          "cache_latency_ms",
+          "cancellation_latency_ms"
+        ],
+        "timing_role": "observational",
+        "wall_time_mean_ms": 576,
+        "wall_time_total_ms": 1730
+      },
+      "schema": "ipfs_accelerate_py/agent-supervisor/goal-tactician-metrics@1",
+      "source": "cohort_receipts",
+      "synthetic_distributions": false,
+      "version": "1.0.0"
+    },
+    "metrics_interface": "GoalTacticianMetrics@1",
+    "notes": "Fixture cohort for FVT-G063: cold miss, warm authority-preserving cache hit, and cancelled run with durable progress projection. Timing remains observational (no calibration receipt).",
+    "receipt_count": 3,
+    "receipt_ids": [
+      "receipt:fvt063:fixture:cold",
+      "receipt:fvt063:fixture:warm",
+      "receipt:fvt063:fixture:cancelled"
+    ],
+    "report_id": "goal-tactician-bench-55be4a2507b26456ee93666aa0a4693bfa08850c3ce4bfcd3c5bd700fb9f917c",
+    "schema": "ipfs_accelerate_py/agent-supervisor/goal-tactician-benchmark-report@1",
+    "source": "cohort_receipts",
+    "synthetic_distributions": false,
+    "task_id": "FVT-033",
+    "version": "1.0.0"
+  },
+  "schema": "ipfs_accelerate_py/agent-supervisor/goal-tactician-benchmark@1",
+  "schema_version": "formal-verification-tactician-benchmark/v1",
+  "source": "cohort_receipts",
+  "synthetic_distributions": false,
+  "task_id": "FVT-033"
+}
