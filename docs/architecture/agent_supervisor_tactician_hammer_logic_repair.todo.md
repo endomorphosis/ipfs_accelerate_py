@@ -130,7 +130,7 @@ expectations under existing precedence, but do not prove them by passing.
 
 ## LPR-003 Add a domain-neutral versioned datasets Logic Tactician
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
