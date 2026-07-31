@@ -229,7 +229,7 @@ expectations under existing precedence, but do not prove them by passing.
 
 ## LPR-006 Compile task and repair evidence into finite program-logic goals
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
