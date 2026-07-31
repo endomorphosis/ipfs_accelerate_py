@@ -234,6 +234,19 @@ def test_validation_runtime_propagates_only_canonical_readonly_supervisor_state_
             match="may not override the supervisor state root",
         ):
             validation_shell_command(command)
+    for command in (
+        "env -i python -c 'raise SystemExit(0)'",
+        "env - python -c 'raise SystemExit(0)'",
+        "env -iu LPR_STATE_ROOT python -c 'raise SystemExit(0)'",
+        "env -u LPR_STATE_ROOT python -c 'raise SystemExit(0)'",
+        "env --unset=LPR_STATE_ROOT python -c 'raise SystemExit(0)'",
+        "env -S '-u LPR_STATE_ROOT' python -c 'raise SystemExit(0)'",
+    ):
+        with pytest.raises(
+            ValidationRuntimeError,
+            match="may not use env options inside the protected environment",
+        ):
+            validation_shell_command(command)
 
     with pytest.raises(ValidationRuntimeError, match="must be an absolute directory"):
         build_validation_environment(

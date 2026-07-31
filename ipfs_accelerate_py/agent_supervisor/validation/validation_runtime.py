@@ -791,6 +791,24 @@ def validation_shell_command(command: str) -> list[str]:
         raise ValidationRuntimeError(
             "validation command may not override the supervisor state root"
         )
+    shell_controls = frozenset({";", "&&", "||", "|", "&"})
+    for index, token in enumerate(leading):
+        if Path(token).name != "env":
+            continue
+        argument_index = index + 1
+        while argument_index < len(leading):
+            argument = leading[argument_index]
+            if argument in shell_controls or argument == "--":
+                break
+            if argument == "-" or argument.startswith("-"):
+                raise ValidationRuntimeError(
+                    "validation command may not use env options inside the "
+                    "protected environment"
+                )
+            if "=" in argument:
+                argument_index += 1
+                continue
+            break
     # A reviewed command may prepend workspace-local import roots with an
     # assignment such as ``PYTHONPATH=src:. python -m pytest``.  Bash applies
     # that assignment to the shell function itself, which would otherwise
