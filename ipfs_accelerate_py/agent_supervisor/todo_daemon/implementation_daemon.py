@@ -16142,6 +16142,10 @@ class PortalImplementationDaemon:
         from ..analysis import change_propagation_pipeline as p
         return p.daemon_assert_no_write_bypass(**kw)
 
+    def require_logic_repair_fixed_point(self, plan, transaction, **kw):
+        from ..validation import logic_repair_fixed_point as lfp
+        return lfp.daemon_require_logic_fixed_point(plan, transaction, **kw)
+
     def execute_live_logic_repair(self, request, **kw):
         from . import live_logic_repair_controller as lpr
         return lpr.daemon_execute_live_logic_repair(self, request, **kw)

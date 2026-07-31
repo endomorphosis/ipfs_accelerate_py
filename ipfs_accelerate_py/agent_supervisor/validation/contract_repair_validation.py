@@ -1205,6 +1205,82 @@ class ContractRepairValidator:
             integrity=integrity,
         )
 
+    def validate_with_logic_fixed_point(
+        self,
+        packet: ContractRepairEditPacket,
+        decision: RepairTargetDecision,
+        admission: AdmissionResult,
+        *,
+        current_roots: AuthorityRoots,
+        finding_id: str,
+        evidence: CandidatePatchEvidence,
+        checked_at: int,
+        propagation_plan: Any = None,
+        propagation_transaction: Any = None,
+        program_evidence: Any = None,
+        logic_evidence: Any = None,
+        execution_report: Any = None,
+        fixed_point_bound: int | None = None,
+        restore_adapter: Any = None,
+        checkpoint: Any = None,
+        required_tool_families: Sequence[str] | None = None,
+        original_edge_id: str = "",
+    ) -> Any:
+        """Post-edit contract-repair gate plus optional joint logic fixed-point.
+
+        Always runs the existing contract-repair completion gate first.  When an
+        admitted atomic propagation plan/transaction and logic evidence are
+        supplied after target admission, routes through the shared fixed-point
+        protocol rather than inventing a second completion receipt.
+        """
+
+        base = self.validate(
+            packet,
+            decision,
+            admission,
+            current_roots=current_roots,
+            finding_id=finding_id,
+            evidence=evidence,
+            checked_at=checked_at,
+            required_tool_families=required_tool_families,
+            original_edge_id=original_edge_id,
+        )
+        if (
+            propagation_plan is None
+            or propagation_transaction is None
+            or program_evidence is None
+            or logic_evidence is None
+        ):
+            return base
+        if not base.complete or base.receipt is None:
+            return base
+
+        completion_id = getattr(base.receipt, "receipt_id", "") or getattr(
+            base.receipt, "completion_id", ""
+        )
+        logic_outcome = validate_contract_repair_with_logic_fixed_point(
+            plan=propagation_plan,
+            transaction=propagation_transaction,
+            program_evidence=program_evidence,
+            logic_evidence=logic_evidence,
+            execution_report=execution_report,
+            fixed_point_bound=fixed_point_bound,
+            restore_adapter=restore_adapter,
+            checkpoint=checkpoint,
+            contract_repair_completion_id=str(completion_id or ""),
+        )
+        return {
+            "contract_repair": base,
+            "logic_fixed_point": logic_outcome,
+            "complete": bool(base.complete and logic_outcome.complete),
+            "logic_attachment": logic_outcome.logic_attachment,
+            "finalize": logic_outcome.finalize,
+            "compensating_rollback": logic_outcome.compensating_rollback,
+            "rolled_back": logic_outcome.rolled_back,
+            "partial_merge_allowed": False,
+            "provider_success_is_not_completion": True,
+        }
+
     def validate(
         self,
         packet: ContractRepairEditPacket,
@@ -1649,6 +1725,46 @@ def build_passing_tool_evidence(
     )
 
 
+def validate_contract_repair_with_logic_fixed_point(
+    *,
+    plan: Any,
+    transaction: Any,
+    program_evidence: Any,
+    logic_evidence: Any,
+    packet: Any = None,
+    execution_report: Any = None,
+    fixed_point_bound: int | None = None,
+    restore_adapter: Any = None,
+    checkpoint: Any = None,
+    contract_repair_completion_id: str = "",
+) -> Any:
+    """Route broken-contract repair through atomic propagation + logic fixed-point.
+
+    After target admission, contract-repair mutations that enter the shared
+    :class:`ChangePropagationTransaction` path revalidate to a joint
+    program+logic fixed point.  Bound exhaustion or incompleteness after a
+    provisional commit triggers compensating rollback; partial SCC/packet
+    completion never closes the task.
+    """
+
+    from .logic_repair_fixed_point import LogicRepairFixedPointValidator
+
+    return LogicRepairFixedPointValidator(
+        require_logic_evidence=True
+    ).validate_contract_repair_via_propagation(
+        plan,
+        transaction,
+        program_evidence=program_evidence,
+        logic_evidence=logic_evidence,
+        packet=packet,
+        execution_report=execution_report,
+        fixed_point_bound=fixed_point_bound,
+        restore_adapter=restore_adapter,
+        checkpoint=checkpoint,
+        contract_repair_completion_id=contract_repair_completion_id,
+    )
+
+
 __all__ = [
     "CONTRACT_REPAIR_COMPLETION_RECEIPT_SCHEMA",
     "CONTRACT_REPAIR_VALIDATOR_INTERFACE",
@@ -1675,4 +1791,5 @@ __all__ = [
     "ValidationOutcome",
     "ValidationStage",
     "build_passing_tool_evidence",
+    "validate_contract_repair_with_logic_fixed_point",
 ]
