@@ -147,6 +147,9 @@ class ProposalFindingCode(str, Enum):
     BASELINE_CONTENT_MISMATCH = "baseline_content_mismatch"
     CANDIDATE_IDENTITY_MISMATCH = "candidate_identity_mismatch"
     EXPECTED_EFFECT_MISMATCH = "expected_effect_mismatch"
+    EXPECTED_OUTPUT_IGNORED_OR_UNSTAGED = (
+        "expected_output_ignored_or_unstaged"
+    )
     HARDLINK_BOUNDARY_FORBIDDEN = "hardlink_boundary_forbidden"
     PROTECTED_PATH_FORBIDDEN = "protected_path_forbidden"
     REPOSITORY_PATH_RACE = "repository_path_race"

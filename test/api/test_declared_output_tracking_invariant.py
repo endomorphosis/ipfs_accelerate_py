@@ -39,8 +39,9 @@ def _daemon(
     *,
     worktree_submodule_paths: tuple[str, ...] = (),
     task_header_prefix: str = "TODO-",
+    implementation_protected_paths: tuple[str, ...] = (),
 ) -> TodoImplementationDaemon:
-    state_dir = repo / ".declared-output-invariant-state"
+    state_dir = repo.parent / f".{repo.name}-declared-output-invariant-state"
     return TodoImplementationDaemon(
         todo_path=repo / "todo.md",
         state_path=state_dir / "task_state.json",
@@ -50,6 +51,7 @@ def _daemon(
         task_header_prefix=task_header_prefix,
         worktree_submodule_paths=worktree_submodule_paths,
         worktree_pool_enabled=False,
+        implementation_protected_paths=implementation_protected_paths,
     )
 
 
@@ -62,6 +64,19 @@ def _task(task_id: str, output: str) -> PortalTask:
         priority="P0",
         track="verification",
         outputs=[output],
+    )
+
+
+def _proposal_task(task_id: str, *outputs: str) -> PortalTask:
+    return PortalTask(
+        task_id=task_id,
+        title=f"Produce {', '.join(outputs)}",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="verification",
+        outputs=list(outputs),
+        validation=["python -m pytest"],
     )
 
 
@@ -220,29 +235,170 @@ def test_declared_output_tracking_invariant_checks_recorded_submodule_tree(
     assert missing["checks"][0]["reason"] == "declared_output_missing"
 
 
-def test_commit_gate_rejects_present_but_ignored_declared_output(
+def test_proposal_and_commit_force_stage_only_exact_ignored_declared_output(
     tmp_path: Path,
 ) -> None:
     repo = _init_repo(tmp_path / "repo")
     (repo / ".gitignore").write_text("*.json\n", encoding="utf-8")
-    (repo / "base.txt").write_text("base\n", encoding="utf-8")
-    _git(repo, "add", ".gitignore", "base.txt")
+    (repo / "implementation.py").write_text("VALUE = 0\n", encoding="utf-8")
+    _git(repo, "add", ".gitignore", "implementation.py")
     _git(repo, "commit", "-m", "base")
     baseline = _git(repo, "rev-parse", "HEAD")
     (repo / "implementation.py").write_text("VALUE = 1\n", encoding="utf-8")
-    (repo / "deliverable.json").write_text("{}\n", encoding="utf-8")
+    (repo / "deliverable.json").write_text(
+        '{"certified": true}\n',
+        encoding="utf-8",
+    )
+    (repo / "unrelated.json").write_text(
+        '{"must_not_be_staged": true}\n',
+        encoding="utf-8",
+    )
+    daemon = _daemon(repo)
+    task = _proposal_task(
+        "OUT-006",
+        "implementation.py",
+        "deliverable.json",
+    )
 
-    result = _daemon(repo)._commit_worktree_changes(
+    proposal = daemon._validate_implementation_patch(
         repo,
-        _task("OUT-006", "deliverable.json"),
+        task,
+        baseline_ref=baseline,
+    )
+
+    assert proposal.accepted is True
+    assert proposal.proposal.changed_paths == (
+        "deliverable.json",
+        "implementation.py",
+    )
+    assert _git(repo, "diff", "--cached", "--name-only") == "deliverable.json"
+
+    result = daemon._commit_worktree_changes(
+        repo,
+        task,
+        1,
+        baseline_ref=baseline,
+    )
+
+    assert result["committed"] is True
+    candidate = result["commit"]
+    assert candidate != baseline
+    assert _git(
+        repo,
+        "diff-tree",
+        "--no-commit-id",
+        "--name-only",
+        "-r",
+        candidate,
+    ).splitlines() == ["deliverable.json", "implementation.py"]
+    assert _git(repo, "show", f"{candidate}:deliverable.json") == (
+        '{"certified": true}'
+    )
+    assert _git(repo, "show", f"{candidate}:implementation.py") == "VALUE = 1"
+    assert _git(
+        repo,
+        "ls-tree",
+        "--name-only",
+        candidate,
+        "--",
+        "unrelated.json",
+    ) == ""
+
+
+def test_proposal_and_commit_reject_missing_declared_output_with_stable_reason(
+    tmp_path: Path,
+) -> None:
+    repo = _init_repo(tmp_path / "repo")
+    (repo / "implementation.py").write_text("VALUE = 0\n", encoding="utf-8")
+    _git(repo, "add", "implementation.py")
+    _git(repo, "commit", "-m", "base")
+    baseline = _git(repo, "rev-parse", "HEAD")
+    (repo / "implementation.py").write_text("VALUE = 1\n", encoding="utf-8")
+    daemon = _daemon(repo)
+    task = _proposal_task(
+        "OUT-006-MISSING",
+        "implementation.py",
+        "missing.json",
+    )
+
+    proposal = daemon._validate_implementation_patch(
+        repo,
+        task,
+        baseline_ref=baseline,
+    )
+
+    assert proposal.accepted is False
+    assert {
+        finding.code.value for finding in proposal.findings
+    } == {"expected_output_ignored_or_unstaged"}
+    assert [finding.path for finding in proposal.findings] == ["missing.json"]
+    assert _git(repo, "diff", "--cached", "--name-only") == ""
+
+    result = daemon._commit_worktree_changes(
+        repo,
+        task,
         1,
         baseline_ref=baseline,
     )
 
     assert result["committed"] is False
-    assert result["reason"] == "declared_outputs_missing_or_untracked"
+    assert result["reason"] == "expected_output_ignored_or_unstaged"
+    assert result["declared_output_invariant"]["missing_outputs"] == [
+        {"task_id": "OUT-006-MISSING", "path": "missing.json"}
+    ]
+    assert _git(repo, "rev-parse", "HEAD") == baseline
+
+
+def test_proposal_and_commit_never_force_stage_protected_ignored_output(
+    tmp_path: Path,
+) -> None:
+    repo = _init_repo(tmp_path / "repo")
+    (repo / ".gitignore").write_text("*.json\n", encoding="utf-8")
+    (repo / "implementation.py").write_text("VALUE = 0\n", encoding="utf-8")
+    _git(repo, "add", ".gitignore", "implementation.py")
+    _git(repo, "commit", "-m", "base")
+    baseline = _git(repo, "rev-parse", "HEAD")
+    (repo / "implementation.py").write_text("VALUE = 1\n", encoding="utf-8")
+    (repo / "protected.json").write_text(
+        '{"protected": true}\n',
+        encoding="utf-8",
+    )
+    daemon = _daemon(
+        repo,
+        implementation_protected_paths=("protected.json",),
+    )
+    task = _proposal_task(
+        "OUT-006-PROTECTED",
+        "implementation.py",
+        "protected.json",
+    )
+
+    proposal = daemon._validate_implementation_patch(
+        repo,
+        task,
+        baseline_ref=baseline,
+    )
+
+    assert proposal.accepted is False
+    assert {
+        finding.code.value for finding in proposal.findings
+    } == {"expected_output_ignored_or_unstaged"}
+    assert [finding.path for finding in proposal.findings] == [
+        "protected.json"
+    ]
+    assert _git(repo, "diff", "--cached", "--name-only") == ""
+
+    result = daemon._commit_worktree_changes(
+        repo,
+        task,
+        1,
+        baseline_ref=baseline,
+    )
+
+    assert result["committed"] is False
+    assert result["reason"] == "expected_output_ignored_or_unstaged"
     assert result["declared_output_invariant"]["untracked_outputs"] == [
-        {"task_id": "OUT-006", "path": "deliverable.json"}
+        {"task_id": "OUT-006-PROTECTED", "path": "protected.json"}
     ]
     assert _git(repo, "rev-parse", "HEAD") == baseline
 
