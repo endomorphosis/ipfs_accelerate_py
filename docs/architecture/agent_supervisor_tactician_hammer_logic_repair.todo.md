@@ -1241,7 +1241,7 @@ expectations under existing precedence, but do not prove them by passing.
 
 ## LPR-038 Apply in isolation and re-prove to a deterministic fixed point
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
