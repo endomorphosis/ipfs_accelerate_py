@@ -8198,6 +8198,228 @@ def test_submodule_durability_accepts_store_owned_by_linked_parent_worktree(
     ]
 
 
+def test_merge_train_rehydrates_legacy_submodule_task_branch_before_merge(
+    tmp_path: Path,
+):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    baseline = _git(repo, "rev-parse", "main")
+    branch_name = "implementation/ref-043r-reconciled"
+    state_dir = tmp_path / "state"
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        "## REF-043R Recover legacy gitlink\n\n"
+        "- Status: todo\n- Completion: manual\n",
+        encoding="utf-8",
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="REF-",
+        worktree_submodule_paths=["libs/child"],
+    )
+    task_submodule_branch = daemon._submodule_worktree_branch_name(
+        branch_name,
+        "libs/child",
+    )
+    _git(submodule, "checkout", "-b", "legacy/ref-043r-child")
+    (submodule / "recovered.txt").write_text(
+        "validated legacy child\n",
+        encoding="utf-8",
+    )
+    _git(submodule, "add", "recovered.txt")
+    _git(submodule, "commit", "-m", "REF-043R: legacy child")
+    child_commit = _git(submodule, "rev-parse", "HEAD")
+
+    _git(repo, "checkout", "-b", branch_name)
+    _git(repo, "add", "libs/child")
+    _git(repo, "commit", "-m", "REF-043R: recover legacy child")
+    candidate = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "main")
+    _git(submodule, "checkout", "main")
+    target_before = _git(repo, "rev-parse", "main")
+    assert (
+        subprocess.run(
+            [
+                "git",
+                "rev-parse",
+                "--verify",
+                "--quiet",
+                task_submodule_branch,
+            ],
+            cwd=submodule,
+            capture_output=True,
+            check=False,
+        ).returncode
+        != 0
+    )
+
+    request = SimpleNamespace(
+        branch_name=branch_name,
+        commit_sha=candidate,
+        task_id="REF-043R",
+        priority="P0",
+        attempt=1,
+        metadata={
+            "target_binding_schema": MERGE_TARGET_BINDING_SCHEMA,
+            "target_repository_id": daemon.merge_target_repository_id,
+            "target_branch": daemon.resolved_merge_target_branch,
+            "baseline_ref": baseline,
+            "changed_submodule_paths": ["libs/child"],
+            "task": {
+                "task_id": "REF-043R",
+                "title": "Recover legacy gitlink",
+                "status": "todo",
+                "completion": "manual",
+                "priority": "P0",
+                "track": "ops",
+            },
+        },
+    )
+
+    result = daemon._merge_train_callback(request)
+
+    assert result["merged"] is True
+    assert result["returncode"] == 0
+    assert _git(submodule, "rev-parse", task_submodule_branch) == child_commit
+    preflight = result["submodule_durability_preflight"]
+    assert preflight["verified"] is True
+    assert preflight["paths"][0]["reason"] == (
+        "canonical_task_branch_verified"
+    )
+    rehydration = preflight["legacy_task_branch_rehydration"]
+    assert rehydration["verified"] is True
+    assert rehydration["rehydrated_count"] == 1
+    assert rehydration["paths"][0]["reason"] == (
+        "canonical_task_branch_rehydrated"
+    )
+    assert rehydration["paths"][0]["durable_refs"] == [
+        "refs/heads/legacy/ref-043r-child"
+    ]
+    assert _git(repo, "rev-parse", "main") != target_before
+    assert (
+        subprocess.run(
+            ["git", "merge-base", "--is-ancestor", candidate, "main"],
+            cwd=repo,
+            capture_output=True,
+            check=False,
+        ).returncode
+        == 0
+    )
+
+
+def test_merge_train_rejects_raced_legacy_submodule_rehydration_before_merge(
+    tmp_path: Path,
+    monkeypatch,
+):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    baseline = _git(repo, "rev-parse", "main")
+    child_baseline = _git(submodule, "rev-parse", "main")
+    branch_name = "implementation/ref-043x-reconciled"
+    state_dir = tmp_path / "state"
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        "## REF-043X Reject raced legacy gitlink\n\n"
+        "- Status: todo\n- Completion: manual\n",
+        encoding="utf-8",
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="REF-",
+        worktree_submodule_paths=["libs/child"],
+    )
+    task_submodule_branch = daemon._submodule_worktree_branch_name(
+        branch_name,
+        "libs/child",
+    )
+    _git(submodule, "checkout", "-b", "legacy/ref-043x-child")
+    (submodule / "raced.txt").write_text(
+        "candidate child\n",
+        encoding="utf-8",
+    )
+    _git(submodule, "add", "raced.txt")
+    _git(submodule, "commit", "-m", "REF-043X: legacy child")
+    child_commit = _git(submodule, "rev-parse", "HEAD")
+
+    _git(repo, "checkout", "-b", branch_name)
+    _git(repo, "add", "libs/child")
+    _git(repo, "commit", "-m", "REF-043X: recover legacy child")
+    candidate = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "main")
+    _git(submodule, "checkout", "main")
+    target_before = _git(repo, "rev-parse", "main")
+    original_rehydrate = (
+        daemon._rehydrate_legacy_submodule_task_branches
+    )
+
+    def race_task_branch_creation(**kwargs):
+        _git(submodule, "branch", task_submodule_branch, "main")
+        return original_rehydrate(**kwargs)
+
+    monkeypatch.setattr(
+        daemon,
+        "_rehydrate_legacy_submodule_task_branches",
+        race_task_branch_creation,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_merge_branch_to_main",
+        lambda *_args, **_kwargs: pytest.fail(
+            "raced task branch must fail before target mutation"
+        ),
+    )
+    request = SimpleNamespace(
+        branch_name=branch_name,
+        commit_sha=candidate,
+        task_id="REF-043X",
+        priority="P0",
+        attempt=1,
+        metadata={
+            "target_binding_schema": MERGE_TARGET_BINDING_SCHEMA,
+            "target_repository_id": daemon.merge_target_repository_id,
+            "target_branch": daemon.resolved_merge_target_branch,
+            "baseline_ref": baseline,
+            "changed_submodule_paths": ["libs/child"],
+            "task": {
+                "task_id": "REF-043X",
+                "title": "Reject raced legacy gitlink",
+                "status": "todo",
+                "completion": "manual",
+                "priority": "P0",
+                "track": "ops",
+            },
+        },
+    )
+
+    result = daemon._merge_train_callback(request)
+
+    assert result["merged"] is False
+    assert result["reason"] == "changed_submodule_durability_unverified"
+    preflight = result["submodule_durability_preflight"]
+    assert preflight["verified"] is False
+    assert {
+        failure["reason"] for failure in preflight["failures"]
+    } == {
+        "canonical_task_branch_does_not_contain_gitlink",
+        "canonical_task_branch_rehydration_raced",
+    }
+    rehydration = preflight["legacy_task_branch_rehydration"]
+    assert rehydration["verified"] is False
+    assert rehydration["paths"][0]["gitlink_commit"] == child_commit
+    assert (
+        rehydration["paths"][0]["observed_task_branch_commit"]
+        == child_baseline
+    )
+    assert _git(repo, "rev-parse", "main") == target_before
+    assert "- Status: todo" in todo_path.read_text(encoding="utf-8")
+
+
 def test_merge_train_rolls_back_parent_when_verified_submodule_result_disappears(
     tmp_path: Path,
     monkeypatch,

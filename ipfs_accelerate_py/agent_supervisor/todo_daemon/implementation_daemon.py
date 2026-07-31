@@ -13257,6 +13257,7 @@ class PortalImplementationDaemon:
         branch_name: str,
         implementation_commit: str,
         changed_submodule_paths: set[str] | None,
+        allow_legacy_branch_ref: bool = True,
     ) -> dict[str, Any]:
         """Prove changed gitlinks are durable before mutating the target.
 
@@ -13477,7 +13478,7 @@ class PortalImplementationDaemon:
                             ),
                         }
                     )
-                    if not task_branch_commit:
+                    if not task_branch_commit and allow_legacy_branch_ref:
                         legacy_refs_result = subprocess.run(
                             [
                                 "git",
@@ -13523,6 +13524,16 @@ class PortalImplementationDaemon:
                             }
                             path_receipt["reason"] = failure["reason"]
                             failures.append(failure)
+                    elif not task_branch_commit:
+                        failure = {
+                            "path": full_relative,
+                            "reason": "canonical_task_branch_missing",
+                            "gitlink_commit": gitlink_commit,
+                            "task_branch": task_branch,
+                            "canonical_git_dir": str(canonical_git_dir),
+                        }
+                        path_receipt["reason"] = failure["reason"]
+                        failures.append(failure)
                     elif not branch_contains_gitlink:
                         failure = {
                             "path": full_relative,
@@ -13558,6 +13569,98 @@ class PortalImplementationDaemon:
             }
         )
         return receipt
+
+    def _rehydrate_legacy_submodule_task_branches(
+        self,
+        *,
+        branch_name: str,
+        durability_preflight: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Create exact task refs from gitlinks already proven by legacy refs."""
+
+        legacy_paths = [
+            item
+            for item in durability_preflight.get("paths", ())
+            if isinstance(item, Mapping)
+            and item.get("verified") is True
+            and item.get("reason") == "canonical_legacy_branch_ref_verified"
+            and item.get("durability") == "canonical_legacy_branch_ref"
+        ]
+        if durability_preflight.get("verified") is not True:
+            legacy_paths = []
+
+        results: list[dict[str, Any]] = []
+        for evidence in legacy_paths:
+            relative = str(evidence.get("path") or "").strip("/")
+            gitlink = str(evidence.get("gitlink_commit") or "").strip()
+            git_dir = Path(str(evidence.get("canonical_git_dir") or ""))
+            task_branch = self._submodule_worktree_branch_name(branch_name, relative)
+            task_ref = f"refs/heads/{task_branch}"
+            evidence_valid = bool(
+                self._repo_relative_path_safe(relative)
+                and gitlink
+                and str(evidence.get("canonical_git_dir") or "").strip()
+                and evidence.get("task_branch") == task_branch
+                and evidence.get("durable_refs")
+            )
+            if evidence_valid:
+                create = subprocess.run(
+                    [
+                        "git",
+                        "--git-dir",
+                        str(git_dir),
+                        "update-ref",
+                        task_ref,
+                        gitlink,
+                        "0" * len(gitlink),
+                    ],
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+                observed = self._resolve_commit_in_git_dir(git_dir, task_ref)
+                create_returncode = create.returncode
+            else:
+                observed = ""
+                create_returncode = 2
+            reason = (
+                "canonical_task_branch_rehydration_evidence_invalid"
+                if not evidence_valid
+                else "canonical_task_branch_rehydrated"
+                if create_returncode == 0 and observed == gitlink
+                else "canonical_task_branch_rehydration_race_matched"
+                if observed == gitlink
+                else "canonical_task_branch_rehydration_raced"
+                if observed
+                else "canonical_task_branch_rehydration_failed"
+            )
+            results.append(
+                {
+                    "path": relative,
+                    "gitlink_commit": gitlink,
+                    "task_branch": task_branch,
+                    "durable_refs": list(evidence.get("durable_refs") or ())[:20],
+                    "observed_task_branch_commit": observed,
+                    "created": create_returncode == 0 and observed == gitlink,
+                    "verified": observed == gitlink,
+                    "reason": reason,
+                }
+            )
+        failures = [
+            {"path": item["path"], "reason": item["reason"]}
+            for item in results
+            if not item["verified"]
+        ]
+        return {
+            "attempted": bool(results),
+            "verified": not failures,
+            "paths": results,
+            "failures": failures,
+            "rehydrated_count": sum(
+                item["created"] is True for item in results
+            ),
+        }
+
     def _merge_train_callback(self, request: Any) -> dict[str, Any]:
         """Adapt one durable queue request to the daemon's mature merge path."""
 
@@ -13943,6 +14046,35 @@ class PortalImplementationDaemon:
                     changed_submodule_paths=changed_submodule_paths,
                 )
             )
+            legacy_task_branch_rehydration = (
+                self._rehydrate_legacy_submodule_task_branches(
+                    branch_name=branch_name,
+                    durability_preflight=submodule_durability_preflight,
+                )
+            )
+            if legacy_task_branch_rehydration.get("attempted", False):
+                # The legacy ref was only authority to create the missing
+                # task-owned branch.  Before any target mutation, require a
+                # fresh traversal that proves the exact derived branch now
+                # exists; legacy refs are no longer admissible at this gate.
+                strict_preflight = self._changed_submodule_durability_preflight(
+                    branch_name=branch_name,
+                    implementation_commit=implementation_commit,
+                    changed_submodule_paths=changed_submodule_paths,
+                    allow_legacy_branch_ref=False,
+                )
+                strict_preflight["legacy_task_branch_rehydration"] = (
+                    legacy_task_branch_rehydration
+                )
+                strict_preflight["failures"] = [
+                    *strict_preflight.get("failures", []),
+                    *legacy_task_branch_rehydration.get("failures", []),
+                ]
+                strict_preflight["verified"] = bool(
+                    strict_preflight.get("verified")
+                    and legacy_task_branch_rehydration.get("verified")
+                )
+                submodule_durability_preflight = strict_preflight
             if not submodule_durability_preflight.get("verified", False):
                 failed_paths = sorted(
                     {
