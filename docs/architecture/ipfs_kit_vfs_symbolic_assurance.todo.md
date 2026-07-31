@@ -3944,7 +3944,7 @@ compact references and bounded spans only.
 
 ## VFS-087 Close objective gap packet: VFS-G141, VFS-G142
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
