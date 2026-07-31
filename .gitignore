@@ -189,3 +189,5 @@ state/**/*.out
 !docs/architecture/formal_verification_tactician_benchmark.json
 !docs/architecture/formal_verification_tactician_readiness_completion_receipt.json
 !docs/architecture/formal_verification_toolchain_certificate.json
+# Semantic certification recipe manifests (compact; not bulk IR dumps).
+!test/fixtures/formal_verification/toolchains/*/manifest.json
