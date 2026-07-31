@@ -1,0 +1,3 @@
+# LPR-019 / LPR-G060 benchmark runtime artifact directory.
+# Sealed reports and metrics are written here at run time; they remain
+# non-authoritative runtime artifacts and are not committed by default.
