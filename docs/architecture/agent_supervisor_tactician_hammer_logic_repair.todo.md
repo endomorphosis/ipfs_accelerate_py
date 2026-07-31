@@ -477,7 +477,7 @@ expectations under existing precedence, but do not prove them by passing.
 
 ## LPR-014 Admit only reconstructed and unique logic predictions
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
