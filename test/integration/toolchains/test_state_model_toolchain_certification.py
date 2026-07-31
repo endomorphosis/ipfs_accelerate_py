@@ -324,6 +324,10 @@ def test_corpus_schema_and_required_cases(state_model_cert) -> None:
     assert manifest["task_id"] == TASK_ID
     assert manifest["locked_tlc_version"] == LOCKED_TLC_VERSION
     assert manifest["locked_apalache_version"] == LOCKED_APALACHE_VERSION
+    assert manifest["locked_artifact_digests"] == {
+        "tlc": state_model_cert.LOCKED_TLC_SHA256,
+        "apalache": state_model_cert.LOCKED_APALACHE_SHA256,
+    }
     assert manifest["policy"]["java_is_support_only"] is True
     assert manifest["policy"]["java_cannot_promote_tla_lane"] is True
     assert manifest["policy"]["never_theorem_authority"] is True
@@ -384,6 +388,14 @@ def test_receipt_binds_model_config_constants_bounds_and_tools(
     receipt: dict[str, Any],
 ) -> None:
     bindings = receipt["bindings"]
+    assert bindings["locked_artifact_digests"] == {
+        "tlc": receipt["bindings"]["binaries"]["tlc"][
+            "locked_artifact_sha256"
+        ],
+        "apalache": receipt["bindings"]["binaries"]["apalache"][
+            "locked_artifact_sha256"
+        ],
+    }
     assert "model" in bindings
     assert bindings["model"]["module_name"]
     assert "config" in bindings
@@ -484,6 +496,27 @@ def test_version_mismatch_case_blocks(state_model_cert) -> None:
     assert "locked_version_mismatch" in outcome.reason_codes
 
 
+def test_corpus_artifact_digest_manifest_fails_closed(
+    state_model_cert,
+) -> None:
+    manifest = state_model_cert.default_corpus_manifest()
+    manifest["locked_artifact_digests"]["apalache"] = "0" * 64
+
+    cert = state_model_cert.run_certification_suite(
+        repo_root=REPO_ROOT,
+        manifest=manifest,
+    )
+
+    check = next(
+        item
+        for item in cert.checks
+        if item.check_id == "state_model.artifact_digest_manifest"
+    )
+    assert check.status == "failed"
+    assert "artifact_digest_manifest_mismatch" in cert.block_reasons
+    assert cert.production_certified is False
+
+
 def test_live_identity_mismatch_blocks_production_cert(
     state_model_cert, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -559,6 +592,14 @@ def test_production_certified_when_live_tools_usable(
             "version_string": f"TLC2 Version {LOCKED_TLC_VERSION}",
             "identity_probed": True,
             "version_match": True,
+            "managed_identity_verified": True,
+            "managed_identity": {
+                "usable": True,
+                "artifact_digest_verified": True,
+                "payload_digest_verified": True,
+                "launchers_structurally_valid": True,
+                "manifest_valid": True,
+            },
             "locked_version": LOCKED_TLC_VERSION,
             "network_used": False,
             "install_attempted": False,
@@ -576,6 +617,15 @@ def test_production_certified_when_live_tools_usable(
             "version_string": f"Apalache version {LOCKED_APALACHE_VERSION}",
             "identity_probed": True,
             "version_match": True,
+            "managed_identity_verified": True,
+            "managed_identity": {
+                "usable": True,
+                "artifact_digest_verified": True,
+                "distribution_tree_verified": True,
+                "payload_digest_verified": True,
+                "launchers_structurally_valid": True,
+                "manifest_valid": True,
+            },
             "locked_version": LOCKED_APALACHE_VERSION,
             "network_used": False,
             "install_attempted": False,

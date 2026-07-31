@@ -179,6 +179,7 @@ SMT_MUTATED: Final = """\
 # names (the trailing "3" in "Z3").
 _VERSION_TOKEN = re.compile(r"\d+(?:\.\d+)+")
 _LONE_VERSION_TOKEN = re.compile(r"\b\d+\b")
+_ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 
 
 # ---------------------------------------------------------------------------
@@ -643,6 +644,68 @@ def resolve_executable(candidates: Sequence[str]) -> str | None:
     return None
 
 
+def _managed_state_model_identity(
+    tool_id: str,
+    executable: str,
+    *,
+    env: Mapping[str, str],
+) -> dict[str, Any] | None:
+    """Validate the complete managed TLC/Apalache payload and launcher bundle."""
+
+    if tool_id not in {"tlc", "apalache"}:
+        return None
+    datasets_root = repo_root_from() / "ipfs_datasets_py"
+    datasets_text = str(datasets_root)
+    if datasets_text not in sys.path:
+        sys.path.insert(0, datasets_text)
+    from ipfs_datasets_py.logic.backends.installers import state_model
+
+    explicit_java = str(env.get(state_model.JAVA_EXECUTABLE_ENV) or "").strip()
+    if not explicit_java:
+        java_home = str(env.get("JAVA_HOME") or "").strip()
+        if java_home:
+            explicit_java = str(Path(java_home) / "bin" / "java")
+    if not explicit_java:
+        explicit_java = shutil.which("java", path=env.get("PATH")) or ""
+    minimum = (
+        state_model.TLC_MIN_JAVA_MAJOR
+        if tool_id == "tlc"
+        else state_model.APALACHE_MIN_JAVA_MAJOR
+    )
+    java = state_model.probe_java_runtime(
+        java_executable=explicit_java or None,
+        minimum_major=minimum,
+    )
+    path = Path(executable)
+    if not java.usable or java.executable is None or path.parent.name != "bin":
+        return {
+            "usable": False,
+            "reason": "validated_java_or_managed_root_missing",
+            "java_runtime": java.to_dict(),
+        }
+    root = path.parent.parent
+    identity = (
+        state_model.managed_tlc_identity(
+            root,
+            java_executable=java.executable,
+        )
+        if tool_id == "tlc"
+        else state_model.managed_apalache_identity(
+            root,
+            java_executable=java.executable,
+        )
+    )
+    identity["java_runtime"] = java.to_dict()
+    return identity
+
+
+def _first_pin_sha256(entry: Mapping[str, Any]) -> str:
+    pins = entry.get("pins") or ()
+    if not pins or not isinstance(pins[0], Mapping):
+        return ""
+    return str(pins[0].get("sha256") or "").strip().lower()
+
+
 def probe_tool_identity(
     entry: Mapping[str, Any],
     *,
@@ -722,6 +785,82 @@ def probe_tool_identity(
         result["probe_error"] = "probe_timeout_or_spawn_failure"
         # PATH presence without a successful identity probe is not installed.
         return result
+
+    combined = "\n".join(
+        part for part in (completed.stdout, completed.stderr) if part
+    ).strip()
+    if tool_id == "tlc":
+        cleaned = _ANSI_ESCAPE_RE.sub("", combined)
+        accepted_returncodes = {
+            int(value) for value in probe.get("accepted_returncodes") or (0, 1)
+        }
+        required_markers = tuple(
+            str(value) for value in probe.get("required_markers") or ()
+        )
+        semantic_help = bool(required_markers) and all(
+            marker in cleaned for marker in required_markers
+        )
+        managed_identity = _managed_state_model_identity(
+            tool_id,
+            executable,
+            env=probe_env,
+        )
+        result["managed_identity"] = managed_identity
+        managed_digest = str(
+            (managed_identity or {}).get("artifact_sha256") or ""
+        ).lower()
+        digest_bound = bool(
+            managed_digest
+            and _first_pin_sha256(entry) == managed_digest
+            and str(probe.get("artifact_sha256") or "").lower()
+            == managed_digest
+        )
+        if (
+            completed.returncode not in accepted_returncodes
+            or not semantic_help
+            or not managed_identity
+            or not managed_identity.get("usable")
+            or not digest_bound
+        ):
+            result["probe_error"] = (
+                "tlc_help_or_managed_digest_identity_failed"
+            )
+            return result
+        result["version_string"] = (
+            f"TLC managed release {_pin_version(entry)}; "
+            f"artifact sha256:{managed_identity['artifact_sha256']}"
+        )
+        result["identity_probed"] = True
+        result["installed"] = True
+        return result
+
+    if completed.returncode != 0:
+        result["probe_error"] = "identity_probe_nonzero_exit"
+        return result
+
+    if tool_id == "apalache":
+        managed_identity = _managed_state_model_identity(
+            tool_id,
+            executable,
+            env=probe_env,
+        )
+        result["managed_identity"] = managed_identity
+        managed_digest = str(
+            (managed_identity or {}).get("artifact_sha256") or ""
+        ).lower()
+        digest_bound = bool(
+            managed_digest
+            and _first_pin_sha256(entry) == managed_digest
+            and str(probe.get("artifact_sha256") or "").lower()
+            == managed_digest
+        )
+        if (
+            not managed_identity
+            or not managed_identity.get("usable")
+            or not digest_bound
+        ):
+            result["probe_error"] = "managed_digest_identity_failed"
+            return result
 
     banner = first_nonempty_line(completed.stdout) or first_nonempty_line(
         completed.stderr

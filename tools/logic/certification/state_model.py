@@ -44,6 +44,7 @@ for candidate in (_REPO_ROOT, _DATASETS_ROOT):
     if text not in sys.path:
         sys.path.insert(0, text)
 
+from ipfs_datasets_py.logic.backends.installers import state_model as installer  # noqa: E402
 from ipfs_datasets_py.logic.backends.results import ResultStatus  # noqa: E402
 from ipfs_datasets_py.logic.backends.tla.runners import (  # noqa: E402
     APALACHE_BACKEND_VERSION,
@@ -88,6 +89,8 @@ AUTHORITY_SCOPE: Final = "bounded_state_model_only"
 
 LOCKED_TLC_VERSION: Final = "1.8.0"
 LOCKED_APALACHE_VERSION: Final = "0.58.3"
+LOCKED_TLC_SHA256: Final = installer.TLC_SHA256
+LOCKED_APALACHE_SHA256: Final = installer.APALACHE_SHA256
 LOCKED_TLC_EXECUTABLE: Final = "tlc"
 LOCKED_APALACHE_EXECUTABLE: Final = "apalache-mc"
 LOCKED_JAVA_EXECUTABLE: Final = "java"
@@ -98,6 +101,7 @@ CHECK_TIMEOUT_SECONDS: Final = 30.0
 DEFAULT_LOCK_RELATIVE: Final = Path("config/formal_verification_toolchains.lock.json")
 
 _VERSION_IN_BANNER = re.compile(r"(\d+\.\d+\.\d+)")
+_ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 
 # Compact embedded corpus. Prefer live binaries when present; classifiers always run.
 _DEFAULT_CORPUS_CASES: Final[tuple[dict[str, Any], ...]] = (
@@ -395,6 +399,66 @@ def extract_version(banner: str | None) -> str | None:
     return match.group(1) if match else None
 
 
+def _selected_java(
+    env: Mapping[str, str],
+    *,
+    executable: str | None,
+    minimum_major: int,
+) -> installer.JavaRuntimeProbe:
+    candidate = executable or str(
+        env.get(installer.JAVA_EXECUTABLE_ENV) or ""
+    ).strip()
+    if not candidate:
+        java_home = str(env.get("JAVA_HOME") or "").strip()
+        if java_home:
+            candidate = str(Path(java_home) / "bin" / "java")
+    if not candidate:
+        candidate = shutil.which("java", path=env.get("PATH")) or ""
+    return installer.probe_java_runtime(
+        java_executable=candidate or None,
+        minimum_major=minimum_major,
+    )
+
+
+def _managed_identity(
+    tool_id: str,
+    binary: str,
+    *,
+    env: Mapping[str, str],
+    java_executable: str | None,
+) -> dict[str, Any]:
+    minimum = (
+        installer.TLC_MIN_JAVA_MAJOR
+        if tool_id == TOOL_ID_TLC
+        else installer.APALACHE_MIN_JAVA_MAJOR
+    )
+    java = _selected_java(
+        env,
+        executable=java_executable,
+        minimum_major=minimum,
+    )
+    path = Path(binary)
+    if not java.usable or java.executable is None or path.parent.name != "bin":
+        return {
+            "usable": False,
+            "reason": "validated_java_or_managed_root_missing",
+            "java_runtime": java.to_dict(),
+        }
+    identity = (
+        installer.managed_tlc_identity(
+            path.parent.parent,
+            java_executable=java.executable,
+        )
+        if tool_id == TOOL_ID_TLC
+        else installer.managed_apalache_identity(
+            path.parent.parent,
+            java_executable=java.executable,
+        )
+    )
+    identity["java_runtime"] = java.to_dict()
+    return identity
+
+
 # ---------------------------------------------------------------------------
 # Data models
 # ---------------------------------------------------------------------------
@@ -515,6 +579,10 @@ def default_corpus_manifest() -> dict[str, Any]:
         "lane_id": LANE_ID,
         "locked_tlc_version": LOCKED_TLC_VERSION,
         "locked_apalache_version": LOCKED_APALACHE_VERSION,
+        "locked_artifact_digests": {
+            "tlc": LOCKED_TLC_SHA256,
+            "apalache": LOCKED_APALACHE_SHA256,
+        },
         "authority_ceiling": AUTHORITY_CEILING,
         "authority_scope": AUTHORITY_SCOPE,
         "model_bindings": dict(DEFAULT_MODEL_BINDINGS),
@@ -571,6 +639,7 @@ def probe_tlc_identity(
     *,
     env: Mapping[str, str] | None = None,
     executable: str | None = None,
+    java_executable: str | None = None,
 ) -> dict[str, Any]:
     probe_env = offline_env(env)
     result: dict[str, Any] = {
@@ -581,6 +650,9 @@ def probe_tlc_identity(
         "identity_probed": False,
         "version_match": False,
         "locked_version": LOCKED_TLC_VERSION,
+        "locked_artifact_sha256": LOCKED_TLC_SHA256,
+        "managed_identity": None,
+        "managed_identity_verified": False,
         "network_used": False,
         "install_attempted": False,
         "download_attempted": False,
@@ -594,33 +666,47 @@ def probe_tlc_identity(
         return result
     result["path_present"] = True
     result["executable_path"] = binary
-    banner: str | None = None
-    for args in (("--version",), ("-help",), ("-h",)):
-        completed = bounded_run(
-            [binary, *args],
-            timeout=PROBE_TIMEOUT_SECONDS,
-            env=probe_env,
-        )
-        if completed is None:
-            continue
-        banner = first_nonempty_line(completed.stdout) or first_nonempty_line(
-            completed.stderr
-        )
-        if not banner:
-            banner = (completed.stdout or completed.stderr or "").strip() or None
-        if banner:
-            break
-    if not banner:
-        result["probe_error"] = "empty_version_banner"
-        return result
-    result["version_string"] = banner
-    result["identity_probed"] = True
-    version = extract_version(banner)
-    result["version_match"] = bool(
-        version == LOCKED_TLC_VERSION or LOCKED_TLC_VERSION in banner
+    completed = bounded_run(
+        [binary, "-help"],
+        timeout=PROBE_TIMEOUT_SECONDS,
+        env=probe_env,
     )
-    if not result["version_match"]:
-        result["probe_error"] = "locked_version_mismatch"
+    if completed is None:
+        result["probe_error"] = "probe_timeout_or_spawn_failure"
+        return result
+    output = _ANSI_ESCAPE_RE.sub(
+        "",
+        "\n".join(
+            part for part in (completed.stdout, completed.stderr) if part
+        ),
+    )
+    markers = (
+        "TLC - provides model checking and simulation of TLA+ specifications",
+        "SYNOPSIS",
+        "DESCRIPTION",
+    )
+    if completed.returncode not in {0, 1} or not all(
+        marker in output for marker in markers
+    ):
+        result["probe_error"] = "tlc_help_semantics_failed"
+        return result
+    managed = _managed_identity(
+        TOOL_ID_TLC,
+        binary,
+        env=probe_env,
+        java_executable=java_executable,
+    )
+    result["managed_identity"] = managed
+    result["managed_identity_verified"] = bool(managed.get("usable"))
+    if not result["managed_identity_verified"]:
+        result["probe_error"] = "managed_digest_identity_failed"
+        return result
+    result["version_string"] = (
+        f"TLC managed release {LOCKED_TLC_VERSION}; "
+        f"artifact sha256:{LOCKED_TLC_SHA256}"
+    )
+    result["identity_probed"] = True
+    result["version_match"] = True
     return result
 
 
@@ -628,6 +714,7 @@ def probe_apalache_identity(
     *,
     env: Mapping[str, str] | None = None,
     executable: str | None = None,
+    java_executable: str | None = None,
 ) -> dict[str, Any]:
     probe_env = offline_env(env)
     result: dict[str, Any] = {
@@ -638,6 +725,9 @@ def probe_apalache_identity(
         "identity_probed": False,
         "version_match": False,
         "locked_version": LOCKED_APALACHE_VERSION,
+        "locked_artifact_sha256": LOCKED_APALACHE_SHA256,
+        "managed_identity": None,
+        "managed_identity_verified": False,
         "network_used": False,
         "install_attempted": False,
         "download_attempted": False,
@@ -660,6 +750,8 @@ def probe_apalache_identity(
         )
         if completed is None:
             continue
+        if completed.returncode != 0:
+            continue
         banner = first_nonempty_line(completed.stdout) or first_nonempty_line(
             completed.stderr
         )
@@ -671,13 +763,25 @@ def probe_apalache_identity(
         result["probe_error"] = "empty_version_banner"
         return result
     result["version_string"] = banner
-    result["identity_probed"] = True
     version = extract_version(banner)
     result["version_match"] = bool(
-        version == LOCKED_APALACHE_VERSION or LOCKED_APALACHE_VERSION in banner
+        version == LOCKED_APALACHE_VERSION
     )
     if not result["version_match"]:
         result["probe_error"] = "locked_version_mismatch"
+        return result
+    managed = _managed_identity(
+        TOOL_ID_APALACHE,
+        binary,
+        env=probe_env,
+        java_executable=java_executable,
+    )
+    result["managed_identity"] = managed
+    result["managed_identity_verified"] = bool(managed.get("usable"))
+    if not result["managed_identity_verified"]:
+        result["probe_error"] = "managed_digest_identity_failed"
+        return result
+    result["identity_probed"] = True
     return result
 
 
@@ -701,33 +805,20 @@ def probe_java_identity(
         "download_attempted": False,
         "probe_error": None,
     }
-    binary = executable or resolve_executable([LOCKED_JAVA_EXECUTABLE])
-    if binary is None:
-        result["probe_error"] = "executable_not_on_path"
-        result["version_match"] = False
-        return result
-    result["path_present"] = True
-    result["executable_path"] = binary
-    completed = bounded_run(
-        [binary, "-version"],
-        timeout=PROBE_TIMEOUT_SECONDS,
-        env=probe_env,
+    runtime = _selected_java(
+        probe_env,
+        executable=executable,
+        minimum_major=installer.APALACHE_MIN_JAVA_MAJOR,
     )
-    if completed is None:
-        result["probe_error"] = "probe_timeout_or_spawn_failure"
+    result["runtime"] = runtime.to_dict()
+    result["path_present"] = runtime.executable is not None
+    result["executable_path"] = runtime.executable
+    result["version_string"] = runtime.banner
+    result["version_match"] = runtime.usable
+    if not runtime.usable:
+        result["probe_error"] = runtime.reason_code or "java_runtime_unusable"
         result["version_match"] = False
         return result
-    # Java prints version to stderr by convention.
-    banner = first_nonempty_line(completed.stderr) or first_nonempty_line(
-        completed.stdout
-    )
-    if not banner:
-        banner = (completed.stderr or completed.stdout or "").strip()
-    if not banner:
-        result["probe_error"] = "empty_version_banner"
-        result["version_match"] = False
-        return result
-    result["version_string"] = banner
     result["identity_probed"] = True
     return result
 
@@ -1014,6 +1105,34 @@ def run_certification_suite(
     cases = corpus_cases(corpus)
     cert = StateModelToolchainCertification()
     probe_env = offline_env(env)
+    declared_digests = dict(corpus.get("locked_artifact_digests") or {})
+    digest_manifest_ok = declared_digests == {
+        TOOL_ID_TLC: LOCKED_TLC_SHA256,
+        TOOL_ID_APALACHE: LOCKED_APALACHE_SHA256,
+    }
+    if not digest_manifest_ok:
+        cert.block_reasons.append("artifact_digest_manifest_mismatch")
+    cert.checks.append(
+        CheckResult(
+            check_id="state_model.artifact_digest_manifest",
+            kind="binding",
+            status="passed" if digest_manifest_ok else "failed",
+            expected=content_digest(
+                {
+                    TOOL_ID_TLC: LOCKED_TLC_SHA256,
+                    TOOL_ID_APALACHE: LOCKED_APALACHE_SHA256,
+                }
+            ),
+            observed=content_digest(declared_digests),
+            detail="corpus manifest binds both reviewed state-model artifact digests",
+            bindings={"locked_artifact_digests": declared_digests},
+            reason_codes=(
+                []
+                if digest_manifest_ok
+                else ["artifact_digest_manifest_mismatch"]
+            ),
+        )
+    )
 
     cert.checks.append(
         CheckResult(
@@ -1032,9 +1151,15 @@ def run_certification_suite(
         )
     )
 
-    tlc_probe = probe_tlc_identity(env=probe_env, executable=tlc_executable)
+    tlc_probe = probe_tlc_identity(
+        env=probe_env,
+        executable=tlc_executable,
+        java_executable=java_executable,
+    )
     apalache_probe = probe_apalache_identity(
-        env=probe_env, executable=apalache_executable
+        env=probe_env,
+        executable=apalache_executable,
+        java_executable=java_executable,
     )
     java_probe = probe_java_identity(env=probe_env, executable=java_executable)
 
@@ -1049,9 +1174,15 @@ def run_certification_suite(
     cert.java_identity_probed = bool(java_probe.get("identity_probed"))
     cert.tlc_version_match = bool(tlc_probe.get("version_match"))
     cert.apalache_version_match = bool(apalache_probe.get("version_match"))
-    cert.tlc_usable = bool(cert.tlc_identity_probed and cert.tlc_version_match)
+    cert.tlc_usable = bool(
+        cert.tlc_identity_probed
+        and cert.tlc_version_match
+        and tlc_probe.get("managed_identity_verified")
+    )
     cert.apalache_usable = bool(
-        cert.apalache_identity_probed and cert.apalache_version_match
+        cert.apalache_identity_probed
+        and cert.apalache_version_match
+        and apalache_probe.get("managed_identity_verified")
     )
     cert.java_usable = bool(cert.java_identity_probed)
 
@@ -1085,6 +1216,7 @@ def run_certification_suite(
                     bindings={
                         "executable_path": executable,
                         "version_string": version_string,
+                        "managed_identity": probe.get("managed_identity"),
                     },
                 )
             )
@@ -1258,6 +1390,7 @@ def run_certification_suite(
 
     # Bind model, config, constants, bounds, and exact tool identities.
     cert.bindings = {
+        "locked_artifact_digests": declared_digests,
         "model": dict(corpus.get("model_bindings") or DEFAULT_MODEL_BINDINGS),
         "config": dict(corpus.get("config_bindings") or DEFAULT_CONFIG_BINDINGS),
         "constants": dict(
@@ -1282,6 +1415,8 @@ def run_certification_suite(
                 "identity_probed": cert.tlc_identity_probed,
                 "version_match": cert.tlc_version_match,
                 "authority_ceiling": AUTHORITY_CEILING,
+                "locked_artifact_sha256": LOCKED_TLC_SHA256,
+                "managed_identity": tlc_probe.get("managed_identity"),
             },
             "apalache": {
                 "tool_id": TOOL_ID_APALACHE,
@@ -1292,6 +1427,8 @@ def run_certification_suite(
                 "version_match": cert.apalache_version_match,
                 "authority_ceiling": AUTHORITY_CEILING,
                 "finite_trace_only": True,
+                "locked_artifact_sha256": LOCKED_APALACHE_SHA256,
+                "managed_identity": apalache_probe.get("managed_identity"),
             },
             "java": {
                 "tool_id": SUPPORT_TOOL_ID,
@@ -1363,6 +1500,7 @@ def run_certification_suite(
         in {
             "state_model.deterministic_replay_binding",
             "state_model.bindings",
+            "state_model.artifact_digest_manifest",
             "java.support_only_boundary",
             "state_model.never_theorem_authority",
             "state_model.offline_policy",
