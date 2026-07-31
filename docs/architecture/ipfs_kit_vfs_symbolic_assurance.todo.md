@@ -4279,7 +4279,7 @@ compact references and bounded spans only.
 
 ## VFS-092 Close objective gap: Prove vfs/minimal-proof-context@1 for Produce minimal proof and counterexample contexts
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
