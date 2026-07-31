@@ -745,7 +745,7 @@ expectations under existing precedence, but do not prove them by passing.
 
 ## LPR-022 Generalize the evidence-bound program contract profile
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
