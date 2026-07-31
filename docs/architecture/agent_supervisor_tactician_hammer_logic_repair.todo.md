@@ -539,7 +539,7 @@ expectations under existing precedence, but do not prove them by passing.
 
 ## LPR-016 Materialize analytical-first, context-rich repair packets
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
