@@ -44,6 +44,9 @@ pid_path = Path(value(argv, "--master-pid-path"))
 log_path = Path(value(argv, "--master-log"))
 if "--detach" in argv:
     child_argv = [item for item in argv if item != "--detach"]
+    delay = float(os.environ.get("FAKE_LPR_DETACH_DELAY_SECONDS", "0"))
+    if delay > 0:
+        time.sleep(delay)
     log_path.parent.mkdir(parents=True, exist_ok=True)
     with log_path.open("ab") as output:
         child = subprocess.Popen(
@@ -177,6 +180,61 @@ def test_lpr_launcher_fake_process_lifecycle_is_idempotent_and_identity_safe(tmp
         (state_root / "runtime" / "launch-receipt.json").read_text(encoding="utf-8")
     )
     assert receipt["accelerator_branch"] == "agent/proof-gated-contract-repair"
+
+
+def test_lpr_launcher_serializes_concurrent_starts(tmp_path):
+    module_root = tmp_path / "modules"
+    module_root.mkdir()
+    _write_fake_runner(module_root)
+    state_root = tmp_path / "isolated" / "lpr-state"
+    env = os.environ.copy()
+    env.update(
+        {
+            "FAKE_LPR_DETACH_DELAY_SECONDS": "0.5",
+            "LPR_DURATION_SECONDS": "300",
+            "LPR_RUNNER_MODULE": "fake_lpr_runner",
+            "LPR_STATE_ROOT": str(state_root),
+            "LPR_TEST_MODE": "1",
+            "PYTHONPATH": os.pathsep.join(
+                [str(module_root), env.get("PYTHONPATH", "")]
+            ).rstrip(os.pathsep),
+        }
+    )
+
+    first = subprocess.Popen(
+        [str(LAUNCHER), "start"],
+        cwd=REPO_ROOT,
+        env=env,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    second = subprocess.Popen(
+        [str(LAUNCHER), "start"],
+        cwd=REPO_ROOT,
+        env=env,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    first_stdout, first_stderr = first.communicate(timeout=45)
+    second_stdout, second_stderr = second.communicate(timeout=45)
+    try:
+        assert first.returncode == 0, (first_stdout, first_stderr)
+        assert second.returncode == 0, (second_stdout, second_stderr)
+        assert "already running" in first_stdout + second_stdout
+        log = (state_root / "runtime" / "master.log").read_text(encoding="utf-8")
+        assert log.count("fake LPR runner ready") == 1
+        identity = json.loads(
+            (state_root / "runtime" / "master.identity.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        assert identity["pid"] == int(
+            (state_root / "runtime" / "master.pid").read_text(encoding="ascii")
+        )
+    finally:
+        _run("stop", env=env)
 
 
 def test_lpr_datasets_gitlink_contains_the_reviewed_tactician_contract():

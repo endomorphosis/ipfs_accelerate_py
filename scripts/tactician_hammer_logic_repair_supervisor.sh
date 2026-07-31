@@ -27,6 +27,8 @@ STATE_ROOT="${PROGRAM_ROOT}/state"
 PREFLIGHT_ROOT="${PROGRAM_ROOT}/preflight"
 WORKTREE_ROOT="${PROGRAM_ROOT}/worktrees"
 MERGE_QUEUE_ROOT="${PROGRAM_ROOT}/merge-queue"
+LIFECYCLE_LOCK_PATH="${PROGRAM_ROOT}/lifecycle.lock"
+LIFECYCLE_LOCK_WAIT_SECONDS="${LPR_LIFECYCLE_LOCK_WAIT_SECONDS:-120}"
 MASTER_PID_PATH="${RUNTIME_ROOT}/master.pid"
 MASTER_IDENTITY_PATH="${RUNTIME_ROOT}/master.identity.json"
 MASTER_LOG_PATH="${RUNTIME_ROOT}/master.log"
@@ -714,6 +716,10 @@ launch_master() {
   mkdir -p "${RUNTIME_ROOT}" "${STATE_ROOT}" "${WORKTREE_ROOT}" "${MERGE_QUEUE_ROOT}"
   export IPFS_ACCELERATE_LPR_RUN_ID="${run_id}"
   (
+    # The parent shell must retain the lifecycle lock until the detached
+    # master's PID and identity have both been published.  Do not leak the
+    # lock descriptor into that long-lived process.
+    exec 9>&-
     cd "${REPO_ROOT}"
     "${PYTHON_BIN}" -m "${RUNNER_MODULE}" \
       --repo-root "${REPO_ROOT}" \
@@ -783,6 +789,28 @@ launch_master() {
   )
   capture_master_identity "${run_id}"
   record_launch_receipt "${run_id}"
+}
+
+with_lifecycle_lock() {
+  local operation="$1"
+  if ! command -v flock >/dev/null 2>&1; then
+    echo "flock is required for supervisor lifecycle serialization" >&2
+    return 2
+  fi
+  if [[ ! "${LIFECYCLE_LOCK_WAIT_SECONDS}" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
+    echo "invalid lifecycle lock wait: ${LIFECYCLE_LOCK_WAIT_SECONDS}" >&2
+    return 2
+  fi
+  validate_runtime_root >/dev/null
+  mkdir -p "${PROGRAM_ROOT}"
+  exec 9>"${LIFECYCLE_LOCK_PATH}"
+  if ! flock -w "${LIFECYCLE_LOCK_WAIT_SECONDS}" 9; then
+    echo \
+      "timed out waiting for supervisor lifecycle lock: ${LIFECYCLE_LOCK_PATH}" \
+      >&2
+    return 2
+  fi
+  "${operation}"
 }
 
 start() {
@@ -1028,16 +1056,16 @@ case "${1:-}" in
     preflight
     ;;
   start)
-    start
+    with_lifecycle_lock start
     ;;
   status)
     status
     ;;
   restart)
-    restart
+    with_lifecycle_lock restart
     ;;
   stop)
-    stop
+    with_lifecycle_lock stop
     ;;
   *)
     echo "usage: $0 {doctor|preflight|start|status|restart|stop}" >&2
