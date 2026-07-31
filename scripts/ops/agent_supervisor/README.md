@@ -53,6 +53,13 @@ database, and load no optional providers.
 
 ### Cutover / placement guards
 
+Equivalence is a content-addressed fixed point over
+`VfsGeneralizationEquivalenceReceipt` + `VfsCallerMigrationReceipt` (locked
+source → generic engines, caller impact closure, Tactician/Hammer dispositions),
+`VfsRootLayoutGuard` (no root `vfs_*.py`, no `agent_supervisor.vfs_*` imports,
+domain-free generic modules, thin ops), and `AssuranceTwoProfileConformance`
+(VFS profile and hermetic non-VFS fixture share the same engine modules).
+
 - `test/api/test_agent_supervisor_vfs_generalization_equivalence.py`
 - `test/api/test_agent_supervisor_vfs_root_layout_guard.py`
 - `test/api/test_agent_supervisor_assurance_two_profile_end_to_end.py`
@@ -60,6 +67,8 @@ database, and load no optional providers.
   `docs/architecture/IPFS_KIT_VFS_SYMBOLIC_ASSURANCE_PLAN.md`
 - Map: `docs/architecture/agent_supervisor/VFS_ASSURANCE_GENERALIZATION_MAP.md`
 
+Unsupported dispositions retained (not claimed as proved): source-blob byte
+equivalence and unresolved dynamic/native public-API diff.
 ### Board preflight
 
 ```bash

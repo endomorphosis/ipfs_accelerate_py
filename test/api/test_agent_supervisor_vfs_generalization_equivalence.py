@@ -691,17 +691,29 @@ def test_caller_migration_receipt_is_closed() -> None:
 def test_equivalence_receipt_fixed_point() -> None:
     first = compute_equivalence_receipt()
     second = compute_equivalence_receipt()
+    third = compute_equivalence_receipt()
     assert isinstance(first, VfsGeneralizationEquivalenceReceipt)
     assert first.passed, first.to_dict()
-    assert first.content_id == second.content_id
+    assert first.content_id == second.content_id == third.content_id
     assert first.content_id.startswith("sha256:")
     # Supported clauses proved; unsupported retained explicitly.
     by_id = {clause.clause_id: clause for clause in first.clauses}
     assert by_id["layout-cutover"].disposition == _DISPOSITION_PROVED
+    assert by_id["generic-engine-presence"].disposition == _DISPOSITION_PROVED
+    assert by_id["profile-identity-parity"].disposition == _DISPOSITION_PROVED
+    assert by_id["schema-parity"].disposition == _DISPOSITION_PROVED
+    assert by_id["authority-flags"].disposition == _DISPOSITION_PROVED
+    assert by_id["ops-delegation"].disposition == _DISPOSITION_PROVED
+    assert by_id["cold-import"].disposition == _DISPOSITION_PROVED
     assert by_id["source-blob-byte-equivalence"].disposition == _DISPOSITION_UNSUPPORTED
     assert by_id["dynamic-native-public-api-diff"].disposition == _DISPOSITION_UNSUPPORTED
     assert by_id["caller-import-closure"].disposition == _DISPOSITION_PROVED
     assert by_id["open-board-output-migration"].disposition == _DISPOSITION_MIGRATED
+    # ProgramContractDelta-style lock→generic closure: seven modules present.
+    assert first.caller_migration is not None
+    assert first.caller_migration.passed
+    assert len(first.caller_migration.module_migrations) == 7
+    assert first.source_revision == "0cc04ebb640c4c981cf4650016e096a73ab0e8c0"
 
 
 def test_generic_engines_importable_without_optional_providers() -> None:
