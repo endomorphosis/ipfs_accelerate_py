@@ -6972,7 +6972,6 @@ class PortalImplementationDaemon:
         """Block for semantic input, using ``timeout`` as the safety deadline."""
 
         coordinator = self._ensure_runtime_wake_coordinator()
-        coordinator.synchronize_file_cursors()
         event = coordinator.wait(timeout=timeout)
         events = [event]
         self._pending_runtime_wake_events.extend(events)
@@ -7152,6 +7151,21 @@ class PortalImplementationDaemon:
         return result
 
     def run_once(self) -> dict[str, Any]:
+        """Run one pass and establish its durable file-cursor boundary."""
+
+        result = self._run_once()
+        coordinator = self._runtime_wake_coordinator
+        if coordinator is not None:
+            synchronize_file_cursors = getattr(
+                coordinator,
+                "synchronize_file_cursors",
+                None,
+            )
+            if callable(synchronize_file_cursors):
+                synchronize_file_cursors()
+        return result
+
+    def _run_once(self) -> dict[str, Any]:
         try:
             protected_checkout_recovery = (
                 self._recover_protected_checkout_mutation()

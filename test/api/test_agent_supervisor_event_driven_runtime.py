@@ -332,7 +332,6 @@ def test_daemon_wait_does_not_wake_on_its_own_post_pass_files(
     tmp_path: Path,
 ) -> None:
     daemon = _drained_daemon(tmp_path)
-    daemon.run_once()
     clock = LogicalClock()
     watcher = LogicalWatcher(clock)
     coordinator = RuntimeWakeCoordinator(
@@ -345,12 +344,10 @@ def test_daemon_wait_does_not_wake_on_its_own_post_pass_files(
     )
     daemon._runtime_wake_coordinator = coordinator
 
-    # Model a durable state/checkpoint write made by the completed pass plus
-    # the native notification which is still queued for the repository root.
-    daemon.state_path.write_text(
-        daemon.state_path.read_text(encoding="utf-8") + "\n",
-        encoding="utf-8",
-    )
+    # The completed pass establishes the cursor boundary for its own durable
+    # writes. Model the corresponding native notification remaining queued
+    # after that boundary.
+    daemon.run_once()
     watcher.notify()
 
     try:
