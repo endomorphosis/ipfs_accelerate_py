@@ -652,7 +652,7 @@ expectations under existing precedence, but do not prove them by passing.
 
 ## LPR-019 Benchmark adversarial logic prediction and all-caller repair
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
