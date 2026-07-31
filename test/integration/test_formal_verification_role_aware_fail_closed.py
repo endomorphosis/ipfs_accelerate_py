@@ -256,6 +256,50 @@ def test_repository_source_hash_cannot_replace_lean_executable_identity(
     assert elevations[0]["reason"] == "semantic_identity_not_exactly_bound"
 
 
+def test_missing_external_kernels_cannot_become_usable_from_stale_identity(
+    certifier,
+) -> None:
+    tools = {
+        tool_id: certifier.ToolCertification(
+            tool_id=tool_id,
+            installed=True,
+            identity_probed=True,
+            usable=True,
+            unavailable=False,
+            production_certified=True,
+            promotion_blocked=False,
+        )
+        for tool_id in ("coq", "isabelle")
+    }
+    certifier.apply_semantic_elevations(
+        tools,
+        [
+            {
+                "lane_id": "kernel_rocq",
+                "tool_ids": ["coq"],
+                "status": "not_run",
+            },
+            {
+                "lane_id": "kernel_isabelle",
+                "tool_ids": ["isabelle"],
+                "status": "not_run",
+            },
+        ],
+        repo_root=REPO_ROOT,
+    )
+
+    for tool in tools.values():
+        assert tool.usable is False
+        assert tool.unavailable is True
+        assert tool.production_certified is False
+        assert tool.promotion_blocked is True
+        assert (
+            "external_prover_installation_and_live_fanin_pending"
+            in tool.block_reasons
+        )
+        assert tool.evidence_class == "external_prover_installation_pending"
+
+
 def test_nonzero_error_banner_is_not_an_identity(
     certifier,
     monkeypatch: pytest.MonkeyPatch,
