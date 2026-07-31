@@ -1365,7 +1365,7 @@ expectations under existing precedence, but do not prove them by passing.
 
 ## LPR-042 Release the joined VFS and deterministic-doctor fixed point
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
