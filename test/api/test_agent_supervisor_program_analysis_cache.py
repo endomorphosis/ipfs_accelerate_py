@@ -17,7 +17,15 @@ from ipfs_accelerate_py.agent_supervisor.analysis.cache_coordinator import (
     CacheCoordinationStatus,
 )
 from ipfs_accelerate_py.agent_supervisor.program_analysis_cache import (
+    CACHE_INVALIDATION_PROOF_AGGREGATE_EVIDENCE_TERMS,
+    CACHE_INVALIDATION_PROOF_AGGREGATE_GOAL_IDS,
+    CACHE_INVALIDATION_PROOF_COMPLETION_GOAL_BINDINGS,
     CACHE_INVALIDATION_PROOF_EVIDENCE,
+    CACHE_INVALIDATION_PROOF_GOAL_ID,
+    CACHE_INVALIDATION_PROOF_INVARIANTS,
+    CACHE_INVALIDATION_PROOF_PARENT_GOAL_ID,
+    CACHE_INVALIDATION_PROOF_SCHEMA,
+    CACHE_INVALIDATION_PROOF_TASK_ID,
     CID_PROFILE_EVIDENCE,
     CID_PROFILE_GOAL_ID,
     DEPENDENCY_CACHE_EVIDENCE,
@@ -26,14 +34,20 @@ from ipfs_accelerate_py.agent_supervisor.program_analysis_cache import (
     OBJECTIVE_GOAL_PACKET_IDS,
     OBJECTIVE_VALIDATION_REPAIR_EVIDENCE,
     OBJECTIVE_VALIDATION_REPAIR_GOAL_ID,
+    CacheInvalidationProof,
     ProgramAnalysisAuthority,
     ProgramAnalysisCache,
     ProgramAnalysisCacheKey,
     ProgramAnalysisCacheReason,
+    ProgramAnalysisCacheValidationError,
     ProgramAnalysisComponentKind,
     ProgramAnalysisLookupStatus,
     all_covered_evidence_terms,
     build_program_analysis_cache_key,
+    cache_invalidation_proof,
+    cache_invalidation_proof_aggregate_evidence_terms,
+    cache_invalidation_proof_aggregate_goal_ids,
+    cache_invalidation_proof_evidence_terms,
     compact_program_analysis_receipt,
     objective_validation_repair_evidence_terms,
     packet_evidence_terms,
@@ -679,6 +693,117 @@ def test_build_key_aliases_and_evidence_constants(tmp_path: Path) -> None:
     )
     assert compact["program_key"]["component_kind"] == "zk"
     assert compact["component_kind"] == "zk"
+
+
+def test_vfs_g150_cache_invalidation_proof_is_heap_aligned_and_closed(
+    tmp_path: Path,
+) -> None:
+    """VFS-G150: bind the executable proof to G031/G141/G142 exactly."""
+
+    proof = cache_invalidation_proof()
+    assert proof is cache_invalidation_proof()
+    assert proof == CacheInvalidationProof()
+    assert proof.schema == CACHE_INVALIDATION_PROOF_SCHEMA
+    assert proof.evidence == CACHE_INVALIDATION_PROOF_EVIDENCE
+    assert proof.goal_id == CACHE_INVALIDATION_PROOF_GOAL_ID == "VFS-G150"
+    assert proof.parent_goal_id == CACHE_INVALIDATION_PROOF_PARENT_GOAL_ID
+    assert CACHE_INVALIDATION_PROOF_PARENT_GOAL_ID == "VFS-G031"
+    assert proof.task_id == CACHE_INVALIDATION_PROOF_TASK_ID == "VFS-089"
+    assert (
+        proof.aggregate_goal_ids
+        == CACHE_INVALIDATION_PROOF_AGGREGATE_GOAL_IDS
+    )
+    assert CACHE_INVALIDATION_PROOF_AGGREGATE_GOAL_IDS == (
+        "VFS-G031",
+        "VFS-G141",
+        "VFS-G142",
+    )
+    assert (
+        proof.aggregate_evidence_terms
+        == CACHE_INVALIDATION_PROOF_AGGREGATE_EVIDENCE_TERMS
+    )
+    assert CACHE_INVALIDATION_PROOF_AGGREGATE_EVIDENCE_TERMS == (
+        "vfs/cache-invalidation-proof@1",
+        "vfs/cid-profile@1",
+        "vfs/dependency-cache@1",
+    )
+    assert proof.completion_goal_bindings == (
+        CACHE_INVALIDATION_PROOF_COMPLETION_GOAL_BINDINGS
+    )
+    assert dict(proof.completion_goal_bindings) == {
+        "VFS-G031": ("vfs/cache-invalidation-proof@1",),
+        "VFS-G141": ("vfs/cid-profile@1",),
+        "VFS-G142": ("vfs/dependency-cache@1",),
+    }
+    assert proof.invariants == CACHE_INVALIDATION_PROOF_INVARIANTS
+    assert len(proof.invariants) == 10
+    assert all(
+        (
+            proof.exact_identity_invalidation,
+            proof.unrelated_reuse,
+            proof.transitive_invalidation,
+            proof.single_flight,
+            proof.failed_flight_cleanup,
+            proof.bounded_retention,
+            proof.cid_profile_bound,
+            proof.semantic_dependencies_bound,
+            proof.fail_closed,
+        )
+    )
+    assert proof.completion_authoritative is False
+    assert cache_invalidation_proof_evidence_terms() == (
+        "vfs/cache-invalidation-proof@1",
+    )
+    assert cache_invalidation_proof_aggregate_goal_ids() == (
+        "VFS-G031",
+        "VFS-G141",
+        "VFS-G142",
+    )
+    assert cache_invalidation_proof_aggregate_evidence_terms() == (
+        "vfs/cache-invalidation-proof@1",
+        "vfs/cid-profile@1",
+        "vfs/dependency-cache@1",
+    )
+
+    # The descriptor cannot be weakened or turned into completion authority.
+    with pytest.raises(
+        ProgramAnalysisCacheValidationError,
+        match="proof is frozen",
+    ):
+        CacheInvalidationProof(single_flight=False)
+    with pytest.raises(
+        ProgramAnalysisCacheValidationError,
+        match="proof is frozen",
+    ):
+        CacheInvalidationProof(completion_authoritative=True)
+    with pytest.raises(
+        ProgramAnalysisCacheValidationError,
+        match="proof is frozen",
+    ):
+        CacheInvalidationProof(aggregate_goal_ids=("VFS-G031",))
+
+    # Heap/task metadata remains outside cache identity and compact receipts.
+    encoded_key = json.dumps(_key().to_dict(), sort_keys=True)
+    compact = compact_program_analysis_receipt(_receipt(), key=_key())
+    encoded_receipt = json.dumps(compact, sort_keys=True)
+    for marker in (
+        "VFS-G150",
+        "VFS-089",
+        "vfs/cache-invalidation-proof@1",
+    ):
+        assert marker not in encoded_key
+        assert marker not in encoded_receipt
+
+    # Domain runtime evidence may claim the proof term, but only a successful
+    # authoritative cache entry can become completion evidence.
+    cache = ProgramAnalysisCache(tmp_path)
+    draft_key = _key(authority=ProgramAnalysisAuthority.DRAFT)
+    stored = cache.put(draft_key, _receipt())
+    assert stored.stored and stored.runtime_artifact is not None
+    assert CACHE_INVALIDATION_PROOF_EVIDENCE in (
+        stored.runtime_artifact.payload["evidence"]
+    )
+    assert cache.lookup(draft_key).is_completion_evidence is False
 
 
 def test_vfs_057_packet_evidence_is_discoverable_but_not_cache_authority(

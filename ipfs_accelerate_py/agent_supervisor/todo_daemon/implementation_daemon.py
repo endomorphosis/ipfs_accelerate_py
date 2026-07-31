@@ -19353,6 +19353,44 @@ class PortalImplementationDaemon:
         except OSError:
             return None
 
+    def _git_primary_worktree(self, repo: Path, common_dir: Path) -> Path:
+        configured = subprocess.run(
+            [
+                "git",
+                "config",
+                "--file",
+                str(common_dir / "config"),
+                "--path",
+                "--get",
+                "core.worktree",
+            ],
+            cwd=repo,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if configured.returncode == 0 and configured.stdout.strip():
+            configured_path = Path(configured.stdout.strip())
+            candidate = (
+                configured_path
+                if configured_path.is_absolute()
+                else common_dir / configured_path
+            )
+            try:
+                resolved = candidate.resolve()
+                if resolved.exists():
+                    return resolved
+            except OSError:
+                pass
+        if common_dir.name == ".git":
+            try:
+                primary = common_dir.parent.resolve()
+                if primary.exists():
+                    return primary
+            except OSError:
+                pass
+        return repo.resolve()
+
     @staticmethod
     def _submodule_relative_from_config(modules_dir: Path, config_path: Path) -> Path | None:
         try:
@@ -19368,56 +19406,96 @@ class PortalImplementationDaemon:
         git_dir = self._git_absolute_dir(repo_path)
         if git_dir is None:
             return {"attempted": False, "reason": "git_dir_unavailable", "repo": str(repo_path)}
-        modules_dir = git_dir / "modules"
-        if not modules_dir.is_dir():
+        common_dir = self._git_common_dir(repo_path)
+        module_stores: list[tuple[Path, Path]] = []
+        seen_module_stores: set[Path] = set()
+        candidates = [(git_dir / "modules", repo_path.resolve())]
+        if common_dir is not None:
+            candidates.append(
+                (
+                    common_dir / "modules",
+                    self._git_primary_worktree(repo_path, common_dir),
+                )
+            )
+        for modules_dir, checkout_root in candidates:
+            try:
+                resolved_modules_dir = modules_dir.resolve()
+            except OSError:
+                continue
+            if (
+                resolved_modules_dir in seen_module_stores
+                or not resolved_modules_dir.is_dir()
+            ):
+                continue
+            seen_module_stores.add(resolved_modules_dir)
+            module_stores.append((resolved_modules_dir, checkout_root))
+        if not module_stores:
             return {"attempted": False, "reason": "modules_dir_missing", "repo": str(repo_path)}
 
         repairs: list[dict[str, Any]] = []
-        for config_path in sorted(modules_dir.rglob("config")):
-            module_relative = self._submodule_relative_from_config(modules_dir, config_path)
-            if module_relative is None:
-                continue
-            checkout_path = (repo_path / module_relative).resolve()
-            if not checkout_path.exists():
-                continue
-            current = subprocess.run(
-                ["git", "config", "--file", str(config_path), "--get", "core.worktree"],
-                cwd=repo_path,
-                text=True,
-                capture_output=True,
-                check=False,
-            )
-            if current.returncode != 0 or not current.stdout.strip():
-                continue
-            current_value = current.stdout.strip()
-            current_path = Path(current_value)
-            current_target = current_path if current_path.is_absolute() else (config_path.parent / current_path)
-            try:
-                if current_target.resolve().exists():
+        for modules_dir, checkout_root in module_stores:
+            for config_path in sorted(modules_dir.rglob("config")):
+                module_relative = self._submodule_relative_from_config(
+                    modules_dir,
+                    config_path,
+                )
+                if module_relative is None:
                     continue
-            except OSError:
-                pass
+                checkout_path = (checkout_root / module_relative).resolve()
+                if not checkout_path.exists():
+                    continue
+                current = subprocess.run(
+                    ["git", "config", "--file", str(config_path), "--get", "core.worktree"],
+                    cwd=repo_path,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+                if current.returncode != 0 or not current.stdout.strip():
+                    continue
+                current_value = current.stdout.strip()
+                current_path = Path(current_value)
+                current_target = (
+                    current_path
+                    if current_path.is_absolute()
+                    else config_path.parent / current_path
+                )
+                try:
+                    if current_target.resolve().exists():
+                        continue
+                except OSError:
+                    pass
 
-            new_value = os.path.relpath(checkout_path, config_path.parent.resolve())
-            update = subprocess.run(
-                ["git", "config", "--file", str(config_path), "core.worktree", new_value],
-                cwd=repo_path,
-                text=True,
-                capture_output=True,
-                check=False,
-            )
-            repairs.append(
-                {
-                    "config_path": str(config_path),
-                    "module_path": str(module_relative),
-                    "old_worktree": current_value,
-                    "new_worktree": new_value,
-                    "repaired": update.returncode == 0,
-                    "returncode": update.returncode,
-                    "stdout": update.stdout[-4000:],
-                    "stderr": update.stderr[-4000:],
-                }
-            )
+                new_value = os.path.relpath(
+                    checkout_path,
+                    config_path.parent.resolve(),
+                )
+                update = subprocess.run(
+                    [
+                        "git",
+                        "config",
+                        "--file",
+                        str(config_path),
+                        "core.worktree",
+                        new_value,
+                    ],
+                    cwd=repo_path,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+                repairs.append(
+                    {
+                        "config_path": str(config_path),
+                        "module_path": str(module_relative),
+                        "old_worktree": current_value,
+                        "new_worktree": new_value,
+                        "repaired": update.returncode == 0,
+                        "returncode": update.returncode,
+                        "stdout": update.stdout[-4000:],
+                        "stderr": update.stderr[-4000:],
+                    }
+                )
 
         result = {
             "attempted": True,

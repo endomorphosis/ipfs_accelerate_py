@@ -19,6 +19,15 @@ translation (FormalLogicVocabulary / ``vfs/logic-translation@1``), candidate
 search (MultiProverRouter), and kernel validation (KernelVerification /
 :func:`validate_solver_portfolio` / ``vfs/kernel-proof-receipt@1``) separate.
 
+VFS-G157 / VFS-092 proves ``vfs/minimal-proof-context@1`` on this surface by
+composing :mod:`code_contract_proof_context`: required axioms, contracts,
+effects, and call edges are never truncated; optional premises carry inclusion
+reasons; identical requests reuse exact receipts; and changed dependencies
+invalidate the prior proof context.  Discovery hooks
+(:func:`minimal_proof_context_evidence`, :func:`prove_minimal_proof_context`)
+bind that exact evidence term without granting completion authority.  Kernel
+domain envelopes remain kernel-only via :func:`covered_evidence_terms`.
+
 Non-conclusive outcomes (never treated as proved):
 
 * missing admitted backend (for example absent z3)
@@ -40,7 +49,7 @@ import shutil
 import threading
 import time
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import Enum
 from types import MappingProxyType
 from typing import Any, ClassVar, Final, Protocol
@@ -80,17 +89,46 @@ from ipfs_datasets_py.logic.ir_core.protocols import (
 
 from .code_contract_logic import (
     CODE_CONTRACT_LOGIC_VERSION,
+    FORMAL_PROOF_PACKET_CLAIM_SCHEMA,
+    FORMAL_PROOF_PACKET_EVIDENCE_TERMS,
+    FORMAL_PROOF_PACKET_INVARIANTS,
+    KERNEL_PROOF_RECEIPT_EVIDENCE as LOGIC_KERNEL_PROOF_RECEIPT_EVIDENCE,
+    KERNEL_PROOF_RECEIPT_GOAL_ID,
+    KERNEL_PROOF_RECEIPT_TASK_ID,
     LOGIC_FAMILY,
     LOGIC_TRANSLATION_EVIDENCE,
+    LOGIC_TRANSLATION_GOAL_ID,
+    LOGIC_TRANSLATION_TASK_ID,
     OBJECTIVE_GOAL_ID,
+    OBJECTIVE_GOAL_PACKET_ID,
+    OBJECTIVE_PACKET_GOAL_IDS,
+    OBJECTIVE_PACKET_TASK_IDS,
+    OBJECTIVE_PARENT_GOAL_ID,
     OBJECTIVE_VALIDATION_REPAIR_EVIDENCE,
     OBJECTIVE_VALIDATION_REPAIR_TASK_ID,
     PredicateRelation,
+    RejectionCode,
+    TranslationRejectedError,
     TranslationResult,
     TranslationStatus,
     FormalLogicVocabulary,
+    formal_proof_completion_goal_bindings as _logic_completion_bindings,
     objective_validation_repair_evidence_terms as _logic_repair_terms,
+    packet_evidence_terms as _logic_packet_terms,
     pinned_translator_identity,
+    prove_logic_translation,
+    translation_satisfies_logic_translation,
+    verify_translation_result,
+)
+from .code_contract_proof_context import (
+    MINIMAL_PROOF_CONTEXT_EVIDENCE as _PROOF_CONTEXT_MINIMAL_EVIDENCE,
+    CodeContractProofContextCompiler,
+    CompiledProofContext,
+    ProofContextItem,
+    ProofContextItemKind,
+    ProofContextLimits,
+    ProofContextRequest,
+    ProofContextStatus,
 )
 from .proof.formal_verification_contracts import (
     AssuranceLevel,
@@ -124,18 +162,71 @@ from .proof.multi_prover_router import (
 CODE_CONTRACT_PROVER_VERSION: Final[int] = 1
 PROVER_ID: Final[str] = "code-contract-prover"
 PROVER_VERSION: Final[str] = "1"
-KERNEL_PROOF_RECEIPT_EVIDENCE: Final[str] = "vfs/kernel-proof-receipt@1"
+# Align with the logic-surface pin so discovery scanners see one canonical term.
+KERNEL_PROOF_RECEIPT_EVIDENCE: Final[str] = LOGIC_KERNEL_PROOF_RECEIPT_EVIDENCE
 SOLVER_PORTFOLIO_EVIDENCE: Final[str] = "vfs/code-contract-solver-portfolio@1"
 
-# Re-export VFS-G070 evidence terms so scanners discover them on both the
-# translation module and this independent prover surface.  Domain envelope
-# evidence stays translation/kernel-only; the synthetic objective validation
-# repair term is discoverable via objective_validation_repair_evidence_terms
-# / all_covered_evidence_terms and never enters content-addressed identity.
+# Closed acceptance surface for vfs/kernel-proof-receipt@1 (VFS-G155).
+KERNEL_PROOF_RECEIPT_INVARIANTS: Final[tuple[str, ...]] = (
+    "validation receipts carry pinned vfs/kernel-proof-receipt@1 evidence",
+    "MultiProverRouter premise selectors lack KernelVerification authority",
+    "wrong theorem bindings fail closed at independent validation",
+    "stale prover or translator identity fails closed",
+    "omitted effects fail closed before solver compilation",
+    "capability loss between probe and validation revokes authority",
+)
+
+# ---------------------------------------------------------------------------
+# VFS-G157 / VFS-092 minimal proof-context evidence (vfs/minimal-proof-context@1)
+# Labels never enter prove-result, validation-receipt, or probe identities.
+# ---------------------------------------------------------------------------
+MINIMAL_PROOF_CONTEXT_EVIDENCE: Final[str] = _PROOF_CONTEXT_MINIMAL_EVIDENCE
+MINIMAL_PROOF_CONTEXT_CLAIM_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/minimal-proof-context-claim@1"
+)
+MINIMAL_PROOF_CONTEXT_GOAL_ID: Final[str] = "VFS-G157"
+MINIMAL_PROOF_CONTEXT_PARENT_GOAL_ID: Final[str] = "VFS-G071"
+MINIMAL_PROOF_CONTEXT_TASK_ID: Final[str] = "VFS-092"
+MINIMAL_PROOF_CONTEXT_DOMAIN_EVIDENCE_TERMS: Final[tuple[str, ...]] = (
+    MINIMAL_PROOF_CONTEXT_EVIDENCE,
+)
+MINIMAL_PROOF_CONTEXT_INVARIANTS: Final[tuple[str, ...]] = (
+    "required axioms, contracts, effects, and call edges are never truncated",
+    "optional premises have inclusion reasons",
+    "identical requests reuse exact receipts",
+    "changed dependencies invalidate the proof context",
+    "compiled contexts pin vfs/minimal-proof-context@1 and never embed source bodies",
+)
+
+# Re-export VFS-G070 / formal_proof packet evidence so scanners discover them
+# on both the translation module and this independent prover surface.  Domain
+# envelope evidence stays translation/kernel-only; the synthetic objective
+# validation repair term is discoverable via
+# objective_validation_repair_evidence_terms / all_covered_evidence_terms and
+# never enters content-addressed identity.
 assert OBJECTIVE_VALIDATION_REPAIR_EVIDENCE == "objective validation repair"
 assert OBJECTIVE_GOAL_ID == "VFS-G070"
+assert OBJECTIVE_PARENT_GOAL_ID == "VFS-G070"
 assert OBJECTIVE_VALIDATION_REPAIR_TASK_ID == "VFS-053"
 assert LOGIC_TRANSLATION_EVIDENCE == "vfs/logic-translation@1"
+assert KERNEL_PROOF_RECEIPT_EVIDENCE == "vfs/kernel-proof-receipt@1"
+assert LOGIC_TRANSLATION_GOAL_ID == "VFS-G154"
+assert KERNEL_PROOF_RECEIPT_GOAL_ID == "VFS-G155"
+assert LOGIC_TRANSLATION_TASK_ID == "VFS-071"
+assert KERNEL_PROOF_RECEIPT_TASK_ID == "VFS-074"
+assert OBJECTIVE_PACKET_GOAL_IDS == ("VFS-G154", "VFS-G155")
+assert FORMAL_PROOF_PACKET_EVIDENCE_TERMS == (
+    "vfs/logic-translation@1",
+    "vfs/kernel-proof-receipt@1",
+)
+# Keep exact-text discovery anchors aligned with the objective heap (VFS-G157).
+assert MINIMAL_PROOF_CONTEXT_EVIDENCE == "vfs/minimal-proof-context@1"
+assert MINIMAL_PROOF_CONTEXT_GOAL_ID == "VFS-G157"
+assert MINIMAL_PROOF_CONTEXT_PARENT_GOAL_ID == "VFS-G071"
+assert MINIMAL_PROOF_CONTEXT_TASK_ID == "VFS-092"
+assert MINIMAL_PROOF_CONTEXT_DOMAIN_EVIDENCE_TERMS == (
+    "vfs/minimal-proof-context@1",
+)
 # KernelVerification and MultiProverRouter remain distinct stages (no merge).
 assert KernelVerificationStatus.ACCEPTED.value == "accepted"
 assert MultiProverRouter is not None
@@ -164,6 +255,9 @@ CACHE_ENTRY_SCHEMA: Final[str] = (
 )
 PROVE_REQUEST_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/code-contract-prove-request@1"
+)
+KERNEL_PROOF_RECEIPT_CLAIM_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/kernel-proof-receipt-claim@1"
 )
 
 # BackendRequest.logic_family for admitted SMT adapters.
@@ -849,17 +943,45 @@ def compile_obligation_requests(
             NonConclusiveReason.TRANSLATION_NOT_READY,
             f"translation status is {translation.status.value}",
         )
-    if translation.receipt.translator_identity != pinned_translator_identity():
-        raise ProveRejectedError(
-            NonConclusiveReason.STALE_TOOLCHAIN,
-            "translator identity does not match the pinned translator/ruleset",
-        )
 
     effect_ids_from_predicates = {
         predicate.predicate_id
         for predicate in translation.predicates
         if predicate.relation in _EFFECT_RELATIONS
     }
+    effect_ids_from_claims = {
+        claim.declaration_id or claim.claim_id
+        for claim in translation.claims
+        if (
+            claim.metadata.to_dict()
+            if hasattr(claim.metadata, "to_dict")
+            else {}
+        ).get("relation")
+        == PredicateRelation.HAS_EFFECT.value
+    }
+    if require_effects:
+        omitted_effects = effect_ids_from_predicates - effect_ids_from_claims
+        if omitted_effects:
+            raise ProveRejectedError(
+                NonConclusiveReason.OMITTED_EFFECTS,
+                "effect predicates were dropped before solver compilation",
+            )
+        if effect_ids_from_claims - effect_ids_from_predicates:
+            raise ProveRejectedError(
+                NonConclusiveReason.WRONG_THEOREM,
+                "solver claims contain effects absent from the translated predicates",
+            )
+
+    try:
+        verify_translation_result(translation)
+    except TranslationRejectedError as exc:
+        reason = (
+            NonConclusiveReason.STALE_TOOLCHAIN
+            if exc.code is RejectionCode.TRANSLATOR_RULESET_REUSE
+            else NonConclusiveReason.WRONG_THEOREM
+        )
+        raise ProveRejectedError(reason, exc.detail) from exc
+
     compiled: list[CompiledObligationRequest] = []
     compilers: dict[str, Callable[[BackendRequest], CompiledBackendRequest]] = {
         Z3_BACKEND_ID: Z3Compiler().compile,
@@ -915,23 +1037,6 @@ def compile_obligation_requests(
             effect_ids: list[str] = []
             if relation == PredicateRelation.HAS_EFFECT.value:
                 effect_ids.append(claim.declaration_id or claim.claim_id)
-
-            if require_effects and effect_ids_from_predicates:
-                covered = {
-                    claim.declaration_id or claim.claim_id for claim in translation.claims
-                }
-                omitted = effect_ids_from_predicates - covered
-                if omitted and not any(
-                    (c.metadata.to_dict() if hasattr(c.metadata, "to_dict") else {}).get(
-                        "relation"
-                    )
-                    == PredicateRelation.HAS_EFFECT.value
-                    for c in translation.claims
-                ):
-                    raise ProveRejectedError(
-                        NonConclusiveReason.OMITTED_EFFECTS,
-                        "effect predicates were dropped before solver compilation",
-                    )
 
             # Assumption consistency: claim must carry every referenced id.
             claim_assumption_ids = {a.assumption_id for a in claim.assumptions}
@@ -1142,6 +1247,7 @@ class ValidationReceipt(CanonicalContract):
     derived_assurance: AssuranceLevel = AssuranceLevel.UNVERIFIED
     policy_id: str = "policy:code-contract-prover@1"
     evidence: Mapping[str, Any] = field(default_factory=dict)
+    evidence_kind: str = KERNEL_PROOF_RECEIPT_EVIDENCE
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -1186,6 +1292,15 @@ class ValidationReceipt(CanonicalContract):
         object.__setattr__(
             self, "evidence", MappingProxyType(_mapping(self.evidence, "evidence"))
         )
+        object.__setattr__(
+            self,
+            "evidence_kind",
+            _text(self.evidence_kind, "evidence_kind"),
+        )
+        if self.evidence_kind != KERNEL_PROOF_RECEIPT_EVIDENCE:
+            raise CodeContractProverError(
+                "validation receipt does not carry the pinned kernel-proof evidence"
+            )
         if (
             self.disposition is ValidationDisposition.ACCEPTED
             and self.status is ProveStatus.PROVED
@@ -1216,7 +1331,7 @@ class ValidationReceipt(CanonicalContract):
     def _payload(self) -> dict[str, Any]:
         return {
             "prover_version": CODE_CONTRACT_PROVER_VERSION,
-            "evidence_kind": KERNEL_PROOF_RECEIPT_EVIDENCE,
+            "evidence_kind": self.evidence_kind,
             "disposition": self.disposition,
             "status": self.status,
             "reason": self.reason,
@@ -1254,6 +1369,7 @@ class ValidationReceipt(CanonicalContract):
             ),
             policy_id=payload.get("policy_id", "policy:code-contract-prover@1"),
             evidence=payload.get("evidence") or {},
+            evidence_kind=payload.get("evidence_kind", ""),
         )
 
 
@@ -1565,6 +1681,15 @@ def validate_solver_portfolio(
     # Capability loss: every authoritative attempt must still be admitted.
     admitted = set(probe_report.admitted_backend_ids)
     for attempt in attempts:
+        if (
+            attempt.request_id != request.request_id
+            or attempt.request_digest != request_digest
+        ):
+            return _reject(
+                NonConclusiveReason.WRONG_THEOREM,
+                f"solver attempt from {attempt.backend_id} is bound to a different request",
+                status=ProveStatus.ERROR,
+            )
         if attempt.authoritative and attempt.backend_id not in admitted:
             return _reject(
                 NonConclusiveReason.CAPABILITY_LOSS,
@@ -1608,13 +1733,6 @@ def validate_solver_portfolio(
                     f"backend {attempt.backend_id} is not authoritative for finite constraints",
                     status=ProveStatus.ERROR,
                 )
-            if attempt.request_digest != request_digest:
-                return _reject(
-                    NonConclusiveReason.WRONG_THEOREM,
-                    "authoritative attempt bound to a different request",
-                    status=ProveStatus.ERROR,
-                )
-
         # Map non-conclusive solver statuses.
         if attempt.effective_outcome is AttemptOutcome.TIMEOUT:
             return _reject(NonConclusiveReason.TIMEOUT, attempt.detail or "solver timeout")
@@ -2560,6 +2678,97 @@ class CodeContractProver:
         )
 
 
+def verify_kernel_proof_receipt(
+    result: ProveResult | Mapping[str, Any],
+    *,
+    probe_report: ProbeReport | None = None,
+) -> ValidationReceipt:
+    """Independently verify a ``vfs/kernel-proof-receipt@1`` result.
+
+    The retained validation receipt is compared with a fresh derivation from
+    the compiled theorem, attempts, and capability probes.  Supplying a newer
+    probe report performs fail-closed replay: capability loss or toolchain
+    drift is returned as a non-conclusive receipt rather than preserving stale
+    proof authority.
+    """
+
+    if isinstance(result, Mapping):
+        result = ProveResult.from_dict(result)
+    if not isinstance(result, ProveResult):
+        raise CodeContractProverError("result must be ProveResult")
+    if result.prover_identity != pinned_prover_identity():
+        raise ProveRejectedError(
+            NonConclusiveReason.STALE_TOOLCHAIN,
+            "prove result was produced by a different prover identity",
+        )
+    if result.compiled.translator_identity != pinned_translator_identity():
+        raise ProveRejectedError(
+            NonConclusiveReason.STALE_TOOLCHAIN,
+            "compiled theorem was produced by a different translator identity",
+        )
+    if result.validation.evidence_kind != KERNEL_PROOF_RECEIPT_EVIDENCE:
+        raise ProveRejectedError(
+            NonConclusiveReason.FORGED_AUTHORITY,
+            "validation receipt does not carry vfs/kernel-proof-receipt@1",
+        )
+    expected_bindings = (
+        ("claim", result.validation.claim_digest, result.compiled.claim_digest),
+        (
+            "obligation",
+            result.validation.obligation_digest,
+            result.compiled.obligation_digest,
+        ),
+        (
+            "request",
+            result.validation.request_digest,
+            result.compiled.as_backend_request().digest,
+        ),
+    )
+    for name, retained, expected in expected_bindings:
+        if retained != expected:
+            raise ProveRejectedError(
+                NonConclusiveReason.WRONG_THEOREM,
+                f"validation receipt {name} digest is bound to a different theorem",
+            )
+
+    report = probe_report or result.probe_report
+    recomputed = validate_solver_portfolio(
+        compiled=result.compiled,
+        attempts=result.attempts,
+        probe_report=report,
+        required_assurance=result.validation.required_assurance,
+        policy_id=result.validation.policy_id,
+    )
+
+    # A new capability snapshot is a replay, not a claim that the old receipt
+    # remains current.  Return the freshly derived fail-closed disposition.
+    if report.report_id != result.probe_report.report_id:
+        return recomputed
+
+    if recomputed.receipt_id != result.validation.receipt_id:
+        reason = (
+            recomputed.reason
+            if recomputed.reason is not NonConclusiveReason.NONE
+            else NonConclusiveReason.FORGED_AUTHORITY
+        )
+        raise ProveRejectedError(
+            reason,
+            "retained validation receipt does not match independent validation",
+        )
+    if result.status is not recomputed.status:
+        raise ProveRejectedError(
+            NonConclusiveReason.FORGED_AUTHORITY,
+            "prove result status does not match independent validation",
+        )
+    retained_receipt_id = result.portfolio_result.get("validation_receipt_id")
+    if retained_receipt_id and retained_receipt_id != recomputed.receipt_id:
+        raise ProveRejectedError(
+            NonConclusiveReason.FORGED_AUTHORITY,
+            "portfolio summary is bound to a different validation receipt",
+        )
+    return recomputed
+
+
 def route_through_multi_prover(
     statement: str,
     *,
@@ -2593,8 +2802,14 @@ def route_through_multi_prover(
 
 
 # ---------------------------------------------------------------------------
-# Objective evidence discovery + stage separation (VFS-G070 / VFS-053)
+# Objective evidence discovery + stage separation (VFS-G070 / VFS-G154 / VFS-G155 / VFS-053)
 # ---------------------------------------------------------------------------
+
+
+def kernel_proof_receipt_evidence() -> str:
+    """Return the closed ``vfs/kernel-proof-receipt@1`` evidence term (VFS-G155)."""
+
+    return KERNEL_PROOF_RECEIPT_EVIDENCE
 
 
 def kernel_proof_receipt_evidence_terms() -> tuple[str, ...]:
@@ -2604,6 +2819,8 @@ def kernel_proof_receipt_evidence_terms() -> tuple[str, ...]:
     omitted here so prove-result envelope ``evidence`` stays domain-only; use
     :func:`objective_validation_repair_evidence_terms` (or
     :func:`all_covered_evidence_terms`) for the VFS-G070 validation gate.
+    Translation evidence (``vfs/logic-translation@1``, VFS-G154) lives on
+    :mod:`code_contract_logic` and on :func:`packet_evidence_terms`.
     """
 
     return (KERNEL_PROOF_RECEIPT_EVIDENCE,)
@@ -2612,12 +2829,26 @@ def kernel_proof_receipt_evidence_terms() -> tuple[str, ...]:
 def covered_evidence_terms() -> tuple[str, ...]:
     """Return domain objective evidence terms this prover surface proves.
 
-    Kernel-proof receipts only.  Translation evidence lives on
-    :mod:`code_contract_logic`; the repair gate is via
+    Kernel-proof receipts only (VFS-G155).  Translation evidence lives on
+    :mod:`code_contract_logic`; packet-wide domain coverage is via
+    :func:`packet_evidence_terms`; the repair gate is via
     :func:`all_covered_evidence_terms`.
     """
 
     return kernel_proof_receipt_evidence_terms()
+
+
+def packet_evidence_terms() -> tuple[str, ...]:
+    """Return formal_proof packet domain evidence terms (VFS-G154 + VFS-G155).
+
+    Ordered as ``vfs/logic-translation@1`` then ``vfs/kernel-proof-receipt@1``.
+    Aligns with :mod:`code_contract_logic` packet discovery without the
+    synthetic objective validation repair key.
+    """
+
+    terms = _logic_packet_terms()
+    assert terms == FORMAL_PROOF_PACKET_EVIDENCE_TERMS
+    return terms
 
 
 def objective_validation_repair_evidence_terms() -> tuple[str, ...]:
@@ -2635,12 +2866,11 @@ def objective_validation_repair_evidence_terms() -> tuple[str, ...]:
 
 
 def all_covered_evidence_terms() -> tuple[str, ...]:
-    """Return full VFS-G070 domain terms plus the objective validation repair gate.
+    """Return full formal_proof domain terms plus the objective validation repair gate.
 
-    Order: translation (FormalLogicVocabulary), kernel-proof receipt
-    (KernelVerification / independent portfolio validation), then the
-    synthetic repair discovery key.  MultiProverRouter candidate search is
-    never an evidence authority term.
+    Order: translation (FormalLogicVocabulary / VFS-G154), kernel-proof receipt
+    (KernelVerification / VFS-G155), then the synthetic repair discovery key.
+    MultiProverRouter candidate search is never an evidence authority term.
     """
 
     return (
@@ -2648,6 +2878,17 @@ def all_covered_evidence_terms() -> tuple[str, ...]:
         KERNEL_PROOF_RECEIPT_EVIDENCE,
         OBJECTIVE_VALIDATION_REPAIR_EVIDENCE,
     )
+
+
+def formal_proof_completion_goal_bindings() -> dict[str, list[str]]:
+    """Return fresh supervisor completion bindings for the formal_proof packet."""
+
+    bindings = _logic_completion_bindings()
+    assert bindings[LOGIC_TRANSLATION_GOAL_ID] == [LOGIC_TRANSLATION_EVIDENCE]
+    assert bindings[KERNEL_PROOF_RECEIPT_GOAL_ID] == [
+        KERNEL_PROOF_RECEIPT_EVIDENCE
+    ]
+    return bindings
 
 
 def proof_stage_owners() -> Mapping[str, str]:
@@ -2706,6 +2947,650 @@ def authoritative_kernel_validation_symbols() -> tuple[str, ...]:
     )
 
 
+def result_satisfies_kernel_proof_receipt(
+    result: ProveResult | Mapping[str, Any],
+    *,
+    probe_report: ProbeReport | None = None,
+    require_proved: bool = False,
+) -> bool:
+    """Machine-check VFS-G155 kernel-proof-receipt acceptance on one result.
+
+    * Validation receipt carries pinned ``vfs/kernel-proof-receipt@1``.
+    * Independent :func:`verify_kernel_proof_receipt` recomputation succeeds.
+    * Candidate search still lacks kernel authority.
+    * When *require_proved* is true, the result must be conclusively PROVED.
+    """
+
+    if isinstance(result, Mapping):
+        try:
+            result = ProveResult.from_dict(result)
+        except (CodeContractProverError, ProveRejectedError, TypeError, ValueError):
+            return False
+    if not isinstance(result, ProveResult):
+        return False
+    if result.validation.evidence_kind != KERNEL_PROOF_RECEIPT_EVIDENCE:
+        return False
+    try:
+        recomputed = verify_kernel_proof_receipt(
+            result, probe_report=probe_report
+        )
+    except (CodeContractProverError, ProveRejectedError):
+        return False
+    if recomputed.evidence_kind != KERNEL_PROOF_RECEIPT_EVIDENCE:
+        return False
+    if require_proved:
+        if result.status is not ProveStatus.PROVED:
+            return False
+        if not result.conclusive:
+            return False
+        if recomputed.status is not ProveStatus.PROVED:
+            return False
+    if not candidate_search_lacks_kernel_authority():
+        return False
+    return True
+
+
+def prove_kernel_proof_receipt(
+    result: ProveResult | Mapping[str, Any],
+    *,
+    goal_id: str = KERNEL_PROOF_RECEIPT_GOAL_ID,
+    task_id: str = KERNEL_PROOF_RECEIPT_TASK_ID,
+    probe_report: ProbeReport | None = None,
+    require_proved: bool = False,
+) -> dict[str, Any]:
+    """Emit a portable ``vfs/kernel-proof-receipt@1`` evidence claim (VFS-G155).
+
+    Goal/task labels are metadata only and never enter receipt digests.
+    """
+
+    if isinstance(result, Mapping):
+        result_obj = ProveResult.from_dict(result)
+    else:
+        result_obj = result
+    if not isinstance(result_obj, ProveResult):
+        raise TypeError("result must be a ProveResult")
+
+    satisfied = result_satisfies_kernel_proof_receipt(
+        result_obj,
+        probe_report=probe_report,
+        require_proved=require_proved,
+    )
+    authority_backends = [
+        attempt.backend_id
+        for attempt in result_obj.attempts
+        if attempt.authoritative
+    ]
+    return {
+        "schema": KERNEL_PROOF_RECEIPT_CLAIM_SCHEMA,
+        "evidence": KERNEL_PROOF_RECEIPT_EVIDENCE,
+        "evidence_terms": list(kernel_proof_receipt_evidence_terms()),
+        "requirement_id": KERNEL_PROOF_RECEIPT_EVIDENCE,
+        "goal_id": str(goal_id or KERNEL_PROOF_RECEIPT_GOAL_ID),
+        "parent_goal_id": OBJECTIVE_PARENT_GOAL_ID,
+        "task_id": str(task_id or KERNEL_PROOF_RECEIPT_TASK_ID),
+        "goal_packet_id": OBJECTIVE_GOAL_PACKET_ID,
+        "status": result_obj.status.value,
+        "reason": result_obj.reason.value,
+        "conclusive": result_obj.conclusive,
+        "evidence_kind": result_obj.validation.evidence_kind,
+        "validation_receipt_id": result_obj.validation.receipt_id,
+        "claim_digest": result_obj.validation.claim_digest,
+        "obligation_digest": result_obj.validation.obligation_digest,
+        "request_digest": result_obj.validation.request_digest,
+        "prover_identity": result_obj.prover_identity,
+        "translator_identity": result_obj.compiled.translator_identity,
+        "admitted_backend_ids": list(result_obj.probe_report.admitted_backend_ids),
+        "authority_backends": authority_backends,
+        "attempt_count": len(result_obj.attempts),
+        "candidate_search_lacks_authority": candidate_search_lacks_kernel_authority(),
+        "authoritative_symbols": list(authoritative_kernel_validation_symbols()),
+        "require_proved": bool(require_proved),
+        "satisfied": satisfied,
+        "invariants": list(KERNEL_PROOF_RECEIPT_INVARIANTS),
+        "authoritative": False,
+        "completion_authoritative": False,
+        "semantic_authority": False,
+    }
+
+
+def prove_formal_proof_packet(
+    translation: TranslationResult | Mapping[str, Any],
+    result: ProveResult | Mapping[str, Any] | None = None,
+    *,
+    require_round_trip: bool = True,
+    require_proved: bool = False,
+    probe_report: ProbeReport | None = None,
+) -> dict[str, Any]:
+    """Emit the full formal_proof packet claim (logic-translation + kernel receipt).
+
+    Covers goal packet ``goal_packet/formal_proof/ipfs_accelerate_py/0ac74eed54c2``
+    leaf goals VFS-G154 and VFS-G155 in one claim.  When *result* is omitted the
+    kernel subclaim is reported unsatisfied (translation-only envelope).
+    """
+
+    if isinstance(translation, Mapping):
+        translation_obj = TranslationResult.from_dict(translation)
+    else:
+        translation_obj = translation
+    if not isinstance(translation_obj, TranslationResult):
+        raise TypeError("translation must be a TranslationResult")
+
+    translation_claim = prove_logic_translation(
+        translation_obj,
+        require_round_trip=require_round_trip,
+    )
+    kernel_claim: dict[str, Any] | None = None
+    if result is not None:
+        kernel_claim = prove_kernel_proof_receipt(
+            result,
+            probe_report=probe_report,
+            require_proved=require_proved,
+        )
+    translation_satisfied = bool(translation_claim.get("satisfied"))
+    kernel_satisfied = bool(kernel_claim and kernel_claim.get("satisfied"))
+    if result is None:
+        kernel_satisfied = False
+    satisfied = translation_satisfied and kernel_satisfied
+    return {
+        "schema": FORMAL_PROOF_PACKET_CLAIM_SCHEMA,
+        "evidence_terms": list(packet_evidence_terms()),
+        "requirement_ids": list(FORMAL_PROOF_PACKET_EVIDENCE_TERMS),
+        "goal_packet_id": OBJECTIVE_GOAL_PACKET_ID,
+        "goal_ids": list(OBJECTIVE_PACKET_GOAL_IDS),
+        "task_ids": list(OBJECTIVE_PACKET_TASK_IDS),
+        "parent_goal_id": OBJECTIVE_PARENT_GOAL_ID,
+        "logic_translation_claim": translation_claim,
+        "kernel_proof_receipt_claim": kernel_claim,
+        "logic_translation_satisfied": translation_satisfied,
+        "kernel_proof_receipt_satisfied": kernel_satisfied,
+        "satisfied": satisfied,
+        "proof_stage_owners": dict(proof_stage_owners()),
+        "candidate_search_lacks_authority": candidate_search_lacks_kernel_authority(),
+        "completion_goal_bindings": formal_proof_completion_goal_bindings(),
+        "invariants": list(FORMAL_PROOF_PACKET_INVARIANTS),
+        "authoritative": False,
+        "completion_authoritative": False,
+        "semantic_authority": False,
+    }
+
+
+# ---------------------------------------------------------------------------
+# VFS-G157 / VFS-092 objective evidence surface (vfs/minimal-proof-context@1)
+# ---------------------------------------------------------------------------
+
+
+def minimal_proof_context_evidence() -> str:
+    """Return the exact objective evidence term for discovery scanners."""
+
+    return MINIMAL_PROOF_CONTEXT_EVIDENCE
+
+
+def minimal_proof_context_evidence_terms() -> tuple[str, ...]:
+    """Return the minimal-proof-context evidence surface for discovery scanners."""
+
+    return MINIMAL_PROOF_CONTEXT_DOMAIN_EVIDENCE_TERMS
+
+
+def _proof_context_item(
+    item_id: str,
+    kind: ProofContextItemKind,
+    dependencies: tuple[str, ...] = (),
+    **payload: object,
+) -> ProofContextItem:
+    """Build one compact symbolic fact for the VFS-G157 fixture request."""
+
+    return ProofContextItem(
+        item_id=item_id,
+        kind=kind,
+        payload=payload or {"symbol": item_id},
+        dependency_ids=dependencies,
+        expansion_locator=f"record:{item_id}",
+        referenced_content_id=f"cid:{item_id}",
+    )
+
+
+def default_minimal_proof_context_request(
+    *,
+    limits: ProofContextLimits | Mapping[str, Any] | None = None,
+) -> ProofContextRequest:
+    """Return a fixture obligation whose closed set covers VFS-G157 kinds.
+
+    The obligation transitively requires a contract, call edge, effect, axiom
+    (assumption), definition, and rule.  An optional premise and an unrelated
+    definition sit outside the closure so inclusion reasons can be audited.
+    """
+
+    resolved_limits = (
+        ProofContextLimits.from_value(limits)
+        if limits is not None
+        else ProofContextLimits(max_bytes=100_000, max_items=50)
+    )
+    return ProofContextRequest(
+        obligation_id="obl",
+        items=(
+            _proof_context_item(
+                "obl",
+                ProofContextItemKind.OBLIGATION,
+                ("contract", "rule"),
+            ),
+            _proof_context_item(
+                "contract",
+                ProofContextItemKind.CONTRACT,
+                ("call", "effect"),
+            ),
+            _proof_context_item(
+                "call", ProofContextItemKind.CALL, ("definition",)
+            ),
+            _proof_context_item("definition", ProofContextItemKind.DEFINITION),
+            _proof_context_item(
+                "effect", ProofContextItemKind.EFFECT, ("axiom",)
+            ),
+            _proof_context_item("axiom", ProofContextItemKind.ASSUMPTION),
+            _proof_context_item("rule", ProofContextItemKind.RULE),
+            # Optional premise: present in the request but not required.
+            _proof_context_item(
+                "optional-premise",
+                ProofContextItemKind.ASSUMPTION,
+                premise_kind="optional",
+            ),
+            # Unrelated source must stay outside the minimal context.
+            _proof_context_item("unrelated", ProofContextItemKind.DEFINITION),
+        ),
+        limits=resolved_limits,
+    )
+
+
+def context_obeys_minimal_proof_context(
+    result: CompiledProofContext | Mapping[str, Any],
+) -> bool:
+    """Return whether a compiled context obeys VFS-G157 fail-closed shape.
+
+    * Evidence pin is ``vfs/minimal-proof-context@1`` when present.
+    * Source bodies / full graphs are never embedded.
+    * Required inputs are never reported truncated.
+    * Limits that fire leave status incomplete (never silent promotion).
+    """
+
+    if isinstance(result, CompiledProofContext):
+        payload = result.to_dict()
+        status = result.status
+        incomplete = result.incomplete_reasons
+        metrics = result.metrics
+    elif isinstance(result, Mapping):
+        payload = dict(result)
+        try:
+            status = ProofContextStatus(str(payload.get("status") or "").strip())
+        except ValueError:
+            return False
+        incomplete = tuple(payload.get("incomplete_reasons") or ())
+        metrics_raw = payload.get("metrics") or {}
+        if not isinstance(metrics_raw, Mapping):
+            return False
+        metrics = metrics_raw
+    else:
+        return False
+
+    evidence = payload.get("evidence")
+    if evidence not in (None, MINIMAL_PROOF_CONTEXT_EVIDENCE):
+        return False
+    if payload.get("embeds_source_bodies") or payload.get("embeds_full_graph"):
+        return False
+    if payload.get("required_inputs_truncated"):
+        return False
+
+    if isinstance(metrics, Mapping):
+        item_count = int(metrics.get("item_count") or 0)
+        byte_count = int(metrics.get("byte_count") or 0)
+        max_items = int(metrics.get("max_items") or 0)
+        max_bytes = int(metrics.get("max_bytes") or 0)
+    else:
+        item_count = int(metrics.item_count)
+        byte_count = int(metrics.byte_count)
+        max_items = int(metrics.max_items)
+        max_bytes = int(metrics.max_bytes)
+
+    limit_exceeded = (
+        "required_item_limit_exceeded" in incomplete
+        or "required_byte_limit_exceeded" in incomplete
+        or item_count > max_items
+        or byte_count > max_bytes
+    )
+    if limit_exceeded and status is ProofContextStatus.COMPLETE:
+        return False
+    if status is ProofContextStatus.COMPLETE and incomplete:
+        return False
+    return True
+
+
+def context_satisfies_minimal_proof_context(
+    result: CompiledProofContext | Mapping[str, Any],
+    *,
+    required_item_ids: Sequence[str] = (),
+    required_kinds: Sequence[str | ProofContextItemKind] = (),
+    forbidden_item_ids: Sequence[str] = (),
+    require_complete: bool = False,
+) -> bool:
+    """Machine-check VFS-G157 acceptance on one compiled proof context.
+
+    * Fail-closed shape under limits is always required.
+    * Optional required item ids / kinds prove in-scope completeness.
+    * Forbidden ids prove unrelated-source omission.
+    """
+
+    if not context_obeys_minimal_proof_context(result):
+        return False
+
+    if isinstance(result, CompiledProofContext):
+        retained_ids = set(result.included_item_ids)
+        kind_by_id = {item.item_id: item.kind for item in result.items}
+        status = result.status
+    else:
+        retained_ids = set(result.get("included_item_ids") or ())
+        if not retained_ids and result.get("items"):
+            retained_ids = {
+                str(item.get("item_id") or "")
+                for item in result.get("items") or ()
+                if isinstance(item, Mapping)
+            }
+        kind_by_id = {}
+        for item in result.get("items") or ():
+            if not isinstance(item, Mapping):
+                continue
+            item_id = str(item.get("item_id") or "")
+            kind_raw = item.get("kind")
+            try:
+                kind_by_id[item_id] = (
+                    kind_raw
+                    if isinstance(kind_raw, ProofContextItemKind)
+                    else ProofContextItemKind(str(kind_raw or "").strip())
+                )
+            except ValueError:
+                return False
+        try:
+            status = ProofContextStatus(str(result.get("status") or "").strip())
+        except ValueError:
+            return False
+
+    for item_id in required_item_ids:
+        if item_id not in retained_ids:
+            return False
+    for item_id in forbidden_item_ids:
+        if item_id in retained_ids:
+            return False
+    retained_kinds = {kind.value for kind in kind_by_id.values()}
+    for kind in required_kinds:
+        kind_value = kind.value if isinstance(kind, ProofContextItemKind) else str(kind)
+        if kind_value not in retained_kinds:
+            return False
+    if require_complete and status is not ProofContextStatus.COMPLETE:
+        return False
+    return True
+
+
+def _decisions_have_inclusion_reasons(
+    context: CompiledProofContext,
+) -> bool:
+    """Every decision (included or optional/excluded) must carry a reason."""
+
+    if not context.decisions:
+        return False
+    for decision in context.decisions:
+        reason = str(getattr(decision, "reason", "") or "").strip()
+        if not reason:
+            return False
+    return True
+
+
+def prove_minimal_proof_context(
+    request: ProofContextRequest | None = None,
+    *,
+    compiler: CodeContractProofContextCompiler | None = None,
+    required_item_ids: Sequence[str] = (),
+    required_kinds: Sequence[str | ProofContextItemKind] = (),
+    forbidden_item_ids: Sequence[str] = (),
+    probe_limit_truncation: bool = True,
+    probe_receipt_reuse: bool = True,
+    probe_dependency_invalidation: bool = True,
+) -> dict[str, Any]:
+    """Emit the VFS-G157 evidence claim for minimal proof/counterexample contexts.
+
+    Compiles the (fixture or provided) request, checks fail-closed acceptance,
+    audits inclusion reasons on optional premises, and optionally re-probes
+    tight limits, exact receipt reuse, and dependency invalidation.
+
+    The claim binds ``vfs/minimal-proof-context@1`` without granting completion
+    or promotion authority.
+    """
+
+    active = compiler or CodeContractProofContextCompiler()
+    base_request = request or default_minimal_proof_context_request()
+    if not isinstance(base_request, ProofContextRequest):
+        raise TypeError("request must be a ProofContextRequest")
+
+    required_ids = tuple(required_item_ids) or (
+        "obl",
+        "contract",
+        "call",
+        "effect",
+        "axiom",
+        "definition",
+        "rule",
+    )
+    required_kind_values: tuple[str, ...] = tuple(
+        kind.value if isinstance(kind, ProofContextItemKind) else str(kind)
+        for kind in (
+            required_kinds
+            or (
+                ProofContextItemKind.OBLIGATION,
+                ProofContextItemKind.CONTRACT,
+                ProofContextItemKind.CALL,
+                ProofContextItemKind.EFFECT,
+                ProofContextItemKind.ASSUMPTION,
+                ProofContextItemKind.DEFINITION,
+                ProofContextItemKind.RULE,
+            )
+        )
+    )
+    forbidden_ids = tuple(forbidden_item_ids) or ("optional-premise", "unrelated")
+
+    checks: dict[str, bool] = {}
+    failure_codes: list[str] = []
+    contexts: dict[str, Any] = {}
+
+    primary = active.compile(base_request)
+    contexts["primary"] = {
+        "context_id": primary.context_id,
+        "status": primary.status.value,
+        "included_item_ids": list(primary.included_item_ids),
+        "incomplete_reasons": list(primary.incomplete_reasons),
+        "dependency_fingerprint": primary.dependency_fingerprint,
+        "receipt_id": primary.receipt.receipt_id,
+        "evidence": primary.to_dict().get("evidence"),
+        "required_inputs_truncated": primary.to_dict().get(
+            "required_inputs_truncated"
+        ),
+        "embeds_source_bodies": primary.to_dict().get("embeds_source_bodies"),
+        "embeds_full_graph": primary.to_dict().get("embeds_full_graph"),
+        "decision_reasons": {
+            decision.item_id: decision.reason for decision in primary.decisions
+        },
+    }
+
+    primary_ok = context_satisfies_minimal_proof_context(
+        primary,
+        required_item_ids=required_ids,
+        required_kinds=required_kind_values,
+        forbidden_item_ids=forbidden_ids,
+        require_complete=True,
+    )
+    checks["primary_acceptance"] = primary_ok
+    if not primary_ok:
+        failure_codes.append("primary-acceptance")
+
+    reasons_ok = _decisions_have_inclusion_reasons(primary)
+    optional_reasons: dict[str, str] = {}
+    for decision in primary.decisions:
+        if decision.item_id in forbidden_ids:
+            optional_reasons[decision.item_id] = decision.reason
+            if not decision.reason:
+                reasons_ok = False
+            if decision.included:
+                reasons_ok = False
+                failure_codes.append(f"optional-retained:{decision.item_id}")
+    checks["optional_premises_have_inclusion_reasons"] = reasons_ok
+    if not reasons_ok:
+        failure_codes.append("optional-premises-missing-reasons")
+
+    # Required kinds retained in the primary complete context.
+    retained_kinds = {item.kind.value for item in primary.items}
+    kinds_ok = all(kind in retained_kinds for kind in required_kind_values)
+    checks["required_kinds_retained"] = kinds_ok
+    if not kinds_ok:
+        failure_codes.append("required-kinds-missing")
+
+    # Required items never truncated when limits are exceeded.
+    truncation_ok = True
+    if probe_limit_truncation:
+        tight = replace(
+            base_request,
+            limits=ProofContextLimits(max_bytes=1, max_items=1),
+        )
+        limited = active.compile(tight)
+        contexts["limit_exceeded"] = {
+            "status": limited.status.value,
+            "included_item_ids": list(limited.included_item_ids),
+            "item_count": limited.metrics.item_count,
+            "byte_count": limited.metrics.byte_count,
+            "incomplete_reasons": list(limited.incomplete_reasons),
+            "required_inputs_truncated": limited.to_dict().get(
+                "required_inputs_truncated"
+            ),
+        }
+        truncation_ok = (
+            limited.status is ProofContextStatus.INCOMPLETE
+            and not limited.to_dict().get("required_inputs_truncated")
+            and limited.metrics.item_count == len(required_ids)
+            and all(item_id in limited.included_item_ids for item_id in required_ids)
+            and context_obeys_minimal_proof_context(limited)
+        )
+        checks["required_never_truncated"] = truncation_ok
+        if not truncation_ok:
+            failure_codes.append("required-truncated-under-limits")
+
+    # Identical requests reuse the exact compiled object and receipt.
+    reuse_ok = True
+    if probe_receipt_reuse:
+        second = active.compile(base_request)
+        contexts["reuse"] = {
+            "same_object": second is primary,
+            "same_context_id": second.context_id == primary.context_id,
+            "same_receipt_id": second.receipt.receipt_id
+            == primary.receipt.receipt_id,
+            "receipt_valid": active.receipt_is_valid(primary.receipt, base_request),
+        }
+        reuse_ok = (
+            second is primary
+            and second.context_id == primary.context_id
+            and second.receipt.receipt_id == primary.receipt.receipt_id
+            and active.receipt_is_valid(primary.receipt, base_request)
+        )
+        checks["identical_request_reuses_receipt"] = reuse_ok
+        if not reuse_ok:
+            failure_codes.append("receipt-reuse-failed")
+
+    # Changed dependencies invalidate the prior proof context.
+    invalidation_ok = True
+    if probe_dependency_invalidation:
+        changed_items = tuple(
+            replace(item, payload={"symbol": "definition-v2"})
+            if item.item_id == "definition"
+            else item
+            for item in base_request.items
+        )
+        # When the fixture lacks "definition", mutate the first non-obligation.
+        if all(item.item_id != "definition" for item in base_request.items):
+            changed_items = tuple(
+                replace(item, payload={"symbol": f"{item.item_id}-v2"})
+                if item.item_id != base_request.obligation_id
+                and item.kind is not ProofContextItemKind.OBLIGATION
+                else item
+                for item in base_request.items
+            )
+        changed = replace(base_request, items=changed_items)
+        invalidated = active.compile(changed, previous_receipt=primary.receipt)
+        contexts["invalidation"] = {
+            "dependency_fingerprint_changed": (
+                invalidated.dependency_fingerprint
+                != primary.dependency_fingerprint
+            ),
+            "old_receipt_valid": active.receipt_is_valid(
+                primary.receipt, changed
+            ),
+            "invalidated_receipt_ids": list(invalidated.invalidated_receipt_ids),
+            "new_receipt_id": invalidated.receipt.receipt_id,
+        }
+        invalidation_ok = (
+            invalidated.dependency_fingerprint != primary.dependency_fingerprint
+            and not active.receipt_is_valid(primary.receipt, changed)
+            and primary.receipt.receipt_id in invalidated.invalidated_receipt_ids
+            and invalidated.receipt.receipt_id != primary.receipt.receipt_id
+        )
+        checks["changed_dependency_invalidates"] = invalidation_ok
+        if not invalidation_ok:
+            failure_codes.append("dependency-invalidation-failed")
+
+    satisfied = bool(checks) and all(checks.values()) and not failure_codes
+
+    return {
+        "schema": MINIMAL_PROOF_CONTEXT_CLAIM_SCHEMA,
+        "evidence": MINIMAL_PROOF_CONTEXT_EVIDENCE,
+        "evidence_terms": list(MINIMAL_PROOF_CONTEXT_DOMAIN_EVIDENCE_TERMS),
+        "all_evidence_terms": list(MINIMAL_PROOF_CONTEXT_DOMAIN_EVIDENCE_TERMS),
+        "requirement_id": MINIMAL_PROOF_CONTEXT_EVIDENCE,
+        "goal_id": MINIMAL_PROOF_CONTEXT_GOAL_ID,
+        "parent_goal_id": MINIMAL_PROOF_CONTEXT_PARENT_GOAL_ID,
+        "task_id": MINIMAL_PROOF_CONTEXT_TASK_ID,
+        "checks": checks,
+        "failure_codes": list(failure_codes),
+        "contexts": contexts,
+        "optional_premise_reasons": optional_reasons,
+        "required_item_ids": list(required_ids),
+        "required_kinds": list(required_kind_values),
+        "forbidden_item_ids": list(forbidden_ids),
+        "invariants": list(MINIMAL_PROOF_CONTEXT_INVARIANTS),
+        "satisfied": satisfied,
+        "authoritative": False,
+        "completion_authoritative": False,
+        "promotion_authoritative": False,
+        "semantic_authority": False,
+    }
+
+
+def prove_minimal_proof_context_evidence(
+    request: ProofContextRequest | None = None,
+    *,
+    compiler: CodeContractProofContextCompiler | None = None,
+    required_item_ids: Sequence[str] = (),
+    required_kinds: Sequence[str | ProofContextItemKind] = (),
+    forbidden_item_ids: Sequence[str] = (),
+    probe_limit_truncation: bool = True,
+    probe_receipt_reuse: bool = True,
+    probe_dependency_invalidation: bool = True,
+) -> dict[str, Any]:
+    """Alias of :func:`prove_minimal_proof_context` for discovery scanners."""
+
+    return prove_minimal_proof_context(
+        request,
+        compiler=compiler,
+        required_item_ids=required_item_ids,
+        required_kinds=required_kinds,
+        forbidden_item_ids=forbidden_item_ids,
+        probe_limit_truncation=probe_limit_truncation,
+        probe_receipt_reuse=probe_receipt_reuse,
+        probe_dependency_invalidation=probe_dependency_invalidation,
+    )
+
+
 __all__ = [
     "ADMITTED_BACKEND_IDS",
     "BackendAvailability",
@@ -2714,16 +3599,36 @@ __all__ = [
     "CodeContractProver",
     "CodeContractProverError",
     "CompiledObligationRequest",
+    "FORMAL_PROOF_PACKET_CLAIM_SCHEMA",
+    "FORMAL_PROOF_PACKET_EVIDENCE_TERMS",
+    "FORMAL_PROOF_PACKET_INVARIANTS",
     "FormalLogicVocabulary",
+    "KERNEL_PROOF_RECEIPT_CLAIM_SCHEMA",
     "KERNEL_PROOF_RECEIPT_EVIDENCE",
+    "KERNEL_PROOF_RECEIPT_GOAL_ID",
+    "KERNEL_PROOF_RECEIPT_INVARIANTS",
+    "KERNEL_PROOF_RECEIPT_TASK_ID",
     "KernelVerificationBindings",
     "KernelVerificationError",
     "KernelVerificationResult",
     "KernelVerificationStatus",
     "LOGIC_TRANSLATION_EVIDENCE",
+    "LOGIC_TRANSLATION_GOAL_ID",
+    "LOGIC_TRANSLATION_TASK_ID",
+    "MINIMAL_PROOF_CONTEXT_CLAIM_SCHEMA",
+    "MINIMAL_PROOF_CONTEXT_DOMAIN_EVIDENCE_TERMS",
+    "MINIMAL_PROOF_CONTEXT_EVIDENCE",
+    "MINIMAL_PROOF_CONTEXT_GOAL_ID",
+    "MINIMAL_PROOF_CONTEXT_INVARIANTS",
+    "MINIMAL_PROOF_CONTEXT_PARENT_GOAL_ID",
+    "MINIMAL_PROOF_CONTEXT_TASK_ID",
     "MultiProverRouter",
     "NonConclusiveReason",
     "OBJECTIVE_GOAL_ID",
+    "OBJECTIVE_GOAL_PACKET_ID",
+    "OBJECTIVE_PACKET_GOAL_IDS",
+    "OBJECTIVE_PACKET_TASK_IDS",
+    "OBJECTIVE_PARENT_GOAL_ID",
     "OBJECTIVE_VALIDATION_REPAIR_EVIDENCE",
     "OBJECTIVE_VALIDATION_REPAIR_TASK_ID",
     "PROVER_ID",
@@ -2746,14 +3651,30 @@ __all__ = [
     "compile_backend_request",
     "compile_obligation_requests",
     "compile_smt_payload_for_claim",
+    "context_obeys_minimal_proof_context",
+    "context_satisfies_minimal_proof_context",
     "covered_evidence_terms",
+    "default_minimal_proof_context_request",
     "default_property_policy",
+    "formal_proof_completion_goal_bindings",
+    "kernel_proof_receipt_evidence",
     "kernel_proof_receipt_evidence_terms",
     "make_solver_fixture",
+    "minimal_proof_context_evidence",
+    "minimal_proof_context_evidence_terms",
     "objective_validation_repair_evidence_terms",
+    "packet_evidence_terms",
     "pinned_prover_identity",
     "proof_stage_owners",
+    "prove_formal_proof_packet",
+    "prove_kernel_proof_receipt",
+    "prove_logic_translation",
+    "prove_minimal_proof_context",
+    "prove_minimal_proof_context_evidence",
     "prover_identity",
+    "result_satisfies_kernel_proof_receipt",
     "route_through_multi_prover",
+    "translation_satisfies_logic_translation",
     "validate_solver_portfolio",
+    "verify_kernel_proof_receipt",
 ]

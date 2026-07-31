@@ -1,4 +1,4 @@
-"""Minimal dependency-complete call and impact slice queries (VFS-013 / VFS-041).
+"""Minimal dependency-complete call and impact slice queries (VFS-013 / VFS-041 / VFS-090).
 
 Queries the canonical :class:`~.program_graph.ProgramGraph` for the smallest
 dependency-complete neighborhood needed by assurance, proof, and repair
@@ -25,6 +25,14 @@ without changing canonical graph identity).  Objective validation repair
 is proven by the hard-bounded query suite remaining green under that
 index layout.
 
+VFS-G151 / VFS-090 proves ``vfs/minimal-call-slice@1``: seeded transitive
+callers/callees and MCP paths are complete within scope, unrelated source
+is omitted, and limits never silently convert an incomplete slice into a
+complete result.  Discovery hooks
+(:func:`minimal_call_slice_evidence`, :func:`covered_evidence_terms`,
+:func:`prove_minimal_call_slice`) bind that exact evidence term without
+granting completion authority.
+
 Conflict policy: query immutable graph artifacts; do not embed source bodies.
 """
 
@@ -34,7 +42,7 @@ from collections import deque
 from dataclasses import dataclass, field
 from enum import Enum
 from types import MappingProxyType
-from typing import Any, Iterable, Mapping, Sequence
+from typing import Any, Final, Iterable, Mapping, Sequence
 
 from .program_graph import (
     GraphFrontierItem,
@@ -65,7 +73,33 @@ PROGRAM_GRAPH_SLICE_STEP_SCHEMA = (
 PROGRAM_GRAPH_SLICE_PATH_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/program-graph-slice-path@1"
 )
-MINIMAL_CALL_SLICE_EVIDENCE = "vfs/minimal-call-slice@1"
+MINIMAL_CALL_SLICE_EVIDENCE: Final[str] = "vfs/minimal-call-slice@1"
+MINIMAL_CALL_SLICE_CLAIM_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/minimal-call-slice-claim@1"
+)
+# Objective-heap discovery anchors for VFS-G151 / VFS-090.
+# Labels never enter query_id or slice_id content identities.
+OBJECTIVE_GOAL_ID: Final[str] = "VFS-G151"
+OBJECTIVE_PARENT_GOAL_ID: Final[str] = "VFS-G041"
+OBJECTIVE_TASK_ID: Final[str] = "VFS-090"
+OBJECTIVE_DOMAIN_EVIDENCE_TERMS: Final[tuple[str, ...]] = (
+    MINIMAL_CALL_SLICE_EVIDENCE,
+)
+MINIMAL_CALL_SLICE_INVARIANTS: Final[tuple[str, ...]] = (
+    "seeded transitive callers and callees are complete within scope",
+    "seeded MCP registration routes are dependency-complete within scope",
+    "unrelated source is omitted from the minimal slice",
+    "limits never silently convert an incomplete slice into a complete result",
+    "slice results carry node/edge identities only and never embed source bodies",
+)
+
+# Keep exact-text discovery anchors aligned with the objective heap.
+assert MINIMAL_CALL_SLICE_EVIDENCE == "vfs/minimal-call-slice@1"
+assert OBJECTIVE_GOAL_ID == "VFS-G151"
+assert OBJECTIVE_PARENT_GOAL_ID == "VFS-G041"
+assert OBJECTIVE_TASK_ID == "VFS-090"
+assert OBJECTIVE_DOMAIN_EVIDENCE_TERMS == ("vfs/minimal-call-slice@1",)
+
 # Query-local index layout version.  Does not participate in ProgramGraph
 # identity; only documents the traversal acceleration strategy used by
 # :class:`_GraphView` (VFS-041 objective validation repair / index refine).
@@ -2217,6 +2251,351 @@ def query_shortest_counterexample(
     )
 
 
+# ---------------------------------------------------------------------------
+# VFS-G151 / VFS-090 objective evidence surface (vfs/minimal-call-slice@1)
+# ---------------------------------------------------------------------------
+
+
+def minimal_call_slice_evidence() -> str:
+    """Return the exact objective evidence term for discovery scanners."""
+
+    return MINIMAL_CALL_SLICE_EVIDENCE
+
+
+def minimal_call_slice_evidence_terms() -> tuple[str, ...]:
+    """Return the minimal-call-slice evidence surface for discovery scanners."""
+
+    return OBJECTIVE_DOMAIN_EVIDENCE_TERMS
+
+
+def covered_evidence_terms() -> tuple[str, ...]:
+    """Return domain objective evidence terms this query surface proves.
+
+    Covers ``vfs/minimal-call-slice@1`` for VFS-G151.  Goal and task labels
+    stay metadata and never enter query or slice content identities.
+    """
+
+    return OBJECTIVE_DOMAIN_EVIDENCE_TERMS
+
+
+def all_covered_evidence_terms() -> tuple[str, ...]:
+    """Alias of :func:`covered_evidence_terms` for cross-module discovery."""
+
+    return covered_evidence_terms()
+
+
+def _coerce_slice(
+    result: ProgramGraphSlice | Mapping[str, Any],
+) -> ProgramGraphSlice | None:
+    """Normalize a slice object or portable mapping; return None if unusable."""
+
+    if isinstance(result, ProgramGraphSlice):
+        return result
+    if not isinstance(result, Mapping):
+        return None
+    try:
+        kind = result.get("kind", "")
+        return ProgramGraphSlice(
+            query_id=str(result.get("query_id") or ""),
+            kind=kind,
+            forest_id=str(result.get("forest_id") or ""),
+            graph_id=str(result.get("graph_id") or ""),
+            seed_node_ids=tuple(result.get("seed_node_ids") or ()),
+            node_ids=tuple(result.get("node_ids") or ()),
+            edge_ids=tuple(result.get("edge_ids") or ()),
+            complete=bool(result.get("complete", False)),
+            minimal=bool(result.get("minimal", False)),
+            dependency_complete=bool(result.get("dependency_complete", False)),
+            truncated=bool(result.get("truncated", False)),
+            truncation_reasons=tuple(result.get("truncation_reasons") or ()),
+            cycles=tuple(result.get("cycles") or ()),
+            ambiguous_element_ids=tuple(
+                result.get("ambiguous_element_ids") or ()
+            ),
+            missing_node_ids=tuple(result.get("missing_node_ids") or ()),
+            excluded_repository_ids=tuple(
+                result.get("excluded_repository_ids") or ()
+            ),
+            required_dependencies=tuple(
+                result.get("required_dependencies") or ()
+            ),
+            omitted_dependencies=tuple(
+                result.get("omitted_dependencies") or ()
+            ),
+            depth_reached=int(result.get("depth_reached") or 0),
+            provenance=dict(result.get("provenance") or {}),
+            notes=tuple(result.get("notes") or ()),
+        )
+    except (ProgramGraphQueryError, TypeError, ValueError):
+        return None
+
+
+def slice_obeys_fail_closed_completeness(
+    result: ProgramGraphSlice | Mapping[str, Any],
+) -> bool:
+    """Return whether limits never silently promote an incomplete slice.
+
+    Acceptance for VFS-G151: truncated slices, omitted dependencies, or
+    missing seeds must leave both ``complete`` and ``dependency_complete``
+    false.  ``complete`` also requires ``dependency_complete``.
+    """
+
+    slice_obj = _coerce_slice(result)
+    if slice_obj is None:
+        return False
+    if (
+        slice_obj.truncated
+        or slice_obj.omitted_dependencies
+        or slice_obj.missing_node_ids
+    ):
+        if slice_obj.complete or slice_obj.dependency_complete:
+            return False
+    if slice_obj.complete and not slice_obj.dependency_complete:
+        return False
+    if slice_obj.complete and slice_obj.truncated:
+        return False
+    payload = slice_obj.to_dict()
+    if payload.get("embeds_source_bodies") or payload.get("embeds_ast"):
+        return False
+    evidence = payload.get("evidence") or slice_obj.provenance.get("evidence")
+    if evidence not in (None, MINIMAL_CALL_SLICE_EVIDENCE):
+        return False
+    return True
+
+
+def slice_satisfies_minimal_call_slice(
+    result: ProgramGraphSlice | Mapping[str, Any],
+    *,
+    required_node_ids: Sequence[str] = (),
+    forbidden_node_ids: Sequence[str] = (),
+    require_dependency_complete: bool = False,
+    require_minimal: bool = False,
+) -> bool:
+    """Machine-check VFS-G151 acceptance on one query slice.
+
+    * Fail-closed completeness under bounds is always required.
+    * Optional required/forbidden node sets prove in-scope completeness and
+      unrelated-source omission.
+    * Optional ``require_dependency_complete`` / ``require_minimal`` tighten
+      the claim for untruncated seeded call and MCP slices.
+    """
+
+    slice_obj = _coerce_slice(result)
+    if slice_obj is None:
+        return False
+    if not slice_obeys_fail_closed_completeness(slice_obj):
+        return False
+    retained = set(slice_obj.node_ids)
+    for node_id in required_node_ids:
+        if node_id not in retained:
+            return False
+    for node_id in forbidden_node_ids:
+        if node_id in retained:
+            return False
+    if require_dependency_complete and not slice_obj.dependency_complete:
+        return False
+    if require_minimal and not slice_obj.minimal:
+        return False
+    return True
+
+
+def prove_minimal_call_slice(
+    graph: ProgramGraph,
+    *,
+    callee_seed_qualified_names: Sequence[str] = (),
+    caller_seed_qualified_names: Sequence[str] = (),
+    mcp_seed_node_ids: Sequence[str] = (),
+    required_callee_node_ids: Sequence[str] = (),
+    required_caller_node_ids: Sequence[str] = (),
+    required_mcp_node_ids: Sequence[str] = (),
+    forbidden_node_ids: Sequence[str] = (),
+    bounds: QueryBounds | Mapping[str, Any] | None = None,
+    truncated_bounds: QueryBounds | Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Emit the VFS-G151 evidence claim for minimal call-slice queries.
+
+    Runs seeded callee, caller, and MCP end-to-end queries when the
+    corresponding seeds are supplied, checks fail-closed completeness and
+    optional required/forbidden node constraints, and optionally re-runs
+    callees under tight bounds to prove truncation never claims complete.
+
+    The claim binds ``vfs/minimal-call-slice@1`` without granting completion
+    or promotion authority.
+    """
+
+    if not isinstance(graph, ProgramGraph):
+        raise ProgramGraphQueryError("graph must be a ProgramGraph")
+
+    slices: dict[str, ProgramGraphSlice] = {}
+    checks: dict[str, bool] = {}
+    failure_codes: list[str] = []
+
+    if callee_seed_qualified_names:
+        callees = query_symbol_callees(
+            graph,
+            seed_qualified_names=list(callee_seed_qualified_names),
+            bounds=bounds,
+        )
+        slices["symbol_callees"] = callees
+        ok = slice_satisfies_minimal_call_slice(
+            callees,
+            required_node_ids=required_callee_node_ids,
+            forbidden_node_ids=forbidden_node_ids,
+            require_dependency_complete=not callees.truncated,
+            require_minimal=not callees.truncated and bool(callees.node_ids),
+        )
+        checks["symbol_callees"] = ok
+        if not ok:
+            failure_codes.append("symbol-callees-acceptance")
+
+    if caller_seed_qualified_names:
+        callers = query_symbol_callers(
+            graph,
+            seed_qualified_names=list(caller_seed_qualified_names),
+            bounds=bounds,
+        )
+        slices["symbol_callers"] = callers
+        ok = slice_satisfies_minimal_call_slice(
+            callers,
+            required_node_ids=required_caller_node_ids,
+            forbidden_node_ids=forbidden_node_ids,
+            require_dependency_complete=not callers.truncated,
+            require_minimal=not callers.truncated and bool(callers.node_ids),
+        )
+        checks["symbol_callers"] = ok
+        if not ok:
+            failure_codes.append("symbol-callers-acceptance")
+
+    if mcp_seed_node_ids:
+        mcp = query_mcp_end_to_end(
+            graph,
+            seed_node_ids=list(mcp_seed_node_ids),
+            bounds=bounds,
+        )
+        slices["mcp_end_to_end"] = mcp
+        ok = slice_satisfies_minimal_call_slice(
+            mcp,
+            required_node_ids=required_mcp_node_ids,
+            forbidden_node_ids=forbidden_node_ids,
+            require_dependency_complete=not mcp.truncated,
+            require_minimal=not mcp.truncated and bool(mcp.node_ids),
+        )
+        checks["mcp_end_to_end"] = ok
+        if not ok:
+            failure_codes.append("mcp-end-to-end-acceptance")
+
+    # Optional hard-bound probe: truncated callees must fail closed.
+    truncation_ok = True
+    truncated_slice: ProgramGraphSlice | None = None
+    if truncated_bounds is not None and callee_seed_qualified_names:
+        truncated_slice = query_symbol_callees(
+            graph,
+            seed_qualified_names=list(callee_seed_qualified_names),
+            bounds=truncated_bounds,
+        )
+        slices["truncated_callees"] = truncated_slice
+        truncation_ok = (
+            truncated_slice.truncated
+            and slice_obeys_fail_closed_completeness(truncated_slice)
+            and not truncated_slice.complete
+            and not truncated_slice.dependency_complete
+        )
+        checks["truncated_fail_closed"] = truncation_ok
+        if not truncation_ok:
+            failure_codes.append("truncation-not-fail-closed")
+
+    if not slices:
+        failure_codes.append("no-slices-evaluated")
+
+    # Unrelated omission is checked when forbidden nodes are declared.
+    if forbidden_node_ids:
+        for name, slice_obj in slices.items():
+            if name == "truncated_callees":
+                continue
+            retained = set(slice_obj.node_ids)
+            if any(node_id in retained for node_id in forbidden_node_ids):
+                if "unrelated-source-retained" not in failure_codes:
+                    failure_codes.append("unrelated-source-retained")
+                checks[f"{name}_omits_unrelated"] = False
+            else:
+                checks[f"{name}_omits_unrelated"] = True
+
+    satisfied = bool(slices) and all(checks.values()) and not failure_codes
+
+    slice_summaries = {
+        name: {
+            "slice_id": item.slice_id,
+            "query_id": item.query_id,
+            "kind": item.kind.value,
+            "node_count": item.node_count,
+            "edge_count": item.edge_count,
+            "complete": item.complete,
+            "minimal": item.minimal,
+            "dependency_complete": item.dependency_complete,
+            "truncated": item.truncated,
+            "seed_node_ids": list(item.seed_node_ids),
+            "node_ids": list(item.node_ids),
+            "missing_node_ids": list(item.missing_node_ids),
+            "omitted_dependencies": list(item.omitted_dependencies),
+            "evidence": item.to_dict().get("evidence"),
+        }
+        for name, item in slices.items()
+    }
+
+    return {
+        "schema": MINIMAL_CALL_SLICE_CLAIM_SCHEMA,
+        "evidence": MINIMAL_CALL_SLICE_EVIDENCE,
+        "evidence_terms": list(OBJECTIVE_DOMAIN_EVIDENCE_TERMS),
+        "all_evidence_terms": list(OBJECTIVE_DOMAIN_EVIDENCE_TERMS),
+        "requirement_id": MINIMAL_CALL_SLICE_EVIDENCE,
+        "goal_id": OBJECTIVE_GOAL_ID,
+        "parent_goal_id": OBJECTIVE_PARENT_GOAL_ID,
+        "task_id": OBJECTIVE_TASK_ID,
+        "graph_id": graph.graph_id,
+        "forest_id": graph.forest_id,
+        "query_index": QUERY_INDEX_VERSION,
+        "checks": checks,
+        "failure_codes": list(failure_codes),
+        "slices": slice_summaries,
+        "forbidden_node_ids": list(forbidden_node_ids),
+        "invariants": list(MINIMAL_CALL_SLICE_INVARIANTS),
+        "satisfied": satisfied,
+        "authoritative": False,
+        "completion_authoritative": False,
+        "promotion_authoritative": False,
+        "semantic_authority": False,
+    }
+
+
+def prove_minimal_call_slice_evidence(
+    graph: ProgramGraph,
+    *,
+    callee_seed_qualified_names: Sequence[str] = (),
+    caller_seed_qualified_names: Sequence[str] = (),
+    mcp_seed_node_ids: Sequence[str] = (),
+    required_callee_node_ids: Sequence[str] = (),
+    required_caller_node_ids: Sequence[str] = (),
+    required_mcp_node_ids: Sequence[str] = (),
+    forbidden_node_ids: Sequence[str] = (),
+    bounds: QueryBounds | Mapping[str, Any] | None = None,
+    truncated_bounds: QueryBounds | Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Alias of :func:`prove_minimal_call_slice` for discovery scanners."""
+
+    return prove_minimal_call_slice(
+        graph,
+        callee_seed_qualified_names=callee_seed_qualified_names,
+        caller_seed_qualified_names=caller_seed_qualified_names,
+        mcp_seed_node_ids=mcp_seed_node_ids,
+        required_callee_node_ids=required_callee_node_ids,
+        required_caller_node_ids=required_caller_node_ids,
+        required_mcp_node_ids=required_mcp_node_ids,
+        forbidden_node_ids=forbidden_node_ids,
+        bounds=bounds,
+        truncated_bounds=truncated_bounds,
+    )
+
+
 __all__ = [
     "DEFAULT_MAX_DEPTH",
     "DEFAULT_MAX_EDGES",
@@ -2227,7 +2606,13 @@ __all__ = [
     "HARD_MAX_EDGES",
     "HARD_MAX_NODES",
     "HARD_MAX_PATHS",
+    "MINIMAL_CALL_SLICE_CLAIM_SCHEMA",
     "MINIMAL_CALL_SLICE_EVIDENCE",
+    "MINIMAL_CALL_SLICE_INVARIANTS",
+    "OBJECTIVE_DOMAIN_EVIDENCE_TERMS",
+    "OBJECTIVE_GOAL_ID",
+    "OBJECTIVE_PARENT_GOAL_ID",
+    "OBJECTIVE_TASK_ID",
     "PROGRAM_GRAPH_QUERY_SCHEMA",
     "PROGRAM_GRAPH_SLICE_PATH_SCHEMA",
     "PROGRAM_GRAPH_SLICE_SCHEMA",
@@ -2241,6 +2626,12 @@ __all__ = [
     "QueryKind",
     "SlicePath",
     "SliceStep",
+    "all_covered_evidence_terms",
+    "covered_evidence_terms",
+    "minimal_call_slice_evidence",
+    "minimal_call_slice_evidence_terms",
+    "prove_minimal_call_slice",
+    "prove_minimal_call_slice_evidence",
     "query_changed_blob_impact",
     "query_contract_consumers",
     "query_contract_producers",
@@ -2251,4 +2642,6 @@ __all__ = [
     "query_symbol_callees",
     "query_symbol_callers",
     "query_vfs_operation_surface",
+    "slice_obeys_fail_closed_completeness",
+    "slice_satisfies_minimal_call_slice",
 ]

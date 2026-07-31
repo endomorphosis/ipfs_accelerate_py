@@ -26,14 +26,50 @@ from typing import Any, Final
 
 
 SYMBOLIC_BENCHMARK_VERSION: Final = 1
-SYMBOLIC_BENCHMARK_EVIDENCE_SCHEMA: Final = (
+SYMBOLIC_EFFICIENCY_BENCHMARK_EVIDENCE: Final = (
     "vfs/symbolic-efficiency-benchmark@1"
+)
+SYMBOLIC_BENCHMARK_EVIDENCE_SCHEMA: Final = (
+    SYMBOLIC_EFFICIENCY_BENCHMARK_EVIDENCE
 )
 SYMBOLIC_BENCHMARK_OBSERVATION_SCHEMA: Final = (
     "vfs/symbolic-efficiency-observation@1"
 )
 SYMBOLIC_BENCHMARK_POPULATION_SCHEMA: Final = (
     "vfs/symbolic-efficiency-population@1"
+)
+SYMBOLIC_EFFICIENCY_CLAIM_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/symbolic-efficiency-benchmark-claim@1"
+)
+
+# Objective-heap discovery anchors for VFS-G164 / VFS-086.
+# Labels never enter observation or report content identities.
+OBJECTIVE_GOAL_ID: Final[str] = "VFS-G164"
+OBJECTIVE_PARENT_GOAL_ID: Final[str] = "VFS-G121"
+OBJECTIVE_TASK_ID: Final[str] = "VFS-086"
+OBJECTIVE_DOMAIN_EVIDENCE_TERMS: Final[tuple[str, ...]] = (
+    SYMBOLIC_EFFICIENCY_BENCHMARK_EVIDENCE,
+)
+SYMBOLIC_EFFICIENCY_BENCHMARK_INVARIANTS: Final[tuple[str, ...]] = (
+    "inventory/scan/parse/identity/graph/contract/cache/proof use zero LLM calls",
+    "paired repair packets cut median provider input by at least 80 percent",
+    "compact packets preserve required evidence and seeded finding coverage",
+    "resource ceilings and cache hit/reuse claims are measured per scan mode",
+    "benchmark reports have no completion or promotion authority",
+)
+
+# Keep exact-text discovery anchors aligned with the objective heap.
+assert SYMBOLIC_EFFICIENCY_BENCHMARK_EVIDENCE == (
+    "vfs/symbolic-efficiency-benchmark@1"
+)
+assert SYMBOLIC_BENCHMARK_EVIDENCE_SCHEMA == (
+    "vfs/symbolic-efficiency-benchmark@1"
+)
+assert OBJECTIVE_GOAL_ID == "VFS-G164"
+assert OBJECTIVE_PARENT_GOAL_ID == "VFS-G121"
+assert OBJECTIVE_TASK_ID == "VFS-086"
+assert OBJECTIVE_DOMAIN_EVIDENCE_TERMS == (
+    "vfs/symbolic-efficiency-benchmark@1",
 )
 
 DETERMINISTIC_STAGE_NAMES: Final[tuple[str, ...]] = (
@@ -1865,6 +1901,164 @@ def verify_symbolic_efficiency_report(
     )
 
 
+def symbolic_efficiency_benchmark_evidence() -> str:
+    """Return the exact objective evidence term for discovery scanners."""
+
+    return SYMBOLIC_EFFICIENCY_BENCHMARK_EVIDENCE
+
+
+def symbolic_efficiency_benchmark_evidence_terms() -> tuple[str, ...]:
+    """Return the symbolic-efficiency evidence surface for discovery scanners."""
+
+    return (SYMBOLIC_EFFICIENCY_BENCHMARK_EVIDENCE,)
+
+
+def covered_evidence_terms() -> tuple[str, ...]:
+    """Return domain objective evidence terms this benchmark surface proves.
+
+    Covers ``vfs/symbolic-efficiency-benchmark@1`` for VFS-G164.  Goal and
+    task labels stay metadata and never enter observation or report content
+    identities.
+    """
+
+    return OBJECTIVE_DOMAIN_EVIDENCE_TERMS
+
+
+def all_covered_evidence_terms() -> tuple[str, ...]:
+    """Alias of :func:`covered_evidence_terms` for cross-module discovery."""
+
+    return covered_evidence_terms()
+
+
+def report_satisfies_symbolic_efficiency_benchmark(
+    report: SymbolicEfficiencyBenchmarkReport | Mapping[str, Any],
+    *,
+    population: SymbolicBenchmarkPopulation | None = None,
+) -> bool:
+    """Machine-check VFS-G164 acceptance on one replay-derived report.
+
+    A report satisfies the evidence term only when every gate passes and the
+    report remains non-authoritative.  Insufficient samples and hard failures
+    fail closed.
+    """
+
+    if isinstance(report, SymbolicEfficiencyBenchmarkReport):
+        report_obj = report
+    else:
+        if population is None:
+            return False
+        try:
+            report_obj = SymbolicEfficiencyBenchmarkReport.from_dict(
+                report,
+                population=population,
+            )
+        except (SymbolicBenchmarkError, TypeError, ValueError, KeyError):
+            return False
+    if not isinstance(report_obj, SymbolicEfficiencyBenchmarkReport):
+        return False
+    if population is not None and not verify_symbolic_efficiency_report(
+        report_obj, population
+    ):
+        return False
+    if not report_obj.passed:
+        return False
+    if report_obj.authoritative or report_obj.completion_authoritative:
+        return False
+    if report_obj.promotion_authoritative:
+        return False
+    if report_obj.deterministic_llm_calls != 0:
+        return False
+    if report_obj.provider_byte_reduction_basis_points < 8_000:
+        return False
+    if report_obj.provider_token_reduction_basis_points < 8_000:
+        return False
+    return all(gate.status is GateStatus.PASSED for gate in report_obj.gates)
+
+
+def prove_symbolic_efficiency_benchmark(
+    population: SymbolicBenchmarkPopulation | Mapping[str, Any],
+    *,
+    report: SymbolicEfficiencyBenchmarkReport | Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Emit the VFS-G164 evidence claim for a closed observation population.
+
+    The claim binds the exact evidence term, re-evaluates the population, and
+    records gate outcomes without granting completion or promotion authority.
+    """
+
+    if isinstance(population, SymbolicBenchmarkPopulation):
+        population_obj = population
+    else:
+        population_obj = SymbolicBenchmarkPopulation.from_dict(population)
+    evaluated = evaluate_symbolic_efficiency(population_obj)
+    if report is not None:
+        if isinstance(report, SymbolicEfficiencyBenchmarkReport):
+            report_obj = report
+        else:
+            report_obj = SymbolicEfficiencyBenchmarkReport.from_dict(
+                report,
+                population=population_obj,
+            )
+        if not verify_symbolic_efficiency_report(report_obj, population_obj):
+            raise SymbolicBenchmarkError(
+                "supplied report does not match complete population replay"
+            )
+        if _canonical_bytes(report_obj.to_dict()) != _canonical_bytes(
+            evaluated.to_dict()
+        ):
+            raise SymbolicBenchmarkError(
+                "supplied report does not match complete population replay"
+            )
+    else:
+        report_obj = evaluated
+
+    satisfied = report_satisfies_symbolic_efficiency_benchmark(
+        report_obj,
+        population=population_obj,
+    )
+    gate_status = {
+        gate.name: gate.status.value for gate in report_obj.gates
+    }
+    return {
+        "schema": SYMBOLIC_EFFICIENCY_CLAIM_SCHEMA,
+        "evidence": SYMBOLIC_EFFICIENCY_BENCHMARK_EVIDENCE,
+        "evidence_terms": list(OBJECTIVE_DOMAIN_EVIDENCE_TERMS),
+        "all_evidence_terms": list(OBJECTIVE_DOMAIN_EVIDENCE_TERMS),
+        "goal_id": OBJECTIVE_GOAL_ID,
+        "parent_goal_id": OBJECTIVE_PARENT_GOAL_ID,
+        "task_id": OBJECTIVE_TASK_ID,
+        "population_id": report_obj.population_id,
+        "report_id": report_obj.report_id,
+        "conclusion": report_obj.conclusion.value,
+        "gate_status": gate_status,
+        "failure_codes": list(report_obj.failure_codes),
+        "deterministic_llm_calls": report_obj.deterministic_llm_calls,
+        "provider_byte_reduction_basis_points": (
+            report_obj.provider_byte_reduction_basis_points
+        ),
+        "provider_token_reduction_basis_points": (
+            report_obj.provider_token_reduction_basis_points
+        ),
+        "sample_counts_by_mode": dict(report_obj.sample_counts_by_mode),
+        "invariants": list(SYMBOLIC_EFFICIENCY_BENCHMARK_INVARIANTS),
+        "satisfied": satisfied,
+        "authoritative": False,
+        "completion_authoritative": False,
+        "promotion_authoritative": False,
+        "semantic_authority": False,
+    }
+
+
+def prove_symbolic_efficiency_benchmark_evidence(
+    population: SymbolicBenchmarkPopulation | Mapping[str, Any],
+    *,
+    report: SymbolicEfficiencyBenchmarkReport | Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Alias of :func:`prove_symbolic_efficiency_benchmark` for discovery."""
+
+    return prove_symbolic_efficiency_benchmark(population, report=report)
+
+
 __all__ = [
     "BenchmarkConclusion",
     "BenchmarkGate",
@@ -1877,6 +2071,10 @@ __all__ = [
     "GateStatus",
     "InvalidationMeasurement",
     "InventoryMeasurement",
+    "OBJECTIVE_DOMAIN_EVIDENCE_TERMS",
+    "OBJECTIVE_GOAL_ID",
+    "OBJECTIVE_PARENT_GOAL_ID",
+    "OBJECTIVE_TASK_ID",
     "ProviderPacketMeasurement",
     "REQUIRED_CACHE_STAGES",
     "REQUIRED_SCAN_MODES",
@@ -1884,6 +2082,9 @@ __all__ = [
     "SYMBOLIC_BENCHMARK_EVIDENCE_SCHEMA",
     "SYMBOLIC_BENCHMARK_OBSERVATION_SCHEMA",
     "SYMBOLIC_BENCHMARK_POPULATION_SCHEMA",
+    "SYMBOLIC_EFFICIENCY_BENCHMARK_EVIDENCE",
+    "SYMBOLIC_EFFICIENCY_BENCHMARK_INVARIANTS",
+    "SYMBOLIC_EFFICIENCY_CLAIM_SCHEMA",
     "ScanMode",
     "SymbolicBenchmarkError",
     "SymbolicBenchmarkObservation",
@@ -1891,7 +2092,14 @@ __all__ = [
     "SymbolicEfficiencyBenchmarkReport",
     "TaskMeasurement",
     "ToolchainIdentity",
+    "all_covered_evidence_terms",
     "build_symbolic_efficiency_report",
+    "covered_evidence_terms",
     "evaluate_symbolic_efficiency",
+    "prove_symbolic_efficiency_benchmark",
+    "prove_symbolic_efficiency_benchmark_evidence",
+    "report_satisfies_symbolic_efficiency_benchmark",
+    "symbolic_efficiency_benchmark_evidence",
+    "symbolic_efficiency_benchmark_evidence_terms",
     "verify_symbolic_efficiency_report",
 ]

@@ -114,6 +114,10 @@ PROGRAM_ZKP_G080_EVIDENCE_TERMS: Final[tuple[str, ...]] = (
     PROGRAM_ZKP_EVIDENCE_TRACE_STATEMENT,
     PROGRAM_ZKP_EVIDENCE_VERIFICATION_RECEIPT,
 )
+# VFS-G081 objective evidence identity (capability / authority fail-closed).
+PROGRAM_ZKP_G081_EVIDENCE_TERMS: Final[tuple[str, ...]] = (
+    PROGRAM_ZKP_EVIDENCE_CAPABILITY_CONFORMANCE,
+)
 # Synthetic objective-heap evidence term for VFS-G080 validation-gate work.
 # Exact-text discovery key only — never part of statement/receipt identity,
 # public-input digests, circuit commitments, or semantic proof authority.
@@ -122,17 +126,31 @@ OBJECTIVE_VALIDATION_REPAIR_EVIDENCE: Final[str] = "objective validation repair"
 OBJECTIVE_GOAL_ID: Final[str] = "VFS-G080"
 # Repair task that owns the synthetic objective validation repair obligation.
 OBJECTIVE_VALIDATION_REPAIR_TASK_ID: Final[str] = "VFS-059"
+# Domain goal that owns production capability conformance (no simulated authority).
+OBJECTIVE_GOAL_G081_ID: Final[str] = "VFS-G081"
+# Gap/implementation task that proves vfs/zk-capability-conformance@1 for G081.
+OBJECTIVE_TASK_G081_ID: Final[str] = "VFS-076"
+# Claim schema for the host-free G081 capability-conformance evidence surface.
+PROGRAM_ZKP_CAPABILITY_CONFORMANCE_CLAIM_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/program-analysis-zkp-capability-conformance-claim@1"
+)
 
 # Keep exact-text discovery anchors aligned with the objective heap.
 assert OBJECTIVE_VALIDATION_REPAIR_EVIDENCE == "objective validation repair"
 assert OBJECTIVE_GOAL_ID == "VFS-G080"
 assert OBJECTIVE_VALIDATION_REPAIR_TASK_ID == "VFS-059"
+assert OBJECTIVE_GOAL_G081_ID == "VFS-G081"
+assert OBJECTIVE_TASK_G081_ID == "VFS-076"
 assert PROGRAM_ZKP_EVIDENCE_TRACE_STATEMENT == "vfs/zk-trace-statement@1"
 assert PROGRAM_ZKP_EVIDENCE_VERIFICATION_RECEIPT == "vfs/zk-verification-receipt@1"
+assert PROGRAM_ZKP_EVIDENCE_CAPABILITY_CONFORMANCE == (
+    "vfs/zk-capability-conformance@1"
+)
 assert PROGRAM_ZKP_G080_EVIDENCE_TERMS == (
     "vfs/zk-trace-statement@1",
     "vfs/zk-verification-receipt@1",
 )
+assert PROGRAM_ZKP_G081_EVIDENCE_TERMS == ("vfs/zk-capability-conformance@1",)
 
 # Production circuit / codec identities for program_contract_trace@v1.
 PROGRAM_CONTRACT_TRACE_CIRCUIT_ID: Final[str] = "circuit:program-contract-trace@1"
@@ -2100,16 +2118,35 @@ def program_zkp_evidence_terms() -> tuple[str, ...]:
     omitted here so statement/receipt ``evidence`` stays domain-only; use
     :func:`objective_validation_repair_evidence_terms` (or
     :func:`all_covered_evidence_terms`) for the VFS-G080 validation gate.
+    Capability conformance (``vfs/zk-capability-conformance@1``, VFS-G081)
+    is published separately via :func:`capability_conformance_evidence_terms`
+    so G080 statement/receipt identity is never confused with authority probes.
     """
 
     return PROGRAM_ZKP_G080_EVIDENCE_TERMS
 
 
+def capability_conformance_evidence_terms() -> tuple[str, ...]:
+    """Return the closed VFS-G081 domain evidence term for capability probes.
+
+    Exact identity: ``vfs/zk-capability-conformance@1``.  Authored only by
+    :class:`ProgramZkpCapabilityConformanceReport` and
+    :func:`prove_zk_capability_conformance`.  Simulated backends, placeholder
+    encodings, unversioned circuits, missing setup, incompatible codecs, and
+    absent independent verification never grant production authority.
+    """
+
+    return PROGRAM_ZKP_G081_EVIDENCE_TERMS
+
+
 def covered_evidence_terms() -> tuple[str, ...]:
     """Return domain objective evidence terms this program-analysis ZKP surface proves.
 
-    Mirrors :func:`program_zkp_evidence_terms`.  The repair gate is via
-    :func:`all_covered_evidence_terms`.
+    Mirrors :func:`program_zkp_evidence_terms` (VFS-G080 statement + receipt).
+    The repair gate is via :func:`all_covered_evidence_terms`.  VFS-G081
+    capability conformance is discoverable via
+    :func:`capability_conformance_evidence_terms` so statement/receipt
+    envelopes stay free of authority-probe identity.
     """
 
     return program_zkp_evidence_terms()
@@ -2135,10 +2172,125 @@ def all_covered_evidence_terms() -> tuple[str, ...]:
     Domain ``vfs/zk-trace-statement@1`` and ``vfs/zk-verification-receipt@1``
     come first; the synthetic objective validation repair discovery key is
     appended last and never enters statement/receipt identity, public-input
-    digests, or semantic-authority grants.
+    digests, or semantic-authority grants.  VFS-G081 capability conformance
+    is intentionally not mixed into this G080 discovery tuple; use
+    :func:`capability_conformance_evidence_terms` (or
+    :func:`all_program_zkp_evidence_terms`).
     """
 
     return covered_evidence_terms() + objective_validation_repair_evidence_terms()
+
+
+def all_program_zkp_evidence_terms() -> tuple[str, ...]:
+    """Return G080 domain terms, G081 capability conformance, then G080 repair.
+
+    Order is stable for discovery: statement, receipt, capability conformance,
+    then the synthetic objective validation repair key.  Does not substitute
+    one proof system for another — each term retains its own authority scope.
+    """
+
+    return (
+        PROGRAM_ZKP_G080_EVIDENCE_TERMS
+        + PROGRAM_ZKP_G081_EVIDENCE_TERMS
+        + (OBJECTIVE_VALIDATION_REPAIR_EVIDENCE,)
+    )
+
+
+def prove_zk_capability_conformance(
+    capability: "ProgramZkpCapabilityConformanceReport | Mapping[str, Any]",
+) -> Dict[str, Any]:
+    """Emit a host-free VFS-G081 evidence claim for one capability report.
+
+    Proves ``vfs/zk-capability-conformance@1``: simulated backends, placeholder
+    field encodings, unversioned or missing setup artifacts, incompatible
+    circuit families/codecs, and absent independent verification cannot grant
+    production authority; capability loss invalidates prior authority
+    projections.  Goal labels are metadata only and never enter
+    :attr:`ProgramZkpCapabilityConformanceReport.capability_epoch`.
+    """
+
+    if isinstance(capability, Mapping):
+        capability = ProgramZkpCapabilityConformanceReport.from_dict(capability)
+    if not isinstance(capability, ProgramZkpCapabilityConformanceReport):
+        raise TypeError(
+            "capability must be a ProgramZkpCapabilityConformanceReport"
+        )
+    denial = list(capability.denial_reasons)
+    production_eligible = bool(capability.production_eligible)
+    # Acceptance dimensions for VFS-G081 (fail-closed authority).
+    dimensions = {
+        "simulated_backends_blocked": (
+            capability.backend_mode is not ProgramZkpBackendMode.SIMULATED
+            or not production_eligible
+        ),
+        "placeholder_encodings_blocked": (
+            capability.field_encoding is not ProgramZkpFieldEncodingKind.PLACEHOLDER
+            or not production_eligible
+        ),
+        "unversioned_circuits_blocked": (
+            is_versioned_artifact_id(capability.circuit_id) and production_eligible
+        )
+        or not production_eligible,
+        "missing_setup_blocks_authority": not production_eligible
+        or all(
+            check.production_eligible
+            for check in capability.checks
+            if check.dimension
+            in {
+                ProgramZkpCapabilityDimension.SETUP_ARTIFACTS,
+                ProgramZkpCapabilityDimension.PROVING_KEY,
+                ProgramZkpCapabilityDimension.VERIFYING_KEY,
+            }
+        ),
+        "incompatible_codecs_blocked": (
+            capability.field_encoding is ProgramZkpFieldEncodingKind.BN254_SHA256
+            or not production_eligible
+        ),
+        "independent_verification_required": not production_eligible
+        or capability.checks_by_dimension[
+            ProgramZkpCapabilityDimension.INDEPENDENT_VERIFIER
+        ].production_eligible,
+        "shadow_default_until_eligible": capability.shadow_only
+        == (not production_eligible),
+        "no_proof_system_substitution": (
+            capability.circuit_family
+            is ProgramZkpCircuitFamily.PROGRAM_CONTRACT_TRACE
+            and capability.circuit_id == PROGRAM_CONTRACT_TRACE_CIRCUIT_ID
+        )
+        or not production_eligible,
+    }
+    satisfied = all(dimensions.values()) and (
+        production_eligible
+        or capability.rollout_mode is ProgramZkpRolloutMode.SHADOW
+    )
+    return {
+        "schema": PROGRAM_ZKP_CAPABILITY_CONFORMANCE_CLAIM_SCHEMA,
+        "evidence": PROGRAM_ZKP_EVIDENCE_CAPABILITY_CONFORMANCE,
+        "evidence_terms": list(capability_conformance_evidence_terms()),
+        "requirement_id": PROGRAM_ZKP_EVIDENCE_CAPABILITY_CONFORMANCE,
+        "goal_id": OBJECTIVE_GOAL_G081_ID,
+        "parent_goal_id": OBJECTIVE_GOAL_ID,
+        "task_id": OBJECTIVE_TASK_G081_ID,
+        "capability_epoch": capability.capability_epoch,
+        "production_eligible": production_eligible,
+        "authoritative_allowed": bool(capability.authoritative_allowed),
+        "shadow_only": bool(capability.shadow_only),
+        "rollout_mode": capability.rollout_mode.value,
+        "backend_mode": capability.backend_mode.value,
+        "field_encoding": capability.field_encoding.value,
+        "circuit_family": capability.circuit_family.value,
+        "circuit_id": capability.circuit_id,
+        "circuit_version": capability.circuit_version,
+        "denial_reasons": denial,
+        "acceptance_dimensions": dimensions,
+        "satisfied": bool(satisfied),
+        "authoritative": False,
+        "completion_authoritative": False,
+        "does_not_prove": sorted(TRACE_VALIDITY_DOES_NOT_PROVE),
+        "refinement": (
+            "Do not silently substitute one proof system for another."
+        ),
+    }
 
 
 def zk_attestation_independent_of_semantic_authority() -> bool:
@@ -2283,6 +2435,8 @@ class ProgramZkpAuthorityDenialReason(str, Enum):
     SEMANTIC_CLAIM_PROMOTION = "semantic_claim_promotion"
     SHADOW_ONLY_ROLLOUT = "shadow_only_rollout"
     PROBE_FAILED = "probe_failed"
+    # Capability admits one circuit/family; envelopes must not silently swap systems.
+    PROOF_SYSTEM_SUBSTITUTION = "proof_system_substitution"
 
 
 _PRODUCTION_CAPABILITY_STATUSES: Final[frozenset[ProgramZkpCapabilityStatus]] = (
@@ -3576,6 +3730,13 @@ def grants_production_authority(
         return False
     if receipt.capability_epoch != capability.capability_epoch:
         return False
+    # Bound circuit identity: a receipt for one system never rides another.
+    if receipt.circuit_id != capability.circuit_id:
+        return False
+    if capability.circuit_family is not ProgramZkpCircuitFamily.PROGRAM_CONTRACT_TRACE:
+        return False
+    if capability.circuit_id != PROGRAM_CONTRACT_TRACE_CIRCUIT_ID:
+        return False
     return True
 
 
@@ -3684,6 +3845,44 @@ def verify_program_zkp_independently(
         raise ProgramZkpVersionError("public-input codec id is incompatible")
     if pins.public_input_codec_version != PUBLIC_INPUT_CODEC_VERSION:
         raise ProgramZkpVersionError("public-input codec version is incompatible")
+
+    # Proof-system binding (VFS-G081): never silently substitute one circuit,
+    # family, or version for another under a live capability report.
+    if pins.circuit_id != capability.circuit_id:
+        raise ProgramZkpAuthorityError(
+            "proof system substitution rejected: circuit_id does not match capability (%s)"
+            % ProgramZkpAuthorityDenialReason.PROOF_SYSTEM_SUBSTITUTION.value
+        )
+    if capability.circuit_version != PROGRAM_CONTRACT_TRACE_CIRCUIT_VERSION:
+        raise ProgramZkpAuthorityError(
+            "proof system substitution rejected: circuit_version is not production-admitted (%s)"
+            % ProgramZkpAuthorityDenialReason.PROOF_SYSTEM_SUBSTITUTION.value
+        )
+    if capability.circuit_family is not ProgramZkpCircuitFamily.PROGRAM_CONTRACT_TRACE:
+        raise ProgramZkpAuthorityError(
+            "proof system substitution rejected: circuit family %s is not program_contract_trace (%s)"
+            % (
+                capability.circuit_family.value,
+                ProgramZkpAuthorityDenialReason.PROOF_SYSTEM_SUBSTITUTION.value,
+            )
+        )
+    admitted_family = classify_circuit_family(pins.circuit_id)
+    if admitted_family is not ProgramZkpCircuitFamily.PROGRAM_CONTRACT_TRACE:
+        raise ProgramZkpAuthorityError(
+            "proof system substitution rejected: envelope circuit family %s is incompatible (%s)"
+            % (
+                admitted_family.value,
+                ProgramZkpAuthorityDenialReason.PROOF_SYSTEM_SUBSTITUTION.value,
+            )
+        )
+    if pins.circuit_id != PROGRAM_CONTRACT_TRACE_CIRCUIT_ID:
+        raise ProgramZkpAuthorityError(
+            "proof system substitution rejected: only %s is production-admitted (%s)"
+            % (
+                PROGRAM_CONTRACT_TRACE_CIRCUIT_ID,
+                ProgramZkpAuthorityDenialReason.PROOF_SYSTEM_SUBSTITUTION.value,
+            )
+        )
 
     # Proof material
     if isinstance(proof_bytes, str):
@@ -3856,7 +4055,11 @@ __all__ = [
     "PROGRAM_ZKP_EVIDENCE_TRACE_STATEMENT",
     "PROGRAM_ZKP_EVIDENCE_VERIFICATION_RECEIPT",
     "PROGRAM_ZKP_G080_EVIDENCE_TERMS",
+    "PROGRAM_ZKP_G081_EVIDENCE_TERMS",
+    "PROGRAM_ZKP_CAPABILITY_CONFORMANCE_CLAIM_SCHEMA",
     "OBJECTIVE_GOAL_ID",
+    "OBJECTIVE_GOAL_G081_ID",
+    "OBJECTIVE_TASK_G081_ID",
     "OBJECTIVE_VALIDATION_REPAIR_EVIDENCE",
     "OBJECTIVE_VALIDATION_REPAIR_TASK_ID",
     "PROGRAM_CONTRACT_TRACE_CIRCUIT_ID",
@@ -3932,9 +4135,12 @@ __all__ = [
     "verdict_for_trace_attestation",
     "inconclusive_state_for_shadow",
     "program_zkp_evidence_terms",
+    "capability_conformance_evidence_terms",
     "covered_evidence_terms",
     "objective_validation_repair_evidence_terms",
     "all_covered_evidence_terms",
+    "all_program_zkp_evidence_terms",
+    "prove_zk_capability_conformance",
     "zk_attestation_independent_of_semantic_authority",
     "shadow_default_backend_mode",
 ]

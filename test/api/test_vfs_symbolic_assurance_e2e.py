@@ -4,6 +4,9 @@ Covers VFS-036 / VFS-G130: frozen multi-repository CIDs, inventory, cache,
 proof/ZK, MCP, VFS drift, security false positives, task determinism, provider
 loss, restart/replay, lease/fence, merge, refill, rollback, and Python/CLI/MCP
 parity without provider imports or process starts during discovery.
+
+Also covers goal_packet/assurance_rollout (VFS-G162 / VFS-G163):
+``vfs/adversarial-e2e-gate@1`` and ``vfs/shadow-rollout-report@1``.
 """
 
 from __future__ import annotations
@@ -15,13 +18,31 @@ from dataclasses import replace
 
 import pytest
 
+import ipfs_accelerate_py.agent_supervisor.vfs_symbolic_rollout as rollout
 from ipfs_accelerate_py.agent_supervisor.vfs_symbolic_rollout import (
+    ADVERSARIAL_E2E_GATE_CLAIM_SCHEMA,
+    ADVERSARIAL_E2E_GATE_EVIDENCE,
     ADVERSARIAL_E2E_GATE_SCHEMA,
+    ASSURANCE_ROLLOUT_PACKET_CLAIM_SCHEMA,
+    OBJECTIVE_DOMAIN_EVIDENCE_TERMS,
+    OBJECTIVE_EVIDENCE_BINDING_ROWS,
+    OBJECTIVE_GOAL_G162_ID,
+    OBJECTIVE_GOAL_G163_ID,
+    OBJECTIVE_PACKET_ID,
+    OBJECTIVE_PACKET_EVIDENCE_TERMS,
+    OBJECTIVE_PACKET_GOAL_IDS,
+    OBJECTIVE_PARENT_GOAL_ID,
+    OBJECTIVE_TASK_G162_ID,
+    OBJECTIVE_TASK_G163_ID,
+    OBJECTIVE_TASK_PACKET_ID,
     REQUIRED_ADVERSARIAL_GATES,
+    SHADOW_ROLLOUT_REPORT_CLAIM_SCHEMA,
+    SHADOW_ROLLOUT_REPORT_EVIDENCE,
     SHADOW_ROLLOUT_REPORT_SCHEMA,
     AdversarialGateId,
     AdversarialInjection,
     GateStatus,
+    ShadowRolloutReport,
     VFS_SYMBOLIC_BEHAVIOR_ID,
     VFS_SYMBOLIC_OBJECTIVE_ID,
     VFS_SYMBOLIC_ROLLOUT_REQUIREMENT_ID,
@@ -29,17 +50,29 @@ from ipfs_accelerate_py.agent_supervisor.vfs_symbolic_rollout import (
     VfsRolloutMode,
     VfsSymbolicPublicAPI,
     VfsSymbolicRolloutError,
+    adversarial_e2e_gate_evidence_terms,
+    all_covered_evidence_terms,
     build_default_vfs_binding,
     build_default_vfs_policy,
     build_frozen_adversarial_population,
+    covered_evidence_terms,
     evaluate_adversarial_gates,
     evaluate_vfs_symbolic_rollout,
     freeze_multi_repository_fixture,
+    objective_evidence_bindings,
+    packet_evidence_terms,
     project_bounded_findings,
     project_bounded_receipts,
     project_bounded_status,
+    prove_adversarial_e2e_gate,
+    prove_assurance_rollout_packet,
+    prove_shadow_rollout_report,
     run_vfs_symbolic_assurance_e2e,
+    shadow_rollout_report_acceptance_dimensions,
+    shadow_rollout_report_evidence,
+    shadow_rollout_report_evidence_terms,
     verify_adversarial_e2e_report,
+    verify_shadow_rollout_report,
     verify_vfs_symbolic_rollout,
 )
 
@@ -421,12 +454,21 @@ def test_failed_gates_project_into_bounded_findings():
 def test_run_vfs_symbolic_assurance_e2e_emits_full_evidence_bundle():
     payload = run_vfs_symbolic_assurance_e2e(desired_mode="assist")
     assert payload["adversarial_e2e_gate"]["schema"] == ADVERSARIAL_E2E_GATE_SCHEMA
+    assert payload["adversarial_e2e_gate"]["evidence"] == "vfs/adversarial-e2e-gate@1"
     assert payload["shadow_rollout_report"]["schema"] == SHADOW_ROLLOUT_REPORT_SCHEMA
+    assert payload["shadow_rollout_report"]["evidence"] == "vfs/shadow-rollout-report@1"
     assert payload["shadow_rollout_report"]["effective_mode"] == "assist"
     assert payload["automatic_mutation_enabled"] is False
     assert payload["decision"]["effective_mode"] == "assist"
     assert payload["status"]["fixture_cid"] == payload["fixture"]["fixture_cid"]
     assert payload["receipts"]["receipt_count"] >= 4
+    assert payload["evidence_terms"] == list(OBJECTIVE_DOMAIN_EVIDENCE_TERMS)
+    assert payload["adversarial_e2e_gate_claim"]["satisfied"] is True
+    assert payload["shadow_rollout_report_claim"]["satisfied"] is True
+    assert payload["assurance_rollout_packet_claim"]["satisfied"] is True
+    assert payload["assurance_rollout_packet_claim"]["schema"] == (
+        ASSURANCE_ROLLOUT_PACKET_CLAIM_SCHEMA
+    )
 
 
 def test_custom_multi_repo_fixture_freezes_and_excludes_correctly():
@@ -486,3 +528,326 @@ def test_task_determinism_gate_is_stable_across_rebuilds():
     assert task_first.evidence_ids == task_second.evidence_ids
     assert task_first.observation_id == task_second.observation_id
     assert first.report_id == second.report_id
+
+
+# ---------------------------------------------------------------------------
+# VFS-G162 / VFS-G163: assurance-rollout packet evidence discovery
+# ---------------------------------------------------------------------------
+
+
+def test_vfs_g162_adversarial_e2e_gate_evidence_discoverable():
+    """Cover vfs/adversarial-e2e-gate@1 for objective goal VFS-G162.
+
+    Exact-text discovery anchors keep the supervisor backlog aligned with the
+    objective heap.  Gate reports and prove-claims publish the domain evidence
+    term; automatic mutation and forged ZK never acquire authority.
+    """
+
+    assert ADVERSARIAL_E2E_GATE_EVIDENCE == "vfs/adversarial-e2e-gate@1"
+    assert ADVERSARIAL_E2E_GATE_SCHEMA == "vfs/adversarial-e2e-gate@1"
+    assert adversarial_e2e_gate_evidence_terms() == ("vfs/adversarial-e2e-gate@1",)
+    assert OBJECTIVE_GOAL_G162_ID == "VFS-G162"
+    assert OBJECTIVE_TASK_G162_ID == "VFS-082"
+    assert OBJECTIVE_PARENT_GOAL_ID == "VFS-G130"
+    assert "vfs/adversarial-e2e-gate@1" in covered_evidence_terms()
+    assert "vfs/adversarial-e2e-gate@1" in all_covered_evidence_terms()
+
+    fixture, report, binding, policy = _population()
+    payload = report.to_dict()
+    assert payload["evidence"] == "vfs/adversarial-e2e-gate@1"
+    assert payload["evidence_terms"] == ["vfs/adversarial-e2e-gate@1"]
+    assert payload["goal_id"] == "VFS-G162"
+    assert payload["task_id"] == "VFS-082"
+    assert payload["authoritative"] is False
+    assert payload["completion_authoritative"] is False
+    assert payload["automatic_mutation_enabled"] is False
+
+    claim = prove_adversarial_e2e_gate(report)
+    assert claim["schema"] == ADVERSARIAL_E2E_GATE_CLAIM_SCHEMA
+    assert claim["evidence"] == "vfs/adversarial-e2e-gate@1"
+    assert claim["requirement_id"] == "vfs/adversarial-e2e-gate@1"
+    assert claim["goal_id"] == "VFS-G162"
+    assert claim["parent_goal_id"] == "VFS-G130"
+    assert claim["task_id"] == "VFS-082"
+    assert claim["packet_task_id"] == OBJECTIVE_TASK_PACKET_ID
+    assert claim["satisfied"] is True
+    assert claim["authoritative"] is False
+    assert claim["completion_authoritative"] is False
+    assert claim["semantic_authority"] is False
+    assert claim["automatic_mutation_enabled"] is False
+    assert all(claim["acceptance_dimensions"].values())
+    assert claim["report_id"] == report.report_id
+    assert claim["fixture_cid"] == report.fixture.fixture_cid
+    # Round-trip via public dict retains the evidence identity.
+    restored = type(report).from_dict(payload)
+    assert restored.report_id == report.report_id
+    assert prove_adversarial_e2e_gate(restored)["satisfied"] is True
+    assert binding.objective_id == VFS_SYMBOLIC_OBJECTIVE_ID
+    assert policy.policy_binding_id
+
+
+def test_vfs_g163_shadow_rollout_report_evidence_discoverable():
+    """Cover vfs/shadow-rollout-report@1 for objective goal VFS-G163.
+
+    Assist promotes only when every adversarial gate passes; automatic stays
+    shadow; binding/policy regressions return effective rollout to shadow.
+    Parent frozen-corpus acceptance is demonstrated only via the bound gate.
+    """
+
+    assert SHADOW_ROLLOUT_REPORT_EVIDENCE == "vfs/shadow-rollout-report@1"
+    assert SHADOW_ROLLOUT_REPORT_SCHEMA == "vfs/shadow-rollout-report@1"
+    assert shadow_rollout_report_evidence() == "vfs/shadow-rollout-report@1"
+    assert shadow_rollout_report_evidence_terms() == (
+        "vfs/shadow-rollout-report@1",
+    )
+    assert OBJECTIVE_GOAL_G163_ID == "VFS-G163"
+    assert OBJECTIVE_TASK_G163_ID == "VFS-084"
+    assert "vfs/shadow-rollout-report@1" in covered_evidence_terms()
+    assert "vfs/shadow-rollout-report@1" in packet_evidence_terms()
+    assert "vfs/shadow-rollout-report@1" in all_covered_evidence_terms()
+
+    fixture, report, binding, policy = _population()
+    shadow = ShadowRolloutReport(
+        gate_report=report,
+        binding=binding,
+        policy=policy,
+        desired_mode=VfsRolloutMode.ASSIST,
+    )
+    assert verify_shadow_rollout_report(shadow)
+    payload = shadow.to_dict()
+    assert payload["schema"] == "vfs/shadow-rollout-report@1"
+    assert payload["evidence"] == "vfs/shadow-rollout-report@1"
+    assert payload["evidence_terms"] == ["vfs/shadow-rollout-report@1"]
+    assert payload["goal_id"] == "VFS-G163"
+    assert payload["task_id"] == "VFS-084"
+    assert payload["effective_mode"] == "assist"
+    assert payload["automatic_mutation_enabled"] is False
+    assert payload["automatic_ready"] is False
+    assert payload["authoritative"] is False
+    assert payload["completion_authoritative"] is False
+
+    dimensions = shadow_rollout_report_acceptance_dimensions(shadow)
+    assert all(dimensions.values())
+    assert dimensions["parent_gate_reproducible_cids"]
+    assert dimensions["parent_gate_complete_inventories"]
+    assert dimensions["parent_gate_zero_stale_authoritative_hits"]
+    assert dimensions["parent_gate_zero_forged_proof_zk_authority"]
+    assert dimensions["parent_gate_seeded_mismatch_precision"]
+    assert dimensions["parent_gate_deterministic_tasks"]
+    assert dimensions["parent_gate_python_cli_mcp_parity"]
+    assert dimensions["parent_gate_restart_replay"]
+    assert dimensions["parent_gate_rollback"]
+    assert dimensions["parent_gate_automatic_mutation_disabled"]
+
+    claim = prove_shadow_rollout_report(shadow)
+    assert claim["schema"] == SHADOW_ROLLOUT_REPORT_CLAIM_SCHEMA
+    assert claim["evidence"] == "vfs/shadow-rollout-report@1"
+    assert claim["requirement_id"] == "vfs/shadow-rollout-report@1"
+    assert claim["goal_id"] == "VFS-G163"
+    assert claim["parent_goal_id"] == "VFS-G130"
+    assert claim["task_id"] == "VFS-084"
+    assert claim["packet_goal_ids"] == ["VFS-G162", "VFS-G163"]
+    assert claim["satisfied"] is True
+    assert claim["verified"] is True
+    assert claim["effective_mode"] == "assist"
+    assert claim["automatic_ready"] is False
+    assert claim["automatic_mutation_enabled"] is False
+    assert claim["authoritative"] is False
+    assert claim["completion_authoritative"] is False
+    assert claim["semantic_authority"] is False
+    assert all(claim["acceptance_dimensions"].values())
+    assert all(claim["parent_acceptance_dimensions"].values())
+    assert claim["fixture_cid"] == report.fixture.fixture_cid
+    assert claim["forest_id"] == report.fixture.forest_id
+
+    # Automatic desire never becomes effective; report still verifies.
+    automatic = ShadowRolloutReport(
+        gate_report=report,
+        binding=binding,
+        policy=policy,
+        desired_mode=VfsRolloutMode.AUTOMATIC,
+    )
+    assert automatic.effective_mode is VfsRolloutMode.SHADOW
+    assert automatic.rollback_applied
+    assert verify_shadow_rollout_report(automatic)
+    auto_claim = prove_shadow_rollout_report(automatic)
+    assert auto_claim["effective_mode"] == "shadow"
+    assert auto_claim["acceptance_dimensions"]["automatic_never_effective"]
+    assert auto_claim["acceptance_dimensions"]["rollback_when_assist_blocked"]
+
+    # Failed gates force assist requests back to shadow; parent dims fail.
+    failed = evaluate_adversarial_gates(
+        fixture,
+        injection=AdversarialInjection(accept_wrong_proof=True),
+    )
+    regressed = ShadowRolloutReport(
+        gate_report=failed,
+        binding=binding,
+        policy=policy,
+        desired_mode=VfsRolloutMode.ASSIST,
+    )
+    assert regressed.effective_mode is VfsRolloutMode.SHADOW
+    assert regressed.rollback_applied
+    assert verify_shadow_rollout_report(regressed)
+    failed_claim = prove_shadow_rollout_report(regressed)
+    assert failed_claim["effective_mode"] == "shadow"
+    assert failed_claim["rollback_applied"] is True
+    assert failed_claim["satisfied"] is False
+    assert failed_claim["verified"] is True
+    assert failed_claim["acceptance_dimensions"]["automatic_never_effective"]
+    assert failed_claim["acceptance_dimensions"]["regression_returns_to_shadow"]
+    assert not failed_claim["parent_acceptance_dimensions"][
+        "zero_forged_proof_zk_authority"
+    ]
+
+    # Stale binding returns to shadow while safety dimensions still hold.
+    stale = ShadowRolloutReport(
+        gate_report=report,
+        binding=replace(binding, forest_id="sha256:" + "0" * 64),
+        policy=policy,
+        desired_mode=VfsRolloutMode.ASSIST,
+    )
+    assert stale.effective_mode is VfsRolloutMode.SHADOW
+    assert "stale-binding:forest_id" in stale.reason_codes
+    assert verify_shadow_rollout_report(stale)
+    stale_claim = prove_shadow_rollout_report(stale)
+    assert stale_claim["satisfied"] is False
+    assert stale_claim["acceptance_dimensions"]["regression_returns_to_shadow"]
+    assert stale_claim["acceptance_dimensions"]["evidence_identity"]
+
+
+def test_assurance_rollout_packet_covers_g162_and_g163_together():
+    """One cohesive pass covers both packet evidence terms (VFS-081 packet)."""
+
+    assert OBJECTIVE_DOMAIN_EVIDENCE_TERMS == (
+        "vfs/adversarial-e2e-gate@1",
+        "vfs/shadow-rollout-report@1",
+    )
+    assert OBJECTIVE_PACKET_EVIDENCE_TERMS == OBJECTIVE_DOMAIN_EVIDENCE_TERMS
+    assert OBJECTIVE_PACKET_GOAL_IDS == ("VFS-G162", "VFS-G163")
+    assert OBJECTIVE_PACKET_ID == (
+        "goal_packet/assurance_rollout/ipfs_accelerate_py/047760894e45"
+    )
+    assert OBJECTIVE_EVIDENCE_BINDING_ROWS == (
+        ("vfs/adversarial-e2e-gate@1", "VFS-G162", "VFS-082"),
+        ("vfs/shadow-rollout-report@1", "VFS-G163", "VFS-084"),
+    )
+    assert objective_evidence_bindings() == (
+        {
+            "evidence": "vfs/adversarial-e2e-gate@1",
+            "goal_id": "VFS-G162",
+            "task_id": "VFS-082",
+        },
+        {
+            "evidence": "vfs/shadow-rollout-report@1",
+            "goal_id": "VFS-G163",
+            "task_id": "VFS-084",
+        },
+    )
+    assert covered_evidence_terms() == OBJECTIVE_DOMAIN_EVIDENCE_TERMS
+    assert packet_evidence_terms() == OBJECTIVE_DOMAIN_EVIDENCE_TERMS
+    assert all_covered_evidence_terms() == covered_evidence_terms()
+
+    fixture, report, binding, policy = _population()
+    shadow = ShadowRolloutReport(
+        gate_report=report,
+        binding=binding,
+        policy=policy,
+        desired_mode=VfsRolloutMode.ASSIST,
+    )
+    packet = prove_assurance_rollout_packet(report, shadow)
+    assert packet["schema"] == ASSURANCE_ROLLOUT_PACKET_CLAIM_SCHEMA
+    assert packet["evidence_terms"] == [
+        "vfs/adversarial-e2e-gate@1",
+        "vfs/shadow-rollout-report@1",
+    ]
+    assert packet["all_evidence_terms"] == list(OBJECTIVE_DOMAIN_EVIDENCE_TERMS)
+    assert packet["goal_ids"] == ["VFS-G162", "VFS-G163"]
+    assert packet["task_ids"] == ["VFS-082", "VFS-084"]
+    assert packet["packet_task_id"] == "VFS-081"
+    assert packet["packet_id"] == OBJECTIVE_PACKET_ID
+    assert packet["parent_goal_id"] == "VFS-G130"
+    assert packet["evidence_bindings"] == list(objective_evidence_bindings())
+    assert packet["gate_report_linked"] is True
+    assert packet["satisfied"] is True
+    assert packet["automatic_mutation_enabled"] is False
+    assert packet["authoritative"] is False
+    assert packet["completion_authoritative"] is False
+    assert packet["adversarial_e2e_gate"]["evidence"] == (
+        "vfs/adversarial-e2e-gate@1"
+    )
+    assert packet["shadow_rollout_report"]["evidence"] == (
+        "vfs/shadow-rollout-report@1"
+    )
+
+    discovery = VfsSymbolicPublicAPI.discovery()
+    assert "vfs/adversarial-e2e-gate@1" in discovery["evidence_terms"]
+    assert "vfs/shadow-rollout-report@1" in discovery["evidence_terms"]
+    assert discovery["packet_goal_ids"] == ["VFS-G162", "VFS-G163"]
+    assert discovery["packet_id"] == OBJECTIVE_PACKET_ID
+    assert discovery["packet_task_id"] == "VFS-081"
+    assert discovery["evidence_bindings"] == list(objective_evidence_bindings())
+    assert discovery["optional_providers_loaded"] is False
+    assert discovery["processes_started"] is False
+    assert discovery["automatic_mutation_enabled"] is False
+    # Keep the frozen population exercise bound to policy/binding safety.
+    assert fixture.fixture_cid
+    assert binding.behavior_id == VFS_SYMBOLIC_BEHAVIOR_ID
+    assert policy.automatic_mutation_enabled is False
+    assert VfsRolloutMode.AUTOMATIC not in {
+        VfsRolloutMode(item) if not isinstance(item, VfsRolloutMode) else item
+        for item in policy.approved_modes
+    }
+
+
+def test_assurance_rollout_packet_rejects_split_gate_evidence():
+    """VFS-081 cannot aggregate individually clean but unrelated gate runs."""
+
+    _, gate_report, _, _ = _population(observed_at="2026-07-29T00:00:00Z")
+    _, other_report, other_binding, other_policy = _population(
+        observed_at="2026-07-29T00:00:01Z"
+    )
+    assert gate_report.passed
+    assert other_report.passed
+    assert gate_report.report_id != other_report.report_id
+
+    unrelated_shadow = ShadowRolloutReport(
+        gate_report=other_report,
+        binding=other_binding,
+        policy=other_policy,
+        desired_mode=VfsRolloutMode.ASSIST,
+    )
+    assert prove_adversarial_e2e_gate(gate_report)["satisfied"] is True
+    assert prove_shadow_rollout_report(unrelated_shadow)["satisfied"] is True
+
+    with pytest.raises(
+        VfsSymbolicRolloutError,
+        match="must bind to the same adversarial gate report",
+    ):
+        prove_assurance_rollout_packet(gate_report, unrelated_shadow)
+
+
+def test_objective_projection_labels_do_not_change_domain_report_ids(monkeypatch):
+    """Supervisor backlog routing metadata is outside evidence identities."""
+
+    _, gate_report, binding, policy = _population()
+    shadow_report = ShadowRolloutReport(
+        gate_report=gate_report,
+        binding=binding,
+        policy=policy,
+        desired_mode=VfsRolloutMode.ASSIST,
+    )
+    gate_report_id = gate_report.report_id
+    shadow_report_id = shadow_report.report_id
+
+    monkeypatch.setattr(rollout, "OBJECTIVE_GOAL_G162_ID", "VFS-G162-moved")
+    monkeypatch.setattr(rollout, "OBJECTIVE_GOAL_G163_ID", "VFS-G163-moved")
+    monkeypatch.setattr(rollout, "OBJECTIVE_TASK_G162_ID", "VFS-082-moved")
+    monkeypatch.setattr(rollout, "OBJECTIVE_TASK_G163_ID", "VFS-084-moved")
+    monkeypatch.setattr(rollout, "OBJECTIVE_TASK_PACKET_ID", "VFS-081-moved")
+    monkeypatch.setattr(rollout, "OBJECTIVE_PACKET_ID", "goal_packet/moved")
+
+    assert gate_report.to_dict()["goal_id"] == "VFS-G162-moved"
+    assert shadow_report.to_dict()["goal_id"] == "VFS-G163-moved"
+    assert gate_report.report_id == gate_report_id
+    assert shadow_report.report_id == shadow_report_id

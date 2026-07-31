@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+from ipfs_accelerate_py.agent_supervisor import vfs_symbolic_pilot as pilot_module
 from ipfs_accelerate_py.agent_supervisor.vfs_symbolic_pilot import (
     PILOT_OBJECTIVE_ID,
     PILOT_TASK_ID,
@@ -26,9 +27,11 @@ from ipfs_accelerate_py.agent_supervisor.vfs_symbolic_pilot import (
     freeze_repository_descriptors,
     is_vfs_relevant_path,
     main,
+    run_hermetic_self_test,
     scan_inventory,
     verify_pilot,
     verify_pilot_report,
+    verify_release_evidence,
 )
 
 
@@ -231,11 +234,10 @@ def test_report_round_trip_is_canonical(tmp_path: Path) -> None:
     )
 
 
-def test_cli_verify_hermetic_exits_zero(tmp_path: Path) -> None:
+def test_cli_hermetic_self_test_exits_zero(tmp_path: Path) -> None:
     code = main(
         [
-            "--verify",
-            "--hermetic",
+            "--hermetic-self-test",
             "--artifact-dir",
             str(tmp_path / "artifacts"),
             "--findings-board",
@@ -261,8 +263,96 @@ def test_cli_dry_run_hermetic_exits_zero(tmp_path: Path) -> None:
     assert (tmp_path / "artifacts" / "report.json").is_file()
 
 
-def test_verify_entry_self_check(tmp_path: Path) -> None:
+def test_verify_requires_durable_report(tmp_path: Path) -> None:
     config = _config(tmp_path)
-    verified = verify_pilot(config)
+    with pytest.raises(PilotVerificationError) as excinfo:
+        verify_pilot(config)
+    assert excinfo.value.reason_code == "durable_report_required"
+
+
+def test_hermetic_self_test_is_explicit_and_passes(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    verified = run_hermetic_self_test(config)
     assert verified.mode is PilotMode.VERIFY
     assert verified.conclusion is PilotConclusion.PASSED
+
+
+def test_cli_verify_requires_explicit_report() -> None:
+    with pytest.raises(SystemExit) as excinfo:
+        main(["--verify"])
+    assert excinfo.value.code == 2
+
+
+def test_cli_verify_is_bound_to_durable_report(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = _config(tmp_path)
+    dry_run_pilot(config)
+    report_path = config.resolved_artifact_dir() / "report.json"
+    monkeypatch.setattr(
+        pilot_module,
+        "default_config_from_environment",
+        lambda **_kwargs: config,
+    )
+
+    code = main(["--verify", "--report", str(report_path), "--json"])
+
+    assert code == 0
+
+
+def test_release_verification_rejects_fresh_non_authoritative_report(
+    tmp_path: Path,
+) -> None:
+    config = _config(tmp_path)
+    dry_run_pilot(config)
+    report_path = config.resolved_artifact_dir() / "report.json"
+
+    with pytest.raises(PilotVerificationError) as excinfo:
+        verify_release_evidence(config, report_path=report_path)
+
+    assert excinfo.value.reason_code == "non_authoritative_report"
+
+
+def test_cli_release_verification_reports_non_authoritative_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    config = _config(tmp_path)
+    dry_run_pilot(config)
+    report_path = config.resolved_artifact_dir() / "report.json"
+    monkeypatch.setattr(
+        pilot_module,
+        "default_config_from_environment",
+        lambda **_kwargs: config,
+    )
+
+    code = main(
+        [
+            "--verify-release-evidence",
+            "--report",
+            str(report_path),
+        ]
+    )
+
+    error = json.loads(capsys.readouterr().err)
+    assert code == 2
+    assert error["error"] == "non_authoritative_report"
+
+
+def test_release_verification_rejects_stale_report_before_authority(
+    tmp_path: Path,
+) -> None:
+    config = _config(tmp_path)
+    dry_run_pilot(config)
+    report_path = config.resolved_artifact_dir() / "report.json"
+    (config.swissknife_root / "src" / "drift.ts").write_text(
+        "export const drift = true;\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(PilotVerificationError) as excinfo:
+        verify_release_evidence(config, report_path=report_path)
+
+    assert excinfo.value.reason_code == "changed_trees"

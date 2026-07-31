@@ -89,7 +89,7 @@ MCPLUSPLUS_ARTIFACT_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/mcplusplus-inventory-artifact@1"
 )
 
-# Evidence kinds produced by this static resolver (VFS-G060).
+# Evidence kinds produced by this static resolver (VFS-G060 / packet G152+G153).
 EVIDENCE_CALL_PATH = "vfs/mcplusplus-call-path@1"
 EVIDENCE_MANIFEST_PARITY = "vfs/mcplusplus-manifest-parity@1"
 # Runtime evidence is owned by the hermetic child goal — never emitted here.
@@ -105,6 +105,79 @@ STATIC_RESOLUTION_GOAL_ID = "VFS-G060"
 HERMETIC_RUNTIME_CHILD_GOAL_ID = "VFS-G061"
 STATIC_RESOLUTION_CLAIM_LEVEL = ClaimLevel.RESOLVED_STATIC
 HERMETIC_RUNTIME_CLAIM_LEVEL = ClaimLevel.RUNTIME_WITNESSED
+
+# Leaf goals for the mcp_interop goal packet (VFS-G152 call-path, VFS-G153 parity).
+# Labels are discovery metadata only — never enter path_id / result_id identity.
+OBJECTIVE_PARENT_GOAL_ID = STATIC_RESOLUTION_GOAL_ID
+OBJECTIVE_CALL_PATH_GOAL_ID = "VFS-G152"
+OBJECTIVE_MANIFEST_PARITY_GOAL_ID = "VFS-G153"
+OBJECTIVE_CALL_PATH_TASK_ID = "VFS-072"
+OBJECTIVE_MANIFEST_PARITY_TASK_ID = "VFS-075"
+# Primary objective for this packet-anchor task surface (call-path leaf).
+OBJECTIVE_GOAL_ID = OBJECTIVE_CALL_PATH_GOAL_ID
+OBJECTIVE_TASK_ID = OBJECTIVE_CALL_PATH_TASK_ID
+OBJECTIVE_GOAL_PACKET_ID = (
+    "goal_packet/mcp_interop/ipfs_accelerate_py/9f2828fd2adb"
+)
+OBJECTIVE_DOMAIN_EVIDENCE_TERMS: tuple[str, ...] = STATIC_EVIDENCE_KINDS
+OBJECTIVE_PACKET_GOAL_IDS: tuple[str, ...] = (
+    OBJECTIVE_CALL_PATH_GOAL_ID,
+    OBJECTIVE_MANIFEST_PARITY_GOAL_ID,
+)
+OBJECTIVE_PACKET_TASK_IDS: tuple[str, ...] = (
+    OBJECTIVE_CALL_PATH_TASK_ID,
+    OBJECTIVE_MANIFEST_PARITY_TASK_ID,
+)
+
+MCPLUSPLUS_CALL_PATH_CLAIM_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/mcplusplus-call-path-claim@1"
+)
+MCPLUSPLUS_MANIFEST_PARITY_CLAIM_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/mcplusplus-manifest-parity-claim@1"
+)
+MCPLUSPLUS_STATIC_PACKET_CLAIM_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/mcplusplus-static-packet-claim@1"
+)
+
+CALL_PATH_INVARIANTS: tuple[str, ...] = (
+    "full stage chain caller->connector->transport->list->call->registry->"
+    "adapter->implementation->result/error is inventory-bound",
+    "same-name helpers, mocks, static payloads, copied manifests, and "
+    "fallbacks never prove invocation",
+    "ambiguous and dynamic registrations remain explicit frontiers",
+    "proved paths are resolved_static only and never claim runtime_witnessed",
+)
+MANIFEST_PARITY_INVARIANTS: tuple[str, ...] = (
+    "Python, TypeScript, schema, and error-map names are checked for parity",
+    "manifest drift emits minimal witnesses rather than silent merges",
+    "schema, version, language-name, and error-map mismatches fail closed",
+    "static parity never grants hermetic runtime or completion authority",
+)
+MANIFEST_PARITY_REQUIRED_ASPECTS: tuple[str, ...] = (
+    "python_name",
+    "typescript_name",
+    "input_schema",
+    "output_schema",
+    "version",
+    "error_map",
+)
+
+# Keep exact-text discovery anchors aligned with the objective heap.
+assert EVIDENCE_CALL_PATH == "vfs/mcplusplus-call-path@1"
+assert EVIDENCE_MANIFEST_PARITY == "vfs/mcplusplus-manifest-parity@1"
+assert EVIDENCE_RUNTIME_WITNESS == "vfs/mcplusplus-runtime-witness@1"
+assert OBJECTIVE_PARENT_GOAL_ID == "VFS-G060"
+assert OBJECTIVE_CALL_PATH_GOAL_ID == "VFS-G152"
+assert OBJECTIVE_MANIFEST_PARITY_GOAL_ID == "VFS-G153"
+assert OBJECTIVE_CALL_PATH_TASK_ID == "VFS-072"
+assert OBJECTIVE_MANIFEST_PARITY_TASK_ID == "VFS-075"
+assert OBJECTIVE_GOAL_ID == "VFS-G152"
+assert OBJECTIVE_TASK_ID == "VFS-072"
+assert OBJECTIVE_DOMAIN_EVIDENCE_TERMS == (
+    "vfs/mcplusplus-call-path@1",
+    "vfs/mcplusplus-manifest-parity@1",
+)
+assert OBJECTIVE_PACKET_GOAL_IDS == ("VFS-G152", "VFS-G153")
 
 RESOLVER_VERSION = "mcplusplus-contract-resolver@1"
 RESOLVER_PRODUCER = "mcplusplus-contract-resolver@1"
@@ -2513,8 +2586,8 @@ class MCPlusPlusContractResolver:
         hops.append(map_hop)
         drift.extend(map_drift)
 
-        # Cross-language name / schema parity for this tool.
-        drift.extend(self._language_and_schema_drift(claim, listed, registration, implementation))
+        # Cross-language name parity for this tool.
+        drift.extend(self._language_name_drift(claim, registration))
 
         # Manifest parity for this tool.
         drift.extend(self._manifest_drift_for_tool(claim.tool_name, claim.server_name))
@@ -3296,103 +3369,140 @@ class MCPlusPlusContractResolver:
             }:
                 return reject, ()
 
-        # Schema/error parity across list, registration, implementation.
-        left = listed or registration
-        right = implementation or registration
-        if left is not None and right is not None:
-            left_in = schema_fingerprint(left.input_schema)
-            right_in = schema_fingerprint(right.input_schema)
-            if left_in and right_in and left_in != right_in:
-                drift.append(
-                    ManifestDriftWitness(
-                        drift_kind=DriftKind.SCHEMA_MISMATCH,
-                        tool_name=claim.tool_name,
-                        left_ref=left.artifact_id,
-                        right_ref=right.artifact_id,
-                        left_value=left_in,
-                        right_value=right_in,
-                        evidence=(
-                            _evidence_for_artifact(
-                                left,
-                                rule_id="rule:schema:input_mismatch",
-                                forest_id=forest_id,
-                            ),
-                            _evidence_for_artifact(
-                                right,
-                                rule_id="rule:schema:input_mismatch",
-                                forest_id=forest_id,
-                            ),
-                        ),
-                        notes={"aspect": "input_schema"},
-                    )
-                )
-            left_out = schema_fingerprint(left.output_schema)
-            right_out = schema_fingerprint(right.output_schema)
-            if left_out and right_out and left_out != right_out:
-                drift.append(
-                    ManifestDriftWitness(
-                        drift_kind=DriftKind.SCHEMA_MISMATCH,
-                        tool_name=claim.tool_name,
-                        left_ref=left.artifact_id,
-                        right_ref=right.artifact_id,
-                        left_value=left_out,
-                        right_value=right_out,
-                        evidence=(
-                            _evidence_for_artifact(
-                                left,
-                                rule_id="rule:schema:output_mismatch",
-                                forest_id=forest_id,
-                            ),
-                            _evidence_for_artifact(
-                                right,
-                                rule_id="rule:schema:output_mismatch",
-                                forest_id=forest_id,
-                            ),
-                        ),
-                        notes={"aspect": "output_schema"},
-                    )
-                )
-            if left.error_codes and right.error_codes:
-                if set(left.error_codes) != set(right.error_codes):
-                    drift.append(
-                        ManifestDriftWitness(
-                            drift_kind=DriftKind.ERROR_MAP_MISMATCH,
-                            tool_name=claim.tool_name,
-                            left_ref=left.artifact_id,
-                            right_ref=right.artifact_id,
-                            left_value=",".join(left.error_codes),
-                            right_value=",".join(right.error_codes),
-                            evidence=(
-                                _evidence_for_artifact(
-                                    left,
-                                    rule_id="rule:error_map:mismatch",
-                                    forest_id=forest_id,
-                                ),
-                                _evidence_for_artifact(
-                                    right,
-                                    rule_id="rule:error_map:mismatch",
-                                    forest_id=forest_id,
-                                ),
-                            ),
-                        )
-                    )
-
-        artifact_ids = tuple(
-            item.artifact_id
-            for item in (result_art, error_art, left, right, call_site)
+        # Compare every contract-bearing hop, not merely the two endpoints.
+        # A list and implementation that happen to agree must not conceal a
+        # drifting Python registration between them. Missing values stay
+        # unverified in hop notes and therefore cannot satisfy VFS-G153.
+        contract_artifacts = tuple(
+            item
+            for item in (listed, registration, implementation)
             if item is not None
         )
+        checked_aspects: list[str] = []
+        matched_aspects: list[str] = []
+
+        def _append_mismatch(
+            *,
+            aspect: str,
+            drift_kind: DriftKind,
+            values: Sequence[tuple[InventoryArtifact, str]],
+            rule_id: str,
+        ) -> None:
+            baseline_artifact, baseline_value = values[0]
+            divergent = next(
+                (
+                    (artifact, value)
+                    for artifact, value in values[1:]
+                    if value != baseline_value
+                ),
+                None,
+            )
+            if divergent is None:
+                matched_aspects.append(aspect)
+                return
+            divergent_artifact, divergent_value = divergent
+            drift.append(
+                ManifestDriftWitness(
+                    drift_kind=drift_kind,
+                    tool_name=claim.tool_name,
+                    left_ref=baseline_artifact.artifact_id,
+                    right_ref=divergent_artifact.artifact_id,
+                    left_value=baseline_value,
+                    right_value=divergent_value,
+                    evidence=(
+                        _evidence_for_artifact(
+                            baseline_artifact,
+                            rule_id=rule_id,
+                            forest_id=forest_id,
+                        ),
+                        _evidence_for_artifact(
+                            divergent_artifact,
+                            rule_id=rule_id,
+                            forest_id=forest_id,
+                        ),
+                    ),
+                    notes={"aspect": aspect},
+                )
+            )
+
+        aspect_values: tuple[
+            tuple[str, DriftKind, str, tuple[tuple[InventoryArtifact, str], ...]],
+            ...,
+        ] = (
+            (
+                "input_schema",
+                DriftKind.SCHEMA_MISMATCH,
+                "rule:schema:input_mismatch",
+                tuple(
+                    (artifact, schema_fingerprint(artifact.input_schema))
+                    for artifact in contract_artifacts
+                ),
+            ),
+            (
+                "output_schema",
+                DriftKind.SCHEMA_MISMATCH,
+                "rule:schema:output_mismatch",
+                tuple(
+                    (artifact, schema_fingerprint(artifact.output_schema))
+                    for artifact in contract_artifacts
+                ),
+            ),
+            (
+                "version",
+                DriftKind.VERSION_MISMATCH,
+                "rule:version:mismatch",
+                tuple(
+                    (artifact, artifact.version)
+                    for artifact in contract_artifacts
+                ),
+            ),
+            (
+                "error_map",
+                DriftKind.ERROR_MAP_MISMATCH,
+                "rule:error_map:mismatch",
+                tuple(
+                    (artifact, ",".join(sorted(set(artifact.error_codes))))
+                    for artifact in contract_artifacts
+                ),
+            ),
+        )
+        for aspect, drift_kind, rule_id, values in aspect_values:
+            # VFS-G153 requires the tools/list, Python registration, and
+            # package implementation contract surfaces to all participate.
+            if len(values) != 3 or any(not value for _, value in values):
+                continue
+            checked_aspects.append(aspect)
+            _append_mismatch(
+                aspect=aspect,
+                drift_kind=drift_kind,
+                values=values,
+                rule_id=rule_id,
+            )
+
+        artifact_ids = tuple(
+            dict.fromkeys(
+                item.artifact_id
+                for item in (
+                    result_art,
+                    error_art,
+                    *contract_artifacts,
+                    call_site,
+                )
+                if item is not None
+            )
+        )
+        parity_notes = {
+            "manifest_parity_checked_aspects": sorted(checked_aspects),
+            "manifest_parity_matched_aspects": sorted(matched_aspects),
+            "manifest_parity_contract_artifacts": [
+                item.artifact_id for item in contract_artifacts
+            ],
+        }
         if drift:
             hop = make_hop(
                 stage=PathStage.RESULT_ERROR_MAPPING,
                 status=ResolverStatus.CANDIDATE,
-                reason_code=ReasonCode.MANIFEST_DRIFT
-                if any(
-                    item.drift_kind
-                    in {DriftKind.SCHEMA_MISMATCH, DriftKind.ERROR_MAP_MISMATCH}
-                    for item in drift
-                )
-                else ReasonCode.SCHEMA_MISMATCH,
+                reason_code=ReasonCode.MANIFEST_DRIFT,
                 evidence=(
                     make_evidence(
                         rule_id="rule:result_error:drift",
@@ -3408,21 +3518,20 @@ class MCPlusPlusContractResolver:
                     else claim.tool_name
                 ),
                 artifact_ids=artifact_ids,
-                notes={"drift_count": len(drift)},
+                notes={"drift_count": len(drift), **parity_notes},
             )
             return hop, tuple(drift)
 
-        # Success: maps present or schemas agree / absent.
+        # This hop may still resolve for VFS-G152 when an explicit result/error
+        # mapping exists, but absent parity aspects remain unverified and keep
+        # the separate VFS-G153 claim fail-closed.
         if result_art is not None or error_art is not None or (
-            left is not None and right is not None
+            len(contract_artifacts) >= 2
         ):
             reason = ReasonCode.RESULT_MAP_MATCH
             if error_art is not None and result_art is None:
                 reason = ReasonCode.ERROR_MAP_MATCH
-            elif left is not None and right is not None and (
-                schema_fingerprint(left.input_schema)
-                or schema_fingerprint(left.output_schema)
-            ):
+            elif {"input_schema", "output_schema"}.issubset(matched_aspects):
                 reason = ReasonCode.SCHEMA_PARITY
             hop = make_hop(
                 stage=PathStage.RESULT_ERROR_MAPPING,
@@ -3452,6 +3561,7 @@ class MCPlusPlusContractResolver:
                     else claim.tool_name
                 ),
                 artifact_ids=artifact_ids,
+                notes=parity_notes,
             )
             return hop, ()
 
@@ -3473,12 +3583,10 @@ class MCPlusPlusContractResolver:
         )
         return hop, ()
 
-    def _language_and_schema_drift(
+    def _language_name_drift(
         self,
         claim: CallPathClaim,
-        listed: InventoryArtifact | None,
         registration: InventoryArtifact | None,
-        implementation: InventoryArtifact | None,
     ) -> tuple[ManifestDriftWitness, ...]:
         forest_id = self._inventory.forest_id
         witnesses: list[ManifestDriftWitness] = []
@@ -3520,64 +3628,6 @@ class MCPlusPlusContractResolver:
                             ),
                         )
                     )
-        # Version drift between list and registration.
-        if (
-            listed is not None
-            and registration is not None
-            and listed.version
-            and registration.version
-            and listed.version != registration.version
-        ):
-            witnesses.append(
-                ManifestDriftWitness(
-                    drift_kind=DriftKind.VERSION_MISMATCH,
-                    tool_name=claim.tool_name,
-                    left_ref=listed.artifact_id,
-                    right_ref=registration.artifact_id,
-                    left_value=listed.version,
-                    right_value=registration.version,
-                    evidence=(
-                        _evidence_for_artifact(
-                            listed,
-                            rule_id="rule:version:mismatch",
-                            forest_id=forest_id,
-                        ),
-                        _evidence_for_artifact(
-                            registration,
-                            rule_id="rule:version:mismatch",
-                            forest_id=forest_id,
-                        ),
-                    ),
-                )
-            )
-        if implementation is not None and registration is not None:
-            if (
-                implementation.version
-                and registration.version
-                and implementation.version != registration.version
-            ):
-                witnesses.append(
-                    ManifestDriftWitness(
-                        drift_kind=DriftKind.VERSION_MISMATCH,
-                        tool_name=claim.tool_name,
-                        left_ref=registration.artifact_id,
-                        right_ref=implementation.artifact_id,
-                        left_value=registration.version,
-                        right_value=implementation.version,
-                        evidence=(
-                            _evidence_for_artifact(
-                                registration,
-                                rule_id="rule:version:mismatch",
-                                forest_id=forest_id,
-                            ),
-                            _evidence_for_artifact(
-                                implementation,
-                                rule_id="rule:version:mismatch",
-                                forest_id=forest_id,
-                            ),
-                        ),
-                    )
-                )
         return tuple(witnesses)
 
     def _manifest_drift_for_tool(
@@ -4036,8 +4086,640 @@ def resolve_mcplusplus_from_graph(
     return resolve_mcplusplus_paths(inventory, claims, max_paths=max_paths)
 
 
+# ---------------------------------------------------------------------------
+# Objective evidence discovery + prove claims (VFS-G152 / VFS-G153)
+# ---------------------------------------------------------------------------
+
+_NON_INVOCATION_REASON_CODES: frozenset[ReasonCode] = frozenset(
+    {
+        ReasonCode.SAME_NAME_HELPER,
+        ReasonCode.MOCK_IMPLEMENTATION,
+        ReasonCode.TEST_SERVER,
+        ReasonCode.COPIED_MANIFEST,
+        ReasonCode.STATIC_DASHBOARD,
+        ReasonCode.LEGACY_FALLBACK,
+        ReasonCode.IMPORT_WITHOUT_CALL,
+    }
+)
+
+_FRONTIER_REASON_CODES: frozenset[ReasonCode] = frozenset(
+    {
+        ReasonCode.AMBIGUOUS_REGISTRATION,
+        ReasonCode.AMBIGUOUS_ADAPTER,
+        ReasonCode.AMBIGUOUS_IMPLEMENTATION,
+        ReasonCode.AMBIGUOUS_ALIAS,
+        ReasonCode.DYNAMIC_DISPATCH,
+        ReasonCode.EXTERNAL_PACKAGE,
+        ReasonCode.EXTERNAL_TRANSPORT,
+    }
+)
+
+
+def mcplusplus_call_path_evidence() -> str:
+    """Return the closed ``vfs/mcplusplus-call-path@1`` evidence term."""
+
+    return EVIDENCE_CALL_PATH
+
+
+def mcplusplus_manifest_parity_evidence() -> str:
+    """Return the closed ``vfs/mcplusplus-manifest-parity@1`` evidence term."""
+
+    return EVIDENCE_MANIFEST_PARITY
+
+
+def mcplusplus_call_path_evidence_terms() -> tuple[str, ...]:
+    """Return the call-path evidence surface for discovery scanners (VFS-G152)."""
+
+    return (EVIDENCE_CALL_PATH,)
+
+
+def mcplusplus_manifest_parity_evidence_terms() -> tuple[str, ...]:
+    """Return the manifest-parity evidence surface for discovery (VFS-G153)."""
+
+    return (EVIDENCE_MANIFEST_PARITY,)
+
+
+def covered_evidence_terms() -> tuple[str, ...]:
+    """Return domain objective evidence terms this static resolver proves.
+
+    Covers ``vfs/mcplusplus-call-path@1`` (VFS-G152) and
+    ``vfs/mcplusplus-manifest-parity@1`` (VFS-G153) for the mcp_interop goal
+    packet.  Hermetic runtime witnesses (``vfs/mcplusplus-runtime-witness@1``)
+    are owned by :data:`HERMETIC_RUNTIME_CHILD_GOAL_ID` and are never mixed
+    into this static surface.  Goal/task labels stay metadata and never enter
+    path or result content identities.
+    """
+
+    return OBJECTIVE_DOMAIN_EVIDENCE_TERMS
+
+
+def all_covered_evidence_terms() -> tuple[str, ...]:
+    """Alias of :func:`covered_evidence_terms` for cross-module discovery."""
+
+    return covered_evidence_terms()
+
+
+def packet_evidence_terms() -> tuple[str, ...]:
+    """Return both static packet evidence terms (call-path + manifest parity)."""
+
+    return OBJECTIVE_DOMAIN_EVIDENCE_TERMS
+
+
+def path_satisfies_mcplusplus_call_path(
+    path: MCPlusPlusCallPath | Mapping[str, Any],
+) -> bool:
+    """Machine-check VFS-G152 call-path acceptance on one resolved path.
+
+    * Every stage in :data:`PATH_STAGE_ORDER` is present and ``resolved_static``.
+    * Non-invocation roles (helpers, mocks, dashboards, fallbacks) never prove.
+    * Ambiguous/dynamic hops keep the path non-proved (frontier explicit).
+    * Static proof never claims runtime_witnessed authority.
+    """
+
+    if isinstance(path, Mapping):
+        try:
+            path = MCPlusPlusCallPath.from_dict(path)
+        except (MCPlusPlusResolverError, TypeError, ValueError):
+            return False
+    if not isinstance(path, MCPlusPlusCallPath):
+        return False
+    if path.verdict is not PathVerdict.PROVED:
+        return False
+    if not path.is_proved or not path.is_statically_proved:
+        return False
+    if path.is_runtime_witnessed:
+        return False
+    if path.claim_level is not STATIC_RESOLUTION_CLAIM_LEVEL:
+        return False
+    if path.resolution_layer is not ResolutionLayer.STATIC:
+        return False
+    if not path.implementation_ref:
+        return False
+    stages = [hop.stage.value for hop in path.hops]
+    if stages != list(PATH_STAGE_ORDER):
+        return False
+    for hop in path.hops:
+        if hop.status is not ResolverStatus.RESOLVED_STATIC:
+            return False
+        if hop.reason_code in _NON_INVOCATION_REASON_CODES:
+            return False
+        if hop.reason_code in _FRONTIER_REASON_CODES:
+            return False
+        if not hop.evidence:
+            return False
+    payload = path.to_dict()
+    if payload.get("evidence_kind") != EVIDENCE_CALL_PATH:
+        return False
+    if payload.get("claims_runtime_conformance") is True:
+        return False
+    if payload.get("is_runtime_witnessed") is True:
+        return False
+    return True
+
+
+def manifest_parity_path_report(
+    path: MCPlusPlusCallPath | Mapping[str, Any],
+) -> dict[str, Any]:
+    """Return the evidence-bound VFS-G153 parity matrix for one call path.
+
+    A comparison is ``checked`` only when all required inventory surfaces
+    participated. A checked comparison is ``matched`` only when their values
+    agree. This distinction prevents absent schemas or error declarations from
+    being mistaken for parity merely because no mismatch witness was emitted.
+    """
+
+    if isinstance(path, Mapping):
+        try:
+            path = MCPlusPlusCallPath.from_dict(path)
+        except (MCPlusPlusResolverError, TypeError, ValueError):
+            return {
+                "status": "invalid",
+                "satisfied": False,
+                "required_aspects": list(MANIFEST_PARITY_REQUIRED_ASPECTS),
+                "checked_aspects": [],
+                "matched_aspects": [],
+                "mismatch_aspects": [],
+                "unverified_aspects": list(MANIFEST_PARITY_REQUIRED_ASPECTS),
+                "drift_witness_ids": [],
+                "drift_kinds": [],
+            }
+    if not isinstance(path, MCPlusPlusCallPath):
+        raise TypeError("path must be an MCPlusPlusCallPath or mapping")
+
+    required = set(MANIFEST_PARITY_REQUIRED_ASPECTS)
+    checked: set[str] = set()
+    matched: set[str] = set()
+
+    language_names = {
+        str(language).strip().lower(): str(name).strip()
+        for language, name in path.language_names.items()
+        if str(language).strip() and str(name).strip()
+    }
+    tool_aliases = set(tool_name_aliases(path.tool_name))
+    for language, aspect, binding_stage in (
+        ("python", "python_name", PathStage.SERVER_REGISTRY),
+        ("typescript", "typescript_name", PathStage.TOOLS_CALL),
+    ):
+        name = language_names.get(language, "")
+        binding_hop = path.hop_for(binding_stage)
+        if (
+            not name
+            or binding_hop is None
+            or binding_hop.status is not ResolverStatus.RESOLVED_STATIC
+        ):
+            continue
+        checked.add(aspect)
+        if tool_aliases & set(tool_name_aliases(name)):
+            matched.add(aspect)
+
+    mapping_hop = path.hop_for(PathStage.RESULT_ERROR_MAPPING)
+    if mapping_hop is not None:
+        note_checked = mapping_hop.notes.get(
+            "manifest_parity_checked_aspects", ()
+        )
+        note_matched = mapping_hop.notes.get(
+            "manifest_parity_matched_aspects", ()
+        )
+        note_contracts = mapping_hop.notes.get(
+            "manifest_parity_contract_artifacts", ()
+        )
+        contract_refs = (
+            {str(item) for item in note_contracts}
+            if isinstance(note_contracts, (list, tuple))
+            else set()
+        )
+        contract_binding_valid = (
+            mapping_hop.reason_code
+            in {
+                ReasonCode.SCHEMA_PARITY,
+                ReasonCode.RESULT_MAP_MATCH,
+                ReasonCode.ERROR_MAP_MATCH,
+                ReasonCode.MANIFEST_DRIFT,
+            }
+            and isinstance(note_contracts, (list, tuple))
+            and len(note_contracts) == 3
+            and len(contract_refs) == 3
+            and contract_refs.issubset(mapping_hop.artifact_ids)
+        )
+        if contract_binding_valid and isinstance(note_checked, (list, tuple)):
+            checked.update(
+                str(item) for item in note_checked if str(item) in required
+            )
+        if contract_binding_valid and isinstance(note_matched, (list, tuple)):
+            matched.update(
+                str(item) for item in note_matched if str(item) in required
+            )
+
+    drift_kinds = sorted(
+        {witness.drift_kind.value for witness in path.drift_witnesses}
+    )
+    mismatch_aspects = checked - matched
+    for witness in path.drift_witnesses:
+        aspect = str(witness.notes.get("aspect") or "")
+        if aspect in required:
+            mismatch_aspects.add(aspect)
+        elif witness.drift_kind is DriftKind.LANGUAGE_NAME_MISMATCH:
+            language = str(witness.left_ref).removeprefix("language:")
+            if language in {"python", "typescript"}:
+                mismatch_aspects.add(f"{language}_name")
+        elif witness.drift_kind is DriftKind.SCHEMA_MISMATCH:
+            # Older serialized results may not carry the aspect note.
+            mismatch_aspects.update({"input_schema", "output_schema"} - matched)
+        elif witness.drift_kind is DriftKind.ERROR_MAP_MISMATCH:
+            mismatch_aspects.add("error_map")
+        elif witness.drift_kind in {
+            DriftKind.VERSION_MISMATCH,
+            DriftKind.STALE_MANIFEST,
+        }:
+            mismatch_aspects.add("version")
+
+    unverified = required - checked
+    coverage_complete = not unverified
+    satisfied = (
+        coverage_complete
+        and not mismatch_aspects
+        and not path.drift_witnesses
+    )
+    status = "matched" if satisfied else (
+        "mismatch" if mismatch_aspects or path.drift_witnesses else "unverified"
+    )
+    return {
+        "path_id": path.path_id,
+        "path_name": path.path_name,
+        "tool_name": path.tool_name,
+        "status": status,
+        "satisfied": satisfied,
+        "coverage_complete": coverage_complete,
+        "required_aspects": list(MANIFEST_PARITY_REQUIRED_ASPECTS),
+        "checked_aspects": sorted(checked),
+        "matched_aspects": sorted(matched),
+        "mismatch_aspects": sorted(mismatch_aspects),
+        "unverified_aspects": sorted(unverified),
+        "language_names": dict(sorted(language_names.items())),
+        "drift_witness_ids": [
+            witness.witness_id for witness in path.drift_witnesses
+        ],
+        "drift_kinds": drift_kinds,
+    }
+
+
+def result_satisfies_mcplusplus_manifest_parity(
+    result: MCPlusPlusResolutionResult | Mapping[str, Any],
+    *,
+    require_proved_path: bool = False,
+) -> bool:
+    """Machine-check VFS-G153 manifest-parity acceptance on a resolution batch.
+
+    * Static result envelopes declare both packet evidence kinds.
+    * Runtime evidence is excluded; conformance is deferred to VFS-G061.
+    * Every path has explicit, matched Python/TypeScript names plus input
+      schema, output schema, version, and error-map comparisons.
+    * Drift (schema, version, language name, error map, missing registration)
+      is witnessed and makes parity unsatisfied rather than silently merging.
+    * Optionally require at least one fully proved call path.
+    """
+
+    if isinstance(result, Mapping):
+        try:
+            result = MCPlusPlusResolutionResult.from_dict(result)
+        except (MCPlusPlusResolverError, TypeError, ValueError):
+            return False
+    if not isinstance(result, MCPlusPlusResolutionResult):
+        return False
+    if result.resolution_layer is not ResolutionLayer.STATIC:
+        return False
+    if result.claims_runtime_conformance:
+        return False
+    if result.claim_level is not STATIC_RESOLUTION_CLAIM_LEVEL:
+        return False
+    if result.defers_runtime_to_goal != HERMETIC_RUNTIME_CHILD_GOAL_ID:
+        return False
+    payload = result.to_dict()
+    kinds = list(payload.get("evidence_kinds") or ())
+    if EVIDENCE_CALL_PATH not in kinds:
+        return False
+    if EVIDENCE_MANIFEST_PARITY not in kinds:
+        return False
+    if EVIDENCE_RUNTIME_WITNESS in kinds:
+        return False
+    if kinds != list(STATIC_EVIDENCE_KINDS):
+        return False
+    boundary = payload.get("static_runtime_boundary") or {}
+    if not isinstance(boundary, Mapping):
+        return False
+    if boundary.get("claims_runtime_conformance") is True:
+        return False
+    if boundary.get("emits_runtime_receipts") is True:
+        return False
+    if boundary.get("opens_network") is True:
+        return False
+    if result.truncated or not result.paths:
+        return False
+    # Drift witnesses must remain self-consistent (no silent empty reason), and
+    # any drift keeps the batch parity claim fail-closed.
+    for witness in result.drift_witnesses:
+        if not witness.drift_kind:
+            return False
+        if not witness.evidence:
+            return False
+    if result.drift_witnesses:
+        return False
+    for path in result.paths:
+        for witness in path.drift_witnesses:
+            if not witness.drift_kind:
+                return False
+            if not witness.evidence:
+                return False
+        # A proved path cannot carry non-invocation reason codes.
+        if path.is_proved:
+            for hop in path.hops:
+                if hop.reason_code in _NON_INVOCATION_REASON_CODES:
+                    return False
+        if not manifest_parity_path_report(path)["satisfied"]:
+            return False
+    if require_proved_path and not result.proved_paths():
+        return False
+    return True
+
+
+def prove_mcplusplus_call_path(
+    path: MCPlusPlusCallPath | Mapping[str, Any],
+    *,
+    goal_id: str = OBJECTIVE_CALL_PATH_GOAL_ID,
+    task_id: str = OBJECTIVE_CALL_PATH_TASK_ID,
+) -> dict[str, Any]:
+    """Emit a portable ``vfs/mcplusplus-call-path@1`` evidence claim (VFS-G152).
+
+    Goal/task labels are metadata only and never enter :attr:`path_id`.
+    """
+
+    if isinstance(path, Mapping):
+        path_obj = MCPlusPlusCallPath.from_dict(path)
+    else:
+        path_obj = path
+    if not isinstance(path_obj, MCPlusPlusCallPath):
+        raise TypeError("path must be an MCPlusPlusCallPath")
+
+    satisfied = path_satisfies_mcplusplus_call_path(path_obj)
+    hop_summaries = [
+        {
+            "stage": hop.stage.value,
+            "status": hop.status.value,
+            "reason_code": hop.reason_code.value,
+            "artifact_ids": list(hop.artifact_ids),
+        }
+        for hop in path_obj.hops
+    ]
+    non_invocation_rejected = any(
+        hop.reason_code in _NON_INVOCATION_REASON_CODES for hop in path_obj.hops
+    )
+    frontier_explicit = path_obj.has_frontier or any(
+        hop.reason_code in _FRONTIER_REASON_CODES for hop in path_obj.hops
+    )
+    return {
+        "schema": MCPLUSPLUS_CALL_PATH_CLAIM_SCHEMA,
+        "evidence": EVIDENCE_CALL_PATH,
+        "evidence_terms": list(mcplusplus_call_path_evidence_terms()),
+        "requirement_id": EVIDENCE_CALL_PATH,
+        "goal_id": str(goal_id or OBJECTIVE_CALL_PATH_GOAL_ID),
+        "parent_goal_id": OBJECTIVE_PARENT_GOAL_ID,
+        "task_id": str(task_id or OBJECTIVE_CALL_PATH_TASK_ID),
+        "goal_packet_id": OBJECTIVE_GOAL_PACKET_ID,
+        "path_id": path_obj.path_id,
+        "path_name": path_obj.path_name,
+        "forest_id": path_obj.forest_id,
+        "tool_name": path_obj.tool_name,
+        "server_name": path_obj.server_name,
+        "transport": path_obj.transport.value,
+        "profiles": list(path_obj.profiles),
+        "implementation_ref": path_obj.implementation_ref,
+        "language_names": dict(path_obj.language_names),
+        "verdict": path_obj.verdict.value,
+        "claim_level": path_obj.claim_level.value,
+        "resolution_layer": path_obj.resolution_layer.value,
+        "is_proved": path_obj.is_proved,
+        "is_statically_proved": path_obj.is_statically_proved,
+        "is_runtime_witnessed": path_obj.is_runtime_witnessed,
+        "claims_runtime_conformance": False,
+        "stage_order": list(PATH_STAGE_ORDER),
+        "hops": hop_summaries,
+        "non_invocation_rejected": non_invocation_rejected,
+        "frontier_explicit": frontier_explicit,
+        "drift_count": len(path_obj.drift_witnesses),
+        "satisfied": satisfied,
+        "invariants": list(CALL_PATH_INVARIANTS),
+        "authoritative": False,
+        "completion_authoritative": False,
+        "semantic_authority": False,
+    }
+
+
+def prove_mcplusplus_manifest_parity(
+    result: MCPlusPlusResolutionResult | Mapping[str, Any],
+    *,
+    goal_id: str = OBJECTIVE_MANIFEST_PARITY_GOAL_ID,
+    task_id: str = OBJECTIVE_MANIFEST_PARITY_TASK_ID,
+    require_proved_path: bool = False,
+) -> dict[str, Any]:
+    """Emit a portable ``vfs/mcplusplus-manifest-parity@1`` claim (VFS-G153).
+
+    Goal/task labels are metadata only and never enter :attr:`result_id`.
+    """
+
+    if isinstance(result, Mapping):
+        result_obj = MCPlusPlusResolutionResult.from_dict(result)
+    else:
+        result_obj = result
+    if not isinstance(result_obj, MCPlusPlusResolutionResult):
+        raise TypeError("result must be an MCPlusPlusResolutionResult")
+
+    satisfied = result_satisfies_mcplusplus_manifest_parity(
+        result_obj, require_proved_path=require_proved_path
+    )
+    witnesses = {
+        item.witness_id: item
+        for item in (
+            *result_obj.drift_witnesses,
+            *(
+                item
+                for path in result_obj.paths
+                for item in path.drift_witnesses
+            ),
+        )
+    }
+    drift_kinds = sorted(
+        {item.drift_kind.value for item in witnesses.values()}
+    )
+    path_checks = [
+        manifest_parity_path_report(path) for path in result_obj.paths
+    ]
+    checked_aspects = sorted(
+        {
+            aspect
+            for report in path_checks
+            for aspect in report["checked_aspects"]
+        }
+    )
+    matched_aspects = sorted(
+        {
+            aspect
+            for report in path_checks
+            for aspect in report["matched_aspects"]
+        }
+    )
+    mismatch_aspects = sorted(
+        {
+            aspect
+            for report in path_checks
+            for aspect in report["mismatch_aspects"]
+        }
+    )
+    unverified_aspects = sorted(
+        {
+            aspect
+            for report in path_checks
+            for aspect in report["unverified_aspects"]
+        }
+    )
+    parity_status = "matched" if satisfied else (
+        "mismatch" if drift_kinds or mismatch_aspects else "unverified"
+    )
+    return {
+        "schema": MCPLUSPLUS_MANIFEST_PARITY_CLAIM_SCHEMA,
+        "evidence": EVIDENCE_MANIFEST_PARITY,
+        "evidence_terms": list(mcplusplus_manifest_parity_evidence_terms()),
+        "requirement_id": EVIDENCE_MANIFEST_PARITY,
+        "goal_id": str(goal_id or OBJECTIVE_MANIFEST_PARITY_GOAL_ID),
+        "parent_goal_id": OBJECTIVE_PARENT_GOAL_ID,
+        "task_id": str(task_id or OBJECTIVE_MANIFEST_PARITY_TASK_ID),
+        "goal_packet_id": OBJECTIVE_GOAL_PACKET_ID,
+        "result_id": result_obj.result_id,
+        "forest_id": result_obj.forest_id,
+        "inventory_id": result_obj.inventory_id,
+        "resolver_version": result_obj.resolver_version,
+        "claim_level": result_obj.claim_level.value,
+        "resolution_layer": result_obj.resolution_layer.value,
+        "claims_runtime_conformance": result_obj.claims_runtime_conformance,
+        "defers_runtime_to_goal": result_obj.defers_runtime_to_goal,
+        "evidence_kinds": list(STATIC_EVIDENCE_KINDS),
+        "excluded_evidence_kinds": list(EXCLUDED_RUNTIME_EVIDENCE_KINDS),
+        "path_count": len(result_obj.paths),
+        "proved_count": len(result_obj.proved_paths()),
+        "statically_proved_count": len(result_obj.statically_proved_paths()),
+        "runtime_witnessed_count": 0,
+        "required_aspects": list(MANIFEST_PARITY_REQUIRED_ASPECTS),
+        "checked_aspects": checked_aspects,
+        "matched_aspects": matched_aspects,
+        "mismatch_aspects": mismatch_aspects,
+        "unverified_aspects": unverified_aspects,
+        "coverage_complete": bool(path_checks)
+        and all(report["coverage_complete"] for report in path_checks),
+        "parity_status": parity_status,
+        "path_checks": path_checks,
+        "drift_count": len(witnesses),
+        "drift_kinds": drift_kinds,
+        "drift_witnesses": [
+            {
+                "witness_id": witness.witness_id,
+                "drift_kind": witness.drift_kind.value,
+                "tool_name": witness.tool_name,
+                "left_ref": witness.left_ref,
+                "right_ref": witness.right_ref,
+                "aspect": str(witness.notes.get("aspect") or ""),
+            }
+            for witness in sorted(
+                witnesses.values(), key=lambda item: item.witness_id
+            )
+        ],
+        "frontier_count": len(result_obj.frontiers),
+        "language_names_by_path": {
+            path.path_id: dict(sorted(path.language_names.items()))
+            for path in result_obj.paths
+        },
+        "require_proved_path": bool(require_proved_path),
+        "satisfied": satisfied,
+        "invariants": list(MANIFEST_PARITY_INVARIANTS),
+        "authoritative": False,
+        "completion_authoritative": False,
+        "semantic_authority": False,
+    }
+
+
+def prove_mcplusplus_static_packet(
+    result: MCPlusPlusResolutionResult | Mapping[str, Any],
+    *,
+    path: MCPlusPlusCallPath | Mapping[str, Any] | None = None,
+    require_proved_path: bool = True,
+) -> dict[str, Any]:
+    """Emit the full mcp_interop static packet (call-path + manifest parity).
+
+    Covers goal packet ``goal_packet/mcp_interop/ipfs_accelerate_py/9f2828fd2adb``
+    leaf goals VFS-G152 and VFS-G153 in one claim.  When *path* is omitted the
+    first statically proved path is selected; if none exist and
+    *require_proved_path* is true, the call-path subclaim is unsatisfied.
+    """
+
+    if isinstance(result, Mapping):
+        result_obj = MCPlusPlusResolutionResult.from_dict(result)
+    else:
+        result_obj = result
+    if not isinstance(result_obj, MCPlusPlusResolutionResult):
+        raise TypeError("result must be an MCPlusPlusResolutionResult")
+
+    path_obj: MCPlusPlusCallPath | None
+    if path is not None:
+        if isinstance(path, Mapping):
+            path_obj = MCPlusPlusCallPath.from_dict(path)
+        else:
+            path_obj = path
+        if not isinstance(path_obj, MCPlusPlusCallPath):
+            raise TypeError("path must be an MCPlusPlusCallPath")
+    else:
+        proved = result_obj.proved_paths()
+        path_obj = proved[0] if proved else (
+            result_obj.paths[0] if result_obj.paths else None
+        )
+
+    call_path_claim: dict[str, Any] | None = None
+    if path_obj is not None:
+        call_path_claim = prove_mcplusplus_call_path(path_obj)
+    parity_claim = prove_mcplusplus_manifest_parity(
+        result_obj, require_proved_path=require_proved_path
+    )
+    call_path_satisfied = bool(
+        call_path_claim and call_path_claim.get("satisfied")
+    )
+    if path_obj is None and require_proved_path:
+        call_path_satisfied = False
+    parity_satisfied = bool(parity_claim.get("satisfied"))
+    satisfied = call_path_satisfied and parity_satisfied
+    return {
+        "schema": MCPLUSPLUS_STATIC_PACKET_CLAIM_SCHEMA,
+        "evidence_terms": list(packet_evidence_terms()),
+        "requirement_ids": list(OBJECTIVE_DOMAIN_EVIDENCE_TERMS),
+        "goal_packet_id": OBJECTIVE_GOAL_PACKET_ID,
+        "goal_ids": list(OBJECTIVE_PACKET_GOAL_IDS),
+        "task_ids": list(OBJECTIVE_PACKET_TASK_IDS),
+        "parent_goal_id": OBJECTIVE_PARENT_GOAL_ID,
+        "result_id": result_obj.result_id,
+        "forest_id": result_obj.forest_id,
+        "call_path_claim": call_path_claim,
+        "manifest_parity_claim": parity_claim,
+        "call_path_satisfied": call_path_satisfied,
+        "manifest_parity_satisfied": parity_satisfied,
+        "satisfied": satisfied,
+        "resolution_layer": ResolutionLayer.STATIC.value,
+        "claims_runtime_conformance": False,
+        "defers_runtime_to_goal": HERMETIC_RUNTIME_CHILD_GOAL_ID,
+        "authoritative": False,
+        "completion_authoritative": False,
+        "semantic_authority": False,
+    }
+
+
 __all__ = [
     "ArtifactRole",
+    "CALL_PATH_INVARIANTS",
     "CallPathClaim",
     "DEFAULT_MAX_ARTIFACTS",
     "DEFAULT_MAX_DRIFT_WITNESSES",
@@ -4053,15 +4735,20 @@ __all__ = [
     "HERMETIC_RUNTIME_CHILD_GOAL_ID",
     "HERMETIC_RUNTIME_CLAIM_LEVEL",
     "InventoryArtifact",
+    "MANIFEST_PARITY_INVARIANTS",
+    "MANIFEST_PARITY_REQUIRED_ASPECTS",
     "MCPLUSPLUS_ARTIFACT_SCHEMA",
+    "MCPLUSPLUS_CALL_PATH_CLAIM_SCHEMA",
     "MCPLUSPLUS_CALL_PATH_SCHEMA",
     "MCPLUSPLUS_CONTRACT_RESOLVER_SCHEMA",
     "MCPLUSPLUS_FRONTIER_SCHEMA",
     "MCPLUSPLUS_INVENTORY_SCHEMA",
     "MCPLUSPLUS_MANIFEST_DRIFT_SCHEMA",
+    "MCPLUSPLUS_MANIFEST_PARITY_CLAIM_SCHEMA",
     "MCPLUSPLUS_PATH_EVIDENCE_SCHEMA",
     "MCPLUSPLUS_PATH_HOP_SCHEMA",
     "MCPLUSPLUS_RESOLUTION_RESULT_SCHEMA",
+    "MCPLUSPLUS_STATIC_PACKET_CLAIM_SCHEMA",
     "MCPlusPlusCallPath",
     "MCPlusPlusContractResolver",
     "MCPlusPlusInventory",
@@ -4071,6 +4758,17 @@ __all__ = [
     "ManufacturedInvocationError",
     "ManifestDriftWitness",
     "MissingPathEvidenceError",
+    "OBJECTIVE_CALL_PATH_GOAL_ID",
+    "OBJECTIVE_CALL_PATH_TASK_ID",
+    "OBJECTIVE_DOMAIN_EVIDENCE_TERMS",
+    "OBJECTIVE_GOAL_ID",
+    "OBJECTIVE_GOAL_PACKET_ID",
+    "OBJECTIVE_MANIFEST_PARITY_GOAL_ID",
+    "OBJECTIVE_MANIFEST_PARITY_TASK_ID",
+    "OBJECTIVE_PACKET_GOAL_IDS",
+    "OBJECTIVE_PACKET_TASK_IDS",
+    "OBJECTIVE_PARENT_GOAL_ID",
+    "OBJECTIVE_TASK_ID",
     "PATH_STAGE_ORDER",
     "PathEvidence",
     "PathHop",
@@ -4086,15 +4784,28 @@ __all__ = [
     "STATIC_RESOLUTION_CLAIM_LEVEL",
     "STATIC_RESOLUTION_GOAL_ID",
     "TransportKind",
+    "all_covered_evidence_terms",
     "classify_non_invocation",
     "confidence_for",
+    "covered_evidence_terms",
     "inventory_from_program_graph",
     "make_artifact",
     "make_evidence",
     "make_hop",
+    "mcplusplus_call_path_evidence",
+    "mcplusplus_call_path_evidence_terms",
+    "mcplusplus_manifest_parity_evidence",
+    "mcplusplus_manifest_parity_evidence_terms",
+    "manifest_parity_path_report",
     "normalize_tool_name",
+    "packet_evidence_terms",
+    "path_satisfies_mcplusplus_call_path",
+    "prove_mcplusplus_call_path",
+    "prove_mcplusplus_manifest_parity",
+    "prove_mcplusplus_static_packet",
     "resolve_mcplusplus_from_graph",
     "resolve_mcplusplus_paths",
+    "result_satisfies_mcplusplus_manifest_parity",
     "schema_fingerprint",
     "split_hierarchical_alias",
     "static_resolution_boundary",

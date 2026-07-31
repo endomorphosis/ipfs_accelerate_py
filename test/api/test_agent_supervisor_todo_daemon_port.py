@@ -28776,6 +28776,59 @@ def test_implementation_daemon_repairs_stale_submodule_worktree_config(tmp_path)
     assert _git(submodule, "status", "--short") == ""
 
 
+def test_implementation_daemon_repairs_common_submodule_config_from_linked_worktree(
+    tmp_path,
+):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    linked_worktree = tmp_path / "linked-parent"
+    _git(
+        repo,
+        "worktree",
+        "add",
+        "-b",
+        "linked-parent",
+        str(linked_worktree),
+        "main",
+    )
+    linked_git_dir = Path(
+        _git(linked_worktree, "rev-parse", "--absolute-git-dir")
+    )
+    # A linked checkout may have some submodules stored in its private Git
+    # directory and others in the shared common directory.  Merely finding
+    # the private store must not suppress inspection of the common store.
+    (linked_git_dir / "modules").mkdir()
+    submodule_git_dir = Path(_git(submodule, "rev-parse", "--absolute-git-dir"))
+    stale_worktree = "../../../../../missing/worktree/libs/child"
+    _git(
+        repo,
+        "config",
+        "--file",
+        str(submodule_git_dir / "config"),
+        "core.worktree",
+        stale_worktree,
+    )
+
+    daemon = TodoImplementationDaemon(
+        todo_path=linked_worktree / "todo.md",
+        state_path=linked_worktree / "state" / "task_state.json",
+        strategy_path=linked_worktree / "state" / "strategy.json",
+        events_path=linked_worktree / "state" / "events.jsonl",
+        repo_root=linked_worktree,
+        worktree_submodule_paths=["libs/child"],
+    )
+
+    result = daemon._repair_stale_submodule_worktree_configs(linked_worktree)
+
+    assert result["repaired_count"] == 1
+    assert result["repairs"][0]["module_path"] == "libs/child"
+    assert result["repairs"][0]["old_worktree"] == stale_worktree
+    repaired_worktree = (
+        submodule_git_dir / result["repairs"][0]["new_worktree"]
+    ).resolve()
+    assert repaired_worktree == submodule.resolve()
+    assert _git(submodule, "status", "--short") == ""
+
+
 def test_implementation_daemon_repairs_stale_submodule_source_before_setup(
     tmp_path,
 ):

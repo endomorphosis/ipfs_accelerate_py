@@ -4,6 +4,11 @@ Covers ``vfs/incremental-ast-index@1`` (VFS-G139) and packet co-binding with
 ``vfs/exhaustive-file-inventory@1`` under goal packet
 ``goal_packet/corpus_index/ipfs_accelerate_py/26d54d2206f9``.
 
+Also proves ``vfs/language-edge-resolution@1`` (VFS-G021 / VFS-G143): every
+projected language edge cites a source span and resolver rule; ambiguous and
+unsupported constructs stay explicit; name collisions and re-exports never
+become forged direct calls.
+
 Language-specific extraction depth lives in the mixed/typescript suites; this
 module proves the objective evidence surface, multi-language provenance,
 incremental blob reuse, and fail-closed exhaustive verdicts.
@@ -27,6 +32,11 @@ from ipfs_accelerate_py.agent_supervisor.program_ast_adapters import (
     GOAL_PACKET_ID,
     INCREMENTAL_AST_INDEX_EVIDENCE,
     INCREMENTAL_AST_INDEX_INVARIANTS,
+    LANGUAGE_EDGE_RESOLUTION_CHILD_GOAL_ID,
+    LANGUAGE_EDGE_RESOLUTION_EVIDENCE,
+    LANGUAGE_EDGE_RESOLUTION_GOAL_ID,
+    LANGUAGE_EDGE_RESOLUTION_INVARIANTS,
+    LANGUAGE_EDGE_RESOLUTION_TASK_ID,
     OBJECTIVE_DOMAIN_EVIDENCE_TERMS,
     OBJECTIVE_GOAL_ID,
     OBJECTIVE_PARENT_GOAL_ID,
@@ -40,13 +50,34 @@ from ipfs_accelerate_py.agent_supervisor.program_ast_adapters import (
     all_covered_evidence_terms,
     build_incremental_ast_index,
     build_inventory_program_evidence_index,
+    build_language_edge_program_graph,
     build_program_evidence_index,
     covered_evidence_terms,
     detect_program_language,
     incremental_ast_index_evidence_terms,
     index_satisfies_incremental_ast_index,
+    language_edge_candidate_cites_span_and_rule,
+    language_edge_resolution_evidence_terms,
+    language_edge_resolution_satisfies,
     packet_evidence_terms,
+    project_language_edge_candidates,
+    project_language_edge_candidates_from_index,
     prove_incremental_ast_index,
+    prove_language_edge_resolution,
+)
+from ipfs_accelerate_py.agent_supervisor.program_graph import (
+    LANGUAGE_EDGE_RESOLUTION_EVIDENCE as GRAPH_LANGUAGE_EDGE_EVIDENCE,
+    ProgramEdgeKind,
+    ResolverStatus,
+    edge_cites_source_span_and_resolver_rule,
+    graph_satisfies_language_edge_resolution,
+    language_edge_forged_direct_call_reason,
+    language_edge_resolution_evidence_terms as graph_language_edge_evidence_terms,
+    make_edge,
+    make_node,
+    build_program_graph,
+    prove_language_edge_resolution as prove_graph_language_edge_resolution,
+    ProgramNodeKind,
 )
 from ipfs_accelerate_py.agent_supervisor.repository_corpus_index import (
     InventoryLimits,
@@ -106,18 +137,32 @@ def test_incremental_ast_index_evidence_terms_are_bound() -> None:
 
     assert INCREMENTAL_AST_INDEX_EVIDENCE == "vfs/incremental-ast-index@1"
     assert EXHAUSTIVE_FILE_INVENTORY_EVIDENCE == "vfs/exhaustive-file-inventory@1"
+    assert LANGUAGE_EDGE_RESOLUTION_EVIDENCE == "vfs/language-edge-resolution@1"
     assert OBJECTIVE_DOMAIN_EVIDENCE_TERMS == ("vfs/incremental-ast-index@1",)
     assert CORPUS_INDEX_G020_EVIDENCE_TERMS == (
         "vfs/exhaustive-file-inventory@1",
         "vfs/incremental-ast-index@1",
     )
     assert incremental_ast_index_evidence_terms() == OBJECTIVE_DOMAIN_EVIDENCE_TERMS
-    assert covered_evidence_terms() == incremental_ast_index_evidence_terms()
+    assert covered_evidence_terms() == (
+        "vfs/incremental-ast-index@1",
+        "vfs/language-edge-resolution@1",
+    )
     assert packet_evidence_terms() == CORPUS_INDEX_G020_EVIDENCE_TERMS
-    assert all_covered_evidence_terms() == packet_evidence_terms()
+    assert all_covered_evidence_terms() == (
+        "vfs/exhaustive-file-inventory@1",
+        "vfs/incremental-ast-index@1",
+        "vfs/language-edge-resolution@1",
+    )
+    assert language_edge_resolution_evidence_terms() == (
+        "vfs/language-edge-resolution@1",
+    )
     assert OBJECTIVE_GOAL_ID == "VFS-G139"
     assert OBJECTIVE_PARENT_GOAL_ID == "VFS-G020"
     assert OBJECTIVE_TASK_ID == "VFS-063"
+    assert LANGUAGE_EDGE_RESOLUTION_GOAL_ID == "VFS-G021"
+    assert LANGUAGE_EDGE_RESOLUTION_CHILD_GOAL_ID == "VFS-G143"
+    assert LANGUAGE_EDGE_RESOLUTION_TASK_ID == "VFS-069"
     assert PACKET_GOAL_IDS == ("VFS-G138", "VFS-G139")
     assert GOAL_PACKET_ID == (
         "goal_packet/corpus_index/ipfs_accelerate_py/26d54d2206f9"
@@ -137,6 +182,9 @@ def test_incremental_ast_index_evidence_terms_are_bound() -> None:
     )
     assert "unchanged blobs are reused from the previous snapshot" in (
         INCREMENTAL_AST_INDEX_INVARIANTS
+    )
+    assert "every projected edge cites a source span and resolver rule" in (
+        LANGUAGE_EDGE_RESOLUTION_INVARIANTS
     )
 
 
@@ -349,20 +397,30 @@ def test_packet_evidence_terms_align_with_corpus_inventory_surface() -> None:
     from ipfs_accelerate_py.agent_supervisor import repository_corpus_index as corpus
 
     assert packet_evidence_terms() == corpus.packet_evidence_terms()
-    assert all_covered_evidence_terms() == corpus.all_covered_evidence_terms()
+    # Packet pair stays inventory + AST; language-edge is adapters-owned sibling.
+    assert set(packet_evidence_terms()).issubset(set(all_covered_evidence_terms()))
+    assert set(corpus.all_covered_evidence_terms()).issubset(
+        set(all_covered_evidence_terms())
+    )
     assert EXHAUSTIVE_FILE_INVENTORY_EVIDENCE == corpus.EXHAUSTIVE_FILE_INVENTORY_EVIDENCE
     assert INCREMENTAL_AST_INDEX_EVIDENCE == corpus.INCREMENTAL_AST_INDEX_EVIDENCE
     assert GOAL_PACKET_ID == corpus.GOAL_PACKET_ID
     assert set(PACKET_GOAL_IDS) == set(corpus.PACKET_GOAL_IDS)
     assert OBJECTIVE_PARENT_GOAL_ID == corpus.OBJECTIVE_PARENT_GOAL_ID
     assert OBJECTIVE_TASK_ID == corpus.OBJECTIVE_TASK_ID
-    # Domain ownership stays split: inventory owns G138, adapters own G139.
-    assert covered_evidence_terms() == ("vfs/incremental-ast-index@1",)
+    # Domain ownership: inventory owns G138; adapters own G139 + G021 language edges.
+    assert covered_evidence_terms() == (
+        "vfs/incremental-ast-index@1",
+        "vfs/language-edge-resolution@1",
+    )
     assert corpus.covered_evidence_terms() == ("vfs/exhaustive-file-inventory@1",)
     assert set(packet_evidence_terms()) == {
         "vfs/exhaustive-file-inventory@1",
         "vfs/incremental-ast-index@1",
     }
+    assert LANGUAGE_EDGE_RESOLUTION_EVIDENCE not in packet_evidence_terms()
+    assert LANGUAGE_EDGE_RESOLUTION_EVIDENCE in all_covered_evidence_terms()
+    assert LANGUAGE_EDGE_RESOLUTION_EVIDENCE not in corpus.covered_evidence_terms()
 
 
 def test_cross_path_cache_reuses_only_canonical_path_independent_records() -> None:
@@ -831,3 +889,249 @@ def test_truncated_inventory_blocks_inventory_bound_exhaustive_verdict(
     assert result.program_index.exhaustive is True
     assert result.exhaustive is False
     assert result.reason_codes == ("inventory_not_exhaustive",)
+
+
+def test_language_edge_resolution_evidence_terms_are_bound() -> None:
+    """Prove vfs/language-edge-resolution@1 is discoverable on adapters + graph."""
+
+    assert LANGUAGE_EDGE_RESOLUTION_EVIDENCE == "vfs/language-edge-resolution@1"
+    assert GRAPH_LANGUAGE_EDGE_EVIDENCE == "vfs/language-edge-resolution@1"
+    assert language_edge_resolution_evidence_terms() == (
+        "vfs/language-edge-resolution@1",
+    )
+    assert graph_language_edge_evidence_terms() == (
+        "vfs/language-edge-resolution@1",
+    )
+    assert LANGUAGE_EDGE_RESOLUTION_EVIDENCE in covered_evidence_terms()
+    assert LANGUAGE_EDGE_RESOLUTION_EVIDENCE in all_covered_evidence_terms()
+    assert LANGUAGE_EDGE_RESOLUTION_GOAL_ID == "VFS-G021"
+    assert LANGUAGE_EDGE_RESOLUTION_CHILD_GOAL_ID == "VFS-G143"
+    assert LANGUAGE_EDGE_RESOLUTION_TASK_ID == "VFS-069"
+    claim = prove_language_edge_resolution()
+    assert claim["evidence"] == "vfs/language-edge-resolution@1"
+    assert claim["satisfied"] is True
+    assert claim["forges_direct_calls"] is False
+    graph_claim = prove_graph_language_edge_resolution()
+    assert graph_claim["evidence"] == "vfs/language-edge-resolution@1"
+    assert graph_claim["satisfied"] is True
+
+
+def test_language_edge_candidates_cite_span_and_resolver_rule() -> None:
+    """Every projected language edge cites a source span and resolver rule."""
+
+    python_source = (
+        "import os\n"
+        "from pkg import helper as h\n"
+        "from star import *\n"
+        "\n"
+        "def entry(x):\n"
+        "    return h(x) + os.getcwd()\n"
+        "\n"
+        "entry(1)\n"
+        "setattr(entry, 'patched', True)\n"
+    )
+    ts_source = (
+        "import { read } from './fs';\n"
+        "export { read as load } from './fs';\n"
+        "export function run(cb: () => void) {\n"
+        "  const dyn = import('./lazy');\n"
+        "  read();\n"
+        "  cb();\n"
+        "}\n"
+    )
+    index = build_program_evidence_index(
+        (
+            SourceDocument(path="src/service.py", source=python_source),
+            SourceDocument(path="src/service.ts", source=ts_source),
+        )
+    )
+    candidates = project_language_edge_candidates_from_index(index)
+    assert candidates
+    assert language_edge_resolution_satisfies(candidates) is True
+    for candidate in candidates:
+        assert language_edge_candidate_cites_span_and_rule(candidate)
+        assert candidate.resolver_rule.startswith("rule:")
+        assert candidate.span.line_start > 0 or candidate.span.line_end > 0
+        assert candidate.status in {
+            "resolved_static",
+            "candidate",
+            "ambiguous",
+            "external",
+            "unknown",
+            "unsupported",
+            "unresolved",
+        }
+
+    claim = prove_language_edge_resolution(index)
+    assert claim["evidence"] == "vfs/language-edge-resolution@1"
+    assert claim["satisfied"] is True
+    assert claim["candidate_count"] == len(candidates)
+    assert claim["missing_rule_count"] == 0
+    assert claim["missing_span_count"] == 0
+    assert claim["direct_call_count"] == 0
+    assert claim["forges_direct_calls"] is False
+
+
+def test_language_edge_ambiguous_and_unsupported_remain_explicit() -> None:
+    """Ambiguous and unsupported constructs stay explicit frontier statuses."""
+
+    source = (
+        "def run(fn):\n"
+        "    return fn()\n"
+        "\n"
+        "run(lambda: setattr(run, 'x', 1))\n"
+        "value = getattr(run, 'x', None)\n"
+    )
+    result = adapt_program_source(source, path="src/dyn.py", language="python")
+    candidates = project_language_edge_candidates(result)
+    assert candidates
+    kinds = {item.kind for item in candidates}
+    assert "call" in kinds or "monkey_patch" in kinds or "callback" in kinds
+    for item in candidates:
+        if item.kind in {
+            "monkey_patch",
+            "callback",
+            "dynamic_import",
+            "decorator",
+            "registration",
+            "unsupported_node",
+        }:
+            assert item.status in {"ambiguous", "unsupported", "unknown"}
+            assert item.allows_direct_call is False
+        if item.reason.startswith("dynamic") or item.status in {
+            "ambiguous",
+            "unsupported",
+            "unknown",
+        }:
+            assert item.allows_direct_call is False
+
+    # Unsupported language remains accounted without inventing call edges.
+    unsupported = adapt_program_source(
+        "fn main() {}", path="src/main.rs", language="rust"
+    )
+    assert unsupported.status == "unsupported"
+    assert project_language_edge_candidates(unsupported) == ()
+    claim = prove_language_edge_resolution(results=(result, unsupported))
+    assert claim["satisfied"] is True
+    assert claim["direct_call_count"] == 0
+
+
+def test_language_edge_name_collisions_and_reexports_cannot_forge_direct_calls() -> None:
+    """Adversarial name collisions and re-exports cannot become forged direct calls."""
+
+    # ECMAScript: same-name multi-definition collision + re-export surface.
+    collision_source = (
+        "function shared() { return 1; }\n"
+        "function shared() { return 2; }\n"
+        "export { shared as alias } from './other';\n"
+        "shared();\n"
+    )
+    result = adapt_program_source(
+        collision_source, path="src/collide.ts", language="typescript"
+    )
+    assert any(
+        diagnostic.code == "ecmascript_name_collision"
+        for diagnostic in result.diagnostics
+    )
+    candidates = project_language_edge_candidates(result)
+    assert candidates
+    for item in candidates:
+        assert item.allows_direct_call is False
+        if item.reason in {"same_name_collision", "re_export_not_direct_call"}:
+            assert item.status == "ambiguous"
+            assert "collision" in item.resolver_rule or "re_export" in item.resolver_rule
+    assert any(item.kind == "re_export" for item in candidates) or any(
+        item.reason == "re_export_not_direct_call" for item in candidates
+    )
+    claim = prove_language_edge_resolution(results=(result,))
+    assert claim["satisfied"] is True
+    assert claim["direct_call_count"] == 0
+    assert claim["forged_direct_call_blocked_count"] >= 1
+
+    graph = build_language_edge_program_graph((result,))
+    assert graph_satisfies_language_edge_resolution(graph) is True
+    for edge in graph.edges:
+        if edge.kind in {ProgramEdgeKind.CALLS, ProgramEdgeKind.RESOLVES_TO}:
+            assert edge.binding.resolver_status is not ResolverStatus.RESOLVED_STATIC
+        assert edge_cites_source_span_and_resolver_rule(edge)
+        assert language_edge_forged_direct_call_reason(edge) == ""
+
+    graph_claim = prove_graph_language_edge_resolution(graph)
+    assert graph_claim["evidence"] == "vfs/language-edge-resolution@1"
+    assert graph_claim["satisfied"] is True
+    assert graph_claim["forged_direct_call_count"] == 0
+    assert graph_claim["missing_rule_count"] == 0
+    assert graph_claim["missing_span_count"] == 0
+
+
+def test_language_edge_graph_rejects_forged_resolved_static_collision_edges() -> None:
+    """Graph-side checks refuse forged resolved_static collision call edges."""
+
+    forest_id = "forest:forged-check"
+    blob = "blob:forged"
+    caller = make_node(
+        kind=ProgramNodeKind.SYMBOL,
+        record_key="site:caller",
+        producer="test",
+        blob_cid=blob,
+        forest_id=forest_id,
+        span={"line_start": 1, "column_start": 0, "line_end": 1, "column_end": 4},
+    )
+    target_a = make_node(
+        kind=ProgramNodeKind.SYMBOL,
+        record_key="site:target_a",
+        producer="test",
+        blob_cid=blob,
+        forest_id=forest_id,
+        span={"line_start": 2, "column_start": 0, "line_end": 2, "column_end": 4},
+    )
+    forged = make_edge(
+        source=caller.node_id,
+        target=target_a.node_id,
+        kind=ProgramEdgeKind.CALLS,
+        producer="test",
+        blob_cid=blob,
+        forest_id=forest_id,
+        span={"line_start": 3, "column_start": 0, "line_end": 3, "column_end": 8},
+        resolver_status=ResolverStatus.RESOLVED_STATIC,
+        resolver_rule="rule:test:same_name_collision",
+        record={
+            "reason": "same_name_collision",
+            "reason_code": "same_name_collision",
+        },
+    )
+    graph = build_program_graph(
+        forest_id=forest_id,
+        nodes=(caller, target_a),
+        edges=(forged,),
+    )
+    assert language_edge_forged_direct_call_reason(forged)
+    assert graph_satisfies_language_edge_resolution(graph) is False
+    claim = prove_graph_language_edge_resolution(graph)
+    assert claim["satisfied"] is False
+    assert claim["forged_direct_call_count"] == 1
+
+    # Honest ambiguous collision edge with span+rule is accepted.
+    honest = make_edge(
+        source=caller.node_id,
+        target=target_a.node_id,
+        kind=ProgramEdgeKind.CALLS,
+        producer="test",
+        blob_cid=blob,
+        forest_id=forest_id,
+        span={"line_start": 3, "column_start": 0, "line_end": 3, "column_end": 8},
+        resolver_status=ResolverStatus.AMBIGUOUS,
+        resolver_rule="rule:test:same_name_collision",
+        record={
+            "reason": "same_name_collision",
+            "reason_code": "same_name_collision",
+        },
+    )
+    honest_graph = build_program_graph(
+        forest_id=forest_id,
+        nodes=(caller, target_a),
+        edges=(honest,),
+    )
+    assert edge_cites_source_span_and_resolver_rule(honest)
+    assert graph_satisfies_language_edge_resolution(honest_graph) is True
+    assert prove_graph_language_edge_resolution(honest_graph)["satisfied"] is True

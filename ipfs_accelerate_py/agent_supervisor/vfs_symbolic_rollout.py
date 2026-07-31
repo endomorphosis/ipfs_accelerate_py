@@ -5,6 +5,12 @@ closed VFS-G130 adversarial gate set before any automatic repair scope may
 expand.  Evidence schemas are ``vfs/adversarial-e2e-gate@1`` and
 ``vfs/shadow-rollout-report@1``.
 
+Objective-heap ownership for the assurance-rollout packet:
+
+* VFS-G162 / VFS-082 prove ``vfs/adversarial-e2e-gate@1``
+* VFS-G163 / VFS-084 prove ``vfs/shadow-rollout-report@1``
+* VFS-G130 remains the parent rollout goal; automatic mutation stays disabled
+
 Safety is non-waivable:
 
 * automatic mutation remains disabled on every report;
@@ -31,6 +37,9 @@ from typing import Any, Final
 
 ADVERSARIAL_E2E_GATE_SCHEMA: Final = "vfs/adversarial-e2e-gate@1"
 SHADOW_ROLLOUT_REPORT_SCHEMA: Final = "vfs/shadow-rollout-report@1"
+# Domain evidence identities (alias schemas for objective-heap discovery).
+ADVERSARIAL_E2E_GATE_EVIDENCE: Final = ADVERSARIAL_E2E_GATE_SCHEMA
+SHADOW_ROLLOUT_REPORT_EVIDENCE: Final = SHADOW_ROLLOUT_REPORT_SCHEMA
 VFS_SYMBOLIC_ROLLOUT_DECISION_SCHEMA: Final = (
     "vfs/symbolic-rollout-decision@1"
 )
@@ -60,8 +69,119 @@ VFS_SYMBOLIC_ROLLOUT_REQUIREMENT_ID: Final = (
 VFS_SYMBOLIC_BEHAVIOR_ID: Final = (
     "behavior:vfs-symbolic-assurance-rollout@1"
 )
+# Parent rollout goal that owns the full shadow/assist gate surface.
 VFS_SYMBOLIC_OBJECTIVE_ID: Final = "VFS-G130"
 VFS_SYMBOLIC_OBJECTIVE_REVISION: Final = "VFS-G130@vfs-036"
+
+# ---------------------------------------------------------------------------
+# Objective-heap discovery anchors (VFS-G162 / VFS-G163 packet)
+# goal_packet/assurance_rollout/ipfs_accelerate_py/047760894e45
+# Labels never enter fixture_cid / report_id / binding identity digests.
+# ---------------------------------------------------------------------------
+OBJECTIVE_PARENT_GOAL_ID: Final = VFS_SYMBOLIC_OBJECTIVE_ID
+OBJECTIVE_GOAL_G162_ID: Final = "VFS-G162"
+OBJECTIVE_GOAL_G163_ID: Final = "VFS-G163"
+OBJECTIVE_TASK_G162_ID: Final = "VFS-082"
+OBJECTIVE_TASK_G163_ID: Final = "VFS-084"
+OBJECTIVE_TASK_PACKET_ID: Final = "VFS-081"
+OBJECTIVE_PACKET_ID: Final = (
+    "goal_packet/assurance_rollout/ipfs_accelerate_py/047760894e45"
+)
+OBJECTIVE_PACKET_GOAL_IDS: Final[tuple[str, ...]] = (
+    OBJECTIVE_GOAL_G162_ID,
+    OBJECTIVE_GOAL_G163_ID,
+)
+OBJECTIVE_DOMAIN_EVIDENCE_TERMS: Final[tuple[str, ...]] = (
+    ADVERSARIAL_E2E_GATE_EVIDENCE,
+    SHADOW_ROLLOUT_REPORT_EVIDENCE,
+)
+OBJECTIVE_PACKET_EVIDENCE_TERMS: Final[tuple[str, ...]] = (
+    OBJECTIVE_DOMAIN_EVIDENCE_TERMS
+)
+# Canonical supervisor-facing projection of objective-heap completion bindings.
+# Tuple rows remain immutable and deterministic; public payloads render them as
+# named mappings via objective_evidence_bindings().
+OBJECTIVE_EVIDENCE_BINDING_ROWS: Final[
+    tuple[tuple[str, str, str], ...]
+] = (
+    (
+        ADVERSARIAL_E2E_GATE_EVIDENCE,
+        OBJECTIVE_GOAL_G162_ID,
+        OBJECTIVE_TASK_G162_ID,
+    ),
+    (
+        SHADOW_ROLLOUT_REPORT_EVIDENCE,
+        OBJECTIVE_GOAL_G163_ID,
+        OBJECTIVE_TASK_G163_ID,
+    ),
+)
+OBJECTIVE_PROJECTION_FIELDS: Final[frozenset[str]] = frozenset(
+    {
+        "goal_id",
+        "task_id",
+        "parent_goal_id",
+        "packet_id",
+        "packet_task_id",
+    }
+)
+ADVERSARIAL_E2E_GATE_CLAIM_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/adversarial-e2e-gate-claim@1"
+)
+SHADOW_ROLLOUT_REPORT_CLAIM_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/shadow-rollout-report-claim@1"
+)
+ASSURANCE_ROLLOUT_PACKET_CLAIM_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/assurance-rollout-packet-claim@1"
+)
+ADVERSARIAL_E2E_GATE_INVARIANTS: Final[tuple[str, ...]] = (
+    "reproducible CIDs across independent freezes of the frozen corpus",
+    "complete inventories with policy-bound exclusions",
+    "zero stale or corrupt authoritative cache hits",
+    "zero forged/simulated/tampered proof or ZK authority",
+    "seeded mismatch precision (MCP mock/bypass, VFS drift)",
+    "deterministic repair tasks from gate evidence",
+    "Python/CLI/MCP control parity without provider imports",
+    "restart replay and lease/fence identity are stable",
+    "rollback returns effective rollout to shadow",
+    "automatic mutation remains disabled on every report",
+)
+SHADOW_ROLLOUT_REPORT_INVARIANTS: Final[tuple[str, ...]] = (
+    "assist promotes only when every adversarial gate passes",
+    "automatic never becomes effective while mutation is disabled",
+    "any gate, binding, or assurance regression returns to shadow",
+    "shadow and off modes never gain semantic or completion authority",
+    "reports recompute from gate evidence; no trusted mutation path",
+)
+
+# Keep exact-text discovery anchors aligned with the objective heap.
+assert ADVERSARIAL_E2E_GATE_SCHEMA == "vfs/adversarial-e2e-gate@1"
+assert SHADOW_ROLLOUT_REPORT_SCHEMA == "vfs/shadow-rollout-report@1"
+assert ADVERSARIAL_E2E_GATE_EVIDENCE == "vfs/adversarial-e2e-gate@1"
+assert SHADOW_ROLLOUT_REPORT_EVIDENCE == "vfs/shadow-rollout-report@1"
+assert OBJECTIVE_PARENT_GOAL_ID == "VFS-G130"
+assert OBJECTIVE_GOAL_G162_ID == "VFS-G162"
+assert OBJECTIVE_GOAL_G163_ID == "VFS-G163"
+assert OBJECTIVE_TASK_G162_ID == "VFS-082"
+assert OBJECTIVE_TASK_G163_ID == "VFS-084"
+assert OBJECTIVE_TASK_PACKET_ID == "VFS-081"
+assert OBJECTIVE_PACKET_ID == (
+    "goal_packet/assurance_rollout/ipfs_accelerate_py/047760894e45"
+)
+assert OBJECTIVE_DOMAIN_EVIDENCE_TERMS == (
+    "vfs/adversarial-e2e-gate@1",
+    "vfs/shadow-rollout-report@1",
+)
+assert OBJECTIVE_PACKET_EVIDENCE_TERMS == OBJECTIVE_DOMAIN_EVIDENCE_TERMS
+assert tuple(row[0] for row in OBJECTIVE_EVIDENCE_BINDING_ROWS) == (
+    OBJECTIVE_PACKET_EVIDENCE_TERMS
+)
+assert tuple(row[1] for row in OBJECTIVE_EVIDENCE_BINDING_ROWS) == (
+    OBJECTIVE_PACKET_GOAL_IDS
+)
+assert tuple(row[2] for row in OBJECTIVE_EVIDENCE_BINDING_ROWS) == (
+    OBJECTIVE_TASK_G162_ID,
+    OBJECTIVE_TASK_G163_ID,
+)
 
 MAX_GATE_EVIDENCE_IDS: Final = 32
 MAX_FINDING_PROJECTIONS: Final = 64
@@ -182,6 +302,16 @@ def _canonical_bytes(value: Any) -> bytes:
 
 def _identity(value: Any) -> str:
     return "sha256:" + hashlib.sha256(_canonical_bytes(value)).hexdigest()
+
+
+def _without_objective_projection(value: Mapping[str, Any]) -> dict[str, Any]:
+    """Remove supervisor routing labels from a domain evidence identity."""
+
+    return {
+        key: item
+        for key, item in value.items()
+        if key not in OBJECTIVE_PROJECTION_FIELDS
+    }
 
 
 def _content_cid(body: bytes) -> str:
@@ -843,7 +973,11 @@ class AdversarialE2EGateReport:
 
     @property
     def report_id(self) -> str:
-        return _identity(self.to_dict(include_report_id=False))
+        return _identity(
+            _without_objective_projection(
+                self.to_dict(include_report_id=False)
+            )
+        )
 
     @property
     def passed(self) -> bool:
@@ -873,10 +1007,17 @@ class AdversarialE2EGateReport:
     def to_dict(self, *, include_report_id: bool = True) -> dict[str, Any]:
         payload = {
             "schema": ADVERSARIAL_E2E_GATE_SCHEMA,
+            "evidence": ADVERSARIAL_E2E_GATE_EVIDENCE,
+            "evidence_terms": list(adversarial_e2e_gate_evidence_terms()),
             "version": VFS_SYMBOLIC_ROLLOUT_VERSION,
             "requirement_id": VFS_SYMBOLIC_ROLLOUT_REQUIREMENT_ID,
             "objective_id": VFS_SYMBOLIC_OBJECTIVE_ID,
             "objective_revision": VFS_SYMBOLIC_OBJECTIVE_REVISION,
+            "goal_id": OBJECTIVE_GOAL_G162_ID,
+            "task_id": OBJECTIVE_TASK_G162_ID,
+            "parent_goal_id": OBJECTIVE_PARENT_GOAL_ID,
+            "packet_id": OBJECTIVE_PACKET_ID,
+            "packet_task_id": OBJECTIVE_TASK_PACKET_ID,
             "fixture": self.fixture.to_dict(),
             "fixture_cid": self.fixture.fixture_cid,
             "observations": [
@@ -902,6 +1043,11 @@ class AdversarialE2EGateReport:
     def from_dict(cls, value: Mapping[str, Any]) -> "AdversarialE2EGateReport":
         if value.get("schema") != ADVERSARIAL_E2E_GATE_SCHEMA:
             raise VfsSymbolicRolloutError("unsupported adversarial e2e schema")
+        evidence = value.get("evidence", ADVERSARIAL_E2E_GATE_EVIDENCE)
+        if evidence not in {ADVERSARIAL_E2E_GATE_EVIDENCE, ADVERSARIAL_E2E_GATE_SCHEMA}:
+            raise VfsSymbolicRolloutError(
+                "adversarial e2e report evidence identity mismatch"
+            )
         if value.get("automatic_mutation_enabled") is True:
             raise VfsSymbolicRolloutError(
                 "adversarial e2e report cannot enable automatic mutation"
@@ -1705,7 +1851,11 @@ class ShadowRolloutReport:
 
     @property
     def report_id(self) -> str:
-        return _identity(self.to_dict(include_report_id=False))
+        return _identity(
+            _without_objective_projection(
+                self.to_dict(include_report_id=False)
+            )
+        )
 
     @property
     def reason_codes(self) -> tuple[str, ...]:
@@ -1801,11 +1951,18 @@ class ShadowRolloutReport:
     def to_dict(self, *, include_report_id: bool = True) -> dict[str, Any]:
         payload = {
             "schema": SHADOW_ROLLOUT_REPORT_SCHEMA,
+            "evidence": SHADOW_ROLLOUT_REPORT_EVIDENCE,
+            "evidence_terms": list(shadow_rollout_report_evidence_terms()),
             "version": VFS_SYMBOLIC_ROLLOUT_VERSION,
             "requirement_id": VFS_SYMBOLIC_ROLLOUT_REQUIREMENT_ID,
             "behavior_id": VFS_SYMBOLIC_BEHAVIOR_ID,
             "objective_id": VFS_SYMBOLIC_OBJECTIVE_ID,
             "objective_revision": VFS_SYMBOLIC_OBJECTIVE_REVISION,
+            "goal_id": OBJECTIVE_GOAL_G163_ID,
+            "task_id": OBJECTIVE_TASK_G163_ID,
+            "parent_goal_id": OBJECTIVE_PARENT_GOAL_ID,
+            "packet_id": OBJECTIVE_PACKET_ID,
+            "packet_task_id": OBJECTIVE_TASK_PACKET_ID,
             "binding": self.binding.to_dict(),
             "binding_id": self.binding.binding_id,
             "policy": self.policy.to_dict(),
@@ -2344,10 +2501,17 @@ class VfsSymbolicPublicAPI:
             "requirement_id": VFS_SYMBOLIC_ROLLOUT_REQUIREMENT_ID,
             "behavior_id": VFS_SYMBOLIC_BEHAVIOR_ID,
             "objective_id": VFS_SYMBOLIC_OBJECTIVE_ID,
+            "parent_goal_id": OBJECTIVE_PARENT_GOAL_ID,
+            "packet_id": OBJECTIVE_PACKET_ID,
+            "packet_task_id": OBJECTIVE_TASK_PACKET_ID,
+            "packet_goal_ids": list(OBJECTIVE_PACKET_GOAL_IDS),
+            "evidence_bindings": list(objective_evidence_bindings()),
             "evidence_schemas": [
                 ADVERSARIAL_E2E_GATE_SCHEMA,
                 SHADOW_ROLLOUT_REPORT_SCHEMA,
             ],
+            "evidence_terms": list(covered_evidence_terms()),
+            "packet_evidence_terms": list(packet_evidence_terms()),
             "surfaces": [item.value for item in VfsControlSurface],
             "actions": [item.value for item in VfsControlAction],
             "modes": [item.value for item in VfsRolloutMode],
@@ -2515,6 +2679,9 @@ def run_vfs_symbolic_assurance_e2e(
         policy=policy,
         desired_mode=desired_mode,
     )
+    adversarial_claim = prove_adversarial_e2e_gate(report)
+    shadow_claim = prove_shadow_rollout_report(shadow)
+    packet_claim = prove_assurance_rollout_packet(report, shadow)
     return {
         "fixture": fixture.to_dict(),
         "adversarial_e2e_gate": report.to_dict(),
@@ -2523,12 +2690,566 @@ def run_vfs_symbolic_assurance_e2e(
         "status": project_bounded_status(decision),
         "findings": project_bounded_findings(decision),
         "receipts": project_bounded_receipts(decision),
+        "evidence_terms": list(covered_evidence_terms()),
+        "packet_evidence_terms": list(packet_evidence_terms()),
+        "adversarial_e2e_gate_claim": adversarial_claim,
+        "shadow_rollout_report_claim": shadow_claim,
+        "assurance_rollout_packet_claim": packet_claim,
         "automatic_mutation_enabled": False,
     }
 
 
+# ---------------------------------------------------------------------------
+# Objective evidence discovery + prove claims (VFS-G162 / VFS-G163)
+# ---------------------------------------------------------------------------
+
+
+def adversarial_e2e_gate_evidence() -> str:
+    """Return the closed ``vfs/adversarial-e2e-gate@1`` evidence term."""
+
+    return ADVERSARIAL_E2E_GATE_EVIDENCE
+
+
+def shadow_rollout_report_evidence() -> str:
+    """Return the closed ``vfs/shadow-rollout-report@1`` evidence term."""
+
+    return SHADOW_ROLLOUT_REPORT_EVIDENCE
+
+
+def adversarial_e2e_gate_evidence_terms() -> tuple[str, ...]:
+    """Return the VFS-G162 domain evidence surface for discovery scanners.
+
+    Exact identity: ``vfs/adversarial-e2e-gate@1``.  Authored only by
+    :class:`AdversarialE2EGateReport` and :func:`prove_adversarial_e2e_gate`.
+    Simulated/forged ZK, automatic mutation, and incomplete inventories never
+    grant authority.
+    """
+
+    return (ADVERSARIAL_E2E_GATE_EVIDENCE,)
+
+
+def shadow_rollout_report_evidence_terms() -> tuple[str, ...]:
+    """Return the VFS-G163 domain evidence surface for discovery scanners.
+
+    Exact identity: ``vfs/shadow-rollout-report@1``.  Authored only by
+    :class:`ShadowRolloutReport` and :func:`prove_shadow_rollout_report`.
+    Assist promotes only after every gate passes; automatic stays shadow.
+    """
+
+    return (SHADOW_ROLLOUT_REPORT_EVIDENCE,)
+
+
+def covered_evidence_terms() -> tuple[str, ...]:
+    """Return domain objective evidence terms this rollout surface proves.
+
+    Covers ``vfs/adversarial-e2e-gate@1`` (VFS-G162) and
+    ``vfs/shadow-rollout-report@1`` (VFS-G163) for the assurance-rollout
+    goal packet.  Goal/task labels stay metadata and never enter fixture or
+    report content identities.
+    """
+
+    return OBJECTIVE_DOMAIN_EVIDENCE_TERMS
+
+
+def packet_evidence_terms() -> tuple[str, ...]:
+    """Return the closed assurance-rollout packet evidence set."""
+
+    return OBJECTIVE_PACKET_EVIDENCE_TERMS
+
+
+def all_covered_evidence_terms() -> tuple[str, ...]:
+    """Alias of :func:`covered_evidence_terms` for cross-module discovery."""
+
+    return covered_evidence_terms()
+
+
+def objective_evidence_bindings() -> tuple[dict[str, str], ...]:
+    """Project the objective heap's evidence-to-goal/task bindings.
+
+    This is the canonical supervisor-fed backlog bridge for
+    ``goal_packet/assurance_rollout/ipfs_accelerate_py/047760894e45``:
+    ``vfs/adversarial-e2e-gate@1`` closes VFS-G162 through VFS-082 and
+    ``vfs/shadow-rollout-report@1`` closes VFS-G163 through VFS-084.
+    """
+
+    return tuple(
+        {
+            "evidence": evidence,
+            "goal_id": goal_id,
+            "task_id": task_id,
+        }
+        for evidence, goal_id, task_id in OBJECTIVE_EVIDENCE_BINDING_ROWS
+    )
+
+
+def _gate_passed(
+    report: AdversarialE2EGateReport, gate_id: AdversarialGateId
+) -> bool:
+    return report.observation(gate_id).passed
+
+
+def adversarial_e2e_gate_acceptance_dimensions(
+    report: AdversarialE2EGateReport,
+) -> dict[str, bool]:
+    """Map VFS-G162 acceptance criteria onto closed gate observations."""
+
+    return {
+        "reproducible_cids": _gate_passed(
+            report, AdversarialGateId.REPRODUCIBLE_CIDS
+        ),
+        "complete_inventories": (
+            _gate_passed(report, AdversarialGateId.COMPLETE_INVENTORY)
+            and _gate_passed(report, AdversarialGateId.INVENTORY_EXCLUSIONS)
+        ),
+        "zero_stale_authoritative_hits": (
+            _gate_passed(report, AdversarialGateId.STALE_CACHE_REJECTION)
+            and _gate_passed(report, AdversarialGateId.CORRUPT_CACHE_REJECTION)
+        ),
+        "zero_forged_proof_zk_authority": (
+            _gate_passed(report, AdversarialGateId.WRONG_PROOF)
+            and _gate_passed(report, AdversarialGateId.UNKNOWN_PROOF)
+            and _gate_passed(report, AdversarialGateId.SIMULATED_ZK)
+            and _gate_passed(report, AdversarialGateId.FORGED_ZK)
+            and _gate_passed(report, AdversarialGateId.TAMPERED_ZK)
+            and _gate_passed(
+                report, AdversarialGateId.AUTOMATIC_MUTATION_DISABLED
+            )
+        ),
+        "seeded_mismatch_precision": (
+            _gate_passed(report, AdversarialGateId.MCP_MOCK)
+            and _gate_passed(report, AdversarialGateId.MCP_BYPASS)
+            and _gate_passed(report, AdversarialGateId.VFS_SEEDED_DRIFT)
+            and _gate_passed(report, AdversarialGateId.CONTRACT_PRECISION)
+        ),
+        "deterministic_tasks": _gate_passed(
+            report, AdversarialGateId.TASK_DETERMINISM
+        ),
+        "python_cli_mcp_parity": _gate_passed(
+            report, AdversarialGateId.CONTROL_PARITY
+        ),
+        "restart_replay": (
+            _gate_passed(report, AdversarialGateId.RESTART_REPLAY)
+            and _gate_passed(report, AdversarialGateId.LEASE_FENCE_LOSS)
+        ),
+        "rollback": _gate_passed(report, AdversarialGateId.ROLLBACK),
+        "automatic_mutation_disabled": (
+            not report.automatic_mutation_enabled
+            and _gate_passed(
+                report, AdversarialGateId.AUTOMATIC_MUTATION_DISABLED
+            )
+        ),
+        "report_non_authoritative": (
+            not report.to_dict().get("authoritative", True)
+            and not report.to_dict().get("completion_authoritative", True)
+        ),
+    }
+
+
+def shadow_rollout_report_acceptance_dimensions(
+    report: ShadowRolloutReport,
+) -> dict[str, bool]:
+    """Map VFS-G163 acceptance criteria onto shadow/assist rollout state.
+
+    Release discipline for ``vfs/shadow-rollout-report@1``:
+
+    * assist only when every adversarial gate passes and binding/policy match;
+    * automatic never becomes effective while mutation remains disabled;
+    * any gate, binding, or assurance regression returns effective mode to
+      shadow;
+    * off/shadow never acquire semantic or completion authority;
+    * parent frozen-corpus acceptance is carried only via the bound gate
+      report (never forged into the shadow claim itself).
+    """
+
+    effective = report.effective_mode
+    desired = report.desired_mode
+    payload = report.to_dict()
+    gate_passed = bool(report.gate_report.passed)
+    regression_or_stale = any(
+        code.startswith("assurance-regression")
+        or code.startswith("stale-binding:")
+        or code.startswith("gate-failed:")
+        for code in report.reason_codes
+    )
+    parent_dims = adversarial_e2e_gate_acceptance_dimensions(report.gate_report)
+    return {
+        "assist_requires_all_gates": (
+            effective is not VfsRolloutMode.ASSIST or gate_passed
+        ),
+        "assist_requires_clean_reasons": (
+            effective is not VfsRolloutMode.ASSIST or not report.reason_codes
+        ),
+        "automatic_never_effective": effective is not VfsRolloutMode.AUTOMATIC,
+        "automatic_mutation_disabled": (
+            not report.automatic_mutation_enabled
+            and payload.get("automatic_mutation_enabled") is False
+        ),
+        "automatic_not_ready": (
+            not report.automatic_ready
+            and payload.get("automatic_ready") is False
+        ),
+        "regression_returns_to_shadow": (
+            effective is VfsRolloutMode.SHADOW or not regression_or_stale
+        ),
+        "rollback_when_assist_blocked": (
+            effective is not VfsRolloutMode.SHADOW
+            or desired
+            not in {VfsRolloutMode.ASSIST, VfsRolloutMode.AUTOMATIC}
+            or report.rollback_applied
+        ),
+        "off_and_shadow_non_authoritative": (
+            effective
+            not in {VfsRolloutMode.ASSIST, VfsRolloutMode.AUTOMATIC}
+            or gate_passed
+        ),
+        "report_non_authoritative": (
+            payload.get("authoritative") is False
+            and payload.get("completion_authoritative") is False
+        ),
+        "desired_mode_recorded": desired in VfsRolloutMode,
+        "qualification_tracks_gates": report.qualification_passed
+        == (
+            gate_passed
+            and not any(
+                code.startswith("gate-failed:")
+                or code.startswith("stale-binding:")
+                for code in report.reason_codes
+            )
+        ),
+        "schema_identity": payload.get("schema") == SHADOW_ROLLOUT_REPORT_SCHEMA,
+        "evidence_identity": (
+            payload.get("evidence") == SHADOW_ROLLOUT_REPORT_EVIDENCE
+            and SHADOW_ROLLOUT_REPORT_EVIDENCE in payload.get("evidence_terms", [])
+        ),
+        "goal_task_binding": (
+            payload.get("goal_id") == OBJECTIVE_GOAL_G163_ID
+            and payload.get("task_id") == OBJECTIVE_TASK_G163_ID
+        ),
+        "parent_gate_reproducible_cids": parent_dims["reproducible_cids"],
+        "parent_gate_complete_inventories": parent_dims["complete_inventories"],
+        "parent_gate_zero_stale_authoritative_hits": parent_dims[
+            "zero_stale_authoritative_hits"
+        ],
+        "parent_gate_zero_forged_proof_zk_authority": parent_dims[
+            "zero_forged_proof_zk_authority"
+        ],
+        "parent_gate_seeded_mismatch_precision": parent_dims[
+            "seeded_mismatch_precision"
+        ],
+        "parent_gate_deterministic_tasks": parent_dims["deterministic_tasks"],
+        "parent_gate_python_cli_mcp_parity": parent_dims["python_cli_mcp_parity"],
+        "parent_gate_restart_replay": parent_dims["restart_replay"],
+        "parent_gate_rollback": parent_dims["rollback"],
+        "parent_gate_automatic_mutation_disabled": parent_dims[
+            "automatic_mutation_disabled"
+        ],
+    }
+
+
+def verify_shadow_rollout_report(
+    report: ShadowRolloutReport,
+    *,
+    desired_mode: VfsRolloutMode | str | None = None,
+    prior_gate_report: AdversarialE2EGateReport | None = None,
+) -> bool:
+    """Replay-verify a ``vfs/shadow-rollout-report@1`` (VFS-G163 / VFS-084).
+
+    Rebuilds the report from the same gate/binding/policy inputs and requires
+    deterministic ``report_id``, effective mode, reason codes, and safety
+    flags.  Automatic mutation and automatic-ready must stay false.
+    """
+
+    if not isinstance(report, ShadowRolloutReport):
+        return False
+    if report.automatic_mutation_enabled or report.automatic_ready:
+        return False
+    if report.effective_mode is VfsRolloutMode.AUTOMATIC:
+        return False
+    mode = desired_mode if desired_mode is not None else report.desired_mode
+    prior = (
+        prior_gate_report
+        if prior_gate_report is not None
+        else report.prior_gate_report
+    )
+    try:
+        replayed = ShadowRolloutReport(
+            gate_report=report.gate_report,
+            binding=report.binding,
+            policy=report.policy,
+            desired_mode=mode,
+            prior_gate_report=prior,
+        )
+    except VfsSymbolicRolloutError:
+        return False
+    if replayed.report_id != report.report_id:
+        return False
+    if replayed.effective_mode is not report.effective_mode:
+        return False
+    if replayed.reason_codes != report.reason_codes:
+        return False
+    if replayed.rollback_applied != report.rollback_applied:
+        return False
+    if replayed.qualification_passed != report.qualification_passed:
+        return False
+    if replayed.passed != report.passed:
+        return False
+    left = report.to_dict()
+    right = replayed.to_dict()
+    if _canonical_bytes(left) != _canonical_bytes(right):
+        return False
+    dimensions = shadow_rollout_report_acceptance_dimensions(report)
+    # Safety dimensions must always hold; parent-gate dimensions track the
+    # bound gate report and may fail when injections intentionally regress.
+    safety_keys = (
+        "automatic_never_effective",
+        "automatic_mutation_disabled",
+        "automatic_not_ready",
+        "report_non_authoritative",
+        "schema_identity",
+        "evidence_identity",
+        "goal_task_binding",
+        "assist_requires_all_gates",
+        "assist_requires_clean_reasons",
+        "regression_returns_to_shadow",
+        "rollback_when_assist_blocked",
+    )
+    return all(dimensions.get(key) for key in safety_keys)
+
+
+def prove_adversarial_e2e_gate(
+    report: AdversarialE2EGateReport | Mapping[str, Any],
+) -> dict[str, Any]:
+    """Emit a portable ``vfs/adversarial-e2e-gate@1`` evidence claim (VFS-G162).
+
+    Proves the closed adversarial population: reproducible CIDs, complete
+    inventories, zero stale authoritative hits, zero forged proof/ZK
+    authority, seeded mismatch precision, deterministic tasks, Python/CLI/MCP
+    parity, restart replay, and rollback on a frozen corpus.  Automatic
+    mutation remains disabled; claims never grant semantic or completion
+    authority.
+    """
+
+    if isinstance(report, Mapping):
+        report = AdversarialE2EGateReport.from_dict(report)
+    if not isinstance(report, AdversarialE2EGateReport):
+        raise TypeError("report must be an AdversarialE2EGateReport")
+    dimensions = adversarial_e2e_gate_acceptance_dimensions(report)
+    satisfied = bool(report.passed) and all(dimensions.values())
+    return {
+        "schema": ADVERSARIAL_E2E_GATE_CLAIM_SCHEMA,
+        "evidence": ADVERSARIAL_E2E_GATE_EVIDENCE,
+        "evidence_terms": list(adversarial_e2e_gate_evidence_terms()),
+        "requirement_id": ADVERSARIAL_E2E_GATE_EVIDENCE,
+        "goal_id": OBJECTIVE_GOAL_G162_ID,
+        "parent_goal_id": OBJECTIVE_PARENT_GOAL_ID,
+        "task_id": OBJECTIVE_TASK_G162_ID,
+        "packet_id": OBJECTIVE_PACKET_ID,
+        "packet_task_id": OBJECTIVE_TASK_PACKET_ID,
+        "report_id": report.report_id,
+        "fixture_cid": report.fixture.fixture_cid,
+        "forest_id": report.fixture.forest_id,
+        "observed_at": report.observed_at,
+        "passed": report.passed,
+        "gate_count": len(report.observations),
+        "required_gate_count": len(REQUIRED_ADVERSARIAL_GATES),
+        "failure_codes": list(report.failure_codes),
+        "acceptance_dimensions": dimensions,
+        "invariants": list(ADVERSARIAL_E2E_GATE_INVARIANTS),
+        "satisfied": satisfied,
+        "automatic_mutation_enabled": False,
+        "authoritative": False,
+        "completion_authoritative": False,
+        "semantic_authority": False,
+    }
+
+
+def prove_shadow_rollout_report(
+    report: ShadowRolloutReport | Mapping[str, Any],
+    *,
+    gate_report: AdversarialE2EGateReport | Mapping[str, Any] | None = None,
+    binding: "VfsRolloutBinding | Mapping[str, Any] | None" = None,
+    policy: "VfsRolloutPolicy | Mapping[str, Any] | None" = None,
+) -> dict[str, Any]:
+    """Emit a portable ``vfs/shadow-rollout-report@1`` evidence claim (VFS-G163).
+
+    Proves shadow/assist release discipline for goal_packet/assurance_rollout:
+
+    * assist only after every adversarial gate passes and reasons are clean;
+    * automatic stays non-effective while mutation remains disabled;
+    * binding/policy/assurance regressions return effective rollout to shadow;
+    * reports never become semantic or completion authoritative;
+    * parent frozen-corpus acceptance (reproducible CIDs, inventories, zero
+      stale authoritative hits, zero forged proof/ZK authority, seeded
+      mismatch precision, deterministic tasks, Python/CLI/MCP parity, restart
+      replay, rollback) is demonstrated only through the bound gate report.
+
+    Mapping inputs must rebuild through :class:`ShadowRolloutReport`
+    construction when possible (reports are not trusted from opaque dicts).
+    """
+
+    if isinstance(report, Mapping):
+        # Shadow reports are not round-tripped from dict; rebuild from parts.
+        if gate_report is None or binding is None or policy is None:
+            raise VfsSymbolicRolloutError(
+                "shadow rollout claim from mapping requires gate_report, "
+                "binding, and policy"
+            )
+        gate_obj = (
+            gate_report
+            if isinstance(gate_report, AdversarialE2EGateReport)
+            else AdversarialE2EGateReport.from_dict(gate_report)
+        )
+        binding_obj = (
+            binding
+            if isinstance(binding, VfsRolloutBinding)
+            else VfsRolloutBinding.from_dict(binding)
+        )
+        policy_obj = (
+            policy
+            if isinstance(policy, VfsRolloutPolicy)
+            else VfsRolloutPolicy.from_dict(policy)
+        )
+        report = ShadowRolloutReport(
+            gate_report=gate_obj,
+            binding=binding_obj,
+            policy=policy_obj,
+            desired_mode=report.get("desired_mode", VfsRolloutMode.SHADOW),
+        )
+    if not isinstance(report, ShadowRolloutReport):
+        raise TypeError("report must be a ShadowRolloutReport")
+    dimensions = shadow_rollout_report_acceptance_dimensions(report)
+    parent_dims = adversarial_e2e_gate_acceptance_dimensions(report.gate_report)
+    verified = verify_shadow_rollout_report(report)
+    # Satisfied only when the shadow safety surface holds, the bound gate
+    # population is clean, and deterministic replay succeeds.
+    satisfied = (
+        bool(report.passed)
+        and all(dimensions.values())
+        and all(parent_dims.values())
+        and verified
+        and not report.automatic_mutation_enabled
+        and report.effective_mode is not VfsRolloutMode.AUTOMATIC
+    )
+    return {
+        "schema": SHADOW_ROLLOUT_REPORT_CLAIM_SCHEMA,
+        "evidence": SHADOW_ROLLOUT_REPORT_EVIDENCE,
+        "evidence_terms": list(shadow_rollout_report_evidence_terms()),
+        "requirement_id": SHADOW_ROLLOUT_REPORT_EVIDENCE,
+        "goal_id": OBJECTIVE_GOAL_G163_ID,
+        "parent_goal_id": OBJECTIVE_PARENT_GOAL_ID,
+        "task_id": OBJECTIVE_TASK_G163_ID,
+        "packet_id": OBJECTIVE_PACKET_ID,
+        "packet_task_id": OBJECTIVE_TASK_PACKET_ID,
+        "packet_goal_ids": list(OBJECTIVE_PACKET_GOAL_IDS),
+        "report_id": report.report_id,
+        "gate_report_id": report.gate_report.report_id,
+        "binding_id": report.binding.binding_id,
+        "policy_binding_id": report.policy.policy_binding_id,
+        "fixture_cid": report.gate_report.fixture.fixture_cid,
+        "forest_id": report.gate_report.fixture.forest_id,
+        "desired_mode": report.desired_mode.value,
+        "effective_mode": report.effective_mode.value,
+        "qualification_passed": report.qualification_passed,
+        "passed": report.passed,
+        "rollback_applied": report.rollback_applied,
+        "reason_codes": list(report.reason_codes),
+        "acceptance_dimensions": dimensions,
+        "parent_acceptance_dimensions": parent_dims,
+        "invariants": list(SHADOW_ROLLOUT_REPORT_INVARIANTS),
+        "verified": verified,
+        "satisfied": satisfied,
+        "automatic_ready": False,
+        "automatic_mutation_enabled": False,
+        "authoritative": False,
+        "completion_authoritative": False,
+        "semantic_authority": False,
+    }
+
+
+def prove_assurance_rollout_packet(
+    gate_report: AdversarialE2EGateReport | Mapping[str, Any],
+    shadow_report: ShadowRolloutReport | Mapping[str, Any] | None = None,
+    *,
+    binding: "VfsRolloutBinding | Mapping[str, Any] | None" = None,
+    policy: "VfsRolloutPolicy | Mapping[str, Any] | None" = None,
+    desired_mode: VfsRolloutMode | str = VfsRolloutMode.SHADOW,
+) -> dict[str, Any]:
+    """Emit the full VFS-G162 + VFS-G163 evidence set for the rollout packet.
+
+    Covers both ``vfs/adversarial-e2e-gate@1`` and
+    ``vfs/shadow-rollout-report@1`` in one cohesive claim for
+    goal_packet/assurance_rollout.  Never grants automatic mutation or
+    completion authority.
+    """
+
+    if isinstance(gate_report, Mapping):
+        gate_report = AdversarialE2EGateReport.from_dict(gate_report)
+    if not isinstance(gate_report, AdversarialE2EGateReport):
+        raise TypeError("gate_report must be an AdversarialE2EGateReport")
+
+    if isinstance(shadow_report, Mapping):
+        raise VfsSymbolicRolloutError(
+            "pass a ShadowRolloutReport instance or omit shadow_report "
+            "to rebuild from gate evidence"
+        )
+    if shadow_report is None:
+        if binding is None:
+            binding = build_default_vfs_binding(gate_report.fixture)
+        if policy is None:
+            policy = build_default_vfs_policy(
+                approve_assist=True, approve_automatic=False
+            )
+        if not isinstance(binding, VfsRolloutBinding):
+            binding = VfsRolloutBinding.from_dict(binding)
+        if not isinstance(policy, VfsRolloutPolicy):
+            policy = VfsRolloutPolicy.from_dict(policy)
+        shadow_report = ShadowRolloutReport(
+            gate_report=gate_report,
+            binding=binding,
+            policy=policy,
+            desired_mode=desired_mode,
+        )
+
+    if not isinstance(shadow_report, ShadowRolloutReport):
+        raise TypeError("shadow_report must be a ShadowRolloutReport")
+    if shadow_report.gate_report.report_id != gate_report.report_id:
+        raise VfsSymbolicRolloutError(
+            "assurance rollout packet reports must bind to the same "
+            "adversarial gate report"
+        )
+
+    adversarial_claim = prove_adversarial_e2e_gate(gate_report)
+    shadow_claim = prove_shadow_rollout_report(shadow_report)
+    satisfied = bool(adversarial_claim.get("satisfied")) and bool(
+        shadow_claim.get("satisfied")
+    )
+    return {
+        "schema": ASSURANCE_ROLLOUT_PACKET_CLAIM_SCHEMA,
+        "evidence_terms": list(packet_evidence_terms()),
+        "all_evidence_terms": list(OBJECTIVE_DOMAIN_EVIDENCE_TERMS),
+        "evidence_bindings": list(objective_evidence_bindings()),
+        "packet_id": OBJECTIVE_PACKET_ID,
+        "goal_ids": list(OBJECTIVE_PACKET_GOAL_IDS),
+        "parent_goal_id": OBJECTIVE_PARENT_GOAL_ID,
+        "task_ids": [OBJECTIVE_TASK_G162_ID, OBJECTIVE_TASK_G163_ID],
+        "packet_task_id": OBJECTIVE_TASK_PACKET_ID,
+        "adversarial_e2e_gate": adversarial_claim,
+        "shadow_rollout_report": shadow_claim,
+        "gate_report_linked": True,
+        "satisfied": satisfied,
+        "automatic_mutation_enabled": False,
+        "authoritative": False,
+        "completion_authoritative": False,
+        "semantic_authority": False,
+    }
+
+
 __all__ = (
+    "ADVERSARIAL_E2E_GATE_CLAIM_SCHEMA",
+    "ADVERSARIAL_E2E_GATE_EVIDENCE",
+    "ADVERSARIAL_E2E_GATE_INVARIANTS",
     "ADVERSARIAL_E2E_GATE_SCHEMA",
+    "ASSURANCE_ROLLOUT_PACKET_CLAIM_SCHEMA",
     "AdversarialE2EGateReport",
     "AdversarialGateId",
     "AdversarialGateObservation",
@@ -2538,7 +3259,21 @@ __all__ = (
     "FrozenMultiRepoFixture",
     "FrozenRepositoryDescriptor",
     "GateStatus",
+    "OBJECTIVE_DOMAIN_EVIDENCE_TERMS",
+    "OBJECTIVE_EVIDENCE_BINDING_ROWS",
+    "OBJECTIVE_GOAL_G162_ID",
+    "OBJECTIVE_GOAL_G163_ID",
+    "OBJECTIVE_PACKET_ID",
+    "OBJECTIVE_PACKET_EVIDENCE_TERMS",
+    "OBJECTIVE_PACKET_GOAL_IDS",
+    "OBJECTIVE_PARENT_GOAL_ID",
+    "OBJECTIVE_TASK_G162_ID",
+    "OBJECTIVE_TASK_G163_ID",
+    "OBJECTIVE_TASK_PACKET_ID",
     "REQUIRED_ADVERSARIAL_GATES",
+    "SHADOW_ROLLOUT_REPORT_CLAIM_SCHEMA",
+    "SHADOW_ROLLOUT_REPORT_EVIDENCE",
+    "SHADOW_ROLLOUT_REPORT_INVARIANTS",
     "SHADOW_ROLLOUT_REPORT_SCHEMA",
     "ShadowRolloutReport",
     "VFS_SYMBOLIC_BEHAVIOR_ID",
@@ -2563,16 +3298,30 @@ __all__ = (
     "VfsRolloutPolicy",
     "VfsSymbolicPublicAPI",
     "VfsSymbolicRolloutError",
+    "adversarial_e2e_gate_acceptance_dimensions",
+    "adversarial_e2e_gate_evidence",
+    "adversarial_e2e_gate_evidence_terms",
+    "all_covered_evidence_terms",
     "build_default_vfs_binding",
     "build_default_vfs_policy",
     "build_frozen_adversarial_population",
+    "covered_evidence_terms",
     "evaluate_adversarial_gates",
     "evaluate_vfs_symbolic_rollout",
     "freeze_multi_repository_fixture",
+    "objective_evidence_bindings",
+    "packet_evidence_terms",
     "project_bounded_findings",
     "project_bounded_receipts",
     "project_bounded_status",
+    "prove_adversarial_e2e_gate",
+    "prove_assurance_rollout_packet",
+    "prove_shadow_rollout_report",
     "run_vfs_symbolic_assurance_e2e",
+    "shadow_rollout_report_acceptance_dimensions",
+    "shadow_rollout_report_evidence",
+    "shadow_rollout_report_evidence_terms",
     "verify_adversarial_e2e_report",
+    "verify_shadow_rollout_report",
     "verify_vfs_symbolic_rollout",
 )
