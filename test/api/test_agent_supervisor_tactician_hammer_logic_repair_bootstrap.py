@@ -360,6 +360,7 @@ def test_lpr_board_validator_keeps_retry_repairs_outside_the_sealed_dag():
 
 def test_lpr_board_validator_accepts_only_provenanced_reconciliation_appendices(
     tmp_path,
+    monkeypatch,
 ):
     spec = importlib.util.spec_from_file_location(
         "lpr_board_validator_reconciliation_test",
@@ -371,13 +372,21 @@ def test_lpr_board_validator_accepts_only_provenanced_reconciliation_appendices(
 
     fingerprint = "50d47eee193a7305a41ab449609cadbbd96264e7"
     discovery_root = str(tmp_path / "state" / "discovery")
+    validator.EXPECTED_RECONCILIATION_DISCOVERY_ROOT = Path(
+        discovery_root
+    ).resolve()
+    configured_state_root = tmp_path / "configured-program"
+    monkeypatch.setenv("LPR_STATE_ROOT", str(configured_state_root))
+    assert (
+        configured_state_root / "state" / "discovery"
+    ).resolve() in validator._expected_reconciliation_discovery_roots()
     discovery_path = (
         f"{discovery_root}/"
-        "2026-07-31-lpr-043-reconciliation-50d47eee193a.md"
+        "2026-07-31-lpr-045-reconciliation-50d47eee193a.md"
     )
     receipt = {
         "schema": validator.RECONCILIATION_RESOLUTION_SCHEMA,
-        "task_id": "LPR-043",
+        "task_id": "LPR-045",
         "reconciliation_fingerprint": fingerprint,
         "kind": "dirty_backlogged_worktree",
         "reason": "unsupported_status",
@@ -403,7 +412,7 @@ def test_lpr_board_validator_accepts_only_provenanced_reconciliation_appendices(
         encoding="utf-8",
     )
     task = PortalTask(
-        task_id="LPR-043",
+        task_id="LPR-045",
         title=(
             "Resolve 1 dirty backlogged worktrees blocked by "
             "unsupported_status"
@@ -432,6 +441,7 @@ def test_lpr_board_validator_accepts_only_provenanced_reconciliation_appendices(
             "reconciliation reason": "unsupported_status",
             "reconciliation fingerprint": fingerprint,
             "reconciliation discovery": discovery_path,
+            "resolution receipt digest": receipt["receipt_digest"],
             "canonical board task": "false",
             "fingerprint": fingerprint,
             "dedupe key": (
@@ -444,10 +454,40 @@ def test_lpr_board_validator_accepts_only_provenanced_reconciliation_appendices(
         },
     )
 
+    board_tasks = {
+        item.task_id: item
+        for item in validator.parse_task_file(
+            validator.REPO_ROOT / validator.TODO_PATH,
+            task_header_prefix=validator.TASK_PREFIX,
+        )
+    }
+    canonical_by_id = {
+        task_id: board_tasks[task_id]
+        for task_id in validator.EXPECTED_TASK_IDS
+    }
+    legacy_repairs = [board_tasks["LPR-043"], board_tasks["LPR-044"]]
+
     validator._validate_operational_repair_tasks(
-        [task],
-        canonical_by_id={},
+        [*legacy_repairs, task],
+        canonical_by_id=canonical_by_id,
     )
+
+    for legacy_task_id in sorted(validator.LEGACY_OPERATIONAL_REPAIR_TASK_IDS):
+        retyped_legacy = PortalTask(
+            **{**task.__dict__, "task_id": legacy_task_id}
+        )
+        with pytest.raises(
+            validator.BoardValidationError,
+            match="reserved for its historical retry-repair contract",
+        ):
+            validator._validate_operational_repair_tasks(
+                (
+                    [retyped_legacy]
+                    if legacy_task_id == "LPR-043"
+                    else [legacy_repairs[0], retyped_legacy]
+                ),
+                canonical_by_id=canonical_by_id,
+            )
 
     forged = PortalTask(
         **{
@@ -463,15 +503,15 @@ def test_lpr_board_validator_accepts_only_provenanced_reconciliation_appendices(
         match="reconciliation reason is unsupported",
     ):
         validator._validate_operational_repair_tasks(
-            [forged],
-            canonical_by_id={},
+            [*legacy_repairs, forged],
+            canonical_by_id=canonical_by_id,
         )
 
-    duplicate_discovery_path = discovery_path.replace("lpr-043", "lpr-044")
+    duplicate_discovery_path = discovery_path.replace("lpr-045", "lpr-046")
     duplicate = PortalTask(
         **{
             **task.__dict__,
-            "task_id": "LPR-044",
+            "task_id": "LPR-046",
             "status": "blocked",
             "validation": [f"test -f {duplicate_discovery_path}"],
             "acceptance": task.acceptance.replace(
@@ -479,24 +519,84 @@ def test_lpr_board_validator_accepts_only_provenanced_reconciliation_appendices(
                 duplicate_discovery_path,
             ),
             "metadata": {
-                **task.metadata,
+                **{
+                    key: value
+                    for key, value in task.metadata.items()
+                    if key != "resolution receipt digest"
+                },
                 "reconciliation discovery": duplicate_discovery_path,
             },
         }
     )
     validator._validate_operational_repair_tasks(
-        [task, duplicate],
-        canonical_by_id={},
+        [*legacy_repairs, task, duplicate],
+        canonical_by_id=canonical_by_id,
     )
 
-    blocked = PortalTask(**{**task.__dict__, "status": "blocked"})
+    anchored_blocked = PortalTask(**{**task.__dict__, "status": "blocked"})
+    with pytest.raises(
+        validator.BoardValidationError,
+        match="blocked reconciliation has a stale receipt anchor",
+    ):
+        validator._validate_operational_repair_tasks(
+            [*legacy_repairs, anchored_blocked],
+            canonical_by_id=canonical_by_id,
+        )
+
+    blocked = PortalTask(
+        **{
+            **task.__dict__,
+            "status": "blocked",
+            "metadata": {
+                key: value
+                for key, value in task.metadata.items()
+                if key != "resolution receipt digest"
+            },
+        }
+    )
     with pytest.raises(
         validator.BoardValidationError,
         match="concurrent duplicate operational reconciliation task",
     ):
         validator._validate_operational_repair_tasks(
-            [blocked, duplicate],
-            canonical_by_id={},
+            [*legacy_repairs, blocked, duplicate],
+            canonical_by_id=canonical_by_id,
+        )
+
+    unanchored = PortalTask(
+        **{
+            **task.__dict__,
+            "metadata": {
+                key: value
+                for key, value in task.metadata.items()
+                if key != "resolution receipt digest"
+            },
+        }
+    )
+    with pytest.raises(
+        validator.BoardValidationError,
+        match="resolution receipt anchor mismatch",
+    ):
+        validator._validate_operational_repair_tasks(
+            [*legacy_repairs, unanchored],
+            canonical_by_id=canonical_by_id,
+        )
+
+    receipt["evidence"] = {"fixture": "tampered and internally rehashed"}
+    receipt["receipt_digest"] = validator._resolution_receipt_digest(receipt)
+    discovery_file.write_text(
+        "## Resolution Receipt\n\n```json\n"
+        + json.dumps(receipt, indent=2, sort_keys=True)
+        + "\n```\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(
+        validator.BoardValidationError,
+        match="resolution receipt anchor mismatch",
+    ):
+        validator._validate_operational_repair_tasks(
+            [*legacy_repairs, task],
+            canonical_by_id=canonical_by_id,
         )
 
     receipt["evidence"] = {"fixture": "tampered after hashing"}
@@ -511,6 +611,6 @@ def test_lpr_board_validator_accepts_only_provenanced_reconciliation_appendices(
         match="resolution receipt digest mismatch",
     ):
         validator._validate_operational_repair_tasks(
-            [task],
-            canonical_by_id={},
+            [*legacy_repairs, task],
+            canonical_by_id=canonical_by_id,
         )

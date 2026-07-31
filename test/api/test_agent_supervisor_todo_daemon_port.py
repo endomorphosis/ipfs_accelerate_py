@@ -19442,9 +19442,11 @@ def test_implementation_supervisor_cleans_redundant_dirty_merged_worktree(tmp_pa
     assert not worktree_path.exists()
 
 
-def test_implementation_supervisor_cleans_merged_worktree_with_deleted_configured_submodule(
+@pytest.mark.parametrize("status_code", (" D", "D "))
+def test_implementation_supervisor_preserves_merged_worktree_with_deleted_configured_submodule(
     tmp_path,
     monkeypatch,
+    status_code,
 ):
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -19481,7 +19483,11 @@ def test_implementation_supervisor_cleans_merged_worktree_with_deleted_configure
     monkeypatch.setattr(
         supervisor,
         "_git_status_short",
-        lambda path: [" D external/ipfs_datasets"] if path == worktree_path else [],
+        lambda path: (
+            [f"{status_code} external/ipfs_datasets"]
+            if path == worktree_path
+            else []
+        ),
     )
     monkeypatch.setattr(
         supervisor,
@@ -19491,12 +19497,16 @@ def test_implementation_supervisor_cleans_merged_worktree_with_deleted_configure
 
     result = supervisor.cleanup_backlogged_worktrees()
 
-    assert result["removed_count"] == 1
-    assert result["removed"][0]["dirty_redundancy"]["redundant"] is True
-    assert result["removed"][0]["dirty_redundancy"]["reason"] == (
-        "configured_submodule_deletions_match_target"
+    assert result["removed_count"] == 0
+    assert result["skipped_reason_counts"]["dirty_worktree"] == 1
+    skipped = result["skipped"][0]
+    assert skipped["dirty_redundancy"]["redundant"] is False
+    assert skipped["dirty_redundancy"]["reason"] == "unsupported_status"
+    assert skipped["rescue_result"]["preserved"] is False
+    assert skipped["rescue_result"]["reason"] == (
+        "no_staged_rescue_delta_requires_reconciliation"
     )
-    assert not worktree_path.exists()
+    assert worktree_path.exists()
 
 
 def _merged_cleanup_configured_submodule_fixture(
@@ -21029,6 +21039,216 @@ def test_reconciliation_guardrail_dedupes_dirty_group_when_count_changes(tmp_pat
         },
         task_prefix="ACCEL-",
     ) == []
+
+    count_drift_refresh = record_reconciliation_guardrail_findings(
+        todo_path=todo_path,
+        strategy_path=strategy_path,
+        discovery_dir=discovery_dir,
+        cleanup_result={
+            "attempted": True,
+            "dirty_worktree_groups": {
+                "content_not_in_target": {
+                    "count": 78,
+                    "samples": [
+                        {
+                            "branch": "implementation/example",
+                            "path": "/tmp/example",
+                        }
+                    ],
+                }
+            },
+        },
+        task_prefix="ACCEL-",
+    )
+    assert len(count_drift_refresh) == 1
+    assert count_drift_refresh[0]["refreshed"] is True
+    count_drift_todo = todo_path.read_text(encoding="utf-8")
+    assert (
+        "Resolve 78 dirty backlogged worktrees blocked by "
+        "content_not_in_target"
+    ) in count_drift_todo
+    assert (
+        "because 78 branch or worktree cleanup candidates are blocked by "
+        "content_not_in_target"
+    ) in count_drift_todo
+    count_drift_discovery = Path(
+        parse_task_file(todo_path, task_header_prefix="ACCEL-")[0].metadata[
+            "reconciliation discovery"
+        ]
+    )
+    count_drift_manifest = json.loads(
+        count_drift_discovery.read_text(encoding="utf-8")
+        .split("```json\n", 1)[1]
+        .split("\n```", 1)[0]
+    )
+    assert count_drift_manifest["candidate_count"] == 78
+
+
+def test_reconciliation_guardrail_refresh_migrates_untrusted_discovery_path(
+    tmp_path,
+    monkeypatch,
+):
+    todo_path = tmp_path / "todo.md"
+    strategy_path = tmp_path / "state" / "strategy.json"
+    discovery_dir = tmp_path / "state" / "discovery"
+    todo_path.write_text("# Agent Todos\n", encoding="utf-8")
+    cleanup_result = {
+        "attempted": True,
+        "dirty_worktree_groups": {
+            "unsupported_status": {
+                "count": 1,
+                "samples": [
+                    {
+                        "branch": "implementation/example",
+                        "path": "/tmp/example",
+                        "status_short": [" D ipfs_datasets_py"],
+                    }
+                ],
+            }
+        },
+    }
+    initial = record_reconciliation_guardrail_findings(
+        todo_path=todo_path,
+        strategy_path=strategy_path,
+        discovery_dir=discovery_dir,
+        cleanup_result=cleanup_result,
+        task_prefix="ACCEL-",
+        discovery_output_path=str(discovery_dir),
+    )
+    assert len(initial) == 1
+    original_path = Path(initial[0]["discovery_path"])
+
+    outside_discovery = tmp_path / "untrusted" / "discovery"
+    outside_discovery.mkdir(parents=True)
+    outside_path = outside_discovery / original_path.name
+    outside_path.write_text(
+        original_path.read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    todo_path.write_text(
+        todo_path.read_text(encoding="utf-8").replace(
+            str(original_path),
+            str(outside_path),
+        ).replace(
+            f"- Outputs: {discovery_dir},",
+            f"- Outputs: {outside_discovery},",
+        ).replace(
+            "- Canonical board task: false",
+            "- Resolution receipt digest: sha256:" + ("0" * 64)
+            + "\n- Canonical board task: false",
+        ),
+        encoding="utf-8",
+    )
+    original_read_text = Path.read_text
+
+    def guarded_read_text(path, *args, **kwargs):
+        if path == outside_path:
+            raise AssertionError("untrusted discovery path was read")
+        return original_read_text(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", guarded_read_text)
+
+    findings = record_reconciliation_guardrail_findings(
+        todo_path=todo_path,
+        strategy_path=strategy_path,
+        discovery_dir=discovery_dir,
+        cleanup_result=cleanup_result,
+        task_prefix="ACCEL-",
+        discovery_output_path=str(discovery_dir),
+    )
+
+    assert len(findings) == 1
+    assert findings[0]["refreshed"] is True
+    task = parse_task_file(todo_path, task_header_prefix="ACCEL-")[0]
+    refreshed_path = Path(task.metadata["reconciliation discovery"])
+    assert refreshed_path.parent.resolve() == discovery_dir.resolve()
+    assert refreshed_path.exists()
+    assert task.outputs[0] == str(discovery_dir)
+    assert task.validation == [f"test -f {refreshed_path}"]
+    assert "resolution receipt digest" not in task.metadata
+
+
+def test_reconciliation_guardrail_writer_refuses_symlink_destination(tmp_path):
+    discovery_dir = tmp_path / "state" / "discovery"
+    discovery_dir.mkdir(parents=True)
+    outside_path = tmp_path / "operator-owned.md"
+    outside_path.write_text("preserve me\n", encoding="utf-8")
+    destination = discovery_dir / "reconciliation.md"
+    destination.symlink_to(outside_path)
+
+    with pytest.raises(ValueError, match="must not be a symlink"):
+        backlog_refinery_module.write_reconciliation_guardrail_discovery_path(
+            path=destination,
+            task_id="ACCEL-001",
+            record={
+                "fingerprint": "a" * 40,
+                "kind": "dirty_backlogged_worktree",
+                "reason": "unsupported_status",
+                "candidate_count": 1,
+                "priority": "P1",
+                "track": "ops",
+            },
+            discovery_dir=discovery_dir,
+        )
+
+    assert outside_path.read_text(encoding="utf-8") == "preserve me\n"
+
+
+def test_reconciliation_guardrail_refresh_never_reads_symlink_evidence(
+    tmp_path,
+    monkeypatch,
+):
+    todo_path = tmp_path / "todo.md"
+    strategy_path = tmp_path / "state" / "strategy.json"
+    discovery_dir = tmp_path / "state" / "discovery"
+    todo_path.write_text("# Agent Todos\n", encoding="utf-8")
+    cleanup_result = {
+        "attempted": True,
+        "dirty_worktree_groups": {
+            "unsupported_status": {
+                "count": 1,
+                "samples": [
+                    {
+                        "branch": "implementation/example",
+                        "path": "/tmp/example",
+                        "status_short": [" D ipfs_datasets_py"],
+                    }
+                ],
+            }
+        },
+    }
+    initial = record_reconciliation_guardrail_findings(
+        todo_path=todo_path,
+        strategy_path=strategy_path,
+        discovery_dir=discovery_dir,
+        cleanup_result=cleanup_result,
+        task_prefix="ACCEL-",
+        discovery_output_path=str(discovery_dir),
+    )
+    discovery_path = Path(initial[0]["discovery_path"])
+    discovery_path.unlink()
+    outside_path = tmp_path / "operator-owned.md"
+    outside_path.write_text("preserve me\n", encoding="utf-8")
+    discovery_path.symlink_to(outside_path)
+    original_read_text = Path.read_text
+
+    def guarded_read_text(path, *args, **kwargs):
+        if path in {discovery_path, outside_path}:
+            raise AssertionError("symlinked discovery evidence was read")
+        return original_read_text(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", guarded_read_text)
+    with pytest.raises(ValueError, match="must not be a symlink"):
+        record_reconciliation_guardrail_findings(
+            todo_path=todo_path,
+            strategy_path=strategy_path,
+            discovery_dir=discovery_dir,
+            cleanup_result=cleanup_result,
+            task_prefix="ACCEL-",
+            discovery_output_path=str(discovery_dir),
+        )
+
+    assert original_read_text(outside_path, encoding="utf-8") == "preserve me\n"
 
 
 def test_reconciliation_guardrail_recurrence_preserves_completed_history(tmp_path):

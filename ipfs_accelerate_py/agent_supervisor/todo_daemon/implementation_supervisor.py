@@ -4824,6 +4824,7 @@ class PortalImplementationSupervisor:
                         "status_short": dirty[:20],
                         "dirty_redundancy": redundant_dirty,
                         "dirty_evidence": evidence,
+                        "rescue_result": rescue_result,
                     }
                     skipped.append(skip)
                     self._store_worktree_scan_cache_entry(
@@ -5061,12 +5062,12 @@ class PortalImplementationSupervisor:
         relative: str,
         target_ref: str,
     ) -> bool:
-        if code not in {" D", "D "}:
-            return False
-        relative = relative.rstrip("/")
-        if not self._is_configured_worktree_submodule_path(relative):
-            return False
-        return self._target_ref_has_path(relative, target_ref)
+        # A status code alone cannot distinguish an interrupted checkout from
+        # an intentional staged or unstaged gitlink deletion.  Keep both
+        # operator-gated until independent provenance proves the deletion is
+        # disposable.
+        del code, relative, target_ref
+        return False
 
     @staticmethod
     def _gitlink_tree_entry(

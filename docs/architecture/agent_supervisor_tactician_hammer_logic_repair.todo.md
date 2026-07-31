@@ -1437,6 +1437,7 @@ expectations under existing precedence, but do not prove them by passing.
 - Reconciliation reason: unsupported_status
 - Reconciliation fingerprint: 50d47eee193a7305a41ab449609cadbbd96264e7
 - Reconciliation discovery: /home/barberb/lift_coding/.git/modules/external/ipfs_accelerate/worktrees/proof-gated-contract-repair/agent-supervisor-state/tactician_hammer_logic_repair/state/discovery/2026-07-31-lpr-045-reconciliation-50d47eee193a.md
+- Resolution receipt digest: sha256:42dba7d1c41a420d268f2cc4591059cf647e4dc7da2b4e8c9c8fe9198285cde4
 - Canonical board task: false
 - Fingerprint: 50d47eee193a7305a41ab449609cadbbd96264e7
 - Dedupe key: reconciliation_guardrail:dirty_backlogged_worktree:unsupported_status

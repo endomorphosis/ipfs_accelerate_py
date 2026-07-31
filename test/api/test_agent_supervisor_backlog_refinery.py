@@ -2693,12 +2693,14 @@ old generated plan
         path=path,
         task_id="AUTO-010",
         record=record,
+        discovery_dir=path.parent,
         date="2026-06-07",
     )
     write_reconciliation_guardrail_discovery_path(
         path=path,
         task_id="AUTO-010",
         record={**record, "candidate_count": 3},
+        discovery_dir=path.parent,
         date="2026-06-07",
     )
 
