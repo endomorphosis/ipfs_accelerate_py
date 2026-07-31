@@ -99,7 +99,7 @@ expectations under existing precedence, but do not prove them by passing.
 
 ## LPR-002 Probe exact Tactician, Hammer, and static-analysis capabilities
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
