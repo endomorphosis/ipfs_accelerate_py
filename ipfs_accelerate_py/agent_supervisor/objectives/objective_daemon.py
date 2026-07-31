@@ -3787,6 +3787,16 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default=[],
         help="Objective goal id to rescan even when an existing discovery fingerprint would suppress it.",
     )
+    parser.add_argument(
+        "--scope-goal-id",
+        action="append",
+        default=[],
+        help=(
+            "Restrict evidence scanning and todo generation to this objective "
+            "goal id. Repeat for multiple goals. Unlike --force-goal-id, this "
+            "does not merely prioritize the named goals."
+        ),
+    )
     parser.add_argument("--repeat-existing", action="store_true", help="Do not suppress fingerprints already in discovery files")
     parser.add_argument("--max-findings", type=int, default=10)
     parser.add_argument(
@@ -4192,6 +4202,9 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
             *refined_goal_ids,
             *split_csv(getattr(args, "force_goal_id", []) or []),
         ],
+        scope_goal_ids=split_csv(
+            getattr(args, "scope_goal_id", []) or []
+        ),
         persist_ast_dataset=not args.no_persist_ast_dataset,
         write_todo_vector_index=not getattr(args, "no_todo_vector_index", False),
         todo_vector_index_path=getattr(args, "todo_vector_index_path", None),
@@ -4558,6 +4571,9 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
         "graph_path": repo_relative_path(repo_root, graph_path),
         "scan_exclude_paths": scan_exclude_metadata,
         "scan_exclude_path_count": len(scan_exclude_metadata),
+        "scope_goal_ids": split_csv(
+            getattr(args, "scope_goal_id", []) or []
+        ),
         "protected_output_paths": list(protected_output_paths),
         "protected_output_path_count": len(protected_output_paths),
         "source_protected_scan_policy": source_protected_scan_policy(),

@@ -11,6 +11,14 @@ Program invariants:
 
 - Existing `LFV-G000` artifacts are the implementation baseline, not evidence
   that every optional external tool is installed or production-qualified.
+- Lean, the in-process Runtime MTL monitor, and the in-process Datalog/SecPAL
+  authorization engines are usable today, but remain below production
+  semantic certification until real positive, negative, mutation, and replay
+  evidence is complete and bound to their exact identities.
+- Every remaining unavailable external prover or checker in the declared
+  matrix is open capability-expansion work. Its lane must gain a reviewed,
+  explicitly invoked installation path and semantic certification; mere PATH,
+  package, source, support-runtime, or advisor presence cannot close the work.
 - `ipfs_datasets_py.logic` owns canonical semantics, goal/proof-hole
   contracts, provider-facing compilation, counterexample semantics, and the
   stable public verification API.
@@ -43,9 +51,9 @@ Program invariants:
 
 ## FVT-G000 Production-ready formal verification and goal-directed proof tactician
 
-- Status: provisionally_complete
+- Status: active
 - Parent:
-- Depends on: FVT-G090
+- Depends on: FVT-G200
 - Fib priority: 24157817
 - Priority: P0
 - Track: integration
@@ -996,3 +1004,325 @@ Program invariants:
 - Analyzer health: {"evidence":{},"passed":false,"reason_code":"analyzer_health_missing","status":"missing"}
 - Exhaustion quorum: {"evidence":{},"member_count":null,"reason_code":"exhaustion_quorum_missing","required_members":null,"satisfied":false,"stale_members":[]}
 - Reopen reasons: []
+
+## FVT-G100 Define role-aware toolchain authority and promotion
+
+- Status: active
+- Parent: FVT-G000
+- Depends on: FVT-G060
+- Fib priority: 6765
+- Priority: P0
+- Track: toolchain-governance
+- Bundle: formal-verification-tactician/toolchain-governance
+- Goal: Replace availability-shaped promotion with a closed per-tool role model and split the monolithic certificate runner into independently owned semantic lanes.
+- Evidence: ipfs_datasets_py/ipfs_datasets_py/logic/backends/toolchain_roles.py, test/api/test_formal_verification_toolchain_roles.py
+- Outputs: ipfs_datasets_py/ipfs_datasets_py/logic/backends/toolchain_roles.py, tools/logic/certification/roles.py, test/api/test_formal_verification_toolchain_roles.py
+- Validation: python -m pytest ipfs_datasets_py/tests/integration/logic/test_verification_toolchain_security.py test/api/test_formal_verification_toolchain_roles.py test/integration/test_formal_verification_real_tool_matrix.py -q
+- Acceptance: Every matrix entry has exactly one closed role and authority ceiling; Java, Maude, and OPAM are support only; Leanstral, autoencoder, SymAI, ErgoAI, and Hammer are advisor/candidate only until independent reconstruction; external Souffle/SecPAL are shadow checkers; in-process Datalog/SecPAL have authorization-only authority; Runtime MTL has finite-trace authority; state and hyperproperty tools have bounded authority; Lean/Rocq/Isabelle have kernel authority; ZKP has attestation authority only; support, advisor, or shadow presence alone can never satisfy a certified-authority requirement.
+- Conflict policy: Own the canonical role schema, lane registration, and authority-boundary tests; pre-register per-lane handlers so later tasks do not concurrently edit the central certifier or generated certificate.
+- Interfaces: FormalVerificationToolRole@1, RoleAwarePromotionPolicy@1
+- Submodules: ipfs_datasets_py
+- Resource class: cpu-policy
+
+## FVT-G101 Semantically certify the pinned Lean kernel
+
+- Status: active
+- Parent: FVT-G000
+- Depends on: FVT-G100
+- Fib priority: 10946
+- Priority: P0
+- Track: semantic-reference
+- Bundle: formal-verification-tactician/lean-certification
+- Goal: Promote the already usable locked Lean toolchain only after real kernel semantics, rejection behavior, and deterministic replay are certified.
+- Evidence: tools/logic/certification/lean.py, test/integration/toolchains/test_lean_semantic_certification.py
+- Outputs: tools/logic/certification/lean.py, test/fixtures/formal_verification/toolchains/lean/manifest.json, test/integration/toolchains/test_lean_semantic_certification.py
+- Validation: ELAN_TOOLCHAIN=leanprover/lean4:v4.31.0 ELAN_NO_AUTO_INSTALL=1 python -m pytest test/integration/toolchains/test_lean_semantic_certification.py test/integration/test_formal_verification_real_tool_matrix.py -k lean -q
+- Acceptance: Exact Lean v4.31.0 compiles a true theorem, rejects false and malformed proofs, rejects hypothesis/conclusion mutations, and replays deterministically; imports, source tree, theorem, assumptions, toolchain, and output are bound; sorry, admit, unsafe escape, shim mismatch, install, download, and network use fail closed; the resulting authority is kernel proof checking only.
+- Conflict policy: Own the Lean lane handler, corpus, and focused test; do not edit the central certificate or select/download a different Elan toolchain.
+- Interfaces: LeanSemanticCertification@1
+- Resource class: cpu-proof-type-check
+
+## FVT-G102 Semantically certify reference Datalog and SecPAL authorization
+
+- Status: active
+- Parent: FVT-G000
+- Depends on: FVT-G100
+- Fib priority: 10946
+- Priority: P0
+- Track: semantic-reference
+- Bundle: formal-verification-tactician/authorization-certification
+- Goal: Promote the already usable in-process Datalog and SecPAL-style engines only after full authorization semantics are certified.
+- Evidence: tools/logic/certification/authorization.py, test/integration/toolchains/test_authorization_semantic_certification.py
+- Outputs: tools/logic/certification/authorization.py, test/fixtures/formal_verification/toolchains/authorization/manifest.json, test/integration/toolchains/test_authorization_semantic_certification.py
+- Validation: PYTHONPATH=ipfs_datasets_py python -m pytest ipfs_datasets_py/tests/integration/logic/backends/test_authorization_backends.py test/integration/toolchains/test_authorization_semantic_certification.py test/integration/test_formal_verification_real_tool_matrix.py -k 'authorization or datalog or secpal' -q
+- Acceptance: Both in-process engines exercise allow, deny, unknown, conflict, scoped delegation, revocation, negative and malformed inputs; rule, principal, scope, and delegation mutations change or quarantine the verdict; counterexamples replay deterministically; receipts bind the exact policy and engine; certification grants authorization-decision authority, never theorem authority.
+- Conflict policy: Own the reference authorization lane and corpus; do not install external shadows or edit the central certificate.
+- Interfaces: AuthorizationSemanticCertification@1
+- Submodules: ipfs_datasets_py
+- Resource class: cpu-validation
+
+## FVT-G103 Semantically certify finite-trace Runtime MTL
+
+- Status: active
+- Parent: FVT-G000
+- Depends on: FVT-G100
+- Fib priority: 10946
+- Priority: P0
+- Track: semantic-reference
+- Bundle: formal-verification-tactician/runtime-mtl-certification
+- Goal: Promote the already usable in-process Runtime MTL monitor only after interval, event, violation, and replay semantics are certified across supported surfaces.
+- Evidence: tools/logic/certification/runtime_mtl.py, test/integration/toolchains/test_runtime_mtl_semantic_certification.py
+- Outputs: tools/logic/certification/runtime_mtl.py, test/fixtures/formal_verification/toolchains/runtime_mtl/manifest.json, test/integration/toolchains/test_runtime_mtl_semantic_certification.py
+- Validation: PYTHONPATH=ipfs_datasets_py python -m pytest ipfs_datasets_py/tests/integration/logic/test_runtime_mtl_parity.py test/integration/toolchains/test_runtime_mtl_semantic_certification.py test/integration/test_formal_verification_real_tool_matrix.py -k 'runtime_mtl or mtl' -q
+- Acceptance: Live satisfied and violated traces, interval and event mutations, shortest violating-prefix replay, timestamp boundaries, malformed traces, and Python/TypeScript golden parity pass; receipts bind formula, trace, clock policy, bounds, implementation, and source tree; a clean finite prefix never becomes an unbounded theorem.
+- Conflict policy: Own the in-process Runtime MTL lane, golden corpus, and focused test; do not install the external parity checker or edit the central certificate.
+- Interfaces: RuntimeMTLSemanticCertification@1
+- Submodules: ipfs_datasets_py
+- Resource class: cpu-validation
+
+## FVT-G110 Replace declared external-tool gaps with reviewed deployment locks
+
+- Status: active
+- Parent: FVT-G000
+- Depends on: FVT-G100
+- Fib priority: 17711
+- Priority: P0
+- Track: toolchain-governance
+- Bundle: formal-verification-tactician/toolchain-locks
+- Goal: Turn every remaining declared installation gap or incomplete managed pin into a reviewed, licensed, per-platform, explicitly invoked deployment contract.
+- Evidence: config/formal_verification_toolchains.lock.json, test/packaging/test_formal_verification_external_tool_locks.py
+- Outputs: config/formal_verification_toolchains.lock.json, ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/registry.py, test/packaging/test_formal_verification_external_tool_locks.py
+- Validation: python -m pytest test/packaging/test_formal_verification_external_tool_locks.py ipfs_datasets_py/tests/integration/logic/test_verification_toolchain_security.py -k 'pin or checksum or gap or install' -q
+- Acceptance: TLC, HyperLTL/AutoHyper/MCHyper, Souffle/SecPAL, external Runtime MTL, Vampire, Lean, Rocq, Isabelle, OPAM, SymbolicAI, and ErgoAI have reviewed version/license/platform/source/checksum or immutable package-lock identities and installer entries; ZKP has a secret-safe deployment-artifact schema; unsupported platforms fail explicitly; installs are user-local and require explicit opt-in; imports, discovery, tests, and offline certification never install, download, access the network, or mutate a system package manager.
+- Conflict policy: Sole owner for the shared lock and installer registry; add per-family installer plugins for downstream tasks and do not install tools as part of this metadata task.
+- Interfaces: FormalVerificationDeploymentLock@2
+- Submodules: ipfs_datasets_py
+- Resource class: cpu-install-test
+
+## FVT-G120 Install and certify TLC and Apalache state-model checking
+
+- Status: active
+- Parent: FVT-G000
+- Depends on: FVT-G110
+- Fib priority: 28657
+- Priority: P0
+- Track: external-capability
+- Bundle: formal-verification-tactician/state-model-toolchains
+- Goal: Complete the pinned user-local installation and semantic certification of TLC and Apalache for distributed workflows and state machines.
+- Evidence: ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/state_model.py, test/integration/toolchains/test_state_model_toolchain_certification.py
+- Outputs: ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/state_model.py, tools/logic/certification/state_model.py, test/integration/toolchains/test_state_model_toolchain_certification.py
+- Validation: PYTHONPATH=ipfs_datasets_py python -m pytest ipfs_datasets_py/tests/integration/logic/backends/test_tla_model_checkers.py test/integration/toolchains/test_state_model_toolchain_certification.py test/integration/test_formal_verification_real_tool_matrix.py -k 'tlc or apalache or state_model' -q
+- Acceptance: Explicit strict installation makes both exact tools usable; invariant-holds, violation trace, mutated Next/invariant, replay, malformed model, timeout, and bound behavior pass; model/config/constants/bounds/tool identities are bound; Java remains support only and bounded model-checking never promotes to theorem authority.
+- Conflict policy: Own the state-model installer plugin, handler, and test; consume the shared lock without editing it or the central certificate.
+- Interfaces: StateModelToolchainCertification@1
+- Submodules: ipfs_datasets_py
+- Resource class: jvm-proof-solver
+
+## FVT-G130 Install and certify Tamarin with Maude
+
+- Status: active
+- Parent: FVT-G000
+- Depends on: FVT-G110
+- Fib priority: 28657
+- Priority: P0
+- Track: external-capability
+- Bundle: formal-verification-tactician/tamarin-toolchain
+- Goal: Complete the exact Tamarin and compatible Maude installation and certify cryptographic-protocol claims and attacks.
+- Evidence: ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/tamarin.py, test/integration/toolchains/test_tamarin_toolchain_certification.py
+- Outputs: ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/tamarin.py, tools/logic/certification/tamarin.py, test/integration/toolchains/test_tamarin_toolchain_certification.py
+- Validation: PYTHONPATH=ipfs_datasets_py python -m pytest ipfs_datasets_py/tests/integration/logic/backends/test_protocol_backends.py test/integration/toolchains/test_tamarin_toolchain_certification.py test/integration/test_formal_verification_real_tool_matrix.py -k 'tamarin or maude' -q
+- Acceptance: Explicit strict installation selects Tamarin 1.12.0 and Maude 3.5.1; secure, attack, mutated claim/rule, replay, malformed output, timeout, and version mismatch cases pass; theory, claims, bounds, and exact binaries are bound; Maude is support only and cannot promote a property lane by itself.
+- Conflict policy: Own the Tamarin/Maude installer plugin, handler, and test; do not edit the ProVerif lane, shared lock, or central certificate.
+- Interfaces: TamarinToolchainCertification@1
+- Submodules: ipfs_datasets_py
+- Resource class: cpu-proof-solver
+
+## FVT-G131 Install and certify ProVerif in isolated OPAM
+
+- Status: active
+- Parent: FVT-G000
+- Depends on: FVT-G110
+- Fib priority: 28657
+- Priority: P0
+- Track: external-capability
+- Bundle: formal-verification-tactician/proverif-toolchain
+- Goal: Complete an isolated pinned OPAM/ProVerif deployment and semantic protocol certification without mutating global switches.
+- Evidence: ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/proverif.py, test/integration/toolchains/test_proverif_toolchain_certification.py
+- Outputs: ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/proverif.py, tools/logic/certification/proverif.py, test/integration/toolchains/test_proverif_toolchain_certification.py
+- Validation: PYTHONPATH=ipfs_datasets_py python -m pytest ipfs_datasets_py/tests/integration/logic/backends/test_protocol_backends.py test/integration/toolchains/test_proverif_toolchain_certification.py test/integration/test_formal_verification_real_tool_matrix.py -k 'proverif or opam' -q
+- Acceptance: Explicit strict installation selects OPAM 2.5.2 support and ProVerif 2.05 in a repository-local isolated root; secure, attack, mutation, replay, malformed output, cancellation, and mismatch checks pass; model and claim identities bind receipts; OPAM alone has no semantic authority.
+- Conflict policy: Own the ProVerif installer plugin, handler, isolated root contract, and test; serialize OPAM resource use with Rocq and never modify a global OPAM switch.
+- Interfaces: ProVerifToolchainCertification@1
+- Submodules: ipfs_datasets_py
+- Resource class: exclusive-opam-toolchain
+
+## FVT-G140 Install and certify Vampire and E ATP
+
+- Status: active
+- Parent: FVT-G000
+- Depends on: FVT-G110
+- Fib priority: 28657
+- Priority: P1
+- Track: external-capability
+- Bundle: formal-verification-tactician/atp-toolchains
+- Goal: Complete exact Vampire and E prover installation and certify theorem/non-theorem behavior for premise and proof search.
+- Evidence: ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/atp.py, test/integration/toolchains/test_atp_toolchain_certification.py
+- Outputs: ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/atp.py, tools/logic/certification/atp.py, test/integration/toolchains/test_atp_toolchain_certification.py
+- Validation: PYTHONPATH=ipfs_datasets_py python -m pytest ipfs_datasets_py/tests/unit_tests/logic/CEC/provers/test_vampire_eprover.py test/integration/toolchains/test_atp_toolchain_certification.py test/integration/test_formal_verification_real_tool_matrix.py -k 'vampire or eprover or atp' -q
+- Acceptance: Explicit strict installation selects Vampire 5.0.1 and E 3.2.5; theorem, non-theorem, premise/conclusion mutation, proof-output binding, replay, malformed output, and timeout checks pass; ATP results remain candidates unless an allowed independent kernel reconstruction validates them.
+- Conflict policy: Own ATP installer plugins, handler, and test; do not edit CEC semantics, shared lock, or central certificate.
+- Interfaces: ATPToolchainCertification@1
+- Submodules: ipfs_datasets_py
+- Resource class: cpu-proof-solver
+
+## FVT-G150 Install and semantically certify Rocq
+
+- Status: active
+- Parent: FVT-G000
+- Depends on: FVT-G110
+- Fib priority: 28657
+- Priority: P0
+- Track: external-capability
+- Bundle: formal-verification-tactician/rocq-toolchain
+- Goal: Complete isolated installation and real kernel certification for the locked Rocq/Coq provider.
+- Evidence: ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/rocq.py, test/integration/toolchains/test_rocq_toolchain_certification.py
+- Outputs: ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/rocq.py, tools/logic/certification/rocq.py, test/integration/toolchains/test_rocq_toolchain_certification.py
+- Validation: PYTHONPATH=ipfs_datasets_py python -m pytest ipfs_datasets_py/tests/integration/logic/backends/test_kernel_backends.py test/integration/toolchains/test_rocq_toolchain_certification.py test/integration/test_formal_verification_real_tool_matrix.py -k 'rocq or coq' -q
+- Acceptance: Explicit strict installation selects Rocq 9.1.1 in an isolated pinned OPAM root; true proof, false proof, hypothesis/conclusion mutation, deterministic replay, forbidden admits/axiom escapes, malformed input, and mismatch checks pass; receipts bind imports, source, theorem, assumptions, and exact kernel identity.
+- Conflict policy: Own the Rocq installer plugin, handler, and test; serialize OPAM resource use with ProVerif and never modify a global switch.
+- Interfaces: RocqToolchainCertification@1
+- Submodules: ipfs_datasets_py
+- Resource class: exclusive-opam-toolchain
+
+## FVT-G151 Install and semantically certify Isabelle
+
+- Status: active
+- Parent: FVT-G000
+- Depends on: FVT-G110
+- Fib priority: 28657
+- Priority: P1
+- Track: external-capability
+- Bundle: formal-verification-tactician/isabelle-toolchain
+- Goal: Complete the pinned Isabelle installation and real session/kernel certification used for reconstruction and Hammer validation.
+- Evidence: ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/isabelle.py, test/integration/toolchains/test_isabelle_toolchain_certification.py
+- Outputs: ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/isabelle.py, tools/logic/certification/isabelle.py, test/integration/toolchains/test_isabelle_toolchain_certification.py
+- Validation: PYTHONPATH=ipfs_datasets_py python -m pytest ipfs_datasets_py/tests/integration/logic/backends/test_kernel_backends.py test/integration/toolchains/test_isabelle_toolchain_certification.py test/integration/test_formal_verification_real_tool_matrix.py -k isabelle -q
+- Acceptance: Explicit strict installation selects Isabelle2025-2; a checked theory/session passes while bad proof, mutated assumptions/conclusion, replay mismatch, malformed output, timeout, and wrong installation fail; theory heap, session, imports, source, property, and exact tool identity are bound; Hammer remains proposal-only until kernel reconstruction.
+- Conflict policy: Own the Isabelle installer plugin, handler, and test; observe an explicit large-download/storage budget and do not edit the shared lock or central certificate.
+- Interfaces: IsabelleToolchainCertification@1
+- Submodules: ipfs_datasets_py
+- Resource class: large-kernel-toolchain
+
+## FVT-G160 Install and role-certify SymAI, ErgoAI, Leanstral, autoencoder, and Hammer advisors
+
+- Status: active
+- Parent: FVT-G000
+- Depends on: FVT-G110
+- Fib priority: 28657
+- Priority: P1
+- Track: advisor-capability
+- Bundle: formal-verification-tactician/advisor-toolchains
+- Goal: Complete missing SymAI and ErgoAI deployment support and certify every existing advisor utility as bounded candidate generation rather than semantic proof authority.
+- Evidence: ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/advisors.py, test/integration/toolchains/test_advisor_role_certification.py
+- Outputs: ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/advisors.py, tools/logic/certification/advisors.py, test/integration/toolchains/test_advisor_role_certification.py
+- Validation: PYTHONPATH=ipfs_datasets_py python -m pytest ipfs_datasets_py/tests/integration/logic/test_proposal_advisors.py test/integration/toolchains/test_advisor_role_certification.py test/integration/test_formal_verification_real_tool_matrix.py -k 'advisor or symbolicai or ergoai or leanstral or hammer or autoencoder' -q
+- Acceptance: Explicit strict installation selects locked SymAI and ErgoAI identities where supported; SymAI, ErgoAI, Leanstral, autoencoder, and Hammer proposals are bounded, sanitized, source-bound, deterministic or replay-bound, cache-safe, and failure-explicit; no confidence, similarity, generated text, or advisor availability becomes proof without deterministic compilation and independent solver/kernel validation.
+- Conflict policy: Own advisor installer plugins, role handler, and test; reuse existing adapters and caches without changing model runtimes or central certificate generation.
+- Interfaces: AdvisorRoleCertification@1
+- Submodules: ipfs_datasets_py
+- Resource class: cpu-medium
+
+## FVT-G170 Install and certify HyperLTL, AutoHyper, and MCHyper
+
+- Status: active
+- Parent: FVT-G000
+- Depends on: FVT-G110
+- Fib priority: 28657
+- Priority: P0
+- Track: external-capability
+- Bundle: formal-verification-tactician/hyperproperty-toolchains
+- Goal: Replace the hyperproperty declared gap with pinned external engines and bounded information-flow semantic certification.
+- Evidence: ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/hyperproperty.py, test/integration/toolchains/test_hyperproperty_toolchain_certification.py
+- Outputs: ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/hyperproperty.py, tools/logic/certification/hyperproperty.py, test/integration/toolchains/test_hyperproperty_toolchain_certification.py
+- Validation: PYTHONPATH=ipfs_datasets_py python -m pytest ipfs_datasets_py/tests/integration/logic/backends/test_hyperproperty_backends.py test/integration/toolchains/test_hyperproperty_toolchain_certification.py test/integration/test_formal_verification_real_tool_matrix.py -k 'hyperltl or autohyper or mchyper or hyperproperty' -q
+- Acceptance: Explicit strict installation selects reviewed HyperLTL, AutoHyper, and MCHyper artifacts; quantifiers and observation projections are preserved; satisfaction, violating trace tuples, semantic mutations, replay, malformed output, disagreement, timeout, and exact bounds pass; results retain their declared bounded hyperproperty authority and cannot make universal claims beyond bounds.
+- Conflict policy: Own hyperproperty installer plugins, handler, fixtures, and test; do not edit shared lock or central certificate.
+- Interfaces: HyperpropertyToolchainCertification@1
+- Submodules: ipfs_datasets_py
+- Resource class: cpu-proof-solver
+
+## FVT-G180 Install external Datalog and SecPAL differential shadows
+
+- Status: active
+- Parent: FVT-G000
+- Depends on: FVT-G102, FVT-G110
+- Fib priority: 46368
+- Priority: P1
+- Track: external-capability
+- Bundle: formal-verification-tactician/authorization-toolchains
+- Goal: Replace the external authorization gap with pinned Souffle/SecPAL-compatible shadows and differential disagreement handling.
+- Evidence: ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/authorization.py, test/integration/toolchains/test_external_authorization_toolchain_certification.py
+- Outputs: ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/authorization.py, tools/logic/certification/authorization_external.py, test/integration/toolchains/test_external_authorization_toolchain_certification.py
+- Validation: PYTHONPATH=ipfs_datasets_py python -m pytest ipfs_datasets_py/tests/integration/logic/backends/test_authorization_backends.py test/integration/toolchains/test_external_authorization_toolchain_certification.py test/integration/test_formal_verification_real_tool_matrix.py -k 'souffle or secpal or authorization' -q
+- Acceptance: Explicit strict installation selects exact external engines; the allow/deny/unknown/conflict/delegation corpus, rule/scope mutation, replay, malformed output, timeout, and differential comparison pass; any disagreement quarantines promotion; external engines remain shadows while the certified in-process references retain authorization authority.
+- Conflict policy: Own external authorization installer plugins, differential handler, and test; do not weaken or edit the in-process reference semantics.
+- Interfaces: ExternalAuthorizationShadowCertification@1
+- Submodules: ipfs_datasets_py
+- Resource class: cpu-validation
+
+## FVT-G181 Install and certify external Runtime MTL parity
+
+- Status: active
+- Parent: FVT-G000
+- Depends on: FVT-G103, FVT-G110
+- Fib priority: 46368
+- Priority: P1
+- Track: external-capability
+- Bundle: formal-verification-tactician/runtime-monitor-toolchains
+- Goal: Replace the external Runtime MTL gap with a pinned parity engine and cross-runtime semantic disagreement checks.
+- Evidence: ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/runtime_mtl.py, test/integration/toolchains/test_external_runtime_mtl_certification.py
+- Outputs: ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/runtime_mtl.py, tools/logic/certification/runtime_mtl_external.py, test/integration/toolchains/test_external_runtime_mtl_certification.py
+- Validation: PYTHONPATH=ipfs_datasets_py python -m pytest ipfs_datasets_py/tests/integration/logic/test_runtime_mtl_parity.py test/integration/toolchains/test_external_runtime_mtl_certification.py test/integration/test_formal_verification_real_tool_matrix.py -k 'runtime_mtl or mtl' -q
+- Acceptance: Explicit strict installation selects an exact external monitor; Python, TypeScript, and external implementations agree on satisfied/violated golden traces, boundary intervals, mutations, shortest-prefix replay, malformed input, and bounds or quarantine disagreement; finite-trace authority is preserved and no global correctness claim is inferred.
+- Conflict policy: Own the external monitor installer plugin, parity handler, and test; do not edit the in-process semantic reference lane.
+- Interfaces: ExternalRuntimeMTLCertification@1
+- Submodules: ipfs_datasets_py
+- Resource class: cpu-validation
+
+## FVT-G190 Bind and certify a production ZKP circuit deployment
+
+- Status: active
+- Parent: FVT-G000
+- Depends on: FVT-G110
+- Fib priority: 28657
+- Priority: P0
+- Track: external-capability
+- Bundle: formal-verification-tactician/zkp-attestation-toolchain
+- Goal: Replace the production-circuit gap with a reviewed, secret-safe deployment binding and live verifier attestation certification.
+- Evidence: config/formal_verification_zkp_deployment.lock.json, test/integration/toolchains/test_zkp_deployment_certification.py
+- Outputs: config/formal_verification_zkp_deployment.lock.json, tools/logic/certification/zkp.py, test/integration/toolchains/test_zkp_deployment_certification.py
+- Validation: PYTHONPATH=ipfs_datasets_py python -m pytest test/api/test_agent_supervisor_program_analysis_zkp_conformance.py ipfs_datasets_py/tests/integration/logic/test_proof_receipt_attestation.py test/integration/toolchains/test_zkp_deployment_certification.py -q
+- Acceptance: Circuit, ceremony, proving-key and verification-key digests, public-input schema, backend, expiry, freshness, and revocation are exact and reviewable; live positive verification and corrupted proof/key/public-input, circuit mismatch, mutation, replay, stale, and revoked cases pass; private witnesses and secrets never enter Git, logs, caches, public receipts, or model context; ZKP authority attests an underlying receipt and never replaces semantic theorem authority.
+- Conflict policy: Own the deployment binding, ZKP handler, and test; reference private artifacts only by digest and configured secret-safe location.
+- Interfaces: ZKPDeploymentCertification@1
+- Submodules: ipfs_datasets_py
+- Resource class: cpu-proof-solver
+
+## FVT-G200 Reissue full role-aware deployment certification
+
+- Status: active
+- Parent: FVT-G000
+- Depends on: FVT-G090, FVT-G101, FVT-G102, FVT-G103, FVT-G120, FVT-G130, FVT-G131, FVT-G140, FVT-G150, FVT-G151, FVT-G160, FVT-G170, FVT-G180, FVT-G181, FVT-G190
+- Fib priority: 75025
+- Priority: P0
+- Track: completion
+- Bundle: formal-verification-tactician/toolchain-release
+- Goal: Run the complete role-aware matrix after the explicit installation phase and reissue current-tree implementation and deployment-readiness receipts.
+- Evidence: test/integration/test_formal_verification_role_aware_completion.py, docs/architecture/formal_verification_role_aware_deployment_receipt.json
+- Outputs: tools/logic/certify_formal_verification_toolchains.py, tools/logic/build_formal_verification_tactician_receipt.py, docs/architecture/formal_verification_toolchain_certificate.json, docs/architecture/formal_verification_role_aware_deployment_receipt.json, docs/architecture/formal_verification_tactician_readiness_completion_receipt.json, test/integration/test_formal_verification_role_aware_completion.py
+- Validation: python -m pytest test/integration/test_formal_verification_real_tool_matrix.py test/integration/test_formal_verification_role_aware_completion.py test/api/test_formal_verification_tactician_readiness_completion.py -q
+- Acceptance: A fresh offline certificate and completion receipt bind the current parent tree, datasets gitlink, exact tool and artifact identities, every required positive/negative/mutation/replay result, authority roles and ceilings, disagreement quarantines, public surfaces, and supervisor evidence; Lean, Runtime MTL, and Datalog/SecPAL are no longer merely usable; every supported managed external capability is installed and semantically certified; any genuinely unsupported platform exception is explicit, narrowly scoped, and cannot be counted as complete or production-certified.
+- Conflict policy: Sole owner for central certificate and completion-receipt regeneration after every dependency merges; never manufacture success, weaken skips, install during offline certification, or conceal an unavailable lane.
+- Interfaces: RoleAwareFormalVerificationRelease@1
+- Submodules: ipfs_datasets_py
+- Resource class: cpu-validation

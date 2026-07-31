@@ -10903,6 +10903,7 @@ def generate_objective_todos(
     max_findings: int = 10,
     seen_fingerprints: Iterable[str] = (),
     force_goal_ids: Iterable[str] = (),
+    scope_goal_ids: Iterable[str] = (),
     persist_ast_dataset: bool = True,
     write_todo_vector_index: bool = True,
     todo_vector_index_path: Path | None = None,
@@ -10936,6 +10937,7 @@ def generate_objective_todos(
     records: list[ObjectiveTaskRecord] = []
     seen_fingerprints = tuple(seen_fingerprints)
     force_goal_ids = tuple(force_goal_ids)
+    scope_goal_ids = tuple(scope_goal_ids)
     scan_exclude_paths = tuple(scan_exclude_paths)
     objective_goals = (
         parse_goal_heap(objective_path.read_text(encoding="utf-8", errors="replace"))
@@ -10971,6 +10973,7 @@ def generate_objective_todos(
             max_findings=max_findings,
             seen_fingerprints=seen_fingerprints,
             force_goal_ids=force_goal_ids,
+            scope_goal_ids=scope_goal_ids,
             retain_fingerprints=reprojection_fingerprints,
             summary_prefix=summary_prefix,
             surplus_findings_per_goal=surplus_findings_per_goal,
@@ -11592,6 +11595,7 @@ def generate_objective_todos_result(
                     max_findings=max_findings,
                     seen_fingerprints=(),
                     force_goal_ids=kwargs.get("force_goal_ids") or (),
+                    scope_goal_ids=kwargs.get("scope_goal_ids") or (),
                     summary_prefix=str(
                         kwargs.get("summary_prefix") or DEFAULT_OBJECTIVE_TASK_SUMMARY_PREFIX
                     ),

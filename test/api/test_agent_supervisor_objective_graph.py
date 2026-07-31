@@ -1539,6 +1539,106 @@ def test_objective_gap_scope_limits_forced_refinement_family(tmp_path):
     assert {finding.goal_id for finding in findings} == {"VFS-G002"}
 
 
+def test_generate_objective_todos_limits_generation_to_goal_scope(tmp_path):
+    repo, objective_path, todo_path = _seed_repo(tmp_path)
+    objective_path.write_text(
+        """# Goals
+
+## VFS-G001 First family
+
+- Status: active
+- Parent:
+- Track: verification
+- Priority: P1
+- Bundle: objective/verification/first
+- Evidence: missing-first-proof
+- Outputs: artifacts/first-proof.json
+- Validation: true
+
+## VFS-G002 Scoped family
+
+- Status: active
+- Parent:
+- Track: verification
+- Priority: P1
+- Bundle: objective/verification/scoped
+- Evidence: missing-scoped-proof
+- Outputs: artifacts/scoped-proof.json
+- Validation: true
+""",
+        encoding="utf-8",
+    )
+
+    records = generate_objective_todos(
+        repo_root=repo,
+        objective_path=objective_path,
+        todo_path=todo_path,
+        discovery_dir=repo / "state" / "discovery",
+        bundle_dir=repo / "state" / "bundles",
+        task_prefix="SCOPE-",
+        max_findings=8,
+        scope_goal_ids=["VFS-G002"],
+        persist_ast_dataset=False,
+        write_todo_vector_index=False,
+    )
+
+    assert records
+    assert {record.finding.goal_id for record in records} == {"VFS-G002"}
+    board = todo_path.read_text(encoding="utf-8")
+    assert "- Goal id: VFS-G002" in board
+    assert "- Goal id: VFS-G001" not in board
+
+
+def test_objective_todo_result_duplicate_rescan_preserves_goal_scope(
+    tmp_path,
+    monkeypatch,
+):
+    repo, objective_path, todo_path = _seed_repo(tmp_path)
+    duplicate_scan_kwargs = []
+
+    monkeypatch.setattr(
+        objective_graph_module,
+        "generate_objective_todos",
+        lambda **_kwargs: [],
+    )
+
+    def scoped_duplicate_scan(*_args, **kwargs):
+        duplicate_scan_kwargs.append(kwargs)
+        return []
+
+    monkeypatch.setattr(
+        objective_graph_module,
+        "scan_objective_gaps",
+        scoped_duplicate_scan,
+    )
+
+    result = objective_graph_module.generate_objective_todos_result(
+        repo_root=repo,
+        objective_path=objective_path,
+        todo_path=todo_path,
+        max_findings=1,
+        seen_fingerprints=["already-seen"],
+        scope_goal_ids=["VFS-G002"],
+    )
+
+    assert result.terminal_reason.value == "exhausted"
+    assert len(duplicate_scan_kwargs) == 1
+    assert duplicate_scan_kwargs[0]["scope_goal_ids"] == ["VFS-G002"]
+
+
+def test_objective_daemon_parser_accepts_repeatable_goal_scope():
+    args = build_objective_daemon_arg_parser().parse_args(
+        [
+            "--scope-goal-id",
+            "VFS-G001",
+            "--scope-goal-id",
+            "VFS-G002,VFS-G003",
+        ]
+    )
+
+    assert args.scope_goal_id == ["VFS-G001", "VFS-G002,VFS-G003"]
+
+
 def test_launch_readiness_generated_goals_include_acceptance(tmp_path):
     objective_path = tmp_path / "objective.md"
     objective_path.write_text(
