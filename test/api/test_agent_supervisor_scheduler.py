@@ -17,6 +17,9 @@ import pytest
 
 from ipfs_accelerate_py.agent_supervisor import bundle_supervisor as bundle_supervisor_module
 from ipfs_accelerate_py.agent_supervisor.runtime.artifact_store import query_artifact
+from ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor import (
+    bundle_member_completion_event_sources,
+)
 from ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor import DynamicBundleScheduler
 from ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor import launch_bundle_lanes
 from ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor import (
@@ -381,73 +384,351 @@ def test_dependency_blocked_candidate_does_not_consume_admission_capacity(
     assert decision["reason"] == "snapshot_not_ready"
 
 
-def test_stale_runtime_input_binding_blocks_before_claim_and_backfills_capacity(
+def test_changed_shard_gets_new_slice_deferred_until_dependency_completes(
     tmp_path: Path,
 ) -> None:
     repo = tmp_path / "repo"
     index = repo / "index.json"
-    _write_index(index, "T-1", "T-2")
+    _write_index(index, "T-53")
     bundle_dir = repo / "bundles"
     bundle_dir.mkdir()
-    stale_source = bundle_dir / "t-1.todo.md"
-    stale_source.write_text(
-        "## T-1 Original reviewed task\n\n- Status: todo\n",
+    source = bundle_dir / "t-53.todo.md"
+    source.write_text(
+        "## T-53 Original reviewed task\n\n- Status: todo\n",
         encoding="utf-8",
     )
-    (bundle_dir / "t-2.todo.md").write_text(
-        "## T-2 Independent task\n\n- Status: todo\n",
-        encoding="utf-8",
-    )
-    launcher = _FakeLauncher()
+
+    class _MaterializingLauncher(_FakeLauncher):
+        def __call__(self, lane: Any, grant: Any) -> _FakeProcess:
+            materialize_bundle_lane_taskboard(lane, repo_root=repo)
+            return super().__call__(lane, grant)
+
+    launcher = _MaterializingLauncher()
     scheduler = _scheduler(tmp_path, index, launcher, max_lanes=1)
-    original_lane = next(
-        lane for lane in scheduler._plan() if lane.task_ids == ["T-1"]
+    scheduler.lane_options.update(
+        {
+            "max_task_attempts": 3,
+            "optimize_bundles": False,
+        }
     )
+    original_lane = scheduler._plan()[0]
     original_binding = materialize_bundle_lane_taskboard(
         original_lane,
         repo_root=repo,
     )
     assert original_lane.runtime_todo_path is not None
     original_runtime_bytes = original_lane.runtime_todo_path.read_bytes()
+    original_event_path = (
+        original_lane.state_dir / f"{original_lane.state_prefix}_events.jsonl"
+    )
+    append_jsonl_event(
+        original_event_path,
+        "scheduler_lane_state",
+        {
+            "timestamp": "2026-07-31T00:00:00Z",
+            "phase": "stopped",
+            "task_id": "T-53",
+        },
+    )
 
-    stale_source.write_text(
-        "## T-1 Newly reviewed replacement task\n\n- Status: todo\n",
+    # A reviewed graph revision adds T-67 as a prerequisite and changes the
+    # immutable T-53 shard. The stopped old state is evidence, not mutable
+    # scratch space for the new slice.
+    prerequisite = _bundle("T-67")
+    dependent = _bundle("T-53")
+    dependent["tasks"][0]["depends_on"] = ["T-67"]
+    index.write_text(
+        json.dumps(
+            {
+                "source_todo": "tasks.todo.md",
+                "bundles": {
+                    "objective/test/t-53": dependent,
+                    "objective/test/t-67": prerequisite,
+                },
+            },
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+    source.write_text(
+        "## T-53 Replacement task; depends on T-67\n\n- Status: todo\n",
+        encoding="utf-8",
+    )
+    (bundle_dir / "t-67.todo.md").write_text(
+        "## T-67 Required dependency\n\n- Status: todo\n",
+        encoding="utf-8",
+    )
+
+    planned = scheduler._plan()
+    replacement_lane = next(
+        lane for lane in planned if lane.task_ids == ["T-53"]
+    )
+    repeated_lane = next(
+        lane for lane in scheduler._plan() if lane.task_ids == ["T-53"]
+    )
+    assert replacement_lane.execution_slice_cid == repeated_lane.execution_slice_cid
+    assert replacement_lane.state_dir == repeated_lane.state_dir
+    assert replacement_lane.execution_slice_cid != original_lane.execution_slice_cid
+    assert replacement_lane.state_dir != original_lane.state_dir
+    assert replacement_lane.worktree_root != original_lane.worktree_root
+    assert replacement_lane.log_path != original_lane.log_path
+    assert replacement_lane.runtime_todo_path != original_lane.runtime_todo_path
+    assert replacement_lane.execution_slice_cid.removeprefix("sha256:") in str(
+        replacement_lane.state_dir
+    )
+
+    deferred = scheduler.reconcile_once()
+
+    assert [lane.task_ids for lane, _grant, _process in launcher.starts] == [["T-67"]]
+    deferred_decision = next(
+        decision
+        for decision in deferred["scheduler_decisions"]
+        if decision["bundle_key"] == "objective/test/t-53"
+    )
+    assert deferred_decision["decision"] == "deferred"
+    assert deferred_decision["reason"] == "snapshot_not_ready"
+    assert replacement_lane.runtime_todo_path is not None
+    assert not replacement_lane.runtime_todo_path.exists()
+
+    dependency_lane, dependency_grant, dependency_process = launcher.starts[0]
+    dependency_member = next(
+        task
+        for task in (dependency_lane.queue_payload or {})["tasks"]
+        if task["task_id"] == "T-67"
+    )
+    with LeaseCoordinator(repo / "coordination.sqlite3") as coordinator:
+        coordinator.receipt(
+            dependency_grant,
+            status="succeeded",
+            output={"reason": "dependency merged and validated"},
+        )
+    dependency_process.finish(0)
+    dependency_event_path = (
+        dependency_lane.state_dir
+        / f"{dependency_lane.state_prefix}_events.jsonl"
+    )
+    append_jsonl_event(
+        dependency_event_path,
+        "implementation_finished",
+        {
+            "timestamp": "2026-07-31T00:01:00Z",
+            "task_id": "T-67",
+            "canonical_task_cid": dependency_member["canonical_task_cid"],
+            "returncode": 0,
+            "merge_result": {"merged": True},
+        },
+    )
+
+    resumed = scheduler.reconcile_once()
+
+    assert [lane.task_ids for lane, _grant, _process in launcher.starts] == [
+        ["T-67"],
+        ["T-53"],
+    ]
+    resumed_lane = launcher.starts[1][0]
+    assert resumed_lane.execution_slice_cid != original_lane.execution_slice_cid
+    assert resumed_lane.state_dir != original_lane.state_dir
+    assert resumed_lane.source_todo_sha256 == replacement_lane.source_todo_sha256
+    assert resumed_lane.runtime_todo_path is not None
+    assert resumed_lane.runtime_todo_path.read_text(encoding="utf-8") == (
+        "## T-53 Replacement task; depends on T-67\n\n- Status: todo\n"
+    )
+    replacement_binding = json.loads(
+        (
+            resumed_lane.state_dir
+            / f"{resumed_lane.state_prefix}_taskboard_input.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert replacement_binding["execution_slice_cid"] == (
+        resumed_lane.execution_slice_cid
+    )
+    assert replacement_binding["source_todo_sha256"] == (
+        resumed_lane.source_todo_sha256
+    )
+    active = next(
+        lane for lane in resumed["lanes"] if lane["task_ids"] == ["T-53"]
+    )
+    assert active["execution_slice_cid"] == resumed_lane.execution_slice_cid
+
+    # The old binding/runtime/event log remain byte-for-byte archived and
+    # recursive receipt discovery can still find both path generations.
+    assert original_binding["source_todo_sha256"] == original_lane.source_todo_sha256
+    assert original_lane.runtime_todo_path.read_bytes() == original_runtime_bytes
+    event_sources = bundle_member_completion_event_sources(repo / "state")
+    assert original_event_path in event_sources
+    assert dependency_event_path in event_sources
+
+
+def test_legacy_v1_binding_is_discoverable_history_not_a_v2_resume_target(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    index = repo / "index.json"
+    _write_index(index, "T-1")
+    source = repo / "bundles" / "t-1.todo.md"
+    source.parent.mkdir()
+    source.write_text("## T-1 Legacy reviewed shard\n\n- Status: todo\n", encoding="utf-8")
+
+    class _MaterializingLauncher(_FakeLauncher):
+        def __call__(self, lane: Any, grant: Any) -> _FakeProcess:
+            materialize_bundle_lane_taskboard(lane, repo_root=repo)
+            return super().__call__(lane, grant)
+
+    launcher = _MaterializingLauncher()
+    scheduler = _scheduler(tmp_path, index, launcher)
+    scheduler.lane_options.update(
+        {
+            "max_task_attempts": 3,
+            "optimize_bundles": False,
+        }
+    )
+    original_lane = scheduler._plan()[0]
+
+    # Recreate the exact pre-versioning layout and @1 binding. It remains
+    # immutable historical evidence, including its completion event stream.
+    legacy_state_dir = original_lane.state_dir.parents[2] / "state"
+    legacy_runtime_path = (
+        legacy_state_dir / f"{original_lane.state_prefix}_runtime.todo.md"
+    )
+    legacy_binding_path = (
+        legacy_state_dir / f"{original_lane.state_prefix}_taskboard_input.json"
+    )
+    legacy_runtime_path.parent.mkdir(parents=True)
+    original_source_bytes = source.read_bytes()
+    legacy_runtime_path.write_bytes(original_source_bytes)
+    legacy_binding = {
+        "schema": "ipfs_accelerate_py.agent_supervisor.bundle_taskboard_input@1",
+        "bundle_key": original_lane.bundle_key,
+        "source_todo_path": source.relative_to(repo).as_posix(),
+        "source_todo_sha256": original_lane.source_todo_sha256,
+        "runtime_todo_path": legacy_runtime_path.relative_to(repo).as_posix(),
+        "runtime_initial_sha256": original_lane.source_todo_sha256,
+        "materialized_at": "2026-07-31T00:00:00Z",
+        "materialized": True,
+    }
+    legacy_binding_bytes = (
+        json.dumps(legacy_binding, indent=2, sort_keys=True) + "\n"
+    ).encode("utf-8")
+    legacy_binding_path.write_bytes(legacy_binding_bytes)
+    legacy_event_path = (
+        legacy_state_dir / f"{original_lane.state_prefix}_events.jsonl"
+    )
+    append_jsonl_event(
+        legacy_event_path,
+        "scheduler_lane_state",
+        {
+            "timestamp": "2026-07-31T00:00:01Z",
+            "phase": "stopped",
+            "task_id": "T-1",
+        },
+    )
+    assert legacy_event_path in bundle_member_completion_event_sources(
+        repo / "state"
+    )
+
+    source.write_text(
+        "## T-1 Newly reviewed replacement shard\n\n- Status: todo\n",
         encoding="utf-8",
     )
     manifest = scheduler.reconcile_once()
 
-    assert [lane.task_ids for lane, _grant, _process in launcher.starts] == [["T-2"]]
-    stale_decision = next(
-        decision
-        for decision in manifest["scheduler_decisions"]
-        if decision["bundle_key"] == "objective/test/t-1"
+    [started] = launcher.starts
+    replacement_lane = started[0]
+    assert replacement_lane.execution_slice_cid != original_lane.execution_slice_cid
+    assert replacement_lane.state_dir != legacy_state_dir
+    assert replacement_lane.state_dir.parent.name == (
+        replacement_lane.execution_slice_cid.removeprefix("sha256:")
     )
-    assert stale_decision["decision"] == "deferred"
-    assert stale_decision["reason"] == "stale_input_binding"
-    assert (
-        stale_decision["bound_source_todo_sha256"]
-        == original_binding["source_todo_sha256"]
+    assert replacement_lane.state_dir.parents[1].name == "executions"
+    replacement_binding_path = (
+        replacement_lane.state_dir
+        / f"{replacement_lane.state_prefix}_taskboard_input.json"
     )
-    assert stale_decision["planned_source_todo_sha256"] != (
-        stale_decision["bound_source_todo_sha256"]
+    replacement_binding = json.loads(
+        replacement_binding_path.read_text(encoding="utf-8")
     )
-    stale_task = next(
-        task
-        for task in manifest["tasks"]
-        if task["bundle_key"] == "objective/test/t-1"
+    assert replacement_binding["schema"] == (
+        "ipfs_accelerate_py.agent_supervisor.bundle_taskboard_input@2"
     )
-    assert stale_task["state"] == "blocked"
-    assert stale_task["blocked_reason"] == "stale_input_binding"
-    assert stale_task["stale_input_binding"]["reason"] == "stale_input_binding"
-    assert manifest["resource_schedule"]["admitted_count"] == 1
-    assert original_lane.runtime_todo_path.read_bytes() == original_runtime_bytes
+    assert replacement_binding["execution_slice_cid"] == (
+        replacement_lane.execution_slice_cid
+    )
+    assert replacement_binding["source_todo_sha256"] != (
+        legacy_binding["source_todo_sha256"]
+    )
+    assert replacement_lane.runtime_todo_path is not None
+    replacement_runtime_bytes = replacement_lane.runtime_todo_path.read_bytes()
+    reused_binding = materialize_bundle_lane_taskboard(
+        replacement_lane,
+        repo_root=repo,
+    )
+    assert reused_binding["reused"] is True
+    assert reused_binding["materialized"] is False
+    assert replacement_lane.runtime_todo_path.read_bytes() == (
+        replacement_runtime_bytes
+    )
+    assert manifest["lanes"][0]["state_dir"] == (
+        replacement_lane.state_dir.relative_to(repo).as_posix()
+    )
+
+    assert legacy_binding_path.read_bytes() == legacy_binding_bytes
+    assert legacy_runtime_path.read_bytes() == original_source_bytes
+    assert legacy_event_path in bundle_member_completion_event_sources(
+        repo / "state"
+    )
+
+
+def test_active_old_slice_remains_immutable_when_source_changes(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    index = repo / "index.json"
+    _write_index(index, "T-1")
+    source = repo / "bundles" / "t-1.todo.md"
+    source.parent.mkdir()
+    source.write_text("## T-1 Original\n\n- Status: todo\n", encoding="utf-8")
+
+    class _MaterializingLauncher(_FakeLauncher):
+        def __call__(self, lane: Any, grant: Any) -> _FakeProcess:
+            materialize_bundle_lane_taskboard(lane, repo_root=repo)
+            return super().__call__(lane, grant)
+
+    launcher = _MaterializingLauncher()
+    scheduler = _scheduler(tmp_path, index, launcher, max_lanes=2)
+    scheduler.lane_options["max_task_attempts"] = 3
+
+    first_manifest = scheduler.reconcile_once()
+    old_lane, old_grant, old_process = launcher.starts[0]
+    assert old_process.alive
+    assert old_lane.runtime_todo_path is not None
+    old_runtime = old_lane.runtime_todo_path.read_bytes()
+
+    source.write_text("## T-1 Revised\n\n- Status: todo\n", encoding="utf-8")
+    revised_lane = scheduler._plan()[0]
+    assert revised_lane.execution_slice_cid != old_lane.execution_slice_cid
+    assert revised_lane.state_dir != old_lane.state_dir
+
+    second_manifest = scheduler.reconcile_once()
+
+    assert len(launcher.starts) == 1
+    assert old_process.alive
+    assert old_grant.task_cid in scheduler._running
+    assert old_lane.runtime_todo_path.read_bytes() == old_runtime
+    assert revised_lane.runtime_todo_path is not None
+    assert not revised_lane.runtime_todo_path.exists()
     with LeaseCoordinator(repo / "coordination.sqlite3") as coordinator:
-        accepted = {
-            task["bundle_key"]
-            for task in coordinator.list_tasks()
-            if task["state"] == "accepted"
-        }
-    assert accepted == {"objective/test/t-2"}
+        accepted_tasks = [
+            task for task in coordinator.list_tasks() if task["state"] == "accepted"
+        ]
+    assert len(accepted_tasks) == 1
+    assert accepted_tasks[0]["task_cid"] == old_grant.task_cid
+    assert scheduler._running[old_grant.task_cid].handle is old_process
+    assert first_manifest["lanes"][0]["state_dir"] == (
+        second_manifest["lanes"][0]["state_dir"]
+    )
+    assert second_manifest["lanes"][0]["execution_slice_cid"] == (
+        old_lane.execution_slice_cid
+    )
 
 
 def test_static_launcher_reports_stale_input_binding_before_registration(
@@ -474,6 +755,17 @@ def test_static_launcher_reports_stale_input_binding_before_registration(
         encoding="utf-8",
     )
     replacement_lane = scheduler._plan()[0]
+    assert replacement_lane.state_dir != original_lane.state_dir
+    # A caller that aliases a new immutable slice back onto legacy state must
+    # still fail closed before registration. The planner itself never creates
+    # this malformed alias.
+    aliased_replacement_lane = replace(
+        replacement_lane,
+        state_dir=original_lane.state_dir,
+        runtime_todo_path=original_lane.runtime_todo_path,
+        worktree_root=original_lane.worktree_root,
+        log_path=original_lane.log_path,
+    )
 
     def unexpected_registration(*_args: Any, **_kwargs: Any) -> None:
         raise AssertionError("stale input reached coordination registration")
@@ -484,7 +776,7 @@ def test_static_launcher_reports_stale_input_binding_before_registration(
         unexpected_registration,
     )
     [result] = launch_bundle_lanes(
-        [replacement_lane],
+        [aliased_replacement_lane],
         repo_root=repo,
         coordination_path=repo / "static-coordination.sqlite3",
     )
@@ -1591,19 +1883,21 @@ def test_attempt_exhausted_idle_state_reaps_lane_but_ordinary_idle_persists(
     repo = tmp_path / "repo"
     index = repo / "index.json"
     _write_index(index, "T-1")
+    source = repo / "bundles" / "t-1.todo.md"
+    source.parent.mkdir()
+    source.write_text(
+        "## T-1 Retry-bounded task\n\n"
+        "- Status: todo\n"
+        "- Depends on: none\n",
+        encoding="utf-8",
+    )
     launcher = _FakeLauncher()
     scheduler = _scheduler(tmp_path, index, launcher)
 
     initial = scheduler.reconcile_once()
     assert initial["counts"]["active"] == 1
     lane, grant, process = launcher.starts[0]
-    lane.todo_path.parent.mkdir(parents=True, exist_ok=True)
-    lane.todo_path.write_text(
-        "## T-1 Retry-bounded task\n\n"
-        "- Status: todo\n"
-        "- Depends on: none\n",
-        encoding="utf-8",
-    )
+    materialize_bundle_lane_taskboard(lane, repo_root=repo)
     lane.state_dir.mkdir(parents=True, exist_ok=True)
     state_path = lane.state_dir / f"{lane.state_prefix}_task_state.json"
     idle_state = {
@@ -1823,14 +2117,29 @@ def test_transitively_blocked_waiting_tasks_release_an_idle_lane(tmp_path: Path)
         json.dumps({"source_todo": "tasks.todo.md", "bundles": {"objective/test/t-1": bundle}}),
         encoding="utf-8",
     )
+    source = repo / "bundles" / "t-1.todo.md"
+    source.parent.mkdir()
+    source.write_text(
+        "## T-1 Blocked root\n\n"
+        "- Status: todo\n"
+        "- Depends on: none\n\n"
+        "## T-2 First dependent\n\n"
+        "- Status: todo\n"
+        "- Depends on: T-1\n\n"
+        "## T-3 Second dependent\n\n"
+        "- Status: todo\n"
+        "- Depends on: T-2\n",
+        encoding="utf-8",
+    )
     launcher = _FakeLauncher()
     scheduler = _scheduler(tmp_path, index, launcher)
 
     initial = scheduler.reconcile_once()
     assert initial["counts"]["active"] == 1
     lane = launcher.starts[0][0]
-    lane.todo_path.parent.mkdir(parents=True, exist_ok=True)
-    lane.todo_path.write_text(
+    materialize_bundle_lane_taskboard(lane, repo_root=repo)
+    assert lane.runtime_todo_path is not None
+    lane.runtime_todo_path.write_text(
         "## T-1 Blocked root\n\n"
         "- Status: blocked\n"
         "- Depends on: none\n\n"

@@ -79,7 +79,10 @@ COORDINATION_COMPACTION_INTERVAL_CYCLES = 10
 COORDINATION_COMPACTION_MIN_BYTES = 64 * 1024 * 1024
 SCHEDULER_GC_INTERVAL_CYCLES = 10
 BUNDLE_TASKBOARD_INPUT_SCHEMA = (
-    "ipfs_accelerate_py.agent_supervisor.bundle_taskboard_input@1"
+    "ipfs_accelerate_py.agent_supervisor.bundle_taskboard_input@2"
+)
+BUNDLE_LANE_EXECUTION_SLICE_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor.bundle_lane_execution_slice@1"
 )
 INTERNAL_EXECUTION_AUTHORITY = "agent-supervisor/v1"
 DISTRIBUTED_LANE_REQUIREMENT_ID = "314703454108352614663943447510592855908"
@@ -137,7 +140,15 @@ def bundle_member_completion_event_sources(state_root: Path) -> tuple[Path, ...]
     """Return active and rotated member-completion logs in stable order."""
 
     base_paths: set[Path] = set()
-    for pattern in ("*_events.jsonl*", "*/state/*_events.jsonl*"):
+    # Lane state is execution-slice versioned. Bounded patterns retain legacy
+    # `<bundle>/state` receipts and every immutable historical
+    # `<bundle>/executions/<cid>/state` receipt without recursing into the
+    # potentially large worktree root that may also live below `state_root`.
+    for pattern in (
+        "*_events.jsonl*",
+        "*/state/*_events.jsonl*",
+        "*/executions/*/state/*_events.jsonl*",
+    ):
         for candidate in state_root.glob(pattern):
             name = candidate.name
             if name.endswith("_events.jsonl"):
@@ -368,6 +379,7 @@ class BundleLaneSpec:
     log_path: Path
     runtime_todo_path: Path | None = None
     source_todo_sha256: str = ""
+    execution_slice_cid: str = ""
     source_todo: str = ""
     task_cid: str = ""
     goal_cid: str = ""
@@ -839,6 +851,7 @@ def materialize_bundle_lane_taskboard(
         expected_binding = {
             "schema": BUNDLE_TASKBOARD_INPUT_SCHEMA,
             "bundle_key": lane.bundle_key,
+            "execution_slice_cid": lane.execution_slice_cid,
             "source_todo_path": binding_source_path,
             "source_todo_sha256": expected_digest,
             "runtime_todo_path": binding_runtime_path,
@@ -883,6 +896,7 @@ def materialize_bundle_lane_taskboard(
     binding = {
         "schema": BUNDLE_TASKBOARD_INPUT_SCHEMA,
         "bundle_key": lane.bundle_key,
+        "execution_slice_cid": lane.execution_slice_cid,
         "source_todo_path": binding_source_path,
         "source_todo_sha256": expected_digest,
         "runtime_todo_path": binding_runtime_path,
@@ -929,6 +943,7 @@ def immutable_lane_input_artifact(
         "task_cid": lane.task_cid,
         "goal_cid": lane.goal_cid,
         "subgoal_cid": lane.subgoal_cid,
+        "execution_slice_cid": lane.execution_slice_cid,
         "source_todo_sha256": observed_digest,
         "source_todo_base64": base64.b64encode(source_bytes).decode("ascii"),
         "command": list(lane.command),
@@ -1686,6 +1701,64 @@ def resolve_repo_path(repo_root: Path, value: str) -> Path:
 
 def lane_state_prefix(bundle_key: str) -> str:
     return f"agent_{safe_bundle_key(bundle_key).replace('-', '_')}"
+
+
+def bundle_lane_execution_slice_cid(
+    *,
+    bundle_key: str,
+    source_todo_sha256: str,
+    expected_task_cids_by_id: Mapping[str, str],
+    execution_slice_task_cids: Sequence[str],
+    dependency_task_cids: Sequence[str],
+    optimizer_bundle_cid: str = "",
+) -> str:
+    """Return the immutable namespace for one planned lane execution slice.
+
+    The source digest alone fences reviewed shard revisions.  Member,
+    dependency and optimizer identities additionally prevent two semantically
+    different slices of the same shard from sharing mutable daemon state.
+    Mutable dependency *status* and the derived Profile-G planning chain are
+    deliberately absent. Replanning may project a newly completed prerequisite
+    out of the dependency set, which is a new execution slice; repeated plans
+    of either the blocked or unblocked slice still reuse their exact namespace.
+    """
+
+    payload = {
+        "schema": BUNDLE_LANE_EXECUTION_SLICE_SCHEMA,
+        "bundle_key": str(bundle_key),
+        "source_todo_sha256": str(source_todo_sha256).strip().lower(),
+        "expected_task_cids_by_id": {
+            str(task_id): str(task_cid)
+            for task_id, task_cid in sorted(expected_task_cids_by_id.items())
+        },
+        "execution_slice_task_cids": list(
+            dict.fromkeys(
+                str(task_cid).strip()
+                for task_cid in execution_slice_task_cids
+                if str(task_cid).strip()
+            )
+        ),
+        "dependency_task_cids": sorted(
+            {
+                str(task_cid).strip()
+                for task_cid in dependency_task_cids
+                if str(task_cid).strip()
+            }
+        ),
+        "optimizer_bundle_cid": str(optimizer_bundle_cid).strip(),
+    }
+    return _distributed_lane_digest(payload)
+
+
+def bundle_lane_execution_slice_path_component(execution_slice_cid: str) -> str:
+    """Return a filesystem-safe, collision-resistant slice namespace."""
+
+    prefix = "sha256:"
+    value = str(execution_slice_cid).strip().lower()
+    digest = value[len(prefix) :] if value.startswith(prefix) else ""
+    if len(digest) != 64 or any(character not in "0123456789abcdef" for character in digest):
+        raise ValueError("bundle lane execution slice CID must be sha256:<64 lowercase hex>")
+    return digest
 
 
 def _execution_slice_task_cids_by_id(
@@ -3085,13 +3158,7 @@ def plan_bundle_lanes(
         conflict_annotation = conflict_annotations.get(bundle_key, {})
         safe_key = safe_bundle_key(bundle_key)
         todo_path = resolve_repo_path(repo_root, str(payload.get("todo_path") or ""))
-        state_dir = state_root / safe_key / "state"
-        runtime_todo_path = (
-            state_dir / f"{lane_state_prefix(bundle_key)}_runtime.todo.md"
-        )
         source_todo_sha256 = _taskboard_sha256(todo_path)
-        lane_worktree_root = worktree_root / safe_key
-        log_path = log_dir / f"{safe_key}.log"
         state_prefix = lane_state_prefix(bundle_key)
         execution_tasks = _execution_slice_members(
             payload,
@@ -3130,6 +3197,40 @@ def plan_bundle_lanes(
             task_cids=task_cids,
         )
         profile_g = payload.get("profile_g") if isinstance(payload.get("profile_g"), dict) else {}
+        dependency_task_cids = _string_list(payload.get("dependency_task_cids"))
+        optimizer_bundle_cid = str(payload.get("optimizer_bundle_cid") or "")
+        execution_slice_cid = bundle_lane_execution_slice_cid(
+            bundle_key=bundle_key,
+            source_todo_sha256=source_todo_sha256,
+            expected_task_cids_by_id=expected_task_cids_by_id,
+            execution_slice_task_cids=task_cids,
+            dependency_task_cids=dependency_task_cids,
+            optimizer_bundle_cid=optimizer_bundle_cid,
+        )
+        execution_namespace = bundle_lane_execution_slice_path_component(
+            execution_slice_cid
+        )
+        # Never rewrite or resume a different immutable input revision. Legacy
+        # `<bundle>/state` directories and earlier execution namespaces remain
+        # archival evidence; identical slices deterministically reuse this
+        # exact namespace after a dependency deferral or safe process restart.
+        lane_state_root = (
+            state_root / safe_key / "executions" / execution_namespace
+        )
+        state_dir = lane_state_root / "state"
+        runtime_todo_path = (
+            state_dir / f"{state_prefix}_runtime.todo.md"
+        )
+        lane_worktree_root = (
+            worktree_root / safe_key / "executions" / execution_namespace
+        )
+        log_path = (
+            log_dir
+            / safe_key
+            / "executions"
+            / execution_namespace
+            / "supervisor.log"
+        )
         resource_fields = _resource_lane_fields(payload)
         implementation_max_timeout = _execution_slice_implementation_max_timeout(
             payload,
@@ -3186,6 +3287,7 @@ def plan_bundle_lanes(
                 expected_task_cids_by_id=expected_task_cids_by_id,
                 runtime_todo_path=runtime_todo_path,
                 source_todo_sha256=source_todo_sha256,
+                execution_slice_cid=execution_slice_cid,
                 source_todo=str(payload.get("source_todo") or ""),
                 task_cid=str(profile_g.get("task_cid") or ""),
                 goal_cid=str(profile_g.get("goal_cid") or ""),
@@ -3193,7 +3295,7 @@ def plan_bundle_lanes(
                 queue_payload=dict(payload),
                 schedule_rank=(_schedule_int(payload, "schedule_rank") if payload.get("schedule_rank") is not None else None),
                 claimable=_schedule_bool(payload, "claimable"),
-                dependency_task_cids=_string_list(payload.get("dependency_task_cids")),
+                dependency_task_cids=dependency_task_cids,
                 blocking_task_cids=_string_list(payload.get("blocking_task_cids")),
                 critical_path_length=_schedule_int(payload, "critical_path_length"),
                 slack=_schedule_int(payload, "slack"),
@@ -3206,7 +3308,7 @@ def plan_bundle_lanes(
                 conflicting_task_ids=_string_list(conflict_annotation.get("conflicting_task_ids")),
                 conflict_decisions=_mapping_list(conflict_annotation.get("conflict_decisions")),
                 conflict_surface=dict(conflict_annotation.get("conflict_surface") or {}),
-                optimizer_bundle_cid=str(payload.get("optimizer_bundle_cid") or ""),
+                optimizer_bundle_cid=optimizer_bundle_cid,
                 optimizer_policy_id=str(payload.get("optimizer_policy_id") or ""),
                 optimizer_execution_wave=_schedule_int(
                     payload, "optimizer_execution_wave"
