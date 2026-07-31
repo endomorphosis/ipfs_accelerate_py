@@ -1179,7 +1179,7 @@ expectations under existing precedence, but do not prove them by passing.
 
 ## LPR-036 Materialize only proof-admitted deterministic repair overlays
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
