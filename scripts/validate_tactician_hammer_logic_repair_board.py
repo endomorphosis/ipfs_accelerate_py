@@ -12,9 +12,8 @@ import argparse
 import json
 import re
 import sys
+from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path, PurePosixPath
-from typing import Iterable, Mapping, Sequence
-
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
@@ -26,7 +25,6 @@ from ipfs_accelerate_py.agent_supervisor.objectives.objective_graph import (  # 
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (  # noqa: E402
     parse_task_file,
 )
-
 
 PLAN_PATH = Path(
     "docs/architecture/AGENT_SUPERVISOR_TACTICIAN_HAMMER_LOGIC_REPAIR_PLAN.md"
