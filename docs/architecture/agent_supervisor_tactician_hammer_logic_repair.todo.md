@@ -590,7 +590,7 @@ expectations under existing precedence, but do not prove them by passing.
 
 ## LPR-017 Integrate a live logic-repair controller into the RPR pipelines
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
