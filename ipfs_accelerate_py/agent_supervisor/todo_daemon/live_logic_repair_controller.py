@@ -2157,6 +2157,22 @@ def daemon_execute_live_logic_repair(
     return result
 
 
+def daemon_intercept_logic_repair_proposal(
+    daemon: Any,
+    **kw: Any,
+) -> Any:
+    """Daemon-facing entry: read-only candidate-overlay contract delta gate."""
+
+    _ = daemon  # host is reserved for future event recording
+    enable = bool(kw.pop("enable", True))
+    expand = bool(kw.pop("expand_write_set_on_omission", True))
+    policy = LiveLogicRepairPolicy(
+        enable_live_logic_repair=enable,
+        expand_write_set_on_omission=expand,
+    )
+    return LiveLogicRepairController(policy=policy).intercept_proposal(**kw)
+
+
 def daemon_assert_no_logic_repair_write_bypass(
     *,
     write_performed: bool,
@@ -2203,6 +2219,7 @@ __all__ = [
     "compute_signature_deltas",
     "daemon_assert_no_logic_repair_write_bypass",
     "daemon_execute_live_logic_repair",
+    "daemon_intercept_logic_repair_proposal",
     "extract_python_signatures",
     "find_call_sites",
     "run_live_logic_repair",

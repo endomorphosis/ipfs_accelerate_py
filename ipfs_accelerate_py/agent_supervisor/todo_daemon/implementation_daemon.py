@@ -14522,11 +14522,16 @@ class PortalImplementationDaemon:
         except (AttributeError, TypeError, ValueError):
             return defaults
 
+        # Small raw unified patches against established modules may still
+        # materialize multi-megabyte before/after sources (for example the
+        # daemon host itself).  Raise the local materialization envelope up to
+        # the process absolute caps so bounded thin-host edits remain
+        # proposal-gate admissible without a declared artifact envelope.
         if (
             raw_patch_bytes
             <= DEFAULT_IMPLEMENTATION_PROPOSAL_PATCH_BYTES
             and largest_file_bytes
-            <= DEFAULT_IMPLEMENTATION_PROPOSAL_FILE_BYTES
+            <= MAX_IMPLEMENTATION_PROPOSAL_MATERIALIZED_BYTES
         ):
             if (
                 materialized_bytes
@@ -14536,6 +14541,10 @@ class PortalImplementationDaemon:
             ):
                 return defaults
             return {
+                "max_file_bytes": max(
+                    DEFAULT_IMPLEMENTATION_PROPOSAL_FILE_BYTES,
+                    largest_file_bytes,
+                ),
                 "max_patch_bytes": max(
                     DEFAULT_IMPLEMENTATION_PROPOSAL_PATCH_BYTES,
                     materialized_bytes,
@@ -15035,11 +15044,35 @@ class PortalImplementationDaemon:
         )
         local_policy_limits = {
             "max_file_bytes": DEFAULT_IMPLEMENTATION_PROPOSAL_FILE_BYTES,
-            **local_envelope_limits,
+            **{
+                key: value
+                for key, value in local_envelope_limits.items()
+                if key
+                in {
+                    "max_file_bytes",
+                    "max_patch_bytes",
+                    "max_output_bytes",
+                }
+            },
         }
         policy_version = "strict-proposal-v2+local-envelope-v2"
         policy_allowed_paths = allowed_paths
-        if "max_file_bytes" in local_envelope_limits:
+        # Only a task-declared artifact envelope may rewrite allowed_paths to
+        # the exact changed set.  Local auto-raise of max_file_bytes for
+        # established modules must keep the full task-owned scope.
+        declared_artifact_envelope = bool(
+            str(
+                task.metadata.get(
+                    PROPOSAL_ARTIFACT_ENVELOPE_METADATA_KEY,
+                    "",
+                )
+                or ""
+            ).strip()
+        )
+        if (
+            declared_artifact_envelope
+            and "max_file_bytes" in local_envelope_limits
+        ):
             policy_version += "+declared-artifact-envelope-v1"
             # The envelope helper admitted only exact set equality between
             # these changed paths and the identity-bound task outputs.
@@ -16110,32 +16143,15 @@ class PortalImplementationDaemon:
         return p.daemon_assert_no_write_bypass(**kw)
 
     def execute_live_logic_repair(self, request, **kw):
-        """Feature-gated LPR-017 edge controller (lazy, thin host)."""
-
         from . import live_logic_repair_controller as lpr
-
         return lpr.daemon_execute_live_logic_repair(self, request, **kw)
 
     def intercept_logic_repair_proposal(self, **kw):
-        """Analyze an ordinary provider proposal as a read-only overlay."""
-
-        from .live_logic_repair_controller import (
-            LiveLogicRepairController,
-            LiveLogicRepairPolicy,
-        )
-
-        enable = bool(kw.pop("enable", True))
-        policy = LiveLogicRepairPolicy(
-            enable_live_logic_repair=enable,
-            expand_write_set_on_omission=bool(
-                kw.pop("expand_write_set_on_omission", True)
-            ),
-        )
-        return LiveLogicRepairController(policy=policy).intercept_proposal(**kw)
+        from . import live_logic_repair_controller as lpr
+        return lpr.daemon_intercept_logic_repair_proposal(self, **kw)
 
     def assert_no_logic_repair_write_bypass(self, **kw):
         from . import live_logic_repair_controller as lpr
-
         return lpr.daemon_assert_no_logic_repair_write_bypass(**kw)
 
     def route_model_assisted_contract_packet(
