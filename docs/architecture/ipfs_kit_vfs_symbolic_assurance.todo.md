@@ -4212,7 +4212,7 @@ compact references and bounded spans only.
 
 ## VFS-091 Close objective gap: Prove vfs/mcplusplus-runtime-witness@1 for Witness selected MCP++ paths in a hermetic runtime
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
