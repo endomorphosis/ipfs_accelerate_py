@@ -440,6 +440,26 @@ def _read_environment_entry(source: Mapping[str, str], key: str) -> str:
     return raw.strip()
 
 
+def _read_path_predicate(predicate: PathPredicate, path: str) -> bool:
+    """Evaluate and normalize a path hook inside the bounded worker."""
+
+    present = predicate(path)
+    if type(present) is not bool:
+        raise TypeError("path predicates must return bool")
+    return present
+
+
+def _find_executable(finder: ExecutableFinder, executable: str) -> bool:
+    """Reduce executable discovery to a safe boolean before crossing boundaries."""
+
+    discovered = finder(executable)
+    if discovered is None:
+        return False
+    if type(discovered) is not str:
+        raise TypeError("executable finders must return str or None")
+    return bool(discovered)
+
+
 def _metadata_reason(values: Mapping[str, Any], fallback: str) -> str:
     """Return a bounded, serialization-safe provider reason code."""
 
@@ -819,7 +839,11 @@ class TestReuseCapabilityProbe:
                 )
             if not configured:
                 continue
-            status, value = budget.call(self._path_is_file, configured)
+            status, value = budget.call(
+                _read_path_predicate,
+                self._path_is_file,
+                configured,
+            )
             if status is TestReuseCapabilityStatus.UNKNOWN:
                 return _Check(
                     status,
@@ -833,20 +857,24 @@ class TestReuseCapabilityProbe:
                     ),
                 )
             return _Check(
-                TestReuseCapabilityStatus.AVAILABLE if value else TestReuseCapabilityStatus.MISSING,
-                "configured_executable_available" if value else "configured_executable_missing",
+                TestReuseCapabilityStatus.AVAILABLE
+                if value is True
+                else TestReuseCapabilityStatus.MISSING,
+                "configured_executable_available"
+                if value is True
+                else "configured_executable_missing",
                 (
                     TestReuseCapabilityEvidence(
                         TestReuseCapabilityEvidenceKind.CONFIGURED_PATH,
                         environment_name,
-                        bool(value),
+                        value is True,
                     ),
                 ),
             )
 
         evidence: list[TestReuseCapabilityEvidence] = []
         for candidate in candidates:
-            status, value = budget.call(self._which, candidate)
+            status, value = budget.call(_find_executable, self._which, candidate)
             if status is TestReuseCapabilityStatus.UNKNOWN:
                 evidence.append(
                     TestReuseCapabilityEvidence(
@@ -854,7 +882,7 @@ class TestReuseCapabilityProbe:
                     )
                 )
                 return _Check(status, str(value), tuple(evidence))
-            present = bool(value)
+            present = value is True
             evidence.append(
                 TestReuseCapabilityEvidence(
                     TestReuseCapabilityEvidenceKind.EXECUTABLE, candidate, present
@@ -900,7 +928,11 @@ class TestReuseCapabilityProbe:
                     break
         if value is None:
             return None
-        status, present = budget.call(self._path_is_dir, value)
+        status, present = budget.call(
+            _read_path_predicate,
+            self._path_is_dir,
+            value,
+        )
         if status is TestReuseCapabilityStatus.UNKNOWN:
             return _Check(
                 status,
@@ -914,13 +946,17 @@ class TestReuseCapabilityProbe:
                 ),
             )
         return _Check(
-            TestReuseCapabilityStatus.AVAILABLE if present else TestReuseCapabilityStatus.MISSING,
-            "configured_path_available" if present else "configured_path_missing",
+            TestReuseCapabilityStatus.AVAILABLE
+            if present is True
+            else TestReuseCapabilityStatus.MISSING,
+            "configured_path_available"
+            if present is True
+            else "configured_path_missing",
             (
                 TestReuseCapabilityEvidence(
                     TestReuseCapabilityEvidenceKind.CONFIGURED_PATH,
                     subject,
-                    bool(present),
+                    present is True,
                 ),
             ),
         )
@@ -1148,19 +1184,27 @@ class TestReuseCapabilityProbe:
                 value, subject = candidate, environment_name
         if value is None:
             return None
-        status, present = budget.call(self._path_is_file, value)
+        status, present = budget.call(
+            _read_path_predicate,
+            self._path_is_file,
+            value,
+        )
         evidence = (
             TestReuseCapabilityEvidence(
                 TestReuseCapabilityEvidenceKind.CONFIGURED_PATH,
                 subject,
-                None if status is TestReuseCapabilityStatus.UNKNOWN else bool(present),
+                None if status is TestReuseCapabilityStatus.UNKNOWN else present is True,
             ),
         )
         if status is TestReuseCapabilityStatus.UNKNOWN:
             return _Check(status, str(present), evidence)
         return _Check(
-            TestReuseCapabilityStatus.AVAILABLE if present else TestReuseCapabilityStatus.MISSING,
-            "configured_path_available" if present else "configured_path_missing",
+            TestReuseCapabilityStatus.AVAILABLE
+            if present is True
+            else TestReuseCapabilityStatus.MISSING,
+            "configured_path_available"
+            if present is True
+            else "configured_path_missing",
             evidence,
         )
 

@@ -86,6 +86,16 @@ class SlowMapping(Mapping[str, Any]):
         return 0
 
 
+class HostileDiscoveryResult:
+    """Provider value that must never be interpreted on the probe thread."""
+
+    def __bool__(self) -> bool:
+        raise AssertionError("provider truth conversion escaped the probe boundary")
+
+    def __str__(self) -> str:
+        raise AssertionError("provider string conversion escaped the probe boundary")
+
+
 def _available_config(tmp_path: Path) -> CapabilityProbeConfig:
     groth16 = tmp_path / "groth16"
     provekit = tmp_path / "provekit"
@@ -311,6 +321,35 @@ def test_broken_discovery_hooks_are_isolated_as_unknown() -> None:
     assert fact.status is CapabilityStatus.UNKNOWN
     assert fact.reason_code == "probe_failed"
     assert "unstable" not in json.dumps(report.to_dict())
+    assert report.unavailable_is_non_blocking
+
+
+@pytest.mark.parametrize("hook", ("which", "path_is_file", "path_is_dir"))
+def test_malformed_discovery_results_are_isolated_as_unknown(hook: str) -> None:
+    hostile = HostileDiscoveryResult()
+    kwargs: dict[str, Any] = {
+        "find_spec": lambda _module: None,
+        "which": lambda _name: None,
+        "path_is_file": lambda _path: False,
+        "path_is_dir": lambda _path: False,
+        "environ": {},
+    }
+    config = CapabilityProbeConfig()
+    if hook == "which":
+        kwargs["which"] = lambda _name: hostile
+    elif hook == "path_is_file":
+        kwargs["environ"] = {"IPFS_DATASETS_GROTH16_BINARY": "/configured/groth16"}
+        kwargs["path_is_file"] = lambda _path: hostile
+    else:
+        config = CapabilityProbeConfig(groth16_artifacts_path="/configured/groth16")
+        kwargs["path_is_dir"] = lambda _path: hostile
+
+    report = CapabilityProbe(config, **kwargs).probe()
+
+    fact = report.capability("groth16")
+    assert fact.status is CapabilityStatus.UNKNOWN
+    assert fact.reason_code == "probe_failed"
+    assert fact.test_action == "run"
     assert report.unavailable_is_non_blocking
 
 
