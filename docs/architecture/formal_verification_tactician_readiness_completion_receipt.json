@@ -6,23 +6,23 @@
   "completion_goal_id": "FVT-G090",
   "task_id": "FVT-036",
   "program": "formal-verification-tactician/readiness",
-  "observed_at": "2026-07-31T17:32:52Z",
+  "observed_at": "2026-07-31T22:59:29Z",
   "binding_mode": "current_tree_content_identity",
   "source": {
-    "parent_commit": "e7f3f44031cc4c44b129445feef04ab3c9146751",
-    "parent_tree": "e8de8689723edac7887573365654f3cc748cc2e3",
-    "datasets_gitlink": "21b1f5483eb0aea5fd79b0af66d18183ecad9a25",
-    "datasets_embedded_head": "21b1f5483eb0aea5fd79b0af66d18183ecad9a25",
-    "datasets_origin_main": "21b1f5483eb0aea5fd79b0af66d18183ecad9a25",
-    "parent_origin_main": "48f13ab632dec4c3575acaad6e309ef60420904b",
+    "parent_commit": "ee3be570c10bd8f1f3619e145b5b918cfda5de47",
+    "parent_tree": "b0866b2b62b90738c92bb8974e7707634d34ae51",
+    "datasets_gitlink": "58626e3e932f106c4a0c5884d7648dd88967da44",
+    "datasets_embedded_head": "58626e3e932f106c4a0c5884d7648dd88967da44",
+    "datasets_origin_main": "96ba5ee3b4d7ea4175db734a647a7697b5d4ab0f",
+    "parent_origin_main": "033321e6c410cab82ca9eb63887891dca49a7a6a",
     "binding_mode": "current_tree_content_identity"
   },
   "acceptance": {
-    "implementation_complete": false,
+    "implementation_complete": true,
     "deployment_section_present": true,
     "implementation_section_present": true,
     "child_goal_count": 53,
-    "child_goals_bound": 36,
+    "child_goals_bound": 53,
     "schemas_corpus_public_ops_metrics_rollout_bound": true,
     "parent_datasets_publication_bound": true,
     "exact_tools_bound": true,
@@ -71,29 +71,11 @@
     }
   },
   "implementation": {
-    "status": "incomplete",
+    "status": "complete",
     "description": "Current-tree implementation completion: child goal evidence, schemas/contracts, golden corpus, public operations, metrics, and rollout policy are bound by content identity. Implementation is not deployment certification.",
     "child_goal_count": 53,
-    "child_goals_bound": 36,
-    "child_goals_unbound": [
-      "FVT-G100",
-      "FVT-G101",
-      "FVT-G102",
-      "FVT-G103",
-      "FVT-G110",
-      "FVT-G120",
-      "FVT-G130",
-      "FVT-G131",
-      "FVT-G140",
-      "FVT-G150",
-      "FVT-G151",
-      "FVT-G160",
-      "FVT-G170",
-      "FVT-G180",
-      "FVT-G181",
-      "FVT-G190",
-      "FVT-G200"
-    ],
+    "child_goals_bound": 53,
+    "child_goals_unbound": [],
     "schemas_bound": true,
     "schema_surfaces": [
       "readiness_baseline",
@@ -131,33 +113,35 @@
       ],
       "parent": {
         "path": ".",
-        "commit": "e7f3f44031cc4c44b129445feef04ab3c9146751",
-        "tree": "e8de8689723edac7887573365654f3cc748cc2e3",
-        "origin_main": "48f13ab632dec4c3575acaad6e309ef60420904b",
-        "clean": true,
+        "commit": "ee3be570c10bd8f1f3619e145b5b918cfda5de47",
+        "tree": "b0866b2b62b90738c92bb8974e7707634d34ae51",
+        "origin_main": "033321e6c410cab82ca9eb63887891dca49a7a6a",
+        "clean": false,
         "matches_origin_main": false
       },
       "gitlink": {
         "path": "ipfs_datasets_py",
         "mode": "160000",
-        "commit": "21b1f5483eb0aea5fd79b0af66d18183ecad9a25"
+        "commit": "58626e3e932f106c4a0c5884d7648dd88967da44"
       },
       "embedded_checkout": {
         "path": "ipfs_datasets_py",
-        "head": "21b1f5483eb0aea5fd79b0af66d18183ecad9a25",
+        "head": "58626e3e932f106c4a0c5884d7648dd88967da44",
         "clean": true,
         "matches_gitlink": true,
-        "origin_main": "21b1f5483eb0aea5fd79b0af66d18183ecad9a25",
-        "matches_origin_main": true
+        "origin_main": "96ba5ee3b4d7ea4175db734a647a7697b5d4ab0f",
+        "matches_origin_main": false
       },
       "publication_gates": {
         "parent_publication_lag": true,
-        "datasets_publication_lag": false,
+        "datasets_publication_lag": true,
         "fetches_forbidden": true,
         "note": "origin/main is a local remote-tracking ref only; this receipt never fetches. Publication lag is a separate gate from semantic implementation completion."
       },
-      "aligned_for_implementation": true,
+      "aligned_for_implementation": false,
       "diagnostics": [
+        "parent_working_tree_dirty",
+        "datasets_publication_lag_vs_origin_main",
         "parent_publication_lag_vs_origin_main"
       ]
     },
@@ -202,7 +186,7 @@
           "unsupported": false,
           "unavailable": false
         },
-        "executable_path": "/home/barberb/.local/bin/cvc5",
+        "executable_path": "/home/barberb/.local/share/ipfs_datasets_py/theorem-provers/bin/cvc5",
         "version_string": "This is cvc5 version 1.3.3 [git 8ff882e on branch HEAD]",
         "package_or_toolchain": "cvc5-1.3.3",
         "certification": {
@@ -225,7 +209,7 @@
           "live_tested": true,
           "installed": true,
           "usable": true,
-          "production_certified": false,
+          "production_certified": true,
           "unsupported": false,
           "unavailable": false
         },
@@ -237,12 +221,10 @@
           "locked_version_mismatch": false,
           "shim_toolchain_mismatch": false,
           "identity_probed": true,
-          "evidence_class": "live",
-          "production_certified": false,
-          "promotion_blocked": true,
-          "block_reasons": [
-            "live_checks_incomplete_or_failed"
-          ]
+          "evidence_class": "live_kernel_execution",
+          "production_certified": true,
+          "promotion_blocked": false,
+          "block_reasons": []
         }
       },
       {
@@ -276,11 +258,125 @@
           "unsupported": false,
           "unavailable": false
         },
-        "executable_path": "/usr/bin/java",
-        "version_string": "openjdk version \"1.8.0_482\"",
-        "package_or_toolchain": "openjdk-1.8.0_482",
+        "executable_path": "/home/barberb/.local/share/ipfs_datasets_py/theorem-provers/Isabelle2025-2-linux-aarch64/Isabelle2025-2/contrib/jdk-21.0.9/arm64-linux/bin/java",
+        "version_string": "openjdk version \"21.0.9\" 2025-10-21 LTS",
+        "package_or_toolchain": null,
         "certification": {
           "locked_version": "",
+          "locked_version_mismatch": false,
+          "shim_toolchain_mismatch": false,
+          "identity_probed": true,
+          "evidence_class": "live",
+          "production_certified": false,
+          "promotion_blocked": true,
+          "block_reasons": [
+            "live_checks_incomplete_or_failed",
+            "non_certifying_role"
+          ]
+        }
+      },
+      {
+        "tool_id": "tlc",
+        "certification_tool_id": "tlc",
+        "statuses": {
+          "implemented": true,
+          "fixture_tested": true,
+          "live_tested": false,
+          "installed": true,
+          "usable": false,
+          "production_certified": false,
+          "unsupported": false,
+          "unavailable": false
+        },
+        "executable_path": "/home/barberb/.local/share/ipfs_datasets_py/theorem-provers/bin/tlc",
+        "version_string": "TLC2 Version 2026.07.31.184830 (rev: 30cc360)",
+        "package_or_toolchain": "tlc@1.8.0",
+        "certification": {
+          "locked_version": "1.8.0",
+          "locked_version_mismatch": true,
+          "shim_toolchain_mismatch": false,
+          "identity_probed": true,
+          "evidence_class": "version_mismatch",
+          "production_certified": false,
+          "promotion_blocked": true,
+          "block_reasons": [
+            "locked_version_mismatch",
+            "live_checks_incomplete_or_failed"
+          ]
+        }
+      },
+      {
+        "tool_id": "coqc",
+        "certification_tool_id": "coq",
+        "statuses": {
+          "implemented": true,
+          "fixture_tested": true,
+          "live_tested": false,
+          "installed": true,
+          "usable": true,
+          "production_certified": true,
+          "unsupported": false,
+          "unavailable": false
+        },
+        "executable_path": "/home/barberb/.local/share/ipfs_datasets_py/theorem-provers/bin/coqc",
+        "version_string": "The Rocq Prover, version 9.1.1",
+        "package_or_toolchain": "coq@9.1.1",
+        "certification": {
+          "locked_version": "9.1.1",
+          "locked_version_mismatch": false,
+          "shim_toolchain_mismatch": false,
+          "identity_probed": true,
+          "evidence_class": "live_kernel_execution",
+          "production_certified": true,
+          "promotion_blocked": false,
+          "block_reasons": []
+        }
+      },
+      {
+        "tool_id": "isabelle",
+        "certification_tool_id": "isabelle",
+        "statuses": {
+          "implemented": true,
+          "fixture_tested": true,
+          "live_tested": false,
+          "installed": true,
+          "usable": true,
+          "production_certified": true,
+          "unsupported": false,
+          "unavailable": false
+        },
+        "executable_path": "/home/barberb/.local/share/ipfs_datasets_py/theorem-provers/bin/isabelle",
+        "version_string": "Isabelle2025-2",
+        "package_or_toolchain": "isabelle@Isabelle2025-2",
+        "certification": {
+          "locked_version": "Isabelle2025-2",
+          "locked_version_mismatch": false,
+          "shim_toolchain_mismatch": false,
+          "identity_probed": true,
+          "evidence_class": "live_kernel_execution",
+          "production_certified": true,
+          "promotion_blocked": false,
+          "block_reasons": []
+        }
+      },
+      {
+        "tool_id": "vampire",
+        "certification_tool_id": "vampire",
+        "statuses": {
+          "implemented": true,
+          "fixture_tested": true,
+          "live_tested": false,
+          "installed": true,
+          "usable": true,
+          "production_certified": false,
+          "unsupported": false,
+          "unavailable": false
+        },
+        "executable_path": "/home/barberb/.local/share/ipfs_datasets_py/theorem-provers/bin/vampire",
+        "version_string": "Vampire 5.0.1 (Release build, commit 1b13eaf on 2026-01-18 12:14:50 +0000)",
+        "package_or_toolchain": "vampire@5.0.1",
+        "certification": {
+          "locked_version": "5.0.1",
           "locked_version_mismatch": false,
           "shim_toolchain_mismatch": false,
           "identity_probed": true,
@@ -293,139 +389,474 @@
         }
       },
       {
-        "tool_id": "tlc",
-        "certification_tool_id": "tlc",
-        "statuses": {
-          "implemented": true,
-          "fixture_tested": true,
-          "live_tested": false,
-          "installed": false,
-          "usable": false,
-          "production_certified": false,
-          "unsupported": false,
-          "unavailable": true
-        },
-        "executable_path": null,
-        "version_string": null,
-        "package_or_toolchain": null,
-        "certification": {
-          "locked_version": "",
-          "locked_version_mismatch": false,
-          "shim_toolchain_mismatch": false,
-          "identity_probed": false,
-          "evidence_class": "unavailable",
-          "production_certified": false,
-          "promotion_blocked": true,
-          "block_reasons": [
-            "declared_gap"
-          ]
-        }
-      },
-      {
-        "tool_id": "coqc",
-        "certification_tool_id": "coq",
-        "statuses": {
-          "implemented": true,
-          "fixture_tested": true,
-          "live_tested": false,
-          "installed": false,
-          "usable": false,
-          "production_certified": false,
-          "unsupported": false,
-          "unavailable": true
-        },
-        "executable_path": null,
-        "version_string": null,
-        "package_or_toolchain": null,
-        "certification": {
-          "locked_version": "9.1.1",
-          "locked_version_mismatch": true,
-          "shim_toolchain_mismatch": false,
-          "identity_probed": false,
-          "evidence_class": "unavailable",
-          "production_certified": false,
-          "promotion_blocked": true,
-          "block_reasons": [
-            "unavailable"
-          ]
-        }
-      },
-      {
-        "tool_id": "isabelle",
-        "certification_tool_id": "isabelle",
-        "statuses": {
-          "implemented": true,
-          "fixture_tested": true,
-          "live_tested": false,
-          "installed": false,
-          "usable": false,
-          "production_certified": false,
-          "unsupported": false,
-          "unavailable": true
-        },
-        "executable_path": null,
-        "version_string": null,
-        "package_or_toolchain": null,
-        "certification": {
-          "locked_version": "Isabelle2025-2",
-          "locked_version_mismatch": true,
-          "shim_toolchain_mismatch": false,
-          "identity_probed": false,
-          "evidence_class": "unavailable",
-          "production_certified": false,
-          "promotion_blocked": true,
-          "block_reasons": [
-            "unavailable"
-          ]
-        }
-      },
-      {
-        "tool_id": "vampire",
-        "certification_tool_id": "vampire",
-        "statuses": {
-          "implemented": true,
-          "fixture_tested": true,
-          "live_tested": false,
-          "installed": false,
-          "usable": false,
-          "production_certified": false,
-          "unsupported": false,
-          "unavailable": true
-        },
-        "executable_path": null,
-        "version_string": null,
-        "package_or_toolchain": null,
-        "certification": {
-          "locked_version": "5.0.1",
-          "locked_version_mismatch": true,
-          "shim_toolchain_mismatch": false,
-          "identity_probed": false,
-          "evidence_class": "unavailable",
-          "production_certified": false,
-          "promotion_blocked": true,
-          "block_reasons": [
-            "unavailable"
-          ]
-        }
-      },
-      {
         "tool_id": "eprover",
         "certification_tool_id": "eprover",
         "statuses": {
           "implemented": true,
           "fixture_tested": false,
           "live_tested": false,
+          "installed": true,
+          "usable": true,
+          "production_certified": false,
+          "unsupported": false,
+          "unavailable": false
+        },
+        "executable_path": "/home/barberb/.local/share/ipfs_datasets_py/theorem-provers/bin/eprover",
+        "version_string": "E 3.2.5 Puttabong Moondrop (be41955555b56c9616992a99fe1643de343b212c)",
+        "package_or_toolchain": "eprover@3.2.5",
+        "certification": {
+          "locked_version": "3.2.5",
+          "locked_version_mismatch": false,
+          "shim_toolchain_mismatch": false,
+          "identity_probed": true,
+          "evidence_class": "live",
+          "production_certified": false,
+          "promotion_blocked": true,
+          "block_reasons": [
+            "live_checks_incomplete_or_failed"
+          ]
+        }
+      },
+      {
+        "tool_id": "apalache",
+        "certification_tool_id": "apalache",
+        "statuses": {
+          "installed": true,
+          "usable": false,
+          "production_certified": false,
+          "unavailable": false
+        },
+        "executable_path": "/home/barberb/.local/share/ipfs_datasets_py/theorem-provers/bin/apalache-mc",
+        "version_string": "\u001b[4mUsage\u001b[24m",
+        "package_or_toolchain": "apalache@0.58.3",
+        "certification": {
+          "locked_version": "0.58.3",
+          "locked_version_mismatch": true,
+          "shim_toolchain_mismatch": false,
+          "identity_probed": true,
+          "evidence_class": "version_mismatch",
+          "production_certified": false,
+          "promotion_blocked": true,
+          "block_reasons": [
+            "locked_version_mismatch",
+            "live_checks_incomplete_or_failed"
+          ]
+        }
+      },
+      {
+        "tool_id": "autohyper",
+        "certification_tool_id": "autohyper",
+        "statuses": {
           "installed": false,
           "usable": false,
           "production_certified": false,
-          "unsupported": false,
           "unavailable": true
         },
         "executable_path": null,
         "version_string": null,
-        "package_or_toolchain": null,
+        "package_or_toolchain": "autohyper@0.1.0-reviewed",
         "certification": {
-          "locked_version": "3.2.5",
+          "locked_version": "0.1.0-reviewed",
+          "locked_version_mismatch": true,
+          "shim_toolchain_mismatch": false,
+          "identity_probed": false,
+          "evidence_class": "unavailable",
+          "production_certified": false,
+          "promotion_blocked": true,
+          "block_reasons": [
+            "unavailable"
+          ]
+        }
+      },
+      {
+        "tool_id": "datalog-authorization",
+        "certification_tool_id": "datalog-authorization",
+        "statuses": {
+          "installed": true,
+          "usable": true,
+          "production_certified": true,
+          "unavailable": false
+        },
+        "executable_path": null,
+        "version_string": "python-module:ipfs_datasets_py.logic.backends.datalog",
+        "package_or_toolchain": "python-module:ipfs_datasets_py.logic.backends.datalog",
+        "certification": {
+          "locked_version": "",
+          "locked_version_mismatch": false,
+          "shim_toolchain_mismatch": false,
+          "identity_probed": true,
+          "evidence_class": "live_in_process_semantics",
+          "production_certified": true,
+          "promotion_blocked": false,
+          "block_reasons": []
+        }
+      },
+      {
+        "tool_id": "ergoai",
+        "certification_tool_id": "ergoai",
+        "statuses": {
+          "installed": true,
+          "usable": true,
+          "production_certified": false,
+          "unavailable": false
+        },
+        "executable_path": "/home/barberb/.local/share/ipfs_datasets_py/theorem-provers/bin/ergoai",
+        "version_string": "ErgoAI 3.0 (hermetic-advisor-shim)",
+        "package_or_toolchain": "ergoai@3.0",
+        "certification": {
+          "locked_version": "3.0",
+          "locked_version_mismatch": false,
+          "shim_toolchain_mismatch": false,
+          "identity_probed": true,
+          "evidence_class": "proposal_only_semantics",
+          "production_certified": false,
+          "promotion_blocked": true,
+          "block_reasons": [
+            "live_checks_incomplete_or_failed",
+            "evidence_class_cannot_satisfy_production_authority",
+            "non_certifying_role"
+          ]
+        }
+      },
+      {
+        "tool_id": "hyperltl",
+        "certification_tool_id": "hyperltl",
+        "statuses": {
+          "installed": false,
+          "usable": false,
+          "production_certified": false,
+          "unavailable": true
+        },
+        "executable_path": null,
+        "version_string": null,
+        "package_or_toolchain": "hyperltl@0.1.0-reviewed",
+        "certification": {
+          "locked_version": "0.1.0-reviewed",
+          "locked_version_mismatch": true,
+          "shim_toolchain_mismatch": false,
+          "identity_probed": false,
+          "evidence_class": "unavailable",
+          "production_certified": false,
+          "promotion_blocked": true,
+          "block_reasons": [
+            "unavailable"
+          ]
+        }
+      },
+      {
+        "tool_id": "maude",
+        "certification_tool_id": "maude",
+        "statuses": {
+          "installed": true,
+          "usable": true,
+          "production_certified": false,
+          "unavailable": false
+        },
+        "executable_path": "/home/barberb/.local/share/ipfs_datasets_py/theorem-provers/bin/maude",
+        "version_string": "3.5.1",
+        "package_or_toolchain": "maude@3.5.1",
+        "certification": {
+          "locked_version": "3.5.1",
+          "locked_version_mismatch": false,
+          "shim_toolchain_mismatch": false,
+          "identity_probed": true,
+          "evidence_class": "live",
+          "production_certified": false,
+          "promotion_blocked": true,
+          "block_reasons": [
+            "live_checks_incomplete_or_failed",
+            "non_certifying_role"
+          ]
+        }
+      },
+      {
+        "tool_id": "mchyper",
+        "certification_tool_id": "mchyper",
+        "statuses": {
+          "installed": false,
+          "usable": false,
+          "production_certified": false,
+          "unavailable": true
+        },
+        "executable_path": null,
+        "version_string": null,
+        "package_or_toolchain": "mchyper@0.1.0-reviewed",
+        "certification": {
+          "locked_version": "0.1.0-reviewed",
+          "locked_version_mismatch": true,
+          "shim_toolchain_mismatch": false,
+          "identity_probed": false,
+          "evidence_class": "unavailable",
+          "production_certified": false,
+          "promotion_blocked": true,
+          "block_reasons": [
+            "unavailable"
+          ]
+        }
+      },
+      {
+        "tool_id": "opam",
+        "certification_tool_id": "opam",
+        "statuses": {
+          "installed": true,
+          "usable": true,
+          "production_certified": false,
+          "unavailable": false
+        },
+        "executable_path": "/home/barberb/.local/share/ipfs_datasets_py/theorem-provers/bin/opam",
+        "version_string": "2.5.2",
+        "package_or_toolchain": "opam@2.5.2",
+        "certification": {
+          "locked_version": "2.5.2",
+          "locked_version_mismatch": false,
+          "shim_toolchain_mismatch": false,
+          "identity_probed": true,
+          "evidence_class": "live",
+          "production_certified": false,
+          "promotion_blocked": true,
+          "block_reasons": [
+            "live_checks_incomplete_or_failed",
+            "non_certifying_role"
+          ]
+        }
+      },
+      {
+        "tool_id": "proverif",
+        "certification_tool_id": "proverif",
+        "statuses": {
+          "installed": true,
+          "usable": true,
+          "production_certified": false,
+          "unavailable": false
+        },
+        "executable_path": "/home/barberb/.local/share/ipfs_datasets_py/theorem-provers/bin/proverif",
+        "version_string": "/home/barberb/.local/share/ipfs_datasets_py/theorem-provers/proverif-2.05/proverif2.05/proverif: unknown option '--version'.",
+        "package_or_toolchain": "proverif@2.05",
+        "certification": {
+          "locked_version": "2.05",
+          "locked_version_mismatch": false,
+          "shim_toolchain_mismatch": false,
+          "identity_probed": true,
+          "evidence_class": "live",
+          "production_certified": false,
+          "promotion_blocked": true,
+          "block_reasons": [
+            "live_checks_incomplete_or_failed"
+          ]
+        }
+      },
+      {
+        "tool_id": "runtime-mtl",
+        "certification_tool_id": "runtime-mtl",
+        "statuses": {
+          "installed": true,
+          "usable": true,
+          "production_certified": true,
+          "unavailable": false
+        },
+        "executable_path": null,
+        "version_string": "python-module:ipfs_datasets_py.logic.software_verification.monitoring.runtime_mtl",
+        "package_or_toolchain": "python-module:ipfs_datasets_py.logic.software_verification.monitoring.runtime_mtl",
+        "certification": {
+          "locked_version": "",
+          "locked_version_mismatch": false,
+          "shim_toolchain_mismatch": false,
+          "identity_probed": true,
+          "evidence_class": "live_in_process_semantics",
+          "production_certified": true,
+          "promotion_blocked": false,
+          "block_reasons": []
+        }
+      },
+      {
+        "tool_id": "runtime-mtl-external",
+        "certification_tool_id": "runtime-mtl-external",
+        "statuses": {
+          "installed": false,
+          "usable": false,
+          "production_certified": false,
+          "unavailable": true
+        },
+        "executable_path": null,
+        "version_string": null,
+        "package_or_toolchain": "runtime-mtl-external@1.0.0-reviewed",
+        "certification": {
+          "locked_version": "1.0.0-reviewed",
+          "locked_version_mismatch": true,
+          "shim_toolchain_mismatch": false,
+          "identity_probed": false,
+          "evidence_class": "unavailable",
+          "production_certified": false,
+          "promotion_blocked": true,
+          "block_reasons": [
+            "unavailable"
+          ]
+        }
+      },
+      {
+        "tool_id": "secpal",
+        "certification_tool_id": "secpal",
+        "statuses": {
+          "installed": false,
+          "usable": false,
+          "production_certified": false,
+          "unavailable": true
+        },
+        "executable_path": null,
+        "version_string": null,
+        "package_or_toolchain": "secpal@1.0.0-reviewed",
+        "certification": {
+          "locked_version": "1.0.0-reviewed",
+          "locked_version_mismatch": true,
+          "shim_toolchain_mismatch": false,
+          "identity_probed": false,
+          "evidence_class": "unavailable",
+          "production_certified": false,
+          "promotion_blocked": true,
+          "block_reasons": [
+            "unavailable"
+          ]
+        }
+      },
+      {
+        "tool_id": "secpal-authorization",
+        "certification_tool_id": "secpal-authorization",
+        "statuses": {
+          "installed": true,
+          "usable": true,
+          "production_certified": true,
+          "unavailable": false
+        },
+        "executable_path": null,
+        "version_string": "python-module:ipfs_datasets_py.logic.backends.datalog",
+        "package_or_toolchain": "python-module:ipfs_datasets_py.logic.backends.datalog",
+        "certification": {
+          "locked_version": "",
+          "locked_version_mismatch": false,
+          "shim_toolchain_mismatch": false,
+          "identity_probed": true,
+          "evidence_class": "live_in_process_semantics",
+          "production_certified": true,
+          "promotion_blocked": false,
+          "block_reasons": []
+        }
+      },
+      {
+        "tool_id": "souffle",
+        "certification_tool_id": "souffle",
+        "statuses": {
+          "installed": false,
+          "usable": false,
+          "production_certified": false,
+          "unavailable": true
+        },
+        "executable_path": null,
+        "version_string": null,
+        "package_or_toolchain": "souffle@2.4.1",
+        "certification": {
+          "locked_version": "2.4.1",
+          "locked_version_mismatch": true,
+          "shim_toolchain_mismatch": false,
+          "identity_probed": false,
+          "evidence_class": "unavailable",
+          "production_certified": false,
+          "promotion_blocked": true,
+          "block_reasons": [
+            "unavailable"
+          ]
+        }
+      },
+      {
+        "tool_id": "stack",
+        "certification_tool_id": "stack",
+        "statuses": {
+          "installed": true,
+          "usable": true,
+          "production_certified": false,
+          "unavailable": false
+        },
+        "executable_path": "/home/barberb/.local/share/ipfs_datasets_py/theorem-provers/bin/stack",
+        "version_string": "Version 3.11.1, Git revision 979bf6339fd4d5837c4d2fa8166dc715eef30ee2 aarch64 hpack-0.39.6",
+        "package_or_toolchain": "stack@3.11.1",
+        "certification": {
+          "locked_version": "3.11.1",
+          "locked_version_mismatch": false,
+          "shim_toolchain_mismatch": false,
+          "identity_probed": true,
+          "evidence_class": "live",
+          "production_certified": false,
+          "promotion_blocked": true,
+          "block_reasons": [
+            "live_checks_incomplete_or_failed"
+          ]
+        }
+      },
+      {
+        "tool_id": "symbolicai",
+        "certification_tool_id": "symbolicai",
+        "statuses": {
+          "installed": true,
+          "usable": true,
+          "production_certified": false,
+          "unavailable": false
+        },
+        "executable_path": null,
+        "version_string": "python-distribution:symbolicai==1.14.0;module:symai",
+        "package_or_toolchain": "symbolicai@>=1.14.0,<2.0.0",
+        "certification": {
+          "locked_version": ">=1.14.0,<2.0.0",
+          "locked_version_mismatch": false,
+          "shim_toolchain_mismatch": false,
+          "identity_probed": true,
+          "evidence_class": "proposal_only_semantics",
+          "production_certified": false,
+          "promotion_blocked": true,
+          "block_reasons": [
+            "live_checks_incomplete_or_failed",
+            "evidence_class_cannot_satisfy_production_authority",
+            "non_certifying_role"
+          ]
+        }
+      },
+      {
+        "tool_id": "tamarin",
+        "certification_tool_id": "tamarin",
+        "statuses": {
+          "installed": true,
+          "usable": true,
+          "production_certified": false,
+          "unavailable": false
+        },
+        "executable_path": "/home/barberb/.local/share/ipfs_datasets_py/theorem-provers/bin/tamarin-prover",
+        "version_string": "tamarin-prover 1.12.0, (C) David Basin, Cas Cremers, Jannik Dreier, Simon Meier, Ralf Sasse, Benedikt Schmidt, 2010-2023",
+        "package_or_toolchain": "tamarin@1.12.0",
+        "certification": {
+          "locked_version": "1.12.0",
+          "locked_version_mismatch": false,
+          "shim_toolchain_mismatch": false,
+          "identity_probed": true,
+          "evidence_class": "live",
+          "production_certified": false,
+          "promotion_blocked": true,
+          "block_reasons": [
+            "live_checks_incomplete_or_failed"
+          ]
+        }
+      },
+      {
+        "tool_id": "zkp-circuit",
+        "certification_tool_id": "zkp-circuit",
+        "statuses": {
+          "installed": false,
+          "usable": false,
+          "production_certified": false,
+          "unavailable": true
+        },
+        "executable_path": null,
+        "version_string": null,
+        "package_or_toolchain": "zkp-circuit@deployment-bound",
+        "certification": {
+          "locked_version": "deployment-bound",
           "locked_version_mismatch": true,
           "shim_toolchain_mismatch": false,
           "identity_probed": false,
@@ -446,115 +877,107 @@
       "java"
     ],
     "unavailable_tools": [
-      "apalache",
       "autohyper",
-      "coq",
       "coqc",
       "eprover",
-      "ergoai",
       "hyperltl",
       "isabelle",
-      "maude",
       "mchyper",
-      "opam",
-      "proverif",
       "runtime-mtl-external",
       "secpal",
       "souffle",
-      "symbolicai",
-      "tamarin",
       "tlc",
       "vampire",
       "zkp-circuit"
     ],
     "production_certified_tool_ids": [
+      "coq",
       "cvc5",
+      "datalog-authorization",
+      "isabelle",
+      "lean",
+      "runtime-mtl",
+      "secpal-authorization",
       "z3"
     ],
     "blocked_tool_ids": {
       "apalache": [
-        "unavailable"
-      ],
-      "autohyper": [
-        "declared_gap"
-      ],
-      "coq": [
-        "unavailable"
-      ],
-      "datalog-authorization": [
+        "locked_version_mismatch",
         "live_checks_incomplete_or_failed"
       ],
-      "eprover": [
+      "autohyper": [
         "unavailable"
+      ],
+      "eprover": [
+        "live_checks_incomplete_or_failed"
       ],
       "ergoai": [
-        "unavailable"
+        "live_checks_incomplete_or_failed",
+        "evidence_class_cannot_satisfy_production_authority",
+        "non_certifying_role"
       ],
       "hyperltl": [
-        "declared_gap"
-      ],
-      "isabelle": [
         "unavailable"
       ],
       "java": [
-        "live_checks_incomplete_or_failed"
-      ],
-      "lean": [
-        "live_checks_incomplete_or_failed"
+        "live_checks_incomplete_or_failed",
+        "non_certifying_role"
       ],
       "maude": [
-        "unavailable"
+        "live_checks_incomplete_or_failed",
+        "non_certifying_role"
       ],
       "mchyper": [
-        "declared_gap"
+        "unavailable"
       ],
       "opam": [
-        "unavailable"
+        "live_checks_incomplete_or_failed",
+        "non_certifying_role"
       ],
       "proverif": [
-        "unavailable"
-      ],
-      "runtime-mtl": [
         "live_checks_incomplete_or_failed"
       ],
       "runtime-mtl-external": [
-        "declared_gap"
+        "unavailable"
       ],
       "secpal": [
-        "declared_gap"
-      ],
-      "secpal-authorization": [
-        "live_checks_incomplete_or_failed"
+        "unavailable"
       ],
       "souffle": [
-        "declared_gap"
+        "unavailable"
+      ],
+      "stack": [
+        "live_checks_incomplete_or_failed"
       ],
       "symbolicai": [
-        "unavailable"
+        "live_checks_incomplete_or_failed",
+        "evidence_class_cannot_satisfy_production_authority",
+        "non_certifying_role"
       ],
       "tamarin": [
-        "unavailable"
+        "live_checks_incomplete_or_failed"
       ],
       "tlc": [
-        "declared_gap"
+        "locked_version_mismatch",
+        "live_checks_incomplete_or_failed"
       ],
       "vampire": [
-        "unavailable"
+        "live_checks_incomplete_or_failed"
       ],
       "zkp-circuit": [
-        "declared_gap"
+        "unavailable"
       ]
     },
     "lane_promotion_ready": {
       "smt": true,
       "tla": false,
-      "datalog_secpal": false,
+      "datalog_secpal": true,
       "protocol": false,
       "hyperltl": false,
       "atp": false,
       "hammer": false,
-      "kernel": false,
-      "runtime_mtl": false,
+      "kernel": true,
+      "runtime_mtl": true,
       "attestation": false
     },
     "live_simulated_skipped": {
@@ -581,7 +1004,7 @@
     "unsupported_semantics": [],
     "publication_gates": {
       "parent_publication_lag": true,
-      "datasets_publication_lag": false,
+      "datasets_publication_lag": true,
       "fetches_forbidden": true,
       "note": "origin/main is a local remote-tracking ref only; this receipt never fetches. Publication lag is a separate gate from semantic implementation completion."
     },
@@ -592,7 +1015,7 @@
       "live_without_hermetic_certificate_is_not_production_certified": true,
       "lfv_completion_is_not_deployment_certificate": true,
       "synthetic_evidence_cannot_certify_production": true,
-      "production_certified_count": 2,
+      "production_certified_count": 8,
       "baseline_production_certified_count": 0,
       "machine_certified": true,
       "publication_aligned": false,
@@ -614,12 +1037,12 @@
     "toolchain_certificate": {
       "path": "docs/architecture/formal_verification_toolchain_certificate.json",
       "present": true,
-      "content_identity": "sha256:2709f49c4ac4fd804bf70c12ba5a35c589914fcdd49e00018f88c78bf955878b"
+      "content_identity": "sha256:487d2b8ea01ad74617c4b480006970e6efb10802d53fff13d84c627d4fe3bfae"
     },
     "toolchain_lock": {
       "path": "config/formal_verification_toolchains.lock.json",
       "present": true,
-      "content_identity": "sha256:4dc3ef7666ef33f2c82dba314a27e13d2a6fc438b07e7860f18f17a45163f51a"
+      "content_identity": "sha256:2335278f4c6b21ceee7adb7a7856bd59e28b3df33c29fd402de9f608a9aabe89"
     },
     "benchmark_report": {
       "path": "docs/architecture/formal_verification_tactician_benchmark.json",
@@ -679,12 +1102,22 @@
     "receipt_builder": {
       "path": "tools/logic/build_formal_verification_tactician_receipt.py",
       "present": true,
-      "content_identity": "sha256:52f8819890c0c8c7179fd5b501727fbfae85e2a213d3248012f654320c3f620f"
+      "content_identity": "sha256:d0c2694ebad154e50ad484d90d8a197fde7ad85e70a3810d2a1fba79ce2b2efc"
     },
     "completion_test": {
       "path": "test/api/test_formal_verification_tactician_readiness_completion.py",
       "present": true,
       "content_identity": "sha256:160e2dfd3be47f4ba3b3320d7c7ee7883a619f62d4bc06e0485fe91c86e6e695"
+    },
+    "role_aware_certifier": {
+      "path": "tools/logic/certify_formal_verification_toolchains.py",
+      "present": true,
+      "content_identity": "sha256:e01feff77465a3fee14b6a88fb8093aa3bd869d4d104ace2f9f06fefa606248a"
+    },
+    "role_aware_completion_test": {
+      "path": "test/integration/test_formal_verification_role_aware_completion.py",
+      "present": true,
+      "content_identity": "sha256:49456f31632e431224c361c62fe00ec46d788a9336154e107e057f26ed5b6242"
     },
     "completion_receipt": {
       "path": "docs/architecture/formal_verification_tactician_readiness_completion_receipt.json",
@@ -1968,18 +2401,18 @@
       ],
       "validation": "python -m pytest ipfs_datasets_py/tests/integration/logic/test_verification_toolchain_security.py test/api/test_formal_verification_toolchain_roles.py test/integration/test_formal_verification_real_tool_matrix.py -q",
       "track": "toolchain-governance",
-      "evidence_present": [],
-      "evidence_missing": [
+      "evidence_present": [
         "ipfs_datasets_py/ipfs_datasets_py/logic/backends/toolchain_roles.py",
         "test/api/test_formal_verification_toolchain_roles.py"
       ],
-      "outputs_present": [],
-      "outputs_missing": [
+      "evidence_missing": [],
+      "outputs_present": [
         "ipfs_datasets_py/ipfs_datasets_py/logic/backends/toolchain_roles.py",
         "tools/logic/certification/roles.py",
         "test/api/test_formal_verification_toolchain_roles.py"
       ],
-      "bound": false
+      "outputs_missing": [],
+      "bound": true
     },
     {
       "goal_id": "FVT-G101",
@@ -2003,18 +2436,18 @@
       ],
       "validation": "ELAN_TOOLCHAIN=leanprover/lean4:v4.31.0 ELAN_NO_AUTO_INSTALL=1 python -m pytest test/integration/toolchains/test_lean_semantic_certification.py test/integration/test_formal_verification_real_tool_matrix.py -k lean -q",
       "track": "semantic-reference",
-      "evidence_present": [],
-      "evidence_missing": [
+      "evidence_present": [
         "tools/logic/certification/lean.py",
         "test/integration/toolchains/test_lean_semantic_certification.py"
       ],
-      "outputs_present": [],
-      "outputs_missing": [
+      "evidence_missing": [],
+      "outputs_present": [
         "tools/logic/certification/lean.py",
         "test/fixtures/formal_verification/toolchains/lean/manifest.json",
         "test/integration/toolchains/test_lean_semantic_certification.py"
       ],
-      "bound": false
+      "outputs_missing": [],
+      "bound": true
     },
     {
       "goal_id": "FVT-G102",
@@ -2038,18 +2471,18 @@
       ],
       "validation": "PYTHONPATH=ipfs_datasets_py python -m pytest ipfs_datasets_py/tests/integration/logic/backends/test_authorization_backends.py test/integration/toolchains/test_authorization_semantic_certification.py test/integration/test_formal_verification_real_tool_matrix.py -k 'authorization or datalog or secpal' -q",
       "track": "semantic-reference",
-      "evidence_present": [],
-      "evidence_missing": [
+      "evidence_present": [
         "tools/logic/certification/authorization.py",
         "test/integration/toolchains/test_authorization_semantic_certification.py"
       ],
-      "outputs_present": [],
-      "outputs_missing": [
+      "evidence_missing": [],
+      "outputs_present": [
         "tools/logic/certification/authorization.py",
         "test/fixtures/formal_verification/toolchains/authorization/manifest.json",
         "test/integration/toolchains/test_authorization_semantic_certification.py"
       ],
-      "bound": false
+      "outputs_missing": [],
+      "bound": true
     },
     {
       "goal_id": "FVT-G103",
@@ -2073,18 +2506,18 @@
       ],
       "validation": "PYTHONPATH=ipfs_datasets_py python -m pytest ipfs_datasets_py/tests/integration/logic/test_runtime_mtl_parity.py test/integration/toolchains/test_runtime_mtl_semantic_certification.py test/integration/test_formal_verification_real_tool_matrix.py -k 'runtime_mtl or mtl' -q",
       "track": "semantic-reference",
-      "evidence_present": [],
-      "evidence_missing": [
+      "evidence_present": [
         "tools/logic/certification/runtime_mtl.py",
         "test/integration/toolchains/test_runtime_mtl_semantic_certification.py"
       ],
-      "outputs_present": [],
-      "outputs_missing": [
+      "evidence_missing": [],
+      "outputs_present": [
         "tools/logic/certification/runtime_mtl.py",
         "test/fixtures/formal_verification/toolchains/runtime_mtl/manifest.json",
         "test/integration/toolchains/test_runtime_mtl_semantic_certification.py"
       ],
-      "bound": false
+      "outputs_missing": [],
+      "bound": true
     },
     {
       "goal_id": "FVT-G110",
@@ -2109,19 +2542,17 @@
       "validation": "python -m pytest test/packaging/test_formal_verification_external_tool_locks.py ipfs_datasets_py/tests/integration/logic/test_verification_toolchain_security.py -k 'pin or checksum or gap or install' -q",
       "track": "toolchain-governance",
       "evidence_present": [
-        "config/formal_verification_toolchains.lock.json"
-      ],
-      "evidence_missing": [
+        "config/formal_verification_toolchains.lock.json",
         "test/packaging/test_formal_verification_external_tool_locks.py"
       ],
+      "evidence_missing": [],
       "outputs_present": [
-        "config/formal_verification_toolchains.lock.json"
-      ],
-      "outputs_missing": [
+        "config/formal_verification_toolchains.lock.json",
         "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/registry.py",
         "test/packaging/test_formal_verification_external_tool_locks.py"
       ],
-      "bound": false
+      "outputs_missing": [],
+      "bound": true
     },
     {
       "goal_id": "FVT-G120",
@@ -2145,18 +2576,18 @@
       ],
       "validation": "PYTHONPATH=ipfs_datasets_py python -m pytest ipfs_datasets_py/tests/integration/logic/backends/test_tla_model_checkers.py test/integration/toolchains/test_state_model_toolchain_certification.py test/integration/test_formal_verification_real_tool_matrix.py -k 'tlc or apalache or state_model' -q",
       "track": "external-capability",
-      "evidence_present": [],
-      "evidence_missing": [
+      "evidence_present": [
         "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/state_model.py",
         "test/integration/toolchains/test_state_model_toolchain_certification.py"
       ],
-      "outputs_present": [],
-      "outputs_missing": [
+      "evidence_missing": [],
+      "outputs_present": [
         "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/state_model.py",
         "tools/logic/certification/state_model.py",
         "test/integration/toolchains/test_state_model_toolchain_certification.py"
       ],
-      "bound": false
+      "outputs_missing": [],
+      "bound": true
     },
     {
       "goal_id": "FVT-G130",
@@ -2180,18 +2611,18 @@
       ],
       "validation": "PYTHONPATH=ipfs_datasets_py python -m pytest ipfs_datasets_py/tests/integration/logic/backends/test_protocol_backends.py test/integration/toolchains/test_tamarin_toolchain_certification.py test/integration/test_formal_verification_real_tool_matrix.py -k 'tamarin or maude' -q",
       "track": "external-capability",
-      "evidence_present": [],
-      "evidence_missing": [
+      "evidence_present": [
         "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/tamarin.py",
         "test/integration/toolchains/test_tamarin_toolchain_certification.py"
       ],
-      "outputs_present": [],
-      "outputs_missing": [
+      "evidence_missing": [],
+      "outputs_present": [
         "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/tamarin.py",
         "tools/logic/certification/tamarin.py",
         "test/integration/toolchains/test_tamarin_toolchain_certification.py"
       ],
-      "bound": false
+      "outputs_missing": [],
+      "bound": true
     },
     {
       "goal_id": "FVT-G131",
@@ -2215,18 +2646,18 @@
       ],
       "validation": "PYTHONPATH=ipfs_datasets_py python -m pytest ipfs_datasets_py/tests/integration/logic/backends/test_protocol_backends.py test/integration/toolchains/test_proverif_toolchain_certification.py test/integration/test_formal_verification_real_tool_matrix.py -k 'proverif or opam' -q",
       "track": "external-capability",
-      "evidence_present": [],
-      "evidence_missing": [
+      "evidence_present": [
         "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/proverif.py",
         "test/integration/toolchains/test_proverif_toolchain_certification.py"
       ],
-      "outputs_present": [],
-      "outputs_missing": [
+      "evidence_missing": [],
+      "outputs_present": [
         "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/proverif.py",
         "tools/logic/certification/proverif.py",
         "test/integration/toolchains/test_proverif_toolchain_certification.py"
       ],
-      "bound": false
+      "outputs_missing": [],
+      "bound": true
     },
     {
       "goal_id": "FVT-G140",
@@ -2250,18 +2681,18 @@
       ],
       "validation": "PYTHONPATH=ipfs_datasets_py python -m pytest ipfs_datasets_py/tests/unit_tests/logic/CEC/provers/test_vampire_eprover.py test/integration/toolchains/test_atp_toolchain_certification.py test/integration/test_formal_verification_real_tool_matrix.py -k 'vampire or eprover or atp' -q",
       "track": "external-capability",
-      "evidence_present": [],
-      "evidence_missing": [
+      "evidence_present": [
         "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/atp.py",
         "test/integration/toolchains/test_atp_toolchain_certification.py"
       ],
-      "outputs_present": [],
-      "outputs_missing": [
+      "evidence_missing": [],
+      "outputs_present": [
         "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/atp.py",
         "tools/logic/certification/atp.py",
         "test/integration/toolchains/test_atp_toolchain_certification.py"
       ],
-      "bound": false
+      "outputs_missing": [],
+      "bound": true
     },
     {
       "goal_id": "FVT-G150",
@@ -2285,18 +2716,18 @@
       ],
       "validation": "PYTHONPATH=ipfs_datasets_py python -m pytest ipfs_datasets_py/tests/integration/logic/backends/test_kernel_backends.py test/integration/toolchains/test_rocq_toolchain_certification.py test/integration/test_formal_verification_real_tool_matrix.py -k 'rocq or coq' -q",
       "track": "external-capability",
-      "evidence_present": [],
-      "evidence_missing": [
+      "evidence_present": [
         "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/rocq.py",
         "test/integration/toolchains/test_rocq_toolchain_certification.py"
       ],
-      "outputs_present": [],
-      "outputs_missing": [
+      "evidence_missing": [],
+      "outputs_present": [
         "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/rocq.py",
         "tools/logic/certification/rocq.py",
         "test/integration/toolchains/test_rocq_toolchain_certification.py"
       ],
-      "bound": false
+      "outputs_missing": [],
+      "bound": true
     },
     {
       "goal_id": "FVT-G151",
@@ -2320,18 +2751,18 @@
       ],
       "validation": "PYTHONPATH=ipfs_datasets_py python -m pytest ipfs_datasets_py/tests/integration/logic/backends/test_kernel_backends.py test/integration/toolchains/test_isabelle_toolchain_certification.py test/integration/test_formal_verification_real_tool_matrix.py -k isabelle -q",
       "track": "external-capability",
-      "evidence_present": [],
-      "evidence_missing": [
+      "evidence_present": [
         "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/isabelle.py",
         "test/integration/toolchains/test_isabelle_toolchain_certification.py"
       ],
-      "outputs_present": [],
-      "outputs_missing": [
+      "evidence_missing": [],
+      "outputs_present": [
         "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/isabelle.py",
         "tools/logic/certification/isabelle.py",
         "test/integration/toolchains/test_isabelle_toolchain_certification.py"
       ],
-      "bound": false
+      "outputs_missing": [],
+      "bound": true
     },
     {
       "goal_id": "FVT-G160",
@@ -2355,18 +2786,18 @@
       ],
       "validation": "PYTHONPATH=ipfs_datasets_py python -m pytest ipfs_datasets_py/tests/integration/logic/test_proposal_advisors.py test/integration/toolchains/test_advisor_role_certification.py test/integration/test_formal_verification_real_tool_matrix.py -k 'advisor or symbolicai or ergoai or leanstral or hammer or autoencoder' -q",
       "track": "advisor-capability",
-      "evidence_present": [],
-      "evidence_missing": [
+      "evidence_present": [
         "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/advisors.py",
         "test/integration/toolchains/test_advisor_role_certification.py"
       ],
-      "outputs_present": [],
-      "outputs_missing": [
+      "evidence_missing": [],
+      "outputs_present": [
         "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/advisors.py",
         "tools/logic/certification/advisors.py",
         "test/integration/toolchains/test_advisor_role_certification.py"
       ],
-      "bound": false
+      "outputs_missing": [],
+      "bound": true
     },
     {
       "goal_id": "FVT-G170",
@@ -2390,18 +2821,18 @@
       ],
       "validation": "PYTHONPATH=ipfs_datasets_py python -m pytest ipfs_datasets_py/tests/integration/logic/backends/test_hyperproperty_backends.py test/integration/toolchains/test_hyperproperty_toolchain_certification.py test/integration/test_formal_verification_real_tool_matrix.py -k 'hyperltl or autohyper or mchyper or hyperproperty' -q",
       "track": "external-capability",
-      "evidence_present": [],
-      "evidence_missing": [
+      "evidence_present": [
         "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/hyperproperty.py",
         "test/integration/toolchains/test_hyperproperty_toolchain_certification.py"
       ],
-      "outputs_present": [],
-      "outputs_missing": [
+      "evidence_missing": [],
+      "outputs_present": [
         "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/hyperproperty.py",
         "tools/logic/certification/hyperproperty.py",
         "test/integration/toolchains/test_hyperproperty_toolchain_certification.py"
       ],
-      "bound": false
+      "outputs_missing": [],
+      "bound": true
     },
     {
       "goal_id": "FVT-G180",
@@ -2426,18 +2857,18 @@
       ],
       "validation": "PYTHONPATH=ipfs_datasets_py python -m pytest ipfs_datasets_py/tests/integration/logic/backends/test_authorization_backends.py test/integration/toolchains/test_external_authorization_toolchain_certification.py test/integration/test_formal_verification_real_tool_matrix.py -k 'souffle or secpal or authorization' -q",
       "track": "external-capability",
-      "evidence_present": [],
-      "evidence_missing": [
+      "evidence_present": [
         "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/authorization.py",
         "test/integration/toolchains/test_external_authorization_toolchain_certification.py"
       ],
-      "outputs_present": [],
-      "outputs_missing": [
+      "evidence_missing": [],
+      "outputs_present": [
         "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/authorization.py",
         "tools/logic/certification/authorization_external.py",
         "test/integration/toolchains/test_external_authorization_toolchain_certification.py"
       ],
-      "bound": false
+      "outputs_missing": [],
+      "bound": true
     },
     {
       "goal_id": "FVT-G181",
@@ -2462,18 +2893,18 @@
       ],
       "validation": "PYTHONPATH=ipfs_datasets_py python -m pytest ipfs_datasets_py/tests/integration/logic/test_runtime_mtl_parity.py test/integration/toolchains/test_external_runtime_mtl_certification.py test/integration/test_formal_verification_real_tool_matrix.py -k 'runtime_mtl or mtl' -q",
       "track": "external-capability",
-      "evidence_present": [],
-      "evidence_missing": [
+      "evidence_present": [
         "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/runtime_mtl.py",
         "test/integration/toolchains/test_external_runtime_mtl_certification.py"
       ],
-      "outputs_present": [],
-      "outputs_missing": [
+      "evidence_missing": [],
+      "outputs_present": [
         "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/runtime_mtl.py",
         "tools/logic/certification/runtime_mtl_external.py",
         "test/integration/toolchains/test_external_runtime_mtl_certification.py"
       ],
-      "bound": false
+      "outputs_missing": [],
+      "bound": true
     },
     {
       "goal_id": "FVT-G190",
@@ -2497,18 +2928,18 @@
       ],
       "validation": "PYTHONPATH=ipfs_datasets_py python -m pytest test/api/test_agent_supervisor_program_analysis_zkp_conformance.py ipfs_datasets_py/tests/integration/logic/test_proof_receipt_attestation.py test/integration/toolchains/test_zkp_deployment_certification.py -q",
       "track": "external-capability",
-      "evidence_present": [],
-      "evidence_missing": [
+      "evidence_present": [
         "config/formal_verification_zkp_deployment.lock.json",
         "test/integration/toolchains/test_zkp_deployment_certification.py"
       ],
-      "outputs_present": [],
-      "outputs_missing": [
+      "evidence_missing": [],
+      "outputs_present": [
         "config/formal_verification_zkp_deployment.lock.json",
         "tools/logic/certification/zkp.py",
         "test/integration/toolchains/test_zkp_deployment_certification.py"
       ],
-      "bound": false
+      "outputs_missing": [],
+      "bound": true
     },
     {
       "goal_id": "FVT-G200",
@@ -2549,22 +2980,21 @@
       ],
       "validation": "python -m pytest test/integration/test_formal_verification_real_tool_matrix.py test/integration/test_formal_verification_role_aware_completion.py test/api/test_formal_verification_tactician_readiness_completion.py -q",
       "track": "completion",
-      "evidence_present": [],
-      "evidence_missing": [
+      "evidence_present": [
         "test/integration/test_formal_verification_role_aware_completion.py",
         "docs/architecture/formal_verification_role_aware_deployment_receipt.json"
       ],
+      "evidence_missing": [],
       "outputs_present": [
         "tools/logic/certify_formal_verification_toolchains.py",
         "tools/logic/build_formal_verification_tactician_receipt.py",
         "docs/architecture/formal_verification_toolchain_certificate.json",
-        "docs/architecture/formal_verification_tactician_readiness_completion_receipt.json"
-      ],
-      "outputs_missing": [
         "docs/architecture/formal_verification_role_aware_deployment_receipt.json",
+        "docs/architecture/formal_verification_tactician_readiness_completion_receipt.json",
         "test/integration/test_formal_verification_role_aware_completion.py"
       ],
-      "bound": false
+      "outputs_missing": [],
+      "bound": true
     }
   ],
   "disclosures": {
@@ -2575,30 +3005,22 @@
     ],
     "unsupported_semantics": [],
     "unavailable_tools": [
-      "apalache",
       "autohyper",
-      "coq",
       "coqc",
       "eprover",
-      "ergoai",
       "hyperltl",
       "isabelle",
-      "maude",
       "mchyper",
-      "opam",
-      "proverif",
       "runtime-mtl-external",
       "secpal",
       "souffle",
-      "symbolicai",
-      "tamarin",
       "tlc",
       "vampire",
       "zkp-circuit"
     ],
     "publication_gates": {
       "parent_publication_lag": true,
-      "datasets_publication_lag": false,
+      "datasets_publication_lag": true,
       "fetches_forbidden": true,
       "note": "origin/main is a local remote-tracking ref only; this receipt never fetches. Publication lag is a separate gate from semantic implementation completion."
     },
@@ -2609,7 +3031,7 @@
       "live_without_hermetic_certificate_is_not_production_certified": true,
       "lfv_completion_is_not_deployment_certificate": true,
       "synthetic_evidence_cannot_certify_production": true,
-      "production_certified_count": 2,
+      "production_certified_count": 8,
       "baseline_production_certified_count": 0,
       "machine_certified": true,
       "publication_aligned": false,
@@ -2644,5 +3066,5 @@
     "Hard-zero gates are derived from child certificates and benchmark hard gates; hardcoded success counters are forbidden.",
     "Generate only from a clean current tree and immutable evidence."
   ],
-  "receipt_identity": "sha256:3865df72fad7790d02bfd329fabfaaa2d45381abc5632ee4ad9889430ba7596c"
+  "receipt_identity": "sha256:c900476dc4ec0349c4493c0c025f0b495329b31f15eb0d768a017a1ab8135be8"
 }
