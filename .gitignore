@@ -189,3 +189,5 @@ state/**/*.out
 !docs/architecture/formal_verification_tactician_benchmark.json
 !docs/architecture/formal_verification_tactician_readiness_completion_receipt.json
 !docs/architecture/formal_verification_toolchain_certificate.json
+# Lean semantic corpus (FVT-040 / FVT-G101): declared output under test/fixtures.
+!test/fixtures/formal_verification/toolchains/lean/manifest.json

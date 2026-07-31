@@ -1,0 +1,122 @@
+{
+  "schema_version": "lean-semantic-corpus/v1",
+  "interface": "LeanSemanticCertification@1",
+  "goal_id": "FVT-G101",
+  "task_id": "FVT-040",
+  "tool_id": "lean",
+  "lane_id": "kernel",
+  "locked_toolchain": "leanprover/lean4:v4.31.0",
+  "locked_version": "v4.31.0",
+  "authority_ceiling": "kernel",
+  "authority_scope": "kernel_proof_checking_only",
+  "policy": {
+    "no_install": true,
+    "no_download": true,
+    "no_network": true,
+    "elan_no_auto_install": true,
+    "shim_mismatch_fails_closed": true,
+    "sorry_admit_unsafe_fail_closed": true,
+    "authority_is_kernel_proof_checking_only": true
+  },
+  "cases": [
+    {
+      "case_id": "true_theorem",
+      "kind": "positive",
+      "expect": "accepted",
+      "theorem_name": "from_eq",
+      "assumptions": ["h : n = m"],
+      "source": "theorem from_eq (n m : Nat) (h : n = m) : n = m := h\n",
+      "description": "Exact true theorem accepted by the pinned kernel"
+    },
+    {
+      "case_id": "false_proof",
+      "kind": "negative",
+      "expect": "rejected",
+      "theorem_name": "false_claim",
+      "assumptions": [],
+      "source": "theorem false_claim : False := trivial\n",
+      "description": "False proof rejected by the kernel"
+    },
+    {
+      "case_id": "malformed_proof",
+      "kind": "negative",
+      "expect": "rejected",
+      "theorem_name": "broken",
+      "assumptions": [],
+      "source": "theorem broken : True := by exact 0\n",
+      "description": "Malformed proof term rejected"
+    },
+    {
+      "case_id": "hypothesis_mutation",
+      "kind": "mutation",
+      "expect": "rejected",
+      "theorem_name": "from_eq",
+      "assumptions": ["h : n = n"],
+      "mutates": "hypothesis",
+      "base_case_id": "true_theorem",
+      "source": "theorem from_eq (n m : Nat) (h : n = n) : n = m := h\n",
+      "description": "Hypothesis mutation of the true theorem is rejected"
+    },
+    {
+      "case_id": "conclusion_mutation",
+      "kind": "mutation",
+      "expect": "rejected",
+      "theorem_name": "from_eq",
+      "assumptions": ["h : n = m"],
+      "mutates": "conclusion",
+      "base_case_id": "true_theorem",
+      "source": "theorem from_eq (n m : Nat) (h : n = m) : False := h\n",
+      "description": "Conclusion mutation of the true theorem is rejected"
+    },
+    {
+      "case_id": "sorry_escape",
+      "kind": "fail_closed",
+      "expect": "rejected",
+      "theorem_name": "hole_sorry",
+      "assumptions": [],
+      "reason_codes": ["sorry_or_admit"],
+      "source": "theorem hole_sorry : True := by sorry\n",
+      "description": "sorry fails closed even when lean exits 0"
+    },
+    {
+      "case_id": "admit_escape",
+      "kind": "fail_closed",
+      "expect": "rejected",
+      "theorem_name": "hole_admit",
+      "assumptions": [],
+      "reason_codes": ["sorry_or_admit"],
+      "source": "theorem hole_admit : True := by admit\n",
+      "description": "admit fails closed even when lean exits 0"
+    },
+    {
+      "case_id": "unsafe_escape",
+      "kind": "fail_closed",
+      "expect": "rejected",
+      "theorem_name": "still",
+      "assumptions": [],
+      "reason_codes": ["unsafe_or_unreviewed_axiom"],
+      "source": "unsafe def cheat : Nat := 0\ntheorem still : True := trivial\n",
+      "description": "unsafe declarations fail closed"
+    },
+    {
+      "case_id": "axiom_escape",
+      "kind": "fail_closed",
+      "expect": "rejected",
+      "theorem_name": "uses_axiom",
+      "assumptions": [],
+      "reason_codes": ["unsafe_or_unreviewed_axiom"],
+      "source": "axiom bad : False\ntheorem uses_axiom : False := bad\n",
+      "description": "unreviewed axiom escapes fail closed"
+    },
+    {
+      "case_id": "deterministic_replay",
+      "kind": "replay",
+      "expect": "accepted",
+      "theorem_name": "from_eq",
+      "assumptions": ["h : n = m"],
+      "base_case_id": "true_theorem",
+      "source": "theorem from_eq (n m : Nat) (h : n = m) : n = m := h\n",
+      "description": "Positive case replays with identical acceptance and digests"
+    }
+  ]
+}
