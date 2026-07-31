@@ -13,6 +13,58 @@ objectives, integrations).
 | `asref_multi_lane.py` | **ASREF-G100** preflight, objective scan, multi-lane launch |
 | `meta_spark_goose_runner.py` | Ops wrapper for Meta Spark + goose implementation runner |
 | `prompt_workflow.py` | Ops wrapper for prompt-workflow CLI |
+| `ipfs_kit_vfs_symbolic_assurance.py` | Thin facade for the IPFS Kit VFS symbolic-assurance job |
+| `ipfs_kit_vfs_symbolic_assurance_control.sh` | Two-shard supervisor control for the VFS assurance board |
+| `validate_ipfs_kit_vfs_symbolic_assurance.py` | Fail-closed preflight for the VFS objective heap and board |
+
+## IPFS Kit VFS symbolic assurance (generalized engines)
+
+Reusable assurance engines live under semantic packages
+(`analysis/`, `validation/`, `runtime/`, `control/`). Domain vocabulary and
+the locked job profile live only in:
+
+- `config/ipfs_kit_vfs_symbolic_assurance.json`
+- `ipfs_accelerate_py/agent_supervisor/integrations/ipfs_kit_vfs_assurance.py`
+
+There is **no** root `agent_supervisor/vfs_*.py` module. Do not add
+compatibility shims.
+
+### Thin ops facade
+
+```bash
+# Project operation/invariant/error/canonical-vector mappings
+python scripts/ops/agent_supervisor/ipfs_kit_vfs_symbolic_assurance.py contracts
+
+# Adversarial gates + shadow rollout (default mutation disabled)
+python scripts/ops/agent_supervisor/ipfs_kit_vfs_symbolic_assurance.py rollout --mode assist
+
+# Verify gates and rollout decision
+python scripts/ops/agent_supervisor/ipfs_kit_vfs_symbolic_assurance.py verify
+
+# Closed adapters: inventory | contracts | differential | parity |
+#                  benchmark | pilot | rollout | verify
+python scripts/ops/agent_supervisor/ipfs_kit_vfs_symbolic_assurance.py --help
+```
+
+The wrapper only parses arguments, loads the locked config, lazy-loads the
+integration, and delegates. It must not embed scan, proof, comparison, gate,
+repair, or mutation logic. Cold import and `--help` start no process, open no
+database, and load no optional providers.
+
+### Cutover / placement guards
+
+- `test/api/test_agent_supervisor_vfs_generalization_equivalence.py`
+- `test/api/test_agent_supervisor_vfs_root_layout_guard.py`
+- `test/api/test_agent_supervisor_assurance_two_profile_end_to_end.py`
+- Plan section **Assurance generalization cutover** in
+  `docs/architecture/IPFS_KIT_VFS_SYMBOLIC_ASSURANCE_PLAN.md`
+- Map: `docs/architecture/agent_supervisor/VFS_ASSURANCE_GENERALIZATION_MAP.md`
+
+### Board preflight
+
+```bash
+python scripts/ops/agent_supervisor/validate_ipfs_kit_vfs_symbolic_assurance.py
+```
 
 ## ASREF module-refactor multi-lane (ASREF-G100)
 
