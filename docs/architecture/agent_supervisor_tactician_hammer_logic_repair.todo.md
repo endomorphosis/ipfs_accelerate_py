@@ -1086,7 +1086,7 @@ expectations under existing precedence, but do not prove them by passing.
 
 ## LPR-033 Register allowlisted deterministic AST repair transforms
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
