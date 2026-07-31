@@ -10094,6 +10094,42 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 baseline_ref=baseline_ref,
             )
             if seed_apply.get("applied"):
+                try:
+                    submodule_sync = (
+                        self._synchronize_prior_attempt_seed_submodules(
+                            worktree_path,
+                            task=task,
+                            branch_name=branch_name,
+                            baseline_ref=baseline_ref,
+                            seed_reason=str(seed_apply.get("reason") or ""),
+                            seed_ref=str(seed_apply.get("seed_ref") or ""),
+                        )
+                    )
+                except Exception as exc:
+                    self._record_event(
+                        "implementation_prior_attempt_submodule_sync_failed",
+                        {
+                            "task_id": task.task_id,
+                            "attempt": attempt,
+                            "worktree_path": str(worktree_path),
+                            "branch": branch_name,
+                            "seed_ref": str(seed_apply.get("seed_ref") or ""),
+                            "exception_type": type(exc).__name__,
+                            "error": str(exc)[-1000:],
+                        },
+                    )
+                    raise
+                seed_apply["task_owned_submodule_sync"] = submodule_sync
+                self._record_event(
+                    "implementation_prior_attempt_submodule_sync_succeeded",
+                    {
+                        "task_id": task.task_id,
+                        "attempt": attempt,
+                        "worktree_path": str(worktree_path),
+                        "branch": branch_name,
+                        **submodule_sync,
+                    },
+                )
                 self._record_event(
                     "implementation_prior_attempt_seeded",
                     {
@@ -11518,6 +11554,188 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "merge_stderr": (merge.stderr or "")[-500:],
             "checkout_stderr": (checkout.stderr or "")[-500:],
         }
+
+    def _synchronize_prior_attempt_seed_submodules(
+        self,
+        worktree_path: Path,
+        *,
+        task: PortalTask,
+        branch_name: str,
+        baseline_ref: str,
+        seed_reason: str,
+        seed_ref: str,
+    ) -> dict[str, Any]:
+        """Fast-forward clean task-owned children to seeded parent gitlinks.
+
+        Configured child worktrees are prepared before a preserved root seed is
+        applied.  When that seed advances a gitlink, leaving the child at the
+        old root baseline makes proposal collection observe two different
+        candidate revisions.  Advance only the task-owned, task-local child
+        branch, require the exact original gitlink as its base, and fail closed
+        on dirt, missing objects, branch drift, or non-fast-forward history.
+        """
+
+        owned_paths = self._proposal_scope_submodule_paths(
+            self._proposal_scope_paths(task)
+        )
+        result: dict[str, Any] = {
+            "attempted": bool(owned_paths),
+            "synchronized": [],
+            "unchanged": [],
+        }
+        if seed_reason in {"fast_forward_reset", "merged_prior_seed"}:
+            seeded_tree_ref = "HEAD"
+        elif seed_reason == "checked_out_prior_tree" and seed_ref:
+            seeded_tree_ref = seed_ref
+        else:
+            raise RuntimeError(
+                "prior seed task-owned submodule synchronization mode "
+                f"is unsupported: {seed_reason or 'missing'}"
+            )
+        for relative in owned_paths:
+            target = worktree_path / relative
+            if target.is_symlink() or not self._is_git_worktree(target):
+                raise RuntimeError(
+                    "prior seed task-owned submodule is not an initialized "
+                    f"worktree: {relative}"
+                )
+            expected_branch = self._submodule_worktree_branch_name(
+                branch_name,
+                relative,
+            )
+            current_branch = self._git_current_branch(target)
+            if current_branch != expected_branch:
+                raise RuntimeError(
+                    "prior seed task-owned submodule branch drift: "
+                    f"{relative}"
+                )
+            baseline_gitlink, baseline_error = self._root_tree_gitlink_ref(
+                worktree_path,
+                baseline_ref,
+                relative,
+            )
+            if baseline_error or not baseline_gitlink:
+                raise RuntimeError(
+                    "prior seed task-owned submodule baseline unavailable: "
+                    f"{relative}"
+                )
+            current_head = self._resolve_git_commit_in_repo(target, "HEAD")
+            if current_head != baseline_gitlink:
+                raise RuntimeError(
+                    "prior seed task-owned submodule baseline drift: "
+                    f"{relative}"
+                )
+            seeded_gitlink = self._proposal_index_gitlink_ref(
+                worktree_path,
+                relative,
+            )
+            seeded_tree_gitlink, seeded_tree_error = (
+                self._root_tree_gitlink_ref(
+                    worktree_path,
+                    seeded_tree_ref,
+                    relative,
+                )
+            )
+            if (
+                seeded_tree_error
+                or seeded_tree_gitlink != seeded_gitlink
+            ):
+                raise RuntimeError(
+                    "prior seed parent submodule index and tree disagree: "
+                    f"{relative}"
+                )
+            status = subprocess.run(
+                ["git", "status", "--porcelain", "--untracked-files=all"],
+                cwd=target,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+            )
+            if status.returncode != 0 or status.stdout.strip():
+                raise RuntimeError(
+                    "prior seed task-owned submodule checkout is dirty: "
+                    f"{relative}"
+                )
+            if seeded_gitlink == current_head:
+                result["unchanged"].append(relative)
+                continue
+            if not self._git_ref_exists_in_repo(target, seeded_gitlink):
+                raise RuntimeError(
+                    "prior seed task-owned submodule commit unavailable: "
+                    f"{relative}"
+                )
+            ancestry = self._git_ref_ancestor_check_in_repo(
+                target,
+                current_head,
+                seeded_gitlink,
+            )
+            if ancestry is not True:
+                raise RuntimeError(
+                    "prior seed task-owned submodule is not fast-forward: "
+                    f"{relative}"
+                )
+            advanced = subprocess.run(
+                ["git", "merge", "--ff-only", seeded_gitlink],
+                cwd=target,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+            )
+            if advanced.returncode == 0:
+                self._initialize_nested_worktree_submodules(
+                    target,
+                    branch_name=branch_name,
+                    parent_relative=relative,
+                )
+            final_head = self._resolve_git_commit_in_repo(target, "HEAD")
+            final_branch = self._git_current_branch(target)
+            final_index = self._proposal_index_gitlink_ref(
+                worktree_path,
+                relative,
+            )
+            final_tree_gitlink, final_tree_error = (
+                self._root_tree_gitlink_ref(
+                    worktree_path,
+                    seeded_tree_ref,
+                    relative,
+                )
+            )
+            final_status = subprocess.run(
+                ["git", "status", "--porcelain", "--untracked-files=all"],
+                cwd=target,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+            )
+            if (
+                advanced.returncode != 0
+                or final_head != seeded_gitlink
+                or final_branch != expected_branch
+                or final_index != seeded_gitlink
+                or final_tree_error
+                or final_tree_gitlink != seeded_gitlink
+                or final_status.returncode != 0
+                or final_status.stdout.strip()
+            ):
+                raise RuntimeError(
+                    "prior seed task-owned submodule fast-forward failed: "
+                    f"{relative}: {(advanced.stderr or advanced.stdout)[-500:]}"
+                )
+            result["synchronized"].append(
+                {
+                    "path": relative,
+                    "from_revision": current_head,
+                    "to_revision": seeded_gitlink,
+                    "branch": expected_branch,
+                    "merge_mode": "ff-only",
+                }
+            )
+        result["synchronized_count"] = len(result["synchronized"])
+        result["unchanged_count"] = len(result["unchanged"])
+        return result
 
     def _record_prior_attempt_seed_failure(
         self,
