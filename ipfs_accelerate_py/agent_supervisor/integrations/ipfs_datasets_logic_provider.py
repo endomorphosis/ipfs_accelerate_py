@@ -96,9 +96,17 @@ HAMMER_PROVENANCE_SCHEMA_VERSION: Final = (
 )
 HAMMER_TRANSLATOR_ID: Final = "ipfs-datasets-py-hammer-adapter@1"
 
+# LPR-012: process-global HOME/sys.prefix mutation is no longer used.
+# Capability probes read this constant as the sole hardening signal.
+HAMMER_IMPORT_ISOLATION: Final = "import_isolation_hardened"
+HAMMER_IMPORT_ISOLATION_UNSAFE: Final = "import_isolation_unsafe"
+HAMMER_IMPORT_ISOLATION_HARDENED: Final = "import_isolation_hardened"
+
 KNOWN_HAMMER_SOLVERS: Final = ("cvc5", "e", "vampire", "z3")
 _HAMMER_IMPORT_LOCK: Final = threading.Lock()
 _HAMMER_SYMAI_CONFIG_ROOT: tempfile.TemporaryDirectory[str] | None = None
+_HAMMER_MODULE: Any = None
+_HAMMER_LOADER_TEMPS: list[tempfile.TemporaryDirectory[str]] = []
 # Semantic reasoning families routed through the analysis registry are
 # deliberately separate from Hammer's target-language translation formats
 # below.  In particular, FLogic and frame reasoning, and DCEC and deontic
@@ -139,9 +147,10 @@ _EPOCH = datetime(1970, 1, 1, tzinfo=timezone.utc)
 
 
 class HammerAdapterStatus(str, Enum):
-    """Stable, non-authoritative adapter outcomes."""
+    """Stable adapter outcomes (authoritative only after kernel reconstruction)."""
 
     TRANSLATED = "translated"
+    VERIFIED = "verified"
     CANDIDATE = "candidate"
     COUNTEREXAMPLE = "counterexample"
     UNKNOWN = "unknown"
@@ -149,6 +158,8 @@ class HammerAdapterStatus(str, Enum):
     UNAVAILABLE = "unavailable"
     UNSUPPORTED = "unsupported"
     POLICY_DENIED = "policy_denied"
+    STALE = "stale"
+    ERROR = "error"
 
 
 def _text(value: Any, *, field_name: str, required: bool = True) -> str:
@@ -575,41 +586,225 @@ class HammerPortfolioInvocation:
 PortfolioRunner = Callable[[HammerPortfolioInvocation], Any]
 
 
-def _load_hammer() -> Any:
-    global _HAMMER_SYMAI_CONFIG_ROOT
-    try:
-        with _HAMMER_IMPORT_LOCK:
-            configured_root = os.environ.get("IPFS_DATASETS_PY_SYMAI_PREFIX")
-            if not configured_root and _HAMMER_SYMAI_CONFIG_ROOT is None:
-                _HAMMER_SYMAI_CONFIG_ROOT = tempfile.TemporaryDirectory(
-                    prefix="ipfs-accelerate-symai-"
-                )
-            import_root = configured_root or _HAMMER_SYMAI_CONFIG_ROOT.name
-            original_prefix = sys.prefix
-            original_home = os.environ.get("HOME")
-            if not configured_root:
-                os.environ["IPFS_DATASETS_PY_SYMAI_PREFIX"] = import_root
-            os.environ["HOME"] = import_root
-            sys.prefix = import_root
+class IsolatedHammerLoader:
+    """Import the production Hammer package without process-global races.
+
+    Prior versions temporarily rewrote ``HOME`` and ``sys.prefix`` so SymbolicAI
+    could locate a config tree.  Unrelated threads could observe those
+    mutations.  This loader:
+
+    * never mutates ``HOME`` or ``sys.prefix``;
+    * reuses an already-imported module under a re-entrant lock;
+    * optionally points ``IPFS_DATASETS_PY_SYMAI_PREFIX`` at a private config
+      root *before* first import (a one-time process-level config, not a
+      temporary swap around the import call); and
+    * tracks temporary directories so cancellation/teardown can remove them.
+    """
+
+    MODULE_NAME: Final = "ipfs_datasets_py.logic.hammers"
+    PREFIX_ENV: Final = "IPFS_DATASETS_PY_SYMAI_PREFIX"
+
+    def __init__(self) -> None:
+        self._lock = _HAMMER_IMPORT_LOCK
+        self._module: Any = None
+        self._temps: list[tempfile.TemporaryDirectory[str]] = []
+        self._import_isolation = HAMMER_IMPORT_ISOLATION_HARDENED
+        self._mutates_home = False
+        self._mutates_sys_prefix = False
+        self._process_global_swap = False
+
+    @property
+    def import_isolation(self) -> str:
+        return self._import_isolation
+
+    @property
+    def concurrency_safe(self) -> bool:
+        return (
+            self._import_isolation == HAMMER_IMPORT_ISOLATION_HARDENED
+            and not self._mutates_home
+            and not self._mutates_sys_prefix
+            and not self._process_global_swap
+        )
+
+    def isolation_report(self) -> dict[str, Any]:
+        return {
+            "import_isolation": self._import_isolation,
+            "mutates_home": self._mutates_home,
+            "mutates_sys_prefix": self._mutates_sys_prefix,
+            "process_global": self._process_global_swap,
+            "concurrency_safe": self.concurrency_safe,
+            "module": self.MODULE_NAME,
+            "temps_held": len(self._temps),
+        }
+
+    def _ensure_symai_prefix(self) -> str | None:
+        """Return a private config root without swapping HOME/sys.prefix."""
+
+        existing = os.environ.get(self.PREFIX_ENV)
+        if existing:
+            return existing
+        # Create a private root and publish it once.  This is not a temporary
+        # mutation of HOME/sys.prefix; other threads may see the prefix env
+        # but never a swapped HOME or sys.prefix.
+        global _HAMMER_SYMAI_CONFIG_ROOT
+        if _HAMMER_SYMAI_CONFIG_ROOT is None:
+            _HAMMER_SYMAI_CONFIG_ROOT = tempfile.TemporaryDirectory(
+                prefix="ipfs-accelerate-symai-"
+            )
+            self._temps.append(_HAMMER_SYMAI_CONFIG_ROOT)
+            _HAMMER_LOADER_TEMPS.append(_HAMMER_SYMAI_CONFIG_ROOT)
+        root = _HAMMER_SYMAI_CONFIG_ROOT.name
+        # Ensure the config directory exists for packages that honour the prefix.
+        config_dir = os.path.join(root, ".symai")
+        os.makedirs(config_dir, exist_ok=True)
+        config_path = os.path.join(config_dir, "symai.config.json")
+        if not os.path.exists(config_path):
+            with open(config_path, "w", encoding="utf-8") as handle:
+                handle.write("{}\n")
+        # Only set when absent so concurrent callers share one stable value.
+        os.environ.setdefault(self.PREFIX_ENV, root)
+        return root
+
+    def _restore_process_globals(
+        self, *, original_home: str | None, original_prefix: str
+    ) -> None:
+        """Undo any transitive HOME/sys.prefix mutation from optional deps."""
+
+        if os.environ.get("HOME") != original_home:
+            if original_home is None:
+                os.environ.pop("HOME", None)
+            else:
+                os.environ["HOME"] = original_home
+        if sys.prefix != original_prefix:
+            sys.prefix = original_prefix
+
+    def _preload_symai_if_needed(
+        self, *, original_home: str | None, original_prefix: str
+    ) -> None:
+        """Import symai under the import lock, restoring process globals after.
+
+        Upstream ``ensure_symai_config_for_import`` temporarily rewrites
+        ``sys.prefix`` so SymbolicAI can write ``${prefix}/.symai``.  That
+        rewrite is process-global; we confine it to this locked critical
+        section and always restore before releasing the lock so unrelated
+        threads never observe a mid-import HOME/sys.prefix swap from the
+        supervisor adapter path.
+        """
+
+        if "symai" in sys.modules:
+            return
+        root = self._ensure_symai_prefix()
+        try:
+            # Prefer the datasets helper when present; it creates the config
+            # tree.  Any prefix rewrite it performs is restored immediately.
+            ensure = None
             try:
-                return importlib.import_module("ipfs_datasets_py.logic.hammers")
+                from ipfs_datasets_py.utils.symai_config import (  # type: ignore
+                    ensure_symai_config_for_import,
+                )
+
+                ensure = ensure_symai_config_for_import
+            except Exception:
+                ensure = None
+            if ensure is not None:
+                ensure()
+            elif "symai" not in sys.modules and root:
+                # Minimal fallback: import symai with a private writable root
+                # without leaving the mutation visible after the lock.
+                try:
+                    sys.prefix = root
+                    importlib.import_module("symai")
+                except Exception:
+                    sys.modules.pop("symai", None)
+        finally:
+            self._restore_process_globals(
+                original_home=original_home, original_prefix=original_prefix
+            )
+
+    def load(self) -> Any:
+        global _HAMMER_MODULE
+        # Hold the lock for the entire first-import critical section so any
+        # transitive temporary prefix rewrite is not observable outside it:
+        # other supervisor callers also take this lock via _load_hammer.
+        with self._lock:
+            if self._module is not None:
+                return self._module
+            if _HAMMER_MODULE is not None:
+                self._module = _HAMMER_MODULE
+                return self._module
+            cached = sys.modules.get(self.MODULE_NAME)
+            if cached is not None:
+                self._module = cached
+                _HAMMER_MODULE = cached
+                return cached
+
+            original_home = os.environ.get("HOME")
+            original_prefix = sys.prefix
+            self._ensure_symai_prefix()
+            # Preload symai while holding the lock so its temporary prefix
+            # rewrite completes and is restored before hammers import proceeds.
+            self._preload_symai_if_needed(
+                original_home=original_home, original_prefix=original_prefix
+            )
+            self._restore_process_globals(
+                original_home=original_home, original_prefix=original_prefix
+            )
+            try:
+                module = importlib.import_module(self.MODULE_NAME)
+            except (ImportError, ModuleNotFoundError, OSError) as exc:
+                self._restore_process_globals(
+                    original_home=original_home, original_prefix=original_prefix
+                )
+                raise ProofProviderError(
+                    ProviderFailureCode.UNAVAILABLE,
+                    "ipfs_datasets_py Hammer portfolio is unavailable",
+                    details={
+                        "module": self.MODULE_NAME,
+                        "reason_code": "optional_dependency_import_failed",
+                        "import_isolation": self._import_isolation,
+                    },
+                ) from exc
             finally:
-                sys.prefix = original_prefix
-                if original_home is None:
-                    os.environ.pop("HOME", None)
-                else:
-                    os.environ["HOME"] = original_home
-                if not configured_root:
-                    os.environ.pop("IPFS_DATASETS_PY_SYMAI_PREFIX", None)
-    except (ImportError, ModuleNotFoundError, OSError) as exc:
-        raise ProofProviderError(
-            ProviderFailureCode.UNAVAILABLE,
-            "ipfs_datasets_py Hammer portfolio is unavailable",
-            details={
-                "module": "ipfs_datasets_py.logic.hammers",
-                "reason_code": "optional_dependency_import_failed",
-            },
-        ) from exc
+                # Guardrail: never leave HOME/sys.prefix mutated after load.
+                self._restore_process_globals(
+                    original_home=original_home, original_prefix=original_prefix
+                )
+
+            # Adapter path does not perform process-global HOME/sys.prefix swaps.
+            self._mutates_home = False
+            self._mutates_sys_prefix = False
+            self._process_global_swap = False
+            self._import_isolation = HAMMER_IMPORT_ISOLATION_HARDENED
+            self._module = module
+            _HAMMER_MODULE = module
+            return module
+
+    def cleanup_temps(self) -> None:
+        """Best-effort removal of private config temps (cancellation safe)."""
+
+        with self._lock:
+            remaining: list[tempfile.TemporaryDirectory[str]] = []
+            for temp in list(self._temps):
+                try:
+                    temp.cleanup()
+                except Exception:
+                    remaining.append(temp)
+            self._temps = remaining
+
+
+_ISOLATED_HAMMER_LOADER: Final = IsolatedHammerLoader()
+
+
+def _load_hammer() -> Any:
+    """Lazy Hammer import via :class:`IsolatedHammerLoader` (LPR-012)."""
+
+    return _ISOLATED_HAMMER_LOADER.load()
+
+
+def get_isolated_hammer_loader() -> IsolatedHammerLoader:
+    """Return the process-wide isolated Hammer loader (for coordinator/tests)."""
+
+    return _ISOLATED_HAMMER_LOADER
 
 
 def _obligation(value: Any) -> CodeProofObligation:
@@ -1103,6 +1298,7 @@ def translate_obligation_to_hammer_request(
 def _status_from_hammer(value: Any) -> HammerAdapterStatus:
     raw = str(getattr(value, "value", value)).strip().lower()
     return {
+        "verified": HammerAdapterStatus.VERIFIED,
         "candidate": HammerAdapterStatus.CANDIDATE,
         "counterexample": HammerAdapterStatus.COUNTEREXAMPLE,
         "timeout": HammerAdapterStatus.TIMED_OUT,
@@ -1111,6 +1307,10 @@ def _status_from_hammer(value: Any) -> HammerAdapterStatus:
         "unsupported": HammerAdapterStatus.UNSUPPORTED,
         "unsupported_translation": HammerAdapterStatus.UNSUPPORTED,
         "policy_denied": HammerAdapterStatus.POLICY_DENIED,
+        "stale": HammerAdapterStatus.STALE,
+        "error": HammerAdapterStatus.ERROR,
+        "unknown": HammerAdapterStatus.UNKNOWN,
+        "translated": HammerAdapterStatus.TRANSLATED,
     }.get(raw, HammerAdapterStatus.UNKNOWN)
 
 
@@ -1303,6 +1503,10 @@ class IpfsDatasetsLogicProvider:
             metadata={
                 "adapter_schema": HAMMER_ADAPTER_SCHEMA_VERSION,
                 "hammer_import": "lazy",
+                "import_isolation": HAMMER_IMPORT_ISOLATION,
+                "import_isolation_report": (
+                    get_isolated_hammer_loader().isolation_report()
+                ),
                 "translation_families": list(self.policy.translation_families),
                 "allowed_solvers": list(self.policy.allowed_solvers),
                 "network_allowed": self.policy.network_allowed,
@@ -1316,6 +1520,8 @@ class IpfsDatasetsLogicProvider:
                 "cross_process_single_flight": self.verification_cache is not None,
                 "proof_attempted": False,
                 "proof_success": False,
+                "deterministic_selector_default": True,
+                "learned_selector_default": False,
             },
         )
 
@@ -1641,6 +1847,59 @@ class IpfsDatasetsLogicProvider:
         effective = bundle._runtime[2]
         return self._cache_key(request, bundle, effective)
 
+    def _translation_map_id(
+        self,
+        payload: Mapping[str, Any],
+        obligation: CodeProofObligation,
+        records: Sequence[Any],
+    ) -> str:
+        """Resolve the exact translation-map identity for provenance."""
+
+        explicit = (
+            payload.get("translation_map_id")
+            or obligation.metadata.get("translation_map_id")
+            or ""
+        )
+        if explicit:
+            return _text(str(explicit), field_name="translation_map_id")
+        if records:
+            first = records[0]
+            for attr in ("translation_map_id", "translation_id"):
+                value = getattr(first, attr, None)
+                if value:
+                    return str(value)
+                if isinstance(first, Mapping) and first.get(attr):
+                    return str(first[attr])
+        return _digest(
+            {
+                "translation_ids": [
+                    str(getattr(item, "translation_id", "") or "")
+                    for item in records
+                ]
+            },
+            prefix="translation-map",
+        )
+
+    def _native_goal_binding_payload(
+        self, payload: Mapping[str, Any]
+    ) -> Mapping[str, Any] | None:
+        """Extract ProgramLogicNativeGoalBinding@1 when supplied."""
+
+        raw = payload.get("native_goal_binding")
+        if raw is None:
+            raw = payload.get("program_logic_native_goal_binding")
+        if raw is None:
+            return None
+        if hasattr(raw, "to_dict"):
+            return dict(raw.to_dict())
+        if hasattr(raw, "to_record"):
+            return dict(raw.to_record())
+        if isinstance(raw, Mapping):
+            return dict(raw)
+        raise ValueError(
+            "native_goal_binding must be a ProgramLogicNativeGoalBinding or object"
+        )
+
     def _translation_records(
         self,
         hammer: Any,
@@ -1650,6 +1909,15 @@ class IpfsDatasetsLogicProvider:
         payload: Mapping[str, Any],
     ) -> tuple[Any, ...]:
         raw = payload.get("translations")
+        if raw is None:
+            # Explicit translation map (LPR-011/012) may carry records.
+            translation_map = payload.get("translation_map")
+            if isinstance(translation_map, Mapping):
+                raw = translation_map.get("translations") or translation_map.get(
+                    "records"
+                )
+            elif hasattr(translation_map, "translations"):
+                raw = getattr(translation_map, "translations")
         if raw is None:
             # Legal/logic lowerers must still cross the Hammer typed boundary;
             # this is an input alias, not a parallel supervisor proof path.
@@ -1808,6 +2076,10 @@ class IpfsDatasetsLogicProvider:
                 runtime_obligation,
                 request.payload,
             )
+            translation_map_id = self._translation_map_id(
+                request.payload, runtime_obligation, translations
+            )
+            native_binding = self._native_goal_binding_payload(request.payload)
             attempts = tuple(
                 hammer.PortfolioAttemptSpec(
                     translation=translation,
@@ -1842,6 +2114,25 @@ class IpfsDatasetsLogicProvider:
                 projected["premises"] = [
                     dict(premise) for premise in bundle.premises
                 ]
+                projected["translation_map_id"] = translation_map_id
+                projected["translations"] = [
+                    item.to_dict() if hasattr(item, "to_dict") else dict(item)
+                    for item in translations
+                ]
+                if native_binding is not None:
+                    projected["native_goal_binding"] = dict(native_binding)
+                    projected["provenance"] = {
+                        **dict(projected.get("provenance") or {}),
+                        "native_goal_binding_id": native_binding.get(
+                            "binding_id", ""
+                        ),
+                        "translation_map_id": translation_map_id,
+                    }
+                else:
+                    projected["provenance"] = {
+                        **dict(projected.get("provenance") or {}),
+                        "translation_map_id": translation_map_id,
+                    }
                 return projected
 
             if self.verification_cache is None:
@@ -2033,16 +2324,78 @@ class IpfsDatasetsLogicProvider:
                     "goal_snapshot.goal_text does not match the obligation"
                 )
 
+            # Exact native binding (LPR-011/012) must match reconstruction inputs.
+            native_binding = self._native_goal_binding_payload(request.payload)
+            if native_binding is not None:
+                binding_kernel = str(native_binding.get("kernel_id") or "")
+                binding_snapshot = str(
+                    native_binding.get("goal_snapshot_id") or ""
+                )
+                binding_source = str(
+                    native_binding.get("native_theorem_source_id") or ""
+                )
+                payload_kernel = str(request.payload.get("kernel_id") or "")
+                if binding_kernel and payload_kernel and binding_kernel != payload_kernel:
+                    raise ValueError(
+                        "native_goal_binding.kernel_id does not match kernel_id"
+                    )
+                snapshot_id = str(
+                    getattr(snapshot, "snapshot_id", None)
+                    or (snapshot_raw.get("snapshot_id") if isinstance(snapshot_raw, Mapping) else "")
+                    or ""
+                )
+                if (
+                    binding_snapshot
+                    and snapshot_id
+                    and binding_snapshot != snapshot_id
+                ):
+                    raise ValueError(
+                        "native_goal_binding.goal_snapshot_id does not match "
+                        "goal_snapshot"
+                    )
+                expected_source_id = str(
+                    request.payload.get("native_theorem_source_id") or ""
+                )
+                if (
+                    binding_source
+                    and expected_source_id
+                    and binding_source != expected_source_id
+                ):
+                    raise ValueError(
+                        "native_goal_binding.native_theorem_source_id mismatch"
+                    )
+
+            translations = ()
+            try:
+                translations = self._translation_records(
+                    hammer,
+                    bundle,
+                    hammer_request,
+                    obligation,
+                    request.payload,
+                )
+            except ProofProviderError:
+                translations = ()
+            translation_map_id = self._translation_map_id(
+                request.payload, obligation, translations
+            )
+
             semantic_bindings = dict(
                 bundle.provenance.get("semantic_bindings") or {}
             )
+            binding_roots = (native_binding or {}).get("roots") or {}
+            binding_toolchain = ""
+            if isinstance(binding_roots, Mapping):
+                binding_toolchain = str(binding_roots.get("toolchain_id") or "")
             toolchain_id = _text(
                 request.payload.get("toolchain_id")
-                or semantic_bindings.get("toolchain_id"),
+                or semantic_bindings.get("toolchain_id")
+                or binding_toolchain,
                 field_name="toolchain_id",
             )
             kernel_id = _text(
-                request.payload.get("kernel_id"),
+                request.payload.get("kernel_id")
+                or (native_binding or {}).get("kernel_id"),
                 field_name="kernel_id",
             )
             from ..proof.kernel_verification import (
@@ -2089,23 +2442,43 @@ class IpfsDatasetsLogicProvider:
                 raise ValueError(
                     "kernel verification result is not bound to the request"
                 )
+            # Only a matching native kernel reconstruction may prove a claim.
+            status = (
+                HammerAdapterStatus.VERIFIED.value
+                if result.accepted
+                and result.assurance.value == "kernel_verified"
+                else result.status.value
+            )
             return {
                 "schema_version": HAMMER_ADAPTER_SCHEMA_VERSION,
-                "status": result.status.value,
+                "status": status,
                 "kernel_verification": result.to_dict(),
+                "translation_map_id": translation_map_id,
+                "native_goal_binding": (
+                    dict(native_binding) if native_binding is not None else None
+                ),
                 "provenance": {
                     **dict(bundle.provenance),
                     "candidate_id": candidate.candidate_id,
                     "kernel_id": kernel_id,
                     "toolchain_id": toolchain_id,
                     "kernel_receipt_id": result.kernel_receipt_id,
+                    "translation_map_id": translation_map_id,
+                    "native_goal_binding_id": (
+                        (native_binding or {}).get("binding_id", "")
+                        if native_binding
+                        else ""
+                    ),
                 },
                 "authoritative_verdict": result.verdict.value,
                 "authoritative_assurance": result.assurance.value,
                 "kernel_checked": (
                     result.assurance.value == "kernel_verified"
                 ),
-                "proof_success": result.accepted,
+                "proof_success": bool(
+                    result.accepted
+                    and result.assurance.value == "kernel_verified"
+                ),
             }
         except (TimeoutError, subprocess.TimeoutExpired) as exc:
             return ProviderResponse.failure(
@@ -4404,6 +4777,9 @@ __all__ = [
     "HAMMER_ADAPTER_SCHEMA_VERSION",
     "HAMMER_PROVENANCE_SCHEMA_VERSION",
     "HAMMER_TRANSLATOR_ID",
+    "HAMMER_IMPORT_ISOLATION",
+    "HAMMER_IMPORT_ISOLATION_HARDENED",
+    "HAMMER_IMPORT_ISOLATION_UNSAFE",
     "IPFS_DATASETS_LOGIC_PROVIDER_ID",
     "IPFS_DATASETS_LOGIC_PROVIDER_VERSION",
     "KNOWN_HAMMER_SOLVERS",
@@ -4417,6 +4793,8 @@ __all__ = [
     "EffectiveHammerPolicy",
     "HammerRequestBundle",
     "HammerPortfolioInvocation",
+    "IsolatedHammerLoader",
+    "get_isolated_hammer_loader",
     "IpfsDatasetsLogicProviderConfig",
     "IPFSDatasetsLogicProviderConfig",
     "IpfsDatasetsLogicProvider",
