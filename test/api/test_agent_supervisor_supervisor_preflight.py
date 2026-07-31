@@ -98,3 +98,51 @@ def test_complete_board_is_drained_without_ready_work():
 
     assert summary["progress_state"] == "drained"
     assert summary["drained"] is True
+
+
+def test_validated_operational_appendix_does_not_change_canonical_count():
+    payload = _state(
+        task_count=31,
+        completed_count=14,
+        task_statuses={
+            **{f"LPR-{number:03d}": "todo" for number in range(29)},
+            "LPR-029": "completed",
+            "LPR-030": "completed",
+        },
+    )
+
+    summary = summarize_supervisor_preflight(
+        payload,
+        expected_task_count=29,
+        operational_task_ids=["LPR-029", "LPR-030"],
+    )
+
+    assert summary["task_count"] == 31
+    assert summary["canonical_task_count"] == 29
+    assert summary["operational_task_count"] == 2
+    assert summary["operational_task_ids"] == ["LPR-029", "LPR-030"]
+    assert summary["progress_state"] == "runnable"
+
+
+def test_unvalidated_extra_tasks_still_fail_closed():
+    payload = _state(task_count=31)
+
+    with pytest.raises(SupervisorPreflightError, match="unexpected task count"):
+        summarize_supervisor_preflight(
+            payload,
+            expected_task_count=29,
+        )
+
+
+def test_operational_task_must_exist_in_status_projection():
+    payload = _state(
+        task_count=30,
+        task_statuses={f"LPR-{number:03d}": "todo" for number in range(29)},
+    )
+
+    with pytest.raises(SupervisorPreflightError, match="absent from task_statuses"):
+        summarize_supervisor_preflight(
+            payload,
+            expected_task_count=29,
+            operational_task_ids=["LPR-029"],
+        )

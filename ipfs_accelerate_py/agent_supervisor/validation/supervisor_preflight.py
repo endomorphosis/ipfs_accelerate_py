@@ -50,6 +50,7 @@ def summarize_supervisor_preflight(
     payload: Mapping[str, Any],
     *,
     expected_task_count: int,
+    operational_task_ids: Sequence[str] = (),
     live_lane_states: Sequence[Mapping[str, Any]] = (),
 ) -> dict[str, Any]:
     """Return a bounded readiness summary or reject a false-green preflight.
@@ -62,6 +63,14 @@ def summarize_supervisor_preflight(
 
     if isinstance(expected_task_count, bool) or expected_task_count <= 0:
         raise SupervisorPreflightError("expected_task_count must be positive")
+    operational_ids = tuple(str(item).strip() for item in operational_task_ids)
+    if (
+        any(not item for item in operational_ids)
+        or len(operational_ids) != len(set(operational_ids))
+    ):
+        raise SupervisorPreflightError(
+            "operational_task_ids contains an empty or duplicate task id"
+        )
 
     task_count = _count(payload, "task_count")
     completed_count = _count(payload, "completed_count")
@@ -72,10 +81,24 @@ def summarize_supervisor_preflight(
     eligible_ready_task_ids = _task_ids(payload, "eligible_ready_task_ids")
     blocked_task_ids = _task_ids(payload, "blocked_task_ids")
 
-    if task_count != expected_task_count:
+    total_expected_task_count = expected_task_count + len(operational_ids)
+    if task_count != total_expected_task_count:
         raise SupervisorPreflightError(
-            f"unexpected task count: {task_count} != {expected_task_count}"
+            "unexpected task count: "
+            f"{task_count} != {expected_task_count} canonical + "
+            f"{len(operational_ids)} operational"
         )
+    if operational_ids:
+        task_statuses = payload.get("task_statuses")
+        if not isinstance(task_statuses, Mapping):
+            raise SupervisorPreflightError(
+                "task_statuses is required for operational task validation"
+            )
+        missing_operational = sorted(set(operational_ids) - set(task_statuses))
+        if missing_operational:
+            raise SupervisorPreflightError(
+                f"operational tasks are absent from task_statuses: {missing_operational}"
+            )
     if completed_count > task_count:
         raise SupervisorPreflightError("completed_count exceeds task_count")
     if ready_count != len(ready_task_ids):
@@ -107,6 +130,9 @@ def summarize_supervisor_preflight(
 
     return {
         "task_count": task_count,
+        "canonical_task_count": expected_task_count,
+        "operational_task_count": len(operational_ids),
+        "operational_task_ids": list(operational_ids),
         "completed_count": completed_count,
         "ready_count": ready_count,
         "eligible_ready_count": eligible_ready_count,

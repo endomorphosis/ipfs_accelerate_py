@@ -599,6 +599,7 @@ PY
 }
 
 preflight() {
+  local board_validation_json=""
   local live_master_json=""
   local live_master_state=""
   validate_test_mode
@@ -618,7 +619,10 @@ preflight() {
       ;;
   esac
   verify_branch_and_sources
-  "${PYTHON_BIN}" "${REPO_ROOT}/${VALIDATOR_PATH}" --check-all
+  board_validation_json="$(
+    "${PYTHON_BIN}" "${REPO_ROOT}/${VALIDATOR_PATH}" --check-all
+  )"
+  echo "${board_validation_json}"
   verify_vfs_generalization_source_lock
   mkdir -p "${PREFLIGHT_ROOT}" "${WORKTREE_ROOT}" "${MERGE_QUEUE_ROOT}"
   (
@@ -646,7 +650,8 @@ preflight() {
     "${PREFLIGHT_ROOT}/lpr_task_state.json" \
     "${STATE_ROOT}" \
     "${LANE_COUNT}" \
-    "${live_master_state}" <<'PY'
+    "${live_master_state}" \
+    "${board_validation_json}" <<'PY'
 import json
 import pathlib
 import sys
@@ -661,6 +666,25 @@ payload = json.loads(path.read_text(encoding="utf-8"))
 state_root = pathlib.Path(sys.argv[2])
 lane_count = int(sys.argv[3])
 master_is_live = sys.argv[4] == "owned"
+board_validation = json.loads(sys.argv[5])
+expected_task_count = board_validation.get("task_count")
+operational_task_ids = board_validation.get(
+    "operational_repair_task_ids",
+    (),
+)
+if (
+    board_validation.get("valid") is not True
+    or isinstance(expected_task_count, bool)
+    or not isinstance(expected_task_count, int)
+    or expected_task_count <= 0
+    or not isinstance(operational_task_ids, list)
+    or board_validation.get("total_task_count")
+    != expected_task_count + len(operational_task_ids)
+):
+    raise SystemExit(
+        f"board validator did not provide valid task counts: "
+        f"{board_validation}"
+    )
 lane_states = []
 if master_is_live:
     for lane in range(lane_count):
@@ -675,7 +699,8 @@ if master_is_live:
 try:
     summary = summarize_supervisor_preflight(
         payload,
-        expected_task_count=43,
+        expected_task_count=expected_task_count,
+        operational_task_ids=operational_task_ids,
         live_lane_states=lane_states,
     )
 except SupervisorPreflightError as exc:
