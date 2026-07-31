@@ -5,7 +5,7 @@
   "task_id": "FVT-030",
   "program": "formal-verification-tactician/readiness",
   "description": "Hermetic offline multi-prover certification receipt. Available tools pass live positive/negative/mutation/replay checks with exact identities; absent/mismatched lanes are explicit skips/unavailable and block only their promotion; PATH shims are not usability; certification performs no download/network/install and quarantines disagreement.",
-  "observed_at": "2026-07-31T00:15:02+00:00",
+  "observed_at": "2026-07-31T16:04:47+00:00",
   "binding_mode": "offline_pinned_live_lanes",
   "lock": {
     "path": "config/formal_verification_toolchains.lock.json",
@@ -79,7 +79,15 @@
         "z3",
         "cvc5"
       ],
+      "authority_tool_ids": [
+        "z3",
+        "cvc5"
+      ],
       "certified_tool_ids": [
+        "z3",
+        "cvc5"
+      ],
+      "certified_authority_tool_ids": [
         "z3",
         "cvc5"
       ],
@@ -98,19 +106,23 @@
         "tlc",
         "java"
       ],
-      "certified_tool_ids": [
-        "java"
+      "authority_tool_ids": [
+        "apalache",
+        "tlc"
       ],
+      "certified_tool_ids": [],
+      "certified_authority_tool_ids": [],
       "unavailable_tool_ids": [
         "apalache",
         "tlc"
       ],
       "blocked_tool_ids": [
         "apalache",
-        "tlc"
+        "tlc",
+        "java"
       ],
       "disagreement_quarantine_ids": [],
-      "promotion_ready": true,
+      "promotion_ready": false,
       "notes": "Absent tools block only their own promotion."
     },
     {
@@ -123,20 +135,26 @@
         "souffle",
         "secpal"
       ],
-      "certified_tool_ids": [
+      "authority_tool_ids": [
         "datalog-authorization",
-        "secpal-authorization"
+        "secpal-authorization",
+        "souffle",
+        "secpal"
       ],
+      "certified_tool_ids": [],
+      "certified_authority_tool_ids": [],
       "unavailable_tool_ids": [
         "souffle",
         "secpal"
       ],
       "blocked_tool_ids": [
+        "datalog-authorization",
+        "secpal-authorization",
         "souffle",
         "secpal"
       ],
       "disagreement_quarantine_ids": [],
-      "promotion_ready": true,
+      "promotion_ready": false,
       "notes": "Absent tools block only their own promotion."
     },
     {
@@ -148,7 +166,12 @@
         "proverif",
         "maude"
       ],
+      "authority_tool_ids": [
+        "tamarin",
+        "proverif"
+      ],
       "certified_tool_ids": [],
+      "certified_authority_tool_ids": [],
       "unavailable_tool_ids": [
         "tamarin",
         "proverif",
@@ -172,7 +195,13 @@
         "autohyper",
         "mchyper"
       ],
+      "authority_tool_ids": [
+        "hyperltl",
+        "autohyper",
+        "mchyper"
+      ],
       "certified_tool_ids": [],
+      "certified_authority_tool_ids": [],
       "unavailable_tool_ids": [
         "hyperltl",
         "autohyper",
@@ -195,7 +224,12 @@
         "vampire",
         "eprover"
       ],
+      "authority_tool_ids": [
+        "vampire",
+        "eprover"
+      ],
       "certified_tool_ids": [],
+      "certified_authority_tool_ids": [],
       "unavailable_tool_ids": [
         "vampire",
         "eprover"
@@ -216,7 +250,12 @@
         "symbolicai",
         "ergoai"
       ],
+      "authority_tool_ids": [
+        "symbolicai",
+        "ergoai"
+      ],
       "certified_tool_ids": [],
+      "certified_authority_tool_ids": [],
       "unavailable_tool_ids": [
         "symbolicai",
         "ergoai"
@@ -238,7 +277,13 @@
         "coq",
         "isabelle"
       ],
+      "authority_tool_ids": [
+        "lean",
+        "coq",
+        "isabelle"
+      ],
       "certified_tool_ids": [],
+      "certified_authority_tool_ids": [],
       "unavailable_tool_ids": [
         "coq",
         "isabelle"
@@ -260,17 +305,21 @@
         "runtime-mtl",
         "runtime-mtl-external"
       ],
-      "certified_tool_ids": [
-        "runtime-mtl"
+      "authority_tool_ids": [
+        "runtime-mtl",
+        "runtime-mtl-external"
       ],
+      "certified_tool_ids": [],
+      "certified_authority_tool_ids": [],
       "unavailable_tool_ids": [
         "runtime-mtl-external"
       ],
       "blocked_tool_ids": [
+        "runtime-mtl",
         "runtime-mtl-external"
       ],
       "disagreement_quarantine_ids": [],
-      "promotion_ready": true,
+      "promotion_ready": false,
       "notes": "Absent tools block only their own promotion."
     },
     {
@@ -280,7 +329,11 @@
       "tool_ids": [
         "zkp-circuit"
       ],
+      "authority_tool_ids": [
+        "zkp-circuit"
+      ],
       "certified_tool_ids": [],
+      "certified_authority_tool_ids": [],
       "unavailable_tool_ids": [
         "zkp-circuit"
       ],
@@ -557,10 +610,12 @@
       "identity_probed": true,
       "installed": true,
       "usable": true,
-      "production_certified": true,
+      "production_certified": false,
       "unavailable": false,
-      "promotion_blocked": false,
-      "block_reasons": [],
+      "promotion_blocked": true,
+      "block_reasons": [
+        "live_checks_incomplete_or_failed"
+      ],
       "checks": [
         {
           "check_id": "datalog-authorization.positive",
@@ -595,8 +650,8 @@
           "detail": "repeat import identity"
         }
       ],
-      "evidence_class": "production_certified",
-      "notes": "Hermetic offline certification passed with exact identity and live checks."
+      "evidence_class": "live",
+      "notes": "Live checks incomplete or failed; not production-certified."
     },
     {
       "tool_id": "eprover",
@@ -864,10 +919,12 @@
       "identity_probed": true,
       "installed": true,
       "usable": true,
-      "production_certified": true,
+      "production_certified": false,
       "unavailable": false,
-      "promotion_blocked": false,
-      "block_reasons": [],
+      "promotion_blocked": true,
+      "block_reasons": [
+        "live_checks_incomplete_or_failed"
+      ],
       "checks": [
         {
           "check_id": "java.positive",
@@ -902,8 +959,8 @@
           "detail": "identity banner retained as replay witness for this probe"
         }
       ],
-      "evidence_class": "production_certified",
-      "notes": "Hermetic offline certification passed with exact identity and live checks."
+      "evidence_class": "live",
+      "notes": "Live checks incomplete or failed; not production-certified."
     },
     {
       "tool_id": "lean",
@@ -916,19 +973,19 @@
       ],
       "availability_declared": "managed_pin",
       "executable_path": "/home/barberb/.elan/bin/lean",
-      "version_string": "Lean (version 4.32.2, aarch64-unknown-linux-gnu, commit f3b06c705e6c85f5314019d5d3baab0fec5b580c, Release)",
+      "version_string": "Lean (version 4.31.0, aarch64-unknown-linux-gnu, commit 68218e876d2a38b1985b8590fff244a83c321783, Release)",
       "locked_version": "v4.31.0",
-      "locked_version_mismatch": true,
+      "locked_version_mismatch": false,
       "shim_toolchain_mismatch": false,
       "path_present": true,
       "identity_probed": true,
       "installed": true,
-      "usable": false,
+      "usable": true,
       "production_certified": false,
       "unavailable": false,
       "promotion_blocked": true,
       "block_reasons": [
-        "locked_version_mismatch"
+        "live_checks_incomplete_or_failed"
       ],
       "checks": [
         {
@@ -936,7 +993,7 @@
           "kind": "positive",
           "status": "passed",
           "expected": "non-empty exact identity",
-          "observed": "Lean (version 4.32.2, aarch64-unknown-linux-gnu, commit f3b06c705e6c85f5314019d5d3baab0fec5b580c, Release)",
+          "observed": "Lean (version 4.31.0, aarch64-unknown-linux-gnu, commit 68218e876d2a38b1985b8590fff244a83c321783, Release)",
           "detail": "bounded offline identity probe"
         },
         {
@@ -959,13 +1016,13 @@
           "check_id": "lean.replay",
           "kind": "replay",
           "status": "passed",
-          "expected": "Lean (version 4.32.2, aarch64-unknown-linux-gnu, commit f3b06c705e6c85f5314019d5d3baab0fec5b580c, Release)",
-          "observed": "Lean (version 4.32.2, aarch64-unknown-linux-gnu, commit f3b06c705e6c85f5314019d5d3baab0fec5b580c, Release)",
+          "expected": "Lean (version 4.31.0, aarch64-unknown-linux-gnu, commit 68218e876d2a38b1985b8590fff244a83c321783, Release)",
+          "observed": "Lean (version 4.31.0, aarch64-unknown-linux-gnu, commit 68218e876d2a38b1985b8590fff244a83c321783, Release)",
           "detail": "identity banner retained as replay witness for this probe"
         }
       ],
-      "evidence_class": "version_mismatch",
-      "notes": "Observed version does not match offline lock pin; production certification blocked without upgrade/download."
+      "evidence_class": "live",
+      "notes": "Live checks incomplete or failed; not production-certified."
     },
     {
       "tool_id": "maude",
@@ -1229,10 +1286,12 @@
       "identity_probed": true,
       "installed": true,
       "usable": true,
-      "production_certified": true,
+      "production_certified": false,
       "unavailable": false,
-      "promotion_blocked": false,
-      "block_reasons": [],
+      "promotion_blocked": true,
+      "block_reasons": [
+        "live_checks_incomplete_or_failed"
+      ],
       "checks": [
         {
           "check_id": "runtime-mtl.positive",
@@ -1267,8 +1326,8 @@
           "detail": "repeat import identity"
         }
       ],
-      "evidence_class": "production_certified",
-      "notes": "Hermetic offline certification passed with exact identity and live checks."
+      "evidence_class": "live",
+      "notes": "Live checks incomplete or failed; not production-certified."
     },
     {
       "tool_id": "runtime-mtl-external",
@@ -1413,10 +1472,12 @@
       "identity_probed": true,
       "installed": true,
       "usable": true,
-      "production_certified": true,
+      "production_certified": false,
       "unavailable": false,
-      "promotion_blocked": false,
-      "block_reasons": [],
+      "promotion_blocked": true,
+      "block_reasons": [
+        "live_checks_incomplete_or_failed"
+      ],
       "checks": [
         {
           "check_id": "secpal-authorization.positive",
@@ -1451,8 +1512,8 @@
           "detail": "repeat import identity"
         }
       ],
-      "evidence_class": "production_certified",
-      "notes": "Hermetic offline certification passed with exact identity and live checks."
+      "evidence_class": "live",
+      "notes": "Live checks incomplete or failed; not production-certified."
     },
     {
       "tool_id": "souffle",
@@ -1888,10 +1949,6 @@
   "promotion": {
     "production_certified_tool_ids": [
       "cvc5",
-      "datalog-authorization",
-      "java",
-      "runtime-mtl",
-      "secpal-authorization",
       "z3"
     ],
     "unavailable_tool_ids": [
@@ -1925,6 +1982,9 @@
       "coq": [
         "unavailable"
       ],
+      "datalog-authorization": [
+        "live_checks_incomplete_or_failed"
+      ],
       "eprover": [
         "unavailable"
       ],
@@ -1937,8 +1997,11 @@
       "isabelle": [
         "unavailable"
       ],
+      "java": [
+        "live_checks_incomplete_or_failed"
+      ],
       "lean": [
-        "locked_version_mismatch"
+        "live_checks_incomplete_or_failed"
       ],
       "maude": [
         "unavailable"
@@ -1952,11 +2015,17 @@
       "proverif": [
         "unavailable"
       ],
+      "runtime-mtl": [
+        "live_checks_incomplete_or_failed"
+      ],
       "runtime-mtl-external": [
         "declared_gap"
       ],
       "secpal": [
         "declared_gap"
+      ],
+      "secpal-authorization": [
+        "live_checks_incomplete_or_failed"
       ],
       "souffle": [
         "declared_gap"
@@ -1979,14 +2048,14 @@
     },
     "lane_promotion_ready": {
       "smt": true,
-      "tla": true,
-      "datalog_secpal": true,
+      "tla": false,
+      "datalog_secpal": false,
       "protocol": false,
       "hyperltl": false,
       "atp": false,
       "hammer": false,
       "kernel": false,
-      "runtime_mtl": true,
+      "runtime_mtl": false,
       "attestation": false
     }
   },
@@ -2001,5 +2070,5 @@
     "integration_test": "test/integration/test_formal_verification_real_tool_matrix.py",
     "lock": "config/formal_verification_toolchains.lock.json"
   },
-  "certificate_digest_sha256": "76cf11a05600da8bf18acbf9fe33a28dc8f887a0984c946a0523b1c4d319c02f"
+  "certificate_digest_sha256": "283b7f731398133c0cdfe41b2dfa89a08fe105af4971dca26dfe5741603e562e"
 }

@@ -17,6 +17,7 @@ import hashlib
 import importlib.util
 import json
 import re
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -344,6 +345,24 @@ def test_deployment_binds_tools_live_classes_and_publication() -> None:
     assert "usable_tools" in deployment
     assert "unavailable_tools" in deployment
     assert "production_certified_tool_ids" in deployment
+    exact_tools = {
+        str(tool["certification_tool_id"]): tool
+        for tool in deployment["exact_tools"]
+    }
+    production_certified = set(deployment["production_certified_tool_ids"])
+    assert production_certified == {
+        tool_id
+        for tool_id, tool in exact_tools.items()
+        if tool["statuses"]["production_certified"]
+    }
+    for tool_id in production_certified:
+        assert exact_tools[tool_id]["certification"]["production_certified"] is True
+
+    lean = exact_tools["lean"]
+    assert (
+        lean["certification"]["locked_version"].lstrip("v")
+        in lean["version_string"]
+    )
     live = deployment["live_simulated_skipped"]
     assert "live_case_count" in live
     assert "simulated_or_fixture_case_count" in live
@@ -456,8 +475,27 @@ def test_builder_recomputes_equivalent_receipt(tmp_path: Path) -> None:
     for gate in HARD_ZERO_GATES:
         assert rebuilt["hard_zero_gates"][gate] == committed["hard_zero_gates"][gate]
 
-    # Identity must match when observed_at and tree are identical.
-    assert rebuilt["receipt_identity"] == committed["receipt_identity"]
+    current_head = subprocess.check_output(
+        ["git", "rev-parse", "HEAD"],
+        cwd=REPO_ROOT,
+        text=True,
+    ).strip()
+    receipt_source_head = str(committed["source"]["parent_commit"])
+    if receipt_source_head == current_head:
+        # Identity must match while rebuilding the same uncommitted evidence
+        # tree from which the historical receipt was issued.
+        assert rebuilt["receipt_identity"] == committed["receipt_identity"]
+    else:
+        # A checked-in receipt necessarily describes its parent evidence
+        # commit: the receipt cannot contain the hash of the commit that in
+        # turn contains the receipt.  Preserve that historical identity and
+        # require its source to be an ancestor of the publication wrapper.
+        assert subprocess.run(
+            ["git", "merge-base", "--is-ancestor", receipt_source_head, current_head],
+            cwd=REPO_ROOT,
+            check=False,
+        ).returncode == 0
+        assert rebuilt["receipt_identity"] != committed["receipt_identity"]
 
     # Writing to a temp path must not mutate source child evidence files.
     baseline_before = BASELINE_PATH.read_bytes()

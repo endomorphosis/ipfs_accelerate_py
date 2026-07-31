@@ -1205,6 +1205,15 @@ def test_settled_boards_release_capacity_without_starting_workers(tmp_path: Path
     assert drained["counts"]["active"] == 0
     assert drained["counts"]["completed"] == 1
 
+    observed_again = scheduler.reconcile_once()
+    completed_decision = next(
+        item
+        for item in observed_again["scheduler_decisions"]
+        if item["bundle_key"].endswith("t-1")
+    )
+    assert completed_decision["decision"] == "settled"
+    assert completed_decision["reason"] == "completed"
+
     # A board whose only remaining tasks are blocked relinquishes the slot and
     # consumes the bounded bundle attempt budget instead of pinning a daemon.
     _write_index(index, "T-2")
@@ -2071,6 +2080,29 @@ def test_stop_manifest_excludes_superseded_bundle_revisions(
     assert terminal["completed_count"] == 1
     assert terminal["tasks"] == [rows[1]]
     assert observed_queries == [({current_task_cid}, True)]
+
+
+def test_live_manifest_exposes_expiring_heartbeat_and_terminal_stopped_state(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    index = repo / "index.json"
+    _write_index(index, "T-1")
+    launcher = _FakeLauncher()
+    scheduler = _scheduler(tmp_path, index, launcher)
+
+    running = scheduler.reconcile_once()
+    terminal = scheduler.stop()
+
+    assert running["scheduler_state"] == "running"
+    assert running["supervisor_pid"] == os.getpid()
+    assert datetime.fromisoformat(running["heartbeat_expires_at"]) > (
+        datetime.fromisoformat(running["heartbeat_at"])
+    )
+    assert terminal["scheduler_state"] == "stopped"
+    assert terminal["supervisor_pid"] is None
+    assert terminal["heartbeat_expires_at"] is None
+    assert terminal["counts"]["active"] == 0
 
 
 def test_live_bundle_revision_blocks_replacement_with_the_same_bundle_key(

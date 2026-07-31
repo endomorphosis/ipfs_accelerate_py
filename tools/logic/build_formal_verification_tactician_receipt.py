@@ -641,6 +641,11 @@ def build_deployment_section(
     baseline_summary = _safe_dict((baseline or {}).get("summary"))
     tools = _safe_list((baseline or {}).get("tools"))
     cert_promotion = _safe_dict((certificate or {}).get("promotion"))
+    certified_tools = {
+        str(tool.get("tool_id") or ""): tool
+        for tool in _safe_list((certificate or {}).get("tools"))
+        if isinstance(tool, Mapping) and str(tool.get("tool_id") or "")
+    }
     live_claims = _safe_dict((live_report or {}).get("production_readiness_claims"))
     evidence_policy = _safe_dict((live_report or {}).get("evidence_class_policy"))
 
@@ -648,15 +653,61 @@ def build_deployment_section(
     for tool in tools:
         if not isinstance(tool, Mapping):
             continue
+        tool_id = str(tool.get("tool_id") or "")
+        certification_tool_id = "coq" if tool_id == "coqc" else tool_id
+        certification = _safe_dict(certified_tools.get(certification_tool_id))
         statuses = _safe_dict(tool.get("statuses"))
         identity = _safe_dict(tool.get("identity"))
+        if certification:
+            for key in (
+                "installed",
+                "usable",
+                "production_certified",
+                "unavailable",
+            ):
+                statuses[key] = bool(certification.get(key))
+        certified_version = certification.get("version_string")
+        baseline_version = identity.get("version_string")
+        identity_matches_certificate = bool(
+            certified_version and certified_version == baseline_version
+        )
+        package_or_toolchain = identity.get("package_or_toolchain")
+        if certification and certified_version and not identity_matches_certificate:
+            locked_version = str(certification.get("locked_version") or "").strip()
+            package_or_toolchain = (
+                f"{certification_tool_id}@{locked_version}"
+                if locked_version
+                else None
+            )
         tool_rows.append(
             {
-                "tool_id": tool.get("tool_id"),
+                "tool_id": tool_id,
+                "certification_tool_id": certification_tool_id,
                 "statuses": statuses,
-                "executable_path": identity.get("executable_path"),
-                "version_string": identity.get("version_string"),
-                "package_or_toolchain": identity.get("package_or_toolchain"),
+                "executable_path": (
+                    certification.get("executable_path")
+                    if certification
+                    else identity.get("executable_path")
+                ),
+                "version_string": (
+                    certified_version if certification else baseline_version
+                ),
+                "package_or_toolchain": package_or_toolchain,
+                "certification": {
+                    key: certification.get(key)
+                    for key in (
+                        "locked_version",
+                        "locked_version_mismatch",
+                        "shim_toolchain_mismatch",
+                        "identity_probed",
+                        "evidence_class",
+                        "production_certified",
+                        "promotion_blocked",
+                        "block_reasons",
+                    )
+                }
+                if certification
+                else None,
             }
         )
 

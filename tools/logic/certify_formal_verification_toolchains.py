@@ -52,6 +52,7 @@ PROPERTY_LANES: Final[tuple[dict[str, Any], ...]] = (
         "property_class": "smt_software_verification",
         "description": "SMT solvers for software-verification VCs",
         "tool_ids": ("z3", "cvc5"),
+        "authority_tool_ids": ("z3", "cvc5"),
         "check_kind": "smtlib",
     },
     {
@@ -59,6 +60,7 @@ PROPERTY_LANES: Final[tuple[dict[str, Any], ...]] = (
         "property_class": "tla_state_model",
         "description": "TLA+/TLC/Apalache state-model checking",
         "tool_ids": ("apalache", "tlc", "java"),
+        "authority_tool_ids": ("apalache", "tlc"),
         "check_kind": "identity_only",
     },
     {
@@ -71,6 +73,12 @@ PROPERTY_LANES: Final[tuple[dict[str, Any], ...]] = (
             "souffle",
             "secpal",
         ),
+        "authority_tool_ids": (
+            "datalog-authorization",
+            "secpal-authorization",
+            "souffle",
+            "secpal",
+        ),
         "check_kind": "identity_or_in_process",
     },
     {
@@ -78,6 +86,7 @@ PROPERTY_LANES: Final[tuple[dict[str, Any], ...]] = (
         "property_class": "protocol_verification",
         "description": "Tamarin/ProVerif protocol verification",
         "tool_ids": ("tamarin", "proverif", "maude"),
+        "authority_tool_ids": ("tamarin", "proverif"),
         "check_kind": "identity_only",
     },
     {
@@ -85,6 +94,7 @@ PROPERTY_LANES: Final[tuple[dict[str, Any], ...]] = (
         "property_class": "hyperproperty",
         "description": "HyperLTL / hyperproperty tools",
         "tool_ids": ("hyperltl", "autohyper", "mchyper"),
+        "authority_tool_ids": ("hyperltl", "autohyper", "mchyper"),
         "check_kind": "identity_only",
     },
     {
@@ -92,6 +102,7 @@ PROPERTY_LANES: Final[tuple[dict[str, Any], ...]] = (
         "property_class": "automated_theorem_proving",
         "description": "First-order ATP portfolio",
         "tool_ids": ("vampire", "eprover"),
+        "authority_tool_ids": ("vampire", "eprover"),
         "check_kind": "identity_only",
     },
     {
@@ -99,6 +110,7 @@ PROPERTY_LANES: Final[tuple[dict[str, Any], ...]] = (
         "property_class": "hammer_advisor",
         "description": "Hammer / advisor bridges (non-kernel authority)",
         "tool_ids": ("symbolicai", "ergoai"),
+        "authority_tool_ids": ("symbolicai", "ergoai"),
         "check_kind": "identity_or_in_process",
     },
     {
@@ -106,6 +118,7 @@ PROPERTY_LANES: Final[tuple[dict[str, Any], ...]] = (
         "property_class": "interactive_proof_kernel",
         "description": "Lean / Rocq / Isabelle kernels",
         "tool_ids": ("lean", "coq", "isabelle"),
+        "authority_tool_ids": ("lean", "coq", "isabelle"),
         "check_kind": "identity_only",
     },
     {
@@ -113,6 +126,7 @@ PROPERTY_LANES: Final[tuple[dict[str, Any], ...]] = (
         "property_class": "runtime_mtl_monitoring",
         "description": "Runtime MTL monitors",
         "tool_ids": ("runtime-mtl", "runtime-mtl-external"),
+        "authority_tool_ids": ("runtime-mtl", "runtime-mtl-external"),
         "check_kind": "identity_or_in_process",
     },
     {
@@ -120,6 +134,7 @@ PROPERTY_LANES: Final[tuple[dict[str, Any], ...]] = (
         "property_class": "attestation_zkp",
         "description": "Attestation / ZKP circuit bindings",
         "tool_ids": ("zkp-circuit",),
+        "authority_tool_ids": ("zkp-circuit",),
         "check_kind": "identity_or_in_process",
     },
 )
@@ -176,13 +191,13 @@ def repo_root_from(start: Path | None = None) -> Path:
 def offline_env(base: Mapping[str, str] | None = None) -> dict[str, str]:
     """Build an environment that blocks opportunistic installs and fetches."""
 
-    env = dict(base or os.environ)
+    env = dict(base if base is not None else os.environ)
     env["PYTHONNOUSERSITE"] = "1"
     env["PIP_NO_INDEX"] = "1"
     env["PIP_DISABLE_PIP_VERSION_CHECK"] = "1"
     env["NPM_CONFIG_OFFLINE"] = "true"
     env["npm_config_offline"] = "true"
-    env.setdefault("ELAN_NO_AUTO_INSTALL", "1")
+    env["ELAN_NO_AUTO_INSTALL"] = "1"
     env.setdefault("ELAN_IO_THREADS", "1")
     env["GIT_TERMINAL_PROMPT"] = "0"
     env["GIT_OPTIONAL_LOCKS"] = "0"
@@ -257,10 +272,13 @@ def detect_lean_shim_toolchain_mismatch(
     return selected_toolchain.strip() not in installed
 
 
-def list_elan_installed_toolchains() -> list[str]:
+def list_elan_installed_toolchains(
+    env: Mapping[str, str] | None = None,
+) -> list[str]:
     """Read offline-installed Lean toolchains from the local elan directory."""
 
-    elan_home = Path(os.environ.get("ELAN_HOME", Path.home() / ".elan"))
+    source_env = env if env is not None else os.environ
+    elan_home = Path(source_env.get("ELAN_HOME", Path.home() / ".elan"))
     toolchains_dir = elan_home / "toolchains"
     if not toolchains_dir.is_dir():
         return []
@@ -438,7 +456,9 @@ class LaneCertification:
     property_class: str
     description: str
     tool_ids: list[str]
+    authority_tool_ids: list[str]
     certified_tool_ids: list[str] = field(default_factory=list)
+    certified_authority_tool_ids: list[str] = field(default_factory=list)
     unavailable_tool_ids: list[str] = field(default_factory=list)
     blocked_tool_ids: list[str] = field(default_factory=list)
     disagreement_quarantine_ids: list[str] = field(default_factory=list)
@@ -526,14 +546,14 @@ def probe_tool_identity(
             result["probe_error"] = "declared_gap"
             return result
         if availability == "in_process":
-            module_ok, version = _probe_in_process_module(tool_id)
+            module_ok, version = _probe_in_process_module(tool_id, env=env)
             result["identity_probed"] = module_ok
             result["installed"] = module_ok
             result["version_string"] = version
             return result
         if availability == "advisor_only":
             # Advisors may be optional Python packages — probe lightly.
-            module_ok, version = _probe_in_process_module(tool_id)
+            module_ok, version = _probe_in_process_module(tool_id, env=env)
             result["identity_probed"] = module_ok
             result["installed"] = module_ok
             result["version_string"] = version
@@ -547,10 +567,22 @@ def probe_tool_identity(
     result["path_present"] = True
     result["executable_path"] = executable
 
+    probe_env = dict(env)
+    selected_lean_toolchain: str | None = None
+    if tool_id == "lean":
+        installed_toolchains = list_elan_installed_toolchains(probe_env)
+        locked_toolchain = str(probe.get("locked_toolchain") or "").strip()
+        result["installed_toolchains"] = installed_toolchains
+        if locked_toolchain and locked_toolchain in installed_toolchains:
+            # Select an already-installed exact pin without permitting elan to
+            # fetch anything. offline_env() always carries ELAN_NO_AUTO_INSTALL.
+            selected_lean_toolchain = locked_toolchain
+            probe_env["ELAN_TOOLCHAIN"] = locked_toolchain
+
     completed = bounded_run(
         [executable, *argv_suffix],
         timeout=timeout,
-        env=env,
+        env=probe_env,
     )
     if completed is None:
         result["probe_error"] = "probe_timeout_or_spawn_failure"
@@ -578,13 +610,16 @@ def probe_tool_identity(
     result["installed"] = True
 
     if tool_id == "lean":
-        installed = list_elan_installed_toolchains()
+        installed = list(result["installed_toolchains"])
         result["installed_toolchains"] = installed
         match = re.search(r"version\s+(\d+\.\d+\.\d+)", banner, re.IGNORECASE)
         selected = (
-            f"leanprover/lean4:v{match.group(1)}"
-            if match
-            else probe.get("locked_toolchain")
+            selected_lean_toolchain
+            or (
+                f"leanprover/lean4:v{match.group(1)}"
+                if match
+                else probe.get("locked_toolchain")
+            )
         )
         result["selected_toolchain"] = selected
         result["shim_toolchain_mismatch"] = detect_lean_shim_toolchain_mismatch(
@@ -594,8 +629,12 @@ def probe_tool_identity(
     return result
 
 
-def _probe_in_process_module(tool_id: str) -> tuple[bool, str | None]:
-    """Best-effort import probe for in-process tools. Never installs."""
+def _probe_in_process_module(
+    tool_id: str,
+    *,
+    env: Mapping[str, str],
+) -> tuple[bool, str | None]:
+    """Bounded isolated import probe for in-process tools. Never installs."""
 
     module_map = {
         "runtime-mtl": "ipfs_datasets_py.logic.software_verification.monitoring.runtime_mtl",
@@ -608,11 +647,25 @@ def _probe_in_process_module(tool_id: str) -> tuple[bool, str | None]:
     module_name = module_map.get(tool_id)
     if not module_name:
         return False, None
-    try:
-        __import__(module_name)
-        return True, f"python-module:{module_name}"
-    except Exception:
+    completed = bounded_run(
+        (
+            sys.executable,
+            "-c",
+            (
+                "import importlib,sys; "
+                "module=importlib.import_module(sys.argv[1]); "
+                "print(getattr(module, '__version__', '') or "
+                "getattr(module, '__file__', '') or 'imported')"
+            ),
+            module_name,
+        ),
+        timeout=PROBE_TIMEOUT_SECONDS,
+        env=env,
+    )
+    if completed is None or completed.returncode != 0:
         return False, None
+    identity = first_nonempty_line(completed.stdout)
+    return bool(identity), f"python-module:{module_name}"
 
 
 # ---------------------------------------------------------------------------
@@ -955,13 +1008,13 @@ def certify_tool(
         for check in cert.checks
         if check.kind in required_kinds
     )
-    # For SMT, all four checks must pass for production certification.
-    if check_kind == "smtlib":
-        all_live_passed = all(check.status == "passed" for check in cert.checks)
-    else:
-        # Skipped negative/mutation do not invent success; required kinds must pass.
-        no_failures = all(check.status != "failed" for check in cert.checks)
-        all_live_passed = required_passed and no_failures
+    # Production promotion requires semantic positive, negative, mutation, and
+    # replay evidence. Identity-only and import-only checks remain useful
+    # availability evidence, but explicit skips must never become proof
+    # certification merely because the identity is stable.
+    all_live_passed = required_passed and all(
+        check.status == "passed" for check in cert.checks
+    )
 
     if not all_live_passed:
         cert.block_reasons.append("live_checks_incomplete_or_failed")
@@ -1035,6 +1088,71 @@ def quarantine_smt_disagreement(
     )
 
 
+def certify_property_lanes(
+    tool_certs: Mapping[str, ToolCertification],
+    disagreements: Sequence[DisagreementQuarantine],
+    *,
+    property_lanes: Sequence[Mapping[str, Any]] = PROPERTY_LANES,
+) -> list[LaneCertification]:
+    """Project lane readiness from certified proof authorities, not runtimes."""
+
+    lanes: list[LaneCertification] = []
+    for lane in property_lanes:
+        lane_id = str(lane["lane_id"])
+        tool_ids = list(lane["tool_ids"])
+        authority_tool_ids = list(lane.get("authority_tool_ids") or ())
+        if not authority_tool_ids:
+            raise ValueError(f"lane {lane_id!r} must declare authority_tool_ids")
+        if not set(authority_tool_ids).issubset(tool_ids):
+            raise ValueError(
+                f"lane {lane_id!r} authority_tool_ids must be a subset of tool_ids"
+            )
+        certified = [
+            tid
+            for tid in tool_ids
+            if tool_certs.get(tid) and tool_certs[tid].production_certified
+        ]
+        certified_authorities = [
+            tid for tid in authority_tool_ids if tid in certified
+        ]
+        unavailable = [
+            tid
+            for tid in tool_ids
+            if tool_certs.get(tid) and tool_certs[tid].unavailable
+        ]
+        blocked = [
+            tid
+            for tid in tool_ids
+            if tool_certs.get(tid) and tool_certs[tid].promotion_blocked
+        ]
+        q_ids = [
+            item.quarantine_id
+            for item in disagreements
+            if item.lane_id == lane_id
+        ]
+        lanes.append(
+            LaneCertification(
+                lane_id=lane_id,
+                property_class=str(lane["property_class"]),
+                description=str(lane["description"]),
+                tool_ids=tool_ids,
+                authority_tool_ids=authority_tool_ids,
+                certified_tool_ids=certified,
+                certified_authority_tool_ids=certified_authorities,
+                unavailable_tool_ids=unavailable,
+                blocked_tool_ids=blocked,
+                disagreement_quarantine_ids=q_ids,
+                promotion_ready=bool(certified_authorities) and not q_ids,
+                notes=(
+                    "Absent tools block only their own promotion."
+                    if unavailable
+                    else ""
+                ),
+            )
+        )
+    return lanes
+
+
 def build_certificate(
     *,
     repo_root: Path | None = None,
@@ -1049,6 +1167,17 @@ def build_certificate(
     lock = load_lock(lock_file)
     tools_index = lock_tools_by_id(lock)
     run_env = offline_env(env)
+    repository_python_paths = (
+        str(root),
+        str(root / "ipfs_datasets_py"),
+    )
+    existing_python_path = str(run_env.get("PYTHONPATH") or "").strip()
+    run_env["PYTHONPATH"] = os.pathsep.join(
+        (
+            *repository_python_paths,
+            *((existing_python_path,) if existing_python_path else ()),
+        )
+    )
 
     # Map tool → lanes and preferred check kind (smtlib wins when present).
     tool_lane_map: dict[str, list[str]] = {}
@@ -1117,52 +1246,7 @@ def build_certificate(
                 "disagreement cannot raise authority or promote."
             )
 
-    lanes: list[LaneCertification] = []
-    for lane in PROPERTY_LANES:
-        lane_id = str(lane["lane_id"])
-        tool_ids = list(lane["tool_ids"])
-        certified = [
-            tid
-            for tid in tool_ids
-            if tool_certs.get(tid) and tool_certs[tid].production_certified
-        ]
-        unavailable = [
-            tid
-            for tid in tool_ids
-            if tool_certs.get(tid) and tool_certs[tid].unavailable
-        ]
-        blocked = [
-            tid
-            for tid in tool_ids
-            if tool_certs.get(tid) and tool_certs[tid].promotion_blocked
-        ]
-        q_ids = [
-            item.quarantine_id
-            for item in disagreements
-            if item.lane_id == lane_id
-        ]
-        # Lane is promotion-ready when at least one tool is certified and no
-        # unresolved quarantine remains for the lane. Optional absent tools do
-        # not fail the lane.
-        promotion_ready = bool(certified) and not q_ids
-        lanes.append(
-            LaneCertification(
-                lane_id=lane_id,
-                property_class=str(lane["property_class"]),
-                description=str(lane["description"]),
-                tool_ids=tool_ids,
-                certified_tool_ids=certified,
-                unavailable_tool_ids=unavailable,
-                blocked_tool_ids=blocked,
-                disagreement_quarantine_ids=q_ids,
-                promotion_ready=promotion_ready,
-                notes=(
-                    "Absent tools block only their own promotion."
-                    if unavailable
-                    else ""
-                ),
-            )
-        )
+    lanes = certify_property_lanes(tool_certs, disagreements)
 
     production_certified_ids = sorted(
         tid for tid, cert in tool_certs.items() if cert.production_certified

@@ -141,6 +141,17 @@ _CANONICAL_FAMILY_TO_SUPERVISOR: Final[Mapping[str, str]] = MappingProxyType(
     }
 )
 
+# Supervisor route identifiers stay stable in receipts, while datasets owns
+# the executable provider registry's canonical IDs.
+_SUPERVISOR_PROVER_TO_CANONICAL_PROVIDER: Final[Mapping[str, str]] = (
+    MappingProxyType(
+        {
+            "coq": "rocq",
+            "e": "eprover",
+        }
+    )
+)
+
 # Supervisor multi-prover property kinds → datasets software-verification kinds.
 _PROPERTY_KIND_TO_CANONICAL: Final[Mapping[str, str]] = MappingProxyType(
     {
@@ -774,6 +785,14 @@ class SupervisorCanonicalLogicAdapter:
     # Matrix entries
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def map_prover_id_to_canonical_provider(prover_id: Any) -> str:
+        supervisor_id = _token(prover_id)
+        return _SUPERVISOR_PROVER_TO_CANONICAL_PROVIDER.get(
+            supervisor_id.casefold(),
+            supervisor_id,
+        )
+
     def project_matrix_entry(self, entry: ProverMatrixEntry) -> dict[str, Any]:
         if not isinstance(entry, ProverMatrixEntry):
             raise TypeError("entry must be a ProverMatrixEntry")
@@ -784,7 +803,9 @@ class SupervisorCanonicalLogicAdapter:
             "domain": "matrix_entry",
             "prover_id": entry.prover_id,
             "supervisor_entry": payload,
-            "canonical_provider_id": entry.prover_id,
+            "canonical_provider_id": self.map_prover_id_to_canonical_provider(
+                entry.prover_id
+            ),
             "state": getattr(entry.state, "value", entry.state)
             if hasattr(entry, "state")
             else payload.get("state"),
@@ -1073,6 +1094,9 @@ class SupervisorCanonicalLogicAdapter:
             "interface": self.interface,
             "domain": "route_lane",
             "prover_id": lane.prover_id,
+            "canonical_provider_id": self.map_prover_id_to_canonical_provider(
+                lane.prover_id
+            ),
             "role": lane.role.value if isinstance(lane.role, ProverRole) else str(lane.role),
             "stage": lane.stage,
             "authority_capability": lane.authority_capability,
@@ -1510,6 +1534,10 @@ def map_property_kind_to_canonical(value: Any) -> str:
     return get_canonical_logic_adapter().map_property_kind_to_canonical(value)
 
 
+def map_prover_id_to_canonical_provider(value: Any) -> str:
+    return get_canonical_logic_adapter().map_prover_id_to_canonical_provider(value)
+
+
 def project_resource_budget(budget: ResourceBudget | Mapping[str, Any]) -> dict[str, Any]:
     return get_canonical_logic_adapter().project_resource_budget(budget)
 
@@ -1549,6 +1577,7 @@ __all__ = [
     "get_canonical_logic_adapter",
     "map_analysis_family_to_canonical",
     "map_property_kind_to_canonical",
+    "map_prover_id_to_canonical_provider",
     "project_provider_request",
     "project_resource_budget",
 ]

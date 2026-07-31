@@ -159,6 +159,9 @@ _RESOLVER_EVENTS = frozenset(
 _COMPLETION_EVENTS = frozenset(
     {"task_completed", "task_succeeded", "completed", "merge_completed"}
 )
+_EXPLICIT_TASK_COMPLETION_EVENTS = frozenset(
+    {"task_completed", "task_succeeded"}
+)
 _SCHEDULER_STATE_PROJECTION_EVENT = "scheduler_state_projection"
 _SCHEDULER_STATE_PROJECTION_SCOPE = "authoritative_current"
 
@@ -2141,6 +2144,39 @@ def scheduler_snapshot(
             item[0],
         )
     )
+    explicit_completion_identities: set[str] = set()
+    explicit_completion_aggregate_aliases: set[str] = set()
+    for _index, event, _occurred in unique:
+        if _event_type(event) not in _EXPLICIT_TASK_COMPLETION_EVENTS:
+            continue
+        sources = (
+            (
+                dict(event["identity"])
+                if isinstance(event.get("identity"), Mapping)
+                else {}
+            ),
+            event,
+        )
+        completion_identity = _first_text(
+            sources,
+            (
+                "canonical_task_cid",
+                "canonical_task_id",
+                "canonical_task_key",
+            ),
+        ) or _first_text(sources, ("task_cid", "task_id", "task"))
+        if not completion_identity:
+            continue
+        explicit_completion_identities.add(completion_identity)
+        # Bundle supervisors retain the aggregate task CID in ``task_cid``
+        # while an explicit member completion carries its own canonical CID.
+        # Remember that relationship so an earlier aggregate merge terminal
+        # is not counted as an additional completed task.
+        for source in sources:
+            aggregate_identity = str(source.get("task_cid") or "")
+            if aggregate_identity and aggregate_identity != completion_identity:
+                explicit_completion_aggregate_aliases.add(aggregate_identity)
+    legacy_completion_identities: set[str] = set()
     scan_metrics = _reduce_scan_metrics(unique)
     completion_diagnostics = project_goal_completion_diagnostics(
         [event for _index, event, _occurred in unique], now=now
@@ -2266,6 +2302,7 @@ def scheduler_snapshot(
         if current is None:
             current = _Accumulator(identity=identity, metrics=_metric_defaults(identity))
             accumulators[key] = current
+        completed_before_event = current.completed
 
         current.last_event_type = kind
         current.last_event_sequence = event_sequence
@@ -2407,6 +2444,27 @@ def scheduler_snapshot(
             current.phase = "idle"
             current.status = "completed"
 
+        if (
+            current.completed
+            and not completed_before_event
+            and kind not in _EXPLICIT_TASK_COMPLETION_EVENTS
+        ):
+            event_identity = (
+                dict(event["identity"])
+                if isinstance(event.get("identity"), Mapping)
+                else {}
+            )
+            legacy_identity = _first_text(
+                (event_identity, event),
+                (
+                    "canonical_task_cid",
+                    "canonical_task_id",
+                    "canonical_task_key",
+                ),
+            ) or identity["task_cid"]
+            if legacy_identity != UNKNOWN_IDENTITY:
+                legacy_completion_identities.add(legacy_identity)
+
         if kind in _RESOLVER_EVENTS or phase == "resolver":
             current.phase = "resolver"
 
@@ -2519,7 +2577,24 @@ def scheduler_snapshot(
         totals["retries"] / totals["implementation_attempts"]
         if totals["implementation_attempts"] else 0.0
     )
-    totals["completion_count"] = totals["completions"]
+    # ``completions`` retains the dimensioned lifecycle throughput used by
+    # existing dashboards.  Bundle logs can repeat one terminal task in more
+    # than one lane, or group several member terminals under one aggregate
+    # task CID, so the operator-facing count is instead the exact number of
+    # unique explicit terminal task identities when that evidence exists.
+    # Distinct legacy terminals remain part of a mixed event stream, while a
+    # bundle-level legacy terminal linked to explicit member receipts does not
+    # become a phantom extra completion.
+    totals["completion_count"] = (
+        len(explicit_completion_identities)
+        + len(
+            legacy_completion_identities
+            - explicit_completion_identities
+            - explicit_completion_aggregate_aliases
+        )
+        if explicit_completion_identities
+        else totals["completions"]
+    )
     totals["total_tokens"] = totals["tokens"]
     totals["total_cost_usd"] = totals["cost_usd"]
     # Additive flat aliases let existing totals-only consumers adopt the new

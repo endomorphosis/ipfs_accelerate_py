@@ -534,6 +534,147 @@ def test_scheduler_decisions_reference_the_exposed_event_snapshot(tmp_path: Path
     assert decision_input["snapshot_id"] == decision["snapshot_id"]
 
 
+def test_bundle_snapshot_counts_unique_member_completion_identities(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    index = repo / "index.json"
+    index.write_text(
+        json.dumps(
+            {
+                "source_todo": "tasks.todo.md",
+                "bundles": {
+                    "objective/g9/g9-s4": {
+                        "shard_path": "bundle.todo.md",
+                        "parallel_lane": "g9-s4",
+                        "tasks": [
+                            {"task_id": "REF-044", "title": "first"},
+                            {"task_id": "REF-045", "title": "second"},
+                        ],
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    scheduler = DynamicBundleScheduler(
+        bundle_index_path=index,
+        repo_root=repo,
+        state_root=repo / "state",
+        worktree_root=repo / "worktrees",
+        log_dir=repo / "logs",
+        coordination_path=repo / "coordination.sqlite3",
+        max_lanes=1,
+        launcher=lambda _lane, _grant: _Process(),
+    )
+    lane = scheduler._plan()[0]
+    event_path = lane.state_dir / f"{lane.state_prefix}_events.jsonl"
+    append_jsonl_event(
+        event_path,
+        "merge_finished",
+        {
+            "timestamp": "2026-01-01T00:00:00Z",
+            "merged": True,
+            "returncode": 0,
+        },
+    )
+    append_jsonl_event(
+        event_path,
+        "task_completed",
+        {
+            "timestamp": "2026-01-01T00:00:01Z",
+            "task_id": "REF-044",
+            "canonical_task_cid": "task:member-044",
+            "canonical_task_key": "task/v1/member-044",
+        },
+    )
+    append_jsonl_event(
+        event_path,
+        "task_completed",
+        {
+            "timestamp": "2026-01-01T00:00:02Z",
+            "task_id": "REF-045",
+            "canonical_task_cid": "task:member-045",
+            "canonical_task_key": "task/v1/member-045",
+        },
+    )
+
+    snapshot = scheduler._build_scheduler_snapshot([lane], [])
+
+    assert snapshot["totals"]["completions"] == 1
+    assert snapshot["totals"]["completion_count"] == 2
+
+
+def test_completion_count_deduplicates_cross_lane_terminal_replays() -> None:
+    snapshot = build_scheduler_snapshot(
+        [
+            {
+                "type": "task_completed",
+                "timestamp": "2026-01-01T00:00:01Z",
+                "task_cid": "task:bundle-a",
+                "canonical_task_cid": "task:member-044",
+                "lane_id": "lane:a",
+            },
+            {
+                "type": "task_completed",
+                "timestamp": "2026-01-01T00:00:02Z",
+                "task_cid": "task:bundle-b",
+                "canonical_task_cid": "task:member-044",
+                "lane_id": "lane:b",
+            },
+        ]
+    )
+
+    assert snapshot["totals"]["completions"] == 2
+    assert snapshot["totals"]["completion_count"] == 1
+
+
+def test_completion_count_includes_distinct_legacy_and_explicit_terminals() -> None:
+    snapshot = build_scheduler_snapshot(
+        [
+            {
+                "type": "completed",
+                "timestamp": "2026-01-01T00:00:01Z",
+                "task_cid": "task:legacy-043",
+                "lane_id": "lane:legacy",
+            },
+            {
+                "type": "task_completed",
+                "timestamp": "2026-01-01T00:00:02Z",
+                "canonical_task_cid": "task:member-044",
+                "lane_id": "lane:current",
+            },
+        ]
+    )
+
+    assert snapshot["totals"]["completions"] == 2
+    assert snapshot["totals"]["completion_count"] == 2
+
+
+def test_completion_count_does_not_add_represented_legacy_bundle_terminal() -> None:
+    snapshot = build_scheduler_snapshot(
+        [
+            {
+                "type": "merge_finished",
+                "timestamp": "2026-01-01T00:00:01Z",
+                "task_cid": "task:bundle-043-044",
+                "lane_id": "lane:bundle",
+                "merged": True,
+                "returncode": 0,
+            },
+            {
+                "type": "task_completed",
+                "timestamp": "2026-01-01T00:00:02Z",
+                "task_cid": "task:bundle-043-044",
+                "canonical_task_cid": "task:member-044",
+                "lane_id": "lane:bundle",
+            },
+        ]
+    )
+
+    assert snapshot["totals"]["completions"] == 1
+    assert snapshot["totals"]["completion_count"] == 1
+
+
 def test_watchdog_returns_same_snapshot_and_defers_dynamic_lane_recovery(tmp_path: Path) -> None:
     manifest_path = tmp_path / "manifest.json"
     snapshot = build_scheduler_snapshot([_event("implementation_started", "2026-01-01T00:00:00Z")])

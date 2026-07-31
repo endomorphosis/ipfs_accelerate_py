@@ -19,7 +19,7 @@ import time
 import uuid
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, fields, replace
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable
 
@@ -132,7 +132,6 @@ _MANIFEST_PROFILE_G_REFERENCE_FIELDS = frozenset(
         "task_spec_cid",
     }
 )
-
 
 def bundle_member_completion_event_sources(state_root: Path) -> tuple[Path, ...]:
     """Return active and rotated member-completion logs in stable order."""
@@ -4752,7 +4751,13 @@ class DynamicBundleScheduler:
         scheduler_state: SchedulerSnapshot | None = None,
         decision_snapshot: SchedulerSnapshot | None = None,
         decisions: Sequence[dict[str, Any]] = (),
+        lifecycle_state: str | None = None,
     ) -> dict[str, Any]:
+        resolved_lifecycle_state = lifecycle_state or (
+            "stopping" if self._stop_event.is_set() else "running"
+        )
+        if resolved_lifecycle_state not in {"running", "stopping", "stopped"}:
+            raise ValueError("lifecycle_state must be running, stopping, or stopped")
         running_ids = set(self._running)
         lanes_by_task_cid = {
             lane.task_cid: lane for lane in discovered if lane.task_cid
@@ -4820,11 +4825,21 @@ class DynamicBundleScheduler:
             resource_snapshot_payload.pop("observed_at_ms", None)
             resource_snapshot_payload.pop("configured_max_lanes", None)
             resource_snapshot_payload.pop("available_slots", None)
+        generated_at = utc_now()
+        heartbeat_expires_at = (
+            datetime.now(timezone.utc)
+            + timedelta(seconds=max(1.0, self.poll_interval * 3.0))
+        ).isoformat() if resolved_lifecycle_state != "stopped" else None
         payload: dict[str, Any] = {
             "schema": "ipfs_accelerate_py.agent_supervisor.dynamic_bundle_scheduler@1",
-            "generated_at": utc_now(),
+            "generated_at": generated_at,
             "authoritative": True,
-            "scheduler_state": "stopping" if self._stop_event.is_set() else "running",
+            "scheduler_state": resolved_lifecycle_state,
+            "supervisor_pid": (
+                os.getpid() if resolved_lifecycle_state != "stopped" else None
+            ),
+            "heartbeat_at": generated_at,
+            "heartbeat_expires_at": heartbeat_expires_at,
             "cycle": self._cycle,
             "repo_root": str(self.repo_root),
             "bundle_index_path": repo_relative_path(self.repo_root, self.bundle_index_path),
@@ -5076,6 +5091,11 @@ class DynamicBundleScheduler:
                         item["blocked_reason"] = "stale_input_binding"
                         item["stale_input_binding"] = dict(diagnosis)
                 decision_snapshot = self._build_scheduler_snapshot(registered, decision_projection)
+                projection_states = {
+                    str(item.get("task_cid") or ""): self._projection_state(item)
+                    for item in decision_projection
+                    if str(item.get("task_cid") or "")
+                }
                 registered_by_task_cid = {
                     lane.task_cid: lane for lane in registered
                 }
@@ -5196,6 +5216,15 @@ class DynamicBundleScheduler:
                         })
                         continue
                     if lane.task_cid in reconciled:
+                        continue
+                    if projection_states.get(lane.task_cid) == "completed":
+                        decisions.append({
+                            "task_cid": lane.task_cid,
+                            "bundle_key": lane.bundle_key,
+                            "decision": "settled",
+                            "reason": "completed",
+                            "snapshot_id": decision_snapshot.snapshot_id,
+                        })
                         continue
                     stale_input_binding = stale_input_bindings.get(lane.task_cid)
                     if stale_input_binding is not None:
@@ -5554,6 +5583,7 @@ class DynamicBundleScheduler:
             task_projection=projection,
             launched=(),
             reaped=(),
+            lifecycle_state="stopped",
         )
 
 

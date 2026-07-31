@@ -22,6 +22,7 @@ import argparse
 import hashlib
 import importlib.metadata
 import importlib.machinery
+import importlib.util
 import json
 import os
 import re
@@ -761,7 +762,54 @@ class ProverMatrixProbeConfig:
             raise ValueError("probe limits must be positive")
 
 
+def _static_segment_spec(
+    qualified_name: str,
+    segment: str,
+    search_path: Sequence[str] | None,
+) -> Any:
+    """Resolve one source-tree or namespace-package segment without imports."""
+
+    if search_path is None:
+        return None
+    namespace_locations: list[str] = []
+    for location in search_path:
+        root = Path(location)
+        module_path = root / f"{segment}.py"
+        if module_path.is_file():
+            return importlib.util.spec_from_file_location(
+                qualified_name,
+                module_path,
+            )
+        package_path = root / segment
+        initializer = package_path / "__init__.py"
+        if initializer.is_file():
+            return importlib.util.spec_from_file_location(
+                qualified_name,
+                initializer,
+                submodule_search_locations=[str(package_path)],
+            )
+        if package_path.is_dir():
+            namespace_locations.append(str(package_path))
+    if not namespace_locations:
+        return None
+    spec = importlib.machinery.ModuleSpec(
+        qualified_name,
+        loader=None,
+        is_package=True,
+    )
+    spec.submodule_search_locations = namespace_locations
+    return spec
+
+
 def _find_spec_without_import(module: str) -> Any:
+    """Resolve dotted modules without importing source-tree wrappers.
+
+    Some first-party submodules expose an outer bootstrap package that adds a
+    same-named inner source package to ``__path__``.  Mirror that narrow layout
+    statically so capability discovery remains import-safe and still sees the
+    bundled prover providers.
+    """
+
     path: Sequence[str] | None = None
     parts = str(module).split(".")
     if not parts or any(not part for part in parts):
@@ -769,14 +817,28 @@ def _find_spec_without_import(module: str) -> Any:
     spec: Any = None
     for index in range(len(parts)):
         name = ".".join(parts[: index + 1])
-        spec = importlib.machinery.PathFinder.find_spec(name, path)
+        try:
+            spec = importlib.machinery.PathFinder.find_spec(name, path)
+        except (ImportError, KeyError):
+            spec = None
+        if spec is None:
+            spec = _static_segment_spec(name, parts[index], path)
         if spec is None:
             return None
         if index < len(parts) - 1:
             locations = spec.submodule_search_locations
             if locations is None:
                 return None
-            path = tuple(str(location) for location in locations)
+            resolved_locations = tuple(str(location) for location in locations)
+            package_name = parts[index]
+            nested_locations = tuple(
+                str(candidate)
+                for location in resolved_locations
+                if Path(location).name == package_name
+                for candidate in (Path(location) / package_name,)
+                if candidate.is_dir() and (candidate / "__init__.py").is_file()
+            )
+            path = tuple(dict.fromkeys((*nested_locations, *resolved_locations)))
     return spec
 
 
@@ -1103,8 +1165,8 @@ class ProverMatrixRegistry:
         configured = self.config.documentation_path
         if configured is not None:
             return Path(configured)
-        package_root = Path(__file__).resolve().parents[2]
-        candidate = package_root / DEFAULT_DOCUMENTATION_MATRIX
+        repository_root = Path(__file__).resolve().parents[3]
+        candidate = repository_root / DEFAULT_DOCUMENTATION_MATRIX
         return candidate if candidate.is_file() else None
 
     def _discover_executable(
@@ -1511,7 +1573,12 @@ DEFAULT_PROVER_DEFINITIONS: tuple[ProverDefinition, ...] = (
     ),
     ProverDefinition(
         "datalog_secpal", "Datalog/SecPAL", "authorization",
-        ("souffle", "runergo"), ("pyDatalog",), ("pyDatalog",),
+        ("souffle", "runergo"),
+        (
+            "ipfs_datasets_py.logic.backends.datalog.adapters",
+            "pyDatalog",
+        ),
+        ("ipfs_datasets_py", "pyDatalog"),
         fixture=_fixture(
             "datalog-authorization-smoke@1",
             '.decl allowed(actor:symbol)\n.output allowed\nallowed("agent").\n',
@@ -1581,7 +1648,13 @@ DEFAULT_PROVER_DEFINITIONS: tuple[ProverDefinition, ...] = (
     ),
     ProverDefinition(
         "runtime_mtl", "Runtime MTL", "runtime_monitor",
-        ("rtamt",), ("rtamt",), ("rtamt",), fixture=None,
+        ("rtamt",),
+        (
+            "ipfs_datasets_py.logic.software_verification.monitoring.runtime_mtl",
+            "rtamt",
+        ),
+        ("ipfs_datasets_py", "rtamt"),
+        fixture=None,
         documentation_labels=("Runtime MTL",),
     ),
     ProverDefinition(

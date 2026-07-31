@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import importlib.metadata
 import importlib.machinery
+import importlib.util
 import json
 import math
 import os
@@ -953,6 +954,45 @@ ExecutableFinder = Callable[[str], str | None]
 DistributionVersionFinder = Callable[[str], str]
 
 
+def _static_segment_spec(
+    qualified_name: str,
+    segment: str,
+    search_path: Sequence[str] | None,
+) -> Any:
+    """Resolve one source-tree or namespace-package segment without imports."""
+
+    if search_path is None:
+        return None
+    namespace_locations: list[str] = []
+    for location in search_path:
+        root = Path(location)
+        module_path = root / f"{segment}.py"
+        if module_path.is_file():
+            return importlib.util.spec_from_file_location(
+                qualified_name,
+                module_path,
+            )
+        package_path = root / segment
+        initializer = package_path / "__init__.py"
+        if initializer.is_file():
+            return importlib.util.spec_from_file_location(
+                qualified_name,
+                initializer,
+                submodule_search_locations=[str(package_path)],
+            )
+        if package_path.is_dir():
+            namespace_locations.append(str(package_path))
+    if not namespace_locations:
+        return None
+    spec = importlib.machinery.ModuleSpec(
+        qualified_name,
+        loader=None,
+        is_package=True,
+    )
+    spec.submodule_search_locations = namespace_locations
+    return spec
+
+
 def _find_spec_without_import(module: str) -> Any:
     """Resolve a dotted module with ``PathFinder`` without importing parents.
 
@@ -969,7 +1009,16 @@ def _find_spec_without_import(module: str) -> Any:
     spec: Any = None
     for index in range(len(parts)):
         qualified_name = ".".join(parts[: index + 1])
-        spec = importlib.machinery.PathFinder.find_spec(qualified_name, path)
+        try:
+            spec = importlib.machinery.PathFinder.find_spec(qualified_name, path)
+        except (ImportError, KeyError):
+            spec = None
+        if spec is None:
+            spec = _static_segment_spec(
+                qualified_name,
+                parts[index],
+                path,
+            )
         if spec is None:
             return None
         if index < len(parts) - 1:

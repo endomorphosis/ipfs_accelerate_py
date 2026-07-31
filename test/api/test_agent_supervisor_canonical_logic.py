@@ -338,6 +338,54 @@ def test_matrix_entry_projects_and_restores_supervisor_payload() -> None:
     assert project_matrix_entry_to_canonical(entry)["prover_id"] == "z3"
 
 
+@pytest.mark.parametrize(
+    ("supervisor_id", "canonical_id", "family"),
+    (
+        ("coq", "rocq", "kernel"),
+        ("e", "eprover", "atp"),
+    ),
+)
+def test_prover_projection_uses_canonical_datasets_dispatch_id(
+    supervisor_id: str,
+    canonical_id: str,
+    family: str,
+) -> None:
+    adapter = _adapter()
+    entry = ProverMatrixEntry(
+        prover_id=supervisor_id,
+        display_name=supervisor_id,
+        family=family,
+        absent=False,
+        discovered=True,
+        versioned=False,
+        smoke_tested=False,
+        translation_conformant=False,
+        reconstruction_capable=False,
+        authoritative_for=(),
+        executable_path=None,
+        executable_version=None,
+        package_module="fixture.provider",
+        package_version=None,
+        reason="fixture",
+    )
+    lane = ProverLane(
+        prover_id=supervisor_id,
+        role=ProverRole.KERNEL if family == "kernel" else ProverRole.MODEL_CHECKER,
+        stage=1,
+        authority_capability="fixture",
+    )
+
+    matrix_projection = adapter.project_matrix_entry(entry)
+    lane_projection = adapter.project_prover_lane(lane)
+
+    assert matrix_projection["prover_id"] == supervisor_id
+    assert matrix_projection["canonical_provider_id"] == canonical_id
+    assert matrix_projection["supervisor_entry"]["prover_id"] == supervisor_id
+    assert lane_projection["prover_id"] == supervisor_id
+    assert lane_projection["canonical_provider_id"] == canonical_id
+    assert lane_projection["supervisor_lane"]["prover_id"] == supervisor_id
+
+
 def test_proof_cache_key_projects_to_verification_cache_shape() -> None:
     from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_cache import (
         ProofCacheKey,
