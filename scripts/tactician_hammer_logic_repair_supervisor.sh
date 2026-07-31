@@ -131,31 +131,90 @@ verify_branch_and_sources() {
     echo "ipfs_datasets_py revision mismatch: expected ${expected_datasets}, found ${actual_datasets}" >&2
     return 2
   fi
-  "${PYTHON_BIN}" - "${REPO_ROOT}" "${expected_datasets}" <<'PY'
+  "${PYTHON_BIN}" - \
+    "${REPO_ROOT}" \
+    "${expected_datasets}" \
+    "${REPO_ROOT}/${SCHEDULER_PATH}" <<'PY'
+import importlib
+import json
 import pathlib
 import subprocess
 import sys
 
+root = pathlib.Path(sys.argv[1]).resolve()
+expected = sys.argv[2]
+binding = json.loads(pathlib.Path(sys.argv[3]).read_text(encoding="utf-8"))[
+    "source_binding"
+]
+required_ancestor = str(binding["datasets_required_ancestor"])
+required_interface = str(binding["datasets_required_interface"])
+required_paths = tuple(binding["datasets_required_paths"])
+datasets_root = root / "ipfs_datasets_py"
+actual = subprocess.check_output(
+    ["git", "-C", str(datasets_root), "rev-parse", "HEAD"],
+    text=True,
+).strip()
+if actual != expected:
+    raise SystemExit(f"datasets import revision mismatch: {actual} != {expected}")
+ancestry = subprocess.run(
+    [
+        "git",
+        "-C",
+        str(datasets_root),
+        "merge-base",
+        "--is-ancestor",
+        required_ancestor,
+        actual,
+    ],
+    check=False,
+    stdout=subprocess.DEVNULL,
+    stderr=subprocess.PIPE,
+    text=True,
+)
+if ancestry.returncode != 0:
+    raise SystemExit(
+        "datasets gitlink does not contain the reviewed Logic Tactician: "
+        f"{required_ancestor} is not an ancestor of {actual}"
+    )
+for required_path in required_paths:
+    relative = pathlib.PurePosixPath(str(required_path))
+    if relative.is_absolute() or ".." in relative.parts or not relative.parts:
+        raise SystemExit(f"unsafe datasets required path: {required_path!r}")
+    candidate = (datasets_root / pathlib.Path(*relative.parts)).resolve()
+    if datasets_root not in candidate.parents or not candidate.is_file():
+        raise SystemExit(f"datasets required path is missing: {required_path}")
+    committed = subprocess.run(
+        ["git", "-C", str(datasets_root), "cat-file", "-e", f"{actual}:{relative}"],
+        check=False,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    if committed.returncode != 0:
+        raise SystemExit(
+            f"datasets required path is not committed at {actual}: {required_path}"
+        )
+
 import ipfs_accelerate_py
 import ipfs_datasets_py.logic
 
-root = pathlib.Path(sys.argv[1]).resolve()
-expected = sys.argv[2]
+tactician = importlib.import_module("ipfs_datasets_py.logic.tactician")
+actual_interface = getattr(tactician, "TACTICIAN_INTERFACE", "")
+if actual_interface != required_interface:
+    raise SystemExit(
+        f"datasets Tactician interface mismatch: {actual_interface!r} "
+        f"!= {required_interface!r}"
+    )
 accelerator_file = pathlib.Path(ipfs_accelerate_py.__file__).resolve()
 datasets_file = pathlib.Path(ipfs_datasets_py.logic.__file__).resolve()
 if root not in accelerator_file.parents:
     raise SystemExit(f"accelerator import escaped target checkout: {accelerator_file}")
 if root.joinpath("ipfs_datasets_py") not in datasets_file.parents:
     raise SystemExit(f"datasets import escaped exact gitlink: {datasets_file}")
-actual = subprocess.check_output(
-    ["git", "-C", str(root / "ipfs_datasets_py"), "rev-parse", "HEAD"],
-    text=True,
-).strip()
-if actual != expected:
-    raise SystemExit(f"datasets import revision mismatch: {actual} != {expected}")
 print(f"accelerator_module={accelerator_file}")
 print(f"datasets_logic_module={datasets_file}")
 print(f"datasets_revision={actual}")
+print(f"datasets_tactician_interface={actual_interface}")
 PY
 }
 
@@ -540,11 +599,24 @@ PY
 }
 
 preflight() {
+  local live_master_json=""
+  local live_master_state=""
   validate_test_mode
   if [[ "${TEST_MODE}" == "1" ]]; then
     echo '{"completed_count":1,"drained":false,"eligible_ready_count":4,"task_count":29}'
     return 0
   fi
+  live_master_json="$(master_state_json)"
+  live_master_state="$(master_state_field status <<<"${live_master_json}")"
+  case "${live_master_state}" in
+    owned)
+      status >/dev/null
+      ;;
+    foreign)
+      echo "preflight refuses an unowned live master: ${live_master_json}" >&2
+      return 2
+      ;;
+  esac
   verify_branch_and_sources
   "${PYTHON_BIN}" "${REPO_ROOT}/${VALIDATOR_PATH}" --check-all
   verify_vfs_generalization_source_lock
@@ -570,29 +642,45 @@ preflight() {
       --implementation-protected-path "${LAUNCHER_PATH}" \
       --log-level INFO
   )
-  "${PYTHON_BIN}" - "${PREFLIGHT_ROOT}/lpr_task_state.json" <<'PY'
+  "${PYTHON_BIN}" - \
+    "${PREFLIGHT_ROOT}/lpr_task_state.json" \
+    "${STATE_ROOT}" \
+    "${LANE_COUNT}" \
+    "${live_master_state}" <<'PY'
 import json
 import pathlib
 import sys
 
+from ipfs_accelerate_py.agent_supervisor.validation.supervisor_preflight import (
+    SupervisorPreflightError,
+    summarize_supervisor_preflight,
+)
+
 path = pathlib.Path(sys.argv[1])
 payload = json.loads(path.read_text(encoding="utf-8"))
-task_count = int(payload.get("task_count") or 0)
-completed = int(payload.get("completed_count") or 0)
-ready = int(payload.get("eligible_ready_count") or 0)
-blocked = tuple(payload.get("blocked_task_ids") or ())
-if task_count != 29:
-    raise SystemExit(f"preflight parsed unexpected task count: {payload}")
-if blocked:
-    raise SystemExit(f"preflight found blocked tasks: {blocked}")
-if completed < task_count and ready <= 0:
-    raise SystemExit(f"preflight has no ready work while incomplete: {payload}")
-print(json.dumps({
-    "task_count": task_count,
-    "completed_count": completed,
-    "eligible_ready_count": ready,
-    "drained": completed == task_count,
-}, sort_keys=True))
+state_root = pathlib.Path(sys.argv[2])
+lane_count = int(sys.argv[3])
+master_is_live = sys.argv[4] == "owned"
+lane_states = []
+if master_is_live:
+    for lane in range(lane_count):
+        state_path = (
+            state_root
+            / f"lane-{lane}"
+            / f"lpr_lane_{lane}_task_state.json"
+        )
+        if not state_path.is_file():
+            raise SystemExit(f"live lane state is missing: {state_path}")
+        lane_states.append(json.loads(state_path.read_text(encoding="utf-8")))
+try:
+    summary = summarize_supervisor_preflight(
+        payload,
+        expected_task_count=29,
+        live_lane_states=lane_states,
+    )
+except SupervisorPreflightError as exc:
+    raise SystemExit(f"preflight state is not runnable: {exc}; payload={payload}") from exc
+print(json.dumps(summary, sort_keys=True))
 PY
 }
 

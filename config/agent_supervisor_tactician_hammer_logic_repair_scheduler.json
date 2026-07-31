@@ -11,6 +11,18 @@
   "source_binding": {
     "accelerator_branch": "agent/proof-gated-contract-repair",
     "datasets_submodule_path": "ipfs_datasets_py",
+    "datasets_required_ancestor": "014b8ea69721d8e0f0cd15b36b83bc5e8bb6a29c",
+    "datasets_required_interface": "ipfs_datasets_py.logic.tactician@1",
+    "datasets_required_paths": [
+      "ipfs_datasets_py/logic/tactician/__init__.py",
+      "ipfs_datasets_py/logic/tactician/models.py",
+      "ipfs_datasets_py/logic/tactician/planner.py",
+      "ipfs_datasets_py/logic/tactician/policy.py",
+      "ipfs_datasets_py/logic/tactician/receipts.py",
+      "ipfs_datasets_py/logic/tactician/adapters.py",
+      "tests/unit/logic/tactician/test_models.py",
+      "tests/unit/logic/tactician/test_planner.py"
+    ],
     "require_exact_accelerator_branch": true,
     "require_initialized_datasets_gitlink": true,
     "require_superproject_gitlink_equals_nested_head": true,

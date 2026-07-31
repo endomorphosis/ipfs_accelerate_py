@@ -50,6 +50,18 @@ RPR_TODO_PATH = Path(
 TASK_PREFIX = "LPR-"
 BOARD_NAMESPACE = "agent-supervisor-tactician-hammer-logic-repair-v1"
 TARGET_BRANCH = "agent/proof-gated-contract-repair"
+DATASETS_TACTICIAN_ANCESTOR = "014b8ea69721d8e0f0cd15b36b83bc5e8bb6a29c"
+DATASETS_TACTICIAN_INTERFACE = "ipfs_datasets_py.logic.tactician@1"
+DATASETS_TACTICIAN_PATHS = (
+    "ipfs_datasets_py/logic/tactician/__init__.py",
+    "ipfs_datasets_py/logic/tactician/models.py",
+    "ipfs_datasets_py/logic/tactician/planner.py",
+    "ipfs_datasets_py/logic/tactician/policy.py",
+    "ipfs_datasets_py/logic/tactician/receipts.py",
+    "ipfs_datasets_py/logic/tactician/adapters.py",
+    "tests/unit/logic/tactician/test_models.py",
+    "tests/unit/logic/tactician/test_planner.py",
+)
 EXPECTED_TASK_IDS = tuple(f"LPR-{number:03d}" for number in range(29))
 EXPECTED_GOAL_IDS = (
     "LPR-G000",
@@ -368,6 +380,23 @@ def _validate_scheduler(scheduler: Mapping[str, object], tasks: Sequence[object]
         _require(source.get(key) is True, f"source binding disabled: {key}")
     _require(source.get("accelerator_branch") == TARGET_BRANCH, "source branch binding mismatch")
     _require(source.get("datasets_submodule_path") == "ipfs_datasets_py", "datasets source path mismatch")
+    _require(
+        source.get("datasets_required_ancestor") == DATASETS_TACTICIAN_ANCESTOR,
+        "datasets Tactician ancestor binding mismatch",
+    )
+    _require(
+        source.get("datasets_required_interface") == DATASETS_TACTICIAN_INTERFACE,
+        "datasets Tactician interface binding mismatch",
+    )
+    required_datasets_paths = _strings(
+        source.get("datasets_required_paths"), name="datasets_required_paths"
+    )
+    _require(
+        required_datasets_paths == DATASETS_TACTICIAN_PATHS,
+        "datasets Tactician required paths mismatch",
+    )
+    for path in required_datasets_paths:
+        _safe_relative(path, field="datasets required path")
 
     refactor_sources = scheduler.get("refactor_source_bindings")
     _require(isinstance(refactor_sources, dict), "refactor_source_bindings must be an object")

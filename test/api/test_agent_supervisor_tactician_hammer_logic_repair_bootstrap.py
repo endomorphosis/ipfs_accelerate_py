@@ -8,6 +8,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 LAUNCHER = REPO_ROOT / "scripts/tactician_hammer_logic_repair_supervisor.sh"
+SCHEDULER = REPO_ROOT / "config/agent_supervisor_tactician_hammer_logic_repair_scheduler.json"
 
 
 def _write_fake_runner(module_root: Path) -> None:
@@ -168,3 +169,59 @@ def test_lpr_launcher_fake_process_lifecycle_is_idempotent_and_identity_safe(tmp
         (state_root / "runtime" / "launch-receipt.json").read_text(encoding="utf-8")
     )
     assert receipt["accelerator_branch"] == "agent/proof-gated-contract-repair"
+
+
+def test_lpr_datasets_gitlink_contains_the_reviewed_tactician_contract():
+    source = json.loads(SCHEDULER.read_text(encoding="utf-8"))["source_binding"]
+    datasets_root = REPO_ROOT / source["datasets_submodule_path"]
+    gitlink = subprocess.check_output(
+        ["git", "rev-parse", "HEAD:ipfs_datasets_py"],
+        cwd=REPO_ROOT,
+        text=True,
+    ).strip()
+    nested_head = subprocess.check_output(
+        ["git", "rev-parse", "HEAD"],
+        cwd=datasets_root,
+        text=True,
+    ).strip()
+
+    assert nested_head == gitlink
+    subprocess.run(
+        [
+            "git",
+            "merge-base",
+            "--is-ancestor",
+            source["datasets_required_ancestor"],
+            gitlink,
+        ],
+        cwd=datasets_root,
+        check=True,
+    )
+    for required_path in source["datasets_required_paths"]:
+        subprocess.run(
+            ["git", "cat-file", "-e", f"{gitlink}:{required_path}"],
+            cwd=datasets_root,
+            check=True,
+        )
+
+    env = os.environ.copy()
+    env["PYTHONPATH"] = os.pathsep.join(
+        [str(REPO_ROOT), str(datasets_root), env.get("PYTHONPATH", "")]
+    ).rstrip(os.pathsep)
+    imported = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            (
+                "import ipfs_datasets_py.logic.tactician as tactician; "
+                "print(tactician.TACTICIAN_INTERFACE)"
+            ),
+        ],
+        cwd=REPO_ROOT,
+        env=env,
+        text=True,
+        capture_output=True,
+        timeout=15,
+        check=True,
+    )
+    assert imported.stdout.strip() == source["datasets_required_interface"]
