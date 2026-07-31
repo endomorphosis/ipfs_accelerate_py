@@ -6,11 +6,11 @@
   "completion_goal_id": "FVT-G090",
   "task_id": "FVT-036",
   "program": "formal-verification-tactician/readiness",
-  "observed_at": "2026-07-31T17:31:24Z",
+  "observed_at": "2026-07-31T17:32:52Z",
   "binding_mode": "current_tree_content_identity",
   "source": {
-    "parent_commit": "771dab0c47324edbb9e664f4a67e0f2d33b2bbf8",
-    "parent_tree": "c00ffb64d4aaa1f55263b5017b919e7013f17759",
+    "parent_commit": "e7f3f44031cc4c44b129445feef04ab3c9146751",
+    "parent_tree": "e8de8689723edac7887573365654f3cc748cc2e3",
     "datasets_gitlink": "21b1f5483eb0aea5fd79b0af66d18183ecad9a25",
     "datasets_embedded_head": "21b1f5483eb0aea5fd79b0af66d18183ecad9a25",
     "datasets_origin_main": "21b1f5483eb0aea5fd79b0af66d18183ecad9a25",
@@ -131,8 +131,8 @@
       ],
       "parent": {
         "path": ".",
-        "commit": "771dab0c47324edbb9e664f4a67e0f2d33b2bbf8",
-        "tree": "c00ffb64d4aaa1f55263b5017b919e7013f17759",
+        "commit": "e7f3f44031cc4c44b129445feef04ab3c9146751",
+        "tree": "e8de8689723edac7887573365654f3cc748cc2e3",
         "origin_main": "48f13ab632dec4c3575acaad6e309ef60420904b",
         "clean": true,
         "matches_origin_main": false
@@ -684,7 +684,7 @@
     "completion_test": {
       "path": "test/api/test_formal_verification_tactician_readiness_completion.py",
       "present": true,
-      "content_identity": "sha256:ab6a20a38b4090e4216c6ab85259488fefe1e6a3e675dd8c1f70e33cf01402a3"
+      "content_identity": "sha256:160e2dfd3be47f4ba3b3320d7c7ee7883a619f62d4bc06e0485fe91c86e6e695"
     },
     "completion_receipt": {
       "path": "docs/architecture/formal_verification_tactician_readiness_completion_receipt.json",
@@ -2644,5 +2644,5 @@
     "Hard-zero gates are derived from child certificates and benchmark hard gates; hardcoded success counters are forbidden.",
     "Generate only from a clean current tree and immutable evidence."
   ],
-  "receipt_identity": "sha256:a6d631ea2ad49f6cc8365ce8337a8184c5419623b5d537591a1477887519eff3"
+  "receipt_identity": "sha256:3865df72fad7790d02bfd329fabfaaa2d45381abc5632ee4ad9889430ba7596c"
 }
