@@ -13,7 +13,7 @@ import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Callable, Mapping, Sequence
+from typing import Callable, Mapping, Protocol, Sequence
 
 from ..control.lifecycle_orchestrator import (
     LifecycleProfile,
@@ -25,6 +25,10 @@ from ..core.wrapper_utils import AgentSupervisorNamespacePaths, apply_env_defaul
 
 
 OutputFn = Callable[[str], None]
+
+
+class _SupportsFileno(Protocol):
+    def fileno(self) -> int: ...
 
 
 def _env_int(name: str, default: int) -> int:
@@ -824,6 +828,20 @@ def _remove_stale_pid_marker_if_unchanged(pid_path: Path, stale_pid: int) -> boo
     return remove_runtime_marker(pid_path)
 
 
+def _remove_owned_pid_projection(pid_path: Path, expected_pid: int) -> bool:
+    """Remove a PID projection only while it still names this runner.
+
+    Unlike :func:`_remove_stale_pid_marker_if_unchanged`, this helper may be
+    used by the still-running master process during its orderly teardown.  A
+    changed marker is never removed, so a concurrently started replacement
+    retains its projection.
+    """
+
+    if read_pid_file(pid_path) != expected_pid:
+        return False
+    return remove_runtime_marker(pid_path)
+
+
 def daemon_pid_health_fields(
     pid_path: Path,
     *,
@@ -1110,6 +1128,7 @@ def stop_tracks(
     """Stop exact marker-bound wrapper trees and verify no descendants remain."""
 
     stopped: list[int] = []
+    removed_runtime_markers: list[str] = []
     all_fenced = True
     _emit(output, "stopping supervisor wrapper and managed daemons")
     for track in tracks:
@@ -1131,10 +1150,24 @@ def stop_tracks(
                 process.wait(timeout=max(0.1, grace_seconds))
             except subprocess.TimeoutExpired:
                 pass
+        if fenced and process is not None:
+            resolved = track.resolve(repo_root)
+            if _remove_stale_pid_marker_if_unchanged(
+                resolved.supervisor_pid_path,
+                process.pid,
+            ):
+                removed_runtime_markers.append(str(resolved.supervisor_pid_path))
+            daemon_pid = read_pid_file(resolved.daemon_pid_path)
+            if daemon_pid and _remove_stale_pid_marker_if_unchanged(
+                resolved.daemon_pid_path,
+                daemon_pid,
+            ):
+                removed_runtime_markers.append(str(resolved.daemon_pid_path))
     return {
         "stopped_pids": sorted(set(stopped)),
         "stopped_count": len(set(stopped)),
         "all_trees_fenced": all_fenced,
+        "removed_runtime_markers": removed_runtime_markers,
     }
 
 
@@ -1155,6 +1188,7 @@ def run_supervisor_tracks(
     """Run and supervise multiple tracks for the requested duration."""
 
     resolved_repo_root = repo_root.resolve()
+    resolved_master_pid: Path | None = None
     if master_pid_path is not None:
         resolved_master_pid = _resolve_path(resolved_repo_root, master_pid_path)
         resolved_master_pid.parent.mkdir(parents=True, exist_ok=True)
@@ -1274,11 +1308,19 @@ def run_supervisor_tracks(
             grace_seconds=stop_grace_seconds,
             output=output,
         )
+        master_pid_removed = bool(
+            resolved_master_pid is not None
+            and stop_payload["all_trees_fenced"]
+            and _remove_owned_pid_projection(resolved_master_pid, os.getpid())
+        )
     return {
         "completed": not interrupted,
         "interrupted": interrupted,
         "track_count": len(tracks),
         "stopped_count": stop_payload["stopped_count"],
+        "all_trees_fenced": stop_payload["all_trees_fenced"],
+        "removed_runtime_markers": stop_payload["removed_runtime_markers"],
+        "master_pid_removed": master_pid_removed,
     }
 
 
@@ -1393,6 +1435,20 @@ def _without_detach(argv: Sequence[str]) -> list[str]:
     return cleaned
 
 
+def _stream_targets_path(stream: _SupportsFileno, path: Path) -> bool:
+    """Return whether a writable stream and path identify the same file."""
+
+    try:
+        stream_stat = os.fstat(stream.fileno())
+        path_stat = path.stat()
+    except (AttributeError, OSError, TypeError, ValueError):
+        return False
+    return (stream_stat.st_dev, stream_stat.st_ino) == (
+        path_stat.st_dev,
+        path_stat.st_ino,
+    )
+
+
 def launch_detached(args: argparse.Namespace, argv: Sequence[str]) -> dict[str, object]:
     """Launch this runner detached, redirecting output to the master log."""
 
@@ -1418,6 +1474,11 @@ def launch_detached(args: argparse.Namespace, argv: Sequence[str]) -> dict[str, 
     finally:
         out_handle.close()
     master_pid.write_text(f"{process.pid}\n", encoding="utf-8")
+    # The child normally removes its own projection after fencing every
+    # track.  Cover the short-run race where it exits before this parent can
+    # publish the detached PID.
+    if process.poll() is not None or not pid_alive(process.pid):
+        _remove_stale_pid_marker_if_unchanged(master_pid, process.pid)
     return {
         "stamp": args.stamp,
         "master_pid": process.pid,
@@ -1506,10 +1567,13 @@ def main(argv: list[str] | None = None) -> int:
     tracks = tracks_from_parsed_args(args)
     master_log.parent.mkdir(parents=True, exist_ok=True)
     with master_log.open("ab") as log_handle:
+        stdout_is_master_log = _stream_targets_path(sys.stdout, master_log)
+
         def output(message: str) -> None:
             print(message, flush=True)
-            log_handle.write((message + "\n").encode("utf-8"))
-            log_handle.flush()
+            if not stdout_is_master_log:
+                log_handle.write((message + "\n").encode("utf-8"))
+                log_handle.flush()
 
         run_supervisor_tracks(
             tracks,

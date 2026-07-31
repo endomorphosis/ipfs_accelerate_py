@@ -3495,10 +3495,15 @@ def test_multi_supervisor_runner_parses_and_runs_short_track(tmp_path):
     worker.write_text(
         "\n".join(
             [
+                "import os",
                 "import signal",
                 "import sys",
                 "import time",
+                "from pathlib import Path",
                 "signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))",
+                "Path('state').mkdir(exist_ok=True)",
+                "Path('state/observed.pid').write_text(str(os.getpid()), encoding='utf-8')",
+                "Path('state/daemon.pid').write_text(str(os.getpid()), encoding='utf-8')",
                 "print('worker started', flush=True)",
                 "while True:",
                 "    time.sleep(0.05)",
@@ -3528,13 +3533,135 @@ def test_multi_supervisor_runner_parses_and_runs_short_track(tmp_path):
         output=output.append,
     )
 
-    pid = int((tmp_path / "state" / "supervisor.pid").read_text(encoding="utf-8").strip())
+    pid = int((tmp_path / "state" / "observed.pid").read_text(encoding="utf-8").strip())
     assert result["completed"] is True
     assert result["track_count"] == 1
-    assert (tmp_path / "state" / "master.pid").read_text(encoding="utf-8").strip() == str(os.getpid())
+    assert result["all_trees_fenced"] is True
+    assert result["master_pid_removed"] is True
+    assert set(result["removed_runtime_markers"]) == {
+        str(tmp_path / "state" / "supervisor.pid"),
+        str(tmp_path / "state" / "daemon.pid"),
+    }
     assert "worker started" in (tmp_path / "logs" / "RUN.log").read_text(encoding="utf-8")
     assert any("started T supervisor" in line for line in output)
     assert not pid_alive(pid)
+    assert not (tmp_path / "state" / "master.pid").exists()
+    assert not (tmp_path / "state" / "supervisor.pid").exists()
+    assert not (tmp_path / "state" / "daemon.pid").exists()
+
+
+def test_multi_supervisor_runner_preserves_replaced_supervisor_pid_projection(tmp_path):
+    worker = tmp_path / "worker.py"
+    worker.write_text(
+        "\n".join(
+            [
+                "import os",
+                "import signal",
+                "import sys",
+                "import time",
+                "from pathlib import Path",
+                "Path('state').mkdir(exist_ok=True)",
+                "def stop(*_args):",
+                "    Path('state/supervisor.pid').write_text(str(os.getppid()), encoding='utf-8')",
+                "    sys.exit(0)",
+                "signal.signal(signal.SIGTERM, stop)",
+                "print('worker ready', flush=True)",
+                "while True:",
+                "    time.sleep(0.05)",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    track = parse_track_spec(
+        "T|worker.py|logs/{stamp}.log|state/supervisor.pid|state/daemon.pid",
+        stamp="RUN",
+    )
+
+    result = run_supervisor_tracks(
+        [track],
+        repo_root=tmp_path,
+        common_args=[],
+        duration_seconds=0.15,
+        heartbeat_interval_seconds=0.05,
+        stop_grace_seconds=0.2,
+        python_executable=sys.executable,
+        label="replacement marker test",
+        output=lambda _message: None,
+    )
+
+    supervisor_pid_path = tmp_path / "state" / "supervisor.pid"
+    assert result["all_trees_fenced"] is True
+    assert supervisor_pid_path.read_text(encoding="utf-8").strip() == str(os.getpid())
+    assert str(supervisor_pid_path) not in result["removed_runtime_markers"]
+
+
+def test_multi_supervisor_main_logs_once_when_stdout_is_master_log(tmp_path, monkeypatch):
+    master_log = tmp_path / "master.log"
+
+    def fake_run_supervisor_tracks(*_args, output, **_kwargs):
+        output("single master line")
+        return {"completed": True}
+
+    monkeypatch.setattr(
+        multi_supervisor_runner,
+        "run_supervisor_tracks",
+        fake_run_supervisor_tracks,
+    )
+    with master_log.open("a", encoding="utf-8") as redirected_stdout:
+        monkeypatch.setattr(sys, "stdout", redirected_stdout)
+        exit_code = multi_supervisor_runner.main(
+            [
+                "--repo-root",
+                str(tmp_path),
+                "--master-log",
+                str(master_log),
+                "--track",
+                "T|worker.py|child.log|supervisor.pid|daemon.pid",
+                "--duration-seconds",
+                "0",
+            ]
+        )
+
+    assert exit_code == 0
+    assert master_log.read_text(encoding="utf-8").splitlines() == ["single master line"]
+
+
+def test_multi_supervisor_detached_launch_cleans_pid_for_already_exited_child(
+    tmp_path,
+    monkeypatch,
+):
+    dead_pid = 999_999_999
+
+    class ExitedProcess:
+        pid = dead_pid
+
+        @staticmethod
+        def poll():
+            return 0
+
+    monkeypatch.setattr(
+        multi_supervisor_runner.subprocess,
+        "Popen",
+        lambda *_args, **_kwargs: ExitedProcess(),
+    )
+    argv = [
+        "--repo-root",
+        str(tmp_path),
+        "--master-dir",
+        "state",
+        "--track",
+        "T|worker.py|child.log|supervisor.pid|daemon.pid",
+        "--duration-seconds",
+        "0",
+        "--detach",
+    ]
+    args = build_multi_supervisor_arg_parser().parse_args(argv)
+
+    result = multi_supervisor_runner.launch_detached(args, argv)
+
+    assert result["master_pid"] == dead_pid
+    assert not Path(result["master_pid_file"]).exists()
 
 
 def test_pid_alive_treats_an_unreaped_zombie_as_stopped():
