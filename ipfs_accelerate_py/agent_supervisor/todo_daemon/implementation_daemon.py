@@ -23916,8 +23916,15 @@ class PortalImplementationDaemon:
         normalization_notes: list[str] = []
         for raw_command in task.validation:
             command, notes = self._normalize_validation_command(raw_command)
+            command, workspace_notes = (
+                self._bind_workspace_validation_pythonpath(
+                    command,
+                    workspace_path,
+                )
+            )
             commands.append(command)
             normalization_notes.extend(notes)
+            normalization_notes.extend(workspace_notes)
 
         # Validation is the last gate before a candidate is committed/enqueued
         # (or before an in-place task is marked complete).  Impact selection is
@@ -24478,6 +24485,102 @@ class PortalImplementationDaemon:
                     notes.append(f"removed unsupported TypeScript flag {flag}")
         return normalized, notes
 
+    @staticmethod
+    def _validation_command_declares_pythonpath(command: str) -> bool:
+        """Return whether reviewed command text supplies its own PYTHONPATH."""
+
+        try:
+            lexer = shlex.shlex(
+                command,
+                posix=True,
+                punctuation_chars=";&|()<>",
+            )
+            lexer.whitespace_split = True
+            lexer.commenters = ""
+            tokens = lexer
+            return any(
+                re.match(r"^PYTHONPATH(?:\+)?=", token) is not None
+                for token in tokens
+            )
+        except ValueError:
+            # The sealed validation runtime reports malformed shell quoting.
+            # Do not turn normalization into a separate failure surface.
+            return False
+
+    @staticmethod
+    def _validation_command_uses_python(command: str) -> bool:
+        """Return whether command text invokes a Python-family entry point."""
+
+        try:
+            lexer = shlex.shlex(
+                command,
+                posix=True,
+                punctuation_chars=";&|()<>",
+            )
+            lexer.whitespace_split = True
+            lexer.commenters = ""
+            return any(
+                re.fullmatch(
+                    r"(?:python(?:3(?:\.\d+)*)?|pytest)",
+                    Path(token).name,
+                )
+                is not None
+                for token in lexer
+            )
+        except ValueError:
+            return False
+
+    def _bind_workspace_validation_pythonpath(
+        self,
+        command: str,
+        workspace_path: Path,
+    ) -> tuple[str, list[str]]:
+        """Expose configured sibling repositories to sealed Python validation.
+
+        Validation intentionally drops the supervisor's inherited PYTHONPATH.
+        Worktree submodule roots are operator-reviewed, repo-relative inputs,
+        so bind them explicitly for each task command.  ``$PWD`` is expanded
+        before a command can change directory, while the rendered command text
+        remains stable across ephemeral worktree locations and cache keys.
+        """
+
+        if (
+            not self.worktree_submodule_paths
+            or not self._validation_command_uses_python(command)
+            or self._validation_command_declares_pythonpath(command)
+        ):
+            return command, []
+
+        try:
+            workspace_root = workspace_path.resolve(strict=True)
+        except OSError:
+            return command, []
+        relative_roots: list[str] = []
+        for relative in self.worktree_submodule_paths:
+            # A path-list separator is data to ``Path.resolve`` but syntax in
+            # PYTHONPATH.  Reject it before rendering so one contained root
+            # cannot smuggle an additional, unreviewed search path.
+            if os.pathsep in relative:
+                continue
+            try:
+                resolved = (workspace_root / relative).resolve(strict=True)
+                resolved.relative_to(workspace_root)
+            except (OSError, RuntimeError, ValueError):
+                continue
+            if resolved.is_dir() and relative not in relative_roots:
+                relative_roots.append(relative)
+        if not relative_roots:
+            return command, []
+
+        roots = os.pathsep.join(
+            f'"$PWD"/{shlex.quote(relative)}'
+            for relative in relative_roots
+        )
+        bound = f"export PYTHONPATH={roots}; {command}"
+        return bound, [
+            "bound configured worktree submodule roots to validation PYTHONPATH"
+        ]
+
     def _main_branch_name(self) -> str:
         if self.merge_target_branch:
             if not self._git_ref_exists(self.merge_target_branch):
@@ -24647,12 +24750,11 @@ class PortalImplementationDaemon:
         branch_name: str,
         target_branch: str,
     ) -> dict[str, Any]:
-        """Rebase a branch's submodule pointers when they've drifted from target.
+        """Diagnose gitlink overlap without rewriting a queued candidate.
 
-        If a branch was created days ago and the target branch has since updated
-        submodule pointers, this rebases the branch onto the current target to
-        pick up the new submodule state. This prevents merge conflicts caused
-        solely by outdated submodule pointer commits.
+        Queue requests bind an immutable implementation commit. Rebase would
+        change that identity after validation, so normal merge and its
+        fail-closed gitlink conflict handling own all reconciliation.
         """
         if self._git_ref_is_ancestor(branch_name, target_branch):
             return {
@@ -24663,27 +24765,6 @@ class PortalImplementationDaemon:
             }
 
         results: list[dict[str, Any]] = []
-
-        # Check if branch is behind target on submodule paths
-        diff_result = subprocess.run(
-            ["git", "diff", "--name-only", f"{branch_name}...{target_branch}"],
-            cwd=self.repo_root,
-            text=True,
-            capture_output=True,
-            check=False,
-        )
-        if diff_result.returncode != 0:
-            return {"attempted": False, "reason": "diff_failed"}
-
-        changed_paths = set(diff_result.stdout.strip().splitlines())
-        submodule_paths = set(self.worktree_submodule_paths)
-        stale_submodules = changed_paths & submodule_paths
-
-        if not stale_submodules:
-            return {"attempted": False, "reason": "no_stale_submodules"}
-
-        # Check if the branch can be cleanly rebased
-        # First try a dry-run merge to see if submodule-only conflicts exist
         merge_base = subprocess.run(
             ["git", "merge-base", branch_name, target_branch],
             cwd=self.repo_root,
@@ -24693,11 +24774,52 @@ class PortalImplementationDaemon:
         )
         if merge_base.returncode != 0:
             return {"attempted": False, "reason": "no_merge_base"}
-
         base_commit = merge_base.stdout.strip()
 
+        # A target-only gitlink advance merges cleanly beside an implementation
+        # that did not touch that submodule. Rebasing in that case needlessly
+        # rewrites the immutable candidate commit recorded by the merge queue.
+        # Only consider submodules changed on both sides of the merge base.
+        branch_diff = subprocess.run(
+            ["git", "diff", "--name-only", f"{base_commit}..{branch_name}"],
+            cwd=self.repo_root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        target_diff = subprocess.run(
+            ["git", "diff", "--name-only", f"{base_commit}..{target_branch}"],
+            cwd=self.repo_root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if branch_diff.returncode != 0 or target_diff.returncode != 0:
+            return {"attempted": False, "reason": "diff_failed"}
+
+        branch_changed_paths = set(branch_diff.stdout.strip().splitlines())
+        target_changed_paths = set(target_diff.stdout.strip().splitlines())
+        submodule_paths = set(self.worktree_submodule_paths)
+        stale_submodules = (
+            branch_changed_paths
+            & target_changed_paths
+            & submodule_paths
+        )
+
+        if not stale_submodules:
+            return {
+                "attempted": False,
+                "reason": "no_stale_submodules",
+                "branch_changed_submodules": sorted(
+                    branch_changed_paths & submodule_paths
+                ),
+                "target_changed_submodules": sorted(
+                    target_changed_paths & submodule_paths
+                ),
+            }
+
         # Check which stale submodules only have pointer changes (not content conflicts)
-        for sm_path in stale_submodules:
+        for sm_path in sorted(stale_submodules):
             # Get the submodule commit on branch vs target
             branch_sm = subprocess.run(
                 ["git", "rev-parse", f"{branch_name}:{sm_path}"],
@@ -24738,96 +24860,14 @@ class PortalImplementationDaemon:
                 "branch_commit": branch_commit[:12],
                 "target_commit": target_commit[:12],
                 "fast_forward_possible": is_ancestor.returncode == 0,
-                "action": "rebase_candidate",
+                "action": "merge_candidate",
             })
 
-        # If all stale submodules can fast-forward, attempt rebase
-        rebase_candidates = [r for r in results if r.get("fast_forward_possible")]
-        if rebase_candidates and len(rebase_candidates) == len([r for r in results if r.get("action") == "rebase_candidate"]):
-            # ``git rebase ... <branch>`` checks out that branch in the
-            # invoking worktree. Preserve the canonical checkout so a
-            # successful merge can subsequently delete the implementation
-            # branch instead of retrying forever because it is still checked
-            # out at ``repo_root``.
-            original_branch = self._git_current_branch(self.repo_root)
-            original_head_result = subprocess.run(
-                ["git", "rev-parse", "HEAD"],
-                cwd=self.repo_root,
-                text=True,
-                capture_output=True,
-                check=False,
-            )
-            original_head = original_head_result.stdout.strip()
-            rebase = subprocess.run(
-                ["git", "rebase", "--onto", target_branch, base_commit, branch_name],
-                cwd=self.repo_root,
-                text=True,
-                capture_output=True,
-                check=False,
-            )
-            abort = None
-            if rebase.returncode != 0:
-                abort = subprocess.run(
-                    ["git", "rebase", "--abort"],
-                    cwd=self.repo_root,
-                    text=True,
-                    capture_output=True,
-                    check=False,
-                )
-            restore_command = (
-                ["git", "checkout", original_branch]
-                if original_branch
-                else ["git", "checkout", "--detach", original_head]
-            )
-            restore = subprocess.run(
-                restore_command,
-                cwd=self.repo_root,
-                text=True,
-                capture_output=True,
-                check=False,
-            )
-            checkout_restore = {
-                "restored": restore.returncode == 0,
-                "branch": original_branch,
-                "head": original_head,
-                "returncode": restore.returncode,
-                "stdout": restore.stdout[-2000:],
-                "stderr": restore.stderr[-2000:],
-            }
-            if restore.returncode != 0:
-                return {
-                    "attempted": True,
-                    "rebased": False,
-                    "reason": "rebase_checkout_restore_failed",
-                    "stale_submodules": list(stale_submodules),
-                    "rebase_returncode": rebase.returncode,
-                    "rebase_stderr": rebase.stderr[:2000],
-                    "checkout_restore": checkout_restore,
-                    "results": results,
-                }
-            if rebase.returncode == 0:
-                return {
-                    "attempted": True,
-                    "rebased": True,
-                    "stale_submodules": list(stale_submodules),
-                    "checkout_restore": checkout_restore,
-                    "results": results,
-                }
-            return {
-                "attempted": True,
-                "rebased": False,
-                "reason": "rebase_failed",
-                "stderr": rebase.stderr[:2000],
-                "abort_returncode": abort.returncode if abort is not None else None,
-                "checkout_restore": checkout_restore,
-                "results": results,
-            }
-
         return {
-            "attempted": True,
+            "attempted": False,
             "rebased": False,
-            "reason": "not_all_fast_forwardable",
-            "stale_submodules": list(stale_submodules),
+            "reason": "overlapping_submodule_changes_deferred_to_merge",
+            "stale_submodules": sorted(stale_submodules),
             "results": results,
         }
 

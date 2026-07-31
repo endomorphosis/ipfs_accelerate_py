@@ -1565,10 +1565,163 @@ def test_daemon_uses_full_pre_merge_scope_and_preserves_result_contract(tmp_path
     assert report["failed_command"] == "git diff --check"
 
 
+def test_daemon_binds_sibling_repositories_for_sealed_validation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace = tmp_path / "workspace"
+    sibling_root = workspace / "external" / "ipfs_datasets"
+    sibling_root.mkdir(parents=True)
+    (sibling_root / "sibling_fixture.py").write_text(
+        "VALUE = 42\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("SUPERVISOR_VALIDATION_SECRET", "must-not-leak")
+    daemon = TodoImplementationDaemon(
+        todo_path=tmp_path / "todo.md",
+        state_path=tmp_path / "state.json",
+        strategy_path=tmp_path / "strategy.json",
+        events_path=tmp_path / "events.jsonl",
+        repo_root=workspace,
+        worktree_submodule_paths=("external/ipfs_datasets",),
+        validation_scheduler=ValidationScheduler(),
+    )
+    task = PortalTask(
+        task_id="PTR-010",
+        title="cross-repository validation",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="platform",
+        validation=[
+            "true && python -c 'import os, sibling_fixture; "
+            "assert sibling_fixture.VALUE == 42; "
+            'assert "SUPERVISOR_VALIDATION_SECRET" not in os.environ\''
+        ],
+    )
+    log_path = tmp_path / "validation.log"
+
+    report = daemon._run_validation_commands(workspace, task, log_path)
+
+    assert report["passed"] is True
+    assert report["results"][0]["command"].startswith(
+        'export PYTHONPATH="$PWD"/external/ipfs_datasets; '
+    )
+    assert (
+        "[validation normalized] bound configured worktree submodule roots "
+        "to validation PYTHONPATH"
+    ) in log_path.read_text(encoding="utf-8")
+
+
+def test_daemon_preserves_reviewed_validation_pythonpath(tmp_path: Path) -> None:
+    daemon = TodoImplementationDaemon(
+        todo_path=tmp_path / "todo.md",
+        state_path=tmp_path / "state.json",
+        strategy_path=tmp_path / "strategy.json",
+        events_path=tmp_path / "events.jsonl",
+        repo_root=tmp_path,
+        worktree_submodule_paths=("external/ipfs_datasets",),
+    )
+    command = "MODE=off PYTHONPATH=custom:. python -m pytest -q"
+
+    bound, notes = daemon._bind_workspace_validation_pythonpath(
+        command,
+        tmp_path,
+    )
+
+    assert bound == command
+    assert notes == []
+
+
+def test_daemon_does_not_rewrite_non_python_validation(tmp_path: Path) -> None:
+    daemon = TodoImplementationDaemon(
+        todo_path=tmp_path / "todo.md",
+        state_path=tmp_path / "state.json",
+        strategy_path=tmp_path / "strategy.json",
+        events_path=tmp_path / "events.jsonl",
+        repo_root=tmp_path,
+        worktree_submodule_paths=("external/ipfs_datasets",),
+    )
+
+    bound, notes = daemon._bind_workspace_validation_pythonpath(
+        "git diff --check",
+        tmp_path,
+    )
+
+    assert bound == "git diff --check"
+    assert notes == []
+
+
+@pytest.mark.parametrize("provider_state", ("missing", "symlink_escape"))
+def test_daemon_omits_unavailable_or_escaping_validation_roots(
+    tmp_path: Path,
+    provider_state: str,
+) -> None:
+    workspace = tmp_path / "workspace"
+    external = workspace / "external"
+    external.mkdir(parents=True)
+    if provider_state == "symlink_escape":
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        (external / "provider").symlink_to(
+            outside,
+            target_is_directory=True,
+        )
+    daemon = TodoImplementationDaemon(
+        todo_path=tmp_path / "todo.md",
+        state_path=tmp_path / "state.json",
+        strategy_path=tmp_path / "strategy.json",
+        events_path=tmp_path / "events.jsonl",
+        repo_root=workspace,
+        worktree_submodule_paths=("external/provider",),
+    )
+    command = "python -m pytest -q"
+
+    bound, notes = daemon._bind_workspace_validation_pythonpath(
+        command,
+        workspace,
+    )
+
+    assert bound == command
+    assert notes == []
+
+
+def test_daemon_omits_validation_roots_containing_path_separator(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    safe_root = workspace / "external" / "safe"
+    safe_root.mkdir(parents=True)
+    unsafe_relative = f"inside{os.pathsep}/tmp"
+    (workspace / unsafe_relative).mkdir(parents=True)
+    daemon = TodoImplementationDaemon(
+        todo_path=tmp_path / "todo.md",
+        state_path=tmp_path / "state.json",
+        strategy_path=tmp_path / "strategy.json",
+        events_path=tmp_path / "events.jsonl",
+        repo_root=workspace,
+        worktree_submodule_paths=(unsafe_relative, "external/safe"),
+    )
+
+    bound, notes = daemon._bind_workspace_validation_pythonpath(
+        "python -m pytest -q",
+        workspace,
+    )
+
+    assert bound == (
+        'export PYTHONPATH="$PWD"/external/safe; python -m pytest -q'
+    )
+    assert unsafe_relative not in bound
+    assert notes == [
+        "bound configured worktree submodule roots to validation PYTHONPATH"
+    ]
+
+
 def test_daemon_binds_task_validation_to_proposal_local_impact_graph(
     tmp_path: Path,
 ) -> None:
     captured: dict[str, object] = {}
+    (tmp_path / "external" / "ipfs_accelerate").mkdir(parents=True)
 
     class Scheduler:
         def run_validated(self, proposal_validation, commands, **kwargs):
@@ -1588,6 +1741,7 @@ def test_daemon_binds_task_validation_to_proposal_local_impact_graph(
         strategy_path=tmp_path / "strategy.json",
         events_path=tmp_path / "events.jsonl",
         repo_root=tmp_path,
+        worktree_submodule_paths=("external/ipfs_accelerate",),
         validation_scheduler=Scheduler(),  # type: ignore[arg-type]
     )
     task = PortalTask(
@@ -1625,6 +1779,9 @@ def test_daemon_binds_task_validation_to_proposal_local_impact_graph(
     assert captured["scope"] == "pre_merge"
     assert len(commands) == 1
     assert commands[0].validation_id.startswith("declared:")
+    assert commands[0].command.startswith(
+        'export PYTHONPATH="$PWD"/external/ipfs_accelerate; '
+    )
     assert graph.graph_version == "declared-validation-plan-v1"
     assert graph.required_validations(
         graph.affected_paths(
