@@ -353,7 +353,7 @@ expectations under existing precedence, but do not prove them by passing.
 
 ## LPR-010 Gate Tactician plans against axiom smuggling and stale evidence
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
