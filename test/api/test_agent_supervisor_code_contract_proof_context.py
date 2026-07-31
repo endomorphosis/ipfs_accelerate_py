@@ -7,12 +7,29 @@ import pytest
 from ipfs_accelerate_py.agent_supervisor.code_contract_proof_context import (
     CodeContractProofContextCompiler,
     CodeContractProofContextError,
+    MINIMAL_PROOF_CONTEXT_EVIDENCE as PROOF_CONTEXT_MODULE_EVIDENCE,
     ProofContextItem,
     ProofContextItemKind,
     ProofContextLimits,
     ProofContextRequest,
     ProofContextStatus,
     compile_proof_context_delta,
+)
+from ipfs_accelerate_py.agent_supervisor.code_contract_prover import (
+    MINIMAL_PROOF_CONTEXT_CLAIM_SCHEMA,
+    MINIMAL_PROOF_CONTEXT_DOMAIN_EVIDENCE_TERMS,
+    MINIMAL_PROOF_CONTEXT_EVIDENCE,
+    MINIMAL_PROOF_CONTEXT_GOAL_ID,
+    MINIMAL_PROOF_CONTEXT_INVARIANTS,
+    MINIMAL_PROOF_CONTEXT_PARENT_GOAL_ID,
+    MINIMAL_PROOF_CONTEXT_TASK_ID,
+    context_obeys_minimal_proof_context,
+    context_satisfies_minimal_proof_context,
+    default_minimal_proof_context_request,
+    minimal_proof_context_evidence,
+    minimal_proof_context_evidence_terms,
+    prove_minimal_proof_context,
+    prove_minimal_proof_context_evidence,
 )
 
 
@@ -295,3 +312,179 @@ def test_obligation_kind_is_enforced_but_cycles_are_closed():
     )
     with pytest.raises(CodeContractProofContextError, match="obligation item"):
         CodeContractProofContextCompiler().compile(invalid)
+
+
+# ---------------------------------------------------------------------------
+# VFS-G157 / VFS-092 objective evidence surface (vfs/minimal-proof-context@1)
+# ---------------------------------------------------------------------------
+
+
+def test_minimal_proof_context_evidence_terms_bind_vfs_g157() -> None:
+    """Discovery scanners must observe the exact objective evidence term."""
+
+    assert minimal_proof_context_evidence() == "vfs/minimal-proof-context@1"
+    assert MINIMAL_PROOF_CONTEXT_EVIDENCE == "vfs/minimal-proof-context@1"
+    assert PROOF_CONTEXT_MODULE_EVIDENCE == MINIMAL_PROOF_CONTEXT_EVIDENCE
+    assert minimal_proof_context_evidence_terms() == (
+        MINIMAL_PROOF_CONTEXT_EVIDENCE,
+    )
+    assert MINIMAL_PROOF_CONTEXT_DOMAIN_EVIDENCE_TERMS == (
+        "vfs/minimal-proof-context@1",
+    )
+    assert MINIMAL_PROOF_CONTEXT_GOAL_ID == "VFS-G157"
+    assert MINIMAL_PROOF_CONTEXT_PARENT_GOAL_ID == "VFS-G071"
+    assert MINIMAL_PROOF_CONTEXT_TASK_ID == "VFS-092"
+    assert any(
+        "never truncated" in item for item in MINIMAL_PROOF_CONTEXT_INVARIANTS
+    )
+    assert any(
+        "inclusion reasons" in item for item in MINIMAL_PROOF_CONTEXT_INVARIANTS
+    )
+    assert any(
+        "reuse exact receipts" in item
+        for item in MINIMAL_PROOF_CONTEXT_INVARIANTS
+    )
+    assert any(
+        "invalidate" in item for item in MINIMAL_PROOF_CONTEXT_INVARIANTS
+    )
+
+
+def test_context_satisfies_minimal_proof_context_fail_closed() -> None:
+    """Required kinds stay in the closure; limits never silently promote."""
+
+    request = default_minimal_proof_context_request()
+    compiler = CodeContractProofContextCompiler()
+    complete = compiler.compile(request)
+
+    assert context_obeys_minimal_proof_context(complete)
+    assert context_satisfies_minimal_proof_context(
+        complete,
+        required_item_ids=(
+            "obl",
+            "contract",
+            "call",
+            "effect",
+            "axiom",
+            "definition",
+            "rule",
+        ),
+        required_kinds=(
+            ProofContextItemKind.OBLIGATION,
+            ProofContextItemKind.CONTRACT,
+            ProofContextItemKind.CALL,
+            ProofContextItemKind.EFFECT,
+            ProofContextItemKind.ASSUMPTION,
+        ),
+        forbidden_item_ids=("optional-premise", "unrelated"),
+        require_complete=True,
+    )
+    # Portable mapping path.
+    assert context_satisfies_minimal_proof_context(
+        complete.to_dict(),
+        required_item_ids=("contract", "call", "effect", "axiom"),
+        forbidden_item_ids=("unrelated",),
+    )
+    # Missing required node fails.
+    assert not context_satisfies_minimal_proof_context(
+        complete,
+        required_item_ids=("does-not-exist",),
+    )
+    # Forbidden optional premise fails when treated as required-absent only if present.
+    assert not context_satisfies_minimal_proof_context(
+        complete,
+        forbidden_item_ids=("contract",),
+    )
+
+    limited = compiler.compile(
+        replace(request, limits=ProofContextLimits(max_bytes=1, max_items=1))
+    )
+    assert limited.status is ProofContextStatus.INCOMPLETE
+    assert context_obeys_minimal_proof_context(limited)
+    assert limited.to_dict()["required_inputs_truncated"] is False
+    # Incomplete context cannot satisfy require_complete.
+    assert not context_satisfies_minimal_proof_context(
+        limited,
+        require_complete=True,
+    )
+
+
+def test_prove_minimal_proof_context_for_required_kinds_and_receipts() -> None:
+    """VFS-G157 claim: required kinds retained, reasons audited, receipts reuse/invalidate."""
+
+    claim = prove_minimal_proof_context()
+
+    assert claim["schema"] == MINIMAL_PROOF_CONTEXT_CLAIM_SCHEMA
+    assert claim["evidence"] == "vfs/minimal-proof-context@1"
+    assert claim["evidence_terms"] == ["vfs/minimal-proof-context@1"]
+    assert claim["all_evidence_terms"] == list(
+        MINIMAL_PROOF_CONTEXT_DOMAIN_EVIDENCE_TERMS
+    )
+    assert claim["goal_id"] == "VFS-G157"
+    assert claim["parent_goal_id"] == "VFS-G071"
+    assert claim["task_id"] == "VFS-092"
+    assert claim["satisfied"] is True
+    assert claim["failure_codes"] == []
+    assert claim["authoritative"] is False
+    assert claim["completion_authoritative"] is False
+    assert claim["promotion_authoritative"] is False
+    assert claim["semantic_authority"] is False
+    assert claim["checks"]["primary_acceptance"] is True
+    assert claim["checks"]["optional_premises_have_inclusion_reasons"] is True
+    assert claim["checks"]["required_kinds_retained"] is True
+    assert claim["checks"]["required_never_truncated"] is True
+    assert claim["checks"]["identical_request_reuses_receipt"] is True
+    assert claim["checks"]["changed_dependency_invalidates"] is True
+    assert claim["contexts"]["primary"]["evidence"] == (
+        "vfs/minimal-proof-context@1"
+    )
+    assert claim["contexts"]["primary"]["embeds_source_bodies"] is False
+    assert claim["contexts"]["primary"]["embeds_full_graph"] is False
+    assert "optional-premise" not in claim["contexts"]["primary"][
+        "included_item_ids"
+    ]
+    assert "unrelated" not in claim["contexts"]["primary"]["included_item_ids"]
+    assert claim["optional_premise_reasons"]["optional-premise"] == (
+        "not_in_obligation_dependency_closure"
+    )
+    assert claim["optional_premise_reasons"]["unrelated"] == (
+        "not_in_obligation_dependency_closure"
+    )
+    assert claim["contexts"]["limit_exceeded"]["status"] == "incomplete"
+    assert claim["contexts"]["limit_exceeded"]["required_inputs_truncated"] is False
+    assert claim["contexts"]["reuse"]["same_object"] is True
+    assert claim["contexts"]["invalidation"]["old_receipt_valid"] is False
+    assert claim["invariants"] == list(MINIMAL_PROOF_CONTEXT_INVARIANTS)
+
+    # Discovery alias path.
+    alias = prove_minimal_proof_context_evidence()
+    assert alias["satisfied"] is True
+    assert alias["evidence"] == MINIMAL_PROOF_CONTEXT_EVIDENCE
+    assert "vfs/minimal-proof-context@1" in alias["evidence_terms"]
+
+
+def test_prove_minimal_proof_context_fails_when_required_item_missing() -> None:
+    """Required-in-scope items that are absent fail the claim closed."""
+
+    claim = prove_minimal_proof_context(
+        required_item_ids=("never-present",),
+        probe_limit_truncation=False,
+        probe_receipt_reuse=False,
+        probe_dependency_invalidation=False,
+    )
+    assert claim["satisfied"] is False
+    assert "primary-acceptance" in claim["failure_codes"]
+    assert claim["checks"]["primary_acceptance"] is False
+    assert claim["authoritative"] is False
+    assert claim["completion_authoritative"] is False
+
+
+def test_compiled_contexts_pin_minimal_proof_context_evidence() -> None:
+    """Compiler receipts and contexts carry the closed evidence pin."""
+
+    result = CodeContractProofContextCompiler().compile(
+        default_minimal_proof_context_request()
+    )
+    assert result.to_dict()["evidence"] == "vfs/minimal-proof-context@1"
+    assert result.receipt.to_dict()["evidence"] == "vfs/minimal-proof-context@1"
+    assert context_obeys_minimal_proof_context(result)
+    assert context_obeys_minimal_proof_context(result.to_dict())
