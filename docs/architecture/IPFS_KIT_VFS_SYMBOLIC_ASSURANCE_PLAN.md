@@ -344,7 +344,33 @@ subcommands `inventory`, `contracts`, `differential`, `parity`, `benchmark`,
 profile, lazy-loads the integration, and delegates; it owns no scan, proof,
 comparison, gate, repair, or mutation logic.
 
-After cutover:
+### ProgramContractDelta and impact closure
+
+Before any cutover edit, the locked source paths and planned generic paths form
+a `ProgramContractDelta@1`-style closure: each source module maps to one
+semantic-package destination, each source test maps to a generic profile test,
+and every import, string import, export surface, ops entry point, documentation
+link, and still-open VFS-board output is resolved or recorded as
+approval-required. Completion requires a closed impact frontier (no remaining
+`agent_supervisor.vfs_*` production imports and no open board outputs that still
+name root `vfs_*.py` modules).
+
+### Tactician / Hammer dispositions
+
+Supported equivalence clauses are proved by profile-driven public contract
+parity (schemas, identity, authority flags, canonical vectors, CLI surface,
+rollout/verify), thin ops delegation, cold-import purity, caller-import
+closure, and two-profile engine identity—not by renaming alone. Explicit
+unsupported / abstention dispositions are retained for:
+
+- byte-identical reconstruction of locked source blobs as live modules; and
+- unresolved dynamic/native public-API differences.
+
+Unsupported dispositions never silently become `proved`. Missed callers, stale
+blobs, unproved semantic drift, layout regression, or partial migration require
+rollback or abstention.
+
+### Placement rules after cutover
 
 - `ipfs_accelerate_py/agent_supervisor/` must contain **no** root `vfs_*.py`
   implementation or compatibility shim;
@@ -353,15 +379,18 @@ After cutover:
   or fixed-checkout branches;
 - open board outputs and documentation links point at the package destinations
   above (plus the thin ops facade and locked config);
-- equivalence is proved by profile-driven public contract parity, caller
-  impact closure, and a second non-VFS profile traversing the same engines—not
-  by renaming alone.
+- the locked VFS corpus and a hermetic non-VFS inventory-to-rollout fixture
+  traverse the **same** generic engine modules under distinct profiles.
 
-Placement and equivalence guards:
+Placement and equivalence guards (re-index / re-resolve / re-prove to a
+content-addressed fixed point):
 
 - `test/api/test_agent_supervisor_vfs_generalization_equivalence.py`
+  (`VfsGeneralizationEquivalenceReceipt`, `VfsCallerMigrationReceipt`)
 - `test/api/test_agent_supervisor_vfs_root_layout_guard.py`
+  (`VfsRootLayoutGuard`)
 - `test/api/test_agent_supervisor_assurance_two_profile_end_to_end.py`
+  (`AssuranceTwoProfileConformance`)
 
 See also
 `docs/architecture/agent_supervisor/VFS_ASSURANCE_GENERALIZATION_MAP.md`.

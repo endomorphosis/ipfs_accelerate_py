@@ -437,6 +437,16 @@ def test_dispatch_closed_commands_for_vfs_profile() -> None:
 def test_two_profile_conformance_fixed_point(tmp_path: Path) -> None:
     first = compute_two_profile_conformance(tmp_path)
     second = compute_two_profile_conformance(tmp_path)
-    assert first.content_id == second.content_id
+    third = compute_two_profile_conformance(tmp_path)
+    assert first.passed, first.to_dict()
+    assert first.content_id == second.content_id == third.content_id
     assert first.content_id.startswith("sha256:")
     assert first.schema.endswith("assurance-two-profile-conformance@1")
+    assert len(first.shared_engine_modules) == 7
+    # Distinct profiles, identical engine module identities.
+    assert first.vfs_profile_id != first.non_vfs_profile_id
+    assert first.vfs_stages["engine_module_ids"] == first.non_vfs_stages[
+        "engine_module_ids"
+    ]
+    assert first.vfs_stages["ok"] is True
+    assert first.non_vfs_stages["ok"] is True

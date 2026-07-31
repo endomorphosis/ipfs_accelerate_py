@@ -6,6 +6,14 @@ with task prefix `VFS-`. Tasks implement the plan in
 witness bodies must remain content-addressed artifacts. Model prompts receive
 compact references and bounded spans only.
 
+**Generalization cutover (LPR-028):** historical root
+`ipfs_accelerate_py/agent_supervisor/vfs_*.py` coordinates are retired. Open and
+projected Outputs / Predicted files / Validation fields on this board name
+semantic-package engines (`analysis/`, `validation/`, `runtime/`, `control/`),
+the locked integration profile, and
+`scripts/ops/agent_supervisor/ipfs_kit_vfs_symbolic_assurance.py` only. Do not
+reintroduce root compatibility shims or `agent_supervisor.vfs_*` imports.
+
 ## VFS-001 Define program-assurance evidence, claim, finding, and stage-receipt contracts
 
 - Status: completed

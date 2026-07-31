@@ -310,7 +310,15 @@ print(json.dumps({"added": sorted(after - before), "vfs_root": vfs_root}))
 
 
 def test_vfs_root_layout_guard_receipt_passes() -> None:
-    receipt = evaluate_vfs_root_layout_guard()
-    assert isinstance(receipt, VfsRootLayoutGuard)
-    assert receipt.passed, receipt.to_dict()
-    assert receipt.schema.endswith("vfs-root-layout-guard@1")
+    first = evaluate_vfs_root_layout_guard()
+    second = evaluate_vfs_root_layout_guard()
+    assert isinstance(first, VfsRootLayoutGuard)
+    assert first.passed, first.to_dict()
+    assert first.schema.endswith("vfs-root-layout-guard@1")
+    assert first.to_dict() == second.to_dict()
+    assert first.root_vfs_modules == ()
+    assert first.forbidden_import_hits == ()
+    assert first.generic_domain_literal_hits == ()
+    assert first.ops_wrapper_logic_hits == ()
+    assert first.missing_generic_engines == ()
+    assert len(GENERIC_ENGINE_MODULES) == 7
