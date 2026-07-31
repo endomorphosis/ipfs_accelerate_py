@@ -1334,7 +1334,7 @@ expectations under existing precedence, but do not prove them by passing.
 
 ## LPR-041 Add report-only through narrow-auto rollout controls and operator validation
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
