@@ -1055,7 +1055,7 @@ expectations under existing precedence, but do not prove them by passing.
 
 ## LPR-032 Federate exact proof caches and lazy datasets Logic capabilities
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
