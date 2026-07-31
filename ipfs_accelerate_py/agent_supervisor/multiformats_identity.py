@@ -29,6 +29,11 @@ this surface with ``vfs/dependency-cache@1`` (VFS-G142) owned by
 for discovery cohesion; dependency-cache key population and fail-closed
 lookup remain implemented only on the cache facade.
 
+VFS-G150 / VFS-089 binds that packet and the VFS-G031 invalidation surface to
+``vfs/cache-invalidation-proof@1``.  This bridge mirrors the aggregate's exact
+goal and evidence lineage for discovery, while executable cache proof behavior
+remains owned by :mod:`program_analysis_cache`.
+
 VFS-G030 owns the parent multiformats + dependency-cache surface.  Its
 synthetic ``objective validation repair`` discovery marker is exposed only
 through evidence helpers and never enters CID bytes, compatibility links, or
@@ -92,6 +97,24 @@ CONTENT_ADDRESSING_PACKET_EVIDENCE_TERMS: Final[tuple[str, ...]] = (
     CID_PROFILE_EVIDENCE,
     DEPENDENCY_CACHE_EVIDENCE,
 )
+# VFS-G150 proof-aggregate discovery anchors.  These mirror the cache module
+# without importing it (and therefore without creating a circular import).
+CACHE_INVALIDATION_PROOF_EVIDENCE: Final = "vfs/cache-invalidation-proof@1"
+CACHE_INVALIDATION_PROOF_GOAL_ID: Final = "VFS-G150"
+CACHE_INVALIDATION_PROOF_TASK_ID: Final = "VFS-089"
+CACHE_INVALIDATION_PROOF_PARENT_GOAL_ID: Final = "VFS-G031"
+CACHE_INVALIDATION_PROOF_AGGREGATE_GOAL_IDS: Final[tuple[str, ...]] = (
+    CACHE_INVALIDATION_PROOF_PARENT_GOAL_ID,
+    CID_PROFILE_GOAL_ID,
+    DEPENDENCY_CACHE_GOAL_ID,
+)
+CACHE_INVALIDATION_PROOF_AGGREGATE_EVIDENCE_TERMS: Final[
+    tuple[str, ...]
+] = (
+    CACHE_INVALIDATION_PROOF_EVIDENCE,
+    CID_PROFILE_EVIDENCE,
+    DEPENDENCY_CACHE_EVIDENCE,
+)
 
 # Synthetic objective-heap evidence term for VFS-G030 validation-gate work.
 # Exact-text discovery key only — never part of CID input, identity links,
@@ -118,6 +141,20 @@ assert DEPENDENCY_CACHE_GOAL_ID == "VFS-G142"
 assert DEPENDENCY_CACHE_TASK_ID == "VFS-088"
 assert CONTENT_ADDRESSING_PACKET_GOAL_IDS == ("VFS-G141", "VFS-G142")
 assert CONTENT_ADDRESSING_PACKET_EVIDENCE_TERMS == (
+    "vfs/cid-profile@1",
+    "vfs/dependency-cache@1",
+)
+assert CACHE_INVALIDATION_PROOF_EVIDENCE == "vfs/cache-invalidation-proof@1"
+assert CACHE_INVALIDATION_PROOF_GOAL_ID == "VFS-G150"
+assert CACHE_INVALIDATION_PROOF_TASK_ID == "VFS-089"
+assert CACHE_INVALIDATION_PROOF_PARENT_GOAL_ID == "VFS-G031"
+assert CACHE_INVALIDATION_PROOF_AGGREGATE_GOAL_IDS == (
+    "VFS-G031",
+    "VFS-G141",
+    "VFS-G142",
+)
+assert CACHE_INVALIDATION_PROOF_AGGREGATE_EVIDENCE_TERMS == (
+    "vfs/cache-invalidation-proof@1",
     "vfs/cid-profile@1",
     "vfs/dependency-cache@1",
 )
@@ -1094,6 +1131,18 @@ def content_addressing_packet_goal_ids() -> tuple[str, ...]:
     return CONTENT_ADDRESSING_PACKET_GOAL_IDS
 
 
+def cache_invalidation_proof_aggregate_evidence_terms() -> tuple[str, ...]:
+    """Return the VFS-G150 proof aggregate's exact evidence lineage."""
+
+    return CACHE_INVALIDATION_PROOF_AGGREGATE_EVIDENCE_TERMS
+
+
+def cache_invalidation_proof_aggregate_goal_ids() -> tuple[str, ...]:
+    """Return the VFS-G031/G141/G142 aggregate lineage for VFS-G150."""
+
+    return CACHE_INVALIDATION_PROOF_AGGREGATE_GOAL_IDS
+
+
 def immutable_object_identity_separate_from_tree_projections() -> bool:
     """VFS-G030 refinement: content CIDs never encode current-tree projections.
 
@@ -1122,6 +1171,12 @@ def immutable_object_identity_separate_from_tree_projections() -> bool:
 
 __all__ = [
     "ALLOWED_CODECS",
+    "CACHE_INVALIDATION_PROOF_AGGREGATE_EVIDENCE_TERMS",
+    "CACHE_INVALIDATION_PROOF_AGGREGATE_GOAL_IDS",
+    "CACHE_INVALIDATION_PROOF_EVIDENCE",
+    "CACHE_INVALIDATION_PROOF_GOAL_ID",
+    "CACHE_INVALIDATION_PROOF_PARENT_GOAL_ID",
+    "CACHE_INVALIDATION_PROOF_TASK_ID",
     "CID_BASE",
     "CID_PROFILE_EVIDENCE",
     "CID_PROFILE_GOAL_ID",
@@ -1150,6 +1205,8 @@ __all__ = [
     "PAYLOAD_DIGEST_PREFIX",
     "RUNTIME_ARTIFACT_PREFIX",
     "all_covered_evidence_terms",
+    "cache_invalidation_proof_aggregate_evidence_terms",
+    "cache_invalidation_proof_aggregate_goal_ids",
     "canonical_dag_json_bytes",
     "cid_for_bytes",
     "cid_for_dag_json",

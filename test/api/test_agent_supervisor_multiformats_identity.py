@@ -36,6 +36,12 @@ from ipfs_datasets_py.utils.cid_utils import (
 
 from ipfs_accelerate_py.agent_supervisor.multiformats_identity import (
     ALLOWED_CODECS,
+    CACHE_INVALIDATION_PROOF_AGGREGATE_EVIDENCE_TERMS,
+    CACHE_INVALIDATION_PROOF_AGGREGATE_GOAL_IDS,
+    CACHE_INVALIDATION_PROOF_EVIDENCE,
+    CACHE_INVALIDATION_PROOF_GOAL_ID,
+    CACHE_INVALIDATION_PROOF_PARENT_GOAL_ID,
+    CACHE_INVALIDATION_PROOF_TASK_ID,
     CID_BASE,
     CID_PROFILE_EVIDENCE,
     CID_PROFILE_GOAL_ID,
@@ -61,6 +67,8 @@ from ipfs_accelerate_py.agent_supervisor.multiformats_identity import (
     IdentityLink,
     MultiformatsIdentityError,
     all_covered_evidence_terms,
+    cache_invalidation_proof_aggregate_evidence_terms,
+    cache_invalidation_proof_aggregate_goal_ids,
     canonical_dag_json_bytes,
     cid_for_bytes,
     cid_for_dag_json,
@@ -87,6 +95,12 @@ from ipfs_accelerate_py.agent_supervisor.multiformats_identity import (
     validate_cid,
 )
 from ipfs_accelerate_py.agent_supervisor.program_analysis_cache import (
+    CACHE_INVALIDATION_PROOF_AGGREGATE_EVIDENCE_TERMS as CACHE_PROOF_EVIDENCE,
+    CACHE_INVALIDATION_PROOF_AGGREGATE_GOAL_IDS as CACHE_PROOF_GOALS,
+    CACHE_INVALIDATION_PROOF_EVIDENCE as CACHE_PROOF_TERM,
+    CACHE_INVALIDATION_PROOF_GOAL_ID as CACHE_PROOF_GOAL_ID,
+    CACHE_INVALIDATION_PROOF_PARENT_GOAL_ID as CACHE_PROOF_PARENT_GOAL_ID,
+    CACHE_INVALIDATION_PROOF_TASK_ID as CACHE_PROOF_TASK_ID,
     CONTENT_ADDRESSING_GOAL_PACKET_ID,
     CONTENT_ADDRESSING_PACKET_EVIDENCE_TERMS as CACHE_PACKET_EVIDENCE,
     CONTENT_ADDRESSING_PACKET_GOAL_BINDINGS,
@@ -109,6 +123,9 @@ from ipfs_accelerate_py.agent_supervisor.program_analysis_cache import (
     ProgramAnalysisCacheKey,
     ProgramAnalysisCacheValidationError,
     all_covered_evidence_terms as cache_all_covered_evidence_terms,
+    cache_invalidation_proof,
+    cache_invalidation_proof_aggregate_evidence_terms as cache_proof_evidence_terms,
+    cache_invalidation_proof_aggregate_goal_ids as cache_proof_goal_ids,
     content_addressing_evidence_packet,
     content_addressing_packet_evidence_terms as cache_packet_evidence_terms,
     content_addressing_packet_goal_ids as cache_packet_goal_ids,
@@ -730,6 +747,76 @@ def test_vfs_g142_dependency_cache_is_executable_packet_evidence() -> None:
     assert "VFS-G142" not in encoded
     assert DEPENDENCY_CACHE_EVIDENCE not in covered_evidence_terms()
     assert DEPENDENCY_CACHE_EVIDENCE not in all_covered_evidence_terms()
+
+
+def test_vfs_g150_invalidation_proof_aggregate_preserves_cid_identity() -> None:
+    """Mirror the G031/G141/G142 proof lineage without changing CID bytes."""
+
+    assert CACHE_INVALIDATION_PROOF_EVIDENCE == CACHE_PROOF_TERM
+    assert CACHE_INVALIDATION_PROOF_EVIDENCE == "vfs/cache-invalidation-proof@1"
+    assert CACHE_INVALIDATION_PROOF_GOAL_ID == CACHE_PROOF_GOAL_ID == "VFS-G150"
+    assert CACHE_INVALIDATION_PROOF_TASK_ID == CACHE_PROOF_TASK_ID == "VFS-089"
+    assert (
+        CACHE_INVALIDATION_PROOF_PARENT_GOAL_ID
+        == CACHE_PROOF_PARENT_GOAL_ID
+        == "VFS-G031"
+    )
+    assert CACHE_INVALIDATION_PROOF_AGGREGATE_GOAL_IDS == CACHE_PROOF_GOALS
+    assert CACHE_INVALIDATION_PROOF_AGGREGATE_GOAL_IDS == (
+        "VFS-G031",
+        "VFS-G141",
+        "VFS-G142",
+    )
+    assert CACHE_INVALIDATION_PROOF_AGGREGATE_EVIDENCE_TERMS == (
+        CACHE_PROOF_EVIDENCE
+    )
+    assert CACHE_INVALIDATION_PROOF_AGGREGATE_EVIDENCE_TERMS == (
+        "vfs/cache-invalidation-proof@1",
+        "vfs/cid-profile@1",
+        "vfs/dependency-cache@1",
+    )
+    assert cache_invalidation_proof_aggregate_goal_ids() == cache_proof_goal_ids()
+    assert (
+        cache_invalidation_proof_aggregate_evidence_terms()
+        == cache_proof_evidence_terms()
+    )
+    proof = cache_invalidation_proof()
+    assert proof.aggregate_goal_ids == CACHE_INVALIDATION_PROOF_AGGREGATE_GOAL_IDS
+    assert (
+        proof.aggregate_evidence_terms
+        == CACHE_INVALIDATION_PROOF_AGGREGATE_EVIDENCE_TERMS
+    )
+    assert proof.completion_authoritative is False
+
+    payload = {"source": "aggregate.py", "symbols": ["invalidate", "reuse"]}
+    canonical = canonical_dag_json_bytes(payload)
+    cid = cid_for_dag_json(payload)
+    link = link_content_identity(content_identity(payload), value=payload)
+    assert cid == package_cid_for_dag_json(payload)
+    assert cid == independent_round_trip_dag_json(payload)
+    assert link.local_id == content_identity(payload)
+    assert link.cid == cid
+
+    # Supervisor lineage is discovery metadata, never CID input or a
+    # compatibility-link field.
+    encoded_payload = canonical.decode("utf-8")
+    encoded_link = json.dumps(link.to_dict(), sort_keys=True)
+    for marker in (
+        *CACHE_INVALIDATION_PROOF_AGGREGATE_EVIDENCE_TERMS,
+        *CACHE_INVALIDATION_PROOF_AGGREGATE_GOAL_IDS,
+        CACHE_INVALIDATION_PROOF_GOAL_ID,
+        CACHE_INVALIDATION_PROOF_TASK_ID,
+    ):
+        assert marker not in encoded_payload
+        assert marker not in encoded_link
+        assert marker not in cid
+
+    # The bridge remains CID-profile-only for domain completion; aggregate
+    # discovery uses its dedicated helper and cannot widen the frozen profile.
+    assert covered_evidence_terms() == ("vfs/cid-profile@1",)
+    assert CACHE_INVALIDATION_PROOF_EVIDENCE not in covered_evidence_terms()
+    with pytest.raises(MultiformatsIdentityError, match="profile is frozen"):
+        CIDProfile(base="base58btc")
 
 
 def test_vfs_g142_acceptance_semantic_deps_policy_and_fail_closed(
