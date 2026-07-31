@@ -1241,10 +1241,6 @@ def test_task_provider_role_overrides_static_lane_provider(tmp_path, monkeypatch
         implementation_daemon_module.IMPLEMENTATION_PROVIDER_ENV,
         "codex",
     )
-    monkeypatch.setenv(
-        implementation_daemon_module.PRODUCTION_PROVIDER_ALLOW_RAW_COMMAND_ENV,
-        "1",
-    )
     monkeypatch.setattr(
         implementation_daemon_module,
         "_grok_cli_available",
@@ -9656,10 +9652,6 @@ def test_implementation_daemon_defers_provider_quota_without_consuming_attempt(
         "exit 1\n",
         encoding="utf-8",
     )
-    monkeypatch.setenv(
-        implementation_daemon_module.PRODUCTION_PROVIDER_ALLOW_RAW_COMMAND_ENV,
-        "1",
-    )
     state_path = repo / "state" / "task_state.json"
     daemon = TodoImplementationDaemon(
         todo_path=todo_path,
@@ -9735,10 +9727,6 @@ def test_provider_capacity_backoff_passes_do_not_grow_state_or_events(
         "IPFS_ACCELERATE_AGENT_PROVIDER_CAPACITY_BACKOFF_SECONDS",
         "600",
     )
-    monkeypatch.setenv(
-        implementation_daemon_module.PRODUCTION_PROVIDER_ALLOW_RAW_COMMAND_ENV,
-        "1",
-    )
     daemon = TodoImplementationDaemon(
         todo_path=todo_path,
         state_path=state_path,
@@ -9793,10 +9781,6 @@ def test_ephemeral_implementation_defers_provider_quota_without_retry_failure(
     )
     _git(repo, "add", "todo.md", "quota.sh")
     _git(repo, "commit", "-m", "seed")
-    monkeypatch.setenv(
-        implementation_daemon_module.PRODUCTION_PROVIDER_ALLOW_RAW_COMMAND_ENV,
-        "1",
-    )
     state_path = repo / "state" / "task_state.json"
     daemon = TodoImplementationDaemon(
         todo_path=todo_path,
@@ -11982,10 +11966,6 @@ def test_implementation_daemon_records_non_ephemeral_setup_exception(
         encoding="utf-8",
     )
     state_dir = repo / "state"
-    monkeypatch.setenv(
-        implementation_daemon_module.PRODUCTION_PROVIDER_ALLOW_RAW_COMMAND_ENV,
-        "1",
-    )
     daemon = TodoImplementationDaemon(
         todo_path=todo_path,
         state_path=state_dir / "task_state.json",
@@ -12016,10 +11996,6 @@ def test_provider_superproject_commit_is_queued_before_todo_completion(
     repo = tmp_path / "repo"
     repo.mkdir()
     state_dir = repo / "state"
-    monkeypatch.setenv(
-        implementation_daemon_module.PRODUCTION_PROVIDER_ALLOW_RAW_COMMAND_ENV,
-        "1",
-    )
     daemon = TodoImplementationDaemon(
         todo_path=repo / "todo.md",
         state_path=state_dir / "task_state.json",
@@ -12150,10 +12126,6 @@ def test_implementation_daemon_promotes_fully_validated_timeout_work(
     repo = tmp_path / "repo"
     repo.mkdir()
     state_dir = repo / "state"
-    monkeypatch.setenv(
-        implementation_daemon_module.PRODUCTION_PROVIDER_ALLOW_RAW_COMMAND_ENV,
-        "1",
-    )
     daemon = TodoImplementationDaemon(
         todo_path=repo / "todo.md",
         state_path=state_dir / "task_state.json",
@@ -16294,10 +16266,6 @@ def test_task_llm_context_budget_caps_codex_window_without_widening_operator_lim
     monkeypatch.setenv(
         "IPFS_ACCELERATE_AGENT_IMPLEMENTATION_PROVIDER",
         "codex",
-    )
-    monkeypatch.setenv(
-        implementation_daemon_module.PRODUCTION_PROVIDER_ALLOW_RAW_COMMAND_ENV,
-        "1",
     )
     monkeypatch.setattr(
         implementation_daemon_module.shutil,
