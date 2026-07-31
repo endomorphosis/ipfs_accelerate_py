@@ -4948,6 +4948,7 @@ class DynamicBundleScheduler:
                 )
                 accounted_active_workers = len(accounted_worker_task_cids)
                 registered: list[BundleLaneSpec] = []
+                receipt_drained_completion_task_cids: set[str] = set()
                 for lane in (item for item in discovered if item.queue_payload):
                     policy_error = _lane_launch_policy_error(lane)
                     completed_member_cids = _string_list(
@@ -4997,17 +4998,41 @@ class DynamicBundleScheduler:
                         )
                         continue
                     adapted = coordinator.register_bundle(lane.queue_payload)
-                    registered.append(
-                        replace(
-                            lane,
-                            task_cid=str(adapted["task_cid"]),
-                            goal_cid=str(adapted["goal_cid"]),
-                            subgoal_cid=str(adapted["subgoal_cid"]),
-                        )
+                    registered_lane = replace(
+                        lane,
+                        task_cid=str(adapted["task_cid"]),
+                        goal_cid=str(adapted["goal_cid"]),
+                        subgoal_cid=str(adapted["subgoal_cid"]),
                     )
+                    registered.append(registered_lane)
+                    if (
+                        receipt_drained
+                        and self._disposition(registered_lane)
+                        == "completed"
+                    ):
+                        receipt_drained_completion_task_cids.add(
+                            registered_lane.task_cid
+                        )
 
                 for lane in registered:
-                    if lane.task_cid in self._running or self._disposition(lane):
+                    if lane.task_cid in self._running:
+                        continue
+                    disposition = self._disposition(lane)
+                    if disposition:
+                        if (
+                            disposition == "completed"
+                            and lane.task_cid
+                            in receipt_drained_completion_task_cids
+                        ):
+                            # A historical terminal block may have exhausted
+                            # its admission budget before merge persistence
+                            # recovered. Re-open only that fenced terminal
+                            # state so the normal claim path can publish the
+                            # now-authoritative successful bundle receipt.
+                            coordinator.requeue_exhausted_blocked(
+                                lane.task_cid,
+                                reason="receipt_drained_completion",
+                            )
                         continue
                     if self._authoritative_lane_has_open_work(lane):
                         coordinator.requeue_completed(
