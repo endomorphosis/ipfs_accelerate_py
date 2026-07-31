@@ -6,22 +6,22 @@
   "completion_goal_id": "FVT-G090",
   "task_id": "FVT-036",
   "program": "formal-verification-tactician/readiness",
-  "observed_at": "2026-07-31T16:05:15Z",
+  "observed_at": "2026-07-31T17:31:24Z",
   "binding_mode": "current_tree_content_identity",
   "source": {
-    "parent_commit": "48f13ab632dec4c3575acaad6e309ef60420904b",
-    "parent_tree": "9a01c0ab38256d9a65a34a20183a4b61409f92ef",
-    "datasets_gitlink": "827e4791d8cc0d52d6d04c5f88e1ec2ac938b240",
+    "parent_commit": "771dab0c47324edbb9e664f4a67e0f2d33b2bbf8",
+    "parent_tree": "c00ffb64d4aaa1f55263b5017b919e7013f17759",
+    "datasets_gitlink": "21b1f5483eb0aea5fd79b0af66d18183ecad9a25",
     "datasets_embedded_head": "21b1f5483eb0aea5fd79b0af66d18183ecad9a25",
     "datasets_origin_main": "21b1f5483eb0aea5fd79b0af66d18183ecad9a25",
     "parent_origin_main": "48f13ab632dec4c3575acaad6e309ef60420904b",
     "binding_mode": "current_tree_content_identity"
   },
   "acceptance": {
-    "implementation_complete": true,
+    "implementation_complete": false,
     "deployment_section_present": true,
     "implementation_section_present": true,
-    "child_goal_count": 36,
+    "child_goal_count": 53,
     "child_goals_bound": 36,
     "schemas_corpus_public_ops_metrics_rollout_bound": true,
     "parent_datasets_publication_bound": true,
@@ -71,11 +71,29 @@
     }
   },
   "implementation": {
-    "status": "complete",
+    "status": "incomplete",
     "description": "Current-tree implementation completion: child goal evidence, schemas/contracts, golden corpus, public operations, metrics, and rollout policy are bound by content identity. Implementation is not deployment certification.",
-    "child_goal_count": 36,
+    "child_goal_count": 53,
     "child_goals_bound": 36,
-    "child_goals_unbound": [],
+    "child_goals_unbound": [
+      "FVT-G100",
+      "FVT-G101",
+      "FVT-G102",
+      "FVT-G103",
+      "FVT-G110",
+      "FVT-G120",
+      "FVT-G130",
+      "FVT-G131",
+      "FVT-G140",
+      "FVT-G150",
+      "FVT-G151",
+      "FVT-G160",
+      "FVT-G170",
+      "FVT-G180",
+      "FVT-G181",
+      "FVT-G190",
+      "FVT-G200"
+    ],
     "schemas_bound": true,
     "schema_surfaces": [
       "readiness_baseline",
@@ -113,36 +131,34 @@
       ],
       "parent": {
         "path": ".",
-        "commit": "48f13ab632dec4c3575acaad6e309ef60420904b",
-        "tree": "9a01c0ab38256d9a65a34a20183a4b61409f92ef",
+        "commit": "771dab0c47324edbb9e664f4a67e0f2d33b2bbf8",
+        "tree": "c00ffb64d4aaa1f55263b5017b919e7013f17759",
         "origin_main": "48f13ab632dec4c3575acaad6e309ef60420904b",
-        "clean": false,
-        "matches_origin_main": true
+        "clean": true,
+        "matches_origin_main": false
       },
       "gitlink": {
         "path": "ipfs_datasets_py",
         "mode": "160000",
-        "commit": "827e4791d8cc0d52d6d04c5f88e1ec2ac938b240"
+        "commit": "21b1f5483eb0aea5fd79b0af66d18183ecad9a25"
       },
       "embedded_checkout": {
         "path": "ipfs_datasets_py",
         "head": "21b1f5483eb0aea5fd79b0af66d18183ecad9a25",
         "clean": true,
-        "matches_gitlink": false,
+        "matches_gitlink": true,
         "origin_main": "21b1f5483eb0aea5fd79b0af66d18183ecad9a25",
         "matches_origin_main": true
       },
       "publication_gates": {
-        "parent_publication_lag": false,
-        "datasets_publication_lag": true,
+        "parent_publication_lag": true,
+        "datasets_publication_lag": false,
         "fetches_forbidden": true,
         "note": "origin/main is a local remote-tracking ref only; this receipt never fetches. Publication lag is a separate gate from semantic implementation completion."
       },
-      "aligned_for_implementation": false,
+      "aligned_for_implementation": true,
       "diagnostics": [
-        "parent_working_tree_dirty",
-        "gitlink_embedded_head_mismatch",
-        "datasets_publication_lag_vs_origin_main"
+        "parent_publication_lag_vs_origin_main"
       ]
     },
     "exact_tools": [
@@ -564,8 +580,8 @@
     },
     "unsupported_semantics": [],
     "publication_gates": {
-      "parent_publication_lag": false,
-      "datasets_publication_lag": true,
+      "parent_publication_lag": true,
+      "datasets_publication_lag": false,
       "fetches_forbidden": true,
       "note": "origin/main is a local remote-tracking ref only; this receipt never fetches. Publication lag is a separate gate from semantic implementation completion."
     },
@@ -588,7 +604,7 @@
     "objectives_heap": {
       "path": "docs/architecture/formal_verification_tactician_readiness.objectives.md",
       "present": true,
-      "content_identity": "sha256:07faef2bd59b29d5b5a39655401b29b3d1bf6205db5c159aeb573b4e3a047ad3"
+      "content_identity": "sha256:d877915ecc29dc18cc47de578f3a678b6d68fa54f59999ed193ebbdc0b484c8a"
     },
     "readiness_baseline": {
       "path": "docs/architecture/formal_verification_readiness_baseline.json",
@@ -1928,6 +1944,627 @@
       ],
       "outputs_missing": [],
       "bound": true
+    },
+    {
+      "goal_id": "FVT-G100",
+      "title": "Define role-aware toolchain authority and promotion",
+      "status": "active",
+      "parent": "FVT-G000",
+      "depends_on": [
+        "FVT-G060"
+      ],
+      "interfaces": [
+        "FormalVerificationToolRole@1",
+        "RoleAwarePromotionPolicy@1"
+      ],
+      "evidence": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/toolchain_roles.py",
+        "test/api/test_formal_verification_toolchain_roles.py"
+      ],
+      "outputs": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/toolchain_roles.py",
+        "tools/logic/certification/roles.py",
+        "test/api/test_formal_verification_toolchain_roles.py"
+      ],
+      "validation": "python -m pytest ipfs_datasets_py/tests/integration/logic/test_verification_toolchain_security.py test/api/test_formal_verification_toolchain_roles.py test/integration/test_formal_verification_real_tool_matrix.py -q",
+      "track": "toolchain-governance",
+      "evidence_present": [],
+      "evidence_missing": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/toolchain_roles.py",
+        "test/api/test_formal_verification_toolchain_roles.py"
+      ],
+      "outputs_present": [],
+      "outputs_missing": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/toolchain_roles.py",
+        "tools/logic/certification/roles.py",
+        "test/api/test_formal_verification_toolchain_roles.py"
+      ],
+      "bound": false
+    },
+    {
+      "goal_id": "FVT-G101",
+      "title": "Semantically certify the pinned Lean kernel",
+      "status": "active",
+      "parent": "FVT-G000",
+      "depends_on": [
+        "FVT-G100"
+      ],
+      "interfaces": [
+        "LeanSemanticCertification@1"
+      ],
+      "evidence": [
+        "tools/logic/certification/lean.py",
+        "test/integration/toolchains/test_lean_semantic_certification.py"
+      ],
+      "outputs": [
+        "tools/logic/certification/lean.py",
+        "test/fixtures/formal_verification/toolchains/lean/manifest.json",
+        "test/integration/toolchains/test_lean_semantic_certification.py"
+      ],
+      "validation": "ELAN_TOOLCHAIN=leanprover/lean4:v4.31.0 ELAN_NO_AUTO_INSTALL=1 python -m pytest test/integration/toolchains/test_lean_semantic_certification.py test/integration/test_formal_verification_real_tool_matrix.py -k lean -q",
+      "track": "semantic-reference",
+      "evidence_present": [],
+      "evidence_missing": [
+        "tools/logic/certification/lean.py",
+        "test/integration/toolchains/test_lean_semantic_certification.py"
+      ],
+      "outputs_present": [],
+      "outputs_missing": [
+        "tools/logic/certification/lean.py",
+        "test/fixtures/formal_verification/toolchains/lean/manifest.json",
+        "test/integration/toolchains/test_lean_semantic_certification.py"
+      ],
+      "bound": false
+    },
+    {
+      "goal_id": "FVT-G102",
+      "title": "Semantically certify reference Datalog and SecPAL authorization",
+      "status": "active",
+      "parent": "FVT-G000",
+      "depends_on": [
+        "FVT-G100"
+      ],
+      "interfaces": [
+        "AuthorizationSemanticCertification@1"
+      ],
+      "evidence": [
+        "tools/logic/certification/authorization.py",
+        "test/integration/toolchains/test_authorization_semantic_certification.py"
+      ],
+      "outputs": [
+        "tools/logic/certification/authorization.py",
+        "test/fixtures/formal_verification/toolchains/authorization/manifest.json",
+        "test/integration/toolchains/test_authorization_semantic_certification.py"
+      ],
+      "validation": "PYTHONPATH=ipfs_datasets_py python -m pytest ipfs_datasets_py/tests/integration/logic/backends/test_authorization_backends.py test/integration/toolchains/test_authorization_semantic_certification.py test/integration/test_formal_verification_real_tool_matrix.py -k 'authorization or datalog or secpal' -q",
+      "track": "semantic-reference",
+      "evidence_present": [],
+      "evidence_missing": [
+        "tools/logic/certification/authorization.py",
+        "test/integration/toolchains/test_authorization_semantic_certification.py"
+      ],
+      "outputs_present": [],
+      "outputs_missing": [
+        "tools/logic/certification/authorization.py",
+        "test/fixtures/formal_verification/toolchains/authorization/manifest.json",
+        "test/integration/toolchains/test_authorization_semantic_certification.py"
+      ],
+      "bound": false
+    },
+    {
+      "goal_id": "FVT-G103",
+      "title": "Semantically certify finite-trace Runtime MTL",
+      "status": "active",
+      "parent": "FVT-G000",
+      "depends_on": [
+        "FVT-G100"
+      ],
+      "interfaces": [
+        "RuntimeMTLSemanticCertification@1"
+      ],
+      "evidence": [
+        "tools/logic/certification/runtime_mtl.py",
+        "test/integration/toolchains/test_runtime_mtl_semantic_certification.py"
+      ],
+      "outputs": [
+        "tools/logic/certification/runtime_mtl.py",
+        "test/fixtures/formal_verification/toolchains/runtime_mtl/manifest.json",
+        "test/integration/toolchains/test_runtime_mtl_semantic_certification.py"
+      ],
+      "validation": "PYTHONPATH=ipfs_datasets_py python -m pytest ipfs_datasets_py/tests/integration/logic/test_runtime_mtl_parity.py test/integration/toolchains/test_runtime_mtl_semantic_certification.py test/integration/test_formal_verification_real_tool_matrix.py -k 'runtime_mtl or mtl' -q",
+      "track": "semantic-reference",
+      "evidence_present": [],
+      "evidence_missing": [
+        "tools/logic/certification/runtime_mtl.py",
+        "test/integration/toolchains/test_runtime_mtl_semantic_certification.py"
+      ],
+      "outputs_present": [],
+      "outputs_missing": [
+        "tools/logic/certification/runtime_mtl.py",
+        "test/fixtures/formal_verification/toolchains/runtime_mtl/manifest.json",
+        "test/integration/toolchains/test_runtime_mtl_semantic_certification.py"
+      ],
+      "bound": false
+    },
+    {
+      "goal_id": "FVT-G110",
+      "title": "Replace declared external-tool gaps with reviewed deployment locks",
+      "status": "active",
+      "parent": "FVT-G000",
+      "depends_on": [
+        "FVT-G100"
+      ],
+      "interfaces": [
+        "FormalVerificationDeploymentLock@2"
+      ],
+      "evidence": [
+        "config/formal_verification_toolchains.lock.json",
+        "test/packaging/test_formal_verification_external_tool_locks.py"
+      ],
+      "outputs": [
+        "config/formal_verification_toolchains.lock.json",
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/registry.py",
+        "test/packaging/test_formal_verification_external_tool_locks.py"
+      ],
+      "validation": "python -m pytest test/packaging/test_formal_verification_external_tool_locks.py ipfs_datasets_py/tests/integration/logic/test_verification_toolchain_security.py -k 'pin or checksum or gap or install' -q",
+      "track": "toolchain-governance",
+      "evidence_present": [
+        "config/formal_verification_toolchains.lock.json"
+      ],
+      "evidence_missing": [
+        "test/packaging/test_formal_verification_external_tool_locks.py"
+      ],
+      "outputs_present": [
+        "config/formal_verification_toolchains.lock.json"
+      ],
+      "outputs_missing": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/registry.py",
+        "test/packaging/test_formal_verification_external_tool_locks.py"
+      ],
+      "bound": false
+    },
+    {
+      "goal_id": "FVT-G120",
+      "title": "Install and certify TLC and Apalache state-model checking",
+      "status": "active",
+      "parent": "FVT-G000",
+      "depends_on": [
+        "FVT-G110"
+      ],
+      "interfaces": [
+        "StateModelToolchainCertification@1"
+      ],
+      "evidence": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/state_model.py",
+        "test/integration/toolchains/test_state_model_toolchain_certification.py"
+      ],
+      "outputs": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/state_model.py",
+        "tools/logic/certification/state_model.py",
+        "test/integration/toolchains/test_state_model_toolchain_certification.py"
+      ],
+      "validation": "PYTHONPATH=ipfs_datasets_py python -m pytest ipfs_datasets_py/tests/integration/logic/backends/test_tla_model_checkers.py test/integration/toolchains/test_state_model_toolchain_certification.py test/integration/test_formal_verification_real_tool_matrix.py -k 'tlc or apalache or state_model' -q",
+      "track": "external-capability",
+      "evidence_present": [],
+      "evidence_missing": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/state_model.py",
+        "test/integration/toolchains/test_state_model_toolchain_certification.py"
+      ],
+      "outputs_present": [],
+      "outputs_missing": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/state_model.py",
+        "tools/logic/certification/state_model.py",
+        "test/integration/toolchains/test_state_model_toolchain_certification.py"
+      ],
+      "bound": false
+    },
+    {
+      "goal_id": "FVT-G130",
+      "title": "Install and certify Tamarin with Maude",
+      "status": "active",
+      "parent": "FVT-G000",
+      "depends_on": [
+        "FVT-G110"
+      ],
+      "interfaces": [
+        "TamarinToolchainCertification@1"
+      ],
+      "evidence": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/tamarin.py",
+        "test/integration/toolchains/test_tamarin_toolchain_certification.py"
+      ],
+      "outputs": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/tamarin.py",
+        "tools/logic/certification/tamarin.py",
+        "test/integration/toolchains/test_tamarin_toolchain_certification.py"
+      ],
+      "validation": "PYTHONPATH=ipfs_datasets_py python -m pytest ipfs_datasets_py/tests/integration/logic/backends/test_protocol_backends.py test/integration/toolchains/test_tamarin_toolchain_certification.py test/integration/test_formal_verification_real_tool_matrix.py -k 'tamarin or maude' -q",
+      "track": "external-capability",
+      "evidence_present": [],
+      "evidence_missing": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/tamarin.py",
+        "test/integration/toolchains/test_tamarin_toolchain_certification.py"
+      ],
+      "outputs_present": [],
+      "outputs_missing": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/tamarin.py",
+        "tools/logic/certification/tamarin.py",
+        "test/integration/toolchains/test_tamarin_toolchain_certification.py"
+      ],
+      "bound": false
+    },
+    {
+      "goal_id": "FVT-G131",
+      "title": "Install and certify ProVerif in isolated OPAM",
+      "status": "active",
+      "parent": "FVT-G000",
+      "depends_on": [
+        "FVT-G110"
+      ],
+      "interfaces": [
+        "ProVerifToolchainCertification@1"
+      ],
+      "evidence": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/proverif.py",
+        "test/integration/toolchains/test_proverif_toolchain_certification.py"
+      ],
+      "outputs": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/proverif.py",
+        "tools/logic/certification/proverif.py",
+        "test/integration/toolchains/test_proverif_toolchain_certification.py"
+      ],
+      "validation": "PYTHONPATH=ipfs_datasets_py python -m pytest ipfs_datasets_py/tests/integration/logic/backends/test_protocol_backends.py test/integration/toolchains/test_proverif_toolchain_certification.py test/integration/test_formal_verification_real_tool_matrix.py -k 'proverif or opam' -q",
+      "track": "external-capability",
+      "evidence_present": [],
+      "evidence_missing": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/proverif.py",
+        "test/integration/toolchains/test_proverif_toolchain_certification.py"
+      ],
+      "outputs_present": [],
+      "outputs_missing": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/proverif.py",
+        "tools/logic/certification/proverif.py",
+        "test/integration/toolchains/test_proverif_toolchain_certification.py"
+      ],
+      "bound": false
+    },
+    {
+      "goal_id": "FVT-G140",
+      "title": "Install and certify Vampire and E ATP",
+      "status": "active",
+      "parent": "FVT-G000",
+      "depends_on": [
+        "FVT-G110"
+      ],
+      "interfaces": [
+        "ATPToolchainCertification@1"
+      ],
+      "evidence": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/atp.py",
+        "test/integration/toolchains/test_atp_toolchain_certification.py"
+      ],
+      "outputs": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/atp.py",
+        "tools/logic/certification/atp.py",
+        "test/integration/toolchains/test_atp_toolchain_certification.py"
+      ],
+      "validation": "PYTHONPATH=ipfs_datasets_py python -m pytest ipfs_datasets_py/tests/unit_tests/logic/CEC/provers/test_vampire_eprover.py test/integration/toolchains/test_atp_toolchain_certification.py test/integration/test_formal_verification_real_tool_matrix.py -k 'vampire or eprover or atp' -q",
+      "track": "external-capability",
+      "evidence_present": [],
+      "evidence_missing": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/atp.py",
+        "test/integration/toolchains/test_atp_toolchain_certification.py"
+      ],
+      "outputs_present": [],
+      "outputs_missing": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/atp.py",
+        "tools/logic/certification/atp.py",
+        "test/integration/toolchains/test_atp_toolchain_certification.py"
+      ],
+      "bound": false
+    },
+    {
+      "goal_id": "FVT-G150",
+      "title": "Install and semantically certify Rocq",
+      "status": "active",
+      "parent": "FVT-G000",
+      "depends_on": [
+        "FVT-G110"
+      ],
+      "interfaces": [
+        "RocqToolchainCertification@1"
+      ],
+      "evidence": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/rocq.py",
+        "test/integration/toolchains/test_rocq_toolchain_certification.py"
+      ],
+      "outputs": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/rocq.py",
+        "tools/logic/certification/rocq.py",
+        "test/integration/toolchains/test_rocq_toolchain_certification.py"
+      ],
+      "validation": "PYTHONPATH=ipfs_datasets_py python -m pytest ipfs_datasets_py/tests/integration/logic/backends/test_kernel_backends.py test/integration/toolchains/test_rocq_toolchain_certification.py test/integration/test_formal_verification_real_tool_matrix.py -k 'rocq or coq' -q",
+      "track": "external-capability",
+      "evidence_present": [],
+      "evidence_missing": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/rocq.py",
+        "test/integration/toolchains/test_rocq_toolchain_certification.py"
+      ],
+      "outputs_present": [],
+      "outputs_missing": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/rocq.py",
+        "tools/logic/certification/rocq.py",
+        "test/integration/toolchains/test_rocq_toolchain_certification.py"
+      ],
+      "bound": false
+    },
+    {
+      "goal_id": "FVT-G151",
+      "title": "Install and semantically certify Isabelle",
+      "status": "active",
+      "parent": "FVT-G000",
+      "depends_on": [
+        "FVT-G110"
+      ],
+      "interfaces": [
+        "IsabelleToolchainCertification@1"
+      ],
+      "evidence": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/isabelle.py",
+        "test/integration/toolchains/test_isabelle_toolchain_certification.py"
+      ],
+      "outputs": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/isabelle.py",
+        "tools/logic/certification/isabelle.py",
+        "test/integration/toolchains/test_isabelle_toolchain_certification.py"
+      ],
+      "validation": "PYTHONPATH=ipfs_datasets_py python -m pytest ipfs_datasets_py/tests/integration/logic/backends/test_kernel_backends.py test/integration/toolchains/test_isabelle_toolchain_certification.py test/integration/test_formal_verification_real_tool_matrix.py -k isabelle -q",
+      "track": "external-capability",
+      "evidence_present": [],
+      "evidence_missing": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/isabelle.py",
+        "test/integration/toolchains/test_isabelle_toolchain_certification.py"
+      ],
+      "outputs_present": [],
+      "outputs_missing": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/isabelle.py",
+        "tools/logic/certification/isabelle.py",
+        "test/integration/toolchains/test_isabelle_toolchain_certification.py"
+      ],
+      "bound": false
+    },
+    {
+      "goal_id": "FVT-G160",
+      "title": "Install and role-certify SymAI, ErgoAI, Leanstral, autoencoder, and Hammer advisors",
+      "status": "active",
+      "parent": "FVT-G000",
+      "depends_on": [
+        "FVT-G110"
+      ],
+      "interfaces": [
+        "AdvisorRoleCertification@1"
+      ],
+      "evidence": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/advisors.py",
+        "test/integration/toolchains/test_advisor_role_certification.py"
+      ],
+      "outputs": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/advisors.py",
+        "tools/logic/certification/advisors.py",
+        "test/integration/toolchains/test_advisor_role_certification.py"
+      ],
+      "validation": "PYTHONPATH=ipfs_datasets_py python -m pytest ipfs_datasets_py/tests/integration/logic/test_proposal_advisors.py test/integration/toolchains/test_advisor_role_certification.py test/integration/test_formal_verification_real_tool_matrix.py -k 'advisor or symbolicai or ergoai or leanstral or hammer or autoencoder' -q",
+      "track": "advisor-capability",
+      "evidence_present": [],
+      "evidence_missing": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/advisors.py",
+        "test/integration/toolchains/test_advisor_role_certification.py"
+      ],
+      "outputs_present": [],
+      "outputs_missing": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/advisors.py",
+        "tools/logic/certification/advisors.py",
+        "test/integration/toolchains/test_advisor_role_certification.py"
+      ],
+      "bound": false
+    },
+    {
+      "goal_id": "FVT-G170",
+      "title": "Install and certify HyperLTL, AutoHyper, and MCHyper",
+      "status": "active",
+      "parent": "FVT-G000",
+      "depends_on": [
+        "FVT-G110"
+      ],
+      "interfaces": [
+        "HyperpropertyToolchainCertification@1"
+      ],
+      "evidence": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/hyperproperty.py",
+        "test/integration/toolchains/test_hyperproperty_toolchain_certification.py"
+      ],
+      "outputs": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/hyperproperty.py",
+        "tools/logic/certification/hyperproperty.py",
+        "test/integration/toolchains/test_hyperproperty_toolchain_certification.py"
+      ],
+      "validation": "PYTHONPATH=ipfs_datasets_py python -m pytest ipfs_datasets_py/tests/integration/logic/backends/test_hyperproperty_backends.py test/integration/toolchains/test_hyperproperty_toolchain_certification.py test/integration/test_formal_verification_real_tool_matrix.py -k 'hyperltl or autohyper or mchyper or hyperproperty' -q",
+      "track": "external-capability",
+      "evidence_present": [],
+      "evidence_missing": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/hyperproperty.py",
+        "test/integration/toolchains/test_hyperproperty_toolchain_certification.py"
+      ],
+      "outputs_present": [],
+      "outputs_missing": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/hyperproperty.py",
+        "tools/logic/certification/hyperproperty.py",
+        "test/integration/toolchains/test_hyperproperty_toolchain_certification.py"
+      ],
+      "bound": false
+    },
+    {
+      "goal_id": "FVT-G180",
+      "title": "Install external Datalog and SecPAL differential shadows",
+      "status": "active",
+      "parent": "FVT-G000",
+      "depends_on": [
+        "FVT-G102",
+        "FVT-G110"
+      ],
+      "interfaces": [
+        "ExternalAuthorizationShadowCertification@1"
+      ],
+      "evidence": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/authorization.py",
+        "test/integration/toolchains/test_external_authorization_toolchain_certification.py"
+      ],
+      "outputs": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/authorization.py",
+        "tools/logic/certification/authorization_external.py",
+        "test/integration/toolchains/test_external_authorization_toolchain_certification.py"
+      ],
+      "validation": "PYTHONPATH=ipfs_datasets_py python -m pytest ipfs_datasets_py/tests/integration/logic/backends/test_authorization_backends.py test/integration/toolchains/test_external_authorization_toolchain_certification.py test/integration/test_formal_verification_real_tool_matrix.py -k 'souffle or secpal or authorization' -q",
+      "track": "external-capability",
+      "evidence_present": [],
+      "evidence_missing": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/authorization.py",
+        "test/integration/toolchains/test_external_authorization_toolchain_certification.py"
+      ],
+      "outputs_present": [],
+      "outputs_missing": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/authorization.py",
+        "tools/logic/certification/authorization_external.py",
+        "test/integration/toolchains/test_external_authorization_toolchain_certification.py"
+      ],
+      "bound": false
+    },
+    {
+      "goal_id": "FVT-G181",
+      "title": "Install and certify external Runtime MTL parity",
+      "status": "active",
+      "parent": "FVT-G000",
+      "depends_on": [
+        "FVT-G103",
+        "FVT-G110"
+      ],
+      "interfaces": [
+        "ExternalRuntimeMTLCertification@1"
+      ],
+      "evidence": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/runtime_mtl.py",
+        "test/integration/toolchains/test_external_runtime_mtl_certification.py"
+      ],
+      "outputs": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/runtime_mtl.py",
+        "tools/logic/certification/runtime_mtl_external.py",
+        "test/integration/toolchains/test_external_runtime_mtl_certification.py"
+      ],
+      "validation": "PYTHONPATH=ipfs_datasets_py python -m pytest ipfs_datasets_py/tests/integration/logic/test_runtime_mtl_parity.py test/integration/toolchains/test_external_runtime_mtl_certification.py test/integration/test_formal_verification_real_tool_matrix.py -k 'runtime_mtl or mtl' -q",
+      "track": "external-capability",
+      "evidence_present": [],
+      "evidence_missing": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/runtime_mtl.py",
+        "test/integration/toolchains/test_external_runtime_mtl_certification.py"
+      ],
+      "outputs_present": [],
+      "outputs_missing": [
+        "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/runtime_mtl.py",
+        "tools/logic/certification/runtime_mtl_external.py",
+        "test/integration/toolchains/test_external_runtime_mtl_certification.py"
+      ],
+      "bound": false
+    },
+    {
+      "goal_id": "FVT-G190",
+      "title": "Bind and certify a production ZKP circuit deployment",
+      "status": "active",
+      "parent": "FVT-G000",
+      "depends_on": [
+        "FVT-G110"
+      ],
+      "interfaces": [
+        "ZKPDeploymentCertification@1"
+      ],
+      "evidence": [
+        "config/formal_verification_zkp_deployment.lock.json",
+        "test/integration/toolchains/test_zkp_deployment_certification.py"
+      ],
+      "outputs": [
+        "config/formal_verification_zkp_deployment.lock.json",
+        "tools/logic/certification/zkp.py",
+        "test/integration/toolchains/test_zkp_deployment_certification.py"
+      ],
+      "validation": "PYTHONPATH=ipfs_datasets_py python -m pytest test/api/test_agent_supervisor_program_analysis_zkp_conformance.py ipfs_datasets_py/tests/integration/logic/test_proof_receipt_attestation.py test/integration/toolchains/test_zkp_deployment_certification.py -q",
+      "track": "external-capability",
+      "evidence_present": [],
+      "evidence_missing": [
+        "config/formal_verification_zkp_deployment.lock.json",
+        "test/integration/toolchains/test_zkp_deployment_certification.py"
+      ],
+      "outputs_present": [],
+      "outputs_missing": [
+        "config/formal_verification_zkp_deployment.lock.json",
+        "tools/logic/certification/zkp.py",
+        "test/integration/toolchains/test_zkp_deployment_certification.py"
+      ],
+      "bound": false
+    },
+    {
+      "goal_id": "FVT-G200",
+      "title": "Reissue full role-aware deployment certification",
+      "status": "active",
+      "parent": "FVT-G000",
+      "depends_on": [
+        "FVT-G090",
+        "FVT-G101",
+        "FVT-G102",
+        "FVT-G103",
+        "FVT-G120",
+        "FVT-G130",
+        "FVT-G131",
+        "FVT-G140",
+        "FVT-G150",
+        "FVT-G151",
+        "FVT-G160",
+        "FVT-G170",
+        "FVT-G180",
+        "FVT-G181",
+        "FVT-G190"
+      ],
+      "interfaces": [
+        "RoleAwareFormalVerificationRelease@1"
+      ],
+      "evidence": [
+        "test/integration/test_formal_verification_role_aware_completion.py",
+        "docs/architecture/formal_verification_role_aware_deployment_receipt.json"
+      ],
+      "outputs": [
+        "tools/logic/certify_formal_verification_toolchains.py",
+        "tools/logic/build_formal_verification_tactician_receipt.py",
+        "docs/architecture/formal_verification_toolchain_certificate.json",
+        "docs/architecture/formal_verification_role_aware_deployment_receipt.json",
+        "docs/architecture/formal_verification_tactician_readiness_completion_receipt.json",
+        "test/integration/test_formal_verification_role_aware_completion.py"
+      ],
+      "validation": "python -m pytest test/integration/test_formal_verification_real_tool_matrix.py test/integration/test_formal_verification_role_aware_completion.py test/api/test_formal_verification_tactician_readiness_completion.py -q",
+      "track": "completion",
+      "evidence_present": [],
+      "evidence_missing": [
+        "test/integration/test_formal_verification_role_aware_completion.py",
+        "docs/architecture/formal_verification_role_aware_deployment_receipt.json"
+      ],
+      "outputs_present": [
+        "tools/logic/certify_formal_verification_toolchains.py",
+        "tools/logic/build_formal_verification_tactician_receipt.py",
+        "docs/architecture/formal_verification_toolchain_certificate.json",
+        "docs/architecture/formal_verification_tactician_readiness_completion_receipt.json"
+      ],
+      "outputs_missing": [
+        "docs/architecture/formal_verification_role_aware_deployment_receipt.json",
+        "test/integration/test_formal_verification_role_aware_completion.py"
+      ],
+      "bound": false
     }
   ],
   "disclosures": {
@@ -1960,8 +2597,8 @@
       "zkp-circuit"
     ],
     "publication_gates": {
-      "parent_publication_lag": false,
-      "datasets_publication_lag": true,
+      "parent_publication_lag": true,
+      "datasets_publication_lag": false,
       "fetches_forbidden": true,
       "note": "origin/main is a local remote-tracking ref only; this receipt never fetches. Publication lag is a separate gate from semantic implementation completion."
     },
@@ -2007,5 +2644,5 @@
     "Hard-zero gates are derived from child certificates and benchmark hard gates; hardcoded success counters are forbidden.",
     "Generate only from a clean current tree and immutable evidence."
   ],
-  "receipt_identity": "sha256:db1717abb8abbf920e9a9ea1e7fb3a530e3d873508cae03e7437241f34eaa938"
+  "receipt_identity": "sha256:a6d631ea2ad49f6cc8365ce8337a8184c5419623b5d537591a1477887519eff3"
 }

@@ -222,19 +222,27 @@ def test_receipt_binds_all_objective_child_goals() -> None:
     assert PROGRAM_GOAL_ID not in observed_ids
     assert COMPLETION_GOAL_ID in observed_ids
 
+    bound_ids: list[str] = []
+    unbound_ids: list[str] = []
     for child in children:
-        assert child["bound"] is True, child["goal_id"]
         assert child["goal_id"].startswith("FVT-G")
         assert isinstance(child["title"], str) and child["title"].strip()
         assert isinstance(child["evidence"], list) and child["evidence"]
         assert isinstance(child["outputs"], list) and child["outputs"]
         assert isinstance(child.get("interfaces"), list)
-        assert child["evidence_missing"] == []
+        missing = set(child["evidence_missing"])
+        assert child["bound"] is (not missing), child["goal_id"]
+        (bound_ids if child["bound"] else unbound_ids).append(child["goal_id"])
         for path in child["evidence"]:
             # Receipt self-output is bound via self:receipt_identity.
             if path.endswith("formal_verification_tactician_readiness_completion_receipt.json"):
                 continue
-            assert (REPO_ROOT / path).is_file(), path
+            assert (REPO_ROOT / path).is_file() is (path not in missing), path
+
+    implementation = receipt["implementation"]
+    assert implementation["child_goals_bound"] == len(bound_ids)
+    assert implementation["child_goals_unbound"] == unbound_ids
+    assert implementation["status"] == ("incomplete" if unbound_ids else "complete")
 
 
 def test_hard_zero_gates_are_present_and_non_negative() -> None:
@@ -328,10 +336,15 @@ def test_implementation_binds_schemas_corpus_public_ops_metrics_rollout() -> Non
     assert implementation["metrics_bound"] is True
     assert implementation["rollout_policy_bound"] is True
     assert implementation["completion_surfaces_bound"] is True
-    assert implementation["status"] == "complete"
     assert implementation["child_goal_count"] == len(receipt["child_goals"])
-    assert implementation["child_goals_bound"] == implementation["child_goal_count"]
-    assert implementation["child_goals_unbound"] == []
+    unbound_ids = [
+        child["goal_id"] for child in receipt["child_goals"] if not child["bound"]
+    ]
+    assert implementation["child_goals_bound"] == (
+        implementation["child_goal_count"] - len(unbound_ids)
+    )
+    assert implementation["child_goals_unbound"] == unbound_ids
+    assert implementation["status"] == ("incomplete" if unbound_ids else "complete")
     assert implementation["corpus_case_count"] > 0
     assert CORPUS_PATH.is_file()
     assert ROLLOUT_PATH.is_file()
