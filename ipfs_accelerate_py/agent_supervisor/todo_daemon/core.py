@@ -897,6 +897,33 @@ def check_daemon_health(spec: ManagedDaemonSpec, *, stale_after_seconds: float =
         "phase_stuck_grace_seconds": supervisor.get("phase_stuck_grace_seconds"),
         "stop_grace_seconds": supervisor.get("stop_grace_seconds"),
         "last_recycle_reason": supervisor.get("last_recycle_reason"),
+        "control_plane_source_id": supervisor.get(
+            "control_plane_source_id"
+        ),
+        "control_plane_current_source_id": supervisor.get(
+            "control_plane_current_source_id"
+        ),
+        "control_plane_source_tree_id": supervisor.get(
+            "control_plane_source_tree_id"
+        ),
+        "control_plane_current_source_tree_id": supervisor.get(
+            "control_plane_current_source_tree_id"
+        ),
+        "control_plane_update_pending": supervisor.get(
+            "control_plane_update_pending"
+        ),
+        "control_plane_update_detected_at": supervisor.get(
+            "control_plane_update_detected_at"
+        ),
+        "control_plane_reload_deferred": supervisor.get(
+            "control_plane_reload_deferred"
+        ),
+        "control_plane_reload_deferred_reason": supervisor.get(
+            "control_plane_reload_deferred_reason"
+        ),
+        "control_plane_reload_deferred_task_id": supervisor.get(
+            "control_plane_reload_deferred_task_id"
+        ),
         "active_state": active_state,
         "active_state_started_at": first_present(
             status.get("active_state_started_at"),

@@ -186,6 +186,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor i
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.core import (
     ManagedDaemonSpec,
+    check_daemon_health,
     pid_alive,
     stop_daemon,
     terminate_pid_tree,
@@ -10587,6 +10588,101 @@ def test_implementation_supervisor_recovers_after_child_loop_restart_exhaustion(
     assert events[-1]["status"] == "stopped"
 
 
+def test_implementation_supervisor_source_reload_bypasses_stale_recovery(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    state_dir.mkdir()
+
+    class ReloadingLoop:
+        calls = 0
+
+        def __init__(self, config, *, watchdog_hook=None):
+            self.config = config
+            self.watchdog_hook = watchdog_hook
+
+        def run(self):
+            ReloadingLoop.calls += 1
+            return SupervisorLoopResult(
+                status=(
+                    implementation_supervisor_module.
+                    CONTROL_PLANE_RELOAD_STATUS
+                ),
+                restart_count=0,
+                last_exit_code=0,
+                last_recycle_reason="control_plane_source_changed",
+                last_run_id="source-drift",
+                last_log_path="source-drift.log",
+            )
+
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=repo / "todo.md",
+            state_path=state_dir / "task_state.json",
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "supervisor_events.jsonl",
+            state_dir=state_dir,
+            repo_root=repo,
+        )
+    )
+    supervisor.shared_supervisor_loop_class = ReloadingLoop
+    supervisor.ensure_event_log_file = lambda: {
+        "repaired": False,
+        "reason": "valid",
+    }
+    supervisor.repair_main_checkout_merge_state = lambda: {
+        "attempted": False,
+        "repaired": False,
+        "reason": "clean",
+    }
+    supervisor.ensure_managed_daemon_pid_file = lambda: {
+        "adopted": False,
+        "reason": "not_running",
+    }
+    run_once_calls: list[bool] = []
+    supervisor.run_once = lambda *, include_refill=True: (
+        run_once_calls.append(include_refill)
+        or {"stuck": False}
+    )
+
+    class ReloadRequested(Exception):
+        pass
+
+    reload_calls = []
+
+    def request_reload():
+        reload_calls.append(True)
+        raise ReloadRequested
+
+    monkeypatch.setattr(
+        supervisor,
+        "_reload_for_control_plane_update",
+        request_reload,
+    )
+
+    with pytest.raises(ReloadRequested):
+        supervisor._run_forever_loop()
+
+    assert ReloadingLoop.calls == 1
+    assert reload_calls == [True]
+    assert run_once_calls == [False]
+    events = [
+        json.loads(line)
+        for line in (
+            state_dir / "supervisor_events.jsonl"
+        ).read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    assert [event["type"] for event in events] == [
+        "supervisor_preflight_maintenance_pass",
+        "supervisor_loop_finished",
+        "supervisor_control_plane_reload",
+    ]
+
+
 def test_implementation_supervisor_signal_cleans_managed_daemon_before_exit(
     tmp_path, monkeypatch
 ):
@@ -13648,6 +13744,354 @@ def test_implementation_supervisor_watchdog_throttles_maintenance(tmp_path, monk
     assert first.action == "continue"
     assert second.action == "continue"
     assert calls == ["maintenance"]
+
+
+def test_implementation_supervisor_publishes_stable_control_plane_identity(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=repo / "todo.md",
+            state_path=state_dir / "task_state.json",
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "events.jsonl",
+            state_dir=state_dir,
+            repo_root=repo,
+        )
+    )
+
+    status = supervisor.build_supervisor_loop_config().status_extra_fields
+
+    assert status["control_plane_source_id"]
+    assert (
+        status["control_plane_current_source_id"]
+        == status["control_plane_source_id"]
+    )
+    assert status["control_plane_update_pending"] is False
+    assert status["control_plane_update_detected_at"] == ""
+
+
+def test_implementation_supervisor_idle_source_drift_requests_process_reload(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    state_dir.mkdir()
+    state_path = state_dir / "task_state.json"
+    TodoTaskState().save(state_path)
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=repo / "todo.md",
+            state_path=state_path,
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "events.jsonl",
+            state_dir=state_dir,
+            repo_root=repo,
+        )
+    )
+    supervisor._loaded_control_plane_source = {
+        "source_id": "loaded-source",
+        "repository_revision": "loaded-revision",
+    }
+    monkeypatch.setattr(
+        supervisor,
+        "_control_plane_source_snapshot",
+        lambda: {
+            "source_id": "current-source",
+            "repository_revision": "current-revision",
+        },
+    )
+    loop = SimpleNamespace(
+        config=SimpleNamespace(status_extra_fields={})
+    )
+
+    decision = supervisor._supervisor_loop_watchdog_decision(
+        loop,
+        SimpleNamespace(pid=os.getpid()),
+        {},
+    )
+
+    assert decision.action == "stop"
+    assert decision.status == (
+        implementation_supervisor_module.CONTROL_PLANE_RELOAD_STATUS
+    )
+    assert decision.reason == "control_plane_source_changed"
+    assert loop.config.status_extra_fields[
+        "control_plane_update_pending"
+    ] is True
+    assert loop.config.status_extra_fields[
+        "control_plane_reload_attempt_budget_consumed"
+    ] is False
+    assert loop.config.status_extra_fields[
+        "control_plane_reload_provider_invocation_consumed"
+    ] is False
+
+
+def test_implementation_supervisor_active_source_drift_defers_without_attempt_charge(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    state_dir.mkdir()
+    state_path = state_dir / "task_state.json"
+    original = TodoTaskState(
+        active_task_id="AUTO-001",
+        active_phase="validating",
+        implementation_in_progress=True,
+        implementation_attempts={"AUTO-001": 2},
+    )
+    original.save(state_path)
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=repo / "todo.md",
+            state_path=state_path,
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "events.jsonl",
+            state_dir=state_dir,
+            repo_root=repo,
+        )
+    )
+    supervisor._loaded_control_plane_source = {
+        "source_id": "loaded-source",
+        "repository_revision": "loaded-revision",
+    }
+    monkeypatch.setattr(
+        supervisor,
+        "_control_plane_source_snapshot",
+        lambda: {
+            "source_id": "current-source",
+            "repository_revision": "current-revision",
+        },
+    )
+    loop = SimpleNamespace(
+        config=SimpleNamespace(status_extra_fields={})
+    )
+
+    decision = supervisor._supervisor_loop_watchdog_decision(
+        loop,
+        SimpleNamespace(pid=os.getpid()),
+        {},
+    )
+
+    assert decision.action == "continue"
+    assert loop.config.status_extra_fields[
+        "control_plane_reload_deferred"
+    ] is True
+    assert loop.config.status_extra_fields[
+        "control_plane_reload_deferred_task_id"
+    ] == "AUTO-001"
+    persisted = TodoTaskState.load(state_path)
+    assert persisted.implementation_attempts == {"AUTO-001": 2}
+
+
+def test_implementation_supervisor_stale_phase_does_not_defer_source_reload(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    state_dir.mkdir()
+    state_path = state_dir / "task_state.json"
+    TodoTaskState(active_phase="validating").save(state_path)
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=repo / "todo.md",
+            state_path=state_path,
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "events.jsonl",
+            state_dir=state_dir,
+            repo_root=repo,
+        )
+    )
+    supervisor._loaded_control_plane_source = {
+        "source_id": "loaded-source",
+        "repository_revision": "loaded-revision",
+    }
+    monkeypatch.setattr(
+        supervisor,
+        "_control_plane_source_snapshot",
+        lambda: {
+            "source_id": "current-source",
+            "repository_revision": "current-revision",
+        },
+    )
+
+    decision = supervisor._supervisor_loop_watchdog_decision(
+        SimpleNamespace(
+            config=SimpleNamespace(status_extra_fields={})
+        ),
+        SimpleNamespace(pid=os.getpid()),
+        {},
+    )
+
+    assert decision.action == "stop"
+    assert decision.status == (
+        implementation_supervisor_module.CONTROL_PLANE_RELOAD_STATUS
+    )
+
+
+def test_implementation_supervisor_source_projection_clears_stale_deferral(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=repo / "todo.md",
+            state_path=state_dir / "task_state.json",
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "events.jsonl",
+            state_dir=state_dir,
+            repo_root=repo,
+        )
+    )
+    fields = {
+        "control_plane_reload_deferred": True,
+        "control_plane_reload_deferred_reason": "active_task_or_phase",
+        "control_plane_reload_deferred_task_id": "AUTO-001",
+    }
+    loop = SimpleNamespace(
+        config=SimpleNamespace(status_extra_fields=fields)
+    )
+
+    supervisor._set_loop_status_fields(
+        loop,
+        supervisor._control_plane_status_projection(),
+    )
+
+    assert fields["control_plane_update_pending"] is False
+    assert fields["control_plane_reload_deferred"] is False
+    assert fields["control_plane_reload_deferred_reason"] == ""
+    assert fields["control_plane_reload_deferred_task_id"] == ""
+
+
+def test_implementation_supervisor_source_reload_prefers_configured_wrapper(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=repo / "todo.md",
+            state_path=state_dir / "task_state.json",
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "events.jsonl",
+            state_dir=state_dir,
+            repo_root=repo,
+            supervisor_script_path=Path("bin/supervisor-wrapper.py"),
+        )
+    )
+    calls = []
+
+    class ExecRequested(Exception):
+        pass
+
+    def fake_execv(executable, arguments):
+        calls.append((executable, arguments))
+        raise ExecRequested
+
+    monkeypatch.setattr(implementation_supervisor_module.os, "execv", fake_execv)
+    monkeypatch.setattr(
+        implementation_supervisor_module.sys,
+        "argv",
+        ["implementation-supervisor", "--state-prefix", "lane-1"],
+    )
+
+    with pytest.raises(ExecRequested):
+        supervisor._reload_for_control_plane_update()
+
+    assert calls == [
+        (
+            sys.executable,
+            [
+                sys.executable,
+                str((repo / "bin/supervisor-wrapper.py").resolve()),
+                "--state-prefix",
+                "lane-1",
+            ],
+        )
+    ]
+
+
+def test_daemon_health_forwards_control_plane_source_drift(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    state_dir.mkdir()
+    status_path = state_dir / "daemon.json"
+    progress_path = state_dir / "progress.json"
+    supervisor_status_path = state_dir / "supervisor.json"
+    now = datetime.now(timezone.utc).isoformat()
+    status_path.write_text(
+        json.dumps(
+            {
+                "heartbeat_at": now,
+                "heartbeat_pid": os.getpid(),
+            }
+        ),
+        encoding="utf-8",
+    )
+    progress_path.write_text("{}", encoding="utf-8")
+    supervisor_status_path.write_text(
+        json.dumps(
+            {
+                "updated_at": now,
+                "status": "running",
+                "supervisor_pid": os.getpid(),
+                "daemon_pid": os.getpid(),
+                "control_plane_source_id": "loaded-source",
+                "control_plane_current_source_id": "current-source",
+                "control_plane_source_tree_id": "loaded-tree",
+                "control_plane_current_source_tree_id": "current-tree",
+                "control_plane_update_pending": True,
+                "control_plane_update_detected_at": now,
+                "control_plane_reload_deferred": True,
+                "control_plane_reload_deferred_reason": (
+                    "active_task_or_phase"
+                ),
+                "control_plane_reload_deferred_task_id": "AUTO-001",
+            }
+        ),
+        encoding="utf-8",
+    )
+    spec = ManagedDaemonSpec(
+        name="source-drift",
+        schema="test.source-drift",
+        repo_root=repo,
+        daemon_dir=state_dir,
+        runner=(sys.executable, "-c", "pass"),
+        status_path=status_path,
+        progress_path=progress_path,
+        supervisor_status_path=supervisor_status_path,
+        supervisor_pid_path=state_dir / "supervisor.pid",
+        child_pid_path=state_dir / "child.pid",
+        supervisor_out_path=state_dir / "supervisor.out",
+        ensure_status_path=state_dir / "ensure.json",
+        ensure_check_path=state_dir / "ensure-check.json",
+    )
+
+    health = check_daemon_health(spec)
+
+    assert health.payload["control_plane_source_id"] == "loaded-source"
+    assert health.payload["control_plane_current_source_id"] == (
+        "current-source"
+    )
+    assert health.payload["control_plane_update_pending"] is True
+    assert health.payload["control_plane_reload_deferred"] is True
+    assert health.payload["control_plane_reload_deferred_task_id"] == (
+        "AUTO-001"
+    )
 
 
 def test_implementation_supervisor_watchdog_skips_active_progress_maintenance(tmp_path, monkeypatch):

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import inspect
 import json
 import logging
@@ -93,6 +94,85 @@ REPO_ROOT = Path.cwd()
 logger = logging.getLogger("ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor")
 
 RECOVERABLE_SUPERVISOR_LOOP_STATUSES = {"child_exited", "launch_failed", "max_restarts_reached"}
+CONTROL_PLANE_RELOAD_STATUS = "control_plane_reload_required"
+CONTROL_PLANE_SOURCE_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor.control_plane_source@1"
+)
+CONTROL_PLANE_SOURCE_PATHS = (
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor.py",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_supervisor_runner.py",
+    "ipfs_accelerate_py/agent_supervisor/todo_daemon/supervisor_loop.py",
+    "ipfs_accelerate_py/agent_supervisor/objectives/backlog_refinery.py",
+    "ipfs_accelerate_py/agent_supervisor/merge/merge_queue.py",
+)
+
+
+def _read_control_plane_source_snapshot() -> dict[str, Any]:
+    """Return the current accelerator control-plane tree and file identity."""
+
+    repository_root = Path(__file__).resolve().parents[3]
+
+    def git_revision(revision: str) -> str:
+        try:
+            result = subprocess.run(
+                ["git", "rev-parse", "--verify", revision],
+                cwd=repository_root,
+                text=True,
+                capture_output=True,
+                check=False,
+                timeout=10,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return ""
+        return result.stdout.strip() if result.returncode == 0 else ""
+
+    repository_revision = git_revision("HEAD")
+    control_plane_tree_id = git_revision(
+        "HEAD:ipfs_accelerate_py/agent_supervisor"
+    )
+    sources: list[dict[str, Any]] = []
+    for relative_path in CONTROL_PLANE_SOURCE_PATHS:
+        path = repository_root / relative_path
+        try:
+            source = path.read_bytes()
+        except OSError as exc:
+            sources.append(
+                {
+                    "path": relative_path,
+                    "available": False,
+                    "error_type": type(exc).__name__,
+                }
+            )
+            continue
+        sources.append(
+            {
+                "path": relative_path,
+                "available": True,
+                "size_bytes": len(source),
+                "sha256": hashlib.sha256(source).hexdigest(),
+            }
+        )
+
+    identity_payload = {
+        "schema": CONTROL_PLANE_SOURCE_SCHEMA,
+        "control_plane_tree_id": control_plane_tree_id,
+        "sources": sources,
+    }
+    return {
+        **identity_payload,
+        "repository_revision": repository_revision,
+        "repository_root": str(repository_root),
+        "source_id": content_identity(identity_payload),
+    }
+
+
+# This is deliberately captured at module import, rather than supervisor
+# construction. A wrapper that imported this module before a target checkout
+# advanced must never claim the new on-disk generation as code it loaded.
+IMPORTED_CONTROL_PLANE_SOURCE = _read_control_plane_source_snapshot()
+
+
 DEFAULT_OBJECTIVE_SURPLUS_FINDINGS_PER_GOAL = int(
     os.environ.get("IPFS_ACCELERATE_AGENT_OBJECTIVE_SURPLUS_FINDINGS_PER_GOAL", "3")
 )
@@ -449,6 +529,122 @@ class PortalImplementationSupervisor:
         self._worktree_worker_phase = ""
         self._last_worktree_worker_seen_monotonic: float | None = None
         self._checkout_mutation_context = threading.local()
+        self._control_plane_update_detected_at = ""
+        self._loaded_control_plane_source = dict(
+            IMPORTED_CONTROL_PLANE_SOURCE
+        )
+        self._current_control_plane_source = dict(
+            self._loaded_control_plane_source
+        )
+        self._last_control_plane_source_probe_monotonic = 0.0
+
+    @staticmethod
+    def _control_plane_source_snapshot() -> dict[str, Any]:
+        """Bind a long-lived supervisor to the source generation it loaded."""
+
+        return _read_control_plane_source_snapshot()
+
+    def _control_plane_status_projection(self) -> dict[str, Any]:
+        now_monotonic = time.monotonic()
+        probe_interval = max(1.0, float(self.config.check_interval))
+        if (
+            self._last_control_plane_source_probe_monotonic <= 0.0
+            or now_monotonic
+            - self._last_control_plane_source_probe_monotonic
+            >= probe_interval
+        ):
+            self._current_control_plane_source = (
+                self._control_plane_source_snapshot()
+            )
+            self._last_control_plane_source_probe_monotonic = now_monotonic
+        current = self._current_control_plane_source
+        loaded_id = str(
+            self._loaded_control_plane_source.get("source_id") or ""
+        )
+        current_id = str(current.get("source_id") or "")
+        pending = not loaded_id or not current_id or loaded_id != current_id
+        if pending and not self._control_plane_update_detected_at:
+            self._control_plane_update_detected_at = utc_now()
+        elif not pending:
+            self._control_plane_update_detected_at = ""
+        return {
+            "control_plane_source_schema": CONTROL_PLANE_SOURCE_SCHEMA,
+            "control_plane_source_id": loaded_id,
+            "control_plane_current_source_id": current_id,
+            "control_plane_source_tree_id": str(
+                self._loaded_control_plane_source.get(
+                    "control_plane_tree_id"
+                )
+                or ""
+            ),
+            "control_plane_current_source_tree_id": str(
+                current.get("control_plane_tree_id") or ""
+            ),
+            "control_plane_source_revision": str(
+                self._loaded_control_plane_source.get(
+                    "repository_revision"
+                )
+                or ""
+            ),
+            "control_plane_current_source_revision": str(
+                current.get("repository_revision") or ""
+            ),
+            "control_plane_update_pending": pending,
+            "control_plane_update_detected_at": (
+                self._control_plane_update_detected_at
+            ),
+            "control_plane_reload_deferred": False,
+            "control_plane_reload_deferred_reason": "",
+            "control_plane_reload_deferred_task_id": "",
+        }
+
+    @staticmethod
+    def _set_loop_status_fields(
+        loop: SupervisorLoop | None,
+        fields: Mapping[str, Any],
+    ) -> None:
+        loop_config = getattr(loop, "config", None)
+        status_extra_fields = getattr(
+            loop_config,
+            "status_extra_fields",
+            None,
+        )
+        if isinstance(status_extra_fields, dict):
+            status_extra_fields.update(fields)
+
+    def _reload_for_control_plane_update(self) -> None:
+        """Replace this process image so parent and child import one generation."""
+
+        supervisor_script_path = self.config.supervisor_script_path
+        if supervisor_script_path is not None:
+            script_path = Path(supervisor_script_path)
+            if not script_path.is_absolute():
+                script_path = self.config.repo_root / script_path
+            arguments = [
+                sys.executable,
+                str(script_path.resolve()),
+                *sys.argv[1:],
+            ]
+        else:
+            module_name = (
+                __spec__.name
+                if __spec__ is not None and __spec__.name
+                else (
+                    "ipfs_accelerate_py.agent_supervisor.todo_daemon."
+                    "implementation_supervisor"
+                )
+            )
+            arguments = [
+                sys.executable,
+                "-m",
+                module_name,
+                *sys.argv[1:],
+            ]
+        os.execv(
+            sys.executable,
+            arguments,
+        )
+        raise RuntimeError("control-plane process reload returned unexpectedly")
 
     def _autonomous_unstall_state_path(self) -> Path:
         return (
@@ -730,6 +926,7 @@ class PortalImplementationSupervisor:
                         reasons.append("autonomous_unstall_quarantine")
                     payload["backpressure"] = True
                     payload["backpressure_reasons"] = reasons[:256]
+        payload.update(self._control_plane_status_projection())
         write_json_atomic(status_path, payload)
 
     def _begin_supervisor_maintenance_heartbeat(self, phase: str, *, daemon_pid: int | None = None):
@@ -2001,6 +2198,15 @@ class PortalImplementationSupervisor:
                 "last_log_path": result.last_log_path,
             }
             self._record_event("supervisor_loop_finished", result_payload)
+            if result.status == CONTROL_PLANE_RELOAD_STATUS:
+                self._record_event(
+                    "supervisor_control_plane_reload",
+                    {
+                        **result_payload,
+                        **self._control_plane_status_projection(),
+                    },
+                )
+                self._reload_for_control_plane_update()
             if result.status not in RECOVERABLE_SUPERVISOR_LOOP_STATUSES:
                 return
 
@@ -2052,6 +2258,9 @@ class PortalImplementationSupervisor:
             proof_rollout_status_fields["autonomous_unstall"] = (
                 autonomous_unstall_status
             )
+        proof_rollout_status_fields.update(
+            self._control_plane_status_projection()
+        )
         # The managed daemon blocks while an implementation command is active,
         # so its task-state heartbeat may legitimately remain unchanged for the
         # full command timeout. Let the implementation-aware watchdog below
@@ -2127,6 +2336,44 @@ class PortalImplementationSupervisor:
         _current_status: dict[str, Any],
     ) -> SupervisorLoopDecision:
         self._refresh_loop_proof_rollout_status(_loop)
+        control_plane_status = self._control_plane_status_projection()
+        self._set_loop_status_fields(_loop, control_plane_status)
+        if control_plane_status["control_plane_update_pending"]:
+            state = PortalTaskState.load(self.config.state_path)
+            active = bool(
+                state.active_task_id
+                or state.implementation_in_progress
+                or self._active_agent_worker_processes()
+                or self._active_validation_subprocess_exists()
+            )
+            if active:
+                deferred = {
+                    **control_plane_status,
+                    "control_plane_reload_deferred": True,
+                    "control_plane_reload_deferred_reason": (
+                        "active_task_or_phase"
+                    ),
+                    "control_plane_reload_deferred_task_id": (
+                        state.active_task_id
+                    ),
+                }
+                self._set_loop_status_fields(_loop, deferred)
+                return SupervisorLoopDecision.keep_running()
+            detail = {
+                **control_plane_status,
+                "control_plane_reload_deferred": False,
+                "control_plane_reload_attempt_budget_consumed": False,
+                "control_plane_reload_provider_invocation_consumed": False,
+            }
+            self._set_loop_status_fields(_loop, detail)
+            self._record_event(
+                "supervisor_control_plane_update_detected",
+                detail,
+            )
+            return SupervisorLoopDecision.stop(
+                "control_plane_source_changed",
+                status=CONTROL_PLANE_RELOAD_STATUS,
+            )
         now_monotonic = time.monotonic()
         min_interval = max(1.0, float(self.config.check_interval))
         if now_monotonic - self._last_supervisor_maintenance_at < min_interval:
