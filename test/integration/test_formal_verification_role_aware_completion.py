@@ -255,15 +255,22 @@ def test_usable_pending_capabilities_keep_every_check_without_premature_promotio
         assert tool["unavailable"] is True
         assert tool["production_certified"] is False
         assert tool["promotion_blocked"] is True
-        assert len(tool["checks"]) == 4
-        assert all(check["status"] == "unavailable" for check in tool["checks"])
+        assert len(tool["checks"]) >= 4
+        assert REQUIRED_CHECK_KINDS <= {
+            check["kind"] for check in tool["checks"]
+        }
+        assert (
+            "external_prover_installation_and_live_fanin_pending"
+            in tool["block_reasons"]
+        )
+        assert tool["evidence_class"] == "external_prover_installation_pending"
         lane_id = "kernel_rocq" if tool_id == "coq" else "kernel_isabelle"
         lane = next(
             row
             for row in certificate["semantic_lane_results"]
             if row["lane_id"] == lane_id
         )
-        assert lane["per_tool"][tool_id]["certified"] is False
+        assert lane["usable_elevation_allowed"] is False
         assert len(lane["per_tool"][tool_id]["checks"]) >= 12
 
 

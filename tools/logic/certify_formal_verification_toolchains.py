@@ -1055,10 +1055,6 @@ def probe_tool_identity(
         result["probe_error"] = "probe_timeout_or_spawn_failure"
         # PATH presence without a successful identity probe is not installed.
         return result
-    if completed.returncode != 0:
-        result["probe_error"] = f"identity_probe_nonzero:{completed.returncode}"
-        return result
-
     combined = "\n".join(
         part for part in (completed.stdout, completed.stderr) if part
     ).strip()
@@ -1108,7 +1104,7 @@ def probe_tool_identity(
         return result
 
     if completed.returncode != 0:
-        result["probe_error"] = "identity_probe_nonzero_exit"
+        result["probe_error"] = f"identity_probe_nonzero:{completed.returncode}"
         return result
 
     if tool_id == "apalache":
@@ -1772,8 +1768,9 @@ SEMANTIC_CERTIFIER_SPECS: Final[tuple[dict[str, Any], ...]] = (
         "certified_key": "production_certified",
         "interface": "RocqToolchainCertification@1",
         "selector": "root",
-        "evidence_class": "usable_pending_kernel_live_fanin",
+        "evidence_class": "external_prover_installation_pending",
         "production_elevation_allowed": False,
+        "usable_elevation_allowed": False,
         "identity_from_receipt": True,
     },
     {
@@ -1784,8 +1781,9 @@ SEMANTIC_CERTIFIER_SPECS: Final[tuple[dict[str, Any], ...]] = (
         "certified_key": "production_certified",
         "interface": "IsabelleToolchainCertification@1",
         "selector": "root",
-        "evidence_class": "usable_pending_kernel_live_fanin",
+        "evidence_class": "external_prover_installation_pending",
         "production_elevation_allowed": False,
+        "usable_elevation_allowed": False,
         "identity_from_receipt": True,
     },
     {
@@ -2302,6 +2300,9 @@ def run_semantic_lane_certifiers(
             "production_elevation_allowed": bool(
                 spec["production_elevation_allowed"]
             ),
+            "usable_elevation_allowed": bool(
+                spec.get("usable_elevation_allowed", True)
+            ),
             "certifier_module_sha256": file_digest(module_path),
         }
 
@@ -2452,6 +2453,24 @@ def apply_semantic_elevations(
         )
         if spec is None:
             continue
+        usable_elevation_allowed = bool(
+            spec.get("usable_elevation_allowed", True)
+        )
+        if not usable_elevation_allowed:
+            for pending_tool_id in spec["tool_ids"]:
+                pending_cert = tool_certs.get(str(pending_tool_id))
+                if pending_cert is None:
+                    continue
+                pending_cert.usable = False
+                pending_cert.unavailable = True
+                pending_cert.production_certified = False
+                pending_cert.promotion_blocked = True
+                pending_cert.evidence_class = str(spec["evidence_class"])
+                pending_reason = (
+                    "external_prover_installation_and_live_fanin_pending"
+                )
+                if pending_reason not in pending_cert.block_reasons:
+                    pending_cert.block_reasons.append(pending_reason)
         receipt = result.get("receipt")
         if not isinstance(receipt, Mapping):
             if result.get("elevated_tool_ids"):
@@ -2669,7 +2688,7 @@ def apply_semantic_elevations(
                     and usable_artifact_bound
                     and version_exact
                 )
-                if semantic_identity_usable:
+                if semantic_identity_usable and usable_elevation_allowed:
                     cert.identity_probed = True
                     cert.locked_version_mismatch = False
                     cert.installed = True
@@ -2679,6 +2698,9 @@ def apply_semantic_elevations(
             if not bool(spec.get("production_elevation_allowed")):
                 cert.production_certified = False
                 cert.promotion_blocked = True
+                if not usable_elevation_allowed:
+                    cert.usable = False
+                    cert.unavailable = True
                 reason = "evidence_class_cannot_satisfy_production_authority"
                 if reason not in cert.block_reasons:
                     cert.block_reasons.append(reason)
@@ -3109,11 +3131,11 @@ def build_certificate(
     """Run the full hermetic multi-prover certification and return the certificate.
 
     When ``role_aware`` is true (FVT-G200 reissue), focused semantic receipts
-    are aggregated and checked against their role ceiling.  Open kernel/vendor
-    fan-in goals remain usable-but-pending and cannot be elevated merely from
-    an individual or in-process receipt. Default (FVT-G060) certification keeps
-    identity-only lanes non-elevated so usability and semantic certification
-    remain distinct.
+    are aggregated and checked against their role ceiling. Lean, Runtime MTL,
+    and authorization engines remain usable-but-pending; external Rocq and
+    Isabelle remain unavailable until their installation and live fan-in work
+    is complete. Default (FVT-G060) certification keeps identity-only lanes
+    non-elevated so usability and semantic certification remain distinct.
     """
 
     root = repo_root or repo_root_from()
@@ -3282,9 +3304,10 @@ def build_certificate(
             "certification performs no download/network/install and quarantines "
             "disagreement."
             + (
-                " Role-aware reissue retains Lean, Runtime MTL, Datalog/SecPAL, "
-                "Rocq, and Isabelle as usable but non-production until their "
-                "open live semantic and fan-in goals are certified."
+                " Role-aware reissue retains Lean, Runtime MTL, and "
+                "Datalog/SecPAL as usable but non-production; external Rocq "
+                "and Isabelle remain unavailable until their installation and "
+                "live fan-in goals are complete."
                 if role_aware
                 else ""
             )
