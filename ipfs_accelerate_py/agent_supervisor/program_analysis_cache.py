@@ -29,11 +29,12 @@ metadata is allowed to become a key dimension or completion claim.
 
 VFS-G030 (parent) and VFS-G031's synthetic ``objective validation repair``
 marker are exposed only through evidence-discovery helpers.  They never enter
-cache keys or receipts.  The content-addressing packet
+cache keys or receipts.  The VFS-087 content-addressing packet
 (``goal_packet/content_addressing/ipfs_accelerate_py/591cd7cfb087``) pairs
 this surface with ``vfs/cid-profile@1`` (VFS-G141) from
-:mod:`multiformats_identity`.  The older VFS-057 packet bindings remain
-machine-checkable and unchanged.
+:mod:`multiformats_identity`.  The CID profile is bound by VFS-087, while the
+dependency-cache profile remains owned by VFS-088; the two domain
+implementations stay separate and their packet bindings are machine-checkable.
 """
 
 from __future__ import annotations
@@ -72,6 +73,7 @@ from .analysis.cache_coordinator import (
 from .multiformats_identity import (
     CID_PROFILE_EVIDENCE,
     CID_PROFILE_GOAL_ID,
+    CID_PROFILE_TASK_ID,
     OBJECTIVE_GOAL_ID as MULTIFORMATS_OBJECTIVE_GOAL_ID,
     OBJECTIVE_VALIDATION_REPAIR_EVIDENCE as MULTIFORMATS_REPAIR_EVIDENCE,
     OBJECTIVE_VALIDATION_REPAIR_TASK_ID as MULTIFORMATS_REPAIR_TASK_ID,
@@ -116,6 +118,11 @@ PROGRAM_ANALYSIS_RECEIPT_SCHEMA: Final = (
 DEPENDENCY_CACHE_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/dependency-cache@1"
 )
+# Compatibility name introduced by the VFS-087 packet descriptor.
+DEPENDENCY_CACHE_PROFILE_SCHEMA: Final = DEPENDENCY_CACHE_SCHEMA
+CONTENT_ADDRESSING_PACKET_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/content-addressing-evidence-packet@1"
+)
 DEPENDENCY_CACHE_EVIDENCE: Final = "vfs/dependency-cache@1"
 # Exact objective-heap discovery key and its supervisor-fed packet bindings.
 DEPENDENCY_CACHE_GOAL_ID: Final = "VFS-G142"
@@ -124,9 +131,11 @@ CACHE_INVALIDATION_PROOF_EVIDENCE: Final = "vfs/cache-invalidation-proof@1"
 DEPENDENCY_CACHE_REQUIREMENT_ID: Final = DEPENDENCY_CAS_REQUIREMENT_ID
 # Content-addressing goal packet pairing cid-profile (G141) + dependency-cache
 # (G142).  Discovery metadata only — never a key dimension or authority claim.
+CONTENT_ADDRESSING_PACKET_TASK_ID: Final = "VFS-087"
 CONTENT_ADDRESSING_PACKET_ID: Final = (
     "goal_packet/content_addressing/ipfs_accelerate_py/591cd7cfb087"
 )
+CONTENT_ADDRESSING_GOAL_PACKET_ID: Final = CONTENT_ADDRESSING_PACKET_ID
 CONTENT_ADDRESSING_PACKET_GOAL_IDS: Final[tuple[str, ...]] = (
     CID_PROFILE_GOAL_ID,
     DEPENDENCY_CACHE_GOAL_ID,
@@ -150,6 +159,12 @@ DEPENDENCY_CACHE_KEY_DIMENSIONS: Final[tuple[str, ...]] = (
     "toolchain_version",
     "component_kind",
     "authority",
+)
+CONTENT_ADDRESSING_PACKET_GOAL_BINDINGS: Final[
+    tuple[tuple[str, tuple[str, ...]], ...]
+] = (
+    (CID_PROFILE_GOAL_ID, (CID_PROFILE_EVIDENCE,)),
+    (DEPENDENCY_CACHE_GOAL_ID, (DEPENDENCY_CACHE_EVIDENCE,)),
 )
 # Synthetic exact-text validation-gate key.  It is discovery metadata only,
 # never a cache-key dimension, receipt claim, or source of completion authority.
@@ -180,6 +195,8 @@ assert OBJECTIVE_VALIDATION_REPAIR_GOAL_ID == "VFS-G145"
 assert DEPENDENCY_CACHE_EVIDENCE == "vfs/dependency-cache@1"
 assert DEPENDENCY_CACHE_GOAL_ID == "VFS-G142"
 assert DEPENDENCY_CACHE_TASK_ID == "VFS-088"
+assert CONTENT_ADDRESSING_PACKET_TASK_ID == CID_PROFILE_TASK_ID
+assert CONTENT_ADDRESSING_PACKET_TASK_ID == "VFS-087"
 assert CONTENT_ADDRESSING_PACKET_GOAL_IDS == ("VFS-G141", "VFS-G142")
 assert CONTENT_ADDRESSING_PACKET_EVIDENCE_TERMS == (
     "vfs/cid-profile@1",
@@ -386,6 +403,191 @@ _KEY_DIMENSIONS: tuple[tuple[str, ProgramAnalysisCacheReason], ...] = (
     ("component_kind", ProgramAnalysisCacheReason.COMPONENT_KIND_CHANGED),
     ("authority", ProgramAnalysisCacheReason.AUTHORITY_CHANGED),
 )
+
+
+_DEPENDENCY_CACHE_KEY_DIMENSIONS: Final[tuple[str, ...]] = tuple(
+    name for name, _reason in _KEY_DIMENSIONS
+)
+assert _DEPENDENCY_CACHE_KEY_DIMENSIONS == DEPENDENCY_CACHE_KEY_DIMENSIONS
+_DEPENDENCY_CACHE_SEMANTIC_NAMESPACES: Final[tuple[str, ...]] = (
+    "program_analysis/forest",
+    "program_analysis/objective",
+    "program_analysis/policy",
+    "program_analysis/analyzer",
+    "program_analysis/schema",
+    "program_analysis/configuration",
+    "program_analysis/query",
+    "program_analysis/capability",
+    "program_analysis/assumption",
+    "program_analysis/toolchain",
+    "program_analysis/component",
+    "program_analysis/authority",
+)
+_DEPENDENCY_CACHE_FAIL_CLOSED_REASONS: Final[tuple[str, ...]] = (
+    ProgramAnalysisCacheReason.CORRUPT_ENTRY.value,
+    ProgramAnalysisCacheReason.STALE_ENTRY.value,
+    ProgramAnalysisCacheReason.STALE_NEGATIVE_ENTRY.value,
+    ProgramAnalysisCacheReason.NOT_COMPLETION_EVIDENCE.value,
+    ProgramAnalysisCacheReason.DEPENDENCY_INVALIDATED.value,
+    ProgramAnalysisCacheReason.RUNTIME_ARTIFACT_STALE.value,
+)
+
+
+@dataclass(frozen=True)
+class DependencyCacheProfile:
+    """Closed VFS-G142 descriptor for the executable dependency-cache contract.
+
+    The profile mirrors :class:`ProgramAnalysisCacheKey` and
+    :meth:`ProgramAnalysisCacheKey.population_dependencies`; construction
+    rejects omitted dimensions, weaker negative-cache or authority policy, and
+    fewer fail-closed outcomes.  The VFS-088 behavioral fields and the VFS-087
+    packet fields intentionally share one immutable public descriptor.
+    """
+
+    schema: str = DEPENDENCY_CACHE_PROFILE_SCHEMA
+    evidence: str = DEPENDENCY_CACHE_EVIDENCE
+    goal_id: str = DEPENDENCY_CACHE_GOAL_ID
+    task_id: str = DEPENDENCY_CACHE_TASK_ID
+    key_schema: str = PROGRAM_ANALYSIS_CACHE_KEY_SCHEMA
+    key_dimensions: tuple[str, ...] = _DEPENDENCY_CACHE_KEY_DIMENSIONS
+    semantic_dependency_namespaces: tuple[
+        str, ...
+    ] = _DEPENDENCY_CACHE_SEMANTIC_NAMESPACES
+    max_negative_ttl_seconds: int = DEFAULT_MAX_NEGATIVE_TTL_SECONDS
+    fail_closed_reasons: tuple[str, ...] = _DEPENDENCY_CACHE_FAIL_CLOSED_REASONS
+    policy_dimension: str = "policy_revision"
+    semantic_dependencies_participate: bool = True
+    negative_never_completion: bool = True
+    stale_never_completion: bool = True
+    authority_namespaces_closed: bool = True
+    tree_projection_is_not_object_identity: bool = True
+    packet_id: str = CONTENT_ADDRESSING_PACKET_ID
+    packet_goals: tuple[str, ...] = CONTENT_ADDRESSING_PACKET_GOAL_IDS
+
+    def __post_init__(self) -> None:
+        expected = (
+            DEPENDENCY_CACHE_PROFILE_SCHEMA,
+            DEPENDENCY_CACHE_EVIDENCE,
+            DEPENDENCY_CACHE_GOAL_ID,
+            DEPENDENCY_CACHE_TASK_ID,
+            PROGRAM_ANALYSIS_CACHE_KEY_SCHEMA,
+            _DEPENDENCY_CACHE_KEY_DIMENSIONS,
+            _DEPENDENCY_CACHE_SEMANTIC_NAMESPACES,
+            DEFAULT_MAX_NEGATIVE_TTL_SECONDS,
+            _DEPENDENCY_CACHE_FAIL_CLOSED_REASONS,
+            "policy_revision",
+            True,
+            True,
+            True,
+            True,
+            True,
+            CONTENT_ADDRESSING_PACKET_ID,
+            CONTENT_ADDRESSING_PACKET_GOAL_IDS,
+        )
+        actual = (
+            self.schema,
+            self.evidence,
+            self.goal_id,
+            self.task_id,
+            self.key_schema,
+            self.key_dimensions,
+            self.semantic_dependency_namespaces,
+            self.max_negative_ttl_seconds,
+            self.fail_closed_reasons,
+            self.policy_dimension,
+            self.semantic_dependencies_participate,
+            self.negative_never_completion,
+            self.stale_never_completion,
+            self.authority_namespaces_closed,
+            self.tree_projection_is_not_object_identity,
+            self.packet_id,
+            self.packet_goals,
+        )
+        if actual != expected:
+            raise ProgramAnalysisCacheValidationError(
+                "dependency-cache profile is frozen to the complete key "
+                "population, bounded negative TTL, and fail-closed outcomes"
+            )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": self.schema,
+            "evidence": self.evidence,
+            "goal_id": self.goal_id,
+            "task_id": self.task_id,
+            "key_schema": self.key_schema,
+            "key_dimensions": list(self.key_dimensions),
+            "semantic_dependency_namespaces": list(
+                self.semantic_dependency_namespaces
+            ),
+            "max_negative_ttl_seconds": self.max_negative_ttl_seconds,
+            "fail_closed_reasons": list(self.fail_closed_reasons),
+            "policy_dimension": self.policy_dimension,
+            "semantic_dependencies_participate": (
+                self.semantic_dependencies_participate
+            ),
+            "negative_never_completion": self.negative_never_completion,
+            "stale_never_completion": self.stale_never_completion,
+            "authority_namespaces_closed": self.authority_namespaces_closed,
+            "tree_projection_is_not_object_identity": (
+                self.tree_projection_is_not_object_identity
+            ),
+            "packet_id": self.packet_id,
+            "packet_goals": list(self.packet_goals),
+        }
+
+
+@dataclass(frozen=True)
+class ContentAddressingEvidencePacket:
+    """Exact VFS-087 binding for the shared VFS-G141/G142 evidence packet."""
+
+    schema: str = CONTENT_ADDRESSING_PACKET_SCHEMA
+    goal_packet: str = CONTENT_ADDRESSING_GOAL_PACKET_ID
+    task_id: str = CONTENT_ADDRESSING_PACKET_TASK_ID
+    goal_ids: tuple[str, ...] = CONTENT_ADDRESSING_PACKET_GOAL_IDS
+    evidence_terms: tuple[str, ...] = CONTENT_ADDRESSING_PACKET_EVIDENCE_TERMS
+    goal_bindings: tuple[
+        tuple[str, tuple[str, ...]], ...
+    ] = CONTENT_ADDRESSING_PACKET_GOAL_BINDINGS
+
+    def __post_init__(self) -> None:
+        expected = (
+            CONTENT_ADDRESSING_PACKET_SCHEMA,
+            CONTENT_ADDRESSING_GOAL_PACKET_ID,
+            CONTENT_ADDRESSING_PACKET_TASK_ID,
+            CONTENT_ADDRESSING_PACKET_GOAL_IDS,
+            CONTENT_ADDRESSING_PACKET_EVIDENCE_TERMS,
+            CONTENT_ADDRESSING_PACKET_GOAL_BINDINGS,
+        )
+        actual = (
+            self.schema,
+            self.goal_packet,
+            self.task_id,
+            self.goal_ids,
+            self.evidence_terms,
+            self.goal_bindings,
+        )
+        if actual != expected:
+            raise ProgramAnalysisCacheValidationError(
+                "content-addressing evidence packet must match the VFS-087 "
+                "VFS-G141/G142 objective-heap bindings"
+            )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": self.schema,
+            "goal_packet": self.goal_packet,
+            "task_id": self.task_id,
+            "goal_ids": list(self.goal_ids),
+            "evidence_terms": list(self.evidence_terms),
+            "completion_goal_bindings": {
+                goal_id: list(terms) for goal_id, terms in self.goal_bindings
+            },
+        }
+
+
+_DEPENDENCY_CACHE_PROFILE: Final = DependencyCacheProfile()
+_CONTENT_ADDRESSING_EVIDENCE_PACKET: Final = ContentAddressingEvidencePacket()
 
 
 def _canonical_json_bytes(value: Any) -> bytes:
@@ -2103,98 +2305,6 @@ class ProgramAnalysisCache:
         )
 
 
-@dataclass(frozen=True)
-class DependencyCacheProfile:
-    """Immutable interface descriptor for the VFS-G142 dependency-cache surface.
-
-    Construction is deliberately closed to the constants enforced by
-    :class:`ProgramAnalysisCacheKey` and the fail-closed lookup policy.
-    This makes ``vfs/dependency-cache@1`` machine-checkable without creating
-    a second, configurable cache-key path.  Evidence and goal labels are
-    discovery metadata only and never enter key digests or completion claims.
-    """
-
-    schema: str = DEPENDENCY_CACHE_SCHEMA
-    evidence: str = DEPENDENCY_CACHE_EVIDENCE
-    goal_id: str = DEPENDENCY_CACHE_GOAL_ID
-    task_id: str = DEPENDENCY_CACHE_TASK_ID
-    key_dimensions: tuple[str, ...] = DEPENDENCY_CACHE_KEY_DIMENSIONS
-    policy_dimension: str = "policy_revision"
-    semantic_dependencies_participate: bool = True
-    negative_never_completion: bool = True
-    stale_never_completion: bool = True
-    authority_namespaces_closed: bool = True
-    tree_projection_is_not_object_identity: bool = True
-    packet_id: str = CONTENT_ADDRESSING_PACKET_ID
-    packet_goals: tuple[str, ...] = CONTENT_ADDRESSING_PACKET_GOAL_IDS
-
-    def __post_init__(self) -> None:
-        expected = (
-            DEPENDENCY_CACHE_SCHEMA,
-            DEPENDENCY_CACHE_EVIDENCE,
-            DEPENDENCY_CACHE_GOAL_ID,
-            DEPENDENCY_CACHE_TASK_ID,
-            DEPENDENCY_CACHE_KEY_DIMENSIONS,
-            "policy_revision",
-            True,
-            True,
-            True,
-            True,
-            True,
-            CONTENT_ADDRESSING_PACKET_ID,
-            CONTENT_ADDRESSING_PACKET_GOAL_IDS,
-        )
-        actual = (
-            self.schema,
-            self.evidence,
-            self.goal_id,
-            self.task_id,
-            self.key_dimensions,
-            self.policy_dimension,
-            self.semantic_dependencies_participate,
-            self.negative_never_completion,
-            self.stale_never_completion,
-            self.authority_namespaces_closed,
-            self.tree_projection_is_not_object_identity,
-            self.packet_id,
-            self.packet_goals,
-        )
-        if actual != expected:
-            raise ProgramAnalysisCacheValidationError(
-                "dependency-cache profile is frozen to the VFS-G142 surface: "
-                "all semantic/policy key dimensions participate; "
-                "stale and negative results fail closed"
-            )
-        if "policy_revision" not in self.key_dimensions:
-            raise ProgramAnalysisCacheValidationError(
-                "policy_revision must participate in dependency-cache keys"
-            )
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "schema": self.schema,
-            "evidence": self.evidence,
-            "goal_id": self.goal_id,
-            "task_id": self.task_id,
-            "key_dimensions": list(self.key_dimensions),
-            "policy_dimension": self.policy_dimension,
-            "semantic_dependencies_participate": (
-                self.semantic_dependencies_participate
-            ),
-            "negative_never_completion": self.negative_never_completion,
-            "stale_never_completion": self.stale_never_completion,
-            "authority_namespaces_closed": self.authority_namespaces_closed,
-            "tree_projection_is_not_object_identity": (
-                self.tree_projection_is_not_object_identity
-            ),
-            "packet_id": self.packet_id,
-            "packet_goals": list(self.packet_goals),
-        }
-
-
-_DEPENDENCY_CACHE_PROFILE: Final = DependencyCacheProfile()
-
-
 def dependency_cache_profile() -> DependencyCacheProfile:
     """Return the immutable VFS-G142 dependency-cache interface descriptor."""
 
@@ -2427,6 +2537,12 @@ def program_analysis_cache_evidence_terms() -> tuple[str, ...]:
     return (DEPENDENCY_CACHE_EVIDENCE, CACHE_INVALIDATION_PROOF_EVIDENCE)
 
 
+def content_addressing_evidence_packet() -> ContentAddressingEvidencePacket:
+    """Return the immutable VFS-087 packet descriptor aligned to the heap."""
+
+    return _CONTENT_ADDRESSING_EVIDENCE_PACKET
+
+
 def objective_validation_repair_evidence_terms() -> tuple[str, ...]:
     """Return the exact VFS-G030/G031 validation-repair discovery marker.
 
@@ -2443,7 +2559,12 @@ def objective_validation_repair_evidence_terms() -> tuple[str, ...]:
 
 
 def packet_evidence_terms() -> tuple[str, ...]:
-    """Return the two missing evidence terms owned by the VFS-057 packet."""
+    """Return the legacy VFS-057 packet terms.
+
+    VFS-057 remains a public compatibility surface.  New callers proving the
+    VFS-G141/G142 content-addressing packet should use
+    :func:`content_addressing_packet_evidence_terms`.
+    """
 
     return (
         OBJECTIVE_VALIDATION_REPAIR_EVIDENCE,
@@ -2533,12 +2654,18 @@ __all__ = [
     "CACHE_INVALIDATION_PROOF_EVIDENCE",
     "CID_PROFILE_EVIDENCE",
     "CID_PROFILE_GOAL_ID",
+    "CONTENT_ADDRESSING_GOAL_PACKET_ID",
     "CONTENT_ADDRESSING_PACKET_EVIDENCE_TERMS",
+    "CONTENT_ADDRESSING_PACKET_GOAL_BINDINGS",
     "CONTENT_ADDRESSING_PACKET_GOAL_IDS",
     "CONTENT_ADDRESSING_PACKET_ID",
+    "CONTENT_ADDRESSING_PACKET_SCHEMA",
+    "CONTENT_ADDRESSING_PACKET_TASK_ID",
+    "ContentAddressingEvidencePacket",
     "DEPENDENCY_CACHE_EVIDENCE",
     "DEPENDENCY_CACHE_GOAL_ID",
     "DEPENDENCY_CACHE_KEY_DIMENSIONS",
+    "DEPENDENCY_CACHE_PROFILE_SCHEMA",
     "DEPENDENCY_CACHE_REQUIREMENT_ID",
     "DEPENDENCY_CACHE_SCHEMA",
     "DEPENDENCY_CACHE_TASK_ID",
@@ -2576,6 +2703,7 @@ __all__ = [
     "all_covered_evidence_terms",
     "canonical_program_analysis_json",
     "compact_program_analysis_receipt",
+    "content_addressing_evidence_packet",
     "content_addressing_packet_evidence_terms",
     "content_addressing_packet_goal_ids",
     "dependency_cache_evidence_terms",

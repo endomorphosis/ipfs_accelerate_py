@@ -16,9 +16,11 @@ independent construction via ``cid_utils`` and the ``multiformats`` library
 must agree, and double-hashing of an already-computed digest is rejected.
 
 The executable profile descriptor and exact discovery term
-``vfs/cid-profile@1`` are the VFS-G141 evidence surface.  They describe the
-already-enforced wire profile; neither the evidence label nor goal metadata is
-included in CID input bytes or allowed to replace existing supervisor IDs.
+``vfs/cid-profile@1`` are the VFS-G141 evidence surface.  VFS-087 binds that
+surface to the shared VFS-G141/G142 content-addressing packet.  The descriptor
+describes the already-enforced wire profile; neither the evidence label nor
+goal metadata is included in CID input bytes or allowed to replace existing
+supervisor IDs.
 
 The content-addressing packet
 (``goal_packet/content_addressing/ipfs_accelerate_py/591cd7cfb087``) pairs
@@ -67,7 +69,10 @@ ALLOWED_CODECS: Final = frozenset({"raw", "dag-json"})
 # Exact objective-heap discovery key and its supervisor-fed packet bindings.
 CID_PROFILE_EVIDENCE: Final = "vfs/cid-profile@1"
 CID_PROFILE_GOAL_ID: Final = "VFS-G141"
-CID_PROFILE_TASK_ID: Final = "VFS-057"
+CID_PROFILE_TASK_ID: Final = "VFS-087"
+# VFS-057 first introduced the executable descriptor.  Keep its task identity
+# as explicit history rather than leaving the current singleton binding stale.
+CID_PROFILE_PREVIOUS_TASK_IDS: Final[tuple[str, ...]] = ("VFS-057",)
 
 # Paired VFS-G142 dependency-cache discovery anchors (implemented by
 # program_analysis_cache).  Declared here as exact-text constants so the
@@ -105,6 +110,8 @@ assert OBJECTIVE_GOAL_ID == "VFS-G030"
 assert OBJECTIVE_VALIDATION_REPAIR_TASK_ID == "VFS-060"
 assert CID_PROFILE_EVIDENCE == "vfs/cid-profile@1"
 assert CID_PROFILE_GOAL_ID == "VFS-G141"
+assert CID_PROFILE_TASK_ID == "VFS-087"
+assert CID_PROFILE_PREVIOUS_TASK_IDS == ("VFS-057",)
 assert OBJECTIVE_DOMAIN_EVIDENCE_TERMS == ("vfs/cid-profile@1",)
 assert DEPENDENCY_CACHE_EVIDENCE == "vfs/dependency-cache@1"
 assert DEPENDENCY_CACHE_GOAL_ID == "VFS-G142"
@@ -1118,6 +1125,7 @@ __all__ = [
     "CID_BASE",
     "CID_PROFILE_EVIDENCE",
     "CID_PROFILE_GOAL_ID",
+    "CID_PROFILE_PREVIOUS_TASK_IDS",
     "CID_PROFILE_SCHEMA",
     "CID_PROFILE_TASK_ID",
     "CID_VERSION",
