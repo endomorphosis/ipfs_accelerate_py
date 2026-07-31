@@ -1210,7 +1210,7 @@ expectations under existing precedence, but do not prove them by passing.
 
 ## LPR-037 Close all callers and compile one atomic deterministic repair plan
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
