@@ -1411,7 +1411,7 @@ expectations under existing precedence, but do not prove them by passing.
 
 ## LPR-044 Resolve validation retry-budget failure for LPR-028
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Priority: P1
 - Track: ops
