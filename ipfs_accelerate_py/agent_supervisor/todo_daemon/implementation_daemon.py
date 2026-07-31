@@ -1580,6 +1580,12 @@ RETRY_BUDGET_REPAIR_ACCEPTANCE_RE = re.compile(
 RETRY_BUDGET_REPAIR_SCHEMA = (
     "ipfs_accelerate_py.agent_supervisor.retry-budget-repair@1"
 )
+RECONCILIATION_GUARDRAIL_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor.reconciliation-guardrail@1"
+)
+RECONCILIATION_RESOLUTION_SCHEMA = (
+    "ipfs_accelerate_py.agent_supervisor.reconciliation-resolution@1"
+)
 
 
 def retry_budget_repair_source(task: Any) -> tuple[str, str]:

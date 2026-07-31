@@ -19499,6 +19499,240 @@ def test_implementation_supervisor_cleans_merged_worktree_with_deleted_configure
     assert not worktree_path.exists()
 
 
+def _merged_cleanup_configured_submodule_fixture(
+    tmp_path: Path,
+    *,
+    branch_name: str = "implementation/lowercase-submodule-cleanup",
+) -> tuple[Path, Path, Path, TodoImplementationSupervisor]:
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    (submodule / "keep.txt").write_text("keep\n", encoding="utf-8")
+    _git(submodule, "add", "keep.txt")
+    _git(submodule, "commit", "-m", "add second tracked child file")
+    _git(
+        submodule,
+        "push",
+        "origin",
+        "HEAD:refs/heads/configured-submodule-fixture",
+    )
+    _git(repo, "add", "libs/child")
+    _git(repo, "commit", "-m", "advance child baseline")
+
+    _git(repo, "checkout", "-b", branch_name)
+    (repo / "branch.txt").write_text("merged branch\n", encoding="utf-8")
+    _git(repo, "add", "branch.txt")
+    _git(repo, "commit", "-m", "merged branch change")
+    _git(repo, "checkout", "main")
+    _git(repo, "merge", "--no-ff", "--no-edit", branch_name)
+
+    worktree_root = repo / "worktrees"
+    worktree_path = worktree_root / "configured-submodule"
+    _git(repo, "worktree", "add", str(worktree_path), branch_name)
+    _git(
+        worktree_path,
+        "-c",
+        "protocol.file.allow=always",
+        "submodule",
+        "update",
+        "--init",
+        "libs/child",
+    )
+    nested = worktree_path / "libs" / "child"
+
+    state_dir = repo / "state"
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=repo / "todo.md",
+            state_path=state_dir / "task_state.json",
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "events.jsonl",
+            state_dir=state_dir,
+            repo_root=repo,
+            worktree_root=worktree_root,
+            worktree_submodule_paths=("libs/child",),
+        )
+    )
+    return repo, worktree_path, nested, supervisor
+
+
+def test_implementation_supervisor_classifies_deletion_only_configured_submodule_for_reconciliation(
+    tmp_path: Path,
+):
+    _repo, worktree_path, nested, supervisor = (
+        _merged_cleanup_configured_submodule_fixture(tmp_path)
+    )
+    nested_head = _git(nested, "rev-parse", "HEAD")
+    (nested / "child.txt").unlink()
+    assert supervisor._git_status_short(worktree_path) == [" m libs/child"]
+
+    verdict = supervisor._redundant_dirty_worktree_status(
+        worktree_path,
+        [" m libs/child"],
+        "main",
+    )
+
+    assert verdict["redundant"] is False
+    assert verdict["reason"] == "unsupported_status"
+    checked = verdict["checked"][0]
+    assert checked["proof_reason"] == (
+        "configured_submodule_unstaged_deletions_require_reconciliation"
+    )
+    proof = checked["proof"]
+    assert proof["head_gitlink"] == {
+        "mode": "160000",
+        "commit": nested_head,
+    }
+    assert proof["target_gitlink"] == proof["head_gitlink"]
+    assert proof["nested_head"] == nested_head
+    assert proof["nested_repo_root_matches"] is True
+    assert proof["nested_status_entry_count"] == 1
+    assert proof["nested_status_codes"] == {" D": 1}
+    assert proof["all_unstaged_tracked_deletions"] is True
+    assert proof["mechanically_restorable_from_gitlink"] is True
+    assert worktree_path.exists()
+    assert not (nested / "child.txt").exists()
+
+
+@pytest.mark.parametrize(
+    ("dirty_kind", "expected_status_codes"),
+    (
+        ("staged_deletion", {"D ": 1}),
+        ("modified", {" M": 1}),
+        ("deletion_and_untracked", {" D": 1, "??": 1}),
+    ),
+)
+def test_implementation_supervisor_keeps_lowercase_dirty_configured_submodule_with_unsafe_nested_status(
+    tmp_path: Path,
+    dirty_kind: str,
+    expected_status_codes: dict[str, int],
+):
+    _repo, worktree_path, nested, supervisor = (
+        _merged_cleanup_configured_submodule_fixture(tmp_path)
+    )
+    if dirty_kind == "staged_deletion":
+        (nested / "child.txt").unlink()
+        _git(nested, "add", "-u", "child.txt")
+    elif dirty_kind == "modified":
+        (nested / "keep.txt").write_text("modified\n", encoding="utf-8")
+    else:
+        (nested / "child.txt").unlink()
+        (nested / "untracked.txt").write_text("untracked\n", encoding="utf-8")
+    assert supervisor._git_status_short(worktree_path) == [" m libs/child"]
+
+    verdict = supervisor._redundant_dirty_worktree_status(
+        worktree_path,
+        [" m libs/child"],
+        "main",
+    )
+
+    assert verdict["redundant"] is False
+    assert verdict["reason"] == "unsupported_status"
+    checked = verdict["checked"][0]
+    assert checked["proof_reason"] == (
+        "configured_submodule_nested_status_not_unstaged_deletions"
+    )
+    assert checked["proof"]["nested_status_codes"] == expected_status_codes
+    assert checked["proof"]["all_unstaged_tracked_deletions"] is False
+    assert worktree_path.exists()
+
+
+def test_implementation_supervisor_keeps_lowercase_dirty_configured_submodule_when_gitlinks_differ(
+    tmp_path: Path,
+):
+    repo, worktree_path, nested, supervisor = (
+        _merged_cleanup_configured_submodule_fixture(tmp_path)
+    )
+    (repo / "libs" / "child" / "target.txt").write_text(
+        "new target commit\n",
+        encoding="utf-8",
+    )
+    _git(repo / "libs" / "child", "add", "target.txt")
+    _git(repo / "libs" / "child", "commit", "-m", "advance target child")
+    _git(repo, "add", "libs/child")
+    _git(repo, "commit", "-m", "advance target gitlink")
+    (nested / "child.txt").unlink()
+
+    verdict = supervisor._redundant_dirty_worktree_status(
+        worktree_path,
+        [" m libs/child"],
+        "main",
+    )
+
+    assert verdict["redundant"] is False
+    assert verdict["reason"] == "unsupported_status"
+    checked = verdict["checked"][0]
+    assert checked["proof_reason"] == "configured_submodule_gitlink_mismatch"
+    assert checked["proof"]["head_gitlink"]["mode"] == "160000"
+    assert checked["proof"]["target_gitlink"]["mode"] == "160000"
+    assert (
+        checked["proof"]["head_gitlink"]["commit"]
+        != checked["proof"]["target_gitlink"]["commit"]
+    )
+
+
+def test_implementation_supervisor_keeps_configured_submodule_when_nested_head_differs_from_gitlink(
+    tmp_path: Path,
+):
+    _repo, worktree_path, nested, supervisor = (
+        _merged_cleanup_configured_submodule_fixture(tmp_path)
+    )
+    (nested / "nested-head.txt").write_text("new nested head\n", encoding="utf-8")
+    _git(nested, "add", "nested-head.txt")
+    _git(nested, "commit", "-m", "advance only nested head")
+
+    verdict = supervisor._configured_submodule_unstaged_deletion_proof(
+        worktree_path,
+        relative="libs/child",
+        target_ref="main",
+    )
+
+    assert verdict["redundant"] is False
+    assert verdict["reason"] == "configured_submodule_nested_head_mismatch"
+    assert verdict["proof"]["nested_head"] != (
+        verdict["proof"]["head_gitlink"]["commit"]
+    )
+
+
+def test_implementation_supervisor_does_not_recursively_rename_existing_rescue_branch_without_stageable_delta(
+    tmp_path: Path,
+):
+    branch = "rescue/worktree/already-preserved"
+    repo, worktree_path, nested, supervisor = (
+        _merged_cleanup_configured_submodule_fixture(
+            tmp_path,
+            branch_name=branch,
+        )
+    )
+    (nested / "child.txt").unlink()
+    head = _git(worktree_path, "rev-parse", "HEAD")
+    refs_before = set(
+        _git(repo, "for-each-ref", "--format=%(refname:short)", "refs/heads/rescue/worktree").splitlines()
+    )
+
+    result = supervisor._rescue_dirty_worktree(
+        worktree_path,
+        branch=branch,
+        head=head,
+        target_ref="main",
+        status_lines=[" m libs/child"],
+        reason="test_nested_only_dirt",
+    )
+
+    refs_after = set(
+        _git(repo, "for-each-ref", "--format=%(refname:short)", "refs/heads/rescue/worktree").splitlines()
+    )
+    assert result["preserved"] is False
+    assert result["reason"] == (
+        "existing_rescue_branch_nested_state_requires_reconciliation"
+    )
+    assert result["rescue_branch"] == branch
+    assert result["rescue_commit"] == head
+    assert result["stageability_proof"]["no_stageable_delta"] is True
+    assert _git(worktree_path, "branch", "--show-current") == branch
+    assert _git(worktree_path, "rev-parse", "HEAD") == head
+    assert refs_after == refs_before
+    assert not (nested / "child.txt").exists()
+
+
 def _merged_cleanup_worktree_fixture(
     tmp_path: Path,
     branch_name: str,
@@ -19554,6 +19788,46 @@ def _merged_cleanup_worktree_fixture(
         )
     )
     return repo, worktree_path, supervisor
+
+
+def test_implementation_supervisor_existing_rescue_branch_with_stageable_delta_reuses_same_ref(
+    tmp_path: Path,
+):
+    branch = "rescue/worktree/stageable-existing"
+    repo, worktree_path, supervisor = _merged_cleanup_worktree_fixture(
+        tmp_path,
+        branch,
+    )
+    original_head = _git(worktree_path, "rev-parse", "HEAD")
+    (worktree_path / "src" / "app.py").write_text(
+        "VALUE = 'stageable rescue delta'\n",
+        encoding="utf-8",
+    )
+
+    result = supervisor._rescue_dirty_worktree(
+        worktree_path,
+        branch=branch,
+        head=original_head,
+        target_ref="main",
+        status_lines=[" M src/app.py"],
+        reason="test_stageable_delta",
+    )
+
+    assert result["preserved"] is True
+    assert result["reason"] == "dirty_worktree_committed_to_rescue_branch"
+    assert result["rescue_branch"] == branch
+    assert result["rescue_commit"] != original_head
+    assert _git(worktree_path, "branch", "--show-current") == branch
+    assert _git(repo, "show", f"{branch}:src/app.py") == (
+        "VALUE = 'stageable rescue delta'"
+    )
+    rescue_refs = _git(
+        repo,
+        "for-each-ref",
+        "--format=%(refname:short)",
+        "refs/heads/rescue/worktree",
+    ).splitlines()
+    assert rescue_refs == [branch]
 
 
 def test_implementation_supervisor_detects_stale_worktree_from_git_and_dirty_signals(tmp_path):
@@ -20412,6 +20686,16 @@ def test_implementation_supervisor_records_reconciliation_guardrail_for_dirty_ma
     assert "- Is schedulable: false" in todo_text
     assert "- Review only: true" in todo_text
     assert "- Blocked reason: operator_reconciliation_required" in todo_text
+    assert (
+        "- Generated by: "
+        "ipfs_accelerate_py.agent_supervisor.reconciliation-guardrail@1"
+        in todo_text
+    )
+    assert "- Reconciliation kind: main_checkout_dirty" in todo_text
+    assert "- Reconciliation reason: main_checkout_dirty" in todo_text
+    assert "- Reconciliation fingerprint: " in todo_text
+    assert "- Reconciliation discovery: " in todo_text
+    assert "- Canonical board task: false" in todo_text
     assert "unknown dirty checkout content must not be committed" in todo_text
     discovery_path = Path(findings[0]["discovery_path"])
     assert discovery_path.exists()
@@ -20680,8 +20964,23 @@ def test_reconciliation_guardrail_dedupes_dirty_group_when_count_changes(tmp_pat
     assert "ACCEL-002" not in updated_todo
     assert "Resolve 77 dirty backlogged worktrees blocked by content_not_in_target" in updated_todo
     assert "Dedupe key: reconciliation_guardrail:dirty_backlogged_worktree:content_not_in_target" in updated_todo
+    assert (
+        "Generated by: "
+        "ipfs_accelerate_py.agent_supervisor.reconciliation-guardrail@1"
+        in updated_todo
+    )
+    assert "Reconciliation kind: dirty_backlogged_worktree" in updated_todo
+    assert "Reconciliation reason: content_not_in_target" in updated_todo
+    refreshed_discovery = Path(
+        parse_task_file(todo_path, task_header_prefix="ACCEL-")[0].metadata[
+            "reconciliation discovery"
+        ]
+    )
+    assert refreshed_discovery != stale_discovery
+    assert f"Reconciliation discovery: {refreshed_discovery}" in updated_todo
+    assert "Canonical board task: false" in updated_todo
     assert "machine-readable reconciliation plan" in updated_todo
-    discovery_text = stale_discovery.read_text(encoding="utf-8")
+    discovery_text = refreshed_discovery.read_text(encoding="utf-8")
     assert "Candidate count: 77" in discovery_text
     assert "## Machine Readable Manifest" in discovery_text
     manifest = json.loads(discovery_text.split("```json\n", 1)[1].split("\n```", 1)[0])
@@ -20689,7 +20988,10 @@ def test_reconciliation_guardrail_dedupes_dirty_group_when_count_changes(tmp_pat
     assert manifest["dedupe_key"] == "reconciliation_guardrail:dirty_backlogged_worktree:content_not_in_target"
     assert any(item["action"] == "compare_dirty_content_to_target" for item in manifest["actions"])
 
-    stale_discovery.write_text("# stale discovery without manifest\nCandidate count: 77\n", encoding="utf-8")
+    refreshed_discovery.write_text(
+        "# stale discovery without manifest\nCandidate count: 77\n",
+        encoding="utf-8",
+    )
     discovery_only_refresh = record_reconciliation_guardrail_findings(
         todo_path=todo_path,
         strategy_path=strategy_path,
@@ -20708,7 +21010,9 @@ def test_reconciliation_guardrail_dedupes_dirty_group_when_count_changes(tmp_pat
     assert len(discovery_only_refresh) == 1
     assert discovery_only_refresh[0]["refreshed"] is True
     assert todo_path.read_text(encoding="utf-8") == updated_todo
-    assert "## Machine Readable Manifest" in stale_discovery.read_text(encoding="utf-8")
+    assert "## Machine Readable Manifest" in refreshed_discovery.read_text(
+        encoding="utf-8"
+    )
 
     assert record_reconciliation_guardrail_findings(
         todo_path=todo_path,
@@ -20725,6 +21029,84 @@ def test_reconciliation_guardrail_dedupes_dirty_group_when_count_changes(tmp_pat
         },
         task_prefix="ACCEL-",
     ) == []
+
+
+def test_reconciliation_guardrail_recurrence_preserves_completed_history(tmp_path):
+    todo_path = tmp_path / "todo.md"
+    strategy_path = tmp_path / "state" / "strategy.json"
+    discovery_dir = tmp_path / "discovery"
+    todo_path.write_text("# Agent Todos\n", encoding="utf-8")
+    cleanup_result = {
+        "attempted": True,
+        "dirty_worktree_groups": {
+            "unsupported_status": {
+                "count": 1,
+                "samples": [
+                    {
+                        "branch": "rescue/worktree/example",
+                        "path": "/tmp/worktrees/example",
+                        "status_short": [" m ipfs_datasets_py"],
+                    }
+                ],
+            }
+        },
+    }
+
+    initial = record_reconciliation_guardrail_findings(
+        todo_path=todo_path,
+        strategy_path=strategy_path,
+        discovery_dir=discovery_dir,
+        cleanup_result=cleanup_result,
+        task_prefix="ACCEL-",
+    )
+    assert len(initial) == 1
+    assert initial[0]["follow_up_task_id"] == "ACCEL-001"
+    first_discovery = Path(initial[0]["discovery_path"])
+    first_discovery.write_text(
+        first_discovery.read_text(encoding="utf-8")
+        + "\n## Resolution Evidence\n\n- The first incident was resolved.\n",
+        encoding="utf-8",
+    )
+    completed_todo = todo_path.read_text(encoding="utf-8").replace(
+        "- Status: blocked",
+        "- Status: completed",
+        1,
+    )
+    todo_path.write_text(completed_todo, encoding="utf-8")
+    completed_discovery = first_discovery.read_text(encoding="utf-8")
+
+    recurrence = record_reconciliation_guardrail_findings(
+        todo_path=todo_path,
+        strategy_path=strategy_path,
+        discovery_dir=discovery_dir,
+        cleanup_result=cleanup_result,
+        task_prefix="ACCEL-",
+    )
+
+    assert len(recurrence) == 1
+    assert recurrence[0]["follow_up_task_id"] == "ACCEL-002"
+    assert recurrence[0].get("refreshed") is not True
+    recurring_discovery = Path(recurrence[0]["discovery_path"])
+    assert recurring_discovery != first_discovery
+    assert recurring_discovery.exists()
+    assert first_discovery.read_text(encoding="utf-8") == completed_discovery
+    updated_todo = todo_path.read_text(encoding="utf-8")
+    assert updated_todo.startswith(completed_todo.rstrip() + "\n\n")
+    tasks = {
+        task.task_id: task
+        for task in parse_task_file(todo_path, task_header_prefix="ACCEL-")
+    }
+    assert tasks["ACCEL-001"].status == "completed"
+    assert tasks["ACCEL-002"].status == "blocked"
+
+    assert record_reconciliation_guardrail_findings(
+        todo_path=todo_path,
+        strategy_path=strategy_path,
+        discovery_dir=discovery_dir,
+        cleanup_result=cleanup_result,
+        task_prefix="ACCEL-",
+    ) == []
+    assert "ACCEL-003" not in todo_path.read_text(encoding="utf-8")
 
 
 def test_reconciliation_guardrail_dedupes_preflight_conflict_when_count_changes(tmp_path):
@@ -20789,7 +21171,13 @@ def test_reconciliation_guardrail_dedupes_preflight_conflict_when_count_changes(
     updated_todo = todo_path.read_text(encoding="utf-8")
     assert "ACCEL-002" not in updated_todo
     assert "Resolve 2 preflight-conflicting backlogged worktree merges" in updated_todo
-    discovery_text = stale_discovery.read_text(encoding="utf-8")
+    refreshed_discovery = Path(
+        parse_task_file(todo_path, task_header_prefix="ACCEL-")[0].metadata[
+            "reconciliation discovery"
+        ]
+    )
+    assert refreshed_discovery != stale_discovery
+    discovery_text = refreshed_discovery.read_text(encoding="utf-8")
     assert "Candidate count: 2" in discovery_text
     assert "`hallucinate_app`" in discovery_text
     manifest = json.loads(discovery_text.split("```json\n", 1)[1].split("\n```", 1)[0])

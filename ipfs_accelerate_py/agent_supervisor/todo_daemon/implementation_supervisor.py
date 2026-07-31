@@ -3014,6 +3014,7 @@ class PortalImplementationSupervisor:
                 cwd=repo_root,
                 text=True,
                 capture_output=True,
+                env={**os.environ, "GIT_OPTIONAL_LOCKS": "0"},
                 check=False,
             )
         except OSError:
@@ -4357,6 +4358,32 @@ class PortalImplementationSupervisor:
                 "finished_at": utc_now(),
             }
 
+        stageability = self._existing_rescue_branch_stageability(
+            worktree_path,
+            branch=branch,
+        )
+        if stageability.get("no_stageable_delta"):
+            rescue_commit = self._git_ref_commit(worktree_path, "HEAD")
+            result = {
+                "attempted": True,
+                "preserved": False,
+                "reason": (
+                    "existing_rescue_branch_nested_state_requires_reconciliation"
+                ),
+                "path": str(worktree_path),
+                "branch": branch,
+                "head": head,
+                "target_ref": target_ref,
+                "rescue_branch": branch,
+                "rescue_commit": rescue_commit,
+                "status_short": status_lines[:20],
+                "stageability_proof": stageability,
+                "started_at": started_at,
+                "finished_at": utc_now(),
+            }
+            self._record_event("dirty_worktree_rescue_deferred", result)
+            return result
+
         fingerprint = sha1(
             json.dumps(
                 {
@@ -4369,17 +4396,25 @@ class PortalImplementationSupervisor:
             ).encode("utf-8")
         ).hexdigest()[:12]
         rescue_branch = (
-            f"rescue/worktree/{self._safe_rescue_branch_fragment(branch or worktree_path.name)}-{fingerprint}"
+            branch
+            if branch.startswith("rescue/worktree/")
+            else (
+                f"rescue/worktree/"
+                f"{self._safe_rescue_branch_fragment(branch or worktree_path.name)}-{fingerprint}"
+            )
         )
 
-        checkout = subprocess.run(
-            ["git", "checkout", "-B", rescue_branch],
-            cwd=worktree_path,
-            text=True,
-            capture_output=True,
-            check=False,
-        )
-        if checkout.returncode != 0:
+        current_branch = self._git_current_branch(worktree_path)
+        checkout = None
+        if current_branch != rescue_branch:
+            checkout = subprocess.run(
+                ["git", "checkout", "-B", rescue_branch],
+                cwd=worktree_path,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+        if checkout is not None and checkout.returncode != 0:
             result = {
                 "attempted": True,
                 "preserved": False,
@@ -4435,8 +4470,8 @@ class PortalImplementationSupervisor:
             rescue_commit = self._git_ref_commit(worktree_path, "HEAD")
             result = {
                 "attempted": True,
-                "preserved": True,
-                "reason": "no_staged_rescue_delta",
+                "preserved": False,
+                "reason": "no_staged_rescue_delta_requires_reconciliation",
                 "path": str(worktree_path),
                 "branch": branch,
                 "head": head,
@@ -4447,7 +4482,7 @@ class PortalImplementationSupervisor:
                 "started_at": started_at,
                 "finished_at": utc_now(),
             }
-            self._record_event("dirty_worktree_rescued", result)
+            self._record_event("dirty_worktree_rescue_deferred", result)
             return result
 
         commit = subprocess.run(
@@ -4511,6 +4546,77 @@ class PortalImplementationSupervisor:
         }
         self._record_event("dirty_worktree_rescued", result)
         return result
+
+    def _existing_rescue_branch_stageability(
+        self,
+        worktree_path: Path,
+        *,
+        branch: str,
+    ) -> dict[str, Any]:
+        """Prove whether an existing rescue branch has anything Git can stage.
+
+        Nested-only submodule dirt is intentionally ignored. Gitlink commit
+        changes, ordinary staged/unstaged changes, and untracked paths remain
+        observable and prevent the idempotent short circuit.
+        """
+
+        proof: dict[str, Any] = {
+            "already_rescue_branch": branch.startswith("rescue/worktree/"),
+        }
+        if not proof["already_rescue_branch"]:
+            proof["no_stageable_delta"] = False
+            return proof
+
+        current_branch = self._git_current_branch(worktree_path)
+        proof["current_branch_matches"] = current_branch == branch
+        if current_branch != branch:
+            proof["no_stageable_delta"] = False
+            return proof
+
+        git_env = {**os.environ, "GIT_OPTIONAL_LOCKS": "0"}
+        commands = {
+            "staged_diff_returncode": [
+                "git",
+                "diff",
+                "--cached",
+                "--quiet",
+                "--ignore-submodules=dirty",
+                "--",
+            ],
+            "unstaged_diff_returncode": [
+                "git",
+                "diff",
+                "--quiet",
+                "--ignore-submodules=dirty",
+                "--",
+            ],
+        }
+        for field, command in commands.items():
+            result = subprocess.run(
+                command,
+                cwd=worktree_path,
+                capture_output=True,
+                env=git_env,
+                check=False,
+            )
+            proof[field] = result.returncode
+
+        untracked = subprocess.run(
+            ["git", "ls-files", "--others", "--exclude-standard", "-z"],
+            cwd=worktree_path,
+            capture_output=True,
+            env=git_env,
+            check=False,
+        )
+        proof["untracked_query_returncode"] = untracked.returncode
+        proof["has_untracked_paths"] = bool(untracked.stdout)
+        proof["no_stageable_delta"] = (
+            proof["staged_diff_returncode"] == 0
+            and proof["unstaged_diff_returncode"] == 0
+            and untracked.returncode == 0
+            and not untracked.stdout
+        )
+        return proof
 
     def cleanup_backlogged_worktrees(self) -> dict[str, Any]:
         """Remove inactive implementation worktrees whose branches are already merged."""
@@ -4888,6 +4994,7 @@ class PortalImplementationSupervisor:
 
         checked: list[dict[str, Any]] = []
         configured_submodule_deletion = False
+        configured_submodule_unstaged_deletion = False
         for line in status_lines:
             code = line[:2]
             relative = self._status_line_path(line)
@@ -4898,6 +5005,30 @@ class PortalImplementationSupervisor:
                 checked.append({**detail, "matches_target": True, "configured_submodule_deletion": True})
                 configured_submodule_deletion = True
                 continue
+            if code == " m" and self._is_configured_worktree_submodule_path(relative):
+                verdict = self._configured_submodule_unstaged_deletion_proof(
+                    worktree_path,
+                    relative=relative,
+                    target_ref=target_ref,
+                )
+                checked.append(
+                    {
+                        **detail,
+                        "configured_submodule_unstaged_deletion": bool(
+                            verdict.get("redundant")
+                        ),
+                        "proof_reason": str(verdict.get("reason") or ""),
+                        "proof": dict(verdict.get("proof") or {}),
+                    }
+                )
+                if not verdict.get("redundant"):
+                    return {
+                        "redundant": False,
+                        "reason": "unsupported_status",
+                        "checked": checked,
+                    }
+                configured_submodule_unstaged_deletion = True
+                continue
             if "D" in code or "?" in code.strip(" ?"):
                 return {"redundant": False, "reason": "unsupported_status", "checked": [*checked, detail]}
             if code == "??" or "M" in code or "A" in code:
@@ -4907,11 +5038,22 @@ class PortalImplementationSupervisor:
                 continue
             return {"redundant": False, "reason": "unsupported_status", "checked": [*checked, detail]}
         reason = (
-            "configured_submodule_deletions_match_target"
-            if configured_submodule_deletion
-            else "all_dirty_paths_match_target"
+            "configured_submodule_unstaged_deletions_match_target"
+            if configured_submodule_unstaged_deletion
+            else (
+                "configured_submodule_deletions_match_target"
+                if configured_submodule_deletion
+                else "all_dirty_paths_match_target"
+            )
         )
         return {"redundant": True, "reason": reason, "checked": checked}
+
+    def _is_configured_worktree_submodule_path(self, relative: str) -> bool:
+        normalized = relative.rstrip("/")
+        return any(
+            normalized == path.rstrip("/")
+            for path in self.config.worktree_submodule_paths
+        )
 
     def _status_line_is_configured_submodule_deletion(
         self,
@@ -4922,9 +5064,194 @@ class PortalImplementationSupervisor:
         if code not in {" D", "D "}:
             return False
         relative = relative.rstrip("/")
-        if not any(relative == path.rstrip("/") for path in self.config.worktree_submodule_paths):
+        if not self._is_configured_worktree_submodule_path(relative):
             return False
         return self._target_ref_has_path(relative, target_ref)
+
+    @staticmethod
+    def _gitlink_tree_entry(
+        cwd: Path,
+        *,
+        treeish: str,
+        relative: str,
+    ) -> dict[str, str] | None:
+        result = subprocess.run(
+            ["git", "ls-tree", "-z", treeish, "--", relative],
+            cwd=cwd,
+            capture_output=True,
+            env={**os.environ, "GIT_OPTIONAL_LOCKS": "0"},
+            check=False,
+        )
+        if result.returncode != 0:
+            return None
+        records = result.stdout.split(b"\0")
+        if records and records[-1] == b"":
+            records.pop()
+        if len(records) != 1:
+            return None
+        metadata, separator, raw_path = records[0].partition(b"\t")
+        fields = metadata.split()
+        if (
+            separator != b"\t"
+            or len(fields) != 3
+            or fields[0] != b"160000"
+            or fields[1] != b"commit"
+            or raw_path != os.fsencode(relative)
+        ):
+            return None
+        return {
+            "mode": fields[0].decode("ascii"),
+            "commit": fields[2].decode("ascii"),
+        }
+
+    def _configured_submodule_unstaged_deletion_proof(
+        self,
+        worktree_path: Path,
+        *,
+        relative: str,
+        target_ref: str,
+    ) -> dict[str, Any]:
+        """Prove lowercase configured-submodule dirt is deletion-only."""
+
+        head_gitlink = self._gitlink_tree_entry(
+            worktree_path,
+            treeish="HEAD",
+            relative=relative,
+        )
+        target_gitlink = self._gitlink_tree_entry(
+            self.config.repo_root,
+            treeish=target_ref,
+            relative=relative,
+        )
+        proof: dict[str, Any] = {
+            "head_gitlink": head_gitlink or {},
+            "target_gitlink": target_gitlink or {},
+        }
+        if head_gitlink is None or target_gitlink is None:
+            return {
+                "redundant": False,
+                "reason": "configured_submodule_gitlink_unavailable",
+                "proof": proof,
+            }
+        if head_gitlink != target_gitlink:
+            return {
+                "redundant": False,
+                "reason": "configured_submodule_gitlink_mismatch",
+                "proof": proof,
+            }
+
+        nested_path = worktree_path / relative
+        try:
+            worktree_root = worktree_path.resolve(strict=True)
+            if nested_path.is_symlink():
+                raise ValueError("nested path is a symlink")
+            nested_root = nested_path.resolve(strict=True)
+            nested_root.relative_to(worktree_root)
+        except (OSError, ValueError):
+            proof["nested_repo_root_matches"] = False
+            return {
+                "redundant": False,
+                "reason": "configured_submodule_nested_repo_unsafe",
+                "proof": proof,
+            }
+
+        git_env = {**os.environ, "GIT_OPTIONAL_LOCKS": "0"}
+        top_level = subprocess.run(
+            ["git", "rev-parse", "--show-toplevel"],
+            cwd=nested_root,
+            text=True,
+            capture_output=True,
+            env=git_env,
+            check=False,
+        )
+        try:
+            reported_root = Path(top_level.stdout.strip()).resolve(strict=True)
+        except OSError:
+            reported_root = Path()
+        proof["nested_repo_root_matches"] = (
+            top_level.returncode == 0 and reported_root == nested_root
+        )
+        if not proof["nested_repo_root_matches"]:
+            return {
+                "redundant": False,
+                "reason": "configured_submodule_nested_repo_mismatch",
+                "proof": proof,
+            }
+
+        nested_head = subprocess.run(
+            ["git", "rev-parse", "--verify", "HEAD^{commit}"],
+            cwd=nested_root,
+            text=True,
+            capture_output=True,
+            env=git_env,
+            check=False,
+        )
+        proof["nested_head"] = (
+            nested_head.stdout.strip() if nested_head.returncode == 0 else ""
+        )
+        if proof["nested_head"] != head_gitlink["commit"]:
+            return {
+                "redundant": False,
+                "reason": "configured_submodule_nested_head_mismatch",
+                "proof": proof,
+            }
+
+        status = subprocess.run(
+            [
+                "git",
+                "status",
+                "--porcelain=v1",
+                "-z",
+                "--untracked-files=all",
+                "--ignore-submodules=none",
+            ],
+            cwd=nested_root,
+            capture_output=True,
+            env=git_env,
+            check=False,
+        )
+        proof["nested_status_returncode"] = status.returncode
+        if status.returncode != 0:
+            return {
+                "redundant": False,
+                "reason": "configured_submodule_nested_status_unavailable",
+                "proof": proof,
+            }
+
+        records = status.stdout.split(b"\0")
+        if records and records[-1] == b"":
+            records.pop()
+        status_codes: dict[str, int] = {}
+        all_unstaged_tracked_deletions = bool(records)
+        for record in records:
+            code = record[:2].decode("ascii", errors="backslashreplace")
+            status_codes[code] = status_codes.get(code, 0) + 1
+            if (
+                len(record) < 4
+                or record[:2] != b" D"
+                or record[2:3] != b" "
+                or not record[3:]
+            ):
+                all_unstaged_tracked_deletions = False
+        proof["nested_status_entry_count"] = len(records)
+        proof["nested_status_codes"] = dict(sorted(status_codes.items()))
+        proof["all_unstaged_tracked_deletions"] = all_unstaged_tracked_deletions
+        if not all_unstaged_tracked_deletions:
+            return {
+                "redundant": False,
+                "reason": (
+                    "configured_submodule_nested_status_not_unstaged_deletions"
+                ),
+                "proof": proof,
+            }
+        proof["mechanically_restorable_from_gitlink"] = True
+        return {
+            "redundant": False,
+            "reason": (
+                "configured_submodule_unstaged_deletions_require_reconciliation"
+            ),
+            "proof": proof,
+        }
 
     def _target_ref_has_path(self, relative: str, target_ref: str) -> bool:
         result = subprocess.run(

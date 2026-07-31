@@ -14,6 +14,7 @@ import re
 import shlex
 import sys
 from collections.abc import Iterable, Mapping, Sequence
+from hashlib import sha256
 from pathlib import Path, PurePosixPath
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -24,6 +25,8 @@ from ipfs_accelerate_py.agent_supervisor.objectives.objective_graph import (  # 
     parse_goal_heap,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (  # noqa: E402
+    RECONCILIATION_GUARDRAIL_SCHEMA,
+    RECONCILIATION_RESOLUTION_SCHEMA,
     RETRY_BUDGET_REPAIR_SCHEMA,
     parse_task_file,
     retry_budget_repair_source,
@@ -79,8 +82,29 @@ DATASETS_REQUIRED_PATHS = (
     "tests/unit/logic/tactician/test_planner.py",
 )
 EXPECTED_TASK_IDS = tuple(f"LPR-{number:03d}" for number in range(43))
-MAX_OPERATIONAL_REPAIR_TASKS = len(EXPECTED_TASK_IDS) * 3
+MAX_OPERATIONAL_RETRY_REPAIR_TASKS = len(EXPECTED_TASK_IDS) * 3
 LEGACY_OPERATIONAL_REPAIR_TASK_IDS = frozenset({"LPR-043", "LPR-044"})
+RECONCILIATION_REASONS_BY_KIND = {
+    "dirty_backlogged_worktree": frozenset(
+        {
+            "content_not_in_target",
+            "dirty_worktree",
+            "empty_status_path",
+            "unsupported_status",
+        }
+    ),
+    "main_checkout_dirty": frozenset({"main_checkout_dirty"}),
+    "preflight_merge_conflict": frozenset({"preflight_merge_conflict"}),
+}
+RECONCILIATION_GUARDRAIL_KINDS = frozenset(RECONCILIATION_REASONS_BY_KIND)
+MAX_ACTIVE_OPERATIONAL_RECONCILIATION_TASKS = sum(
+    len(reasons) for reasons in RECONCILIATION_REASONS_BY_KIND.values()
+)
+MAX_OPERATIONAL_RECONCILIATION_TASKS = len(EXPECTED_TASK_IDS) * 3
+MAX_OPERATIONAL_REPAIR_TASKS = (
+    MAX_OPERATIONAL_RETRY_REPAIR_TASKS
+    + MAX_OPERATIONAL_RECONCILIATION_TASKS
+)
 EXPECTED_GOAL_IDS = (
     "LPR-G000",
     "LPR-G010",
@@ -350,24 +374,337 @@ def _validate_goals() -> tuple[object, ...]:
     return goals
 
 
+def _normalized_task_metadata(task: object) -> dict[str, str]:
+    return {
+        str(key).strip().lower().replace("_", " "): str(value).strip()
+        for key, value in task.metadata.items()
+        if str(value).strip()
+    }
+
+
+def _resolution_receipt_digest(receipt: Mapping[str, object]) -> str:
+    """Return the content digest for a resolution receipt without its digest."""
+
+    payload = {
+        str(key): value
+        for key, value in receipt.items()
+        if str(key) != "receipt_digest"
+    }
+    canonical = json.dumps(
+        payload,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=True,
+    ).encode("utf-8")
+    return f"sha256:{sha256(canonical).hexdigest()}"
+
+
+def _validate_reconciliation_resolution_receipt(
+    *,
+    repair: object,
+    metadata: Mapping[str, str],
+    discovery_path: PurePosixPath,
+    candidate_count: int,
+) -> None:
+    """Require content-addressed postconditions before a guardrail completes."""
+
+    path = Path(str(discovery_path))
+    try:
+        _require(
+            path.stat().st_size <= 1_048_576,
+            f"{repair.task_id} reconciliation discovery is unbounded",
+        )
+        discovery_text = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise BoardValidationError(
+            f"{repair.task_id} completed reconciliation evidence is unavailable"
+        ) from exc
+    matches = re.findall(
+        r"^## Resolution Receipt\s*\n\s*```json\s*\n(.*?)\n```",
+        discovery_text,
+        flags=re.MULTILINE | re.DOTALL,
+    )
+    _require(
+        len(matches) == 1,
+        f"{repair.task_id} must have one machine-readable resolution receipt",
+    )
+    try:
+        receipt = json.loads(matches[0])
+    except json.JSONDecodeError as exc:
+        raise BoardValidationError(
+            f"{repair.task_id} resolution receipt is malformed"
+        ) from exc
+    _require(
+        isinstance(receipt, dict),
+        f"{repair.task_id} resolution receipt must be an object",
+    )
+    _require(
+        receipt.get("schema") == RECONCILIATION_RESOLUTION_SCHEMA
+        and receipt.get("task_id") == repair.task_id
+        and receipt.get("reconciliation_fingerprint")
+        == metadata.get("reconciliation fingerprint")
+        and receipt.get("kind") == metadata.get("reconciliation kind")
+        and receipt.get("reason") == metadata.get("reconciliation reason")
+        and receipt.get("resolved") is True,
+        f"{repair.task_id} resolution receipt binding mismatch",
+    )
+    _require(
+        re.fullmatch(
+            r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|\+00:00)",
+            str(receipt.get("resolved_at") or ""),
+        )
+        is not None,
+        f"{repair.task_id} resolution timestamp is invalid",
+    )
+    _require(
+        re.fullmatch(
+            r"[a-z][a-z0-9_]{2,127}",
+            str(receipt.get("resolution_method") or ""),
+        )
+        is not None,
+        f"{repair.task_id} resolution method is invalid",
+    )
+    postconditions = receipt.get("postconditions")
+    _require(
+        isinstance(postconditions, dict)
+        and postconditions.get("candidate_count_before") == candidate_count
+        and postconditions.get("candidate_count_after") == 0
+        and postconditions.get("active_blocker_present_after") is False
+        and postconditions.get("dirty_worktree_group_count_after") == 0
+        and postconditions.get("cleanup_skip_count_after") == 0,
+        f"{repair.task_id} resolution postconditions are incomplete",
+    )
+    evidence = receipt.get("evidence")
+    _require(
+        isinstance(evidence, dict) and bool(evidence),
+        f"{repair.task_id} resolution evidence is empty",
+    )
+    _require(
+        receipt.get("receipt_digest") == _resolution_receipt_digest(receipt),
+        f"{repair.task_id} resolution receipt digest mismatch",
+    )
+
+
+def _validate_reconciliation_guardrail_task(
+    repair: object,
+    *,
+    metadata: Mapping[str, str],
+) -> None:
+    """Validate one operator-gated cleanup appendix independently of the DAG."""
+
+    kind = metadata.get("reconciliation kind", "")
+    reason = metadata.get("reconciliation reason", "")
+    fingerprint = metadata.get("reconciliation fingerprint", "")
+    _require(
+        metadata.get("generated by") == RECONCILIATION_GUARDRAIL_SCHEMA
+        and metadata.get("canonical board task") == "false",
+        f"{repair.task_id} lacks explicit reconciliation provenance",
+    )
+    _require(
+        kind in RECONCILIATION_GUARDRAIL_KINDS,
+        f"{repair.task_id} reconciliation kind is unsupported",
+    )
+    _require(
+        reason in RECONCILIATION_REASONS_BY_KIND[kind],
+        f"{repair.task_id} reconciliation reason is unsupported for {kind}",
+    )
+    _require(
+        re.fullmatch(r"[0-9a-f]{40}", fingerprint) is not None
+        and metadata.get("fingerprint") == fingerprint,
+        f"{repair.task_id} reconciliation fingerprint mismatch",
+    )
+    expected_dedupe = {
+        "main_checkout_dirty": "reconciliation_guardrail:main_checkout_dirty",
+        "preflight_merge_conflict": (
+            "reconciliation_guardrail:preflight_merge_conflict"
+        ),
+        "dirty_backlogged_worktree": (
+            f"reconciliation_guardrail:dirty_backlogged_worktree:{reason}"
+        ),
+    }[kind]
+    _require(
+        metadata.get("dedupe key") == expected_dedupe,
+        f"{repair.task_id} reconciliation dedupe key mismatch",
+    )
+    _require(
+        repair.status in {"blocked", "completed"},
+        f"{repair.task_id} reconciliation status is unsafe",
+    )
+    _require(repair.completion == "manual", f"{repair.task_id} must be manual")
+    expected_priority = (
+        "P1"
+        if kind != "dirty_backlogged_worktree" or reason == "unsupported_status"
+        else "P2"
+    )
+    _require(
+        repair.priority == expected_priority,
+        f"{repair.task_id} reconciliation priority mismatch",
+    )
+    _require(repair.track == "ops", f"{repair.task_id} track mismatch")
+    _require(
+        metadata.get("is schedulable") == "false"
+        and metadata.get("review only") == "true"
+        and metadata.get("blocked reason") == "operator_reconciliation_required",
+        f"{repair.task_id} reconciliation authority gate mismatch",
+    )
+    _require(
+        not repair.depends_on,
+        f"{repair.task_id} reconciliation appendix must not alter the sealed DAG",
+    )
+    _require(
+        len(repair.outputs) == 2
+        and repair.outputs[1].replace("\\", "/") == str(TODO_PATH),
+        f"{repair.task_id} reconciliation output scope mismatch",
+    )
+    discovery_root_text = repair.outputs[0].replace("\\", "/")
+    discovery_root = PurePosixPath(discovery_root_text)
+    _require(
+        discovery_root.name == "discovery"
+        and ".." not in discovery_root.parts
+        and "\x00" not in discovery_root_text,
+        f"{repair.task_id} reconciliation discovery output is unsafe",
+    )
+    _require(
+        len(repair.validation) == 1,
+        f"{repair.task_id} must have one reconciliation validation",
+    )
+    try:
+        validation = shlex.split(repair.validation[0])
+    except ValueError as exc:
+        raise BoardValidationError(
+            f"{repair.task_id} reconciliation validation is malformed"
+        ) from exc
+    _require(
+        len(validation) == 3 and validation[:2] == ["test", "-f"],
+        f"{repair.task_id} reconciliation validation is not fail-closed",
+    )
+    discovery_path_text = validation[2].replace("\\", "/")
+    discovery_path = PurePosixPath(discovery_path_text)
+    _require(
+        discovery_path.parent == discovery_root
+        and ".." not in discovery_path.parts
+        and "\x00" not in discovery_path_text,
+        f"{repair.task_id} reconciliation validation escapes its output",
+    )
+    _require(
+        metadata.get("reconciliation discovery", "").replace("\\", "/")
+        == discovery_path_text,
+        f"{repair.task_id} reconciliation discovery provenance mismatch",
+    )
+    expected_name = (
+        rf"\d{{4}}-\d{{2}}-\d{{2}}-{repair.task_id.lower()}-"
+        rf"reconciliation-{fingerprint[:12]}\.md"
+    )
+    _require(
+        re.fullmatch(expected_name, discovery_path.name) is not None,
+        f"{repair.task_id} reconciliation discovery filename mismatch",
+    )
+    title_patterns = {
+        "main_checkout_dirty": (
+            r"^Resolve dirty main checkout blocking (?P<count>[1-9]\d*) "
+            r"worktree merges$"
+        ),
+        "preflight_merge_conflict": (
+            r"^Resolve (?P<count>[1-9]\d*) preflight-conflicting "
+            r"backlogged worktree merges$"
+        ),
+        "dirty_backlogged_worktree": (
+            rf"^Resolve (?P<count>[1-9]\d*) dirty backlogged worktrees "
+            rf"blocked by {re.escape(reason)}$"
+        ),
+    }
+    title_match = re.fullmatch(title_patterns[kind], repair.title)
+    _require(
+        title_match is not None,
+        f"{repair.task_id} reconciliation title mismatch",
+    )
+    candidate_count_text = title_match.group("count")
+    _require(
+        discovery_path_text in repair.acceptance
+        and f"because {candidate_count_text} branch or worktree cleanup candidates"
+        in repair.acceptance
+        and f"blocked by {reason}" in repair.acceptance,
+        f"{repair.task_id} reconciliation acceptance/evidence mismatch",
+    )
+    if repair.status == "completed":
+        _validate_reconciliation_resolution_receipt(
+            repair=repair,
+            metadata=metadata,
+            discovery_path=discovery_path,
+            candidate_count=int(candidate_count_text),
+        )
+
+
 def _validate_operational_repair_tasks(
     repairs: Sequence[object],
     *,
     canonical_by_id: Mapping[str, object],
 ) -> None:
-    """Validate bounded retry-repair appendices without changing the sealed DAG."""
+    """Validate bounded operational appendices without changing the sealed DAG."""
 
     _require(
         len(repairs) <= MAX_OPERATIONAL_REPAIR_TASKS,
-        "operational retry-repair appendix exceeds its finite bound",
+        "operational appendix exceeds its finite bound",
     )
     expected_number = len(EXPECTED_TASK_IDS)
     previous_source_kind: dict[tuple[str, str], object] = {}
+    retry_repair_count = 0
+    reconciliation_count = 0
+    active_reconciliation_count = 0
+    reconciliation_dedupe_tasks: dict[str, object] = {}
+    reconciliation_fingerprint_tasks: dict[str, object] = {}
     for offset, repair in enumerate(repairs):
         expected_id = f"LPR-{expected_number + offset:03d}"
         _require(
             repair.task_id == expected_id,
-            f"operational retry-repair ids must be contiguous: {repair.task_id}",
+            f"operational appendix ids must be contiguous: {repair.task_id}",
+        )
+        metadata = _normalized_task_metadata(repair)
+        if metadata.get("generated by") == RECONCILIATION_GUARDRAIL_SCHEMA:
+            reconciliation_count += 1
+            _require(
+                reconciliation_count <= MAX_OPERATIONAL_RECONCILIATION_TASKS,
+                "reconciliation appendix exceeds its finite bound",
+            )
+            _validate_reconciliation_guardrail_task(
+                repair,
+                metadata=metadata,
+            )
+            if repair.status != "completed":
+                active_reconciliation_count += 1
+                _require(
+                    active_reconciliation_count
+                    <= MAX_ACTIVE_OPERATIONAL_RECONCILIATION_TASKS,
+                    "active reconciliation appendix exceeds its finite bound",
+                )
+            dedupe_key = metadata["dedupe key"]
+            fingerprint = metadata["reconciliation fingerprint"]
+            previous_dedupe = reconciliation_dedupe_tasks.get(dedupe_key)
+            _require(
+                previous_dedupe is None or previous_dedupe.status == "completed",
+                (
+                    "concurrent duplicate operational reconciliation task: "
+                    f"{dedupe_key}"
+                ),
+            )
+            previous_fingerprint = reconciliation_fingerprint_tasks.get(
+                fingerprint
+            )
+            _require(
+                previous_fingerprint is None
+                or previous_fingerprint.status == "completed",
+                (
+                    "concurrent duplicate operational reconciliation "
+                    f"fingerprint: {fingerprint}"
+                ),
+            )
+            reconciliation_dedupe_tasks[dedupe_key] = repair
+            reconciliation_fingerprint_tasks[fingerprint] = repair
+            continue
+        retry_repair_count += 1
+        _require(
+            retry_repair_count <= MAX_OPERATIONAL_RETRY_REPAIR_TASKS,
+            "retry-repair appendix exceeds its finite bound",
         )
         source_task_id, failure_kind = retry_budget_repair_source(repair)
         _require(
@@ -383,11 +720,6 @@ def _validate_operational_repair_tasks(
             f"concurrent duplicate operational retry-repair task: {source_kind}",
         )
         previous_source_kind[source_kind] = repair
-        metadata = {
-            str(key).strip().lower().replace("_", " "): str(value).strip()
-            for key, value in repair.metadata.items()
-            if str(value).strip()
-        }
         if repair.task_id not in LEGACY_OPERATIONAL_REPAIR_TASK_IDS:
             _require(
                 metadata.get("generated by") == RETRY_BUDGET_REPAIR_SCHEMA
@@ -923,6 +1255,15 @@ def validate_all() -> dict[str, object]:
     completed_repairs = sorted(
         task.task_id for task in repairs if task.status == "completed"
     )
+    reconciliation_repairs = tuple(
+        task
+        for task in repairs
+        if _normalized_task_metadata(task).get("generated by")
+        == RECONCILIATION_GUARDRAIL_SCHEMA
+    )
+    retry_repairs = tuple(
+        task for task in repairs if task not in reconciliation_repairs
+    )
     ready_repairs = sorted(
         task.task_id
         for task in repairs
@@ -940,6 +1281,13 @@ def validate_all() -> dict[str, object]:
         "completed_operational_repair_count": len(completed_repairs),
         "operational_repair_task_ids": [task.task_id for task in repairs],
         "ready_operational_repair_task_ids": ready_repairs,
+        "operational_retry_repair_task_count": len(retry_repairs),
+        "operational_reconciliation_task_count": len(
+            reconciliation_repairs
+        ),
+        "completed_operational_reconciliation_count": sum(
+            task.status == "completed" for task in reconciliation_repairs
+        ),
         "total_task_count": len(tasks) + len(repairs),
         "post_bootstrap_ready_task_ids": list(POST_BOOTSTRAP_READY),
         "lane_count": 4,
