@@ -1393,3 +1393,18 @@ expectations under existing precedence, but do not prove them by passing.
 - Evidence subset: board/goal DAG, preserved task CIDs, VFS equivalence/layout, exact roots/capabilities, doctor fixtures/metrics/floors, cold imports, provider absence, transaction/rollback, fixed point, supervisor drain
 - Acceptance: Validate all 43 canonical tasks, 12 goals and LPR-042 as unique terminal; preserve semantic CIDs of LPR-000 through LPR-028; run the migrated VFS and non-VFS profiles plus deterministic-doctor positive/adversarial real-checkout fixtures twice with identical CIDs/receipts; prove optional provider absence and cold imports are safe; prove report-only makes no write and an eligible no-model repair reaches complete all-caller atomic fixed point; prove every ambiguous/unsupported case abstains with a clean tree and rollback restores exact roots; require zero LLM or remote model-provider invocation, KG/vector/embedding authority promotion, stale/forged cache/CID admission, missed caller/open-frontier mutation, sandbox/path escape, partial transaction, rollback failure, nondeterminism and false completion; confirm the healthy four-lane supervisor can drain the joined DAG without dependency, provider, protected-path, merge or lifecycle blockage.
 - Embedding query: joined release vfs deterministic doctor no llm canonical cid replay rollback fixed point supervisor drain
+
+## LPR-043 Resolve validation retry-budget failure for LPR-029
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on: LPR-020
+- Outputs: ipfs_accelerate_py/agent_supervisor/analysis/deterministic_doctor_contracts.py, ipfs_accelerate_py/agent_supervisor/validation/deterministic_doctor_policy.py, test/api/test_agent_supervisor_deterministic_doctor_contracts.py, /home/barberb/lift_coding/.git/modules/external/ipfs_accelerate/worktrees/proof-gated-contract-repair/agent-supervisor-state/tactician_hammer_logic_repair/state/discovery
+- Validation: test -f /home/barberb/lift_coding/.git/modules/external/ipfs_accelerate/worktrees/proof-gated-contract-repair/agent-supervisor-state/tactician_hammer_logic_repair/state/discovery/2026-07-31-lpr-043-lpr-029-retry-budget.md
+- Parallel lane: lpr-doctor-contracts
+- Predicted files: ipfs_accelerate_py/agent_supervisor/analysis/deterministic_doctor_contracts.py, ipfs_accelerate_py/agent_supervisor/validation/deterministic_doctor_policy.py, test/api/test_agent_supervisor_deterministic_doctor_contracts.py
+- Allow concurrent with: LPR-021, LPR-030, LPR-031, LPR-032
+- Conflict policy: Own only new deterministic-doctor contracts/policy/tests; reuse canonical identity, authority, proof, packet, transaction, and completion records by reference, leave the lifecycle doctor and ProgrammaticRecoveryController read-only with respect to source semantics, and define no model route.
+- Acceptance: Retry-budget guardrail filed this from repeated validation failures in LPR-029. Use evidence in /home/barberb/lift_coding/.git/modules/external/ipfs_accelerate/worktrees/proof-gated-contract-repair/agent-supervisor-state/tactician_hammer_logic_repair/state/discovery/2026-07-31-lpr-043-lpr-029-retry-budget.md to fix the validation blocker, then mark this repair task completed so the supervisor can release LPR-029 from strategy blocked_tasks.
