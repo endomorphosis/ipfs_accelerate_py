@@ -229,12 +229,25 @@ class RuntimeTestDependencyTrace:
 _AUDIT_LOCK = threading.RLock()
 _ACTIVE_TRACERS: weakref.WeakSet[RuntimeTestDependencyTracer] = weakref.WeakSet()
 _AUDIT_HOOK_INSTALLED = False
+_AUDIT_HOOK_INSTALL_ATTEMPTED = False
+_AUDIT_INSTALL_PROBE_EVENT = "ipfs_accelerate_py.agent_supervisor.runtime_trace.audit_install_probe"
+_AUDIT_INSTALL_PROBE_TOKEN = object()
+_AUDIT_INSTALL_PROBE_ACKS = 0
 
 
 def _audit_dispatch(event: str, arguments: tuple[Any, ...]) -> None:
     """Permanent process hook; must never raise into the audited operation."""
 
+    global _AUDIT_INSTALL_PROBE_ACKS
     try:
+        if (
+            event == _AUDIT_INSTALL_PROBE_EVENT
+            and len(arguments) == 1
+            and arguments[0] is _AUDIT_INSTALL_PROBE_TOKEN
+        ):
+            with _AUDIT_LOCK:
+                _AUDIT_INSTALL_PROBE_ACKS += 1
+            return
         with _AUDIT_LOCK:
             active = tuple(_ACTIVE_TRACERS)
         for tracer in active:
@@ -252,13 +265,27 @@ def _audit_dispatch(event: str, arguments: tuple[Any, ...]) -> None:
 
 
 def _install_audit_dispatch() -> bool:
-    global _AUDIT_HOOK_INSTALLED
+    global _AUDIT_HOOK_INSTALLED, _AUDIT_HOOK_INSTALL_ATTEMPTED
     with _AUDIT_LOCK:
         if _AUDIT_HOOK_INSTALLED:
             return True
+        if _AUDIT_HOOK_INSTALL_ATTEMPTED:
+            return False
+        _AUDIT_HOOK_INSTALL_ATTEMPTED = True
+        acknowledgements_before = _AUDIT_INSTALL_PROBE_ACKS
         try:
             sys.addaudithook(_audit_dispatch)
+            # CPython permits an existing hook to suppress ``addaudithook`` by
+            # raising RuntimeError without propagating it to this caller.
+            # Prove our dispatcher was actually registered before it can
+            # contribute complete trace authority.
+            sys.audit(
+                _AUDIT_INSTALL_PROBE_EVENT,
+                _AUDIT_INSTALL_PROBE_TOKEN,
+            )
         except BaseException:
+            return False
+        if _AUDIT_INSTALL_PROBE_ACKS != acknowledgements_before + 1:
             return False
         _AUDIT_HOOK_INSTALLED = True
         return True

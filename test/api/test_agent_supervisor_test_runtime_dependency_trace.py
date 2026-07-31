@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import subprocess
 import sys
+import textwrap
 from pathlib import Path
 
 import pytest
@@ -322,6 +324,51 @@ def test_process_audit_hook_marks_custom_events_without_raising(tmp_path: Path) 
     assert not trace.complete
     assert "private audit detail" not in trace.canonical_bytes.decode()
     assert "unknown_audit_event" in trace.to_dict()["health"]["unsupported_event_kinds"]
+
+
+def test_silently_suppressed_audit_hook_is_never_reported_healthy() -> None:
+    script = textwrap.dedent(
+        """
+        import sys
+
+        def suppress_new_hook(event, _arguments):
+            if event == "sys.addaudithook":
+                raise RuntimeError("silently suppress hook registration")
+
+        sys.addaudithook(suppress_new_hook)
+        sys.path.insert(0, sys.argv[1])
+
+        from ipfs_accelerate_py.agent_supervisor.analysis.test_runtime_dependency_trace import (
+            RuntimeTestDependencyTracer,
+        )
+
+        tracer = RuntimeTestDependencyTracer(capture_code_objects=False)
+        with tracer:
+            pass
+        trace = tracer.result
+        assert trace is not None
+        payload = trace.to_dict()
+        assert payload["health"]["audit_hook_healthy"] is False
+        assert "instrumentation_failure" in trace.completeness_reasons
+        assert not trace.complete
+        """
+    )
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-P",
+            "-c",
+            script,
+            str(Path(__file__).parents[2]),
+        ],
+        cwd=Path(__file__).parents[2],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
 
 
 def test_service_policy_and_capability_adapters_bind_cids(tmp_path: Path) -> None:
