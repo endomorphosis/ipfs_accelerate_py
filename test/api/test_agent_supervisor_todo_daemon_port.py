@@ -22263,6 +22263,73 @@ def test_implementation_supervisor_forwards_scan_exclusions_to_completion_reconc
     assert captured["scan_exclude_paths"] == ("state", "var/runtime")
 
 
+def test_disabled_refills_reuse_prior_identity_without_rescanning_repo(
+    tmp_path,
+    monkeypatch,
+):
+    from ipfs_accelerate_py.agent_supervisor.objectives import scan_receipts
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    state_dir.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text("# Drained board\n", encoding="utf-8")
+    strategy_path = state_dir / "strategy.json"
+    strategy_path.write_text(
+        json.dumps(
+            {
+                "scan_receipts": {
+                    "objective": {
+                        "latest_attempted_scan": {
+                            "terminal_reason": "disabled",
+                            "scan_mode": "disabled",
+                            "analyzer_version": "objective-daemon-v1",
+                            "repository_id": "cached-repository",
+                            "tree_id": "cached-objective-tree",
+                            "safe_for_completion_reasoning": False,
+                        }
+                    },
+                    "codebase": {
+                        "latest_attempted_scan": {
+                            "terminal_reason": "disabled",
+                            "scan_mode": "disabled",
+                            "analyzer_version": "codebase-scan-v1",
+                            "repository_id": "cached-repository",
+                            "tree_id": "cached-codebase-tree",
+                            "safe_for_completion_reasoning": False,
+                        }
+                    },
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        scan_receipts,
+        "scan_identity",
+        lambda _repo: pytest.fail("disabled refill must not rescan repository"),
+    )
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=todo_path,
+            state_path=state_dir / "task_state.json",
+            strategy_path=strategy_path,
+            events_path=state_dir / "events.jsonl",
+            state_dir=state_dir,
+            repo_root=repo,
+        )
+    )
+
+    objective = supervisor.refill_objective_backlog()
+    codebase = supervisor.refill_codebase_backlog()
+
+    assert objective.tree_id == "cached-objective-tree"
+    assert codebase.tree_id == "cached-codebase-tree"
+    assert objective.safe_for_completion_reasoning is False
+    assert codebase.safe_for_completion_reasoning is False
+
+
 def test_disabled_objective_janitor_ignores_stale_force_goal_ids(
     tmp_path,
     monkeypatch,

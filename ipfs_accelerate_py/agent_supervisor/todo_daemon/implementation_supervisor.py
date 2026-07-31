@@ -10391,6 +10391,59 @@ class PortalImplementationSupervisor:
             callback=callback,
         )
 
+    def _cached_disabled_scan_identity(
+        self,
+        *,
+        scan_mode: str,
+        analyzer_version: str,
+    ) -> Mapping[str, str] | None:
+        """Reuse a prior non-evidentiary identity for an unchanged disabled scan.
+
+        A disabled scanner reports configuration state and is never safe for
+        completion reasoning.  Recomputing the dirty repository identity for
+        that same report can be expensive in long-running supervisors with
+        large generated-state directories.  The persisted projection already
+        supplies the exact identity whose receipt will be reused by
+        ``persist_supervisor_scan_receipt``.
+        """
+
+        if scan_mode != "disabled":
+            return None
+        strategy = load_json_dict(self.config.strategy_path) or {}
+        per_kind = strategy.get("scan_receipts")
+        if not isinstance(per_kind, Mapping):
+            return None
+        for kind_state in per_kind.values():
+            if not isinstance(kind_state, Mapping):
+                continue
+            projection = kind_state.get("latest_attempted_scan")
+            if not isinstance(projection, Mapping):
+                continue
+            if (
+                str(projection.get("terminal_reason") or "") != "disabled"
+                or str(projection.get("scan_mode") or "") != scan_mode
+                or str(projection.get("analyzer_version") or "")
+                != analyzer_version
+                or projection.get("safe_for_completion_reasoning") is not False
+            ):
+                continue
+            repository_id = str(
+                projection.get("repository_id")
+                or projection.get("repository_identity")
+                or ""
+            ).strip()
+            tree_id = str(
+                projection.get("tree_id")
+                or projection.get("tree_identity")
+                or ""
+            ).strip()
+            if repository_id and tree_id:
+                return {
+                    "repository_id": repository_id,
+                    "tree_id": tree_id,
+                }
+        return None
+
     def _terminal_refill_result(
         self,
         reason: ScanTerminalReason,
@@ -10405,6 +10458,13 @@ class PortalImplementationSupervisor:
     ) -> RefillScanResult:
         """Build a repository-bound refill receipt for supervisor-owned scans."""
 
+        identity = None
+        reason_value = reason.value if isinstance(reason, ScanTerminalReason) else str(reason)
+        if reason_value == ScanTerminalReason.DISABLED.value:
+            identity = self._cached_disabled_scan_identity(
+                scan_mode=scan_mode,
+                analyzer_version=analyzer_version,
+            )
         return build_scan_result(
             reason,
             scan_mode,
@@ -10415,6 +10475,7 @@ class PortalImplementationSupervisor:
             safe_for_completion_reasoning=safe_for_completion_reasoning,
             error=error,
             metadata=metadata,
+            identity=identity,
         )
 
     def _persist_refill_result(
