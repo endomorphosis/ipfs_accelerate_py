@@ -327,7 +327,7 @@
     "tlc": {
       "version": "1.8.0",
       "url": "https://github.com/tlaplus/tlaplus/releases/download/v1.8.0/tla2tools.jar",
-      "sha256": "",
+      "sha256": "e22f8ffb4bacdea0a871f444dd94fe5fb0d8013b3388ae39e82e26f852c735d5",
       "identity_kind": "immutable_release_tag",
       "release_tag": "v1.8.0"
     },
@@ -679,10 +679,10 @@
           "tool_id": "tlc",
           "version": "1.8.0",
           "artifact_url": "https://github.com/tlaplus/tlaplus/releases/download/v1.8.0/tla2tools.jar",
-          "sha256": "",
+          "sha256": "e22f8ffb4bacdea0a871f444dd94fe5fb0d8013b3388ae39e82e26f852c735d5",
           "platform": "any",
-          "notes": "Reviewed TLA+ tools 1.8.0 release identity; installer verifies jar digest at explicit install",
-          "is_checksummed": false,
+          "notes": "Reviewed TLA+ tools 1.8.0 release artifact; installer requires this immutable jar digest before staging or publication",
+          "is_checksummed": true,
           "license": "MIT",
           "source": "https://github.com/tlaplus/tlaplus"
         }
