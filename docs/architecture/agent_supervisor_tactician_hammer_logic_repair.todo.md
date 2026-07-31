@@ -1148,7 +1148,7 @@ expectations under existing precedence, but do not prove them by passing.
 
 ## LPR-035 Verify candidate repairs through cache-first isolated Hammer and CEGIS
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
