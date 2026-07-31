@@ -4878,8 +4878,12 @@ class PortalImplementationDaemon:
         return {
             "task_board": (self.todo_path,),
             "objective": tuple(objective_paths),
+            # Repository wakes follow canonical Git control state.  Watching
+            # the entire checkout also observes every parallel lane's status
+            # and checkpoint files, causing idle lanes to wake one another.
+            # Arbitrary worktree changes remain covered by the bounded safety
+            # reconciliation and by task/child-process semantic events.
             "repository": (
-                self.repo_root,
                 git_dir / "HEAD",
                 git_dir / "index",
                 git_dir / "MERGE_HEAD",
