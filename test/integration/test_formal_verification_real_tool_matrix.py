@@ -607,6 +607,7 @@ def test_every_tool_has_four_check_slots(certificate: dict[str, Any]) -> None:
 def test_available_smt_tools_pass_live_matrix(certificate: dict[str, Any]) -> None:
     tools = {entry["tool_id"]: entry for entry in certificate["tools"]}
     live_smt = []
+    certified_smt = []
     for tool_id in ("z3", "cvc5"):
         entry = tools[tool_id]
         if entry.get("unavailable"):
@@ -627,17 +628,23 @@ def test_available_smt_tools_pass_live_matrix(certificate: dict[str, Any]) -> No
             )
         assert entry["identity_probed"] is True
         assert entry["version_string"]
+        if entry["executable_artifact_class"] == "launcher_script":
+            assert entry["production_certified"] is False
+            assert entry["promotion_blocked"] is True
+            assert "launcher_target_artifact_unbound" in entry["block_reasons"]
+            continue
         assert entry["production_certified"] is True
         assert entry["promotion_blocked"] is False
+        certified_smt.append(tool_id)
 
     # On this program's audit hosts at least one SMT solver is expected; if
     # the hermetic environment truly has none, the lane must still be explicit.
     smt_lane = next(
         lane for lane in certificate["property_lanes"] if lane["lane_id"] == "smt"
     )
-    if live_smt:
+    if certified_smt:
         assert smt_lane["promotion_ready"] is True
-        assert set(live_smt) <= set(smt_lane["certified_tool_ids"])
+        assert set(certified_smt) <= set(smt_lane["certified_tool_ids"])
     else:
         assert smt_lane["certified_tool_ids"] == []
         assert smt_lane["promotion_ready"] is False

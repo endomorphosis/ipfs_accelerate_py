@@ -112,6 +112,7 @@ METRICS_MODULE_RELATIVE: Final = Path(
 
 GIT_TIMEOUT_SECONDS: Final = 10.0
 COMMIT_RE: Final = re.compile(r"^[0-9a-f]{40}$")
+SHA256_RE: Final = re.compile(r"^[0-9a-f]{64}$")
 GOAL_HEADING_RE: Final = re.compile(
     r"^## (FVT-G\d+) (.+)$",
     flags=re.MULTILINE,
@@ -149,12 +150,15 @@ BOUND_ARTIFACTS: Final[dict[str, Path]] = {
     "role_aware_completion_test": DEFAULT_ROLE_AWARE_TEST_RELATIVE,
 }
 
-# Baseline tools that must leave "merely usable" after role-aware elevation.
+# Usable capabilities that remain below production authority until the open
+# kernel/vendor/live-fan-in goals publish their specialized certificates.
 REQUIRED_SEMANTIC_ELEVATIONS: Final[tuple[str, ...]] = (
     "lean",
     "runtime-mtl",
     "datalog-authorization",
     "secpal-authorization",
+    "coq",
+    "isabelle",
 )
 
 
@@ -511,15 +515,20 @@ def derive_hard_zero_gates(
     Baseline open findings are disclosed separately and never rewritten.
     """
 
-    disagreement = 0
+    missing_measurements: list[str] = []
+    disagreement = 1
     if certificate is not None:
         quarantines = certificate.get("disagreement_quarantines") or []
         if isinstance(quarantines, list):
             disagreement = len(quarantines)
+        else:
+            missing_measurements.append("certificate.disagreement_quarantines")
+    else:
+        missing_measurements.append("certificate")
 
     def _violations_from_bps(status: Mapping[str, Any] | None) -> int:
         if not status:
-            return 0
+            return 1
         # Prefer explicit status; fall back to basis-point shortfall.
         if str(status.get("status") or "").lower() == "pass":
             return 0
@@ -530,16 +539,19 @@ def derive_hard_zero_gates(
         # Missing measurement is not a synthetic pass; report as unresolved (1).
         return 1
 
-    false_proof = 0
-    false_closure = 0
-    leakage = 0
-    authority = 0
+    false_proof = 1
+    false_closure = 1
+    leakage = 1
+    authority = 1
     gate_source = "child_certificate_and_benchmark_hard_gates"
 
     if benchmark is not None:
         report = _safe_dict(benchmark.get("report"))
         gates = _safe_dict(report.get("gates") or benchmark.get("gates"))
         hard = _safe_dict(gates.get("hard"))
+        for gate_name in ("correctness", "authority", "privacy"):
+            if not _safe_dict(hard.get(gate_name)):
+                missing_measurements.append(f"benchmark.hard.{gate_name}")
         # Correctness failures map to false-proof pressure; authority is direct.
         false_proof = _violations_from_bps(_safe_dict(hard.get("correctness")) or None)
         authority = _violations_from_bps(_safe_dict(hard.get("authority")) or None)
@@ -551,6 +563,8 @@ def derive_hard_zero_gates(
             false_closure = 0
         else:
             false_closure = max(false_proof, authority, 1 if disagreement else 0)
+    else:
+        missing_measurements.append("benchmark")
 
     # Baseline may record historical open findings. Those are disclosures, not
     # silent success counters. They do not rewrite hard-zero when child
@@ -578,6 +592,8 @@ def derive_hard_zero_gates(
         "derivation": {
             "source": gate_source,
             "hardcoded_success_counters_forbidden": True,
+            "complete": not missing_measurements,
+            "missing_measurements": sorted(set(missing_measurements)),
             "benchmark_hard_gates_required_bps": 10000,
             "open_baseline_findings_disclosed": len(open_findings),
             "open_baseline_findings": open_findings,
@@ -1043,14 +1059,69 @@ def load_supervisor_evidence_snapshot(
 
     state = load_json(task_state_path) or {}
     relevant_events: list[dict[str, Any]] = []
+    chain_errors: list[str] = []
+    previous_event_id = ""
+    previous_sequence = 0
+    stream_id = ""
+    snapshot_id = ""
+    canonical_event_count = 0
     if event_log_path.is_file():
-        for raw_line in event_log_path.read_text(encoding="utf-8").splitlines():
+        for line_number, raw_line in enumerate(
+            event_log_path.read_text(encoding="utf-8").splitlines(),
+            start=1,
+        ):
+            if not raw_line.strip():
+                continue
             try:
                 event = json.loads(raw_line)
             except json.JSONDecodeError:
+                chain_errors.append(f"line_{line_number}:malformed_json")
                 continue
             if not isinstance(event, Mapping):
+                chain_errors.append(f"line_{line_number}:non_object_event")
                 continue
+            event = dict(event)
+            sequence = event.get("sequence")
+            observed_event_id = str(event.get("event_id") or "")
+            expected_event_id = content_digest(
+                {
+                    key: value
+                    for key, value in event.items()
+                    if key != "event_id"
+                }
+            )
+            observed_stream = str(event.get("stream_id") or "")
+            observed_snapshot = str(event.get("snapshot_id") or "")
+            if (
+                not isinstance(sequence, int)
+                or isinstance(sequence, bool)
+                or sequence != previous_sequence + 1
+            ):
+                chain_errors.append(f"line_{line_number}:sequence_not_contiguous")
+            if observed_event_id != expected_event_id:
+                chain_errors.append(f"line_{line_number}:event_id_not_canonical")
+            if previous_sequence and str(event.get("previous_event_id") or "") != (
+                previous_event_id
+            ):
+                chain_errors.append(f"line_{line_number}:previous_event_id_mismatch")
+            if not previous_sequence and str(event.get("previous_event_id") or ""):
+                chain_errors.append(
+                    f"line_{line_number}:first_previous_event_id_not_empty"
+                )
+            if not observed_stream or not observed_snapshot:
+                chain_errors.append(f"line_{line_number}:stream_identity_missing")
+            elif canonical_event_count:
+                if observed_stream != stream_id or observed_snapshot != snapshot_id:
+                    chain_errors.append(
+                        f"line_{line_number}:stream_identity_changed"
+                    )
+            else:
+                stream_id = observed_stream
+                snapshot_id = observed_snapshot
+            previous_sequence = sequence if isinstance(sequence, int) else previous_sequence
+            previous_event_id = observed_event_id
+            canonical_event_count += 1
+
             if str(event.get("task_id") or "") != task_id:
                 continue
             completion_receipts: list[dict[str, Any]] = []
@@ -1119,6 +1190,15 @@ def load_supervisor_evidence_snapshot(
             "path": str(event_log_path),
             "sha256": sha256_file(event_log_path),
         },
+        "event_chain": {
+            "valid": bool(canonical_event_count) and not chain_errors,
+            "event_count": canonical_event_count,
+            "last_sequence": previous_sequence,
+            "last_event_id": previous_event_id or None,
+            "stream_id": stream_id or None,
+            "snapshot_id": snapshot_id or None,
+            "errors": chain_errors,
+        },
         "task_state": {
             "active_task_id": state.get("active_task_id"),
             "active_task_cid": state.get("active_task_cid"),
@@ -1143,8 +1223,135 @@ def load_supervisor_evidence_snapshot(
     }
 
 
+def _derive_git_commit_binding(
+    *,
+    repo_root: Path | None,
+    implementation_commit: str,
+    merge_commit: str,
+    target_branch: str,
+    integration_proof: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Independently bind supervisor commit claims to the published Git DAG."""
+
+    result: dict[str, Any] = {
+        "valid": False,
+        "repository_bound": False,
+        "implementation_commit_exists": False,
+        "merge_commit_exists": False,
+        "implementation_is_ancestor": False,
+        "source_trees_bound": False,
+        "target_branch_bound": False,
+        "published_to_origin_main": False,
+        "implementation_commit": implementation_commit or None,
+        "merge_commit": merge_commit or None,
+        "implementation_tree": None,
+        "merge_tree": None,
+        "publication_ref": "refs/remotes/origin/main",
+        "failures": [],
+    }
+    failures: list[str] = result["failures"]
+    if repo_root is None:
+        failures.append("supervisor_repository_root_missing")
+        return result
+    root = repo_root.resolve()
+    result["repository_bound"] = (
+        _git_stdout(root, "rev-parse", "--show-toplevel") == str(root)
+    )
+    if not result["repository_bound"]:
+        failures.append("supervisor_repository_not_bound")
+        return result
+
+    resolved_implementation = _git_stdout(
+        root,
+        "rev-parse",
+        "--verify",
+        f"{implementation_commit}^{{commit}}",
+    )
+    resolved_merge = _git_stdout(
+        root,
+        "rev-parse",
+        "--verify",
+        f"{merge_commit}^{{commit}}",
+    )
+    result["implementation_commit_exists"] = (
+        bool(COMMIT_RE.fullmatch(implementation_commit))
+        and resolved_implementation == implementation_commit
+    )
+    result["merge_commit_exists"] = (
+        bool(COMMIT_RE.fullmatch(merge_commit))
+        and resolved_merge == merge_commit
+    )
+    if not result["implementation_commit_exists"]:
+        failures.append("implementation_commit_unreachable")
+    if not result["merge_commit_exists"]:
+        failures.append("merge_commit_unreachable")
+    if not (
+        result["implementation_commit_exists"]
+        and result["merge_commit_exists"]
+    ):
+        return result
+
+    implementation_tree = _git_stdout(
+        root, "rev-parse", f"{implementation_commit}^{{tree}}"
+    )
+    merge_tree = _git_stdout(root, "rev-parse", f"{merge_commit}^{{tree}}")
+    result["implementation_tree"] = implementation_tree
+    result["merge_tree"] = merge_tree
+    result["implementation_is_ancestor"] = (
+        _git(root, "merge-base", "--is-ancestor", implementation_commit, merge_commit)
+        or subprocess.CompletedProcess([], 1)
+    ).returncode == 0
+    if not result["implementation_is_ancestor"]:
+        failures.append("implementation_not_ancestor_of_merge")
+
+    result["source_trees_bound"] = bool(
+        COMMIT_RE.fullmatch(str(implementation_tree or ""))
+        and COMMIT_RE.fullmatch(str(merge_tree or ""))
+        and integration_proof.get("implementation_tree") == implementation_tree
+        and integration_proof.get("merge_tree") == merge_tree
+    )
+    if not result["source_trees_bound"]:
+        failures.append("commit_source_trees_not_bound")
+
+    result["target_branch_bound"] = target_branch in {
+        "origin/main",
+        "refs/remotes/origin/main",
+    }
+    if not result["target_branch_bound"]:
+        failures.append("merge_target_not_origin_main")
+
+    published_ref = _git_stdout(
+        root,
+        "rev-parse",
+        "--verify",
+        "refs/remotes/origin/main^{commit}",
+    )
+    result["published_to_origin_main"] = bool(
+        published_ref
+        and (
+            _git(
+                root,
+                "merge-base",
+                "--is-ancestor",
+                merge_commit,
+                "refs/remotes/origin/main",
+            )
+            or subprocess.CompletedProcess([], 1)
+        ).returncode
+        == 0
+    )
+    result["published_ref_commit"] = published_ref
+    if not result["published_to_origin_main"]:
+        failures.append("merge_commit_not_published_to_origin_main")
+
+    result["valid"] = not failures
+    return result
+
+
 def derive_supervisor_binding(
     evidence: Mapping[str, Any] | None,
+    *,
+    repo_root: Path | None = None,
 ) -> dict[str, Any]:
     """Validate task/CID, completion receipt, validation, and merge evidence."""
 
@@ -1153,74 +1360,168 @@ def derive_supervisor_binding(
     identity = _safe_dict(task_state.get("canonical_identity"))
     expected_cid = str(identity.get("canonical_task_cid") or "")
     expected_key = str(identity.get("canonical_task_key") or "")
+    task_state_source = _safe_dict(snapshot.get("task_state_source"))
+    event_log_source = _safe_dict(snapshot.get("event_log_source"))
+    state_path = Path(str(task_state_source.get("path") or ""))
+    event_path = Path(str(event_log_source.get("path") or ""))
+    source_paths_well_formed = bool(
+        str(state_path)
+        and str(event_path)
+        and state_path.name.endswith("_task_state.json")
+        and event_path.name.endswith("_events.jsonl")
+        and state_path.parent == event_path.parent
+    )
+    source_files_bound = bool(
+        source_paths_well_formed
+        and state_path.is_file()
+        and event_path.is_file()
+        and sha256_file(state_path) == task_state_source.get("sha256")
+        and sha256_file(event_path) == event_log_source.get("sha256")
+    )
+    durable_snapshot_matches = False
+    if source_files_bound:
+        durable_snapshot = load_supervisor_evidence_snapshot(
+            task_state_path=state_path,
+            event_log_path=event_path,
+            task_id=ROLE_AWARE_TASK_ID,
+        )
+        durable_snapshot_matches = content_digest(durable_snapshot) == content_digest(
+            snapshot
+        )
+
+    chain = _safe_dict(snapshot.get("event_chain"))
+    event_chain_bound = bool(
+        source_files_bound
+        and durable_snapshot_matches
+        and chain.get("valid") is True
+        and int(chain.get("event_count") or 0) > 0
+        and SHA256_RE.fullmatch(
+            str(chain.get("last_event_id") or "").removeprefix("sha256:")
+        )
+        and not _safe_list(chain.get("errors"))
+    )
     events = [
         event
         for event in _safe_list(snapshot.get("events"))
         if isinstance(event, Mapping)
     ]
-    event_cids = {
-        str(event.get("canonical_task_cid") or "")
+    events_have_canonical_identity = bool(events) and all(
+        str(event.get("task_id") or "") == ROLE_AWARE_TASK_ID
+        and str(event.get("canonical_task_cid") or "") == expected_cid
+        and str(event.get("canonical_task_key") or "") == expected_key
+        and isinstance(event.get("sequence"), int)
+        and SHA256_RE.fullmatch(
+            str(event.get("event_id") or "").removeprefix("sha256:")
+        )
         for event in events
-        if event.get("canonical_task_cid")
-    }
-    receipts = [
-        receipt
-        for event in events
-        for receipt in _safe_list(event.get("completion_receipts"))
-        if isinstance(receipt, Mapping)
-        and str(receipt.get("task_id") or "") == ROLE_AWARE_TASK_ID
-    ]
-    successful_receipts = [
-        receipt
-        for receipt in receipts
-        if receipt.get("schema") == SUPERVISOR_COMPLETION_SCHEMA
-        and receipt.get("status") == "succeeded"
-        and str(receipt.get("canonical_task_cid") or "") == expected_cid
-        and str(receipt.get("canonical_task_key") or "") == expected_key
-    ]
+    )
     finished_events = [
         event
         for event in events
         if event.get("type") == "implementation_finished"
     ]
-    merged_events = [
-        event
-        for event in finished_events
-        if _safe_dict(event.get("merge")).get("merged") is True
-        and COMMIT_RE.fullmatch(
-            str(_safe_dict(event.get("merge")).get("merge_commit") or "")
+    terminal_events: list[Mapping[str, Any]] = []
+    successful_receipts: list[Mapping[str, Any]] = []
+    terminal_commit_bindings: list[Mapping[str, Any]] = []
+    for event in finished_events:
+        validation = _safe_dict(event.get("validation"))
+        merge = _safe_dict(event.get("merge"))
+        implementation_commit = str(
+            event.get("implementation_commit")
+            or merge.get("implementation_commit")
+            or ""
         )
-    ]
-    validated_events = [
-        event
-        for event in finished_events
-        if _safe_dict(event.get("validation")).get("passed") is True
-        and _safe_dict(event.get("validation")).get("returncode") == 0
-    ]
+        merge_commit = str(merge.get("merge_commit") or "")
+        commit_binding = _derive_git_commit_binding(
+            repo_root=repo_root,
+            implementation_commit=implementation_commit,
+            merge_commit=merge_commit,
+            target_branch=str(merge.get("target_branch") or ""),
+            integration_proof=_safe_dict(merge.get("integration_commit_proof")),
+        )
+        receipts = [
+            receipt
+            for receipt in _safe_list(event.get("completion_receipts"))
+            if isinstance(receipt, Mapping)
+            and receipt.get("schema") == SUPERVISOR_COMPLETION_SCHEMA
+            and receipt.get("status") == "succeeded"
+            and str(receipt.get("task_id") or "") == ROLE_AWARE_TASK_ID
+            and str(receipt.get("canonical_task_cid") or "") == expected_cid
+            and str(receipt.get("canonical_task_key") or "") == expected_key
+            and str(receipt.get("implementation_commit") or "")
+            == implementation_commit
+            and str(receipt.get("merge_commit") or "") == merge_commit
+        ]
+        coherent = bool(
+            receipts
+            and validation.get("attempted") is True
+            and validation.get("passed") is True
+            and validation.get("returncode") == 0
+            and str(validation.get("target_commit") or "")
+            == implementation_commit
+            and merge.get("merged") is True
+            and COMMIT_RE.fullmatch(implementation_commit)
+            and COMMIT_RE.fullmatch(merge_commit)
+            and str(merge.get("implementation_commit") or "")
+            == implementation_commit
+            and commit_binding["valid"] is True
+        )
+        if coherent:
+            terminal_events.append(event)
+            successful_receipts.extend(receipts)
+            terminal_commit_bindings.append(commit_binding)
+
+    terminal_event = terminal_events[-1] if terminal_events else {}
+    terminal_merge = _safe_dict(terminal_event.get("merge"))
+    terminal_implementation_commit = str(
+        terminal_event.get("implementation_commit")
+        or terminal_merge.get("implementation_commit")
+        or ""
+    )
+    terminal_merge_commit = str(terminal_merge.get("merge_commit") or "")
+    state_terminal_bound = bool(
+        task_state.get("implementation_in_progress") is False
+        and str(task_state.get("last_implementation_task_id") or "")
+        == ROLE_AWARE_TASK_ID
+        and str(task_state.get("last_implementation_task_cid") or "")
+        == expected_cid
+        and str(task_state.get("last_implementation_commit") or "")
+        == terminal_implementation_commit
+        and str(task_state.get("last_merge_commit") or "")
+        == terminal_merge_commit
+        and str(task_state.get("task_status") or "")
+        in {"completed", "succeeded", "merged"}
+    )
     task_cid_bound = bool(
         expected_cid
-        and event_cids
-        and event_cids == {expected_cid}
+        and expected_key
+        and events_have_canonical_identity
         and str(snapshot.get("task_id") or "") == ROLE_AWARE_TASK_ID
     )
     bound = bool(
         task_cid_bound
+        and event_chain_bound
+        and state_terminal_bound
         and successful_receipts
-        and merged_events
-        and validated_events
+        and terminal_events
     )
     return {
         "present": bool(snapshot),
         "bound": bound,
+        "source_files_bound": source_files_bound,
+        "durable_snapshot_matches": durable_snapshot_matches,
+        "event_chain_bound": event_chain_bound,
+        "state_terminal_bound": state_terminal_bound,
         "task_cid_bound": task_cid_bound,
         "member_completion_receipt_bound": bool(successful_receipts),
-        "validation_bound": bool(validated_events),
-        "merge_commit_tree_bound": bool(merged_events),
+        "validation_bound": bool(terminal_events),
+        "merge_commit_tree_bound": bool(terminal_events),
         "canonical_task_cid": expected_cid or None,
         "canonical_task_key": expected_key or None,
         "successful_completion_receipts": successful_receipts,
-        "validation_events": validated_events,
-        "merge_events": merged_events,
+        "validation_events": terminal_events,
+        "merge_events": terminal_events,
+        "commit_bindings": terminal_commit_bindings,
         "snapshot_digest_sha256": (
             content_digest(snapshot) if snapshot else None
         ),
@@ -1229,13 +1530,20 @@ def derive_supervisor_binding(
             reason
             for reason, condition in (
                 ("supervisor_snapshot_missing", bool(snapshot)),
+                ("durable_supervisor_sources_not_bound", source_files_bound),
+                ("supervisor_snapshot_not_durable", durable_snapshot_matches),
+                ("canonical_event_chain_not_bound", event_chain_bound),
                 ("canonical_task_cid_not_bound", task_cid_bound),
+                ("terminal_task_state_not_bound", state_terminal_bound),
                 (
                     "member_completion_receipt_missing",
                     bool(successful_receipts),
                 ),
-                ("validation_evidence_missing", bool(validated_events)),
-                ("merge_commit_tree_evidence_missing", bool(merged_events)),
+                ("validation_evidence_missing", bool(terminal_events)),
+                (
+                    "merge_commit_tree_evidence_missing",
+                    bool(terminal_commit_bindings),
+                ),
             )
             if not condition
         ],
@@ -1321,6 +1629,41 @@ def build_role_aware_deployment_receipt(
         ):
             semantic_receipts_full_and_bound = False
             semantic_binding_failures.append(f"{lane_id}:receipt_digest_mismatch")
+        receipt_integrity = _safe_dict(result.get("receipt_integrity"))
+        if receipt_integrity.get("valid") is not True:
+            semantic_receipts_full_and_bound = False
+            semantic_binding_failures.append(
+                f"{lane_id}:declared_receipt_integrity_invalid"
+            )
+        digest_fields = [
+            field_name
+            for field_name in (
+                "receipt_digest_sha256",
+                "certificate_digest_sha256",
+                "digest_sha256",
+            )
+            if field_name in raw_receipt
+        ]
+        if not digest_fields:
+            semantic_receipts_full_and_bound = False
+            semantic_binding_failures.append(
+                f"{lane_id}:declared_receipt_digest_missing"
+            )
+        for field_name in digest_fields:
+            body = {
+                key: value
+                for key, value in raw_receipt.items()
+                if key != field_name
+            }
+            computed = certifier.content_digest(body)
+            if str(raw_receipt.get(field_name) or "") not in {
+                computed,
+                f"sha256:{computed}",
+            }:
+                semantic_receipts_full_and_bound = False
+                semantic_binding_failures.append(
+                    f"{lane_id}:{field_name}_mismatch"
+                )
         for tool_id, per_tool in _safe_dict(result.get("per_tool")).items():
             projected_checks = _safe_list(_safe_dict(per_tool).get("checks"))
             projected_digest = certifier.content_digest(projected_checks)
@@ -1330,6 +1673,16 @@ def build_role_aware_deployment_receipt(
                 semantic_receipts_full_and_bound = False
                 semantic_binding_failures.append(
                     f"{lane_id}:{tool_id}:check_set_digest_mismatch"
+                )
+            if (
+                _safe_dict(_safe_dict(per_tool).get("artifact_validation")).get(
+                    "valid"
+                )
+                is not True
+            ):
+                semantic_receipts_full_and_bound = False
+                semantic_binding_failures.append(
+                    f"{lane_id}:{tool_id}:artifact_identity_invalid"
                 )
 
     quarantines = _safe_list(certificate.get("disagreement_quarantines"))
@@ -1342,10 +1695,15 @@ def build_role_aware_deployment_receipt(
         hard_zero_derivation.get("source")
         and hard_zero_derivation.get("hardcoded_success_counters_forbidden")
         is True
+        and hard_zero_derivation.get("complete") is True
+        and not _safe_list(hard_zero_derivation.get("missing_measurements"))
     )
 
     source_attestation = build_source_attestation(repo_root)
-    supervisor = derive_supervisor_binding(supervisor_evidence)
+    supervisor = derive_supervisor_binding(
+        supervisor_evidence,
+        repo_root=repo_root,
+    )
 
     checked_certificate = load_json(repo_root / TOOLCHAIN_CERT_RELATIVE)
     checked_completion = load_json(repo_root / DEFAULT_RECEIPT_RELATIVE)
@@ -1439,12 +1797,14 @@ def build_role_aware_deployment_receipt(
         item.get("narrow_scope") is True
         and item.get("complete") is False
         and item.get("production_certified") is False
-        and item.get("basis")
-        in {
-            "deployment_contract.supported_platforms",
-            "tool.pins.platform",
-            "host_outside_global_platform_policy",
-        }
+        and item.get("classification") == "unsupported_here"
+        and bool(
+            set(str(item.get("basis") or "").split("+"))
+            <= {
+                "deployment_contract.supported_platforms",
+                "tool.pins.platform",
+            }
+        )
         for item in platform_exceptions
     )
 
@@ -1477,6 +1837,9 @@ def build_role_aware_deployment_receipt(
         _safe_dict(certificate.get("certification_policy")).get(
             "offline_policy_satisfied"
         )
+    )
+    public_evidence_safe = bool(
+        _safe_dict(certificate.get("public_evidence_policy")).get("satisfied")
     )
 
     acceptance = {
@@ -1521,6 +1884,7 @@ def build_role_aware_deployment_receipt(
             synthetic_evidence_cannot_certify
         ),
         "no_install_during_offline_certification": offline_policy_satisfied,
+        "public_evidence_safe": public_evidence_safe,
         "artifacts_present": artifacts_present,
     }
 
@@ -1546,6 +1910,7 @@ def build_role_aware_deployment_receipt(
             "hard_zero_gates_derived",
             "synthetic_evidence_cannot_certify_production",
             "no_install_during_offline_certification",
+            "public_evidence_safe",
             "artifacts_present",
         )
     }
@@ -1701,6 +2066,28 @@ def build_role_aware_deployment_receipt(
             "canonical task CID/key, passing validation, and merge commit evidence.",
         ],
     }
+    receipt = certifier.public_evidence_projection(receipt, repo_root=repo_root)
+    public_evidence_policy = certifier.public_evidence_audit(receipt)
+    receipt["public_evidence_policy"] = public_evidence_policy
+    if not public_evidence_policy["satisfied"]:
+        receipt["acceptance"]["public_evidence_safe"] = False
+        receipt["acceptance"]["hard_zero_gates_clear"] = False
+        receipt["readiness_requirements"]["public_evidence_safe"] = False
+        receipt["readiness_requirements"]["hard_zero_gates_clear"] = False
+        receipt["status"] = "role_aware_deployment_blocked"
+        blockers = receipt["deployment_blockers"]
+        if "public_evidence_safe" not in blockers:
+            blockers.append("public_evidence_safe")
+        leakage_count = len(public_evidence_policy["failures"])
+        receipt["hard_zero_gates"]["secret_or_witness_leakage_count"] = max(
+            int(
+                receipt["hard_zero_gates"].get(
+                    "secret_or_witness_leakage_count"
+                )
+                or 0
+            ),
+            leakage_count,
+        )
     receipt["receipt_identity"] = content_digest(receipt)
     return receipt
 

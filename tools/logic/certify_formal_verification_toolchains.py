@@ -57,6 +57,27 @@ DEFAULT_ROLE_AWARE_RECEIPT_RELATIVE: Final = Path(
 
 PROBE_TIMEOUT_SECONDS: Final = 5.0
 CHECK_TIMEOUT_SECONDS: Final = 8.0
+MAX_PUBLIC_STRING_BYTES: Final = 8192
+HOST_PRIVATE_PATH_RE: Final = re.compile(
+    r"/(?:home|tmp|private/tmp)/[^\s\"'<>]*"
+)
+RAW_OUTPUT_KEYS: Final = frozenset(
+    {"stdout", "stderr", "raw_stdout", "raw_stderr"}
+)
+RAW_SECRET_KEYS: Final = frozenset(
+    {
+        "secret",
+        "private_secret",
+        "private_witness",
+        "witness",
+        "witness_bytes",
+        "trapdoor",
+        "toxic_waste",
+        "private_key",
+        "api_key",
+        "access_token",
+    }
+)
 
 # Property lanes from FVT-G060. Each lane owns a closed set of tools; absence
 # of one tool never conceals or fails unrelated lanes.
@@ -268,6 +289,185 @@ def content_digest(payload: Any) -> str:
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
 
+def _redacted_value(value: Any, *, reason: str) -> dict[str, Any]:
+    encoded = json.dumps(
+        value,
+        sort_keys=True,
+        separators=(",", ":"),
+        default=str,
+    ).encode("utf-8")
+    return {
+        "redacted": True,
+        "reason": reason,
+        "byte_length": len(encoded),
+        "sha256": hashlib.sha256(encoded).hexdigest(),
+    }
+
+
+def _contains_raw_secret_marker(value: str) -> bool:
+    lowered = value.lower()
+    return any(
+        marker in lowered
+        for marker in (
+            "private-witness-fvt047-secret-axiom-never-leak",
+            "witness_bytes=",
+            "toxic_waste=",
+            "trapdoor=",
+            "private_secret=",
+            "secret=",
+        )
+    )
+
+
+def public_evidence_projection(
+    payload: Any,
+    *,
+    repo_root: Path | None = None,
+    _key: str = "",
+) -> Any:
+    """Return a portable, bounded projection safe for checked-in receipts."""
+
+    normalized_key = _key.lower()
+    if normalized_key in RAW_OUTPUT_KEYS:
+        if isinstance(payload, Mapping) and payload.get("redacted") is True:
+            return dict(payload)
+        return _redacted_value(payload, reason="raw_process_output_forbidden")
+    if normalized_key in RAW_SECRET_KEYS and payload not in (None, True, False):
+        if isinstance(payload, Mapping) and payload.get("redacted") is True:
+            return dict(payload)
+        return _redacted_value(payload, reason="raw_secret_or_witness_forbidden")
+    if isinstance(payload, Mapping):
+        return {
+            str(key): public_evidence_projection(
+                value,
+                repo_root=repo_root,
+                _key=str(key),
+            )
+            for key, value in payload.items()
+        }
+    if isinstance(payload, Sequence) and not isinstance(
+        payload, (str, bytes, bytearray)
+    ):
+        return [
+            public_evidence_projection(value, repo_root=repo_root)
+            for value in payload
+        ]
+    if isinstance(payload, bytes):
+        return _redacted_value(payload.hex(), reason="raw_bytes_forbidden")
+    if not isinstance(payload, str):
+        return payload
+    if _contains_raw_secret_marker(payload):
+        return _redacted_value(
+            payload,
+            reason="raw_secret_or_witness_marker_forbidden",
+        )
+
+    value = payload
+    if repo_root is not None:
+        root_text = str(repo_root.resolve())
+        value = value.replace(root_text, "<repo-root>")
+    value = HOST_PRIVATE_PATH_RE.sub("<host-path-redacted>", value)
+    if len(value.encode("utf-8")) > MAX_PUBLIC_STRING_BYTES:
+        return _redacted_value(value, reason="unbounded_public_string_forbidden")
+    return value
+
+
+def public_evidence_audit(payload: Any) -> dict[str, Any]:
+    """Fail closed if a public receipt still contains private/unbounded data."""
+
+    failures: list[str] = []
+
+    def walk(value: Any, key: str = "") -> None:
+        normalized_key = key.lower()
+        if normalized_key in RAW_OUTPUT_KEYS:
+            if not (
+                isinstance(value, Mapping)
+                and value.get("redacted") is True
+                and value.get("sha256")
+            ):
+                failures.append(f"raw_process_output:{key}")
+            return
+        if normalized_key in RAW_SECRET_KEYS and value not in (None, True, False):
+            if not (
+                isinstance(value, Mapping)
+                and value.get("redacted") is True
+                and value.get("sha256")
+            ):
+                failures.append(f"raw_secret_or_witness:{key}")
+            return
+        if isinstance(value, Mapping):
+            for child_key, child in value.items():
+                walk(child, str(child_key))
+            return
+        if isinstance(value, Sequence) and not isinstance(
+            value, (str, bytes, bytearray)
+        ):
+            for child in value:
+                walk(child)
+            return
+        if isinstance(value, str):
+            if HOST_PRIVATE_PATH_RE.search(value):
+                failures.append("host_private_path")
+            if _contains_raw_secret_marker(value):
+                failures.append("raw_secret_or_witness_marker")
+            if len(value.encode("utf-8")) > MAX_PUBLIC_STRING_BYTES:
+                failures.append("unbounded_public_string")
+
+    walk(payload)
+    unique_failures = sorted(set(failures))
+    return {
+        "satisfied": not unique_failures,
+        "failures": unique_failures,
+        "host_private_paths_forbidden": True,
+        "raw_process_output_forbidden": True,
+        "raw_secret_or_witness_forbidden": True,
+        "max_public_string_bytes": MAX_PUBLIC_STRING_BYTES,
+    }
+
+
+def _project_semantic_lane_result(
+    result: Mapping[str, Any],
+    *,
+    repo_root: Path,
+) -> dict[str, Any]:
+    """Create a self-consistent public projection of one semantic receipt."""
+
+    projected = public_evidence_projection(result, repo_root=repo_root)
+    if not isinstance(projected, dict):
+        return {}
+    source_digest = str(result.get("digest_sha256") or "")
+    receipt = projected.get("receipt")
+    if isinstance(receipt, dict):
+        for field_name in (
+            "receipt_digest_sha256",
+            "certificate_digest_sha256",
+            "digest_sha256",
+        ):
+            if field_name in receipt:
+                receipt[field_name] = content_digest(
+                    {
+                        key: value
+                        for key, value in receipt.items()
+                        if key != field_name
+                    }
+                )
+        projected["digest_sha256"] = content_digest(receipt)
+    per_tool = projected.get("per_tool")
+    if isinstance(per_tool, Mapping):
+        for tool_result in per_tool.values():
+            if isinstance(tool_result, dict):
+                checks = tool_result.get("checks")
+                if isinstance(checks, list):
+                    tool_result["check_set_digest_sha256"] = content_digest(checks)
+    projected["public_projection"] = {
+        "source_receipt_digest_sha256": source_digest or None,
+        "portable_paths": True,
+        "raw_process_output_retained": False,
+        "raw_secret_or_witness_retained": False,
+    }
+    return projected
+
+
 def file_digest(path: str | Path | None) -> str | None:
     """Return a canonical SHA-256 identity for a regular file."""
 
@@ -306,7 +506,10 @@ def classify_executable_artifact(path: str | Path | None) -> str:
     if prefix.startswith("#!") and any(marker in prefix for marker in shim_markers):
         return "generated_hermetic_shim"
     if prefix.startswith("#!"):
-        return "script"
+        # A launcher script is not the prover artifact.  It can be useful for
+        # discovery, but production certification must additionally bind the
+        # executable/archive that the launcher dispatches to.
+        return "launcher_script"
     return "native_or_managed_binary"
 
 
@@ -593,25 +796,80 @@ def tool_platform_support(
     availability = str(entry.get("availability") or "")
     managed = availability == "managed_pin"
 
-    declared = contract_platforms or pin_platforms
+    contract_platforms = [item for item in contract_platforms if item]
+    pin_platforms = [item for item in pin_platforms if item]
+    declared = sorted(set(contract_platforms) | set(pin_platforms))
     if not managed:
-        supported = globally_supported
+        status = "supported_here" if globally_supported else "ambiguous"
         basis = "global_platform_policy"
-    elif not globally_supported:
-        supported = False
-        basis = "host_outside_global_platform_policy"
-    elif contract_platforms:
-        supported = "any" in contract_platforms or host_platform in contract_platforms
-        basis = "deployment_contract.supported_platforms"
-    elif pin_platforms:
-        supported = bool(
-            {"any", "source"} & set(pin_platforms)
-            or host_platform in pin_platforms
-        )
-        basis = "tool.pins.platform"
     else:
-        supported = False
-        basis = "managed_tool_platform_metadata_missing"
+        observations: list[tuple[str, bool]] = []
+        if contract_platforms:
+            observations.append(
+                (
+                    "deployment_contract.supported_platforms",
+                    bool(
+                        "any" in contract_platforms
+                        or host_platform in contract_platforms
+                    ),
+                )
+            )
+        if pin_platforms:
+            observations.append(
+                (
+                    "tool.pins.platform",
+                    bool(
+                        {"any", "source"} & set(pin_platforms)
+                        or host_platform in pin_platforms
+                    ),
+                )
+            )
+        if not observations:
+            status = "ambiguous"
+            basis = "managed_tool_platform_metadata_missing"
+        else:
+            contract_support = (
+                observations[0][1] if contract_platforms else None
+            )
+            pin_support = (
+                next(
+                    (
+                        value
+                        for source, value in observations
+                        if source == "tool.pins.platform"
+                    ),
+                    None,
+                )
+            )
+            # The reviewed deployment contract is the support ceiling.  Pins
+            # may narrow a claimed-supported contract when no artifact can run
+            # here, but a generic/source pin cannot broaden an explicit host
+            # exclusion (notably external SecPAL on linux-aarch64).
+            if contract_support is False:
+                tool_supported = False
+                basis = "deployment_contract.supported_platforms"
+            elif contract_support is True and pin_support is False:
+                status = "ambiguous"
+                basis = "supported_contract_without_host_artifact_pin"
+                tool_supported = None
+            elif contract_support is True:
+                tool_supported = True
+                basis = "deployment_contract.supported_platforms"
+            else:
+                tool_supported = bool(pin_support)
+                basis = "tool.pins.platform"
+
+            if tool_supported is None:
+                pass
+            elif tool_supported and not globally_supported:
+                status = "ambiguous"
+                basis = "tool_and_global_platform_policy_contradict"
+            elif tool_supported:
+                status = "supported_here"
+            else:
+                status = "unsupported_here"
+
+    supported = status == "supported_here"
 
     return {
         "tool_id": str(entry.get("tool_id") or ""),
@@ -619,6 +877,9 @@ def tool_platform_support(
         "availability": availability,
         "managed": managed,
         "supported": bool(supported),
+        "classification": status,
+        "ambiguous": status == "ambiguous",
+        "exception_eligible": status == "unsupported_here",
         "basis": basis,
         "declared_platforms": declared,
         "globally_supported": globally_supported,
@@ -634,10 +895,14 @@ def resolve_executable(candidates: Sequence[str]) -> str | None:
     for name in candidates:
         if not name:
             continue
-        # Absolute/relative path candidates.
-        path = Path(name)
-        if path.is_file() and os.access(path, os.X_OK):
-            return str(path.resolve())
+        # Bare names are PATH lookups.  Treating a same-name file in the
+        # certifier's cwd as an executable lets an unreviewed checkout file
+        # shadow the locked tool.
+        if os.path.isabs(name) or os.sep in name:
+            path = Path(name)
+            if path.is_file() and os.access(path, os.X_OK):
+                return str(path.resolve())
+            continue
         found = shutil.which(name)
         if found:
             return found
@@ -765,6 +1030,11 @@ def probe_tool_identity(
     result["executable_path"] = executable
 
     probe_env = dict(env)
+    if tool_id == "java":
+        # Hostile Java option variables can replace the identity banner or
+        # force an otherwise valid runtime to fail before the probe starts.
+        for key in ("_JAVA_OPTIONS", "JAVA_TOOL_OPTIONS", "JDK_JAVA_OPTIONS"):
+            probe_env.pop(key, None)
     selected_lean_toolchain: str | None = None
     if tool_id == "lean":
         installed_toolchains = list_elan_installed_toolchains(probe_env)
@@ -784,6 +1054,9 @@ def probe_tool_identity(
     if completed is None:
         result["probe_error"] = "probe_timeout_or_spawn_failure"
         # PATH presence without a successful identity probe is not installed.
+        return result
+    if completed.returncode != 0:
+        result["probe_error"] = f"identity_probe_nonzero:{completed.returncode}"
         return result
 
     combined = "\n".join(
@@ -865,11 +1138,14 @@ def probe_tool_identity(
     banner = first_nonempty_line(completed.stdout) or first_nonempty_line(
         completed.stderr
     )
-    # Some tools (java) write version to stderr with non-zero on --version.
+    # Some Java runtimes write the version to stderr; that is valid only when
+    # the process itself succeeds.
     if not banner and tool_id == "java":
         # Retry with -version which java accepts.
-        completed = bounded_run([executable, "-version"], timeout=timeout, env=env)
-        if completed is not None:
+        completed = bounded_run(
+            [executable, "-version"], timeout=timeout, env=probe_env
+        )
+        if completed is not None and completed.returncode == 0:
             banner = first_nonempty_line(completed.stdout) or first_nonempty_line(
                 completed.stderr
             )
@@ -1323,6 +1599,11 @@ def certify_tool(
     all_live_passed = required_passed and all(
         check.status == "passed" for check in cert.checks
     )
+    executable_identity_complete = cert.executable_artifact_class == (
+        "native_or_managed_binary"
+    )
+    if cert.executable_artifact_class == "launcher_script":
+        cert.block_reasons.append("launcher_target_artifact_unbound")
 
     if not all_live_passed:
         cert.block_reasons.append("live_checks_incomplete_or_failed")
@@ -1338,6 +1619,7 @@ def certify_tool(
         and not cert.locked_version_mismatch
         and not cert.shim_toolchain_mismatch
         and not cert.unavailable
+        and executable_identity_complete
     )
     if cert.production_certified:
         cert.promotion_blocked = False
@@ -1478,8 +1760,8 @@ SEMANTIC_CERTIFIER_SPECS: Final[tuple[dict[str, Any], ...]] = (
         "certified_key": "production_certified",
         "interface": "LeanSemanticCertification@1",
         "selector": "root",
-        "evidence_class": "live_kernel_execution",
-        "production_elevation_allowed": True,
+        "evidence_class": "usable_pending_kernel_live_fanin",
+        "production_elevation_allowed": False,
         "identity_from_receipt": True,
     },
     {
@@ -1490,8 +1772,8 @@ SEMANTIC_CERTIFIER_SPECS: Final[tuple[dict[str, Any], ...]] = (
         "certified_key": "production_certified",
         "interface": "RocqToolchainCertification@1",
         "selector": "root",
-        "evidence_class": "live_kernel_execution",
-        "production_elevation_allowed": True,
+        "evidence_class": "usable_pending_kernel_live_fanin",
+        "production_elevation_allowed": False,
         "identity_from_receipt": True,
     },
     {
@@ -1502,8 +1784,8 @@ SEMANTIC_CERTIFIER_SPECS: Final[tuple[dict[str, Any], ...]] = (
         "certified_key": "production_certified",
         "interface": "IsabelleToolchainCertification@1",
         "selector": "root",
-        "evidence_class": "live_kernel_execution",
-        "production_elevation_allowed": True,
+        "evidence_class": "usable_pending_kernel_live_fanin",
+        "production_elevation_allowed": False,
         "identity_from_receipt": True,
     },
     {
@@ -1514,8 +1796,8 @@ SEMANTIC_CERTIFIER_SPECS: Final[tuple[dict[str, Any], ...]] = (
         "certified_key": "certified",
         "interface": "RuntimeMTLSemanticCertification@1",
         "selector": "root",
-        "evidence_class": "live_in_process_semantics",
-        "production_elevation_allowed": True,
+        "evidence_class": "usable_pending_external_runtime_mtl",
+        "production_elevation_allowed": False,
     },
     {
         "lane_id": "datalog_secpal",
@@ -1525,8 +1807,8 @@ SEMANTIC_CERTIFIER_SPECS: Final[tuple[dict[str, Any], ...]] = (
         "certified_key": "certified",
         "interface": "AuthorizationSemanticCertification@1",
         "selector": "engine",
-        "evidence_class": "live_in_process_semantics",
-        "production_elevation_allowed": True,
+        "evidence_class": "usable_pending_authorization_vendor_fanin",
+        "production_elevation_allowed": False,
     },
     {
         "lane_id": "state_model",
@@ -1727,6 +2009,7 @@ def _semantic_tool_identity(
     receipt: Mapping[str, Any],
     *,
     selector: str,
+    repo_root: Path | None = None,
 ) -> dict[str, Any]:
     """Extract exact executable/artifact identity from a semantic receipt."""
 
@@ -1753,12 +2036,22 @@ def _semantic_tool_identity(
         or receipt.get(f"{tool_id.replace('-', '_')}_version_string")
     )
     artifact_path = source.get("lock_path") or receipt.get("lock_path")
+
+    def portable_path(value: Any) -> str:
+        candidate = Path(str(value))
+        if repo_root is not None:
+            try:
+                return candidate.resolve().relative_to(repo_root.resolve()).as_posix()
+            except (OSError, ValueError):
+                pass
+        return str(candidate)
+
     artifacts: list[dict[str, Any]] = []
     if executable:
         artifacts.append(
             {
                 "kind": "semantic_executable",
-                "path": str(executable),
+                "path": portable_path(executable),
                 "sha256": file_digest(str(executable)),
                 "artifact_class": classify_executable_artifact(str(executable)),
             }
@@ -1767,7 +2060,7 @@ def _semantic_tool_identity(
         artifacts.append(
             {
                 "kind": "deployment_artifact",
-                "path": str(artifact_path),
+                "path": portable_path(artifact_path),
                 "sha256": file_digest(str(artifact_path)),
                 "declared_digest": receipt.get("lock_digest"),
                 "artifact_class": "public_deployment_binding",
@@ -1783,6 +2076,132 @@ def _semantic_tool_identity(
             or receipt.get(f"{tool_id.replace('-', '_')}_identity_probed")
         ),
         "artifacts": artifacts,
+    }
+
+
+def _digest_matches(stored: Any, computed: str) -> bool:
+    value = str(stored or "")
+    return bool(value) and value in {computed, f"sha256:{computed}"}
+
+
+def _validate_semantic_receipt_integrity(
+    receipt: Mapping[str, Any],
+    *,
+    spec: Mapping[str, Any],
+    module: Any,
+) -> dict[str, Any]:
+    """Validate a focused receipt's schema identity and declared self-digest."""
+
+    failures: list[str] = []
+    expected_fields = {
+        "interface": str(spec["interface"]),
+        "schema_version": str(getattr(module, "SCHEMA_VERSION", "") or ""),
+        "goal_id": str(getattr(module, "GOAL_ID", "") or ""),
+        "task_id": str(getattr(module, "TASK_ID", "") or ""),
+    }
+    for field_name, expected in expected_fields.items():
+        observed = str(receipt.get(field_name) or "")
+        if not expected or observed != expected:
+            failures.append(f"{field_name}_mismatch")
+
+    digest_fields = [
+        field_name
+        for field_name in (
+            "receipt_digest_sha256",
+            "certificate_digest_sha256",
+            "digest_sha256",
+        )
+        if field_name in receipt
+    ]
+    if not digest_fields:
+        failures.append("declared_receipt_digest_missing")
+    for field_name in digest_fields:
+        body = {key: value for key, value in receipt.items() if key != field_name}
+        if not _digest_matches(receipt.get(field_name), content_digest(body)):
+            failures.append(f"{field_name}_mismatch")
+
+    return {
+        "valid": not failures,
+        "failures": failures,
+        "declared_digest_fields": digest_fields,
+        "interface": receipt.get("interface"),
+        "schema_version": receipt.get("schema_version"),
+        "goal_id": receipt.get("goal_id"),
+        "task_id": receipt.get("task_id"),
+    }
+
+
+def _resolve_artifact_path(path: Any, *, repo_root: Path) -> Path | None:
+    if not path:
+        return None
+    candidate = Path(str(path))
+    if not candidate.is_absolute():
+        candidate = repo_root / candidate
+    try:
+        return candidate.resolve()
+    except OSError:
+        return candidate.absolute()
+
+
+def _validate_artifact_identities(
+    artifacts: Sequence[Mapping[str, Any]],
+    *,
+    repo_root: Path,
+) -> dict[str, Any]:
+    """Recompute every artifact hash and identify production-capable bindings."""
+
+    failures: list[str] = []
+    validated: list[dict[str, Any]] = []
+    production_bindings: list[dict[str, Any]] = []
+    root = repo_root.resolve()
+    for index, item in enumerate(artifacts):
+        if not isinstance(item, Mapping):
+            failures.append(f"artifact_{index}_not_mapping")
+            continue
+        artifact = dict(item)
+        path = _resolve_artifact_path(artifact.get("path"), repo_root=root)
+        actual = file_digest(path)
+        if path is None or actual is None:
+            failures.append(f"artifact_{index}_missing")
+            continue
+        if str(artifact.get("sha256") or "") != actual:
+            failures.append(f"artifact_{index}_sha256_mismatch")
+            continue
+        artifact_class = str(artifact.get("artifact_class") or "")
+        if artifact_class == "repository_source":
+            try:
+                path.relative_to(root)
+            except ValueError:
+                failures.append(f"artifact_{index}_repository_source_outside_root")
+                continue
+        if artifact_class == "public_deployment_binding":
+            declared = str(artifact.get("declared_digest") or "")
+            try:
+                parsed = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+                parsed = None
+            if not declared or parsed is None or not _digest_matches(
+                declared, content_digest(parsed)
+            ):
+                failures.append(f"artifact_{index}_declared_digest_mismatch")
+                continue
+        try:
+            artifact["resolved_path"] = path.relative_to(root).as_posix()
+        except ValueError:
+            artifact["resolved_path"] = str(path)
+        validated.append(artifact)
+        if artifact_class in {
+            "native_or_managed_binary",
+            "public_deployment_binding",
+        }:
+            production_bindings.append(artifact)
+
+    return {
+        "valid": not failures,
+        "failures": failures,
+        "validated": validated,
+        "production_bindings": production_bindings,
+        "has_production_binding": bool(production_bindings),
     }
 
 
@@ -1810,7 +2229,11 @@ def _invoke_semantic_certifier(
     return receipt
 
 
-def _offline_observation(receipt: Mapping[str, Any]) -> dict[str, Any]:
+def _offline_observation(
+    receipt: Mapping[str, Any],
+    *,
+    production_elevation_allowed: bool,
+) -> dict[str, Any]:
     """Derive no-install/network claims from each focused receipt."""
 
     install_attempted = bool(receipt.get("install_attempted"))
@@ -1823,11 +2246,30 @@ def _offline_observation(receipt: Mapping[str, Any]) -> dict[str, Any]:
             or install_section.get("installed")
             or install_section.get("downloaded")
         )
+        download_attempted = download_attempted or bool(
+            install_section.get("downloaded")
+        )
+        network_used = network_used or bool(install_section.get("network_used"))
+    policy = receipt.get("policy")
+    policy = policy if isinstance(policy, Mapping) else {}
+    explicit_offline_policy = all(
+        policy.get(key) is True for key in ("no_install", "no_download", "no_network")
+    )
+    in_process_only = policy.get("in_process_only") is True
+    declaration_sufficient = bool(
+        explicit_offline_policy
+        or in_process_only
+        or not production_elevation_allowed
+    )
     return {
         "install_attempted": install_attempted,
         "download_attempted": download_attempted,
         "network_used": network_used,
-        "satisfied": not (install_attempted or download_attempted or network_used),
+        "explicit_offline_policy": explicit_offline_policy,
+        "in_process_only": in_process_only,
+        "declaration_sufficient": declaration_sufficient,
+        "satisfied": declaration_sufficient
+        and not (install_attempted or download_attempted or network_used),
     }
 
 
@@ -1851,6 +2293,7 @@ def run_semantic_lane_certifiers(
             "tool_ids": list(tool_ids),
             "status": "not_run",
             "certified": False,
+            "semantically_usable_tool_ids": [],
             "elevated_tool_ids": [],
             "block_reasons": [],
             "digest_sha256": None,
@@ -1896,12 +2339,28 @@ def run_semantic_lane_certifiers(
         entry["status"] = "ran"
         entry["receipt"] = dict(receipt)
         entry["digest_sha256"] = content_digest(receipt)
-        entry["offline_observation"] = _offline_observation(receipt)
+        entry["receipt_integrity"] = _validate_semantic_receipt_integrity(
+            receipt,
+            spec=spec,
+            module=module,
+        )
+        entry["offline_observation"] = _offline_observation(
+            receipt,
+            production_elevation_allowed=bool(
+                spec["production_elevation_allowed"]
+            ),
+        )
         entry["receipt_goal_id"] = receipt.get("goal_id")
         entry["receipt_task_id"] = receipt.get("task_id")
         entry["certified"] = bool(
             receipt.get(str(spec["certified_key"])) or receipt.get("certified")
-        )
+        ) and bool(entry["receipt_integrity"]["valid"])
+        if not entry["receipt_integrity"]["valid"]:
+            entry["block_reasons"].extend(
+                entry["receipt_integrity"]["failures"]
+            )
+        if not entry["offline_observation"]["satisfied"]:
+            entry["block_reasons"].append("offline_observation_failed")
         entry["per_tool"] = {}
         for tool_id in tool_ids:
             certified, raw_checks, block_reasons = _tool_certified_from_semantic_receipt(
@@ -1915,6 +2374,7 @@ def run_semantic_lane_certifiers(
                 tool_id,
                 receipt,
                 selector=str(spec.get("selector") or "root"),
+                repo_root=repo_root,
             )
             identity["artifacts"].append(
                 {
@@ -1924,9 +2384,24 @@ def run_semantic_lane_certifiers(
                     "artifact_class": "repository_source",
                 }
             )
+            artifact_validation = _validate_artifact_identities(
+                identity["artifacts"],
+                repo_root=repo_root,
+            )
+            checks_complete = bool(normalized_checks) and all(
+                check.status == "passed" for check in normalized_checks
+            )
+            certified = bool(
+                certified
+                and entry["receipt_integrity"]["valid"]
+                and entry["offline_observation"]["satisfied"]
+                and checks_complete
+                and artifact_validation["valid"]
+            )
             entry["per_tool"][tool_id] = {
                 "certified": certified,
-                "block_reasons": block_reasons,
+                "block_reasons": list(block_reasons)
+                + list(artifact_validation["failures"]),
                 "check_kinds_present": sorted(
                     {
                         str(c.get("kind"))
@@ -1945,8 +2420,11 @@ def run_semantic_lane_certifiers(
                     [check.to_dict() for check in normalized_checks]
                 ),
                 "identity": identity,
+                "artifact_validation": artifact_validation,
             }
             if certified:
+                entry["semantically_usable_tool_ids"].append(tool_id)
+            if certified and bool(spec["production_elevation_allowed"]):
                 entry["elevated_tool_ids"].append(tool_id)
         results.append(entry)
     return results
@@ -1955,6 +2433,8 @@ def run_semantic_lane_certifiers(
 def apply_semantic_elevations(
     tool_certs: dict[str, ToolCertification],
     semantic_results: Sequence[Mapping[str, Any]],
+    *,
+    repo_root: Path | None = None,
 ) -> list[dict[str, Any]]:
     """Elevate usable tools whose focused semantic certifiers fully pass.
 
@@ -1963,6 +2443,7 @@ def apply_semantic_elevations(
     """
 
     elevations: list[dict[str, Any]] = []
+    root = (repo_root or repo_root_from()).resolve()
     for result in semantic_results:
         lane_id = str(result.get("lane_id") or "")
         spec = next(
@@ -1979,6 +2460,53 @@ def apply_semantic_elevations(
                         "lane_id": lane_id,
                         "status": "elevation_aborted",
                         "error": "semantic_receipt_missing",
+                    }
+                )
+            continue
+        result_digest = str(result.get("digest_sha256") or "")
+        integrity = result.get("receipt_integrity")
+        offline = result.get("offline_observation")
+        declared_digest_fields = [
+            field_name
+            for field_name in (
+                "receipt_digest_sha256",
+                "certificate_digest_sha256",
+                "digest_sha256",
+            )
+            if field_name in receipt
+        ]
+        declared_digests_valid = bool(declared_digest_fields) and all(
+            _digest_matches(
+                receipt.get(field_name),
+                content_digest(
+                    {
+                        key: value
+                        for key, value in receipt.items()
+                        if key != field_name
+                    }
+                ),
+            )
+            for field_name in declared_digest_fields
+        )
+        result_integrity_valid = bool(
+            result.get("status") == "ran"
+            and result_digest
+            and result_digest == content_digest(receipt)
+            and str(receipt.get("interface") or "") == str(spec["interface"])
+            and declared_digests_valid
+            and isinstance(integrity, Mapping)
+            and integrity.get("valid") is True
+            and isinstance(offline, Mapping)
+            and offline.get("satisfied") is True
+        )
+        if not result_integrity_valid:
+            for tool_id in result.get("tool_ids") or spec["tool_ids"]:
+                elevations.append(
+                    {
+                        "tool_id": tool_id,
+                        "lane_id": lane_id,
+                        "elevated": False,
+                        "reason": "semantic_receipt_integrity_failed",
                     }
                 )
             continue
@@ -2034,6 +2562,22 @@ def apply_semantic_elevations(
                 if isinstance(per_tool_results, Mapping)
                 else {}
             )
+            projected_payload = [check.to_dict() for check in projected]
+            if (
+                not isinstance(per_tool_result, Mapping)
+                or per_tool_result.get("certified") is not True
+                or str(per_tool_result.get("check_set_digest_sha256") or "")
+                != content_digest(projected_payload)
+            ):
+                elevations.append(
+                    {
+                        "tool_id": tool_id,
+                        "lane_id": lane_id,
+                        "elevated": False,
+                        "reason": "per_tool_semantic_binding_invalid",
+                    }
+                )
+                continue
             semantic_identity = (
                 per_tool_result.get("identity")
                 if isinstance(per_tool_result, Mapping)
@@ -2044,16 +2588,93 @@ def apply_semantic_elevations(
                     str(tool_id),
                     receipt,
                     selector=str(spec.get("selector") or "root"),
+                    repo_root=root,
                 )
+            artifacts = semantic_identity.get("artifacts")
+            artifacts = (
+                [item for item in artifacts if isinstance(item, Mapping)]
+                if isinstance(artifacts, Sequence)
+                and not isinstance(artifacts, (str, bytes, bytearray))
+                else []
+            )
+            artifact_validation = _validate_artifact_identities(
+                artifacts,
+                repo_root=root,
+            )
+            recorded_artifact_validation = per_tool_result.get(
+                "artifact_validation"
+            )
+            if (
+                not artifact_validation["valid"]
+                or not isinstance(recorded_artifact_validation, Mapping)
+                or recorded_artifact_validation.get("valid") is not True
+            ):
+                elevations.append(
+                    {
+                        "tool_id": tool_id,
+                        "lane_id": lane_id,
+                        "elevated": False,
+                        "reason": "semantic_artifact_identity_invalid",
+                        "failures": artifact_validation["failures"],
+                    }
+                )
+                continue
             cert.artifact_identities.extend(
                 item
-                for item in semantic_identity["artifacts"]
+                for item in artifacts
                 if item not in cert.artifact_identities
             )
-            receipt_digest = str(result.get("digest_sha256") or "")
+            receipt_digest = result_digest
             if receipt_digest and receipt_digest not in cert.semantic_receipt_digests:
                 cert.semantic_receipt_digests.append(receipt_digest)
             cert.checks = projected
+
+            if spec.get("identity_from_receipt"):
+                executable = semantic_identity.get("executable_path")
+                if executable:
+                    resolved_executable = _resolve_artifact_path(
+                        executable,
+                        repo_root=root,
+                    )
+                    cert.executable_path = (
+                        str(resolved_executable)
+                        if resolved_executable is not None
+                        else None
+                    )
+                    cert.executable_sha256 = file_digest(resolved_executable)
+                    cert.executable_artifact_class = classify_executable_artifact(
+                        resolved_executable
+                    )
+                if semantic_identity.get("version_string"):
+                    cert.version_string = str(semantic_identity["version_string"])
+                version_exact = True
+                if cert.locked_version and cert.version_string:
+                    version_exact = not detect_locked_version_mismatch(
+                        cert.locked_version,
+                        cert.version_string,
+                    )
+                usable_artifact_bound = bool(
+                    artifact_validation["validated"]
+                    and (
+                        executable
+                        or any(
+                            item.get("artifact_class")
+                            == "public_deployment_binding"
+                            for item in artifact_validation["validated"]
+                        )
+                    )
+                )
+                semantic_identity_usable = bool(
+                    semantic_identity.get("identity_probed")
+                    and usable_artifact_bound
+                    and version_exact
+                )
+                if semantic_identity_usable:
+                    cert.identity_probed = True
+                    cert.locked_version_mismatch = False
+                    cert.installed = True
+                    cert.usable = True
+                    cert.unavailable = False
 
             if not bool(spec.get("production_elevation_allowed")):
                 cert.production_certified = False
@@ -2083,13 +2704,22 @@ def apply_semantic_elevations(
 
             if spec.get("identity_from_receipt"):
                 executable = semantic_identity.get("executable_path")
-                artifacts = semantic_identity.get("artifacts") or []
-                exact_artifact = any(item.get("sha256") for item in artifacts)
+                exact_artifact = bool(
+                    artifact_validation["has_production_binding"]
+                )
                 if executable:
-                    cert.executable_path = str(executable)
-                    cert.executable_sha256 = file_digest(str(executable))
+                    resolved_executable = _resolve_artifact_path(
+                        executable,
+                        repo_root=root,
+                    )
+                    cert.executable_path = (
+                        str(resolved_executable)
+                        if resolved_executable is not None
+                        else None
+                    )
+                    cert.executable_sha256 = file_digest(resolved_executable)
                     cert.executable_artifact_class = classify_executable_artifact(
-                        str(executable)
+                        resolved_executable
                     )
                 if semantic_identity.get("version_string"):
                     cert.version_string = str(semantic_identity["version_string"])
@@ -2101,13 +2731,24 @@ def apply_semantic_elevations(
                     )
                 elif cert.locked_version and not any(
                     item.get("artifact_class") == "public_deployment_binding"
-                    for item in artifacts
+                    for item in artifact_validation["production_bindings"]
                 ):
                     version_exact = False
                 cert.identity_probed = bool(
                     semantic_identity.get("identity_probed")
                     and exact_artifact
                     and version_exact
+                    and (
+                        cert.executable_artifact_class
+                        == "native_or_managed_binary"
+                        or any(
+                            item.get("artifact_class")
+                            == "public_deployment_binding"
+                            for item in artifact_validation[
+                                "production_bindings"
+                            ]
+                        )
+                    )
                 )
                 cert.locked_version_mismatch = not version_exact
                 cert.installed = cert.identity_probed
@@ -2266,10 +2907,12 @@ def build_managed_deployment_readiness(
     tools_index: Mapping[str, Mapping[str, Any]],
     tool_certs: Mapping[str, ToolCertification],
     authority_roles: Mapping[str, Any],
+    repo_root: Path | None = None,
 ) -> dict[str, Any]:
     """Derive deployment blockers for every host-supported managed tool."""
 
     host_platform = observed_platform_id()
+    root = (repo_root or repo_root_from()).resolve()
     global_platforms = [
         str(item)
         for item in (
@@ -2310,18 +2953,31 @@ def build_managed_deployment_readiness(
             else "capability"
         )
         if not platform_row["supported"]:
-            exceptions.append(
-                {
-                    "tool_id": tool_id,
-                    "host_platform": host_platform,
-                    "declared_platforms": platform_row["declared_platforms"],
-                    "basis": platform_row["basis"],
-                    "category": category,
-                    "narrow_scope": True,
-                    "complete": False,
-                    "production_certified": False,
-                }
-            )
+            if platform_row["exception_eligible"]:
+                exceptions.append(
+                    {
+                        "tool_id": tool_id,
+                        "host_platform": host_platform,
+                        "declared_platforms": platform_row["declared_platforms"],
+                        "basis": platform_row["basis"],
+                        "classification": platform_row["classification"],
+                        "category": category,
+                        "narrow_scope": True,
+                        "complete": False,
+                        "production_certified": False,
+                    }
+                )
+            else:
+                blockers.append(
+                    {
+                        "tool_id": tool_id,
+                        "category": category,
+                        "role": role,
+                        "evidence_class": "platform_ambiguous",
+                        "artifact_classes": [],
+                        "reasons": ["platform_support_ambiguous_or_contradictory"],
+                    }
+                )
             continue
 
         if category == "dependency":
@@ -2345,18 +3001,22 @@ def build_managed_deployment_readiness(
             for item in cert.artifact_identities
             if isinstance(item, Mapping)
         }
-        exact_artifact = any(
-            item.get("sha256")
-            for item in cert.artifact_identities
-            if isinstance(item, Mapping)
+        artifact_validation = _validate_artifact_identities(
+            [
+                item
+                for item in cert.artifact_identities
+                if isinstance(item, Mapping)
+            ],
+            repo_root=root,
         )
-        generated_only = bool(artifact_classes) and artifact_classes <= {
-            "generated_hermetic_shim"
-        }
-        public_binding = "public_deployment_binding" in artifact_classes
+        exact_artifact = bool(artifact_validation["has_production_binding"])
+        public_binding = any(
+            item.get("artifact_class") == "public_deployment_binding"
+            for item in artifact_validation["production_bindings"]
+        )
         genuinely_installed = bool(
             exact_artifact
-            and not generated_only
+            and artifact_validation["valid"]
             and (
                 (cert.installed and cert.identity_probed)
                 or public_binding
@@ -2366,6 +3026,10 @@ def build_managed_deployment_readiness(
         reasons: list[str] = []
         if not genuinely_installed:
             reasons.append("supported_managed_installation_missing_or_shim_only")
+        if not artifact_validation["valid"]:
+            reasons.append("artifact_identity_invalid")
+        if "launcher_script" in artifact_classes and not public_binding:
+            reasons.append("launcher_target_artifact_unbound")
         if cert.locked_version_mismatch:
             reasons.append("locked_version_mismatch")
 
@@ -2444,11 +3108,12 @@ def build_certificate(
 ) -> dict[str, Any]:
     """Run the full hermetic multi-prover certification and return the certificate.
 
-    When ``role_aware`` is true (FVT-G200 reissue), usable tools whose focused
-    semantic certifiers fully pass are elevated to production-certified with
-    exact positive/negative/mutation/replay evidence. Default (FVT-G060)
-    certification keeps identity-only lanes non-elevated so usability and
-    semantic certification remain distinct.
+    When ``role_aware`` is true (FVT-G200 reissue), focused semantic receipts
+    are aggregated and checked against their role ceiling.  Open kernel/vendor
+    fan-in goals remain usable-but-pending and cannot be elevated merely from
+    an individual or in-process receipt. Default (FVT-G060) certification keeps
+    identity-only lanes non-elevated so usability and semantic certification
+    remain distinct.
     """
 
     root = repo_root or repo_root_from()
@@ -2547,7 +3212,11 @@ def build_certificate(
             env=run_env,
             tool_certs=tool_certs,
         )
-        elevations = apply_semantic_elevations(tool_certs, semantic_results)
+        elevations = apply_semantic_elevations(
+            tool_certs,
+            semantic_results,
+            repo_root=root,
+        )
         demotions = apply_role_aware_demotions(tool_certs, authority_roles)
 
     deployment_readiness = build_managed_deployment_readiness(
@@ -2555,6 +3224,7 @@ def build_certificate(
         tools_index=tools_index,
         tool_certs=tool_certs,
         authority_roles=authority_roles,
+        repo_root=root,
     )
 
     lanes = certify_property_lanes(tool_certs, disagreements)
@@ -2594,6 +3264,10 @@ def build_certificate(
     offline_policy_satisfied = all(
         bool(offline_policy.get(key)) for key in required_offline_policy_keys
     ) and all(bool(item.get("satisfied")) for item in offline_observations)
+    public_semantic_results = [
+        _project_semantic_lane_result(result, repo_root=root)
+        for result in semantic_results
+    ]
     certificate: dict[str, Any] = {
         "schema_version": SCHEMA_VERSION,
         "interface": INTERFACE,
@@ -2608,8 +3282,9 @@ def build_certificate(
             "certification performs no download/network/install and quarantines "
             "disagreement."
             + (
-                " Role-aware reissue elevates Lean, Runtime MTL, and "
-                "Datalog/SecPAL only after focused semantic certifiers pass."
+                " Role-aware reissue retains Lean, Runtime MTL, Datalog/SecPAL, "
+                "Rocq, and Isabelle as usable but non-production until their "
+                "open live semantic and fan-in goals are certified."
                 if role_aware
                 else ""
             )
@@ -2722,9 +3397,9 @@ def build_certificate(
             },
         },
         "authority_roles": authority_roles,
-        # Retain every raw receipt and every check. Canonical digests make any
-        # omitted check, case, binding, or identity mutation-visible.
-        "semantic_lane_results": semantic_results,
+        # Retain every check in a portable public projection. Raw process
+        # output and secret/witness values are retained only by digest.
+        "semantic_lane_results": public_semantic_results,
         "managed_deployment_readiness": deployment_readiness,
         "role_aware": {
             "enabled": bool(role_aware),
@@ -2745,6 +3420,8 @@ def build_certificate(
                 "runtime-mtl",
                 "datalog-authorization",
                 "secpal-authorization",
+                "coq",
+                "isabelle",
             ],
         },
         "check_kinds_required": ["positive", "negative", "mutation", "replay"],
@@ -2760,6 +3437,16 @@ def build_certificate(
         },
         "certificate_digest_sha256": "",  # filled below
     }
+    certificate = public_evidence_projection(certificate, repo_root=root)
+    public_evidence_policy = public_evidence_audit(certificate)
+    certificate["public_evidence_policy"] = public_evidence_policy
+    if not public_evidence_policy["satisfied"]:
+        managed = certificate.get("managed_deployment_readiness")
+        if isinstance(managed, dict):
+            managed["ready"] = False
+            blockers = managed.setdefault("dependency_blockers", [])
+            if "public_evidence_redaction_failed" not in blockers:
+                blockers.append("public_evidence_redaction_failed")
     certificate["certificate_digest_sha256"] = content_digest(
         {key: value for key, value in certificate.items() if key != "certificate_digest_sha256"}
     )

@@ -46,6 +46,8 @@ REQUIRED_ELEVATIONS = {
     "runtime-mtl",
     "datalog-authorization",
     "secpal-authorization",
+    "coq",
+    "isabelle",
 }
 REQUIRED_CHECK_KINDS = {"positive", "negative", "mutation", "replay"}
 NON_AUTHORITATIVE_CLASSES = {
@@ -141,7 +143,7 @@ def test_certificate_identity_binds_the_complete_body(
     assert certificate["certificate_digest_sha256"] == certifier.content_digest(body)
 
 
-def test_every_semantic_lane_retains_full_raw_receipt_and_check_sets(
+def test_every_semantic_lane_retains_portable_receipt_and_full_check_sets(
     certifier, certificate: dict[str, Any]
 ) -> None:
     results = certificate["semantic_lane_results"]
@@ -166,8 +168,12 @@ def test_every_semantic_lane_retains_full_raw_receipt_and_check_sets(
         if result["status"] != "ran":
             assert result["block_reasons"]
             continue
-        raw = result["receipt"]
-        assert result["digest_sha256"] == certifier.content_digest(raw)
+        public_receipt = result["receipt"]
+        assert result["digest_sha256"] == certifier.content_digest(public_receipt)
+        assert result["receipt_integrity"]["valid"] is True, result["lane_id"]
+        assert result["offline_observation"]["satisfied"] is True
+        assert result["public_projection"]["portable_paths"] is True
+        assert result["public_projection"]["raw_process_output_retained"] is False
         for per_tool in result["per_tool"].values():
             checks = per_tool["checks"]
             assert per_tool["check_set_digest_sha256"] == certifier.content_digest(
@@ -176,9 +182,46 @@ def test_every_semantic_lane_retains_full_raw_receipt_and_check_sets(
             assert REQUIRED_CHECK_KINDS <= {
                 check["kind"] for check in checks
             }
+            assert per_tool["artifact_validation"]["valid"] is True
 
 
-def test_baseline_elevations_keep_every_check_not_first_only(
+def test_generated_certificate_and_role_receipt_are_portable_and_redacted(
+    certifier,
+    builder,
+    certificate: dict[str, Any],
+    completion: dict[str, Any],
+) -> None:
+    certificate_text = json.dumps(certificate, sort_keys=True)
+    assert "/home/" not in certificate_text
+    assert "/tmp/" not in certificate_text
+    assert "private-witness-FVT047-SECRET-AXIOM-NEVER-LEAK" not in certificate_text
+    assert certificate["public_evidence_policy"]["satisfied"] is True
+
+    role_receipt = builder.build_role_aware_deployment_receipt(
+        repo_root=REPO_ROOT,
+        observed_at="2026-07-31T00:00:00Z",
+        completion_receipt=completion,
+        role_aware_certificate=certificate,
+        supervisor_evidence={
+            "task_state_source": {"path": "/tmp/private/state.json"},
+            "event_log_source": {"path": "/home/user/private/events.jsonl"},
+            "probe": {
+                "stdout": "unbounded-secret-output" * 10000,
+                "secret": "raw-secret-value",
+                "witness": "raw-witness-value",
+            },
+        },
+    )
+    role_text = json.dumps(role_receipt, sort_keys=True)
+    assert "/home/" not in role_text
+    assert "/tmp/" not in role_text
+    assert "raw-secret-value" not in role_text
+    assert "raw-witness-value" not in role_text
+    assert "unbounded-secret-output" not in role_text
+    assert role_receipt["public_evidence_policy"]["satisfied"] is True
+
+
+def test_usable_pending_capabilities_keep_every_check_without_premature_promotion(
     certificate: dict[str, Any],
 ) -> None:
     tools = _tools(certificate)
@@ -190,10 +233,12 @@ def test_baseline_elevations_keep_every_check_not_first_only(
     }
     for tool_id, minimum in expected_minimums.items():
         tool = tools[tool_id]
-        assert tool["production_certified"] is True, (
-            tool_id,
-            tool["block_reasons"],
-        )
+        assert tool["usable"] is True, tool_id
+        assert tool["production_certified"] is False, tool_id
+        assert tool["promotion_blocked"] is True, tool_id
+        assert "evidence_class_cannot_satisfy_production_authority" in tool[
+            "block_reasons"
+        ]
         assert len(tool["checks"]) >= minimum
         assert REQUIRED_CHECK_KINDS <= {
             check["kind"] for check in tool["checks"]
@@ -203,6 +248,23 @@ def test_baseline_elevations_keep_every_check_not_first_only(
         assert any(
             artifact.get("sha256") for artifact in tool["artifact_identities"]
         )
+
+    for tool_id in ("coq", "isabelle"):
+        tool = tools[tool_id]
+        assert tool["usable"] is False
+        assert tool["unavailable"] is True
+        assert tool["production_certified"] is False
+        assert tool["promotion_blocked"] is True
+        assert len(tool["checks"]) == 4
+        assert all(check["status"] == "unavailable" for check in tool["checks"])
+        lane_id = "kernel_rocq" if tool_id == "coq" else "kernel_isabelle"
+        lane = next(
+            row
+            for row in certificate["semantic_lane_results"]
+            if row["lane_id"] == lane_id
+        )
+        assert lane["per_tool"][tool_id]["certified"] is False
+        assert len(lane["per_tool"][tool_id]["checks"]) >= 12
 
 
 def test_supported_missing_tools_are_blockers_not_platform_exceptions(
@@ -276,6 +338,13 @@ def test_role_receipt_is_blocked_and_explains_each_open_gate(
         receipt["acceptance"]["supported_managed_capabilities_ready"] is False
     )
     assert receipt["acceptance"]["supervisor_evidence_bound"] is False
+    assert (
+        receipt["acceptance"]["lean_runtime_mtl_authorization_elevated"]
+        is False
+    )
+    assert set(receipt["acceptance"]["required_elevations_missing"]) == (
+        REQUIRED_ELEVATIONS
+    )
     assert receipt["source"]["attestation_excluded_from_source_tree"] is True
     assert receipt["source"]["publication_verification_required"] is True
     assert receipt["platform_exceptions"] == receipt["role_aware_certificate"][
@@ -357,6 +426,16 @@ def test_missing_artifact_identity_blocks_managed_readiness(
     ]
 
 
+def test_launcher_script_cannot_stand_in_for_the_managed_prover_artifact(
+    certificate: dict[str, Any],
+) -> None:
+    cvc5 = _tools(certificate)["cvc5"]
+    assert cvc5["usable"] is True
+    assert cvc5["executable_artifact_class"] == "launcher_script"
+    assert cvc5["production_certified"] is False
+    assert "launcher_target_artifact_unbound" in cvc5["block_reasons"]
+
+
 def test_platform_mutation_moves_tool_between_exception_and_blocker(
     certifier, certificate: dict[str, Any]
 ) -> None:
@@ -387,39 +466,120 @@ def test_platform_mutation_moves_tool_between_exception_and_blocker(
 
 def test_supervisor_binding_requires_canonical_cid_completion_validation_and_merge(
     builder,
+    tmp_path: Path,
 ) -> None:
     cid = "baguqeera-test-cid"
     key = "task/v1/test-key"
+    implementation_commit = subprocess.run(
+        ["git", "-C", str(REPO_ROOT), "rev-parse", "origin/main^"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    merge_commit = subprocess.run(
+        ["git", "-C", str(REPO_ROOT), "rev-parse", "origin/main"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    implementation_tree = subprocess.run(
+        [
+            "git",
+            "-C",
+            str(REPO_ROOT),
+            "rev-parse",
+            f"{implementation_commit}^{{tree}}",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    merge_tree = subprocess.run(
+        [
+            "git",
+            "-C",
+            str(REPO_ROOT),
+            "rev-parse",
+            f"{merge_commit}^{{tree}}",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
     completion_receipt = {
         "schema": builder.SUPERVISOR_COMPLETION_SCHEMA,
         "status": "succeeded",
         "task_id": "FVT-053",
         "canonical_task_cid": cid,
         "canonical_task_key": key,
+        "implementation_commit": implementation_commit,
+        "merge_commit": merge_commit,
     }
-    snapshot = {
-        "schema_version": "formal-verification-supervisor-evidence-snapshot/v1",
-        "task_id": "FVT-053",
-        "task_state": {
-            "canonical_identity": {
+    state_path = tmp_path / "agent_release_task_state.json"
+    event_path = tmp_path / "agent_release_events.jsonl"
+    state = {
+        "active_task_id": "",
+        "active_task_cid": "",
+        "implementation_in_progress": False,
+        "last_implementation_task_id": "FVT-053",
+        "last_implementation_task_cid": cid,
+        "last_implementation_commit": implementation_commit,
+        "last_merge_commit": merge_commit,
+        "task_statuses": {"FVT-053": "completed"},
+        "task_identities": {
+            "FVT-053": {
                 "canonical_task_cid": cid,
                 "canonical_task_key": key,
             }
         },
-        "events": [
-            {
-                "type": "implementation_finished",
-                "canonical_task_cid": cid,
-                "validation": {"passed": True, "returncode": 0},
-                "merge": {"merged": True, "merge_commit": "a" * 40},
-                "completion_receipts": [completion_receipt],
-            }
-        ],
     }
-    assert builder.derive_supervisor_binding(snapshot)["bound"] is True
+    state_path.write_text(json.dumps(state), encoding="utf-8")
+    event = {
+        "type": "implementation_finished",
+        "timestamp": "2026-07-31T00:00:00Z",
+        "task_id": "FVT-053",
+        "canonical_task_cid": cid,
+        "canonical_task_key": key,
+        "implementation_commit": implementation_commit,
+        "validation_result": {
+            "attempted": True,
+            "passed": True,
+            "returncode": 0,
+            "target_commit": implementation_commit,
+        },
+        "merge_result": {
+            "merged": True,
+            "implementation_commit": implementation_commit,
+            "merge_commit": merge_commit,
+            "target_branch": "origin/main",
+            "integration_commit_proof": {
+                "passed": True,
+                "implementation_tree": implementation_tree,
+                "merge_tree": merge_tree,
+            },
+        },
+        "completion_receipts": [completion_receipt],
+        "stream_id": "event-log:sha256:" + "d" * 64,
+        "snapshot_id": "event-log-snapshot:sha256:" + "e" * 64,
+        "sequence": 1,
+        "previous_event_id": "",
+    }
+    event["event_id"] = builder.content_digest(event)
+    event_path.write_text(json.dumps(event) + "\n", encoding="utf-8")
+    snapshot = builder.load_supervisor_evidence_snapshot(
+        task_state_path=state_path,
+        event_log_path=event_path,
+    )
+    assert builder.derive_supervisor_binding(
+        snapshot,
+        repo_root=REPO_ROOT,
+    )["bound"] is True
     mutated = copy.deepcopy(snapshot)
     mutated["events"][0]["canonical_task_cid"] = "wrong"
-    binding = builder.derive_supervisor_binding(mutated)
+    binding = builder.derive_supervisor_binding(
+        mutated,
+        repo_root=REPO_ROOT,
+    )
     assert binding["bound"] is False
     assert "canonical_task_cid_not_bound" in binding["block_reasons"]
 
