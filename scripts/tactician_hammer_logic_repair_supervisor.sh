@@ -27,7 +27,7 @@ STATE_ROOT="${PROGRAM_ROOT}/state"
 PREFLIGHT_ROOT="${PROGRAM_ROOT}/preflight"
 WORKTREE_ROOT="${PROGRAM_ROOT}/worktrees"
 MERGE_QUEUE_ROOT="${PROGRAM_ROOT}/merge-queue"
-LIFECYCLE_LOCK_PATH="${PROGRAM_ROOT}/lifecycle.lock"
+LIFECYCLE_LOCK_PATH="${RUNTIME_ROOT}/lifecycle.lock"
 LIFECYCLE_LOCK_WAIT_SECONDS="${LPR_LIFECYCLE_LOCK_WAIT_SECONDS:-120}"
 MASTER_PID_PATH="${RUNTIME_ROOT}/master.pid"
 MASTER_IDENTITY_PATH="${RUNTIME_ROOT}/master.identity.json"
@@ -716,10 +716,6 @@ launch_master() {
   mkdir -p "${RUNTIME_ROOT}" "${STATE_ROOT}" "${WORKTREE_ROOT}" "${MERGE_QUEUE_ROOT}"
   export IPFS_ACCELERATE_LPR_RUN_ID="${run_id}"
   (
-    # The parent shell must retain the lifecycle lock until the detached
-    # master's PID and identity have both been published.  Do not leak the
-    # lock descriptor into that long-lived process.
-    exec 9>&-
     cd "${REPO_ROOT}"
     "${PYTHON_BIN}" -m "${RUNNER_MODULE}" \
       --repo-root "${REPO_ROOT}" \
@@ -793,6 +789,14 @@ launch_master() {
 
 with_lifecycle_lock() {
   local operation="$1"
+  case "${operation}" in
+    start|stop|restart)
+      ;;
+    *)
+      echo "unsupported lifecycle lock operation: ${operation}" >&2
+      return 2
+      ;;
+  esac
   if ! command -v flock >/dev/null 2>&1; then
     echo "flock is required for supervisor lifecycle serialization" >&2
     return 2
@@ -802,15 +806,39 @@ with_lifecycle_lock() {
     return 2
   fi
   validate_runtime_root >/dev/null
-  mkdir -p "${PROGRAM_ROOT}"
-  exec 9>"${LIFECYCLE_LOCK_PATH}"
-  if ! flock -w "${LIFECYCLE_LOCK_WAIT_SECONDS}" 9; then
-    echo \
-      "timed out waiting for supervisor lifecycle lock: ${LIFECYCLE_LOCK_PATH}" \
-      >&2
+  mkdir -p "${RUNTIME_ROOT}"
+  IPFS_ACCELERATE_LPR_LIFECYCLE_LOCK_HELD=1 \
+    flock \
+      --exclusive \
+      --close \
+      --wait "${LIFECYCLE_LOCK_WAIT_SECONDS}" \
+      "${LIFECYCLE_LOCK_PATH}" \
+      "${REPO_ROOT}/${LAUNCHER_PATH}" \
+      "__locked_${operation}"
+}
+
+run_locked_lifecycle_operation() {
+  local operation="$1"
+  if [[ "${IPFS_ACCELERATE_LPR_LIFECYCLE_LOCK_HELD:-}" != "1" ]]; then
+    echo "refusing unlocked internal lifecycle operation: ${operation}" >&2
     return 2
   fi
-  "${operation}"
+  unset IPFS_ACCELERATE_LPR_LIFECYCLE_LOCK_HELD
+  case "${operation}" in
+    start)
+      start
+      ;;
+    stop)
+      stop
+      ;;
+    restart)
+      restart
+      ;;
+    *)
+      echo "unsupported internal lifecycle operation: ${operation}" >&2
+      return 2
+      ;;
+  esac
 }
 
 start() {
@@ -1066,6 +1094,15 @@ case "${1:-}" in
     ;;
   stop)
     with_lifecycle_lock stop
+    ;;
+  __locked_start)
+    run_locked_lifecycle_operation start
+    ;;
+  __locked_stop)
+    run_locked_lifecycle_operation stop
+    ;;
+  __locked_restart)
+    run_locked_lifecycle_operation restart
     ;;
   *)
     echo "usage: $0 {doctor|preflight|start|status|restart|stop}" >&2
