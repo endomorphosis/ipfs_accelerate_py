@@ -13,6 +13,12 @@ This is a successor projection over completed `RPR-000` through `RPR-047`.
 Those landed interfaces are capability-probed preconditions, not unknown local
 task dependencies.
 
+Control-plane extension note: `LPR-000` records the original sealed 21-task,
+seven-goal bootstrap acceptance snapshot. The append-only `LPR-G070` extension
+adds `LPR-021` through `LPR-028` without rewriting any existing task identity;
+the current validator therefore requires 29 tasks, eight goals, and
+`LPR-028` as the unique terminal task.
+
 Normative execution order:
 
 ```text
@@ -685,3 +691,251 @@ expectations under existing precedence, but do not prove them by passing.
 - Evidence subset: dependency/goal DAG, exact bindings, capabilities, provider/process health, metrics/floors, feature flags, lifecycle, rollback, end-to-end fixtures
 - Acceptance: Release validator composes the protected bootstrap board/DAG doctor with exact two-repository gitlink/module/schema/tool/environment bindings, import-isolation and native-execution permits, platform resource/network isolation strength, capability health and benchmark floors; it verifies protected paths, strict four-lane sharding, isolated state/worktrees, one merge queue, bounded retries and one refill owner; the unchanged bootstrap launcher doctor/start/status/restart/stop remains idempotent and never kills unrelated processes or stores secrets in argv/logs; stages are doctor/replay, shadow default, assist, deterministic narrow-auto and approval-gated behavior-complete model edit; independent flags disable prediction/learned ranking/Hammer/refinement/LLM/auto; stateful/public-schema/API/dynamic/generated/native/cross-root/new-dependency work remains approval-required; any nonzero floor, drift, reconstruction/countermodel-validation loss, inconsistency, transaction, isolation or budget regression rolls back; seeded explicit and ordinary-proposal two-to-three-argument plus complex support-type cases update all resolved callers and reach an existing completion receipt with a current logic fixed-point attachment or abstain; a healthy isolated supervisor drains the board without dependency, provider, protected-path, merge or lifecycle blockage.
 - Embedding query: logic repair rollout doctor replay shadow assist narrow auto supervisor launch rollback end to end
+
+## LPR-021 Pin the VFS source baseline and generalize repository surface inventory
+
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: assurance-generalization
+- Depends on: LPR-020
+- Goal id: LPR-G070
+- Outputs: config/agent_supervisor_vfs_generalization_sources.lock.json, docs/architecture/agent_supervisor/VFS_ASSURANCE_GENERALIZATION_MAP.md, ipfs_accelerate_py/agent_supervisor/analysis/repository_surface_inventory.py, test/api/test_agent_supervisor_repository_surface_inventory.py
+- Validation: python -m pytest -q test/api/test_agent_supervisor_repository_surface_inventory.py && python scripts/validate_tactician_hammer_logic_repair_board.py --check-all
+- Board namespace: agent-supervisor-tactician-hammer-logic-repair-v1
+- Bundle: agent-supervisor/tactician-hammer-logic-repair/generalization-inventory
+- Parallel lane: lpr-general-inventory
+- Resource class: cpu-large
+- Resource stage: analysis
+- Token class: large
+- Estimated tokens: 36000
+- Implementation timeout seconds: 7200
+- Predicted files: config/agent_supervisor_vfs_generalization_sources.lock.json, docs/architecture/agent_supervisor/VFS_ASSURANCE_GENERALIZATION_MAP.md, ipfs_accelerate_py/agent_supervisor/analysis/repository_surface_inventory.py, test/api/test_agent_supervisor_repository_surface_inventory.py
+- AST symbols: SurfaceInventoryPolicy, SurfaceSignal, SurfaceKindSpec, Definition, SurfaceEvidence, SurfaceContradiction, InventoryDiagnostic, SurfaceRecord, InventoryCompleteness, RepositorySurfaceInventory, discover_surface_paths, inventory_repository_surfaces, assert_inventory_complete, publish_surface_inventory
+- Interfaces: ProgramGraph, RepositorySnapshot, RepositoryForest, canonical content identity, source-lock manifest
+- Allow concurrent with:
+- Conflict policy: Read only the exact source-lock Git blobs and planned VFS board contracts; never merge or cherry-pick the broad source revision, copy a root vfs_* module, import scanned code, or embed repository bodies in the lock/map.
+- Preconditions: The complete LPR release is stable; Git commit 0cc04ebb640c4c981cf4650016e096a73ab0e8c0 is reachable from the namespaced source-lock ref or exact origin object fetch, and its seven declared module/test blobs are available.
+- Effects: Workers receive a content-addressed old-to-new API/schema/caller map and a reusable static repository-surface inventory whose signals, suffixes, taxonomy, scan roots, classification policy, bounds and schema identity are supplied by a profile.
+- Evidence subset: exact Git revision and blob identities, seven public exports, schemas, entry points, callers/tests, planned paths, package ownership, non-VFS fixture
+- Acceptance: Lock and verify source modules vfs_surface_inventory.py=76f34e1b9320e4bbc15706e4895c02af805af5e0, vfs_contract_pack.py=9acc4ceba42b8767f5b4e4b6ce7d4bc55893bcf2, vfs_differential_harness.py=8a6c8af69b6cbcb76a2b79a51f406d13e10947ce, vfs_mcp_contract_checker.py=26144a7b78c1bbbb94edc67ab13e2eab03850924, vfs_symbolic_benchmark.py=90023a09e9eb01ee454718f60fe758e33434c56b, vfs_symbolic_pilot.py=483ecaf622caa3c91d80d9710b63b1fd36fb8f90 and vfs_symbolic_rollout.py=6a1ef7b87172aa413f81b37f0ba36954af774d40 plus their test blobs; record target-present, source-only and planned-only states without conflation; inventory uses bounded byte/static-AST scans with no code import, reports completeness/unknowns and is deterministic under reordered inputs; VFS-equivalent profile results match the locked source contract while a non-VFS fixture proves parameterization; generic code contains no VFS/IPFS/fsspec/SwissKnife literals, fixed aliases, board IDs or implicit provider imports.
+- Embedding query: pin vfs source blobs generalize static repository surface inventory profile classification
+
+## LPR-022 Generalize the evidence-bound program contract profile
+
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: assurance-generalization
+- Depends on: LPR-021
+- Goal id: LPR-G070
+- Outputs: ipfs_accelerate_py/agent_supervisor/analysis/program_contract_profile.py, test/api/test_agent_supervisor_program_contract_profile.py
+- Validation: python -m pytest -q test/api/test_agent_supervisor_program_contract_profile.py
+- Board namespace: agent-supervisor-tactician-hammer-logic-repair-v1
+- Bundle: agent-supervisor/tactician-hammer-logic-repair/generalization-contracts
+- Parallel lane: lpr-general-contracts
+- Resource class: cpu-large
+- Resource stage: analysis
+- Token class: large
+- Estimated tokens: 34000
+- Implementation timeout seconds: 7200
+- Predicted files: ipfs_accelerate_py/agent_supervisor/analysis/program_contract_profile.py, test/api/test_agent_supervisor_program_contract_profile.py
+- AST symbols: ContractVocabulary, ExpectationState, OperationSupport, SourceContract, InvariantContract, OperationContract, SurfaceOperationContract, PublicSurfaceContract, ExpectationIssue, CanonicalVector, FacadeExample, ProgramContractProfile, ProgramContractProfileCompiler, assert_contract_profile_complete, publish_contract_profile
+- Interfaces: ProgramContract@1, ProgramContractBundle, SenderRequirement, ReceiverGuarantee, RequiredBehaviorContract@1, source-precedence policy
+- Allow concurrent with: LPR-025
+- Conflict policy: Own the generic contract-profile module/test only; preserve existing program contract and source-authority types, and move all closed VFS operations, invariants, errors, surface names, defaults and goal IDs into later profile data rather than a parallel contract language.
+- Preconditions: The source lock/API map and reusable inventory records are stable.
+- Effects: Any bounded domain profile can compile evidence-bound operation, invariant, surface, vector, facade and unresolved-expectation records into existing program contracts.
+- Evidence subset: vocabulary/profile schema, source authority, operation/invariant/interface bindings, error/effect/resource semantics, canonical vectors, conflicts, identity compatibility
+- Acceptance: Compile immutable bounded content-identified vocabularies and profiles; require every expectation and canonical vector to cite independent source evidence and exact semantics; preserve unresolved/conflicting expectations instead of selecting the popular implementation; reject duplicate/unknown vocabulary entries, unbounded fields, self-authority, forged IDs and schema drift; no generic branch or default contains VFS/IPFS/fsspec/SwissKnife terms; an unrelated RPC/key-value profile exercises every generic record; the VFS profile projection can preserve the locked operation/invariant/schema identities without making module paths semantic identity.
+- Embedding query: generic program behavior contract profile operations invariants surfaces vectors source authority
+
+## LPR-023 Generalize the hermetic differential contract harness
+
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: assurance-generalization
+- Depends on: LPR-022
+- Goal id: LPR-G070
+- Outputs: ipfs_accelerate_py/agent_supervisor/validation/differential_contract_harness.py, test/api/test_agent_supervisor_differential_contract_harness.py
+- Validation: python -m pytest -q test/api/test_agent_supervisor_differential_contract_harness.py
+- Board namespace: agent-supervisor-tactician-hammer-logic-repair-v1
+- Bundle: agent-supervisor/tactician-hammer-logic-repair/generalization-differential
+- Parallel lane: lpr-general-differential
+- Resource class: cpu-large
+- Resource stage: validation
+- Token class: large
+- Estimated tokens: 34000
+- Implementation timeout seconds: 7200
+- Predicted files: ipfs_accelerate_py/agent_supervisor/validation/differential_contract_harness.py, test/api/test_agent_supervisor_differential_contract_harness.py
+- AST symbols: ContractTraceProvider, FixtureAdapter, ResultNormalizer, ErrorClassifier, DriftClassifier, SurfaceAdapter, CallableSurfaceAdapter, CanonicalOperationTrace, DifferentialWitness, run_differential_contract_harness, write_differential_witness
+- Interfaces: ProgramContractProfile, CanonicalVector, ExecutionPermit, RuntimeIdentity, CleanupReceipt
+- Allow concurrent with: LPR-024, LPR-025, LPR-026
+- Conflict policy: Own the generic validation harness/test; inject domain fixtures, normalizers, error/invariant maps and drift taxonomy, use temporary roots and bounded subprocesses, and never touch user state or claim that declared network denial is OS isolation.
+- Preconditions: Generic contract-profile semantics and locked differential behavior are stable.
+- Effects: Different implementations of any profiled interface can execute the same finite traces and emit reproducible typed observations, drift findings and cleanup receipts.
+- Evidence subset: finite traces, adapters, normalization, error/effect identity, isolation, network/resource bounds, cleanup, unavailable/unknown states, replay
+- Acceptance: Preserve deterministic canonical JSON/content IDs, sync/async adapter handling, exact implementation/runtime/toolchain identities, contract-approved normalization only, explicit unavailable/mock/unknown outcomes, network denial, temporary fixture isolation and cleanup; parameterize all VFS-specific tree fixtures, invariants, errors, schemas and drift types; reject path escape, adapter identity drift, silent success, incomplete cleanup, timeout and over-budget execution; VFS canonical vectors are equivalent and an in-memory non-VFS adapter detects seeded true drift without false mismatches.
+- Embedding query: generic hermetic differential contract harness trace adapter normalization drift cleanup
+
+## LPR-024 Generalize interface, manifest, SDK, MCP, and transport parity
+
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: assurance-generalization
+- Depends on: LPR-022
+- Goal id: LPR-G070
+- Outputs: ipfs_accelerate_py/agent_supervisor/analysis/interface_contract_parity.py, test/api/test_agent_supervisor_interface_contract_parity.py
+- Validation: python -m pytest -q test/api/test_agent_supervisor_interface_contract_parity.py
+- Board namespace: agent-supervisor-tactician-hammer-logic-repair-v1
+- Bundle: agent-supervisor/tactician-hammer-logic-repair/generalization-parity
+- Parallel lane: lpr-general-parity
+- Resource class: cpu-large
+- Resource stage: analysis
+- Token class: large
+- Estimated tokens: 36000
+- Implementation timeout seconds: 7200
+- Predicted files: ipfs_accelerate_py/agent_supervisor/analysis/interface_contract_parity.py, test/api/test_agent_supervisor_interface_contract_parity.py
+- AST symbols: ToolSelectionPolicy, ParitySurfaceSpec, ContractProfileAdapter, SurfaceView, ParityWitness, ParityFinding, ToolParityResult, InterfaceParityReport, InterfaceContractParityAnalyzer, discover_tool_names, build_surface_views, compare_tool_surfaces, check_interface_parity
+- Interfaces: McpContractAnalyzer, MCPlusPlusCallPath, RuntimeWitnessReceipt, ProgramContractProfile, manifest and SDK schema projections
+- Allow concurrent with: LPR-023, LPR-025, LPR-026
+- Conflict policy: Reuse canonical MCP/MCP++ resolver, invocation-trace and runtime-witness records; this task owns only generic parity analysis and cannot create a second transport authority model or hard-code VFS tool aliases and SwissKnife paths.
+- Preconditions: Generic contract-profile surface mappings are stable and the locked parity checker API is mapped.
+- Effects: Python, CLI, MCP, MCP++, HTTP, libp2p, generated manifest and SDK surfaces can be compared against resolved implementation paths under a caller-provided profile.
+- Evidence subset: signatures, registrations, schemas, aliases, errors, call paths, manifests, SDKs, runtime witnesses, mock/fallback/bypass, bounded minimal witnesses
+- Acceptance: Resolve exact call paths before declaring parity; same text/name alone is insufficient; report stale generated artifacts, missing/extra/unreachable tools, schema/alias/error drift, local bypass, mock/fallback dispatch and ambiguous paths with minimal witnesses; inject surface kinds, tool selection/alias mapping and contract-pack projection; reject unbounded or forged artifacts and keep unresolved paths explicit; generic core contains no vfs.* aliases, VFS operations, fixed connector names or source paths; math.add and a generic connector pass while a seeded unresolved or wrong-target path fails.
+- Embedding query: generic interface contract parity manifest sdk mcp transport resolved call path
+
+## LPR-025 Generalize symbolic-efficiency benchmark and replay gates
+
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: assurance-generalization
+- Depends on: LPR-021
+- Goal id: LPR-G070
+- Outputs: ipfs_accelerate_py/agent_supervisor/validation/symbolic_efficiency_benchmark.py, test/api/test_agent_supervisor_symbolic_efficiency_benchmark.py
+- Validation: python -m pytest -q test/api/test_agent_supervisor_symbolic_efficiency_benchmark.py
+- Board namespace: agent-supervisor-tactician-hammer-logic-repair-v1
+- Bundle: agent-supervisor/tactician-hammer-logic-repair/generalization-benchmark
+- Parallel lane: lpr-general-benchmark
+- Resource class: cpu-large
+- Resource stage: validation
+- Token class: large
+- Estimated tokens: 30000
+- Implementation timeout seconds: 7200
+- Predicted files: ipfs_accelerate_py/agent_supervisor/validation/symbolic_efficiency_benchmark.py, test/api/test_agent_supervisor_symbolic_efficiency_benchmark.py
+- AST symbols: SymbolicBenchmarkPolicy, BenchmarkProfile, SymbolicBenchmarkObservation, SymbolicBenchmarkPopulation, BenchmarkGate, SymbolicEfficiencyBenchmarkReport, evaluate_symbolic_efficiency, build_symbolic_efficiency_report, verify_symbolic_efficiency_report
+- Interfaces: repository/AST/graph/contract/proof cache metrics, finding/task metrics, provider packet metrics, ResourceMeasurement
+- Allow concurrent with: LPR-022
+- Conflict policy: Own the generic benchmark/test; make required stages, scan modes, cache/finding populations, schemas and thresholds policy/profile data, retain reports as non-authoritative measurements, and perform no provider/network call.
+- Preconditions: The locked benchmark schemas, gates and sample identities are mapped by LPR-021.
+- Effects: Any assurance profile can measure cold/warm/delta behavior, reuse, invalidation, finding quality, packet reduction and bounded resources through the same deterministic evaluator.
+- Evidence subset: frozen profile/population, sample sufficiency, stage and cache coverage, seeded truth, time/resources, packet bytes/tokens, deterministic replay, non-authority
+- Acceptance: Preserve finite canonical records, rational/integer arithmetic, identity-equivalent replay, sample-sufficiency gates, no promotion/completion authority and zero LLM calls in deterministic stages; inject every VFS schema/stage/mode/threshold rather than rename it in place; byte-equivalent locked VFS observations yield equivalent decisions; an unrelated profile exercises custom stages and bounds; malformed, stale, mixed-profile, under-sampled, resource-exceeding and forged-report inputs fail closed.
+- Embedding query: generic symbolic efficiency benchmark deterministic replay profile cache finding resources
+
+## LPR-026 Generalize frozen multi-repository assurance pilot orchestration
+
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: assurance-generalization
+- Depends on: LPR-022
+- Goal id: LPR-G070
+- Outputs: ipfs_accelerate_py/agent_supervisor/runtime/symbolic_assurance_pilot.py, test/api/test_agent_supervisor_symbolic_assurance_pilot.py
+- Validation: python -m pytest -q test/api/test_agent_supervisor_symbolic_assurance_pilot.py
+- Board namespace: agent-supervisor-tactician-hammer-logic-repair-v1
+- Bundle: agent-supervisor/tactician-hammer-logic-repair/generalization-pilot
+- Parallel lane: lpr-general-pilot
+- Resource class: cpu-large
+- Resource stage: runtime
+- Token class: large
+- Estimated tokens: 38000
+- Implementation timeout seconds: 7200
+- Predicted files: ipfs_accelerate_py/agent_supervisor/runtime/symbolic_assurance_pilot.py, test/api/test_agent_supervisor_symbolic_assurance_pilot.py
+- AST symbols: PilotProgramProfile, RepositoryAdmissionPolicy, PilotConfig, PilotStage, StageReceipt, PilotArtifactSet, SymbolicAssurancePilotReport, execute_pilot, verify_pilot_report, verify_pilot, render_findings_board_document
+- Interfaces: RepositoryForest, RepositorySurfaceInventory, ProgramGraph, ProgramContractProfile, proof/cache/finding/taskboard stage callbacks
+- Allow concurrent with: LPR-023, LPR-024, LPR-025
+- Conflict policy: Own the generic runtime pilot/test; inject repositories, path admission, stages, schemas, task/goal namespace and artifact locations, expose no CLI, and perform zero provider calls or source mutation during dry-run/verify.
+- Preconditions: Generic inventory and contract-profile interfaces plus the locked pilot stage contract are stable.
+- Effects: A bounded multi-repository assurance program can freeze roots, run injected deterministic stages, publish artifacts/findings, and verify replay without knowing a product, checkout alias, board or provider.
+- Evidence subset: repository bindings, admitted closure, stage DAG/receipts, artifact identities, findings board, dry-run/verify, provider absence, source immutability, rollback
+- Acceptance: PilotConfig is tuple/profile-driven rather than fixed accelerator/SwissKnife/kit/datasets fields; inject forest builder, path admission, stage runners, schema/goal/task/board identities and artifact destinations; generic code has no VFS regex, repository aliases, environment-variable names, fixture construction or argparse/main; preserve atomic bounded writes, exact repository descriptors, stage failure/abstention, deterministic report verification and no provider surface; reject changed trees, incomplete inventory, stale/corrupt artifacts, duplicate stages, unsafe output paths, provider access and source mutation; a non-VFS two-repository fixture completes through the same orchestrator.
+- Embedding query: generic frozen multi repository symbolic assurance pilot profile stage receipts verify
+
+## LPR-027 Generalize rollout control and add the thin IPFS Kit VFS job adapter
+
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: assurance-generalization
+- Depends on: LPR-023, LPR-024, LPR-025, LPR-026
+- Goal id: LPR-G070
+- Outputs: ipfs_accelerate_py/agent_supervisor/control/symbolic_assurance_rollout.py, ipfs_accelerate_py/agent_supervisor/integrations/ipfs_kit_vfs_assurance.py, config/ipfs_kit_vfs_symbolic_assurance.json, scripts/ops/agent_supervisor/ipfs_kit_vfs_symbolic_assurance.py, test/api/test_agent_supervisor_symbolic_assurance_rollout.py, test/api/test_agent_supervisor_ipfs_kit_vfs_assurance_profile.py, test/api/test_agent_supervisor_ipfs_kit_vfs_assurance_ops.py
+- Validation: python -m pytest -q test/api/test_agent_supervisor_symbolic_assurance_rollout.py test/api/test_agent_supervisor_ipfs_kit_vfs_assurance_profile.py test/api/test_agent_supervisor_ipfs_kit_vfs_assurance_ops.py
+- Board namespace: agent-supervisor-tactician-hammer-logic-repair-v1
+- Bundle: agent-supervisor/tactician-hammer-logic-repair/generalization-vfs-adapter
+- Parallel lane: lpr-vfs-adapter
+- Resource class: cpu-large
+- Resource stage: integration
+- Token class: large
+- Estimated tokens: 44000
+- Implementation timeout seconds: 9000
+- Predicted files: ipfs_accelerate_py/agent_supervisor/control/symbolic_assurance_rollout.py, ipfs_accelerate_py/agent_supervisor/integrations/ipfs_kit_vfs_assurance.py, config/ipfs_kit_vfs_symbolic_assurance.json, scripts/ops/agent_supervisor/ipfs_kit_vfs_symbolic_assurance.py, test/api/test_agent_supervisor_symbolic_assurance_rollout.py, test/api/test_agent_supervisor_ipfs_kit_vfs_assurance_profile.py, test/api/test_agent_supervisor_ipfs_kit_vfs_assurance_ops.py
+- AST symbols: AssuranceRolloutMode, ControlAction, ControlSurface, GateDefinition, GateObservation, AdversarialGateReport, AssuranceRolloutBinding, AssuranceRolloutPolicy, AssuranceRolloutDecision, SymbolicAssurancePublicAPI, evaluate_adversarial_gates, evaluate_symbolic_assurance_rollout, build_ipfs_kit_vfs_assurance_profile
+- Interfaces: generic inventory/contract/differential/parity/benchmark/pilot engines, SupervisorControlService, lazy integration registry, bounded config profile, ops main(argv)
+- Allow concurrent with:
+- Conflict policy: Generic control owns rollout decisions; integrations owns only lazy VFS factories; config owns declarative VFS vocabulary/policy; the ops script only validates/selects/delegates and may not contain scanning, graph, proof, parity, benchmark, rollout, repair, provider or mutation logic.
+- Preconditions: All generic VFS-source-derived engines are stable and their locked semantic contracts are mapped.
+- Effects: The original IPFS Kit VFS assurance job is one typed profile over reusable engines, operable through a cold-import-safe scripts/ops entry point with inventory, contracts, differential, parity, benchmark, pilot, rollout and verify subcommands.
+- Evidence subset: rollout modes/gates, shadow and mutation authority, bounded projections, VFS factories/config, lazy import, CLI behavior, original schemas/receipts, non-VFS profile
+- Acceptance: Rollout gates/modes/control surfaces are profile definitions with shadow default and automatic mutation disabled; preserve original VFS schemas, operation/invariant/error mappings, canonical vectors, authority flags, status/findings/receipts projections and CLI exit semantics through the locked profile; config is immutable/bounded/content-identified with a closed adapter registry and safe relative roots; integration imports optional providers lazily; wrapper --help and cold import start no process, open no database, access no network/storage and import no optional provider; wrapper contains only argument/config/bootstrap/delegation code; generic control contains no VFS/IPFS/fsspec/SwissKnife constants; a non-VFS profile traverses the same public API.
+- Embedding query: generic assurance rollout thin scripts ops ipfs kit vfs typed lazy profile
+
+## LPR-028 Prove equivalence, propagate every caller, and enforce the root-layout cutover
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: assurance-generalization
+- Depends on: LPR-027
+- Goal id: LPR-G070
+- Outputs: docs/architecture/IPFS_KIT_VFS_SYMBOLIC_ASSURANCE_PLAN.md, docs/architecture/ipfs_kit_vfs_symbolic_assurance.objectives.md, docs/architecture/ipfs_kit_vfs_symbolic_assurance.todo.md, scripts/ops/agent_supervisor/README.md, test/api/test_agent_supervisor_vfs_generalization_equivalence.py, test/api/test_agent_supervisor_vfs_root_layout_guard.py, test/api/test_agent_supervisor_assurance_two_profile_end_to_end.py
+- Validation: python -m pytest -q test/api/test_agent_supervisor_vfs_generalization_equivalence.py test/api/test_agent_supervisor_vfs_root_layout_guard.py test/api/test_agent_supervisor_assurance_two_profile_end_to_end.py && python scripts/ops/agent_supervisor/validate_ipfs_kit_vfs_symbolic_assurance.py && python scripts/validate_tactician_hammer_logic_repair_board.py --check-all
+- Board namespace: agent-supervisor-tactician-hammer-logic-repair-v1
+- Bundle: agent-supervisor/tactician-hammer-logic-repair/generalization-cutover
+- Parallel lane: lpr-general-cutover
+- Resource class: cpu-large
+- Resource stage: rollout
+- Token class: large
+- Estimated tokens: 46000
+- Implementation timeout seconds: 10800
+- Predicted files: docs/architecture/IPFS_KIT_VFS_SYMBOLIC_ASSURANCE_PLAN.md, docs/architecture/ipfs_kit_vfs_symbolic_assurance.objectives.md, docs/architecture/ipfs_kit_vfs_symbolic_assurance.todo.md, scripts/ops/agent_supervisor/README.md, test/api/test_agent_supervisor_vfs_generalization_equivalence.py, test/api/test_agent_supervisor_vfs_root_layout_guard.py, test/api/test_agent_supervisor_assurance_two_profile_end_to_end.py
+- AST symbols: VfsGeneralizationEquivalenceReceipt, VfsCallerMigrationReceipt, VfsRootLayoutGuard, AssuranceTwoProfileConformance
+- Interfaces: ProgramContractDelta@1, ProgramDependencyGraph, ConsumerMigrationObligation@1, TacticianSearchPlan@1, LogicPredictionReceipt@1, ChangePropagationPlan@1, PropagationCompletionReceipt@1
+- Allow concurrent with:
+- Conflict policy: Serialize the final migration; confirm the dedicated VFS supervisor has no live owned process before editing its plan/objective/taskboard, preserve completed VFS task history, update only still-open output/caller projections, and never add root compatibility shims or silently delete a public contract.
+- Preconditions: The generic engines, VFS profile/adapter and thin ops entry point pass their local suites; the exact source lock and current target tree are fresh.
+- Effects: Every realized or planned VFS root implementation/import is redirected to semantic domain packages plus the VFS profile/ops adapter, with proof-bearing caller dispositions and a future-proof placement gate.
+- Evidence subset: base/source/generic contract delta, AST/import/string-import/entry-point impact closure, Tactician plan, Hammer reconstruction or abstention, public schema/identity parity, migrated tests/docs/boards, non-VFS reuse, root scan, fixed point
+- Acceptance: Compute the locked-source-to-generic ProgramContractDelta and complete resolved impact closure before edits; use Tactician/Hammer to prove delegation/profile equivalence for supported clauses and retain explicit unsupported/approval-required dispositions otherwise; atomically migrate every import, string import, export, entry point, test, documentation link and open VFS-board output; preserve canonical VFS vectors, errors, side effects, schemas, CIDs, receipts and CLI results or record reviewed versioned migration; run the migrated locked VFS corpus and a hermetic non-VFS inventory-to-rollout fixture through identical generic engine modules; assert recursively that the agent_supervisor root contains no vfs_*.py file and no import references agent_supervisor.vfs_*; reject VFS/IPFS/fsspec/SwissKnife/board-specific branches in generic modules and substantive logic in the ops wrapper; cold import remains side-effect free; re-index, re-resolve and re-prove to an existing completion receipt plus current logic fixed-point attachment; any missed caller, stale blob, unresolved required frontier, unproved semantic drift, layout regression or partial migration rolls back or abstains.
+- Embedding query: prove vfs generalization equivalence migrate all callers no root modules two profile fixed point

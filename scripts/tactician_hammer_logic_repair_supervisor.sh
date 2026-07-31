@@ -159,6 +159,57 @@ print(f"datasets_revision={actual}")
 PY
 }
 
+verify_vfs_generalization_source_lock() {
+  "${PYTHON_BIN}" - "${REPO_ROOT}" "${REPO_ROOT}/${SCHEDULER_PATH}" <<'PY'
+import json
+import pathlib
+import subprocess
+import sys
+
+root = pathlib.Path(sys.argv[1]).resolve()
+scheduler = json.loads(pathlib.Path(sys.argv[2]).read_text(encoding="utf-8"))
+binding = scheduler["refactor_source_bindings"]["ipfs_kit_vfs_assurance"]
+revision = str(binding["revision"])
+local_ref = str(binding["local_ref"])
+
+def git(*args: str) -> str:
+    return subprocess.check_output(
+        ["git", "-C", str(root), *args],
+        stderr=subprocess.STDOUT,
+        text=True,
+    ).strip()
+
+try:
+    resolved_revision = git("rev-parse", f"{revision}^{{commit}}")
+except subprocess.CalledProcessError as exc:
+    raise SystemExit(
+        "VFS generalization source revision is unavailable; fetch the exact "
+        f"origin object {revision} before launch"
+    ) from exc
+if resolved_revision != revision:
+    raise SystemExit(
+        f"VFS source revision mismatch: {resolved_revision} != {revision}"
+    )
+
+try:
+    resolved_ref = git("rev-parse", f"{local_ref}^{{commit}}")
+except subprocess.CalledProcessError:
+    resolved_ref = ""
+if resolved_ref and resolved_ref != revision:
+    raise SystemExit(f"VFS source-lock ref mismatch: {resolved_ref} != {revision}")
+
+for path, expected_blob in sorted(binding["module_blobs"].items()):
+    actual_blob = git("rev-parse", f"{revision}:{path}")
+    if actual_blob != expected_blob:
+        raise SystemExit(
+            f"VFS source blob mismatch for {path}: {actual_blob} != {expected_blob}"
+        )
+print(f"vfs_generalization_source_revision={revision}")
+print(f"vfs_generalization_source_ref={local_ref if resolved_ref else 'revision-only'}")
+print(f"vfs_generalization_source_module_count={len(binding['module_blobs'])}")
+PY
+}
+
 master_state_json() {
   "${PYTHON_BIN}" - \
     "${MASTER_PID_PATH}" \
@@ -415,6 +466,7 @@ doctor() {
   validate_runtime_root
   verify_branch_and_sources
   "${PYTHON_BIN}" "${REPO_ROOT}/${VALIDATOR_PATH}" --check-all
+  verify_vfs_generalization_source_lock
   "${PYTHON_BIN}" -m json.tool "${REPO_ROOT}/${SCHEDULER_PATH}" >/dev/null
   "${PYTHON_BIN}" - "${REPO_ROOT}" <<'PY'
 import pathlib
@@ -490,11 +542,12 @@ PY
 preflight() {
   validate_test_mode
   if [[ "${TEST_MODE}" == "1" ]]; then
-    echo '{"completed_count":1,"drained":false,"eligible_ready_count":4,"task_count":21}'
+    echo '{"completed_count":1,"drained":false,"eligible_ready_count":4,"task_count":29}'
     return 0
   fi
   verify_branch_and_sources
   "${PYTHON_BIN}" "${REPO_ROOT}/${VALIDATOR_PATH}" --check-all
+  verify_vfs_generalization_source_lock
   mkdir -p "${PREFLIGHT_ROOT}" "${WORKTREE_ROOT}" "${MERGE_QUEUE_ROOT}"
   (
     cd "${REPO_ROOT}"
@@ -528,7 +581,7 @@ task_count = int(payload.get("task_count") or 0)
 completed = int(payload.get("completed_count") or 0)
 ready = int(payload.get("eligible_ready_count") or 0)
 blocked = tuple(payload.get("blocked_task_ids") or ())
-if task_count != 21:
+if task_count != 29:
     raise SystemExit(f"preflight parsed unexpected task count: {payload}")
 if blocked:
     raise SystemExit(f"preflight found blocked tasks: {blocked}")
@@ -577,7 +630,7 @@ launch_master() {
       --common-arg=--implementation-timeout \
       --common-arg=3600 \
       --common-arg=--implementation-max-timeout \
-      --common-arg=7200 \
+      --common-arg=10800 \
       --common-arg=--implementation-log-stall-seconds \
       --common-arg=1200 \
       --common-arg=--daemon-interval \

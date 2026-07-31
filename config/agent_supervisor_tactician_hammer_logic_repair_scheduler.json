@@ -17,6 +17,23 @@
     "record_accelerator_and_datasets_revisions_at_launch": true,
     "require_clean_control_plane_at_launch": true
   },
+  "refactor_source_bindings": {
+    "ipfs_kit_vfs_assurance": {
+      "repository_url": "https://github.com/endomorphosis/ipfs_accelerate_py.git",
+      "revision": "0cc04ebb640c4c981cf4650016e096a73ab0e8c0",
+      "local_ref": "refs/agent-supervisor/source-locks/vfs-generalization/0cc04ebb640c4c981cf4650016e096a73ab0e8c0",
+      "merge_or_cherry_pick_source_revision": false,
+      "module_blobs": {
+        "ipfs_accelerate_py/agent_supervisor/vfs_contract_pack.py": "9acc4ceba42b8767f5b4e4b6ce7d4bc55893bcf2",
+        "ipfs_accelerate_py/agent_supervisor/vfs_differential_harness.py": "8a6c8af69b6cbcb76a2b79a51f406d13e10947ce",
+        "ipfs_accelerate_py/agent_supervisor/vfs_mcp_contract_checker.py": "26144a7b78c1bbbb94edc67ab13e2eab03850924",
+        "ipfs_accelerate_py/agent_supervisor/vfs_surface_inventory.py": "76f34e1b9320e4bbc15706e4895c02af805af5e0",
+        "ipfs_accelerate_py/agent_supervisor/vfs_symbolic_benchmark.py": "90023a09e9eb01ee454718f60fe758e33434c56b",
+        "ipfs_accelerate_py/agent_supervisor/vfs_symbolic_pilot.py": "483ecaf622caa3c91d80d9710b63b1fd36fb8f90",
+        "ipfs_accelerate_py/agent_supervisor/vfs_symbolic_rollout.py": "6a1ef7b87172aa413f81b37f0ba36954af774d40"
+      }
+    }
+  },
   "max_lanes": 4,
   "strict_task_sharding": true,
   "exit_when_all_tracks_terminal": true,
@@ -33,7 +50,7 @@
   "validation_retry_budget": 3,
   "merge_retry_budget": 3,
   "implementation_timeout_seconds": 3600,
-  "implementation_max_timeout_seconds": 7200,
+  "implementation_max_timeout_seconds": 10800,
   "implementation_log_stall_seconds": 1200,
   "worktree_submodule_paths": [
     "ipfs_datasets_py"
@@ -183,6 +200,14 @@
     "lpr-integration-serialized": "cpu-large",
     "lpr-validation-serialized": "cpu-large",
     "lpr-benchmark": "cpu-large",
-    "lpr-rollout": "cpu-large"
+    "lpr-rollout": "cpu-large",
+    "lpr-general-inventory": "cpu-large",
+    "lpr-general-contracts": "cpu-large",
+    "lpr-general-differential": "cpu-large",
+    "lpr-general-parity": "cpu-large",
+    "lpr-general-benchmark": "cpu-large",
+    "lpr-general-pilot": "cpu-large",
+    "lpr-vfs-adapter": "cpu-large",
+    "lpr-general-cutover": "cpu-large"
   }
 }

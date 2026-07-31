@@ -46,10 +46,10 @@ Program invariants:
 - Resource class: cpu-medium
 - Token class: small
 - Goal: Starting from task intent, a broken trace, or an intentional contract delta, derive the finite logic the program must satisfy, plan evidence and proof search with a domain-neutral Tactician, prove supported hypotheses through kernel reconstruction or reject them through independently validated countermodels/proofs of negation, repair every resolved caller analytically where possible, otherwise issue a bounded context-rich llm_router proposal, and complete only after atomic candidate-tree fixed-point validation.
-- Subgoals: LPR-G010, LPR-G020, LPR-G030, LPR-G040, LPR-G050, LPR-G060
-- Evidence: LPR-G010, LPR-G020, LPR-G030, LPR-G040, LPR-G050, LPR-G060
+- Subgoals: LPR-G010, LPR-G020, LPR-G030, LPR-G040, LPR-G050, LPR-G060, LPR-G070
+- Evidence: LPR-G010, LPR-G020, LPR-G030, LPR-G040, LPR-G050, LPR-G060, LPR-G070
 - Outputs:
-- Validation: Parse and validate the LPR taskboard, then run the terminal LPR-020 end-to-end validator.
+- Validation: Parse and validate the LPR taskboard, run the LPR-020 logic-repair release validator, then run the terminal LPR-028 VFS-generalization equivalence and placement validator.
 - Acceptance: Every child subgoal has current-tree evidence; the all-caller two-to-three-argument fixture and complex support-type fixture either complete with reconstructed proof and a fixed point or conservatively abstain; unauthorized axiom, missed caller, unreconstructed prediction, invented behavior, wrong value/source/placement, stale receipt, model scope escape, partial transaction, and false fixed-point completion rates are zero.
 - Gap task: Aggregate child evidence and release gates only; do not perform a cross-program implementation edit.
 - Refinement: Prefer explicit unsupported and approval-required states over unearned automation.
@@ -186,3 +186,25 @@ Program invariants:
 - Refinement: High proof-search recall is useful only under zero unauthorized-admission and false-completion floors.
 - Embedding query: logic repair adversarial benchmark metrics shadow assist narrow auto rollback supervisor operations
 - AST query: LogicRepairBenchmark LogicRepairMetrics LogicRepairRolloutPolicy LogicRepairOperationsValidator
+
+## LPR-G070 Generalize assurance engines and isolate the IPFS Kit VFS job
+
+- Status: active
+- Parent: LPR-G000
+- Depends on: LPR-G060
+- Priority: P0
+- Track: assurance-generalization
+- Bundle: agent-supervisor/tactician-hammer-logic-repair/assurance-generalization
+- Parallel lane: lpr-assurance-generalization
+- Conflict policy: Port only from the exact source-lock blobs; place reusable behavior in semantic domain packages, keep VFS vocabulary and adapters in one lazy integration/profile, keep the ops entry point thin, and never introduce substantive root-level vfs_* modules or merge the broad source snapshot.
+- Resource class: cpu-large
+- Token class: large
+- Goal: Refactor the seven VFS-prefixed supervisor implementations from a reviewed source snapshot into profile-driven repository inventory, behavior-contract, differential, interface-parity, benchmark, pilot, and rollout engines that work for non-VFS programs, then expose the original IPFS Kit VFS job through one bounded declarative profile and a thin scripts/ops entry point.
+- Evidence: LPR-021, LPR-022, LPR-023, LPR-024, LPR-025, LPR-026, LPR-027, LPR-028
+- Outputs: source-lock and public-contract map, generic analysis/validation/runtime/control engines, lazy IPFS Kit VFS integration, bounded VFS profile, thin operations entry point, caller migration, cross-profile equivalence and root-layout guards
+- Validation: Verify every source blob against the pinned Git revision; run focused generic-engine suites, the migrated VFS corpus, a non-VFS end-to-end profile, cold-import/ops smoke tests, Tactician/Hammer delegation proof or explicit abstention, impact-closure validation, and the no-root-vfs placement gate.
+- Acceptance: The same generic engine code runs the VFS and a hermetic non-VFS profile; VFS operations, invariants, schemas, errors, effects, canonical identities, authority flags, CLI behavior and receipts remain equivalent; all resolved imports/callers are migrated atomically; the agent_supervisor root contains no vfs_*.py implementation or compatibility stub; generic modules contain no VFS, IPFS, fsspec, SwissKnife, board-ID or fixed-checkout branches; the VFS wrapper only validates configuration, lazy-loads the integration, and delegates; unresolved semantic, dynamic, native or public-API differences abstain rather than being guessed.
+- Gap task: Convert one large instance-specific assurance program into reusable machinery without losing the exact behavior of its original job.
+- Refinement: Generalization is accepted by proof-backed contract equivalence and a second profile, not by renaming symbols or moving code alone.
+- Embedding query: generalize vfs assurance modules semantic packages thin ops profile contract equivalence callers
+- AST query: RepositorySurfaceInventory ProgramContractProfile DifferentialContractHarness InterfaceContractParityAnalyzer SymbolicEfficiencyBenchmark SymbolicAssurancePilot SymbolicAssuranceRolloutPolicy

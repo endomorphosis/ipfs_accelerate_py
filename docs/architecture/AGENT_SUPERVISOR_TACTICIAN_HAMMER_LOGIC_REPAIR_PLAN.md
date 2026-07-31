@@ -26,7 +26,10 @@ that can:
    containing the exact admitted behavior, counterexamples, paths,
    postconditions, and tests; and
 8. apply all affected-file edits transactionally and re-run analysis to a
-   candidate-tree fixed point.
+   candidate-tree fixed point; and
+9. use that machinery to extract instance-specific assurance programs into
+   reusable semantic-package engines with typed profiles and thin ops
+   adapters, while proving the original job contract remains intact.
 
 The runtime order is normative:
 
@@ -586,6 +589,53 @@ and all policy validations pass
 Bound exhaustion is incomplete, not success. Failure restores the transaction
 checkpoint and preserves diagnostics.
 
+### 4.12 Generalize the VFS assurance instantiation
+
+Seven root-level VFS assurance modules were implemented on the reviewed
+`origin/main` lineage but are not present in the initial LPR target tree. The
+generalization source is therefore a Git object set, not an assumed working
+tree state. `LPR-021` pins commit
+`0cc04ebb640c4c981cf4650016e096a73ab0e8c0`, the seven exact module blobs, the
+corresponding test blobs, public exports, schemas, CLI behavior, and authority
+flags. Workers may read those blobs but must not merge or cherry-pick the broad
+source snapshot.
+
+The required extraction is:
+
+| Instance-specific source | Reusable destination |
+| --- | --- |
+| `vfs_surface_inventory.py` | `analysis/repository_surface_inventory.py` |
+| `vfs_contract_pack.py` | `analysis/program_contract_profile.py` |
+| `vfs_differential_harness.py` | `validation/differential_contract_harness.py` |
+| `vfs_mcp_contract_checker.py` | `analysis/interface_contract_parity.py` |
+| `vfs_symbolic_benchmark.py` | `validation/symbolic_efficiency_benchmark.py` |
+| `vfs_symbolic_pilot.py` | `runtime/symbolic_assurance_pilot.py` |
+| `vfs_symbolic_rollout.py` | `control/symbolic_assurance_rollout.py` |
+
+Generic engines accept immutable, bounded, content-identified policies,
+profiles, adapter registries, schemas, operation/invariant vocabularies,
+normalizers, fixtures, resource bounds, and stage definitions. They contain no
+VFS/IPFS/fsspec/SwissKnife constants, fixed repository aliases, board IDs,
+environment-variable names, or implicit optional-provider imports.
+
+The IPFS Kit job is assembled only by
+`integrations/ipfs_kit_vfs_assurance.py` from
+`config/ipfs_kit_vfs_symbolic_assurance.json`. The sole executable facade is
+`scripts/ops/agent_supervisor/ipfs_kit_vfs_symbolic_assurance.py`, with
+inventory, contracts, differential, parity, benchmark, pilot, rollout, and
+verify subcommands. It resolves the checkout, validates the profile,
+lazy-loads the integration, and delegates; it owns no scan, proof, comparison,
+gate, repair, or mutation logic.
+
+The cutover itself is a contract-changing multi-file repair. It must run
+ProgramContractDelta and impact closure over imports, string-based imports,
+exports, tests, documentation, entry points, schemas, and generated surfaces;
+use Tactician/Hammer to prove delegation/profile equivalence where supported;
+and give every resolved consumer a migrated, compatibility-proved, or explicit
+abstention disposition. Root `agent_supervisor/vfs_*.py` implementations and
+compatibility shims are forbidden after cutover. A hermetic non-VFS profile
+must traverse the same engines to demonstrate genuine generality.
+
 ## 5. Versioned records
 
 LPR-001 defines these canonical records:
@@ -734,6 +784,7 @@ The companion taskboard is the executable projection.
 | `LPR-G040` | Strict lowering, Hammer proof, refinement, admission | `LPR-011`–`014` |
 | `LPR-G050` | Existing RPR bridge, contextual edits, live fixed point | `LPR-015`–`018` |
 | `LPR-G060` | Adversarial efficacy, operations, and staged rollout | `LPR-019`–`020` |
+| `LPR-G070` | General assurance engines plus a thin IPFS Kit VFS job profile | `LPR-021`–`028` |
 
 Parallel waves:
 
@@ -746,6 +797,10 @@ W4  LPR-011 -> LPR-012 -> LPR-013 -> LPR-014
 W5  LPR-015 -> LPR-016
 W6  LPR-017 -> LPR-018          (shared cutover serialized)
 W7  LPR-019 -> LPR-020
+W8  LPR-021                     (exact source lock plus generic inventory)
+W9  LPR-022 | LPR-025
+W10 LPR-023 | LPR-024 | LPR-026
+W11 LPR-027 -> LPR-028          (profile integration and atomic cutover)
 ```
 
 The dependency graph, file ownership, validation commands, acceptance
@@ -878,6 +933,11 @@ LPR-020 owns release hardening around that protected bootstrap:
 - bounded retries and recovery;
 - the operator guide.
 
+LPR-021 through LPR-028 form an append-only post-release generalization
+program. LPR-028 is the unique board terminal: it verifies the source lock,
+generic/VFS and non-VFS behavior, complete caller migration, root layout,
+thin-wrapper constraints, and renewed logic/program fixed point.
+
 Before parallel implementation launch:
 
 1. run the generic one-lane bootstrap task `LPR-000`;
@@ -918,5 +978,11 @@ The program is complete only when:
 - adversarial safety floors remain zero across repeated identity-equivalent
   runs;
 - shadow/assist/narrow-auto controls and rollback are operator-visible; and
+- the seven reviewed VFS assurance implementations have reusable
+  semantic-package cores, one lazy typed VFS profile, and one thin ops entry
+  point, with no root `vfs_*.py` module remaining;
+- the migrated VFS job and a non-VFS fixture traverse identical generic code,
+  and every contract/identity/caller difference is proved, explicitly
+  approved, or conservatively abstained; and
 - the supervisor can drain the task DAG without a dependency, capability,
   protected-path, merge, or process-lifecycle blocker.

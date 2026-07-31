@@ -50,7 +50,7 @@ RPR_TODO_PATH = Path(
 TASK_PREFIX = "LPR-"
 BOARD_NAMESPACE = "agent-supervisor-tactician-hammer-logic-repair-v1"
 TARGET_BRANCH = "agent/proof-gated-contract-repair"
-EXPECTED_TASK_IDS = tuple(f"LPR-{number:03d}" for number in range(21))
+EXPECTED_TASK_IDS = tuple(f"LPR-{number:03d}" for number in range(29))
 EXPECTED_GOAL_IDS = (
     "LPR-G000",
     "LPR-G010",
@@ -59,6 +59,7 @@ EXPECTED_GOAL_IDS = (
     "LPR-G040",
     "LPR-G050",
     "LPR-G060",
+    "LPR-G070",
 )
 POST_BOOTSTRAP_READY = ("LPR-001", "LPR-002", "LPR-003", "LPR-004")
 CONTROL_ARTIFACTS = (
@@ -256,7 +257,27 @@ def _validate_tasks(goal_ids: set[str]) -> tuple[object, ...]:
     _assert_acyclic(graph, label="task dependency")
     roots = sorted(task_id for task_id, dependencies in graph.items() if not dependencies)
     _require(roots == ["LPR-000"], f"task roots mismatch: {roots}")
-    _require(graph["LPR-020"] == ("LPR-019",), "LPR-020 must be terminal after LPR-019")
+    expected_tail = {
+        "LPR-020": ("LPR-019",),
+        "LPR-021": ("LPR-020",),
+        "LPR-022": ("LPR-021",),
+        "LPR-023": ("LPR-022",),
+        "LPR-024": ("LPR-022",),
+        "LPR-025": ("LPR-021",),
+        "LPR-026": ("LPR-022",),
+        "LPR-027": ("LPR-023", "LPR-024", "LPR-025", "LPR-026"),
+        "LPR-028": ("LPR-027",),
+    }
+    for task_id, dependencies in expected_tail.items():
+        _require(
+            graph[task_id] == dependencies,
+            f"{task_id} dependency mismatch: {graph[task_id]}",
+        )
+    consumed_dependencies = {
+        dependency for dependencies in graph.values() for dependency in dependencies
+    }
+    sinks = sorted(set(graph) - consumed_dependencies)
+    _require(sinks == ["LPR-028"], f"terminal task mismatch: {sinks}")
 
     simulated_completed = {"LPR-000"}
     ready = tuple(
@@ -347,6 +368,43 @@ def _validate_scheduler(scheduler: Mapping[str, object], tasks: Sequence[object]
         _require(source.get(key) is True, f"source binding disabled: {key}")
     _require(source.get("accelerator_branch") == TARGET_BRANCH, "source branch binding mismatch")
     _require(source.get("datasets_submodule_path") == "ipfs_datasets_py", "datasets source path mismatch")
+
+    refactor_sources = scheduler.get("refactor_source_bindings")
+    _require(isinstance(refactor_sources, dict), "refactor_source_bindings must be an object")
+    vfs_source = refactor_sources.get("ipfs_kit_vfs_assurance")
+    _require(isinstance(vfs_source, dict), "VFS generalization source binding is missing")
+    _require(
+        vfs_source.get("repository_url")
+        == "https://github.com/endomorphosis/ipfs_accelerate_py.git",
+        "VFS source repository mismatch",
+    )
+    _require(
+        vfs_source.get("revision")
+        == "0cc04ebb640c4c981cf4650016e096a73ab0e8c0",
+        "VFS source revision mismatch",
+    )
+    _require(
+        vfs_source.get("local_ref")
+        == "refs/agent-supervisor/source-locks/vfs-generalization/0cc04ebb640c4c981cf4650016e096a73ab0e8c0",
+        "VFS source-lock ref mismatch",
+    )
+    _require(
+        vfs_source.get("merge_or_cherry_pick_source_revision") is False,
+        "broad VFS source merge must be forbidden",
+    )
+    expected_vfs_blobs = {
+        "ipfs_accelerate_py/agent_supervisor/vfs_contract_pack.py": "9acc4ceba42b8767f5b4e4b6ce7d4bc55893bcf2",
+        "ipfs_accelerate_py/agent_supervisor/vfs_differential_harness.py": "8a6c8af69b6cbcb76a2b79a51f406d13e10947ce",
+        "ipfs_accelerate_py/agent_supervisor/vfs_mcp_contract_checker.py": "26144a7b78c1bbbb94edc67ab13e2eab03850924",
+        "ipfs_accelerate_py/agent_supervisor/vfs_surface_inventory.py": "76f34e1b9320e4bbc15706e4895c02af805af5e0",
+        "ipfs_accelerate_py/agent_supervisor/vfs_symbolic_benchmark.py": "90023a09e9eb01ee454718f60fe758e33434c56b",
+        "ipfs_accelerate_py/agent_supervisor/vfs_symbolic_pilot.py": "483ecaf622caa3c91d80d9710b63b1fd36fb8f90",
+        "ipfs_accelerate_py/agent_supervisor/vfs_symbolic_rollout.py": "6a1ef7b87172aa413f81b37f0ba36954af774d40",
+    }
+    _require(
+        vfs_source.get("module_blobs") == expected_vfs_blobs,
+        "VFS source blob lock mismatch",
+    )
 
     lane_rows = scheduler.get("lanes")
     _require(isinstance(lane_rows, list) and len(lane_rows) == 4, "scheduler must define four lanes")
