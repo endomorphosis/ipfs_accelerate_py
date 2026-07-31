@@ -4145,7 +4145,7 @@ compact references and bounded spans only.
 
 ## VFS-090 Close objective gap: Prove vfs/minimal-call-slice@1 for Answer minimal call-slice and contract-impact queries
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
