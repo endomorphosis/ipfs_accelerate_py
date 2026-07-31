@@ -1,9 +1,13 @@
-"""Tests for minimal dependency-complete call/impact slice queries (VFS-013/041).
+"""Tests for minimal dependency-complete call/impact slice queries (VFS-013/041/090).
 
 VFS-041 objective validation repair: kind-partitioned query indexes accelerate
 traversal without changing canonical graph identity, and acceptance criteria
 (seeded transitive callers/callees and MCP paths complete within scope,
 unrelated source omitted, limits never silently claim complete) remain proven.
+
+VFS-G151 / VFS-090 proves ``vfs/minimal-call-slice@1`` via the discovery
+evidence surface (``minimal_call_slice_evidence``, ``covered_evidence_terms``,
+``prove_minimal_call_slice``) and the same hard-bounded acceptance checks.
 """
 
 from __future__ import annotations
@@ -23,7 +27,13 @@ from ipfs_accelerate_py.agent_supervisor.program_graph import (
     make_node,
 )
 from ipfs_accelerate_py.agent_supervisor.program_graph_queries import (
+    MINIMAL_CALL_SLICE_CLAIM_SCHEMA,
     MINIMAL_CALL_SLICE_EVIDENCE,
+    MINIMAL_CALL_SLICE_INVARIANTS,
+    OBJECTIVE_DOMAIN_EVIDENCE_TERMS,
+    OBJECTIVE_GOAL_ID,
+    OBJECTIVE_PARENT_GOAL_ID,
+    OBJECTIVE_TASK_ID,
     PROGRAM_GRAPH_SLICE_SCHEMA,
     QUERY_INDEX_VERSION,
     ProgramGraphQuery,
@@ -31,6 +41,12 @@ from ipfs_accelerate_py.agent_supervisor.program_graph_queries import (
     QueryBounds,
     QueryKind,
     _GraphView,
+    all_covered_evidence_terms,
+    covered_evidence_terms,
+    minimal_call_slice_evidence,
+    minimal_call_slice_evidence_terms,
+    prove_minimal_call_slice,
+    prove_minimal_call_slice_evidence,
     query_changed_blob_impact,
     query_contract_consumers,
     query_contract_producers,
@@ -41,6 +57,8 @@ from ipfs_accelerate_py.agent_supervisor.program_graph_queries import (
     query_symbol_callees,
     query_symbol_callers,
     query_vfs_operation_surface,
+    slice_obeys_fail_closed_completeness,
+    slice_satisfies_minimal_call_slice,
 )
 
 
@@ -1200,3 +1218,168 @@ def test_kind_partitioned_neighbors_match_full_adjacency_filter() -> None:
             for item in partitioned
         ]
         assert sorted(got_ids) == sorted(expected_ids)
+
+
+# ---------------------------------------------------------------------------
+# VFS-G151 / VFS-090 objective evidence surface (vfs/minimal-call-slice@1)
+# ---------------------------------------------------------------------------
+
+
+def test_minimal_call_slice_evidence_terms_bind_vfs_g151() -> None:
+    """Discovery scanners must observe the exact objective evidence term."""
+
+    assert minimal_call_slice_evidence() == "vfs/minimal-call-slice@1"
+    assert MINIMAL_CALL_SLICE_EVIDENCE == "vfs/minimal-call-slice@1"
+    assert minimal_call_slice_evidence_terms() == (
+        MINIMAL_CALL_SLICE_EVIDENCE,
+    )
+    assert covered_evidence_terms() == OBJECTIVE_DOMAIN_EVIDENCE_TERMS
+    assert all_covered_evidence_terms() == covered_evidence_terms()
+    assert OBJECTIVE_DOMAIN_EVIDENCE_TERMS == ("vfs/minimal-call-slice@1",)
+    assert OBJECTIVE_GOAL_ID == "VFS-G151"
+    assert OBJECTIVE_PARENT_GOAL_ID == "VFS-G041"
+    assert OBJECTIVE_TASK_ID == "VFS-090"
+    assert any("unrelated source" in item for item in MINIMAL_CALL_SLICE_INVARIANTS)
+    assert any(
+        "never silently convert" in item for item in MINIMAL_CALL_SLICE_INVARIANTS
+    )
+
+
+def test_slice_satisfies_minimal_call_slice_fail_closed() -> None:
+    """Truncation and required/forbidden node checks are machine-checkable."""
+
+    fx = _seeded_call_graph()
+    callees = query_symbol_callees(
+        fx["graph"], seed_qualified_names=["pkg.a"]
+    )
+    assert slice_obeys_fail_closed_completeness(callees)
+    assert slice_satisfies_minimal_call_slice(
+        callees,
+        required_node_ids=[fx["a"].node_id, fx["b"].node_id, fx["c"].node_id],
+        forbidden_node_ids=[fx["u"].node_id],
+        require_dependency_complete=True,
+        require_minimal=True,
+    )
+    # Portable mapping path.
+    assert slice_satisfies_minimal_call_slice(
+        callees.to_dict(),
+        required_node_ids=[fx["c"].node_id],
+        forbidden_node_ids=[fx["u"].node_id],
+    )
+    # Missing required node fails.
+    assert not slice_satisfies_minimal_call_slice(
+        callees,
+        required_node_ids=["symbol:does-not-exist"],
+    )
+    # Forbidden (unrelated) node fails when present in the required set as forbidden.
+    assert not slice_satisfies_minimal_call_slice(
+        callees,
+        forbidden_node_ids=[fx["c"].node_id],
+    )
+
+    truncated = query_symbol_callees(
+        fx["graph"],
+        seed_qualified_names=["pkg.a"],
+        bounds=QueryBounds(max_nodes=2, max_edges=2, max_depth=1),
+    )
+    assert truncated.truncated is True
+    assert slice_obeys_fail_closed_completeness(truncated)
+    assert truncated.complete is False
+    assert truncated.dependency_complete is False
+    # Truncated slice cannot satisfy require_dependency_complete.
+    assert not slice_satisfies_minimal_call_slice(
+        truncated,
+        require_dependency_complete=True,
+    )
+
+
+def test_prove_minimal_call_slice_for_seeded_callers_callees_and_mcp() -> None:
+    """VFS-G151 claim: callers/callees/MCP complete within scope; omit unrelated."""
+
+    call_fx = _seeded_call_graph()
+    mcp_fx = _mcp_route_graph()
+
+    # Call-graph claim on the seeded A->B->C chain.
+    call_claim = prove_minimal_call_slice(
+        call_fx["graph"],
+        callee_seed_qualified_names=["pkg.a"],
+        caller_seed_qualified_names=["pkg.c"],
+        required_callee_node_ids=[
+            call_fx["a"].node_id,
+            call_fx["b"].node_id,
+            call_fx["c"].node_id,
+        ],
+        required_caller_node_ids=[
+            call_fx["a"].node_id,
+            call_fx["c"].node_id,
+        ],
+        forbidden_node_ids=[call_fx["u"].node_id],
+        truncated_bounds=QueryBounds(max_nodes=2, max_edges=2, max_depth=1),
+    )
+    assert call_claim["schema"] == MINIMAL_CALL_SLICE_CLAIM_SCHEMA
+    assert call_claim["evidence"] == "vfs/minimal-call-slice@1"
+    assert call_claim["evidence_terms"] == ["vfs/minimal-call-slice@1"]
+    assert call_claim["all_evidence_terms"] == list(OBJECTIVE_DOMAIN_EVIDENCE_TERMS)
+    assert call_claim["goal_id"] == "VFS-G151"
+    assert call_claim["parent_goal_id"] == "VFS-G041"
+    assert call_claim["task_id"] == "VFS-090"
+    assert call_claim["satisfied"] is True
+    assert call_claim["failure_codes"] == []
+    assert call_claim["authoritative"] is False
+    assert call_claim["completion_authoritative"] is False
+    assert call_claim["promotion_authoritative"] is False
+    assert call_claim["semantic_authority"] is False
+    assert call_claim["checks"]["symbol_callees"] is True
+    assert call_claim["checks"]["symbol_callers"] is True
+    assert call_claim["checks"]["truncated_fail_closed"] is True
+    assert call_claim["slices"]["truncated_callees"]["truncated"] is True
+    assert call_claim["slices"]["truncated_callees"]["complete"] is False
+    assert call_claim["slices"]["truncated_callees"]["dependency_complete"] is False
+    assert call_fx["u"].node_id not in call_claim["slices"]["symbol_callees"]["node_ids"]
+    assert call_fx["u"].node_id not in call_claim["slices"]["symbol_callers"]["node_ids"]
+    assert call_claim["invariants"] == list(MINIMAL_CALL_SLICE_INVARIANTS)
+    assert call_claim["query_index"] == QUERY_INDEX_VERSION
+
+    # MCP registration route on its own graph.
+    mcp_claim = prove_minimal_call_slice_evidence(
+        mcp_fx["graph"],
+        mcp_seed_node_ids=[mcp_fx["reg"].node_id],
+        required_mcp_node_ids=[mcp_fx["reg"].node_id, mcp_fx["impl"].node_id],
+        forbidden_node_ids=[mcp_fx["unrelated"].node_id],
+    )
+    assert mcp_claim["satisfied"] is True
+    assert mcp_claim["evidence"] == MINIMAL_CALL_SLICE_EVIDENCE
+    assert mcp_claim["checks"]["mcp_end_to_end"] is True
+    assert mcp_fx["impl"].node_id in mcp_claim["slices"]["mcp_end_to_end"]["node_ids"]
+    assert (
+        mcp_fx["unrelated"].node_id
+        not in mcp_claim["slices"]["mcp_end_to_end"]["node_ids"]
+    )
+    assert "vfs/minimal-call-slice@1" in mcp_claim["evidence_terms"]
+
+
+def test_prove_minimal_call_slice_fails_closed_without_seeds() -> None:
+    """Empty seed set cannot satisfy the evidence claim."""
+
+    fx = _seeded_call_graph()
+    claim = prove_minimal_call_slice(fx["graph"])
+    assert claim["satisfied"] is False
+    assert "no-slices-evaluated" in claim["failure_codes"]
+    assert claim["evidence"] == "vfs/minimal-call-slice@1"
+    assert claim["completion_authoritative"] is False
+
+
+def test_prove_minimal_call_slice_fails_when_required_nodes_missing() -> None:
+    """Required-in-scope nodes that are absent fail the claim closed."""
+
+    fx = _seeded_call_graph()
+    claim = prove_minimal_call_slice(
+        fx["graph"],
+        callee_seed_qualified_names=["pkg.a"],
+        required_callee_node_ids=["symbol:never-present"],
+        forbidden_node_ids=[fx["u"].node_id],
+    )
+    assert claim["satisfied"] is False
+    assert "symbol-callees-acceptance" in claim["failure_codes"]
+    assert claim["checks"]["symbol_callees"] is False
+    assert claim["authoritative"] is False
