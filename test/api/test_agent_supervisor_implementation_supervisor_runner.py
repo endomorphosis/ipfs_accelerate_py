@@ -78,6 +78,7 @@ def test_apply_portal_implementation_supervisor_defaults_preserves_user_values(t
             objective_scan_min_open_tasks=3,
             objective_scan_max_findings=7,
             objective_scan_cooldown_seconds=60,
+            objective_scan_exclude_paths=("data/state", "var/runtime"),
             objective_todo_vector_index_path=tmp_path / "bundles" / "todo_vector_index.json",
             objective_surplus_findings_per_goal=4,
             objective_surplus_min_terms_per_todo=2,
@@ -115,6 +116,7 @@ def test_apply_portal_implementation_supervisor_defaults_preserves_user_values(t
     assert parsed.todo_path == tmp_path / "tasks.todo.md"
     assert parsed.state_prefix == "custom"
     assert parsed.objective_scan_max_findings == 99
+    assert parsed.objective_scan_exclude_path == ["data/state", "var/runtime"]
     assert parsed.objective_goal_migration_preview is True
     assert parsed.objective_goal_migration_batch_size == 7
     assert parsed.objective_goal_completion_gate_path == tmp_path / "completion-gate.json"
