@@ -384,7 +384,7 @@ expectations under existing precedence, but do not prove them by passing.
 
 ## LPR-011 Lower admitted tactic plans to exact existing proof obligations
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
