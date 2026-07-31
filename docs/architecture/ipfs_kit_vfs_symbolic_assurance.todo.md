@@ -4078,7 +4078,7 @@ compact references and bounded spans only.
 
 ## VFS-089 Close objective gap: Prove vfs/cache-invalidation-proof@1 for Goal packet aggregate for VFS-G031, VFS-G141, VFS-G142
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
