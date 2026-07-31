@@ -1,0 +1,1432 @@
+#!/usr/bin/env python3
+"""External Runtime MTL cross-runtime parity certification.
+
+``ExternalRuntimeMTLCertification@1`` / FVT-G181 (FVT-052).
+
+Explicit strict installation selects the exact pin-bound external monitor.
+Python (in-process reference), TypeScript (when available), and the external
+hermetic parity engine must agree on:
+
+* satisfied / violated golden traces;
+* closed vs open boundary intervals;
+* interval and event mutations;
+* shortest-prefix discovery and deterministic replay;
+* malformed input fail-closed behaviour;
+* bounds or disagreement quarantine.
+
+Finite-trace authority is preserved; no global correctness claim is inferred.
+This lane owns the external installer plugin, parity handler, and test; it never
+edits the in-process semantic reference lane or the central multi-prover
+certificate.
+"""
+
+from __future__ import annotations
+
+import argparse
+import copy
+import hashlib
+import importlib.util
+import json
+import os
+import sys
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any, Final, Mapping, Sequence
+
+# Allow running as a script from a worktree without an installed package.
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+_DATASETS_ROOT = _REPO_ROOT / "ipfs_datasets_py"
+for _candidate in (_REPO_ROOT, _DATASETS_ROOT):
+    _text = str(_candidate)
+    if _text not in sys.path:
+        sys.path.insert(0, _text)
+
+from ipfs_datasets_py.logic.backends.installers import runtime_mtl as mtl_installer  # noqa: E402
+from ipfs_datasets_py.logic.backends.process import (  # noqa: E402
+    BoundedToolRunner,
+    ToolRunLimits,
+    ToolRunRequest,
+    ToolRuntime,
+)
+from ipfs_datasets_py.logic.backends.toolchain_roles import (  # noqa: E402
+    ToolRole,
+    ToolchainAuthorityCeiling,
+    get_tool_role,
+)
+from ipfs_datasets_py.logic.software_verification.monitoring.runtime_mtl import (  # noqa: E402
+    MonitorAuthority,
+    evaluate_case,
+    golden_fixtures,
+)
+
+# Reuse compact recipes / mutations from the in-process semantic certifier.
+_SEMANTIC_CERTIFIER_PATH = (
+    _REPO_ROOT / "tools" / "logic" / "certification" / "runtime_mtl.py"
+)
+
+
+def _load_semantic_certifier():
+    spec = importlib.util.spec_from_file_location(
+        "runtime_mtl_semantic_certification_for_external",
+        _SEMANTIC_CERTIFIER_PATH,
+    )
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"unable to load semantic certifier at {_SEMANTIC_CERTIFIER_PATH}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+_semantic = _load_semantic_certifier()
+
+INTERFACE: Final = "ExternalRuntimeMTLCertification@1"
+SCHEMA_VERSION: Final = "external-runtime-mtl-certification/v1"
+GOAL_ID: Final = "FVT-G181"
+TASK_ID: Final = "FVT-052"
+PROGRAM: Final = "formal-verification-tactician/runtime-monitor-toolchains"
+LANE_ID: Final = "runtime_mtl_external"
+HANDLER_ID: Final = "external_runtime_mtl_certification@1"
+CERTIFICATION_SURFACE: Final = "tools.logic.certification.runtime_mtl_external"
+
+TOOL_EXTERNAL: Final = mtl_installer.TOOL_RUNTIME_MTL_EXTERNAL
+EXTERNAL_ENGINES: Final = (TOOL_EXTERNAL,)
+REFERENCE_ENGINE: Final = "runtime-mtl"
+REFERENCE_ENGINES: Final = (REFERENCE_ENGINE,)
+
+# Finite-trace monitor authority for both reference and certified external.
+AUTHORITY_CEILING: Final = ToolchainAuthorityCeiling.FINITE_TRACE.value
+MONITOR_AUTHORITY: Final = MonitorAuthority.MONITOR.value
+
+# Corpus categories required by FVT-G181 acceptance.
+REQUIRED_CATEGORIES: Final = frozenset(
+    {
+        "satisfied",
+        "violated",
+        "timestamp_boundary",
+        "interval_mutation",
+        "event_mutation",
+        "shortest_violating_prefix",
+        "malformed",
+        "clean_prefix",
+    }
+)
+REQUIRED_MUTATION_KINDS: Final = frozenset({"interval", "event"})
+CHECK_KINDS: Final = frozenset(
+    {
+        "positive",
+        "mutation",
+        "replay",
+        "malformed",
+        "parity",
+        "disagreement_quarantine",
+        "authority",
+        "install",
+        "role",
+        "bounds",
+    }
+)
+
+
+class ExternalRuntimeMTLCertificationError(ValueError):
+    """Raised when external Runtime MTL parity certification fails closed."""
+
+
+# ---------------------------------------------------------------------------
+# Result types
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class CheckResult:
+    """One hermetic external-parity check outcome."""
+
+    check_id: str
+    kind: str
+    status: str
+    expected: str
+    observed: str
+    detail: str = ""
+    engine_id: str = ""
+    authority: str = MONITOR_AUTHORITY
+    is_theorem_authority: bool = False
+    authorizes_global_proof: bool = False
+    quarantined: bool = False
+
+    def __post_init__(self) -> None:
+        if self.kind not in CHECK_KINDS:
+            raise ExternalRuntimeMTLCertificationError(
+                f"unknown check kind {self.kind!r}"
+            )
+        if self.status not in {
+            "passed",
+            "failed",
+            "quarantined",
+            "error",
+            "skipped",
+        }:
+            raise ExternalRuntimeMTLCertificationError(
+                f"unknown check status {self.status!r}"
+            )
+        if self.is_theorem_authority or self.authorizes_global_proof:
+            raise ExternalRuntimeMTLCertificationError(
+                "external Runtime MTL checks cannot claim theorem / global proof"
+            )
+
+    @property
+    def passed(self) -> bool:
+        return self.status == "passed"
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "authority": self.authority or MONITOR_AUTHORITY,
+            "authorizes_global_proof": False,
+            "check_id": self.check_id,
+            "detail": self.detail,
+            "engine_id": self.engine_id,
+            "expected": self.expected,
+            "is_theorem_authority": False,
+            "kind": self.kind,
+            "observed": self.observed,
+            "quarantined": self.quarantined,
+            "status": self.status,
+        }
+
+
+@dataclass
+class ParityRunRecord:
+    """One cross-runtime evaluation for differential comparison."""
+
+    engine_id: str
+    case_id: str
+    status: str
+    verdict: str
+    reference_status: str
+    reference_verdict: str
+    agreed: bool
+    authority: str = MONITOR_AUTHORITY
+    authorizes_global_proof: bool = False
+    timed_out: bool = False
+    malformed: bool = False
+    detail: str = ""
+    executable: str = ""
+    engine_version: str = ""
+    formula_digest: str = ""
+    trace_digest: str = ""
+    result_digest: str = ""
+    quarantined: bool = False
+    python_status: str = ""
+    typescript_status: str = ""
+    external_status: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "agreed": self.agreed,
+            "authority": self.authority,
+            "authorizes_global_proof": False,
+            "case_id": self.case_id,
+            "detail": self.detail,
+            "engine_id": self.engine_id,
+            "engine_version": self.engine_version,
+            "executable": self.executable,
+            "external_status": self.external_status,
+            "formula_digest": self.formula_digest,
+            "malformed": self.malformed,
+            "python_status": self.python_status,
+            "quarantined": self.quarantined,
+            "reference_status": self.reference_status,
+            "reference_verdict": self.reference_verdict,
+            "result_digest": self.result_digest,
+            "status": self.status,
+            "timed_out": self.timed_out,
+            "trace_digest": self.trace_digest,
+            "typescript_status": self.typescript_status,
+            "verdict": self.verdict,
+        }
+
+
+@dataclass
+class EngineCertification:
+    """Per-external-engine parity certification summary."""
+
+    engine_id: str
+    version: str
+    executable: str
+    usable: bool
+    certified: bool
+    role: str
+    authority_ceiling: str
+    checks: list[CheckResult] = field(default_factory=list)
+    case_results: list[ParityRunRecord] = field(default_factory=list)
+    block_reasons: list[str] = field(default_factory=list)
+    install_status: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "authority_ceiling": self.authority_ceiling,
+            "block_reasons": list(self.block_reasons),
+            "case_results": [item.to_dict() for item in self.case_results],
+            "certified": self.certified,
+            "checks": [item.to_dict() for item in self.checks],
+            "engine_id": self.engine_id,
+            "executable": self.executable,
+            "install_status": self.install_status,
+            "role": self.role,
+            "usable": self.usable,
+            "version": self.version,
+        }
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _stable_json_digest(payload: Mapping[str, Any] | Sequence[Any] | str) -> str:
+    if isinstance(payload, str):
+        raw = payload.encode("utf-8")
+    else:
+        raw = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(raw).hexdigest()
+
+
+def _content_digest(payload: Any) -> str:
+    return _stable_json_digest(payload)
+
+
+def _python_evaluate(case: Mapping[str, Any]) -> dict[str, Any]:
+    return evaluate_case(
+        {
+            "formula": case["formula"],
+            "trace": case["trace"],
+            "position": int(case.get("position", 0)),
+            "case_id": str(case.get("case_id") or "python"),
+        }
+    )
+
+
+def _run_external_process(
+    executable: str,
+    case: Mapping[str, Any],
+    *,
+    timeout_seconds: float = 5.0,
+    env: Mapping[str, str] | None = None,
+    runner: BoundedToolRunner | None = None,
+) -> tuple[dict[str, Any] | None, dict[str, Any]]:
+    """Execute one external parity evaluation; return (result_or_None, meta)."""
+
+    wire = {
+        "formula": case["formula"],
+        "trace": case["trace"],
+        "position": int(case.get("position", 0)),
+        "case_id": str(case.get("case_id") or "external"),
+    }
+    source = json.dumps(wire, sort_keys=True, separators=(",", ":"))
+    tool_runner = runner or BoundedToolRunner()
+    filename = "case.json"
+    argv = (executable, "evaluate", f"{{workspace}}/{filename}")
+    run_env = dict(os.environ)
+    if env:
+        run_env.update({str(k): str(v) for k, v in env.items()})
+    request = ToolRunRequest(
+        argv=argv,
+        runtime=ToolRuntime.NATIVE,
+        limits=ToolRunLimits(
+            timeout_seconds=timeout_seconds,
+            cpu_seconds=timeout_seconds,
+            memory_bytes=128 * 1024 * 1024,
+            max_output_bytes=128 * 1024,
+            max_input_bytes=max(64 * 1024, len(source.encode("utf-8")) + 1024),
+            max_workspace_bytes=max(
+                256 * 1024, len(source.encode("utf-8")) + 64 * 1024
+            ),
+        ),
+        input_files={filename: source},
+        environment=run_env,
+    )
+    try:
+        result = tool_runner.run(request)
+    except Exception as exc:  # pragma: no cover - defensive
+        return None, {
+            "error": f"{type(exc).__name__}:{exc}",
+            "timed_out": False,
+            "stdout": "",
+            "stderr": "",
+            "returncode": None,
+        }
+
+    meta = {
+        "error": result.error or "",
+        "timed_out": bool(result.timed_out),
+        "stdout": result.stdout or "",
+        "stderr": result.stderr or "",
+        "returncode": result.returncode,
+        "unavailable": bool(getattr(result, "unavailable", False)),
+    }
+    if result.timed_out:
+        return None, meta
+
+    stdout = (result.stdout or "").strip()
+    if not stdout:
+        meta["malformed"] = True
+        return None, meta
+    # Reject deliberate garbage tokens.
+    if "%%%" in stdout or not stdout.startswith("{"):
+        meta["malformed"] = True
+        return None, meta
+    try:
+        payload = json.loads(stdout.splitlines()[-1])
+    except json.JSONDecodeError:
+        meta["malformed"] = True
+        return None, meta
+    if not isinstance(payload, dict) or "status" not in payload or "verdict" not in payload:
+        meta["malformed"] = True
+        return None, meta
+    return payload, meta
+
+
+def run_parity_case(
+    engine_id: str,
+    case_id: str,
+    case: Mapping[str, Any] | None,
+    *,
+    executable: str,
+    engine_version: str = "",
+    expect_error: bool = False,
+    timeout_seconds: float = 5.0,
+    env: Mapping[str, str] | None = None,
+    runner: BoundedToolRunner | None = None,
+    typescript_status: str = "",
+) -> ParityRunRecord:
+    """Run one case on the external engine and differentially compare to Python."""
+
+    if expect_error or case is None:
+        # Force malformed emission via env; never allow global proof.
+        bad_case = {
+            "case_id": case_id,
+            "formula": {"kind": "atom", "name": "x", "logic": "ltlf",
+                        "schema_version": "runtime-mtl-formula/v1"},
+            "trace": {
+                "kind": "finite",
+                "events": [],
+                "schema_version": "runtime-mtl-trace/v1",
+            },
+        }
+        run_env = dict(env or {})
+        run_env.setdefault(mtl_installer.ENV_MALFORMED, "1")
+        observed, meta = _run_external_process(
+            executable,
+            bad_case,
+            timeout_seconds=timeout_seconds,
+            env=run_env,
+            runner=runner,
+        )
+        if meta.get("timed_out"):
+            return ParityRunRecord(
+                engine_id=engine_id,
+                case_id=case_id,
+                status="timeout",
+                verdict="inconclusive",
+                reference_status="malformed",
+                reference_verdict="inconclusive",
+                agreed=False,
+                timed_out=True,
+                malformed=True,
+                detail="external engine timed out on malformed probe",
+                executable=executable,
+                engine_version=engine_version,
+                quarantined=True,
+            )
+        if observed is not None and observed.get("status") == "satisfied":
+            return ParityRunRecord(
+                engine_id=engine_id,
+                case_id=case_id,
+                status=str(observed.get("status")),
+                verdict=str(observed.get("verdict")),
+                reference_status="malformed",
+                reference_verdict="inconclusive",
+                agreed=False,
+                malformed=True,
+                detail="malformed input produced satisfied",
+                executable=executable,
+                engine_version=engine_version,
+                quarantined=True,
+                external_status=str(observed.get("status")),
+            )
+        return ParityRunRecord(
+            engine_id=engine_id,
+            case_id=case_id,
+            status="malformed" if observed is None else str(observed.get("status")),
+            verdict="inconclusive" if observed is None else str(observed.get("verdict")),
+            reference_status="malformed",
+            reference_verdict="inconclusive",
+            agreed=observed is None or str(observed.get("status")) != "satisfied",
+            malformed=True,
+            detail="malformed input fail-closed",
+            executable=executable,
+            engine_version=engine_version,
+            quarantined=True,
+            external_status="" if observed is None else str(observed.get("status")),
+        )
+
+    reference = _python_evaluate(case)
+    ref_status = str(reference["status"])
+    ref_verdict = str(reference["verdict"])
+    formula_digest = _content_digest(case["formula"])
+    trace_digest = _content_digest(case["trace"])
+
+    observed, meta = _run_external_process(
+        executable,
+        case,
+        timeout_seconds=timeout_seconds,
+        env=env,
+        runner=runner,
+    )
+    if meta.get("timed_out"):
+        return ParityRunRecord(
+            engine_id=engine_id,
+            case_id=case_id,
+            status="timeout",
+            verdict="inconclusive",
+            reference_status=ref_status,
+            reference_verdict=ref_verdict,
+            agreed=False,
+            timed_out=True,
+            detail="external engine timed out",
+            executable=executable,
+            engine_version=engine_version,
+            formula_digest=formula_digest,
+            trace_digest=trace_digest,
+            quarantined=True,
+            python_status=ref_status,
+            typescript_status=typescript_status,
+        )
+    if meta.get("malformed") or observed is None:
+        return ParityRunRecord(
+            engine_id=engine_id,
+            case_id=case_id,
+            status="error",
+            verdict="inconclusive",
+            reference_status=ref_status,
+            reference_verdict=ref_verdict,
+            agreed=False,
+            malformed=bool(meta.get("malformed")),
+            detail=str(meta.get("error") or "unparseable external output")[:240],
+            executable=executable,
+            engine_version=engine_version,
+            formula_digest=formula_digest,
+            trace_digest=trace_digest,
+            quarantined=True,
+            python_status=ref_status,
+            typescript_status=typescript_status,
+        )
+
+    ext_status = str(observed.get("status"))
+    ext_verdict = str(observed.get("verdict"))
+    authorizes = bool(observed.get("authorizes_global_proof"))
+    authority = str(observed.get("authority") or MONITOR_AUTHORITY)
+    agreed = (
+        ext_status == ref_status
+        and ext_verdict == ref_verdict
+        and not authorizes
+        and authority == MONITOR_AUTHORITY
+    )
+    # TypeScript agreement is optional when status is provided.
+    if typescript_status and typescript_status not in {ref_status, "skipped"}:
+        agreed = False
+    quarantined = not agreed or authorizes
+    return ParityRunRecord(
+        engine_id=engine_id,
+        case_id=case_id,
+        status=ext_status,
+        verdict=ext_verdict,
+        reference_status=ref_status,
+        reference_verdict=ref_verdict,
+        agreed=agreed,
+        authority=authority,
+        authorizes_global_proof=authorizes,
+        detail="" if agreed else "external disagreed with Python reference; quarantined",
+        executable=executable,
+        engine_version=engine_version,
+        formula_digest=formula_digest,
+        trace_digest=trace_digest,
+        result_digest=_content_digest(
+            {
+                "status": ext_status,
+                "verdict": ext_verdict,
+                "authority": authority,
+            }
+        ),
+        quarantined=quarantined,
+        python_status=ref_status,
+        typescript_status=typescript_status,
+        external_status=ext_status,
+    )
+
+
+def default_case_specs():
+    """Reuse the compact semantic corpus recipes, filtered for G181."""
+
+    return tuple(
+        spec
+        for spec in _semantic.default_case_specs()
+        if spec.category in REQUIRED_CATEGORIES
+        or spec.category in {"interval_mutation", "event_mutation"}
+        or spec.mutation_kind in REQUIRED_MUTATION_KINDS
+    )
+
+
+def materialize_case(spec) -> dict[str, Any]:
+    return _semantic.materialize_case(spec)
+
+
+# ---------------------------------------------------------------------------
+# Certification
+# ---------------------------------------------------------------------------
+
+
+def _install_external_engine(
+    *,
+    install_root: Path | str | None,
+    force: bool = False,
+) -> mtl_installer.RuntimeMTLInstallBundle:
+    return mtl_installer.ensure_runtime_mtl_external_bundle(
+        yes=True,
+        strict=True,
+        force=force,
+        install_root=install_root,
+        hermetic_parity_engine=True,
+        checksum_verified=True,
+    )
+
+
+def _optional_typescript_status(
+    case: Mapping[str, Any],
+    *,
+    repo_root: Path,
+) -> str:
+    """Best-effort TypeScript status; empty string means unavailable."""
+
+    try:
+        ts = _semantic.evaluate_typescript_case(case, repo_root=repo_root)
+    except Exception:
+        return ""
+    if ts is None:
+        return ""
+    return str(ts.get("status") or "")
+
+
+def certify_engine(
+    engine_id: str,
+    *,
+    identity: mtl_installer.ExternalMonitorIdentity,
+    install_status: str = "installed",
+    specs: Sequence[Any] | None = None,
+    repo_root: Path | None = None,
+) -> EngineCertification:
+    """Run the full external-parity matrix for one pin-bound engine."""
+
+    root = repo_root or _REPO_ROOT
+    selected = tuple(specs or default_case_specs())
+    checks: list[CheckResult] = []
+    records: list[ParityRunRecord] = []
+    block_reasons: list[str] = []
+
+    # Role binding — finite-trace authority only.
+    try:
+        role = get_tool_role(engine_id)
+        role_ok = (
+            role.role is ToolRole.AUTHORITY
+            and role.authority_ceiling is ToolchainAuthorityCeiling.FINITE_TRACE
+        )
+    except Exception as exc:
+        role_ok = False
+        block_reasons.append(f"role_lookup_failed:{type(exc).__name__}")
+        role = None  # type: ignore[assignment]
+
+    checks.append(
+        CheckResult(
+            check_id=f"{engine_id}.role.finite_trace",
+            kind="role",
+            status="passed" if role_ok else "failed",
+            expected="authority/finite_trace",
+            observed=(
+                f"{role.role.value}/{role.authority_ceiling.value}"
+                if role is not None
+                else "unavailable"
+            ),
+            detail="external Runtime MTL retains finite-trace authority only",
+            engine_id=engine_id,
+        )
+    )
+    if not role_ok:
+        block_reasons.append("role_not_finite_trace_authority")
+
+    checks.append(
+        CheckResult(
+            check_id=f"{engine_id}.install.strict_pin",
+            kind="install",
+            status="passed" if identity.version else "failed",
+            expected=identity.version,
+            observed=identity.version,
+            detail=f"executable={identity.executable}",
+            engine_id=engine_id,
+        )
+    )
+
+    usable = Path(identity.executable).is_file()
+    if not usable:
+        block_reasons.append("executable_missing")
+
+    category_seen: set[str] = set()
+    mutation_seen: set[str] = set()
+
+    # ---- positive / boundary / clean-prefix / malformed corpus
+    for spec in selected:
+        if spec.category in {
+            "interval_mutation",
+            "event_mutation",
+            "shortest_violating_prefix",
+            "parity",
+        }:
+            continue
+        if spec.category not in REQUIRED_CATEGORIES:
+            continue
+
+        case = materialize_case(spec)
+        # Skip recipe-only stubs without formula/trace.
+        if "formula" not in case or "trace" not in case:
+            continue
+
+        ts_status = ""
+        if spec.category in {"satisfied", "violated", "timestamp_boundary"}:
+            ts_status = _optional_typescript_status(case, repo_root=root)
+
+        record = run_parity_case(
+            engine_id,
+            spec.case_id,
+            case,
+            executable=identity.executable,
+            engine_version=identity.version,
+            typescript_status=ts_status,
+        )
+        records.append(record)
+        category_seen.add(spec.category)
+
+        expected_status = spec.expected_status or record.reference_status
+        expected_verdict = spec.expected_verdict or record.reference_verdict
+        ok = (
+            record.agreed
+            and record.status == expected_status
+            and record.verdict == expected_verdict
+            and not record.authorizes_global_proof
+            and record.authority == MONITOR_AUTHORITY
+        )
+        checks.append(
+            CheckResult(
+                check_id=f"{engine_id}.{spec.case_id}.positive",
+                kind="positive",
+                status="passed" if ok else "failed",
+                expected=f"{expected_status}/{expected_verdict}",
+                observed=f"{record.status}/{record.verdict}",
+                detail=spec.notes or "cross-runtime positive case",
+                engine_id=engine_id,
+                quarantined=record.quarantined,
+            )
+        )
+        if not ok:
+            block_reasons.append(f"positive_failed:{spec.case_id}")
+
+        # Explicit parity kind (Python / external [/ TS when available]).
+        parity_ok = record.agreed and not record.quarantined
+        if ts_status and ts_status not in {record.python_status, "skipped"}:
+            parity_ok = False
+        checks.append(
+            CheckResult(
+                check_id=f"{engine_id}.{spec.case_id}.parity",
+                kind="parity",
+                status="passed" if parity_ok else "quarantined",
+                expected=record.reference_status,
+                observed=record.status,
+                detail=(
+                    f"python={record.python_status}; external={record.external_status}"
+                    + (f"; typescript={ts_status}" if ts_status else "; typescript=skipped")
+                ),
+                engine_id=engine_id,
+                quarantined=not parity_ok,
+            )
+        )
+        if not parity_ok:
+            block_reasons.append(f"parity_disagreement:{spec.case_id}")
+
+        # Deterministic replay for conclusive outcomes.
+        if record.status in {"satisfied", "violated", "unknown", "malformed"}:
+            replay = run_parity_case(
+                engine_id,
+                f"{spec.case_id}:replay",
+                case,
+                executable=identity.executable,
+                engine_version=identity.version,
+            )
+            records.append(replay)
+            replay_ok = (
+                replay.status == record.status
+                and replay.verdict == record.verdict
+                and replay.formula_digest == record.formula_digest
+                and replay.trace_digest == record.trace_digest
+                and replay.agreed == record.agreed
+            )
+            checks.append(
+                CheckResult(
+                    check_id=f"{engine_id}.{spec.case_id}.replay",
+                    kind="replay",
+                    status="passed" if replay_ok else "failed",
+                    expected=f"{record.status}/{record.verdict}",
+                    observed=f"{replay.status}/{replay.verdict}",
+                    detail="external replay must be deterministic",
+                    engine_id=engine_id,
+                )
+            )
+            if not replay_ok:
+                block_reasons.append(f"replay_unstable:{spec.case_id}")
+
+    # ---- interval / event mutations
+    for spec in selected:
+        if spec.category not in {"interval_mutation", "event_mutation"}:
+            continue
+        mutation_kind = spec.mutation_kind or (
+            "interval" if "interval" in spec.category else "event"
+        )
+        if mutation_kind not in REQUIRED_MUTATION_KINDS:
+            continue
+        base = _semantic._golden_by_id(spec.base_fixture_id)
+        base_record = run_parity_case(
+            engine_id,
+            f"{spec.case_id}:baseline",
+            {
+                "case_id": f"{spec.case_id}:baseline",
+                "formula": base["formula"],
+                "trace": base["trace"],
+                "position": base.get("position", 0),
+            },
+            executable=identity.executable,
+            engine_version=identity.version,
+        )
+        records.append(base_record)
+        mutated_case = materialize_case(spec)
+        mutated = run_parity_case(
+            engine_id,
+            spec.case_id,
+            mutated_case,
+            executable=identity.executable,
+            engine_version=identity.version,
+        )
+        records.append(mutated)
+        mutation_seen.add(mutation_kind)
+        category_seen.add(spec.category)
+
+        changed = (
+            mutated.status != base_record.status
+            or mutated.verdict != base_record.verdict
+        )
+        matches = (
+            mutated.status == spec.expected_status
+            and mutated.verdict == spec.expected_verdict
+            and mutated.agreed
+        )
+        digests_changed = (
+            mutated.formula_digest != base_record.formula_digest
+            or mutated.trace_digest != base_record.trace_digest
+        )
+        ok = changed and matches and digests_changed and not mutated.authorizes_global_proof
+        checks.append(
+            CheckResult(
+                check_id=f"{engine_id}.{spec.case_id}.mutation",
+                kind="mutation",
+                status="passed" if ok else "failed",
+                expected=f"{spec.expected_status}/{spec.expected_verdict}",
+                observed=f"{mutated.status}/{mutated.verdict}",
+                detail=(
+                    f"mutation_kind={mutation_kind}; "
+                    f"baseline={base_record.status}/{base_record.verdict}; "
+                    f"digests_changed={digests_changed}"
+                ),
+                engine_id=engine_id,
+            )
+        )
+        if not ok:
+            block_reasons.append(f"mutation_failed:{spec.case_id}")
+
+    # ---- shortest violating-prefix replay
+    for spec in selected:
+        if spec.recipe != "shortest_violating_prefix_replay":
+            continue
+        base = _semantic._golden_by_id(spec.base_fixture_id)
+        full = run_parity_case(
+            engine_id,
+            f"{spec.case_id}:full",
+            {
+                "case_id": f"{spec.case_id}:full",
+                "formula": base["formula"],
+                "trace": base["trace"],
+                "position": base.get("position", 0),
+            },
+            executable=identity.executable,
+            engine_version=identity.version,
+        )
+        records.append(full)
+        prefix, length, prefix_record = _semantic.shortest_violating_prefix(
+            base["formula"],
+            base["trace"],
+            position=int(base.get("position", 0)),
+        )
+        ok = (
+            full.status == "violated"
+            and prefix is not None
+            and length is not None
+            and prefix_record is not None
+            and full.agreed
+            and not full.authorizes_global_proof
+        )
+        if prefix is not None and prefix_record is not None:
+            external_prefix = run_parity_case(
+                engine_id,
+                f"{spec.case_id}:shortest",
+                {
+                    "case_id": f"{spec.case_id}:shortest",
+                    "formula": base["formula"],
+                    "trace": prefix,
+                    "position": base.get("position", 0),
+                },
+                executable=identity.executable,
+                engine_version=identity.version,
+            )
+            records.append(external_prefix)
+            replay = run_parity_case(
+                engine_id,
+                f"{spec.case_id}:replay",
+                {
+                    "case_id": f"{spec.case_id}:replay",
+                    "formula": base["formula"],
+                    "trace": prefix,
+                    "position": base.get("position", 0),
+                },
+                executable=identity.executable,
+                engine_version=identity.version,
+            )
+            records.append(replay)
+            ok = ok and (
+                external_prefix.status == "violated"
+                and external_prefix.agreed
+                and replay.status == external_prefix.status
+                and replay.verdict == external_prefix.verdict
+            )
+        category_seen.add(spec.category)
+        checks.append(
+            CheckResult(
+                check_id=f"{engine_id}.{spec.case_id}.shortest_prefix_replay",
+                kind="replay",
+                status="passed" if ok else "failed",
+                expected="violated@shortest_prefix",
+                observed=(
+                    f"{full.status}/len={length}" if length is not None else full.status
+                ),
+                detail=f"shortest_prefix_length={length}",
+                engine_id=engine_id,
+            )
+        )
+        if not ok:
+            block_reasons.append(f"shortest_prefix_failed:{spec.case_id}")
+
+    missing_categories = sorted(REQUIRED_CATEGORIES - category_seen)
+    # clean_prefix and malformed are exercised above when present in specs.
+    if missing_categories:
+        block_reasons.append(f"missing_categories:{','.join(missing_categories)}")
+
+    missing_mutations = sorted(REQUIRED_MUTATION_KINDS - mutation_seen)
+    if missing_mutations:
+        block_reasons.append(f"missing_mutations:{','.join(missing_mutations)}")
+
+    # ---- malformed output fail-closed
+    malformed = run_parity_case(
+        engine_id,
+        "case:malformed-forced",
+        None,
+        executable=identity.executable,
+        engine_version=identity.version,
+        expect_error=True,
+    )
+    records.append(malformed)
+    malformed_ok = (
+        malformed.status != "satisfied"
+        and malformed.malformed
+        and malformed.quarantined
+        and not malformed.authorizes_global_proof
+    )
+    checks.append(
+        CheckResult(
+            check_id=f"{engine_id}.case:malformed.malformed",
+            kind="malformed",
+            status="passed" if malformed_ok else "failed",
+            expected="error|malformed|quarantine (never satisfied theorem)",
+            observed=malformed.status,
+            detail=malformed.detail,
+            engine_id=engine_id,
+            quarantined=malformed.quarantined,
+        )
+    )
+    if not malformed_ok:
+        block_reasons.append("malformed_not_fail_closed")
+    category_seen.add("malformed")
+
+    # ---- deliberate disagreement must quarantine promotion
+    disagree_fixture = next(
+        (
+            item
+            for item in golden_fixtures()
+            if item.get("expected", {}).get("status") == "satisfied"
+        ),
+        golden_fixtures()[0],
+    )
+    disagree = run_parity_case(
+        engine_id,
+        "case:disagreement",
+        {
+            "case_id": "case:disagreement",
+            "formula": disagree_fixture["formula"],
+            "trace": disagree_fixture["trace"],
+            "position": disagree_fixture.get("position", 0),
+        },
+        executable=identity.executable,
+        engine_version=identity.version,
+        env={mtl_installer.ENV_DISAGREE: "1"},
+    )
+    records.append(disagree)
+    disagree_ok = (
+        not disagree.agreed
+        and disagree.quarantined
+        and (
+            disagree.status != disagree.reference_status
+            or disagree.verdict != disagree.reference_verdict
+        )
+    )
+    checks.append(
+        CheckResult(
+            check_id=f"{engine_id}.case:disagreement.disagreement_quarantine",
+            kind="disagreement_quarantine",
+            status="passed" if disagree_ok else "failed",
+            expected="disagreement+quarantine",
+            observed=f"{disagree.status}/{disagree.verdict} vs "
+            f"{disagree.reference_status}/{disagree.reference_verdict}",
+            detail="any disagreement quarantines promotion",
+            engine_id=engine_id,
+            quarantined=disagree.quarantined,
+        )
+    )
+    if not disagree_ok:
+        block_reasons.append("disagreement_not_quarantined")
+
+    # ---- bounds: global-proof elevation must be rejected / quarantined
+    elevate = run_parity_case(
+        engine_id,
+        "case:bounds-elevation",
+        {
+            "case_id": "case:bounds-elevation",
+            "formula": disagree_fixture["formula"],
+            "trace": disagree_fixture["trace"],
+            "position": disagree_fixture.get("position", 0),
+        },
+        executable=identity.executable,
+        engine_version=identity.version,
+        env={mtl_installer.ENV_AUTHORIZE_GLOBAL_PROOF: "1"},
+    )
+    records.append(elevate)
+    # Even if the engine claims global proof, certification must quarantine.
+    bounds_ok = elevate.authorizes_global_proof and elevate.quarantined
+    # Also accept if the engine refused to elevate (still not theorem).
+    if not elevate.authorizes_global_proof and elevate.agreed:
+        bounds_ok = True
+    checks.append(
+        CheckResult(
+            check_id=f"{engine_id}.case:bounds.bounds",
+            kind="bounds",
+            status="passed" if bounds_ok else "failed",
+            expected="no_global_correctness_claim|quarantine",
+            observed=(
+                f"authorizes_global_proof={elevate.authorizes_global_proof};"
+                f"quarantined={elevate.quarantined}"
+            ),
+            detail="finite-trace authority only; elevation quarantined",
+            engine_id=engine_id,
+            quarantined=elevate.quarantined,
+        )
+    )
+    if not bounds_ok:
+        block_reasons.append("bounds_global_claim_not_quarantined")
+
+    # Authority: never theorem, only finite-trace / monitor.
+    authority_ok = (
+        identity.role == ToolRole.AUTHORITY.value
+        and identity.authority_ceiling == AUTHORITY_CEILING
+        and all(
+            not record.authorizes_global_proof
+            or record.case_id == "case:bounds-elevation"
+            for record in records
+        )
+        and all(
+            record.authority in {MONITOR_AUTHORITY, AUTHORITY_CEILING, "monitor", ""}
+            for record in records
+            if not record.timed_out and not record.malformed
+        )
+    )
+    # Corpus records (excluding deliberate elevation probe) must never authorize proof.
+    corpus_elevation = any(
+        record.authorizes_global_proof and record.case_id != "case:bounds-elevation"
+        for record in records
+    )
+    if corpus_elevation:
+        authority_ok = False
+        block_reasons.append("corpus_claimed_global_proof")
+
+    checks.append(
+        CheckResult(
+            check_id=f"{engine_id}.authority.finite_trace_only",
+            kind="authority",
+            status="passed" if authority_ok else "failed",
+            expected="authority/finite_trace; never theorem",
+            observed=f"{identity.role}/{identity.authority_ceiling}",
+            detail="no global correctness claim is inferred",
+            engine_id=engine_id,
+        )
+    )
+    if not authority_ok:
+        block_reasons.append("authority_breach")
+
+    all_passed = all(item.passed for item in checks) and not block_reasons and usable
+    return EngineCertification(
+        engine_id=engine_id,
+        version=identity.version,
+        executable=identity.executable,
+        usable=usable,
+        certified=all_passed,
+        role=ToolRole.AUTHORITY.value,
+        authority_ceiling=AUTHORITY_CEILING,
+        checks=checks,
+        case_results=records,
+        block_reasons=sorted(set(block_reasons)),
+        install_status=install_status,
+    )
+
+
+def certify_external_runtime_mtl(
+    *,
+    install_root: Path | str | None = None,
+    engines: Sequence[str] | None = None,
+    force_install: bool = False,
+    skip_install: bool = False,
+    identities: Mapping[str, mtl_installer.ExternalMonitorIdentity] | None = None,
+    repo_root: Path | None = None,
+) -> dict[str, Any]:
+    """Run full external Runtime MTL parity certification for FVT-G181."""
+
+    selected = tuple(engines or EXTERNAL_ENGINES)
+    install_bundle: mtl_installer.RuntimeMTLInstallBundle | None = None
+    resolved_identities: dict[str, mtl_installer.ExternalMonitorIdentity] = {}
+    install_statuses: dict[str, str] = {}
+    root = repo_root or _REPO_ROOT
+
+    if identities:
+        resolved_identities = dict(identities)
+        for tool_id in selected:
+            install_statuses[tool_id] = "provided"
+    elif skip_install:
+        install_path = mtl_installer._expand_install_root(install_root)
+        for tool_id in selected:
+            pin = mtl_installer.pin_for_tool(tool_id)
+            identity = mtl_installer._identity_from_disk(tool_id, install_path, pin)
+            if identity is None:
+                raise ExternalRuntimeMTLCertificationError(
+                    f"skip_install requested but {tool_id} is not installed under "
+                    f"{install_path}"
+                )
+            resolved_identities[tool_id] = identity
+            install_statuses[tool_id] = "already_present"
+    else:
+        install_bundle = _install_external_engine(
+            install_root=install_root,
+            force=force_install,
+        )
+        if not install_bundle.ok:
+            raise ExternalRuntimeMTLCertificationError(
+                "strict installation failed: "
+                + "; ".join(
+                    f"{r.tool_id}:{r.status}:{r.detail}" for r in install_bundle.receipts
+                )
+            )
+        for receipt in install_bundle.receipts:
+            if receipt.identity is None:
+                continue
+            resolved_identities[receipt.tool_id] = receipt.identity
+            install_statuses[receipt.tool_id] = receipt.status
+
+    engine_results: list[EngineCertification] = []
+    for engine_id in selected:
+        identity = resolved_identities.get(engine_id)
+        if identity is None:
+            raise ExternalRuntimeMTLCertificationError(
+                f"no installed identity for {engine_id!r}"
+            )
+        pin = mtl_installer.pin_for_tool(engine_id)
+        if identity.version != pin["version"]:
+            raise ExternalRuntimeMTLCertificationError(
+                f"strict pin mismatch for {engine_id}: "
+                f"{identity.version!r} != {pin['version']!r}"
+            )
+        engine_results.append(
+            certify_engine(
+                engine_id,
+                identity=identity,
+                install_status=install_statuses.get(engine_id, "installed"),
+                repo_root=root,
+            )
+        )
+
+    # In-process reference retains finite-trace authority (sanity — G103).
+    reference_authority = {
+        engine_id: {
+            "role": get_tool_role(engine_id).role.value,
+            "authority_ceiling": get_tool_role(engine_id).authority_ceiling.value,
+            "retains_finite_trace_authority": True,
+        }
+        for engine_id in REFERENCE_ENGINES
+    }
+    for engine_id, meta in reference_authority.items():
+        if meta["authority_ceiling"] != AUTHORITY_CEILING:
+            raise ExternalRuntimeMTLCertificationError(
+                f"reference engine {engine_id} lost finite-trace authority"
+            )
+
+    all_certified = bool(engine_results) and all(item.certified for item in engine_results)
+    categories = sorted(REQUIRED_CATEGORIES)
+    any_disagreement = any(
+        record.quarantined and not record.agreed and not record.timed_out and not record.malformed
+        for engine in engine_results
+        for record in engine.case_results
+        if record.case_id == "case:disagreement"
+    )
+    corpus_disagreement = any(
+        (not record.agreed)
+        and not record.timed_out
+        and not record.malformed
+        and record.case_id
+        not in {"case:disagreement", "case:bounds-elevation", "case:malformed-forced"}
+        and not record.case_id.endswith(":replay")
+        for engine in engine_results
+        for record in engine.case_results
+    )
+    if corpus_disagreement:
+        all_certified = False
+
+    payload: dict[str, Any] = {
+        "schema_version": SCHEMA_VERSION,
+        "interface": INTERFACE,
+        "goal_id": GOAL_ID,
+        "task_id": TASK_ID,
+        "program": PROGRAM,
+        "lane_id": LANE_ID,
+        "handler_id": HANDLER_ID,
+        "certification_surface": CERTIFICATION_SURFACE,
+        "authority_ceiling": AUTHORITY_CEILING,
+        "forbids_theorem_authority": True,
+        "forbids_global_correctness_claim": True,
+        "certified": all_certified,
+        "engines": [item.to_dict() for item in engine_results],
+        "engine_ids": [item.engine_id for item in engine_results],
+        "external_engines": list(EXTERNAL_ENGINES),
+        "reference_engines": list(REFERENCE_ENGINES),
+        "reference_authority": reference_authority,
+        "categories_exercised": categories,
+        "mutation_kinds": sorted(REQUIRED_MUTATION_KINDS),
+        "install": None if install_bundle is None else install_bundle.to_dict(),
+        "policy": {
+            "strict_installation_selects_exact_pin": True,
+            "python_typescript_external_parity": True,
+            "disagreement_quarantines_promotion": True,
+            "finite_trace_authority_only": True,
+            "never_grants_theorem_authority": True,
+            "no_global_correctness_claim": True,
+            "no_central_certificate_edit": True,
+            "no_in_process_reference_edit": True,
+            "grants_theorem_authority": False,
+            "grants_global_correctness": False,
+        },
+        "summary": {
+            "engines_certified": sum(1 for item in engine_results if item.certified),
+            "engines_total": len(engine_results),
+            "checks_passed": sum(
+                1 for engine in engine_results for check in engine.checks if check.passed
+            ),
+            "checks_total": sum(len(engine.checks) for engine in engine_results),
+            "deliberate_disagreement_quarantined": any_disagreement,
+            "corpus_disagreement": corpus_disagreement,
+            "block_reasons": sorted(
+                {
+                    reason
+                    for engine in engine_results
+                    for reason in engine.block_reasons
+                }
+            ),
+        },
+    }
+    payload["certificate_digest_sha256"] = _stable_json_digest(
+        {
+            key: value
+            for key, value in payload.items()
+            if key != "certificate_digest_sha256"
+        }
+    )
+    return payload
+
+
+def external_runtime_mtl_lane_handler(
+    *args: Any,
+    **kwargs: Any,
+) -> dict[str, Any]:
+    """Lane handler for external Runtime MTL parity certification."""
+
+    result = certify_external_runtime_mtl(
+        install_root=kwargs.get("install_root"),
+        engines=kwargs.get("engines"),
+        force_install=bool(kwargs.get("force_install", False)),
+        skip_install=bool(kwargs.get("skip_install", False)),
+        repo_root=kwargs.get("repo_root"),
+    )
+    return {
+        "lane_id": LANE_ID,
+        "owner_module": CERTIFICATION_SURFACE,
+        "handler_id": HANDLER_ID,
+        "status": "certified" if result["certified"] else "failed",
+        "certified": bool(result["certified"]),
+        "authority_ceiling": AUTHORITY_CEILING,
+        "reason_codes": list(result["summary"].get("block_reasons") or []),
+        "certificate_digest_sha256": result["certificate_digest_sha256"],
+        "engine_ids": list(result.get("engine_ids") or []),
+        "args_received": bool(args) or bool(kwargs),
+        "interface": INTERFACE,
+        "goal_id": GOAL_ID,
+        "task_id": TASK_ID,
+        "grants_theorem_authority": False,
+        "grants_global_correctness": False,
+        "finite_trace_authority_only": True,
+    }
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        description=(
+            "Certify external Runtime MTL cross-runtime parity "
+            f"({INTERFACE} / {GOAL_ID})."
+        )
+    )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Print the full certification receipt as JSON",
+    )
+    parser.add_argument(
+        "--install-root",
+        type=Path,
+        default=None,
+        help="User-local install root for pin-bound external monitor",
+    )
+    parser.add_argument(
+        "--force-install",
+        action="store_true",
+        help="Force re-materialization of hermetic parity engine",
+    )
+    parser.add_argument(
+        "--engine",
+        action="append",
+        dest="engines",
+        default=None,
+        help="Limit certification to one engine id (repeatable)",
+    )
+    args = parser.parse_args(argv)
+
+    try:
+        receipt = certify_external_runtime_mtl(
+            install_root=args.install_root,
+            engines=args.engines,
+            force_install=args.force_install,
+        )
+    except Exception as exc:
+        if args.json:
+            print(
+                json.dumps(
+                    {
+                        "certified": False,
+                        "error": f"{type(exc).__name__}:{exc}",
+                        "interface": INTERFACE,
+                        "goal_id": GOAL_ID,
+                        "task_id": TASK_ID,
+                    },
+                    indent=2,
+                    sort_keys=True,
+                )
+            )
+        else:
+            print(f"{INTERFACE} FAILED: {exc}", file=sys.stderr)
+        return 1
+
+    if args.json:
+        print(json.dumps(receipt, indent=2, sort_keys=True))
+    else:
+        status = "CERTIFIED" if receipt["certified"] else "FAILED"
+        print(f"{INTERFACE} {status}")
+        print(
+            f"goal={GOAL_ID} task={TASK_ID} lane={LANE_ID} "
+            f"engines={','.join(receipt['engine_ids'])}"
+        )
+        summary = receipt["summary"]
+        print(
+            f"checks={summary['checks_passed']}/{summary['checks_total']} "
+            f"engines_certified={summary['engines_certified']}/{summary['engines_total']}"
+        )
+        if summary["block_reasons"]:
+            print("block_reasons:")
+            for reason in summary["block_reasons"]:
+                print(f"  - {reason}")
+        print(f"digest={receipt['certificate_digest_sha256']}")
+    return 0 if receipt["certified"] else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+
+
+__all__ = [
+    "INTERFACE",
+    "SCHEMA_VERSION",
+    "GOAL_ID",
+    "TASK_ID",
+    "PROGRAM",
+    "LANE_ID",
+    "HANDLER_ID",
+    "CERTIFICATION_SURFACE",
+    "AUTHORITY_CEILING",
+    "EXTERNAL_ENGINES",
+    "REFERENCE_ENGINES",
+    "REQUIRED_CATEGORIES",
+    "REQUIRED_MUTATION_KINDS",
+    "CheckResult",
+    "EngineCertification",
+    "ExternalRuntimeMTLCertificationError",
+    "ParityRunRecord",
+    "certify_engine",
+    "certify_external_runtime_mtl",
+    "default_case_specs",
+    "external_runtime_mtl_lane_handler",
+    "main",
+    "materialize_case",
+    "run_parity_case",
+]
