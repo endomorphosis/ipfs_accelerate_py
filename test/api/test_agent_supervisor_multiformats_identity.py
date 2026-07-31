@@ -1,10 +1,14 @@
-"""Strict DAG-JSON / CIDv1 / multihash identity bridge tests (VFS-010 / VFS-060).
+"""Strict DAG-JSON / CIDv1 / multihash identity bridge tests.
 
 Also covers VFS-060 objective validation repair for VFS-G030: exact-text
 discovery of ``objective validation repair``, separation of domain
 ``vfs/cid-profile@1`` evidence from the synthetic gate, and the refinement
 that immutable object identity stays separate from mutable current-tree
 projections used by the dependency-aware program-analysis cache.
+
+VFS-087 coverage binds the executable ``vfs/cid-profile@1`` and
+``vfs/dependency-cache@1`` descriptors to VFS-G141/G142 in the supervisor-fed
+content-addressing goal packet.
 """
 
 from __future__ import annotations
@@ -34,6 +38,7 @@ from ipfs_accelerate_py.agent_supervisor.multiformats_identity import (
     CID_BASE,
     CID_PROFILE_EVIDENCE,
     CID_PROFILE_GOAL_ID,
+    CID_PROFILE_PREVIOUS_TASK_IDS,
     CID_PROFILE_SCHEMA,
     CID_PROFILE_TASK_ID,
     CID_VERSION,
@@ -73,14 +78,34 @@ from ipfs_accelerate_py.agent_supervisor.multiformats_identity import (
     validate_cid,
 )
 from ipfs_accelerate_py.agent_supervisor.program_analysis_cache import (
+    CONTENT_ADDRESSING_GOAL_PACKET_ID,
+    CONTENT_ADDRESSING_PACKET_EVIDENCE_TERMS,
+    CONTENT_ADDRESSING_PACKET_GOAL_BINDINGS,
+    CONTENT_ADDRESSING_PACKET_GOAL_IDS,
+    CONTENT_ADDRESSING_PACKET_SCHEMA,
+    CONTENT_ADDRESSING_PACKET_TASK_ID,
     DEPENDENCY_CACHE_EVIDENCE,
+    DEPENDENCY_CACHE_GOAL_ID,
+    DEPENDENCY_CACHE_PROFILE_SCHEMA,
+    DEPENDENCY_CACHE_TASK_ID,
     OBJECTIVE_PARENT_GOAL_ID,
     OBJECTIVE_PARENT_REPAIR_TASK_ID,
+    PROGRAM_ANALYSIS_CACHE_KEY_SCHEMA,
+    ContentAddressingEvidencePacket,
+    DependencyCacheProfile,
     ProgramAnalysisCacheKey,
-    all_covered_evidence_terms as cache_all_covered_evidence_terms,
-    objective_validation_repair_evidence_terms as cache_repair_terms,
+    ProgramAnalysisCacheValidationError,
+    content_addressing_evidence_packet,
+    content_addressing_packet_evidence_terms,
+    dependency_cache_profile,
     program_analysis_cache_evidence_terms,
     tree_projection_is_not_object_identity,
+)
+from ipfs_accelerate_py.agent_supervisor.program_analysis_cache import (
+    all_covered_evidence_terms as cache_all_covered_evidence_terms,
+)
+from ipfs_accelerate_py.agent_supervisor.program_analysis_cache import (
+    objective_validation_repair_evidence_terms as cache_repair_terms,
 )
 from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
     content_identity,
@@ -404,7 +429,8 @@ def test_vfs_g141_cid_profile_is_executable_packet_evidence() -> None:
     }
     assert CID_PROFILE_EVIDENCE == "vfs/cid-profile@1"
     assert CID_PROFILE_GOAL_ID == "VFS-G141"
-    assert CID_PROFILE_TASK_ID == "VFS-057"
+    assert CID_PROFILE_TASK_ID == "VFS-087"
+    assert CID_PROFILE_PREVIOUS_TASK_IDS == ("VFS-057",)
     assert cid_profile_evidence_terms() == ("vfs/cid-profile@1",)
     assert covered_evidence_terms() == cid_profile_evidence_terms()
 
@@ -416,12 +442,151 @@ def test_vfs_g141_cid_profile_is_executable_packet_evidence() -> None:
 
     # Evidence metadata is not an identity input.  Existing direct and
     # compatibility identities continue to address only canonical payload.
-    value = {"packet": "VFS-057", "goal": "VFS-G141"}
+    value = {"packet": "VFS-087", "goal": "VFS-G141"}
     cid = cid_for_dag_json(value)
     assert cid == package_cid_for_dag_json(value)
     link = link_content_identity(content_identity(value), value=value)
     assert link.cid == cid
     assert CID_PROFILE_EVIDENCE not in canonical_dag_json_bytes(value).decode()
+
+
+def test_vfs_087_content_addressing_packet_matches_objective_heap() -> None:
+    """VFS-G141/G142: bind both executable profiles in one closed packet."""
+
+    packet = content_addressing_evidence_packet()
+    assert packet is content_addressing_evidence_packet()
+    assert packet == ContentAddressingEvidencePacket()
+    assert CONTENT_ADDRESSING_PACKET_SCHEMA.endswith(
+        "/content-addressing-evidence-packet@1"
+    )
+    assert CONTENT_ADDRESSING_GOAL_PACKET_ID == (
+        "goal_packet/content_addressing/ipfs_accelerate_py/591cd7cfb087"
+    )
+    assert CONTENT_ADDRESSING_PACKET_GOAL_IDS == ("VFS-G141", "VFS-G142")
+    assert CONTENT_ADDRESSING_PACKET_TASK_ID == CID_PROFILE_TASK_ID == "VFS-087"
+    assert CONTENT_ADDRESSING_PACKET_EVIDENCE_TERMS == (
+        "vfs/cid-profile@1",
+        "vfs/dependency-cache@1",
+    )
+    assert CONTENT_ADDRESSING_PACKET_GOAL_BINDINGS == (
+        ("VFS-G141", ("vfs/cid-profile@1",)),
+        ("VFS-G142", ("vfs/dependency-cache@1",)),
+    )
+    assert content_addressing_packet_evidence_terms() == (
+        CID_PROFILE_EVIDENCE,
+        DEPENDENCY_CACHE_EVIDENCE,
+    )
+    assert packet.to_dict() == {
+        "schema": CONTENT_ADDRESSING_PACKET_SCHEMA,
+        "goal_packet": CONTENT_ADDRESSING_GOAL_PACKET_ID,
+        "task_id": "VFS-087",
+        "goal_ids": ["VFS-G141", "VFS-G142"],
+        "evidence_terms": [
+            "vfs/cid-profile@1",
+            "vfs/dependency-cache@1",
+        ],
+        "completion_goal_bindings": {
+            "VFS-G141": ["vfs/cid-profile@1"],
+            "VFS-G142": ["vfs/dependency-cache@1"],
+        },
+    }
+
+    with pytest.raises(
+        ProgramAnalysisCacheValidationError,
+        match="must match the VFS-087",
+    ):
+        ContentAddressingEvidencePacket(goal_ids=("VFS-G141",))
+
+    # Packet/discovery metadata cannot influence either domain identity.
+    payload = {"source": "module.py", "symbols": ["f", "g"]}
+    assert cid_for_dag_json(payload) == package_cid_for_dag_json(payload)
+    key = ProgramAnalysisCacheKey(
+        forest_identity="forest@1",
+        objective_revision="objective@1",
+        policy_revision="policy@1",
+        analyzer_version="analyzer@1",
+        schema_version="schema@1",
+        configuration_digest="configuration@1",
+        query_digest="query@1",
+        capability_revision="capability@1",
+        assumption_digest="assumption@1",
+        toolchain_version="toolchain@1",
+    )
+    serialized_key = json.dumps(key.to_dict(), sort_keys=True)
+    assert all(
+        term not in serialized_key
+        for term in content_addressing_packet_evidence_terms()
+    )
+
+
+def test_vfs_g142_dependency_cache_profile_covers_every_key_dependency() -> None:
+    """VFS-G142: every semantic input and policy revision binds cache reuse."""
+
+    profile = dependency_cache_profile()
+    assert profile is dependency_cache_profile()
+    assert profile == DependencyCacheProfile()
+    assert profile.schema == DEPENDENCY_CACHE_PROFILE_SCHEMA
+    assert profile.evidence == "vfs/dependency-cache@1"
+    assert profile.goal_id == DEPENDENCY_CACHE_GOAL_ID == "VFS-G142"
+    assert profile.task_id == DEPENDENCY_CACHE_TASK_ID == "VFS-087"
+    assert profile.key_schema == PROGRAM_ANALYSIS_CACHE_KEY_SCHEMA
+    assert profile.max_negative_ttl_seconds == 60 * 60
+    assert {
+        "corrupt_entry",
+        "stale_entry",
+        "stale_negative_entry",
+        "not_completion_evidence",
+        "dependency_invalidated",
+        "runtime_artifact_stale",
+    } == set(profile.fail_closed_reasons)
+
+    values: dict[str, object] = {
+        "forest_identity": "forest@1",
+        "objective_revision": "objective@1",
+        "policy_revision": "policy@1",
+        "analyzer_version": "analyzer@1",
+        "schema_version": "schema@1",
+        "configuration_digest": "configuration@1",
+        "query_digest": "query@1",
+        "capability_revision": "capability@1",
+        "assumption_digest": "assumption@1",
+        "toolchain_version": "toolchain@1",
+        "component_kind": "inventory",
+        "authority": "authoritative",
+    }
+    key = ProgramAnalysisCacheKey(**values)
+    assert profile.key_dimensions == tuple(key.dimension_values())
+    dependencies = key.population_dependencies()
+    assert profile.semantic_dependency_namespaces == tuple(
+        dependency.namespace for dependency in dependencies
+    )
+    assert profile.key_dimensions == tuple(
+        dependency.key for dependency in dependencies
+    )
+    assert len({dependency.digest for dependency in dependencies}) == len(
+        profile.key_dimensions
+    )
+
+    alternatives: dict[str, object] = {
+        **{name: f"{name}@2" for name in profile.key_dimensions},
+        "component_kind": "ast",
+        "authority": "draft",
+    }
+    for dimension in profile.key_dimensions:
+        changed = dict(values)
+        changed[dimension] = alternatives[dimension]
+        assert ProgramAnalysisCacheKey(**changed).digest != key.digest
+
+    with pytest.raises(
+        ProgramAnalysisCacheValidationError,
+        match="profile is frozen",
+    ):
+        DependencyCacheProfile(
+            key_dimensions=tuple(
+                name for name in profile.key_dimensions
+                if name != "policy_revision"
+            )
+        )
 
 
 def test_objective_validation_repair_evidence_term_discoverable() -> None:
