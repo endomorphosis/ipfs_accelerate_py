@@ -291,7 +291,7 @@ expectations under existing precedence, but do not prove them by passing.
 
 ## LPR-008 Adapt the generic datasets Tactician for program repair
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
