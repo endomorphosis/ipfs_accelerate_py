@@ -27,6 +27,9 @@ Program invariants:
   required dynamic/generated/native frontier blocks autonomous mutation.
 - Analytical synthesis precedes `llm_router`; models receive exact admitted
   semantics and paths and return proposal-only diffs.
+- The deterministic-doctor mode is a separate analytical path: it may use
+  datasets Tactician/Hammer and advisory KG/vector/embeddings, but invokes no
+  LLM/model provider and never falls back to one.
 - Type/resource evidence is not general memory-safety evidence; unsupported
   ownership, lifetime, unsafe, allocator, concurrency, or FFI claims remain
   explicit.
@@ -45,16 +48,16 @@ Program invariants:
 - Conflict policy: Root is review and completion aggregation only; implementation belongs to child subgoals.
 - Resource class: cpu-medium
 - Token class: small
-- Goal: Starting from task intent, a broken trace, or an intentional contract delta, derive the finite logic the program must satisfy, plan evidence and proof search with a domain-neutral Tactician, prove supported hypotheses through kernel reconstruction or reject them through independently validated countermodels/proofs of negation, repair every resolved caller analytically where possible, otherwise issue a bounded context-rich llm_router proposal, and complete only after atomic candidate-tree fixed-point validation.
-- Subgoals: LPR-G010, LPR-G020, LPR-G030, LPR-G040, LPR-G050, LPR-G060, LPR-G070
-- Evidence: LPR-G010, LPR-G020, LPR-G030, LPR-G040, LPR-G050, LPR-G060, LPR-G070
+- Goal: Starting from task intent, a broken trace, or an intentional contract delta, derive the finite logic the program must satisfy, plan evidence and proof search with a domain-neutral Tactician, prove supported hypotheses through kernel reconstruction or reject them through independently validated countermodels/proofs of negation, repair every resolved caller analytically where possible, otherwise issue a bounded context-rich llm_router proposal only on the explicitly model-enabled path, and complete only after atomic candidate-tree fixed-point validation. On the separate deterministic-doctor path, freeze current AST/graph/cache/index/content roots and use only closed proof-admitted analytical operators, with no LLM/model-provider invocation or fallback.
+- Subgoals: LPR-G010, LPR-G020, LPR-G030, LPR-G040, LPR-G050, LPR-G060, LPR-G070, LPR-G080, LPR-G090, LPR-G100, LPR-G110
+- Evidence: LPR-G010, LPR-G020, LPR-G030, LPR-G040, LPR-G050, LPR-G060, LPR-G070, LPR-G080, LPR-G090, LPR-G100, LPR-G110
 - Outputs:
-- Validation: Parse and validate the LPR taskboard, run the LPR-020 logic-repair release validator, then run the terminal LPR-028 VFS-generalization equivalence and placement validator.
-- Acceptance: Every child subgoal has current-tree evidence; the all-caller two-to-three-argument fixture and complex support-type fixture either complete with reconstructed proof and a fixed point or conservatively abstain; unauthorized axiom, missed caller, unreconstructed prediction, invented behavior, wrong value/source/placement, stale receipt, model scope escape, partial transaction, and false fixed-point completion rates are zero.
+- Validation: Parse and validate the LPR taskboard, run the LPR-020 logic-repair release validator, run the LPR-028 VFS-generalization equivalence and placement validator, and finish with the terminal LPR-042 deterministic-doctor joined release validator.
+- Acceptance: Every child subgoal has current-tree evidence; the all-caller two-to-three-argument fixture and complex support-type fixture either complete with reconstructed proof and a fixed point or conservatively abstain; deterministic-doctor fixtures replay with identical CIDs, use exact-first AST/graph/cache evidence plus advisory KG/vector/embeddings, invoke no LLM/model provider, repair only a unique closed proved operator, and leave a clean tree on abstention; unauthorized axiom, advisory-source authority promotion, stale proof/CID, missed caller/open-frontier mutation, invented behavior, wrong value/source/placement, sandbox/path escape, model scope escape, partial transaction, rollback failure, nondeterminism, and false fixed-point completion rates are zero.
 - Gap task: Aggregate child evidence and release gates only; do not perform a cross-program implementation edit.
 - Refinement: Prefer explicit unsupported and approval-required states over unearned automation.
-- Embedding query: live code repair program logic tactician hammer static analysis synthesis all callers llm context fixed point
-- AST query: ProgramLogicGoal LogicGap TacticianSearchPlan LogicHypothesis LogicPredictionReceipt LogicGuidedRepairPacket
+- Embedding query: live code repair program logic tactician hammer static analysis synthesis all callers deterministic doctor content identity proof cache knowledge graph embeddings fixed point
+- AST query: ProgramLogicGoal LogicGap TacticianSearchPlan LogicHypothesis LogicPredictionReceipt LogicGuidedRepairPacket DoctorEvidenceSnapshot DeterministicDoctorPlan DeterministicDoctorRunReceipt
 
 ## LPR-G010 Establish trust contracts, exact capabilities, and a generic Tactician
 
@@ -208,3 +211,91 @@ Program invariants:
 - Refinement: Generalization is accepted by proof-backed contract equivalence and a second profile, not by renaming symbols or moving code alone.
 - Embedding query: generalize vfs assurance modules semantic packages thin ops profile contract equivalence callers
 - AST query: RepositorySurfaceInventory ProgramContractProfile DifferentialContractHarness InterfaceContractParityAnalyzer SymbolicEfficiencyBenchmark SymbolicAssurancePilot SymbolicAssuranceRolloutPolicy
+
+## LPR-G080 Build content-addressed deterministic-doctor evidence and repair primitives
+
+- Status: active
+- Parent: LPR-G000
+- Depends on: LPR-G060
+- Priority: P0
+- Track: deterministic-doctor-foundations
+- Bundle: agent-supervisor/tactician-hammer-logic-repair/deterministic-doctor-foundations
+- Parallel lane: lpr-doctor-foundations
+- Conflict policy: Compose existing repository/AST/graph/vector/CAS/proof/analytical-transform interfaces by reference; do not create a second identity, cache, contract, edit, or authority system, import target code, or change the lifecycle recovery controller.
+- Resource class: cpu-large
+- Token class: large
+- Goal: Freeze a complete content-addressed view of a real checkout, compile broken-code diagnostics and repair obligations from AST/contract/type/value/effect/resource/memory evidence, retrieve refactor and missing-value candidates through exact graphs plus advisory KG/vector/embeddings, safely federate proof caches, and expose only closed typed analytical repair operators.
+- Evidence: LPR-029, LPR-030, LPR-031, LPR-032, LPR-033
+- Outputs: deterministic-doctor contracts and policy, repository diagnostic snapshot, hybrid repair-candidate retriever, exact proof-cache/datasets-logic bridge, closed analytical AST transform registry
+- Validation: Run contract, real-checkout diagnostics, KG/vector/embedding, proof-cache/CID, transform, cold-import, clean-rebuild-equivalence, stale/poison, and no-target-import suites.
+- Acceptance: Every artifact binds canonical forest/tree/overlay/file/AST/graph/corpus/index/model/cache/toolchain/policy/environment CIDs; target source is parsed as data; exact static routes precede approximate retrieval; KG/GraphRAG/history/vector/embedding/cache candidates carry semantic_authority=false; pinned embedding canaries reject constant fallback, non-finite or dimension-drifted output and disable only the optional lane; positive proof-cache reuse requires the full current key and reconstruction while negative/timeout/provider-local/legacy entries remain diagnostic; operators have closed typed pre/post/frame/value/write/inverse contracts; unsupported or ambiguous evidence abstains and no provider/model call or source write occurs.
+- Gap task: Turn the existing disconnected analysis, retrieval, cache, and codemod primitives into one frozen fail-closed substrate for a semantic doctor.
+- Refinement: Better retrieval changes recall and search cost, never the standard of proof or write authority.
+- Embedding query: deterministic code doctor frozen checkout ast graph knowledge graph embeddings proof cache cid analytical transforms
+- AST query: DoctorEvidenceSnapshot DeterministicDoctorFinding DoctorProofCacheAuditReceipt DoctorRepairOperatorRegistry
+
+## LPR-G090 Plan, prove, and synthesize repairs without a model
+
+- Status: active
+- Parent: LPR-G000
+- Depends on: LPR-G080
+- Priority: P0
+- Track: deterministic-doctor-proof-synthesis
+- Bundle: agent-supervisor/tactician-hammer-logic-repair/deterministic-doctor-proof
+- Parallel lane: lpr-doctor-proof
+- Conflict policy: Reuse the admitted datasets Tactician provider, plan gate, production Hammer coordinator, CEGIS, native reconstruction, prediction admission, and analytical transform paths; no LLM/model route, free-form patch generator, unchecked solver, or cache-derived authority is permitted.
+- Resource class: cpu-proof-solver
+- Token class: large
+- Goal: Convert deterministic findings and bounded candidates into independent goals and premises, let the domain-neutral datasets Tactician plan exact-first proof search, use cache-first resource-bounded Hammer/CEGIS plus native reconstruction to identify a unique repair, and materialize only a proof-admitted deterministic overlay.
+- Evidence: LPR-034, LPR-035, LPR-036
+- Outputs: deterministic-doctor Tactician planner, isolated cache-first Hammer/CEGIS verifier, proof-admitted deterministic synthesis/materialization
+- Validation: Run axiom-smuggling, poisoned-score, stale-cache, solver-lie, wrong-theorem, countermodel-replay, ambiguity, timeout, resource, import-isolation, no-model-import, and deterministic-render suites.
+- Acceptance: Tactician preserves every goal/frontier and cannot promote a source; Hammer runs only behind an explicit native-execution permit in an isolated worker, and its proof/countermodel affects admission only after matching reconstruction or independent replay; cache hits are revalidated; exactly one complete target/value/placement/operator consequence may render; zero/multiple/unsupported/unavailable/timed-out results abstain; generated overlays are byte-stable, body-free, before-hash-bound and import/call no LLM route.
+- Gap task: Make deterministic synthesis analytical and proof-directed rather than nearest-neighbor or model-authored.
+- Refinement: An unavailable prover lowers automation coverage; it never licenses a heuristic edit or model fallback.
+- Embedding query: no llm deterministic repair tactician hammer cegis kernel reconstruction unique analytical operator
+- AST query: DeterministicDoctorTactician DoctorRepairObligationCompiler DeterministicDoctorHammer DeterministicDoctorSynthesis
+
+## LPR-G100 Close impacts and execute admitted repairs atomically
+
+- Status: active
+- Parent: LPR-G000
+- Depends on: LPR-G090
+- Priority: P0
+- Track: deterministic-doctor-transaction
+- Bundle: agent-supervisor/tactician-hammer-logic-repair/deterministic-doctor-transaction
+- Parallel lane: lpr-doctor-transaction
+- Conflict policy: Reuse the current impact analyzer, propagation planner, writer lease, checkout/merge locks, SCC transaction, CAS invalidation, completion receipt, and compensating rollback; never write the user's dirty tree directly or put semantic editing into lifecycle recovery.
+- Resource class: cpu-large
+- Token class: large
+- Goal: Close every direct, transitive, alias, wrapper, import/export/entry-point, schema, and second-order consumer; validate the uniquely admitted repair in a confined disposable worktree; transact the whole SCC atomically; re-index, invalidate, re-diagnose, and re-prove to a fixed point; and expose bounded deterministic-doctor operations through a thin service and CLI.
+- Evidence: LPR-037, LPR-038, LPR-039
+- Outputs: deterministic impact closer, sandboxed transaction/fixed-point validator, deterministic-doctor service and thin scripts/ops facade
+- Validation: Run complete/incomplete impact, dynamic/generated/native frontier, symlink/path escape, network/secret/process isolation, lease/hash race, crash/recovery, partial-SCC, rollback, oscillation, cold-import, replay, and idempotent CLI suites.
+- Acceptance: Every resolved consumer has one disposition and an open required frontier blocks mutation; target code is never imported into the doctor; execution-dependent repair requires enforced filesystem/network/process/resource isolation; exact before hashes, lease, checkpoint and complete SCC precede writes; candidate and committed roots are rebuilt and re-proved; any drift/failure compensates or quarantines; inspect/explain/plan remain read-only, repair is explicitly policy-gated, receipts are queryable by CID, and no operation silently invokes a model.
+- Gap task: Convert a proved analytical overlay into a safe real-checkout repair without partial writes or false completion.
+- Refinement: Pure static planning may remain available on weak platforms, but execution-dependent automatic repair must abstain when isolation cannot be enforced.
+- Embedding query: deterministic doctor all caller closure sandbox atomic transaction rollback fixed point thin cli
+- AST query: DeterministicDoctorImpact DeterministicDoctorTransaction DeterministicDoctorFixedPoint DoctorService DoctorOperationResult
+
+## LPR-G110 Benchmark and release the no-LLM deterministic doctor
+
+- Status: active
+- Parent: LPR-G000
+- Depends on: LPR-G070, LPR-G100
+- Priority: P0
+- Track: deterministic-doctor-release
+- Bundle: agent-supervisor/tactician-hammer-logic-repair/deterministic-doctor-release
+- Parallel lane: lpr-doctor-release
+- Conflict policy: Own doctor fixtures, metrics, rollout, operator documentation and joined terminal validation; preserve the existing lifecycle doctor and protected control plane, keep report-only as default, and do not require optional retrieval/prover availability for supervisor startup.
+- Resource class: cpu-large
+- Token class: large
+- Goal: Measure deterministic diagnosis, retrieval, proof, cache, transform, impact, transaction, rollback, and fixed-point behavior on real-checkout adversarial fixtures; stage report-only through sandbox and narrow auto; and release only when the VFS and deterministic-doctor branches join with every no-LLM safety floor at zero.
+- Evidence: LPR-040, LPR-041, LPR-042
+- Outputs: adversarial deterministic-doctor benchmark corpus and metrics, staged rollout controls and operator guide, joined release validator and end-to-end replay suite
+- Validation: Run every positive and adversarial fixture twice, validate exact CIDs/receipts and zero model calls, exercise report/plan/sandbox/narrow-auto/rollback, then run VFS plus deterministic-doctor terminal validation with cold imports and absent optional providers.
+- Acceptance: Fixtures cover rename/move, imports/exports/registration, two-to-three-argument propagation across aliases/wrappers/methods, constructor/context threading, finite adapters/schema/artifacts, and ambiguous/stale/poisoned/forged/dynamic/generated/native/public/cross-root cases; correct repair or abstention is deterministic; model routes patched to raise are never invoked; missed caller, authority promotion, stale proof/CID, path/sandbox escape, partial mutation, rollback failure, nondeterminism and false fixed-point rates are zero; rollout defaults to report-only with narrow auto off and independent kill switch; LPR-042 proves both branches and is the unique terminal.
+- Gap task: Establish measurable efficacy and fail-closed safety before the deterministic doctor may repair a checkout automatically.
+- Refinement: Correct abstention is part of efficacy; approximate recall and cache hit rate never override a zero safety floor.
+- Embedding query: deterministic doctor benchmark no llm report plan sandbox narrow auto rollback joined release
+- AST query: DeterministicDoctorBenchmark DeterministicDoctorMetrics DeterministicDoctorRollout DeterministicDoctorRelease

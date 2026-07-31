@@ -29,7 +29,11 @@ that can:
    candidate-tree fixed point; and
 9. use that machinery to extract instance-specific assurance programs into
    reusable semantic-package engines with typed profiles and thin ops
-   adapters, while proving the original job contract remains intact.
+   adapters, while proving the original job contract remains intact; and
+10. operate a separately gated deterministic doctor that freezes real-checkout
+    AST/graph/cache/index/CID evidence, retrieves candidates through exact and
+    advisory sources, proves one closed analytical repair or abstains, and
+    reaches an atomic all-caller fixed point without invoking an LLM.
 
 The runtime order is normative:
 
@@ -116,6 +120,14 @@ task intent or a source-tree delta.
 LPR closes that integration gap. The live controller will invoke the existing
 trace, contract, graph, retrieval, proof, plan, provider, transaction, and
 fixed-point components in their required order.
+
+The remaining doctor-specific gap is a real-checkout artifact builder and
+controller. Existing change-propagation tests can validate caller-supplied
+deltas, closures, obligations, proofs, transforms and applicators, but no
+production service currently freezes those inputs from a checkout, selects
+only a closed analytical repair, executes it in isolation, invalidates every
+derived artifact, and repeats the whole analysis to a fixed point with a hard
+no-LLM invariant.
 
 ### 2.3 “Tactician” is not yet a program-logic API
 
@@ -227,6 +239,10 @@ does not bypass it.
     inconsistency, unsupported lowering, timeout, bound exhaustion, stale
     evidence, failed reconstruction, or scope escape yields abstention or
     approval-required work.
+17. **Deterministic doctor never escalates to a model.** Its lifecycle is
+    report-only by default and its repair route contains no LLM/model-provider
+    fallback. Optional KG/vector/embedding/prover failure lowers recall or
+    causes abstention; it cannot broaden authority or mutate code heuristically.
 
 ## 4. Proposed architecture
 
@@ -636,6 +652,201 @@ abstention disposition. Root `agent_supervisor/vfs_*.py` implementations and
 compatibility shims are forbidden after cutover. A hermetic non-VFS profile
 must traverse the same engines to demonstrate genuine generality.
 
+### 4.13 Content-addressed deterministic doctor
+
+The supervisor needs a semantic code doctor in addition to its existing
+lifecycle `doctor`. The lifecycle command remains a read-only health and
+capability check. The new deterministic doctor is a separately gated Python
+service with `inspect`, `explain`, `plan`, `repair`, `replay`, and `rollback`
+operations. `inspect`, `explain`, and `plan` never write. `repair` is permitted
+only for the closed analytical repair class below. None of these operations
+may invoke `llm_router`, another model provider, or an unpinned network
+service; an attempted LLM or remote model-provider call in deterministic mode is a safety
+violation, not a fallback.
+
+The doctor composes the existing AST, program graph, contract-delta, impact,
+value-provenance, proof, transaction, and fixed-point interfaces. It does not
+put semantic source editing into `ProgrammaticRecoveryController`, whose
+responsibility remains process, lease, lock, worktree, and lifecycle recovery.
+It also does not introduce a second proof cache, identity scheme, contract
+language, edit packet, transaction engine, or completion receipt.
+
+The deterministic flow is:
+
+```text
+freeze exact repository/evidence roots
+  -> parse source as data and compile typed findings
+  -> close imports, symbols, callers, values, effects, and required frontiers
+  -> consult current positive proof-cache entries and exact local evidence
+  -> let AST/KG/history/vector/embedding routes nominate bounded candidates
+  -> use the datasets Code Tactician to plan finite proof/synthesis searches
+  -> enumerate closed typed repair operators
+  -> use Hammer/CEGIS to prove or refute operator obligations
+  -> reconstruct the exact native theorem in the pinned kernel
+  -> require one complete uniquely admitted repair plan
+  -> render exact-span edits into an isolated candidate worktree
+  -> validate, transact the complete caller SCC, re-index, and re-prove
+  -> finish at a program-and-logic fixed point or compensate and abstain
+```
+
+#### 4.13.1 Frozen evidence snapshot and content identity
+
+Every run begins with an immutable `DoctorEvidenceSnapshot@1`. It binds the
+repository forest, base tree, overlay, admitted roots, file/blob CIDs, AST
+index, symbol table, import and dependency graphs, evidence/knowledge graph,
+impact and value-provenance indexes, theorem corpus, vector snapshot and
+embedding configuration, proof-cache generation, translator, solver, kernel,
+toolchain, operator registry, policy, sandbox, and environment. Target code is
+parsed as inert data and is never imported into the doctor process.
+
+Content identities use the existing canonical identity bridge and CAS. A
+digest-shaped string is not accepted as a CID: canonical preimages, CID
+version/profile, codecs, multihashes, dependency links, and current roots are
+verified. Changed semantic roots invalidate descendants and create vector/KG
+tombstones. An incremental snapshot must be identity-equivalent to a clean
+rebuild before it may support mutation.
+
+#### 4.13.2 Deterministic diagnosis and impact closure
+
+Diagnostics combine syntax/AST failures, unresolved imports and symbols,
+call/signature mismatches, type constraints, contract deltas, reaching
+definitions, value provenance, dataflow, error/effect/resource/state/schema
+facets, validation failures, and broken traces. Each finding records observed
+facts separately from required behavior and produces finite proof obligations,
+candidate consumers, unknown frontiers, and one of `supported`, `abstain`, or
+`approval_required`. Type or resource compatibility cannot stand in for
+ownership, lifetime, allocator, concurrency, unsafe, native, or FFI safety.
+
+Before a write, the current AST/import/entry-point/string-import/export and
+dependency graphs must close every resolved affected consumer. Each consumer
+receives exactly one disposition. Reflection, unknown dispatch, generated
+code, native edges, or any other required open frontier blocks automatic
+repair.
+
+#### 4.13.3 Exact-first retrieval, proof caches, and advisory indexes
+
+Retrieval follows a hard precedence order: current reviewed contract/schema/
+IDL/specification facts; exact AST, symbol, import, type, dataflow, impact and
+value facts; current reconstructed proof-cache results; Git rename/move
+lineage and exact structural matches; knowledge-graph neighborhoods; then
+lexical/vector/embedding similarity. Approximate sources can find a renamed
+definition, constructor, adapter, theorem, value source, or analogous repair,
+but remain `semantic_authority=false` and cannot select the target, required
+behavior, value, placement, or write path.
+
+The embedding adapter pins provider/model artifact, revision, dimension,
+chunker, normalization, distance function, and corpus/index root. A bounded
+deterministic canary rejects missing dependencies disguised as success,
+constant fallback vectors, non-finite values, wrong dimensions, configuration
+drift, or query/document incompatibility. Failure disables the optional vector
+lane; it neither blocks exact AST/graph analysis nor permits an unpinned remote
+fallback.
+
+A thin cache-federation gate reuses `FormalVerificationCache`,
+`ProverEvidenceStore`, `RuntimeCAS`, MCP proof caches, and the canonical
+identity bridge. A positive hit inherits only the authority of its recorded
+premises and is reusable only after complete key validation and native
+reconstruction against the current roots. Negative hits, timeouts, resource
+exhaustion, raw countermodels, partial receipts, and solver-only success are
+diagnostics, never proofs. Cache bindings are rechecked immediately before
+render and commit; poisoned or equivocal entries are quarantined.
+Datasets Hammer caches remain provider-local acceleration; an attested proof
+corpus may nominate reusable theorems after applicability filtering. Legacy
+IPFS proof-cache entries are transport hints only until the supervisor's full
+cache key and attestation/reconstruction checks succeed.
+
+#### 4.13.4 Tactician, Hammer, and deterministic synthesis
+
+The domain-neutral datasets Tactician receives only bounded, content-addressed
+goals, source references, operator capabilities, and budgets. It orders exact
+sources before approximate routes, decomposes the problem, records exclusions
+and residuals, and plans proof search. It cannot add an axiom, choose a write,
+or promote an embedding/KG/solver score. Deterministic mode supplies no model
+route.
+
+The synthesis engine enumerates a closed `DoctorRepairOperatorRegistry@1` and
+uses constraints plus counterexample-guided refinement to find a repair. Each
+operator declares typed preconditions, semantic postconditions, frame
+conditions, exact read/write sets, value-source requirements, idempotency, an
+inverse or compensation, and supported language/frontier limits. Hammer may
+nominate a proof or countermodel, but only the exact reconstructed theorem or
+independently replayed countermodel affects admission. Zero or multiple
+eligible target/value/placement/operator combinations cause abstention.
+
+Initially eligible operators are deliberately narrow:
+
+- exact symbol, keyword, or parameter rename with proved equivalence;
+- add, rename, reorder, or transitively thread a uniquely proved argument;
+- add an exact import, export, re-export, registration, constructor, or
+  factory route already present in the current tree;
+- introduce a finite total adapter whose complete mapping is independently
+  specified and proved;
+- apply a total schema, serializer, manifest, or fixture projection from its
+  authoritative generator; and
+- restore an exact tracked artifact from a verified CID and canonical
+  preimage.
+
+Arbitrary text/templates or commands, splats with unresolved shape, ambiguous
+overloads, reflection, monkey patching, target-generated operators, new
+dependencies, public contract/schema changes, stateful invention,
+cross-repository edits, target changes to the doctor's trusted computing base,
+and unsupported native/FFI/memory/concurrency semantics are not autonomously
+eligible.
+
+#### 4.13.5 Isolated materialization and transactional fixed point
+
+An admitted operator is rendered deterministically from exact source spans,
+before hashes, AST identities, and proved substitutions. The complete patch is
+first applied to a disposable worktree at the frozen tree/overlay identity.
+The sandbox inherits no secrets and requires allowlisted commands, repository
+path confinement, network denial, and process/CPU/memory/time limits before it
+may execute target code. Where the platform cannot enforce those properties,
+the doctor may perform pure static rendering/replay but must abstain from an
+execution-dependent automatic repair. Symlinks, hardlinks, submodules, device
+paths, and path races fail closed.
+
+Candidate validation reparses all changed files, recomputes types, imports,
+graphs, contracts, values, effects/resources/memory facets and impact closure,
+runs bounded differential/static/native checks, invalidates dependent cache
+and index entries, and renews every proof. Integration reuses the existing
+checkout/merge locks, writer lease, before hashes, checkpoint,
+`ChangePropagationTransaction`, SCC grouping, merge queue, ref compare-and-
+swap, and compensating rollback. It never overwrites a dirty user tree.
+
+After integration, the doctor repeats diagnosis, indexing, closure, planning,
+and proof. Completion requires no original or second-order mandatory finding,
+no open required frontier, current reconstructed obligations, identity-
+equivalent replay, and an existing program completion receipt extended by a
+current deterministic-doctor fixed-point receipt. Bound exhaustion,
+oscillation, drift, or rollback failure produces abstention or quarantine,
+never partial success.
+
+#### 4.13.6 Automation boundary and rollout
+
+Automatic mutation is admitted only when all of these are true:
+
+1. every evidence, identity, cache, toolchain, policy, and sandbox root is
+   current and mutually bound;
+2. expected behavior comes from an independent authority source;
+3. impact closure is complete and every resolved consumer is dispositioned;
+4. no required dynamic/generated/native/unknown frontier remains;
+5. exactly one target, value source, placement, and registered operator is
+   eligible;
+6. every mandatory obligation is analytically discharged or reconstructed by
+   the pinned kernel;
+7. no protected/TCB, public-schema/API, cross-root, new-dependency, stateful,
+   native/FFI, unsafe, or unsupported memory/lifetime change is present;
+8. the required sandbox enforcement, lease, checkpoint, and rollback are
+   available; and
+9. candidate and committed trees both reach the renewed program-and-logic
+   fixed point.
+
+The feature ships disabled in shadow mode. Operators enable deterministic
+narrow-auto independently of all model flags, with bounded findings,
+candidates, proof routes, operators, plan steps, iterations, files, bytes,
+time, processes, CPU, and memory. `ABSTAIN` and `APPROVAL_REQUIRED` are normal
+successful doctor outcomes. There is no silent escalation to an LLM.
+
 ## 5. Versioned records
 
 LPR-001 defines these canonical records:
@@ -724,6 +935,62 @@ LPR-001 defines these canonical records:
 - residual/unsupported logic gaps;
 - post-commit finalize or compensating-rollback receipt.
 
+LPR-029 through LPR-042 add these doctor-specific projections over the same
+authority roots and receipts:
+
+### `DoctorEvidenceSnapshot@1`
+
+- exact repository forest/tree/overlay and file/blob CIDs;
+- parser/AST/symbol/import/dependency/evidence/KG/impact/value index roots;
+- contract/corpus/vector/embedding/cache/operator/policy roots;
+- translator/solver/kernel/toolchain/sandbox/environment identities;
+- completeness, unsupported frontiers, tombstones, and dependency links; and
+- canonical snapshot CID plus clean-rebuild equivalence receipt.
+
+### `DeterministicDoctorFinding@1`
+
+- immutable snapshot and originating diagnostic/trace/change IDs;
+- observed structural facts separated from required authoritative behavior;
+- typed contract/type/value/effect/resource/memory/schema discrepancy;
+- affected symbols, consumers, SCCs, and open frontier;
+- finite goal, premise, and candidate query references; and
+- supported, abstain, or approval-required disposition and reason codes.
+
+### `DoctorProofCacheAuditReceipt@1`
+
+- exact cache namespace/key, canonical preimage, CID, and dependency DAG;
+- obligation/premise/native-goal/reconstruction/kernel identities;
+- tree/AST/graph/corpus/translator/toolchain/policy/resource/sandbox roots;
+- hit/miss/stale/quarantined/reconstructed disposition;
+- provider-local versus authoritative-cache role; and
+- invalidation, tombstone, single-flight, and replay evidence.
+
+### `DoctorRepairOperatorSpec@1`
+
+- closed operator kind and supported language/AST shapes;
+- typed preconditions, postconditions, frame conditions, and proof templates;
+- exact read/write/value/placement constraints and forbidden paths;
+- deterministic renderer identity, idempotency, inverse/compensation; and
+- resource bounds and approval/unsupported exclusions.
+
+### `DeterministicDoctorPlan@1`
+
+- finding/snapshot/Tactician plan and complete impact-closure identities;
+- selected premises, goals, proof routes, candidates, and exclusions;
+- one disposition for every affected consumer and required frontier;
+- unique target/value/placement/operator or explicit abstention;
+- exact edit sites, before hashes, validations, SCCs, and rollback; and
+- no-model invariant, budgets, invalidators, and canonical plan CID.
+
+### `DeterministicDoctorRunReceipt@1`
+
+- operation and incident IDs plus snapshot/plan/candidate/committed tree CIDs;
+- cache audits, native reconstructions, validated countermodels, and residuals;
+- sandbox enforcement, process/network/secret/resource observations;
+- lease/checkpoint/transaction/merge/rollback receipts;
+- post-edit re-index, invalidation, impact, and fixed-point evidence; and
+- provider/model invocation count, which must be zero in deterministic mode.
+
 ## 6. Failure and abstention taxonomy
 
 Stable reason codes must distinguish:
@@ -785,6 +1052,10 @@ The companion taskboard is the executable projection.
 | `LPR-G050` | Existing RPR bridge, contextual edits, live fixed point | `LPR-015`–`018` |
 | `LPR-G060` | Adversarial efficacy, operations, and staged rollout | `LPR-019`–`020` |
 | `LPR-G070` | General assurance engines plus a thin IPFS Kit VFS job profile | `LPR-021`–`028` |
+| `LPR-G080` | Content-addressed deterministic-doctor evidence and repair primitives | `LPR-029`–`033` |
+| `LPR-G090` | No-model Tactician/Hammer planning, proof, and synthesis | `LPR-034`–`036` |
+| `LPR-G100` | Complete-impact transactional repair and fixed-point operations | `LPR-037`–`039` |
+| `LPR-G110` | Adversarial benchmark, staged rollout, and joined release | `LPR-040`–`042` |
 
 Parallel waves:
 
@@ -801,6 +1072,15 @@ W8  LPR-021                     (exact source lock plus generic inventory)
 W9  LPR-022 | LPR-025
 W10 LPR-023 | LPR-024 | LPR-026
 W11 LPR-027 -> LPR-028          (profile integration and atomic cutover)
+
+In parallel after W7:
+
+D0  LPR-029 | LPR-030 | LPR-031 | LPR-032
+D1  LPR-033 | LPR-034
+D2  LPR-035 -> LPR-036
+D3  LPR-037 -> LPR-038 -> LPR-039
+D4  LPR-040 -> LPR-041
+D5  (LPR-028 & LPR-041) -> LPR-042  (joined terminal release)
 ```
 
 The dependency graph, file ownership, validation commands, acceptance
@@ -864,6 +1144,19 @@ The following release metrics must remain exactly zero:
 - partial transaction completion rate; and
 - false fixed-point completion rate.
 
+The deterministic-doctor release additionally requires zero:
+
+- LLM or remote model-provider invocation in deterministic mode;
+- KG/vector/history/embedding authority promotion;
+- stale, poisoned, partial, forged, or mismatched proof-cache admission;
+- invalid CID or canonical-preimage admission;
+- incomplete doctor impact closure or mutation with an open required frontier;
+- unauthorized, trusted-base, symlink, or repository path escape;
+- sandbox network, secret, process, or resource escape;
+- non-atomic doctor mutation or rollback-restoration failure;
+- nondeterministic patch/receipt replay; and
+- deterministic-doctor false completion.
+
 ### 9.4 Efficacy and cost metrics
 
 Report, without converting them into authority:
@@ -881,7 +1174,15 @@ Report, without converting them into authority:
 - all-caller repair recall;
 - fixed-point iteration count;
 - p50/p95 wall time, solver CPU/memory, context, and tokens; and
-- cache hit, single-flight, and invalidation accuracy.
+- cache hit, single-flight, and invalidation accuracy;
+- deterministic diagnosis precision/recall and issue-CID stability;
+- eligible analytical repair coverage and correct abstention by reason;
+- exact rename/move and missing-value candidate recall before proof;
+- embedding capability/canary rejection and optional-lane availability;
+- proof-cache useful-hit, reconstruction, stale-rejection, and quarantine rates;
+- deterministic first-plan closure, fixed-point success, and rollback frequency;
+- deterministic patch/receipt byte-equivalence; and
+- LLM or remote model-provider invocation count in deterministic mode, which must remain zero.
 
 ## 10. Rollout and operator controls
 
@@ -897,6 +1198,21 @@ Rollout stages are monotonic and independently reversible:
    reconstructed result and deterministic analytical transform only.
 4. **Approval-gated model edit:** behavior-complete, syntax/implementation-only
    gaps with exact paths and postconditions.
+
+The deterministic doctor has an orthogonal, no-model ladder:
+
+0. **Report only:** freeze roots, diagnose, explain, and emit issue CIDs.
+1. **Plan:** retrieve, prove, and render a candidate plan without a source
+   write.
+2. **Sandbox auto:** apply and validate the uniquely admitted plan only in a
+   disposable isolated worktree.
+3. **Narrow auto:** transact the complete proved SCC into the target through
+   the existing lease/merge authority and renew the fixed point.
+
+Report-only is the default and narrow-auto is disabled. Advancing this ladder
+does not enable any model flag. A deterministic run that cannot finish its
+proof, isolation, transaction, or fixed-point obligations returns an
+actionable abstention receipt and stays on the current stage.
 
 Stateful behavior, public API/schema changes, dynamic/generated/native/FFI
 paths, cross-repository edits, new external dependencies, and any unsupported
@@ -934,9 +1250,15 @@ LPR-020 owns release hardening around that protected bootstrap:
 - the operator guide.
 
 LPR-021 through LPR-028 form an append-only post-release generalization
-program. LPR-028 is the unique board terminal: it verifies the source lock,
-generic/VFS and non-VFS behavior, complete caller migration, root layout,
-thin-wrapper constraints, and renewed logic/program fixed point.
+program. In parallel, LPR-029 through LPR-041 form the append-only
+deterministic-doctor program: contracts and frozen diagnostics; proof-cache,
+KG/vector/embedding, and datasets logic adapters; closed AST transforms;
+Tactician/Hammer synthesis; impact closure; transactional fixed-point repair;
+operations; benchmark; and rollout. LPR-042 joins LPR-028 and LPR-041 and is
+the unique board terminal. It verifies VFS/non-VFS generalization and the
+no-model doctor together, including exact replay, cold imports, provider
+absence, abstention cleanliness, rollback, and renewed logic/program fixed
+point.
 
 Before parallel implementation launch:
 
@@ -952,6 +1274,14 @@ Before parallel implementation launch:
    loading it unsafely;
 8. require four initially ready file-disjoint tasks; and
 9. launch in shadow mode.
+
+When the append-only doctor extension is present, launch validation also
+requires 43 canonical tasks, 12 goals, preserved semantic CIDs for LPR-000
+through LPR-028, the new dependency tail, a report-only doctor policy, zero
+LLM/model-provider authority, and LPR-042 as the sole sink. No new dependency is
+required: optional datasets graph, embedding, Tactician, and Hammer facilities
+are capability-probed and lazy-loaded; an unavailable or failed optional lane
+reduces recall or produces abstention instead of blocking supervisor startup.
 
 ## 12. Definition of done
 
@@ -984,5 +1314,26 @@ The program is complete only when:
 - the migrated VFS job and a non-VFS fixture traverse identical generic code,
   and every contract/identity/caller difference is proved, explicitly
   approved, or conservatively abstained; and
+- the deterministic doctor diagnoses a real checkout from frozen AST/graph/
+  contract/value evidence without importing target code, and every finding,
+  query, candidate, proof, edit, transaction, and fixed-point receipt is
+  content-addressed and replayable;
+- exact proof-cache reuse reconstructs against current roots, while stale,
+  poisoned, partial, forged, provider-local, or legacy-compatible entries are
+  rejected, tombstoned, or quarantined;
+- KG, GraphRAG, history, vector search, and validated pinned embeddings improve
+  recall without ever becoming semantic or write authority; unavailable,
+  constant-fallback, non-finite, or dimension-drifted embeddings disable their
+  lane;
+- the datasets Tactician and Hammer can derive and prove a unique closed
+  analytical operator for eligible rename/import/export/registration/
+  missing-argument/constructor/adapter/schema/artifact repairs, with no model
+  call and a typed abstention for every ambiguous or unsupported case;
+- automatic repair requires complete all-caller/SCC closure, strong-enough
+  sandbox enforcement, exact leases/checkpoints, atomic transaction,
+  re-indexing, cache invalidation, renewed proof, and compensating rollback;
+- report-only remains the doctor default, deterministic narrow-auto is
+  independently gated, and all deterministic-doctor safety floors—including
+  LLM or remote model-provider invocation count—remain zero; and
 - the supervisor can drain the task DAG without a dependency, capability,
   protected-path, merge, or process-lifecycle blocker.

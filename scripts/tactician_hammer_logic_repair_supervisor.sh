@@ -603,7 +603,7 @@ preflight() {
   local live_master_state=""
   validate_test_mode
   if [[ "${TEST_MODE}" == "1" ]]; then
-    echo '{"completed_count":1,"drained":false,"eligible_ready_count":4,"task_count":29}'
+    echo '{"completed_count":1,"drained":false,"eligible_ready_count":4,"task_count":43}'
     return 0
   fi
   live_master_json="$(master_state_json)"
@@ -675,7 +675,7 @@ if master_is_live:
 try:
     summary = summarize_supervisor_preflight(
         payload,
-        expected_task_count=29,
+        expected_task_count=43,
         live_lane_states=lane_states,
     )
 except SupervisorPreflightError as exc:

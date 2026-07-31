@@ -16,8 +16,10 @@ task dependencies.
 Control-plane extension note: `LPR-000` records the original sealed 21-task,
 seven-goal bootstrap acceptance snapshot. The append-only `LPR-G070` extension
 adds `LPR-021` through `LPR-028` without rewriting any existing task identity;
-the current validator therefore requires 29 tasks, eight goals, and
-`LPR-028` as the unique terminal task.
+the append-only `LPR-G080` through `LPR-G110` deterministic-doctor extension
+adds `LPR-029` through `LPR-042` while preserving all prior task identities.
+The current validator therefore requires 43 tasks, 12 goals, and `LPR-042` as
+the unique terminal task.
 
 Normative execution order:
 
@@ -35,6 +37,24 @@ static facts and impact closure
   -> exact atomic transaction
   -> candidate-tree logic and program fixed point
 ```
+
+The deterministic-doctor path is an independent no-model specialization:
+
+```text
+frozen repository/AST/graph/cache/index CIDs
+  -> typed diagnostics and complete impact frontier
+  -> exact-first plus advisory KG/vector/embedding candidate retrieval
+  -> datasets Tactician plan
+  -> cache-first Hammer/CEGIS and native reconstruction
+  -> one closed typed analytical operator or abstention
+  -> isolated candidate worktree and atomic all-caller SCC transaction
+  -> re-index, invalidate, re-prove, and reach a fixed point
+```
+
+Its report-only mode is the default. Deterministic repair forbids every LLM or
+model-provider invocation and never falls back to one; unavailable,
+ambiguous, unsupported, stale, or incompletely closed work produces a typed
+abstention or approval-required receipt with zero source writes.
 
 Tactician, vector/KG retrieval, learned ranking, solver candidates, runtime
 witnesses, ordinary tests, and LLM proposals do not independently grant
@@ -939,3 +959,437 @@ expectations under existing precedence, but do not prove them by passing.
 - Evidence subset: base/source/generic contract delta, AST/import/string-import/entry-point impact closure, Tactician plan, Hammer reconstruction or abstention, public schema/identity parity, migrated tests/docs/boards, non-VFS reuse, root scan, fixed point
 - Acceptance: Compute the locked-source-to-generic ProgramContractDelta and complete resolved impact closure before edits; use Tactician/Hammer to prove delegation/profile equivalence for supported clauses and retain explicit unsupported/approval-required dispositions otherwise; atomically migrate every import, string import, export, entry point, test, documentation link and open VFS-board output; preserve canonical VFS vectors, errors, side effects, schemas, CIDs, receipts and CLI results or record reviewed versioned migration; run the migrated locked VFS corpus and a hermetic non-VFS inventory-to-rollout fixture through identical generic engine modules; assert recursively that the agent_supervisor root contains no vfs_*.py file and no import references agent_supervisor.vfs_*; reject VFS/IPFS/fsspec/SwissKnife/board-specific branches in generic modules and substantive logic in the ops wrapper; cold import remains side-effect free; re-index, re-resolve and re-prove to an existing completion receipt plus current logic fixed-point attachment; any missed caller, stale blob, unresolved required frontier, unproved semantic drift, layout regression or partial migration rolls back or abstains.
 - Embedding query: prove vfs generalization equivalence migrate all callers no root modules two profile fixed point
+
+## LPR-029 Define deterministic-doctor contracts, policy, and receipts
+
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: deterministic-doctor-foundations
+- Depends on: LPR-020
+- Goal id: LPR-G080
+- Outputs: ipfs_accelerate_py/agent_supervisor/analysis/deterministic_doctor_contracts.py, ipfs_accelerate_py/agent_supervisor/validation/deterministic_doctor_policy.py, test/api/test_agent_supervisor_deterministic_doctor_contracts.py
+- Validation: python -m pytest -q test/api/test_agent_supervisor_deterministic_doctor_contracts.py
+- Board namespace: agent-supervisor-tactician-hammer-logic-repair-v1
+- Bundle: agent-supervisor/tactician-hammer-logic-repair/doctor-contracts
+- Parallel lane: lpr-doctor-contracts
+- Resource class: cpu-small
+- Resource stage: analysis
+- Token class: large
+- Estimated tokens: 30000
+- Implementation timeout seconds: 7200
+- Predicted files: ipfs_accelerate_py/agent_supervisor/analysis/deterministic_doctor_contracts.py, ipfs_accelerate_py/agent_supervisor/validation/deterministic_doctor_policy.py, test/api/test_agent_supervisor_deterministic_doctor_contracts.py
+- AST symbols: DoctorAuthorityRoots, DoctorEvidenceSnapshot, DeterministicDoctorFinding, DoctorRepairDisposition, DoctorRepairOperatorSpec, DeterministicDoctorPlan, DoctorProofCacheAuditReceipt, DeterministicDoctorRunReceipt, DeterministicDoctorPolicy
+- Interfaces: RepositorySnapshot, RepositoryForest, ContentIdentityBridge@1, ProgramLogicGoal@1, LogicPredictionReceipt@1, ChangePropagationPlan@1, PropagationCompletionReceipt@1
+- Allow concurrent with: LPR-021, LPR-030, LPR-031, LPR-032
+- Conflict policy: Own only new deterministic-doctor contracts/policy/tests; reuse canonical identity, authority, proof, packet, transaction, and completion records by reference, leave the lifecycle doctor and ProgrammaticRecoveryController read-only with respect to source semantics, and define no model route.
+- Preconditions: LPR release contracts, canonical CIDs, exact authority roots, proof receipts, edit plans, leases, transactions, and completion attachments are stable.
+- Effects: Every doctor stage exchanges immutable bounded body-free content-addressed records with closed dispositions, invalidators, resource bounds, explicit authority, and a hard zero-LLM/model-provider-call invariant.
+- Evidence subset: modes, authority roots, canonical preimages/CIDs, states, bounds, trusted base, approval classes, invalidation, no-model invariant
+- Acceptance: Define inspect/explain/plan/repair/replay/rollback with inspect/explain/plan read-only and report-only default; bind forest/tree/overlay/file/AST/graph/corpus/index/model/cache/operator/translator/solver/kernel/toolchain/policy/sandbox/environment/lease roots; distinguish observed facts from expected behavior and nomination from proof/write authority; enumerate supported, abstain, approval-required, rolled-back and quarantined states; reject forged CIDs, bodies/secrets, cycles, unbounded data, partial plans, open required frontiers, semantic authority on KG/vector/embedding/Tactician/Hammer candidates/cache metadata, LLM or remote model-provider invocation in deterministic mode, and repair without an existing admitted plan/lease/checkpoint/rollback; explicitly protect doctor/proof/identity/transaction trusted-base paths and public/native/stateful/cross-root/new-dependency classes.
+- Embedding query: deterministic doctor contracts policy receipts cid no llm report only repair authority
+
+## LPR-030 Compile a real-checkout AST and contract diagnostic snapshot
+
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: deterministic-doctor-foundations
+- Depends on: LPR-020
+- Goal id: LPR-G080
+- Outputs: ipfs_accelerate_py/agent_supervisor/analysis/doctor_repository_diagnostics.py, test/api/test_agent_supervisor_doctor_repository_diagnostics.py
+- Validation: python -m pytest -q test/api/test_agent_supervisor_doctor_repository_diagnostics.py
+- Board namespace: agent-supervisor-tactician-hammer-logic-repair-v1
+- Bundle: agent-supervisor/tactician-hammer-logic-repair/doctor-diagnostics
+- Parallel lane: lpr-doctor-diagnostics
+- Resource class: cpu-large
+- Resource stage: analysis
+- Token class: large
+- Estimated tokens: 44000
+- Implementation timeout seconds: 9000
+- Predicted files: ipfs_accelerate_py/agent_supervisor/analysis/doctor_repository_diagnostics.py, test/api/test_agent_supervisor_doctor_repository_diagnostics.py
+- AST symbols: DoctorSnapshotPolicy, DoctorDiagnosticInput, DoctorDiagnosticFinding, DoctorEvidenceCompiler, compile_doctor_evidence_snapshot, diagnose_repository
+- Interfaces: build_repository_snapshot, RepositoryIndexer, build_analysis_ast_index, adapt_program_source, ProgramGraph, ProgramDependencyGraph, ProgramCallResolver, BrokenContractTrace@1, ProgramContractDelta@1, SenderReceiverContractCompiler, ChangeConsumerInventory, ValueProvenanceCompiler
+- Allow concurrent with: LPR-021, LPR-029, LPR-031, LPR-032
+- Conflict policy: Compose existing snapshot/corpus/AST/graph/trace/contract/value interfaces without importing or executing target code, inventing expected behavior, or treating parser/analyzer diagnostics as repair authority.
+- Preconditions: LPR-020 exact source/capability bindings and the reusable RPR static-analysis interfaces are current.
+- Effects: A bounded real checkout becomes a frozen evidence snapshot plus typed syntax/import/name/call-arity/type/contract/value/dataflow/error/effect/resource/state/schema/memory findings, consumer candidates and explicit unknown frontiers.
+- Evidence subset: forest/tree/overlay/file roots, parsers, AST symbols/imports/calls/references, contract delta, reaching values, effects/resources/memory, diagnostics, completeness
+- Acceptance: Parse Python plus every already-supported adapter language as inert bytes; bind parser/config/toolchain and all derived index roots; deterministically join broken traces and structured validation failures to current AST facts; preserve expectation source/precedence separately from observations; query imports, exports, aliases, wrappers, entry points and call sites; expose Python-only or unsupported CFG/reflection/exception/native/FFI/concurrency/interprocedural limitations as open frontiers; issue canonical finding CIDs; incremental invalidation and a clean rebuild are identity-equivalent; malformed, oversized, symlink-escaped, stale or mixed-root input fails closed with zero source writes and zero provider calls.
+- Embedding query: real checkout deterministic doctor repository ast diagnostics broken contracts callers value provenance
+
+## LPR-031 Retrieve refactor and value candidates through exact graphs and advisory KG/vector embeddings
+
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: deterministic-doctor-foundations
+- Depends on: LPR-020
+- Goal id: LPR-G080
+- Outputs: ipfs_accelerate_py/agent_supervisor/analysis/doctor_repair_candidate_retrieval.py, ipfs_accelerate_py/agent_supervisor/integrations/ipfs_datasets_embedding_provider.py, test/api/test_agent_supervisor_doctor_repair_candidate_retrieval.py, test/api/test_agent_supervisor_ipfs_datasets_embedding_provider.py
+- Validation: python -m pytest -q test/api/test_agent_supervisor_doctor_repair_candidate_retrieval.py test/api/test_agent_supervisor_ipfs_datasets_embedding_provider.py
+- Board namespace: agent-supervisor-tactician-hammer-logic-repair-v1
+- Bundle: agent-supervisor/tactician-hammer-logic-repair/doctor-retrieval
+- Parallel lane: lpr-doctor-retrieval
+- Resource class: cpu-large
+- Resource stage: analysis
+- Token class: large
+- Estimated tokens: 42000
+- Implementation timeout seconds: 9000
+- Predicted files: ipfs_accelerate_py/agent_supervisor/analysis/doctor_repair_candidate_retrieval.py, ipfs_accelerate_py/agent_supervisor/integrations/ipfs_datasets_embedding_provider.py, test/api/test_agent_supervisor_doctor_repair_candidate_retrieval.py, test/api/test_agent_supervisor_ipfs_datasets_embedding_provider.py
+- AST symbols: DoctorCandidateQuery, DoctorCandidateEvidence, DoctorCandidateSet, DoctorRepairCandidateRetriever, DatasetsEmbeddingCapability, PinnedEmbeddingPolicy, IpfsDatasetsEmbeddingProvider
+- Interfaces: CodeEvidenceGraph, SemanticDependencyGraph, SymbolicContractGraph, ExactDatasetsGraphRAGAdapter, build_code_symbol_vector_index, build_change_value_vector_index, retrieve_proof_directed, ContractRepairCandidateRetriever, MissingInputCandidateRetriever
+- Allow concurrent with: LPR-021, LPR-029, LPR-030, LPR-032
+- Conflict policy: Exact static/history routes precede GraphRAG/vector routes; all KG/history/vector/embedding outputs are bounded nominations with semantic_authority=false, no remote fallback, no target/write selection, and no optional eager import.
+- Preconditions: Content-addressed code-symbol/value indexes, semantic/evidence graphs, exact datasets GraphRAG capability probes, and proof-directed retrieval interfaces are importable.
+- Effects: Findings can nominate renamed/moved definitions, exact structural equivalents, constructors/factories/adapters, reaching values and analogous repairs with complete query/result provenance and rejection reasons.
+- Evidence subset: AST/graph/history exact match, KG neighborhoods, code/value vectors, embedding model/config/index roots, tombstones, compatibility filters, ambiguity
+- Acceptance: Use exact symbol/contract/value/lineage/graph routes before lexical/KG/vector similarity; pin embedding provider/model artifact/revision/dimension/chunker/normalizer/distance and corpus/index roots; a deterministic canary rejects missing-dependency success shims, constant vectors, NaN/Inf, dimension or config drift and disables only the optional vector lane; never use an unpinned remote embedding; reject stale/cross-tree/generated/read-only/poisoned/forged candidates before scoring; carry candidate CIDs, source authority, hard compatibility and information-content facts separately from scores; deterministic ties, no candidate or multiple equally eligible candidates remain explicit and cannot authorize semantics, values, placements, targets or writes.
+- Embedding query: code refactor rename move missing value graph rag knowledge graph embeddings vector cid candidate retrieval
+
+## LPR-032 Federate exact proof caches and lazy datasets Logic capabilities
+
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: deterministic-doctor-foundations
+- Depends on: LPR-020
+- Goal id: LPR-G080
+- Outputs: ipfs_accelerate_py/agent_supervisor/proof/doctor_proof_cache.py, ipfs_accelerate_py/agent_supervisor/integrations/ipfs_datasets_doctor_logic.py, test/api/test_agent_supervisor_doctor_proof_cache.py, test/api/test_agent_supervisor_ipfs_datasets_doctor_logic.py
+- Validation: python -m pytest -q test/api/test_agent_supervisor_doctor_proof_cache.py test/api/test_agent_supervisor_ipfs_datasets_doctor_logic.py
+- Board namespace: agent-supervisor-tactician-hammer-logic-repair-v1
+- Bundle: agent-supervisor/tactician-hammer-logic-repair/doctor-cache-logic
+- Parallel lane: lpr-doctor-cache-logic
+- Resource class: cpu-proof-solver
+- Resource stage: proof
+- Token class: large
+- Estimated tokens: 40000
+- Implementation timeout seconds: 9000
+- Predicted files: ipfs_accelerate_py/agent_supervisor/proof/doctor_proof_cache.py, ipfs_accelerate_py/agent_supervisor/integrations/ipfs_datasets_doctor_logic.py, test/api/test_agent_supervisor_doctor_proof_cache.py, test/api/test_agent_supervisor_ipfs_datasets_doctor_logic.py
+- AST symbols: DoctorProofCacheBinding, DoctorProofCacheGate, DoctorCacheAuditReceipt, DatasetsDoctorLogicCapability, IpfsDatasetsDoctorLogic
+- Interfaces: FormalVerificationCache, ProofCacheKey, ProverEvidenceStore, RuntimeCAS, ContentIdentityBridge@1, ProofCorpusStore, AttestedProofVerifier, IpfsDatasetsTacticianProvider, IsolatedHammerLoader
+- Allow concurrent with: LPR-021, LPR-029, LPR-030, LPR-031
+- Conflict policy: Wrap rather than replace existing caches/CAS and lazy logic providers; the supervisor formal cache is proof-authority storage, datasets Hammer cache is provider-local acceleration, attested corpus is nomination/applicability input, and legacy IPFS cache is transport-only until full verification.
+- Preconditions: Canonical identity/CAS, formal verification cache, proof evidence store, datasets Tactician/Hammer capability adapters and source-bound schemas are stable.
+- Effects: Doctor stages can lazily query exact logic capabilities and reuse only current fully bound reconstructed proofs, with single-flight, dependency invalidation, quarantine and replay receipts.
+- Evidence subset: canonical preimage/CID, cache namespace/key, obligation/premises, translator/solver/kernel/toolchain/registry/policy/resource/environment/tree roots, trust, invalidation
+- Acceptance: Require CIDv1/profile/preimage conformance and keys binding forest/tree/overlay/AST/graph/corpus/goal/premises/translation/solver/kernel/toolchain/registry/policy/budget/sandbox/environment/candidate tree; reject digest-like pseudo-CIDs, double hashing, alias/profile mismatch, partial/solver-only/raw-countermodel/expired/stale/corrupt entries; revalidate and reconstruct positive hits immediately before render and commit; negative hits/timeouts remain diagnostic; semantic-root changes invalidate descendants and tombstone indexes; equivocation quarantines; all datasets logic/solver/cache modules load lazily through exact capability probes with no install, network, target import or process-global unsafe mutation.
+- Embedding query: deterministic doctor proof cache cid cas datasets logic tactician hammer lazy reconstruction invalidation
+
+## LPR-033 Register allowlisted deterministic AST repair transforms
+
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: deterministic-doctor-foundations
+- Depends on: LPR-029, LPR-030
+- Goal id: LPR-G080
+- Outputs: ipfs_accelerate_py/agent_supervisor/planning/deterministic_doctor_transforms.py, test/api/test_agent_supervisor_deterministic_doctor_transforms.py
+- Validation: python -m pytest -q test/api/test_agent_supervisor_deterministic_doctor_transforms.py
+- Board namespace: agent-supervisor-tactician-hammer-logic-repair-v1
+- Bundle: agent-supervisor/tactician-hammer-logic-repair/doctor-transforms
+- Parallel lane: lpr-doctor-transforms
+- Resource class: cpu-large
+- Resource stage: planning
+- Token class: large
+- Estimated tokens: 38000
+- Implementation timeout seconds: 7200
+- Predicted files: ipfs_accelerate_py/agent_supervisor/planning/deterministic_doctor_transforms.py, test/api/test_agent_supervisor_deterministic_doctor_transforms.py
+- AST symbols: DoctorRepairOperatorRegistry, DoctorRepairOperatorSpec, DoctorOperatorProposal, DoctorOperatorReceipt, build_default_doctor_operator_registry
+- Interfaces: AnalyticalChangeTransformer@1, AnalyticalTransformRequest, ContractRepairEditPacket@2, ChangePropagationEditPacket@1, ProgramContractDelta@1
+- Allow concurrent with: LPR-034
+- Conflict policy: Adapt existing analytical transforms into a closed immutable registry; no arbitrary text/template/shell/plugin/model-generated operator, free semantics, new dependency, public/native/stateful invention, or edit to the doctor/proof/identity/transaction trusted base.
+- Preconditions: Doctor contracts/policy and real-checkout source-span/AST findings are stable.
+- Effects: Exact rename, import/export/re-export/registration, add/rename/reorder/thread argument, constructor/factory, finite total adapter, authorized schema/serializer/fixture/manifest mapping and verified-artifact restoration become typed proposals with proof templates.
+- Evidence subset: operator registry identity, AST/span/before hashes, types/values/placements, pre/post/frame conditions, read/write paths, idempotency, inverse/compensation
+- Acceptance: Every operator has closed input/output types, supported AST shapes, preconditions, semantic postconditions, frame conditions, exact read/write sets, value-source requirements, deterministic byte-stable renderer, idempotency and inverse/compensation; produce only body-free proposals until proof admission; reject splats, ambiguous overloads, reflection, monkey patches, stale spans, incomplete mappings, unproved values, generated/native/FFI/unsafe/concurrency targets, forbidden paths, cross-root writes and complex new behavior; repeating a transform is a no-op or deterministic rejection.
+- Embedding query: deterministic ast codemod repair operators rename import argument threading adapter schema no llm
+
+## LPR-034 Compile findings into independent goals and gated Tactician plans
+
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: deterministic-doctor-proof-synthesis
+- Depends on: LPR-029, LPR-030, LPR-031
+- Goal id: LPR-G090
+- Outputs: ipfs_accelerate_py/agent_supervisor/planning/deterministic_doctor_tactician.py, test/api/test_agent_supervisor_deterministic_doctor_tactician.py
+- Validation: python -m pytest -q test/api/test_agent_supervisor_deterministic_doctor_tactician.py
+- Board namespace: agent-supervisor-tactician-hammer-logic-repair-v1
+- Bundle: agent-supervisor/tactician-hammer-logic-repair/doctor-tactician
+- Parallel lane: lpr-doctor-tactician
+- Resource class: cpu-medium
+- Resource stage: planning
+- Token class: large
+- Estimated tokens: 36000
+- Implementation timeout seconds: 7200
+- Predicted files: ipfs_accelerate_py/agent_supervisor/planning/deterministic_doctor_tactician.py, test/api/test_agent_supervisor_deterministic_doctor_tactician.py
+- AST symbols: DoctorRepairGoalCompiler, DeterministicDoctorTactician, DoctorTacticianPlanReceipt
+- Interfaces: ProgramLogicPremiseCorpusBuilder, ProgramLogicGoalCompiler, LogicGapSlicer, IpfsDatasetsTacticianProvider, TacticianPlanGate, ProofDirectedRetrievalReceipt
+- Allow concurrent with: LPR-033
+- Conflict policy: Compile independent expectations and observed facts before calling the domain-neutral datasets Tactician; the Tactician plans finite proof/synthesis search only and receives no learned/model route in deterministic mode.
+- Preconditions: Doctor contracts, diagnostics and hybrid candidate evidence are current and mutually root-bound.
+- Effects: Each supported finding becomes a bounded premise corpus, complete typed goal/frontier inventory and acyclic exact-first proof/operator search plan with selected/excluded source routes and budgets.
+- Evidence subset: expectation authority, observations, facets, premises, goals, candidates, Tactician routes/subgoals, exclusions, completeness, budgets
+- Acceptance: Preserve required input/output/error/effect/auth/resource/state/schema/placement/information/memory facets and every unknown frontier; prevent candidate code, cache metadata, tests by mere success, KG/vector/embedding scores or Tactician output from authoring their own expectation; order authoritative exact local routes before approximate nominations; reject cycles, axiom smuggling, self-validation, prompt directives, changed roots, missing consumers/facets, forged IDs, unbounded routes and score-based authority; emit deterministic plans with semantic_authority=false and no LLM/model-provider route, or a typed abstention.
+- Embedding query: deterministic doctor findings premises goals datasets tactician plan exact first no model
+
+## LPR-035 Verify candidate repairs through cache-first isolated Hammer and CEGIS
+
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: deterministic-doctor-proof-synthesis
+- Depends on: LPR-032, LPR-034
+- Goal id: LPR-G090
+- Outputs: ipfs_accelerate_py/agent_supervisor/proof/deterministic_doctor_hammer.py, test/api/test_agent_supervisor_deterministic_doctor_hammer.py
+- Validation: python -m pytest -q test/api/test_agent_supervisor_deterministic_doctor_hammer.py
+- Board namespace: agent-supervisor-tactician-hammer-logic-repair-v1
+- Bundle: agent-supervisor/tactician-hammer-logic-repair/doctor-hammer
+- Parallel lane: lpr-doctor-hammer
+- Resource class: cpu-proof-solver
+- Resource stage: proof
+- Token class: large
+- Estimated tokens: 46000
+- Implementation timeout seconds: 10800
+- Predicted files: ipfs_accelerate_py/agent_supervisor/proof/deterministic_doctor_hammer.py, test/api/test_agent_supervisor_deterministic_doctor_hammer.py
+- AST symbols: DoctorRepairObligationCompiler, DeterministicDoctorHammer, DoctorRepairProofReceipt
+- Interfaces: TacticianPlanGate, TacticianHammerObligationCompiler, TacticianHammerCoordinator, LogicPredictionCEGIS, LogicPredictionAdmission, DoctorProofCacheGate, CountermodelValidator, NativeReconstructionReceipt
+- Allow concurrent with:
+- Conflict policy: Reuse the production isolated Hammer route and formal cache; never use the unchecked legacy HammerPipeline, mutate process-global import state concurrently, accept a solver label/raw countermodel, or fall through to a model.
+- Preconditions: Exact logic capabilities and proof-cache gate are healthy; the finding has an admitted Tactician plan with current corpus/candidate roots.
+- Effects: Candidate operator/value/placement combinations are lowered, cache-checked, resource-bounded, proved/refuted/refined and admitted only through current native reconstruction or independently replayed countermodels.
+- Evidence subset: obligations, premises, cache audit, native goals, translation round trip, solver portfolio, countermodels, reconstruction, kernel, CEGIS residuals, uniqueness
+- Acceptance: Revalidate every cache binding; require an explicit native-execution permit and adequate subprocess/platform isolation; bind exact obligation/premise/translator/solver/kernel/toolchain/policy/resource/environment identities; reconstruct the matching theorem in the pinned kernel; independently replay a countermodel or proof of negation before refutation; CEGIS is finite, monotonic and repetition-bounded; exactly one complete eligible consequence may proceed; unavailable isolation/provider/kernel, unsupported lowering, inconsistency, ambiguity, stale roots, timeout or bound exhaustion abstains with zero writes and zero LLM or remote model-provider calls.
+- Embedding query: deterministic doctor hammer proof cache cegis native reconstruction countermodel unique repair no llm
+
+## LPR-036 Materialize only proof-admitted deterministic repair overlays
+
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: deterministic-doctor-proof-synthesis
+- Depends on: LPR-033, LPR-035
+- Goal id: LPR-G090
+- Outputs: ipfs_accelerate_py/agent_supervisor/planning/deterministic_doctor_synthesis.py, test/api/test_agent_supervisor_deterministic_doctor_synthesis.py
+- Validation: python -m pytest -q test/api/test_agent_supervisor_deterministic_doctor_synthesis.py
+- Board namespace: agent-supervisor-tactician-hammer-logic-repair-v1
+- Bundle: agent-supervisor/tactician-hammer-logic-repair/doctor-synthesis
+- Parallel lane: lpr-doctor-synthesis
+- Resource class: cpu-large
+- Resource stage: planning
+- Token class: large
+- Estimated tokens: 38000
+- Implementation timeout seconds: 9000
+- Predicted files: ipfs_accelerate_py/agent_supervisor/planning/deterministic_doctor_synthesis.py, test/api/test_agent_supervisor_deterministic_doctor_synthesis.py
+- AST symbols: DeterministicDoctorSynthesizer, DoctorAnalyticalOverlay, DoctorSynthesisReceipt
+- Interfaces: DoctorRepairOperatorRegistry, AnalyticalChangeTransformer@1, LogicPredictionAdmission, LogicGuidedRepairPacketMaterializer, ContractRepairEditPacket@2, ChangePropagationEditPacket@1
+- Allow concurrent with:
+- Conflict policy: Materialize the admitted closed operator through the existing analytical path; do not import or call llm_router/provider modules, invent text or behavior, select new targets/paths/dependencies, or grant an overlay write authority.
+- Preconditions: One current reconstructed repair consequence and matching registered operator are uniquely admitted.
+- Effects: The exact proved substitution becomes a deterministic source-span/before-hash-bound candidate overlay and simulation receipt, ready for impact planning but incapable of direct mutation.
+- Evidence subset: finding/plan/proof/operator CIDs, target/value/placement, exact spans/hashes, deterministic render, syntax simulation, forbidden paths, postconditions
+- Acceptance: Recompute every input identity and operator precondition; render only the unique admitted target/value/placement with exact before hashes and bounded paths; prove output patch CID and byte-equivalent replay; parse/simulate without writing the target; reject changed spans, unsupported AST shape, extra files/imports/dependencies, semantics outside the admitted consequence, non-idempotency or provider/model import/call; monkeypatched LLM routes that raise remain untouched; a failed render yields a typed abstention and no partial overlay.
+- Embedding query: proof admitted deterministic repair synthesis analytical overlay exact spans no llm
+
+## LPR-037 Close all callers and compile one atomic deterministic repair plan
+
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: deterministic-doctor-transaction
+- Depends on: LPR-030, LPR-036
+- Goal id: LPR-G100
+- Outputs: ipfs_accelerate_py/agent_supervisor/analysis/deterministic_doctor_impact.py, test/api/test_agent_supervisor_deterministic_doctor_impact.py
+- Validation: python -m pytest -q test/api/test_agent_supervisor_deterministic_doctor_impact.py
+- Board namespace: agent-supervisor-tactician-hammer-logic-repair-v1
+- Bundle: agent-supervisor/tactician-hammer-logic-repair/doctor-impact
+- Parallel lane: lpr-doctor-impact
+- Resource class: cpu-large
+- Resource stage: analysis
+- Token class: large
+- Estimated tokens: 40000
+- Implementation timeout seconds: 9000
+- Predicted files: ipfs_accelerate_py/agent_supervisor/analysis/deterministic_doctor_impact.py, test/api/test_agent_supervisor_deterministic_doctor_impact.py
+- AST symbols: DeterministicDoctorImpactAnalyzer, DoctorConsumerDisposition, DoctorImpactClosureReceipt, compile_deterministic_doctor_plan
+- Interfaces: ContractChangeImpactAnalyzer, ProgramDependencyGraph, ProgramCallResolver, ChangeConsumerInventory, ChangePropagationObligationCompiler, ChangePropagationPlanner, ChangePropagationPlan@1
+- Allow concurrent with:
+- Conflict policy: Reuse current impact/propagation authority and preserve unresolved frontiers; never infer completeness from a passing test, vector/KG neighborhood, static subset, or absence of observed failures.
+- Preconditions: Current real-checkout diagnostic snapshot and proof-admitted analytical overlay are available.
+- Effects: Direct/transitive calls, aliases, methods, wrappers, imports/exports, registrations, entry points, schemas, generated declarations and second-order effects receive explicit dispositions and atomic SCC grouping.
+- Evidence subset: base/candidate contract delta, AST/import/call/dependency closure, callers/consumers, dynamic/generated/native frontier, SCCs, obligations, dispositions, read/write set
+- Acceptance: Rebuild the candidate ProgramContractDelta and resolve the bounded current call/import/dependency graph; require one migrated/proved-compatible/unaffected/approval/unsupported disposition per resolved consumer; discover second-order consumers introduced by the overlay; represent reflection, unknown dispatch, generated code, native/FFI and unsupported interprocedural paths as required open frontiers; mutation requires complete closure, current CIDs, no forbidden path and one atomic plan covering all necessary SCC steps; missed/duplicate/stale consumers, circular ownership, plan gaps or an open required frontier abstain before any write.
+- Embedding query: deterministic doctor all caller consumer impact closure scc atomic repair plan
+
+## LPR-038 Apply in isolation and re-prove to a deterministic fixed point
+
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: deterministic-doctor-transaction
+- Depends on: LPR-032, LPR-037
+- Goal id: LPR-G100
+- Outputs: ipfs_accelerate_py/agent_supervisor/planning/deterministic_doctor_transaction.py, ipfs_accelerate_py/agent_supervisor/validation/deterministic_doctor_fixed_point.py, test/api/test_agent_supervisor_deterministic_doctor_transaction.py, test/api/test_agent_supervisor_deterministic_doctor_fixed_point.py
+- Validation: python -m pytest -q test/api/test_agent_supervisor_deterministic_doctor_transaction.py test/api/test_agent_supervisor_deterministic_doctor_fixed_point.py
+- Board namespace: agent-supervisor-tactician-hammer-logic-repair-v1
+- Bundle: agent-supervisor/tactician-hammer-logic-repair/doctor-transaction
+- Parallel lane: lpr-doctor-transaction
+- Resource class: cpu-large
+- Resource stage: integration
+- Token class: large
+- Estimated tokens: 52000
+- Implementation timeout seconds: 10800
+- Predicted files: ipfs_accelerate_py/agent_supervisor/planning/deterministic_doctor_transaction.py, ipfs_accelerate_py/agent_supervisor/validation/deterministic_doctor_fixed_point.py, test/api/test_agent_supervisor_deterministic_doctor_transaction.py, test/api/test_agent_supervisor_deterministic_doctor_fixed_point.py
+- AST symbols: DoctorSandboxPolicy, DoctorSandboxCapability, DeterministicDoctorTransaction, DeterministicDoctorFixedPointValidator, DoctorCandidateTreeReceipt, DoctorFixedPointReceipt
+- Interfaces: ChangePropagationTransaction, ChangePropagationValidator, WriterLease, CheckoutLock, MergeQueue, RuntimeCAS, DoctorProofCacheGate, PropagationCompletionReceipt@1, LogicFixedPointEvidenceAttachment@1
+- Allow concurrent with:
+- Conflict policy: Apply only inside a disposable exact-base worktree and integrate through existing lease/locks/merge queue/ref-CAS; never import target code into the doctor, inherit secrets, write a dirty user tree directly, weaken sandbox claims, or bypass compensating rollback.
+- Preconditions: A complete current deterministic repair plan covers every required consumer/SCC and the cache/proof bindings pass pre-render validation.
+- Effects: The complete patch is rendered and validated under bounded isolation, integrated atomically, indexes/caches are invalidated, and diagnosis/impact/Tactician/Hammer/program validation iterate to a current fixed point or roll back.
+- Evidence subset: base/candidate/committed CIDs, sandbox enforcement, allowlisted commands, resources, lease/checkpoint/before hashes, SCC transaction, validations, cache invalidation, fixed point, rollback
+- Acceptance: Confine paths and deny inherited secrets/network/process escape with enforced platform evidence before target execution; treat symlink/hardlink/submodule/device/path races as hostile; weak isolation permits pure static replay only and forces abstention for execution-dependent repair; acquire checkout lock/writer lease/checkpoint and revalidate roots/cache immediately before commit; apply the entire SCC or nothing through merge ref compare-and-swap; reparse/type/static/differential/proof and memory/effect/resource checks, rebuild AST/graphs/KG/vector tombstones, invalidate dependent CAS/cache, redelta/reclose/replan/reprove until no original/second-order finding remains; bounds/oscillation/drift/failure compensates, rollback failure quarantines, and neither state may claim completion or call a model.
+- Embedding query: deterministic doctor sandbox worktree transaction rollback reindex cache invalidation fixed point
+
+## LPR-039 Expose deterministic doctor operations through a thin service and CLI
+
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: deterministic-doctor-transaction
+- Depends on: LPR-038
+- Goal id: LPR-G100
+- Outputs: ipfs_accelerate_py/agent_supervisor/control/deterministic_doctor_service.py, scripts/ops/agent_supervisor/deterministic_doctor.py, test/api/test_agent_supervisor_deterministic_doctor_service.py, test/api/test_agent_supervisor_deterministic_doctor_ops.py
+- Validation: python -m pytest -q test/api/test_agent_supervisor_deterministic_doctor_service.py test/api/test_agent_supervisor_deterministic_doctor_ops.py
+- Board namespace: agent-supervisor-tactician-hammer-logic-repair-v1
+- Bundle: agent-supervisor/tactician-hammer-logic-repair/doctor-operations
+- Parallel lane: lpr-doctor-operations
+- Resource class: cpu-medium
+- Resource stage: control
+- Token class: large
+- Estimated tokens: 38000
+- Implementation timeout seconds: 7200
+- Predicted files: ipfs_accelerate_py/agent_supervisor/control/deterministic_doctor_service.py, scripts/ops/agent_supervisor/deterministic_doctor.py, test/api/test_agent_supervisor_deterministic_doctor_service.py, test/api/test_agent_supervisor_deterministic_doctor_ops.py
+- AST symbols: DeterministicDoctorService, DoctorOperation, DoctorOperationRequest, DoctorOperationResult, main
+- Interfaces: deterministic-doctor diagnose/plan/synthesis/impact/transaction/fixed-point stages, SupervisorControlService, RuntimeCAS
+- Allow concurrent with:
+- Conflict policy: The service owns orchestration and the ops script owns only argument/config/bootstrap/delegation; preserve the shell lifecycle doctor's read-only health semantics and do not put analysis/proof/edit/transaction logic or optional eager imports in the wrapper.
+- Preconditions: The deterministic transaction/fixed-point controller is stable and all operations emit canonical receipts.
+- Effects: Operators can inspect, explain, plan, repair, replay, verify, status and rollback an incident by CID with bounded machine-readable output and no silent provider/model escalation.
+- Evidence subset: CLI modes, policy/feature gates, incident idempotency, exact roots, operation receipts, exit codes, cold import, provider/network/process absence, rollback
+- Acceptance: Cold import and --help start no process, import no optional datasets/prover/embedding provider, open no database and access no network; inspect/explain/plan are always read-only; repair requires explicit operation plus enabled policy, exact clean target, writer lease and eligible plan; replay is identity-equivalent and incident-CID idempotent; unsupported/unavailable capabilities return actionable abstentions without making startup unhealthy; no secret/body enters argv/logs; wrapper contains no analysis, proof, rendering, transaction or mutation logic; an intercepted llm_router/LLM/model-provider call fails the test and no automatic fallback exists.
+- Embedding query: deterministic doctor service thin ops cli inspect explain plan repair replay rollback no llm
+
+## LPR-040 Benchmark adversarial no-LLM diagnosis and repair
+
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: deterministic-doctor-release
+- Depends on: LPR-030, LPR-031, LPR-032, LPR-039
+- Goal id: LPR-G110
+- Outputs: ipfs_accelerate_py/agent_supervisor/validation/deterministic_doctor_benchmark.py, test/fixtures/agent_supervisor/deterministic_doctor, test/api/test_agent_supervisor_deterministic_doctor_benchmark.py
+- Validation: python -m pytest -q test/api/test_agent_supervisor_deterministic_doctor_benchmark.py
+- Board namespace: agent-supervisor-tactician-hammer-logic-repair-v1
+- Bundle: agent-supervisor/tactician-hammer-logic-repair/doctor-benchmark
+- Parallel lane: lpr-doctor-benchmark
+- Resource class: cpu-large
+- Resource stage: validation
+- Token class: large
+- Estimated tokens: 46000
+- Implementation timeout seconds: 10800
+- Predicted files: ipfs_accelerate_py/agent_supervisor/validation/deterministic_doctor_benchmark.py, test/fixtures/agent_supervisor/deterministic_doctor, test/api/test_agent_supervisor_deterministic_doctor_benchmark.py
+- AST symbols: DeterministicDoctorFixture, DeterministicDoctorBenchmarkPolicy, DeterministicDoctorMetrics, DeterministicDoctorBenchmarkReport
+- Interfaces: DeterministicDoctorService, DoctorEvidenceSnapshot@1, DeterministicDoctorRunReceipt@1, ResourceMeasurement
+- Allow concurrent with:
+- Conflict policy: Own a hermetic content-addressed fixture corpus and measurement-only evaluator; seeded truth may define expected outcomes but metrics, passing tests, retrieval ranks and observed implementations do not grant production authority.
+- Preconditions: End-to-end deterministic-doctor operations work with injected exact static/logic/cache/sandbox providers.
+- Effects: Repeatable stage-specific metrics measure diagnostic, candidate, proof, transform, impact, transaction, rollback, abstention and fixed-point safety/efficacy with every model route patched to raise.
+- Evidence subset: seeded truth, exact roots/CIDs, positive/adversarial cases, stage receipts, repeated replay, resources, safety floors, LLM/model-provider invocation counters
+- Acceptance: Include renamed/moved symbol, import/export/registration, two-to-three-argument changes across direct/alias/wrapper/method callers, constructor/factory/context threading, finite adapter/schema/serializer/manifest/artifact repairs; include same-type wrong value, vector collision, KG omission, constant embedding fallback, stale/corrupt/forged CID/cache, solver lie/countermodel, incomplete AST/impact/SCC, dynamic/generated/native/FFI/public-schema/cross-root/new-dependency/complex behavior, sandbox escape, crash/rollback and oscillation; run every fixture twice with identity-equivalent receipts; require correct repair or typed abstention, zero missed mandatory caller, authority promotion, stale proof/CID, out-of-scope/sandbox write, partial transaction, rollback failure, nondeterministic render, false fixed point and llm_router/LLM/model-provider calls.
+- Embedding query: adversarial deterministic doctor benchmark rename missing argument graph vector proof cache no llm safety
+
+## LPR-041 Add report-only through narrow-auto rollout controls and operator validation
+
+- Status: todo
+- Completion: auto
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: deterministic-doctor-release
+- Depends on: LPR-040
+- Goal id: LPR-G110
+- Outputs: ipfs_accelerate_py/agent_supervisor/control/deterministic_doctor_rollout.py, config/agent_supervisor_deterministic_doctor.json, scripts/ops/agent_supervisor/validate_deterministic_doctor.py, docs/guides/DETERMINISTIC_DOCTOR_GUIDE.md, test/api/test_agent_supervisor_deterministic_doctor_rollout.py
+- Validation: python -m pytest -q test/api/test_agent_supervisor_deterministic_doctor_rollout.py && python scripts/ops/agent_supervisor/validate_deterministic_doctor.py
+- Board namespace: agent-supervisor-tactician-hammer-logic-repair-v1
+- Bundle: agent-supervisor/tactician-hammer-logic-repair/doctor-rollout
+- Parallel lane: lpr-doctor-rollout
+- Resource class: cpu-large
+- Resource stage: rollout
+- Token class: large
+- Estimated tokens: 40000
+- Implementation timeout seconds: 9000
+- Predicted files: ipfs_accelerate_py/agent_supervisor/control/deterministic_doctor_rollout.py, config/agent_supervisor_deterministic_doctor.json, scripts/ops/agent_supervisor/validate_deterministic_doctor.py, docs/guides/DETERMINISTIC_DOCTOR_GUIDE.md, test/api/test_agent_supervisor_deterministic_doctor_rollout.py
+- AST symbols: DeterministicDoctorMode, DeterministicDoctorRolloutPolicy, DeterministicDoctorRolloutDecision, DeterministicDoctorRollbackGate, DeterministicDoctorOperationsValidator
+- Interfaces: DeterministicDoctorMetrics, DeterministicDoctorService, SupervisorControlService, feature-gate and rollback receipts
+- Allow concurrent with:
+- Conflict policy: Own doctor rollout/config/validator/guide/test only; report-only remains the default, narrow auto remains off until explicit promotion, optional retrieval/prover failures cause degradation/abstention rather than supervisor blockage, and model flags are orthogonal and forbidden in deterministic mode.
+- Preconditions: The adversarial benchmark meets every zero safety floor under repeated replay.
+- Effects: Operators can independently stage report-only, plan, sandbox-auto and deterministic narrow-auto, inspect capabilities/receipts/metrics, use a kill switch and roll back one stage on any regression.
+- Evidence subset: modes, gates, exact config CID, capabilities, safety floors, resource limits, feature flags, kill switch, lifecycle, rollback, operator actions
+- Acceptance: Immutable bounded config defaults to report-only with deterministic narrow-auto false, remote embeddings/network/LLM/remote model-provider calls false, and exact-root/proof-cache-revalidation/native-reconstruction/all-callers/sandbox/lease/atomic/fixed-point gates true; define limits for findings/candidates/queries/operators/plan steps/iterations/files/bytes/processes/time/CPU/memory; promotion is manual and monotonic; any nonzero safety floor, root/schema/capability drift, embedding canary failure, reconstruction/isolation loss, transaction/rollback failure or material resource regression rolls back or disables auto; ordinary lifecycle doctor remains read-only/idempotent; optional provider absence is actionable but does not block report-only startup.
+- Embedding query: deterministic doctor rollout report only plan sandbox auto narrow auto kill switch rollback operations
+
+## LPR-042 Release the joined VFS and deterministic-doctor fixed point
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: deterministic-doctor-release
+- Depends on: LPR-028, LPR-041
+- Goal id: LPR-G110
+- Outputs: ipfs_accelerate_py/agent_supervisor/validation/deterministic_doctor_release.py, test/api/test_agent_supervisor_deterministic_doctor_end_to_end.py, test/api/test_agent_supervisor_deterministic_doctor_replay.py, docs/architecture/DETERMINISTIC_DOCTOR_RELEASE.md
+- Validation: python -m pytest -q test/api/test_agent_supervisor_deterministic_doctor_end_to_end.py test/api/test_agent_supervisor_deterministic_doctor_replay.py && python scripts/ops/agent_supervisor/validate_deterministic_doctor.py && python scripts/validate_tactician_hammer_logic_repair_board.py --check-all
+- Board namespace: agent-supervisor-tactician-hammer-logic-repair-v1
+- Bundle: agent-supervisor/tactician-hammer-logic-repair/doctor-release
+- Parallel lane: lpr-doctor-release
+- Resource class: cpu-large
+- Resource stage: rollout
+- Token class: large
+- Estimated tokens: 48000
+- Implementation timeout seconds: 10800
+- Predicted files: ipfs_accelerate_py/agent_supervisor/validation/deterministic_doctor_release.py, test/api/test_agent_supervisor_deterministic_doctor_end_to_end.py, test/api/test_agent_supervisor_deterministic_doctor_replay.py, docs/architecture/DETERMINISTIC_DOCTOR_RELEASE.md
+- AST symbols: DeterministicDoctorReleasePolicy, DeterministicDoctorReleaseReceipt, validate_deterministic_doctor_release
+- Interfaces: VfsGeneralizationEquivalenceReceipt, AssuranceTwoProfileConformance, DeterministicDoctorRunReceipt@1, DeterministicDoctorMetrics, PropagationCompletionReceipt@1, LogicFixedPointEvidenceAttachment@1
+- Allow concurrent with:
+- Conflict policy: Serialize joined terminal validation; consume but do not rewrite completed task history or protected control artifacts, preserve report-only default and VFS placement/equivalence gates, and never weaken a zero floor to obtain release.
+- Preconditions: LPR-028 proves the generic/VFS cutover and LPR-041 proves deterministic-doctor benchmark/rollout readiness on the same current target tree.
+- Effects: One content-addressed release receipt joins both branches and proves the supervisor can diagnose, prove, analytically repair or abstain, transact, replay, roll back and drain the complete board without an LLM or control-plane blocker.
+- Evidence subset: board/goal DAG, preserved task CIDs, VFS equivalence/layout, exact roots/capabilities, doctor fixtures/metrics/floors, cold imports, provider absence, transaction/rollback, fixed point, supervisor drain
+- Acceptance: Validate all 43 canonical tasks, 12 goals and LPR-042 as unique terminal; preserve semantic CIDs of LPR-000 through LPR-028; run the migrated VFS and non-VFS profiles plus deterministic-doctor positive/adversarial real-checkout fixtures twice with identical CIDs/receipts; prove optional provider absence and cold imports are safe; prove report-only makes no write and an eligible no-model repair reaches complete all-caller atomic fixed point; prove every ambiguous/unsupported case abstains with a clean tree and rollback restores exact roots; require zero LLM or remote model-provider invocation, KG/vector/embedding authority promotion, stale/forged cache/CID admission, missed caller/open-frontier mutation, sandbox/path escape, partial transaction, rollback failure, nondeterminism and false completion; confirm the healthy four-lane supervisor can drain the joined DAG without dependency, provider, protected-path, merge or lifecycle blockage.
+- Embedding query: joined release vfs deterministic doctor no llm canonical cid replay rollback fixed point supervisor drain

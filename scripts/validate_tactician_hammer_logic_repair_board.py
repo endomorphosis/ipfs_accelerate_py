@@ -52,17 +52,30 @@ BOARD_NAMESPACE = "agent-supervisor-tactician-hammer-logic-repair-v1"
 TARGET_BRANCH = "agent/proof-gated-contract-repair"
 DATASETS_TACTICIAN_ANCESTOR = "014b8ea69721d8e0f0cd15b36b83bc5e8bb6a29c"
 DATASETS_TACTICIAN_INTERFACE = "ipfs_datasets_py.logic.tactician@1"
-DATASETS_TACTICIAN_PATHS = (
+DATASETS_REQUIRED_PATHS = (
     "ipfs_datasets_py/logic/tactician/__init__.py",
     "ipfs_datasets_py/logic/tactician/models.py",
     "ipfs_datasets_py/logic/tactician/planner.py",
     "ipfs_datasets_py/logic/tactician/policy.py",
     "ipfs_datasets_py/logic/tactician/receipts.py",
     "ipfs_datasets_py/logic/tactician/adapters.py",
+    "ipfs_datasets_py/logic/hammers/models.py",
+    "ipfs_datasets_py/logic/hammers/policy.py",
+    "ipfs_datasets_py/logic/hammers/portfolio.py",
+    "ipfs_datasets_py/logic/hammers/reconstruction.py",
+    "ipfs_datasets_py/logic/hammers/receipts.py",
+    "ipfs_datasets_py/logic/hammers/proof_cache.py",
+    "ipfs_datasets_py/logic/common/proof_cache.py",
+    "ipfs_datasets_py/logic/proof_corpus/applicability.py",
+    "ipfs_datasets_py/logic/proof_corpus/verifier.py",
+    "ipfs_datasets_py/logic/intent_ir/graphrag/retrieval.py",
+    "ipfs_datasets_py/knowledge_graphs/cypher/ast.py",
+    "ipfs_datasets_py/knowledge_graphs/cypher/parser.py",
+    "ipfs_datasets_py/embeddings/generation_engine.py",
     "tests/unit/logic/tactician/test_models.py",
     "tests/unit/logic/tactician/test_planner.py",
 )
-EXPECTED_TASK_IDS = tuple(f"LPR-{number:03d}" for number in range(29))
+EXPECTED_TASK_IDS = tuple(f"LPR-{number:03d}" for number in range(43))
 EXPECTED_GOAL_IDS = (
     "LPR-G000",
     "LPR-G010",
@@ -72,7 +85,70 @@ EXPECTED_GOAL_IDS = (
     "LPR-G050",
     "LPR-G060",
     "LPR-G070",
+    "LPR-G080",
+    "LPR-G090",
+    "LPR-G100",
+    "LPR-G110",
 )
+EXPECTED_GOAL_TASK_IDS = {
+    "LPR-G000": ("LPR-000",),
+    "LPR-G010": tuple(f"LPR-{number:03d}" for number in range(1, 5)),
+    "LPR-G020": tuple(f"LPR-{number:03d}" for number in range(5, 8)),
+    "LPR-G030": tuple(f"LPR-{number:03d}" for number in range(8, 11)),
+    "LPR-G040": tuple(f"LPR-{number:03d}" for number in range(11, 15)),
+    "LPR-G050": tuple(f"LPR-{number:03d}" for number in range(15, 19)),
+    "LPR-G060": tuple(f"LPR-{number:03d}" for number in range(19, 21)),
+    "LPR-G070": tuple(f"LPR-{number:03d}" for number in range(21, 29)),
+    "LPR-G080": tuple(f"LPR-{number:03d}" for number in range(29, 34)),
+    "LPR-G090": tuple(f"LPR-{number:03d}" for number in range(34, 37)),
+    "LPR-G100": tuple(f"LPR-{number:03d}" for number in range(37, 40)),
+    "LPR-G110": tuple(f"LPR-{number:03d}" for number in range(40, 43)),
+}
+SEALED_TASK_CIDS = {
+    "LPR-000": "baguqeeraghmkwno643c75mfl6wkop527fctnlvr2vcp75hqgjezjbtwykfba",
+    "LPR-001": "baguqeerayc34j6hwclkgxtvpdtzrz2jeg4too7svhefrkalj4j3en33xj7za",
+    "LPR-002": "baguqeeraxap7q3pgjkq52kigah7zonlyf2qggdqihdg5rgirwcdchatrmwqa",
+    "LPR-003": "baguqeeraocf3cpabiqbnprvhd5xgozsm3krhcd5lx4kdhd4e2cko3fckxyoa",
+    "LPR-004": "baguqeeraomaxlzfz65p3w54n4p5dqviob55kp6fmbbl76vpz3uiiqkyzasba",
+    "LPR-005": "baguqeerasuk2vq2a5bebcbbagnf74tyctffyvioiip6unret7hvqggqpuhbq",
+    "LPR-006": "baguqeera336ia7zhyqowqeumksvivc74hsi2b3cab6eq6sj7hx3xes2peijq",
+    "LPR-007": "baguqeera4vofxqdgmufuwzvgqc2cgznnfuwlcji5dvvbw64nt3f6q3sehdbq",
+    "LPR-008": "baguqeerab4c55bq2xgnj54u6je7bo7ad3kog3iqepdgrej6pk2ktr7bqhasa",
+    "LPR-009": "baguqeeraewfuaopv5oq5nvdaxugnmlt3p4oirpqr6skeozegjrmcpkhb7uuq",
+    "LPR-010": "baguqeerasbdu7kd7wmljmv3yaati6ustghuxvgjeed7k7e7ceg5atctmaayq",
+    "LPR-011": "baguqeerax4ljlzcnvmrrsd23aet3rgzgb7mh4mzsumwda7f5ucnqxgljfqkq",
+    "LPR-012": "baguqeeraoiq7u3uvj7o6xohs67pwp5cvwrdik7sho7wumnvtemxx3agdzwpq",
+    "LPR-013": "baguqeeraiqiejrxknzaiolzdsbrj6n5sf5b5tpdzyw2pvv7a42yvwe6s4tmq",
+    "LPR-014": "baguqeeraghaogvemb5mkx6inric73a2ihw7iwqjoa27k4g4y6aei2ma5ik5a",
+    "LPR-015": "baguqeeracztvzyzvi5jqktj3xgi5tmhl7z6wof25uic7oa2dafl3p4bqejva",
+    "LPR-016": "baguqeerakajl2hwt25v4p5vzxw36vvtrdhkhspjtch6nargg43yr4sfgokga",
+    "LPR-017": "baguqeerazuh55ipsotr4techk3pkypbsnycrs3wiv72qaxhpnlnp26zoyqqa",
+    "LPR-018": "baguqeeraro7i2dd4jww2v4acemnbf2623mwm67xsk5bqhau4loohgtvpaoaa",
+    "LPR-019": "baguqeeraredrtw3ii37f2qremewtxbclyza6hbxponbioj2f7jarcifkdp3a",
+    "LPR-020": "baguqeerar7wqiy2dgveasdr5dd2wfwkl5imlxlwtsn2xo7uucum5bdhxjmoq",
+    "LPR-021": "baguqeerazwracagotvzmexqk4ht2phu6w3wxftxlmzjsvuxqwuvb3ger5gra",
+    "LPR-022": "baguqeerabu4bumj3uoena3yaq3znw77idhwigvv33qva7rpaaxjofr3ridzq",
+    "LPR-023": "baguqeerapjwox65apbq75pi7cxsonosqnnbgliwcbvietseecpser2d3erta",
+    "LPR-024": "baguqeeraa42emzjcq6xgl5n4d6ht2znamryewqce2accgmpugtp6yeph3wqq",
+    "LPR-025": "baguqeeragjgqtl4td6jakairf52m4w5mwhek7lfoaghzjftbu6nvz33fzayq",
+    "LPR-026": "baguqeerawip4zmwwmq3hwracynwt5r7p3u5mqra6hpyhwjrbpu7gar4asbfq",
+    "LPR-027": "baguqeera7ozs3jt43kslzau6kigegkpwqjwu6ul46dda74kgmnx6ee7zcfda",
+    "LPR-028": "baguqeera45xoblimrra4eq7bt37ph5h4ue2xwxnywv24jtc5vjc3x3konzna",
+    "LPR-029": "baguqeera2vr5jn3onchwhtt3iwsnlhvf5qngjd5b7izw5w4vazpa357h6bhq",
+    "LPR-030": "baguqeeraly4crux6kyvmwiwfpq7nmizahsgqkpxifiuz64z2kev4okrgpm7q",
+    "LPR-031": "baguqeeraoraambpjxn3yi6hmbsbpaldnowwy436xjfbbsaxhu5wsfnagivka",
+    "LPR-032": "baguqeeraoypedtpd236ngorqznujj6d76jwv3r43sgb3mouljvcf6uyfkyaa",
+    "LPR-033": "baguqeera3mgezpvlmrdfqzrh3q4r6mr34y4pxjash2mybksszau6o4m5e4ca",
+    "LPR-034": "baguqeeram6epwdikainljlbxutsku35iz4gpe2zislcllzifmd3g5jrn2tuq",
+    "LPR-035": "baguqeeraavebfpdqfsmcxq6egec5ragv6i5uhsqzvkakrgfpp54m3lyh6cxq",
+    "LPR-036": "baguqeerafugs5p3jiy4ddatfxejphnmnjhywg3mbnpca7aiq56yxithdepla",
+    "LPR-037": "baguqeerakgwznpdesqxlnx7v7ofi4f3aoezy6oet4vswce4wdqnnngo6zlja",
+    "LPR-038": "baguqeerake5cr6xs4hzfnc65x2a667r5mwvcsn3qe6rt2n75k62zwnbyocja",
+    "LPR-039": "baguqeera4ru3y6hhk7podc5yi37nonnhip6gtkittyp7ep6wm4chxm422b3q",
+    "LPR-040": "baguqeera5u2slkl7fxqhaddse2r2qhgbtrapydjekmcifst2nstcj455p5ea",
+    "LPR-041": "baguqeerab6cyfvu6ygnmalptp3cyt3rnez6mfg2io633ynoltu42x63ljr6q",
+    "LPR-042": "baguqeera5ntdpawrkkgilqzos3hc3miad2zaimdte6s3ke4bjjz5y3bjfecq",
+}
 POST_BOOTSTRAP_READY = ("LPR-001", "LPR-002", "LPR-003", "LPR-004")
 CONTROL_ARTIFACTS = (
     PLAN_PATH,
@@ -112,10 +188,22 @@ ZERO_SAFETY_FLOORS = (
     "llm_scope_or_semantic_escape_rate",
     "partial_transaction_completion_rate",
     "false_fixed_point_completion_rate",
+    "deterministic_doctor_llm_invocation_rate",
+    "graph_vector_or_embedding_authority_promotion_rate",
+    "stale_poisoned_or_mismatched_doctor_cache_admission_rate",
+    "forged_or_mismatched_doctor_cid_admission_rate",
+    "incomplete_doctor_impact_or_open_frontier_mutation_rate",
+    "unauthorized_tcb_or_path_escape_write_rate",
+    "doctor_sandbox_escape_rate",
+    "non_atomic_doctor_mutation_rate",
+    "doctor_rollback_restoration_failure_rate",
+    "nondeterministic_doctor_replay_rate",
+    "false_deterministic_doctor_completion_rate",
 )
 NON_AUTHORITY_FLAGS = (
     "tactician_semantic_authority",
     "vector_semantic_authority",
+    "embedding_semantic_authority",
     "knowledge_graph_semantic_authority",
     "learned_ranking_semantic_authority",
     "hammer_candidate_semantic_authority",
@@ -213,19 +301,46 @@ def _validate_goals() -> tuple[object, ...]:
     _require(set(ids) == set(EXPECTED_GOAL_IDS), f"unexpected goal ids: {sorted(ids)}")
     by_id = {goal.goal_id: goal for goal in goals}
     graph: dict[str, tuple[str, ...]] = {}
+    expected_dependencies = {
+        "LPR-G000": (),
+        "LPR-G010": (),
+        "LPR-G020": ("LPR-G010",),
+        "LPR-G030": ("LPR-G010", "LPR-G020"),
+        "LPR-G040": ("LPR-G030",),
+        "LPR-G050": ("LPR-G040",),
+        "LPR-G060": ("LPR-G050",),
+        "LPR-G070": ("LPR-G060",),
+        "LPR-G080": ("LPR-G060",),
+        "LPR-G090": ("LPR-G080",),
+        "LPR-G100": ("LPR-G090",),
+        "LPR-G110": ("LPR-G070", "LPR-G100"),
+    }
     for goal in goals:
         _require(re.fullmatch(r"LPR-G\d{3}", goal.goal_id) is not None, f"bad goal id: {goal.goal_id}")
         dependencies = tuple(goal.dependencies)
         unknown = sorted(set(dependencies) - set(by_id))
         _require(not unknown, f"unknown goal dependencies for {goal.goal_id}: {unknown}")
+        _require(
+            dependencies == expected_dependencies[goal.goal_id],
+            f"goal dependency mismatch for {goal.goal_id}: {dependencies}",
+        )
         graph[goal.goal_id] = dependencies
         parent = goal.fields.get("parent", "").strip()
         if goal.goal_id == "LPR-G000":
             _require(not parent, "root goal must not have a parent")
             children = _csv(goal.fields.get("subgoals", ""))
             _require(set(children) == set(EXPECTED_GOAL_IDS[1:]), "root subgoal set mismatch")
+            _require(
+                _csv(goal.fields.get("evidence", "")) == EXPECTED_GOAL_IDS[1:],
+                "root goal evidence set/order mismatch",
+            )
         else:
             _require(parent == "LPR-G000", f"{goal.goal_id} must be parented by LPR-G000")
+            _require(
+                _csv(goal.fields.get("evidence", ""))
+                == EXPECTED_GOAL_TASK_IDS[goal.goal_id],
+                f"goal evidence mismatch for {goal.goal_id}",
+            )
     _assert_acyclic(graph, label="goal dependency")
     return goals
 
@@ -237,7 +352,16 @@ def _validate_tasks(goal_ids: set[str]) -> tuple[object, ...]:
     ids = tuple(task.task_id for task in tasks)
     _require(len(ids) == len(set(ids)), "duplicate task id")
     _require(tuple(sorted(ids)) == EXPECTED_TASK_IDS, f"unexpected task ids: {sorted(ids)}")
+    _require(
+        set(SEALED_TASK_CIDS) == set(EXPECTED_TASK_IDS),
+        "sealed task CID map does not cover the exact task set",
+    )
     by_id = {task.task_id: task for task in tasks}
+    for task_id, expected_cid in SEALED_TASK_CIDS.items():
+        _require(
+            by_id[task_id].canonical_task_cid == expected_cid,
+            f"sealed task identity changed: {task_id}",
+        )
     graph: dict[str, tuple[str, ...]] = {}
     for task in tasks:
         _require(re.fullmatch(r"LPR-\d{3}", task.task_id) is not None, f"bad task id: {task.task_id}")
@@ -266,6 +390,16 @@ def _validate_tasks(goal_ids: set[str]) -> tuple[object, ...]:
             raise BoardValidationError(f"{task.task_id} has a non-integer bound") from exc
         _require(0 < estimated <= 100_000, f"{task.task_id} token bound is unsafe")
         _require(0 < timeout <= 14_400, f"{task.task_id} timeout bound is unsafe")
+    for goal_id, expected_task_ids in EXPECTED_GOAL_TASK_IDS.items():
+        observed_task_ids = tuple(
+            task.task_id
+            for task in tasks
+            if task.metadata["goal id"] == goal_id
+        )
+        _require(
+            observed_task_ids == expected_task_ids,
+            f"task projection mismatch for {goal_id}: {observed_task_ids}",
+        )
     _assert_acyclic(graph, label="task dependency")
     roots = sorted(task_id for task_id, dependencies in graph.items() if not dependencies)
     _require(roots == ["LPR-000"], f"task roots mismatch: {roots}")
@@ -279,6 +413,20 @@ def _validate_tasks(goal_ids: set[str]) -> tuple[object, ...]:
         "LPR-026": ("LPR-022",),
         "LPR-027": ("LPR-023", "LPR-024", "LPR-025", "LPR-026"),
         "LPR-028": ("LPR-027",),
+        "LPR-029": ("LPR-020",),
+        "LPR-030": ("LPR-020",),
+        "LPR-031": ("LPR-020",),
+        "LPR-032": ("LPR-020",),
+        "LPR-033": ("LPR-029", "LPR-030"),
+        "LPR-034": ("LPR-029", "LPR-030", "LPR-031"),
+        "LPR-035": ("LPR-032", "LPR-034"),
+        "LPR-036": ("LPR-033", "LPR-035"),
+        "LPR-037": ("LPR-030", "LPR-036"),
+        "LPR-038": ("LPR-032", "LPR-037"),
+        "LPR-039": ("LPR-038",),
+        "LPR-040": ("LPR-030", "LPR-031", "LPR-032", "LPR-039"),
+        "LPR-041": ("LPR-040",),
+        "LPR-042": ("LPR-028", "LPR-041"),
     }
     for task_id, dependencies in expected_tail.items():
         _require(
@@ -289,7 +437,7 @@ def _validate_tasks(goal_ids: set[str]) -> tuple[object, ...]:
         dependency for dependencies in graph.values() for dependency in dependencies
     }
     sinks = sorted(set(graph) - consumed_dependencies)
-    _require(sinks == ["LPR-028"], f"terminal task mismatch: {sinks}")
+    _require(sinks == ["LPR-042"], f"terminal task mismatch: {sinks}")
 
     simulated_completed = {"LPR-000"}
     ready = tuple(
@@ -392,8 +540,8 @@ def _validate_scheduler(scheduler: Mapping[str, object], tasks: Sequence[object]
         source.get("datasets_required_paths"), name="datasets_required_paths"
     )
     _require(
-        required_datasets_paths == DATASETS_TACTICIAN_PATHS,
-        "datasets Tactician required paths mismatch",
+        required_datasets_paths == DATASETS_REQUIRED_PATHS,
+        "datasets deterministic-doctor logic required paths mismatch",
     )
     for path in required_datasets_paths:
         _safe_relative(path, field="datasets required path")
@@ -490,6 +638,101 @@ def _validate_scheduler(scheduler: Mapping[str, object], tasks: Sequence[object]
     _require(repair.get("open_required_frontier_disposition") == "abstain", "open required frontier must abstain")
     _require(repair.get("memory_resource_or_type_evidence_implies_memory_safety") is False, "memory safety must not be inferred")
 
+    doctor = scheduler.get("deterministic_doctor_policy")
+    _require(isinstance(doctor, dict), "deterministic_doctor_policy must be an object")
+    _require(
+        doctor.get("schema")
+        == "ipfs_accelerate_py.agent_supervisor.deterministic_doctor.policy@1",
+        "deterministic doctor policy schema mismatch",
+    )
+    _require(doctor.get("default_mode") == "report_only", "doctor must default to report-only")
+    _require(
+        _strings(doctor.get("allowed_modes"), name="deterministic_doctor_policy.allowed_modes")
+        == ("report_only", "plan", "sandbox_auto", "narrow_auto"),
+        "deterministic doctor mode set/order mismatch",
+    )
+    for key in (
+        "enabled",
+        "narrow_autonomous_mutation_enabled",
+        "llm_router_enabled",
+        "llm_invocations_allowed",
+        "remote_model_provider_calls_allowed",
+        "remote_embeddings_allowed",
+        "network_access_allowed",
+        "target_code_import_allowed",
+        "knowledge_graph_semantic_authority",
+        "vector_semantic_authority",
+        "embedding_semantic_authority",
+        "tactician_semantic_authority",
+        "hammer_candidate_semantic_authority",
+        "proof_cache_metadata_semantic_authority",
+    ):
+        _require(doctor.get(key) is False, f"deterministic doctor safety flag must be false: {key}")
+    for key in (
+        "explicit_repair_operation_required",
+        "exact_evidence_snapshot_required",
+        "clean_rebuild_identity_equivalence_required",
+        "canonical_cid_preimage_validation_required",
+        "proof_cache_binding_revalidation_required",
+        "native_kernel_reconstruction_required",
+        "independent_countermodel_validation_required",
+        "complete_impact_closure_required",
+        "one_disposition_per_resolved_consumer",
+        "unique_target_value_placement_operator_required",
+        "closed_operator_registry_required",
+        "isolated_candidate_worktree_required",
+        "enforced_sandbox_required_for_target_execution",
+        "writer_lease_and_checkpoint_required",
+        "atomic_scc_transaction_required",
+        "post_edit_reindex_and_cache_invalidation_required",
+        "logic_and_program_fixed_point_required",
+        "compensating_rollback_required",
+    ):
+        _require(doctor.get(key) is True, f"deterministic doctor gate disabled: {key}")
+    _require(doctor.get("unknown_or_unsupported_disposition") == "abstain", "doctor unknown work must abstain")
+    _require(doctor.get("ambiguous_disposition") == "abstain", "doctor ambiguous work must abstain")
+    doctor_approval = _strings(
+        doctor.get("approval_required_classes"),
+        name="deterministic_doctor_policy.approval_required_classes",
+    )
+    _require(
+        set(doctor_approval)
+        == {
+            "doctor_trusted_computing_base",
+            "stateful_behavior",
+            "public_api_or_schema",
+            "dynamic_or_generated_code",
+            "native_or_ffi",
+            "cross_repository_edit",
+            "new_external_dependency",
+            "unsupported_memory_or_lifetime_claim",
+        },
+        "deterministic doctor approval classes mismatch",
+    )
+    limits = doctor.get("limits")
+    _require(isinstance(limits, dict), "deterministic doctor limits must be an object")
+    expected_limit_keys = {
+        "max_findings",
+        "max_candidates_per_finding",
+        "max_graph_nodes_per_query",
+        "max_proof_routes_per_goal",
+        "max_operators_per_finding",
+        "max_plan_steps",
+        "max_fixed_point_iterations",
+        "max_changed_files",
+        "max_changed_bytes",
+        "max_processes",
+        "max_wall_time_seconds",
+        "max_cpu_time_seconds",
+        "max_memory_bytes",
+    }
+    _require(set(limits) == expected_limit_keys, "deterministic doctor limit set mismatch")
+    for key, value in limits.items():
+        _require(
+            isinstance(value, int) and not isinstance(value, bool) and value > 0,
+            f"deterministic doctor limit must be a positive integer: {key}",
+        )
+
     floors = scheduler.get("release_safety_floors")
     _require(isinstance(floors, dict), "release_safety_floors must be an object")
     _require(set(floors) == set(ZERO_SAFETY_FLOORS), "release safety floor set mismatch")
@@ -520,6 +763,9 @@ def _validate_authority_language(scheduler: Mapping[str, object]) -> None:
         "independently validated countermodel",
         "analytical",
         "fixed point",
+        "report-only",
+        "never falls back",
+        "zero-llm/model-provider-call invariant",
     )
     for phrase in required:
         _require(phrase in text, f"normative authority phrase is missing: {phrase}")
