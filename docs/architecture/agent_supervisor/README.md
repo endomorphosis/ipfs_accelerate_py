@@ -47,7 +47,7 @@ Dependency DAG and placement rules: [PACKAGE_MAP.md](PACKAGE_MAP.md).
 | Namespace | Meaning | Examples |
 | --- | --- | --- |
 | **Product / domain** | What the system *is* | `proof/`, control plane, codebase-proof pipeline |
-| **Program / board** | How work was *scheduled and evidenced* | `## ASI-170`, `## ASREF-G020` |
+| **Program / board** | How work was *scheduled and evidenced* | taskboard / objective-heap headings (board IDs stay off primary docs) |
 
 Primary documentation teaches the **product** namespace. Board IDs stay on
 taskboards, objective heaps, and optional evidence footers—not in public API
