@@ -497,6 +497,27 @@ def test_identity_provider_failure_is_incomplete_and_does_not_escape(
     assert "private detail" not in trace.canonical_bytes.decode()
 
 
+def test_identity_provider_cannot_substitute_different_canonical_bytes(
+    tmp_path: Path,
+) -> None:
+    def wrong_value_identity(_value: object) -> ContentIdentity:
+        return mint_content_identity(
+            {"schema": "unrelated/provider-output@1", "secret": "do-not-retain"}
+        )
+
+    tracer = _tracer(tmp_path, identity_minter=wrong_value_identity)
+    with tracer:
+        observed_test_value = 42
+    trace = tracer.result
+
+    assert observed_test_value == 42
+    assert trace is not None
+    assert not trace.complete
+    assert trace.cid == ""
+    assert "instrumentation_failure" in trace.completeness_reasons
+    assert "do-not-retain" not in trace.canonical_bytes.decode()
+
+
 def test_stop_is_idempotent(tmp_path: Path) -> None:
     tracer = _tracer(tmp_path)
     tracer.start()

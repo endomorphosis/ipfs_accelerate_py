@@ -589,7 +589,14 @@ class RuntimeTestDependencyTracer:
         previous_guard = getattr(self._inside_callback, "active", False)
         self._inside_callback.active = True
         try:
-            return self._identity_minter(value)
+            expected_canonical_bytes = canonical_json_bytes(value)
+            identity = self._identity_minter(value)
+            if not isinstance(identity, ContentIdentity):
+                raise RuntimeTraceError("identity provider did not return ContentIdentity")
+            identity.verify()
+            if identity.canonical_bytes != expected_canonical_bytes:
+                raise RuntimeTraceError("identity provider canonical bytes do not match input")
+            return identity
         finally:
             self._inside_callback.active = previous_guard
 
