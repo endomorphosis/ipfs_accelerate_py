@@ -1624,7 +1624,10 @@ def test_daemon_preserves_reviewed_validation_pythonpath(tmp_path: Path) -> None
     )
     command = "MODE=off PYTHONPATH=custom:. python -m pytest -q"
 
-    bound, notes = daemon._bind_workspace_validation_pythonpath(command)
+    bound, notes = daemon._bind_workspace_validation_pythonpath(
+        command,
+        tmp_path,
+    )
 
     assert bound == command
     assert notes == []
@@ -1641,10 +1644,45 @@ def test_daemon_does_not_rewrite_non_python_validation(tmp_path: Path) -> None:
     )
 
     bound, notes = daemon._bind_workspace_validation_pythonpath(
-        "git diff --check"
+        "git diff --check",
+        tmp_path,
     )
 
     assert bound == "git diff --check"
+    assert notes == []
+
+
+@pytest.mark.parametrize("provider_state", ("missing", "symlink_escape"))
+def test_daemon_omits_unavailable_or_escaping_validation_roots(
+    tmp_path: Path,
+    provider_state: str,
+) -> None:
+    workspace = tmp_path / "workspace"
+    external = workspace / "external"
+    external.mkdir(parents=True)
+    if provider_state == "symlink_escape":
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        (external / "provider").symlink_to(
+            outside,
+            target_is_directory=True,
+        )
+    daemon = TodoImplementationDaemon(
+        todo_path=tmp_path / "todo.md",
+        state_path=tmp_path / "state.json",
+        strategy_path=tmp_path / "strategy.json",
+        events_path=tmp_path / "events.jsonl",
+        repo_root=workspace,
+        worktree_submodule_paths=("external/provider",),
+    )
+    command = "python -m pytest -q"
+
+    bound, notes = daemon._bind_workspace_validation_pythonpath(
+        command,
+        workspace,
+    )
+
+    assert bound == command
     assert notes == []
 
 
@@ -1652,6 +1690,7 @@ def test_daemon_binds_task_validation_to_proposal_local_impact_graph(
     tmp_path: Path,
 ) -> None:
     captured: dict[str, object] = {}
+    (tmp_path / "external" / "ipfs_accelerate").mkdir(parents=True)
 
     class Scheduler:
         def run_validated(self, proposal_validation, commands, **kwargs):

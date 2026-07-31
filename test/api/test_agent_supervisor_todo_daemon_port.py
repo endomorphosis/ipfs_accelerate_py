@@ -6068,13 +6068,16 @@ def test_stale_submodule_rebase_skips_branch_already_merged_without_switching_ch
     assert _git(repo, "rev-parse", branch_name) == branch_commit
 
 
-def test_stale_submodule_rebase_restores_canonical_checkout(tmp_path: Path):
+def test_stale_submodule_rebase_skips_target_only_pointer_advance(
+    tmp_path: Path,
+):
     repo, submodule = _seed_parent_with_submodule(tmp_path)
     branch_name = "implementation/rebase-with-restore"
     _git(repo, "checkout", "-b", branch_name)
     (repo / "feature.txt").write_text("feature\n", encoding="utf-8")
     _git(repo, "add", "feature.txt")
     _git(repo, "commit", "-m", "implementation feature")
+    candidate = _git(repo, "rev-parse", "HEAD")
     _git(repo, "checkout", "main")
 
     (submodule / "later.txt").write_text("later\n", encoding="utf-8")
@@ -6095,11 +6098,77 @@ def test_stale_submodule_rebase_restores_canonical_checkout(tmp_path: Path):
 
     result = daemon._rebase_stale_submodule_pointers(branch_name, "main")
 
-    assert result["rebased"] is True
-    assert result["checkout_restore"]["restored"] is True
-    assert result["checkout_restore"]["branch"] == "main"
+    assert result["attempted"] is False
+    assert result["reason"] == "no_stale_submodules"
+    assert result["branch_changed_submodules"] == []
+    assert result["target_changed_submodules"] == ["libs/child"]
     assert _git(repo, "branch", "--show-current") == "main"
-    assert _git(repo, "merge-base", "--is-ancestor", "main", branch_name) == ""
+    assert _git(repo, "rev-parse", branch_name) == candidate
+
+
+def test_stale_submodule_rebase_preserves_candidate_for_overlapping_advance(
+    tmp_path: Path,
+):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    branch_name = "implementation/rebase-overlapping-submodule"
+    _git(repo, "checkout", "-b", branch_name)
+    (submodule / "implementation.txt").write_text(
+        "implementation\n",
+        encoding="utf-8",
+    )
+    _git(submodule, "add", "implementation.txt")
+    _git(submodule, "commit", "-m", "implementation child advance")
+    (repo / "feature.txt").write_text("feature\n", encoding="utf-8")
+    _git(repo, "add", "feature.txt", "libs/child")
+    _git(repo, "commit", "-m", "implementation feature")
+    candidate = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "main")
+
+    (submodule / "target.txt").write_text("target\n", encoding="utf-8")
+    _git(submodule, "add", "target.txt")
+    _git(submodule, "commit", "-m", "target child advance")
+    target_submodule_commit = _git(submodule, "rev-parse", "HEAD")
+    _git(repo, "add", "libs/child")
+    _git(repo, "commit", "-m", "advance child on main")
+
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=["libs/child"],
+    )
+
+    result = daemon._rebase_stale_submodule_pointers(branch_name, "main")
+
+    assert result["attempted"] is False
+    assert result["rebased"] is False
+    assert result["reason"] == (
+        "overlapping_submodule_changes_deferred_to_merge"
+    )
+    assert result["stale_submodules"] == ["libs/child"]
+    assert _git(repo, "branch", "--show-current") == "main"
+    assert _git(repo, "rev-parse", branch_name) == candidate
+
+    merge_result = daemon._merge_branch_to_main(
+        branch_name,
+        PortalTask(
+            task_id="PTR-011",
+            title="preserve proof-bound candidate",
+            status="todo",
+            completion="manual",
+            priority="P0",
+            track="platform",
+            outputs=("feature.txt",),
+        ),
+        1,
+    )
+
+    assert merge_result["merged"] is True
+    assert _git(repo, "merge-base", "--is-ancestor", candidate, "main") == ""
+    assert _git(repo, "rev-parse", "main:libs/child") == target_submodule_commit
 
 
 def test_implementation_daemon_recreates_missing_registered_submodule_worktree(
