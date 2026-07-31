@@ -69,6 +69,23 @@ class TestReuseCapabilityEvidenceKind(str, Enum):
 _CAPABILITY_ORDER = tuple(TestReuseCapabilityName)
 _DISABLED_VALUES = frozenset({"0", "disabled", "false", "no", "off"})
 _ENABLED_VALUES = frozenset({"1", "enabled", "on", "true", "yes"})
+_METADATA_FIELDS = (
+    "schema_version",
+    "schema",
+    "compatible",
+    "enabled",
+    "status",
+    "reason_code",
+    "available",
+)
+_REGISTRY_FIELDS = (
+    "enabled",
+    "api_version",
+    "version",
+    "compatible",
+    "available",
+)
+_MAX_REASON_CODE_LENGTH = 128
 
 
 @dataclass(frozen=True)
@@ -374,6 +391,69 @@ class _Check:
     evidence: tuple[TestReuseCapabilityEvidence, ...]
 
 
+@dataclass(frozen=True)
+class _MappingEntrySnapshot:
+    """Bounded projection of one untrusted mapping entry."""
+
+    key_present: bool
+    value_present: bool
+    value_is_mapping: bool
+    values: tuple[tuple[str, Any], ...] = ()
+
+
+def _snapshot_mapping_entry(
+    source: Mapping[str, Any], key: str, fields: Sequence[str]
+) -> _MappingEntrySnapshot:
+    """Read one provider entry in the worker used by :class:`_ProbeBudget`.
+
+    Only the fixed contract fields are retained.  In particular, the probe
+    never iterates or copies a provider registry and never allows a custom
+    mapping implementation to escape the timeout/error boundary.
+    """
+
+    try:
+        raw = source[key]
+    except KeyError:
+        return _MappingEntrySnapshot(False, False, False)
+    if not isinstance(raw, Mapping):
+        return _MappingEntrySnapshot(True, raw is not None, False)
+
+    values: list[tuple[str, Any]] = []
+    for field_name in fields:
+        try:
+            value = raw[field_name]
+        except KeyError:
+            continue
+        values.append((field_name, value))
+    return _MappingEntrySnapshot(True, True, True, tuple(values))
+
+
+def _read_environment_entry(source: Mapping[str, str], key: str) -> str:
+    """Read one environment value without coercing provider-owned objects."""
+
+    try:
+        raw = source[key]
+    except KeyError:
+        return ""
+    if type(raw) is not str:
+        raise TypeError("environment values must be strings")
+    return raw.strip()
+
+
+def _metadata_reason(values: Mapping[str, Any], fallback: str) -> str:
+    """Return a bounded, serialization-safe provider reason code."""
+
+    value = values.get("reason_code")
+    if type(value) is not str:
+        return fallback
+    normalized = value.strip()
+    if not normalized or len(normalized) > _MAX_REASON_CODE_LENGTH:
+        return fallback
+    if any(ord(character) < 32 or ord(character) == 127 for character in normalized):
+        return fallback
+    return normalized
+
+
 class TestReuseCapabilityProbe:
     """Perform one cold snapshot; construction itself performs no discovery."""
 
@@ -400,17 +480,42 @@ class TestReuseCapabilityProbe:
             path_is_dir if path_is_dir is not None else lambda value: Path(value).is_dir()
         )
         self._environ = environ if environ is not None else os.environ
+        # Plain dictionaries and the process environment have local, constant
+        # time access.  Other Mapping implementations are provider boundaries
+        # and must be read through the probe budget.
+        self._trusted_environ = environ is None or type(environ) is dict
         # Retain injected mappings by reference.  Copying or testing their
         # truthiness can execute user-defined discovery during construction,
         # which would violate the probe's lazy boundary.
         self._backend_registry = backend_registry
-        self._metadata = capability_metadata if capability_metadata is not None else {}
+        self._metadata = capability_metadata
         self._monotonic = monotonic if monotonic is not None else time.monotonic
 
     def probe(self) -> TestReuseCapabilityReport:
         """Return one bounded report without retaining or creating a cache."""
 
-        mode_value = str(self._environ.get("IPFS_TEST_PROOF_REUSE_MODE", "")).strip()
+        budget = _ProbeBudget(self.config.timeout_seconds, self.config.max_checks, self._monotonic)
+        mode_status, mode_value = self._environment_value(
+            "IPFS_TEST_PROOF_REUSE_MODE", budget
+        )
+        if mode_status is TestReuseCapabilityStatus.UNKNOWN:
+            facts = tuple(
+                self._fact(
+                    capability_id,
+                    mode_status,
+                    mode_value,
+                    (
+                        TestReuseCapabilityEvidence(
+                            TestReuseCapabilityEvidenceKind.CONFIGURATION,
+                            "IPFS_TEST_PROOF_REUSE_MODE",
+                            None,
+                        ),
+                    ),
+                )
+                for capability_id in _CAPABILITY_ORDER
+            )
+            return TestReuseCapabilityReport(facts, probe_count=budget.count)
+
         mode = mode_value.lower() or None
         if mode in _DISABLED_VALUES:
             facts = tuple(
@@ -428,25 +533,39 @@ class TestReuseCapabilityProbe:
                 )
                 for capability_id in _CAPABILITY_ORDER
             )
-            return TestReuseCapabilityReport(facts, probe_count=0, mode=mode)
+            return TestReuseCapabilityReport(facts, probe_count=budget.count, mode=mode)
 
-        budget = _ProbeBudget(self.config.timeout_seconds, self.config.max_checks, self._monotonic)
         facts = tuple(self._probe_one(item, budget) for item in _CAPABILITY_ORDER)
         return TestReuseCapabilityReport(facts, probe_count=budget.count, mode=mode)
 
     def _probe_one(
         self, capability_id: TestReuseCapabilityName, budget: _ProbeBudget
     ) -> TestReuseCapability:
-        override = self._override(capability_id)
-        if override is not None:
-            return override
-        if capability_id in self.config.disabled_capabilities or self._env_disabled(capability_id):
+        if capability_id in self.config.disabled_capabilities:
             return self._fact(
                 capability_id,
                 TestReuseCapabilityStatus.DISABLED,
                 "capability_disabled",
                 (),
             )
+        environment_disabled = self._env_disabled(capability_id, budget)
+        if isinstance(environment_disabled, _Check):
+            return self._fact(
+                capability_id,
+                environment_disabled.status,
+                environment_disabled.reason_code,
+                environment_disabled.evidence,
+            )
+        if environment_disabled:
+            return self._fact(
+                capability_id,
+                TestReuseCapabilityStatus.DISABLED,
+                "capability_disabled",
+                (),
+            )
+        override = self._override(capability_id, budget)
+        if override is not None:
+            return override
 
         probes: dict[TestReuseCapabilityName, Callable[[_ProbeBudget], _Check]] = {
             TestReuseCapabilityName.MULTIFORMATS: self._probe_multiformats,
@@ -469,83 +588,181 @@ class TestReuseCapabilityProbe:
     ) -> TestReuseCapability:
         return TestReuseCapability(capability_id, status, reason_code, evidence)
 
-    def _env_disabled(self, capability_id: TestReuseCapabilityName) -> bool:
+    def _environment_value(
+        self, environment_name: str, budget: _ProbeBudget
+    ) -> tuple[TestReuseCapabilityStatus, str]:
+        if self._trusted_environ:
+            try:
+                return (
+                    TestReuseCapabilityStatus.AVAILABLE,
+                    _read_environment_entry(self._environ, environment_name),
+                )
+            except BaseException:
+                return TestReuseCapabilityStatus.UNKNOWN, "probe_failed"
+        status, value = budget.call(
+            _read_environment_entry,
+            self._environ,
+            environment_name,
+        )
+        return status, str(value)
+
+    def _env_disabled(
+        self, capability_id: TestReuseCapabilityName, budget: _ProbeBudget
+    ) -> bool | _Check:
         label = capability_id.value.upper()
-        disable = (
-            str(self._environ.get(f"IPFS_TEST_PROOF_REUSE_DISABLE_{label}", "")).strip().lower()
-        )
-        enabled = (
-            str(self._environ.get(f"IPFS_TEST_PROOF_REUSE_{label}_ENABLED", "")).strip().lower()
-        )
+        disable_name = f"IPFS_TEST_PROOF_REUSE_DISABLE_{label}"
+        enabled_name = f"IPFS_TEST_PROOF_REUSE_{label}_ENABLED"
+        status, disable = self._environment_value(disable_name, budget)
+        if status is TestReuseCapabilityStatus.UNKNOWN:
+            return _Check(
+                status,
+                disable,
+                (
+                    TestReuseCapabilityEvidence(
+                        TestReuseCapabilityEvidenceKind.CONFIGURATION,
+                        disable_name,
+                        None,
+                    ),
+                ),
+            )
+        status, enabled = self._environment_value(enabled_name, budget)
+        if status is TestReuseCapabilityStatus.UNKNOWN:
+            return _Check(
+                status,
+                enabled,
+                (
+                    TestReuseCapabilityEvidence(
+                        TestReuseCapabilityEvidenceKind.CONFIGURATION,
+                        enabled_name,
+                        None,
+                    ),
+                ),
+            )
+        disable = disable.lower()
+        enabled = enabled.lower()
         return disable in _ENABLED_VALUES or enabled in _DISABLED_VALUES
 
-    def _override(self, capability_id: TestReuseCapabilityName) -> TestReuseCapability | None:
-        if capability_id.value not in self._metadata:
+    def _override(
+        self, capability_id: TestReuseCapabilityName, budget: _ProbeBudget
+    ) -> TestReuseCapability | None:
+        if self._metadata is None:
             return None
-        raw = self._metadata[capability_id.value]
+
+        status, snapshot = budget.call(
+            _snapshot_mapping_entry,
+            self._metadata,
+            capability_id.value,
+            _METADATA_FIELDS,
+        )
+        if status is TestReuseCapabilityStatus.UNKNOWN:
+            return self._fact(
+                capability_id,
+                status,
+                str(snapshot),
+                (
+                    TestReuseCapabilityEvidence(
+                        TestReuseCapabilityEvidenceKind.CAPABILITY_METADATA,
+                        capability_id.value,
+                        None,
+                    ),
+                ),
+            )
+        if not snapshot.key_present:
+            return None
+
         evidence = (
             TestReuseCapabilityEvidence(
                 TestReuseCapabilityEvidenceKind.CAPABILITY_METADATA,
                 capability_id.value,
-                raw is not None,
+                snapshot.value_present,
             ),
         )
-        if not isinstance(raw, Mapping):
+        if not snapshot.value_is_mapping:
             return self._fact(
                 capability_id,
                 TestReuseCapabilityStatus.INCOMPATIBLE,
                 "capability_metadata_incompatible",
                 evidence,
             )
-        schema = raw.get("schema_version", raw.get("schema"))
-        if schema is not None and str(schema) not in {
-            "TestReuseCapability@1",
-            TEST_REUSE_CAPABILITY_REPORT_SCHEMA,
-        }:
+        values = dict(snapshot.values)
+        schema = values.get("schema_version", values.get("schema"))
+        if schema is not None and (
+            type(schema) is not str
+            or schema
+            not in ("TestReuseCapability@1", TEST_REUSE_CAPABILITY_REPORT_SCHEMA)
+        ):
             return self._fact(
                 capability_id,
                 TestReuseCapabilityStatus.INCOMPATIBLE,
                 "capability_metadata_incompatible",
                 evidence,
             )
-        if raw.get("compatible") is False:
+        if "compatible" in values and not isinstance(values["compatible"], bool):
+            return self._fact(
+                capability_id,
+                TestReuseCapabilityStatus.INCOMPATIBLE,
+                "capability_metadata_incompatible",
+                evidence,
+            )
+        if values.get("compatible") is False:
             return self._fact(
                 capability_id,
                 TestReuseCapabilityStatus.INCOMPATIBLE,
                 "capability_incompatible",
                 evidence,
             )
-        if raw.get("enabled") is False:
+        if "enabled" in values and not isinstance(values["enabled"], bool):
+            return self._fact(
+                capability_id,
+                TestReuseCapabilityStatus.INCOMPATIBLE,
+                "capability_metadata_incompatible",
+                evidence,
+            )
+        if values.get("enabled") is False:
             return self._fact(
                 capability_id,
                 TestReuseCapabilityStatus.DISABLED,
                 "capability_disabled",
                 evidence,
             )
-        status_value = raw.get("status")
+        status_value = values.get("status")
         if status_value is not None:
+            if type(status_value) is not str:
+                return self._fact(
+                    capability_id,
+                    TestReuseCapabilityStatus.INCOMPATIBLE,
+                    "capability_metadata_incompatible",
+                    evidence,
+                )
             try:
-                status = TestReuseCapabilityStatus(str(status_value).lower())
+                status = TestReuseCapabilityStatus(status_value.lower())
             except ValueError:
                 status = TestReuseCapabilityStatus.INCOMPATIBLE
             return self._fact(
                 capability_id,
                 status,
-                str(raw.get("reason_code") or f"capability_{status.value}"),
+                _metadata_reason(values, f"capability_{status.value}"),
                 evidence,
             )
-        if raw.get("available") is True:
+        if "available" in values and not isinstance(values["available"], bool):
+            return self._fact(
+                capability_id,
+                TestReuseCapabilityStatus.INCOMPATIBLE,
+                "capability_metadata_incompatible",
+                evidence,
+            )
+        if values.get("available") is True:
             return self._fact(
                 capability_id,
                 TestReuseCapabilityStatus.AVAILABLE,
-                str(raw.get("reason_code") or "cold_metadata_available"),
+                _metadata_reason(values, "cold_metadata_available"),
                 evidence,
             )
-        if raw.get("available") is False:
+        if values.get("available") is False:
             return self._fact(
                 capability_id,
                 TestReuseCapabilityStatus.MISSING,
-                str(raw.get("reason_code") or "cold_metadata_missing"),
+                _metadata_reason(values, "cold_metadata_missing"),
                 evidence,
             )
         return self._fact(
@@ -587,7 +804,19 @@ class TestReuseCapabilityProbe:
         budget: _ProbeBudget,
     ) -> _Check:
         for environment_name in environment_names:
-            configured = str(self._environ.get(environment_name, "")).strip()
+            status, configured = self._environment_value(environment_name, budget)
+            if status is TestReuseCapabilityStatus.UNKNOWN:
+                return _Check(
+                    status,
+                    configured,
+                    (
+                        TestReuseCapabilityEvidence(
+                            TestReuseCapabilityEvidenceKind.CONFIGURATION,
+                            environment_name,
+                            None,
+                        ),
+                    ),
+                )
             if not configured:
                 continue
             status, value = budget.call(self._path_is_file, configured)
@@ -653,7 +882,19 @@ class TestReuseCapabilityProbe:
         value = configured
         if value is None:
             for environment_name in environment_names:
-                candidate = str(self._environ.get(environment_name, "")).strip()
+                status, candidate = self._environment_value(environment_name, budget)
+                if status is TestReuseCapabilityStatus.UNKNOWN:
+                    return _Check(
+                        status,
+                        candidate,
+                        (
+                            TestReuseCapabilityEvidence(
+                                TestReuseCapabilityEvidenceKind.CONFIGURATION,
+                                environment_name,
+                                None,
+                            ),
+                        ),
+                    )
                 if candidate:
                     value, subject = candidate, environment_name
                     break
@@ -684,41 +925,85 @@ class TestReuseCapabilityProbe:
             ),
         )
 
-    def _registry(self, backend_id: str) -> _Check | None:
+    def _registry(self, backend_id: str, budget: _ProbeBudget) -> _Check | None:
         if self._backend_registry is None:
             return None
+
+        status, snapshot = budget.call(
+            _snapshot_mapping_entry,
+            self._backend_registry,
+            backend_id,
+            _REGISTRY_FIELDS,
+        )
+        if status is TestReuseCapabilityStatus.UNKNOWN:
+            return _Check(
+                status,
+                str(snapshot),
+                (
+                    TestReuseCapabilityEvidence(
+                        TestReuseCapabilityEvidenceKind.BACKEND_REGISTRY,
+                        backend_id,
+                        None,
+                    ),
+                ),
+            )
         evidence = (
             TestReuseCapabilityEvidence(
                 TestReuseCapabilityEvidenceKind.BACKEND_REGISTRY,
                 backend_id,
-                backend_id in self._backend_registry,
+                snapshot.key_present,
             ),
         )
-        if backend_id not in self._backend_registry:
+        if not snapshot.key_present:
             return _Check(
                 TestReuseCapabilityStatus.MISSING,
                 "backend_not_registered",
                 evidence,
             )
-        raw = self._backend_registry[backend_id]
-        if not isinstance(raw, Mapping):
+        if not snapshot.value_is_mapping:
             return _Check(
                 TestReuseCapabilityStatus.INCOMPATIBLE,
                 "backend_registry_incompatible",
                 evidence,
             )
-        if raw.get("enabled") is False:
+        values = dict(snapshot.values)
+        if "enabled" in values and not isinstance(values["enabled"], bool):
+            return _Check(
+                TestReuseCapabilityStatus.INCOMPATIBLE,
+                "backend_registry_incompatible",
+                evidence,
+            )
+        if values.get("enabled") is False:
             return _Check(TestReuseCapabilityStatus.DISABLED, "backend_disabled", evidence)
-        api_version = raw.get("api_version", raw.get("version"))
-        if raw.get("compatible") is False or (
-            api_version is not None and str(api_version) not in {"1", "1.0"}
+        if "compatible" in values and not isinstance(values["compatible"], bool):
+            return _Check(
+                TestReuseCapabilityStatus.INCOMPATIBLE,
+                "backend_registry_incompatible",
+                evidence,
+            )
+        api_version = values.get("api_version", values.get("version"))
+        supported_api_version = (
+            type(api_version) in (int, float)
+            and api_version == 1
+        ) or (
+            type(api_version) is str
+            and api_version in ("1", "1.0")
+        )
+        if values.get("compatible") is False or (
+            api_version is not None and not supported_api_version
         ):
             return _Check(
                 TestReuseCapabilityStatus.INCOMPATIBLE,
                 "backend_registry_incompatible",
                 evidence,
             )
-        available = raw.get("available", True)
+        available = values.get("available", True)
+        if not isinstance(available, bool):
+            return _Check(
+                TestReuseCapabilityStatus.INCOMPATIBLE,
+                "backend_registry_incompatible",
+                evidence,
+            )
         if available is not True:
             return _Check(TestReuseCapabilityStatus.MISSING, "backend_unavailable", evidence)
         return _Check(
@@ -757,7 +1042,7 @@ class TestReuseCapabilityProbe:
         return self._module("ipfs_datasets_py.logic.zkp", budget)
 
     def _probe_groth16(self, budget: _ProbeBudget) -> _Check:
-        registry = self._registry("groth16")
+        registry = self._registry("groth16", budget)
         if registry is not None and registry.status is not TestReuseCapabilityStatus.AVAILABLE:
             return registry
         module = self._module("ipfs_datasets_py.logic.zkp.backends.groth16", budget)
@@ -777,7 +1062,7 @@ class TestReuseCapabilityProbe:
         )
 
     def _probe_provekit(self, budget: _ProbeBudget) -> _Check:
-        registry = self._registry("provekit")
+        registry = self._registry("provekit", budget)
         if registry is not None and registry.status is not TestReuseCapabilityStatus.AVAILABLE:
             return registry
         module = self._module("ipfs_datasets_py.logic.zkp.backends.provekit", budget)
@@ -846,7 +1131,19 @@ class TestReuseCapabilityProbe:
         value = configured
         subject = "probe_config"
         if value is None:
-            candidate = str(self._environ.get(environment_name, "")).strip()
+            status, candidate = self._environment_value(environment_name, budget)
+            if status is TestReuseCapabilityStatus.UNKNOWN:
+                return _Check(
+                    status,
+                    candidate,
+                    (
+                        TestReuseCapabilityEvidence(
+                            TestReuseCapabilityEvidenceKind.CONFIGURATION,
+                            environment_name,
+                            None,
+                        ),
+                    ),
+                )
             if candidate:
                 value, subject = candidate, environment_name
         if value is None:

@@ -74,6 +74,18 @@ class FailsOnMappingAccess(Mapping[str, Any]):
         raise AssertionError("mapping sized during construction")
 
 
+class SlowMapping(Mapping[str, Any]):
+    def __getitem__(self, key: str) -> Any:
+        time.sleep(0.2)
+        raise KeyError(key)
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(())
+
+    def __len__(self) -> int:
+        return 0
+
+
 def _available_config(tmp_path: Path) -> CapabilityProbeConfig:
     groth16 = tmp_path / "groth16"
     provekit = tmp_path / "provekit"
@@ -299,6 +311,73 @@ def test_broken_discovery_hooks_are_isolated_as_unknown() -> None:
     assert fact.status is CapabilityStatus.UNKNOWN
     assert fact.reason_code == "probe_failed"
     assert "unstable" not in json.dumps(report.to_dict())
+    assert report.unavailable_is_non_blocking
+
+
+def test_broken_provider_mappings_are_isolated_as_unknown() -> None:
+    metadata_report = CapabilityProbe(
+        find_spec=lambda _module: None,
+        which=lambda _name: None,
+        environ={},
+        capability_metadata=FailsOnMappingAccess(),
+    ).probe()
+
+    assert {fact.status for fact in metadata_report.capabilities} == {
+        CapabilityStatus.UNKNOWN
+    }
+    assert {fact.reason_code for fact in metadata_report.capabilities} == {"probe_failed"}
+    assert metadata_report.unavailable_is_non_blocking
+
+    registry_report = CapabilityProbe(
+        find_spec=lambda _module: None,
+        which=lambda _name: None,
+        environ={},
+        backend_registry=FailsOnMappingAccess(),
+    ).probe()
+
+    assert registry_report.capability("groth16").status is CapabilityStatus.UNKNOWN
+    assert registry_report.capability("provekit").status is CapabilityStatus.UNKNOWN
+    assert registry_report.capability("groth16").reason_code == "probe_failed"
+    assert registry_report.capability("provekit").reason_code == "probe_failed"
+    assert registry_report.unavailable_is_non_blocking
+
+
+def test_slow_provider_metadata_is_time_bounded_and_unknown() -> None:
+    started = time.monotonic()
+    report = CapabilityProbe(
+        CapabilityProbeConfig(timeout_seconds=0.02),
+        find_spec=lambda _module: None,
+        which=lambda _name: None,
+        environ={},
+        capability_metadata=SlowMapping(),
+    ).probe()
+    elapsed = time.monotonic() - started
+
+    assert elapsed < 0.15
+    assert report.probe_count == 1
+    assert {fact.status for fact in report.capabilities} == {CapabilityStatus.UNKNOWN}
+    assert report.capability("multiformats").reason_code == "probe_timed_out"
+    assert all(
+        fact.reason_code in {"probe_timed_out", "probe_budget_exhausted"}
+        for fact in report.capabilities
+    )
+    assert report.unavailable_is_non_blocking
+
+
+def test_slow_configuration_mapping_is_time_bounded_and_unknown() -> None:
+    started = time.monotonic()
+    report = CapabilityProbe(
+        CapabilityProbeConfig(timeout_seconds=0.02),
+        find_spec=lambda _module: None,
+        which=lambda _name: None,
+        environ=SlowMapping(),
+    ).probe()
+    elapsed = time.monotonic() - started
+
+    assert elapsed < 0.15
+    assert report.probe_count == 1
+    assert {fact.status for fact in report.capabilities} == {CapabilityStatus.UNKNOWN}
+    assert {fact.reason_code for fact in report.capabilities} == {"probe_timed_out"}
     assert report.unavailable_is_non_blocking
 
 
