@@ -46,7 +46,7 @@ versions, and filesystem case/Unicode policy. A descriptor forest, not a
 common parent directory, is the unit of authority.
 
 The external SwissKnife checkout is read-only for the initial tranche.
-Generated code changes target the accelerator checkout and its explicitly
+Code writes produced by the assurance pipeline target the accelerator checkout and its explicitly
 configured submodule worktrees. Expanding write authority to another checkout
 requires a separate repository descriptor, path allowlist, lease, and merge
 policy.
@@ -315,6 +315,56 @@ report parity, and a measured reduction in model input without reduced finding
 coverage. Any binding drift, capability loss, contradictory proof, index
 coverage regression, or resource-policy violation returns the affected stage
 to shadow and prevents new automatic repair admission.
+
+## Assurance generalization cutover
+
+Seven root-level VFS assurance modules were extracted into profile-driven
+semantic packages so the same engines serve the IPFS Kit VFS job and hermetic
+non-VFS programs. Source blobs remain pinned by
+`config/agent_supervisor_vfs_generalization_sources.lock.json` (revision
+`0cc04ebb640c4c981cf4650016e096a73ab0e8c0`); workers may read those blobs but
+must not merge or cherry-pick the broad source snapshot.
+
+| Historical root module | Generic destination |
+| --- | --- |
+| `vfs_surface_inventory.py` | `analysis/repository_surface_inventory.py` |
+| `vfs_contract_pack.py` | `analysis/program_contract_profile.py` |
+| `vfs_differential_harness.py` | `validation/differential_contract_harness.py` |
+| `vfs_mcp_contract_checker.py` | `analysis/interface_contract_parity.py` |
+| `vfs_symbolic_benchmark.py` | `validation/symbolic_efficiency_benchmark.py` |
+| `vfs_symbolic_pilot.py` | `runtime/symbolic_assurance_pilot.py` |
+| `vfs_symbolic_rollout.py` | `control/symbolic_assurance_rollout.py` |
+
+The IPFS Kit job is assembled only by
+`integrations/ipfs_kit_vfs_assurance.py` from
+`config/ipfs_kit_vfs_symbolic_assurance.json`. The sole executable facade is
+`scripts/ops/agent_supervisor/ipfs_kit_vfs_symbolic_assurance.py` with
+subcommands `inventory`, `contracts`, `differential`, `parity`, `benchmark`,
+`pilot`, `rollout`, and `verify`. It resolves the checkout, validates the
+profile, lazy-loads the integration, and delegates; it owns no scan, proof,
+comparison, gate, repair, or mutation logic.
+
+After cutover:
+
+- `ipfs_accelerate_py/agent_supervisor/` must contain **no** root `vfs_*.py`
+  implementation or compatibility shim;
+- no import may reference `agent_supervisor.vfs_*`;
+- generic engines contain no VFS/IPFS/fsspec/SwissKnife constants, board IDs,
+  or fixed-checkout branches;
+- open board outputs and documentation links point at the package destinations
+  above (plus the thin ops facade and locked config);
+- equivalence is proved by profile-driven public contract parity, caller
+  impact closure, and a second non-VFS profile traversing the same engines—not
+  by renaming alone.
+
+Placement and equivalence guards:
+
+- `test/api/test_agent_supervisor_vfs_generalization_equivalence.py`
+- `test/api/test_agent_supervisor_vfs_root_layout_guard.py`
+- `test/api/test_agent_supervisor_assurance_two_profile_end_to_end.py`
+
+See also
+`docs/architecture/agent_supervisor/VFS_ASSURANCE_GENERALIZATION_MAP.md`.
 
 ## Operating profile
 
