@@ -714,7 +714,7 @@ expectations under existing precedence, but do not prove them by passing.
 
 ## LPR-021 Pin the VFS source baseline and generalize repository surface inventory
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
