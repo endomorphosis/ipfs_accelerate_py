@@ -12,7 +12,7 @@ Conflict policy: keep edits inside this bundle when possible; use the LLM merge 
 - Review only: false
 - Priority: P0
 - Track: completion
-- Depends on: FVT-036, FVT-040, FVT-038, FVT-039, FVT-042, FVT-043, FVT-044, FVT-048, FVT-045, FVT-049, FVT-050, FVT-046, FVT-051, FVT-052, FVT-047
+- Depends on: FVT-036, FVT-040, FVT-038, FVT-039, FVT-042, FVT-043, FVT-044, FVT-048, FVT-045, FVT-049, FVT-050, FVT-046, FVT-051, FVT-052, FVT-047, FVT-067
 - Outputs: tools/logic/certify_formal_verification_toolchains.py, tools/logic/build_formal_verification_tactician_receipt.py, docs/architecture/formal_verification_toolchain_certificate.json, docs/architecture/formal_verification_role_aware_deployment_receipt.json, docs/architecture/formal_verification_tactician_readiness_completion_receipt.json, test/integration/test_formal_verification_role_aware_completion.py
 - Validation: python -m pytest test/integration/test_formal_verification_real_tool_matrix.py test/integration/test_formal_verification_role_aware_completion.py test/api/test_formal_verification_tactician_readiness_completion.py -q
 - Board namespace: formal_verification_tactician_readiness.todo.md
