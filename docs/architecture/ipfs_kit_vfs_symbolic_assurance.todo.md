@@ -4209,3 +4209,137 @@ compact references and bounded spans only.
 - Candidate kind: aggregate
 - Todo vector key: f3213b39a032e87b
 - Acceptance: Objective scan filed this gap for VFS-G151. Use evidence in /home/barberb/.local/state/ipfs_accelerate_py/ipfs_kit_vfs_symbolic_assurance/projection/discovery/2026-07-30-vfs-090-objective-gap-9f751a00b33b.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (vfs/minimal-call-slice@1), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
+
+## VFS-091 Close objective gap: Prove vfs/mcplusplus-runtime-witness@1 for Witness selected MCP++ paths in a hermetic runtime
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P1
+- Track: mcp-interop
+- Depends on:
+- Outputs: test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py, ipfs_accelerate_py/agent_supervisor/mcplusplus_runtime_witness.py
+- Validation: python -m pytest test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py -q
+- Board namespace: ipfs-kit-vfs-symbolic-assurance-v1
+- Evidence inputs: data/agent_supervisor/ipfs_kit_vfs_symbolic_assurance/objective_gap.json
+- Discovery evidence: /home/barberb/.local/state/ipfs_accelerate_py/ipfs_kit_vfs_symbolic_assurance/projection/discovery/2026-07-31-vfs-091-objective-gap-1811f80108c8.md
+- Bundle: vfs-assurance/mcplusplus
+- Bundle shard: /home/barberb/.local/state/ipfs_accelerate_py/ipfs_kit_vfs_symbolic_assurance/projection/bundles/vfs-assurance-mcplusplus.todo.md
+- Bundle strategy: explicit
+- Graph parents: VFS-G061
+- Graph depth: 3
+- Objective heap index: 58
+- Parallel lane: vfs-assurance/mcplusplus
+- Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
+- Predicted files: test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py, ipfs_accelerate_py/agent_supervisor/mcplusplus_runtime_witness.py
+- Changed paths:
+- Context paths: test/api/test_agent_supervisor_mcplusplus_runtime_contracts.py, ipfs_accelerate_py/agent_supervisor/mcplusplus_runtime_witness.py
+- AST symbols: vfs/mcplusplus-runtime-witness@1
+- Interfaces:
+- Submodules:
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: VFS-G156
+- Completion authority: local
+- External authority blockers:
+- Canonical task key: task/v1/a15c3efaa5e729b2df5fddf5a88868f4a97040ba5c8606b85c2382a85f87a412
+- Canonical task CID: baguqeeraufod56vf44u3fx273x22rcdi6suxaqf2lsdanoc4eobkqx4huqja
+- Semantic identity: objective-evidence-obligation/v1/0fba9fd6c3c220aa86840df5fc3af9123e0a8aac7fa0cf9402ebe714924f1ed6
+- Acceptance subset: Real adapter dispatch is distinguished from mocks, HTTP and mcp+p2p profiles use the same admitted contract where declared, failures and unavailable services are typed, bounded, and non-authoritative.
+- Preconditions: objective goal VFS-G156 is schedulable
+- Effects: satisfy evidence requirement: vfs/mcplusplus-runtime-witness@1
+- Evidence subset: vfs/mcplusplus-runtime-witness@1
+- Resource class: cpu-medium
+- Token class: medium
+- Estimated tokens: 0
+- Resources: cpu-medium
+- Merge fate: objective/VFS-G156
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/0fba9fd6c3c220aa86840df5fc3af9123e0a8aac7fa0cf9402ebe714924f1ed6
+- Missing evidence: vfs/mcplusplus-runtime-witness@1
+- Embedding query: vfs/mcplusplus-runtime-witness@1
+- AST query: vfs/mcplusplus-runtime-witness@1
+- Surplus group: objective/VFS-G156
+- Merge key: db452dbe677b0c37
+- Merge family: objective/VFS-G156
+- Merge role: aggregate
+- Work item count: 1
+- Work scope: goal_subgoal_multi_evidence_batch
+- Goal packet:
+- Goal packet role:
+- Goal packet goals:
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: aggregate
+- Todo vector key: 16ea91d8da563c0b
+- Acceptance: Objective scan filed this gap for VFS-G156. Use evidence in /home/barberb/.local/state/ipfs_accelerate_py/ipfs_kit_vfs_symbolic_assurance/projection/discovery/2026-07-31-vfs-091-objective-gap-1811f80108c8.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (vfs/mcplusplus-runtime-witness@1), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
+
+## VFS-092 Close objective gap: Prove vfs/minimal-proof-context@1 for Produce minimal proof and counterexample contexts
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P1
+- Track: formal-proof
+- Depends on:
+- Outputs: ipfs_accelerate_py/agent_supervisor/code_contract_prover.py, test/api/test_agent_supervisor_code_contract_proof_context.py
+- Validation: python -m pytest test/api/test_agent_supervisor_code_contract_proof_context.py -q
+- Board namespace: ipfs-kit-vfs-symbolic-assurance-v1
+- Evidence inputs: data/agent_supervisor/ipfs_kit_vfs_symbolic_assurance/objective_gap.json
+- Discovery evidence: /home/barberb/.local/state/ipfs_accelerate_py/ipfs_kit_vfs_symbolic_assurance/projection/discovery/2026-07-31-vfs-092-objective-gap-8a1d94ff320e.md
+- Bundle: vfs-assurance/proof
+- Bundle shard: /home/barberb/.local/state/ipfs_accelerate_py/ipfs_kit_vfs_symbolic_assurance/projection/bundles/vfs-assurance-proof.todo.md
+- Bundle strategy: explicit
+- Graph parents: VFS-G071
+- Graph depth: 3
+- Objective heap index: 59
+- Parallel lane: vfs-assurance/proof
+- Conflict policy: prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts
+- Predicted files: ipfs_accelerate_py/agent_supervisor/code_contract_prover.py, test/api/test_agent_supervisor_code_contract_proof_context.py
+- Changed paths:
+- Context paths: ipfs_accelerate_py/agent_supervisor/code_contract_prover.py, test/api/test_agent_supervisor_code_contract_proof_context.py
+- AST symbols: vfs/minimal-proof-context@1
+- Interfaces:
+- Submodules:
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: VFS-G157
+- Completion authority: local
+- External authority blockers:
+- Canonical task key: task/v1/9022e18f4b8891815ed527f97f350040ac4c45332dbfb7f4950f126ac869fa14
+- Canonical task CID: baguqeerasarodd2lrciycxwve74x6niaicweyrjtfw73p5evb4jgvsdj7ika
+- Semantic identity: objective-evidence-obligation/v1/10022381776bcc4d3182d85e1ed49ea3a6399327d32239419af4ca2ae0b9a5ca
+- Acceptance subset: Required axioms, contracts, effects, and call edges are never truncated, optional premises have inclusion reasons, identical requests reuse exact receipts, changed dependencies invalidate the proof context.
+- Preconditions: objective goal VFS-G157 is schedulable
+- Effects: satisfy evidence requirement: vfs/minimal-proof-context@1
+- Evidence subset: vfs/minimal-proof-context@1
+- Resource class: cpu-medium
+- Token class: medium
+- Estimated tokens: 0
+- Resources: cpu-medium
+- Merge fate: objective/VFS-G157
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/10022381776bcc4d3182d85e1ed49ea3a6399327d32239419af4ca2ae0b9a5ca
+- Missing evidence: vfs/minimal-proof-context@1
+- Embedding query: vfs/minimal-proof-context@1
+- AST query: vfs/minimal-proof-context@1
+- Surplus group: objective/VFS-G157
+- Merge key: 32c4013b6dc11480
+- Merge family: objective/VFS-G157
+- Merge role: aggregate
+- Work item count: 1
+- Work scope: goal_subgoal_multi_evidence_batch
+- Goal packet:
+- Goal packet role:
+- Goal packet goals:
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: aggregate
+- Todo vector key: a1d1731340dbaaa5
+- Acceptance: Objective scan filed this gap for VFS-G157. Use evidence in /home/barberb/.local/state/ipfs_accelerate_py/ipfs_kit_vfs_symbolic_assurance/projection/discovery/2026-07-31-vfs-092-objective-gap-8a1d94ff320e.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (vfs/minimal-proof-context@1), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
