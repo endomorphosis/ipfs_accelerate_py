@@ -6479,20 +6479,88 @@ def priority_rank(value: str) -> int:
     return 9
 
 
+_TASK_SCHEDULING_POLICY_FIELDS = frozenset(
+    {"is_schedulable", "review_only"}
+)
+_AMBIGUOUS_TASK_SCHEDULING_POLICY = (
+    "<ambiguous-task-scheduling-policy>"
+)
+
+
 def _task_record_mapping(task: Any) -> dict[str, Any]:
+    result: dict[str, Any] | None = None
     if isinstance(task, Mapping):
-        return dict(task)
-    if hasattr(task, "to_dict"):
+        result = dict(task)
+    elif hasattr(task, "to_dict"):
         value = task.to_dict()
         if isinstance(value, Mapping):
-            return dict(value)
-    if hasattr(task, "__dataclass_fields__"):
-        return asdict(task)
-    return {
-        name: getattr(task, name)
-        for name in dir(task)
-        if not name.startswith("_") and not callable(getattr(task, name, None))
+            result = dict(value)
+    if result is None and hasattr(task, "__dataclass_fields__"):
+        result = asdict(task)
+    if result is None:
+        result = {
+            name: getattr(task, name)
+            for name in dir(task)
+            if not name.startswith("_") and not callable(getattr(task, name, None))
+        }
+
+    # PortalTask deliberately retains the human Markdown labels in a nested
+    # metadata mapping.  Promote non-destructive wire-format aliases so the
+    # dependency scheduler sees the same goal, authority, and scheduling
+    # fields as task-source and daemon consumers.
+    #
+    # Scheduling booleans are an authorization boundary.  Preserve duplicate
+    # normalized aliases as an explicit ambiguity instead of making their
+    # meaning depend on mapping insertion order.  This mirrors the direct
+    # implementation daemon's fail-closed handling.
+    policy_values: dict[str, list[Any]] = {
+        name: [] for name in _TASK_SCHEDULING_POLICY_FIELDS
     }
+    for key, value in tuple(result.items()):
+        normalized = normalize_field_key(str(key))
+        if normalized in policy_values:
+            policy_values[normalized].append(value)
+        elif normalized:
+            result.setdefault(normalized, value)
+    metadata = result.get("metadata")
+    if isinstance(metadata, Mapping):
+        for key, value in metadata.items():
+            normalized = normalize_field_key(str(key))
+            if normalized in policy_values:
+                policy_values[normalized].append(value)
+            elif normalized:
+                result.setdefault(normalized, value)
+    for name, values in policy_values.items():
+        if len(values) == 1:
+            result[name] = values[0]
+        elif len(values) > 1:
+            result[name] = _AMBIGUOUS_TASK_SCHEDULING_POLICY
+    return result
+
+
+def _task_record_flag_resolution(
+    task: Mapping[str, Any],
+    name: str,
+    default: bool,
+) -> tuple[bool, bool]:
+    """Return a strict scheduling boolean and whether it was well formed."""
+
+    if name not in task:
+        return default, True
+    value = task[name]
+    if value == _AMBIGUOUS_TASK_SCHEDULING_POLICY:
+        return default, False
+    if isinstance(value, bool):
+        return value, True
+    if isinstance(value, int) and value in {0, 1}:
+        return bool(value), True
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"0", "false", "no", "off"}:
+            return False, True
+        if normalized in {"1", "true", "yes", "on"}:
+            return True, True
+    return default, False
 
 
 def _task_record_flag(
@@ -6500,26 +6568,36 @@ def _task_record_flag(
     name: str,
     default: bool,
 ) -> bool:
-    """Read a persisted task boolean without treating ``"false"`` as true."""
+    """Read one policy boolean, projecting malformed values fail closed."""
 
-    value = task.get(name, default)
-    if isinstance(value, str):
-        normalized = value.strip().lower()
-        if normalized in {"0", "false", "no", "off"}:
-            return False
-        if normalized in {"1", "true", "yes", "on"}:
-            return True
-    return bool(value)
+    value, valid = _task_record_flag_resolution(task, name, default)
+    if valid:
+        return value
+    # An invalid schedulable declaration cannot authorize execution.  An
+    # invalid review-only declaration is conservatively projected as review
+    # only for bundle/index consumers.
+    return name == "review_only"
 
 
 def _task_record_scheduling_allowed(task: Mapping[str, Any]) -> bool:
     """Return whether policy allows a task to participate in scheduling."""
 
-    return _task_record_flag(
+    is_schedulable, schedulable_valid = _task_record_flag_resolution(
         task,
         "is_schedulable",
         True,
-    ) and not _task_record_flag(task, "review_only", False)
+    )
+    review_only, review_only_valid = _task_record_flag_resolution(
+        task,
+        "review_only",
+        False,
+    )
+    return (
+        schedulable_valid
+        and review_only_valid
+        and is_schedulable
+        and not review_only
+    )
 
 
 def _task_record_is_schedulable(task: Mapping[str, Any]) -> bool:

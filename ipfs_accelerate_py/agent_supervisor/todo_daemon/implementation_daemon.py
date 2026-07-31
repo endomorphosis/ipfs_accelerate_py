@@ -298,6 +298,10 @@ WORKTREE_LIFECYCLE_RECLAIM_DEAD_ON_STARTUP_ENV = (
     "IPFS_ACCELERATE_AGENT_RECLAIM_DEAD_WORKTREE_LEASES_ON_STARTUP"
 )
 WORKTREE_LIFECYCLE_RACE_BACKOFF_SECONDS = 30
+TASK_OWNED_SUBMODULE_PREFLIGHT_BACKOFF_SECONDS = 300
+TASK_OWNED_SUBMODULE_INTEGRATION_BINDING_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/task-owned-submodule-integration@1"
+)
 TASK_ATTEMPT_LIMIT_IDLE_REASON = (
     "all_selectable_ready_tasks_reached_max_task_attempts"
 )
@@ -1594,6 +1598,64 @@ def normalize_task_header_prefix(value: str) -> str:
     return f"## {stripped}"
 
 
+TASK_DIRECT_IMPLEMENTATION_BOOLEAN_KEYS = frozenset(
+    {"is schedulable", "review only"}
+)
+AMBIGUOUS_TASK_BOOLEAN_METADATA = "<ambiguous-task-boolean-metadata>"
+
+
+def normalize_task_metadata_key(value: Any) -> str:
+    """Return the canonical comparison form for task metadata keys."""
+
+    return re.sub(
+        r"[^a-z0-9]+",
+        " ",
+        str(value).strip().lower(),
+    ).strip()
+
+
+def merge_task_metadata_value(
+    metadata: dict[str, str],
+    key: Any,
+    value: Any,
+    *,
+    normalize_underscores: bool = False,
+    fallback_only: bool = False,
+) -> None:
+    """Store metadata without erasing ambiguous execution-policy aliases.
+
+    Ordinary metadata keeps its historical last-value or fallback behavior.
+    The two direct-implementation booleans are authorization fields, however,
+    so duplicate exact keys and punctuation/underscore aliases must survive as
+    a fail-closed ambiguity marker instead of silently selecting one value.
+    """
+
+    storage_key = str(key).strip().lower()
+    if normalize_underscores:
+        storage_key = storage_key.replace("_", " ")
+    if not storage_key:
+        return
+    rendered_value = str(value).strip()
+    normalized_key = normalize_task_metadata_key(storage_key)
+    if normalized_key in TASK_DIRECT_IMPLEMENTATION_BOOLEAN_KEYS:
+        matching_keys = [
+            existing_key
+            for existing_key in metadata
+            if normalize_task_metadata_key(existing_key) == normalized_key
+        ]
+        if matching_keys:
+            if fallback_only:
+                return
+            for existing_key in matching_keys:
+                metadata.pop(existing_key, None)
+            metadata[normalized_key] = AMBIGUOUS_TASK_BOOLEAN_METADATA
+            return
+    if fallback_only:
+        metadata.setdefault(storage_key, rendered_value)
+    else:
+        metadata[storage_key] = rendered_value
+
+
 RETRY_BUDGET_REPAIR_TITLE_RE = re.compile(
     r"^Resolve\s+(?P<kind>validation|implementation|merge)\s+retry-budget\s+failure\s+for\s+(?P<source>[A-Z][A-Z0-9]*-\d+)\b",
     re.IGNORECASE,
@@ -2205,6 +2267,7 @@ class PortalTaskState:
     strict_deprioritized_ready_task_ids: list[str] = field(default_factory=list)
     waiting_task_ids: list[str] = field(default_factory=list)
     blocked_task_ids: list[str] = field(default_factory=list)
+    task_policy_blockers: dict[str, list[str]] = field(default_factory=dict)
     task_statuses: dict[str, str] = field(default_factory=dict)
     task_artifacts: dict[str, list[str]] = field(default_factory=dict)
     task_validation: dict[str, list[str]] = field(default_factory=dict)
@@ -2300,6 +2363,11 @@ class PortalTaskState:
                 ],
                 waiting_task_ids=[str(item) for item in payload.get("waiting_task_ids", []) or []],
                 blocked_task_ids=[str(item) for item in payload.get("blocked_task_ids", []) or []],
+                task_policy_blockers={
+                    str(key): [str(item) for item in value]
+                    for key, value in (payload.get("task_policy_blockers") or {}).items()
+                    if isinstance(value, list)
+                },
                 task_statuses={str(key): str(value) for key, value in (payload.get("task_statuses") or {}).items()},
                 task_artifacts={
                     str(key): [str(item) for item in value]
@@ -2474,6 +2542,7 @@ def state_file_repair_reason(path: Path) -> str:
         return "malformed_state_metadata"
     for field_name in (
         "task_statuses",
+        "task_policy_blockers",
         "task_artifacts",
         "task_validation",
         "task_identities",
@@ -2506,7 +2575,7 @@ def parse_task_file(path: Path, task_header_prefix: str = TASK_HEADER_PREFIX) ->
             if not stripped.startswith("- ") or ":" not in stripped:
                 continue
             key, value = stripped[2:].split(":", 1)
-            metadata[key.strip().lower()] = value.strip()
+            merge_task_metadata_value(metadata, key, value)
         if not metadata:
             metadata["blocked reason"] = "empty task metadata"
         default_status = "blocked" if metadata.get("blocked reason") == "empty task metadata" else "todo"
@@ -3069,18 +3138,22 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
 
         body = dict(task.body)
         provenance = body.get("provenance")
-        metadata: dict[str, str] = {
-            str(key).strip().lower().replace("_", " "): cls._task_source_metadata_text(
-                value
+        metadata: dict[str, str] = {}
+        for key, value in body.items():
+            merge_task_metadata_value(
+                metadata,
+                key,
+                cls._task_source_metadata_text(value),
+                normalize_underscores=True,
             )
-            for key, value in body.items()
-            if str(key).strip()
-        }
         if isinstance(provenance, Mapping):
             for key, value in provenance.items():
-                metadata.setdefault(
-                    str(key).strip().lower().replace("_", " "),
+                merge_task_metadata_value(
+                    metadata,
+                    key,
                     cls._task_source_metadata_text(value),
+                    normalize_underscores=True,
+                    fallback_only=True,
                 )
         metadata.update(
             {
@@ -5735,6 +5808,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "blocked_count",
             "active_task_id",
             "selection_idle_reason",
+            "task_policy_blockers",
             "state_path",
             "strategy_path",
             "events_path",
@@ -5953,6 +6027,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         state.strict_deprioritized_ready_task_ids = []
         state.waiting_task_ids = []
         state.blocked_task_ids = []
+        state.task_policy_blockers = {}
         state.completed_count = 0
         state.ready_count = 0
         state.selectable_ready_count = 0
@@ -6008,6 +6083,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "blocked_count": 0,
             "active_task_id": state.active_task_id,
             "selection_idle_reason": reason,
+            "task_policy_blockers": {},
             "state_path": str(self.state_path),
             "strategy_path": str(self.strategy_path),
             "events_path": str(self.events_path),
@@ -6287,6 +6363,14 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             for task in tasks
             if self._canonical_ref(task) in completed_cids
         )
+        task_policy_blockers = {
+            task.task_id: list(blockers)
+            for task in tasks
+            if task.task_id not in completed_set
+            and (
+                blockers := self._task_direct_implementation_blockers(task)
+            )
+        }
         protected_path_conflicts_by_task = {
             task.task_id: task_implementation_protected_path_conflicts(
                 task,
@@ -6312,6 +6396,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 and bool(task.depends_on)
                 and not str(task.metadata.get("blocked reason") or "").strip()
                 and task.task_id not in strategy_blocked_task_ids
+                and task.task_id not in task_policy_blockers
                 and all(
                     dependency in dependency_satisfied_task_ids
                     for dependency in task.depends_on
@@ -6332,6 +6417,12 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 resolved_statuses[task.task_id] = "completed"
                 if task.task_id not in previous_completed:
                     newly_completed.append(task.task_id)
+                continue
+            if task.task_id in task_policy_blockers:
+                # Direct-implementation policy is an authorization boundary,
+                # not transient scheduler pressure.  Project it as blocked so
+                # every supervisor consumer observes terminal lane state.
+                resolved_statuses[task.task_id] = "blocked"
                 continue
             if task.task_id in protected_path_conflicts_by_task:
                 # This is a board/configuration error, not transient provider
@@ -6481,6 +6572,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             if resolved_statuses[task.task_id] in {"waiting", "merge-queued"}
         ]
         state.blocked_task_ids = [task.task_id for task in tasks if resolved_statuses[task.task_id] == "blocked"]
+        state.task_policy_blockers = dict(task_policy_blockers)
         state.ready_count = len(state.ready_task_ids)
         state.selectable_ready_count = len(state.selectable_ready_task_ids)
         state.external_reserved_count = len(state.external_reserved_task_ids)
@@ -6636,6 +6728,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     "eligible_ready_count": state.eligible_ready_count,
                     "strict_deprioritized_ready_count": state.strict_deprioritized_ready_count,
                     "selection_idle_reason": state.selection_idle_reason,
+                    "task_policy_blockers": dict(state.task_policy_blockers),
                     "max_task_attempts": self.max_task_attempts,
                     "attempt_limited_task_ids": [
                         item["task_id"] for item in attempt_limited_tasks
@@ -6689,6 +6782,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "blocked_count": state.blocked_count,
             "active_task_id": state.active_task_id,
             "selection_idle_reason": state.selection_idle_reason,
+            "task_policy_blockers": dict(state.task_policy_blockers),
             "max_task_attempts": self.max_task_attempts,
             "attempt_limited_task_ids": [
                 item["task_id"] for item in attempt_limited_tasks
@@ -6876,7 +6970,11 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         state = PortalTaskState.load(self.state_path)
         if state.active_task_id or state.implementation_in_progress:
             return {}
-        task_ids = list(dict.fromkeys(state.selectable_ready_task_ids))
+        # Only work that can actually reach ``_select_next_task`` may request
+        # an immediate retry. ``selectable_ready_task_ids`` retains strict
+        # deprioritization candidates for diagnostics, while the eligible
+        # projection is the final durable scheduling boundary.
+        task_ids = list(dict.fromkeys(state.eligible_ready_task_ids))
         if not task_ids:
             return {}
 
@@ -6992,7 +7090,88 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         self._record_event("implementation_provider_exhausted", result)
         return result
 
+    def _defer_task_owned_submodule_integration(
+        self,
+        *,
+        task: PortalTask,
+        state: PortalTaskState,
+        preflight: Mapping[str, Any],
+        phase: str,
+    ) -> dict[str, Any]:
+        """Persist a non-consuming, operator-actionable topology deferral."""
+
+        preflight_reason = str(
+            preflight.get("reason") or "unverifiable_topology"
+        )
+        reason_by_preflight = {
+            "preexisting_divergence": (
+                "task_owned_submodule_preexisting_divergence"
+            ),
+            "gitlink_baseline_stale": (
+                "task_owned_submodule_gitlink_baseline_stale"
+            ),
+        }
+        reason = reason_by_preflight.get(
+            preflight_reason,
+            "task_owned_submodule_integration_preflight_failed",
+        )
+        canonical_task_cid = self._canonical_ref(task)
+        self.task_queue.defer(
+            canonical_task_cid,
+            TASK_OWNED_SUBMODULE_PREFLIGHT_BACKOFF_SECONDS,
+            reason=reason,
+        )
+        self.task_queue.save()
+        current = PortalTaskState.load(self.state_path)
+        owns_idle_projection = (
+            current.active_task_id == task.task_id
+            and current.active_task_cid == canonical_task_cid
+            and not current.implementation_in_progress
+        )
+        if owns_idle_projection:
+            self._clear_active_execution_state(
+                current,
+                clear_task=True,
+            )
+            current.selection_idle_reason = (
+                f"implementation_retry_deferred:{reason}"
+            )
+            current.save(self.state_path)
+            state.__dict__.update(asdict(current))
+        result = {
+            "skipped": True,
+            "deferred": True,
+            "reason": reason,
+            "task_id": task.task_id,
+            "attempt": self._task_attempt(state, task),
+            "provider_call_allowed": False,
+            "attempt_consumed": False,
+            "retryable": True,
+            "backoff_seconds": (
+                TASK_OWNED_SUBMODULE_PREFLIGHT_BACKOFF_SECONDS
+            ),
+            "active_task_cleared": owns_idle_projection,
+            "preflight_phase": phase,
+            "submodule_integration_preflight": dict(preflight),
+        }
+        self._record_event(
+            "implementation_submodule_integration_preflight_blocked",
+            result,
+        )
+        return result
+
     def _run_implementation(self, task: PortalTask, state: PortalTaskState) -> dict[str, Any]:
+        policy_blockers = self._task_direct_implementation_blockers(task)
+        if policy_blockers:
+            result = {
+                "skipped": True,
+                "reason": "task_direct_implementation_ineligible",
+                "task_id": task.task_id,
+                "attempt": self._task_attempt(state, task),
+                "policy_blockers": list(policy_blockers),
+            }
+            self._record_event("implementation_skipped", result)
+            return result
         protected_conflicts = task_implementation_protected_path_conflicts(
             task,
             self.implementation_protected_paths,
@@ -7021,6 +7200,17 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             }
             self._record_event("implementation_skipped", result)
             return result
+        if self.use_ephemeral_worktree:
+            submodule_preflight = (
+                self._preflight_task_owned_submodule_integration(task)
+            )
+            if not submodule_preflight.get("passed", False):
+                return self._defer_task_owned_submodule_integration(
+                    task=task,
+                    state=state,
+                    preflight=submodule_preflight,
+                    phase="before_task_claim",
+                )
         provider_backoff = (
             {}
             if deterministic_only
@@ -7278,18 +7468,84 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     result["lock_owner_task_id"] = str(existing_lock.get("task_id") or "")
                 self._record_event("implementation_skipped", result)
                 return result
+            approved_root_target_commit = ""
+            approved_submodule_integration_targets: dict[
+                str, dict[str, str]
+            ] = {}
+            if self.use_ephemeral_worktree:
+                locked_submodule_preflight = (
+                    self._preflight_task_owned_submodule_integration(task)
+                )
+                if not locked_submodule_preflight.get("passed", False):
+                    return self._defer_task_owned_submodule_integration(
+                        task=task,
+                        state=state,
+                        preflight=locked_submodule_preflight,
+                        phase="implementation_lock_acquired",
+                    )
+                if locked_submodule_preflight.get("checked_paths"):
+                    approved_root_target_commit = str(
+                        locked_submodule_preflight.get("root_target_commit")
+                        or ""
+                    ).strip()
+                    approved_submodule_integration_targets = (
+                        self._approved_task_owned_submodule_integration_targets(
+                            locked_submodule_preflight
+                        )
+                    )
+                    checked_paths = {
+                        str(path).strip("/")
+                        for path in (
+                            locked_submodule_preflight.get("checked_paths")
+                            or ()
+                        )
+                        if str(path).strip("/")
+                    }
+                    if (
+                        not approved_root_target_commit
+                        or set(approved_submodule_integration_targets)
+                        != checked_paths
+                    ):
+                        malformed_preflight = {
+                            **locked_submodule_preflight,
+                            "passed": False,
+                            "reason": "unverifiable_topology",
+                            "binding_failure_reason": (
+                                "approved_submodule_integration_binding_incomplete"
+                            ),
+                            "blocked_paths": sorted(checked_paths),
+                        }
+                        return self._defer_task_owned_submodule_integration(
+                            task=task,
+                            state=state,
+                            preflight=malformed_preflight,
+                            phase="implementation_lock_acquired",
+                        )
             context_receipt_path = self._persist_implementation_context_receipt(
                 task,
                 attempt,
             )
             if self.use_ephemeral_worktree:
-                ephemeral_result = self._run_implementation_in_ephemeral_worktree(
-                    task=task,
-                    state=state,
-                    attempt=attempt,
-                    started_at=started_at,
-                    log_path=log_path,
-                    prompt=prompt,
+                ephemeral_kwargs: dict[str, Any] = {
+                    "task": task,
+                    "state": state,
+                    "attempt": attempt,
+                    "started_at": started_at,
+                    "log_path": log_path,
+                    "prompt": prompt,
+                }
+                if approved_root_target_commit:
+                    ephemeral_kwargs["approved_root_target_commit"] = (
+                        approved_root_target_commit
+                    )
+                if approved_submodule_integration_targets:
+                    ephemeral_kwargs[
+                        "approved_submodule_integration_targets"
+                    ] = approved_submodule_integration_targets
+                ephemeral_result = (
+                    self._run_implementation_in_ephemeral_worktree(
+                        **ephemeral_kwargs,
+                    )
                 )
                 if ephemeral_result.get("lifecycle_race"):
                     canonical_task_cid = self._canonical_ref(task)
@@ -8770,6 +9026,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         task: PortalTask,
         attempt: int,
         changed_submodule_paths: Sequence[str] | None = None,
+        approved_submodule_integration_targets: (
+            Mapping[str, Mapping[str, str]] | None
+        ) = None,
         validation_result: dict[str, Any] | None = None,
         worktree_pool_handoff: bool = False,
     ) -> tuple[Any, dict[str, Any]]:
@@ -8852,6 +9111,13 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         if changed_submodule_paths is not None:
             metadata["changed_submodule_paths"] = sorted(
                 {str(path).strip("/") for path in changed_submodule_paths if str(path).strip("/")}
+            )
+        if approved_submodule_integration_targets:
+            metadata["task_owned_submodule_integration_binding"] = (
+                self._task_owned_submodule_integration_binding_payload(
+                    root_target_commit=baseline_ref,
+                    approved_targets=approved_submodule_integration_targets,
+                )
             )
         if validation_result is not None:
             result_records = [
@@ -9241,12 +9507,37 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             if isinstance(raw_changed_submodule_paths, list)
             else None
         )
+        baseline_ref = str(metadata.get("baseline_ref") or "")
+        (
+            approved_submodule_integration_targets,
+            submodule_integration_binding_error,
+        ) = self._parse_task_owned_submodule_integration_binding(
+            metadata.get("task_owned_submodule_integration_binding"),
+            baseline_ref=baseline_ref,
+            changed_submodule_paths=changed_submodule_paths,
+        )
+        if submodule_integration_binding_error:
+            return {
+                "attempted": False,
+                "merged": False,
+                "returncode": 2,
+                "reason": "submodule_integration_binding_invalid",
+                "binding_error": submodule_integration_binding_error,
+                "branch": branch_name,
+            }
+        merge_kwargs: dict[str, Any] = {
+            "baseline_ref": baseline_ref,
+            "changed_submodule_paths": changed_submodule_paths,
+        }
+        if approved_submodule_integration_targets:
+            merge_kwargs["approved_submodule_integration_targets"] = (
+                approved_submodule_integration_targets
+            )
         result = self._merge_branch_to_main(
             branch_name,
             task,
             int(request.attempt or 0),
-            baseline_ref=str(metadata.get("baseline_ref") or ""),
-            changed_submodule_paths=changed_submodule_paths,
+            **merge_kwargs,
         )
         raw_submodule_merge_results = result.get("submodule_merge_results", [])
         submodule_merge_results = (
@@ -9577,6 +9868,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         implementation_commit: str,
         commit_result: Mapping[str, Any],
         validation_result: Mapping[str, Any],
+        approved_submodule_integration_targets: (
+            Mapping[str, Mapping[str, str]] | None
+        ) = None,
     ) -> dict[str, Any]:
         """Hand a validated implementation commit to the durable merge train."""
 
@@ -9607,6 +9901,27 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             worktree_path,
             reason="merge_queue_handoff",
         )
+        changed_submodule_paths = self._committed_submodule_paths(
+            commit_result.get("submodule_results") or []
+        )
+        approved_targets_for_changes: dict[str, Mapping[str, str]] = {}
+        if approved_submodule_integration_targets and changed_submodule_paths:
+            approved_targets_for_changes = {
+                path: entry
+                for path, entry in approved_submodule_integration_targets.items()
+                if path in changed_submodule_paths
+            }
+            unbound_changed_paths = sorted(
+                changed_path
+                for changed_path in changed_submodule_paths
+                if changed_path not in approved_targets_for_changes
+            )
+            if unbound_changed_paths:
+                raise RuntimeError(
+                    "validated submodule changes are missing their locked "
+                    "integration target binding: "
+                    + ", ".join(unbound_changed_paths)
+                )
         request, merge_result = self._enqueue_merge_candidate(
             branch_name=branch_name,
             implementation_commit=implementation_commit,
@@ -9616,8 +9931,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             ),
             task=task,
             attempt=attempt,
-            changed_submodule_paths=self._committed_submodule_paths(
-                commit_result.get("submodule_results") or []
+            changed_submodule_paths=changed_submodule_paths,
+            approved_submodule_integration_targets=(
+                approved_targets_for_changes or None
             ),
             validation_result=dict(validation_result),
             worktree_pool_handoff=bool(pool_handoff.get("released", False)),
@@ -9673,6 +9989,10 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         started_at: str,
         log_path: Path,
         prompt: str,
+        approved_root_target_commit: str = "",
+        approved_submodule_integration_targets: (
+            Mapping[str, Mapping[str, str]] | None
+        ) = None,
     ) -> dict[str, Any]:
         self.implementation_log_dir.mkdir(parents=True, exist_ok=True)
         self.worktree_root.mkdir(parents=True, exist_ok=True)
@@ -9741,12 +10061,37 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     },
                 )
             seed_plan = self._prior_attempt_seed_plan(state=state, attempt=attempt)
-            baseline_ref = self._create_seeded_worktree(worktree_path, branch_name, task=task)
+            if approved_root_target_commit:
+                baseline_ref = self._create_seeded_worktree(
+                    worktree_path,
+                    branch_name,
+                    task=task,
+                    base_ref=approved_root_target_commit,
+                )
+            else:
+                baseline_ref = self._create_seeded_worktree(
+                    worktree_path,
+                    branch_name,
+                    task=task,
+                )
             # A pooled checkout keeps a stable physical path so Git does not
             # have to relocate populated submodule worktrees.  Resolve the
             # task's provisional timestamp path before any command, state, or
             # merge metadata is built from it.
             worktree_path = self._effective_pooled_worktree_path(worktree_path)
+            if approved_root_target_commit:
+                actual_baseline = self._resolve_git_commit_in_repo(
+                    worktree_path,
+                    "HEAD",
+                )
+                if (
+                    baseline_ref != approved_root_target_commit
+                    or actual_baseline != approved_root_target_commit
+                ):
+                    raise WorktreeLifecycleError(
+                        "approved submodule preflight baseline was not bound "
+                        "to the implementation worktree"
+                    )
             seed_apply = self._apply_prior_attempt_seed(
                 worktree_path,
                 seed_plan=seed_plan,
@@ -10198,6 +10543,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                             implementation_commit=implementation_commit,
                             commit_result=commit_result,
                             validation_result=validation_result,
+                            approved_submodule_integration_targets=(
+                                approved_submodule_integration_targets
+                            ),
                         )
                     elif commit_result.get("reason") == "no_changes":
                         current_head = self._run_git(
@@ -10429,6 +10777,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                                 implementation_commit=implementation_commit,
                                 commit_result=commit_result,
                                 validation_result=validation_result,
+                                approved_submodule_integration_targets=(
+                                    approved_submodule_integration_targets
+                                ),
                             )
                             commit_handoff_ready = True
                         elif commit_result.get("reason") == "no_changes":
@@ -11379,9 +11730,10 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         branch_name: str,
         *,
         task: PortalTask | None = None,
+        base_ref: str = "",
     ) -> str:
+        selected_base_ref = str(base_ref or self._main_branch_name()).strip()
         if self.worktree_pool is not None:
-            base_ref = self._main_branch_name()
             cache_key = self._implementation_worktree_cache_key()
 
             def activate(candidate: Path) -> None:
@@ -11389,7 +11741,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
 
             lease = self.worktree_pool.acquire(
                 cache_key=cache_key,
-                base_ref=base_ref,
+                base_ref=selected_base_ref,
                 branch_name=branch_name,
                 dependency_paths=self.worktree_submodule_paths,
                 activate=activate,
@@ -11422,7 +11774,14 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             return baseline_ref
 
         self._run_git(
-            ["worktree", "add", "-b", branch_name, str(worktree_path), self._main_branch_name()],
+            [
+                "worktree",
+                "add",
+                "-b",
+                branch_name,
+                str(worktree_path),
+                selected_base_ref,
+            ],
             cwd=self.repo_root,
         )
         baseline_ref = self._run_git(["rev-parse", "HEAD"], cwd=worktree_path).stdout.strip()
@@ -14062,12 +14421,457 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     for relative in self.worktree_submodule_paths
                     if relative.strip("/")
                     and any(
-                        path.startswith(f"{relative.strip('/')}/")
+                        self._path_matches_prefix(
+                            path,
+                            relative.strip("/"),
+                        )
                         for path in scope_paths
                     )
                 }
             )
         )
+
+    @staticmethod
+    def _root_tree_gitlink_ref(
+        repo_root: Path,
+        root_ref: str,
+        relative: str,
+    ) -> tuple[str, str]:
+        """Return a root-tree gitlink commit and a typed failure reason."""
+
+        if not root_ref or not relative:
+            return "", "missing_root_target_or_submodule_path"
+        result = subprocess.run(
+            ["git", "ls-tree", "-z", root_ref, "--", relative],
+            cwd=repo_root,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+        if result.returncode != 0:
+            return "", "root_target_tree_unavailable"
+        records = [record for record in result.stdout.split(b"\0") if record]
+        if len(records) != 1:
+            return "", "root_target_gitlink_missing"
+        metadata, separator, raw_path = records[0].partition(b"\t")
+        fields = metadata.decode("ascii", errors="replace").split()
+        path = raw_path.decode("utf-8", errors="surrogateescape")
+        if (
+            not separator
+            or len(fields) != 3
+            or fields[0] != "160000"
+            or fields[1] != "commit"
+            or path != relative
+        ):
+            return "", "root_target_path_is_not_gitlink"
+        return fields[2], ""
+
+    @staticmethod
+    def _git_ref_ancestor_check_in_repo(
+        cwd: Path,
+        ancestor: str,
+        descendant: str,
+    ) -> bool | None:
+        """Return ancestry, distinguishing a negative result from Git failure."""
+
+        result = subprocess.run(
+            ["git", "merge-base", "--is-ancestor", ancestor, descendant],
+            cwd=cwd,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if result.returncode == 0:
+            return True
+        if result.returncode == 1:
+            return False
+        return None
+
+    def _preflight_task_owned_submodule_integration(
+        self,
+        task: PortalTask,
+    ) -> dict[str, Any]:
+        """Reject task-external submodule divergence before provider dispatch.
+
+        Ephemeral child branches start at the root target's recorded gitlink.
+        An equal target or an integration target behind the gitlink can be
+        fast-forwarded to the provider's validated result.  An integration
+        target already ahead of the gitlink would require combining provider
+        work with unvalidated pre-existing changes, so the root gitlink must be
+        advanced first.  Diverged histories are likewise outside the task's
+        declared mutation authority and require operator reconciliation.
+        """
+
+        scope_paths = self._proposal_scope_paths(task)
+        owned_paths = self._proposal_scope_submodule_paths(scope_paths)
+        root_target_branch = str(
+            self.resolved_merge_target_branch or self._main_branch_name()
+        )
+        root_target_commit = self._resolve_git_commit_in_repo(
+            self.repo_root,
+            root_target_branch,
+        )
+        result: dict[str, Any] = {
+            "passed": True,
+            "reason": "no_task_owned_managed_submodules",
+            "root_target_branch": root_target_branch,
+            "root_target_commit": root_target_commit,
+            "checked_paths": list(owned_paths),
+            "blocked_paths": [],
+            "submodules": [],
+        }
+        if not owned_paths:
+            return result
+        if not root_target_commit:
+            result.update(
+                {
+                    "passed": False,
+                    "reason": "unverifiable_topology",
+                    "root_failure_reason": "root_target_commit_unavailable",
+                    "blocked_paths": list(owned_paths),
+                }
+            )
+            return result
+
+        blocked_paths: list[str] = []
+        saw_preexisting_divergence = False
+        saw_stale_gitlink_baseline = False
+        for relative in owned_paths:
+            source = (self.repo_root / relative).resolve()
+            entry: dict[str, Any] = {
+                "path": relative,
+                "ready": False,
+                "reason": "",
+                "relation": "",
+                "expected_merge_mode": "",
+                "integration_branch": "",
+                "gitlink_baseline": "",
+                "integration_target": "",
+                "merge_bases": [],
+            }
+            baseline, baseline_reason = self._root_tree_gitlink_ref(
+                self.repo_root,
+                root_target_commit,
+                relative,
+            )
+            entry["gitlink_baseline"] = baseline
+            if baseline_reason:
+                entry["reason"] = baseline_reason
+            elif not self._is_git_worktree(source):
+                entry["reason"] = "submodule_checkout_unavailable"
+            else:
+                integration_branch = self._submodule_default_branch(
+                    relative,
+                    source,
+                    root_ref=root_target_commit,
+                )
+                integration_target = self._resolve_git_commit_in_repo(
+                    source,
+                    integration_branch,
+                )
+                resolved_baseline = self._resolve_git_commit_in_repo(
+                    source,
+                    baseline,
+                )
+                entry["integration_branch"] = integration_branch
+                entry["integration_target"] = integration_target
+                if not resolved_baseline:
+                    entry["reason"] = "gitlink_baseline_commit_unavailable"
+                elif not integration_target:
+                    entry["reason"] = "integration_target_commit_unavailable"
+                elif resolved_baseline == integration_target:
+                    entry.update(
+                        {
+                            "ready": True,
+                            "reason": "compatible",
+                            "relation": "equal",
+                            "expected_merge_mode": "ff-only",
+                        }
+                    )
+                else:
+                    baseline_is_ancestor = (
+                        self._git_ref_ancestor_check_in_repo(
+                            source,
+                            resolved_baseline,
+                            integration_target,
+                        )
+                    )
+                    target_is_ancestor = self._git_ref_ancestor_check_in_repo(
+                        source,
+                        integration_target,
+                        resolved_baseline,
+                    )
+                    entry["merge_bases"] = self._git_merge_bases_in_repo(
+                        source,
+                        resolved_baseline,
+                        integration_target,
+                    )[:8]
+                    if baseline_is_ancestor is None or target_is_ancestor is None:
+                        entry["reason"] = "ancestry_check_failed"
+                    elif baseline_is_ancestor:
+                        entry.update(
+                            {
+                                "reason": "gitlink_baseline_stale",
+                                "relation": "gitlink_baseline_ancestor",
+                            }
+                        )
+                        saw_stale_gitlink_baseline = True
+                    elif target_is_ancestor:
+                        entry.update(
+                            {
+                                "ready": True,
+                                "reason": "compatible",
+                                "relation": "integration_target_ancestor",
+                                "expected_merge_mode": "ff-only",
+                            }
+                        )
+                    else:
+                        entry.update(
+                            {
+                                "reason": "preexisting_divergence",
+                                "relation": "diverged",
+                            }
+                        )
+                        saw_preexisting_divergence = True
+            if not entry["ready"]:
+                blocked_paths.append(relative)
+            result["submodules"].append(entry)
+
+        result["blocked_paths"] = blocked_paths
+        result["passed"] = not blocked_paths
+        if blocked_paths:
+            result["reason"] = (
+                "preexisting_divergence"
+                if saw_preexisting_divergence
+                else (
+                    "gitlink_baseline_stale"
+                    if saw_stale_gitlink_baseline
+                    else "unverifiable_topology"
+                )
+            )
+        else:
+            result["reason"] = "compatible"
+        return result
+
+    def _approved_task_owned_submodule_integration_targets(
+        self,
+        preflight: Mapping[str, Any],
+    ) -> dict[str, dict[str, str]]:
+        """Extract the immutable child-target facts admitted by preflight."""
+
+        raw_checked_paths = preflight.get("checked_paths")
+        raw_submodules = preflight.get("submodules")
+        if (
+            preflight.get("passed") is not True
+            or not isinstance(raw_checked_paths, Sequence)
+            or isinstance(raw_checked_paths, (str, bytes, bytearray))
+            or not isinstance(raw_submodules, Sequence)
+            or isinstance(raw_submodules, (str, bytes, bytearray))
+            or len(raw_checked_paths) > MAX_MERGE_PROOF_METADATA_ITEMS
+            or len(raw_submodules) > MAX_MERGE_PROOF_METADATA_ITEMS
+        ):
+            return {}
+        checked_paths = {
+            str(path).strip("/")
+            for path in raw_checked_paths
+            if str(path).strip("/")
+            and self._repo_relative_path_safe(str(path).strip("/"))
+        }
+        if len(checked_paths) != len(raw_checked_paths):
+            return {}
+        approved: dict[str, dict[str, str]] = {}
+        for raw_entry in raw_submodules:
+            if not isinstance(raw_entry, Mapping):
+                return {}
+            path = str(raw_entry.get("path") or "").strip("/")
+            integration_branch = str(
+                raw_entry.get("integration_branch") or ""
+            ).strip()
+            integration_target = str(
+                raw_entry.get("integration_target") or ""
+            ).strip()
+            gitlink_baseline = str(
+                raw_entry.get("gitlink_baseline") or ""
+            ).strip()
+            expected_merge_mode = str(
+                raw_entry.get("expected_merge_mode") or ""
+            ).strip()
+            if (
+                path not in checked_paths
+                or path in approved
+                or raw_entry.get("ready") is not True
+                or expected_merge_mode != "ff-only"
+                or not integration_branch
+                or integration_branch.startswith("-")
+                or any(
+                    character.isspace() or ord(character) < 32
+                    for character in integration_branch
+                )
+                or not re.fullmatch(r"[0-9a-fA-F]{40,64}", integration_target)
+                or not re.fullmatch(r"[0-9a-fA-F]{40,64}", gitlink_baseline)
+            ):
+                return {}
+            approved[path] = {
+                "path": path,
+                "integration_branch": integration_branch,
+                "integration_target": integration_target,
+                "gitlink_baseline": gitlink_baseline,
+                "expected_merge_mode": expected_merge_mode,
+                "relation": str(raw_entry.get("relation") or "").strip(),
+            }
+        return approved if set(approved) == checked_paths else {}
+
+    def _task_owned_submodule_integration_binding_payload(
+        self,
+        *,
+        root_target_commit: str,
+        approved_targets: Mapping[str, Mapping[str, str]],
+    ) -> dict[str, Any]:
+        """Build bounded durable metadata for merge-time topology rechecks."""
+
+        normalized_root = str(root_target_commit or "").strip()
+        if (
+            not approved_targets
+            or not re.fullmatch(r"[0-9a-fA-F]{40,64}", normalized_root)
+            or len(approved_targets) > MAX_MERGE_PROOF_METADATA_ITEMS
+        ):
+            raise ValueError("approved submodule integration binding is invalid")
+        targets: list[dict[str, str]] = []
+        for path in sorted(approved_targets):
+            entry = approved_targets[path]
+            normalized_path = str(path).strip("/")
+            if (
+                normalized_path != str(entry.get("path") or "").strip("/")
+                or not self._repo_relative_path_safe(normalized_path)
+            ):
+                raise ValueError(
+                    "approved submodule integration path is invalid"
+                )
+            targets.append(
+                {
+                    "path": normalized_path,
+                    "integration_branch": str(
+                        entry.get("integration_branch") or ""
+                    ).strip(),
+                    "integration_target": str(
+                        entry.get("integration_target") or ""
+                    ).strip(),
+                    "gitlink_baseline": str(
+                        entry.get("gitlink_baseline") or ""
+                    ).strip(),
+                    "expected_merge_mode": str(
+                        entry.get("expected_merge_mode") or ""
+                    ).strip(),
+                    "relation": str(entry.get("relation") or "").strip(),
+                }
+            )
+        payload: dict[str, Any] = {
+            "schema": TASK_OWNED_SUBMODULE_INTEGRATION_BINDING_SCHEMA,
+            "root_target_commit": normalized_root,
+            "targets": targets,
+        }
+        parsed, error = self._parse_task_owned_submodule_integration_binding(
+            payload,
+            baseline_ref=normalized_root,
+            changed_submodule_paths=set(approved_targets),
+        )
+        if error or set(parsed) != set(approved_targets):
+            raise ValueError(
+                error or "approved submodule integration binding is incomplete"
+            )
+        return payload
+
+    def _parse_task_owned_submodule_integration_binding(
+        self,
+        raw_binding: Any,
+        *,
+        baseline_ref: str,
+        changed_submodule_paths: set[str] | None,
+    ) -> tuple[dict[str, dict[str, str]], str]:
+        """Validate durable child-target metadata without resolving live refs."""
+
+        if raw_binding is None:
+            return {}, ""
+        if not isinstance(raw_binding, Mapping):
+            return {}, "submodule_integration_binding_malformed"
+        if (
+            str(raw_binding.get("schema") or "")
+            != TASK_OWNED_SUBMODULE_INTEGRATION_BINDING_SCHEMA
+        ):
+            return {}, "submodule_integration_binding_schema_mismatch"
+        bound_root = str(
+            raw_binding.get("root_target_commit") or ""
+        ).strip()
+        normalized_baseline = str(baseline_ref or "").strip()
+        if (
+            not normalized_baseline
+            or bound_root != normalized_baseline
+            or not re.fullmatch(r"[0-9a-fA-F]{40,64}", bound_root)
+        ):
+            return {}, "submodule_integration_root_target_mismatch"
+        raw_targets = raw_binding.get("targets")
+        if (
+            not isinstance(raw_targets, Sequence)
+            or isinstance(raw_targets, (str, bytes, bytearray))
+            or not raw_targets
+            or len(raw_targets) > MAX_MERGE_PROOF_METADATA_ITEMS
+        ):
+            return {}, "submodule_integration_targets_malformed"
+        configured_paths = {
+            str(path).strip("/")
+            for path in self.worktree_submodule_paths
+            if str(path).strip("/")
+        }
+        approved: dict[str, dict[str, str]] = {}
+        for raw_entry in raw_targets:
+            if not isinstance(raw_entry, Mapping):
+                return {}, "submodule_integration_target_malformed"
+            path = str(raw_entry.get("path") or "").strip("/")
+            integration_branch = str(
+                raw_entry.get("integration_branch") or ""
+            ).strip()
+            integration_target = str(
+                raw_entry.get("integration_target") or ""
+            ).strip()
+            gitlink_baseline = str(
+                raw_entry.get("gitlink_baseline") or ""
+            ).strip()
+            expected_merge_mode = str(
+                raw_entry.get("expected_merge_mode") or ""
+            ).strip()
+            if (
+                not path
+                or path not in configured_paths
+                or path in approved
+                or not self._repo_relative_path_safe(path)
+                or not integration_branch
+                or integration_branch.startswith("-")
+                or any(
+                    character.isspace() or ord(character) < 32
+                    for character in integration_branch
+                )
+                or not re.fullmatch(r"[0-9a-fA-F]{40,64}", integration_target)
+                or not re.fullmatch(r"[0-9a-fA-F]{40,64}", gitlink_baseline)
+                or expected_merge_mode != "ff-only"
+            ):
+                return {}, "submodule_integration_target_malformed"
+            approved[path] = {
+                "path": path,
+                "integration_branch": integration_branch,
+                "integration_target": integration_target,
+                "gitlink_baseline": gitlink_baseline,
+                "expected_merge_mode": expected_merge_mode,
+                "relation": str(raw_entry.get("relation") or "").strip(),
+            }
+        if changed_submodule_paths is not None:
+            unbound_paths = sorted(
+                path
+                for path in changed_submodule_paths
+                if path not in approved
+            )
+            if unbound_paths:
+                return {}, "changed_submodule_path_missing_integration_binding"
+        return approved, ""
 
     @staticmethod
     def _proposal_index_gitlink_ref(
@@ -17734,6 +18538,159 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             "results": results,
         }
 
+    def _task_owned_submodule_integration_target_guard(
+        self,
+        *,
+        root_candidate_ref: str,
+        path: str,
+        approved_target: Mapping[str, str],
+    ) -> dict[str, Any]:
+        """Recheck a preflight-bound child target without mutating either repo."""
+
+        normalized_path = str(path or "").strip("/")
+        expected_branch = str(
+            approved_target.get("integration_branch") or ""
+        ).strip()
+        expected_target = str(
+            approved_target.get("integration_target") or ""
+        ).strip()
+        expected_baseline = str(
+            approved_target.get("gitlink_baseline") or ""
+        ).strip()
+        result: dict[str, Any] = {
+            "passed": False,
+            "path": normalized_path,
+            "root_candidate_ref": str(root_candidate_ref or ""),
+            "expected_integration_branch": expected_branch,
+            "expected_integration_target": expected_target,
+            "expected_gitlink_baseline": expected_baseline,
+            "expected_merge_mode": str(
+                approved_target.get("expected_merge_mode") or ""
+            ).strip(),
+        }
+        if (
+            not normalized_path
+            or normalized_path not in self.worktree_submodule_paths
+            or not self._repo_relative_path_safe(normalized_path)
+        ):
+            result["reason"] = "submodule_integration_path_invalid"
+            return result
+        source = (self.repo_root / normalized_path).resolve()
+        if not self._is_git_worktree(source):
+            result["reason"] = "submodule_checkout_unavailable"
+            return result
+        actual_branch = self._submodule_default_branch(
+            normalized_path,
+            source,
+        )
+        actual_target = self._resolve_git_commit_in_repo(
+            source,
+            actual_branch,
+        )
+        result.update(
+            {
+                "actual_integration_branch": actual_branch,
+                "actual_integration_target": actual_target,
+            }
+        )
+        if actual_branch != expected_branch:
+            result["reason"] = (
+                "submodule_integration_branch_changed_since_validation"
+            )
+            return result
+        if actual_target != expected_target:
+            result["reason"] = (
+                "submodule_integration_target_changed_since_validation"
+            )
+            return result
+        candidate_gitlink, candidate_gitlink_reason = (
+            self._root_tree_gitlink_ref(
+                self.repo_root,
+                root_candidate_ref,
+                normalized_path,
+            )
+        )
+        candidate_branch = self._submodule_worktree_branch_name(
+            root_candidate_ref,
+            normalized_path,
+        )
+        candidate_branch_target = self._resolve_git_commit_in_repo(
+            source,
+            candidate_branch,
+        )
+        result.update(
+            {
+                "candidate_branch": candidate_branch,
+                "candidate_branch_target": candidate_branch_target,
+                "candidate_gitlink": candidate_gitlink,
+            }
+        )
+        if candidate_gitlink_reason or not candidate_gitlink:
+            result["reason"] = (
+                candidate_gitlink_reason
+                or "submodule_candidate_gitlink_unavailable"
+            )
+            return result
+        if candidate_branch_target != candidate_gitlink:
+            result["reason"] = (
+                "submodule_candidate_branch_changed_since_validation"
+            )
+            return result
+        baseline_is_ancestor = self._git_ref_ancestor_check_in_repo(
+            source,
+            expected_baseline,
+            candidate_branch_target,
+        )
+        target_is_ancestor = self._git_ref_ancestor_check_in_repo(
+            source,
+            expected_target,
+            candidate_branch_target,
+        )
+        result.update(
+            {
+                "gitlink_baseline_is_candidate_ancestor": (
+                    baseline_is_ancestor
+                ),
+                "integration_target_is_candidate_ancestor": (
+                    target_is_ancestor
+                ),
+            }
+        )
+        if baseline_is_ancestor is not True:
+            result["reason"] = (
+                "submodule_candidate_not_descendant_of_preflight_baseline"
+            )
+            return result
+        if target_is_ancestor is not True:
+            result["reason"] = (
+                "submodule_candidate_not_fast_forwardable_from_approved_target"
+            )
+            return result
+        result.update({"passed": True, "reason": "compatible"})
+        return result
+
+    def _task_owned_submodule_integration_binding_guard(
+        self,
+        *,
+        root_candidate_ref: str,
+        approved_targets: Mapping[str, Mapping[str, str]],
+    ) -> dict[str, Any]:
+        checks = [
+            self._task_owned_submodule_integration_target_guard(
+                root_candidate_ref=root_candidate_ref,
+                path=path,
+                approved_target=approved_targets[path],
+            )
+            for path in sorted(approved_targets)
+        ]
+        return {
+            "passed": bool(checks)
+            and all(check.get("passed") is True for check in checks),
+            "schema": TASK_OWNED_SUBMODULE_INTEGRATION_BINDING_SCHEMA,
+            "root_candidate_ref": root_candidate_ref,
+            "checks": checks,
+        }
+
     def _merge_branch_to_main(
         self,
         branch_name: str,
@@ -17742,13 +18699,29 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         *,
         baseline_ref: str = "",
         changed_submodule_paths: set[str] | None = None,
+        approved_submodule_integration_targets: (
+            Mapping[str, Mapping[str, str]] | None
+        ) = None,
     ) -> dict[str, Any]:
         started_at = utc_now()
         self._preserve_generated_nested_worktree_directories()
         stale_submodule_worktree_config_repair = self._repair_stale_submodule_worktree_configs(self.repo_root)
         target_branch = self._main_branch_name()
         # Attempt to rebase stale submodule pointers before merge
-        submodule_rebase = self._rebase_stale_submodule_pointers(branch_name, target_branch)
+        submodule_rebase = (
+            {
+                "attempted": False,
+                "rebased": False,
+                "reason": "validated_submodule_integration_binding_pinned",
+                "branch": branch_name,
+                "target_branch": target_branch,
+            }
+            if approved_submodule_integration_targets
+            else self._rebase_stale_submodule_pointers(
+                branch_name,
+                target_branch,
+            )
+        )
         if submodule_rebase.get("rebased"):
             self._record_event("submodule_pointer_rebase", submodule_rebase)
         if baseline_ref and not self._git_ref_is_ancestor(baseline_ref, target_branch):
@@ -17799,6 +18772,128 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         removed_untracked: dict[str, bytes] = {}
         try:
             self._write_lock_metadata(lock_fd, lock_metadata)
+            submodule_integration_binding_guard: dict[str, Any] = {}
+            if approved_submodule_integration_targets:
+                submodule_integration_binding_guard = (
+                    self._task_owned_submodule_integration_binding_guard(
+                        root_candidate_ref=branch_name,
+                        approved_targets=(
+                            approved_submodule_integration_targets
+                        ),
+                    )
+                )
+                if not submodule_integration_binding_guard.get(
+                    "passed",
+                    False,
+                ):
+                    submodule_merge_results: list[dict[str, Any]] = []
+                    reported_paths: set[str] = set()
+                    failed_checks = [
+                        check
+                        for check in submodule_integration_binding_guard.get(
+                            "checks",
+                            [],
+                        )
+                        if isinstance(check, Mapping)
+                        and check.get("passed") is not True
+                    ]
+                    for raw_check in (
+                        submodule_integration_binding_guard.get("checks", [])
+                    ):
+                        if not isinstance(raw_check, Mapping):
+                            continue
+                        check = dict(raw_check)
+                        path = str(check.get("path") or "").strip("/")
+                        if not path:
+                            continue
+                        reported_paths.add(path)
+                        submodule_merge_results.append(
+                            {
+                                "path": path,
+                                "branch": str(
+                                    check.get("candidate_branch") or ""
+                                ),
+                                "default_branch": str(
+                                    check.get(
+                                        "actual_integration_branch"
+                                    )
+                                    or check.get(
+                                        "expected_integration_branch"
+                                    )
+                                    or ""
+                                ),
+                                "merged": False,
+                                "reason": (
+                                    str(check.get("reason") or "")
+                                    if check.get("passed") is not True
+                                    else (
+                                        "submodule_merge_deferred_before_"
+                                        "sibling_binding_mutation"
+                                    )
+                                ),
+                                "integration_binding_check": check,
+                            }
+                        )
+                    for changed_path in sorted(
+                        changed_submodule_paths or ()
+                    ):
+                        if changed_path in reported_paths:
+                            continue
+                        covering_failure = next(
+                            (
+                                check
+                                for check in failed_checks
+                                if changed_path.startswith(
+                                    f"{str(check.get('path') or '').strip('/')}/"
+                                )
+                            ),
+                            {},
+                        )
+                        submodule_merge_results.append(
+                            {
+                                "path": changed_path,
+                                "merged": False,
+                                "reason": (
+                                    "ancestor_submodule_integration_"
+                                    "binding_stale"
+                                ),
+                                "integration_binding_check": dict(
+                                    covering_failure
+                                ),
+                            }
+                        )
+                    result = {
+                        "attempted": False,
+                        "merged": False,
+                        "returncode": 2,
+                        "branch": branch_name,
+                        "target_branch": target_branch,
+                        "baseline_ref": baseline_ref,
+                        "started_at": started_at,
+                        "finished_at": utc_now(),
+                        "merge_commit": "",
+                        "stdout": "",
+                        "stderr": "",
+                        "reason": (
+                            "task_owned_submodule_integration_binding_stale"
+                        ),
+                        "identical_untracked_paths": [],
+                        "submodule_merge_failed": True,
+                        "submodule_merge_results": submodule_merge_results,
+                        "submodule_integration_binding_guard": (
+                            submodule_integration_binding_guard
+                        ),
+                    }
+                    if stale_submodule_worktree_config_repair.get("repairs"):
+                        result[
+                            "stale_submodule_worktree_config_repair"
+                        ] = stale_submodule_worktree_config_repair
+                    self._record_event(
+                        "merge_submodule_integration_binding_stale",
+                        result,
+                    )
+                    self._record_event("merge_finished", result)
+                    return result
             workspace_result = self._prepare_main_merge_workspace(target_branch, branch_name)
             llm_workspace_resolver: dict[str, Any] = {}
             if not workspace_result.get("available", False):
@@ -18057,6 +19152,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     attempt=attempt,
                     baseline_ref=baseline_ref,
                     changed_submodule_paths=changed_submodule_paths,
+                    approved_submodule_integration_targets=(
+                        approved_submodule_integration_targets
+                    ),
                 )
                 merged_gitlink_recording = self._record_merged_submodule_gitlinks(
                     merge_workspace,
@@ -19404,6 +20502,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         attempt: int,
         baseline_ref: str = "",
         changed_submodule_paths: set[str] | None = None,
+        approved_submodule_integration_targets: (
+            Mapping[str, Mapping[str, str]] | None
+        ) = None,
     ) -> list[dict[str, Any]]:
         return self._merge_submodule_branches_to_main_in_repo(
             repo_path=self.repo_root,
@@ -19413,6 +20514,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             attempt=attempt,
             baseline_ref=baseline_ref,
             changed_submodule_paths=changed_submodule_paths,
+            approved_submodule_integration_targets=(
+                approved_submodule_integration_targets
+            ),
         )
 
     def _root_submodule_changed_in_task(
@@ -19475,6 +20579,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         attempt: int,
         baseline_ref: str = "",
         changed_submodule_paths: set[str] | None = None,
+        approved_submodule_integration_targets: (
+            Mapping[str, Mapping[str, str]] | None
+        ) = None,
         checkpoint: MergeCheckpoint | None = None,
     ) -> list[dict[str, Any]]:
         results: list[dict[str, Any]] = []
@@ -19531,6 +20638,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                             attempt=attempt,
                             baseline_ref=baseline_ref,
                             changed_submodule_paths=changed_submodule_paths,
+                            approved_submodule_integration_targets=(
+                                approved_submodule_integration_targets
+                            ),
                             checkpoint=checkpoint,
                         )
                     )
@@ -19548,10 +20658,60 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                         attempt=attempt,
                         baseline_ref=baseline_ref,
                         changed_submodule_paths=changed_submodule_paths,
+                        approved_submodule_integration_targets=(
+                            approved_submodule_integration_targets
+                        ),
                         checkpoint=checkpoint,
                     )
                 )
                 continue
+            approved_target = (
+                approved_submodule_integration_targets.get(full_relative)
+                if approved_submodule_integration_targets
+                else None
+            )
+            if approved_target is not None:
+                integration_binding_check = (
+                    self._task_owned_submodule_integration_target_guard(
+                        root_candidate_ref=branch_name,
+                        path=full_relative,
+                        approved_target=approved_target,
+                    )
+                )
+                if not integration_binding_check.get("passed", False):
+                    result = {
+                        "path": full_relative,
+                        "branch": str(
+                            integration_binding_check.get(
+                                "candidate_branch"
+                            )
+                            or submodule_branch
+                        ),
+                        "default_branch": str(
+                            integration_binding_check.get(
+                                "actual_integration_branch"
+                            )
+                            or integration_binding_check.get(
+                                "expected_integration_branch"
+                            )
+                            or ""
+                        ),
+                        "merged": False,
+                        "returncode": 2,
+                        "reason": str(
+                            integration_binding_check.get("reason")
+                            or (
+                                "task_owned_submodule_integration_"
+                                "binding_stale"
+                            )
+                        ),
+                        "integration_binding_check": (
+                            integration_binding_check
+                        ),
+                    }
+                    results.append(result)
+                    checkpoint.record_submodule(full_relative, result)
+                    continue
             if (
                 not parent_relative
                 and baseline_ref
@@ -19583,6 +20743,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                         attempt=attempt,
                         baseline_ref=baseline_ref,
                         changed_submodule_paths=changed_submodule_paths,
+                        approved_submodule_integration_targets=(
+                            approved_submodule_integration_targets
+                        ),
                         checkpoint=checkpoint,
                     )
                 )
@@ -19609,6 +20772,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                         attempt=attempt,
                         baseline_ref=baseline_ref,
                         changed_submodule_paths=changed_submodule_paths,
+                        approved_submodule_integration_targets=(
+                            approved_submodule_integration_targets
+                        ),
                         checkpoint=checkpoint,
                     )
                 )
@@ -19744,7 +20910,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 "stdout": merge.stdout[-4000:],
                 "stderr": merge.stderr[-4000:],
             }
-            if merge.returncode != 0:
+            if merge.returncode != 0 and approved_target is None:
                 merge_command = ["git", "merge", "--no-ff", "--no-edit", submodule_branch]
                 merge = subprocess.run(
                     merge_command,
@@ -19807,6 +20973,14 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 "commit": "",
                 "ff_only_result": ff_only_result,
             }
+            if approved_target is not None:
+                result["integration_binding_check"] = (
+                    integration_binding_check
+                )
+                if merge.returncode != 0:
+                    result["reason"] = (
+                        "task_owned_submodule_ff_only_merge_required"
+                    )
             if merge_abort_result:
                 result["merge_abort_result"] = merge_abort_result
             if llm_merge_resolver:
@@ -19818,20 +20992,60 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             if preserved_dirty_paths:
                 result["preserved_dirty_paths"] = preserved_dirty_paths
             if merge.returncode == 0:
-                result["commit"] = self._run_git(["rev-parse", "HEAD"], cwd=source).stdout.strip()
-                # Post-merge validation: ensure submodule is in a healthy state
-                validation = self._validate_merged_submodule_state(source, full_relative)
-                if not validation.get("valid"):
-                    result["post_merge_validation"] = validation
-                    self._record_event("submodule_post_merge_validation_failed", {
-                        "task_id": task.task_id,
-                        "path": full_relative,
-                        "validation": validation,
-                    })
+                merged_commit = self._run_git(
+                    ["rev-parse", "HEAD"],
+                    cwd=source,
+                ).stdout.strip()
+                expected_candidate_commit = str(
+                    (
+                        integration_binding_check.get(
+                            "candidate_branch_target"
+                        )
+                        if approved_target is not None
+                        else ""
+                    )
+                    or ""
+                )
+                if (
+                    approved_target is not None
+                    and merged_commit != expected_candidate_commit
+                ):
+                    result.update(
+                        {
+                            "merged": False,
+                            "returncode": 2,
+                            "reason": (
+                                "submodule_integration_target_changed_"
+                                "during_ff_only_merge"
+                            ),
+                            "commit": "",
+                            "expected_candidate_commit": (
+                                expected_candidate_commit
+                            ),
+                            "actual_integration_commit": merged_commit,
+                        }
+                    )
+                else:
+                    result["commit"] = merged_commit
+                    # Post-merge validation: ensure submodule is in a healthy state
+                    validation = self._validate_merged_submodule_state(
+                        source,
+                        full_relative,
+                    )
+                    if not validation.get("valid"):
+                        result["post_merge_validation"] = validation
+                        self._record_event(
+                            "submodule_post_merge_validation_failed",
+                            {
+                                "task_id": task.task_id,
+                                "path": full_relative,
+                                "validation": validation,
+                            },
+                        )
             results.append(result)
             # Record in checkpoint for crash recovery
             checkpoint.record_submodule(full_relative, result)
-            if merge.returncode == 0:
+            if result.get("merged", False):
                 results.extend(
                     self._merge_submodule_branches_to_main_in_repo(
                         repo_path=source,
@@ -19841,6 +21055,9 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                         attempt=attempt,
                         baseline_ref=baseline_ref,
                         changed_submodule_paths=changed_submodule_paths,
+                        approved_submodule_integration_targets=(
+                            approved_submodule_integration_targets
+                        ),
                         checkpoint=checkpoint,
                     )
                 )
@@ -19961,7 +21178,87 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 paths.append(path)
         return paths
 
-    def _submodule_default_branch(self, relative: str, source: Path) -> str:
+    def _root_target_submodule_default_branch(
+        self,
+        relative: str,
+        source: Path,
+        *,
+        root_ref: str = "",
+    ) -> str | None:
+        """Resolve top-level submodule policy from the exact root target tree."""
+
+        if relative not in self.worktree_submodule_paths:
+            return None
+        selected_root_ref = str(
+            root_ref
+            or getattr(self, "resolved_merge_target_branch", "")
+            or ""
+        )
+        if not selected_root_ref:
+            return None
+        blob_ref = f"{selected_root_ref}:.gitmodules"
+        paths = subprocess.run(
+            [
+                "git",
+                "config",
+                "--blob",
+                blob_ref,
+                "--get-regexp",
+                r"^submodule\..*\.path$",
+            ],
+            cwd=self.repo_root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if paths.returncode != 0:
+            return None
+        for line in paths.stdout.splitlines():
+            key, _, path_value = line.partition(" ")
+            if path_value.strip() != relative:
+                continue
+            module_key = key.rsplit(".", 1)[0]
+            branch = subprocess.run(
+                [
+                    "git",
+                    "config",
+                    "--blob",
+                    blob_ref,
+                    "--get",
+                    f"{module_key}.branch",
+                ],
+                cwd=self.repo_root,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            if branch.returncode == 0 and branch.stdout.strip():
+                configured_branch = branch.stdout.strip()
+                if configured_branch == ".":
+                    return str(
+                        getattr(self, "resolved_merge_target_branch", "")
+                        or self._git_current_branch(self.repo_root)
+                        or "main"
+                    )
+                return configured_branch
+            current = self._git_current_branch(source)
+            return current or "main"
+        return None
+
+    def _submodule_default_branch(
+        self,
+        relative: str,
+        source: Path,
+        *,
+        root_ref: str = "",
+    ) -> str:
+        target_branch = self._root_target_submodule_default_branch(
+            relative,
+            source,
+            root_ref=root_ref,
+        )
+        if target_branch is not None:
+            return target_branch
         result = subprocess.run(
             ["git", "config", "--file", str(self.repo_root / ".gitmodules"), "--get-regexp", r"^submodule\..*\.path$"],
             cwd=self.repo_root,
@@ -19983,7 +21280,14 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                     check=False,
                 )
                 if branch.returncode == 0 and branch.stdout.strip():
-                    return branch.stdout.strip()
+                    configured_branch = branch.stdout.strip()
+                    if configured_branch == ".":
+                        return str(
+                            getattr(self, "resolved_merge_target_branch", "")
+                            or self._git_current_branch(self.repo_root)
+                            or "main"
+                        )
+                    return configured_branch
         current = self._git_current_branch(source)
         return current or "main"
 
@@ -25463,6 +26767,97 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             and str(receipt.get("retired_task_reason") or "").startswith("off_mission_")
         }
 
+    @staticmethod
+    def _task_boolean_metadata_resolution(
+        task: PortalTask,
+        key: str,
+        *,
+        default: bool,
+    ) -> tuple[bool | None, str]:
+        """Resolve one optional task boolean and its stable parse condition.
+
+        Legacy taskboards predate the execution-eligibility fields, so an
+        absent value retains its field-specific default.  Once a field is
+        present, however, ambiguous aliases and non-boolean values must not be
+        widened through Python truthiness.
+        """
+
+        normalized_key = normalize_task_metadata_key(key)
+        matches = [
+            value
+            for metadata_key, value in task.metadata.items()
+            if normalize_task_metadata_key(metadata_key) == normalized_key
+        ]
+        if not matches:
+            return default, ""
+        if len(matches) != 1 or matches[0] == AMBIGUOUS_TASK_BOOLEAN_METADATA:
+            return None, "ambiguous"
+        value = matches[0]
+        if isinstance(value, bool):
+            return value, ""
+        if isinstance(value, int) and value in {0, 1}:
+            return bool(value), ""
+        if isinstance(value, str):
+            normalized_value = value.strip().lower()
+            if normalized_value in {"1", "true", "yes", "on"}:
+                return True, ""
+            if normalized_value in {"0", "false", "no", "off"}:
+                return False, ""
+        return None, "invalid"
+
+    @classmethod
+    def _task_boolean_metadata(
+        cls,
+        task: PortalTask,
+        key: str,
+        *,
+        default: bool,
+    ) -> bool | None:
+        """Read one optional task boolean, returning ``None`` when malformed."""
+
+        value, _condition = cls._task_boolean_metadata_resolution(
+            task,
+            key,
+            default=default,
+        )
+        return value
+
+    @classmethod
+    def _task_direct_implementation_blockers(
+        cls,
+        task: PortalTask,
+    ) -> tuple[str, ...]:
+        """Return stable reasons that forbid direct implementation."""
+
+        is_schedulable, schedulable_condition = (
+            cls._task_boolean_metadata_resolution(
+                task,
+                "is schedulable",
+                default=True,
+            )
+        )
+        review_only, review_condition = cls._task_boolean_metadata_resolution(
+            task,
+            "review only",
+            default=False,
+        )
+        blockers: list[str] = []
+        if schedulable_condition:
+            blockers.append(f"{schedulable_condition}_is_schedulable")
+        elif is_schedulable is False:
+            blockers.append("task_marked_unschedulable")
+        if review_condition:
+            blockers.append(f"{review_condition}_review_only")
+        elif review_only is True:
+            blockers.append("task_marked_review_only")
+        return tuple(blockers)
+
+    @classmethod
+    def _task_direct_implementation_allowed(cls, task: PortalTask) -> bool:
+        """Return whether task metadata authorizes direct implementation."""
+
+        return not cls._task_direct_implementation_blockers(task)
+
     def _selection_scope(
         self,
         tasks: list[PortalTask],
@@ -25470,13 +26865,40 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         strategy: dict[str, Any],
     ) -> dict[str, Any]:
         selectable_ready = [task for task in tasks if resolved_statuses.get(task.task_id) == "ready"]
+        noncompleted_tasks = [
+            task
+            for task in tasks
+            if resolved_statuses.get(task.task_id) != "completed"
+        ]
+        policy_ineligible = [
+            task
+            for task in noncompleted_tasks
+            if self._task_direct_implementation_blockers(task)
+        ]
+        policy_eligible_ready = [
+            task
+            for task in selectable_ready
+            if self._task_direct_implementation_allowed(task)
+        ]
         strict_deprioritized = self._strict_off_mission_deprioritized_task_ids(strategy)
-        strict_ready = [task.task_id for task in selectable_ready if task.task_id in strict_deprioritized]
-        eligible_ready = [task.task_id for task in selectable_ready if task.task_id not in strict_deprioritized]
+        strict_ready = [
+            task.task_id
+            for task in policy_eligible_ready
+            if task.task_id in strict_deprioritized
+        ]
+        eligible_ready = [
+            task.task_id
+            for task in policy_eligible_ready
+            if task.task_id not in strict_deprioritized
+        ]
         reason = ""
         if not eligible_ready:
             if strict_ready:
                 reason = "all_selectable_ready_tasks_deprioritized_as_off_mission"
+            elif selectable_ready and not policy_eligible_ready:
+                reason = "all_selectable_ready_tasks_ineligible_by_task_metadata"
+            elif policy_ineligible and len(policy_ineligible) == len(noncompleted_tasks):
+                reason = "all_selectable_ready_tasks_ineligible_by_task_metadata"
             elif selectable_ready:
                 reason = "no_eligible_ready_tasks_after_selection_filters"
             else:
@@ -25496,7 +26918,12 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         unresolved_merge_failures: dict[str, dict[str, Any]],
         recent_outcomes: dict[str, dict[str, Any]],
     ) -> PortalTask | None:
-        ready = [task for task in tasks if resolved_statuses.get(task.task_id) == "ready"]
+        ready = [
+            task
+            for task in tasks
+            if resolved_statuses.get(task.task_id) == "ready"
+            and self._task_direct_implementation_allowed(task)
+        ]
         # The durable queue is authoritative across isolated lane state dirs.
         # Consult both canonical and display identities for compatibility with
         # queue records written before canonical task ids were introduced.
