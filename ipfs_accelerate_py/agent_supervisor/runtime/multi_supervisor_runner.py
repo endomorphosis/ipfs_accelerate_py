@@ -925,6 +925,91 @@ def _relative_or_absolute_path(repo_root: Path, value: object) -> Path | None:
     return path if path.is_absolute() else repo_root / path
 
 
+def _track_task_state_path(track: SupervisorTrack, *, repo_root: Path) -> Path | None:
+    """Resolve a track's task-state projection without trusting an escape path."""
+
+    resolved = track.resolve(repo_root)
+    state_root = resolved.supervisor_pid_path.parent.resolve(strict=False)
+    status = _read_json_dict(_inferred_supervisor_status_path(resolved))
+    candidate = _relative_or_absolute_path(
+        repo_root,
+        status.get("current_status_path")
+        or status.get("progress_path")
+        or status.get("state_path"),
+    )
+    if candidate is None:
+        name = resolved.supervisor_pid_path.name
+        suffix = "_supervisor.pid"
+        if not name.endswith(suffix):
+            return None
+        candidate = resolved.supervisor_pid_path.with_name(
+            f"{name[:-len(suffix)]}_task_state.json"
+        )
+    candidate = candidate.resolve(strict=False)
+    return candidate if _path_within(candidate, state_root) else None
+
+
+def terminal_task_state_fields(
+    track: SupervisorTrack,
+    *,
+    repo_root: Path,
+    fresh_after_epoch_seconds: float,
+) -> dict[str, object]:
+    """Return fail-closed terminal-quiescence fields for one implementation track.
+
+    Freshness is mandatory.  This prevents a prior completed projection from
+    terminating a new run before its child has observed a changed board.
+    Launchers should preflight already-completed boards instead of starting a
+    timed runner solely to rediscover old terminal state.
+    """
+
+    path = _track_task_state_path(track, repo_root=repo_root)
+    if path is None:
+        return {"terminal_quiescent": False, "task_state_status": "untracked"}
+    payload = _read_json_dict(path)
+    if not payload:
+        return {
+            "terminal_quiescent": False,
+            "task_state_status": "missing",
+            "task_state_path": str(path),
+        }
+    try:
+        modified_at = path.stat().st_mtime
+    except OSError:
+        modified_at = 0.0
+    fresh = modified_at + 1e-6 >= float(fresh_after_epoch_seconds)
+    task_count = int(payload.get("task_count") or 0)
+    completed_count = int(payload.get("completed_count") or 0)
+    active_task_id = str(payload.get("active_task_id") or "").strip()
+    implementation_in_progress = bool(payload.get("implementation_in_progress"))
+    eligible_ready_count = int(payload.get("eligible_ready_count") or 0)
+    blocked_count = int(payload.get("blocked_count") or 0)
+    external_reserved_count = int(payload.get("external_reserved_count") or 0)
+    terminal = bool(
+        fresh
+        and task_count > 0
+        and completed_count == task_count
+        and not active_task_id
+        and not implementation_in_progress
+        and eligible_ready_count == 0
+        and blocked_count == 0
+        and external_reserved_count == 0
+    )
+    return {
+        "terminal_quiescent": terminal,
+        "task_state_status": "terminal" if terminal else "nonterminal",
+        "task_state_path": str(path),
+        "task_state_fresh": fresh,
+        "task_count": task_count,
+        "completed_count": completed_count,
+        "active_task_id": active_task_id,
+        "implementation_in_progress": implementation_in_progress,
+        "eligible_ready_count": eligible_ready_count,
+        "blocked_count": blocked_count,
+        "external_reserved_count": external_reserved_count,
+    }
+
+
 def supervisor_status_health_fields(
     track: SupervisorTrack,
     *,
@@ -1183,6 +1268,7 @@ def run_supervisor_tracks(
     python_executable: str = "python3",
     master_pid_path: Path | None = None,
     label: str = "multi-supervisor",
+    exit_when_all_tracks_terminal: bool = False,
     output: OutputFn = _default_output,
 ) -> dict[str, object]:
     """Run and supervise multiple tracks for the requested duration."""
@@ -1203,6 +1289,8 @@ def run_supervisor_tracks(
     signal.signal(signal.SIGTERM, _handle_signal)
     signal.signal(signal.SIGINT, _handle_signal)
     interrupted = ""
+    terminal_quiescent = False
+    run_started_at = time.time()
     try:
         _emit(output, f"starting {label} duration_seconds={duration_seconds:g}")
         for track in tracks:
@@ -1216,6 +1304,7 @@ def run_supervisor_tracks(
 
         deadline = time.monotonic() + max(0.0, float(duration_seconds))
         while time.monotonic() < deadline:
+            terminal_tracks: set[str] = set()
             sleep_for = min(
                 max(0.05, heartbeat_interval_seconds),
                 max(0.0, deadline - time.monotonic()),
@@ -1275,6 +1364,14 @@ def run_supervisor_tracks(
                             python_executable=python_executable,
                             output=output,
                         )
+                    elif exit_when_all_tracks_terminal:
+                        task_fields = terminal_task_state_fields(
+                            resolved,
+                            repo_root=resolved_repo_root,
+                            fresh_after_epoch_seconds=run_started_at,
+                        )
+                        if task_fields.get("terminal_quiescent"):
+                            terminal_tracks.add(track.name)
                     continue
                 old_pid = None if process is None else process.pid
                 _emit(output, f"restarting exited {track.name} supervisor old_pid={old_pid or 'none'}")
@@ -1294,7 +1391,18 @@ def run_supervisor_tracks(
                     python_executable=python_executable,
                     output=output,
                 )
-        _emit(output, "completed requested run window")
+            if (
+                exit_when_all_tracks_terminal
+                and tracks
+                and len(terminal_tracks) == len(tracks)
+            ):
+                terminal_quiescent = True
+                _emit(output, "all supervisor tracks reached fresh terminal quiescence")
+                break
+        if terminal_quiescent:
+            _emit(output, "completed after terminal board drain")
+        else:
+            _emit(output, "completed requested run window")
     except SupervisorRunInterrupted as exc:
         interrupted = str(exc)
         _emit(output, f"interrupted: {interrupted}")
@@ -1321,6 +1429,7 @@ def run_supervisor_tracks(
         "all_trees_fenced": stop_payload["all_trees_fenced"],
         "removed_runtime_markers": stop_payload["removed_runtime_markers"],
         "master_pid_removed": master_pid_removed,
+        "terminal_quiescent": terminal_quiescent,
     }
 
 
@@ -1336,6 +1445,14 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--master-log", type=Path, default=None)
     parser.add_argument("--master-pid-path", type=Path, default=None)
     parser.add_argument("--label", default="multi-supervisor")
+    parser.add_argument(
+        "--exit-when-all-tracks-terminal",
+        action="store_true",
+        help=(
+            "End the run after every track publishes a fresh, complete, idle, "
+            "unblocked task projection. Stale projections never trigger exit."
+        ),
+    )
     parser.add_argument("--python-executable", default="python3")
     parser.add_argument("--track", action="append", default=[])
     parser.add_argument(
@@ -1586,6 +1703,7 @@ def main(argv: list[str] | None = None) -> int:
             python_executable=args.python_executable,
             master_pid_path=master_pid,
             label=args.label,
+            exit_when_all_tracks_terminal=args.exit_when_all_tracks_terminal,
             output=output,
         )
     return 0

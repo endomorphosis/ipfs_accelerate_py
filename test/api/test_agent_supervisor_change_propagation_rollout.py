@@ -773,7 +773,12 @@ def test_cli_check_all_with_skips(capsys: pytest.CaptureFixture[str]) -> None:
     assert report["valid"] is True
 
 
-def test_cli_status(capsys: pytest.CaptureFixture[str]) -> None:
+def test_cli_status(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setenv("RPR_STATE_ROOT", str(tmp_path / "stopped-program"))
     assert cli.main(["status", "--json"]) == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload["mode"] == "shadow"

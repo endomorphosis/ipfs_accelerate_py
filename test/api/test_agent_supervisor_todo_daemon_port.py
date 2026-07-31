@@ -3784,6 +3784,71 @@ def test_multi_supervisor_runner_restarts_stale_idle_supervisor_status(tmp_path)
     assert any("restarting stale T supervisor" in line for line in output)
 
 
+def test_multi_supervisor_runner_exits_after_fresh_terminal_board_drain(tmp_path):
+    worker = tmp_path / "worker.py"
+    worker.write_text(
+        "\n".join(
+            [
+                "import json",
+                "import signal",
+                "import sys",
+                "import time",
+                "from pathlib import Path",
+                "signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))",
+                "Path('state').mkdir(exist_ok=True)",
+                "Path('state/example_supervisor_status.json').write_text(",
+                "    json.dumps({'updated_at': '2999-01-01T00:00:00+00:00', 'current_status_path': 'state/example_task_state.json'}),",
+                "    encoding='utf-8',",
+                ")",
+                "time.sleep(0.1)",
+                "Path('state/example_task_state.json').write_text(",
+                "    json.dumps({",
+                "        'task_count': 4,",
+                "        'completed_count': 4,",
+                "        'active_task_id': '',",
+                "        'implementation_in_progress': False,",
+                "        'eligible_ready_count': 0,",
+                "        'blocked_count': 0,",
+                "        'external_reserved_count': 0,",
+                "    }),",
+                "    encoding='utf-8',",
+                ")",
+                "while True:",
+                "    time.sleep(0.05)",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    track = parse_track_spec(
+        "T|worker.py|logs/{stamp}.log|state/example_supervisor.pid|state/example_managed_daemon.pid",
+        stamp="RUN",
+    )
+
+    output: list[str] = []
+    started = time.monotonic()
+    result = run_supervisor_tracks(
+        [track],
+        repo_root=tmp_path,
+        common_args=[],
+        duration_seconds=5,
+        heartbeat_interval_seconds=0.05,
+        stop_grace_seconds=0.2,
+        python_executable=sys.executable,
+        master_pid_path=tmp_path / "state" / "master.pid",
+        label="terminal runner",
+        exit_when_all_tracks_terminal=True,
+        output=output.append,
+    )
+
+    assert time.monotonic() - started < 2
+    assert result["completed"] is True
+    assert result["terminal_quiescent"] is True
+    assert result["all_trees_fenced"] is True
+    assert result["master_pid_removed"] is True
+    assert any("fresh terminal quiescence" in line for line in output)
+
+
 def test_implementation_supervisor_track_spec_uses_standard_state_layout():
     namespace_paths = agent_supervisor_namespace_paths(Path("/repo"), "virtual_ai_os")
     config = ImplementationSupervisorTrackConfig(
@@ -7664,6 +7729,23 @@ def test_implementation_supervisor_signal_cleans_managed_daemon_before_exit(
         signal.SIGINT: "previous-int",
     }
     assert len(transitions) == 4
+    terminal = json.loads(
+        (state_dir / "portal_supervisor_status.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert terminal["status"] == "stopped"
+    assert terminal["daemon_pid"] is None
+    assert terminal["daemon_pid_alive"] is False
+    assert terminal["supervisor_pid_alive"] is False
+    assert terminal["last_exit_code"] == 128 + signal.SIGTERM
+    assert terminal["shutdown_signal"] == signal.SIGTERM
+    assert terminal["shutdown_signal_name"] == "SIGTERM"
+    assert terminal["managed_daemon_cleanup"] == {
+        "pid": 4321,
+        "terminated": True,
+    }
+    assert terminal["completion_authority"] is False
 
 
 def test_implementation_daemon_accepts_configured_submodule_paths(tmp_path):

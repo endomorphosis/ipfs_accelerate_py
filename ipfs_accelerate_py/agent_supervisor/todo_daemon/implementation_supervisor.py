@@ -72,6 +72,7 @@ from .implementation_daemon import (
     write_text_atomic,
 )
 from .supervisor import (
+    SupervisorStatusContext,
     active_codex_exec_workers,
     descendant_processes,
     worktree_phase_worker_status,
@@ -560,6 +561,62 @@ class PortalImplementationSupervisor:
 
     def _supervisor_status_path(self) -> Path:
         return self.config.state_dir / f"{self.config.state_prefix}_supervisor_status.json"
+
+    def _write_signal_shutdown_status(
+        self,
+        stop_signal: int,
+        managed_daemon_cleanup: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Publish a terminal projection after the owned child tree is fenced.
+
+        The inner ``SupervisorLoop`` normally writes this projection.  A
+        process signal raises ``SystemExit`` in the outer loop, so its normal
+        return path is bypassed.  Persisting the terminal state here prevents
+        an orderly window expiry from looking like a live supervisor with a
+        dead PID.  This projection is diagnostic only and grants no task or
+        completion authority.
+        """
+
+        loop_config = self.build_supervisor_loop_config()
+        previous = load_json_dict(self._supervisor_status_path()) or {}
+        context = SupervisorStatusContext(
+            loop_config.spec,
+            static_fields={
+                "restart_backoff_seconds": (
+                    loop_config.restart_policy.restart_backoff_seconds
+                ),
+                "fast_restart_backoff_seconds": (
+                    loop_config.restart_policy.fast_restart_backoff_seconds
+                ),
+                "supervisor_heartbeat_seconds": loop_config.heartbeat_seconds,
+                "supervisor_poll_seconds": loop_config.poll_seconds,
+                "watchdog_stale_after_seconds": (
+                    loop_config.watchdog_stale_after_seconds
+                ),
+                "watchdog_startup_grace_seconds": (
+                    loop_config.watchdog_startup_grace_seconds
+                ),
+                "stop_grace_seconds": loop_config.stop_grace_seconds,
+                **dict(loop_config.status_static_fields),
+                **dict(loop_config.status_extra_fields),
+            },
+        )
+        return context.write(
+            "stopped",
+            run_id=str(previous.get("run_id") or ""),
+            log_path=str(previous.get("log_path") or ""),
+            daemon_pid=None,
+            restart_count=int(previous.get("restart_count") or 0),
+            last_exit_code=128 + int(stop_signal),
+            extra={
+                "shutdown_signal": int(stop_signal),
+                "shutdown_signal_name": signal.Signals(stop_signal).name,
+                "managed_daemon_cleanup": dict(managed_daemon_cleanup),
+                "daemon_pid_alive": False,
+                "supervisor_pid_alive": False,
+                "completion_authority": False,
+            },
+        )
 
     def _supervisor_maintenance_timeout_seconds(self) -> float:
         return max(
@@ -2057,6 +2114,12 @@ class PortalImplementationSupervisor:
                     )
                 except OSError:
                     logger.exception("Could not record supervisor signal shutdown")
+                try:
+                    self._write_signal_shutdown_status(stop_signal, cleanup)
+                except Exception:
+                    logger.exception(
+                        "Could not write terminal supervisor signal status"
+                    )
             if handlers_installed:
                 signal.signal(signal.SIGTERM, previous_term)
                 signal.signal(signal.SIGINT, previous_int)
