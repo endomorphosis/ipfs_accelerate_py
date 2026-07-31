@@ -1,14 +1,22 @@
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
 import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+    PortalTask,
+)
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 LAUNCHER = REPO_ROOT / "scripts/tactician_hammer_logic_repair_supervisor.sh"
 SCHEDULER = REPO_ROOT / "config/agent_supervisor_tactician_hammer_logic_repair_scheduler.json"
+BOARD_VALIDATOR = REPO_ROOT / "scripts/validate_tactician_hammer_logic_repair_board.py"
 
 
 def _write_fake_runner(module_root: Path) -> None:
@@ -225,3 +233,68 @@ def test_lpr_datasets_gitlink_contains_the_reviewed_tactician_contract():
         check=True,
     )
     assert imported.stdout.strip() == source["datasets_required_interface"]
+
+
+def test_lpr_board_validator_keeps_retry_repairs_outside_the_sealed_dag():
+    spec = importlib.util.spec_from_file_location(
+        "lpr_board_validator_test",
+        BOARD_VALIDATOR,
+    )
+    assert spec is not None and spec.loader is not None
+    validator = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(validator)
+
+    source = PortalTask(
+        task_id="LPR-028",
+        title="Canonical source",
+        status="todo",
+        completion="auto",
+        priority="P0",
+        track="release",
+        depends_on=["LPR-027"],
+        outputs=["src/cutover.py"],
+        validation=["python -m pytest -q test_cutover.py"],
+        acceptance="Complete the cutover.",
+    )
+    discovery_root = (
+        "/tmp/agent-supervisor-state/tactician_hammer_logic_repair/"
+        "state/discovery"
+    )
+    discovery_path = (
+        f"{discovery_root}/2026-07-31-lpr-043-lpr-028-retry-budget.md"
+    )
+    repair = PortalTask(
+        task_id="LPR-043",
+        title="Resolve validation retry-budget failure for LPR-028",
+        status="completed",
+        completion="manual",
+        priority="P1",
+        track="ops",
+        depends_on=["LPR-027"],
+        outputs=["src/cutover.py", discovery_root],
+        validation=[f"test -f {discovery_path}"],
+        acceptance=(
+            f"Use evidence in {discovery_path} to fix the blocker, then "
+            "release LPR-028 from strategy blocked_tasks."
+        ),
+    )
+
+    validator._validate_operational_repair_tasks(
+        [repair],
+        canonical_by_id={"LPR-028": source},
+    )
+
+    forged = PortalTask(
+        **{
+            **repair.__dict__,
+            "title": "Unreviewed task outside the sealed DAG",
+        }
+    )
+    with pytest.raises(
+        validator.BoardValidationError,
+        match="unrecognized operational retry-repair",
+    ):
+        validator._validate_operational_repair_tasks(
+            [forged],
+            canonical_by_id={"LPR-028": source},
+        )
