@@ -415,7 +415,7 @@ expectations under existing precedence, but do not prove them by passing.
 
 ## LPR-012 Coordinate bounded production Hammer proof and reconstruction
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
