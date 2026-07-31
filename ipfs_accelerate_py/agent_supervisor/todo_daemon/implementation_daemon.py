@@ -18246,23 +18246,26 @@ class PortalImplementationDaemon:
         ).strip()
         self._implementation_seed_failure_guidance[key] = guidance
         guide_path = ""
-        if worktree_path.exists():
-            try:
-                guide_dir = (
-                    worktree_path / "docs" / "agent-supervisor" / "rescue"
-                )
-                guide_dir.mkdir(parents=True, exist_ok=True)
-                safe_task = re.sub(
-                    r"[^a-z0-9._-]+", "-", task.task_id.lower()
-                ).strip("-") or "task"
-                guide_file = (
-                    guide_dir
-                    / f"{safe_task}-attempt-{int(attempt)}-seed-recovery.md"
-                )
-                guide_file.write_text(guidance + "\n", encoding="utf-8")
-                guide_path = str(guide_file.relative_to(worktree_path))
-            except OSError:
-                guide_path = ""
+        try:
+            # Recovery guidance is supervisor state, not implementation
+            # output.  Writing it into the candidate worktree makes the
+            # proposal gate correctly reject the supervisor's own file as an
+            # undeclared task mutation.  Keep the durable note beside the
+            # implementation logs so retries receive guidance without
+            # contaminating the candidate tree.
+            guide_dir = self.implementation_log_dir / "seed_recovery"
+            guide_dir.mkdir(parents=True, exist_ok=True)
+            safe_task = re.sub(
+                r"[^a-z0-9._-]+", "-", task.task_id.lower()
+            ).strip("-") or "task"
+            guide_file = (
+                guide_dir
+                / f"{safe_task}-attempt-{int(attempt)}-seed-recovery.md"
+            )
+            guide_file.write_text(guidance + "\n", encoding="utf-8")
+            guide_path = str(guide_file)
+        except OSError:
+            guide_path = ""
         self._record_event(
             "implementation_prior_attempt_seed_failed",
             {

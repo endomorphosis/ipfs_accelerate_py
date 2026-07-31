@@ -16,6 +16,8 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib.metadata
+import importlib.util
 import json
 import os
 import re
@@ -636,11 +638,33 @@ def _probe_in_process_module(
 ) -> tuple[bool, str | None]:
     """Bounded isolated import probe for in-process tools. Never installs."""
 
+    if tool_id == "symbolicai":
+        # The PyPI distribution is ``symbolicai`` but its import package is
+        # ``symai``.  Importing symai is not a harmless availability probe: it
+        # may initialize user configuration.  Bind both identities without
+        # executing package code.
+        try:
+            distribution_version = importlib.metadata.version("symbolicai")
+            module_spec = importlib.util.find_spec("symai")
+        except (
+            ImportError,
+            ModuleNotFoundError,
+            importlib.metadata.PackageNotFoundError,
+            ValueError,
+        ):
+            return False, None
+        if module_spec is None or not distribution_version:
+            return False, None
+        return (
+            True,
+            "python-distribution:"
+            f"symbolicai=={distribution_version};module:symai",
+        )
+
     module_map = {
         "runtime-mtl": "ipfs_datasets_py.logic.software_verification.monitoring.runtime_mtl",
         "datalog-authorization": "ipfs_datasets_py.logic.backends.datalog",
         "secpal-authorization": "ipfs_datasets_py.logic.backends.datalog",
-        "symbolicai": "symbolicai",
         "ergoai": "ergoai",
         "zkp-circuit": None,  # declared gap — never pretend installed
     }

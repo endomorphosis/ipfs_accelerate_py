@@ -224,6 +224,107 @@ def test_cpu_extension_resource_classes_do_not_bypass_host_capabilities() -> Non
 
 
 @pytest.mark.parametrize(
+    ("advertised_resource_class", "required_resource_class"),
+    [
+        (ProofResourceClass.SOLVER.value, "jvm-proof-solver"),
+        (ProofResourceClass.SOLVER.value, "exclusive-opam-toolchain"),
+        (ProofResourceClass.KERNEL.value, "large-kernel-toolchain"),
+    ],
+)
+def test_planner_local_cpu_toolchain_classes_use_cpu_proof_capacity(
+    advertised_resource_class: str,
+    required_resource_class: str,
+) -> None:
+    scheduler = ResourceScheduler(ResourcePolicy(max_lanes=4))
+
+    decision = scheduler.evaluate(
+        LaneResourceRequirements(
+            lane_id=required_resource_class,
+            resource_class=required_resource_class,
+        ),
+        host=_host(resource_classes=(advertised_resource_class,)),
+    )
+
+    assert decision.admitted is True
+    assert decision.resource_pool == "cpu-proof"
+    assert "resource_class_mismatch" not in decision.reasons
+
+
+@pytest.mark.parametrize(
+    "required_resource_class",
+    ["gpu", "provider-toolchain", "unknown-toolchain"],
+)
+def test_unrecognized_non_cpu_resource_classes_remain_fail_closed(
+    required_resource_class: str,
+) -> None:
+    scheduler = ResourceScheduler(ResourcePolicy(max_lanes=4))
+
+    decision = scheduler.evaluate(
+        LaneResourceRequirements(
+            lane_id=required_resource_class,
+            resource_class=required_resource_class,
+        ),
+        host=_host(resource_classes=(ProofResourceClass.SOLVER.value,)),
+    )
+
+    assert decision.admitted is False
+    assert "resource_class_mismatch" in decision.reasons
+
+
+def test_exclusive_planner_resource_classes_serialize_by_default() -> None:
+    scheduler = ResourceScheduler(ResourcePolicy(max_lanes=4))
+
+    snapshot = scheduler.schedule(
+        (
+            LaneResourceRequirements(
+                lane_id="opam-one",
+                resource_class="exclusive-opam-toolchain",
+            ),
+            LaneResourceRequirements(
+                lane_id="opam-two",
+                resource_class="exclusive-opam-toolchain",
+            ),
+        ),
+        host=_host(
+            resource_classes=(ProofResourceClass.SOLVER.value,),
+        ),
+    )
+
+    first = snapshot.decision_for("opam-one")
+    second = snapshot.decision_for("opam-two")
+    assert first is not None and first.admitted is True
+    assert second is not None and second.admitted is False
+    assert "resource_class_concurrency" in second.reasons
+
+
+def test_explicit_exclusive_resource_class_limit_overrides_default() -> None:
+    scheduler = ResourceScheduler(
+        ResourcePolicy(
+            max_lanes=4,
+            resource_class_limits={"exclusive-opam-toolchain": 2},
+        )
+    )
+
+    snapshot = scheduler.schedule(
+        (
+            LaneResourceRequirements(
+                lane_id="opam-one",
+                resource_class="exclusive-opam-toolchain",
+            ),
+            LaneResourceRequirements(
+                lane_id="opam-two",
+                resource_class="exclusive-opam-toolchain",
+            ),
+        ),
+        host=_host(
+            resource_classes=(ProofResourceClass.SOLVER.value,),
+        ),
+    )
+
+    assert snapshot.admitted_lane_ids == ("opam-one", "opam-two")
+
+
+@pytest.mark.parametrize(
     ("provider_overrides", "requirement_overrides", "policy_overrides", "reason"),
     [
         ({"healthy": False}, {}, {}, "provider_unhealthy"),

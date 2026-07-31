@@ -308,6 +308,49 @@ def test_lean_probe_selects_already_installed_locked_toolchain(
     assert result["shim_toolchain_mismatch"] is False
 
 
+def test_symbolicai_probe_binds_distribution_to_symai_without_import(
+    certifier,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    observed: list[tuple[str, str]] = []
+
+    def distribution_version(name: str) -> str:
+        observed.append(("distribution", name))
+        return "1.14.0"
+
+    def find_spec(name: str) -> object:
+        observed.append(("module", name))
+        return object()
+
+    monkeypatch.setattr(
+        certifier.importlib.metadata,
+        "version",
+        distribution_version,
+    )
+    monkeypatch.setattr(certifier.importlib.util, "find_spec", find_spec)
+    monkeypatch.setattr(
+        certifier,
+        "bounded_run",
+        lambda *_args, **_kwargs: pytest.fail(
+            "SymbolicAI availability must not import symai"
+        ),
+    )
+
+    available, identity = certifier._probe_in_process_module(
+        "symbolicai",
+        env=certifier.offline_env({}),
+    )
+
+    assert available is True
+    assert identity == (
+        "python-distribution:symbolicai==1.14.0;module:symai"
+    )
+    assert observed == [
+        ("distribution", "symbolicai"),
+        ("module", "symai"),
+    ]
+
+
 def test_version_mismatch_blocks_production_certification(certifier) -> None:
     assert certifier.detect_locked_version_mismatch(
         "1.3.3", "This is cvc5 version 1.2.0"

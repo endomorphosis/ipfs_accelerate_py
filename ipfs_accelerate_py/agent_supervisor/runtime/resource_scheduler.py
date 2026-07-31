@@ -216,6 +216,18 @@ LEGACY_RESOURCE_CLASSES = (
 # in ``_host_reasons`` and can still be advertised explicitly by old workers.
 DEFAULT_RESOURCE_CLASSES = PROOF_RESOURCE_CLASSES
 
+# Planner extensions for repository-local proof toolchains which consume the
+# ordinary CPU proof pool.  Keep this list explicit: arbitrary extension,
+# provider, and accelerator classes must not acquire local capacity merely
+# because the host has a CPU.
+LOCAL_CPU_TOOLCHAIN_RESOURCE_CLASSES = frozenset(
+    {
+        "exclusive-opam-toolchain",
+        "jvm-proof-solver",
+        "large-kernel-toolchain",
+    }
+)
+
 _RESOURCE_CLASS_ALIASES = {
     "translate": ProofResourceClass.TRANSLATION.value,
     "translation": ProofResourceClass.TRANSLATION.value,
@@ -2761,12 +2773,19 @@ class ResourceScheduler:
             # permanently unschedulable.  Keep accelerator/provider classes
             # fail-closed, and retain the independent capability check below
             # for subclasses that require features such as AVX or containers.
-            cpu_extension_compatible = (
-                requirement.resource_class.startswith("cpu-")
-                and "cpu" in host.capabilities
+            advertised_local_cpu_proof = (
+                "cpu" in host.capabilities
                 and any(
                     resource_class.startswith("cpu-")
                     for resource_class in host.resource_classes
+                )
+            )
+            cpu_extension_compatible = (
+                advertised_local_cpu_proof
+                and (
+                    requirement.resource_class.startswith("cpu-")
+                    or requirement.resource_class
+                    in LOCAL_CPU_TOOLCHAIN_RESOURCE_CLASSES
                 )
             )
             legacy_compatible = (
@@ -2953,6 +2972,8 @@ class ResourceScheduler:
         if pool_occupied + req.process_slots > self._pool_limit(req.resource_pool):
             host_reasons.append(f"{req.resource_pool.replace('-', '_')}_concurrency")
         class_limit = self.policy.resource_class_limits.get(req.resource_class)
+        if class_limit is None and req.resource_class.startswith("exclusive-"):
+            class_limit = 1
         class_occupied = sum(
             item.process_slots
             for item in active_items

@@ -6831,6 +6831,67 @@ def test_implementation_daemon_handoffs_clean_provider_superproject_commit(
     assert _git(repo, "log", "--format=%s", "-1") == "provider root change"
 
 
+def test_prior_attempt_seed_failure_guidance_stays_outside_candidate_worktree(
+    tmp_path: Path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "base")
+    state_dir = tmp_path / "supervisor-state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+    )
+    task = PortalTask(
+        task_id="AUTO-121R",
+        title="Recover a prior implementation",
+        status="todo",
+        completion="manual",
+        priority="P0",
+        track="ops",
+        outputs=("README.md",),
+    )
+
+    daemon._record_prior_attempt_seed_failure(
+        task=task,
+        attempt=2,
+        seed_plan={
+            "prior_commit": "a" * 40,
+            "prior_branch": "rescue/auto-121r",
+        },
+        seed_apply={"reason": "prior_seed_accepted_proposal_missing"},
+        worktree_path=repo,
+        branch_name="implementation/auto-121r-attempt-2",
+    )
+
+    assert _git(repo, "status", "--porcelain") == ""
+    assert not (repo / "docs" / "agent-supervisor" / "rescue").exists()
+    guide = (
+        state_dir
+        / "implementation_logs"
+        / "seed_recovery"
+        / "auto-121r-attempt-2-seed-recovery.md"
+    )
+    assert guide.is_file()
+    assert "prior_seed_accepted_proposal_missing" in guide.read_text(
+        encoding="utf-8"
+    )
+    event = json.loads(
+        (state_dir / "events.jsonl").read_text(encoding="utf-8").splitlines()[-1]
+    )
+    assert event["type"] == "implementation_prior_attempt_seed_failed"
+    assert event["guidance_path"] == str(guide)
+
+
 def test_implementation_daemon_handoffs_provider_committed_gitlink(
     tmp_path: Path,
 ):
