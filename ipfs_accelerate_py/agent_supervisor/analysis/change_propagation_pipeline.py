@@ -112,6 +112,9 @@ class ChangePropagationPipelinePolicy:
     allow_provider_for_model_steps: bool = True
     # When true, pure analytical packets never invoke a provider (default).
     analytical_skips_provider: bool = True
+    # Opt-in: invoke live logic-repair stages (goal→admission) before existing
+    # atomic-plan admission when bound logic artifacts are supplied (LPR-017).
+    enable_live_logic_repair: bool = False
 
     def __post_init__(self) -> None:
         for name in (
@@ -119,6 +122,7 @@ class ChangePropagationPipelinePolicy:
             "require_fixed_point_completion",
             "allow_provider_for_model_steps",
             "analytical_skips_provider",
+            "enable_live_logic_repair",
         ):
             if not isinstance(getattr(self, name), bool):
                 raise ChangePropagationPipelineError(f"{name} must be a boolean")
@@ -148,6 +152,7 @@ class ChangePropagationPipelinePolicy:
             "require_fixed_point_completion": self.require_fixed_point_completion,
             "allow_provider_for_model_steps": self.allow_provider_for_model_steps,
             "analytical_skips_provider": self.analytical_skips_provider,
+            "enable_live_logic_repair": self.enable_live_logic_repair,
         }
 
 
@@ -202,6 +207,11 @@ class ChangePropagationPipelineRequest:
     # Optional projected task scope fence (must equal admitted writes when set).
     task_write_paths: Sequence[str] | None = None
     writer_write_paths: Sequence[str] | None = None
+    # Optional LPR-017 bound logic artifacts (ignored unless policy flag on).
+    live_logic_request: Any = None
+    prediction_decision: Any = None
+    prediction_receipts: Sequence[Any] = ()
+    logic_proof_bundle: Any = None
 
     @classmethod
     def from_mapping(cls, value: Mapping[str, Any]) -> "ChangePropagationPipelineRequest":
@@ -257,6 +267,10 @@ class ChangePropagationPipelineRequest:
                 if value.get("writer_write_paths") is None
                 else tuple(value.get("writer_write_paths") or ())
             ),
+            live_logic_request=value.get("live_logic_request"),
+            prediction_decision=value.get("prediction_decision"),
+            prediction_receipts=tuple(value.get("prediction_receipts") or ()),
+            logic_proof_bundle=value.get("logic_proof_bundle"),
         )
 
 
@@ -645,6 +659,86 @@ class ChangePropagationPipeline:
                 consumer_inventory_id=consumer_inventory_id,
             )
         completed.append(stage)
+
+        # ------------------------------------------------------------------
+        # 6b. Optional live logic-repair stages (LPR-017) before plan admission
+        # ------------------------------------------------------------------
+        logic_proof_bundle = request.logic_proof_bundle
+        if self.policy.enable_live_logic_repair and (
+            request.live_logic_request is not None
+            or request.prediction_decision is not None
+            or request.prediction_receipts
+        ):
+            # Lazy import preserves cold path when the flag is off.
+            from ..todo_daemon.live_logic_repair_controller import (
+                LiveLogicRepairController,
+                LiveLogicRepairMode,
+                LiveLogicRepairPolicy,
+                LiveLogicRepairRequest,
+                bridge_predictions_into_proof_bundle,
+            )
+
+            logic_policy = LiveLogicRepairPolicy(enable_live_logic_repair=True)
+            controller = LiveLogicRepairController(policy=logic_policy)
+            if request.live_logic_request is not None:
+                logic_req = request.live_logic_request
+                if isinstance(logic_req, Mapping):
+                    logic_req = LiveLogicRepairRequest.from_mapping(logic_req)
+                logic_result = controller.run(logic_req)
+                if not logic_result.admitted:
+                    return _fail(
+                        stage="live_logic_repair",
+                        disposition=(
+                            PipelineDisposition.ABSTAINED.value
+                            if logic_result.disposition
+                            == "abstained"
+                            else PipelineDisposition.REJECTED.value
+                        ),
+                        detail=(
+                            "live logic repair did not admit before "
+                            f"plan admission: {logic_result.detail}"
+                        ),
+                        completed=completed,
+                        reason_codes=tuple(logic_result.reason_codes)
+                        or ("live_logic_not_admitted",),
+                        change_set_id=change_set_id,
+                        delta_id=delta_id,
+                        graph_id=graph_id,
+                        index_id=index_id,
+                        impact_closure_id=impact_closure_id,
+                        consumer_inventory_id=consumer_inventory_id,
+                    )
+                logic_proof_bundle = (
+                    logic_result.proof_bundle or logic_proof_bundle
+                )
+                completed.append("live_logic_repair")
+            else:
+                try:
+                    logic_proof_bundle = bridge_predictions_into_proof_bundle(
+                        candidate_id=f"candidate:prop:{change_set_id}",
+                        repository_id=request.roots.repository_id,
+                        tree_id=request.roots.candidate_tree_id,
+                        prediction_decision=request.prediction_decision,
+                        prediction_receipts=request.prediction_receipts,
+                        base_proof_bundle=request.logic_proof_bundle,
+                    )
+                except Exception as exc:
+                    return _fail(
+                        stage="live_logic_repair",
+                        disposition=PipelineDisposition.REJECTED.value,
+                        detail=f"logic prediction bridge failed: {exc}",
+                        completed=completed,
+                        reason_codes=("logic_prediction_bridge_failed",),
+                        change_set_id=change_set_id,
+                        delta_id=delta_id,
+                        graph_id=graph_id,
+                        index_id=index_id,
+                        impact_closure_id=impact_closure_id,
+                        consumer_inventory_id=consumer_inventory_id,
+                    )
+                completed.append("live_logic_repair")
+            # Keep mode reference for static analyzers / cold-import safety.
+            _ = LiveLogicRepairMode.CHANGE_PROPAGATION
 
         # ------------------------------------------------------------------
         # 7. Admit atomic plan

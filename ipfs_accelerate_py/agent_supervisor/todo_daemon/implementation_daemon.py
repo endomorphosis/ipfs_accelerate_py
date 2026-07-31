@@ -16109,6 +16109,35 @@ class PortalImplementationDaemon:
         from ..analysis import change_propagation_pipeline as p
         return p.daemon_assert_no_write_bypass(**kw)
 
+    def execute_live_logic_repair(self, request, **kw):
+        """Feature-gated LPR-017 edge controller (lazy, thin host)."""
+
+        from . import live_logic_repair_controller as lpr
+
+        return lpr.daemon_execute_live_logic_repair(self, request, **kw)
+
+    def intercept_logic_repair_proposal(self, **kw):
+        """Analyze an ordinary provider proposal as a read-only overlay."""
+
+        from .live_logic_repair_controller import (
+            LiveLogicRepairController,
+            LiveLogicRepairPolicy,
+        )
+
+        enable = bool(kw.pop("enable", True))
+        policy = LiveLogicRepairPolicy(
+            enable_live_logic_repair=enable,
+            expand_write_set_on_omission=bool(
+                kw.pop("expand_write_set_on_omission", True)
+            ),
+        )
+        return LiveLogicRepairController(policy=policy).intercept_proposal(**kw)
+
+    def assert_no_logic_repair_write_bypass(self, **kw):
+        from . import live_logic_repair_controller as lpr
+
+        return lpr.daemon_assert_no_logic_repair_write_bypass(**kw)
+
     def route_model_assisted_contract_packet(
         self,
         packet: Any,

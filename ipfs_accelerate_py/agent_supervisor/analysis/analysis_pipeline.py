@@ -294,6 +294,10 @@ class AnalysisPipelinePolicy:
     # When false (default), the pipeline never mutates via the propagation
     # transaction path and legacy analysis/repair behavior is unchanged.
     enable_change_propagation: bool = False
+    # Opt-in cutover for live logic-repair edge orchestration (LPR-017).
+    # When false (default), the pipeline never invokes the live controller and
+    # legacy artifact-supplied RPR / generic proposal flows are unchanged.
+    enable_live_logic_repair: bool = False
     consensus_policy: AnalysisConsensusPolicy = field(
         default_factory=AnalysisConsensusPolicy
     )
@@ -307,6 +311,7 @@ class AnalysisPipelinePolicy:
             "cache_negative_results",
             "enable_proof_gated_contract_repair",
             "enable_change_propagation",
+            "enable_live_logic_repair",
         ):
             if not isinstance(getattr(self, name), bool):
                 raise ValueError(f"{name} must be a boolean")
@@ -361,6 +366,7 @@ class AnalysisPipelinePolicy:
                 self.enable_proof_gated_contract_repair
             ),
             "enable_change_propagation": self.enable_change_propagation,
+            "enable_live_logic_repair": self.enable_live_logic_repair,
             "consensus_policy": self.consensus_policy.to_dict(),
         }
 
@@ -3714,6 +3720,56 @@ class AnalysisPipeline:
                 )
             request = ChangePropagationPipelineRequest.from_mapping(request)
         return pipeline.run(request)
+
+    def run_live_logic_repair(
+        self,
+        request: "Mapping[str, Any] | Any",
+    ) -> Any:
+        """Feature-gated live logic-repair route (LPR-017).
+
+        Lazy-imports the edge controller so cold analysis imports stay free of
+        the todo_daemon orchestration stack.  Analytical success never invokes
+        an optional datasets provider; model steps use only LPR-016 context
+        overlays projected through existing RPR packets.
+        """
+
+        # Hard invariant: this route never consults the optional analysis
+        # datasets provider for target selection or plan admission.
+        from ..todo_daemon.live_logic_repair_controller import (
+            LiveLogicRepairController,
+            LiveLogicRepairPolicy,
+            LiveLogicRepairRequest,
+            LiveLogicRepairResult,
+        )
+
+        if not self.policy.enable_live_logic_repair:
+            return LiveLogicRepairResult(
+                enabled=False,
+                mode=str(
+                    getattr(request, "mode", None)
+                    or (
+                        request.get("mode")
+                        if isinstance(request, Mapping)
+                        else "contract_repair"
+                    )
+                    or "contract_repair"
+                ),
+                stage="disabled",
+                disposition="disabled",
+                detail="enable_live_logic_repair is false",
+                provider_invoked=False,
+            )
+
+        policy = LiveLogicRepairPolicy(enable_live_logic_repair=True)
+        controller = LiveLogicRepairController(policy=policy)
+        if not isinstance(request, LiveLogicRepairRequest):
+            if not isinstance(request, Mapping):
+                raise TypeError(
+                    "live logic repair request must be a mapping or "
+                    "LiveLogicRepairRequest"
+                )
+            request = LiveLogicRepairRequest.from_mapping(request)
+        return controller.run(request)
 
     async def aanalyze(
         self,
