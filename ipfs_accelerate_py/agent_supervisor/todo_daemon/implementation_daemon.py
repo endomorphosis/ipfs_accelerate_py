@@ -384,6 +384,9 @@ PROPOSAL_ARTIFACT_ENVELOPE_METADATA_KEY = "proposal artifact envelope"
 PROPOSAL_ARTIFACT_ENVELOPE_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/task-artifact-envelope@1"
 )
+PROPOSAL_BINARY_ARTIFACT_ENVELOPE_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/task-artifact-envelope@2"
+)
 PROPOSAL_ARTIFACT_AUTHORITY_SCHEMA = (
     "ipfs_accelerate_py/agent-supervisor/task-artifact-authority@1"
 )
@@ -6728,8 +6731,12 @@ class PortalImplementationDaemon:
         return {
             "task_board": (self.todo_path,),
             "objective": tuple(objective_paths),
+            # Repository wakes follow canonical Git control state. Watching
+            # the whole checkout also observes every parallel lane's status
+            # and checkpoint files, causing idle lanes to wake one another.
+            # Arbitrary worktree changes remain covered by bounded safety
+            # reconciliation and task/child-process semantic events.
             "repository": (
-                self.repo_root,
                 git_dir / "HEAD",
                 git_dir / "index",
                 git_dir / "MERGE_HEAD",
@@ -6965,6 +6972,7 @@ class PortalImplementationDaemon:
         """Block for semantic input, using ``timeout`` as the safety deadline."""
 
         coordinator = self._ensure_runtime_wake_coordinator()
+        coordinator.synchronize_file_cursors()
         event = coordinator.wait(timeout=timeout)
         events = [event]
         self._pending_runtime_wake_events.extend(events)
@@ -21648,7 +21656,7 @@ class PortalImplementationDaemon:
         cls,
         proposal: Any,
         task: PortalTask | None = None,
-    ) -> dict[str, int]:
+    ) -> dict[str, Any]:
         """Return fail-closed limits for one locally collected proposal.
 
         Full source is retained so the gate can verify content and baseline
@@ -21746,6 +21754,16 @@ class PortalImplementationDaemon:
             <= DEFAULT_IMPLEMENTATION_PROPOSAL_PATCH_BYTES
             and largest_file_bytes
             <= DEFAULT_IMPLEMENTATION_PROPOSAL_FILE_BYTES
+            and (
+                task is None
+                or not str(
+                    task.metadata.get(
+                        PROPOSAL_ARTIFACT_ENVELOPE_METADATA_KEY,
+                        "",
+                    )
+                    or ""
+                ).strip()
+            )
         ):
             if (
                 materialized_bytes
@@ -21781,6 +21799,9 @@ class PortalImplementationDaemon:
             envelope = json.loads(raw_envelope)
         except (json.JSONDecodeError, TypeError, ValueError):
             return defaults
+        envelope_schema = (
+            envelope.get("schema") if type(envelope) is dict else None
+        )
         expected_fields = {
             "schema",
             "paths",
@@ -21788,10 +21809,20 @@ class PortalImplementationDaemon:
             "max_patch_bytes",
             "max_output_bytes",
         }
+        if envelope_schema == PROPOSAL_BINARY_ARTIFACT_ENVELOPE_SCHEMA:
+            expected_fields.add("allow_binary")
         if type(envelope) is not dict or set(envelope) != expected_fields:
             return defaults
-        if envelope.get("schema") != PROPOSAL_ARTIFACT_ENVELOPE_SCHEMA:
+        if envelope_schema not in {
+            PROPOSAL_ARTIFACT_ENVELOPE_SCHEMA,
+            PROPOSAL_BINARY_ARTIFACT_ENVELOPE_SCHEMA,
+        }:
             return defaults
+        allow_binary = False
+        if envelope_schema == PROPOSAL_BINARY_ARTIFACT_ENVELOPE_SCHEMA:
+            if type(envelope.get("allow_binary")) is not bool:
+                return defaults
+            allow_binary = envelope["allow_binary"]
 
         raw_paths = envelope.get("paths")
         if type(raw_paths) is not list or not raw_paths:
@@ -21826,11 +21857,17 @@ class PortalImplementationDaemon:
                 getattr(proposal, "changed_paths", ()) or ()
             )
         )
+        task_scope_paths = cls._proposal_scope_paths(task)
         if (
             set(changed_paths) != set(artifact_paths)
             or len(changed_paths) != len(artifact_paths)
-            or not set(artifact_paths).issubset(
-                set(task_declared_output_paths(task))
+            or not all(
+                any(
+                    artifact_path == scope_path
+                    or artifact_path.startswith(scope_path.rstrip("/") + "/")
+                    for scope_path in task_scope_paths
+                )
+                for artifact_path in artifact_paths
             )
         ):
             return defaults
@@ -21891,7 +21928,10 @@ class PortalImplementationDaemon:
             )
         ):
             return defaults
-        return measured_limits
+        return {
+            **measured_limits,
+            "allow_binary": allow_binary,
+        }
 
     def _consumed_proposal_ids(self, *, limit: int = 256) -> tuple[str, ...]:
         consumed: list[str] = []
@@ -22572,7 +22612,11 @@ class PortalImplementationDaemon:
         policy_version = "strict-proposal-v2+local-envelope-v2"
         policy_allowed_paths = allowed_paths
         if "max_file_bytes" in local_envelope_limits:
-            policy_version += "+declared-artifact-envelope-v1"
+            policy_version += (
+                "+declared-binary-artifact-envelope-v2"
+                if local_envelope_limits.get("allow_binary")
+                else "+declared-artifact-envelope-v1"
+            )
             # The envelope helper admitted only exact set equality between
             # these changed paths and the identity-bound task outputs.
             policy_allowed_paths = changed_paths

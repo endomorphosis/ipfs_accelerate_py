@@ -2546,6 +2546,27 @@ class RuntimeWakeCoordinator:
 
     wait_for_wake = wait
 
+    def synchronize_file_cursors(self) -> None:
+        """Advance file cursors to the state durably reconciled by a pass.
+
+        A daemon pass may update its own state, checkpoint, policy, or lock
+        files below a watched repository root.  Native notifications for
+        those writes can remain queued after the pass and otherwise wake the
+        daemon again immediately.  Synchronizing immediately before blocking
+        treats the completed pass as the reconciliation boundary while
+        leaving semantic hints pending.  The safety timer still guarantees a
+        later reconciliation for a filesystem change racing this boundary.
+        """
+
+        if self._closed:
+            raise RuntimeError("runtime wake coordinator is closed")
+        current = self._capture_all()
+        with self._lock:
+            self._acknowledged_metadata = current
+            for kind in tuple(self._pending_hints):
+                if kind in self._targets:
+                    self._pending_hints.pop(kind, None)
+
     def acknowledge(self, event: RuntimeWakeEvent) -> None:
         """Advance only cursors represented by a successfully applied wake."""
 

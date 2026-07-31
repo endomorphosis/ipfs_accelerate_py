@@ -328,6 +328,88 @@ def test_daemon_event_runtime_cleanup_is_idempotent(tmp_path: Path) -> None:
     assert daemon._runtime_wake_coordinator is None
 
 
+def test_daemon_wait_does_not_wake_on_its_own_post_pass_files(
+    tmp_path: Path,
+) -> None:
+    daemon = _drained_daemon(tmp_path)
+    daemon.run_once()
+    clock = LogicalClock()
+    watcher = LogicalWatcher(clock)
+    coordinator = RuntimeWakeCoordinator(
+        daemon._runtime_source_paths(),
+        safety_interval_seconds=15.0,
+        watcher=watcher,
+        clock=clock,
+        metadata_entry_limit=64,
+        metadata_depth_limit=6,
+    )
+    daemon._runtime_wake_coordinator = coordinator
+
+    # Model a durable state/checkpoint write made by the completed pass plus
+    # the native notification which is still queued for the repository root.
+    daemon.state_path.write_text(
+        daemon.state_path.read_text(encoding="utf-8") + "\n",
+        encoding="utf-8",
+    )
+    watcher.notify()
+
+    try:
+        event = daemon.wait_for_wake(timeout=15.0)[0]
+    finally:
+        coordinator.close()
+
+    assert event.kinds == (RuntimeWakeKind.OBSERVATION_WINDOW,)
+    assert event.safety_timer is True
+    assert watcher.wait_calls == 2
+    assert clock() == pytest.approx(15.0)
+
+
+def test_parallel_lane_bookkeeping_is_not_a_repository_wake(
+    tmp_path: Path,
+) -> None:
+    git_dir = tmp_path / ".git"
+    git_dir.mkdir()
+    head_path = git_dir / "HEAD"
+    head_path.write_text("ref: refs/heads/main\n", encoding="utf-8")
+    sibling_state = tmp_path / "runtime" / "lane-01" / "state.json"
+    sibling_state.parent.mkdir(parents=True)
+    sibling_state.write_text("{}\n", encoding="utf-8")
+    daemon = _drained_daemon(tmp_path)
+    repository_targets = daemon._runtime_source_paths()["repository"]
+
+    assert tmp_path not in repository_targets
+    assert head_path in repository_targets
+
+    clock = LogicalClock()
+    watcher = LogicalWatcher(clock)
+    coordinator = RuntimeWakeCoordinator(
+        daemon._runtime_source_paths(),
+        safety_interval_seconds=15.0,
+        watcher=watcher,
+        clock=clock,
+        metadata_entry_limit=64,
+        metadata_depth_limit=6,
+    )
+    try:
+        sibling_state.write_text('{"heartbeat": 1}\n', encoding="utf-8")
+        watcher.notify()
+        bookkeeping_event = coordinator.wait(timeout=15.0)
+        assert bookkeeping_event.kinds == (
+            RuntimeWakeKind.OBSERVATION_WINDOW,
+        )
+        coordinator.acknowledge(bookkeeping_event)
+
+        head_path.write_text("ref: refs/heads/release\n", encoding="utf-8")
+        watcher.notify()
+        repository_event = coordinator.wait(timeout=15.0)
+    finally:
+        coordinator.close()
+
+    assert repository_event.kinds == (RuntimeWakeKind.REPOSITORY,)
+    assert repository_event.safety_timer is False
+    assert clock() == pytest.approx(15.0)
+
+
 def test_configured_daemon_loop_waits_for_wake_and_closes_runtime(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -84,6 +84,12 @@ def test_supervisor_propagates_explicit_merge_target_branch(tmp_path: Path):
     config = supervisor_config_from_args(parsed, repo_root=tmp_path)
     command = PortalImplementationSupervisor(config)._build_daemon_command()
 
+    assert command[:4] == [
+        sys.executable,
+        "-P",
+        "-m",
+        "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon",
+    ]
     assert config.merge_target_branch == target_branch
     assert command[command.index("--merge-target-branch") + 1] == target_branch
 
