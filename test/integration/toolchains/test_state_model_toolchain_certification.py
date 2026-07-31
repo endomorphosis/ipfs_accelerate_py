@@ -49,6 +49,9 @@ GOAL_ID = "FVT-G120"
 TASK_ID = "FVT-042"
 LOCKED_TLC_VERSION = "1.8.0"
 LOCKED_APALACHE_VERSION = "0.58.3"
+LOCKED_TLC_SHA256 = (
+    "e22f8ffb4bacdea0a871f444dd94fe5fb0d8013b3388ae39e82e26f852c735d5"
+)
 
 REQUIRED_CASE_KINDS = {
     "invariant_holds",
@@ -174,6 +177,8 @@ def test_strict_install_selects_tlc_1_8_0_and_apalache_0_58_3(installer) -> None
     assert apalache_pin.version == LOCKED_APALACHE_VERSION
     assert tlc_pin.platform in {"any", "linux-x86_64"}
     assert apalache_pin.platform in {"any", "linux-x86_64"}
+    assert tlc_pin.sha256 == LOCKED_TLC_SHA256
+    assert tlc_pin.is_checksummed is True
     assert apalache_pin.sha256
     assert len(apalache_pin.sha256) == 64
     assert tlc_pin.artifact_url.startswith("https://")
