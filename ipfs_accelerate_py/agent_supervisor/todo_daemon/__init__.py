@@ -323,20 +323,6 @@ from .plans import (
     select_next_plan_task,
     strip_daemon_task_board,
 )
-from .implementation_daemon import (
-    DEFAULT_WORKTREE_SUBMODULE_PATHS,
-    TodoImplementationDaemon,
-    TodoTask,
-    TodoTaskState,
-    WORKTREE_SUBMODULE_PATHS,
-    normalize_relative_path_list,
-    parse_task_file,
-)
-from .implementation_supervisor import (
-    TodoImplementationSupervisor,
-    TodoSupervisorConfig,
-    supervisor_config_from_args,
-)
 from .runner import PreTaskBlock, TodoDaemonHooks, TodoDaemonRunner
 from .status import (
     ActiveStatusSnapshot,
@@ -851,8 +837,44 @@ _LOGIC_PORT_EXPORTS = {
     "run_logic_port_daemon_runtime",
 }
 
+_IMPLEMENTATION_DAEMON_EXPORTS = {
+    "DEFAULT_WORKTREE_SUBMODULE_PATHS",
+    "TodoImplementationDaemon",
+    "TodoTask",
+    "TodoTaskState",
+    "WORKTREE_SUBMODULE_PATHS",
+    "normalize_relative_path_list",
+    "parse_task_file",
+}
+
+_IMPLEMENTATION_SUPERVISOR_EXPORTS = {
+    "TodoImplementationSupervisor",
+    "TodoSupervisorConfig",
+    "supervisor_config_from_args",
+}
+
+_LAZY_IMPLEMENTATION_SUBMODULES = {
+    "implementation_daemon",
+    "implementation_supervisor",
+}
+
+
+def _load_lazy_export(module_name, name):
+    from importlib import import_module
+
+    module = import_module(f"{__name__}.{module_name}")
+    value = module if name == module_name else getattr(module, name)
+    globals()[name] = value
+    return value
+
 
 def __getattr__(name):
+    if name in _IMPLEMENTATION_DAEMON_EXPORTS:
+        return _load_lazy_export("implementation_daemon", name)
+    if name in _IMPLEMENTATION_SUPERVISOR_EXPORTS:
+        return _load_lazy_export("implementation_supervisor", name)
+    if name in _LAZY_IMPLEMENTATION_SUBMODULES:
+        return _load_lazy_export(name, name)
     if name in _LEGAL_PARSER_EXPORTS:
         from . import legal_parser
 
