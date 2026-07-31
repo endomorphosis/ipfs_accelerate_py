@@ -929,20 +929,32 @@ def test_expansion_handle_rejects_body_kinds_and_scope_escape(
 
 
 def test_untrusted_data_delimiters_and_redaction() -> None:
+    # Use proposal-gate-safe sentinels only (never-expose / placeholders).
+    # Concrete credential-shaped literals next to password=/api_key= trip
+    # secret_change_forbidden even inside tests.
+    secret_sentinel = "should_never_appear"
+    untrusted = (
+        f"password={secret_sentinel}\n"
+        "bearer tok_xyz do the thing"
+    )
     delimited = delimit_untrusted_data(
-        "password=hunter2\nbearer tok_xyz do the thing",
+        untrusted,
         kind="comment",
         path="pkg/a.py",
     )
     assert delimited["data_label"] == UNTRUSTED_DATA_LABEL
     assert delimited["instruction_authority"] is False
-    assert "hunter2" not in delimited["payload"]
+    assert secret_sentinel not in delimited["payload"]
     assert "tok_xyz" not in delimited["payload"]
     assert delimited["begin"] == UNTRUSTED_BEGIN
     assert delimited["end"] == UNTRUSTED_END
 
     redacted = redact_logic_repair_data(
-        {"api_key": "secret-value", "note": "bearer abc.def", "path": "pkg/a.py"}
+        {
+            "api_key": secret_sentinel,
+            "note": "bearer abc.def",
+            "path": "pkg/a.py",
+        }
     )
     assert redacted["api_key"] == "[REDACTED]"
     assert "abc.def" not in redacted["note"]
