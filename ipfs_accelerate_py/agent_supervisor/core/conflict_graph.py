@@ -456,15 +456,44 @@ def _payload(value: Any) -> dict[str, Any]:
     return {}
 
 
+def _normalized_field_key(value: Any) -> str:
+    """Return the canonical lookup spelling for task metadata fields."""
+
+    return re.sub(
+        r"[^a-z0-9]+",
+        "_",
+        str(value or "").strip().casefold(),
+    ).strip("_")
+
+
+def _source_with_normalized_keys(source: Mapping[str, Any]) -> dict[str, Any]:
+    """Add non-destructive aliases for human-readable metadata keys.
+
+    Legacy Markdown task boards retain labels such as ``Goal id`` and
+    ``Allow concurrent with`` in their nested metadata mapping.  Conflict and
+    work-contract consumers use their wire spellings (``goal_id`` and
+    ``allow_concurrent_with``).  Preserve the producer's original mapping for
+    audit while making both representations equivalent at this boundary.
+    Explicit wire-format keys always win if a producer supplied both forms.
+    """
+
+    result = dict(source)
+    for key, value in source.items():
+        normalized = _normalized_field_key(key)
+        if normalized:
+            result.setdefault(normalized, value)
+    return result
+
+
 def _sources(value: Any) -> list[dict[str, Any]]:
     """Return top-level and common nested task metadata mappings."""
 
-    root = _payload(value)
+    root = _source_with_normalized_keys(_payload(value))
     found = [root]
     for key in ("finding", "metadata", "conflict_surface", "profile_g", "payload"):
         nested = root.get(key)
         if isinstance(nested, Mapping):
-            found.append(dict(nested))
+            found.append(_source_with_normalized_keys(nested))
     return found
 
 
