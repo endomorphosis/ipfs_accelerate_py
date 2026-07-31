@@ -838,7 +838,7 @@ expectations under existing precedence, but do not prove them by passing.
 
 ## LPR-025 Generalize symbolic-efficiency benchmark and replay gates
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
