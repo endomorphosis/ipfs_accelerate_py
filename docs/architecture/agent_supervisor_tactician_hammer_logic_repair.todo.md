@@ -1272,7 +1272,7 @@ expectations under existing precedence, but do not prove them by passing.
 
 ## LPR-039 Expose deterministic doctor operations through a thin service and CLI
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
