@@ -22,7 +22,12 @@ Safety invariants (non-waivable):
 CLI::
 
     python -m ipfs_accelerate_py.agent_supervisor.vfs_symbolic_pilot --dry-run
-    python -m ipfs_accelerate_py.agent_supervisor.vfs_symbolic_pilot --verify
+    python -m ipfs_accelerate_py.agent_supervisor.vfs_symbolic_pilot \
+        --verify --report path/to/report.json
+    python -m ipfs_accelerate_py.agent_supervisor.vfs_symbolic_pilot \
+        --verify-release-evidence --report path/to/report.json
+    python -m ipfs_accelerate_py.agent_supervisor.vfs_symbolic_pilot \
+        --hermetic-self-test
 """
 
 from __future__ import annotations
@@ -1651,7 +1656,9 @@ def materialize_findings_and_board(
                     "python -m pytest test/api/test_agent_supervisor_vfs_symbolic_pilot.py -q",
                 ),
                 proof_commands=(
-                    "python -m ipfs_accelerate_py.agent_supervisor.vfs_symbolic_pilot --verify",
+                    "python -m ipfs_accelerate_py.agent_supervisor."
+                    "vfs_symbolic_pilot --verify --report "
+                    f"{DEFAULT_ARTIFACT_RELATIVE}/report.json",
                 ),
                 risks=("bounded_scope_only",),
                 policy_revision=PILOT_POLICY_REVISION,
@@ -2262,16 +2269,56 @@ def verify_pilot(
     *,
     report_path: Path | None = None,
 ) -> SwissKnifeVfsPilotReport:
-    """Verify mode entrypoint.
+    """Verify one durable report against its live repository forest.
 
-    When ``report_path`` is provided, load and verify that report against the
-    live forest.  Otherwise dry-run into a temporary artifact directory and
-    verify the freshly produced report (hermetic self-check).
+    A report path is deliberately mandatory at runtime.  Verification must not
+    silently replace the operator's release artifact with a freshly generated
+    temporary fixture.  Use :func:`run_hermetic_self_test` for that distinct
+    diagnostic operation.
     """
 
-    if report_path is not None:
-        payload = _load_json(Path(report_path))
-        return verify_pilot_report(payload, config=config, recompute=True)
+    if report_path is None:
+        raise PilotVerificationError(
+            "durable_report_required",
+            "report verification requires an explicit --report path; "
+            "use --hermetic-self-test for a temporary fixture check",
+        )
+    payload = _load_json(Path(report_path))
+    return verify_pilot_report(payload, config=config, recompute=True)
+
+
+def verify_release_evidence(
+    config: PilotConfig,
+    *,
+    report_path: Path | None = None,
+) -> SwissKnifeVfsPilotReport:
+    """Verify a durable report and require explicit release authority.
+
+    The current pilot schema intentionally sets ``is_completion_evidence`` to
+    false.  Consequently its reports can prove deterministic integrity and
+    freshness, but cannot pass this release gate.  A future authoritative
+    schema must make that authority explicit rather than gaining it merely
+    because structural verification succeeded.
+    """
+
+    report = verify_pilot(config, report_path=report_path)
+    if report.conclusion is not PilotConclusion.PASSED:
+        raise PilotVerificationError(
+            "release_evidence_failed",
+            f"pilot conclusion is {report.conclusion.value!r}, not 'passed'",
+        )
+    if not report.is_completion_evidence:
+        raise PilotVerificationError(
+            "non_authoritative_report",
+            "pilot report is structurally valid but explicitly sets "
+            "is_completion_evidence=false; verification cannot promote it "
+            "to release evidence",
+        )
+    return report
+
+
+def run_hermetic_self_test(config: PilotConfig) -> SwissKnifeVfsPilotReport:
+    """Generate and verify a temporary report as a non-release self-test."""
 
     with tempfile.TemporaryDirectory(prefix="vfs-pilot-verify-") as tmp:
         tmp_path = Path(tmp)
@@ -2527,7 +2574,8 @@ def default_config_from_environment(
     """Build a pilot config from env vars or a hermetic fixture.
 
     When the default SwissKnife root is missing, a hermetic fixture is used so
-    that ``--verify`` remains runnable in CI and agent sandboxes.
+    that dry-runs and the explicitly named hermetic self-test remain runnable
+    in CI and agent sandboxes.
     """
 
     accel = Path(
@@ -2603,8 +2651,24 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "--verify",
         action="store_true",
         help=(
-            "Verify a pilot report (or hermetic self-check) with no provider "
-            "calls and no source mutation"
+            "Verify the integrity and freshness of the durable report named by "
+            "--report; this does not grant release authority"
+        ),
+    )
+    mode.add_argument(
+        "--verify-release-evidence",
+        action="store_true",
+        help=(
+            "Verify the durable report named by --report and require explicit "
+            "release/completion authority"
+        ),
+    )
+    mode.add_argument(
+        "--hermetic-self-test",
+        action="store_true",
+        help=(
+            "Generate and verify a temporary hermetic fixture report; never "
+            "treat this diagnostic as durable or release evidence"
         ),
     )
     parser.add_argument(
@@ -2635,7 +2699,10 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "--report",
         type=Path,
         default=None,
-        help="Existing report.json to verify (verify mode only)",
+        help=(
+            "Existing durable report.json (required by --verify and "
+            "--verify-release-evidence)"
+        ),
     )
     parser.add_argument(
         "--hermetic",
@@ -2660,8 +2727,24 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = build_arg_parser()
     args = parser.parse_args(list(argv) if argv is not None else None)
 
+    if args.verify or args.verify_release_evidence:
+        if args.report is None:
+            parser.error(
+                "--verify and --verify-release-evidence require an explicit "
+                "--report path"
+            )
+    elif args.report is not None:
+        parser.error(
+            "--report is only valid with --verify or --verify-release-evidence"
+        )
+    if args.hermetic and (args.verify or args.verify_release_evidence):
+        parser.error(
+            "--hermetic cannot be combined with durable report verification; "
+            "use --hermetic-self-test for a temporary fixture check"
+        )
+
     hermetic_root = None
-    if args.hermetic:
+    if args.hermetic or args.hermetic_self_test:
         hermetic_root = Path(tempfile.mkdtemp(prefix="vfs-pilot-cli-hermetic-"))
 
     config = default_config_from_environment(
@@ -2689,6 +2772,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         if args.dry_run:
             report = dry_run_pilot(config)
+        elif args.hermetic_self_test:
+            report = run_hermetic_self_test(config)
+        elif args.verify_release_evidence:
+            report = verify_release_evidence(config, report_path=args.report)
         else:
             report = verify_pilot(config, report_path=args.report)
     except VfsSymbolicPilotError as exc:
@@ -2704,8 +2791,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.json:
         sys.stdout.write(report.to_json() + "\n")
     else:
+        operation = report.mode.value
+        if args.hermetic_self_test:
+            operation = "hermetic_self_test"
+        elif args.verify_release_evidence:
+            operation = "release_evidence_verify"
+        elif args.verify:
+            operation = "report_verify"
         sys.stdout.write(
-            f"pilot {report.mode.value} {report.conclusion.value} "
+            f"pilot {operation} {report.conclusion.value} "
             f"report_cid={report.report_cid} "
             f"admitted={report.admitted_file_count} "
             f"findings={report.finding_count} "
@@ -2765,8 +2859,10 @@ __all__ = [
     "render_findings_board_document",
     "run_cache_stage",
     "run_contract_stage",
+    "run_hermetic_self_test",
     "run_zk_shadow_stage",
     "scan_inventory",
     "verify_pilot",
     "verify_pilot_report",
+    "verify_release_evidence",
 ]
