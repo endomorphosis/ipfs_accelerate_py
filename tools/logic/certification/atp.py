@@ -1335,6 +1335,13 @@ def build_certification_receipt(
     payload["authority_scope"] = AUTHORITY_SCOPE
     payload["results_are_candidates_without_reconstruction"] = True
     payload["kernel_reconstruction_required_for_theorem_authority"] = True
+    payload["receipt_digest_sha256"] = content_digest(
+        {
+            key: value
+            for key, value in payload.items()
+            if key != "receipt_digest_sha256"
+        }
+    )
     return payload
 
 

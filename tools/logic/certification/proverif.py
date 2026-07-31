@@ -1278,6 +1278,13 @@ def build_certification_receipt(
         "does_not_edit_shared_lock": True,
     }
     payload["semantic_corpus_passed"] = all(case.matched for case in cert.cases)
+    payload["receipt_digest_sha256"] = content_digest(
+        {
+            key: value
+            for key, value in payload.items()
+            if key != "receipt_digest_sha256"
+        }
+    )
     return payload
 
 

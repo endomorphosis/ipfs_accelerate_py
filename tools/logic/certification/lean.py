@@ -1058,6 +1058,13 @@ def build_certification_receipt(
         "does_not_edit_central_certificate": True,
         "does_not_select_alternate_elan_toolchain": True,
     }
+    payload["receipt_digest_sha256"] = content_digest(
+        {
+            key: value
+            for key, value in payload.items()
+            if key != "receipt_digest_sha256"
+        }
+    )
     return payload
 
 
