@@ -4661,6 +4661,8 @@ def parse_goal_heap(text: str) -> list[ObjectiveGoal]:
 
 def safe_bundle_key(value: str) -> str:
     safe = re.sub(r"[^A-Za-z0-9_.-]+", "-", value.strip("/ ").lower()).strip("-")
+    if safe in {".", ".."}:
+        raise ValueError("bundle key must not resolve to a relative path component")
     return safe or "objective-general"
 
 

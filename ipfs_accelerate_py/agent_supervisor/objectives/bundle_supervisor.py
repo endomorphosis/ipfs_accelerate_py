@@ -82,7 +82,7 @@ BUNDLE_TASKBOARD_INPUT_SCHEMA = (
     "ipfs_accelerate_py.agent_supervisor.bundle_taskboard_input@2"
 )
 BUNDLE_LANE_EXECUTION_SLICE_SCHEMA = (
-    "ipfs_accelerate_py.agent_supervisor.bundle_lane_execution_slice@1"
+    "ipfs_accelerate_py.agent_supervisor.bundle_lane_execution_slice@2"
 )
 INTERNAL_EXECUTION_AUTHORITY = "agent-supervisor/v1"
 DISTRIBUTED_LANE_REQUIREMENT_ID = "314703454108352614663943447510592855908"
@@ -379,7 +379,6 @@ class BundleLaneSpec:
     log_path: Path
     runtime_todo_path: Path | None = None
     source_todo_sha256: str = ""
-    execution_slice_cid: str = ""
     source_todo: str = ""
     task_cid: str = ""
     goal_cid: str = ""
@@ -419,6 +418,10 @@ class BundleLaneSpec:
     planner_comparison: dict[str, Any] = field(default_factory=dict)
     packet_aggregates: list[dict[str, Any]] = field(default_factory=list)
     expected_task_cids_by_id: dict[str, str] = field(default_factory=dict)
+    # Keep new optional fields after the complete legacy constructor surface.
+    # External supervisor adapters may still instantiate this public dataclass
+    # positionally.
+    execution_slice_cid: str = ""
 
     def to_dict(self, *, repo_root: Path | None = None) -> dict[str, Any]:
         payload: dict[str, Any] = {}
@@ -1699,6 +1702,44 @@ def resolve_repo_path(repo_root: Path, value: str) -> Path:
     return repo_root / path
 
 
+def _normalized_lane_source_todo_path(repo_root: Path, todo_path: Path) -> str:
+    """Return the stable repository-relative identity of a reviewed shard."""
+
+    resolved_root = repo_root.resolve()
+    resolved_source = todo_path.resolve()
+    try:
+        relative = resolved_source.relative_to(resolved_root)
+    except ValueError as exc:
+        raise ValueError(
+            f"bundle source taskboard must remain inside repository root: {todo_path}"
+        ) from exc
+    normalized = relative.as_posix()
+    if not normalized or normalized == "." or ".." in relative.parts:
+        raise ValueError(
+            f"bundle source taskboard has no safe repository-relative path: {todo_path}"
+        )
+    return normalized
+
+
+def _require_lane_path_within_root(
+    path: Path,
+    root: Path,
+    *,
+    label: str,
+) -> Path:
+    """Reject a lane path whose resolved location escapes its configured root."""
+
+    resolved_root = root.resolve()
+    resolved_path = path.resolve()
+    try:
+        resolved_path.relative_to(resolved_root)
+    except ValueError as exc:
+        raise ValueError(
+            f"bundle lane {label} must remain inside its configured root: {path}"
+        ) from exc
+    return path
+
+
 def lane_state_prefix(bundle_key: str) -> str:
     return f"agent_{safe_bundle_key(bundle_key).replace('-', '_')}"
 
@@ -1706,6 +1747,7 @@ def lane_state_prefix(bundle_key: str) -> str:
 def bundle_lane_execution_slice_cid(
     *,
     bundle_key: str,
+    source_todo_path: str,
     source_todo_sha256: str,
     expected_task_cids_by_id: Mapping[str, str],
     execution_slice_task_cids: Sequence[str],
@@ -1714,9 +1756,9 @@ def bundle_lane_execution_slice_cid(
 ) -> str:
     """Return the immutable namespace for one planned lane execution slice.
 
-    The source digest alone fences reviewed shard revisions.  Member,
-    dependency and optimizer identities additionally prevent two semantically
-    different slices of the same shard from sharing mutable daemon state.
+    The normalized source path and digest fence reviewed shard revisions.
+    Member, dependency and optimizer identities additionally prevent two
+    semantically different slices from sharing mutable daemon state.
     Mutable dependency *status* and the derived Profile-G planning chain are
     deliberately absent. Replanning may project a newly completed prerequisite
     out of the dependency set, which is a new execution slice; repeated plans
@@ -1726,6 +1768,7 @@ def bundle_lane_execution_slice_cid(
     payload = {
         "schema": BUNDLE_LANE_EXECUTION_SLICE_SCHEMA,
         "bundle_key": str(bundle_key),
+        "source_todo_path": str(source_todo_path),
         "source_todo_sha256": str(source_todo_sha256).strip().lower(),
         "expected_task_cids_by_id": {
             str(task_id): str(task_cid)
@@ -3158,6 +3201,7 @@ def plan_bundle_lanes(
         conflict_annotation = conflict_annotations.get(bundle_key, {})
         safe_key = safe_bundle_key(bundle_key)
         todo_path = resolve_repo_path(repo_root, str(payload.get("todo_path") or ""))
+        source_todo_path = _normalized_lane_source_todo_path(repo_root, todo_path)
         source_todo_sha256 = _taskboard_sha256(todo_path)
         state_prefix = lane_state_prefix(bundle_key)
         execution_tasks = _execution_slice_members(
@@ -3201,6 +3245,7 @@ def plan_bundle_lanes(
         optimizer_bundle_cid = str(payload.get("optimizer_bundle_cid") or "")
         execution_slice_cid = bundle_lane_execution_slice_cid(
             bundle_key=bundle_key,
+            source_todo_path=source_todo_path,
             source_todo_sha256=source_todo_sha256,
             expected_task_cids_by_id=expected_task_cids_by_id,
             execution_slice_task_cids=task_cids,
@@ -3230,6 +3275,26 @@ def plan_bundle_lanes(
             / "executions"
             / execution_namespace
             / "supervisor.log"
+        )
+        _require_lane_path_within_root(
+            state_dir,
+            state_root,
+            label="state directory",
+        )
+        _require_lane_path_within_root(
+            runtime_todo_path,
+            state_root,
+            label="runtime taskboard",
+        )
+        _require_lane_path_within_root(
+            lane_worktree_root,
+            worktree_root,
+            label="worktree directory",
+        )
+        _require_lane_path_within_root(
+            log_path,
+            log_dir,
+            label="log path",
         )
         resource_fields = _resource_lane_fields(payload)
         implementation_max_timeout = _execution_slice_implementation_max_timeout(
