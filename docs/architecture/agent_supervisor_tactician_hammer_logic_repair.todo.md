@@ -446,7 +446,7 @@ expectations under existing precedence, but do not prove them by passing.
 
 ## LPR-013 Implement bounded counterexample-guided tactic refinement
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
