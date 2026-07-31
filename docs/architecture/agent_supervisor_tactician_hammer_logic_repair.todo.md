@@ -869,7 +869,7 @@ expectations under existing precedence, but do not prove them by passing.
 
 ## LPR-026 Generalize frozen multi-repository assurance pilot orchestration
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
