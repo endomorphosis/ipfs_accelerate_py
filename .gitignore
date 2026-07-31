@@ -189,3 +189,4 @@ state/**/*.out
 !docs/architecture/formal_verification_tactician_benchmark.json
 !docs/architecture/formal_verification_tactician_readiness_completion_receipt.json
 !docs/architecture/formal_verification_toolchain_certificate.json
+!docs/architecture/formal_verification_role_aware_deployment_receipt.json
