@@ -900,7 +900,7 @@ expectations under existing precedence, but do not prove them by passing.
 
 ## LPR-027 Generalize rollout control and add the thin IPFS Kit VFS job adapter
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
