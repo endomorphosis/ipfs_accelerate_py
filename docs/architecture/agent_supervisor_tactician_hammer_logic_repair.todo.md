@@ -37,7 +37,7 @@ expectations under existing precedence, but do not prove them by passing.
 
 ## LPR-000 Bootstrap and seal the Tactician-Hammer logic-repair control plane
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
@@ -45,8 +45,8 @@ expectations under existing precedence, but do not prove them by passing.
 - Track: control
 - Depends on:
 - Goal id: LPR-G000
-- Outputs: docs/architecture/AGENT_SUPERVISOR_TACTICIAN_HAMMER_LOGIC_REPAIR_PLAN.md, docs/architecture/agent_supervisor_tactician_hammer_logic_repair.objectives.md, docs/architecture/agent_supervisor_tactician_hammer_logic_repair.todo.md, config/agent_supervisor_tactician_hammer_logic_repair_scheduler.json, scripts/validate_tactician_hammer_logic_repair_board.py, scripts/tactician_hammer_logic_repair_supervisor.sh
-- Validation: python scripts/validate_tactician_hammer_logic_repair_board.py --check-all && scripts/tactician_hammer_logic_repair_supervisor.sh doctor
+- Outputs: docs/architecture/AGENT_SUPERVISOR_TACTICIAN_HAMMER_LOGIC_REPAIR_PLAN.md, docs/architecture/agent_supervisor_tactician_hammer_logic_repair.objectives.md, docs/architecture/agent_supervisor_tactician_hammer_logic_repair.todo.md, config/agent_supervisor_tactician_hammer_logic_repair_scheduler.json, scripts/validate_tactician_hammer_logic_repair_board.py, scripts/tactician_hammer_logic_repair_supervisor.sh, test/api/test_agent_supervisor_tactician_hammer_logic_repair_bootstrap.py
+- Validation: python -m pytest -q test/api/test_agent_supervisor_tactician_hammer_logic_repair_bootstrap.py && python scripts/validate_tactician_hammer_logic_repair_board.py --check-all && scripts/tactician_hammer_logic_repair_supervisor.sh doctor
 - Board namespace: agent-supervisor-tactician-hammer-logic-repair-v1
 - Bundle: agent-supervisor/tactician-hammer-logic-repair/control
 - Parallel lane: control
@@ -55,7 +55,7 @@ expectations under existing precedence, but do not prove them by passing.
 - Token class: small
 - Estimated tokens: 16000
 - Implementation timeout seconds: 1800
-- Predicted files: docs/architecture/AGENT_SUPERVISOR_TACTICIAN_HAMMER_LOGIC_REPAIR_PLAN.md, docs/architecture/agent_supervisor_tactician_hammer_logic_repair.objectives.md, docs/architecture/agent_supervisor_tactician_hammer_logic_repair.todo.md, config/agent_supervisor_tactician_hammer_logic_repair_scheduler.json, scripts/validate_tactician_hammer_logic_repair_board.py, scripts/tactician_hammer_logic_repair_supervisor.sh
+- Predicted files: docs/architecture/AGENT_SUPERVISOR_TACTICIAN_HAMMER_LOGIC_REPAIR_PLAN.md, docs/architecture/agent_supervisor_tactician_hammer_logic_repair.objectives.md, docs/architecture/agent_supervisor_tactician_hammer_logic_repair.todo.md, config/agent_supervisor_tactician_hammer_logic_repair_scheduler.json, scripts/validate_tactician_hammer_logic_repair_board.py, scripts/tactician_hammer_logic_repair_supervisor.sh, test/api/test_agent_supervisor_tactician_hammer_logic_repair_bootstrap.py
 - AST symbols: ProgramLogicGoal, LogicGap, TacticianSearchPlan, LogicPredictionReceipt
 - Interfaces: TacticianHammerLogicRepairPlan@1
 - Allow concurrent with:
