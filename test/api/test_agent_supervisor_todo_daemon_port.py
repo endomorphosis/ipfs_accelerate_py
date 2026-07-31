@@ -21772,6 +21772,89 @@ def test_implementation_daemon_reconciles_generated_dirty_submodule_overlap_with
     assert _git(submodule, "status", "--porcelain") == ""
 
 
+def test_implementation_daemon_reuses_clean_external_merge_target_checkout(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "base.txt").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "base.txt")
+    _git(repo, "commit", "-m", "base")
+    _git(repo, "branch", "agent/ui-ux-ir")
+    _git(repo, "checkout", "-b", "driver")
+    external_target = tmp_path / "uiir-target"
+    _git(repo, "worktree", "add", str(external_target), "agent/ui-ux-ir")
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+        worktree_root=repo / "managed-worktrees",
+        merge_target_branch="agent/ui-ux-ir",
+    )
+
+    result = daemon._prepare_main_merge_workspace(
+        "agent/ui-ux-ir",
+        "implementation/uir-001",
+    )
+
+    assert result == {
+        "available": True,
+        "path": str(external_target),
+        "ephemeral": False,
+        "target_branch": "agent/ui-ux-ir",
+        "reused_external_checkout": True,
+    }
+    assert _git(repo, "branch", "--show-current") == "driver"
+    assert _git(external_target, "branch", "--show-current") == "agent/ui-ux-ir"
+
+
+def test_implementation_daemon_rejects_dirty_external_merge_target_checkout(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "base.txt").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "base.txt")
+    _git(repo, "commit", "-m", "base")
+    _git(repo, "branch", "agent/ui-ux-ir")
+    _git(repo, "checkout", "-b", "driver")
+    external_target = tmp_path / "uiir-target"
+    _git(repo, "worktree", "add", str(external_target), "agent/ui-ux-ir")
+    (external_target / "operator-note.txt").write_text(
+        "preserve me\n",
+        encoding="utf-8",
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+        worktree_root=repo / "managed-worktrees",
+        merge_target_branch="agent/ui-ux-ir",
+    )
+
+    result = daemon._prepare_main_merge_workspace(
+        "agent/ui-ux-ir",
+        "implementation/uir-001",
+    )
+
+    assert result["available"] is False
+    assert result["reason"] == "main_branch_checked_out_elsewhere"
+    assert result["worktree_path"] == str(external_target)
+    assert result["dirty_paths"] == ["operator-note.txt"]
+    assert (external_target / "operator-note.txt").read_text(
+        encoding="utf-8"
+    ) == "preserve me\n"
+    assert _git(repo, "branch", "--show-current") == "driver"
+
+
 def test_implementation_daemon_repairs_dirty_managed_main_merge_worktree(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
