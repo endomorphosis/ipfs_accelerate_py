@@ -32,6 +32,7 @@ from ..core.conflict_graph import (
     materialize_task_conflict_graph,
     rehydrate_task_work_contract_projection,
 )
+from ..implementation_timeout import effective_implementation_hard_timeout
 from .bundle_optimizer import BundleOptimizationPolicy, optimize_task_bundles
 from ..merge.lease_coordination import (
     DistributedLaneDispatch,
@@ -41,6 +42,7 @@ from ..merge.lease_coordination import (
     RemoteLaneResult,
     WorkerCapabilityReceipt,
     WorkerEnvironmentReceipt,
+    profile_g_task_attempt_limit,
 )
 from .objective_graph import (
     DEFAULT_TASK_PREFIX,
@@ -398,6 +400,7 @@ class BundleLaneSpec:
     gpu_memory_bytes: int = 0
     disk_bytes: int = 0
     process_slots: int = 1
+    implementation_max_timeout: float = 1800.0
     optimizer_bundle_cid: str = ""
     optimizer_policy_id: str = ""
     optimizer_execution_wave: int = 0
@@ -1933,6 +1936,40 @@ def _resource_lane_fields(payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _execution_slice_implementation_max_timeout(
+    payload: Mapping[str, Any],
+    *,
+    default_timeout: float,
+) -> float:
+    """Return the largest hard timeout authorized by the execution slice.
+
+    The implementation daemon still receives ``default_timeout`` as its idle
+    and ordinary-task policy. This separate maximum sizes the parent
+    supervisor watchdog so a task-specific hard timeout cannot be interrupted
+    early. Exact per-task limits remain in the digest-bound taskboard and are
+    enforced by ``PortalImplementationDaemon``.
+    """
+
+    baseline = effective_implementation_hard_timeout(
+        {},
+        configured_timeout=default_timeout,
+    ).seconds
+    effective: list[float] = []
+    tasks = _execution_slice_members(
+        payload,
+        _mapping_list(payload.get("tasks")),
+    )
+    for task in tasks:
+        effective.append(
+            effective_implementation_hard_timeout(
+                task,
+                configured_timeout=default_timeout,
+                task_id=str(task.get("task_id") or "<unknown task>"),
+            ).seconds
+        )
+    return max(effective, default=baseline)
+
+
 _TERMINAL_CONFLICT_TASK_STATUSES = frozenset(
     {"complete", "completed", "done", "merged", "success", "succeeded"}
 )
@@ -2563,6 +2600,7 @@ def implementation_supervisor_command(
     watchdog_startup_grace_seconds: float | None,
     max_restarts: int,
     implementation_timeout: float,
+    implementation_max_timeout: float | None = None,
     max_task_attempts: int = 0,
     implementation_command: str = "",
     merge_target_branch: str = "",
@@ -2604,7 +2642,7 @@ def implementation_supervisor_command(
         "--max-restarts",
         str(max_restarts),
         "--max-task-attempts",
-        str(max(0, int(max_task_attempts))),
+        str(profile_g_task_attempt_limit(max_task_attempts, default=0)),
         "--implementation-timeout",
         str(implementation_timeout),
         "--log-level",
@@ -2618,6 +2656,13 @@ def implementation_supervisor_command(
         "--no-objective-task-janitor",
         "--no-objective-goal-migration",
     ]
+    if implementation_max_timeout is not None:
+        command.extend(
+            [
+                "--implementation-max-timeout",
+                str(implementation_max_timeout),
+            ]
+        )
     if watchdog_startup_grace_seconds is not None:
         command.extend(
             [
@@ -2979,12 +3024,21 @@ def plan_bundle_lanes(
     """Return one isolated supervisor command for each objective bundle."""
 
     lanes: list[BundleLaneSpec] = []
+    selected_max_task_attempts = profile_g_task_attempt_limit(
+        max_task_attempts,
+        default=0,
+    )
     if completion_receipts is None:
         completion_receipts = bundle_member_completion_receipts(state_root)
+    build_payload_kwargs: dict[str, Any] = {}
     if completion_receipts:
+        build_payload_kwargs["merge_receipts"] = completion_receipts
+    if selected_max_task_attempts > 0:
+        build_payload_kwargs["max_attempts"] = selected_max_task_attempts
+    if build_payload_kwargs:
         bundle_payloads = build_bundle_task_payloads(
             bundle_index_path,
-            merge_receipts=completion_receipts,
+            **build_payload_kwargs,
         )
     else:
         # Keep the legacy single-argument call path for integrations which
@@ -3078,6 +3132,10 @@ def plan_bundle_lanes(
         )
         profile_g = payload.get("profile_g") if isinstance(payload.get("profile_g"), dict) else {}
         resource_fields = _resource_lane_fields(payload)
+        implementation_max_timeout = _execution_slice_implementation_max_timeout(
+            payload,
+            default_timeout=implementation_timeout,
+        )
         command = implementation_supervisor_command(
             todo_path=runtime_todo_path,
             state_dir=state_dir,
@@ -3091,7 +3149,12 @@ def plan_bundle_lanes(
             watchdog_startup_grace_seconds=watchdog_startup_grace_seconds,
             max_restarts=max_restarts,
             implementation_timeout=implementation_timeout,
-            max_task_attempts=max_task_attempts,
+            implementation_max_timeout=(
+                implementation_max_timeout
+                if implementation_max_timeout > float(implementation_timeout)
+                else None
+            ),
+            max_task_attempts=selected_max_task_attempts,
             implementation_command=implementation_command,
             merge_target_branch=merge_target_branch,
             llm_merge_resolver_command=llm_merge_resolver_command,
@@ -3177,6 +3240,7 @@ def plan_bundle_lanes(
                 ]
                 if isinstance(payload.get("bundle_optimization"), Mapping)
                 else [],
+                implementation_max_timeout=implementation_max_timeout,
                 **resource_fields,
             )
         )
@@ -3972,8 +4036,6 @@ class DynamicBundleScheduler:
                 "active_member_task_cids": sorted(
                     set(_string_list(payload.get("active_member_task_cids"))) | active_cids
                 ),
-                "execution_slice_task_ids": [],
-                "execution_slice_task_cids": [],
                 "external_active_member_fence": True,
             }
         )
@@ -5601,7 +5663,7 @@ def run_bundle_supervisor(args: argparse.Namespace) -> dict[str, Any]:
         check_interval=args.check_interval,
         watchdog_startup_grace_seconds=args.watchdog_startup_grace_seconds,
         max_restarts=args.max_restarts,
-        max_task_attempts=max(0, int(getattr(args, "max_task_attempts", 0))),
+        max_task_attempts=int(getattr(args, "max_task_attempts", 0)),
         implementation_timeout=args.implementation_timeout,
         implementation_command=args.implementation_command,
         merge_target_branch=args.merge_target_branch,

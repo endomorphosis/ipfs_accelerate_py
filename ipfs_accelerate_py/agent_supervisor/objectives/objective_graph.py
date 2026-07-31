@@ -11522,13 +11522,22 @@ def build_bundle_task_payloads(
     bundle_index_path: Path,
     *,
     merge_receipts: Mapping[str, Any] | Iterable[Mapping[str, Any]] = (),
+    max_attempts: int = 0,
 ) -> list[dict[str, Any]]:
     """Build dependency-aware task-queue payloads and Profile G adapters."""
 
     # Local import avoids making objective scanning depend on coordination
     # initialization while ensuring queue consumers receive immutable links.
     from ..runtime.artifact_store import read_bundle_index_planning_projection
-    from ..merge.lease_coordination import adapt_goal_bundle
+    from ..merge.lease_coordination import (
+        adapt_goal_bundle,
+        profile_g_task_attempt_limit,
+    )
+
+    selected_max_attempts = profile_g_task_attempt_limit(
+        max_attempts,
+        default=0,
+    )
 
     payload = read_bundle_index_planning_projection(
         bundle_index_path,
@@ -11581,6 +11590,7 @@ def build_bundle_task_payloads(
             "tasks": raw_tasks,
             "source_todo": payload.get("source_todo", ""),
             "objective_bundle_index": str(bundle_index_path),
+            "max_attempts": selected_max_attempts,
         }
         task_payloads.append(task_payload)
 

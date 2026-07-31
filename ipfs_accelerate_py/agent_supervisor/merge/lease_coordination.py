@@ -37,6 +37,8 @@ MIN_LEASE_MS = 5_000
 MAX_LEASE_MS = 300_000
 PROVIDER_VERSION = "3.2.0"
 MAX_PERSISTED_DEPENDENCY_REPAIRS = 256
+PROFILE_G_MAX_TASK_ATTEMPTS = 100
+UNLIMITED_TASK_TERMINAL_BLOCK_ATTEMPT_CAP = 3
 STRUCTURAL_DEPENDENCY_REPAIR_KINDS = frozenset(
     {"missing_dependency", "dependency_cycle", "duplicate_alias", "duplicate_task"}
 )
@@ -80,6 +82,24 @@ DEFAULT_SINGLE_FLIGHT_LEASE_SECONDS = 30.0
 DEFAULT_SINGLE_FLIGHT_OUTCOME_TTL_SECONDS = 60.0
 DEFAULT_SINGLE_FLIGHT_POLL_SECONDS = 0.02
 DEFAULT_SINGLE_FLIGHT_MAX_OUTCOME_BYTES = 256 * 1024
+
+
+def profile_g_task_attempt_limit(value: Any, *, default: int = 3) -> int:
+    """Return a Profile-G-compatible attempt limit.
+
+    Zero is the unlimited sentinel. Values above the Profile-G v1 boundary
+    are rejected instead of being silently rewritten across queue layers.
+    """
+
+    raw = default if value is None else value
+    if isinstance(raw, bool) or not isinstance(raw, int):
+        raise ValueError("max_attempts must be an integer")
+    if raw < 0 or raw > PROFILE_G_MAX_TASK_ATTEMPTS:
+        raise ValueError(
+            "max_attempts must be between 0 and "
+            f"{PROFILE_G_MAX_TASK_ATTEMPTS} for Profile-G tasks"
+        )
+    return raw
 
 
 def _coordinator_operation(method: Callable[..., Any]) -> Callable[..., Any]:
@@ -710,16 +730,19 @@ def adapt_goal_bundle(bundle: Mapping[str, Any], *, created_at_ms: int | None = 
         "tool": "codex.todo_bundle",
         "dependency_task_cids": dependency_task_cids,
         "idempotency_key": canonical_identity.semantic_fingerprint[:32],
-        "canonical_task_key": canonical_identity.canonical_task_key,
-        "canonical_task_cid": canonical_identity.canonical_task_cid,
         "resource_class": str(bundle.get("resource_class") or "cpu-small"),
         "deadline_ms": int(bundle.get("deadline_ms") or now + 86_400_000),
         "expected_value_millionths": int(bundle.get("expected_value_millionths") or 500_000),
-        "max_attempts": int(bundle.get("max_attempts") or 3),
+        "max_attempts": profile_g_task_attempt_limit(
+            bundle.get("max_attempts"),
+        ),
         "execution_mode": "idempotent",
     }
     task_spec_cid = profile_g_cid(task)
     artifacts = {profile_g_cid(item): item for item in (goal, subgoal, plan, selection, task)}
+    # Supervisor identity is adapter metadata, not a Profile-G TaskSpec field.
+    # Keep it beside the strict immutable artifact so datasets-owned validators
+    # can consume the TaskSpec without accepting implementation extensions.
     return {
         "goal": goal,
         "goal_cid": goal_cid,
@@ -739,6 +762,136 @@ def adapt_goal_bundle(bundle: Mapping[str, Any], *, created_at_ms: int | None = 
         "dependency_repair_evidence_count": dependency_repair_count,
         "artifacts": artifacts,
     }
+
+
+def _validated_embedded_profile_g(
+    bundle: Mapping[str, Any],
+    embedded: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Validate immutable Profile-G bindings before registration trusts them."""
+
+    from ipfs_datasets_py.logic.profile_g import (
+        ProfileGError,
+        validate_profile_g_artifact,
+    )
+
+    outer_limit = profile_g_task_attempt_limit(
+        bundle.get("max_attempts"),
+        default=3,
+    )
+    adapted = dict(embedded)
+    artifacts = adapted.get("artifacts")
+    if not isinstance(artifacts, Mapping):
+        raise ValueError("embedded Profile-G artifacts must be a mapping")
+
+    fields = (
+        ("goal", "goal_cid", "mcp++/profile-g/goal@1", "Goal"),
+        ("subgoal", "subgoal_cid", "mcp++/profile-g/subgoal@1", "Subgoal"),
+        (
+            "plan_branch",
+            "plan_branch_cid",
+            "mcp++/profile-g/plan-branch@1",
+            "PlanBranch",
+        ),
+        (
+            "selection",
+            "selection_cid",
+            "mcp++/profile-g/plan-selection@1",
+            "PlanSelection",
+        ),
+        ("task", "task_spec_cid", "mcp++/profile-g/task@1", "TaskSpec"),
+    )
+    validated_cids: dict[str, str] = {}
+    for name, cid_field, schema, artifact_kind in fields:
+        artifact = adapted.get(name)
+        if not isinstance(artifact, Mapping):
+            raise ValueError(f"embedded Profile-G {name} artifact is required")
+        if str(artifact.get("schema") or "") != schema:
+            raise ValueError(f"embedded Profile-G {name} schema is invalid")
+        try:
+            actual_cid = validate_profile_g_artifact(
+                artifact_kind,
+                artifact,
+            )
+        except ProfileGError as exc:
+            raise ValueError(
+                f"embedded Profile-G {name} artifact is invalid: {exc}"
+            ) from exc
+        declared_cid = str(adapted.get(cid_field) or "")
+        if name == "task":
+            task_cid = str(adapted.get("task_cid") or "")
+            if declared_cid != actual_cid or task_cid != actual_cid:
+                raise ValueError("embedded Profile-G TaskSpec CID is inconsistent")
+        elif declared_cid != actual_cid:
+            raise ValueError(f"embedded Profile-G {name} CID is inconsistent")
+        stored_artifact = artifacts.get(actual_cid)
+        if not isinstance(stored_artifact, Mapping) or dict(stored_artifact) != dict(artifact):
+            raise ValueError(f"embedded Profile-G {name} artifact binding is inconsistent")
+        validated_cids[name] = actual_cid
+
+    for cid, artifact in artifacts.items():
+        if (
+            not isinstance(artifact, Mapping)
+            or str(cid) != profile_g_cid(dict(artifact))
+        ):
+            raise ValueError("embedded Profile-G artifact map contains an invalid CID binding")
+
+    task = adapted["task"]
+    if "max_attempts" not in task:
+        raise ValueError("embedded Profile-G TaskSpec max_attempts is required")
+    task_limit = profile_g_task_attempt_limit(task["max_attempts"])
+    if task_limit != outer_limit:
+        raise ValueError(
+            "bundle max_attempts does not match embedded Profile-G TaskSpec"
+        )
+
+    expected_links = (
+        (adapted["subgoal"], "goal_cid", validated_cids["goal"]),
+        (adapted["plan_branch"], "subgoal_cid", validated_cids["subgoal"]),
+        (adapted["selection"], "subgoal_cid", validated_cids["subgoal"]),
+        (adapted["selection"], "plan_branch_cid", validated_cids["plan_branch"]),
+        (task, "subgoal_cid", validated_cids["subgoal"]),
+        (task, "plan_branch_cid", validated_cids["plan_branch"]),
+        (task, "selection_cid", validated_cids["selection"]),
+    )
+    for artifact, field, expected in expected_links:
+        if str(artifact.get(field) or "") != expected:
+            raise ValueError(f"embedded Profile-G {field} link is inconsistent")
+
+    canonical_identity = canonical_bundle_identity(bundle)
+    embedded_key = str(adapted.get("canonical_task_key") or "")
+    embedded_cid = str(adapted.get("canonical_task_cid") or "")
+    if embedded_key != canonical_identity.canonical_task_key:
+        raise ValueError("embedded canonical task key does not match bundle")
+    if embedded_cid != canonical_identity.canonical_task_cid:
+        raise ValueError("embedded canonical task CID does not match bundle")
+
+    expected_objective_cid = _link(
+        {
+            "bundle_key": str(bundle.get("bundle_key") or "objective/general"),
+            "source_todo": str(bundle.get("source_todo") or ""),
+            "task_ids": sorted(
+                str(item.get("task_id"))
+                for item in bundle.get("tasks", [])
+                if isinstance(item, Mapping) and item.get("task_id")
+            ),
+        }
+    )
+    if (
+        str(adapted["goal"].get("objective_cid") or "") != expected_objective_cid
+        or str(adapted["subgoal"].get("objective_cid") or "")
+        != expected_objective_cid
+    ):
+        raise ValueError("embedded Profile-G objective does not match bundle")
+    if str(task.get("idempotency_key") or "") != canonical_identity.semantic_fingerprint[:32]:
+        raise ValueError("embedded Profile-G TaskSpec idempotency key does not match bundle")
+    candidate_inputs = adapted["plan_branch"].get("candidate_input_cids")
+    if (
+        not isinstance(candidate_inputs, list)
+        or candidate_inputs != [task.get("input_cid")]
+    ):
+        raise ValueError("embedded Profile-G input binding is inconsistent")
+    return adapted
 
 
 @dataclass(frozen=True)
@@ -1311,7 +1464,11 @@ class LeaseCoordinator:
     @_coordinator_operation
     def register_bundle(self, bundle: Mapping[str, Any], *, created_at_ms: int | None = None) -> dict[str, Any]:
         embedded = bundle.get("profile_g")
-        adapted = dict(embedded) if isinstance(embedded, Mapping) and embedded.get("task_cid") else adapt_goal_bundle(bundle, created_at_ms=created_at_ms)
+        adapted = (
+            _validated_embedded_profile_g(bundle, embedded)
+            if isinstance(embedded, Mapping) and embedded.get("task_cid")
+            else adapt_goal_bundle(bundle, created_at_ms=created_at_ms)
+        )
         canonical_identity = canonical_bundle_identity(bundle)
         canonical_task_cid = str(adapted.get("canonical_task_cid") or canonical_identity.canonical_task_cid)
         task_spec_cid = str(adapted.get("task_spec_cid") or adapted.get("task_cid") or "")
@@ -1523,7 +1680,15 @@ class LeaseCoordinator:
                 if row is None:
                     connection.commit()
                     return False
-                exhausted = int(row["attempt"] or 0) >= self._max_attempts(row)
+                exhausted = self._attempt_budget_exhausted(
+                    row,
+                    int(row["attempt"] or 0),
+                    release_reason=(
+                        str(row["release_reason"])
+                        if row["release_reason"]
+                        else None
+                    ),
+                )
                 blocked_receipt = str(row["release_reason"] or "").startswith("receipt:") and str(
                     row["release_reason"] or ""
                 ).endswith(":blocked")
@@ -1794,7 +1959,40 @@ class LeaseCoordinator:
     @staticmethod
     def _max_attempts(task: _DuckRow | Mapping[str, Any]) -> int:
         bundle = json.loads(task["bundle_json"])
-        return max(1, int(bundle.get("max_attempts") or 3))
+        raw_limit = (
+            bundle["max_attempts"]
+            if bundle.get("max_attempts") not in (None, "")
+            else 3
+        )
+        return profile_g_task_attempt_limit(raw_limit)
+
+    @classmethod
+    def _attempt_budget_exhausted(
+        cls,
+        task: _DuckRow | Mapping[str, Any],
+        attempt: int,
+        *,
+        release_reason: str | None = None,
+    ) -> bool:
+        """Return whether admission is exhausted for the latest outcome.
+
+        Zero leaves retryable implementation failures unlimited. An
+        authoritative terminal-block receipt is different: allowing it to
+        re-enter forever would churn scheduler capacity without any source
+        change, so it retains the historical three-admission safety cap.
+        """
+
+        max_attempts = cls._max_attempts(task)
+        if max_attempts > 0:
+            return int(attempt) >= max_attempts
+        terminal_block = (
+            str(release_reason or "").startswith("receipt:")
+            and str(release_reason or "").endswith(":blocked")
+        )
+        return (
+            terminal_block
+            and int(attempt) >= UNLIMITED_TASK_TERMINAL_BLOCK_ATTEMPT_CAP
+        )
 
     @staticmethod
     def _execution_scope(task: _DuckRow) -> str:
@@ -1845,7 +2043,18 @@ class LeaseCoordinator:
             state = "accepted"
         elif lease_state == "completed":
             state = "completed"
-        elif attempt >= max_attempts or retry_not_before > now:
+        elif (
+            self._attempt_budget_exhausted(
+                task,
+                attempt,
+                release_reason=(
+                    str(lease["release_reason"])
+                    if lease is not None and lease["release_reason"]
+                    else None
+                ),
+            )
+            or retry_not_before > now
+        ):
             state = "blocked"
         else:
             state = "ready"
@@ -2150,9 +2359,21 @@ class LeaseCoordinator:
                     # A finite attempt budget prevents a permanently failing
                     # task from monopolizing newly idle lanes.
                     lease = connection.execute(
-                        "SELECT attempt FROM leases WHERE task_cid=?", (task["task_cid"],)
+                        "SELECT attempt, release_reason FROM leases WHERE task_cid=?",
+                        (task["task_cid"],),
                     ).fetchone()
-                    if lease is not None and int(lease["attempt"]) >= self._max_attempts(task):
+                    if (
+                        lease is not None
+                        and self._attempt_budget_exhausted(
+                            task,
+                            int(lease["attempt"]),
+                            release_reason=(
+                                str(lease["release_reason"])
+                                if lease["release_reason"]
+                                else None
+                            ),
+                        )
+                    ):
                         continue
                     if self._active_execution_scope_conflict(
                         connection, task, now=now
@@ -2252,7 +2473,18 @@ class LeaseCoordinator:
         ).fetchone()
         if prior is not None and prior["state"] == "completed":
             raise LeaseConflictError("task already has a successful terminal receipt")
-        if prior is not None and int(prior["attempt"] or 0) >= self._max_attempts(task):
+        if (
+            prior is not None
+            and self._attempt_budget_exhausted(
+                task,
+                int(prior["attempt"] or 0),
+                release_reason=(
+                    str(prior["release_reason"])
+                    if prior["release_reason"]
+                    else None
+                ),
+            )
+        ):
             raise LeaseConflictError("task attempt budget is exhausted")
         retry_not_before = int(prior["retry_not_before_ms"] or 0) if prior is not None else 0
         if retry_not_before > now:
@@ -5360,7 +5592,8 @@ class LeaseQueueBridge:
 
     Queue ownership alone is never execution authority.  A bridge claim is
     returned only after the embedded canonical TaskSpec has an accepted lease;
-    a conflicting queue claim is immediately returned to the queue.
+    retryable lease conflicts are persisted with backoff, while malformed
+    Profile-G work is terminally quarantined so neither can starve later work.
     """
 
     def __init__(
@@ -5371,29 +5604,107 @@ class LeaseQueueBridge:
         worker_id: str,
         claimant_did: str,
         lease_ms: int = 60_000,
+        rejection_backoff_seconds: float = 1.0,
+        max_rejections_per_claim: int = 32,
     ) -> None:
         self.queue = queue
         self.coordinator = coordinator
         self.worker_id = worker_id
         self.claimant_did = claimant_did
         self.lease_ms = lease_ms
+        self.rejection_backoff_seconds = max(
+            0.001,
+            float(rejection_backoff_seconds),
+        )
+        self.max_rejections_per_claim = max(1, int(max_rejections_per_claim))
+
+    def _terminally_reject_registration(self, task: Any, error: Exception) -> None:
+        detail = str(error)[:1_000]
+        reason = (
+            f"profile-g registration rejected: {type(error).__name__}: {detail}"
+        )
+        accepted = self.queue.complete(
+            task_id=task.task_id,
+            worker_id=self.worker_id,
+            status="failed",
+            result={
+                "profile_g_registration_rejected": {
+                    "error_type": type(error).__name__,
+                    "reason": detail,
+                }
+            },
+            error=reason,
+        )
+        if not accepted:
+            self.queue.release(
+                task_id=task.task_id,
+                worker_id=self.worker_id,
+                reason=reason,
+            )
+            raise LeaseError(
+                f"queue refused terminal Profile-G rejection for {task.task_id}"
+            ) from error
+
+    def _retry_rejected_lease(self, task: Any, error: LeaseError) -> bool:
+        retry = getattr(self.queue, "retry", None)
+        if not callable(retry):
+            self.queue.release(
+                task_id=task.task_id,
+                worker_id=self.worker_id,
+                reason="profile-g lease not accepted",
+            )
+            return False
+        accepted = retry(
+            task_id=task.task_id,
+            worker_id=self.worker_id,
+            delay_seconds=self.rejection_backoff_seconds,
+            error=f"profile-g lease not accepted: {type(error).__name__}: {error}",
+        )
+        if not accepted:
+            raise LeaseError(
+                f"queue refused retry backoff for {task.task_id}"
+            ) from error
+        return True
 
     def claim_next(self, *, supported_task_types: list[str] | None = None) -> LeasedQueuedTask | None:
-        task = self.queue.claim_next(worker_id=self.worker_id, supported_task_types=supported_task_types)
-        if task is None:
-            return None
-        payload = task.payload if isinstance(task.payload, Mapping) else {}
-        try:
-            adapted = self.coordinator.register_bundle(payload)
-            grant = self.coordinator.claim(
-                adapted["task_cid"],
-                self.claimant_did,
-                requested_lease_ms=self.lease_ms,
+        for _ in range(self.max_rejections_per_claim):
+            task = self.queue.claim_next(
+                worker_id=self.worker_id,
+                supported_task_types=supported_task_types,
             )
-        except Exception:
-            self.queue.release(task_id=task.task_id, worker_id=self.worker_id, reason="profile-g lease not accepted")
-            raise
-        return LeasedQueuedTask(task=task, grant=grant)
+            if task is None:
+                return None
+            if not isinstance(task.payload, Mapping):
+                self._terminally_reject_registration(
+                    task,
+                    TypeError("queued Profile-G bundle payload must be a mapping"),
+                )
+                continue
+            payload = task.payload
+            try:
+                adapted = self.coordinator.register_bundle(payload)
+            except (KeyError, TypeError, ValueError) as error:
+                self._terminally_reject_registration(task, error)
+                continue
+            try:
+                grant = self.coordinator.claim(
+                    adapted["task_cid"],
+                    self.claimant_did,
+                    requested_lease_ms=self.lease_ms,
+                )
+            except LeaseError as error:
+                if not self._retry_rejected_lease(task, error):
+                    raise
+                continue
+            except Exception:
+                self.queue.release(
+                    task_id=task.task_id,
+                    worker_id=self.worker_id,
+                    reason="profile-g lease coordination failed",
+                )
+                raise
+            return LeasedQueuedTask(task=task, grant=grant)
+        return None
 
     def renew(self, leased: LeasedQueuedTask) -> LeasedQueuedTask:
         return LeasedQueuedTask(

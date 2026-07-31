@@ -118,6 +118,12 @@ from ipfs_accelerate_py.agent_supervisor.runtime.multi_supervisor_runner import 
     supervisor_track_payload,
     tracks_from_parsed_args,
 )
+from ipfs_accelerate_py.agent_supervisor.control.control_contracts import (
+    CursorReplayError,
+)
+from ipfs_accelerate_py.agent_supervisor.runtime.event_log import (
+    rotate_event_log_if_needed,
+)
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon_runner import (
     ConfiguredImplementationDaemonRunner,
     ImplementationDaemonDefaults,
@@ -10054,6 +10060,104 @@ def test_daemon_refill_callbacks_honor_cli_scan_overrides(tmp_path):
     assert captured["codebase"]["bundle_dir"] == tmp_path / "bundles"
 
 
+def test_run_once_repairs_exact_completion_receipt_after_state_save_crash(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "README.md").write_text("completed\n", encoding="utf-8")
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Agent Todos
+
+## ACCEL-001 Completed before its receipt was appended
+
+- Status: completed
+- Completion: manual
+- Priority: P1
+- Track: runtime
+- Depends on:
+- Outputs: README.md
+- Validation: test -f README.md
+- Acceptance: The completed revision has one durable exact receipt.
+""",
+        encoding="utf-8",
+    )
+    state_dir = repo / "state"
+    state_path = state_dir / "task_state.json"
+    events_path = state_dir / "events.jsonl"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_path,
+        strategy_path=state_dir / "strategy.json",
+        events_path=events_path,
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+    )
+    [task] = parse_task_file(
+        todo_path,
+        task_header_prefix="## ACCEL-",
+    )
+    identity = daemon._identity_for_task(task)
+    # Model the old crash window: the task projection reached disk after the
+    # board became completed, but task_completed never reached the event log.
+    TodoTaskState(
+        completed_task_ids=[task.task_id],
+        completed_count=1,
+        task_count=1,
+        task_statuses={task.task_id: "completed"},
+        task_identities={task.task_id: identity.to_dict()},
+    ).save(state_path)
+
+    first = daemon.run_once()
+    first_events = [
+        json.loads(line)
+        for line in events_path.read_text(encoding="utf-8").splitlines()
+    ]
+    first_receipts = [
+        event
+        for event in first_events
+        if event.get("type") == "task_completed"
+    ]
+
+    assert len(first_receipts) == 1
+    assert first_receipts[0]["task_id"] == task.task_id
+    assert (
+        first_receipts[0]["canonical_task_key"]
+        == identity.canonical_task_key
+    )
+    assert (
+        first_receipts[0]["canonical_task_cid"]
+        == identity.canonical_task_cid
+    )
+    assert first_receipts[0]["completion_receipt_repair"] is True
+    assert first["completion_receipt_writes"] == [
+        {
+            "task_id": task.task_id,
+            "canonical_task_key": identity.canonical_task_key,
+            "canonical_task_cid": identity.canonical_task_cid,
+            "board_namespace": identity.board_namespace,
+            "completion_receipt_repair": True,
+            "reason": "missing_exact_completion_receipt",
+        }
+    ]
+
+    second = daemon.run_once()
+    second_events = [
+        json.loads(line)
+        for line in events_path.read_text(encoding="utf-8").splitlines()
+    ]
+    second_receipts = [
+        event
+        for event in second_events
+        if event.get("type") == "task_completed"
+    ]
+
+    assert len(second_receipts) == 1
+    assert second["unchanged"] is True
+    assert second["write_count"] == 0
+
+
 def test_implementation_daemon_run_once_cleans_already_merged_worktree(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -15212,7 +15316,9 @@ def test_implementation_daemon_reconciles_merge_lock_deferrals(tmp_path):
         },
     }
 
-    daemon._iter_events = lambda: [event]  # type: ignore[method-assign]
+    daemon._iter_merge_lifecycle_events = (  # type: ignore[method-assign]
+        lambda: [event]
+    )
     daemon._main_branch_name = lambda: "main"  # type: ignore[method-assign]
     daemon._git_ref_is_ancestor = lambda ancestor, descendant: False  # type: ignore[method-assign]
 
@@ -15385,7 +15491,9 @@ def test_implementation_daemon_discovers_cleanup_failed_successful_merge(tmp_pat
         },
     }
 
-    daemon._iter_events = lambda: [event]  # type: ignore[method-assign]
+    daemon._iter_merge_lifecycle_events = (  # type: ignore[method-assign]
+        lambda: [event]
+    )
     daemon._main_branch_name = lambda: "main"  # type: ignore[method-assign]
     daemon._git_ref_is_ancestor = lambda ancestor, descendant: True  # type: ignore[method-assign]
 
@@ -18925,6 +19033,653 @@ def test_implementation_daemon_commits_dirty_already_completed_todo_status(tmp_p
     events = [json.loads(line) for line in (state_dir / "events.jsonl").read_text(encoding="utf-8").splitlines()]
     assert events[-1]["type"] == "todo_status_reconciled"
     assert events[-1]["commit_result"]["committed"] is True
+
+
+def test_reconciled_completion_accepts_only_fsynced_exact_runtime_snapshot(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / ".gitignore").write_text("nested/\n", encoding="utf-8")
+    (repo / "README.md").write_text("outer\n", encoding="utf-8")
+    _git(repo, "add", ".gitignore", "README.md")
+    _git(repo, "commit", "-m", "seed outer repo")
+
+    runtime_repo = repo / "nested"
+    runtime_repo.mkdir()
+    _git(runtime_repo, "init")
+    _git(runtime_repo, "checkout", "-b", "main")
+    _git(runtime_repo, "config", "user.name", "Test User")
+    _git(runtime_repo, "config", "user.email", "test@example.invalid")
+    (runtime_repo / ".gitignore").write_text("live/\n", encoding="utf-8")
+    (runtime_repo / "README.md").write_text("nested\n", encoding="utf-8")
+    _git(runtime_repo, "add", ".gitignore", "README.md")
+    _git(runtime_repo, "commit", "-m", "seed runtime projection repo")
+
+    state_dir = runtime_repo / "live" / "state"
+    state_dir.mkdir(parents=True)
+    todo_path = state_dir / "runtime.todo.md"
+    todo_path.write_text(
+        """## FVT-024 Reconcile ignored runtime completion
+
+- Status: todo
+- Outputs: feature.py
+- Acceptance: Persist exact completion evidence.
+""",
+        encoding="utf-8",
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## FVT-",
+    )
+    [task] = daemon._load_tasks()
+    expected_task_cids = {
+        task.task_id: daemon._identity_for_task(task).canonical_task_cid
+    }
+
+    update_result = daemon._mark_reconciled_completion_in_todo(
+        task,
+        [task],
+        expected_task_cids,
+    )
+    persistence = daemon._reconciled_completion_persisted(
+        update_result,
+        expected_task_cids,
+    )
+
+    assert update_result["updated"] is True
+    assert update_result["commit_result"]["committed"] is False
+    assert update_result["commit_result"]["reason"] == "no_changes"
+    assert update_result["commit_result"]["repo"] == str(
+        runtime_repo.resolve()
+    )
+    assert persistence["passed"] is True
+    assert persistence["durable_update"] is True
+    snapshot = persistence["fsynced_taskboard_snapshot"]
+    assert snapshot["passed"] is True
+    assert snapshot["taskboard_revision"].startswith("taskboard:sha256:")
+    assert snapshot["observed_task_cids"] == expected_task_cids
+
+    second_update = daemon._mark_reconciled_completion_in_todo(
+        task,
+        [task],
+        expected_task_cids,
+    )
+    second_persistence = daemon._reconciled_completion_persisted(
+        second_update,
+        expected_task_cids,
+    )
+
+    assert second_update["updated"] is False
+    assert second_update["reason"] == "already_completed"
+    assert second_persistence["passed"] is True
+    assert (
+        second_persistence["fsynced_taskboard_snapshot"]["passed"]
+        is True
+    )
+
+    todo_path.write_text(
+        todo_path.read_text(encoding="utf-8").replace(
+            "- Status: completed",
+            "- Status: todo",
+        ),
+        encoding="utf-8",
+    )
+    reverted = daemon._reconciled_completion_persisted(
+        update_result,
+        expected_task_cids,
+    )
+
+    assert reverted["passed"] is False
+    assert reverted["durable_update"] is False
+    assert reverted["fsynced_taskboard_snapshot"]["status_mismatches"] == {
+        "FVT-024": "todo"
+    }
+
+    todo_path.write_text(
+        todo_path.read_text(encoding="utf-8").replace(
+            "- Status: todo",
+            "- Status: completed",
+        ),
+        encoding="utf-8",
+    )
+    original_locked_taskboard = (
+        implementation_daemon_module.locked_taskboard
+    )
+
+    @contextmanager
+    def replace_taskboard_after_inode_open(path):
+        with original_locked_taskboard(path) as taskboard:
+            replacement = path.with_name(f".{path.name}.replacement")
+            replacement.write_text(
+                todo_path.read_text(encoding="utf-8").replace(
+                    "- Status: completed",
+                    "- Status: todo",
+                ),
+                encoding="utf-8",
+            )
+            os.replace(replacement, path)
+            yield taskboard
+
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "locked_taskboard",
+        replace_taskboard_after_inode_open,
+    )
+    replaced_path = daemon._reconciled_completion_persisted(
+        update_result,
+        expected_task_cids,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "locked_taskboard",
+        original_locked_taskboard,
+    )
+
+    assert replaced_path["passed"] is False
+    assert (
+        replaced_path["fsynced_taskboard_snapshot"]["reason"]
+        == "taskboard_snapshot_read_failed"
+    )
+
+    todo_path.write_text(
+        todo_path.read_text(encoding="utf-8").replace(
+            "- Status: todo",
+            "- Status: completed",
+        ),
+        encoding="utf-8",
+    )
+    same_inode_before = todo_path.stat().st_ino
+
+    @contextmanager
+    def rewrite_same_inode_during_snapshot(path):
+        with original_locked_taskboard(path) as taskboard:
+            class SnapshotRaceFile:
+                def __init__(self):
+                    self.read_count = 0
+
+                def __getattr__(self, name):
+                    return getattr(taskboard, name)
+
+                def read(self, *args, **kwargs):
+                    text = taskboard.read(*args, **kwargs)
+                    self.read_count += 1
+                    if self.read_count == 1:
+                        rewritten = text.replace(
+                            "- Status: completed",
+                            "- Status: todo     ",
+                        )
+                        assert len(rewritten) == len(text)
+                        with path.open(
+                            "r+",
+                            encoding="utf-8",
+                        ) as noncooperating_writer:
+                            noncooperating_writer.seek(0)
+                            noncooperating_writer.write(rewritten)
+                            noncooperating_writer.flush()
+                            os.fsync(noncooperating_writer.fileno())
+                    return text
+
+            yield SnapshotRaceFile()
+
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "locked_taskboard",
+        rewrite_same_inode_during_snapshot,
+    )
+    same_inode_rewrite = daemon._reconciled_completion_persisted(
+        update_result,
+        expected_task_cids,
+    )
+    monkeypatch.setattr(
+        implementation_daemon_module,
+        "locked_taskboard",
+        original_locked_taskboard,
+    )
+
+    assert todo_path.stat().st_ino == same_inode_before
+    assert "- Status: todo" in todo_path.read_text(encoding="utf-8")
+    assert same_inode_rewrite["passed"] is False
+    assert (
+        same_inode_rewrite["fsynced_taskboard_snapshot"]["reason"]
+        == "taskboard_snapshot_read_failed"
+    )
+
+    todo_path.write_text(
+        todo_path.read_text(encoding="utf-8").replace(
+            "- Status: todo     ",
+            "- Status: completed",
+        ),
+        encoding="utf-8",
+    )
+    _git(
+        runtime_repo,
+        "add",
+        "-f",
+        str(todo_path.relative_to(runtime_repo)),
+    )
+    _git(runtime_repo, "commit", "-m", "track runtime-shaped board")
+    tracked_runtime = daemon._reconciled_completion_persisted(
+        update_result,
+        expected_task_cids,
+    )
+
+    assert tracked_runtime["passed"] is False
+    assert tracked_runtime["durable_update"] is False
+    assert (
+        tracked_runtime["runtime_taskboard_binding"]["reason"]
+        == "runtime_taskboard_not_ignored"
+    )
+    assert "fsynced_taskboard_snapshot" not in tracked_runtime
+
+
+def test_completion_persistence_failure_remains_reconcilable_after_board_update(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "live" / "state"
+    state_dir.mkdir(parents=True)
+    todo_path = state_dir / "runtime.todo.md"
+    todo_path.write_text(
+        """## FVT-024 Recover completion persistence
+
+- Status: completed
+- Outputs: feature.py
+- Acceptance: Retry a landed merge receipt after the board update.
+""",
+        encoding="utf-8",
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## FVT-",
+    )
+    implementation_commit = "a" * 40
+    unrelated_same_task_commit = "b" * 40
+    daemon._record_event(
+        "implementation_finished",
+        {
+            "task_id": "FVT-024",
+            "attempt": 3,
+            "timestamp": "2000-01-01T00:00:00+00:00",
+            "implementation_commit": implementation_commit,
+            "merge_result": {
+                "attempted": True,
+                "merged": False,
+                "reason": "post_merge_integration_commit_unproven",
+            },
+        },
+    )
+    daemon._record_event(
+        "implementation_finished",
+        {
+            "task_id": "FVT-024",
+            "attempt": 2,
+            "timestamp": "2000-01-01T00:00:00+00:00",
+            "implementation_commit": unrelated_same_task_commit,
+            "completion_persistence_recovery": {
+                "reason": "forged_implementation_payload",
+            },
+            "merge_result": {
+                "attempted": True,
+                "merged": False,
+                "reason": "merge_retry_failed",
+            },
+        },
+    )
+    daemon._record_event(
+        "merge_reconciled",
+        {
+            "task_id": "FVT-024",
+            "attempt": 3,
+            "implementation_commit": implementation_commit,
+            "resolved": False,
+            "reason": "completion_persistence_failed",
+        },
+    )
+    daemon._record_event(
+        "merge_reconciled",
+        {
+            "task_id": "FVT-024",
+            "attempt": 3,
+            "implementation_commit": implementation_commit,
+            "resolved": False,
+            "reason": "cleanup_retry_failed",
+        },
+    )
+    rotation = rotate_event_log_if_needed(
+        daemon.events_path,
+        max_bytes=1,
+        retain_recent=1,
+        max_archives=2,
+    )
+    assert rotation["rotated"] is True
+    daemon._main_branch_name = lambda: "main"  # type: ignore[method-assign]
+    daemon._git_ref_is_ancestor = (  # type: ignore[method-assign]
+        lambda ancestor, _descendant: ancestor == implementation_commit
+    )
+
+    recovery_candidates = daemon._failed_merge_candidates(
+        skip_task_ids={"FVT-024"}
+    )
+    assert len(recovery_candidates) == 1
+    assert (
+        recovery_candidates[0]["implementation_commit"]
+        == implementation_commit
+    )
+    daemon._current_todo_task_ids_for_reconciliation = (  # type: ignore[method-assign]
+        lambda: {"FVT-024"}
+    )
+    candidates = daemon._failed_merge_candidates()
+
+    candidates_by_commit = {
+        candidate["implementation_commit"]: candidate
+        for candidate in candidates
+    }
+    recovered_candidate = candidates_by_commit[implementation_commit]
+    unrelated_candidate = candidates_by_commit[
+        unrelated_same_task_commit
+    ]
+    assert recovered_candidate["completion_persistence_recovery"]["reason"] == (
+        "completion_persistence_failed"
+    )
+    assert "completion_persistence_recovery" not in unrelated_candidate
+    fresh, stale = daemon._partition_stale_failed_merge_candidates(
+        candidates
+    )
+    assert fresh == [recovered_candidate]
+    assert stale == [unrelated_candidate]
+
+    daemon._record_event(
+        "merge_reconciled",
+        {
+            "task_id": "FVT-025",
+            "attempt": 1,
+            "implementation_commit": "c" * 40,
+            "resolved": True,
+            "reason": "merged",
+        },
+    )
+    eviction_rotation = rotate_event_log_if_needed(
+        daemon.events_path,
+        max_bytes=1,
+        retain_recent=1,
+        max_archives=1,
+    )
+    assert eviction_rotation["rotated"] is True
+    retained_events = daemon._iter_merge_lifecycle_events()
+    assert [event["sequence"] for event in retained_events] == [4, 5]
+
+    with daemon.events_path.open("ab") as event_log:
+        event_log.write(b"{malformed lifecycle event\\n")
+        event_log.flush()
+        os.fsync(event_log.fileno())
+    with pytest.raises(CursorReplayError):
+        daemon._failed_merge_candidates(skip_task_ids={"FVT-024"})
+
+
+def test_completion_recovery_is_not_suppressed_by_other_task_on_same_commit(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "runtime.todo.md"
+    todo_path.write_text(
+        """## FVT-024 Recover completion persistence
+
+- Status: completed
+- Outputs: feature.py
+""",
+        encoding="utf-8",
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=repo / "task_state.json",
+        strategy_path=repo / "strategy.json",
+        events_path=repo / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## FVT-",
+    )
+    shared_commit = "a" * 40
+    daemon._record_event(
+        "implementation_finished",
+        {
+            "task_id": "FVT-024",
+            "attempt": 3,
+            "implementation_commit": shared_commit,
+            "merge_result": {
+                "attempted": True,
+                "merged": False,
+                "reason": "post_merge_integration_commit_unproven",
+            },
+        },
+    )
+    daemon._record_event(
+        "merge_reconciled",
+        {
+            "task_id": "FVT-024",
+            "attempt": 3,
+            "implementation_commit": shared_commit,
+            "resolved": False,
+            "reason": "completion_persistence_failed",
+        },
+    )
+    daemon._record_event(
+        "merge_reconciled",
+        {
+            "task_id": "FVT-025",
+            "attempt": 1,
+            "implementation_commit": shared_commit,
+            "resolved": True,
+            "reason": "merged",
+        },
+    )
+    daemon._main_branch_name = lambda: "main"  # type: ignore[method-assign]
+    daemon._git_ref_is_ancestor = lambda *_args: True  # type: ignore[method-assign]
+
+    candidates = daemon._failed_merge_candidates(
+        skip_task_ids={"FVT-024"},
+    )
+
+    assert len(candidates) == 1
+    assert candidates[0]["task_id"] == "FVT-024"
+    assert candidates[0]["implementation_commit"] == shared_commit
+    assert candidates[0]["completion_persistence_recovery"]["reason"] == (
+        "completion_persistence_failed"
+    )
+
+
+def test_completion_recovery_requires_exact_false_resolved_flag(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "runtime.todo.md",
+        state_path=repo / "task_state.json",
+        strategy_path=repo / "strategy.json",
+        events_path=repo / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## FVT-",
+    )
+    base_event = {
+        "type": "merge_reconciled",
+        "task_id": "FVT-024",
+        "implementation_commit": "a" * 40,
+        "reason": "completion_persistence_failed",
+    }
+    poisoned_events = [
+        dict(base_event),
+        {**base_event, "resolved": None},
+        {**base_event, "resolved": 0},
+        {**base_event, "resolved": "false"},
+    ]
+
+    for poisoned in poisoned_events:
+        assert daemon._completion_persistence_recovery_candidates(
+            [poisoned]
+        ) == {}
+
+    legitimate = {**base_event, "resolved": False}
+    assert list(
+        daemon._completion_persistence_recovery_candidates(
+            [legitimate]
+        )
+    ) == [("FVT-024", "a" * 40)]
+
+
+def test_completion_recovery_uses_landed_rewrite_without_remerging_deleted_branch(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / ".gitignore").write_text("live/\n", encoding="utf-8")
+    (repo / "base.txt").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", ".gitignore", "base.txt")
+    _git(repo, "commit", "-m", "baseline")
+
+    implementation_branch = "implementation/fvt-024-deleted"
+    _git(repo, "checkout", "-b", implementation_branch)
+    (repo / "feature.py").write_text("VALUE = 'original'\n", encoding="utf-8")
+    (repo / "test_feature.py").write_text(
+        "def test_feature():\n    assert True\n",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "feature.py", "test_feature.py")
+    _git(repo, "commit", "-m", "FVT-024 original implementation")
+    implementation_commit = _git(repo, "rev-parse", "HEAD")
+
+    _git(repo, "checkout", "main")
+    rewritten_branch = "rewritten/fvt-024"
+    _git(repo, "checkout", "-b", rewritten_branch)
+    (repo / "feature.py").write_text("VALUE = 'rewritten'\n", encoding="utf-8")
+    (repo / "test_feature.py").write_text(
+        "def test_feature():\n    assert True\n",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "feature.py", "test_feature.py")
+    _git(repo, "commit", "-m", "FVT-024 rewritten implementation")
+    landed_commit = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "main")
+    _git(
+        repo,
+        "merge",
+        "--no-ff",
+        rewritten_branch,
+        "-m",
+        "Integrate rewritten FVT-024",
+    )
+    integration_commit = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "branch", "-D", implementation_branch, rewritten_branch)
+    assert implementation_commit != landed_commit
+    assert subprocess.run(
+        ["git", "merge-base", "--is-ancestor", implementation_commit, "main"],
+        cwd=repo,
+        check=False,
+    ).returncode == 1
+
+    state_dir = repo / "live" / "state"
+    state_dir.mkdir(parents=True)
+    todo_path = state_dir / "runtime.todo.md"
+    todo_path.write_text(
+        """## FVT-024 Recover rewritten completion
+
+- Status: completed
+- Outputs: feature.py, test_feature.py
+""",
+        encoding="utf-8",
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## FVT-",
+        merge_target_branch="main",
+        merge_reconciliation_max_merges=1,
+    )
+    [task] = daemon._load_tasks()
+    task_cid = daemon._identity_for_task(task).canonical_task_cid
+    completion_task_cids = {"FVT-024": task_cid}
+    daemon._record_event(
+        "implementation_finished",
+        {
+            "task_id": "FVT-024",
+            "attempt": 3,
+            "branch": implementation_branch,
+            "implementation_commit": implementation_commit,
+            "canonical_task_cid": task_cid,
+            "merge_result": {
+                "attempted": True,
+                "merged": False,
+                "reason": "post_merge_integration_commit_unproven",
+                "completion_task_cids": completion_task_cids,
+            },
+        },
+    )
+    daemon._record_event(
+        "merge_reconciled",
+        {
+            "task_id": "FVT-024",
+            "attempt": 3,
+            "branch": implementation_branch,
+            "implementation_commit": implementation_commit,
+            "landed_commit": landed_commit,
+            "landed_ref_source": "branch",
+            "merge_commit": integration_commit,
+            "completion_task_cids": completion_task_cids,
+            "resolved": False,
+            "reason": "completion_persistence_failed",
+            "cleanup_result": {"cleaned": True},
+            "integration_commit_proof": {
+                "passed": True,
+                "implementation_commit": landed_commit,
+                "integration_ref": integration_commit,
+                "integration_commit": integration_commit,
+                "target_branch": "main",
+                "reasons": [],
+            },
+        },
+    )
+    daemon._merge_branch_to_main = (  # type: ignore[method-assign]
+        lambda *_args, **_kwargs: pytest.fail(
+            "persistence recovery must not remerge the original commit"
+        )
+    )
+
+    [result] = daemon._reconcile_failed_merges(
+        skip_task_ids={"FVT-024"},
+    )
+
+    assert result["resolved"] is True
+    assert result["reason"] == (
+        "completion_persistence_recovered_from_landed_rewrite"
+    )
+    assert result["landed_commit"] == landed_commit
+    assert result["merge_commit"] == integration_commit
+    assert result["merge_result"]["attempted"] is False
+    assert result["integration_commit_proof"]["passed"] is True
+    assert result["post_merge_declared_output_invariant"]["passed"] is True
+    assert result["completion_persistence"]["passed"] is True
+    assert result["completion_persistence"]["fsynced_taskboard_snapshot"][
+        "passed"
+    ] is True
 
 
 def test_implementation_daemon_updates_checkbox_with_completed_status(tmp_path):

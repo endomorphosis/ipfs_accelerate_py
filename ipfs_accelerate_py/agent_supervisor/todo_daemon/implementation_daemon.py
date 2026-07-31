@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import fcntl
 import fnmatch
 import hashlib
 import json
@@ -79,11 +80,14 @@ from ..worktree_lifecycle import (
 )
 from ..runtime.event_log import (
     append_jsonl_event,
+    event_log_manifest,
+    event_log_sources,
     latest_event_cursor,
     read_jsonl_events,
     repair_jsonl_event_log,
     unique_backup_path,
 )
+from ..control.control_contracts import CursorReplayError
 from ..evidence_output_scope import (
     EVIDENCE_OUTPUTS_METADATA_KEY,
     evidence_output_path_is_excluded,
@@ -116,6 +120,7 @@ from ..task_sources.taskboard_store import (
     ProjectionDeltaCheckpointStore,
     locked_taskboard,
     replace_locked_taskboard,
+    taskboard_revision,
 )
 from ..merge.git_gc import GitGarbageCollector
 from ..integrations.llm_merge_resolver_fallback import llm_merge_resolver_fallback_command
@@ -5871,6 +5876,24 @@ class PortalImplementationDaemon:
         self._acknowledge_runtime_events()
         return result
 
+    @staticmethod
+    def _task_completion_receipt_bindings(
+        lifecycle_events: Sequence[Mapping[str, Any]],
+    ) -> set[tuple[str, str]]:
+        """Return exact task-revision bindings with durable completion receipts."""
+
+        bindings: set[tuple[str, str]] = set()
+        for event in lifecycle_events:
+            if str(event.get("type") or "") != "task_completed":
+                continue
+            task_id = str(event.get("task_id") or "")
+            canonical_task_cid = str(
+                event.get("canonical_task_cid") or ""
+            )
+            if task_id and canonical_task_cid:
+                bindings.add((task_id, canonical_task_cid))
+        return bindings
+
     def ensure_state_file(self) -> dict[str, Any]:
         """Repair malformed durable state before this pass reads it."""
 
@@ -6412,14 +6435,50 @@ class PortalImplementationDaemon:
         if projection_delta:
             state.heartbeat_at = now
             projection_delta = self._projection_delta(previous, state)
+
+        completion_receipt_bindings = (
+            self._task_completion_receipt_bindings(
+                self._iter_merge_lifecycle_events()
+            )
+        )
+        completion_receipt_writes: list[dict[str, Any]] = []
+        newly_completed_task_ids = set(newly_completed)
+        for task in tasks:
+            if task.task_id not in completed_set:
+                continue
+            identity = self._identity_for_task(task)
+            receipt_binding = (
+                task.task_id,
+                identity.canonical_task_cid,
+            )
+            if receipt_binding in completion_receipt_bindings:
+                continue
+            receipt_repair = task.task_id not in newly_completed_task_ids
+            receipt = {
+                "task_id": task.task_id,
+                "canonical_task_key": identity.canonical_task_key,
+                "canonical_task_cid": identity.canonical_task_cid,
+                "board_namespace": identity.board_namespace,
+                "completion_receipt_repair": receipt_repair,
+                "reason": (
+                    "missing_exact_completion_receipt"
+                    if receipt_repair
+                    else "task_became_completed"
+                ),
+            }
+            # The append is fsynced and precedes the mutable state projection.
+            # If the process exits on either side of this boundary, strict
+            # lifecycle replay makes the next pass idempotently converge.
+            self._record_event("task_completed", receipt)
+            completion_receipt_bindings.add(receipt_binding)
+            completion_receipt_writes.append(receipt)
+
         state_written = state.save(self.state_path)
         if revision_reset_task_ids:
             self._record_event(
                 "task_revision_attempt_budget_reset",
                 {"task_ids": sorted(revision_reset_task_ids)},
             )
-        for task_id in newly_completed:
-            self._record_event("task_completed", {"task_id": task_id})
         implementation_result: dict[str, Any] | None = None
         if self.implement and selected is not None and resolved_statuses.get(selected.task_id) == "ready":
             unresolved_for_selected = unresolved_merge_failures.get(selected.task_id)
@@ -6452,7 +6511,7 @@ class PortalImplementationDaemon:
             and implementation_result.get("reason")
             in {"provider_capacity_exhausted", "provider_capacity_backoff"}
         )
-        if state_written or (
+        if state_written or completion_receipt_writes or (
             implementation_result is not None and not provider_backoff_result
         ):
             self._record_event(
@@ -6502,6 +6561,10 @@ class PortalImplementationDaemon:
                     },
                     "shared_active_merge_task_ids": sorted(shared_active_merge_task_ids),
                     "shared_completed_task_ids": sorted(shared_completed_task_ids),
+                    "completion_receipt_task_ids": [
+                        receipt["task_id"]
+                        for receipt in completion_receipt_writes
+                    ],
                     "projection_delta_keys": sorted(projection_delta),
                 },
             )
@@ -6544,13 +6607,15 @@ class PortalImplementationDaemon:
             "execution_slice_task_cids": sorted(self.execution_slice_task_cids),
             "shared_active_merge_task_ids": sorted(shared_active_merge_task_ids),
             "shared_completed_task_ids": sorted(shared_completed_task_ids),
+            "completion_receipt_writes": completion_receipt_writes,
             "canonical_task_count": len(aliases_by_cid),
             "merge_train_progress": merge_train_progress,
             "protected_path_reconciliation": protected_path_reconciliation,
             "unchanged": not state_written
+            and not completion_receipt_writes
             and (implementation_result is None or provider_backoff_result),
             "state_written": state_written,
-            "write_count": int(state_written),
+            "write_count": int(state_written) + len(completion_receipt_writes),
             "projection_delta": projection_delta,
             "wake_kinds": sorted(wake_kinds),
             "requirement_id": EVENT_DRIVEN_RUNTIME_REQUIREMENT_ID,
@@ -6569,7 +6634,7 @@ class PortalImplementationDaemon:
         # execution state after the board projection above was selected. Do
         # not acknowledge that source head until a follow-up pass reconciles
         # those effects into the task projection.
-        if state_written and (
+        if (state_written or completion_receipt_writes) and (
             implementation_result is None or provider_capacity_deferral_result
         ):
             checkpoint_result = self._save_runtime_checkpoint(
@@ -7723,8 +7788,375 @@ class PortalImplementationDaemon:
             expected_task_cids=completion_task_cids,
         )
 
-    @staticmethod
+    def _fsynced_runtime_taskboard_completion_snapshot(
+        self,
+        completion_task_cids: Mapping[str, str],
+        *,
+        runtime_binding: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Prove an ignored runtime projection persisted exact completions."""
+
+        expected = {
+            str(task_id): str(task_cid)
+            for task_id, task_cid in completion_task_cids.items()
+            if str(task_id) and str(task_cid)
+        }
+        todo_path = self.todo_path
+        state_path = self.state_path
+        try:
+            absolute_todo_path = todo_path.resolve()
+            absolute_state_path = state_path.resolve()
+        except OSError as exc:
+            return {
+                "schema": (
+                    "ipfs_accelerate_py.agent_supervisor."
+                    "fsynced_taskboard_completion_snapshot@1"
+                ),
+                "passed": False,
+                "reason": "taskboard_snapshot_path_resolution_failed",
+                "path": str(todo_path),
+                "expected_task_ids": sorted(expected),
+                "error": str(exc)[-1000:],
+            }
+        runtime_projection = bool(
+            absolute_todo_path.parent == absolute_state_path.parent
+            and absolute_todo_path.name.endswith("runtime.todo.md")
+        )
+        result: dict[str, Any] = {
+            "schema": (
+                "ipfs_accelerate_py.agent_supervisor."
+                "fsynced_taskboard_completion_snapshot@1"
+            ),
+            "passed": False,
+            "reason": "not_runtime_taskboard_projection",
+            "path": str(todo_path),
+            "expected_task_ids": sorted(expected),
+            "runtime_projection": runtime_projection,
+            "runtime_binding": dict(runtime_binding),
+        }
+        if (
+            not expected
+            or not runtime_projection
+            or runtime_binding.get("passed") is not True
+            or runtime_binding.get("ignored") is not True
+        ):
+            return result
+
+        materialization_lock_path = absolute_todo_path.with_name(
+            f".{absolute_todo_path.name}.materialization.lock"
+        )
+        try:
+            materialization_lock_path.parent.mkdir(
+                parents=True,
+                exist_ok=True,
+            )
+            with materialization_lock_path.open(
+                "a+b"
+            ) as materialization_lock:
+                fcntl.flock(
+                    materialization_lock.fileno(),
+                    fcntl.LOCK_EX,
+                )
+                try:
+                    with locked_taskboard(
+                        absolute_todo_path
+                    ) as taskboard:
+                        taskboard.flush()
+                        os.fsync(taskboard.fileno())
+                        path_stat_before = absolute_todo_path.stat()
+                        fd_stat_before = os.fstat(taskboard.fileno())
+
+                        def stable_revision(
+                            stat_result: os.stat_result,
+                        ) -> tuple[int, int, int, int, int]:
+                            return (
+                                int(stat_result.st_dev),
+                                int(stat_result.st_ino),
+                                int(stat_result.st_size),
+                                int(stat_result.st_mtime_ns),
+                                int(stat_result.st_ctime_ns),
+                            )
+
+                        before_revision = stable_revision(path_stat_before)
+                        if before_revision != stable_revision(fd_stat_before):
+                            raise RuntimeError(
+                                "taskboard path changed while opening snapshot"
+                            )
+                        taskboard.seek(0)
+                        first_taskboard_text = taskboard.read()
+                        path_stat_mid = absolute_todo_path.stat()
+                        fd_stat_mid = os.fstat(taskboard.fileno())
+                        taskboard.seek(0)
+                        taskboard_text = taskboard.read()
+                        fd_stat_after = os.fstat(taskboard.fileno())
+                        path_stat_after = absolute_todo_path.stat()
+                        if (
+                            before_revision
+                            != stable_revision(path_stat_mid)
+                            or before_revision
+                            != stable_revision(fd_stat_mid)
+                            or before_revision
+                            != stable_revision(fd_stat_after)
+                            or before_revision
+                            != stable_revision(path_stat_after)
+                            or first_taskboard_text != taskboard_text
+                        ):
+                            raise RuntimeError(
+                                "taskboard content changed during snapshot"
+                            )
+                finally:
+                    fcntl.flock(
+                        materialization_lock.fileno(),
+                        fcntl.LOCK_UN,
+                    )
+        except (OSError, RuntimeError) as exc:
+            result.update(
+                {
+                    "reason": "taskboard_snapshot_read_failed",
+                    "error": str(exc)[-1000:],
+                }
+            )
+            return result
+
+        result["taskboard_revision"] = taskboard_revision(taskboard_text)
+        try:
+            parsed_tasks = parse_task_text(
+                taskboard_text,
+                path=todo_path,
+                task_header_prefix=self.task_header_prefix,
+            )
+        except (TypeError, ValueError) as exc:
+            result.update(
+                {
+                    "reason": "taskboard_snapshot_parse_failed",
+                    "error": str(exc)[-1000:],
+                }
+            )
+            return result
+
+        matches_by_id: dict[str, list[PortalTask]] = {
+            task_id: [] for task_id in expected
+        }
+        for parsed_task in parsed_tasks:
+            if parsed_task.task_id in matches_by_id:
+                matches_by_id[parsed_task.task_id].append(parsed_task)
+        missing_task_ids = sorted(
+            task_id
+            for task_id, matches in matches_by_id.items()
+            if not matches
+        )
+        ambiguous_task_ids = sorted(
+            task_id
+            for task_id, matches in matches_by_id.items()
+            if len(matches) > 1
+        )
+        observed_statuses: dict[str, str] = {}
+        observed_task_cids: dict[str, str] = {}
+        for task_id, matches in matches_by_id.items():
+            if len(matches) != 1:
+                continue
+            observed_statuses[task_id] = normalize_status(matches[0].status)
+            observed_task_cids[task_id] = (
+                self._identity_for_task(matches[0]).canonical_task_cid
+            )
+        status_mismatches = {
+            task_id: observed_statuses.get(task_id, "")
+            for task_id in expected
+            if observed_statuses.get(task_id) != "completed"
+        }
+        task_cid_mismatches = {
+            task_id: {
+                "expected_task_cid": expected_task_cid,
+                "observed_task_cid": observed_task_cids.get(task_id, ""),
+            }
+            for task_id, expected_task_cid in expected.items()
+            if observed_task_cids.get(task_id) != expected_task_cid
+        }
+        passed = bool(
+            not missing_task_ids
+            and not ambiguous_task_ids
+            and not status_mismatches
+            and not task_cid_mismatches
+        )
+        result.update(
+            {
+                "passed": passed,
+                "reason": (
+                    "fsynced_taskboard_completion_proven"
+                    if passed
+                    else "taskboard_completion_snapshot_mismatch"
+                ),
+                "observed_statuses": observed_statuses,
+                "observed_task_cids": observed_task_cids,
+                "missing_task_ids": missing_task_ids,
+                "ambiguous_task_ids": ambiguous_task_ids,
+                "status_mismatches": status_mismatches,
+                "task_cid_mismatches": task_cid_mismatches,
+            }
+        )
+        return result
+
+    def _ignored_runtime_taskboard_binding(
+        self,
+        todo_update_result: Mapping[str, Any],
+        *,
+        commit_result: Mapping[str, Any] | None,
+    ) -> dict[str, Any]:
+        """Bind one runtime projection to its exact ignored Git path."""
+
+        result: dict[str, Any] = {
+            "schema": (
+                "ipfs_accelerate_py.agent_supervisor."
+                "ignored_runtime_taskboard_binding@1"
+            ),
+            "passed": False,
+            "authoritative": False,
+            "ignored": False,
+            "runtime_projection": False,
+            "reason": "not_runtime_taskboard_projection",
+            "path": str(self.todo_path),
+        }
+        try:
+            absolute_todo_path = self.todo_path.resolve()
+            absolute_state_path = self.state_path.resolve()
+        except OSError as exc:
+            result.update(
+                {
+                    "reason": "runtime_taskboard_path_resolution_failed",
+                    "error": str(exc)[-1000:],
+                }
+            )
+            return result
+        runtime_projection = bool(
+            absolute_todo_path.parent == absolute_state_path.parent
+            and absolute_todo_path.name.endswith("runtime.todo.md")
+        )
+        result["runtime_projection"] = runtime_projection
+        if not runtime_projection:
+            return result
+
+        result_path_text = str(todo_update_result.get("path") or "")
+        if not result_path_text:
+            result["reason"] = "runtime_taskboard_result_path_missing"
+            return result
+        try:
+            if Path(result_path_text).resolve() != absolute_todo_path:
+                result["reason"] = "runtime_taskboard_result_path_mismatch"
+                return result
+        except OSError as exc:
+            result.update(
+                {
+                    "reason": "runtime_taskboard_result_path_unavailable",
+                    "error": str(exc)[-1000:],
+                }
+            )
+            return result
+
+        commit_repo: Path | None = None
+        commit_relative = ""
+        if commit_result is not None:
+            commit_path_text = str(commit_result.get("path") or "")
+            commit_repo_text = str(commit_result.get("repo") or "")
+            if not commit_path_text or not commit_repo_text:
+                result["reason"] = "runtime_taskboard_commit_binding_missing"
+                return result
+            try:
+                commit_repo = Path(commit_repo_text).resolve()
+                resolved_toplevel = self._git_toplevel_for_path(commit_repo)
+                if resolved_toplevel != commit_repo:
+                    result["reason"] = "runtime_taskboard_commit_repo_mismatch"
+                    return result
+                commit_path = Path(commit_path_text)
+                absolute_commit_path = (
+                    commit_path.resolve()
+                    if commit_path.is_absolute()
+                    else (commit_repo / commit_path).resolve()
+                )
+                commit_relative = absolute_commit_path.relative_to(
+                    commit_repo
+                ).as_posix()
+            except (OSError, ValueError) as exc:
+                result.update(
+                    {
+                        "reason": "runtime_taskboard_commit_path_invalid",
+                        "error": str(exc)[-1000:],
+                    }
+                )
+                return result
+            if absolute_commit_path != absolute_todo_path:
+                result["reason"] = "runtime_taskboard_commit_path_mismatch"
+                return result
+        else:
+            try:
+                commit_repo = self._git_toplevel_for_path(
+                    absolute_todo_path.parent
+                )
+                if commit_repo is None:
+                    result["reason"] = "runtime_taskboard_git_repo_missing"
+                    return result
+                commit_relative = absolute_todo_path.relative_to(
+                    commit_repo
+                ).as_posix()
+            except (OSError, ValueError) as exc:
+                result.update(
+                    {
+                        "reason": "runtime_taskboard_git_path_invalid",
+                        "error": str(exc)[-1000:],
+                    }
+                )
+                return result
+
+        try:
+            ignored = subprocess.run(
+                [
+                    "git",
+                    "check-ignore",
+                    "--quiet",
+                    "--",
+                    commit_relative,
+                ],
+                cwd=commit_repo,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+        except OSError as exc:
+            result.update(
+                {
+                    "reason": "runtime_taskboard_ignore_check_failed",
+                    "error": str(exc)[-1000:],
+                }
+            )
+            return result
+        if ignored.returncode not in {0, 1}:
+            result.update(
+                {
+                    "reason": "runtime_taskboard_ignore_check_failed",
+                    "returncode": ignored.returncode,
+                    "stderr": ignored.stderr[-1000:],
+                }
+            )
+            return result
+
+        is_ignored = ignored.returncode == 0
+        result.update(
+            {
+                "passed": is_ignored,
+                "authoritative": True,
+                "ignored": is_ignored,
+                "reason": (
+                    "ignored_runtime_taskboard_bound"
+                    if is_ignored
+                    else "runtime_taskboard_not_ignored"
+                ),
+                "repo": str(commit_repo),
+                "relative_path": commit_relative,
+            }
+        )
+        return result
+
     def _reconciled_completion_persisted(
+        self,
         todo_update_result: Mapping[str, Any],
         completion_task_cids: Mapping[str, str],
     ) -> dict[str, Any]:
@@ -7782,15 +8214,62 @@ class PortalImplementationDaemon:
             if receipt_cids.get(task_id) != task_cid
         }
         updated = bool(todo_update_result.get("updated"))
-        commit_result = todo_update_result.get("commit_result")
-        durable_update = bool(
+        raw_commit_result = todo_update_result.get("commit_result")
+        commit_result = (
+            raw_commit_result
+            if isinstance(raw_commit_result, Mapping)
+            else None
+        )
+        already_completed = bool(
+            not updated
+            and str(todo_update_result.get("reason") or "")
+            == "already_completed"
+        )
+        no_change_update = bool(
+            updated
+            and commit_result is not None
+            and commit_result.get("committed") is False
+            and str(commit_result.get("reason") or "") == "no_changes"
+        )
+        runtime_binding: dict[str, Any] = {}
+        fsynced_taskboard_snapshot: dict[str, Any] = {}
+        if (
+            not todo_update_result.get("task_source_identity")
+            and (no_change_update or already_completed)
+        ):
+            runtime_binding = self._ignored_runtime_taskboard_binding(
+                todo_update_result,
+                commit_result=(
+                    commit_result if no_change_update else None
+                ),
+            )
+        if runtime_binding.get("passed") is True:
+            fsynced_taskboard_snapshot = (
+                self._fsynced_runtime_taskboard_completion_snapshot(
+                    expected,
+                    runtime_binding=runtime_binding,
+                )
+            )
+        base_durable_update = bool(
             not updated
             or todo_update_result.get("task_source_identity")
             or (
-                isinstance(commit_result, Mapping)
+                commit_result is not None
                 and commit_result.get("committed") is True
             )
         )
+        runtime_binding_uncertain = bool(
+            runtime_binding.get("runtime_projection") is True
+            and runtime_binding.get("authoritative") is not True
+        )
+        if runtime_binding.get("passed") is True:
+            durable_update = bool(
+                fsynced_taskboard_snapshot.get("passed") is True
+            )
+        elif runtime_binding_uncertain:
+            durable_update = False
+        else:
+            durable_update = base_durable_update
         status_persisted = bool(
             updated
             or str(todo_update_result.get("reason") or "")
@@ -7804,7 +8283,7 @@ class PortalImplementationDaemon:
             and durable_update
             and status_persisted
         )
-        return {
+        result = {
             "passed": passed,
             "reason": (
                 "completion_persisted"
@@ -7818,6 +8297,13 @@ class PortalImplementationDaemon:
             "durable_update": durable_update,
             "status_persisted": status_persisted,
         }
+        if fsynced_taskboard_snapshot:
+            result["fsynced_taskboard_snapshot"] = (
+                fsynced_taskboard_snapshot
+            )
+        if runtime_binding:
+            result["runtime_taskboard_binding"] = runtime_binding
+        return result
 
     def _mark_tasks_completed_in_todo(
         self,
@@ -24872,6 +25358,132 @@ class PortalImplementationDaemon:
                 blocking.append(relative)
         return blocking, nonblocking
 
+    def _revalidated_landed_completion_recovery(
+        self,
+        recovery: Mapping[str, Any],
+        *,
+        task_id: str,
+        implementation_commit: str,
+        completion_task_cids: Mapping[str, str],
+        target_branch: str,
+    ) -> dict[str, Any]:
+        """Revalidate one persistence-only recovery without remerging work."""
+
+        landed_commit = str(recovery.get("landed_commit") or "").strip()
+        merge_commit = str(recovery.get("merge_commit") or "").strip()
+        recorded_proof = recovery.get("integration_commit_proof")
+        recorded_bindings = recovery.get("completion_task_cids")
+        expected_bindings = {
+            str(bound_task_id): str(task_cid)
+            for bound_task_id, task_cid in completion_task_cids.items()
+            if str(bound_task_id) and str(task_cid)
+        }
+        observed_bindings = (
+            {
+                str(bound_task_id): str(task_cid)
+                for bound_task_id, task_cid in recorded_bindings.items()
+                if str(bound_task_id) and str(task_cid)
+            }
+            if isinstance(recorded_bindings, Mapping)
+            else {}
+        )
+        reasons: list[str] = []
+        if recovery.get("reason") != "completion_persistence_failed":
+            reasons.append("recovery_reason_invalid")
+        if str(recovery.get("task_id") or "") != task_id:
+            reasons.append("recovery_task_id_mismatch")
+        if (
+            str(recovery.get("implementation_commit") or "")
+            != implementation_commit
+        ):
+            reasons.append("recovery_implementation_commit_mismatch")
+        if not landed_commit:
+            reasons.append("landed_commit_missing")
+        if not merge_commit:
+            reasons.append("integration_commit_missing")
+        if recovery.get("cleanup_cleaned") is not True:
+            reasons.append("landed_cleanup_unproven")
+        if observed_bindings != expected_bindings:
+            reasons.append("completion_task_cid_binding_mismatch")
+
+        if not isinstance(recorded_proof, Mapping):
+            reasons.append("recorded_integration_proof_missing")
+        else:
+            if recorded_proof.get("passed") is not True:
+                reasons.append("recorded_integration_proof_not_passed")
+            if (
+                str(recorded_proof.get("implementation_commit") or "")
+                != landed_commit
+            ):
+                reasons.append("recorded_landed_commit_mismatch")
+            if (
+                str(recorded_proof.get("integration_commit") or "")
+                != merge_commit
+            ):
+                reasons.append("recorded_integration_commit_mismatch")
+            if (
+                str(recorded_proof.get("integration_ref") or "")
+                != merge_commit
+            ):
+                reasons.append("recorded_integration_ref_mismatch")
+            if (
+                str(recorded_proof.get("target_branch") or "")
+                != target_branch
+            ):
+                reasons.append("recorded_target_branch_mismatch")
+
+        resolved_landed_commit = (
+            self._resolved_commit_ref(self.repo_root, landed_commit)
+            if landed_commit
+            else ""
+        )
+        if (
+            not resolved_landed_commit
+            or resolved_landed_commit != landed_commit
+        ):
+            reasons.append("landed_commit_unavailable_or_mutable")
+
+        integration_commit_proof = self._immutable_integration_commit(
+            {"merge_commit": merge_commit},
+            implementation_commit=landed_commit,
+            target_branch=target_branch,
+        )
+        if integration_commit_proof.get("passed") is not True:
+            reasons.extend(
+                str(reason)
+                for reason in integration_commit_proof.get("reasons") or []
+                if str(reason)
+            )
+        if (
+            str(
+                integration_commit_proof.get("integration_commit") or ""
+            )
+            != merge_commit
+        ):
+            reasons.append("integration_commit_unavailable_or_mutable")
+
+        unique_reasons = list(dict.fromkeys(reasons))
+        return {
+            "schema": (
+                "ipfs_accelerate_py.agent_supervisor."
+                "landed-completion-persistence-recovery@1"
+            ),
+            "passed": not unique_reasons,
+            "reason": (
+                "landed_completion_recovery_revalidated"
+                if not unique_reasons
+                else "landed_completion_recovery_invalid"
+            ),
+            "event_id": str(recovery.get("event_id") or ""),
+            "task_id": task_id,
+            "implementation_commit": implementation_commit,
+            "landed_commit": landed_commit,
+            "merge_commit": merge_commit,
+            "completion_task_cids": expected_bindings,
+            "integration_commit_proof": integration_commit_proof,
+            "reasons": unique_reasons,
+        }
+
     def _reconcile_failed_merges(
         self,
         *,
@@ -24992,6 +25604,143 @@ class PortalImplementationDaemon:
                     "reason": "reconciliation_task_revision_unavailable",
                     "completion_binding_error": completion_tasks_error,
                 }
+                self._record_event("merge_reconciled", result)
+                results.append(result)
+                continue
+            raw_persistence_recovery = event.get(
+                "completion_persistence_recovery"
+            )
+            persistence_recovery = (
+                raw_persistence_recovery
+                if isinstance(raw_persistence_recovery, Mapping)
+                else {}
+            )
+            has_landed_recovery_evidence = bool(
+                persistence_recovery.get("landed_commit")
+                or persistence_recovery.get("merge_commit")
+                or persistence_recovery.get("integration_commit_proof")
+            )
+            if has_landed_recovery_evidence:
+                recovery_evidence = (
+                    self._revalidated_landed_completion_recovery(
+                        persistence_recovery,
+                        task_id=task_id,
+                        implementation_commit=implementation_commit,
+                        completion_task_cids=completion_task_cids,
+                        target_branch=target_branch,
+                    )
+                )
+                target_commit = str(
+                    recovery_evidence.get("merge_commit") or ""
+                )
+                integration_commit_proof = recovery_evidence.get(
+                    "integration_commit_proof"
+                )
+                declared_output_invariant = (
+                    self._declared_output_tracking_invariant(
+                        completion_tasks,
+                        repository_ref=target_commit,
+                    )
+                    if (
+                        recovery_evidence.get("passed") is True
+                        and target_commit
+                    )
+                    else {
+                        "passed": False,
+                        "reason": (
+                            "completion_recovery_integration_unproven"
+                        ),
+                        "repository_ref": target_commit,
+                        "recovery_evidence": recovery_evidence,
+                    }
+                )
+                integration_ready = bool(
+                    recovery_evidence.get("passed") is True
+                    and declared_output_invariant.get("passed") is True
+                )
+                todo_update_result = (
+                    self._mark_reconciled_completion_in_todo(
+                        task,
+                        completion_tasks,
+                        completion_task_cids,
+                    )
+                    if integration_ready
+                    else {}
+                )
+                completion_persistence = (
+                    self._reconciled_completion_persisted(
+                        todo_update_result,
+                        completion_task_cids,
+                    )
+                    if integration_ready
+                    else {
+                        "passed": False,
+                        "reason": "integration_not_ready",
+                    }
+                )
+                resolved = bool(
+                    integration_ready
+                    and completion_persistence.get("passed") is True
+                )
+                if recovery_evidence.get("passed") is not True:
+                    reconciliation_reason = (
+                        "completion_persistence_recovery_evidence_invalid"
+                    )
+                elif declared_output_invariant.get("passed") is not True:
+                    reconciliation_reason = (
+                        "post_merge_declared_outputs_missing"
+                    )
+                elif completion_persistence.get("passed") is not True:
+                    reconciliation_reason = "completion_persistence_failed"
+                else:
+                    reconciliation_reason = (
+                        "completion_persistence_recovered_from_landed_rewrite"
+                    )
+                result = {
+                    "task_id": task_id,
+                    "attempt": attempt,
+                    "branch": branch,
+                    "implementation_commit": implementation_commit,
+                    "landed_commit": str(
+                        recovery_evidence.get("landed_commit") or ""
+                    ),
+                    "merge_commit": target_commit,
+                    "completion_task_cids": completion_task_cids,
+                    "landed_ref_source": "completion_persistence_recovery",
+                    "resolved": resolved,
+                    "reason": reconciliation_reason,
+                    "merge_result": {
+                        "attempted": False,
+                        "merged": resolved,
+                        "reason": (
+                            "landed_rewrite_already_integrated"
+                            if recovery_evidence.get("passed") is True
+                            else "landed_rewrite_integration_unproven"
+                        ),
+                    },
+                    "cleanup_result": {
+                        "cleaned": (
+                            persistence_recovery.get("cleanup_cleaned")
+                            is True
+                        ),
+                        "reason": "historical_landed_cleanup_revalidated",
+                    },
+                    "post_merge_declared_output_invariant": (
+                        declared_output_invariant
+                    ),
+                    "integration_commit_proof": (
+                        integration_commit_proof
+                        if isinstance(
+                            integration_commit_proof,
+                            Mapping,
+                        )
+                        else {}
+                    ),
+                    "completion_persistence_recovery": recovery_evidence,
+                    "completion_persistence": completion_persistence,
+                }
+                if todo_update_result:
+                    result["todo_update_result"] = todo_update_result
                 self._record_event("merge_reconciled", result)
                 results.append(result)
                 continue
@@ -25446,7 +26195,12 @@ class PortalImplementationDaemon:
         fresh: list[dict[str, Any]] = []
         stale: list[dict[str, Any]] = []
         for event in candidates:
-            if not str(event.get("timestamp") or ""):
+            if isinstance(
+                event.get("completion_persistence_recovery"),
+                Mapping,
+            ):
+                fresh.append(event)
+            elif not str(event.get("timestamp") or ""):
                 fresh.append(event)
             elif self._event_age_seconds(event) > max_age_seconds:
                 stale.append(event)
@@ -25524,38 +26278,108 @@ class PortalImplementationDaemon:
                 break
         return selected
 
+    def _completion_persistence_recovery_candidates(
+        self,
+        lifecycle_events: Sequence[Mapping[str, Any]],
+    ) -> dict[tuple[str, str], dict[str, Any]]:
+        """Return exact landed candidates still lacking durable completion."""
+
+        recovery_by_candidate: dict[
+            tuple[str, str],
+            dict[str, Any] | None,
+        ] = {}
+        for event in lifecycle_events:
+            if str(event.get("type") or "") != "merge_reconciled":
+                continue
+            task_id = str(event.get("task_id") or "")
+            implementation_commit = str(
+                event.get("implementation_commit") or ""
+            )
+            if not task_id or not implementation_commit:
+                continue
+            candidate_key = (task_id, implementation_commit)
+            if event.get("resolved") is True:
+                recovery_by_candidate[candidate_key] = None
+            elif (
+                event.get("resolved") is False
+                and str(event.get("reason") or "")
+                == "completion_persistence_failed"
+            ):
+                recovery_by_candidate[candidate_key] = dict(event)
+            else:
+                recovery_by_candidate.setdefault(candidate_key, None)
+        return {
+            candidate_key: recovery_event
+            for candidate_key, recovery_event
+            in recovery_by_candidate.items()
+            if recovery_event is not None
+        }
+
     def _failed_merge_candidates(self, *, skip_task_ids: set[str] | None = None) -> list[dict[str, Any]]:
         skip_task_ids = skip_task_ids or set()
         current_task_ids = self._current_todo_task_ids_for_reconciliation()
+        lifecycle_events = self._iter_merge_lifecycle_events()
+        persistence_recovery_candidates = (
+            self._completion_persistence_recovery_candidates(
+                lifecycle_events
+            )
+        )
+        persistence_recovery_candidate_keys = set(
+            persistence_recovery_candidates
+        )
         candidates: dict[tuple[str, str], dict[str, Any]] = {}
-        reconciled_commits: set[str] = set()
-        abandoned_commits: set[str] = set()
+        reconciled_candidates: set[tuple[str, str]] = set()
+        abandoned_candidates: set[tuple[str, str]] = set()
         target_branch = self._main_branch_name()
-        for event in self._iter_events():
+        for event in lifecycle_events:
             if str(event.get("type") or "") == "merge_reconciled":
+                task_id = str(event.get("task_id") or "")
                 implementation_commit = str(event.get("implementation_commit") or "")
+                candidate_key = (task_id, implementation_commit)
                 merge_result = event.get("merge_result") or {}
                 merge_reason = merge_result.get("reason") if isinstance(merge_result, dict) else ""
                 reconcile_reason = str(event.get("reason") or "")
                 if implementation_commit and event.get("resolved"):
-                    reconciled_commits.add(implementation_commit)
-                elif implementation_commit and merge_reason == "baseline_not_ancestor_of_target":
-                    abandoned_commits.add(implementation_commit)
-                elif implementation_commit and reconcile_reason == "stale_failed_merge_candidate":
-                    abandoned_commits.add(implementation_commit)
+                    reconciled_candidates.add(candidate_key)
+                elif (
+                    implementation_commit
+                    and candidate_key
+                    not in persistence_recovery_candidate_keys
+                    and merge_reason
+                    == "baseline_not_ancestor_of_target"
+                ):
+                    abandoned_candidates.add(candidate_key)
+                elif (
+                    implementation_commit
+                    and candidate_key
+                    not in persistence_recovery_candidate_keys
+                    and reconcile_reason
+                    == "stale_failed_merge_candidate"
+                ):
+                    abandoned_candidates.add(candidate_key)
                 continue
             if str(event.get("type") or "") != "implementation_finished":
                 continue
             task_id = str(event.get("task_id") or "")
-            if task_id in skip_task_ids:
+            implementation_commit = str(
+                event.get("implementation_commit") or ""
+            )
+            candidate_key = (task_id, implementation_commit)
+            if (
+                task_id in skip_task_ids
+                and candidate_key not in persistence_recovery_candidate_keys
+            ):
                 continue
-            if current_task_ids is not None and task_id not in current_task_ids:
+            if (
+                current_task_ids is not None
+                and task_id not in current_task_ids
+                and candidate_key not in persistence_recovery_candidate_keys
+            ):
                 continue
-            implementation_commit = str(event.get("implementation_commit") or "")
             if (
                 not implementation_commit
-                or implementation_commit in reconciled_commits
-                or implementation_commit in abandoned_commits
+                or candidate_key in reconciled_candidates
+                or candidate_key in abandoned_candidates
             ):
                 continue
             validation = event.get("validation_result") or {}
@@ -25569,12 +26393,92 @@ class PortalImplementationDaemon:
             if not cleanup_failed and not self._merge_result_needs_reconciliation(merge_result):
                 continue
             key = (task_id, implementation_commit)
-            candidates[key] = event
+            candidate_event = dict(event)
+            candidate_event.pop("completion_persistence_recovery", None)
+            recovery_event = persistence_recovery_candidates.get(key)
+            if recovery_event is not None:
+                recovery_proof = recovery_event.get(
+                    "integration_commit_proof"
+                )
+                recovery_cleanup = recovery_event.get("cleanup_result")
+                recovery_bindings = recovery_event.get(
+                    "completion_task_cids"
+                )
+                candidate_event["completion_persistence_recovery"] = {
+                    "event_id": str(recovery_event.get("event_id") or ""),
+                    "timestamp": str(recovery_event.get("timestamp") or ""),
+                    "reason": str(recovery_event.get("reason") or ""),
+                    "task_id": str(recovery_event.get("task_id") or ""),
+                    "implementation_commit": str(
+                        recovery_event.get("implementation_commit") or ""
+                    ),
+                    "landed_commit": str(
+                        recovery_event.get("landed_commit") or ""
+                    ),
+                    "landed_ref_source": str(
+                        recovery_event.get("landed_ref_source") or ""
+                    ),
+                    "merge_commit": str(
+                        recovery_event.get("merge_commit") or ""
+                    ),
+                    "cleanup_cleaned": bool(
+                        isinstance(recovery_cleanup, Mapping)
+                        and recovery_cleanup.get("cleaned") is True
+                    ),
+                    "completion_task_cids": {
+                        str(task_id): str(task_cid)
+                        for task_id, task_cid in (
+                            recovery_bindings.items()
+                            if isinstance(recovery_bindings, Mapping)
+                            else ()
+                        )
+                        if str(task_id) and str(task_cid)
+                    },
+                    "integration_commit_proof": {
+                        "passed": (
+                            recovery_proof.get("passed")
+                            if isinstance(recovery_proof, Mapping)
+                            else None
+                        ),
+                        "implementation_commit": str(
+                            recovery_proof.get("implementation_commit") or ""
+                        )
+                        if isinstance(recovery_proof, Mapping)
+                        else "",
+                        "integration_ref": str(
+                            recovery_proof.get("integration_ref") or ""
+                        )
+                        if isinstance(recovery_proof, Mapping)
+                        else "",
+                        "integration_commit": str(
+                            recovery_proof.get("integration_commit") or ""
+                        )
+                        if isinstance(recovery_proof, Mapping)
+                        else "",
+                        "target_branch": str(
+                            recovery_proof.get("target_branch") or ""
+                        )
+                        if isinstance(recovery_proof, Mapping)
+                        else "",
+                    },
+                }
+            candidates[key] = candidate_event
 
         unresolved: list[dict[str, Any]] = []
         for event in candidates.values():
+            task_id = str(event.get("task_id") or "")
             implementation_commit = str(event.get("implementation_commit") or "")
-            if implementation_commit in reconciled_commits or implementation_commit in abandoned_commits:
+            candidate_key = (task_id, implementation_commit)
+            if (
+                candidate_key in reconciled_candidates
+                or candidate_key in abandoned_candidates
+            ):
+                continue
+            if (
+                task_id,
+                implementation_commit,
+            ) in persistence_recovery_candidate_keys:
+                unresolved.append(event)
                 continue
             if implementation_commit and not self._git_ref_is_ancestor(implementation_commit, target_branch):
                 unresolved.append(event)
@@ -26402,10 +27306,296 @@ class PortalImplementationDaemon:
         self._events_cache_data = data
         return data
 
+    def _iter_merge_lifecycle_events(self) -> list[dict[str, Any]]:
+        """Strictly replay the retained active and rotated lifecycle history.
+
+        General supervisor events predate the float-free control-contract
+        projection, so ``EventPage`` cannot represent every durable legacy
+        payload.  This reader applies the event-log's exact sequence, stream,
+        hash-chain, and physical-file invariants while preserving those JSON
+        values.  The first retained sequence may be greater than one after
+        archive eviction; only gaps *inside* the retained window are invalid.
+        """
+
+        try:
+            manifest = event_log_manifest(self.events_path)
+            sources = event_log_sources(
+                (self.events_path,),
+                include_rotated=True,
+            )
+        except (OSError, ValueError) as exc:
+            raise CursorReplayError(
+                "merge lifecycle event manifest is unavailable"
+            ) from exc
+
+        manifest_records = {
+            str(record.get("path") or ""): record
+            for record in manifest.get("files", ())
+            if isinstance(record, Mapping)
+            and str(record.get("path") or "")
+        }
+        source_stats: dict[Path, os.stat_result] = {}
+        source_cache_key: list[tuple[str, int, int, int, int]] = []
+        try:
+            for source in sources:
+                source_stat = source.stat()
+                record = manifest_records.get(source.name)
+                if record is None or any(
+                    int(record.get(field, -1)) != observed
+                    for field, observed in (
+                        ("device", int(source_stat.st_dev)),
+                        ("inode", int(source_stat.st_ino)),
+                        ("size_bytes", int(source_stat.st_size)),
+                        ("mtime_ns", int(source_stat.st_mtime_ns)),
+                    )
+                ):
+                    raise CursorReplayError(
+                        "merge lifecycle event manifest changed during discovery"
+                    )
+                source_stats[source] = source_stat
+                source_cache_key.append(
+                    (
+                        str(source.resolve()),
+                        int(source_stat.st_dev),
+                        int(source_stat.st_ino),
+                        int(source_stat.st_size),
+                        int(source_stat.st_mtime_ns),
+                    )
+                )
+        except OSError as exc:
+            raise CursorReplayError(
+                "merge lifecycle event source changed during discovery"
+            ) from exc
+
+        cache_key = (
+            str(manifest.get("manifest_digest") or ""),
+            tuple(source_cache_key),
+        )
+        if (
+            getattr(self, "_merge_lifecycle_events_cache_key", None)
+            == cache_key
+        ):
+            return self._merge_lifecycle_events_cache_data
+
+        stream_id = str(manifest.get("stream_id") or "")
+        snapshot_id = str(manifest.get("snapshot_id") or "")
+        if not stream_id or not snapshot_id:
+            raise CursorReplayError(
+                "merge lifecycle event manifest has no stream binding"
+            )
+
+        events_by_sequence: dict[int, dict[str, Any]] = {}
+        event_ids_by_sequence: dict[int, str] = {}
+        latest_sequence = 0
+        latest_event_id = ""
+        try:
+            for source in sources:
+                record = manifest_records[source.name]
+                inferred_sequence = int(
+                    record.get("first_sequence") or 1
+                )
+                source_previous_event_id = str(
+                    record.get("start_previous_event_id") or ""
+                )
+                source_event_count = 0
+                source_first_sequence = 0
+                source_last_sequence = 0
+                with source.open("rb") as event_stream:
+                    for raw_line in event_stream:
+                        if not raw_line.strip():
+                            continue
+                        source_event_count += 1
+                        try:
+                            raw_event = json.loads(raw_line)
+                        except (
+                            UnicodeDecodeError,
+                            json.JSONDecodeError,
+                        ) as exc:
+                            raise CursorReplayError(
+                                "merge lifecycle event source contains "
+                                "malformed JSON"
+                            ) from exc
+                        if not isinstance(raw_event, dict):
+                            raise CursorReplayError(
+                                "merge lifecycle event source contains "
+                                "a non-object event"
+                            )
+
+                        raw_sequence = raw_event.get(
+                            "sequence",
+                            raw_event.get("position"),
+                        )
+                        canonical = bool(
+                            isinstance(raw_sequence, int)
+                            and not isinstance(raw_sequence, bool)
+                            and raw_sequence > 0
+                            and str(raw_event.get("stream_id") or "")
+                            == stream_id
+                            and str(raw_event.get("snapshot_id") or "")
+                            == snapshot_id
+                        )
+                        sequence = (
+                            int(raw_sequence)
+                            if canonical
+                            else inferred_sequence
+                        )
+                        if not canonical:
+                            inferred_sequence += 1
+                        event = dict(raw_event)
+                        if not canonical:
+                            event.update(
+                                {
+                                    "stream_id": stream_id,
+                                    "snapshot_id": snapshot_id,
+                                    "sequence": sequence,
+                                    "previous_event_id": (
+                                        source_previous_event_id
+                                    ),
+                                }
+                            )
+
+                        identity_body = dict(event)
+                        identity_body.pop("event_id", None)
+                        try:
+                            identity_bytes = json.dumps(
+                                identity_body,
+                                sort_keys=True,
+                                separators=(",", ":"),
+                                ensure_ascii=False,
+                                allow_nan=False,
+                            ).encode("utf-8")
+                        except (
+                            TypeError,
+                            ValueError,
+                            RecursionError,
+                        ) as exc:
+                            raise CursorReplayError(
+                                "merge lifecycle event contains "
+                                "non-canonical JSON values"
+                            ) from exc
+                        expected_event_id = (
+                            "sha256:"
+                            + hashlib.sha256(identity_bytes).hexdigest()
+                        )
+                        event_id = str(event.get("event_id") or "")
+                        if event_id and event_id != expected_event_id:
+                            raise CursorReplayError(
+                                f"merge lifecycle event {sequence} has "
+                                "a non-canonical event_id"
+                            )
+                        event["event_id"] = (
+                            event_id or expected_event_id
+                        )
+                        source_previous_event_id = event["event_id"]
+                        if not source_first_sequence:
+                            source_first_sequence = sequence
+                        source_last_sequence = max(
+                            source_last_sequence,
+                            sequence,
+                        )
+
+                        known_event_id = event_ids_by_sequence.get(
+                            sequence
+                        )
+                        if known_event_id is not None:
+                            if known_event_id != event["event_id"]:
+                                raise CursorReplayError(
+                                    "merge lifecycle replay has "
+                                    f"conflicting sequence {sequence}"
+                                )
+                            continue
+                        if (
+                            latest_sequence
+                            and sequence != latest_sequence + 1
+                        ):
+                            raise CursorReplayError(
+                                "merge lifecycle replay contains "
+                                "a retained-history sequence gap"
+                            )
+                        if (
+                            latest_sequence
+                            and str(event.get("previous_event_id") or "")
+                            != latest_event_id
+                        ):
+                            raise CursorReplayError(
+                                "merge lifecycle replay contains "
+                                "a broken retained hash chain"
+                            )
+                        events_by_sequence[sequence] = event
+                        event_ids_by_sequence[sequence] = event["event_id"]
+                        latest_sequence = sequence
+                        latest_event_id = event["event_id"]
+
+                if (
+                    source_event_count
+                    != int(record.get("event_count") or 0)
+                    or source_first_sequence
+                    != int(record.get("first_sequence") or 0)
+                    or source_last_sequence
+                    != int(record.get("last_sequence") or 0)
+                ):
+                    raise CursorReplayError(
+                        "merge lifecycle event source disagrees "
+                        "with its manifest"
+                    )
+                post_stat = source.stat()
+                pre_stat = source_stats[source]
+                if any(
+                    before != after
+                    for before, after in (
+                        (int(pre_stat.st_dev), int(post_stat.st_dev)),
+                        (int(pre_stat.st_ino), int(post_stat.st_ino)),
+                        (int(pre_stat.st_size), int(post_stat.st_size)),
+                        (
+                            int(pre_stat.st_mtime_ns),
+                            int(post_stat.st_mtime_ns),
+                        ),
+                    )
+                ):
+                    raise CursorReplayError(
+                        "merge lifecycle event source changed during replay"
+                    )
+        except OSError as exc:
+            raise CursorReplayError(
+                "merge lifecycle event source changed during replay"
+            ) from exc
+
+        ordered_sequences = sorted(events_by_sequence)
+        earliest_manifest_sequence = int(
+            manifest.get("earliest_sequence") or 0
+        )
+        latest_manifest_sequence = int(
+            manifest.get("latest_sequence") or 0
+        )
+        if (
+            (ordered_sequences[0] if ordered_sequences else 0)
+            != earliest_manifest_sequence
+            or (ordered_sequences[-1] if ordered_sequences else 0)
+            != latest_manifest_sequence
+            or (
+                latest_manifest_sequence
+                and latest_event_id
+                != str(manifest.get("last_event_id") or "")
+            )
+        ):
+            raise CursorReplayError(
+                "merge lifecycle retained replay disagrees with its manifest"
+            )
+
+        events = [
+            events_by_sequence[sequence]
+            for sequence in ordered_sequences
+        ]
+        self._merge_lifecycle_events_cache_key = cache_key
+        self._merge_lifecycle_events_cache_data = events
+        return events
+
     def _invalidate_event_cache(self) -> None:
         """Invalidate the event read cache (call after appending events)."""
         self._events_cache_key = None
         self._events_cache_data = []
+        self._merge_lifecycle_events_cache_key = None
+        self._merge_lifecycle_events_cache_data = []
 
     def _implementation_process_active(self, event: dict[str, Any]) -> bool:
         worktree_path = str(event.get("worktree_path") or "")

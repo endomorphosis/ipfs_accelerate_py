@@ -788,6 +788,53 @@ def test_external_serial_task_state_fences_then_releases_matching_bundle(
     assert _active_task_ids(released) == {"T-1"}
 
 
+def test_external_fence_preserves_dependency_slice_profile_g_identity(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    index = repo / "index.json"
+    serial_state = repo / "serial-task-state.json"
+    bundle = _bundle("T-1")
+    bundle["tasks"] = [
+        {"task_id": "T-1", "status": "todo"},
+        {"task_id": "T-2", "status": "todo", "depends_on": ["T-1"]},
+    ]
+    index.parent.mkdir(parents=True, exist_ok=True)
+    index.write_text(
+        json.dumps(
+            {
+                "source_todo": "tasks.todo.md",
+                "bundles": {"objective/test/serial": bundle},
+            }
+        ),
+        encoding="utf-8",
+    )
+    serial_state.write_text(
+        json.dumps(
+            {
+                "implementation_in_progress": True,
+                "active_phase": "implementing",
+                "active_task_id": "T-1",
+            }
+        ),
+        encoding="utf-8",
+    )
+    scheduler = _scheduler(
+        tmp_path,
+        index,
+        _FakeLauncher(),
+        external_task_state_paths=(serial_state,),
+    )
+
+    [fenced] = scheduler._plan()
+    assert fenced.task_ids == []
+    assert fenced.queue_payload["external_active_member_fence"] is True
+    assert fenced.queue_payload["execution_slice_task_ids"] == ["T-1"]
+    with LeaseCoordinator(repo / "fence-coordination.duckdb") as coordinator:
+        registered = coordinator.register_bundle(fenced.queue_payload)
+    assert registered["canonical_task_cid"] == fenced.queue_payload["canonical_task_cid"]
+
+
 def test_lane_command_carries_planner_proven_cross_bundle_dependencies(
     tmp_path: Path,
 ) -> None:
