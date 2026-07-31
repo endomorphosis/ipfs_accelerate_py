@@ -13265,9 +13265,11 @@ class PortalImplementationDaemon:
         deleting that worktree can make an already-merged parent impossible to
         clone or even check out locally. For each changed repository, traverse
         the immutable candidate tree and require its object and task branch in
-        the canonical ``<common-dir>/modules`` store used by the merge target.
-        The canonical checkout must use that same store so the subsequent
-        submodule merge cannot silently omit the path.
+        the canonical Git-owned store used by the merge target.  For a linked
+        parent worktree, Git may place that store beneath
+        ``<common-dir>/worktrees/<id>/modules`` rather than directly beneath
+        ``<common-dir>/modules``.  The canonical checkout must use that same
+        store so the subsequent submodule merge cannot silently omit the path.
         """
 
         expected_paths = sorted(changed_submodule_paths or ())
@@ -13370,18 +13372,39 @@ class PortalImplementationDaemon:
                     failures.append(failure)
                     break
 
-                canonical_git_dir = (
-                    parent_git_dir / "modules" / child_relative
-                ).resolve()
                 child_repo = (parent_repo / child_relative).resolve()
-                canonical_commit = self._resolve_commit_in_git_dir(
-                    canonical_git_dir,
-                    gitlink_commit,
-                )
                 child_common_dir = (
                     self._git_common_dir(child_repo)
                     if self._is_git_worktree(child_repo)
                     else None
+                )
+                configured_git_dir = (
+                    parent_git_dir / "modules" / child_relative
+                ).resolve()
+                # A submodule initialized inside a linked parent worktree is
+                # durably owned by that merge target, but Git stores it under
+                # ``<root-common-dir>/worktrees/<id>/modules`` rather than the
+                # primary checkout's ``<root-common-dir>/modules`` tree.  Use
+                # the exact target checkout's common directory when it remains
+                # inside the root repository's shared store.  An external or
+                # otherwise unowned checkout still falls back to the expected
+                # configured store and therefore fails closed below.
+                target_store_owned = False
+                if child_common_dir is not None:
+                    try:
+                        child_common_dir.relative_to(root_common_dir)
+                    except ValueError:
+                        pass
+                    else:
+                        target_store_owned = True
+                canonical_git_dir = (
+                    child_common_dir
+                    if target_store_owned and child_common_dir is not None
+                    else configured_git_dir
+                )
+                canonical_commit = self._resolve_commit_in_git_dir(
+                    canonical_git_dir,
+                    gitlink_commit,
                 )
                 canonical_checkout = (
                     child_common_dir is not None
@@ -13397,6 +13420,9 @@ class PortalImplementationDaemon:
                     "canonical_checkout": canonical_checkout,
                     "checkout_git_dir": str(child_common_dir or ""),
                 }
+                if canonical_git_dir != configured_git_dir:
+                    hop["configured_git_dir"] = str(configured_git_dir)
+                    hop["target_store_layout"] = "linked_parent_worktree"
                 path_receipt["hops"].append(hop)
 
                 if canonical_commit != gitlink_commit:

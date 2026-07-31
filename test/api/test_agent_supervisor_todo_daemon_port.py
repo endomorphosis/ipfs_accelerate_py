@@ -8024,6 +8024,119 @@ def test_merge_train_rejects_gitlink_missing_from_canonical_submodule_store(
     assert _git(repo, "rev-parse", "main") == target_before
 
 
+def test_submodule_durability_accepts_store_owned_by_linked_parent_worktree(
+    tmp_path: Path,
+):
+    primary, _primary_submodule = _seed_parent_with_submodule(tmp_path)
+    linked = tmp_path / "linked-parent"
+    _git(
+        primary,
+        "worktree",
+        "add",
+        "-b",
+        "supervisor/linked-parent",
+        str(linked),
+        "main",
+    )
+    _git(
+        linked,
+        "-c",
+        "protocol.file.allow=always",
+        "submodule",
+        "update",
+        "--init",
+        "--",
+        "libs/child",
+    )
+    linked_submodule = linked / "libs" / "child"
+    _git(linked_submodule, "config", "user.name", "Test User")
+    _git(linked_submodule, "config", "user.email", "test@example.invalid")
+
+    state_dir = tmp_path / "linked-state"
+    todo_path = linked / "todo.md"
+    todo_path.write_text(
+        "## REF-043L Verify linked-worktree gitlink\n\n"
+        "- Status: todo\n- Completion: manual\n",
+        encoding="utf-8",
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=linked,
+        task_header_prefix="REF-",
+        worktree_submodule_paths=["libs/child"],
+    )
+    branch_name = "implementation/ref-043-linked-parent"
+    task_submodule_branch = daemon._submodule_worktree_branch_name(
+        branch_name,
+        "libs/child",
+    )
+    _git(linked_submodule, "checkout", "-b", task_submodule_branch)
+    (linked_submodule / "linked.txt").write_text(
+        "durable in the linked merge target's store\n",
+        encoding="utf-8",
+    )
+    _git(linked_submodule, "add", "linked.txt")
+    _git(linked_submodule, "commit", "-m", "REF-043L: linked child")
+    child_commit = _git(linked_submodule, "rev-parse", "HEAD")
+
+    _git(linked, "checkout", "-b", branch_name)
+    _git(linked, "add", "libs/child")
+    _git(linked, "commit", "-m", "REF-043L: advance linked child")
+    candidate = _git(linked, "rev-parse", "HEAD")
+    _git(linked, "checkout", "supervisor/linked-parent")
+    _git(linked_submodule, "checkout", "main")
+
+    root_common_dir = daemon._git_common_dir(linked)
+    child_common_dir = daemon._git_common_dir(linked_submodule)
+    assert root_common_dir is not None
+    assert child_common_dir is not None
+    child_common_dir.relative_to(root_common_dir)
+    assert child_common_dir != (
+        root_common_dir / "modules" / "libs/child"
+    ).resolve()
+
+    receipt = daemon._changed_submodule_durability_preflight(
+        branch_name=branch_name,
+        implementation_commit=candidate,
+        changed_submodule_paths={"libs/child"},
+    )
+
+    assert receipt["verified"] is True
+    assert receipt["failures"] == []
+    assert receipt["paths"] == [
+        {
+            "path": "libs/child",
+            "verified": True,
+            "hops": [
+                {
+                    "path": "libs/child",
+                    "gitlink_commit": child_commit,
+                    "canonical_git_dir": str(child_common_dir),
+                    "canonical_object_available": True,
+                    "canonical_checkout": True,
+                    "checkout_git_dir": str(child_common_dir),
+                    "configured_git_dir": str(
+                        (
+                            root_common_dir / "modules" / "libs/child"
+                        ).resolve()
+                    ),
+                    "target_store_layout": "linked_parent_worktree",
+                }
+            ],
+            "gitlink_commit": child_commit,
+            "canonical_git_dir": str(child_common_dir),
+            "task_branch": task_submodule_branch,
+            "task_branch_commit": child_commit,
+            "task_branch_contains_gitlink": True,
+            "reason": "canonical_task_branch_verified",
+            "durability": "canonical_task_branch",
+        }
+    ]
+
+
 def test_merge_train_rolls_back_parent_when_verified_submodule_result_disappears(
     tmp_path: Path,
     monkeypatch,
