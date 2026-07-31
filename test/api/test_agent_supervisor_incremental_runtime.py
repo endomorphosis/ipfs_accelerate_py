@@ -16,6 +16,7 @@ from ipfs_accelerate_py.agent_supervisor.backlog_refinery import (
 from ipfs_accelerate_py.agent_supervisor.dataset_store import ObjectiveDatasetStore
 from ipfs_accelerate_py.agent_supervisor import objective_graph
 from ipfs_accelerate_py.agent_supervisor.objective_graph import scan_objective_gaps
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.engine import CommandResult
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     PortalImplementationDaemon,
     PortalTask,
@@ -358,6 +359,30 @@ def _seed_repo_with_submodule(tmp_path: Path) -> tuple[Path, Path]:
     _git(repo, "-c", "protocol.file.allow=always", "submodule", "add", str(dependency), "vendor/dependency")
     _git(repo, "commit", "-am", "add dependency")
     return repo, dependency
+
+
+def _make_dead_missing_pool_lease(
+    pool: WorktreePool,
+    repo: Path,
+    *,
+    branch: str,
+    delete_branch: bool = True,
+):
+    lease = pool.acquire(
+        cache_key=f"orphan:{branch}",
+        base_ref="main",
+        branch_name=branch,
+    )
+    state_path = pool.state_root / f"{lease.entry_id}.json"
+    lock_path = pool.state_root / f"{lease.entry_id}.lock"
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    state["lease_pid"] = 2**30
+    state_path.write_text(json.dumps(state), encoding="utf-8")
+    lock_path.write_text(json.dumps({"pid": 2**30}), encoding="utf-8")
+    _git(repo, "worktree", "remove", "--force", str(lease.path))
+    if delete_branch:
+        _git(repo, "branch", "-D", branch)
+    return lease, state_path, lock_path
 
 
 def test_clean_dependency_workspaces_are_reused_without_task_mutation_leakage(tmp_path: Path) -> None:
@@ -789,3 +814,273 @@ def test_supervisor_does_not_fence_a_dead_pooled_worktree_lease(
     assert lease.path.resolve() not in owners
     release = lease.release(reusable=False)
     assert release["released"] is True
+
+
+def test_worktree_pool_reconciles_dead_missing_metadata_with_a_bounded_pass(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "seed")
+    pool = WorktreePool(repo_root=repo, worktree_root=tmp_path / "pool")
+    orphan_entries = [
+        _make_dead_missing_pool_lease(
+            pool,
+            repo,
+            branch=f"implementation/orphan-{ordinal}",
+        )
+        for ordinal in range(2)
+    ]
+
+    first = pool.reconcile_orphaned_metadata(max_entries=1)
+
+    assert first["candidate_count"] == 2
+    assert first["inspected_count"] == 1
+    assert first["removed_count"] == 1
+    assert first["skipped_count"] == 0
+    assert first["truncated"] is True
+    assert first["removed"][0]["reason"] == (
+        "dead_lease_workspace_and_branch_absent"
+    )
+    assert sum(path.exists() for _, path, _ in orphan_entries) == 1
+    assert sum(path.exists() for _, _, path in orphan_entries) == 1
+
+    state_dir = tmp_path / "state" / "lane-0"
+    supervisor = PortalImplementationSupervisor(
+        PortalSupervisorConfig(
+            todo_path=tmp_path / "tasks.md",
+            state_path=state_dir / "task_state.json",
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "events.jsonl",
+            state_dir=state_dir,
+            repo_root=repo,
+            worktree_root=pool.worktree_root,
+        )
+    )
+    second = supervisor.reconcile_orphaned_worktree_pool_metadata(
+        max_entries=10
+    )
+
+    assert second["candidate_count"] == 1
+    assert second["removed_count"] == 1
+    assert second["truncated"] is False
+    assert all(not path.exists() for _, path, _ in orphan_entries)
+    assert all(not path.exists() for _, _, path in orphan_entries)
+    event = json.loads(
+        state_dir.joinpath("events.jsonl").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert event["type"] == (
+        "worktree_pool_orphan_metadata_reconciled"
+    )
+
+
+def test_worktree_pool_orphan_reconciliation_preserves_any_recovery_signal(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "seed")
+    pool = WorktreePool(repo_root=repo, worktree_root=tmp_path / "pool")
+
+    live = pool.acquire(
+        cache_key="live",
+        base_ref="main",
+        branch_name="implementation/live-owner",
+    )
+    present = pool.acquire(
+        cache_key="present",
+        base_ref="main",
+        branch_name="implementation/present-workspace",
+    )
+    present_state_path = pool.state_root / f"{present.entry_id}.json"
+    present_lock_path = pool.state_root / f"{present.entry_id}.lock"
+    present_state = json.loads(
+        present_state_path.read_text(encoding="utf-8")
+    )
+    present_state["lease_pid"] = 2**30
+    present_state_path.write_text(
+        json.dumps(present_state),
+        encoding="utf-8",
+    )
+    present_lock_path.write_text(
+        json.dumps({"pid": 2**30}),
+        encoding="utf-8",
+    )
+    branch_only, branch_state_path, branch_lock_path = (
+        _make_dead_missing_pool_lease(
+            pool,
+            repo,
+            branch="implementation/surviving-branch",
+            delete_branch=False,
+        )
+    )
+
+    result = pool.reconcile_orphaned_metadata()
+
+    assert result["removed_count"] == 0
+    assert {
+        item["reason"] for item in result["skipped"]
+    } == {
+        "branch_present",
+        "live_lease_owner",
+        "workspace_present_or_unsafe",
+    }
+    assert present_state_path.exists()
+    assert present_lock_path.exists()
+    assert branch_state_path.exists()
+    assert branch_lock_path.exists()
+    assert live.release(reusable=False)["released"] is True
+    assert present.release(reusable=False)["released"] is True
+    assert branch_only.release(reusable=False)["released"] is True
+    _git(repo, "branch", "-D", "implementation/surviving-branch")
+
+
+def test_worktree_pool_orphan_reconciliation_preserves_replaced_state(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "seed")
+    pool = WorktreePool(repo_root=repo, worktree_root=tmp_path / "pool")
+    _lease, state_path, lock_path = _make_dead_missing_pool_lease(
+        pool,
+        repo,
+        branch="implementation/replaced-orphan",
+    )
+    original_try_claim = pool._try_claim
+
+    def replace_state_after_claim(state):
+        claimed = original_try_claim(state)
+        if claimed is not None:
+            replacement = json.loads(
+                state_path.read_text(encoding="utf-8")
+            )
+            replacement["last_used_at_epoch"] = (
+                float(replacement["last_used_at_epoch"]) + 1.0
+            )
+            state_path.write_text(
+                json.dumps(replacement),
+                encoding="utf-8",
+            )
+        return claimed
+
+    monkeypatch.setattr(pool, "_try_claim", replace_state_after_claim)
+
+    result = pool.reconcile_orphaned_metadata()
+
+    assert result["removed_count"] == 0
+    assert result["skipped_count"] == 1
+    assert result["skipped"][0]["reason"] == (
+        "state_changed_during_cleanup"
+    )
+    assert state_path.exists()
+    assert not lock_path.exists()
+
+
+def test_worktree_pool_orphan_reconciliation_preserves_unverifiable_owners(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "seed")
+    pool = WorktreePool(repo_root=repo, worktree_root=tmp_path / "pool")
+    _lease, invalid_state_path, invalid_state_lock = (
+        _make_dead_missing_pool_lease(
+            pool,
+            repo,
+            branch="implementation/unverifiable-lease-owner",
+        )
+    )
+    invalid_state = json.loads(
+        invalid_state_path.read_text(encoding="utf-8")
+    )
+    invalid_state["lease_pid"] = "not-a-pid"
+    invalid_state_path.write_text(
+        json.dumps(invalid_state),
+        encoding="utf-8",
+    )
+    _lease, invalid_lock_state, invalid_lock_path = (
+        _make_dead_missing_pool_lease(
+            pool,
+            repo,
+            branch="implementation/unverifiable-lock-owner",
+        )
+    )
+    invalid_lock_path.write_text(
+        json.dumps({"pid": 0}),
+        encoding="utf-8",
+    )
+
+    result = pool.reconcile_orphaned_metadata()
+
+    assert result["removed_count"] == 0
+    assert {
+        item["reason"] for item in result["skipped"]
+    } == {
+        "lease_owner_unverifiable",
+        "lock_owner_unverifiable",
+    }
+    assert invalid_state_path.exists()
+    assert invalid_state_lock.exists()
+    assert invalid_lock_state.exists()
+    assert invalid_lock_path.exists()
+
+
+def test_worktree_pool_orphan_reconciliation_preserves_unverifiable_branch_probe(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "seed")
+    pool = WorktreePool(repo_root=repo, worktree_root=tmp_path / "pool")
+    _lease, state_path, lock_path = _make_dead_missing_pool_lease(
+        pool,
+        repo,
+        branch="implementation/unverifiable-branch-probe",
+    )
+    original_run = pool._run
+
+    def fail_branch_probe(command, *, cwd):
+        if tuple(command[:4]) == (
+            "git",
+            "show-ref",
+            "--verify",
+            "--quiet",
+        ):
+            return CommandResult(
+                command=tuple(command),
+                returncode=128,
+                stdout="",
+                stderr="injected branch probe failure",
+            )
+        return original_run(command, cwd=cwd)
+
+    monkeypatch.setattr(pool, "_run", fail_branch_probe)
+
+    result = pool.reconcile_orphaned_metadata()
+
+    assert result["removed_count"] == 0
+    assert result["skipped_count"] == 1
+    assert result["skipped"][0]["reason"] == (
+        "branch_presence_unverifiable"
+    )
+    assert result["skipped"][0]["branch_probe"] == {
+        "returncode": 128,
+        "error": "injected branch probe failure",
+    }
+    assert state_path.exists()
+    assert lock_path.exists()

@@ -746,6 +746,235 @@ class WorktreePool:
             self._remove_lock(lock_path)
         return {"removed": removed, "skipped": skipped}
 
+    def reconcile_orphaned_metadata(
+        self,
+        *,
+        max_entries: int = 100,
+    ) -> dict[str, Any]:
+        """Remove bounded dead-lease sidecars after proving their checkout is gone.
+
+        Worktree reconciliation normally starts from ``git worktree list``.
+        Consequently, a daemon that dies before releasing its pool lease can
+        leave JSON and lock sidecars behind after another recovery path removes
+        both the checkout and its task branch.  Such records cannot be reached
+        by the normal worktree scan, and records for old base commits are not
+        considered by :meth:`acquire`.
+
+        This cleanup deliberately removes metadata only.  Any live owner,
+        present checkout, surviving branch, malformed identity, or concurrent
+        state replacement is preserved for a later operator/recovery pass.
+        The existing entry-specific claim guard serializes stale-lock takeover,
+        and the state is re-read before unlinking so a replacement lease cannot
+        be deleted from an earlier observation.
+        """
+
+        limit = max(0, int(max_entries))
+        states = [
+            state
+            for state in self._states()
+            if state.get("state") in {"initializing", "leased"}
+        ]
+        removed: list[dict[str, Any]] = []
+        skipped: list[dict[str, Any]] = []
+
+        def skip(
+            state: Mapping[str, Any],
+            reason: str,
+            **detail: Any,
+        ) -> None:
+            skipped.append(
+                {
+                    "entry_id": str(state.get("lease_token") or ""),
+                    "path": str(state.get("path") or ""),
+                    "branch": str(state.get("branch") or ""),
+                    "reason": reason,
+                    **detail,
+                }
+            )
+
+        for state in states[:limit]:
+            entry_id = str(state.get("lease_token") or "")
+            state_path = self._state_path(entry_id)
+            lock_path = self._lock_path(state)
+            if (
+                not re.fullmatch(r"[A-Za-z0-9._-]+", entry_id)
+                or state_path.is_symlink()
+                or lock_path.is_symlink()
+            ):
+                skip(state, "unsafe_metadata_identity")
+                continue
+            if (
+                str(state.get("repo_root") or "") != str(self.repo_root)
+                or str(state.get("repo_common_dir") or "")
+                != str(self.repo_common_dir)
+            ):
+                skip(state, "repository_identity_mismatch")
+                continue
+            try:
+                lease_pid = int(state.get("lease_pid") or 0)
+            except (TypeError, ValueError):
+                skip(state, "lease_owner_unverifiable")
+                continue
+            if lease_pid <= 0:
+                skip(state, "lease_owner_unverifiable")
+                continue
+            if pid_is_alive(lease_pid):
+                skip(state, "live_lease_owner", owner_pid=lease_pid)
+                continue
+
+            if lock_path.exists():
+                lock = read_json_object(lock_path)
+                if not lock:
+                    skip(state, "lock_owner_unverifiable")
+                    continue
+                try:
+                    lock_pid = int(lock.get("pid") or 0)
+                except (TypeError, ValueError):
+                    skip(state, "lock_owner_unverifiable")
+                    continue
+                if lock_pid <= 0:
+                    skip(state, "lock_owner_unverifiable")
+                    continue
+                if pid_is_alive(lock_pid):
+                    skip(state, "live_lock_owner", owner_pid=lock_pid)
+                    continue
+
+            raw_path = str(state.get("path") or "").strip()
+            unresolved_workspace_path = Path(raw_path)
+            try:
+                if (
+                    not unresolved_workspace_path.is_absolute()
+                    or unresolved_workspace_path.is_symlink()
+                ):
+                    raise ValueError("workspace path is not an absolute directory")
+                workspace_path = unresolved_workspace_path.resolve(
+                    strict=False
+                )
+                workspace_path.relative_to(self.worktree_root)
+            except (OSError, RuntimeError, ValueError):
+                skip(state, "workspace_path_invalid")
+                continue
+            if (
+                not raw_path
+                or workspace_path == self.worktree_root
+                or workspace_path.exists()
+            ):
+                skip(state, "workspace_present_or_unsafe")
+                continue
+
+            branch = str(state.get("branch") or "").strip()
+            branch_check = self._run(
+                ("git", "check-ref-format", "--branch", branch),
+                cwd=self.repo_root,
+            )
+            if not branch or not branch_check.ok:
+                skip(state, "branch_identity_unverifiable")
+                continue
+            branch_ref = (
+                branch
+                if branch.startswith("refs/heads/")
+                else f"refs/heads/{branch}"
+            )
+            branch_presence, branch_probe = self._branch_ref_presence(
+                branch_ref
+            )
+            if branch_presence == "unverifiable":
+                skip(
+                    state,
+                    "branch_presence_unverifiable",
+                    branch_probe=branch_probe,
+                )
+                continue
+            if branch_presence == "present":
+                skip(state, "branch_present")
+                continue
+
+            claimed_lock = self._try_claim(state)
+            if claimed_lock is None:
+                skip(state, "lease_or_claim_owner_active")
+                continue
+            try:
+                current = self._read_state(entry_id)
+                if current != dict(state):
+                    skip(state, "state_changed_during_cleanup")
+                    continue
+                try:
+                    current_lease_pid = int(current.get("lease_pid") or 0)
+                except (TypeError, ValueError):
+                    skip(state, "lease_owner_changed_or_unverifiable")
+                    continue
+                if current_lease_pid <= 0:
+                    skip(state, "lease_owner_changed_or_unverifiable")
+                    continue
+                if pid_is_alive(current_lease_pid):
+                    skip(
+                        state,
+                        "lease_owner_changed_or_live",
+                        owner_pid=current_lease_pid,
+                    )
+                    continue
+                unresolved_current_path = Path(
+                    str(current.get("path") or "")
+                )
+                current_path = unresolved_current_path.resolve(
+                    strict=False
+                )
+                if (
+                    unresolved_current_path.is_symlink()
+                    or current_path.exists()
+                ):
+                    skip(state, "workspace_reappeared_during_cleanup")
+                    continue
+                current_branch = str(current.get("branch") or "").strip()
+                current_branch_ref = (
+                    current_branch
+                    if current_branch.startswith("refs/heads/")
+                    else f"refs/heads/{current_branch}"
+                )
+                current_branch_presence, current_branch_probe = (
+                    self._branch_ref_presence(current_branch_ref)
+                )
+                if current_branch_presence == "unverifiable":
+                    skip(
+                        state,
+                        "branch_recheck_unverifiable",
+                        branch_probe=current_branch_probe,
+                    )
+                    continue
+                if current_branch_presence == "present":
+                    skip(state, "branch_reappeared_during_cleanup")
+                    continue
+                state_path.unlink()
+                removed.append(
+                    {
+                        "entry_id": entry_id,
+                        "path": str(workspace_path),
+                        "branch": branch,
+                        "lease_pid": lease_pid,
+                        "reason": "dead_lease_workspace_and_branch_absent",
+                    }
+                )
+            except (OSError, RuntimeError) as exc:
+                skip(
+                    state,
+                    "metadata_cleanup_failed",
+                    error_type=type(exc).__name__,
+                )
+            finally:
+                self._remove_lock(claimed_lock)
+
+        return {
+            "attempted": True,
+            "max_entries": limit,
+            "candidate_count": len(states),
+            "inspected_count": min(len(states), limit),
+            "removed_count": len(removed),
+            "skipped_count": len(skipped),
+            "truncated": len(states) > limit,
+            "removed": removed,
+            "skipped": skipped,
+        }
+
     def _create_cold_entry(
         self,
         *,
@@ -1110,6 +1339,41 @@ class WorktreePool:
     def _rev_parse(self, cwd: Path, ref: str) -> str:
         result = self._run(("git", "rev-parse", "--verify", f"{ref}^{{commit}}"), cwd=cwd)
         return result.stdout.strip() if result.ok else ""
+
+    def _branch_ref_presence(
+        self,
+        branch_ref: str,
+    ) -> tuple[str, dict[str, Any]]:
+        """Return ``present``, ``absent``, or ``unverifiable`` for a branch ref."""
+
+        command = (
+            "git",
+            "show-ref",
+            "--verify",
+            "--quiet",
+            "--",
+            branch_ref,
+        )
+        try:
+            result = self._run(command, cwd=self.repo_root)
+        except OSError as exc:
+            return (
+                "unverifiable",
+                {
+                    "error_type": type(exc).__name__,
+                },
+            )
+        if result.returncode == 0:
+            return "present", {"returncode": 0}
+        if result.returncode == 1:
+            return "absent", {"returncode": 1}
+        return (
+            "unverifiable",
+            {
+                "returncode": result.returncode,
+                "error": result.stderr.strip()[:500],
+            },
+        )
 
     def _run(self, command: Sequence[str], *, cwd: Path) -> CommandResult:
         return _run_command_with_timeout(
