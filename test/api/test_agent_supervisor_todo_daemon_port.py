@@ -3849,6 +3849,44 @@ def test_multi_supervisor_runner_exits_after_fresh_terminal_board_drain(tmp_path
     assert any("fresh terminal quiescence" in line for line in output)
 
 
+def test_terminal_board_drain_ignores_a_stale_completed_projection(tmp_path):
+    state = tmp_path / "state"
+    state.mkdir()
+    task_path = state / "example_task_state.json"
+    task_path.write_text(
+        json.dumps(
+            {
+                "task_count": 4,
+                "completed_count": 4,
+                "active_task_id": "",
+                "implementation_in_progress": False,
+                "eligible_ready_count": 0,
+                "blocked_count": 0,
+                "external_reserved_count": 0,
+            }
+        ),
+        encoding="utf-8",
+    )
+    os.utime(task_path, (1, 1))
+    (state / "example_supervisor_status.json").write_text(
+        json.dumps({"current_status_path": str(task_path)}),
+        encoding="utf-8",
+    )
+    track = parse_track_spec(
+        "T|worker.py|logs/run.log|state/example_supervisor.pid|state/example_managed_daemon.pid"
+    )
+
+    fields = multi_supervisor_runner.terminal_task_state_fields(
+        track,
+        repo_root=tmp_path,
+        fresh_after_epoch_seconds=time.time(),
+    )
+
+    assert fields["task_state_status"] == "nonterminal"
+    assert fields["task_state_fresh"] is False
+    assert fields["terminal_quiescent"] is False
+
+
 def test_implementation_supervisor_track_spec_uses_standard_state_layout():
     namespace_paths = agent_supervisor_namespace_paths(Path("/repo"), "virtual_ai_os")
     config = ImplementationSupervisorTrackConfig(

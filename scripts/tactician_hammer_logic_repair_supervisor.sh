@@ -445,6 +445,7 @@ PY
   else
     echo "z3 unavailable; Hammer execution remains disabled in shadow mode"
   fi
+  echo "hammer_import_isolation=unsafe_process_global_environment; native execution remains disabled in shadow mode"
   echo "doctor: healthy"
 }
 
