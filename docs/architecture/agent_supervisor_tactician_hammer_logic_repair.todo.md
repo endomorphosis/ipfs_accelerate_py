@@ -1024,7 +1024,7 @@ expectations under existing precedence, but do not prove them by passing.
 
 ## LPR-031 Retrieve refactor and value candidates through exact graphs and advisory KG/vector embeddings
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
