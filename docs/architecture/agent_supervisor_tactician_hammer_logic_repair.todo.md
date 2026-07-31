@@ -683,7 +683,7 @@ expectations under existing precedence, but do not prove them by passing.
 
 ## LPR-020 Add rollout controls, operations, validation, and supervisor launch
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
