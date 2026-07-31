@@ -50,7 +50,7 @@ previous accepted record for rollback:
 
 | Binding | Requirement |
 | --- | --- |
-| Dataset ID | Exact `owner/name`; production target is `sofiyapervane/cvefixes-security-ir-graphrag` |
+| Dataset ID | Exact `owner/name`; production target is `Publicus/cvefixes-security-ir-graphrag` |
 | Hub revision | Immutable lowercase 40-hex commit |
 | Manifest SHA-256 | Lowercase 64-hex digest of the exact `manifest.json` bytes |
 | Release root | CIDv1 from that manifest |
@@ -87,6 +87,9 @@ also verify:
    process; loading a candidate from the Hub is not adoption.
 6. Permit and merge admission revalidate the exact Security IR root and current
    repository tree.
+7. Dataset Viewer exposes the required corpus, BM25, graph, adjacency, vector,
+   and thin-client meta-index configs; every manifest index points to the exact
+   remote Parquet shard CID, SHA-256, byte size, row count, path, and key range.
 
 ### Opt-in live-Hub smoke
 

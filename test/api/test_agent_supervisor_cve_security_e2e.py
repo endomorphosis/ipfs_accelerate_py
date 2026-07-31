@@ -45,13 +45,15 @@ from ipfs_datasets_py.logic.security_ir.cvefixes.evaluation import (
     body_sha256,
     run_adversarial_injection_tests,
 )
+from ipfs_datasets_py.logic.security_ir.cvefixes.hf_complete_source import (
+    HuggingFaceCompleteReleaseCache,
+    HuggingFaceHubCompleteReleaseFetcher,
+)
 from ipfs_datasets_py.logic.security_ir.cvefixes.hf_release import (
     build_huggingface_release,
     stage_huggingface_release,
 )
 from ipfs_datasets_py.logic.security_ir.cvefixes.hf_source import (
-    HuggingFaceHubSourceFetcher,
-    HuggingFaceSourceCache,
     HuggingFaceSourcePin,
     load_huggingface_security_ir,
 )
@@ -500,12 +502,16 @@ def test_live_hub_pinned_release_smoke(tmp_path: Path) -> None:
             "live smoke requires exact pin variables: " + ", ".join(missing)
         )
     pin = HuggingFaceSourcePin(**required)
-    loaded = HuggingFaceSourceCache(
+    loaded = HuggingFaceCompleteReleaseCache(
         tmp_path / "hub-cache",
-        fetcher=HuggingFaceHubSourceFetcher(),
+        fetcher=HuggingFaceHubCompleteReleaseFetcher(),
     ).materialize(pin)
 
     assert loaded.receipt.verified
     assert loaded.receipt.offline is False
     assert loaded.pin == pin
+    assert loaded.receipt.index_count == 9
+    assert loaded.receipt.original_shard_count == 3
+    assert loaded.receipt.original_row_count == 12_987
+    assert loaded.receipt.raw_originals_loaded is False
     assert loaded.receipt.grants_execution_authority is False
