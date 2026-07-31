@@ -508,7 +508,7 @@ expectations under existing precedence, but do not prove them by passing.
 
 ## LPR-015 Bridge predictions into existing behavior and value synthesis
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
