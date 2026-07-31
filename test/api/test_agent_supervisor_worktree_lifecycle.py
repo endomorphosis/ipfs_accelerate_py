@@ -439,6 +439,7 @@ def test_duplicate_attempts_do_not_leak_candidate_workspace_guards(
     }
     assert final_guards == initial_guards
     assert store.load_workspace(original_workspace) == original
+    assert len(list(store.store_dir.glob(".task-*.json.update.lock"))) == 1
 
 
 def test_compare_and_delete_requires_matching_fence(tmp_path: Path) -> None:

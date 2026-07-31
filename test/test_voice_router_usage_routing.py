@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import io
 import threading
+import wave
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Union
 
@@ -59,6 +61,16 @@ from ipfs_accelerate_py.voice_router import (
 )
 
 
+def _fixture_wav(sample: int = 1_000) -> bytes:
+    output = io.BytesIO()
+    with wave.open(output, "wb") as audio:
+        audio.setnchannels(1)
+        audio.setsampwidth(2)
+        audio.setframerate(8_000)
+        audio.writeframes(sample.to_bytes(2, "little", signed=True))
+    return output.getvalue()
+
+
 # ---------------------------------------------------------------------------
 # Fixtures / helpers
 # ---------------------------------------------------------------------------
@@ -89,7 +101,7 @@ class _CountingTTS:
         *,
         fail_times: int = 0,
         fail_exc: Optional[BaseException] = None,
-        audio: bytes = b"WAVAUDIO",
+        audio: bytes = _fixture_wav(),
     ) -> None:
         self.router_provider_name = name
         self.calls: List[str] = []
@@ -1081,7 +1093,10 @@ def test_receipt_never_contains_transcript_synthesis_or_audio() -> None:
         provider_key="receipt", scope=scope, operation=VOICE_TTS_USAGE_OPERATION
     )
     secret_text = "super_secret_synthesis_text_xyz"
-    provider = _CountingTTS("receipt", audio=b"SECRET_AUDIO_BYTES_PAYLOAD")
+    provider = _CountingTTS(
+        "receipt",
+        audio=_fixture_wav() + b"SECRET_AUDIO_BYTES_PAYLOAD",
+    )
 
     text_to_speech(
         secret_text,

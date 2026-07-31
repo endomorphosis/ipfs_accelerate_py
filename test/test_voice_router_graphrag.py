@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import io
 import json
 import sys
+import wave
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -22,7 +24,10 @@ from ipfs_accelerate_py.voice_router import (  # noqa: E402
     VoiceResponsePlan,
     VoiceTurnRequest,
     process_voice_turn,
+    text_to_speech,
 )
+from ipfs_accelerate_py.router_deps import RouterDeps  # noqa: E402
+from ipfs_accelerate_py.voice_jobs import VoiceJobExecutionError  # noqa: E402
 from ipfs_accelerate_py.voice_templates import (  # noqa: E402
     VoiceGroundingValidationError,
     VoiceTemplateValidationError,
@@ -32,10 +37,29 @@ from ipfs_accelerate_py.voice_templates import (  # noqa: E402
 )
 
 
+def _fixture_wav(
+    samples: tuple[int, ...] = (1_000,),
+    *,
+    sample_rate: int = 1_000,
+) -> bytes:
+    output = io.BytesIO()
+    with wave.open(output, "wb") as audio:
+        audio.setnchannels(1)
+        audio.setsampwidth(2)
+        audio.setframerate(sample_rate)
+        audio.writeframes(
+            b"".join(
+                sample.to_bytes(2, "little", signed=True)
+                for sample in samples
+            )
+        )
+    return output.getvalue()
+
+
 @dataclass
 class FakeSpeech:
     transcript: str = "I need food help"
-    audio: bytes = b"RIFF-fake-abby"
+    audio: bytes = _fixture_wav()
     calls: list[tuple[str, str]] = field(default_factory=list)
     fail_tts: bool = False
 
@@ -149,7 +173,7 @@ def test_full_router_turn_is_stt_retrieval_rendering_tts_and_provenance() -> Non
     assert result.response_text == (
         "Community Food Network can help. Call 503-555-0111."
     )
-    assert result.audio == b"RIFF-fake-abby"
+    assert result.audio == speech.audio
     assert [trace.stage for trace in result.traces] == [
         "transcription",
         "retrieval",
@@ -265,6 +289,66 @@ def test_tts_failure_returns_text_only_without_false_audio() -> None:
     assert result.audio is None
     assert result.provenance.output_audio_sha256 is None
     assert "tts_failed" in result.fallback_reasons
+
+
+def test_tts_padded_tail_is_rejected_before_website_or_telephone_output() -> None:
+    speech = FakeSpeech(
+        audio=_fixture_wav(
+            (1_000,) + (0,) * 1_001,
+            sample_rate=1_000,
+        )
+    )
+
+    result = process_voice_turn(
+        VoiceTurnRequest(
+            transcript="food help",
+            request_id="padded-tail-turn",
+            context={"surface": "telephone"},
+            output_format="wav",
+        ),
+        template_provider=FakeTemplateProvider(),
+        tts_provider=speech,
+    )
+
+    assert result.status == "text_only"
+    assert result.audio is None
+    assert result.provenance.output_audio_sha256 is None
+    assert "tts_failed" in result.fallback_reasons
+    synthesis = [
+        trace
+        for trace in result.traces
+        if trace.stage == "synthesis"
+    ]
+    assert synthesis[-1].status == "failed"
+    assert "audio_trailing_silence_exceeded" in str(synthesis[-1].error)
+
+
+def test_direct_tts_does_not_cache_quality_rejected_audio(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("IPFS_ACCELERATE_PY_ROUTER_RESPONSE_CACHE", "1")
+    speech = FakeSpeech(
+        audio=_fixture_wav(
+            (1_000,) + (0,) * 1_001,
+            sample_rate=1_000,
+        )
+    )
+    deps = RouterDeps()
+
+    for _attempt in range(2):
+        with pytest.raises(
+            VoiceJobExecutionError,
+            match="^audio_trailing_silence_exceeded$",
+        ):
+            text_to_speech(
+                "This output has an unsafe padded tail.",
+                output_format="wav",
+                provider="fixture",
+                provider_instance=speech,
+                deps=deps,
+            )
+
+    assert [name for name, _value in speech.calls].count("synthesize") == 2
 
 
 def test_unsafe_template_expressions_are_rejected_before_rendering() -> None:

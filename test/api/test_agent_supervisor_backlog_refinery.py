@@ -1044,6 +1044,14 @@ def test_codebase_scan_writes_file_local_ast_bundle(tmp_path):
         encoding="utf-8",
     )
     _write_todo(todo_path)
+    todo_path.write_text(
+        todo_path.read_text(encoding="utf-8").replace(
+            "- Validation: test -f README.md",
+            "- Validation: test -f README.md\n"
+            "- Board namespace: swissknife-vfs-assurance-v1",
+        ),
+        encoding="utf-8",
+    )
     _git(repo, "add", "todo.md", "src/runtime.py")
     _git(repo, "commit", "-m", "seed repo")
 
@@ -1060,15 +1068,20 @@ def test_codebase_scan_writes_file_local_ast_bundle(tmp_path):
     )
 
     assert findings[0]["bundle_key"] == "codebase/runtime/src-runtime"
+    assert findings[0]["board_namespace"] == "swissknife-vfs-assurance-v1"
     shard_path = bundle_dir / "codebase-runtime-src-runtime.todo.md"
-    assert "## AUTO-002 Resolve code annotation" in shard_path.read_text(encoding="utf-8")
+    shard_text = shard_path.read_text(encoding="utf-8")
+    assert "## AUTO-002 Resolve code annotation" in shard_text
+    assert "- Board namespace: swissknife-vfs-assurance-v1" in shard_text
     todo_text = todo_path.read_text(encoding="utf-8")
+    assert "- Board namespace: swissknife-vfs-assurance-v1" in todo_text
     assert "- Bundle: codebase/runtime/src-runtime" in todo_text
     assert "- AST symbols:" in todo_text
     assert "- AST symbol scope: file" in todo_text
     assert "route_request" in todo_text
     index = json.loads((bundle_dir / "index.json").read_text(encoding="utf-8"))
     member = index["bundles"]["codebase/runtime/src-runtime"]["tasks"][0]
+    assert member["board_namespace"] == "swissknife-vfs-assurance-v1"
     assert member["candidate_kind"] == "codebase_scan"
     assert member["goal_registration"] == "unscoped_legacy"
     assert member["paths"] == ["src/runtime.py"]
@@ -1420,6 +1433,46 @@ def test_backlog_refinery_goal_alignment_uses_declared_goal_outputs_and_records_
     assert tuple(inventory.findings) == raw_findings
     assert inventory.rejected_candidate_count == 0
     assert inventory.complete is True
+
+
+def test_codebase_admission_reason_summary_deduplicates_representative_paths():
+    first = CodebaseFinding(
+        fingerprint="a" * 40,
+        kind="swallowed_exception",
+        priority="P2",
+        track="runtime",
+        root_relative_path="src/runtime.py",
+        line_number=9,
+        snippet="except OSError: pass",
+        summary="Review first swallowed exception path",
+        validation="python3 -m py_compile src/runtime.py",
+    )
+    second = replace(
+        first,
+        fingerprint="b" * 40,
+        line_number=19,
+        summary="Review second swallowed exception path",
+    )
+    inventory = CodebaseScanInventory(
+        findings=[first, second],
+        raw_candidate_count=2,
+    )
+
+    admission = admit_codebase_refill_candidates(
+        inventory,
+        objective_goals=(),
+        max_findings=5,
+        objective_scope_configured=True,
+    )
+
+    assert admission.rejected_candidate_count == 2
+    assert admission.reason_summaries() == [
+        {
+            "reason_code": "no_schedulable_goal",
+            "count": 2,
+            "representative_paths": ["src/runtime.py"],
+        }
+    ]
 
 
 def test_goal_alignment_selects_specific_subgoal_and_rejects_ambiguous_siblings():
@@ -2321,6 +2374,202 @@ def test_backlog_refinery_releases_completed_and_duplicate_stale_strategy_blocks
     ]
     strategy = json.loads(strategy_path.read_text(encoding="utf-8"))
     assert strategy["blocked_tasks"] == ["AUTO-002"]
+
+
+def test_backlog_refinery_retires_retry_repair_for_completed_source_only(
+    tmp_path,
+):
+    repo = _seed_repo(tmp_path)
+    todo_path = repo / "todo.md"
+    strategy_path = repo / "state" / "strategy.json"
+    todo_path.write_text(
+        """# Agent Todos
+
+## AUTO-001 Completed source
+
+- Status: completed
+- Completion: manual
+- Priority: P1
+- Track: runtime
+- Depends on:
+- Outputs: src/completed.py
+- Validation: test -f todo.md
+- Acceptance: The original task completed through another implementation lane.
+
+## AUTO-002 Resolve merge retry-budget failure for AUTO-001
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on:
+- Outputs: discovery
+- Validation: test -f todo.md
+- Acceptance: Merge retry-budget guardrail filed this from repeated merge failures in AUTO-001. Use evidence in data/discovery/auto-002.md to fix the merge blocker, then mark this repair task completed so the supervisor can release AUTO-001 from strategy blocked_tasks.
+
+## AUTO-003 Unresolved source
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: runtime
+- Depends on:
+- Outputs: src/unresolved.py
+- Validation: test -f todo.md
+- Acceptance: The original task remains unresolved.
+
+## AUTO-004 Resolve implementation retry-budget failure for AUTO-003
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on:
+- Outputs: discovery
+- Validation: test -f todo.md
+- Acceptance: Implementation retry-budget guardrail filed this from repeated implementation failures in AUTO-003. Use evidence in data/discovery/auto-004.md to fix the setup blocker, then mark this repair task completed so the supervisor can release AUTO-003 from strategy blocked_tasks.
+""",
+        encoding="utf-8",
+    )
+    strategy_path.parent.mkdir(parents=True, exist_ok=True)
+    active_finding = {
+        "source_task_id": "AUTO-003",
+        "follow_up_task_id": "AUTO-004",
+        "failure_kind": "implementation",
+    }
+    strategy_path.write_text(
+        json.dumps(
+            {
+                "blocked_tasks": [
+                    "AUTO-001",
+                    "AUTO-002",
+                    "AUTO-003",
+                ],
+                "retry_budget_findings": [
+                    {
+                        "source_task_id": "AUTO-001",
+                        "follow_up_task_id": "AUTO-002",
+                        "failure_kind": "merge",
+                    },
+                    active_finding,
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    releases = release_completed_guardrail_blocks(
+        todo_path=todo_path,
+        strategy_path=strategy_path,
+        task_prefix="AUTO-",
+    )
+
+    assert releases == [
+        {
+            "source_task_id": "AUTO-001",
+            "follow_up_task_id": "AUTO-002",
+            "guardrail_kind": "retry_budget",
+            "failure_kind": "merge",
+            "reason": "source_completed_repair_retired",
+        }
+    ]
+    todo_text = todo_path.read_text(encoding="utf-8")
+    completed_repair = todo_text.split("## AUTO-002", 1)[1].split(
+        "## AUTO-003", 1
+    )[0]
+    active_repair = todo_text.split("## AUTO-004", 1)[1]
+    assert "- Status: completed" in completed_repair
+    assert "- Status: todo" in active_repair
+    strategy = json.loads(strategy_path.read_text(encoding="utf-8"))
+    assert strategy["blocked_tasks"] == ["AUTO-003"]
+    assert strategy["retry_budget_findings"] == [active_finding]
+    assert strategy[
+        "last_source_completed_retry_repair_retired_task_ids"
+    ] == ["AUTO-002"]
+
+
+def test_backlog_refinery_prunes_peer_retired_retry_projection(tmp_path):
+    repo = _seed_repo(tmp_path)
+    todo_path = repo / "todo.md"
+    strategy_path = repo / "state" / "strategy.json"
+    todo_path.write_text(
+        """# Agent Todos
+
+## AUTO-001 Completed source
+
+- Status: completed
+- Completion: manual
+- Priority: P1
+- Track: runtime
+- Depends on:
+- Outputs: src/completed.py
+- Validation: test -f todo.md
+- Acceptance: The original task completed through another implementation lane.
+
+## AUTO-002 Resolve merge retry-budget failure for AUTO-001
+
+- Status: completed
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on:
+- Outputs: discovery
+- Validation: test -f todo.md
+- Acceptance: Merge retry-budget guardrail filed this from repeated merge failures in AUTO-001. Use evidence in data/discovery/auto-002.md to fix the merge blocker, then mark this repair task completed so the supervisor can release AUTO-001 from strategy blocked_tasks.
+""",
+        encoding="utf-8",
+    )
+    strategy_path.parent.mkdir(parents=True, exist_ok=True)
+    strategy_path.write_text(
+        json.dumps(
+            {
+                "blocked_tasks": ["AUTO-001", "AUTO-002"],
+                "retry_budget_findings": [
+                    {
+                        "source_task_id": "AUTO-001",
+                        "follow_up_task_id": "AUTO-002",
+                        "failure_kind": "merge",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    releases = release_completed_guardrail_blocks(
+        todo_path=todo_path,
+        strategy_path=strategy_path,
+        task_prefix="AUTO-",
+    )
+
+    assert releases == [
+        {
+            "source_task_id": "AUTO-001",
+            "follow_up_task_id": "AUTO-002",
+            "guardrail_kind": "retry_budget",
+            "failure_kind": "merge",
+            "reason": (
+                "source_completed_retry_repair_projection_repaired"
+            ),
+        }
+    ]
+    strategy = json.loads(strategy_path.read_text(encoding="utf-8"))
+    assert strategy["blocked_tasks"] == []
+    assert strategy["retry_budget_findings"] == []
+    assert strategy[
+        "last_repaired_source_completed_retry_projection_task_ids"
+    ] == ["AUTO-002"]
+    assert "- Status: completed" in todo_path.read_text(encoding="utf-8")
+    strategy_after_first_pass = strategy_path.read_bytes()
+
+    repeated_releases = release_completed_guardrail_blocks(
+        todo_path=todo_path,
+        strategy_path=strategy_path,
+        task_prefix="AUTO-",
+    )
+
+    assert repeated_releases == []
+    assert strategy_path.read_bytes() == strategy_after_first_pass
 
 
 def test_backlog_refinery_releases_historical_completed_retry_repairs(tmp_path):
@@ -4474,9 +4723,13 @@ def test_backlog_refinery_objective_scan_refills_low_backlog(tmp_path):
     assert (bundle_dir / "index.json").exists()
 
 
-def test_codebase_scan_healthy_exhaustion_records_policy_and_awaits_quorum(tmp_path):
+def test_codebase_scan_healthy_exhaustion_records_policy_and_awaits_quorum(
+    tmp_path,
+    monkeypatch,
+):
     repo = _seed_repo(tmp_path)
     todo_path = repo / "todo.md"
+    strategy_path = repo / "state" / "strategy.json"
     _write_todo(todo_path)
     (repo / "healthy.py").write_text("VALUE = 1\n", encoding="utf-8")
     _git(repo, "add", ".")
@@ -4486,7 +4739,7 @@ def test_codebase_scan_healthy_exhaustion_records_policy_and_awaits_quorum(tmp_p
     receipt = record_codebase_scan_findings(
         todo_path=todo_path,
         state_path=None,
-        strategy_path=repo / "state" / "strategy.json",
+        strategy_path=strategy_path,
         discovery_dir=repo / "discovery",
         repo_root=repo,
         max_findings=5,
@@ -4501,6 +4754,26 @@ def test_codebase_scan_healthy_exhaustion_records_policy_and_awaits_quorum(tmp_p
     assert receipt.metadata["analyzer_health"]["status"] == "healthy"
     assert receipt.metadata["analyzer_canaries"]["passed"] is True
     assert receipt.metadata["expected_git_root_count"] == 1
+    strategy = json.loads(strategy_path.read_text(encoding="utf-8"))
+    assert strategy["last_drained_codebase_scan_task_count"] == 1
+
+    def scan_must_not_run(*_args, **_kwargs):
+        raise AssertionError("healthy single-channel exhaustion bypassed cooldown")
+
+    monkeypatch.setattr(backlog_refinery, "scan_codebase_findings", scan_must_not_run)
+    cooled = record_codebase_scan_findings(
+        todo_path=todo_path,
+        state_path=None,
+        strategy_path=strategy_path,
+        discovery_dir=repo / "discovery",
+        repo_root=repo,
+        max_findings=5,
+        health_thresholds=thresholds,
+    )
+
+    assert cooled.terminal_reason is ScanTerminalReason.COOLDOWN
+    assert cooled.scan_mode == "cooldown"
+    assert cooled.safe_for_completion_reasoning is False
 
 
 def test_codebase_scan_missing_root_fails_closed_without_suppressing_retry(tmp_path, monkeypatch):

@@ -661,6 +661,83 @@ def test_provider_capacity_deferral_rolls_back_start_charge(tmp_path) -> None:
     assert daemon._task_attempt(recovered, task) == 1
 
 
+def test_provider_capacity_deferral_finalizes_worktree_lifecycle(tmp_path) -> None:
+    todo_path = tmp_path / "tasks.todo.md"
+    _write_single_task_board(todo_path)
+    state_dir = tmp_path / "state"
+    daemon = PortalImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=tmp_path,
+        task_header_prefix="## TASK-",
+        implement=True,
+        max_task_attempts=1,
+        worktree_pool_enabled=False,
+    )
+    task = parse_task_file(todo_path, "## TASK-")[0]
+    daemon._register_task_identities([task])
+    identity = daemon._identity_for_task(task)
+    state = PortalTaskState(
+        task_identities={task.task_id: identity.to_dict()},
+    )
+    worktree_path = tmp_path / "worktrees" / "attempt-1"
+    worktree_path.mkdir(parents=True)
+    lifecycle = daemon.worktree_lifecycle.begin_preparing(
+        task_id=task.task_id,
+        canonical_task_cid=identity.canonical_task_cid,
+        attempt=1,
+        lane_id=daemon._worktree_lifecycle_lane_id(),
+        workspace_path=worktree_path,
+        branch="implementation/task-001-attempt-1",
+        merge_target="main",
+        state_dir=str(state_dir),
+    )
+    lifecycle = daemon.worktree_lifecycle.mark_active(
+        worktree_path,
+        lease_id=lifecycle.lease_id,
+        expected_fence=lifecycle.fence,
+    )
+    daemon._active_worktree_lifecycle = lifecycle
+    log_path = state_dir / "attempt-1.log"
+    daemon._mark_implementation_started(
+        state,
+        task=task,
+        attempt=1,
+        started_at="2026-07-24T00:00:00+00:00",
+        log_path=log_path,
+        worktree_path=worktree_path,
+        branch_name=lifecycle.branch,
+    )
+
+    result = daemon._record_provider_capacity_deferral(
+        task=task,
+        state=state,
+        attempt=1,
+        started_at="2026-07-24T00:00:00+00:00",
+        returncode=1,
+        log_path=log_path,
+        failure={"providers": ["codex"], "evidence": ["usage limit"]},
+        worktree_path=worktree_path,
+        branch_name=lifecycle.branch,
+    )
+
+    assert result["attempt_consumed"] is False
+    assert result["lifecycle_finalize"]["finalized"] is True
+    assert result["lifecycle_finalize"]["reason"] == "provider_capacity_deferred"
+    assert daemon._active_worktree_lifecycle is None
+    assert daemon.worktree_lifecycle.load_workspace(worktree_path) is None
+    assert (
+        daemon.worktree_lifecycle.load_task_attempt(
+            canonical_task_cid=identity.canonical_task_cid,
+            task_id=task.task_id,
+            attempt=1,
+        )
+        is None
+    )
+
+
 def test_new_canonical_revision_gets_fresh_attempt_budget(
     tmp_path,
     monkeypatch,

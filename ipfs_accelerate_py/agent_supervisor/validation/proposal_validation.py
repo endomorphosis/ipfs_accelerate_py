@@ -2783,10 +2783,13 @@ _SECRET_PLACEHOLDER_RE = re.compile(
     r""")"""
 )
 _SYNTHETIC_TEST_SECRET_CANARY_RE = re.compile(
-    r"""(?ix)^(?:literal|synthetic|canary|super|test[-_ ]?only)[-_ ]"""
+    r"""(?ix)^(?:"""
+    r"""(?:literal|synthetic|canary|super|test[-_ ]?only)[-_ ]"""
     r"""(?:secret|api[-_ ]?key|access[-_ ]?token|auth[-_ ]?token|"""
     r"""refresh[-_ ]?token|client[-_ ]?secret|password)"""
-    r"""(?:[-_ ]value)?$"""
+    r"""(?:[-_ ]value)?|"""
+    r"""should[-_ ]not[-_ ]appear"""
+    r""")$"""
 )
 _SYNTHETIC_TEST_SECRET_REFERENCE_RE = re.compile(
     r"""(?x)^(?:env://[A-Z][A-Z0-9_]{1,127}|"""
@@ -2864,6 +2867,47 @@ def _is_scoped_python_test_source(
         and _is_test_path(path)
         and policy.path_is_in_scope(path)
     )
+
+
+def _is_inert_test_package_marker_companion(
+    entry: CandidateDiffEntry,
+    policy: ProposalValidationPolicy,
+) -> bool:
+    """Allow only an empty test-package marker enclosing declared test work."""
+
+    path = entry.path
+    if (
+        entry.change_kind is not DiffChangeKind.ADD
+        or entry.before_source is not None
+        or entry.after_source is None
+        or not path.endswith("/__init__.py")
+        or not _is_test_path(path)
+    ):
+        return False
+    try:
+        if ast.parse(entry.after_source, filename=path).body:
+            return False
+    except (SyntaxError, TypeError, ValueError):
+        return False
+    package_prefix = path.rsplit("/", 1)[0] + "/"
+
+    def has_declared_descendant(patterns: Sequence[str]) -> bool:
+        return any(
+            normalized.startswith(package_prefix)
+            and normalized != path
+            and not any(character in normalized for character in "*?[")
+            for raw_pattern in patterns
+            if (
+                normalized := str(raw_pattern)
+                .strip()
+                .replace("\\", "/")
+                .removeprefix("./")
+            )
+        )
+
+    return has_declared_descendant(
+        policy.allowed_paths
+    ) and has_declared_descendant(policy.task_owned_paths)
 
 
 def _introduced_candidate_text(entry: CandidateDiffEntry) -> str:
@@ -3577,6 +3621,9 @@ class ProposalValidator:
                 "declared paths do not exactly match the normalized candidate diff",
             )
         for entry in entries:
+            inert_test_package_marker = (
+                _is_inert_test_package_marker_companion(entry, policy)
+            )
             for path in (entry.old_path, entry.new_path):
                 if not path:
                     continue
@@ -3619,14 +3666,20 @@ class ProposalValidator:
                         "candidate path crosses a submodule boundary",
                         path,
                     )
-                if not policy.path_is_allowed(path):
+                if (
+                    not policy.path_is_allowed(path)
+                    and not inert_test_package_marker
+                ):
                     add(
                         ProposalFindingCode.PATH_OUTSIDE_SCOPE,
                         ProposalGate.PATH,
                         "candidate path is outside the task-owned scope",
                         path,
                     )
-                if not policy.path_is_task_owned(path):
+                if (
+                    not policy.path_is_task_owned(path)
+                    and not inert_test_package_marker
+                ):
                     add(
                         ProposalFindingCode.PATH_OUTSIDE_SCOPE,
                         ProposalGate.PATH,
