@@ -14522,12 +14522,11 @@ class PortalImplementationDaemon:
         except (AttributeError, TypeError, ValueError):
             return defaults
 
-        # A small unified diff against an established large source can carry
-        # multi-megabyte before/after materializations even though its actual
-        # write is tightly bounded. Keep the ordinary raw-patch ceiling, and
-        # raise only the local materialization limits up to the immutable
-        # process cap. Scope, content, boundary, and validation gates remain
-        # unchanged.
+        # Small raw unified patches against established modules may still
+        # materialize multi-megabyte before/after sources (for example the
+        # daemon host itself).  Raise the local materialization envelope up to
+        # the process absolute caps so bounded thin-host edits remain
+        # proposal-gate admissible without a declared artifact envelope.
         if (
             raw_patch_bytes
             <= DEFAULT_IMPLEMENTATION_PROPOSAL_PATCH_BYTES
@@ -15058,6 +15057,9 @@ class PortalImplementationDaemon:
         }
         policy_version = "strict-proposal-v2+local-envelope-v2"
         policy_allowed_paths = allowed_paths
+        # Only a task-declared artifact envelope may rewrite allowed_paths to
+        # the exact changed set.  Local auto-raise of max_file_bytes for
+        # established modules must keep the full task-owned scope.
         declared_artifact_envelope = bool(
             str(
                 task.metadata.get(
