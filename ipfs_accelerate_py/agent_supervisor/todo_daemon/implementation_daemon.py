@@ -16142,6 +16142,18 @@ class PortalImplementationDaemon:
         from ..analysis import change_propagation_pipeline as p
         return p.daemon_assert_no_write_bypass(**kw)
 
+    def execute_live_logic_repair(self, request, **kw):
+        from . import live_logic_repair_controller as lpr
+        return lpr.daemon_execute_live_logic_repair(self, request, **kw)
+
+    def intercept_logic_repair_proposal(self, **kw):
+        from . import live_logic_repair_controller as lpr
+        return lpr.daemon_intercept_logic_repair_proposal(self, **kw)
+
+    def assert_no_logic_repair_write_bypass(self, **kw):
+        from . import live_logic_repair_controller as lpr
+        return lpr.daemon_assert_no_logic_repair_write_bypass(**kw)
+
     def route_model_assisted_contract_packet(
         self,
         packet: Any,

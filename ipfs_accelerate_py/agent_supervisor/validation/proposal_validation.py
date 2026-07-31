@@ -153,6 +153,11 @@ class ProposalFindingCode(str, Enum):
     REPOSITORY_CONTENT_MISMATCH = "repository_content_mismatch"
     ARCHIVE_CHANGE_FORBIDDEN = "archive_change_forbidden"
     VALIDATION_WEAKENING_FORBIDDEN = "validation_weakening_forbidden"
+    # LPR-017 overlay gate findings (only emitted when enable_live_logic_repair).
+    OMITTED_CALLERS = "omitted_callers"
+    SIGNATURE_ARITY_INCREASE = "signature_arity_increase"
+    UNKNOWN_FRONTIER_REQUIRED = "unknown_frontier_required"
+    LOGIC_REPAIR_OVERLAY_REJECTED = "logic_repair_overlay_rejected"
 
 
 QUALIFYING_FAIL_FAST_CODES = frozenset(
@@ -1029,6 +1034,16 @@ class ProposalValidationPolicy:
     # This is the immutable scope assigned by the task authority.  The policy
     # may narrow it through ``allowed_paths`` but can never widen it.
     task_owned_paths: tuple[str, ...] = ()
+    # LPR-017: when true, intercept ordinary proposals as read-only overlays
+    # and reject/expand signature changes that omit resolved callers.
+    enable_live_logic_repair: bool = False
+    # Optional bound callers / frontier for hermetic overlay analysis.
+    logic_repair_resolved_callers: tuple[str, ...] = ()
+    logic_repair_unknown_frontier: tuple[str, ...] = ()
+    logic_repair_compatibility_proofs: tuple[str, ...] = ()
+    logic_repair_no_change_proofs: tuple[str, ...] = ()
+    # When true, expand write set instead of hard-rejecting omitted callers.
+    logic_repair_expand_write_set: bool = True
 
     def __post_init__(self) -> None:
         allowed = _strings(self.allowed_paths)
@@ -1076,9 +1091,18 @@ class ProposalValidationPolicy:
             "require_python_syntax",
             "require_structured_details",
             "require_patch_text",
+            "enable_live_logic_repair",
+            "logic_repair_expand_write_set",
         ):
             if not isinstance(getattr(self, name), bool):
                 raise ProposalValidationError(f"{name} must be a boolean")
+        for name in (
+            "logic_repair_resolved_callers",
+            "logic_repair_unknown_frontier",
+            "logic_repair_compatibility_proofs",
+            "logic_repair_no_change_proofs",
+        ):
+            object.__setattr__(self, name, _strings(getattr(self, name)))
         for name in (
             "expected_task_id",
             "expected_plan_id",
@@ -1178,6 +1202,14 @@ class ProposalValidationPolicy:
             "max_output_items": self.max_output_items,
             "max_findings": self.max_findings,
             "policy_version": self.policy_version,
+            "enable_live_logic_repair": self.enable_live_logic_repair,
+            "logic_repair_resolved_callers": self.logic_repair_resolved_callers,
+            "logic_repair_unknown_frontier": self.logic_repair_unknown_frontier,
+            "logic_repair_compatibility_proofs": (
+                self.logic_repair_compatibility_proofs
+            ),
+            "logic_repair_no_change_proofs": self.logic_repair_no_change_proofs,
+            "logic_repair_expand_write_set": self.logic_repair_expand_write_set,
         }
 
     def to_dict(self) -> dict[str, Any]:
@@ -1255,6 +1287,24 @@ class ProposalValidationPolicy:
             max_findings=int(payload.get("max_findings", 32)),
             policy_version=str(payload.get("policy_version") or "strict-proposal-v1"),
             policy_id=str(payload.get("policy_id") or ""),
+            enable_live_logic_repair=bool(
+                payload.get("enable_live_logic_repair", False)
+            ),
+            logic_repair_resolved_callers=tuple(
+                payload.get("logic_repair_resolved_callers") or ()
+            ),
+            logic_repair_unknown_frontier=tuple(
+                payload.get("logic_repair_unknown_frontier") or ()
+            ),
+            logic_repair_compatibility_proofs=tuple(
+                payload.get("logic_repair_compatibility_proofs") or ()
+            ),
+            logic_repair_no_change_proofs=tuple(
+                payload.get("logic_repair_no_change_proofs") or ()
+            ),
+            logic_repair_expand_write_set=bool(
+                payload.get("logic_repair_expand_write_set", True)
+            ),
         )
 
 
@@ -3767,6 +3817,101 @@ class ProposalValidator:
                     ProposalFindingCode.COMMAND_FORBIDDEN,
                     ProposalGate.VALIDATION,
                     "validation command is not an allowed argv prefix",
+                )
+
+        # LPR-017: intercept ordinary proposals as read-only candidate overlays
+        # before mutation.  Default-off preserves legacy proposal flows.
+        if policy.enable_live_logic_repair and not findings:
+            try:
+                from ..todo_daemon.live_logic_repair_controller import (
+                    CandidateOverlayContractDeltaGate,
+                    LiveLogicRepairPolicy,
+                    OverlayGateDisposition,
+                )
+
+                base_sources: dict[str, str] = {}
+                candidate_sources: dict[str, str] = {}
+                write_set: list[str] = []
+                for entry in proposal.effective_entries:
+                    path = entry.path
+                    write_set.append(path)
+                    if entry.before_source is not None:
+                        base_sources[path] = entry.before_source
+                    if entry.after_source is not None:
+                        candidate_sources[path] = entry.after_source
+                overlay_policy = LiveLogicRepairPolicy(
+                    enable_live_logic_repair=True,
+                    expand_write_set_on_omission=(
+                        policy.logic_repair_expand_write_set
+                    ),
+                    reject_omitted_callers=True,
+                )
+                gate = CandidateOverlayContractDeltaGate(overlay_policy)
+                overlay_result = gate.evaluate(
+                    proposal_id=proposal.proposal_id,
+                    repository_id=proposal.repository_id,
+                    base_tree_id=proposal.repository_tree_id
+                    or proposal.baseline_id
+                    or "tree:base",
+                    candidate_tree_id=proposal.repository_tree_id
+                    or "tree:candidate",
+                    write_set=write_set,
+                    base_sources=base_sources,
+                    candidate_sources=candidate_sources,
+                    resolved_callers=policy.logic_repair_resolved_callers,
+                    unknown_frontier=policy.logic_repair_unknown_frontier,
+                    compatibility_proofs=(
+                        policy.logic_repair_compatibility_proofs
+                    ),
+                    no_change_proofs=policy.logic_repair_no_change_proofs,
+                )
+                if overlay_result.disposition in {
+                    OverlayGateDisposition.REJECTED,
+                    OverlayGateDisposition.ABSTAINED,
+                    OverlayGateDisposition.DEFERRED,
+                }:
+                    code = ProposalFindingCode.LOGIC_REPAIR_OVERLAY_REJECTED
+                    if "omitted_callers" in overlay_result.reason_codes:
+                        code = ProposalFindingCode.OMITTED_CALLERS
+                    elif (
+                        "unknown_frontier_required"
+                        in overlay_result.reason_codes
+                    ):
+                        code = ProposalFindingCode.UNKNOWN_FRONTIER_REQUIRED
+                    elif (
+                        "signature_arity_increase"
+                        in overlay_result.reason_codes
+                    ):
+                        code = ProposalFindingCode.SIGNATURE_ARITY_INCREASE
+                    add(
+                        code,
+                        ProposalGate.AST_INTERFACE,
+                        overlay_result.detail
+                        or "live logic-repair overlay rejected proposal",
+                    )
+                # EXPANDED is allowed only when the expanded write set remains
+                # inside the existing proposal scope; otherwise reject.
+                elif (
+                    overlay_result.disposition
+                    is OverlayGateDisposition.EXPANDED
+                ):
+                    expanded = set(overlay_result.expanded_write_set)
+                    scope = set(proposal.changed_paths) | set(write_set)
+                    if not expanded.issubset(scope):
+                        add(
+                            ProposalFindingCode.OMITTED_CALLERS,
+                            ProposalGate.AST_INTERFACE,
+                            (
+                                "signature change requires caller paths "
+                                "outside the proposal write set; reject or "
+                                "re-admit an expanded atomic plan"
+                            ),
+                        )
+            except Exception as exc:  # fail-closed
+                add(
+                    ProposalFindingCode.LOGIC_REPAIR_OVERLAY_REJECTED,
+                    ProposalGate.AST_INTERFACE,
+                    f"live logic-repair overlay gate failed: {exc}",
                 )
 
         # Gate trace is complete even after a failure because all proposal

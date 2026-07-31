@@ -96,6 +96,10 @@ class PropagationGateReason(str, Enum):
     PARTIAL_SCC_GROUP = "partial_scc_group"
     STEP_NOT_FOUND = "step_not_found"
     STEP_NOT_MODEL_REQUIRED = "step_not_model_required"
+    # LPR-017: revalidate new logic roots/receipts when live repair is bound.
+    LOGIC_ROOT_DRIFT = "logic_root_drift"
+    LOGIC_RECEIPT_STALE = "logic_receipt_stale"
+    LOGIC_PROOF_BUNDLE_MISSING = "logic_proof_bundle_missing"
 
 
 # Alias retained for consumers that share vocabulary with contract-repair gate.
@@ -398,6 +402,13 @@ class ChangePropagationPreProviderGate:
         read_only_paths: Sequence[str] = (),
         expires_at: int | None = None,
         scc_completed_step_ids: Sequence[str] | None = None,
+        # LPR-017 optional bindings (ignored when None; revalidated when set).
+        enable_live_logic_repair: bool = False,
+        logic_roots: Any = None,
+        current_logic_roots: Any = None,
+        logic_prediction_receipt_ids: Sequence[str] = (),
+        current_logic_prediction_receipt_ids: Sequence[str] = (),
+        logic_proof_bundle: Any = None,
     ) -> tuple[PropagationGateReason, ...]:
         invalid: set[PropagationGateReason] = set()
         typed = (
@@ -416,6 +427,48 @@ class ChangePropagationPreProviderGate:
             blocked_paths = _optional_paths(read_only_paths, "read_only_paths")
         except ChangePropagationPreProviderGateError:
             return (PropagationGateReason.MALFORMED_INPUT,)
+
+        # --- LPR-017: revalidate new logic roots/receipts when enabled ---
+        if enable_live_logic_repair:
+            if logic_roots is not None and current_logic_roots is not None:
+                try:
+                    bound = (
+                        logic_roots.to_dict()
+                        if hasattr(logic_roots, "to_dict")
+                        else dict(logic_roots)
+                        if isinstance(logic_roots, Mapping)
+                        else logic_roots
+                    )
+                    current = (
+                        current_logic_roots.to_dict()
+                        if hasattr(current_logic_roots, "to_dict")
+                        else dict(current_logic_roots)
+                        if isinstance(current_logic_roots, Mapping)
+                        else current_logic_roots
+                    )
+                    if bound != current:
+                        invalid.add(PropagationGateReason.LOGIC_ROOT_DRIFT)
+                except Exception:
+                    invalid.add(PropagationGateReason.LOGIC_ROOT_DRIFT)
+            bound_receipts = {
+                str(x).strip()
+                for x in logic_prediction_receipt_ids
+                if str(x).strip()
+            }
+            current_receipts = {
+                str(x).strip()
+                for x in current_logic_prediction_receipt_ids
+                if str(x).strip()
+            }
+            if bound_receipts or current_receipts:
+                if bound_receipts != current_receipts:
+                    invalid.add(PropagationGateReason.LOGIC_RECEIPT_STALE)
+            if logic_proof_bundle is None and (
+                bound_receipts or logic_roots is not None
+            ):
+                # When live repair is enabled and receipts/roots are bound,
+                # a bridged proof bundle is required before provider hand-off.
+                invalid.add(PropagationGateReason.LOGIC_PROOF_BUNDLE_MISSING)
 
         # --- Admission / plan disposition ---
         if not admission.admitted or admission.disposition is not PlanDisposition.ADMITTED:
@@ -728,6 +781,12 @@ class ChangePropagationPreProviderGate:
         read_only_paths: Sequence[str] = (),
         expires_at: int | None = None,
         scc_completed_step_ids: Sequence[str] | None = None,
+        enable_live_logic_repair: bool = False,
+        logic_roots: Any = None,
+        current_logic_roots: Any = None,
+        logic_prediction_receipt_ids: Sequence[str] = (),
+        current_logic_prediction_receipt_ids: Sequence[str] = (),
+        logic_proof_bundle: Any = None,
     ) -> PropagationGateReceipt:
         invalid = self.validate(
             packet,
@@ -744,6 +803,14 @@ class ChangePropagationPreProviderGate:
             read_only_paths=read_only_paths,
             expires_at=expires_at,
             scc_completed_step_ids=scc_completed_step_ids,
+            enable_live_logic_repair=enable_live_logic_repair,
+            logic_roots=logic_roots,
+            current_logic_roots=current_logic_roots,
+            logic_prediction_receipt_ids=logic_prediction_receipt_ids,
+            current_logic_prediction_receipt_ids=(
+                current_logic_prediction_receipt_ids
+            ),
+            logic_proof_bundle=logic_proof_bundle,
         )
         if invalid:
             raise ChangePropagationPreProviderGateError(
