@@ -1408,3 +1408,17 @@ expectations under existing precedence, but do not prove them by passing.
 - Allow concurrent with: LPR-021, LPR-030, LPR-031, LPR-032
 - Conflict policy: Own only new deterministic-doctor contracts/policy/tests; reuse canonical identity, authority, proof, packet, transaction, and completion records by reference, leave the lifecycle doctor and ProgrammaticRecoveryController read-only with respect to source semantics, and define no model route.
 - Acceptance: Retry-budget guardrail filed this from repeated validation failures in LPR-029. Use evidence in /home/barberb/lift_coding/.git/modules/external/ipfs_accelerate/worktrees/proof-gated-contract-repair/agent-supervisor-state/tactician_hammer_logic_repair/state/discovery/2026-07-31-lpr-043-lpr-029-retry-budget.md to fix the validation blocker, then mark this repair task completed so the supervisor can release LPR-029 from strategy blocked_tasks.
+
+## LPR-044 Resolve validation retry-budget failure for LPR-028
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on: LPR-027
+- Outputs: docs/architecture/IPFS_KIT_VFS_SYMBOLIC_ASSURANCE_PLAN.md, docs/architecture/ipfs_kit_vfs_symbolic_assurance.objectives.md, docs/architecture/ipfs_kit_vfs_symbolic_assurance.todo.md, scripts/ops/agent_supervisor/README.md, test/api/test_agent_supervisor_vfs_generalization_equivalence.py, test/api/test_agent_supervisor_vfs_root_layout_guard.py, test/api/test_agent_supervisor_assurance_two_profile_end_to_end.py, /home/barberb/lift_coding/.git/modules/external/ipfs_accelerate/worktrees/proof-gated-contract-repair/agent-supervisor-state/tactician_hammer_logic_repair/state/discovery
+- Validation: test -f /home/barberb/lift_coding/.git/modules/external/ipfs_accelerate/worktrees/proof-gated-contract-repair/agent-supervisor-state/tactician_hammer_logic_repair/state/discovery/2026-07-31-lpr-044-lpr-028-retry-budget.md
+- Parallel lane: lpr-general-cutover
+- Predicted files: docs/architecture/IPFS_KIT_VFS_SYMBOLIC_ASSURANCE_PLAN.md, docs/architecture/ipfs_kit_vfs_symbolic_assurance.objectives.md, docs/architecture/ipfs_kit_vfs_symbolic_assurance.todo.md, scripts/ops/agent_supervisor/README.md, test/api/test_agent_supervisor_vfs_generalization_equivalence.py, test/api/test_agent_supervisor_vfs_root_layout_guard.py, test/api/test_agent_supervisor_assurance_two_profile_end_to_end.py
+- Conflict policy: Serialize the final migration; confirm the dedicated VFS supervisor has no live owned process before editing its plan/objective/taskboard, preserve completed VFS task history, update only still-open output/caller projections, and never add root compatibility shims or silently delete a public contract.
+- Acceptance: Retry-budget guardrail filed this from repeated validation failures in LPR-028. Use evidence in /home/barberb/lift_coding/.git/modules/external/ipfs_accelerate/worktrees/proof-gated-contract-repair/agent-supervisor-state/tactician_hammer_logic_repair/state/discovery/2026-07-31-lpr-044-lpr-028-retry-budget.md to fix the validation blocker, then mark this repair task completed so the supervisor can release LPR-028 from strategy blocked_tasks.
