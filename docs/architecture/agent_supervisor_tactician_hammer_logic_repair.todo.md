@@ -621,7 +621,7 @@ expectations under existing precedence, but do not prove them by passing.
 
 ## LPR-018 Re-plan and re-prove logic to a post-edit fixed point
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
