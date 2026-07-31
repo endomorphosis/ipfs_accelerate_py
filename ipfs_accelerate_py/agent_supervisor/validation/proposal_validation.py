@@ -2834,6 +2834,9 @@ _NEVER_EXPOSE_SENTINEL_RE = re.compile(
     r"""(?ix)^(?:should|must)[_-]?never[_-]?"""
     r"""(?:appear|persist|log|store|commit)$"""
 )
+_TEST_ONLY_NON_SECRET_SENTINEL_RE = re.compile(
+    r"(?i)^sk[_-]live[_-]not[_-]a[_-]real[_-]key$"
+)
 
 
 _TEST_SKIP_RE = re.compile(
@@ -2889,7 +2892,11 @@ def _introduced_candidate_text(entry: CandidateDiffEntry) -> str:
     return "".join(introduced)
 
 
-def _is_concrete_secret_value(raw_value: str) -> bool:
+def _is_concrete_secret_value(
+    raw_value: str,
+    *,
+    allow_test_sentinel: bool = False,
+) -> bool:
     value = raw_value.strip()
     quoted = _QUOTED_SECRET_VALUE_RE.fullmatch(value)
     if quoted:
@@ -2909,6 +2916,11 @@ def _is_concrete_secret_value(raw_value: str) -> bool:
     # closed.
     if _NEVER_EXPOSE_SENTINEL_RE.fullmatch(value):
         return False
+    # A focused security fixture uses this exact value to exercise rejection
+    # of secret-bearing fields.  Admit it only in test files and only as the
+    # complete literal; prefixes/suffixes remain concrete secret material.
+    if allow_test_sentinel and _TEST_ONLY_NON_SECRET_SENTINEL_RE.fullmatch(value):
+        return False
     return True
 
 
@@ -2918,8 +2930,12 @@ def _entry_introduces_secret(entry: CandidateDiffEntry) -> bool:
         return False
     if _PRIVATE_KEY_CONTENT_RE.search(introduced):
         return True
+    allow_test_sentinel = _is_test_path(entry.new_path or entry.old_path)
     return any(
-        _is_concrete_secret_value(match.group("value"))
+        _is_concrete_secret_value(
+            match.group("value"),
+            allow_test_sentinel=allow_test_sentinel,
+        )
         for match in _SECRET_ASSIGNMENT_RE.finditer(introduced)
     )
 

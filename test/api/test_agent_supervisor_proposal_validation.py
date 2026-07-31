@@ -1023,6 +1023,60 @@ def test_exact_never_expose_sentinel_is_not_treated_as_a_secret() -> None:
     assert ProposalFindingCode.SECRET_CHANGE_FORBIDDEN not in _finding_codes(result)
 
 
+def test_exact_non_secret_credential_sentinel_is_allowed_only_in_tests() -> None:
+    test_result = validate_implementation_proposal(
+        _proposal(
+            _entry(
+                path="test/api/test_secret_contract.py",
+                before="VALUE = 1\n",
+                after=(
+                    "VALUE = 2\n"
+                    'payload = {"api_key": "sk-live-not-a-real-key"}\n'
+                ),
+            )
+        ),
+        policy=_policy(),
+    )
+    production_result = validate_implementation_proposal(
+        _proposal(
+            _entry(
+                before="VALUE = 1\n",
+                after=(
+                    "VALUE = 2\n"
+                    'payload = {"api_key": "sk-live-not-a-real-key"}\n'
+                ),
+            )
+        ),
+        policy=_policy(),
+    )
+    embedded_result = validate_implementation_proposal(
+        _proposal(
+            _entry(
+                path="test/api/test_secret_contract.py",
+                before="VALUE = 1\n",
+                after=(
+                    "VALUE = 2\n"
+                    'api_key = "prod-sk-live-not-a-real-key-actual"\n'
+                ),
+            )
+        ),
+        policy=_policy(),
+    )
+
+    assert test_result.accepted
+    assert ProposalFindingCode.SECRET_CHANGE_FORBIDDEN not in _finding_codes(
+        test_result
+    )
+    assert not production_result.accepted
+    assert ProposalFindingCode.SECRET_CHANGE_FORBIDDEN in _finding_codes(
+        production_result
+    )
+    assert not embedded_result.accepted
+    assert ProposalFindingCode.SECRET_CHANGE_FORBIDDEN in _finding_codes(
+        embedded_result
+    )
+
+
 def test_never_expose_words_inside_concrete_secret_remain_rejected() -> None:
     result = validate_implementation_proposal(
         _proposal(
