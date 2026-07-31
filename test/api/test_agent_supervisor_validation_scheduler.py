@@ -1686,6 +1686,37 @@ def test_daemon_omits_unavailable_or_escaping_validation_roots(
     assert notes == []
 
 
+def test_daemon_omits_validation_roots_containing_path_separator(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    safe_root = workspace / "external" / "safe"
+    safe_root.mkdir(parents=True)
+    unsafe_relative = f"inside{os.pathsep}/tmp"
+    (workspace / unsafe_relative).mkdir(parents=True)
+    daemon = TodoImplementationDaemon(
+        todo_path=tmp_path / "todo.md",
+        state_path=tmp_path / "state.json",
+        strategy_path=tmp_path / "strategy.json",
+        events_path=tmp_path / "events.jsonl",
+        repo_root=workspace,
+        worktree_submodule_paths=(unsafe_relative, "external/safe"),
+    )
+
+    bound, notes = daemon._bind_workspace_validation_pythonpath(
+        "python -m pytest -q",
+        workspace,
+    )
+
+    assert bound == (
+        'export PYTHONPATH="$PWD"/external/safe; python -m pytest -q'
+    )
+    assert unsafe_relative not in bound
+    assert notes == [
+        "bound configured worktree submodule roots to validation PYTHONPATH"
+    ]
+
+
 def test_daemon_binds_task_validation_to_proposal_local_impact_graph(
     tmp_path: Path,
 ) -> None:

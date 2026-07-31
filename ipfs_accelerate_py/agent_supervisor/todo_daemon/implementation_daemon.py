@@ -24557,6 +24557,11 @@ class PortalImplementationDaemon:
             return command, []
         relative_roots: list[str] = []
         for relative in self.worktree_submodule_paths:
+            # A path-list separator is data to ``Path.resolve`` but syntax in
+            # PYTHONPATH.  Reject it before rendering so one contained root
+            # cannot smuggle an additional, unreviewed search path.
+            if os.pathsep in relative:
+                continue
             try:
                 resolved = (workspace_root / relative).resolve(strict=True)
                 resolved.relative_to(workspace_root)
