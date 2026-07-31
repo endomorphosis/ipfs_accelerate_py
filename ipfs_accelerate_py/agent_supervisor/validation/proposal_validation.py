@@ -347,8 +347,9 @@ _ARCHIVE_MAGIC = (
     b"Rar!\x1a\x07",
 )
 _GENERATED_MARKERS_RE = re.compile(
-    r"(?im)^\s*(?:[#/;*-]+\s*)?(?:@generated|generated (?:file|code)|"
-    r"do not edit|automatically generated)\b"
+    r"(?im)^\s*(?:[#/;*-]+\s*)?(?:"
+    r"@generated\b|generated (?:file|code)\b|"
+    r"do not edit\b[.!]?\s*$|automatically generated\b)"
 )
 _VALIDATION_CONFIG_PATHS = (
     ".github/workflows/",

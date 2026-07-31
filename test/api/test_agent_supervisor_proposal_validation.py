@@ -537,6 +537,67 @@ def test_lossy_unsafe_rename_path_cannot_disappear_during_normalization() -> Non
     assert ProposalFindingCode.UNSAFE_PATH in _finding_codes(result)
 
 
+@pytest.mark.parametrize(
+    "after",
+    [
+        "- Do not edit shared package exports before UIR-070.\n",
+        "Do not edit the authority contract without review.\n",
+    ],
+)
+def test_policy_prose_is_not_misclassified_as_generated_content(after: str) -> None:
+    path = "docs/architecture/UI_UX_IR_CONTRACT.md"
+    proposal = _proposal(
+        _entry(
+            path,
+            old_path="",
+            before=None,
+            after=after,
+            change_kind=DiffChangeKind.ADD,
+        ),
+    )
+
+    result = validate_implementation_proposal(
+        proposal,
+        policy=_policy(allowed_paths=("docs/architecture/",)),
+    )
+
+    assert result.accepted
+    assert ProposalFindingCode.GENERATED_CHANGE_FORBIDDEN not in _finding_codes(
+        result
+    )
+
+
+@pytest.mark.parametrize(
+    "header",
+    [
+        "# @generated\n",
+        "// DO NOT EDIT\n",
+        "Automatically generated.\n",
+    ],
+)
+def test_genuine_generated_file_headers_remain_rejected(header: str) -> None:
+    path = "docs/architecture/generated-contract.md"
+    proposal = _proposal(
+        _entry(
+            path,
+            old_path="",
+            before=None,
+            after=header,
+            change_kind=DiffChangeKind.ADD,
+        ),
+    )
+
+    result = validate_implementation_proposal(
+        proposal,
+        policy=_policy(allowed_paths=("docs/architecture/",)),
+    )
+
+    assert not result.accepted
+    assert ProposalFindingCode.GENERATED_CHANGE_FORBIDDEN in _finding_codes(
+        result
+    )
+
+
 def test_syntax_and_every_frozen_authority_dimension_fail_closed() -> None:
     proposal = _proposal(
         _entry(after="def invalid(:\n"),
