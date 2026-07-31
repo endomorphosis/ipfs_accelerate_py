@@ -176,6 +176,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
     retry_budget_repair_validation_paths,
     task_declared_output_paths,
     task_evidence_output_paths,
+    task_implementation_protected_path_conflicts,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
     ObjectiveCompletionArtifactRefreshError,
@@ -20006,6 +20007,52 @@ def test_run_once_quarantines_declared_protected_task_before_selection(
     }
 
 
+def test_run_once_omits_completed_tasks_from_protected_path_conflicts(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    policy_path = "implementation_plan/policies/approval.json"
+    policy = repo / policy_path
+    policy.parent.mkdir(parents=True)
+    policy.write_text("{}\n", encoding="utf-8")
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        f"""# Agent Todos
+
+## ACCEL-001 Historical approval-policy repair
+
+- Status: completed
+- Completion: manual
+- Priority: P1
+- Track: docs
+- Depends on:
+- Outputs: {policy_path}
+- Validation: true
+- Acceptance: The protected repair is already complete.
+""",
+        encoding="utf-8",
+    )
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implementation_protected_paths=[policy_path],
+    )
+
+    result = daemon.run_once()
+
+    assert result["completed_count"] == 1
+    assert result["blocked_count"] == 0
+    assert result["protected_path_conflicts"] == {}
+
+
 def test_supervisor_protected_paths_reach_managed_daemon_command(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -27775,6 +27822,14 @@ def test_implementation_supervisor_records_reconciliation_guardrail_for_dirty_ma
     assert "- Review only: true" in todo_text
     assert "- Blocked reason: operator_reconciliation_required" in todo_text
     assert "unknown dirty checkout content must not be committed" in todo_text
+    tasks = parse_task_file(repo / "todo.md")
+    assert task_declared_output_paths(tasks[0]) == (
+        "discovery",
+    )
+    assert task_implementation_protected_path_conflicts(
+        tasks[0],
+        ("todo.md",),
+    ) == ()
     discovery_path = Path(findings[0]["discovery_path"])
     assert discovery_path.exists()
     discovery_text = discovery_path.read_text(encoding="utf-8")
@@ -28067,6 +28122,11 @@ def test_reconciliation_guardrail_dedupes_dirty_group_when_count_changes(tmp_pat
     assert "ACCEL-002" not in updated_todo
     assert "Resolve 77 dirty backlogged worktrees blocked by content_not_in_target" in updated_todo
     assert "Dedupe key: reconciliation_guardrail:dirty_backlogged_worktree:content_not_in_target" in updated_todo
+    assert "- Outputs: data/agent_supervisor/discovery\n" in updated_todo
+    assert (
+        "- Outputs: data/agent_supervisor/discovery, todo.md\n"
+        not in updated_todo
+    )
     assert "machine-readable reconciliation plan" in updated_todo
     discovery_text = stale_discovery.read_text(encoding="utf-8")
     assert "Candidate count: 77" in discovery_text

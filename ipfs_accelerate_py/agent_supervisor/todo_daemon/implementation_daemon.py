@@ -7473,6 +7473,7 @@ class PortalImplementationDaemon:
                 self.implementation_protected_paths,
             )
             for task in tasks
+            if task.task_id not in completed_set
         }
         protected_path_conflicts_by_task = {
             task_id: conflicts

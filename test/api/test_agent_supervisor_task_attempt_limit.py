@@ -415,7 +415,10 @@ def test_default_planned_lane_is_unlimited_in_worker_and_coordinator(
     worker_flag = lane.command.index("--max-task-attempts")
     assert lane.command[worker_flag + 1] == "0"
     assert lane.queue_payload["max_attempts"] == 0
-    assert lane.queue_payload["profile_g"]["task"]["max_attempts"] == 0
+    # Profile-G v1 cannot encode the queue's unlimited (zero) sentinel, so
+    # the immutable TaskSpec carries its maximum representable bound while
+    # queue/coordinator retry semantics remain unlimited.
+    assert lane.queue_payload["profile_g"]["task"]["max_attempts"] == 100
     with LeaseCoordinator(repo / "coordination.duckdb") as coordinator:
         registered = coordinator.register_bundle(lane.queue_payload)
         for expected_attempt in range(1, 5):

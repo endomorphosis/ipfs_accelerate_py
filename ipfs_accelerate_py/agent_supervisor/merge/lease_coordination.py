@@ -102,6 +102,19 @@ def profile_g_task_attempt_limit(value: Any, *, default: int = 3) -> int:
     return raw
 
 
+def profile_g_artifact_attempt_limit(value: Any, *, default: int = 3) -> int:
+    """Return the bounded attempt limit encoded in a Profile-G TaskSpec.
+
+    Supervisor queues use ``0`` as an unlimited sentinel, while the Profile-G
+    v1 artifact contract admits only integers in ``[1, 100]``.  Preserve the
+    queue's unlimited policy outside the immutable artifact, but bind it to the
+    largest representable fail-closed budget inside the TaskSpec.
+    """
+
+    queue_limit = profile_g_task_attempt_limit(value, default=default)
+    return PROFILE_G_MAX_TASK_ATTEMPTS if queue_limit == 0 else queue_limit
+
+
 def _coordinator_operation(method: Callable[..., Any]) -> Callable[..., Any]:
     """Open one flock-serialized DuckDB connection for a public operation."""
 
@@ -733,7 +746,7 @@ def adapt_goal_bundle(bundle: Mapping[str, Any], *, created_at_ms: int | None = 
         "resource_class": str(bundle.get("resource_class") or "cpu-small"),
         "deadline_ms": int(bundle.get("deadline_ms") or now + 86_400_000),
         "expected_value_millionths": int(bundle.get("expected_value_millionths") or 500_000),
-        "max_attempts": profile_g_task_attempt_limit(
+        "max_attempts": profile_g_artifact_attempt_limit(
             bundle.get("max_attempts"),
         ),
         "execution_mode": "idempotent",
@@ -840,7 +853,7 @@ def _validated_embedded_profile_g(
     if "max_attempts" not in task:
         raise ValueError("embedded Profile-G TaskSpec max_attempts is required")
     task_limit = profile_g_task_attempt_limit(task["max_attempts"])
-    if task_limit != outer_limit:
+    if task_limit != profile_g_artifact_attempt_limit(outer_limit):
         raise ValueError(
             "bundle max_attempts does not match embedded Profile-G TaskSpec"
         )

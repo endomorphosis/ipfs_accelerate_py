@@ -4861,8 +4861,16 @@ def reconciliation_guardrail_task_block(
     board_profile: ReconciliationGuardrailBoardProfile | None = None,
     repo_root: Path | None = None,
 ) -> str:
+    # The todo board is a control-plane file written atomically while the
+    # finding is recorded; it is not an implementation output of this
+    # deliberately unschedulable operator card.  Declaring it here makes the
+    # implementation daemon report a protected-path conflict for work that can
+    # never reach implementation, obscuring the real dirty-checkout evidence.
+    # Keep ``todo_output_path`` in the internal call contract for compatibility
+    # with callers that still provide the repository-relative board path.
+    _ = todo_output_path
     outputs = reconciliation_guardrail_safe_outputs(
-        (discovery_output_path, todo_output_path),
+        (discovery_output_path,),
         repo_root=repo_root or Path.cwd(),
     )
     profile_lines = _reconciliation_guardrail_profile_lines(board_profile)
@@ -6659,8 +6667,11 @@ def record_reconciliation_guardrail_findings(
         todo_output_path = todo_path.resolve().relative_to(filter_repo_root).as_posix()
     except ValueError:
         todo_output_path = todo_path.as_posix()
+    # Review-only reconciliation cards own their evidence artifact, not the
+    # protected board that records the card.  This also repairs legacy cards
+    # through ``refresh_existing_reconciliation_guardrails`` below.
     guardrail_output_paths = reconciliation_guardrail_safe_outputs(
-        (discovery_output_path, todo_output_path),
+        (discovery_output_path,),
         repo_root=filter_repo_root,
     )
     all_records = reconciliation_guardrail_records(
