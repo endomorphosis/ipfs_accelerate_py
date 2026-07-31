@@ -260,7 +260,7 @@ expectations under existing precedence, but do not prove them by passing.
 
 ## LPR-007 Slice logic gaps and required information conservatively
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
