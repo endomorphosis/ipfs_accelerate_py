@@ -337,6 +337,9 @@ class ContractMismatchRefineryPolicy:
     # Default true so the RPR-044 cutover can project admitted propagation
     # packets; scope still equals packet write authority.
     accept_change_propagation_packets: bool = True
+    # Opt-in: project logic-guided predictions into proof bundles / boards
+    # (LPR-017).  Default off preserves legacy RPR board projection.
+    accept_live_logic_repair: bool = False
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -380,6 +383,11 @@ class ContractMismatchRefineryPolicy:
         if not isinstance(self.accept_change_propagation_packets, bool):
             raise ContractMismatchRefineryError(
                 "accept_change_propagation_packets must be a boolean",
+                reason_code=ContractMismatchRefineryReason.MALFORMED_PACKET,
+            )
+        if not isinstance(self.accept_live_logic_repair, bool):
+            raise ContractMismatchRefineryError(
+                "accept_live_logic_repair must be a boolean",
                 reason_code=ContractMismatchRefineryReason.MALFORMED_PACKET,
             )
 
@@ -1467,6 +1475,42 @@ class ContractMismatchRefinery:
                     reason_code=ContractMismatchRefineryReason.SCOPE_EXPANSION,
                 )
         return projection
+
+    def bridge_logic_predictions(
+        self,
+        *,
+        candidate_id: str,
+        repository_id: str,
+        tree_id: str,
+        prediction_decision: Any = None,
+        prediction_receipts: Sequence[Any] = (),
+        base_proof_bundle: Any = None,
+    ) -> Any:
+        """Bridge admitted logic predictions into a CandidateProofBundle.
+
+        Feature-gated by ``accept_live_logic_repair``.  Lazy-imports the live
+        controller so cold refinery loads stay free of the LPR edge stack.
+        Predictions compose with rather than replace an existing proof bundle.
+        """
+
+        if not self.policy.accept_live_logic_repair:
+            raise ContractMismatchRefineryError(
+                "live logic-repair prediction bridge is disabled by policy",
+                reason_code=ContractMismatchRefineryReason.UNSUPPORTED_FINDING,
+            )
+
+        from ..todo_daemon.live_logic_repair_controller import (
+            bridge_predictions_into_proof_bundle,
+        )
+
+        return bridge_predictions_into_proof_bundle(
+            candidate_id=candidate_id,
+            repository_id=repository_id,
+            tree_id=tree_id,
+            prediction_decision=prediction_decision,
+            prediction_receipts=prediction_receipts,
+            base_proof_bundle=base_proof_bundle,
+        )
 
     def refine(
         self,
