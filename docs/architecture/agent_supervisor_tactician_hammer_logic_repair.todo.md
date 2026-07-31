@@ -74,7 +74,7 @@ expectations under existing precedence, but do not prove them by passing.
 
 ## LPR-001 Define bounded program-logic prediction contracts
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
