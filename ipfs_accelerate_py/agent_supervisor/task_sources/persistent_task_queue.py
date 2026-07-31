@@ -44,7 +44,6 @@ class TaskQueueEntry:
 
     def record_selection(self) -> None:
         self.last_selected_at = time.time()
-        self.attempt_count += 1
 
     def record_success(self) -> None:
         self.last_completed_at = time.time()
@@ -255,16 +254,26 @@ class PersistentTaskQueue:
         self._dirty = self._dirty or changed or entry.to_dict() != before_entry
         return entry
 
-    def get_or_create(self, task_id: str, *, priority: str = "P2", track: str = "") -> TaskQueueEntry:
+    def get_or_create(
+        self,
+        task_id: str,
+        *,
+        priority: str | None = None,
+        track: str | None = None,
+    ) -> TaskQueueEntry:
         key = self.resolve_key(task_id)
         if key not in self.entries:
-            self.entries[key] = TaskQueueEntry(task_id=task_id, priority=priority, track=track)
+            self.entries[key] = TaskQueueEntry(
+                task_id=task_id,
+                priority=priority or "P2",
+                track=track or "",
+            )
             self._dirty = True
         entry = self.entries[key]
-        if priority and entry.priority != priority:
+        if priority is not None and entry.priority != priority:
             entry.priority = priority
             self._dirty = True
-        if track and entry.track != track:
+        if track is not None and entry.track != track:
             entry.track = track
             self._dirty = True
         return entry
@@ -274,6 +283,17 @@ class PersistentTaskQueue:
         entry.record_selection()
         self._dirty = True
         self._maybe_save()
+
+    def set_attempt_count(self, task_id: str, attempt_count: int) -> bool:
+        """Synchronize provider attempts from the authoritative daemon state."""
+
+        entry = self.get_or_create(task_id)
+        normalized = max(0, int(attempt_count))
+        if entry.attempt_count == normalized:
+            return False
+        entry.attempt_count = normalized
+        self._dirty = True
+        return True
 
     def record_success(self, task_id: str) -> None:
         entry = self.get_or_create(task_id)

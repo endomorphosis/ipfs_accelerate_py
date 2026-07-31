@@ -219,7 +219,8 @@ def test_persistent_queue_coalesces_two_board_aliases_for_same_work(tmp_path) ->
 
     assert len(queue.entries) == 1
     assert queue.get_penalty(first.canonical_task_cid) == queue.get_penalty(second.canonical_task_cid)
-    assert queue.entries[first.canonical_task_cid].attempt_count == 1
+    assert queue.entries[first.canonical_task_cid].attempt_count == 0
+    assert queue.entries[first.canonical_task_cid].last_selected_at > 0
     assert queue.resolve_key("main::REF-001") == queue.resolve_key("bundle::LOCAL-009")
 
 
@@ -260,6 +261,25 @@ def test_persistent_queue_resets_history_when_task_semantics_change(tmp_path) ->
     assert set(queue.entries) == {original.canonical_task_cid, replacement.canonical_task_cid}
     assert queue.resolve_key(replacement.namespaced_alias) == replacement.canonical_task_cid
     assert queue.resolve_key(replacement.display_task_id) == replacement.canonical_task_cid
+
+
+def test_persistent_queue_outcomes_preserve_registered_task_metadata(tmp_path) -> None:
+    queue = PersistentTaskQueue.load(tmp_path / "task_queue.json", save_interval=0)
+    identity = canonical_task_identity(_task("REF-001"), board_namespace="main")
+    entry = queue.register_task(identity, priority="P0", track="architecture")
+
+    queue.record_selection(identity.canonical_task_cid)
+    queue.record_success(identity.canonical_task_cid)
+    queue.record_failure(identity.canonical_task_cid, reason="retry")
+    queue.record_no_change(identity.canonical_task_cid)
+    queue.record_merge_failure(identity.canonical_task_cid)
+    queue.defer(identity.canonical_task_cid, 60, reason="deferred")
+
+    assert entry.priority == "P0"
+    assert entry.track == "architecture"
+    fallback = queue.get_or_create("unregistered-task")
+    assert fallback.priority == "P2"
+    assert fallback.track == ""
 
 
 def _write_duplicate_board(path) -> None:
@@ -316,6 +336,78 @@ def test_implementation_daemon_coalesces_duplicate_work_before_selection(tmp_pat
     assert selected["canonical_task_cid"] == state.active_task_cid
     queue = PersistentTaskQueue.load(tmp_path / "state" / "task_queue.json")
     assert len(queue.entries) == 1
+    entry = next(iter(queue.entries.values()))
+    assert entry.priority == "P0"
+    assert entry.track == "agent"
+    assert entry.attempt_count == 0
+
+
+def test_implementation_daemon_charges_queue_when_implementation_starts(tmp_path) -> None:
+    todo_path = tmp_path / "tasks.todo.md"
+    _write_duplicate_board(todo_path)
+    state_path = tmp_path / "state" / "task_state.json"
+    daemon = PortalImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_path,
+        strategy_path=tmp_path / "state" / "strategy.json",
+        events_path=tmp_path / "state" / "events.jsonl",
+        repo_root=tmp_path,
+        task_header_prefix="## REF-",
+    )
+    task = parse_task_file(todo_path, "## REF-")[0]
+    daemon._register_task_identities([task])
+    state = PortalTaskState()
+
+    daemon._mark_implementation_started(
+        state,
+        task=task,
+        attempt=1,
+        started_at="2026-07-31T00:00:00+00:00",
+        log_path=tmp_path / "implementation.log",
+    )
+    queue = PersistentTaskQueue.load(tmp_path / "state" / "task_queue.json")
+    entry = next(iter(queue.entries.values()))
+
+    assert state.implementation_attempts["REF-001"] == 1
+    assert entry.attempt_count == 1
+    assert entry.priority == "P0"
+    assert entry.track == "agent"
+
+
+def test_implementation_daemon_repairs_queue_attempts_from_authoritative_state(tmp_path) -> None:
+    todo_path = tmp_path / "tasks.todo.md"
+    _write_duplicate_board(todo_path)
+    state_path = tmp_path / "state" / "task_state.json"
+    daemon = PortalImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_path,
+        strategy_path=tmp_path / "state" / "strategy.json",
+        events_path=tmp_path / "state" / "events.jsonl",
+        repo_root=tmp_path,
+        task_header_prefix="## REF-",
+    )
+    task = parse_task_file(todo_path, "## REF-")[0]
+    daemon._register_task_identities([task])
+    entry = next(iter(daemon.task_queue.entries.values()))
+    entry.attempt_count = 1
+    daemon.task_queue.save()
+
+    daemon.run_once()
+
+    queue = PersistentTaskQueue.load(tmp_path / "state" / "task_queue.json")
+    repaired = next(iter(queue.entries.values()))
+    assert repaired.attempt_count == 0
+    events = [
+        json.loads(line)
+        for line in (tmp_path / "state" / "events.jsonl").read_text().splitlines()
+    ]
+    reconciliation = next(
+        event
+        for event in events
+        if event["type"] == "task_queue_attempt_counts_reconciled"
+    )
+    assert reconciliation["entries"][0]["previous_attempt_count"] == 1
+    assert reconciliation["entries"][0]["authoritative_attempt_count"] == 0
 
 
 def test_claim_lock_and_retry_history_follow_canonical_identity_across_aliases(tmp_path) -> None:

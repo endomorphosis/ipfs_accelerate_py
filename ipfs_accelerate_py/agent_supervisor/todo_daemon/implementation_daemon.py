@@ -5489,6 +5489,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         identity = self._identity_for_task(task)
         state.implementation_attempts[task.task_id] = attempt
         state.implementation_attempts_by_cid[identity.canonical_task_cid] = attempt
+        self.task_queue.set_attempt_count(identity.canonical_task_cid, attempt)
         state.last_implementation_task_id = task.task_id
         state.last_implementation_task_key = identity.canonical_task_key
         state.last_implementation_task_cid = identity.canonical_task_cid
@@ -5513,6 +5514,40 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 identity.canonical_task_cid,
                 None,
             )
+        self.task_queue.set_attempt_count(identity.canonical_task_cid, attempt)
+
+    def _reconcile_task_queue_attempt_counts(
+        self,
+        state: PortalTaskState,
+        tasks: Sequence[PortalTask],
+    ) -> list[dict[str, Any]]:
+        """Repair queue counters from canonical implementation-attempt state."""
+
+        authoritative_by_cid: dict[str, int] = {}
+        for task in tasks:
+            canonical_task_cid = self._canonical_ref(task)
+            authoritative_by_cid[canonical_task_cid] = max(
+                authoritative_by_cid.get(canonical_task_cid, 0),
+                self._task_attempt_count(state, task),
+            )
+        reconciled: list[dict[str, Any]] = []
+        for canonical_task_cid, authoritative_count in authoritative_by_cid.items():
+            entry = self.task_queue.get_or_create(canonical_task_cid)
+            previous_count = entry.attempt_count
+            if self.task_queue.set_attempt_count(
+                canonical_task_cid,
+                authoritative_count,
+            ):
+                reconciled.append(
+                    {
+                        "canonical_task_cid": canonical_task_cid,
+                        "previous_attempt_count": previous_count,
+                        "authoritative_attempt_count": authoritative_count,
+                    }
+                )
+        if self.task_queue.dirty:
+            self.task_queue.save()
+        return reconciled
 
     def _record_task_queue_outcome(self, task: PortalTask, returncode: int, reason: str = "") -> None:
         canonical_task_cid = self._canonical_ref(task)
@@ -6227,6 +6262,15 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             if self._canonical_ref(task) in shared_active_merge_cids
         }
         previous = PortalTaskState.load(self.state_path)
+        queue_attempt_reconciliation = self._reconcile_task_queue_attempt_counts(
+            previous,
+            tasks,
+        )
+        if queue_attempt_reconciliation:
+            self._record_event(
+                "task_queue_attempt_counts_reconciled",
+                {"entries": queue_attempt_reconciliation},
+            )
         strategy = self.load_strategy()
         released_retry_budget_strategy_blocks = (
             self._release_completed_retry_budget_strategy_blocks(
@@ -11286,6 +11330,7 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
         # budget. Confirmed provider-capacity deferrals explicitly roll this
         # charge back.
         self._record_task_attempt(state, task, attempt)
+        self.task_queue.save()
         state.save(self.state_path)
 
     def _mark_active_phase(
@@ -26281,7 +26326,6 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
             )
 
         selected = sorted(ready, key=sort_key)[0]
-        # Record selection in persistent queue
         self.task_queue.record_selection(self._canonical_ref(selected))
         return selected
 
