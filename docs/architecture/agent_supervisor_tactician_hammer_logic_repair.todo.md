@@ -1303,7 +1303,7 @@ expectations under existing precedence, but do not prove them by passing.
 
 ## LPR-040 Benchmark adversarial no-LLM diagnosis and repair
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
