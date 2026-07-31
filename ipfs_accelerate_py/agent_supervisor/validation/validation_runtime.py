@@ -35,6 +35,7 @@ VALIDATION_NPM_CACHE_ENV = "IPFS_ACCELERATE_AGENT_VALIDATION_NPM_CACHE"
 VALIDATION_PLAYWRIGHT_BROWSERS_PATH_ENV = (
     "IPFS_ACCELERATE_AGENT_VALIDATION_PLAYWRIGHT_BROWSERS_PATH"
 )
+VALIDATION_SUPERVISOR_STATE_ROOT_ENV = "LPR_STATE_ROOT"
 _CHILD_PYTHON_ENV = "IPFS_ACCELERATE_VALIDATION_PYTHON_EXECUTABLE"
 _NEUTRAL_HOME = "/nonexistent/ipfs-accelerate-validation"
 _NPM_DISABLED_USER_CONFIG = "/dev/null/npmrc"
@@ -730,6 +731,12 @@ def build_validation_environment(
     )
     if playwright_browsers is not None:
         result["PLAYWRIGHT_BROWSERS_PATH"] = playwright_browsers
+    supervisor_state_root = _approved_directory(
+        source,
+        VALIDATION_SUPERVISOR_STATE_ROOT_ENV,
+    )
+    if supervisor_state_root is not None:
+        result[VALIDATION_SUPERVISOR_STATE_ROOT_ENV] = supervisor_state_root
     python_path = _runtime_python_path_entries(source)
     if python_path:
         result["PYTHONPATH"] = os.pathsep.join(python_path)
@@ -772,6 +779,18 @@ def validation_shell_command(command: str) -> list[str]:
         raise ValidationRuntimeError(
             "dynamic shell evaluation is not permitted for validation"
         )
+    if any(
+        token.startswith(
+            (
+                f"{VALIDATION_SUPERVISOR_STATE_ROOT_ENV}=",
+                f"{VALIDATION_SUPERVISOR_STATE_ROOT_ENV}+=",
+            )
+        )
+        for token in leading
+    ):
+        raise ValidationRuntimeError(
+            "validation command may not override the supervisor state root"
+        )
     # A reviewed command may prepend workspace-local import roots with an
     # assignment such as ``PYTHONPATH=src:. python -m pytest``.  Bash applies
     # that assignment to the shell function itself, which would otherwise
@@ -782,6 +801,7 @@ def validation_shell_command(command: str) -> list[str]:
     # the pinned pytest/runtime packages available.
     guarded = (
         f"readonly {_CHILD_PYTHON_ENV}; "
+        f"readonly {VALIDATION_SUPERVISOR_STATE_ROOT_ENV}; "
         '_IPFS_ACCELERATE_APPROVED_PYTHONPATH="${PYTHONPATH-}"; '
         "readonly _IPFS_ACCELERATE_APPROVED_PYTHONPATH; "
         "_ipfs_accelerate_validation_python() { "

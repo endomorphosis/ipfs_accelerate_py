@@ -19,6 +19,17 @@ SCHEDULER = REPO_ROOT / "config/agent_supervisor_tactician_hammer_logic_repair_s
 BOARD_VALIDATOR = REPO_ROOT / "scripts/validate_tactician_hammer_logic_repair_board.py"
 
 
+def test_lpr_launcher_exports_derived_state_root_to_child_validators():
+    launcher = LAUNCHER.read_text(encoding="utf-8")
+    derive = 'PROGRAM_ROOT="${LPR_STATE_ROOT:-'
+    propagate = 'export LPR_STATE_ROOT="${PROGRAM_ROOT}"'
+    launch = "launch_master() {"
+
+    assert derive in launcher
+    assert propagate in launcher
+    assert launcher.index(derive) < launcher.index(propagate) < launcher.index(launch)
+
+
 def _write_fake_runner(module_root: Path) -> None:
     module_root.joinpath("fake_lpr_runner.py").write_text(
         """\

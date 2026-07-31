@@ -29,6 +29,7 @@ from ipfs_accelerate_py.agent_supervisor.validation.validation_runtime import (
     VALIDATION_PLAYWRIGHT_BROWSERS_PATH_ENV,
     VALIDATION_PYTHON_ENV,
     VALIDATION_PYTHONPATH_ENV,
+    VALIDATION_SUPERVISOR_STATE_ROOT_ENV,
     ValidationRuntimeError,
     build_validation_environment,
     validation_argv_command,
@@ -192,6 +193,52 @@ def test_validation_runtime_scrubs_hooks_secrets_and_inherited_path(
     # must still be rejected.
     with pytest.raises(ValidationRuntimeError, match="must not be writable"):
         build_validation_environment({VALIDATION_PATH_ENV: str(replaceable_bin)})
+
+
+def test_validation_runtime_propagates_only_canonical_readonly_supervisor_state_root(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    state_root = tmp_path / "program-state"
+    state_root.mkdir()
+    source = {
+        VALIDATION_SUPERVISOR_STATE_ROOT_ENV: str(state_root),
+    }
+
+    environment = build_validation_environment(source)
+
+    assert environment[VALIDATION_SUPERVISOR_STATE_ROOT_ENV] == str(
+        state_root.resolve()
+    )
+    report = ValidationScheduler().run(
+        [
+            "test \"$LPR_STATE_ROOT\" = "
+            f"{shlex.quote(str(state_root.resolve()))}"
+        ],
+        workspace_path=workspace,
+        changed_files=["pyproject.toml"],
+        target_commit="test-commit",
+        dependency_state="test-dependencies",
+        environment=source,
+    )
+    assert report["passed"] is True
+
+    for command in (
+        "LPR_STATE_ROOT=/tmp python -c 'raise SystemExit(0)'",
+        "env LPR_STATE_ROOT=/tmp python -c 'raise SystemExit(0)'",
+        "export LPR_STATE_ROOT=/tmp; python -c 'raise SystemExit(0)'",
+    ):
+        with pytest.raises(
+            ValidationRuntimeError,
+            match="may not override the supervisor state root",
+        ):
+            validation_shell_command(command)
+
+    with pytest.raises(ValidationRuntimeError, match="must be an absolute directory"):
+        build_validation_environment(
+            {VALIDATION_SUPERVISOR_STATE_ROOT_ENV: "relative/state"}
+        )
 
 
 def test_real_validation_runner_ignores_profile_bash_env_and_path_injection(
