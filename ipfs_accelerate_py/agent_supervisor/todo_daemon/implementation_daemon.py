@@ -2467,6 +2467,7 @@ class PortalImplementationDaemon:
         merged_worktree_cleanup_max: int | None = None,
         task_shard_count: int = 1,
         task_shard_index: int = 0,
+        strict_task_sharding: bool = False,
         merge_queue: MergeQueue | None = None,
         merge_queue_dir: Path | None = None,
         validation_scheduler: ValidationScheduler | None = None,
@@ -2729,6 +2730,7 @@ class PortalImplementationDaemon:
         self.task_shard_index = int(task_shard_index)
         if self.task_shard_index < 0 or self.task_shard_index >= self.task_shard_count:
             raise ValueError("task_shard_index must be in range [0, task_shard_count)")
+        self.strict_task_sharding = bool(strict_task_sharding)
         self.maintenance_interval_seconds = max(
             0.0,
             _env_float(
@@ -7593,8 +7595,13 @@ class PortalImplementationDaemon:
                 and task.task_id not in resource_reserved_task_ids
             )
         ]
-        if self.task_shard_count > 1 and not any(
-            resolved_statuses.get(task.task_id) == "ready" for task in selectable_tasks
+        if (
+            self.task_shard_count > 1
+            and not self.strict_task_sharding
+            and not any(
+                resolved_statuses.get(task.task_id) == "ready"
+                for task in selectable_tasks
+            )
         ):
             fallback_tasks = [
                 task
@@ -37605,6 +37612,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Zero-based shard index implemented by this daemon lane. Defaults to 0.",
     )
     parser.add_argument(
+        "--strict-task-sharding",
+        action="store_true",
+        help=(
+            "Stay within the configured task shard when it has no ready work "
+            "instead of borrowing ready tasks from other shards."
+        ),
+    )
+    parser.add_argument(
         "--daemon-hook-timeout-seconds",
         type=float,
         default=None,
@@ -37846,6 +37861,7 @@ def main(argv: list[str] | None = None) -> None:
         merged_worktree_cleanup_max=args.merged_worktree_cleanup_max,
         task_shard_count=args.task_shard_count,
         task_shard_index=args.task_shard_index,
+        strict_task_sharding=args.strict_task_sharding,
         validation_max_workers=args.validation_max_workers,
         validation_resource_budget=args.validation_resource_budget,
         maintenance_interval_seconds=args.maintenance_interval_seconds,

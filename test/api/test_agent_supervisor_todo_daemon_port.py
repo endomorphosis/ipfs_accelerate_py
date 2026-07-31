@@ -10929,15 +10929,19 @@ def test_configured_daemon_builder_preserves_shard_and_cleanup_args(tmp_path):
             "4",
             "--task-shard-index",
             "2",
+            "--strict-task-sharding",
         ]
     )
 
     daemon, context = build_portal_implementation_daemon_from_args(args, repo_root=repo)
 
     assert context.parsed is args
+    assert args.strict_task_sharding is True
     assert daemon.merged_worktree_cleanup_max == 13
     assert daemon.task_shard_count == 4
     assert daemon.task_shard_index == 2
+    assert daemon.strict_task_sharding is True
+    assert parse_implementation_daemon_args([]).strict_task_sharding is False
 
 
 def test_implementation_daemon_main_accepts_shared_merge_queue_dir(
@@ -10963,10 +10967,16 @@ def test_implementation_daemon_main_accepts_shared_merge_queue_dir(
     )
 
     implementation_daemon_module.main(
-        ["--once", "--merge-queue-dir", str(merge_queue_dir)]
+        [
+            "--once",
+            "--merge-queue-dir",
+            str(merge_queue_dir),
+            "--strict-task-sharding",
+        ]
     )
 
     assert captured["merge_queue_dir"] == merge_queue_dir
+    assert captured["strict_task_sharding"] is True
 
 
 def test_daemon_refill_callbacks_honor_cli_scan_overrides(tmp_path):
@@ -11553,11 +11563,68 @@ def test_implementation_daemon_borrows_ready_work_when_shard_drained(tmp_path):
     state = TodoTaskState.load(repo / "state.json")
 
     assert result["active_task_id"] == "ACCEL-001"
+    assert daemon.strict_task_sharding is False
     assert state.recommended_task_id == "ACCEL-001"
     assert state.ready_task_ids == ["ACCEL-001"]
     assert state.selectable_ready_task_ids == ["ACCEL-001"]
     events = (repo / "events.jsonl").read_text(encoding="utf-8")
     assert "task_shard_ready_fallback" in events
+
+
+def test_implementation_daemon_strict_shard_does_not_borrow_ready_work(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Agent Todos
+
+## ACCEL-000 Blocked even task
+
+- Status: blocked
+- Completion: manual
+- Priority: P1
+- Track: ops
+
+## ACCEL-001 Cross-shard ready task
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+
+## ACCEL-002 Another blocked even task
+
+- Status: blocked
+- Completion: manual
+- Priority: P1
+- Track: ops
+""",
+        encoding="utf-8",
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=repo / "state.json",
+        strategy_path=repo / "strategy.json",
+        events_path=repo / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        task_shard_count=2,
+        task_shard_index=0,
+        strict_task_sharding=True,
+    )
+
+    result = daemon.run_once()
+    state = TodoTaskState.load(repo / "state.json")
+
+    assert result["active_task_id"] == ""
+    assert result["selection_idle_reason"] == "no_shard_selectable_ready_tasks"
+    assert daemon.strict_task_sharding is True
+    assert state.recommended_task_id == ""
+    assert state.ready_task_ids == ["ACCEL-001"]
+    assert state.selectable_ready_task_ids == []
+    assert state.selection_idle_reason == "no_shard_selectable_ready_tasks"
+    events = (repo / "events.jsonl").read_text(encoding="utf-8")
+    assert "task_shard_ready_fallback" not in events
 
 
 def test_implementation_daemon_reopens_dependency_block_after_prerequisite_completes(tmp_path):
@@ -14435,6 +14502,7 @@ def test_implementation_supervisor_passes_configured_submodule_paths(tmp_path):
         daemon_merged_worktree_cleanup_max=17,
         task_shard_count=2,
         task_shard_index=1,
+        strict_task_sharding=True,
         external_reservation_manifest_paths=(repo / "bundle-lanes.json",),
         assumed_completed_task_ids=("REF-001",),
         daemon_script_path=daemon_script,
@@ -14463,6 +14531,7 @@ def test_implementation_supervisor_passes_configured_submodule_paths(tmp_path):
     assert command[command.index("--merged-worktree-cleanup-max") + 1] == "17"
     assert command[command.index("--task-shard-count") + 1] == "2"
     assert command[command.index("--task-shard-index") + 1] == "1"
+    assert command.count("--strict-task-sharding") == 1
     assert command[command.index("--external-reservation-manifest-path") + 1] == str(
         repo / "bundle-lanes.json"
     )
@@ -14508,6 +14577,7 @@ def test_implementation_supervisor_passes_configured_submodule_paths(tmp_path):
             "2",
             "--task-shard-index",
             "1",
+            "--strict-task-sharding",
             "--external-reservation-manifest-path",
             str(repo / "bundle-lanes.json"),
             "--assume-completed-task-id",
@@ -14530,8 +14600,55 @@ def test_implementation_supervisor_passes_configured_submodule_paths(tmp_path):
     assert args.daemon_merged_worktree_cleanup_max == 19
     assert args.task_shard_count == 2
     assert args.task_shard_index == 1
+    assert args.strict_task_sharding is True
     assert args.external_reservation_manifest_path == [repo / "bundle-lanes.json"]
     assert args.assume_completed_task_id == ["REF-001"]
+
+
+def test_supervisor_strict_task_sharding_cli_reaches_managed_daemon(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    args = parse_implementation_supervisor_args(
+        [
+            "--todo-path",
+            str(repo / "todo.md"),
+            "--state-dir",
+            str(state_dir),
+            "--task-shard-count",
+            "2",
+            "--task-shard-index",
+            "1",
+            "--strict-task-sharding",
+        ]
+    )
+
+    config = supervisor_config_from_args(args, repo_root=repo)
+    command = TodoImplementationSupervisor(config)._build_daemon_command()
+
+    assert config.strict_task_sharding is True
+    assert command[command.index("--task-shard-count") + 1] == "2"
+    assert command[command.index("--task-shard-index") + 1] == "1"
+    assert command.count("--strict-task-sharding") == 1
+
+
+def test_supervisor_default_task_sharding_keeps_daemon_fallback_enabled(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    args = parse_implementation_supervisor_args(
+        [
+            "--todo-path",
+            str(repo / "todo.md"),
+            "--state-dir",
+            str(repo / "state"),
+        ]
+    )
+
+    config = supervisor_config_from_args(args, repo_root=repo)
+    command = TodoImplementationSupervisor(config)._build_daemon_command()
+
+    assert config.strict_task_sharding is False
+    assert "--strict-task-sharding" not in command
 
 
 def test_implementation_supervisor_does_not_recycle_active_merge_resolver(tmp_path):

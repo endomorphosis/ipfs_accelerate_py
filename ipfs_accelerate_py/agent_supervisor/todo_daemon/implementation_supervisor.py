@@ -375,6 +375,7 @@ class PortalSupervisorConfig:
     daemon_merged_worktree_cleanup_max: int | None = None
     task_shard_count: int = 1
     task_shard_index: int = 0
+    strict_task_sharding: bool = False
     retry_budget_guardrail_enabled: bool = True
     retry_budget_discovery_dir: Path | None = None
     retry_budget_discovery_output_path: str = ""
@@ -11189,6 +11190,8 @@ class PortalImplementationSupervisor:
                 str(int(self.config.task_shard_index)),
             ]
         )
+        if self.config.strict_task_sharding:
+            command.append("--strict-task-sharding")
         for path in self.config.external_reservation_manifest_paths:
             command.extend(["--external-reservation-manifest-path", str(path)])
         for task_id in self.config.assumed_completed_task_ids:
@@ -11745,6 +11748,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Zero-based deterministic task-selection shard index for this supervisor lane.",
     )
     parser.add_argument(
+        "--strict-task-sharding",
+        action="store_true",
+        help=(
+            "Keep this supervisor lane within its deterministic task shard instead "
+            "of borrowing ready work from other shards."
+        ),
+    )
+    parser.add_argument(
         "--external-reservation-manifest-path",
         type=Path,
         action="append",
@@ -12236,6 +12247,7 @@ def supervisor_config_from_args(
         daemon_merged_worktree_cleanup_max=args.daemon_merged_worktree_cleanup_max,
         task_shard_count=args.task_shard_count,
         task_shard_index=args.task_shard_index,
+        strict_task_sharding=bool(getattr(args, "strict_task_sharding", False)),
         external_reservation_manifest_paths=tuple(
             args.external_reservation_manifest_path or ()
         ),
