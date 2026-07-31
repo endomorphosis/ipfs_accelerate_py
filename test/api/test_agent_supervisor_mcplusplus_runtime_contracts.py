@@ -6,6 +6,10 @@ Also covers VFS-058 objective validation repair: exact-text discovery of
 production vs mock authority, shared HTTP/mcp+p2p admission, and typed
 non-authoritative failure outcomes.  Network remains disabled unless an exact
 fixture and egress policy permit it.
+
+VFS-091 / VFS-G156 additionally proves that exact domain evidence term through
+a portable, non-authoritative claim over a receipt that exercises the full
+acceptance matrix.
 """
 
 from __future__ import annotations
@@ -21,11 +25,17 @@ from ipfs_accelerate_py.agent_supervisor.mcplusplus_runtime_witness import (
     CONTRACT_VERSION,
     DEFAULT_TIMEOUT_MS,
     EVIDENCE_RUNTIME_WITNESS,
+    MCPLUSPLUS_RUNTIME_EVIDENCE_CLAIM_SCHEMA,
     MCPLUSPLUS_RUNTIME_RECEIPT_SCHEMA,
     MCPLUSPLUS_RUNTIME_WITNESS_SCHEMA,
+    OBJECTIVE_DOMAIN_EVIDENCE_TERMS,
+    OBJECTIVE_EVIDENCE_GOAL_ID,
+    OBJECTIVE_EVIDENCE_PARENT_GOAL_ID,
+    OBJECTIVE_EVIDENCE_TASK_ID,
     OBJECTIVE_GOAL_ID,
     OBJECTIVE_VALIDATION_REPAIR_EVIDENCE,
     OBJECTIVE_VALIDATION_REPAIR_TASK_ID,
+    RUNTIME_WITNESS_INVARIANTS,
     WITNESS_VERSION,
     AdapterSpec,
     BackendAvailability,
@@ -51,11 +61,16 @@ from ipfs_accelerate_py.agent_supervisor.mcplusplus_runtime_witness import (
     default_production_adapters,
     make_call_request,
     make_runtime,
+    mcplusplus_runtime_witness_evidence,
     objective_validation_repair_evidence_terms,
     production_dispatch_distinguished_from_mocks,
+    prove_mcplusplus_runtime_witness,
+    prove_mcplusplus_runtime_witness_evidence,
     receipt_content_identity,
     replay_receipt,
     run_witness_subprocess,
+    runtime_receipt_satisfies_mcplusplus_witness,
+    runtime_witness_acceptance_report,
     runtime_witness_evidence_terms,
     typed_non_authoritative_failure_outcomes,
     validate_against_schema,
@@ -263,6 +278,174 @@ def test_vfs_g061_acceptance_production_transports_and_non_authority(
             network_enabled=True,
             adapters=default_production_adapters(),
         )
+
+
+def _vfs_g156_acceptance_receipt() -> RuntimeWitnessReceipt:
+    runtime = make_runtime(forest_id=FOREST)
+    return runtime.run_suite(
+        (
+            make_call_request(
+                "echo",
+                {"message": "http"},
+                transport=TransportKind.HTTP.value,
+            ),
+            make_call_request(
+                "echo",
+                {"message": "p2p"},
+                transport=TransportKind.MCP_P2P.value,
+            ),
+            make_call_request("mock.always_ok", {}),
+            make_call_request("unavailable.probe", {}),
+            make_call_request(
+                "echo",
+                {"message": "bounded-timeout"},
+                force_timeout=True,
+            ),
+            make_call_request("echo", {}),
+        )
+    )
+
+
+def test_vfs_g156_evidence_surface_binds_objective_leaf() -> None:
+    """The exact missing evidence term is owned by VFS-G156 / VFS-091."""
+
+    assert mcplusplus_runtime_witness_evidence() == (
+        "vfs/mcplusplus-runtime-witness@1"
+    )
+    assert runtime_witness_evidence_terms() == OBJECTIVE_DOMAIN_EVIDENCE_TERMS
+    assert covered_evidence_terms() == OBJECTIVE_DOMAIN_EVIDENCE_TERMS
+    assert OBJECTIVE_DOMAIN_EVIDENCE_TERMS == (
+        "vfs/mcplusplus-runtime-witness@1",
+    )
+    assert OBJECTIVE_EVIDENCE_GOAL_ID == "VFS-G156"
+    assert OBJECTIVE_EVIDENCE_PARENT_GOAL_ID == OBJECTIVE_GOAL_ID == "VFS-G061"
+    assert OBJECTIVE_EVIDENCE_TASK_ID == "VFS-091"
+    assert len(RUNTIME_WITNESS_INVARIANTS) == 6
+
+
+def test_prove_vfs_g156_runtime_witness_acceptance_matrix() -> None:
+    """A real receipt proves every clause without completion authority."""
+
+    receipt = _vfs_g156_acceptance_receipt()
+    assert runtime_receipt_satisfies_mcplusplus_witness(receipt)
+    assert runtime_receipt_satisfies_mcplusplus_witness(receipt.to_dict())
+
+    report = runtime_witness_acceptance_report(receipt)
+    assert report["satisfied"] is True
+    assert report["failure_codes"] == []
+    assert report["checks"] == {
+        "receipt_integrity": True,
+        "production_mock_separation": True,
+        "shared_transport_contract": True,
+        "typed_bounded_failures": True,
+        "hermetic_network_policy": True,
+        "supplemental_authority": True,
+    }
+    assert report["outcome_counts"] == {
+        "passed": 3,
+        "schema_violation": 1,
+        "timed_out": 1,
+        "unavailable_backend": 1,
+    }
+    assert report["shared_contract_bindings"][0]["tool_name"] == "echo"
+    assert report["shared_contract_bindings"][0]["transports"] == [
+        TransportKind.HTTP.value,
+        TransportKind.MCP_P2P.value,
+    ]
+
+    claim = prove_mcplusplus_runtime_witness(receipt)
+    assert claim["schema"] == MCPLUSPLUS_RUNTIME_EVIDENCE_CLAIM_SCHEMA
+    assert claim["evidence"] == EVIDENCE_RUNTIME_WITNESS
+    assert claim["evidence_terms"] == ["vfs/mcplusplus-runtime-witness@1"]
+    assert claim["all_evidence_terms"] == list(OBJECTIVE_DOMAIN_EVIDENCE_TERMS)
+    assert claim["requirement_id"] == EVIDENCE_RUNTIME_WITNESS
+    assert claim["goal_id"] == "VFS-G156"
+    assert claim["parent_goal_id"] == "VFS-G061"
+    assert claim["task_id"] == "VFS-091"
+    assert claim["receipt_id"] == receipt.receipt_id
+    assert claim["fixture_id"] == receipt.fixture_id
+    assert claim["forest_id"] == receipt.forest_id
+    assert claim["manifest_cid"] == receipt.manifest_cid
+    assert claim["invariants"] == list(RUNTIME_WITNESS_INVARIANTS)
+    assert claim["satisfied"] is True
+    assert claim["authoritative"] is False
+    assert claim["completion_authoritative"] is False
+    assert claim["promotion_authoritative"] is False
+    assert claim["semantic_authority"] is False
+
+    alias = prove_mcplusplus_runtime_witness_evidence(receipt.to_dict())
+    assert alias == claim
+
+
+@pytest.mark.parametrize(
+    ("requests", "failed_check"),
+    (
+        (
+            (
+                make_call_request("echo", {"message": "http"}),
+                make_call_request("mock.always_ok", {}),
+                make_call_request("unavailable.probe", {}),
+                make_call_request(
+                    "echo", {"message": "timeout"}, force_timeout=True
+                ),
+            ),
+            "shared_transport_contract",
+        ),
+        (
+            (
+                make_call_request("echo", {"message": "http"}),
+                make_call_request(
+                    "echo",
+                    {"message": "p2p"},
+                    transport=TransportKind.MCP_P2P.value,
+                ),
+                make_call_request("unavailable.probe", {}),
+                make_call_request(
+                    "echo", {"message": "timeout"}, force_timeout=True
+                ),
+            ),
+            "production_mock_separation",
+        ),
+        (
+            (
+                make_call_request("echo", {"message": "http"}),
+                make_call_request(
+                    "echo",
+                    {"message": "p2p"},
+                    transport=TransportKind.MCP_P2P.value,
+                ),
+                make_call_request("mock.always_ok", {}),
+            ),
+            "typed_bounded_failures",
+        ),
+    ),
+)
+def test_vfs_g156_claim_fails_closed_on_incomplete_matrix(
+    requests: tuple[CallRequest, ...],
+    failed_check: str,
+) -> None:
+    receipt = make_runtime(forest_id=FOREST).run_suite(requests)
+    claim = prove_mcplusplus_runtime_witness(receipt)
+    assert claim["satisfied"] is False
+    assert claim["checks"][failed_check] is False
+    assert failed_check.replace("_", "-") in claim["failure_codes"]
+    assert claim["completion_authoritative"] is False
+
+
+def test_vfs_g156_claim_rejects_invalid_or_networked_receipts() -> None:
+    invalid = prove_mcplusplus_runtime_witness({"not": "a receipt"})
+    assert invalid["satisfied"] is False
+    assert invalid["receipt_id"] == ""
+    assert invalid["failure_codes"] == ["invalid-runtime-witness-receipt"]
+    assert invalid["completion_authoritative"] is False
+
+    body = _vfs_g156_acceptance_receipt().to_dict()
+    body["network_enabled"] = True
+    networked = prove_mcplusplus_runtime_witness(body)
+    assert networked["satisfied"] is False
+    assert networked["checks"]["hermetic_network_policy"] is False
+    assert "hermetic-network-policy" in networked["failure_codes"]
+    assert networked["authoritative"] is False
 
 
 def test_default_adapters_distinguish_production_and_mock() -> None:

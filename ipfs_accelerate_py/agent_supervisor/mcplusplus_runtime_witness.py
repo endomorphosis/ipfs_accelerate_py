@@ -30,6 +30,12 @@ static-completeness authority.  Real adapter dispatch stays distinguished
 from mocks; HTTP and mcp+p2p profiles share the same admitted contract
 surface where declared; network remains disabled unless an exact fixture and
 egress policy permit it.
+
+VFS-091 / VFS-G156 closes the leaf evidence obligation with a portable,
+non-authoritative claim over a content-addressed receipt.  The claim checks
+the acceptance matrix from executable observations; a bare evidence label,
+mock-only success, one transport, an untyped failure, or an unbounded/networked
+fixture cannot satisfy it.
 """
 
 from __future__ import annotations
@@ -90,6 +96,10 @@ MCPLUSPLUS_CALL_REQUEST_SCHEMA: Final[str] = (
 MCPLUSPLUS_CALL_OBSERVATION_SCHEMA: Final[str] = (
     "ipfs_accelerate_py/agent-supervisor/mcplusplus-runtime-call-observation@1"
 )
+MCPLUSPLUS_RUNTIME_EVIDENCE_CLAIM_SCHEMA: Final[str] = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "mcplusplus-runtime-witness-evidence-claim@1"
+)
 
 EVIDENCE_RUNTIME_WITNESS: Final[str] = "vfs/mcplusplus-runtime-witness@1"
 # Synthetic objective-heap evidence term for VFS-G061 validation-gate work.
@@ -99,12 +109,35 @@ OBJECTIVE_VALIDATION_REPAIR_EVIDENCE: Final[str] = "objective validation repair"
 OBJECTIVE_GOAL_ID: Final[str] = "VFS-G061"
 # Repair task that owns the synthetic objective validation repair obligation.
 OBJECTIVE_VALIDATION_REPAIR_TASK_ID: Final[str] = "VFS-058"
+# Leaf evidence obligation filed by the objective scan.  Keep the historical
+# OBJECTIVE_GOAL_ID above as the domain owner for compatibility; portable
+# evidence claims bind this leaf to its parent explicitly.
+OBJECTIVE_EVIDENCE_GOAL_ID: Final[str] = "VFS-G156"
+OBJECTIVE_EVIDENCE_PARENT_GOAL_ID: Final[str] = OBJECTIVE_GOAL_ID
+OBJECTIVE_EVIDENCE_TASK_ID: Final[str] = "VFS-091"
+OBJECTIVE_DOMAIN_EVIDENCE_TERMS: Final[tuple[str, ...]] = (
+    EVIDENCE_RUNTIME_WITNESS,
+)
+RUNTIME_WITNESS_INVARIANTS: Final[tuple[str, ...]] = (
+    "real production adapter dispatch is distinguished from mocks",
+    "HTTP and mcp+p2p use the same admitted contract where declared",
+    "failures and unavailable services are typed and bounded",
+    "non-passed and mock observations never grant runtime authority",
+    "the hermetic fixture keeps network access disabled",
+    "runtime evidence supplements and never replaces static or formal proof",
+)
 
 # Keep exact-text discovery anchors aligned with the objective heap.
 assert OBJECTIVE_VALIDATION_REPAIR_EVIDENCE == "objective validation repair"
 assert OBJECTIVE_GOAL_ID == "VFS-G061"
 assert OBJECTIVE_VALIDATION_REPAIR_TASK_ID == "VFS-058"
+assert OBJECTIVE_EVIDENCE_GOAL_ID == "VFS-G156"
+assert OBJECTIVE_EVIDENCE_PARENT_GOAL_ID == "VFS-G061"
+assert OBJECTIVE_EVIDENCE_TASK_ID == "VFS-091"
 assert EVIDENCE_RUNTIME_WITNESS == "vfs/mcplusplus-runtime-witness@1"
+assert OBJECTIVE_DOMAIN_EVIDENCE_TERMS == (
+    "vfs/mcplusplus-runtime-witness@1",
+)
 
 WITNESS_VERSION: Final[str] = "mcplusplus-runtime-witness@1"
 WITNESS_PRODUCER: Final[str] = "mcplusplus-runtime-witness@1"
@@ -2890,12 +2923,19 @@ def make_runtime(
 
 
 # ---------------------------------------------------------------------------
-# Objective evidence discovery + acceptance anchors (VFS-G061 / VFS-058)
+# Objective evidence discovery + acceptance anchors
+# (VFS-G061 / VFS-058 and leaf VFS-G156 / VFS-091)
 # ---------------------------------------------------------------------------
 
 
+def mcplusplus_runtime_witness_evidence() -> str:
+    """Return the exact VFS-G156 runtime-witness evidence term."""
+
+    return EVIDENCE_RUNTIME_WITNESS
+
+
 def runtime_witness_evidence_terms() -> tuple[str, ...]:
-    """Return the closed VFS-G061 domain evidence terms for hermetic runtime witnesses.
+    """Return the closed MCP++ hermetic runtime-witness evidence terms.
 
     Domain runtime-witness identity (``vfs/mcplusplus-runtime-witness@1``) is
     authored only by this module.  Runtime witnesses supplement static
@@ -2907,7 +2947,7 @@ def runtime_witness_evidence_terms() -> tuple[str, ...]:
     :func:`all_covered_evidence_terms`) for the VFS-G061 validation gate.
     """
 
-    return (EVIDENCE_RUNTIME_WITNESS,)
+    return OBJECTIVE_DOMAIN_EVIDENCE_TERMS
 
 
 def covered_evidence_terms() -> tuple[str, ...]:
@@ -2990,6 +3030,281 @@ def production_dispatch_distinguished_from_mocks() -> bool:
     return True
 
 
+def _coerce_runtime_receipt(
+    receipt: RuntimeWitnessReceipt | Mapping[str, Any],
+) -> RuntimeWitnessReceipt | None:
+    if isinstance(receipt, RuntimeWitnessReceipt):
+        return receipt
+    if not isinstance(receipt, Mapping):
+        return None
+    try:
+        return RuntimeWitnessReceipt.from_dict(receipt)
+    except (RuntimeWitnessError, TypeError, ValueError):
+        return None
+
+
+def runtime_witness_acceptance_report(
+    receipt: RuntimeWitnessReceipt | Mapping[str, Any],
+) -> dict[str, Any]:
+    """Machine-check the complete VFS-G156 acceptance matrix.
+
+    A satisfying receipt contains a passed production adapter and an
+    explicitly non-authoritative mock; passed HTTP and mcp+p2p observations
+    of the same registered contract; typed unavailable and timeout outcomes;
+    and consistent hermetic fixture, forest, manifest, and evidence identities.
+    The report is evidence assessment, not completion or promotion authority.
+    """
+
+    parsed = _coerce_runtime_receipt(receipt)
+    check_names = (
+        "receipt_integrity",
+        "production_mock_separation",
+        "shared_transport_contract",
+        "typed_bounded_failures",
+        "hermetic_network_policy",
+        "supplemental_authority",
+    )
+    if parsed is None:
+        return {
+            "checks": {name: False for name in check_names},
+            "failure_codes": ["invalid-runtime-witness-receipt"],
+            "outcome_counts": {},
+            "shared_contract_bindings": [],
+            "production_witness_ids": [],
+            "mock_witness_ids": [],
+            "failure_witness_ids": [],
+            "satisfied": False,
+        }
+
+    witnesses = parsed.witnesses
+    receipt_integrity = (
+        bool(witnesses)
+        and len(witnesses) <= DEFAULT_MAX_OBSERVATIONS
+        and parsed.evidence_kind == EVIDENCE_RUNTIME_WITNESS
+        and parsed.witness_version == WITNESS_VERSION
+        and parsed.producer == WITNESS_PRODUCER
+        and all(
+            witness.fixture_id == parsed.fixture_id
+            and witness.forest_id == parsed.forest_id
+            and witness.discovery.manifest_cid == parsed.manifest_cid
+            and witness.evidence_kind == EVIDENCE_RUNTIME_WITNESS
+            and witness.witness_version == WITNESS_VERSION
+            and witness.producer == WITNESS_PRODUCER
+            and not witness.static_completeness_claimed
+            and not witness.formal_proof_claimed
+            for witness in witnesses
+        )
+    )
+
+    production = tuple(
+        witness
+        for witness in witnesses
+        if witness.observation.outcome is WitnessOutcome.PASSED
+        and witness.observation.implementation_kind
+        is ImplementationKind.PRODUCTION
+        and witness.observation.grants_runtime_authority
+        and bool(witness.observation.adapter_id)
+        and bool(witness.observation.implementation_target)
+    )
+    mocks = tuple(
+        witness
+        for witness in witnesses
+        if witness.observation.implementation_kind is ImplementationKind.MOCK
+    )
+    production_ids = {item.observation.adapter_id for item in production}
+    mock_ids = {item.observation.adapter_id for item in mocks}
+    production_targets = {
+        item.observation.implementation_target for item in production
+    }
+    mock_targets = {item.observation.implementation_target for item in mocks}
+    production_mock_separation = (
+        bool(production)
+        and bool(mocks)
+        and all(
+            item.observation.adapter_id
+            and item.observation.implementation_target
+            for item in mocks
+        )
+        and production_ids.isdisjoint(mock_ids)
+        and production_targets.isdisjoint(mock_targets)
+        and all(
+            item.observation.grants_runtime_authority is False for item in mocks
+        )
+    )
+
+    transports_by_binding: dict[tuple[str, ...], set[str]] = {}
+    witness_ids_by_binding: dict[tuple[str, ...], list[str]] = {}
+    for witness in production:
+        if (
+            witness.request.transport != witness.transport
+            or witness.negotiation.active_transport != witness.transport
+            or not witness.negotiation.negotiated
+            or witness.observation.input_validation
+            is not ValidationVerdict.VALID
+            or witness.observation.output_validation
+            is not ValidationVerdict.VALID
+        ):
+            continue
+        binding = (
+            witness.observation.tool_name,
+            witness.observation.adapter_id,
+            witness.observation.implementation_target,
+            witness.negotiation.active_profile,
+            witness.discovery.manifest_cid,
+        )
+        transports_by_binding.setdefault(binding, set()).add(witness.transport)
+        witness_ids_by_binding.setdefault(binding, []).append(witness.witness_id)
+    required_transports = set(admitted_shared_transport_profiles())
+    shared_bindings = tuple(
+        binding
+        for binding, transports in sorted(transports_by_binding.items())
+        if required_transports.issubset(transports)
+    )
+    shared_transport_contract = bool(shared_bindings)
+
+    failures = tuple(
+        witness
+        for witness in witnesses
+        if witness.observation.outcome is not WitnessOutcome.PASSED
+    )
+    failure_outcomes = {item.observation.outcome for item in failures}
+    typed_bounded_failures = (
+        WitnessOutcome.UNAVAILABLE_BACKEND in failure_outcomes
+        and WitnessOutcome.TIMED_OUT in failure_outcomes
+        and all(
+            not item.observation.grants_runtime_authority
+            and 1 <= item.timeout_ms <= 3_600_000
+            and 0 <= item.observation.duration_ms
+            and (
+                item.observation.outcome
+                is not WitnessOutcome.UNAVAILABLE_BACKEND
+                or (
+                    bool(item.observation.error_code)
+                    and item.observation.error_schema_ok
+                )
+            )
+            and (
+                item.observation.outcome is not WitnessOutcome.TIMED_OUT
+                or (
+                    item.observation.timed_out
+                    and WitnessPhase.TIMEOUT.value
+                    in item.observation.phases_completed
+                )
+            )
+            for item in failures
+        )
+    )
+
+    hermetic_network_policy = (
+        parsed.network_enabled is False
+        and all(witness.network_enabled is False for witness in witnesses)
+    )
+    supplemental_authority = (
+        parsed.supplements_static_resolution
+        and parsed.supplements_formal_proof
+        and not parsed.replaces_static_completeness
+        and not parsed.replaces_formal_proof
+    )
+    checks = {
+        "receipt_integrity": receipt_integrity,
+        "production_mock_separation": production_mock_separation,
+        "shared_transport_contract": shared_transport_contract,
+        "typed_bounded_failures": typed_bounded_failures,
+        "hermetic_network_policy": hermetic_network_policy,
+        "supplemental_authority": supplemental_authority,
+    }
+    failure_codes = [
+        name.replace("_", "-")
+        for name, passed in checks.items()
+        if not passed
+    ]
+    outcome_counts: dict[str, int] = {}
+    for witness in witnesses:
+        outcome = witness.observation.outcome.value
+        outcome_counts[outcome] = outcome_counts.get(outcome, 0) + 1
+
+    return {
+        "checks": checks,
+        "failure_codes": failure_codes,
+        "outcome_counts": dict(sorted(outcome_counts.items())),
+        "shared_contract_bindings": [
+            {
+                "tool_name": binding[0],
+                "adapter_id": binding[1],
+                "implementation_target": binding[2],
+                "active_profile": binding[3],
+                "manifest_cid": binding[4],
+                "transports": sorted(transports_by_binding[binding]),
+                "witness_ids": sorted(witness_ids_by_binding[binding]),
+            }
+            for binding in shared_bindings
+        ],
+        "production_witness_ids": sorted(
+            witness.witness_id for witness in production
+        ),
+        "mock_witness_ids": sorted(witness.witness_id for witness in mocks),
+        "failure_witness_ids": sorted(
+            witness.witness_id for witness in failures
+        ),
+        "satisfied": all(checks.values()),
+    }
+
+
+def runtime_receipt_satisfies_mcplusplus_witness(
+    receipt: RuntimeWitnessReceipt | Mapping[str, Any],
+) -> bool:
+    """Return whether ``receipt`` proves the VFS-G156 acceptance subset."""
+
+    return bool(runtime_witness_acceptance_report(receipt)["satisfied"])
+
+
+def prove_mcplusplus_runtime_witness(
+    receipt: RuntimeWitnessReceipt | Mapping[str, Any],
+    *,
+    goal_id: str = OBJECTIVE_EVIDENCE_GOAL_ID,
+    task_id: str = OBJECTIVE_EVIDENCE_TASK_ID,
+) -> dict[str, Any]:
+    """Build a portable, explicitly non-authoritative VFS-G156 evidence claim."""
+
+    parsed = _coerce_runtime_receipt(receipt)
+    report = runtime_witness_acceptance_report(receipt)
+    return {
+        "schema": MCPLUSPLUS_RUNTIME_EVIDENCE_CLAIM_SCHEMA,
+        "evidence": EVIDENCE_RUNTIME_WITNESS,
+        "evidence_terms": list(OBJECTIVE_DOMAIN_EVIDENCE_TERMS),
+        "all_evidence_terms": list(OBJECTIVE_DOMAIN_EVIDENCE_TERMS),
+        "requirement_id": EVIDENCE_RUNTIME_WITNESS,
+        "goal_id": str(goal_id or OBJECTIVE_EVIDENCE_GOAL_ID),
+        "parent_goal_id": OBJECTIVE_EVIDENCE_PARENT_GOAL_ID,
+        "task_id": str(task_id or OBJECTIVE_EVIDENCE_TASK_ID),
+        "receipt_id": parsed.receipt_id if parsed is not None else "",
+        "fixture_id": parsed.fixture_id if parsed is not None else "",
+        "forest_id": parsed.forest_id if parsed is not None else "",
+        "manifest_cid": parsed.manifest_cid if parsed is not None else "",
+        **report,
+        "invariants": list(RUNTIME_WITNESS_INVARIANTS),
+        "authoritative": False,
+        "completion_authoritative": False,
+        "promotion_authoritative": False,
+        "semantic_authority": False,
+    }
+
+
+def prove_mcplusplus_runtime_witness_evidence(
+    receipt: RuntimeWitnessReceipt | Mapping[str, Any],
+    *,
+    goal_id: str = OBJECTIVE_EVIDENCE_GOAL_ID,
+    task_id: str = OBJECTIVE_EVIDENCE_TASK_ID,
+) -> dict[str, Any]:
+    """Discovery-friendly alias for :func:`prove_mcplusplus_runtime_witness`."""
+
+    return prove_mcplusplus_runtime_witness(
+        receipt,
+        goal_id=goal_id,
+        task_id=task_id,
+    )
+
+
 __all__ = [
     "AdapterDispatchError",
     "AdapterHandler",
@@ -3010,12 +3325,18 @@ __all__ = [
     "MCPLUSPLUS_CALL_REQUEST_SCHEMA",
     "MCPLUSPLUS_DISCOVERY_RECORD_SCHEMA",
     "MCPLUSPLUS_NEGOTIATION_RECORD_SCHEMA",
+    "MCPLUSPLUS_RUNTIME_EVIDENCE_CLAIM_SCHEMA",
     "MCPLUSPLUS_RUNTIME_FIXTURE_SCHEMA",
     "MCPLUSPLUS_RUNTIME_RECEIPT_SCHEMA",
     "MCPLUSPLUS_RUNTIME_WITNESS_SCHEMA",
+    "OBJECTIVE_DOMAIN_EVIDENCE_TERMS",
+    "OBJECTIVE_EVIDENCE_GOAL_ID",
+    "OBJECTIVE_EVIDENCE_PARENT_GOAL_ID",
+    "OBJECTIVE_EVIDENCE_TASK_ID",
     "OBJECTIVE_GOAL_ID",
     "OBJECTIVE_VALIDATION_REPAIR_EVIDENCE",
     "OBJECTIVE_VALIDATION_REPAIR_TASK_ID",
+    "RUNTIME_WITNESS_INVARIANTS",
     "RuntimeWitness",
     "RuntimeWitnessAuthorityError",
     "RuntimeWitnessBoundsError",
@@ -3034,11 +3355,16 @@ __all__ = [
     "default_production_adapters",
     "make_call_request",
     "make_runtime",
+    "mcplusplus_runtime_witness_evidence",
     "objective_validation_repair_evidence_terms",
     "production_dispatch_distinguished_from_mocks",
+    "prove_mcplusplus_runtime_witness",
+    "prove_mcplusplus_runtime_witness_evidence",
     "receipt_content_identity",
     "replay_receipt",
     "run_witness_subprocess",
+    "runtime_receipt_satisfies_mcplusplus_witness",
+    "runtime_witness_acceptance_report",
     "runtime_witness_evidence_terms",
     "typed_non_authoritative_failure_outcomes",
     "validate_against_schema",
