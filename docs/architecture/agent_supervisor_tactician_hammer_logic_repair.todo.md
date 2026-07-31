@@ -962,7 +962,7 @@ expectations under existing precedence, but do not prove them by passing.
 
 ## LPR-029 Define deterministic-doctor contracts, policy, and receipts
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
