@@ -18,11 +18,10 @@ import pytest
 from ipfs_accelerate_py.agent_supervisor import bundle_supervisor as bundle_supervisor_module
 from ipfs_accelerate_py.agent_supervisor.runtime.artifact_store import query_artifact
 from ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor import (
+    BundleLaneSpec,
+    DynamicBundleScheduler,
     bundle_member_completion_event_sources,
-)
-from ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor import DynamicBundleScheduler
-from ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor import launch_bundle_lanes
-from ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor import (
+    launch_bundle_lanes,
     materialize_bundle_lane_taskboard,
 )
 from ipfs_accelerate_py.agent_supervisor.runtime.event_log import append_jsonl_event
@@ -182,6 +181,36 @@ def _active_task_ids(manifest: dict[str, Any]) -> set[str]:
         for lane in manifest["lanes"]
         for task_id in lane.get("task_ids", [])
     }
+
+
+def test_bundle_lane_spec_preserves_legacy_positional_constructor_order(
+    tmp_path: Path,
+) -> None:
+    lane = BundleLaneSpec(
+        "objective/test/t-1",
+        "lane-1",
+        tmp_path / "source.todo.md",
+        tmp_path / "state",
+        tmp_path / "worktrees",
+        "agent_t_1",
+        ["T-1"],
+        "bundle-local edits only",
+        ["python", "-m", "worker"],
+        tmp_path / "supervisor.log",
+        tmp_path / "runtime.todo.md",
+        "a" * 64,
+        "tasks.todo.md",
+        "task-cid",
+        "goal-cid",
+        "subgoal-cid",
+    )
+
+    assert lane.source_todo_sha256 == "a" * 64
+    assert lane.source_todo == "tasks.todo.md"
+    assert lane.task_cid == "task-cid"
+    assert lane.goal_cid == "goal-cid"
+    assert lane.subgoal_cid == "subgoal-cid"
+    assert lane.execution_slice_cid == ""
 
 
 def test_terminate_handle_kills_and_reaps_an_unresponsive_wrapper() -> None:
@@ -527,7 +556,9 @@ def test_changed_shard_gets_new_slice_deferred_until_dependency_completes(
     ]
     resumed_lane = launcher.starts[1][0]
     assert resumed_lane.execution_slice_cid != original_lane.execution_slice_cid
+    assert resumed_lane.execution_slice_cid != replacement_lane.execution_slice_cid
     assert resumed_lane.state_dir != original_lane.state_dir
+    assert resumed_lane.state_dir != replacement_lane.state_dir
     assert resumed_lane.source_todo_sha256 == replacement_lane.source_todo_sha256
     assert resumed_lane.runtime_todo_path is not None
     assert resumed_lane.runtime_todo_path.read_text(encoding="utf-8") == (
@@ -729,6 +760,207 @@ def test_active_old_slice_remains_immutable_when_source_changes(
     assert second_manifest["lanes"][0]["execution_slice_cid"] == (
         old_lane.execution_slice_cid
     )
+
+
+def test_identical_shard_relocation_gets_a_new_execution_namespace(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    index = repo / "index.json"
+    _write_index(index, "T-1")
+    source = repo / "bundles" / "t-1.todo.md"
+    source.parent.mkdir()
+    source_bytes = b"## T-1 Stable bytes\n\n- Status: todo\n"
+    source.write_bytes(source_bytes)
+    scheduler = _scheduler(tmp_path, index, _FakeLauncher())
+    scheduler.lane_options["optimize_bundles"] = False
+
+    original_lane = scheduler._plan()[0]
+    original_binding = materialize_bundle_lane_taskboard(
+        original_lane,
+        repo_root=repo,
+    )
+    assert original_lane.runtime_todo_path is not None
+    original_runtime_bytes = original_lane.runtime_todo_path.read_bytes()
+
+    moved_source = repo / "reviewed" / "t-1.todo.md"
+    moved_source.parent.mkdir()
+    moved_source.write_bytes(source_bytes)
+    moved_bundle = _bundle("T-1")
+    moved_bundle["shard_path"] = "reviewed/t-1.todo.md"
+    index.write_text(
+        json.dumps(
+            {
+                "source_todo": "tasks.todo.md",
+                "bundles": {"objective/test/t-1": moved_bundle},
+            },
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+
+    replacement_lane = scheduler._plan()[0]
+
+    assert replacement_lane.source_todo_sha256 == original_lane.source_todo_sha256
+    assert replacement_lane.execution_slice_cid != original_lane.execution_slice_cid
+    assert replacement_lane.state_dir != original_lane.state_dir
+    replacement_binding = materialize_bundle_lane_taskboard(
+        replacement_lane,
+        repo_root=repo,
+    )
+    assert replacement_binding["source_todo_path"] == "reviewed/t-1.todo.md"
+    assert replacement_binding["execution_slice_cid"] == (
+        replacement_lane.execution_slice_cid
+    )
+    assert original_binding["source_todo_path"] == "bundles/t-1.todo.md"
+    assert original_lane.runtime_todo_path.read_bytes() == original_runtime_bytes
+
+
+@pytest.mark.parametrize("bundle_key", [".", "..", "/../"])
+def test_bundle_lane_planner_rejects_relative_path_component_bundle_keys(
+    tmp_path: Path,
+    bundle_key: str,
+) -> None:
+    repo = tmp_path / "repo"
+    index = repo / "index.json"
+    source = repo / "bundles" / "t-1.todo.md"
+    source.parent.mkdir(parents=True)
+    source.write_text("## T-1 Unsafe key\n\n- Status: todo\n", encoding="utf-8")
+    index.write_text(
+        json.dumps(
+            {
+                "source_todo": "tasks.todo.md",
+                "bundles": {bundle_key: _bundle("T-1")},
+            },
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+    scheduler = _scheduler(tmp_path, index, _FakeLauncher())
+    scheduler.lane_options["optimize_bundles"] = False
+
+    with pytest.raises(
+        ValueError,
+        match="bundle key must not resolve to a relative path component",
+    ):
+        scheduler._plan()
+
+
+def test_bundle_lane_planner_rejects_source_shards_outside_repository(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    index = repo / "index.json"
+    outside_source = tmp_path / "outside.todo.md"
+    outside_source.write_text(
+        "## T-1 External shard\n\n- Status: todo\n",
+        encoding="utf-8",
+    )
+    bundle = _bundle("T-1")
+    bundle["shard_path"] = "../outside.todo.md"
+    index.parent.mkdir(parents=True)
+    index.write_text(
+        json.dumps(
+            {
+                "source_todo": "tasks.todo.md",
+                "bundles": {"objective/test/t-1": bundle},
+            },
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+    scheduler = _scheduler(tmp_path, index, _FakeLauncher())
+    scheduler.lane_options["optimize_bundles"] = False
+
+    with pytest.raises(
+        ValueError,
+        match="bundle source taskboard must remain inside repository root",
+    ):
+        scheduler._plan()
+
+
+def test_colliding_safe_bundle_keys_have_distinct_contained_namespaces(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    index = repo / "index.json"
+    bundle_dir = repo / "bundles"
+    bundle_dir.mkdir(parents=True)
+    (bundle_dir / "t-1.todo.md").write_text(
+        "## T-1 First\n\n- Status: todo\n",
+        encoding="utf-8",
+    )
+    (bundle_dir / "t-2.todo.md").write_text(
+        "## T-2 Second\n\n- Status: todo\n",
+        encoding="utf-8",
+    )
+    index.write_text(
+        json.dumps(
+            {
+                "source_todo": "tasks.todo.md",
+                "bundles": {
+                    "a/b": _bundle("T-1"),
+                    "a-b": _bundle("T-2"),
+                },
+            },
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+    scheduler = _scheduler(tmp_path, index, _FakeLauncher())
+    scheduler.lane_options["optimize_bundles"] = False
+
+    lanes = scheduler._plan()
+
+    assert len(lanes) == 2
+    assert len({lane.execution_slice_cid for lane in lanes}) == 2
+    assert len({lane.state_dir for lane in lanes}) == 2
+    assert len({lane.worktree_root for lane in lanes}) == 2
+    assert len({lane.log_path for lane in lanes}) == 2
+    for lane in lanes:
+        assert lane.state_dir.resolve().is_relative_to((repo / "state").resolve())
+        assert lane.runtime_todo_path is not None
+        assert lane.runtime_todo_path.resolve().is_relative_to(
+            (repo / "state").resolve()
+        )
+        assert lane.worktree_root.resolve().is_relative_to(
+            (repo / "worktrees").resolve()
+        )
+        assert lane.log_path.resolve().is_relative_to((repo / "logs").resolve())
+
+
+@pytest.mark.parametrize(
+    ("configured_root", "error_label"),
+    [
+        ("state", "state directory"),
+        ("worktrees", "worktree directory"),
+        ("logs", "log path"),
+    ],
+)
+def test_bundle_lane_planner_rejects_symlinked_namespace_escape(
+    tmp_path: Path,
+    configured_root: str,
+    error_label: str,
+) -> None:
+    repo = tmp_path / "repo"
+    index = repo / "index.json"
+    _write_index(index, "T-1")
+    source = repo / "bundles" / "t-1.todo.md"
+    source.parent.mkdir()
+    source.write_text("## T-1 Escape\n\n- Status: todo\n", encoding="utf-8")
+    root = repo / configured_root
+    root.mkdir()
+    outside = tmp_path / f"outside-{configured_root}"
+    outside.mkdir()
+    (root / "objective-test-t-1").symlink_to(outside, target_is_directory=True)
+    scheduler = _scheduler(tmp_path, index, _FakeLauncher())
+    scheduler.lane_options["optimize_bundles"] = False
+
+    with pytest.raises(
+        ValueError,
+        match=f"bundle lane {error_label} must remain inside its configured root",
+    ):
+        scheduler._plan()
 
 
 def test_static_launcher_reports_stale_input_binding_before_registration(
