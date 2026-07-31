@@ -1796,6 +1796,48 @@ def test_git_gc_first_run_establishes_baseline_without_aggressive_repack(
     assert reloaded.needs_aggressive_gc() is False
 
 
+def test_git_gc_aggressive_timeout_aborts_repack_and_defers_retry(
+    tmp_path,
+    monkeypatch,
+):
+    collector = GitGarbageCollector(
+        repo_root=tmp_path,
+        state_path=tmp_path / "gc-state.json",
+        aggressive_interval=86_400,
+    )
+    collector.state.last_aggressive_gc_time = 1.0
+    monkeypatch.setattr(git_gc_module, "count_loose_objects", lambda _root: 7)
+    monkeypatch.setattr(
+        collector,
+        "_prune_worktrees",
+        lambda: {"step": "prune_worktrees", "success": True},
+    )
+    monkeypatch.setattr(
+        collector,
+        "_expire_reflogs",
+        lambda **_kwargs: {"step": "expire_reflogs", "success": True},
+    )
+    monkeypatch.setattr(
+        collector,
+        "_run_git_gc",
+        lambda **_kwargs: {"step": "git_gc", "error": "timeout"},
+    )
+    repack_calls = []
+    monkeypatch.setattr(
+        collector,
+        "_repack",
+        lambda: repack_calls.append(True) or {"step": "repack", "returncode": 0},
+    )
+
+    result = collector.run()
+
+    assert result["success"] is False
+    assert result["aborted_after"] == "git_gc"
+    assert repack_calls == []
+    assert collector.state.last_aggressive_gc_time > 1.0
+    assert collector.needs_aggressive_gc() is False
+
+
 def test_implementation_daemon_uses_authenticated_copilot_fallback(tmp_path, monkeypatch):
     repo = tmp_path / "repo"
     repo.mkdir()

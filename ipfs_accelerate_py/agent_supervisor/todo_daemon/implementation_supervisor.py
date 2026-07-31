@@ -10832,7 +10832,14 @@ class PortalImplementationSupervisor:
     def _build_daemon_command(self) -> list[str]:
         daemon_script_path = self.config.daemon_script_path
         if daemon_script_path is None:
-            command = [sys.executable, "-m", "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon"]
+            # Safe-path mode prevents a stale nested checkout in the working
+            # directory from shadowing the supervisor's configured package.
+            command = [
+                sys.executable,
+                "-P",
+                "-m",
+                "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon",
+            ]
         else:
             command = [sys.executable, str(daemon_script_path)]
         command.extend(

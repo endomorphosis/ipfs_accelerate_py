@@ -211,7 +211,7 @@ Program invariants:
 - Priority: P0
 - Track: release
 - Bundle: cvefixes-security-ir/release
-- Goal: Build deterministic Parquet configs, dataset card, manifest, evaluation report, and bounded query client for sofiyapervane/cvefixes-security-ir-graphrag.
+- Goal: Build deterministic Parquet configs, dataset card, manifest, evaluation report, and bounded query client for Publicus/cvefixes-security-ir-graphrag.
 - Evidence: ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/hf_release.py, ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_hf_release.py
 - Outputs: ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/hf_release.py, ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_hf_release.py
 - Validation: python -m pytest ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_hf_release.py -q
@@ -257,7 +257,7 @@ Program invariants:
 - Priority: P0
 - Track: external-publication
 - Bundle: cvefixes-security-ir/external
-- Goal: Upload the validated release to sofiyapervane/cvefixes-security-ir-graphrag, resolve the immutable Hub commit, and verify it through the Dataset Viewer.
+- Goal: Upload the validated release to Publicus/cvefixes-security-ir-graphrag, resolve the immutable Hub commit, and verify it through the Dataset Viewer.
 - Evidence: data/agent_supervisor/cvefixes_security_ir/external/hf_publication_receipt.json
 - Outputs: data/agent_supervisor/cvefixes_security_ir/external/hf_publication_receipt.json
 - Validation: python ipfs_datasets_py/scripts/ops/security_ir/publish_cvefixes_security_ir.py --verify-receipt data/agent_supervisor/cvefixes_security_ir/external/hf_publication_receipt.json
