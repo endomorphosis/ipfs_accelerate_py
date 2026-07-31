@@ -931,7 +931,7 @@ expectations under existing precedence, but do not prove them by passing.
 
 ## LPR-028 Prove equivalence, propagate every caller, and enforce the root-layout cutover
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
