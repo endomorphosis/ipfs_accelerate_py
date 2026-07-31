@@ -1422,3 +1422,19 @@ expectations under existing precedence, but do not prove them by passing.
 - Predicted files: docs/architecture/IPFS_KIT_VFS_SYMBOLIC_ASSURANCE_PLAN.md, docs/architecture/ipfs_kit_vfs_symbolic_assurance.objectives.md, docs/architecture/ipfs_kit_vfs_symbolic_assurance.todo.md, scripts/ops/agent_supervisor/README.md, test/api/test_agent_supervisor_vfs_generalization_equivalence.py, test/api/test_agent_supervisor_vfs_root_layout_guard.py, test/api/test_agent_supervisor_assurance_two_profile_end_to_end.py
 - Conflict policy: Serialize the final migration; confirm the dedicated VFS supervisor has no live owned process before editing its plan/objective/taskboard, preserve completed VFS task history, update only still-open output/caller projections, and never add root compatibility shims or silently delete a public contract.
 - Acceptance: Retry-budget guardrail filed this from repeated validation failures in LPR-028. Use evidence in /home/barberb/lift_coding/.git/modules/external/ipfs_accelerate/worktrees/proof-gated-contract-repair/agent-supervisor-state/tactician_hammer_logic_repair/state/discovery/2026-07-31-lpr-044-lpr-028-retry-budget.md to fix the validation blocker, then mark this repair task completed so the supervisor can release LPR-028 from strategy blocked_tasks.
+
+## LPR-045 Resolve 1 dirty backlogged worktrees blocked by unsupported_status
+
+- Status: blocked
+- Completion: manual
+- Is schedulable: false
+- Review only: true
+- Blocked reason: operator_reconciliation_required
+- Priority: P1
+- Track: ops
+- Fingerprint: 50d47eee193a7305a41ab449609cadbbd96264e7
+- Dedupe key: reconciliation_guardrail:dirty_backlogged_worktree:unsupported_status
+- Depends on:
+- Outputs: /home/barberb/lift_coding/.git/modules/external/ipfs_accelerate/worktrees/proof-gated-contract-repair/agent-supervisor-state/tactician_hammer_logic_repair/state/discovery, docs/architecture/agent_supervisor_tactician_hammer_logic_repair.todo.md
+- Validation: test -f /home/barberb/lift_coding/.git/modules/external/ipfs_accelerate/worktrees/proof-gated-contract-repair/agent-supervisor-state/tactician_hammer_logic_repair/state/discovery/2026-07-31-lpr-045-reconciliation-50d47eee193a.md
+- Acceptance: Reconciliation guardrail filed this because 1 branch or worktree cleanup candidates are blocked by unsupported_status. This task is intentionally operator-gated because unknown dirty checkout content must not be committed, stashed, or discarded automatically. Use evidence and the machine-readable reconciliation plan in /home/barberb/lift_coding/.git/modules/external/ipfs_accelerate/worktrees/proof-gated-contract-repair/agent-supervisor-state/tactician_hammer_logic_repair/state/discovery/2026-07-31-lpr-045-reconciliation-50d47eee193a.md, reconcile the dirty checkout or dirty worktree group deliberately, then rerun the supervisor cleanup/reconciliation pass and confirm that the blocked candidate count decreases.
