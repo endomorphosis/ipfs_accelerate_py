@@ -434,6 +434,42 @@ def persist_supervisor_scan_receipt(
 ) -> dict[str, Any]:
     """Persist one refill result and publish its compact state projection."""
 
+    try:
+        strategy_payload = json.loads(strategy_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        strategy_payload = {}
+    if not isinstance(strategy_payload, dict):
+        strategy_payload = {}
+    per_kind = strategy_payload.get("scan_receipts")
+    kind_state = (
+        per_kind.get(scan_kind)
+        if isinstance(per_kind, Mapping)
+        else None
+    )
+    prior_projection = (
+        kind_state.get("latest_attempted_scan")
+        if isinstance(kind_state, Mapping)
+        else None
+    )
+    # A disabled scanner reports configuration state, not an observation
+    # about repository contents. Re-emitting that state on every maintenance
+    # pass made the receipt itself change the dirty-tree identity, which then
+    # produced another distinct receipt on the next pass. Retain the first
+    # content-addressed receipt per analyzer/kind and reuse its projection
+    # until scanning is enabled or the analyzer configuration changes.
+    if (
+        result.terminal_reason.value == "disabled"
+        and isinstance(prior_projection, Mapping)
+        and str(prior_projection.get("terminal_reason") or "") == "disabled"
+        and str(prior_projection.get("scan_kind") or "") == str(scan_kind)
+        and str(prior_projection.get("scan_mode") or "") == result.scan_mode
+        and str(prior_projection.get("analyzer_version") or "")
+        == result.analyzer_version
+        and int(prior_projection.get("generated_count") or 0) == 0
+        and prior_projection.get("safe_for_completion_reasoning") is False
+    ):
+        return dict(prior_projection)
+
     projection = append_scan_receipt_event(
         events_path,
         result,
@@ -441,12 +477,6 @@ def persist_supervisor_scan_receipt(
         scan_kind=scan_kind,
         relative_to=state_dir,
     )
-    try:
-        strategy_payload = json.loads(strategy_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        strategy_payload = {}
-    if not isinstance(strategy_payload, dict):
-        strategy_payload = {}
     _write_json_atomic(
         strategy_path,
         apply_scan_receipt_projection(strategy_payload, projection),
