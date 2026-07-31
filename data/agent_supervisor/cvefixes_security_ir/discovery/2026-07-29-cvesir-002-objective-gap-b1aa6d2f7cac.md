@@ -22,7 +22,7 @@ Goal packet goals: none
 Goal packet task count: 0
 Goal packet work item count: 0
 Evidence methods: none
-Embedding query: Build deterministic Parquet configs, dataset card, manifest, evaluation report, and bounded query client for sofiyapervane/cvefixes-security-ir-graphrag.
+Embedding query: Build deterministic Parquet configs, dataset card, manifest, evaluation report, and bounded query client for Publicus/cvefixes-security-ir-graphrag.
 AST query: ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/hf_release.py, ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_hf_release.py
 Conflict policy: Own local release packaging; do not perform the Hub mutation.
 Predicted files: ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/hf_release.py, ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_hf_release.py
@@ -46,7 +46,7 @@ Rejection reasons: none (accepted)
 
 ## Goal
 
-Build deterministic Parquet configs, dataset card, manifest, evaluation report, and bounded query client for sofiyapervane/cvefixes-security-ir-graphrag.
+Build deterministic Parquet configs, dataset card, manifest, evaluation report, and bounded query client for Publicus/cvefixes-security-ir-graphrag.
 
 ## Missing Evidence
 

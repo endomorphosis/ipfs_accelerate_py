@@ -115,7 +115,7 @@ Conflict policy: keep edits inside this bundle when possible; use the LLM merge 
 - Rejection reasons: none (accepted)
 - Evidence obligation key: objective-evidence-obligation/v1/7be1a9ce7d7217673f8b94b0e539c37067e35f00e26d364e49d660e2d61f6740
 - Missing evidence: ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/hf_release.py, ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_hf_release.py
-- Embedding query: Build deterministic Parquet configs, dataset card, manifest, evaluation report, and bounded query client for sofiyapervane/cvefixes-security-ir-graphrag.
+- Embedding query: Build deterministic Parquet configs, dataset card, manifest, evaluation report, and bounded query client for Publicus/cvefixes-security-ir-graphrag.
 - AST query: ipfs_datasets_py/ipfs_datasets_py/logic/security_ir/cvefixes/hf_release.py, ipfs_datasets_py/tests/unit/logic/security_ir/cvefixes/test_hf_release.py
 - Surplus group: objective/CVESIR-G080
 - Merge key: 6ca953ad7f5384fb

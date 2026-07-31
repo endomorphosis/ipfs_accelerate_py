@@ -8,7 +8,7 @@ Source dataset: `hitoshura25/cvefixes`
 
 Pinned source revision: `d4f5c4ea65329d9ccbb8a3b3149e5d06eda5edb2`
 
-Proposed derived dataset: `sofiyapervane/cvefixes-security-ir-graphrag`
+Proposed derived dataset: `Publicus/cvefixes-security-ir-graphrag`
 
 Objective heap: `docs/architecture/cvefixes_security_ir.objectives.md`
 Task board: `docs/architecture/cvefixes_security_ir.todo.md`
@@ -228,7 +228,29 @@ The release builder:
 6. uploads only the validated staging directory; and
 7. resolves the resulting Hub commit and records it in a publication receipt.
 
-Target repository: `sofiyapervane/cvefixes-security-ir-graphrag`.
+Target repository: `Publicus/cvefixes-security-ir-graphrag`.
+
+The remote retrieval layout follows `Publicus/skillcenter-ir`. Data artifacts
+are separated into corpus, BM25 documents/postings, graph nodes/edges,
+incoming/outgoing adjacency pages, and vectors. The manifest binds these eight
+compact indexes:
+
+- `indexes/corpus_chunks.parquet`;
+- `indexes/bm25_document_chunks.parquet`;
+- `indexes/bm25_keyword_shards.parquet`;
+- `indexes/graph_node_chunks.parquet`;
+- `indexes/graph_edge_chunks.parquet`;
+- `indexes/graph_outgoing_adjacency.parquet`;
+- `indexes/graph_incoming_adjacency.parquet`; and
+- `indexes/vector_chunks.parquet`.
+
+The dataset card exposes corpus, BM25, graph, adjacency, vector, and the five
+thin-client routing configs (`corpus_chunk_index`, `bm25_keyword_index`,
+`vector_meta_index`, `graph_outgoing_adjacency_index`, and
+`graph_incoming_adjacency_index`) with explicit `data_files` paths. Every
+meta-index row carries the shard CID, SHA-256, byte size, row count, physical
+path, key range, and compact document range. Publication verification must
+reject missing, duplicate, overlapping, or unbound shard pointers.
 
 Publication is idempotent by `(target repo, source revision, release root CID)`.
 If that tuple already exists, the publisher verifies it instead of creating a
