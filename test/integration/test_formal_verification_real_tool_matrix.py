@@ -308,6 +308,223 @@ def test_lean_probe_selects_already_installed_locked_toolchain(
     assert result["shim_toolchain_mismatch"] is False
 
 
+def test_tlc_lock_and_probe_use_real_help_semantics_and_managed_digest(
+    certifier,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    lock = certifier.load_lock(LOCK_PATH)
+    entry = certifier.lock_tools_by_id(lock)["tlc"]
+    probe = entry["offline_probe"]
+    expected_digest = (
+        "e22f8ffb4bacdea0a871f444dd94fe5fb0d8013b3388ae39e82e26f852c735d5"
+    )
+    assert probe["method"] == "bounded_tlc_help_semantics"
+    assert probe["argv"] == ["-help"]
+    assert set(probe["accepted_returncodes"]) == {0, 1}
+    assert probe["artifact_sha256"] == expected_digest
+    assert entry["pins"][0]["sha256"] == expected_digest
+
+    observed_argv: list[list[str]] = []
+    monkeypatch.setattr(
+        certifier,
+        "resolve_executable",
+        lambda _candidates: "/managed/bin/tlc",
+    )
+
+    def bounded_run(argv, **_kwargs):
+        observed_argv.append(list(argv))
+        return certifier.subprocess.CompletedProcess(
+            argv,
+            1,
+            stdout=(
+                "NAME\n"
+                "TLC - provides model checking and simulation of TLA+ "
+                "specifications - Version fixture\n"
+                "SYNOPSIS\n"
+                "DESCRIPTION\n"
+            ),
+            stderr="",
+        )
+
+    monkeypatch.setattr(certifier, "bounded_run", bounded_run)
+    monkeypatch.setattr(
+        certifier,
+        "_managed_state_model_identity",
+        lambda *_args, **_kwargs: {
+            "usable": True,
+            "artifact_sha256": expected_digest,
+            "artifact_digest_verified": True,
+            "payload_digest_verified": True,
+            "launchers_structurally_valid": True,
+            "manifest_valid": True,
+        },
+    )
+
+    result = certifier.probe_tool_identity(
+        entry,
+        env=certifier.offline_env({"PATH": "/managed/bin"}),
+    )
+
+    assert observed_argv == [["/managed/bin/tlc", "-help"]]
+    assert result["identity_probed"] is True
+    assert result["installed"] is True
+    assert expected_digest in result["version_string"]
+
+    alternate_lock = json.loads(json.dumps(entry))
+    alternate_lock["pins"][0]["sha256"] = "0" * 64
+    alternate = certifier.probe_tool_identity(
+        alternate_lock,
+        env=certifier.offline_env({"PATH": "/managed/bin"}),
+    )
+    assert alternate["identity_probed"] is False
+    assert alternate["installed"] is False
+    assert (
+        alternate["probe_error"]
+        == "tlc_help_or_managed_digest_identity_failed"
+    )
+
+
+def test_tlc_probe_rejects_banner_only_or_unmanaged_launcher(
+    certifier,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    entry = certifier.lock_tools_by_id(certifier.load_lock(LOCK_PATH))["tlc"]
+    monkeypatch.setattr(
+        certifier,
+        "resolve_executable",
+        lambda _candidates: "/managed/bin/tlc",
+    )
+    monkeypatch.setattr(
+        certifier,
+        "_managed_state_model_identity",
+        lambda *_args, **_kwargs: {"usable": True},
+    )
+    monkeypatch.setattr(
+        certifier,
+        "bounded_run",
+        lambda argv, **_kwargs: certifier.subprocess.CompletedProcess(
+            argv,
+            0,
+            stdout="TLC 1.8.0\n",
+            stderr="",
+        ),
+    )
+
+    banner_only = certifier.probe_tool_identity(
+        entry,
+        env=certifier.offline_env({"PATH": "/managed/bin"}),
+    )
+
+    assert banner_only["identity_probed"] is False
+    assert (
+        banner_only["probe_error"]
+        == "tlc_help_or_managed_digest_identity_failed"
+    )
+
+    monkeypatch.setattr(
+        certifier,
+        "bounded_run",
+        lambda argv, **_kwargs: certifier.subprocess.CompletedProcess(
+            argv,
+            1,
+            stdout=(
+                "NAME\n"
+                "TLC - provides model checking and simulation of TLA+ "
+                "specifications\n"
+                "SYNOPSIS\n"
+                "DESCRIPTION\n"
+            ),
+            stderr="",
+        ),
+    )
+    monkeypatch.setattr(
+        certifier,
+        "_managed_state_model_identity",
+        lambda *_args, **_kwargs: {"usable": False},
+    )
+
+    unmanaged = certifier.probe_tool_identity(
+        entry,
+        env=certifier.offline_env({"PATH": "/managed/bin"}),
+    )
+
+    assert unmanaged["identity_probed"] is False
+    assert unmanaged["installed"] is False
+    assert unmanaged["probe_error"] == "tlc_help_or_managed_digest_identity_failed"
+
+
+def test_apalache_probe_requires_complete_managed_digest_identity(
+    certifier,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    entry = certifier.lock_tools_by_id(certifier.load_lock(LOCK_PATH))["apalache"]
+    expected_digest = (
+        "ba622db9538aebf942cc7a7815f942a6b2b419012707e16dfdc25a73ff95d0a5"
+    )
+    assert entry["pins"][0]["sha256"] == expected_digest
+    assert entry["offline_probe"]["argv"] == ["version"]
+    assert entry["offline_probe"]["artifact_sha256"] == expected_digest
+    monkeypatch.setattr(
+        certifier,
+        "resolve_executable",
+        lambda _candidates: "/managed/bin/apalache-mc",
+    )
+    monkeypatch.setattr(
+        certifier,
+        "bounded_run",
+        lambda argv, **_kwargs: certifier.subprocess.CompletedProcess(
+            argv,
+            0,
+            stdout="Apalache 0.58.3\n",
+            stderr="",
+        ),
+    )
+    monkeypatch.setattr(
+        certifier,
+        "_managed_state_model_identity",
+        lambda *_args, **_kwargs: {"usable": False},
+    )
+
+    result = certifier.probe_tool_identity(
+        entry,
+        env=certifier.offline_env({"PATH": "/managed/bin"}),
+    )
+
+    assert result["identity_probed"] is False
+    assert result["installed"] is False
+    assert result["probe_error"] == "managed_digest_identity_failed"
+
+    monkeypatch.setattr(
+        certifier,
+        "_managed_state_model_identity",
+        lambda *_args, **_kwargs: {
+            "usable": True,
+            "artifact_sha256": expected_digest,
+            "artifact_digest_verified": True,
+            "distribution_tree_verified": True,
+            "payload_digest_verified": True,
+            "launchers_structurally_valid": True,
+            "manifest_valid": True,
+        },
+    )
+    managed = certifier.probe_tool_identity(
+        entry,
+        env=certifier.offline_env({"PATH": "/managed/bin"}),
+    )
+    assert managed["identity_probed"] is True
+    assert managed["installed"] is True
+
+    alternate_lock = json.loads(json.dumps(entry))
+    alternate_lock["offline_probe"]["artifact_sha256"] = "0" * 64
+    alternate = certifier.probe_tool_identity(
+        alternate_lock,
+        env=certifier.offline_env({"PATH": "/managed/bin"}),
+    )
+    assert alternate["identity_probed"] is False
+    assert alternate["installed"] is False
+    assert alternate["probe_error"] == "managed_digest_identity_failed"
+
+
 def test_symbolicai_probe_binds_distribution_to_symai_without_import(
     certifier,
     monkeypatch: pytest.MonkeyPatch,
