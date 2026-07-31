@@ -115,6 +115,12 @@ class ChangePropagationPipelinePolicy:
     # Opt-in: invoke live logic-repair stages (goal→admission) before existing
     # atomic-plan admission when bound logic artifacts are supplied (LPR-017).
     enable_live_logic_repair: bool = False
+    # Opt-in: joint program+logic fixed-point after provisional commit (LPR-018).
+    # When true, completion routes through LogicRepairFixedPointValidator and
+    # requires CandidateLogicRepairEvidence.  When false, legacy program-only
+    # ChangePropagationValidator path is retained for compatibility.
+    enable_logic_fixed_point: bool = False
+    require_logic_fixed_point_evidence: bool = False
 
     def __post_init__(self) -> None:
         for name in (
@@ -123,6 +129,8 @@ class ChangePropagationPipelinePolicy:
             "allow_provider_for_model_steps",
             "analytical_skips_provider",
             "enable_live_logic_repair",
+            "enable_logic_fixed_point",
+            "require_logic_fixed_point_evidence",
         ):
             if not isinstance(getattr(self, name), bool):
                 raise ChangePropagationPipelineError(f"{name} must be a boolean")
@@ -153,6 +161,8 @@ class ChangePropagationPipelinePolicy:
             "allow_provider_for_model_steps": self.allow_provider_for_model_steps,
             "analytical_skips_provider": self.analytical_skips_provider,
             "enable_live_logic_repair": self.enable_live_logic_repair,
+            "enable_logic_fixed_point": self.enable_logic_fixed_point,
+            "require_logic_fixed_point_evidence": self.require_logic_fixed_point_evidence,
         }
 
 
@@ -212,6 +222,8 @@ class ChangePropagationPipelineRequest:
     prediction_decision: Any = None
     prediction_receipts: Sequence[Any] = ()
     logic_proof_bundle: Any = None
+    # Optional LPR-018 joint logic fixed-point evidence (after provisional commit).
+    logic_fixed_point_evidence: Any = None  # CandidateLogicRepairEvidence
 
     @classmethod
     def from_mapping(cls, value: Mapping[str, Any]) -> "ChangePropagationPipelineRequest":
@@ -271,6 +283,7 @@ class ChangePropagationPipelineRequest:
             prediction_decision=value.get("prediction_decision"),
             prediction_receipts=tuple(value.get("prediction_receipts") or ()),
             logic_proof_bundle=value.get("logic_proof_bundle"),
+            logic_fixed_point_evidence=value.get("logic_fixed_point_evidence"),
         )
 
 
@@ -303,6 +316,9 @@ class ChangePropagationPipelineResult:
     transaction: PropagationTransaction | None = None
     completion: PropagationCompletionReceipt | None = None
     validation_outcome: Any = None
+    logic_fixed_point_outcome: Any = None
+    logic_attachment: Any = None
+    finalize_receipt: Any = None
     model_route_results: tuple[Any, ...] = ()
     task_projection: Any = None
     reason_codes: tuple[str, ...] = ()
@@ -1313,6 +1329,252 @@ class ChangePropagationPipeline:
                 model_route_results=tuple(model_route_results),
             )
 
+        use_logic_fp = bool(
+            self.policy.enable_logic_fixed_point
+            or request.logic_fixed_point_evidence is not None
+            or self.policy.require_logic_fixed_point_evidence
+        )
+
+        if use_logic_fp:
+            from ..validation.logic_repair_fixed_point import (
+                LogicRepairFixedPointValidator,
+            )
+
+            logic_validator = LogicRepairFixedPointValidator(
+                require_logic_evidence=bool(
+                    self.policy.require_logic_fixed_point_evidence
+                    or request.logic_fixed_point_evidence is not None
+                )
+            )
+            logic_outcome = logic_validator.validate(
+                plan,
+                report.transaction,
+                program_evidence=request.candidate_evidence,
+                logic_evidence=request.logic_fixed_point_evidence,
+                packet=packet,
+                execution_report=report,
+                fixed_point_bound=request.fixed_point_bound,
+                restore_adapter=request.restore_adapter,
+                checkpoint=report.checkpoint,
+            )
+            completed.append(stage)
+
+            program_outcome = logic_outcome.program_outcome
+            if logic_outcome.rolled_back:
+                reasons = tuple(logic_outcome.report.reason_codes)
+                return _fail(
+                    stage=stage,
+                    disposition=PipelineDisposition.ROLLED_BACK.value,
+                    detail=(
+                        "logic fixed-point compensating rollback: "
+                        + (", ".join(reasons) or "incomplete")
+                    ),
+                    completed=completed,
+                    reason_codes=reasons or ("logic_fixed_point_rolled_back",),
+                    provider_invoked=provider_invoked,
+                    rolled_back=True,
+                    change_set_id=change_set_id,
+                    delta_id=delta_id,
+                    graph_id=graph_id,
+                    index_id=index_id,
+                    impact_closure_id=impact_closure_id,
+                    consumer_inventory_id=consumer_inventory_id,
+                    plan_id=plan.plan_id,
+                    plan=plan,
+                    admission=admission,
+                    packet=packet,
+                    write_paths=write_paths,
+                    read_paths=read_paths,
+                    analytical_step_ids=analytical_ids,
+                    model_required_step_ids=model_ids,
+                    gate_receipt=gate_receipt,
+                    transaction_report=report,
+                    transaction=report.transaction,
+                    completion=logic_outcome.completion,
+                    validation_outcome=program_outcome,
+                    logic_fixed_point_outcome=logic_outcome,
+                    logic_attachment=logic_outcome.logic_attachment,
+                    finalize_receipt=logic_outcome.finalize,
+                    model_route_results=tuple(model_route_results),
+                )
+
+            # Full logic path: require joint complete + attachment + finalize.
+            if request.logic_fixed_point_evidence is not None or (
+                self.policy.require_logic_fixed_point_evidence
+            ):
+                if not logic_outcome.complete or logic_outcome.completion is None:
+                    reasons = tuple(logic_outcome.report.reason_codes)
+                    return _fail(
+                        stage=stage,
+                        disposition=PipelineDisposition.INCOMPLETE.value,
+                        detail=(
+                            "logic fixed-point validation incomplete: "
+                            + (", ".join(reasons) or "incomplete")
+                        ),
+                        completed=completed,
+                        reason_codes=reasons or ("logic_fixed_point_incomplete",),
+                        provider_invoked=provider_invoked,
+                        rolled_back=logic_outcome.rolled_back,
+                        change_set_id=change_set_id,
+                        delta_id=delta_id,
+                        graph_id=graph_id,
+                        index_id=index_id,
+                        impact_closure_id=impact_closure_id,
+                        consumer_inventory_id=consumer_inventory_id,
+                        plan_id=plan.plan_id,
+                        plan=plan,
+                        admission=admission,
+                        packet=packet,
+                        write_paths=write_paths,
+                        read_paths=read_paths,
+                        analytical_step_ids=analytical_ids,
+                        model_required_step_ids=model_ids,
+                        gate_receipt=gate_receipt,
+                        transaction_report=report,
+                        transaction=report.transaction,
+                        completion=logic_outcome.completion,
+                        validation_outcome=program_outcome,
+                        logic_fixed_point_outcome=logic_outcome,
+                        logic_attachment=logic_outcome.logic_attachment,
+                        finalize_receipt=logic_outcome.finalize,
+                        model_route_results=tuple(model_route_results),
+                    )
+                if not isinstance(
+                    logic_outcome.completion, PropagationCompletionReceipt
+                ):
+                    return _fail(
+                        stage=stage,
+                        disposition=PipelineDisposition.MALFORMED.value,
+                        detail="validator did not return PropagationCompletionReceipt@1",
+                        completed=completed,
+                        reason_codes=("malformed_completion",),
+                        provider_invoked=provider_invoked,
+                        change_set_id=change_set_id,
+                        delta_id=delta_id,
+                        graph_id=graph_id,
+                        index_id=index_id,
+                        impact_closure_id=impact_closure_id,
+                        consumer_inventory_id=consumer_inventory_id,
+                        plan_id=plan.plan_id,
+                        plan=plan,
+                        admission=admission,
+                        packet=packet,
+                        write_paths=write_paths,
+                        read_paths=read_paths,
+                        analytical_step_ids=analytical_ids,
+                        model_required_step_ids=model_ids,
+                        gate_receipt=gate_receipt,
+                        transaction_report=report,
+                        transaction=report.transaction,
+                        validation_outcome=program_outcome,
+                        logic_fixed_point_outcome=logic_outcome,
+                        model_route_results=tuple(model_route_results),
+                    )
+                return ChangePropagationPipelineResult(
+                    enabled=True,
+                    stage=stage,
+                    disposition=PipelineDisposition.COMPLETE.value,
+                    detail=(
+                        "transactional mutation closed under joint "
+                        "program+logic fixed-point receipt"
+                    ),
+                    provider_invoked=provider_invoked,
+                    stages_completed=tuple(completed),
+                    change_set_id=change_set_id,
+                    delta_id=delta_id,
+                    graph_id=graph_id,
+                    index_id=index_id,
+                    impact_closure_id=impact_closure_id,
+                    consumer_inventory_id=consumer_inventory_id,
+                    plan_id=plan.plan_id,
+                    plan=plan,
+                    admission=admission,
+                    packet=packet,
+                    write_paths=write_paths,
+                    read_paths=read_paths,
+                    analytical_step_ids=analytical_ids,
+                    model_required_step_ids=model_ids,
+                    gate_receipt=gate_receipt,
+                    transaction_report=report,
+                    transaction=report.transaction,
+                    completion=logic_outcome.completion,
+                    validation_outcome=program_outcome,
+                    logic_fixed_point_outcome=logic_outcome,
+                    logic_attachment=logic_outcome.logic_attachment,
+                    finalize_receipt=logic_outcome.finalize,
+                    model_route_results=tuple(model_route_results),
+                )
+
+            # enable_logic_fixed_point without evidence: require program plane.
+            outcome = program_outcome
+            if outcome is None or not outcome.complete or outcome.completion is None:
+                reasons = tuple(
+                    logic_outcome.report.reason_codes
+                    or (getattr(outcome, "report", None) and outcome.report.reason_codes)
+                    or ()
+                )
+                return _fail(
+                    stage=stage,
+                    disposition=PipelineDisposition.INCOMPLETE.value,
+                    detail=(
+                        "fixed-point validation incomplete: "
+                        + (", ".join(reasons) or "incomplete")
+                    ),
+                    completed=completed,
+                    reason_codes=reasons or ("fixed_point_incomplete",),
+                    provider_invoked=provider_invoked,
+                    change_set_id=change_set_id,
+                    delta_id=delta_id,
+                    graph_id=graph_id,
+                    index_id=index_id,
+                    impact_closure_id=impact_closure_id,
+                    consumer_inventory_id=consumer_inventory_id,
+                    plan_id=plan.plan_id,
+                    plan=plan,
+                    admission=admission,
+                    packet=packet,
+                    write_paths=write_paths,
+                    read_paths=read_paths,
+                    analytical_step_ids=analytical_ids,
+                    model_required_step_ids=model_ids,
+                    gate_receipt=gate_receipt,
+                    transaction_report=report,
+                    transaction=report.transaction,
+                    completion=logic_outcome.completion,
+                    validation_outcome=outcome,
+                    logic_fixed_point_outcome=logic_outcome,
+                    model_route_results=tuple(model_route_results),
+                )
+            return ChangePropagationPipelineResult(
+                enabled=True,
+                stage=stage,
+                disposition=PipelineDisposition.COMPLETE.value,
+                detail="transactional mutation closed under fixed-point receipt",
+                provider_invoked=provider_invoked,
+                stages_completed=tuple(completed),
+                change_set_id=change_set_id,
+                delta_id=delta_id,
+                graph_id=graph_id,
+                index_id=index_id,
+                impact_closure_id=impact_closure_id,
+                consumer_inventory_id=consumer_inventory_id,
+                plan_id=plan.plan_id,
+                plan=plan,
+                admission=admission,
+                packet=packet,
+                write_paths=write_paths,
+                read_paths=read_paths,
+                analytical_step_ids=analytical_ids,
+                model_required_step_ids=model_ids,
+                gate_receipt=gate_receipt,
+                transaction_report=report,
+                transaction=report.transaction,
+                completion=outcome.completion,
+                validation_outcome=outcome,
+                logic_fixed_point_outcome=logic_outcome,
+                model_route_results=tuple(model_route_results),
+            )
+
         from ..validation.change_propagation_validation import (
             ChangePropagationValidator,
         )
@@ -1498,8 +1760,51 @@ def daemon_require_completion(
     packet: Any = None,
     execution_report: Any = None,
     fixed_point_bound: int | None = None,
+    logic_evidence: Any = None,
+    restore_adapter: Any = None,
+    checkpoint: Any = None,
+    require_logic_evidence: bool = False,
 ) -> Any:
-    """Require a current PropagationCompletionReceipt@1 (fail-closed)."""
+    """Require a current PropagationCompletionReceipt@1 (fail-closed).
+
+    When ``logic_evidence`` is supplied (or ``require_logic_evidence`` is true),
+    completion is routed through :class:`LogicRepairFixedPointValidator` so the
+    joint program+logic fixed-point and finalize/compensating-rollback protocol
+    apply.  Otherwise the legacy program-only validator is used.
+    """
+
+    if logic_evidence is not None or require_logic_evidence:
+        from ..validation.logic_repair_fixed_point import (
+            LogicRepairFixedPointError,
+            LogicRepairFixedPointValidator,
+        )
+
+        outcome = LogicRepairFixedPointValidator(
+            require_logic_evidence=bool(require_logic_evidence or logic_evidence is not None)
+        ).validate(
+            plan,
+            transaction,
+            program_evidence=evidence,
+            logic_evidence=logic_evidence,
+            packet=packet,
+            execution_report=execution_report,
+            fixed_point_bound=fixed_point_bound,
+            restore_adapter=restore_adapter,
+            checkpoint=checkpoint,
+        )
+        if logic_evidence is not None:
+            try:
+                return outcome.require_complete()
+            except LogicRepairFixedPointError as exc:
+                raise LogicRepairFixedPointError(str(exc)) from exc
+        if outcome.completion is None or not outcome.program_outcome or (
+            not outcome.program_outcome.complete
+        ):
+            reasons = ", ".join(outcome.report.reason_codes) or "incomplete"
+            raise LogicRepairFixedPointError(
+                "change propagation fixed-point validation rejected: " + reasons
+            )
+        return outcome.completion
 
     from ..validation.change_propagation_validation import (
         ChangePropagationValidationError,

@@ -1323,6 +1323,188 @@ class ChangePropagationTransaction:
             )
         return report
 
+    def finalize_provisional(
+        self,
+        *,
+        plan: AtomicPropagationPlan,
+        transaction: PropagationTransaction,
+        checkpoint: PropagationCheckpoint,
+        completion_id: str,
+        fixed_point_receipt_id: str,
+        iteration_count: int = 1,
+        diagnostic_refs: Sequence[str] = (),
+    ) -> dict[str, Any]:
+        """Finalize a provisional COMMITTED mutation after residual-free fixed point.
+
+        Does not merge; only records that the candidate tree may proceed to
+        completion authority.  Partial step sets are rejected.
+        """
+
+        if not isinstance(plan, AtomicPropagationPlan):
+            raise ChangePropagationTransactionError(
+                "finalize_provisional requires AtomicPropagationPlan@1"
+            )
+        if not isinstance(transaction, PropagationTransaction):
+            raise ChangePropagationTransactionError(
+                "finalize_provisional requires PropagationTransaction@1"
+            )
+        if not isinstance(checkpoint, PropagationCheckpoint):
+            raise ChangePropagationTransactionError(
+                "finalize_provisional requires a PropagationCheckpoint"
+            )
+        if transaction.state is not TransactionState.COMMITTED:
+            raise ChangePropagationTransactionError(
+                "only a provisional COMMITTED transaction may be finalized"
+            )
+        if transaction.plan_id != plan.plan_id:
+            raise ChangePropagationTransactionError(
+                "finalize plan_id must match the transaction plan_id"
+            )
+        if transaction.checkpoint_id != checkpoint.checkpoint_id:
+            raise ChangePropagationTransactionError(
+                "finalize checkpoint must match the transaction checkpoint"
+            )
+        expected_steps = {step.step_id for step in plan.steps}
+        if set(transaction.completed_step_ids) != expected_steps:
+            raise ChangePropagationTransactionError(
+                "partial SCC/packet completion cannot finalize the transaction"
+            )
+        if not isinstance(completion_id, str) or not completion_id.strip():
+            raise ChangePropagationTransactionError(
+                "finalize requires a completion receipt identity"
+            )
+        if not isinstance(fixed_point_receipt_id, str) or not fixed_point_receipt_id.strip():
+            raise ChangePropagationTransactionError(
+                "finalize requires a fixed-point receipt identity"
+            )
+        if isinstance(iteration_count, bool) or not isinstance(iteration_count, int):
+            raise ChangePropagationTransactionError("iteration_count must be an integer")
+        if iteration_count < 1:
+            raise ChangePropagationTransactionError("iteration_count must be at least 1")
+        preimage = {
+            "schema": "ipfs_accelerate_py/agent-supervisor/propagation-finalize-receipt@1",
+            "plan_id": plan.plan_id,
+            "transaction_id": transaction.transaction_id,
+            "completion_id": completion_id.strip(),
+            "checkpoint_id": checkpoint.checkpoint_id,
+            "fixed_point_receipt_id": fixed_point_receipt_id.strip(),
+            "iteration_count": iteration_count,
+            "diagnostic_refs": list(diagnostic_refs),
+        }
+        finalize_id = content_identity(preimage)
+        return {
+            "schema": "ipfs_accelerate_py/agent-supervisor/propagation-finalize-receipt@1",
+            "finalize_id": finalize_id,
+            "transaction_id": transaction.transaction_id,
+            "plan_id": plan.plan_id,
+            "completion_id": completion_id.strip(),
+            "checkpoint_id": checkpoint.checkpoint_id,
+            "fixed_point_receipt_id": fixed_point_receipt_id.strip(),
+            "iteration_count": iteration_count,
+            "diagnostic_refs": list(diagnostic_refs),
+            "partial_merge_allowed": False,
+            "provider_success_is_not_completion": True,
+        }
+
+    def compensating_rollback(
+        self,
+        *,
+        plan: AtomicPropagationPlan,
+        transaction: PropagationTransaction,
+        checkpoint: PropagationCheckpoint,
+        reason_codes: Sequence[str],
+        diagnostic_refs: Sequence[str] = (),
+        failed_step_ids: Sequence[str] = (),
+        failed_group_id: str = "",
+    ) -> PropagationRollbackReceipt:
+        """Restore the checkpoint after fixed-point failure of a provisional commit.
+
+        Bound exhaustion, incompleteness, or validation failure after a
+        provisional COMMITTED mutation must call this path.  Partial completion
+        never yields a successful commit receipt.
+        """
+
+        if not isinstance(plan, AtomicPropagationPlan):
+            raise ChangePropagationTransactionError(
+                "compensating_rollback requires AtomicPropagationPlan@1"
+            )
+        if not isinstance(transaction, PropagationTransaction):
+            raise ChangePropagationTransactionError(
+                "compensating_rollback requires PropagationTransaction@1"
+            )
+        if not isinstance(checkpoint, PropagationCheckpoint):
+            raise ChangePropagationTransactionError(
+                "compensating_rollback requires a PropagationCheckpoint"
+            )
+        if transaction.state not in {
+            TransactionState.COMMITTED,
+            TransactionState.EXECUTING,
+            TransactionState.CHECKPOINTED,
+        }:
+            raise ChangePropagationTransactionError(
+                "compensating rollback requires a provisional or in-flight transaction"
+            )
+        if transaction.plan_id != plan.plan_id:
+            raise ChangePropagationTransactionError(
+                "rollback plan_id must match the transaction plan_id"
+            )
+        if transaction.checkpoint_id and transaction.checkpoint_id != checkpoint.checkpoint_id:
+            raise ChangePropagationTransactionError(
+                "rollback checkpoint must match the transaction checkpoint"
+            )
+        codes = tuple(
+            sorted(
+                {
+                    item.strip()
+                    for item in reason_codes
+                    if isinstance(item, str) and item.strip()
+                }
+            )
+        )
+        if not codes:
+            codes = (TransactionFailureReason.STEP_FAILURE.value,)
+
+        restored = False
+        try:
+            restored = bool(self.restore_adapter(checkpoint))
+        except Exception:  # noqa: BLE001
+            restored = False
+        if not restored:
+            raise ChangePropagationTransactionError(
+                "compensating checkpoint restore failed; candidate tree may be inconsistent"
+            )
+
+        diag = tuple(
+            dict.fromkeys(
+                list(diagnostic_refs)
+                + [
+                    f"diagnostic:compensating-rollback:{codes[0]}",
+                    f"diagnostic:checkpoint:{checkpoint.checkpoint_id}",
+                ]
+            )
+        )[:MAX_DIAGNOSTICS]
+        rollback_preimage = {
+            "schema": PROPAGATION_ROLLBACK_RECEIPT_SCHEMA,
+            "transaction_id": transaction.transaction_id,
+            "checkpoint_id": checkpoint.checkpoint_id,
+            "plan_id": plan.plan_id,
+            "reason_codes": list(codes),
+            "compensating": True,
+        }
+        return PropagationRollbackReceipt(
+            roots=plan.roots,
+            rollback_id=content_identity(rollback_preimage),
+            transaction_id=transaction.transaction_id,
+            checkpoint_id=checkpoint.checkpoint_id,
+            plan_id=plan.plan_id,
+            strategy_ref=plan.rollback_strategy_ref or checkpoint.strategy_ref,
+            restored=True,
+            reason_codes=codes,
+            diagnostic_refs=diag,
+            failed_step_ids=tuple(failed_step_ids),
+            failed_group_id=failed_group_id or "",
+        )
+
     # --- internals ---
 
     def _verify_before_hashes(

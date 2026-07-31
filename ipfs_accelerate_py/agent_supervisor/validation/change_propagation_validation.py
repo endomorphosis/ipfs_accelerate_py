@@ -1711,6 +1711,44 @@ def validate_change_propagation(
     )
 
 
+def validate_change_propagation_with_logic_fixed_point(
+    plan: AtomicPropagationPlan,
+    transaction: PropagationTransaction,
+    *,
+    evidence: CandidatePropagationEvidence,
+    logic_evidence: Any = None,
+    packet: ChangePropagationEditPacket | None = None,
+    execution_report: TransactionExecutionReport | None = None,
+    fixed_point_bound: int | None = None,
+    restore_adapter: Any = None,
+    checkpoint: Any = None,
+    require_logic_evidence: bool = False,
+) -> Any:
+    """Joint program+logic fixed-point via :class:`LogicRepairFixedPointValidator`.
+
+    Extends the program-only :func:`validate_change_propagation` path without
+    weakening any legacy fixed-point condition.  When ``logic_evidence`` is
+    supplied, per-iteration logic rebuild/replan/reprove evidence is validated
+    and attached to the existing completion receipt.
+    """
+
+    from .logic_repair_fixed_point import LogicRepairFixedPointValidator
+
+    return LogicRepairFixedPointValidator(
+        require_logic_evidence=require_logic_evidence
+    ).validate(
+        plan,
+        transaction,
+        program_evidence=evidence,
+        logic_evidence=logic_evidence,
+        packet=packet,
+        execution_report=execution_report,
+        fixed_point_bound=fixed_point_bound,
+        restore_adapter=restore_adapter,
+        checkpoint=checkpoint,
+    )
+
+
 __all__ = [
     "CHANGE_PROPAGATION_VALIDATOR_INTERFACE",
     "DEFAULT_FIXED_POINT_BOUND",
@@ -1742,6 +1780,7 @@ __all__ = [
     "ValidationStage",
     "build_passing_tool_evidence",
     "validate_change_propagation",
+    "validate_change_propagation_with_logic_fixed_point",
     # Canonical re-exports
     "AtomicPropagationPlan",
     "CompletionDisposition",
