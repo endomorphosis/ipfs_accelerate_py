@@ -23916,8 +23916,12 @@ class PortalImplementationDaemon:
         normalization_notes: list[str] = []
         for raw_command in task.validation:
             command, notes = self._normalize_validation_command(raw_command)
+            command, workspace_notes = (
+                self._bind_workspace_validation_pythonpath(command)
+            )
             commands.append(command)
             normalization_notes.extend(notes)
+            normalization_notes.extend(workspace_notes)
 
         # Validation is the last gate before a candidate is committed/enqueued
         # (or before an in-place task is marked complete).  Impact selection is
@@ -24477,6 +24481,80 @@ class PortalImplementationDaemon:
                     normalized = updated
                     notes.append(f"removed unsupported TypeScript flag {flag}")
         return normalized, notes
+
+    @staticmethod
+    def _validation_command_declares_pythonpath(command: str) -> bool:
+        """Return whether reviewed command text supplies its own PYTHONPATH."""
+
+        try:
+            lexer = shlex.shlex(
+                command,
+                posix=True,
+                punctuation_chars=";&|()<>",
+            )
+            lexer.whitespace_split = True
+            lexer.commenters = ""
+            tokens = lexer
+            return any(
+                re.match(r"^PYTHONPATH(?:\+)?=", token) is not None
+                for token in tokens
+            )
+        except ValueError:
+            # The sealed validation runtime reports malformed shell quoting.
+            # Do not turn normalization into a separate failure surface.
+            return False
+
+    @staticmethod
+    def _validation_command_uses_python(command: str) -> bool:
+        """Return whether command text invokes a Python-family entry point."""
+
+        try:
+            lexer = shlex.shlex(
+                command,
+                posix=True,
+                punctuation_chars=";&|()<>",
+            )
+            lexer.whitespace_split = True
+            lexer.commenters = ""
+            return any(
+                re.fullmatch(
+                    r"(?:python(?:3(?:\.\d+)*)?|pytest)",
+                    Path(token).name,
+                )
+                is not None
+                for token in lexer
+            )
+        except ValueError:
+            return False
+
+    def _bind_workspace_validation_pythonpath(
+        self,
+        command: str,
+    ) -> tuple[str, list[str]]:
+        """Expose configured sibling repositories to sealed Python validation.
+
+        Validation intentionally drops the supervisor's inherited PYTHONPATH.
+        Worktree submodule roots are operator-reviewed, repo-relative inputs,
+        so bind them explicitly for each task command.  ``$PWD`` is expanded
+        before a command can change directory, while the rendered command text
+        remains stable across ephemeral worktree locations and cache keys.
+        """
+
+        if (
+            not self.worktree_submodule_paths
+            or not self._validation_command_uses_python(command)
+            or self._validation_command_declares_pythonpath(command)
+        ):
+            return command, []
+
+        roots = os.pathsep.join(
+            f'"$PWD"/{shlex.quote(relative)}'
+            for relative in self.worktree_submodule_paths
+        )
+        bound = f"export PYTHONPATH={roots}; {command}"
+        return bound, [
+            "bound configured worktree submodule roots to validation PYTHONPATH"
+        ]
 
     def _main_branch_name(self) -> str:
         if self.merge_target_branch:
