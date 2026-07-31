@@ -27,6 +27,12 @@ describe the already-enforced key population, semantic-dependency binding, and
 fail-closed stale/negative policy; neither the evidence label nor goal
 metadata is allowed to become a key dimension or completion claim.
 
+The frozen :class:`CacheInvalidationProof` descriptor binds those executable
+cache guarantees and the CID profile to ``vfs/cache-invalidation-proof@1``
+(VFS-G150 / VFS-089).  Its aggregate lineage is exactly VFS-G031, VFS-G141,
+and VFS-G142, keeping supervisor discovery aligned with the objective heap
+without making the descriptor itself completion authority.
+
 VFS-G030 (parent) and VFS-G031's synthetic ``objective validation repair``
 marker are exposed only through evidence-discovery helpers.  They never enter
 cache keys or receipts.  The VFS-087 content-addressing packet
@@ -123,6 +129,9 @@ DEPENDENCY_CACHE_PROFILE_SCHEMA: Final = DEPENDENCY_CACHE_SCHEMA
 CONTENT_ADDRESSING_PACKET_SCHEMA: Final = (
     "ipfs_accelerate_py/agent-supervisor/content-addressing-evidence-packet@1"
 )
+CACHE_INVALIDATION_PROOF_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/cache-invalidation-proof@1"
+)
 DEPENDENCY_CACHE_EVIDENCE: Final = "vfs/dependency-cache@1"
 # Exact objective-heap discovery key and its supervisor-fed packet bindings.
 DEPENDENCY_CACHE_GOAL_ID: Final = "VFS-G142"
@@ -183,6 +192,43 @@ OBJECTIVE_GOAL_PACKET_IDS: Final[tuple[str, ...]] = (
     CID_PROFILE_GOAL_ID,
 )
 OBJECTIVE_GAP_TASK_ID: Final = "VFS-057"
+# VFS-G150 closes the aggregate proof obligation surfaced by VFS-089.  The
+# aggregate has no generated goal-packet id in the heap, so preserve its exact
+# source goal lineage instead of inventing a packet identifier.
+CACHE_INVALIDATION_PROOF_GOAL_ID: Final = "VFS-G150"
+CACHE_INVALIDATION_PROOF_TASK_ID: Final = "VFS-089"
+CACHE_INVALIDATION_PROOF_PARENT_GOAL_ID: Final = OBJECTIVE_GOAL_ID
+CACHE_INVALIDATION_PROOF_AGGREGATE_GOAL_IDS: Final[tuple[str, ...]] = (
+    OBJECTIVE_GOAL_ID,
+    CID_PROFILE_GOAL_ID,
+    DEPENDENCY_CACHE_GOAL_ID,
+)
+CACHE_INVALIDATION_PROOF_AGGREGATE_EVIDENCE_TERMS: Final[
+    tuple[str, ...]
+] = (
+    CACHE_INVALIDATION_PROOF_EVIDENCE,
+    CID_PROFILE_EVIDENCE,
+    DEPENDENCY_CACHE_EVIDENCE,
+)
+CACHE_INVALIDATION_PROOF_COMPLETION_GOAL_BINDINGS: Final[
+    tuple[tuple[str, tuple[str, ...]], ...]
+] = (
+    (OBJECTIVE_GOAL_ID, (CACHE_INVALIDATION_PROOF_EVIDENCE,)),
+    (CID_PROFILE_GOAL_ID, (CID_PROFILE_EVIDENCE,)),
+    (DEPENDENCY_CACHE_GOAL_ID, (DEPENDENCY_CACHE_EVIDENCE,)),
+)
+CACHE_INVALIDATION_PROOF_INVARIANTS: Final[tuple[str, ...]] = (
+    "every changed cache identity dimension invalidates",
+    "unrelated cache components remain reusable",
+    "transitive runtime dependents invalidate",
+    "concurrent exact misses collapse under single flight",
+    "failed flights clean up before retry",
+    "retained receipts and artifacts stay within count and byte bounds",
+    "CIDv1 base32 dag-json raw sha2-256 identities are reproducible",
+    "existing supervisor identities retain compatibility mappings",
+    "all semantic dependencies and policy versions participate in cache keys",
+    "corrupt stale and negative results fail closed",
+)
 
 # Keep exact-text discovery anchors aligned across the VFS-G030 surface.
 assert OBJECTIVE_VALIDATION_REPAIR_EVIDENCE == "objective validation repair"
@@ -199,6 +245,20 @@ assert CONTENT_ADDRESSING_PACKET_TASK_ID == CID_PROFILE_TASK_ID
 assert CONTENT_ADDRESSING_PACKET_TASK_ID == "VFS-087"
 assert CONTENT_ADDRESSING_PACKET_GOAL_IDS == ("VFS-G141", "VFS-G142")
 assert CONTENT_ADDRESSING_PACKET_EVIDENCE_TERMS == (
+    "vfs/cid-profile@1",
+    "vfs/dependency-cache@1",
+)
+assert CACHE_INVALIDATION_PROOF_EVIDENCE == "vfs/cache-invalidation-proof@1"
+assert CACHE_INVALIDATION_PROOF_GOAL_ID == "VFS-G150"
+assert CACHE_INVALIDATION_PROOF_TASK_ID == "VFS-089"
+assert CACHE_INVALIDATION_PROOF_PARENT_GOAL_ID == "VFS-G031"
+assert CACHE_INVALIDATION_PROOF_AGGREGATE_GOAL_IDS == (
+    "VFS-G031",
+    "VFS-G141",
+    "VFS-G142",
+)
+assert CACHE_INVALIDATION_PROOF_AGGREGATE_EVIDENCE_TERMS == (
+    "vfs/cache-invalidation-proof@1",
     "vfs/cid-profile@1",
     "vfs/dependency-cache@1",
 )
@@ -586,8 +646,121 @@ class ContentAddressingEvidencePacket:
         }
 
 
+@dataclass(frozen=True)
+class CacheInvalidationProof:
+    """Closed VFS-G150 descriptor for the cache-invalidation proof contract.
+
+    This is supervisor discovery evidence, not a cache key, CID input, or
+    completion-authority grant.  The booleans and invariant vocabulary are
+    frozen to behavior exercised by the cache, RuntimeCAS, multiformats, and
+    their focused tests.
+    """
+
+    schema: str = CACHE_INVALIDATION_PROOF_SCHEMA
+    evidence: str = CACHE_INVALIDATION_PROOF_EVIDENCE
+    goal_id: str = CACHE_INVALIDATION_PROOF_GOAL_ID
+    parent_goal_id: str = CACHE_INVALIDATION_PROOF_PARENT_GOAL_ID
+    task_id: str = CACHE_INVALIDATION_PROOF_TASK_ID
+    aggregate_goal_ids: tuple[
+        str, ...
+    ] = CACHE_INVALIDATION_PROOF_AGGREGATE_GOAL_IDS
+    aggregate_evidence_terms: tuple[
+        str, ...
+    ] = CACHE_INVALIDATION_PROOF_AGGREGATE_EVIDENCE_TERMS
+    completion_goal_bindings: tuple[
+        tuple[str, tuple[str, ...]], ...
+    ] = CACHE_INVALIDATION_PROOF_COMPLETION_GOAL_BINDINGS
+    invariants: tuple[str, ...] = CACHE_INVALIDATION_PROOF_INVARIANTS
+    exact_identity_invalidation: bool = True
+    unrelated_reuse: bool = True
+    transitive_invalidation: bool = True
+    single_flight: bool = True
+    failed_flight_cleanup: bool = True
+    bounded_retention: bool = True
+    cid_profile_bound: bool = True
+    semantic_dependencies_bound: bool = True
+    fail_closed: bool = True
+    completion_authoritative: bool = False
+
+    def __post_init__(self) -> None:
+        expected = (
+            CACHE_INVALIDATION_PROOF_SCHEMA,
+            CACHE_INVALIDATION_PROOF_EVIDENCE,
+            CACHE_INVALIDATION_PROOF_GOAL_ID,
+            CACHE_INVALIDATION_PROOF_PARENT_GOAL_ID,
+            CACHE_INVALIDATION_PROOF_TASK_ID,
+            CACHE_INVALIDATION_PROOF_AGGREGATE_GOAL_IDS,
+            CACHE_INVALIDATION_PROOF_AGGREGATE_EVIDENCE_TERMS,
+            CACHE_INVALIDATION_PROOF_COMPLETION_GOAL_BINDINGS,
+            CACHE_INVALIDATION_PROOF_INVARIANTS,
+            True,
+            True,
+            True,
+            True,
+            True,
+            True,
+            True,
+            True,
+            True,
+            False,
+        )
+        actual = (
+            self.schema,
+            self.evidence,
+            self.goal_id,
+            self.parent_goal_id,
+            self.task_id,
+            self.aggregate_goal_ids,
+            self.aggregate_evidence_terms,
+            self.completion_goal_bindings,
+            self.invariants,
+            self.exact_identity_invalidation,
+            self.unrelated_reuse,
+            self.transitive_invalidation,
+            self.single_flight,
+            self.failed_flight_cleanup,
+            self.bounded_retention,
+            self.cid_profile_bound,
+            self.semantic_dependencies_bound,
+            self.fail_closed,
+            self.completion_authoritative,
+        )
+        if actual != expected:
+            raise ProgramAnalysisCacheValidationError(
+                "cache-invalidation proof is frozen to the VFS-G150 "
+                "VFS-G031/G141/G142 aggregate contract"
+            )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": self.schema,
+            "evidence": self.evidence,
+            "goal_id": self.goal_id,
+            "parent_goal_id": self.parent_goal_id,
+            "task_id": self.task_id,
+            "aggregate_goal_ids": list(self.aggregate_goal_ids),
+            "aggregate_evidence_terms": list(self.aggregate_evidence_terms),
+            "completion_goal_bindings": {
+                goal_id: list(terms)
+                for goal_id, terms in self.completion_goal_bindings
+            },
+            "invariants": list(self.invariants),
+            "exact_identity_invalidation": self.exact_identity_invalidation,
+            "unrelated_reuse": self.unrelated_reuse,
+            "transitive_invalidation": self.transitive_invalidation,
+            "single_flight": self.single_flight,
+            "failed_flight_cleanup": self.failed_flight_cleanup,
+            "bounded_retention": self.bounded_retention,
+            "cid_profile_bound": self.cid_profile_bound,
+            "semantic_dependencies_bound": self.semantic_dependencies_bound,
+            "fail_closed": self.fail_closed,
+            "completion_authoritative": self.completion_authoritative,
+        }
+
+
 _DEPENDENCY_CACHE_PROFILE: Final = DependencyCacheProfile()
 _CONTENT_ADDRESSING_EVIDENCE_PACKET: Final = ContentAddressingEvidencePacket()
+_CACHE_INVALIDATION_PROOF: Final = CacheInvalidationProof()
 
 
 def _canonical_json_bytes(value: Any) -> bytes:
@@ -2317,6 +2490,30 @@ def dependency_cache_evidence_terms() -> tuple[str, ...]:
     return (DEPENDENCY_CACHE_EVIDENCE,)
 
 
+def cache_invalidation_proof() -> CacheInvalidationProof:
+    """Return the immutable VFS-G150 aggregate proof descriptor."""
+
+    return _CACHE_INVALIDATION_PROOF
+
+
+def cache_invalidation_proof_evidence_terms() -> tuple[str, ...]:
+    """Return the exact VFS-G150 objective evidence discovery term."""
+
+    return (CACHE_INVALIDATION_PROOF_EVIDENCE,)
+
+
+def cache_invalidation_proof_aggregate_evidence_terms() -> tuple[str, ...]:
+    """Return proof + CID-profile + dependency-cache evidence in heap order."""
+
+    return CACHE_INVALIDATION_PROOF_AGGREGATE_EVIDENCE_TERMS
+
+
+def cache_invalidation_proof_aggregate_goal_ids() -> tuple[str, ...]:
+    """Return the exact VFS-G031/G141/G142 aggregate lineage for VFS-G150."""
+
+    return CACHE_INVALIDATION_PROOF_AGGREGATE_GOAL_IDS
+
+
 def content_addressing_packet_evidence_terms() -> tuple[str, ...]:
     """Return shared packet evidence for VFS-G141 and VFS-G142.
 
@@ -2651,7 +2848,16 @@ ProgramAnalysisReceipt = AnalysisReceipt
 
 
 __all__ = [
+    "CACHE_INVALIDATION_PROOF_AGGREGATE_EVIDENCE_TERMS",
+    "CACHE_INVALIDATION_PROOF_AGGREGATE_GOAL_IDS",
+    "CACHE_INVALIDATION_PROOF_COMPLETION_GOAL_BINDINGS",
     "CACHE_INVALIDATION_PROOF_EVIDENCE",
+    "CACHE_INVALIDATION_PROOF_GOAL_ID",
+    "CACHE_INVALIDATION_PROOF_INVARIANTS",
+    "CACHE_INVALIDATION_PROOF_PARENT_GOAL_ID",
+    "CACHE_INVALIDATION_PROOF_SCHEMA",
+    "CACHE_INVALIDATION_PROOF_TASK_ID",
+    "CacheInvalidationProof",
     "CID_PROFILE_EVIDENCE",
     "CID_PROFILE_GOAL_ID",
     "CONTENT_ADDRESSING_GOAL_PACKET_ID",
@@ -2701,6 +2907,10 @@ __all__ = [
     "ProgramAnalysisStoreResult",
     "build_program_analysis_cache_key",
     "all_covered_evidence_terms",
+    "cache_invalidation_proof",
+    "cache_invalidation_proof_aggregate_evidence_terms",
+    "cache_invalidation_proof_aggregate_goal_ids",
+    "cache_invalidation_proof_evidence_terms",
     "canonical_program_analysis_json",
     "compact_program_analysis_receipt",
     "content_addressing_evidence_packet",
