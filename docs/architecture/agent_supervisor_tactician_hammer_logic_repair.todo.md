@@ -198,7 +198,7 @@ expectations under existing precedence, but do not prove them by passing.
 
 ## LPR-005 Build an independent content-addressed program premise corpus
 
-- Status: todo
+- Status: completed
 - Completion: auto
 - Is schedulable: true
 - Review only: false
