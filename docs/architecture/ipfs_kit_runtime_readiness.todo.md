@@ -799,7 +799,7 @@ or write authority.
 
 ## KITA-025 Prove ARC coherence, randomized invariants, restart, and performance
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
