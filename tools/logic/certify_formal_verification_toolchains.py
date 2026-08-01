@@ -47,6 +47,16 @@ ROLE_AWARE_INTERFACE: Final = "RoleAwareFormalVerificationRelease@1"
 ROLE_AWARE_GOAL_ID: Final = "FVT-G200"
 ROLE_AWARE_TASK_ID: Final = "FVT-053"
 
+# Pre-merge release candidate fan-in (FVT-G213 / FVT-066). The certificate
+# remains the bound matrix; the candidate artifact is assembled by the
+# receipt builder and never claims merge or deployment.
+RELEASE_CANDIDATE_INTERFACE: Final = (
+    "RoleAwareFormalVerificationReleaseCandidate@1"
+)
+RELEASE_CANDIDATE_GOAL_ID: Final = "FVT-G213"
+RELEASE_CANDIDATE_TASK_ID: Final = "FVT-066"
+RELEASE_CANDIDATE_MAX_STAGE: Final = "release_candidate"
+
 # Lossless specialized receipt aggregation (FVT-G203 / FVT-065).
 SPECIALIZED_AGGREGATION_INTERFACE: Final = (
     "FormalVerificationSpecializedReceiptAggregation@1"
@@ -63,6 +73,9 @@ DEFAULT_CERTIFICATE_RELATIVE: Final = Path(
 )
 DEFAULT_ROLE_AWARE_RECEIPT_RELATIVE: Final = Path(
     "docs/architecture/formal_verification_role_aware_deployment_receipt.json"
+)
+DEFAULT_RELEASE_CANDIDATE_RELATIVE: Final = Path(
+    "docs/architecture/formal_verification_role_aware_release_candidate.json"
 )
 
 PROBE_TIMEOUT_SECONDS: Final = 5.0
@@ -4124,6 +4137,17 @@ def build_certificate(
                 "coq",
                 "isabelle",
             ],
+            "release_candidate": {
+                "interface": RELEASE_CANDIDATE_INTERFACE,
+                "goal_id": RELEASE_CANDIDATE_GOAL_ID,
+                "task_id": RELEASE_CANDIDATE_TASK_ID,
+                "max_stage": RELEASE_CANDIDATE_MAX_STAGE,
+                "path": str(DEFAULT_RELEASE_CANDIDATE_RELATIVE).replace(
+                    "\\", "/"
+                ),
+                "claims_merge": False,
+                "claims_deployment": False,
+            },
         },
         "check_kinds_required": ["positive", "negative", "mutation", "replay"],
         "evidence": {
@@ -4133,6 +4157,13 @@ def build_certificate(
             ),
             "role_aware_integration_test": (
                 "test/integration/test_formal_verification_role_aware_completion.py"
+            ),
+            "release_candidate_integration_test": (
+                "test/integration/"
+                "test_formal_verification_role_aware_release_candidate.py"
+            ),
+            "release_candidate": str(DEFAULT_RELEASE_CANDIDATE_RELATIVE).replace(
+                "\\", "/"
             ),
             "lock": str(DEFAULT_LOCK_RELATIVE).replace("\\", "/"),
         },
