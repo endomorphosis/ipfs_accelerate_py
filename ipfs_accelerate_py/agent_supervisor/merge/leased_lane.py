@@ -27,6 +27,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal
 
+from ..release_evidence import (
+    MEMBER_COMPLETION_RECEIPT_SCHEMA as _MEMBER_COMPLETION_RECEIPT_SCHEMA,
+)
 from ..runtime.event_log import event_log_sources, read_jsonl_events
 from .lease_coordination import LeaseCoordinator, LeaseError, LeaseGrant
 from ..todo_daemon.core import terminate_pid_tree
@@ -240,9 +243,9 @@ def _execution_slice_violation(
     return active_task_id
 
 
-_MEMBER_COMPLETION_RECEIPT_SCHEMA = (
-    "ipfs_accelerate_py.agent_supervisor.member_completion_receipt@1"
-)
+# Durable member receipts share one schema with AgentSupervisorReleaseEvidence@1.
+# The constant is imported from release_evidence so G212 exports and leased-lane
+# completion fencing cannot drift.
 _TASK_ATTEMPT_LIMIT_IDLE_REASON = (
     "all_selectable_ready_tasks_reached_max_task_attempts"
 )

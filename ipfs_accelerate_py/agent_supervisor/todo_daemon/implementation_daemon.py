@@ -46,6 +46,14 @@ from ..context.context_contracts import (
     ContextCapsule,
 )
 from ..proof.formal_verification_contracts import canonical_json, content_identity
+from ..release_evidence import (
+    EXPECTED_OUTPUT_ABSENT_FROM_PROPOSAL,
+    EXPECTED_OUTPUT_FORCE_ADD_FAILED,
+    EXPECTED_OUTPUT_FORCE_ADD_FORBIDDEN,
+    EXPECTED_OUTPUT_IGNORED_OR_UNSTAGED,
+    EXPECTED_OUTPUT_MISSING,
+    MEMBER_COMPLETION_RECEIPT_SCHEMA,
+)
 from ..implementation_timeout import (
     DEFAULT_IMPLEMENTATION_TIMEOUT_SECONDS,
     effective_implementation_hard_timeout,
@@ -11270,7 +11278,7 @@ class PortalImplementationDaemon:
             if identity is None:
                 continue
             member_receipt = {
-                    "schema": "ipfs_accelerate_py.agent_supervisor.member_completion_receipt@1",
+                    "schema": MEMBER_COMPLETION_RECEIPT_SCHEMA,
                     "task_id": task_id,
                     "canonical_task_key": identity.canonical_task_key,
                     "canonical_task_cid": identity.canonical_task_cid,
@@ -21671,7 +21679,7 @@ class PortalImplementationDaemon:
         if declared_output_invariant.get("passed") is not True:
             result: dict[str, Any] = {
                 "committed": False,
-                "reason": "expected_output_ignored_or_unstaged",
+                "reason": EXPECTED_OUTPUT_IGNORED_OR_UNSTAGED,
                 "declared_output_invariant": declared_output_invariant,
             }
             if submodule_results:
@@ -22923,6 +22931,12 @@ class PortalImplementationDaemon:
                         continue
                     candidates.add(child_relative)
 
+        protected_paths = tuple(
+            str(path).strip("/")
+            for path in self.implementation_protected_paths
+            if str(path).strip("/")
+        )
+        default_forbidden = (".git", ".git/", ".env", ".ssh/")
         ignored_candidates: list[str] = []
         ignored_bytes = 0
         for relative in sorted(candidates):
@@ -22935,6 +22949,17 @@ class PortalImplementationDaemon:
             except (OSError, RuntimeError, ValueError):
                 continue
             if not stat_module.S_ISREG(target_stat.st_mode):
+                continue
+            # G212: protected and fence paths are never force-added, even when
+            # they appear as exact declared ignored outputs. Preflight rejects
+            # those proposals with expected_output_ignored_or_unstaged instead.
+            if any(
+                self._path_matches_scope(relative, path)
+                for path in protected_paths
+            ) or any(
+                self._path_matches_scope(relative, path)
+                for path in default_forbidden
+            ) or self._path_crosses_live_symlink(workspace_path, relative):
                 continue
             ignored = subprocess.run(
                 ["git", "check-ignore", "--quiet", "--", relative],
@@ -22965,7 +22990,14 @@ class PortalImplementationDaemon:
         staged: list[str] = []
         for relative in ignored_candidates:
             add = subprocess.run(
-                ["git", "add", "-f", "--", relative],
+                [
+                    "git",
+                    "--literal-pathspecs",
+                    "add",
+                    "--force",
+                    "--",
+                    relative,
+                ],
                 cwd=workspace_path,
                 text=True,
                 capture_output=True,
@@ -24545,7 +24577,7 @@ class PortalImplementationDaemon:
             issue = ""
 
             if not exists:
-                issue = "expected_output_missing"
+                issue = EXPECTED_OUTPUT_MISSING
             elif force_stage_required:
                 if (
                     protected
@@ -24555,7 +24587,7 @@ class PortalImplementationDaemon:
                     or not in_scope
                     or not regular_file
                 ):
-                    issue = "expected_output_force_add_forbidden"
+                    issue = EXPECTED_OUTPUT_FORCE_ADD_FORBIDDEN
                 else:
                     force_stage_attempted = True
                     staged = subprocess.run(
@@ -24580,7 +24612,7 @@ class PortalImplementationDaemon:
                         )
                     )
                     if not force_stage_succeeded:
-                        issue = "expected_output_force_add_failed"
+                        issue = EXPECTED_OUTPUT_FORCE_ADD_FAILED
 
             checks.append(
                 {
@@ -24618,7 +24650,7 @@ class PortalImplementationDaemon:
                 )
                 and not check["issue"]
             ):
-                check["issue"] = "expected_output_ignored_or_unstaged"
+                check["issue"] = EXPECTED_OUTPUT_IGNORED_OR_UNSTAGED
 
         return {
             "schema": (
@@ -24680,7 +24712,7 @@ class PortalImplementationDaemon:
                 continue
             reason = str(raw_check.get("issue") or "").strip()
             if (
-                reason == "expected_output_missing"
+                reason == EXPECTED_OUTPUT_MISSING
                 and any(
                     old_path == relative
                     and new_path in expected_paths
@@ -24700,13 +24732,13 @@ class PortalImplementationDaemon:
                 and raw_check.get("needs_candidate") is True
                 and not represented
             ):
-                reason = "expected_output_absent_from_proposal"
+                reason = EXPECTED_OUTPUT_ABSENT_FROM_PROPOSAL
             if (
                 not reason
                 and raw_check.get("force_stage_required") is True
                 and raw_check.get("staged") is not True
             ):
-                reason = "expected_output_ignored_or_unstaged"
+                reason = EXPECTED_OUTPUT_IGNORED_OR_UNSTAGED
             if reason:
                 issues.append({"path": relative, "reason": reason})
         return tuple(
