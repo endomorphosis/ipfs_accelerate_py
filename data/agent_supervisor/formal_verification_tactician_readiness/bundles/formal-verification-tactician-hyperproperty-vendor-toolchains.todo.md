@@ -70,3 +70,72 @@ Conflict policy: keep edits inside this bundle when possible; use the LLM merge 
 - Candidate kind: aggregate
 - Todo vector key: 24f5c575a74f68f1
 - Acceptance: Objective scan filed this gap for FVT-G208. Use evidence in /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-07-31-fvt-061-objective-gap-2bef952f34f6.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (test/integration/toolchains/test_hyperproperty_vendor_toolchain_certification.py, docs/architecture/formal_verification_hyperproperty_vendor_install_receipt.json), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
+
+## FVT-077 FVT: Install and live-certify supported hyperproperty engines
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: external-capability
+- Depends on: FVT-046, FVT-064, FVT-062
+- Outputs: config/formal_verification_toolchains.lock.json, ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/hyperproperty.py, tools/logic/certification/hyperproperty.py, test/integration/toolchains/test_hyperproperty_vendor_toolchain_certification.py, docs/architecture/formal_verification_hyperproperty_vendor_install_receipt.json
+- Validation: PYTHONPATH=ipfs_datasets_py python -m pytest test/integration/toolchains/test_hyperproperty_vendor_toolchain_certification.py test/integration/toolchains/test_hyperproperty_toolchain_certification.py -q
+- Board namespace: formal_verification_tactician_readiness.todo.md
+- Evidence inputs: data/agent_supervisor/discovery
+- Discovery evidence: /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-01-fvt-077-objective-gap-2a9b90e8b401.md
+- Bundle: formal-verification-tactician/hyperproperty-vendor-toolchains
+- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-hyperproperty-vendor-toolchains.todo.md
+- Bundle strategy: explicit
+- Graph parents: FVT-G000
+- Graph depth: 1
+- Objective heap index: 9
+- Parallel lane: formal-verification-tactician/hyperproperty-vendor-toolchains
+- Conflict policy: Own vendor acquisition, correct per-product pins, dependencies, and live adapters; preserve bounded authority and never relabel the existing hermetic engines.
+- Predicted files: config/formal_verification_toolchains.lock.json, ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/hyperproperty.py, tools/logic/certification/hyperproperty.py, test/integration/toolchains/test_hyperproperty_vendor_toolchain_certification.py, docs/architecture/formal_verification_hyperproperty_vendor_install_receipt.json
+- Changed paths:
+- Context paths: config/formal_verification_toolchains.lock.json, ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/hyperproperty.py, tools/logic/certification/hyperproperty.py, test/integration/toolchains/test_hyperproperty_vendor_toolchain_certification.py, docs/architecture/formal_verification_hyperproperty_vendor_install_receipt.json
+- AST symbols: test/integration/toolchains/test_hyperproperty_vendor_toolchain_certification.py, docs/architecture/formal_verification_hyperproperty_vendor_install_receipt.json
+- Interfaces: HyperpropertyVendorToolchainCertification@1
+- Submodules: ipfs_datasets_py
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: FVT-G208
+- Completion authority: local
+- External authority blockers:
+- Canonical task key: task/v1/a4d3c2a2f9464a5ca8e2ef474dacb6e18b7b8f1428f3932450fe173b153f3d32
+- Canonical task CID: baguqeerautj4fixzizffzkhc55du3lfw4gfxxdyufdzzgjcq7yltwfj7huza
+- Semantic identity: objective-evidence-obligation/v1/8c9fd517025fdca792ac11a96795432af31197a5d1aba3403633bfc93fe7c849
+- Acceptance subset: AutoHyper binds its official revision, .NET runtime, Spot tools, build inputs, executable digest, and live semantic cases, MCHyper binds its official revision, ABC/AIGER dependencies, supported fragment, and live witness/counterexample cases, the selected HyperLTL satisfiability engine has its own correct upstream identity and decidable-fragment ceiling, satisfaction, violation, observation/quantifier mutation, replay, malformed output, timeout, disagreement, and exact bounds execute through real binaries, linux-aarch64 remains supported only if that complete chain is real, case-oracle, hermetic shim, fixture, parser, or canned output cannot satisfy this goal.
+- Preconditions: objective goal FVT-G208 is schedulable
+- Effects: satisfy evidence requirement: objective validation repair
+- Evidence subset: objective validation repair
+- Resource class: cpu-proof-solver
+- Token class: medium
+- Estimated tokens: 0
+- Context budget tokens: 4096
+- Provider role: grok-implement, codex-review
+- Resources: cpu-proof-solver
+- Merge fate: objective/FVT-G208
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/8c9fd517025fdca792ac11a96795432af31197a5d1aba3403633bfc93fe7c849
+- Missing evidence: objective validation repair
+- Embedding query: Correct the upstream identities and deploy real HyperLTL satisfiability, AutoHyper, and MCHyper toolchains on every declared supported host.
+- AST query: test/integration/toolchains/test_hyperproperty_vendor_toolchain_certification.py, docs/architecture/formal_verification_hyperproperty_vendor_install_receipt.json
+- Surplus group: objective/FVT-G208
+- Merge key: 38cec81b689b7c73
+- Merge family: objective/FVT-G208
+- Merge role: validation_gate
+- Work item count: 1
+- Work scope: objective_validation_repair
+- Goal packet:
+- Goal packet role:
+- Goal packet goals:
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: validation_gate
+- Todo vector key: 24c9a6d6f4dfdfe4
+- Acceptance: Objective scan filed this gap for FVT-G208. Use evidence in /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-01-fvt-077-objective-gap-2a9b90e8b401.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (objective validation repair), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.

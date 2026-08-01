@@ -22,6 +22,9 @@ from ipfs_accelerate_py.agent_supervisor import (
     scan_objective_gaps,
     submit_bundle_tasks,
 )
+from ipfs_accelerate_py.agent_supervisor.core.conflict_graph import (
+    build_task_work_contract,
+)
 from ipfs_accelerate_py.agent_supervisor.merge.merge_resolver import (
     MergeResolverCliConfig,
     build_llm_merge_resolver_invoker,
@@ -4493,6 +4496,138 @@ def test_bundle_regeneration_preserves_projected_task_status(tmp_path):
     regenerated_task = regenerated["bundles"]["objective/ops/root"]["tasks"][0]
     assert regenerated_task["status"] == "completed"
     assert regenerated["completed_task_ids"] == ["ACCEL-002"]
+
+
+def test_bundle_regeneration_rehydrates_contract_bound_dependency_projection(
+    tmp_path,
+):
+    repo, objective_path, todo_path = _seed_repo(tmp_path)
+    discovery_dir = repo / "data" / "agent_supervisor" / "discovery"
+    bundle_dir = repo / "data" / "agent_supervisor" / "objective_bundles"
+    records = generate_objective_todos(
+        repo_root=repo,
+        objective_path=objective_path,
+        todo_path=todo_path,
+        discovery_dir=discovery_dir,
+        bundle_dir=bundle_dir,
+        task_prefix="ACCEL-",
+        max_findings=1,
+        persist_ast_dataset=False,
+        write_todo_vector_index=False,
+    )
+    index_path = bundle_dir / "index.json"
+    index = json.loads(index_path.read_text(encoding="utf-8"))
+    task = index["bundles"]["objective/ops/root"]["tasks"][0]
+    contract = build_task_work_contract(task)
+    task.update(
+        {
+            "work_contract": contract._material(),
+            "work_contract_id": contract.work_contract_id,
+            "task_work_contract": contract.to_dict(),
+            "task_work_contract_id": contract.task_work_contract_id,
+            # Dependency planning is an execution projection written after
+            # admission. It must not rotate or invalidate the admitted
+            # display-ID work contract on the next generator pass.
+            "dependency_task_cids": ["cid-resolved-upstream"],
+        }
+    )
+    index_path.write_text(json.dumps(index), encoding="utf-8")
+
+    second_finding = replace(
+        records[0].finding,
+        fingerprint="second-pass-projection",
+        goal_id="VAIOS-G999",
+        summary="Generate a second bundle",
+        missing_evidence=["second-pass evidence"],
+        outputs=["src/second_pass.py"],
+        predicted_files=["src/second_pass.py"],
+        bundle_key="objective/ops/second-pass",
+        dedupe_key="objective:VAIOS-G999:second-pass",
+        semantic_identity="objective:VAIOS-G999:second-pass",
+    )
+    second_records = generate_objective_todos(
+        repo_root=repo,
+        objective_path=objective_path,
+        todo_path=todo_path,
+        discovery_dir=discovery_dir,
+        bundle_dir=bundle_dir,
+        task_prefix="ACCEL-",
+        precomputed_findings=[second_finding],
+        persist_ast_dataset=False,
+        write_todo_vector_index=False,
+    )
+
+    assert len(second_records) == 1
+    regenerated = json.loads(index_path.read_text(encoding="utf-8"))
+    regenerated_task = next(
+        item
+        for item in regenerated["bundles"]["objective/ops/root"]["tasks"]
+        if item["task_id"] == task["task_id"]
+    )
+    assert regenerated_task["work_contract_id"] == contract.work_contract_id
+    assert regenerated_task["task_work_contract_id"] == (
+        contract.task_work_contract_id
+    )
+    assert regenerated_task["dependency_task_cids"] == []
+
+
+def test_objective_regeneration_recovers_card_missing_from_bundle_index(
+    tmp_path,
+):
+    repo, objective_path, todo_path = _seed_repo(tmp_path)
+    discovery_dir = repo / "data" / "agent_supervisor" / "discovery"
+    bundle_dir = repo / "data" / "agent_supervisor" / "objective_bundles"
+    records = generate_objective_todos(
+        repo_root=repo,
+        objective_path=objective_path,
+        todo_path=todo_path,
+        discovery_dir=discovery_dir,
+        bundle_dir=bundle_dir,
+        task_prefix="ACCEL-",
+        max_findings=1,
+        persist_ast_dataset=False,
+        write_todo_vector_index=False,
+    )
+    assert len(records) == 1
+    missing_task_id = records[0].task_id
+    index_path = bundle_dir / "index.json"
+    index = json.loads(index_path.read_text(encoding="utf-8"))
+    bundle = index["bundles"][records[0].finding.bundle_key]
+    bundle["tasks"] = [
+        task
+        for task in bundle["tasks"]
+        if task["task_id"] != missing_task_id
+    ]
+    index_path.write_text(json.dumps(index), encoding="utf-8")
+
+    repeated = generate_objective_todos(
+        repo_root=repo,
+        objective_path=objective_path,
+        todo_path=todo_path,
+        discovery_dir=discovery_dir,
+        bundle_dir=bundle_dir,
+        task_prefix="ACCEL-",
+        precomputed_findings=[records[0].finding],
+        persist_ast_dataset=False,
+        write_todo_vector_index=False,
+    )
+
+    assert repeated == []
+    recovered = json.loads(index_path.read_text(encoding="utf-8"))
+    recovered_tasks = [
+        task
+        for info in recovered["bundles"].values()
+        for task in info["tasks"]
+        if task["task_id"] == missing_task_id
+    ]
+    assert len(recovered_tasks) == 1
+    assert (
+        recovered_tasks[0]["canonical_task_cid"]
+        == objective_finding_task_identity(
+            missing_task_id,
+            records[0].finding,
+        ).canonical_task_cid
+    )
 
 
 def test_empty_objective_scan_refreshes_existing_todo_and_bundle_projections(tmp_path):

@@ -10848,7 +10848,23 @@ def write_bundle_shards(
         for item in (info.get("tasks") or [])
         if isinstance(item, Mapping)
     ]
-    index_planning_graph = materialize_task_planning_graph(all_index_tasks, repo_root=repo_root)
+    # Bundle indexes retain the admitted work contract and also annotate its
+    # execution projection with resolved dependency CIDs.  On a later
+    # generation pass those two dependency representations must not be
+    # combined as though both were admission inputs: doing so makes a valid
+    # contract appear stale and prevents incremental bundle regeneration.
+    # Rehydrate contract-bearing rows before rebuilding the planning graph,
+    # matching the bundle supervisor's fail-closed projection boundary.
+    from ..core.conflict_graph import rehydrate_task_work_contract_projection
+
+    planning_index_tasks = [
+        rehydrate_task_work_contract_projection(item)
+        for item in all_index_tasks
+    ]
+    index_planning_graph = materialize_task_planning_graph(
+        planning_index_tasks,
+        repo_root=repo_root,
+    )
     index_graph = index_planning_graph.dependency_graph
     index_incoming: dict[str, set[str]] = {cid: set() for cid in index_graph.nodes}
     for edge in index_graph.edges:
@@ -11101,6 +11117,26 @@ def generate_objective_todos(
         materialized_task_ids = set(
             task_ids_from_todo(todo_text, task_prefix=task_prefix)
         )
+        indexed_task_ids: set[str] = set()
+        bundle_index_path = bundle_dir / "index.json"
+        if bundle_index_path.is_file():
+            try:
+                bundle_index_payload = json.loads(
+                    bundle_index_path.read_text(encoding="utf-8")
+                )
+            except (OSError, json.JSONDecodeError):
+                bundle_index_payload = {}
+            if isinstance(bundle_index_payload, Mapping):
+                indexed_task_ids = {
+                    str(item.get("task_id") or "").strip()
+                    for info in (
+                        bundle_index_payload.get("bundles") or {}
+                    ).values()
+                    if isinstance(info, Mapping)
+                    for item in (info.get("tasks") or [])
+                    if isinstance(item, Mapping)
+                    and str(item.get("task_id") or "").strip()
+                }
 
         # Objective cards written before typed evidence-output authority were
         # introduced are already covered by the obligation dedupe below.  A
@@ -11251,6 +11287,133 @@ def generate_objective_todos(
                     board_namespace=board_namespace,
                 )
             )
+
+        # A crash can occur after the locked source board and bundle shard are
+        # written but before the aggregate bundle index is replaced.  On the
+        # retry, ordinary obligation deduplication correctly prevents another
+        # card, but it must not leave the existing card absent from the index.
+        # Reconstruct only an exact idle generator card whose current finding,
+        # content identity, discovery receipt, and expected shard all bind.
+        # This is recovery of an already admitted task, not authority to admit
+        # a new or edited task from Markdown alone.
+        reprojected_task_ids = {
+            record.task_id for record in reprojected_records
+        }
+        task_blocks = _objective_task_blocks(
+            todo_text,
+            task_prefix=task_prefix,
+        )
+        for finding in reprojection_candidates:
+            if not finding.dedupe_key:
+                continue
+            matching_blocks = [
+                block
+                for block in task_blocks
+                if block.one("evidence obligation key")
+                == finding.dedupe_key
+                and block.one("goal id") == finding.goal_id
+                and block.one("bundle") == finding.bundle_key
+            ]
+            if len(matching_blocks) != 1:
+                continue
+            block = matching_blocks[0]
+            if (
+                block.task_id in indexed_task_ids
+                or block.task_id in reprojected_task_ids
+            ):
+                continue
+            status = (
+                str(block.one("status") or "")
+                .strip()
+                .casefold()
+                .replace("-", "_")
+                .replace(" ", "_")
+            )
+            if status not in _EVIDENCE_REPROJECTION_IDLE_STATUSES:
+                continue
+            evidence_output_fields = block.metadata.get(
+                EVIDENCE_OUTPUTS_METADATA_KEY,
+                (),
+            )
+            if len(evidence_output_fields) > 1:
+                continue
+            raw_evidence_outputs = (
+                split_evidence_output_values(evidence_output_fields[0])
+                if evidence_output_fields
+                else []
+            )
+            evidence_outputs = tuple(
+                normalize_evidence_output_path(value)
+                for value in raw_evidence_outputs
+            )
+            if (
+                any(not value for value in evidence_outputs)
+                or len(set(evidence_outputs)) != len(evidence_outputs)
+                or any(
+                    raw != normalized
+                    for raw, normalized in zip(
+                        raw_evidence_outputs,
+                        evidence_outputs,
+                    )
+                )
+            ):
+                continue
+            identity = objective_finding_task_identity(
+                block.task_id,
+                finding,
+                evidence_outputs=evidence_outputs,
+            )
+            if (
+                block.one("canonical task key")
+                != identity.canonical_task_key
+                or block.one("canonical task cid")
+                != identity.canonical_task_cid
+            ):
+                continue
+            discovery_path = _resolve_generated_artifact_path(
+                str(block.one("discovery evidence") or ""),
+                repo_root=repo_root,
+                artifact_root=discovery_dir,
+                require_file=True,
+            )
+            shard_path = _resolve_generated_artifact_path(
+                str(block.one("bundle shard") or ""),
+                repo_root=repo_root,
+                artifact_root=bundle_dir,
+                require_file=True,
+            )
+            expected_shard_path = bundle_path(
+                bundle_dir,
+                finding.bundle_key,
+            ).resolve()
+            if (
+                discovery_path is None
+                or shard_path is None
+                or shard_path != expected_shard_path
+            ):
+                continue
+            projected_dependencies = (
+                _normalized_exact_values(
+                    str(block.one("depends on") or "")
+                )
+                or ()
+            )
+            reprojected_records.append(
+                ObjectiveTaskRecord(
+                    task_id=block.task_id,
+                    task_block=block.text.rstrip() + "\n",
+                    finding=replace(
+                        finding,
+                        dependencies=list(projected_dependencies),
+                    ),
+                    discovery_path=discovery_path,
+                    depends_on=projected_dependencies,
+                    evidence_outputs=evidence_outputs,
+                    reprojected=True,
+                    board_namespace=board_namespace,
+                )
+            )
+            reprojected_task_ids.add(block.task_id)
 
         existing_canonical_task_cids = canonical_task_cids_from_todo(todo_text)
 

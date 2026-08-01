@@ -70,3 +70,72 @@ Conflict policy: keep edits inside this bundle when possible; use the LLM merge 
 - Candidate kind: aggregate
 - Todo vector key: e2952b5dad554d48
 - Acceptance: Objective scan filed this gap for FVT-G206. Use evidence in /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-07-31-fvt-057-objective-gap-5bb2c7bb7675.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (test/integration/toolchains/test_kernel_live_semantic_fanin.py, docs/architecture/formal_verification_kernel_live_certificate.json), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
+
+## FVT-074 FVT: Execute and bind Lean, Rocq, and Isabelle kernel semantics
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: external-capability
+- Depends on: FVT-040, FVT-070, FVT-045, FVT-049, FVT-064, FVT-062
+- Outputs: tools/logic/certification/lean.py, tools/logic/certification/rocq.py, tools/logic/certification/isabelle.py, test/integration/toolchains/test_kernel_live_semantic_fanin.py, docs/architecture/formal_verification_kernel_live_certificate.json
+- Validation: python -m pytest test/integration/toolchains/test_kernel_live_semantic_fanin.py test/integration/toolchains/test_lean_semantic_certification.py test/integration/toolchains/test_rocq_toolchain_certification.py test/integration/toolchains/test_isabelle_toolchain_certification.py -q
+- Board namespace: formal_verification_tactician_readiness.todo.md
+- Evidence inputs: data/agent_supervisor/discovery
+- Discovery evidence: /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-01-fvt-074-objective-gap-0a0cb716e073.md
+- Bundle: formal-verification-tactician/kernel-live-semantics
+- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-kernel-live-semantics.todo.md
+- Bundle strategy: explicit
+- Graph parents: FVT-G000
+- Graph depth: 1
+- Objective heap index: 6
+- Parallel lane: formal-verification-tactician/kernel-live-semantics
+- Conflict policy: Own kernel fan-in and live source checks; serialize expensive OPAM/Isabelle resources and preserve each kernel's separate authority.
+- Predicted files: tools/logic/certification/lean.py, tools/logic/certification/rocq.py, tools/logic/certification/isabelle.py, test/integration/toolchains/test_kernel_live_semantic_fanin.py, docs/architecture/formal_verification_kernel_live_certificate.json
+- Changed paths:
+- Context paths: tools/logic/certification/lean.py, tools/logic/certification/rocq.py, tools/logic/certification/isabelle.py, test/integration/toolchains/test_kernel_live_semantic_fanin.py, docs/architecture/formal_verification_kernel_live_certificate.json
+- AST symbols: test/integration/toolchains/test_kernel_live_semantic_fanin.py, docs/architecture/formal_verification_kernel_live_certificate.json
+- Interfaces: KernelLiveSemanticFanIn@1
+- Submodules:
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: FVT-G206
+- Completion authority: local
+- External authority blockers:
+- Canonical task key: task/v1/3f0c720648b6409e0e7cb104723f9971e9c8a7c4d4866d23d2ffe5762350cfa9
+- Canonical task CID: baguqeerah4ghebsiwzaj4dt4wechep4zohu4rj6e2sdg2i6s77sxmi2qz6uq
+- Semantic identity: objective-evidence-obligation/v1/dc50b2055a646dc4ae762c2a527ce0a4c2d066e6beb6afe8eca1c1f1235c8336
+- Acceptance subset: Lean, Rocq, and Isabelle independently execute a valid theorem, false theorem, hypothesis/conclusion mutation, deterministic replay, malformed source, timeout, and forbidden admit/axiom-oracle checks, Isabelle's live source/session helper is exercised rather than only offline fixtures, receipts bind exact kernel, dependency, source, imports/session, assumptions, theorem, and output digests, no advisor or sibling kernel substitutes for the selected kernel.
+- Preconditions: objective goal FVT-G206 is schedulable
+- Effects: satisfy evidence requirement: objective validation repair
+- Evidence subset: objective validation repair
+- Resource class: large-kernel-toolchain
+- Token class: medium
+- Estimated tokens: 0
+- Context budget tokens: 4096
+- Provider role: grok-implement, codex-review
+- Resources: large-kernel-toolchain
+- Merge fate: objective/FVT-G206
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/dc50b2055a646dc4ae762c2a527ce0a4c2d066e6beb6afe8eca1c1f1235c8336
+- Missing evidence: objective validation repair
+- Embedding query: Require each installed proof kernel to check its own generated source and retain all assumptions, imports, theorem, and mutation evidence.
+- AST query: test/integration/toolchains/test_kernel_live_semantic_fanin.py, docs/architecture/formal_verification_kernel_live_certificate.json
+- Surplus group: objective/FVT-G206
+- Merge key: 58a483eca3f96f88
+- Merge family: objective/FVT-G206
+- Merge role: validation_gate
+- Work item count: 1
+- Work scope: objective_validation_repair
+- Goal packet:
+- Goal packet role:
+- Goal packet goals:
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: validation_gate
+- Todo vector key: 53fcedbedc62dc3d
+- Acceptance: Objective scan filed this gap for FVT-G206. Use evidence in /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-01-fvt-074-objective-gap-0a0cb716e073.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (objective validation repair), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.

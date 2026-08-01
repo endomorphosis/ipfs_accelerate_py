@@ -70,3 +70,72 @@ Conflict policy: keep edits inside this bundle when possible; use the LLM merge 
 - Candidate kind: aggregate
 - Todo vector key: e4dddec7917fe746
 - Acceptance: Objective scan filed this gap for FVT-G200. Use evidence in /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-07-31-fvt-053-objective-gap-2cdc520508dc.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (test/integration/test_formal_verification_role_aware_completion.py, docs/architecture/formal_verification_role_aware_deployment_receipt.json), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
+
+## FVT-083 FVT: Reissue full role-aware deployment certification
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: completion
+- Depends on: FVT-036, FVT-040, FVT-070, FVT-038, FVT-068, FVT-039, FVT-069, FVT-042, FVT-043, FVT-044, FVT-048, FVT-045, FVT-049, FVT-050, FVT-046, FVT-051, FVT-052, FVT-047, FVT-067, FVT-082
+- Outputs: tools/logic/certify_formal_verification_toolchains.py, tools/logic/build_formal_verification_tactician_receipt.py, docs/architecture/formal_verification_toolchain_certificate.json, docs/architecture/formal_verification_role_aware_deployment_receipt.json, docs/architecture/formal_verification_tactician_readiness_completion_receipt.json, test/integration/test_formal_verification_role_aware_completion.py
+- Validation: python -m pytest test/integration/test_formal_verification_real_tool_matrix.py test/integration/test_formal_verification_role_aware_completion.py test/api/test_formal_verification_tactician_readiness_completion.py -q
+- Board namespace: formal_verification_tactician_readiness.todo.md
+- Evidence inputs: data/agent_supervisor/discovery
+- Discovery evidence: /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-01-fvt-083-objective-gap-f96065e81880.md
+- Bundle: formal-verification-tactician/toolchain-release
+- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-toolchain-release.todo.md
+- Bundle strategy: explicit
+- Graph parents: FVT-G000
+- Graph depth: 1
+- Objective heap index: 0
+- Parallel lane: formal-verification-tactician/toolchain-release
+- Conflict policy: Sole owner for central certificate and completion-receipt regeneration after every dependency merges; never manufacture success, weaken skips, install during offline certification, or conceal an unavailable lane.
+- Predicted files: tools/logic/certify_formal_verification_toolchains.py, tools/logic/build_formal_verification_tactician_receipt.py, docs/architecture/formal_verification_toolchain_certificate.json, docs/architecture/formal_verification_role_aware_deployment_receipt.json, docs/architecture/formal_verification_tactician_readiness_completion_receipt.json, test/integration/test_formal_verification_role_aware_completion.py
+- Changed paths:
+- Context paths: tools/logic/certify_formal_verification_toolchains.py, tools/logic/build_formal_verification_tactician_receipt.py, docs/architecture/formal_verification_toolchain_certificate.json, docs/architecture/formal_verification_role_aware_deployment_receipt.json, docs/architecture/formal_verification_tactician_readiness_completion_receipt.json, test/integration/test_formal_verification_role_aware_completion.py
+- AST symbols: test/integration/test_formal_verification_role_aware_completion.py, docs/architecture/formal_verification_role_aware_deployment_receipt.json
+- Interfaces: RoleAwareFormalVerificationRelease@1
+- Submodules: ipfs_datasets_py
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: FVT-G200
+- Completion authority: local
+- External authority blockers:
+- Canonical task key: task/v1/4bd9d74aaba74dc5a438f4da809b3b75e4d4bda07b26cc5f2f1016b52adcaa0c
+- Canonical task CID: baguqeerajpm5osvlu5g4ljby6tnibgz3oxsnjpnapmtmyxzpcallkkw4viga
+- Semantic identity: objective-evidence-obligation/v1/7fd6f489a9427c35335aaeff9e3d6010371233b076d100695df1426fb8f85966
+- Acceptance subset: A fresh offline certificate and completion receipt bind the current parent tree, datasets gitlink, exact tool and artifact identities, every required positive/negative/mutation/replay result, authority roles and ceilings, disagreement quarantines, public surfaces, and supervisor evidence, Lean, Runtime MTL, and Datalog/SecPAL are no longer merely usable, every supported managed external capability is installed and semantically certified, any genuinely unsupported platform exception is explicit, narrowly scoped, and cannot be counted as complete or production-certified.
+- Preconditions: objective goal FVT-G200 is schedulable
+- Effects: satisfy evidence requirement: objective validation repair
+- Evidence subset: objective validation repair
+- Resource class: cpu-validation
+- Token class: medium
+- Estimated tokens: 0
+- Context budget tokens: 4096
+- Provider role: grok-implement, codex-review
+- Resources: cpu-validation
+- Merge fate: objective/FVT-G200
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/7fd6f489a9427c35335aaeff9e3d6010371233b076d100695df1426fb8f85966
+- Missing evidence: objective validation repair
+- Embedding query: Run the complete role-aware matrix after the explicit installation phase and reissue current-tree implementation and deployment-readiness receipts.
+- AST query: test/integration/test_formal_verification_role_aware_completion.py, docs/architecture/formal_verification_role_aware_deployment_receipt.json
+- Surplus group: objective/FVT-G200
+- Merge key: a113695f4f1ec835
+- Merge family: objective/FVT-G200
+- Merge role: validation_gate
+- Work item count: 1
+- Work scope: objective_validation_repair
+- Goal packet:
+- Goal packet role:
+- Goal packet goals:
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: validation_gate
+- Todo vector key: 0d7a4d5d2e833f34
+- Acceptance: Objective scan filed this gap for FVT-G200. Use evidence in /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-01-fvt-083-objective-gap-f96065e81880.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (objective validation repair), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.

@@ -1,7 +1,7 @@
 {
   "active_goal_count": 68,
   "completed_goal_count": 0,
-  "generated_at": "2026-07-31T22:46:14.532843+00:00",
+  "generated_at": "2026-08-01T05:45:29.317305+00:00",
   "goal_count": 68,
   "goals": [
     {
@@ -934,6 +934,7 @@
       "bundle": "formal-verification-tactician/runtime-mtl-external-runtime",
       "evidence": [
         "test/integration/toolchains/test_external_runtime_mtl_vendor_certification.py",
+        "test/integration/toolchains/test_runtime_mtl_offline_install_boundary.py",
         "docs/architecture/formal_verification_runtime_mtl_external_install_receipt.json"
       ],
       "fib_priority": 75025,
@@ -1042,7 +1043,9 @@
       "bundle": "formal-verification-tactician/toolchain-release-candidate",
       "evidence": [
         "test/integration/test_formal_verification_role_aware_release_candidate.py",
-        "docs/architecture/formal_verification_role_aware_release_candidate.json"
+        "test/integration/toolchains/test_formal_verification_production_elevation_fanin.py",
+        "docs/architecture/formal_verification_role_aware_release_candidate.json",
+        "docs/architecture/formal_verification_production_elevation_fanin_receipt.json"
       ],
       "fib_priority": 317811,
       "goal_id": "FVT-G213",
@@ -2172,6 +2175,11 @@
       {
         "from": "FVT-G210",
         "kind": "requires_evidence",
+        "to": "evidence:4efaaafbc3a23784"
+      },
+      {
+        "from": "FVT-G210",
+        "kind": "requires_evidence",
         "to": "evidence:b25aa1d6d276572c"
       },
       {
@@ -2197,7 +2205,17 @@
       {
         "from": "FVT-G213",
         "kind": "requires_evidence",
+        "to": "evidence:1b12aab535625818"
+      },
+      {
+        "from": "FVT-G213",
+        "kind": "requires_evidence",
         "to": "evidence:6d4cb72b5600f28f"
+      },
+      {
+        "from": "FVT-G213",
+        "kind": "requires_evidence",
+        "to": "evidence:687fa7f114ef3351"
       },
       {
         "from": "FVT-G214",
@@ -2817,6 +2835,11 @@
         "id": "evidence:61659b094124f8e4"
       },
       {
+        "acceptance_criterion": "test/integration/toolchains/test_runtime_mtl_offline_install_boundary.py",
+        "goal_id": "FVT-G210",
+        "id": "evidence:4efaaafbc3a23784"
+      },
+      {
         "acceptance_criterion": "docs/architecture/formal_verification_runtime_mtl_external_install_receipt.json",
         "goal_id": "FVT-G210",
         "id": "evidence:b25aa1d6d276572c"
@@ -2842,9 +2865,19 @@
         "id": "evidence:71df39feffcff7c6"
       },
       {
+        "acceptance_criterion": "test/integration/toolchains/test_formal_verification_production_elevation_fanin.py",
+        "goal_id": "FVT-G213",
+        "id": "evidence:1b12aab535625818"
+      },
+      {
         "acceptance_criterion": "docs/architecture/formal_verification_role_aware_release_candidate.json",
         "goal_id": "FVT-G213",
         "id": "evidence:6d4cb72b5600f28f"
+      },
+      {
+        "acceptance_criterion": "docs/architecture/formal_verification_production_elevation_fanin_receipt.json",
+        "goal_id": "FVT-G213",
+        "id": "evidence:687fa7f114ef3351"
       },
       {
         "acceptance_criterion": "test/integration/test_formal_verification_role_aware_post_merge_attestation.py",
@@ -4132,7 +4165,7 @@
       },
       "FVT-G210": {
         "completion_evidence": {
-          "acceptance_criterion": "A locked TypeScript dependency graph builds an independent Node package/executable without importing or dispatching to the Python reference; package, source, lockfile, runtime, executable, and artifact digests are bound; positive, negative, interval/event mutation, timestamp boundary, shortest-prefix replay, malformed input, timeout, bounds, and disagreement cases execute out of process; finite-trace authority and inconclusive-prefix semantics are preserved; generated Python parity wrappers remain non-production shadow evidence."
+          "acceptance_criterion": "A locked TypeScript dependency graph builds an independent Node package/executable without importing or dispatching to the Python reference; the explicit opt-in user-local installation phase may run the locked build, but every offline semantic-certification path, including the in-process Runtime MTL parity helper, consumes only a preinstalled digest-verified artifact and never runs `npm install`, `npm ci`, `npm run build`, downloads, or network access; a missing or stale prebuilt artifact blocks certification instead of rebuilding; the authoritative private-HOME validation environment receives an explicit approved immutable deployment root rather than discovering mutable user paths; package, source, lockfile, runtime, launcher, launcher target, executable, and artifact digests are bound; positive, negative, interval/event mutation, timestamp boundary, shortest-prefix replay, malformed input, timeout, bounds, and disagreement cases execute out of process; finite-trace authority and inconclusive-prefix semantics are preserved; generated Python parity wrappers remain non-production shadow evidence."
         },
         "goal_id": "FVT-G210",
         "lifecycle_state": "active",
@@ -4141,6 +4174,7 @@
         ],
         "required_evidence": [
           "test/integration/toolchains/test_external_runtime_mtl_vendor_certification.py",
+          "test/integration/toolchains/test_runtime_mtl_offline_install_boundary.py",
           "docs/architecture/formal_verification_runtime_mtl_external_install_receipt.json"
         ],
         "schedulable": true,
@@ -4185,7 +4219,7 @@
       },
       "FVT-G213": {
         "completion_evidence": {
-          "acceptance_criterion": "The candidate derives host support, roles, ceilings, evidence classes, platform exceptions, blockers, offline policy, quarantine state, public surfaces, and every success boolean from bound evidence; all supported managed capabilities have their required installed and specialized semantic evidence; every raw receipt/check/case/binding and executable/artifact/dependency digest affects the canonical digest; unsupported tools alone become narrow exceptions; missing supported, ambiguous, stale, parser-only, fixture, canned, hermetic, advisor, shadow, identity-only, or incomplete evidence blocks readiness at its correct ceiling; the checked-in candidate binds an explicit certified source commit/tree and cannot exceed `release_candidate` before its merge event exists."
+          "acceptance_criterion": "The candidate derives host support, roles, ceilings, evidence classes, platform exceptions, blockers, offline policy, quarantine state, public surfaces, and every success boolean from bound evidence; `lean`, `runtime-mtl`, `datalog-authorization`, `secpal-authorization`, `coq`, and `isabelle` each have exact independently reconstructed positive, negative, mutation, and replay evidence before their corresponding production elevation is present; the independent TypeScript/Node Runtime MTL vendor lane is consumed through `ExternalRuntimeMTLVendorCertification@1`, binds its package, source, lockfile, Node runtime, launcher, target, executable, and artifact digests, and gates both external finite-trace authority and in-process Runtime MTL elevation on exact cross-runtime parity and disagreement handling; hermetic Runtime MTL wrappers never promote; real supported HyperLTL, AutoHyper, MCHyper, and Souffle vendor binaries and their native/runtime dependencies are distinguished from identity manifests, adapters, case oracles, fixtures, and shims; offline certification resolves only an approved immutable preinstalled deployment root under the authoritative private-HOME validation environment and never installs, builds, downloads, or accesses the network; all supported managed capabilities have their required installed and specialized semantic evidence; every raw receipt/check/case/binding and executable/artifact/dependency digest affects the canonical digest; external SecPAL is an exception only when the current lock explicitly excludes the running host; missing supported, ambiguous, stale, parser-only, fixture, canned, hermetic, advisor, shadow, identity-only, dependency-only, or incomplete evidence blocks readiness at its correct ceiling; the checked-in candidate binds an explicit certified source commit/tree and cannot exceed `release_candidate` before its merge event exists."
         },
         "goal_id": "FVT-G213",
         "lifecycle_state": "active",
@@ -4194,7 +4228,9 @@
         ],
         "required_evidence": [
           "test/integration/test_formal_verification_role_aware_release_candidate.py",
-          "docs/architecture/formal_verification_role_aware_release_candidate.json"
+          "test/integration/toolchains/test_formal_verification_production_elevation_fanin.py",
+          "docs/architecture/formal_verification_role_aware_release_candidate.json",
+          "docs/architecture/formal_verification_production_elevation_fanin_receipt.json"
         ],
         "schedulable": true,
         "status": "active",
@@ -5643,9 +5679,33 @@
     },
     {
       "fib_priority": 75025,
-      "goal_id": "FVT-G200",
+      "goal_id": "FVT-G210",
       "graph_depth": 1,
       "heap_index": 53,
+      "output_count": 7,
+      "parents": [
+        "FVT-G000"
+      ],
+      "priority": "P0",
+      "priority_rank": 0,
+      "required_evidence_count": 3,
+      "sort_key": [
+        75025,
+        0,
+        -32,
+        1,
+        "FVT-G210"
+      ],
+      "status": "active",
+      "title": "Build and certify an independent external Runtime MTL engine",
+      "track": "external-capability",
+      "work_surface_score": 32
+    },
+    {
+      "fib_priority": 75025,
+      "goal_id": "FVT-G200",
+      "graph_depth": 1,
+      "heap_index": 54,
       "output_count": 6,
       "parents": [
         "FVT-G000"
@@ -5669,7 +5729,7 @@
       "fib_priority": 75025,
       "goal_id": "FVT-G209",
       "graph_depth": 1,
-      "heap_index": 54,
+      "heap_index": 55,
       "output_count": 5,
       "parents": [
         "FVT-G000"
@@ -5686,30 +5746,6 @@
       ],
       "status": "active",
       "title": "Install Souffle and derive the SecPAL platform exception",
-      "track": "external-capability",
-      "work_surface_score": 24
-    },
-    {
-      "fib_priority": 75025,
-      "goal_id": "FVT-G210",
-      "graph_depth": 1,
-      "heap_index": 55,
-      "output_count": 5,
-      "parents": [
-        "FVT-G000"
-      ],
-      "priority": "P0",
-      "priority_rank": 0,
-      "required_evidence_count": 2,
-      "sort_key": [
-        75025,
-        0,
-        -24,
-        1,
-        "FVT-G210"
-      ],
-      "status": "active",
-      "title": "Build and certify an independent external Runtime MTL engine",
       "track": "external-capability",
       "work_surface_score": 24
     },
@@ -5934,24 +5970,24 @@
       "goal_id": "FVT-G213",
       "graph_depth": 1,
       "heap_index": 65,
-      "output_count": 4,
+      "output_count": 6,
       "parents": [
         "FVT-G000"
       ],
       "priority": "P0",
       "priority_rank": 0,
-      "required_evidence_count": 2,
+      "required_evidence_count": 4,
       "sort_key": [
         317811,
         0,
-        -19,
+        -34,
         1,
         "FVT-G213"
       ],
       "status": "active",
       "title": "Build the fail-closed role-aware release candidate",
       "track": "completion",
-      "work_surface_score": 19
+      "work_surface_score": 34
     },
     {
       "fib_priority": 514229,
@@ -6003,7 +6039,7 @@
   "objective_path": "/home/barberb/lift_coding/data/logic_software_verification_program/repo/docs/architecture/formal_verification_tactician_readiness.objectives.md",
   "schema": "ipfs_accelerate_py.agent_supervisor.objectives.objective_graph",
   "thought_graph": {
-    "edge_count": 492,
+    "edge_count": 499,
     "edges": [
       {
         "from": "goal:FVT-G000",
@@ -8233,12 +8269,17 @@
       {
         "from": "goal:FVT-G210",
         "kind": "requires_evidence",
+        "to": "evidence:4efaaafbc3a2"
+      },
+      {
+        "from": "goal:FVT-G210",
+        "kind": "requires_evidence",
         "to": "evidence:b25aa1d6d276"
       },
       {
         "from": "goal:FVT-G210",
         "kind": "validated_by",
-        "to": "validation:7dbc2628576c"
+        "to": "validation:774c968e38f9"
       },
       {
         "from": "goal:FVT-G210",
@@ -8253,12 +8294,22 @@
       {
         "from": "goal:FVT-G210",
         "kind": "touches_surface",
+        "to": "code_surface:d6d5bbe439ab"
+      },
+      {
+        "from": "goal:FVT-G210",
+        "kind": "touches_surface",
         "to": "code_surface:139d2f9ac823"
       },
       {
         "from": "goal:FVT-G210",
         "kind": "touches_surface",
         "to": "code_surface:61659b094124"
+      },
+      {
+        "from": "goal:FVT-G210",
+        "kind": "touches_surface",
+        "to": "code_surface:4efaaafbc3a2"
       },
       {
         "from": "goal:FVT-G210",
@@ -8348,12 +8399,22 @@
       {
         "from": "goal:FVT-G213",
         "kind": "requires_evidence",
+        "to": "evidence:1b12aab53562"
+      },
+      {
+        "from": "goal:FVT-G213",
+        "kind": "requires_evidence",
         "to": "evidence:6d4cb72b5600"
       },
       {
         "from": "goal:FVT-G213",
+        "kind": "requires_evidence",
+        "to": "evidence:687fa7f114ef"
+      },
+      {
+        "from": "goal:FVT-G213",
         "kind": "validated_by",
-        "to": "validation:61a2edb0f3fd"
+        "to": "validation:51c97cfe05c6"
       },
       {
         "from": "goal:FVT-G213",
@@ -8373,7 +8434,17 @@
       {
         "from": "goal:FVT-G213",
         "kind": "touches_surface",
+        "to": "code_surface:1b12aab53562"
+      },
+      {
+        "from": "goal:FVT-G213",
+        "kind": "touches_surface",
         "to": "code_surface:6d4cb72b5600"
+      },
+      {
+        "from": "goal:FVT-G213",
+        "kind": "touches_surface",
+        "to": "code_surface:687fa7f114ef"
       },
       {
         "from": "goal:FVT-G214",
@@ -8466,7 +8537,7 @@
         "to": "test_strategy:070a7ef81943"
       }
     ],
-    "node_count": 560,
+    "node_count": 567,
     "nodes": [
       {
         "goal_id": "FVT-G180",
@@ -8586,6 +8657,13 @@
         "kind": "code_surface",
         "path": "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/advisors.py",
         "thought": "Inspect or modify `ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/advisors.py` as part of this objective."
+      },
+      {
+        "goal_id": "FVT-G213",
+        "id": "code_surface:1b12aab53562",
+        "kind": "code_surface",
+        "path": "test/integration/toolchains/test_formal_verification_production_elevation_fanin.py",
+        "thought": "Inspect or modify `test/integration/toolchains/test_formal_verification_production_elevation_fanin.py` as part of this objective."
       },
       {
         "goal_id": "FVT-G013",
@@ -8833,6 +8911,13 @@
         "thought": "Inspect or modify `ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/frontends/registry.py` as part of this objective."
       },
       {
+        "goal_id": "FVT-G210",
+        "id": "code_surface:4efaaafbc3a2",
+        "kind": "code_surface",
+        "path": "test/integration/toolchains/test_runtime_mtl_offline_install_boundary.py",
+        "thought": "Inspect or modify `test/integration/toolchains/test_runtime_mtl_offline_install_boundary.py` as part of this objective."
+      },
+      {
         "goal_id": "FVT-G012",
         "id": "code_surface:5095d2989157",
         "kind": "code_surface",
@@ -8971,6 +9056,13 @@
         "kind": "code_surface",
         "path": "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/isabelle.py",
         "thought": "Inspect or modify `ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/isabelle.py` as part of this objective."
+      },
+      {
+        "goal_id": "FVT-G213",
+        "id": "code_surface:687fa7f114ef",
+        "kind": "code_surface",
+        "path": "docs/architecture/formal_verification_production_elevation_fanin_receipt.json",
+        "thought": "Inspect or modify `docs/architecture/formal_verification_production_elevation_fanin_receipt.json` as part of this objective."
       },
       {
         "goal_id": "FVT-G008",
@@ -9645,6 +9737,13 @@
         "thought": "Inspect or modify `ipfs_datasets_py/ipfs_datasets_py/logic/backends/registry.py` as part of this objective."
       },
       {
+        "goal_id": "FVT-G210",
+        "id": "code_surface:d6d5bbe439ab",
+        "kind": "code_surface",
+        "path": "tools/logic/certification/runtime_mtl.py",
+        "thought": "Inspect or modify `tools/logic/certification/runtime_mtl.py` as part of this objective."
+      },
+      {
         "goal_id": "FVT-G100",
         "id": "code_surface:d71b685951f5",
         "kind": "code_surface",
@@ -9911,6 +10010,13 @@
         "thought": "Find or create repository evidence proving `ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/advisors.py`."
       },
       {
+        "goal_id": "FVT-G213",
+        "id": "evidence:1b12aab53562",
+        "kind": "evidence_requirement",
+        "term": "test/integration/toolchains/test_formal_verification_production_elevation_fanin.py",
+        "thought": "Find or create repository evidence proving `test/integration/toolchains/test_formal_verification_production_elevation_fanin.py`."
+      },
+      {
         "goal_id": "FVT-G013",
         "id": "evidence:1ca1f55ae262",
         "kind": "evidence_requirement",
@@ -10072,6 +10178,13 @@
         "thought": "Find or create repository evidence proving `ipfs_datasets_py/ipfs_datasets_py/logic/software_verification/frontends/registry.py`."
       },
       {
+        "goal_id": "FVT-G210",
+        "id": "evidence:4efaaafbc3a2",
+        "kind": "evidence_requirement",
+        "term": "test/integration/toolchains/test_runtime_mtl_offline_install_boundary.py",
+        "thought": "Find or create repository evidence proving `test/integration/toolchains/test_runtime_mtl_offline_install_boundary.py`."
+      },
+      {
         "goal_id": "FVT-G012",
         "id": "evidence:5095d2989157",
         "kind": "evidence_requirement",
@@ -10175,6 +10288,13 @@
         "kind": "evidence_requirement",
         "term": "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/isabelle.py",
         "thought": "Find or create repository evidence proving `ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/isabelle.py`."
+      },
+      {
+        "goal_id": "FVT-G213",
+        "id": "evidence:687fa7f114ef",
+        "kind": "evidence_requirement",
+        "term": "docs/architecture/formal_verification_production_elevation_fanin_receipt.json",
+        "thought": "Find or create repository evidence proving `docs/architecture/formal_verification_production_elevation_fanin_receipt.json`."
       },
       {
         "goal_id": "FVT-G090",
@@ -11372,7 +11492,7 @@
         "kind": "goal",
         "priority": "P0",
         "status": "active",
-        "thought": "Replace the Python-backed parity wrapper with a reproducibly built TypeScript/Node monitor and honest cross-runtime evidence.",
+        "thought": "Replace the Python-backed parity wrapper with a reproducibly built TypeScript/Node monitor, enforce the install-versus-offline-certification boundary, and produce honest cross-runtime evidence.",
         "title": "Build and certify an independent external Runtime MTL engine",
         "track": "external-capability"
       },
@@ -11402,7 +11522,7 @@
         "kind": "goal",
         "priority": "P0",
         "status": "active",
-        "thought": "Generate a role-aware release candidate from the complete supported matrix without claiming its own future merge or deployment.",
+        "thought": "Generate a role-aware release candidate from the complete supported matrix, close the exact production-semantic elevation fan-in, and do so without claiming its own future merge or deployment.",
         "title": "Build the fail-closed role-aware release candidate",
         "track": "completion"
       },
@@ -12485,6 +12605,13 @@
         "thought": "Run this validation before closing the goal."
       },
       {
+        "command": "PYTHONPATH=ipfs_datasets_py python -m pytest test/integration/toolchains/test_formal_verification_production_elevation_fanin.py test/integration/test_formal_verification_role_aware_release_candidate.py test/integration/test_formal_verification_real_tool_matrix.py -q",
+        "goal_id": "FVT-G213",
+        "id": "validation:51c97cfe05c6",
+        "kind": "validation_strategy",
+        "thought": "Run this validation before closing the goal."
+      },
+      {
         "command": "python -m pytest ipfs_datasets_py/tests/integration/logic/software_verification/test_runnable_examples.py -q",
         "goal_id": "FVT-G013",
         "id": "validation:522b4b67f6d6",
@@ -12534,13 +12661,6 @@
         "thought": "Run this validation before closing the goal."
       },
       {
-        "command": "python -m pytest test/integration/test_formal_verification_role_aware_release_candidate.py test/integration/test_formal_verification_real_tool_matrix.py -q",
-        "goal_id": "FVT-G213",
-        "id": "validation:61a2edb0f3fd",
-        "kind": "validation_strategy",
-        "thought": "Run this validation before closing the goal."
-      },
-      {
         "command": "python -m pytest test/integration/toolchains/test_kernel_live_semantic_fanin.py test/integration/toolchains/test_lean_semantic_certification.py test/integration/toolchains/test_rocq_toolchain_certification.py test/integration/toolchains/test_isabelle_toolchain_certification.py -q",
         "goal_id": "FVT-G206",
         "id": "validation:61b0f9ef5c35",
@@ -12576,6 +12696,13 @@
         "thought": "Run this validation before closing the goal."
       },
       {
+        "command": "PYTHONPATH=ipfs_datasets_py python -m pytest ipfs_datasets_py/tests/integration/logic/test_runtime_mtl_parity.py test/integration/toolchains/test_external_runtime_mtl_vendor_certification.py test/integration/toolchains/test_external_runtime_mtl_certification.py test/integration/toolchains/test_runtime_mtl_offline_install_boundary.py -q",
+        "goal_id": "FVT-G210",
+        "id": "validation:774c968e38f9",
+        "kind": "validation_strategy",
+        "thought": "Run this validation before closing the goal."
+      },
+      {
         "command": "python -m pytest test/benchmarks/test_formal_verification_tactician_benchmark.py -q",
         "goal_id": "FVT-G063",
         "id": "validation:795faec9731d",
@@ -12593,13 +12720,6 @@
         "command": "python -m pytest test/api/test_agent_supervisor_leanstral_goal_development.py test/api/test_leanstral_end_goal_formalization_route.py -q",
         "goal_id": "FVT-G025",
         "id": "validation:7c3a7ee2385c",
-        "kind": "validation_strategy",
-        "thought": "Run this validation before closing the goal."
-      },
-      {
-        "command": "PYTHONPATH=ipfs_datasets_py python -m pytest ipfs_datasets_py/tests/integration/logic/test_runtime_mtl_parity.py test/integration/toolchains/test_external_runtime_mtl_vendor_certification.py test/integration/toolchains/test_external_runtime_mtl_certification.py -q",
-        "goal_id": "FVT-G210",
-        "id": "validation:7dbc2628576c",
         "kind": "validation_strategy",
         "thought": "Run this validation before closing the goal."
       },

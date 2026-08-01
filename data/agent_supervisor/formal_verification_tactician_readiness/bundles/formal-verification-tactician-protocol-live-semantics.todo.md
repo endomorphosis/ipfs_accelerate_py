@@ -70,3 +70,72 @@ Conflict policy: keep edits inside this bundle when possible; use the LLM merge 
 - Candidate kind: aggregate
 - Todo vector key: 1e75bcb088bccd66
 - Acceptance: Objective scan filed this gap for FVT-G205. Use evidence in /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-07-31-fvt-058-objective-gap-9ae03bb40053.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (test/integration/toolchains/test_protocol_live_semantic_certification.py, docs/architecture/formal_verification_protocol_live_certificate.json), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
+
+## FVT-075 FVT: Execute real Tamarin and ProVerif protocol semantics
+
+- Status: todo
+- Completion: manual
+- Is schedulable: true
+- Review only: false
+- Priority: P0
+- Track: external-capability
+- Depends on: FVT-043, FVT-044, FVT-064, FVT-062
+- Outputs: tools/logic/certification/tamarin.py, tools/logic/certification/proverif.py, test/integration/toolchains/test_protocol_live_semantic_certification.py, docs/architecture/formal_verification_protocol_live_certificate.json
+- Validation: python -m pytest test/integration/toolchains/test_protocol_live_semantic_certification.py test/integration/toolchains/test_tamarin_toolchain_certification.py test/integration/toolchains/test_proverif_toolchain_certification.py -q
+- Board namespace: formal_verification_tactician_readiness.todo.md
+- Evidence inputs: data/agent_supervisor/discovery
+- Discovery evidence: /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-01-fvt-075-objective-gap-8573ab51e640.md
+- Bundle: formal-verification-tactician/protocol-live-semantics
+- Bundle shard: data/agent_supervisor/formal_verification_tactician_readiness/bundles/formal-verification-tactician-protocol-live-semantics.todo.md
+- Bundle strategy: explicit
+- Graph parents: FVT-G000
+- Graph depth: 1
+- Objective heap index: 7
+- Parallel lane: formal-verification-tactician/protocol-live-semantics
+- Conflict policy: Own live protocol execution and per-tool receipts; never turn parser-recognized canned output into semantic proof or allow one protocol engine to stand in for the other.
+- Predicted files: tools/logic/certification/tamarin.py, tools/logic/certification/proverif.py, test/integration/toolchains/test_protocol_live_semantic_certification.py, docs/architecture/formal_verification_protocol_live_certificate.json
+- Changed paths:
+- Context paths: tools/logic/certification/tamarin.py, tools/logic/certification/proverif.py, test/integration/toolchains/test_protocol_live_semantic_certification.py, docs/architecture/formal_verification_protocol_live_certificate.json
+- AST symbols: test/integration/toolchains/test_protocol_live_semantic_certification.py, docs/architecture/formal_verification_protocol_live_certificate.json
+- Interfaces: ProtocolLiveSemanticCertification@1
+- Submodules:
+- Generated artifacts:
+- Allow concurrent with:
+- Goal id: FVT-G205
+- Completion authority: local
+- External authority blockers:
+- Canonical task key: task/v1/835a1fdac10b55e2a80d81ff2ba21c106d739ac6b8b574ba3c82887f499a14ce
+- Canonical task CID: baguqeeraqnnb7wwbbnk6fkanqh7sxiq4cbwxhgwgxc2xjor4qkeh6sm2ctha
+- Semantic identity: objective-evidence-obligation/v1/e96c1abb3969b360e7cfd51f5f056da7f52a9822a5796663ccb47adfe07dd4ca
+- Acceptance subset: Both binaries execute valid secrecy/authentication protocols, concrete attacks, premise/conclusion and protocol mutations, replay, malformed models, timeout, disagreement, and bounded-search cases, receipts bind tool and dependency identities, source, query, assumptions, bound, witnesses/traces, and raw output, parser fixtures remain non-production.
+- Preconditions: objective goal FVT-G205 is schedulable
+- Effects: satisfy evidence requirement: objective validation repair
+- Evidence subset: objective validation repair
+- Resource class: cpu-proof-solver
+- Token class: medium
+- Estimated tokens: 0
+- Context budget tokens: 4096
+- Provider role: grok-implement, codex-review
+- Resources: cpu-proof-solver
+- Merge fate: objective/FVT-G205
+- Rejection reasons: none (accepted)
+- Evidence obligation key: objective-evidence-obligation/v1/e96c1abb3969b360e7cfd51f5f056da7f52a9822a5796663ccb47adfe07dd4ca
+- Missing evidence: objective validation repair
+- Embedding query: Run the protocol corpus through the pinned Tamarin and ProVerif binaries and retain per-tool cryptographic-protocol evidence.
+- AST query: test/integration/toolchains/test_protocol_live_semantic_certification.py, docs/architecture/formal_verification_protocol_live_certificate.json
+- Surplus group: objective/FVT-G205
+- Merge key: 10a734195ff40833
+- Merge family: objective/FVT-G205
+- Merge role: validation_gate
+- Work item count: 1
+- Work scope: objective_validation_repair
+- Goal packet:
+- Goal packet role:
+- Goal packet goals:
+- Goal packet task count: 0
+- Goal packet work item count: 0
+- Completion goal bindings: {}
+- Completion task bindings:
+- Candidate kind: validation_gate
+- Todo vector key: df1f0d813d037fc4
+- Acceptance: Objective scan filed this gap for FVT-G205. Use evidence in /home/barberb/lift_coding/data/logic_software_verification_program/repo/data/agent_supervisor/formal_verification_tactician_readiness/discovery/2026-08-01-fvt-075-objective-gap-8573ab51e640.md, add code/tests/docs or child goals that prove the missing evidence terms are covered (objective validation repair), and keep the supervisor-fed backlog aligned with the objective heap.  Refine the objective heap if the gap needs smaller child goals.
