@@ -4008,6 +4008,96 @@ def test_generate_objective_todos_projects_goal_dependencies_to_task_ids(tmp_pat
     assert indexed_task["dependency_task_ids"] == ["ACCEL-001"]
 
 
+def test_generate_objective_todos_projects_same_cycle_dependencies_after_scan_order(
+    tmp_path,
+):
+    repo, objective_path, todo_path = _seed_repo(tmp_path)
+    discovery_dir = repo / "data" / "agent_supervisor" / "discovery"
+    bundle_dir = repo / "data" / "agent_supervisor" / "objective_bundles"
+    objective_path.write_text(
+        """# Objective Heap
+
+## VAIOS-G001 New prerequisite
+
+- Status: active
+- Parent:
+- Evidence: prerequisite proof
+
+## VAIOS-G002 Earlier-scanned dependent
+
+- Status: active
+- Parent:
+- Depends on: VAIOS-G001
+- Evidence: dependent proof
+""",
+        encoding="utf-8",
+    )
+    dependent = ObjectiveFinding(
+        fingerprint="same-cycle-dependent",
+        goal_id="VAIOS-G002",
+        title="Earlier-scanned dependent",
+        summary="Implement the dependent objective",
+        priority="P0",
+        track="runtime",
+        missing_evidence=["dependent proof"],
+        present_evidence={},
+        evidence_methods=[],
+        objective_path=str(objective_path),
+        outputs=["src/dependent.py"],
+        validation="true",
+        dependencies=["VAIOS-G001"],
+    )
+    prerequisite = ObjectiveFinding(
+        fingerprint="same-cycle-prerequisite",
+        goal_id="VAIOS-G001",
+        title="New prerequisite",
+        summary="Implement the prerequisite objective",
+        priority="P1",
+        track="runtime",
+        missing_evidence=["prerequisite proof"],
+        present_evidence={},
+        evidence_methods=[],
+        objective_path=str(objective_path),
+        outputs=["src/prerequisite.py"],
+        validation="true",
+    )
+
+    records = generate_objective_todos(
+        repo_root=repo,
+        objective_path=objective_path,
+        todo_path=todo_path,
+        discovery_dir=discovery_dir,
+        bundle_dir=bundle_dir,
+        task_prefix="ACCEL-",
+        precomputed_findings=[dependent, prerequisite],
+        persist_ast_dataset=False,
+        write_todo_vector_index=False,
+    )
+
+    assert [record.task_id for record in records] == ["ACCEL-002", "ACCEL-003"]
+    assert records[0].finding.goal_id == "VAIOS-G002"
+    assert records[0].depends_on == ("ACCEL-003",)
+    assert records[0].finding.dependencies == ["ACCEL-003"]
+    generated = todo_path.read_text(encoding="utf-8")
+    dependent_block = generated.split("## ACCEL-002", 1)[1].split(
+        "## ACCEL-003",
+        1,
+    )[0]
+    assert "- Depends on: ACCEL-003" in dependent_block
+    assert "VAIOS-G001" not in dependent_block
+    index = json.loads(
+        (bundle_dir / "index.json").read_text(encoding="utf-8")
+    )
+    indexed_dependent = next(
+        task
+        for bundle in index["bundles"].values()
+        for task in bundle["tasks"]
+        if task["task_id"] == "ACCEL-002"
+    )
+    assert indexed_dependent["depends_on"] == ["ACCEL-003"]
+    assert indexed_dependent["dependency_task_ids"] == ["ACCEL-003"]
+
+
 def test_manual_review_finding_without_edit_targets_is_visible_but_not_executable(
     tmp_path,
 ):
