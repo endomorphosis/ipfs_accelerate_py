@@ -925,6 +925,9 @@ def test_codebase_scan_receipt_accounts_inventory_candidates_and_durable_details
     }
     assert limited.candidate_accounting.is_balanced
     assert limited.details_artifact is not None
+    todo_text = todo_path.read_text(encoding="utf-8")
+    assert "- Context budget tokens: 2048" in todo_text
+    assert "- Provider role: grok-implement, codex-review" in todo_text
     summaries = {
         summary.reason_code.value: summary
         for summary in limited.reason_summaries["exclusions"]
@@ -1324,6 +1327,76 @@ def test_backlog_refinery_annotation_scan_ignores_literal_status_strings(tmp_pat
     assert [(finding.root_relative_path, finding.line_number) for finding in findings] == [
         ("src/runtime.py", 6)
     ]
+
+
+def test_backlog_refinery_python_scan_ignores_swallowed_exception_literals(
+    tmp_path,
+):
+    repo = _seed_repo(tmp_path)
+    source = repo / "src" / "runtime.py"
+    source.parent.mkdir()
+    source.write_text(
+        '''"""The phrase except Exception: pass is documentation, not code."""
+
+CATALOG = {
+    "handlerBody": "except Exception: pass  # inventory evidence",
+    "snippet": "except Exception:\\n    return None",
+}
+
+def real_handler():
+    try:
+        work()
+    except Exception:
+        pass
+''',
+        encoding="utf-8",
+    )
+    _git(repo, "add", "src/runtime.py")
+    _git(repo, "commit", "-m", "seed semantic scan target")
+
+    findings = scan_codebase_findings(repo, max_findings=10)
+
+    swallowed = [
+        finding
+        for finding in findings
+        if finding.kind == "swallowed_exception"
+    ]
+    assert [(finding.root_relative_path, finding.line_number) for finding in swallowed] == [
+        ("src/runtime.py", 11)
+    ]
+
+
+def test_backlog_refinery_python_scan_detects_bare_and_return_none_handlers(
+    tmp_path,
+):
+    repo = _seed_repo(tmp_path)
+    source = repo / "src" / "runtime.py"
+    source.parent.mkdir()
+    source.write_text(
+        """def bare_handler():
+    try:
+        work()
+    except:
+        return None
+
+def explicit_handler():
+    try:
+        work()
+    except Exception:
+        return
+""",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "src/runtime.py")
+    _git(repo, "commit", "-m", "seed broad handlers")
+
+    findings = scan_codebase_findings(repo, max_findings=10)
+
+    assert [
+        (finding.root_relative_path, finding.line_number)
+        for finding in findings
+        if finding.kind == "swallowed_exception"
+    ] == [("src/runtime.py", 4), ("src/runtime.py", 10)]
 
 
 def test_backlog_refinery_annotation_scan_ignores_long_cli_option_names(tmp_path):
@@ -3875,12 +3948,14 @@ old generated plan
         path=path,
         task_id="AUTO-010",
         record=record,
+        discovery_dir=path.parent,
         date="2026-06-07",
     )
     write_reconciliation_guardrail_discovery_path(
         path=path,
         task_id="AUTO-010",
         record={**record, "candidate_count": 3},
+        discovery_dir=path.parent,
         date="2026-06-07",
     )
 
@@ -4564,6 +4639,8 @@ def test_backlog_refinery_retry_budget_blocks_merge_loop(tmp_path):
 - Depends on:
 - Outputs: src/runtime.py
 - Validation: test -f src/runtime.py
+- Parallel lane: runtime-merge
+- Predicted files: src/runtime.py
 - Acceptance: Merge the generated runtime feature.
 """,
         encoding="utf-8",
@@ -4601,6 +4678,13 @@ def test_backlog_refinery_retry_budget_blocks_merge_loop(tmp_path):
     todo_text = todo_path.read_text(encoding="utf-8")
     assert "## AUTO-002 Resolve merge retry-budget failure for AUTO-001" in todo_text
     assert "ipfs-accelerate-agent-merge-resolver" in todo_text
+    repair_text = todo_text.split(
+        "## AUTO-002 Resolve merge retry-budget failure for AUTO-001",
+        1,
+    )[1]
+    assert "- Parallel lane: runtime-merge" in repair_text
+    assert "- Predicted files: data/agent_supervisor/discovery" in repair_text
+    assert "- Predicted files: src/runtime.py" not in repair_text
     strategy = json.loads(strategy_path.read_text(encoding="utf-8"))
     assert strategy["blocked_tasks"] == ["AUTO-001"]
 

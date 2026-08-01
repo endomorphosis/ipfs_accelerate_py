@@ -1140,6 +1140,20 @@ def run_process_group_stream(
             if hasattr(exc, attribute):
                 setattr(timeout_exc, attribute, getattr(exc, attribute))
         raise timeout_exc from exc
+    except BaseException:
+        # The implementation daemon can be recycled while a provider runner
+        # owns a separate process session. Fence that complete tree before the
+        # daemon releases its canonical task claim.
+        terminate_pid_tree(
+            process.pid,
+            grace_seconds=max(0.0, float(termination_grace_seconds)),
+        )
+        try:
+            process.wait(timeout=max(0.1, float(termination_grace_seconds)))
+        except subprocess.TimeoutExpired:
+            terminate_process_group(process, signal.SIGKILL)
+            process.wait()
+        raise
     # A successful CLI process may have daemonized descendants that closed
     # their inherited output descriptors.  They remain in the owned session
     # and could mutate the checkout after the implementation fence's final

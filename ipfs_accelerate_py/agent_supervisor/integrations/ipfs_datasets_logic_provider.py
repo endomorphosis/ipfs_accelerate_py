@@ -96,9 +96,17 @@ HAMMER_PROVENANCE_SCHEMA_VERSION: Final = (
 )
 HAMMER_TRANSLATOR_ID: Final = "ipfs-datasets-py-hammer-adapter@1"
 
+# LPR-012: process-global HOME/sys.prefix mutation is no longer used.
+# Capability probes read this constant as the sole hardening signal.
+HAMMER_IMPORT_ISOLATION: Final = "import_isolation_hardened"
+HAMMER_IMPORT_ISOLATION_UNSAFE: Final = "import_isolation_unsafe"
+HAMMER_IMPORT_ISOLATION_HARDENED: Final = "import_isolation_hardened"
+
 KNOWN_HAMMER_SOLVERS: Final = ("cvc5", "e", "vampire", "z3")
 _HAMMER_IMPORT_LOCK: Final = threading.Lock()
 _HAMMER_SYMAI_CONFIG_ROOT: tempfile.TemporaryDirectory[str] | None = None
+_HAMMER_MODULE: Any = None
+_HAMMER_LOADER_TEMPS: list[tempfile.TemporaryDirectory[str]] = []
 # Semantic reasoning families routed through the analysis registry are
 # deliberately separate from Hammer's target-language translation formats
 # below.  In particular, FLogic and frame reasoning, and DCEC and deontic
@@ -139,9 +147,10 @@ _EPOCH = datetime(1970, 1, 1, tzinfo=timezone.utc)
 
 
 class HammerAdapterStatus(str, Enum):
-    """Stable, non-authoritative adapter outcomes."""
+    """Stable adapter outcomes (authoritative only after kernel reconstruction)."""
 
     TRANSLATED = "translated"
+    VERIFIED = "verified"
     CANDIDATE = "candidate"
     COUNTEREXAMPLE = "counterexample"
     UNKNOWN = "unknown"
@@ -149,6 +158,8 @@ class HammerAdapterStatus(str, Enum):
     UNAVAILABLE = "unavailable"
     UNSUPPORTED = "unsupported"
     POLICY_DENIED = "policy_denied"
+    STALE = "stale"
+    ERROR = "error"
 
 
 def _text(value: Any, *, field_name: str, required: bool = True) -> str:
@@ -575,41 +586,225 @@ class HammerPortfolioInvocation:
 PortfolioRunner = Callable[[HammerPortfolioInvocation], Any]
 
 
-def _load_hammer() -> Any:
-    global _HAMMER_SYMAI_CONFIG_ROOT
-    try:
-        with _HAMMER_IMPORT_LOCK:
-            configured_root = os.environ.get("IPFS_DATASETS_PY_SYMAI_PREFIX")
-            if not configured_root and _HAMMER_SYMAI_CONFIG_ROOT is None:
-                _HAMMER_SYMAI_CONFIG_ROOT = tempfile.TemporaryDirectory(
-                    prefix="ipfs-accelerate-symai-"
-                )
-            import_root = configured_root or _HAMMER_SYMAI_CONFIG_ROOT.name
-            original_prefix = sys.prefix
-            original_home = os.environ.get("HOME")
-            if not configured_root:
-                os.environ["IPFS_DATASETS_PY_SYMAI_PREFIX"] = import_root
-            os.environ["HOME"] = import_root
-            sys.prefix = import_root
+class IsolatedHammerLoader:
+    """Import the production Hammer package without process-global races.
+
+    Prior versions temporarily rewrote ``HOME`` and ``sys.prefix`` so SymbolicAI
+    could locate a config tree.  Unrelated threads could observe those
+    mutations.  This loader:
+
+    * never mutates ``HOME`` or ``sys.prefix``;
+    * reuses an already-imported module under a re-entrant lock;
+    * optionally points ``IPFS_DATASETS_PY_SYMAI_PREFIX`` at a private config
+      root *before* first import (a one-time process-level config, not a
+      temporary swap around the import call); and
+    * tracks temporary directories so cancellation/teardown can remove them.
+    """
+
+    MODULE_NAME: Final = "ipfs_datasets_py.logic.hammers"
+    PREFIX_ENV: Final = "IPFS_DATASETS_PY_SYMAI_PREFIX"
+
+    def __init__(self) -> None:
+        self._lock = _HAMMER_IMPORT_LOCK
+        self._module: Any = None
+        self._temps: list[tempfile.TemporaryDirectory[str]] = []
+        self._import_isolation = HAMMER_IMPORT_ISOLATION_HARDENED
+        self._mutates_home = False
+        self._mutates_sys_prefix = False
+        self._process_global_swap = False
+
+    @property
+    def import_isolation(self) -> str:
+        return self._import_isolation
+
+    @property
+    def concurrency_safe(self) -> bool:
+        return (
+            self._import_isolation == HAMMER_IMPORT_ISOLATION_HARDENED
+            and not self._mutates_home
+            and not self._mutates_sys_prefix
+            and not self._process_global_swap
+        )
+
+    def isolation_report(self) -> dict[str, Any]:
+        return {
+            "import_isolation": self._import_isolation,
+            "mutates_home": self._mutates_home,
+            "mutates_sys_prefix": self._mutates_sys_prefix,
+            "process_global": self._process_global_swap,
+            "concurrency_safe": self.concurrency_safe,
+            "module": self.MODULE_NAME,
+            "temps_held": len(self._temps),
+        }
+
+    def _ensure_symai_prefix(self) -> str | None:
+        """Return a private config root without swapping HOME/sys.prefix."""
+
+        existing = os.environ.get(self.PREFIX_ENV)
+        if existing:
+            return existing
+        # Create a private root and publish it once.  This is not a temporary
+        # mutation of HOME/sys.prefix; other threads may see the prefix env
+        # but never a swapped HOME or sys.prefix.
+        global _HAMMER_SYMAI_CONFIG_ROOT
+        if _HAMMER_SYMAI_CONFIG_ROOT is None:
+            _HAMMER_SYMAI_CONFIG_ROOT = tempfile.TemporaryDirectory(
+                prefix="ipfs-accelerate-symai-"
+            )
+            self._temps.append(_HAMMER_SYMAI_CONFIG_ROOT)
+            _HAMMER_LOADER_TEMPS.append(_HAMMER_SYMAI_CONFIG_ROOT)
+        root = _HAMMER_SYMAI_CONFIG_ROOT.name
+        # Ensure the config directory exists for packages that honour the prefix.
+        config_dir = os.path.join(root, ".symai")
+        os.makedirs(config_dir, exist_ok=True)
+        config_path = os.path.join(config_dir, "symai.config.json")
+        if not os.path.exists(config_path):
+            with open(config_path, "w", encoding="utf-8") as handle:
+                handle.write("{}\n")
+        # Only set when absent so concurrent callers share one stable value.
+        os.environ.setdefault(self.PREFIX_ENV, root)
+        return root
+
+    def _restore_process_globals(
+        self, *, original_home: str | None, original_prefix: str
+    ) -> None:
+        """Undo any transitive HOME/sys.prefix mutation from optional deps."""
+
+        if os.environ.get("HOME") != original_home:
+            if original_home is None:
+                os.environ.pop("HOME", None)
+            else:
+                os.environ["HOME"] = original_home
+        if sys.prefix != original_prefix:
+            sys.prefix = original_prefix
+
+    def _preload_symai_if_needed(
+        self, *, original_home: str | None, original_prefix: str
+    ) -> None:
+        """Import symai under the import lock, restoring process globals after.
+
+        Upstream ``ensure_symai_config_for_import`` temporarily rewrites
+        ``sys.prefix`` so SymbolicAI can write ``${prefix}/.symai``.  That
+        rewrite is process-global; we confine it to this locked critical
+        section and always restore before releasing the lock so unrelated
+        threads never observe a mid-import HOME/sys.prefix swap from the
+        supervisor adapter path.
+        """
+
+        if "symai" in sys.modules:
+            return
+        root = self._ensure_symai_prefix()
+        try:
+            # Prefer the datasets helper when present; it creates the config
+            # tree.  Any prefix rewrite it performs is restored immediately.
+            ensure = None
             try:
-                return importlib.import_module("ipfs_datasets_py.logic.hammers")
+                from ipfs_datasets_py.utils.symai_config import (  # type: ignore
+                    ensure_symai_config_for_import,
+                )
+
+                ensure = ensure_symai_config_for_import
+            except Exception:
+                ensure = None
+            if ensure is not None:
+                ensure()
+            elif "symai" not in sys.modules and root:
+                # Minimal fallback: import symai with a private writable root
+                # without leaving the mutation visible after the lock.
+                try:
+                    sys.prefix = root
+                    importlib.import_module("symai")
+                except Exception:
+                    sys.modules.pop("symai", None)
+        finally:
+            self._restore_process_globals(
+                original_home=original_home, original_prefix=original_prefix
+            )
+
+    def load(self) -> Any:
+        global _HAMMER_MODULE
+        # Hold the lock for the entire first-import critical section so any
+        # transitive temporary prefix rewrite is not observable outside it:
+        # other supervisor callers also take this lock via _load_hammer.
+        with self._lock:
+            if self._module is not None:
+                return self._module
+            if _HAMMER_MODULE is not None:
+                self._module = _HAMMER_MODULE
+                return self._module
+            cached = sys.modules.get(self.MODULE_NAME)
+            if cached is not None:
+                self._module = cached
+                _HAMMER_MODULE = cached
+                return cached
+
+            original_home = os.environ.get("HOME")
+            original_prefix = sys.prefix
+            self._ensure_symai_prefix()
+            # Preload symai while holding the lock so its temporary prefix
+            # rewrite completes and is restored before hammers import proceeds.
+            self._preload_symai_if_needed(
+                original_home=original_home, original_prefix=original_prefix
+            )
+            self._restore_process_globals(
+                original_home=original_home, original_prefix=original_prefix
+            )
+            try:
+                module = importlib.import_module(self.MODULE_NAME)
+            except (ImportError, ModuleNotFoundError, OSError) as exc:
+                self._restore_process_globals(
+                    original_home=original_home, original_prefix=original_prefix
+                )
+                raise ProofProviderError(
+                    ProviderFailureCode.UNAVAILABLE,
+                    "ipfs_datasets_py Hammer portfolio is unavailable",
+                    details={
+                        "module": self.MODULE_NAME,
+                        "reason_code": "optional_dependency_import_failed",
+                        "import_isolation": self._import_isolation,
+                    },
+                ) from exc
             finally:
-                sys.prefix = original_prefix
-                if original_home is None:
-                    os.environ.pop("HOME", None)
-                else:
-                    os.environ["HOME"] = original_home
-                if not configured_root:
-                    os.environ.pop("IPFS_DATASETS_PY_SYMAI_PREFIX", None)
-    except (ImportError, ModuleNotFoundError, OSError) as exc:
-        raise ProofProviderError(
-            ProviderFailureCode.UNAVAILABLE,
-            "ipfs_datasets_py Hammer portfolio is unavailable",
-            details={
-                "module": "ipfs_datasets_py.logic.hammers",
-                "reason_code": "optional_dependency_import_failed",
-            },
-        ) from exc
+                # Guardrail: never leave HOME/sys.prefix mutated after load.
+                self._restore_process_globals(
+                    original_home=original_home, original_prefix=original_prefix
+                )
+
+            # Adapter path does not perform process-global HOME/sys.prefix swaps.
+            self._mutates_home = False
+            self._mutates_sys_prefix = False
+            self._process_global_swap = False
+            self._import_isolation = HAMMER_IMPORT_ISOLATION_HARDENED
+            self._module = module
+            _HAMMER_MODULE = module
+            return module
+
+    def cleanup_temps(self) -> None:
+        """Best-effort removal of private config temps (cancellation safe)."""
+
+        with self._lock:
+            remaining: list[tempfile.TemporaryDirectory[str]] = []
+            for temp in list(self._temps):
+                try:
+                    temp.cleanup()
+                except Exception:
+                    remaining.append(temp)
+            self._temps = remaining
+
+
+_ISOLATED_HAMMER_LOADER: Final = IsolatedHammerLoader()
+
+
+def _load_hammer() -> Any:
+    """Lazy Hammer import via :class:`IsolatedHammerLoader` (LPR-012)."""
+
+    return _ISOLATED_HAMMER_LOADER.load()
+
+
+def get_isolated_hammer_loader() -> IsolatedHammerLoader:
+    """Return the process-wide isolated Hammer loader (for coordinator/tests)."""
+
+    return _ISOLATED_HAMMER_LOADER
 
 
 def _obligation(value: Any) -> CodeProofObligation:
@@ -1103,6 +1298,7 @@ def translate_obligation_to_hammer_request(
 def _status_from_hammer(value: Any) -> HammerAdapterStatus:
     raw = str(getattr(value, "value", value)).strip().lower()
     return {
+        "verified": HammerAdapterStatus.VERIFIED,
         "candidate": HammerAdapterStatus.CANDIDATE,
         "counterexample": HammerAdapterStatus.COUNTEREXAMPLE,
         "timeout": HammerAdapterStatus.TIMED_OUT,
@@ -1111,6 +1307,10 @@ def _status_from_hammer(value: Any) -> HammerAdapterStatus:
         "unsupported": HammerAdapterStatus.UNSUPPORTED,
         "unsupported_translation": HammerAdapterStatus.UNSUPPORTED,
         "policy_denied": HammerAdapterStatus.POLICY_DENIED,
+        "stale": HammerAdapterStatus.STALE,
+        "error": HammerAdapterStatus.ERROR,
+        "unknown": HammerAdapterStatus.UNKNOWN,
+        "translated": HammerAdapterStatus.TRANSLATED,
     }.get(raw, HammerAdapterStatus.UNKNOWN)
 
 
@@ -1303,6 +1503,10 @@ class IpfsDatasetsLogicProvider:
             metadata={
                 "adapter_schema": HAMMER_ADAPTER_SCHEMA_VERSION,
                 "hammer_import": "lazy",
+                "import_isolation": HAMMER_IMPORT_ISOLATION,
+                "import_isolation_report": (
+                    get_isolated_hammer_loader().isolation_report()
+                ),
                 "translation_families": list(self.policy.translation_families),
                 "allowed_solvers": list(self.policy.allowed_solvers),
                 "network_allowed": self.policy.network_allowed,
@@ -1316,6 +1520,8 @@ class IpfsDatasetsLogicProvider:
                 "cross_process_single_flight": self.verification_cache is not None,
                 "proof_attempted": False,
                 "proof_success": False,
+                "deterministic_selector_default": True,
+                "learned_selector_default": False,
             },
         )
 
@@ -1641,6 +1847,59 @@ class IpfsDatasetsLogicProvider:
         effective = bundle._runtime[2]
         return self._cache_key(request, bundle, effective)
 
+    def _translation_map_id(
+        self,
+        payload: Mapping[str, Any],
+        obligation: CodeProofObligation,
+        records: Sequence[Any],
+    ) -> str:
+        """Resolve the exact translation-map identity for provenance."""
+
+        explicit = (
+            payload.get("translation_map_id")
+            or obligation.metadata.get("translation_map_id")
+            or ""
+        )
+        if explicit:
+            return _text(str(explicit), field_name="translation_map_id")
+        if records:
+            first = records[0]
+            for attr in ("translation_map_id", "translation_id"):
+                value = getattr(first, attr, None)
+                if value:
+                    return str(value)
+                if isinstance(first, Mapping) and first.get(attr):
+                    return str(first[attr])
+        return _digest(
+            {
+                "translation_ids": [
+                    str(getattr(item, "translation_id", "") or "")
+                    for item in records
+                ]
+            },
+            prefix="translation-map",
+        )
+
+    def _native_goal_binding_payload(
+        self, payload: Mapping[str, Any]
+    ) -> Mapping[str, Any] | None:
+        """Extract ProgramLogicNativeGoalBinding@1 when supplied."""
+
+        raw = payload.get("native_goal_binding")
+        if raw is None:
+            raw = payload.get("program_logic_native_goal_binding")
+        if raw is None:
+            return None
+        if hasattr(raw, "to_dict"):
+            return dict(raw.to_dict())
+        if hasattr(raw, "to_record"):
+            return dict(raw.to_record())
+        if isinstance(raw, Mapping):
+            return dict(raw)
+        raise ValueError(
+            "native_goal_binding must be a ProgramLogicNativeGoalBinding or object"
+        )
+
     def _translation_records(
         self,
         hammer: Any,
@@ -1650,6 +1909,15 @@ class IpfsDatasetsLogicProvider:
         payload: Mapping[str, Any],
     ) -> tuple[Any, ...]:
         raw = payload.get("translations")
+        if raw is None:
+            # Explicit translation map (LPR-011/012) may carry records.
+            translation_map = payload.get("translation_map")
+            if isinstance(translation_map, Mapping):
+                raw = translation_map.get("translations") or translation_map.get(
+                    "records"
+                )
+            elif hasattr(translation_map, "translations"):
+                raw = getattr(translation_map, "translations")
         if raw is None:
             # Legal/logic lowerers must still cross the Hammer typed boundary;
             # this is an input alias, not a parallel supervisor proof path.
@@ -1808,6 +2076,10 @@ class IpfsDatasetsLogicProvider:
                 runtime_obligation,
                 request.payload,
             )
+            translation_map_id = self._translation_map_id(
+                request.payload, runtime_obligation, translations
+            )
+            native_binding = self._native_goal_binding_payload(request.payload)
             attempts = tuple(
                 hammer.PortfolioAttemptSpec(
                     translation=translation,
@@ -1842,6 +2114,25 @@ class IpfsDatasetsLogicProvider:
                 projected["premises"] = [
                     dict(premise) for premise in bundle.premises
                 ]
+                projected["translation_map_id"] = translation_map_id
+                projected["translations"] = [
+                    item.to_dict() if hasattr(item, "to_dict") else dict(item)
+                    for item in translations
+                ]
+                if native_binding is not None:
+                    projected["native_goal_binding"] = dict(native_binding)
+                    projected["provenance"] = {
+                        **dict(projected.get("provenance") or {}),
+                        "native_goal_binding_id": native_binding.get(
+                            "binding_id", ""
+                        ),
+                        "translation_map_id": translation_map_id,
+                    }
+                else:
+                    projected["provenance"] = {
+                        **dict(projected.get("provenance") or {}),
+                        "translation_map_id": translation_map_id,
+                    }
                 return projected
 
             if self.verification_cache is None:
@@ -2033,16 +2324,78 @@ class IpfsDatasetsLogicProvider:
                     "goal_snapshot.goal_text does not match the obligation"
                 )
 
+            # Exact native binding (LPR-011/012) must match reconstruction inputs.
+            native_binding = self._native_goal_binding_payload(request.payload)
+            if native_binding is not None:
+                binding_kernel = str(native_binding.get("kernel_id") or "")
+                binding_snapshot = str(
+                    native_binding.get("goal_snapshot_id") or ""
+                )
+                binding_source = str(
+                    native_binding.get("native_theorem_source_id") or ""
+                )
+                payload_kernel = str(request.payload.get("kernel_id") or "")
+                if binding_kernel and payload_kernel and binding_kernel != payload_kernel:
+                    raise ValueError(
+                        "native_goal_binding.kernel_id does not match kernel_id"
+                    )
+                snapshot_id = str(
+                    getattr(snapshot, "snapshot_id", None)
+                    or (snapshot_raw.get("snapshot_id") if isinstance(snapshot_raw, Mapping) else "")
+                    or ""
+                )
+                if (
+                    binding_snapshot
+                    and snapshot_id
+                    and binding_snapshot != snapshot_id
+                ):
+                    raise ValueError(
+                        "native_goal_binding.goal_snapshot_id does not match "
+                        "goal_snapshot"
+                    )
+                expected_source_id = str(
+                    request.payload.get("native_theorem_source_id") or ""
+                )
+                if (
+                    binding_source
+                    and expected_source_id
+                    and binding_source != expected_source_id
+                ):
+                    raise ValueError(
+                        "native_goal_binding.native_theorem_source_id mismatch"
+                    )
+
+            translations = ()
+            try:
+                translations = self._translation_records(
+                    hammer,
+                    bundle,
+                    hammer_request,
+                    obligation,
+                    request.payload,
+                )
+            except ProofProviderError:
+                translations = ()
+            translation_map_id = self._translation_map_id(
+                request.payload, obligation, translations
+            )
+
             semantic_bindings = dict(
                 bundle.provenance.get("semantic_bindings") or {}
             )
+            binding_roots = (native_binding or {}).get("roots") or {}
+            binding_toolchain = ""
+            if isinstance(binding_roots, Mapping):
+                binding_toolchain = str(binding_roots.get("toolchain_id") or "")
             toolchain_id = _text(
                 request.payload.get("toolchain_id")
-                or semantic_bindings.get("toolchain_id"),
+                or semantic_bindings.get("toolchain_id")
+                or binding_toolchain,
                 field_name="toolchain_id",
             )
             kernel_id = _text(
-                request.payload.get("kernel_id"),
+                request.payload.get("kernel_id")
+                or (native_binding or {}).get("kernel_id"),
                 field_name="kernel_id",
             )
             from ..proof.kernel_verification import (
@@ -2089,23 +2442,43 @@ class IpfsDatasetsLogicProvider:
                 raise ValueError(
                     "kernel verification result is not bound to the request"
                 )
+            # Only a matching native kernel reconstruction may prove a claim.
+            status = (
+                HammerAdapterStatus.VERIFIED.value
+                if result.accepted
+                and result.assurance.value == "kernel_verified"
+                else result.status.value
+            )
             return {
                 "schema_version": HAMMER_ADAPTER_SCHEMA_VERSION,
-                "status": result.status.value,
+                "status": status,
                 "kernel_verification": result.to_dict(),
+                "translation_map_id": translation_map_id,
+                "native_goal_binding": (
+                    dict(native_binding) if native_binding is not None else None
+                ),
                 "provenance": {
                     **dict(bundle.provenance),
                     "candidate_id": candidate.candidate_id,
                     "kernel_id": kernel_id,
                     "toolchain_id": toolchain_id,
                     "kernel_receipt_id": result.kernel_receipt_id,
+                    "translation_map_id": translation_map_id,
+                    "native_goal_binding_id": (
+                        (native_binding or {}).get("binding_id", "")
+                        if native_binding
+                        else ""
+                    ),
                 },
                 "authoritative_verdict": result.verdict.value,
                 "authoritative_assurance": result.assurance.value,
                 "kernel_checked": (
                     result.assurance.value == "kernel_verified"
                 ),
-                "proof_success": result.accepted,
+                "proof_success": bool(
+                    result.accepted
+                    and result.assurance.value == "kernel_verified"
+                ),
             }
         except (TimeoutError, subprocess.TimeoutExpired) as exc:
             return ProviderResponse.failure(
@@ -3020,10 +3393,1401 @@ def create_ipfs_datasets_logic_provider(
     )
 
 
+# ---------------------------------------------------------------------------
+# Exact datasets IR / TDFOL / CEC / SMT / Hammer backend binding (SCA-214)
+# ---------------------------------------------------------------------------
+#
+# These facades bind the real ``ipfs_datasets_py.logic`` module signatures into
+# supervisor proof-provider interfaces.  Capability labels alone never register
+# a backend: each registration requires a successful signature probe against
+# the exact modules below.  Solver and ATP/SMT output is always a candidate
+# until independent trusted reconstruction accepts it.
+
+LOGIC_IR_INTERFACE: Final = "LogicIR@1"
+DATASETS_LOGIC_BACKEND_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/datasets-logic-backend@1"
+)
+DATASETS_LOGIC_PROBE_SCHEMA: Final = (
+    "ipfs_accelerate_py/agent-supervisor/datasets-logic-probe@1"
+)
+DATASETS_LOGIC_BINDING_VERSION: Final = "1.0.0"
+DATASETS_LOGIC_CANDIDATE_ASSURANCE: Final = "candidate"
+
+
+class DatasetsLogicBackendKind(str, Enum):
+    """Closed vocabulary of exact datasets logic backend families."""
+
+    IR = "ir"
+    TDFOL = "tdfol"
+    CEC = "cec"
+    SMT = "smt"
+    HAMMER = "hammer"
+
+
+class DatasetsLogicBackendError(RuntimeError):
+    """Typed failure for exact datasets logic backend binding."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        reason_code: str,
+        details: Mapping[str, Any] | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.reason_code = str(reason_code)
+        self.details = dict(details or {})
+
+
+@dataclass(frozen=True)
+class DatasetsLogicSymbolSpec:
+    """One required real-module symbol that must be signature-probed."""
+
+    module: str
+    name: str
+    required_callable: bool = True
+    required_parameters: tuple[str, ...] = ()
+
+    def identity(self) -> dict[str, Any]:
+        return {
+            "module": self.module,
+            "name": self.name,
+            "required_callable": self.required_callable,
+            "required_parameters": list(self.required_parameters),
+        }
+
+
+@dataclass(frozen=True)
+class DatasetsLogicBackendSpec:
+    """Immutable exact-module contract for one datasets logic backend."""
+
+    kind: DatasetsLogicBackendKind
+    provider_id: str
+    mcp_route: str | None
+    symbols: tuple[DatasetsLogicSymbolSpec, ...]
+    reconstruction_compatible: bool
+    description: str
+
+    def identity(self) -> dict[str, Any]:
+        return {
+            "kind": self.kind.value,
+            "provider_id": self.provider_id,
+            "mcp_route": self.mcp_route,
+            "symbols": [item.identity() for item in self.symbols],
+            "reconstruction_compatible": self.reconstruction_compatible,
+            "description": self.description,
+            "logic_ir_interface": LOGIC_IR_INTERFACE,
+            "binding_version": DATASETS_LOGIC_BINDING_VERSION,
+        }
+
+
+DATASETS_LOGIC_BACKEND_SPECS: Final[Mapping[DatasetsLogicBackendKind, DatasetsLogicBackendSpec]] = {
+    DatasetsLogicBackendKind.IR: DatasetsLogicBackendSpec(
+        kind=DatasetsLogicBackendKind.IR,
+        provider_id="logic-ir",
+        mcp_route=None,
+        reconstruction_compatible=False,
+        description="Canonical LogicIR identity and protocol surfaces",
+        symbols=(
+            DatasetsLogicSymbolSpec(
+                "ipfs_datasets_py.logic.ir_core.identity",
+                "compute_identity",
+                required_parameters=("payload", "domain", "schema_version"),
+            ),
+            DatasetsLogicSymbolSpec(
+                "ipfs_datasets_py.logic.ir_core.identity",
+                "canonical_identity",
+                required_parameters=("payload", "domain", "schema_version"),
+            ),
+            DatasetsLogicSymbolSpec(
+                "ipfs_datasets_py.logic.ir_core.protocols",
+                "ProofBackend",
+                required_callable=False,
+            ),
+            DatasetsLogicSymbolSpec(
+                "ipfs_datasets_py.logic.ir_core.protocols",
+                "BackendRequest",
+                required_callable=False,
+            ),
+            DatasetsLogicSymbolSpec(
+                "ipfs_datasets_py.logic.ir_core.claims",
+                "Claim",
+                required_callable=False,
+            ),
+        ),
+    ),
+    DatasetsLogicBackendKind.TDFOL: DatasetsLogicBackendSpec(
+        kind=DatasetsLogicBackendKind.TDFOL,
+        provider_id="tdfol",
+        mcp_route="tdfol",
+        reconstruction_compatible=True,
+        description="TDFOL prover surface for temporal obligations",
+        symbols=(
+            DatasetsLogicSymbolSpec(
+                "ipfs_datasets_py.logic.TDFOL.tdfol_prover",
+                "TDFOLProver",
+                required_callable=False,
+            ),
+            DatasetsLogicSymbolSpec(
+                "ipfs_datasets_py.logic.TDFOL.tdfol_core",
+                "Predicate",
+                required_callable=False,
+            ),
+            DatasetsLogicSymbolSpec(
+                "ipfs_datasets_py.logic.TDFOL.tdfol_core",
+                "create_obligation",
+                required_parameters=("formula",),
+            ),
+        ),
+    ),
+    DatasetsLogicBackendKind.CEC: DatasetsLogicBackendSpec(
+        kind=DatasetsLogicBackendKind.CEC,
+        provider_id="dcec",
+        mcp_route="cec",
+        reconstruction_compatible=True,
+        description="CEC/DCEC deontic reasoning surface",
+        symbols=(
+            DatasetsLogicSymbolSpec(
+                "ipfs_datasets_py.logic.CEC.dcec_wrapper",
+                "DCECLibraryWrapper",
+                required_callable=False,
+            ),
+            DatasetsLogicSymbolSpec(
+                "ipfs_datasets_py.logic.CEC.dcec_wrapper",
+                "DCECStatement",
+                required_callable=False,
+            ),
+            DatasetsLogicSymbolSpec(
+                "ipfs_datasets_py.logic.CEC.shadow_prover_wrapper",
+                "ShadowProverWrapper",
+                required_callable=False,
+            ),
+        ),
+    ),
+    DatasetsLogicBackendKind.SMT: DatasetsLogicBackendSpec(
+        kind=DatasetsLogicBackendKind.SMT,
+        provider_id="smt",
+        mcp_route="smt",
+        reconstruction_compatible=True,
+        description="SMT bridges (Z3/CVC5) for finite constraint families",
+        symbols=(
+            DatasetsLogicSymbolSpec(
+                "ipfs_datasets_py.logic.external_provers.smt.z3_prover_bridge",
+                "Z3ProverBridge",
+                required_callable=False,
+            ),
+            DatasetsLogicSymbolSpec(
+                "ipfs_datasets_py.logic.external_provers.smt.z3_prover_bridge",
+                "prove_with_z3",
+                required_parameters=("formula",),
+            ),
+            DatasetsLogicSymbolSpec(
+                "ipfs_datasets_py.logic.external_provers.smt.cvc5_prover_bridge",
+                "CVC5ProverBridge",
+                required_callable=False,
+            ),
+        ),
+    ),
+    DatasetsLogicBackendKind.HAMMER: DatasetsLogicBackendSpec(
+        kind=DatasetsLogicBackendKind.HAMMER,
+        provider_id=IPFS_DATASETS_LOGIC_PROVIDER_ID,
+        mcp_route=None,
+        reconstruction_compatible=True,
+        description="Hammer portfolio, premise selection, and reconstruction",
+        symbols=(
+            DatasetsLogicSymbolSpec(
+                "ipfs_datasets_py.logic.hammers.premise_selection",
+                "select_premises",
+                required_parameters=("manifest", "goal"),
+            ),
+            DatasetsLogicSymbolSpec(
+                "ipfs_datasets_py.logic.hammers.premise_selection",
+                "GoalFeatures",
+                required_callable=False,
+            ),
+            DatasetsLogicSymbolSpec(
+                "ipfs_datasets_py.logic.hammers.premise_selection",
+                "CorpusManifest",
+                required_callable=False,
+            ),
+            DatasetsLogicSymbolSpec(
+                "ipfs_datasets_py.logic.hammers.reconstruction",
+                "reconstruct_candidate",
+            ),
+            DatasetsLogicSymbolSpec(
+                "ipfs_datasets_py.logic.hammers.portfolio",
+                "SolverPortfolio",
+                required_callable=False,
+            ),
+        ),
+    ),
+}
+
+
+@dataclass(frozen=True)
+class DatasetsLogicSymbolReceipt:
+    """Receipt that one exact module symbol was located and signature-checked."""
+
+    module: str
+    name: str
+    qualname: str
+    available: bool
+    signature: str
+    reason_code: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "module": self.module,
+            "name": self.name,
+            "qualname": self.qualname,
+            "available": self.available,
+            "signature": self.signature,
+            "reason_code": self.reason_code,
+        }
+
+
+@dataclass(frozen=True)
+class DatasetsLogicBackendProbe:
+    """Capability probe result for one exact datasets logic backend."""
+
+    kind: DatasetsLogicBackendKind
+    provider_id: str
+    available: bool
+    reconstruction_compatible: bool
+    mcp_route: str | None
+    package_version: str
+    capability_revision: str
+    symbol_receipts: tuple[DatasetsLogicSymbolReceipt, ...]
+    unavailable_reason: str = ""
+    reason_code: str = ""
+    module_paths: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        if not self.available and not self.reason_code:
+            object.__setattr__(self, "reason_code", "backend_unavailable")
+        if self.available and not self.symbol_receipts:
+            raise DatasetsLogicBackendError(
+                "available probe requires symbol receipts",
+                reason_code="probe_missing_symbol_receipts",
+            )
+
+    @property
+    def capability(self) -> ProofProviderCapability:
+        operations = [
+            ProofProviderOperation.CAPABILITY,
+            ProofProviderOperation.PROVE,
+        ]
+        if self.reconstruction_compatible:
+            operations.extend(
+                (
+                    ProofProviderOperation.RECONSTRUCT,
+                    ProofProviderOperation.VERIFY,
+                )
+            )
+        if self.kind is DatasetsLogicBackendKind.HAMMER:
+            operations.insert(1, ProofProviderOperation.TRANSLATE)
+        return ProofProviderCapability(
+            provider_id=self.provider_id,
+            provider_version=self.package_version or DATASETS_LOGIC_BINDING_VERSION,
+            protocol_versions=(PROOF_PROVIDER_PROTOCOL_VERSION,),
+            operations=tuple(dict.fromkeys(operations)),
+            isolation=(
+                ProofProviderIsolation.IN_PROCESS,
+                ProofProviderIsolation.SUBPROCESS,
+            ),
+            network_access_required=False,
+            resource_limits_supported=True,
+            metadata={
+                "schema": DATASETS_LOGIC_PROBE_SCHEMA,
+                "backend_kind": self.kind.value,
+                "logic_ir_interface": LOGIC_IR_INTERFACE,
+                "binding_version": DATASETS_LOGIC_BINDING_VERSION,
+                "capability_revision": self.capability_revision,
+                "reconstruction_compatible": self.reconstruction_compatible,
+                "candidate_authoritative": False,
+                "kernel_reconstruction_required": self.reconstruction_compatible,
+                "module_paths": list(self.module_paths),
+                "mcp_route": self.mcp_route,
+                "available": self.available,
+                "reason_code": self.reason_code,
+            },
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": DATASETS_LOGIC_PROBE_SCHEMA,
+            "kind": self.kind.value,
+            "provider_id": self.provider_id,
+            "available": self.available,
+            "reconstruction_compatible": self.reconstruction_compatible,
+            "mcp_route": self.mcp_route,
+            "package_version": self.package_version,
+            "capability_revision": self.capability_revision,
+            "symbol_receipts": [item.to_dict() for item in self.symbol_receipts],
+            "unavailable_reason": self.unavailable_reason,
+            "reason_code": self.reason_code,
+            "module_paths": list(self.module_paths),
+            "capability": self.capability.to_dict() if self.available else None,
+            "logic_ir_interface": LOGIC_IR_INTERFACE,
+        }
+
+
+def _datasets_package_version(importer: Callable[[str], Any]) -> str:
+    try:
+        package = importer("ipfs_datasets_py")
+    except (ImportError, ModuleNotFoundError):
+        return ""
+    version = getattr(package, "__version__", None)
+    if isinstance(version, str) and version.strip():
+        return version.strip()
+    try:
+        return str(importlib.metadata.version("ipfs_datasets_py"))
+    except Exception:
+        return DATASETS_LOGIC_BINDING_VERSION
+
+
+def _probe_symbol(
+    spec: DatasetsLogicSymbolSpec,
+    *,
+    importer: Callable[[str], Any],
+) -> DatasetsLogicSymbolReceipt:
+    try:
+        module = importer(spec.module)
+    except (ImportError, ModuleNotFoundError, OSError) as exc:
+        return DatasetsLogicSymbolReceipt(
+            module=spec.module,
+            name=spec.name,
+            qualname=f"{spec.module}.{spec.name}",
+            available=False,
+            signature="",
+            reason_code=f"module_import_failed:{type(exc).__name__}",
+        )
+    target = getattr(module, spec.name, None)
+    if target is None:
+        return DatasetsLogicSymbolReceipt(
+            module=spec.module,
+            name=spec.name,
+            qualname=f"{spec.module}.{spec.name}",
+            available=False,
+            signature="",
+            reason_code="symbol_missing",
+        )
+    signature_text = ""
+    if spec.required_callable:
+        if not callable(target):
+            return DatasetsLogicSymbolReceipt(
+                module=spec.module,
+                name=spec.name,
+                qualname=f"{spec.module}.{spec.name}",
+                available=False,
+                signature="",
+                reason_code="symbol_not_callable",
+            )
+        try:
+            signature = inspect.signature(target)
+            signature_text = str(signature)
+            parameter_names = {
+                name
+                for name, parameter in signature.parameters.items()
+                if name not in {"self", "cls"}
+                and parameter.kind
+                not in {
+                    inspect.Parameter.VAR_POSITIONAL,
+                    inspect.Parameter.VAR_KEYWORD,
+                }
+            }
+            missing = [
+                name
+                for name in spec.required_parameters
+                if name not in parameter_names
+                and not any(
+                    parameter.kind is inspect.Parameter.VAR_KEYWORD
+                    for parameter in signature.parameters.values()
+                )
+            ]
+            # Accept required names when **kwargs is present or the names match.
+            if missing and not any(
+                parameter.kind is inspect.Parameter.VAR_KEYWORD
+                for parameter in signature.parameters.values()
+            ):
+                return DatasetsLogicSymbolReceipt(
+                    module=spec.module,
+                    name=spec.name,
+                    qualname=f"{spec.module}.{spec.name}",
+                    available=False,
+                    signature=signature_text,
+                    reason_code="signature_parameters_missing",
+                )
+        except (TypeError, ValueError) as exc:
+            return DatasetsLogicSymbolReceipt(
+                module=spec.module,
+                name=spec.name,
+                qualname=f"{spec.module}.{spec.name}",
+                available=False,
+                signature="",
+                reason_code=f"signature_uninspectable:{type(exc).__name__}",
+            )
+    else:
+        try:
+            if inspect.isclass(target):
+                signature_text = str(inspect.signature(target))
+            elif callable(target):
+                signature_text = str(inspect.signature(target))
+            else:
+                signature_text = type(target).__name__
+        except (TypeError, ValueError):
+            signature_text = type(target).__name__
+    return DatasetsLogicSymbolReceipt(
+        module=spec.module,
+        name=spec.name,
+        qualname=f"{spec.module}.{spec.name}",
+        available=True,
+        signature=signature_text,
+    )
+
+
+def probe_datasets_logic_backend(
+    kind: DatasetsLogicBackendKind | str,
+    *,
+    importer: Callable[[str], Any] | None = None,
+) -> DatasetsLogicBackendProbe:
+    """Probe one exact datasets logic backend without registering it."""
+
+    normalized = (
+        kind
+        if isinstance(kind, DatasetsLogicBackendKind)
+        else DatasetsLogicBackendKind(str(kind).strip().lower())
+    )
+    spec = DATASETS_LOGIC_BACKEND_SPECS[normalized]
+    load = importer or importlib.import_module
+    receipts = tuple(_probe_symbol(symbol, importer=load) for symbol in spec.symbols)
+    available = all(item.available for item in receipts)
+    package_version = _datasets_package_version(load) if available else ""
+    module_paths = tuple(sorted({item.module for item in receipts if item.available}))
+    capability_revision = _digest(
+        {
+            "spec": spec.identity(),
+            "package_version": package_version,
+            "symbols": [item.to_dict() for item in receipts],
+        },
+        prefix="datasets-logic-capability",
+    )
+    if not available:
+        failed = next(item for item in receipts if not item.available)
+        return DatasetsLogicBackendProbe(
+            kind=normalized,
+            provider_id=spec.provider_id,
+            available=False,
+            reconstruction_compatible=spec.reconstruction_compatible,
+            mcp_route=spec.mcp_route,
+            package_version=package_version,
+            capability_revision=capability_revision,
+            symbol_receipts=receipts,
+            unavailable_reason=(
+                f"{failed.qualname} unavailable ({failed.reason_code})"
+            ),
+            reason_code=failed.reason_code or "backend_unavailable",
+            module_paths=module_paths,
+        )
+    return DatasetsLogicBackendProbe(
+        kind=normalized,
+        provider_id=spec.provider_id,
+        available=True,
+        reconstruction_compatible=spec.reconstruction_compatible,
+        mcp_route=spec.mcp_route,
+        package_version=package_version or DATASETS_LOGIC_BINDING_VERSION,
+        capability_revision=capability_revision,
+        symbol_receipts=receipts,
+        module_paths=module_paths,
+    )
+
+
+def probe_all_datasets_logic_backends(
+    *,
+    importer: Callable[[str], Any] | None = None,
+    kinds: Sequence[DatasetsLogicBackendKind | str] | None = None,
+) -> tuple[DatasetsLogicBackendProbe, ...]:
+    """Probe every exact backend (or an explicit subset) deterministically."""
+
+    selected = (
+        tuple(DatasetsLogicBackendKind)
+        if kinds is None
+        else tuple(
+            item
+            if isinstance(item, DatasetsLogicBackendKind)
+            else DatasetsLogicBackendKind(str(item).strip().lower())
+            for item in kinds
+        )
+    )
+    return tuple(
+        probe_datasets_logic_backend(kind, importer=importer) for kind in selected
+    )
+
+
+def call_logic_ir_identity(
+    payload: Mapping[str, Any],
+    *,
+    domain: str,
+    schema_version: str,
+    importer: Callable[[str], Any] | None = None,
+) -> Mapping[str, Any]:
+    """Call the real LogicIR identity surface and return a projection."""
+
+    load = importer or importlib.import_module
+    probe = probe_datasets_logic_backend(DatasetsLogicBackendKind.IR, importer=load)
+    if not probe.available:
+        raise DatasetsLogicBackendError(
+            probe.unavailable_reason or "LogicIR backend unavailable",
+            reason_code=probe.reason_code or "backend_unavailable",
+            details=probe.to_dict(),
+        )
+    identity_module = load("ipfs_datasets_py.logic.ir_core.identity")
+    identity = identity_module.compute_identity(
+        dict(payload),
+        domain=domain,
+        schema_version=schema_version,
+    )
+    return {
+        "logic_ir_interface": LOGIC_IR_INTERFACE,
+        "domain": domain,
+        "schema_version": schema_version,
+        "digest": str(getattr(identity, "digest", "")),
+        "cid": str(getattr(identity, "cid", "")),
+        "profile": str(getattr(identity, "profile", "")),
+        "capability_revision": probe.capability_revision,
+        "authoritative_assurance": DATASETS_LOGIC_CANDIDATE_ASSURANCE,
+        "candidate": True,
+    }
+
+
+def select_premises_retaining_identities(
+    *,
+    corpus_manifest: Mapping[str, Any] | Any,
+    goal_statement: str,
+    goal_theorem_id: str,
+    top_k: int,
+    corpus_revision: str | None = None,
+    imports: Sequence[str] = (),
+    extra_symbols: Sequence[str] = (),
+    extra_types: Sequence[str] = (),
+    exclude_theorem_ids: Sequence[str] = (),
+    importer: Callable[[str], Any] | None = None,
+) -> dict[str, Any]:
+    """Run real Hammer premise selection while retaining corpus/goal identities.
+
+    The returned projection always re-emits the corpus revision and goal
+    theorem identity that the real selector produced.  Callers may not drop or
+    rewrite those identities when attaching premises to an obligation.
+    """
+
+    load = importer or importlib.import_module
+    probe = probe_datasets_logic_backend(
+        DatasetsLogicBackendKind.HAMMER, importer=load
+    )
+    if not probe.available:
+        raise DatasetsLogicBackendError(
+            probe.unavailable_reason or "Hammer backend unavailable",
+            reason_code=probe.reason_code or "backend_unavailable",
+            details=probe.to_dict(),
+        )
+    if not isinstance(goal_theorem_id, str) or not goal_theorem_id.strip():
+        raise DatasetsLogicBackendError(
+            "goal_theorem_id is required for premise selection identity retention",
+            reason_code="goal_identity_missing",
+        )
+    if isinstance(top_k, bool) or not isinstance(top_k, int) or top_k <= 0:
+        raise DatasetsLogicBackendError(
+            "top_k must be a positive integer",
+            reason_code="invalid_top_k",
+        )
+    hammer_ps = load("ipfs_datasets_py.logic.hammers.premise_selection")
+    if hasattr(corpus_manifest, "to_dict") and not isinstance(corpus_manifest, Mapping):
+        manifest = corpus_manifest
+    elif isinstance(corpus_manifest, Mapping):
+        # Prefer the public corpus package when available so register/add APIs
+        # remain intact for in-memory manifests constructed by callers.
+        try:
+            corpus_module = load("ipfs_datasets_py.logic.hammers.corpus")
+            manifest = corpus_module.CorpusManifest.from_dict(dict(corpus_manifest))
+        except Exception:
+            manifest = hammer_ps.CorpusManifest.from_dict(dict(corpus_manifest))
+    else:
+        raise DatasetsLogicBackendError(
+            "corpus_manifest must be a CorpusManifest or object",
+            reason_code="corpus_manifest_invalid",
+        )
+    if hasattr(manifest, "validate"):
+        manifest.validate()
+    expected_revision = str(
+        corpus_revision if corpus_revision is not None else manifest.revision
+    ).strip()
+    if str(manifest.revision).strip() != expected_revision:
+        raise DatasetsLogicBackendError(
+            "premise selection corpus revision does not match the pinned identity",
+            reason_code="corpus_revision_mismatch",
+            details={
+                "expected_corpus_revision": expected_revision,
+                "manifest_revision": str(manifest.revision),
+            },
+        )
+    goal = hammer_ps.GoalFeatures.from_statement(
+        goal_statement,
+        theorem_id=goal_theorem_id.strip(),
+        imports=tuple(imports),
+        extra_symbols=tuple(extra_symbols),
+        extra_types=tuple(extra_types),
+    )
+    selection = hammer_ps.select_premises(
+        manifest,
+        goal,
+        top_k=top_k,
+        exclude_theorem_ids=tuple(exclude_theorem_ids),
+    )
+    selection.validate()
+    if str(selection.corpus_revision).strip() != expected_revision:
+        raise DatasetsLogicBackendError(
+            "selector dropped or rewrote the corpus revision identity",
+            reason_code="corpus_revision_not_retained",
+            details={
+                "expected_corpus_revision": expected_revision,
+                "selection_corpus_revision": str(selection.corpus_revision),
+            },
+        )
+    if str(selection.goal_theorem_id or "").strip() != goal_theorem_id.strip():
+        raise DatasetsLogicBackendError(
+            "selector dropped or rewrote the goal theorem identity",
+            reason_code="goal_identity_not_retained",
+            details={
+                "expected_goal_theorem_id": goal_theorem_id.strip(),
+                "selection_goal_theorem_id": str(selection.goal_theorem_id or ""),
+            },
+        )
+    projected = _provider_safe(selection.to_dict())
+    projected.pop("created_at", None)
+    projected["selected_premise_ids"] = [
+        str(item.get("premise_id") or "")
+        for item in projected.get("selected", [])
+        if isinstance(item, Mapping)
+    ]
+    projected["corpus_revision"] = expected_revision
+    projected["goal_theorem_id"] = goal_theorem_id.strip()
+    projected["capability_revision"] = probe.capability_revision
+    projected["candidate"] = True
+    projected["authoritative_assurance"] = DATASETS_LOGIC_CANDIDATE_ASSURANCE
+    return projected
+
+
+def _candidate_provider_result(
+    *,
+    provider_id: str,
+    provider_version: str,
+    kind: DatasetsLogicBackendKind,
+    payload: Mapping[str, Any],
+    invocation: Mapping[str, Any],
+    status: str = "candidate",
+) -> dict[str, Any]:
+    return {
+        "schema": DATASETS_LOGIC_BACKEND_SCHEMA,
+        "provider_id": provider_id,
+        "provider_version": provider_version,
+        "backend_kind": kind.value,
+        "logic_ir_interface": LOGIC_IR_INTERFACE,
+        "outcome": status,
+        "status": status,
+        "verdict": status,
+        "candidate": True,
+        "authoritative_assurance": DATASETS_LOGIC_CANDIDATE_ASSURANCE,
+        "provider_claimed_assurance": DATASETS_LOGIC_CANDIDATE_ASSURANCE,
+        "proof_success": False,
+        "kernel_checked": False,
+        "reconstruction_required": True,
+        "trusted": False,
+        "premise_ids": list(payload.get("premise_ids") or ()),
+        "obligation_id": str(
+            payload.get("obligation_id")
+            or (payload.get("obligation") or {}).get("obligation_id")
+            or ""
+        ),
+        "compiled_obligation_id": str(payload.get("compiled_obligation_id") or ""),
+        "snapshot_id": str(payload.get("snapshot_id") or ""),
+        "invocation": _provider_safe(invocation),
+    }
+
+
+class DatasetsLogicBackendProvider:
+    """Capability-probed facade over one exact datasets logic backend.
+
+    Construction requires a successful probe.  Capability labels alone cannot
+    create an instance.  Positive solver/prover outputs remain candidates
+    until a trusted reconstruction validator accepts them elsewhere.
+    """
+
+    protocol_version = PROOF_PROVIDER_PROTOCOL_VERSION
+
+    def __init__(
+        self,
+        probe: DatasetsLogicBackendProbe,
+        *,
+        importer: Callable[[str], Any] | None = None,
+        invocation_hook: Callable[[str, Mapping[str, Any]], None] | None = None,
+    ) -> None:
+        if not isinstance(probe, DatasetsLogicBackendProbe):
+            raise DatasetsLogicBackendError(
+                "probe must be a DatasetsLogicBackendProbe",
+                reason_code="invalid_probe",
+            )
+        if not probe.available:
+            raise DatasetsLogicBackendError(
+                probe.unavailable_reason or "backend probe is unavailable",
+                reason_code=probe.reason_code or "backend_unavailable",
+                details=probe.to_dict(),
+            )
+        self.probe = probe
+        self.provider_id = probe.provider_id
+        self.provider_version = probe.package_version or DATASETS_LOGIC_BINDING_VERSION
+        self._importer = importer or importlib.import_module
+        self._invocation_hook = invocation_hook
+        self._call_log: list[dict[str, Any]] = []
+
+    @property
+    def kind(self) -> DatasetsLogicBackendKind:
+        return self.probe.kind
+
+    @property
+    def call_log(self) -> tuple[Mapping[str, Any], ...]:
+        return tuple(self._call_log)
+
+    def _record(self, operation: str, details: Mapping[str, Any]) -> None:
+        entry = {"operation": operation, **dict(details)}
+        self._call_log.append(entry)
+        if self._invocation_hook is not None:
+            self._invocation_hook(operation, entry)
+
+    def capability(
+        self, request: ProviderRequest | Mapping[str, Any] | None = None
+    ) -> Mapping[str, Any]:
+        capability = self.probe.capability
+        self._record(
+            "capability",
+            {
+                "provider_id": capability.provider_id,
+                "operations": [item.value for item in capability.operations],
+            },
+        )
+        return {
+            "capability": capability.to_dict(),
+            "probe": self.probe.to_dict(),
+        }
+
+    def _unsupported(
+        self,
+        request: ProviderRequest,
+        message: str,
+        *,
+        reason_code: str,
+        details: Mapping[str, Any] | None = None,
+    ) -> ProviderResponse:
+        payload = {
+            "status": "unsupported",
+            "outcome": "unsupported",
+            "reason_code": reason_code,
+            "backend_kind": self.kind.value,
+            "provider_id": self.provider_id,
+            "proof_success": False,
+            "authoritative_assurance": "unverified",
+            "candidate": False,
+            **dict(details or {}),
+        }
+        return ProviderResponse.failure(
+            request,
+            ProviderFailureCode.UNSUPPORTED,
+            message,
+            details=payload,
+            provider_id=self.provider_id,
+            provider_version=self.provider_version,
+        )
+
+    def _unavailable(
+        self,
+        request: ProviderRequest,
+        message: str,
+        *,
+        reason_code: str,
+        details: Mapping[str, Any] | None = None,
+    ) -> ProviderResponse:
+        payload = {
+            "status": "unavailable",
+            "outcome": "unsupported",
+            "reason_code": reason_code,
+            "backend_kind": self.kind.value,
+            "provider_id": self.provider_id,
+            "proof_success": False,
+            "authoritative_assurance": "unverified",
+            **dict(details or {}),
+        }
+        return ProviderResponse.failure(
+            request,
+            ProviderFailureCode.UNAVAILABLE,
+            message,
+            details=payload,
+            provider_id=self.provider_id,
+            provider_version=self.provider_version,
+        )
+
+    def _invoke_ir(self, payload: Mapping[str, Any]) -> dict[str, Any]:
+        domain = str(payload.get("domain") or "mcp-contract").strip()
+        schema_version = str(
+            payload.get("schema_version") or "logic-ir/v1"
+        ).strip()
+        body = payload.get("ir_payload")
+        if not isinstance(body, Mapping):
+            body = {
+                "obligation_id": payload.get("obligation_id"),
+                "compiled_obligation_id": payload.get("compiled_obligation_id"),
+                "premise_ids": list(payload.get("premise_ids") or ()),
+                "snapshot_id": payload.get("snapshot_id"),
+            }
+        identity = call_logic_ir_identity(
+            body,
+            domain=domain,
+            schema_version=schema_version,
+            importer=self._importer,
+        )
+        self._record(
+            "compute_identity",
+            {
+                "module": "ipfs_datasets_py.logic.ir_core.identity",
+                "digest": identity.get("digest"),
+            },
+        )
+        return _candidate_provider_result(
+            provider_id=self.provider_id,
+            provider_version=self.provider_version,
+            kind=self.kind,
+            payload=payload,
+            invocation={
+                "symbol": "ipfs_datasets_py.logic.ir_core.identity.compute_identity",
+                "identity": identity,
+            },
+        )
+
+    def _invoke_tdfol(self, payload: Mapping[str, Any]) -> dict[str, Any]:
+        core = self._importer("ipfs_datasets_py.logic.TDFOL.tdfol_core")
+        prover_module = self._importer("ipfs_datasets_py.logic.TDFOL.tdfol_prover")
+        action_name = str(
+            payload.get("action")
+            or payload.get("obligation_id")
+            or "mcp.obligation"
+        )
+        atom = core.Predicate(action_name, ())
+        formula = core.create_obligation(atom)
+        self._record(
+            "tdfol_create_obligation",
+            {
+                "module": "ipfs_datasets_py.logic.TDFOL.tdfol_core",
+                "symbol": "create_obligation",
+                "formula": action_name,
+            },
+        )
+        prover = prover_module.TDFOLProver(enable_cache=False)
+        result = prover.prove(formula, timeout_ms=int(payload.get("timeout_ms") or 50))
+        self._record(
+            "tdfol_prove",
+            {
+                "module": "ipfs_datasets_py.logic.TDFOL.tdfol_prover",
+                "symbol": "TDFOLProver.prove",
+                "status": str(getattr(getattr(result, "status", None), "value", result)),
+            },
+        )
+        return _candidate_provider_result(
+            provider_id=self.provider_id,
+            provider_version=self.provider_version,
+            kind=self.kind,
+            payload=payload,
+            invocation={
+                "symbol": "ipfs_datasets_py.logic.TDFOL.tdfol_prover.TDFOLProver.prove",
+                "status": str(
+                    getattr(getattr(result, "status", None), "value", result)
+                ),
+            },
+        )
+
+    def _invoke_cec(self, payload: Mapping[str, Any]) -> dict[str, Any]:
+        wrapper_module = self._importer("ipfs_datasets_py.logic.CEC.dcec_wrapper")
+        wrapper = wrapper_module.DCECLibraryWrapper(use_native=False)
+        if hasattr(wrapper, "initialize"):
+            try:
+                wrapper.initialize()
+            except Exception:
+                # Initialization may require optional native assets; statement
+                # construction still exercises the exact Python signature.
+                pass
+        statement_text = str(
+            payload.get("statement")
+            or payload.get("obligation_id")
+            or "Obligatory(agent, action)"
+        )
+        statement = wrapper.add_statement(statement_text, label="mcp-obligation")
+        self._record(
+            "cec_add_statement",
+            {
+                "module": "ipfs_datasets_py.logic.CEC.dcec_wrapper",
+                "symbol": "DCECLibraryWrapper.add_statement",
+                "is_valid": bool(getattr(statement, "is_valid", False)),
+            },
+        )
+        return _candidate_provider_result(
+            provider_id=self.provider_id,
+            provider_version=self.provider_version,
+            kind=self.kind,
+            payload=payload,
+            invocation={
+                "symbol": (
+                    "ipfs_datasets_py.logic.CEC.dcec_wrapper."
+                    "DCECLibraryWrapper.add_statement"
+                ),
+                "statement_valid": bool(getattr(statement, "is_valid", False)),
+            },
+        )
+
+    def _invoke_smt(self, payload: Mapping[str, Any]) -> dict[str, Any]:
+        smt_module = self._importer(
+            "ipfs_datasets_py.logic.external_provers.smt.z3_prover_bridge"
+        )
+        formula = payload.get("formula")
+        if formula is None:
+            formula = str(
+                payload.get("statement")
+                or payload.get("obligation_id")
+                or "True"
+            )
+        try:
+            result = smt_module.prove_with_z3(
+                formula,
+                axioms=payload.get("axioms"),
+                timeout=float(payload.get("timeout_seconds") or 0.5),
+            )
+        except Exception as exc:
+            # Missing native solver packages are typed unavailable/unsupported,
+            # never a silent local success.
+            raise DatasetsLogicBackendError(
+                f"SMT backend unavailable: {exc}",
+                reason_code="smt_runtime_unavailable",
+                details={"exception_type": type(exc).__name__},
+            ) from exc
+        self._record(
+            "smt_prove",
+            {
+                "module": (
+                    "ipfs_datasets_py.logic.external_provers.smt.z3_prover_bridge"
+                ),
+                "symbol": "prove_with_z3",
+                "reason": str(getattr(result, "reason", "")),
+            },
+        )
+        return _candidate_provider_result(
+            provider_id=self.provider_id,
+            provider_version=self.provider_version,
+            kind=self.kind,
+            payload=payload,
+            invocation={
+                "symbol": (
+                    "ipfs_datasets_py.logic.external_provers.smt."
+                    "z3_prover_bridge.prove_with_z3"
+                ),
+                "is_sat": bool(getattr(result, "is_sat", False)),
+                "is_unsat": bool(getattr(result, "is_unsat", False)),
+                "reason": str(getattr(result, "reason", "")),
+            },
+        )
+
+    def _invoke_hammer(self, payload: Mapping[str, Any]) -> dict[str, Any]:
+        # Hammer portfolio execution remains owned by IpfsDatasetsLogicProvider.
+        # This facade only proves the exact premise-selection / reconstruction
+        # symbols are bound and may be exercised without promoting authority.
+        selection = payload.get("premise_selection")
+        if isinstance(selection, Mapping) and payload.get("corpus_manifest") is not None:
+            projected = select_premises_retaining_identities(
+                corpus_manifest=payload["corpus_manifest"],
+                goal_statement=str(
+                    payload.get("goal_statement")
+                    or payload.get("statement")
+                    or ""
+                ),
+                goal_theorem_id=str(
+                    selection.get("theorem_id")
+                    or payload.get("goal_theorem_id")
+                    or payload.get("obligation_id")
+                    or "goal:unknown"
+                ),
+                top_k=int(selection.get("top_k") or len(payload.get("premise_ids") or ()) or 1),
+                corpus_revision=(
+                    str(payload.get("corpus_revision")).strip()
+                    if payload.get("corpus_revision")
+                    else None
+                ),
+                imports=_strings(
+                    selection.get("imports"), field_name="premise_selection.imports"
+                ),
+                extra_symbols=_strings(
+                    selection.get("extra_symbols"),
+                    field_name="premise_selection.extra_symbols",
+                ),
+                extra_types=_strings(
+                    selection.get("extra_types"),
+                    field_name="premise_selection.extra_types",
+                ),
+                exclude_theorem_ids=_strings(
+                    selection.get("exclude_theorem_ids"),
+                    field_name="premise_selection.exclude_theorem_ids",
+                ),
+                importer=self._importer,
+            )
+            self._record(
+                "hammer_select_premises",
+                {
+                    "module": "ipfs_datasets_py.logic.hammers.premise_selection",
+                    "symbol": "select_premises",
+                    "corpus_revision": projected.get("corpus_revision"),
+                    "goal_theorem_id": projected.get("goal_theorem_id"),
+                },
+            )
+            return _candidate_provider_result(
+                provider_id=self.provider_id,
+                provider_version=self.provider_version,
+                kind=self.kind,
+                payload=payload,
+                invocation={
+                    "symbol": (
+                        "ipfs_datasets_py.logic.hammers.premise_selection."
+                        "select_premises"
+                    ),
+                    "premise_selection": projected,
+                },
+            )
+        self._record(
+            "hammer_bound",
+            {
+                "module": "ipfs_datasets_py.logic.hammers",
+                "symbols": [item.qualname for item in self.probe.symbol_receipts],
+            },
+        )
+        return _candidate_provider_result(
+            provider_id=self.provider_id,
+            provider_version=self.provider_version,
+            kind=self.kind,
+            payload=payload,
+            invocation={
+                "symbol": "ipfs_datasets_py.logic.hammers",
+                "bound_symbols": [
+                    item.qualname for item in self.probe.symbol_receipts
+                ],
+            },
+        )
+
+    def prove(
+        self, request: ProviderRequest | Mapping[str, Any]
+    ) -> Mapping[str, Any] | ProviderResponse:
+        if isinstance(request, ProviderRequest):
+            provider_request = request
+            payload = request.payload
+        elif isinstance(request, Mapping):
+            # McpContractProver may pass a bare payload through the adapter.
+            provider_request = ProviderRequest(
+                request_id=str(
+                    request.get("request_id")
+                    or request.get("compiled_obligation_id")
+                    or "datasets-logic-prove"
+                ),
+                operation=ProofProviderOperation.PROVE,
+                payload=dict(request),
+            )
+            payload = provider_request.payload
+        else:
+            raise DatasetsLogicBackendError(
+                "prove request must be a ProviderRequest or object",
+                reason_code="malformed_request",
+            )
+        try:
+            if self.kind is DatasetsLogicBackendKind.IR:
+                return self._invoke_ir(payload)
+            if self.kind is DatasetsLogicBackendKind.TDFOL:
+                return self._invoke_tdfol(payload)
+            if self.kind is DatasetsLogicBackendKind.CEC:
+                return self._invoke_cec(payload)
+            if self.kind is DatasetsLogicBackendKind.SMT:
+                return self._invoke_smt(payload)
+            if self.kind is DatasetsLogicBackendKind.HAMMER:
+                return self._invoke_hammer(payload)
+            return self._unsupported(
+                provider_request,
+                f"backend kind {self.kind.value!r} has no prove lowering",
+                reason_code="backend_prove_unsupported",
+            )
+        except DatasetsLogicBackendError as exc:
+            if exc.reason_code.endswith("unavailable") or "unavailable" in exc.reason_code:
+                return self._unavailable(
+                    provider_request,
+                    str(exc),
+                    reason_code=exc.reason_code,
+                    details=exc.details,
+                )
+            return self._unsupported(
+                provider_request,
+                str(exc),
+                reason_code=exc.reason_code,
+                details=exc.details,
+            )
+        except (ImportError, ModuleNotFoundError, OSError) as exc:
+            return self._unavailable(
+                provider_request,
+                f"datasets logic backend unavailable: {exc}",
+                reason_code="optional_dependency_import_failed",
+                details={"exception_type": type(exc).__name__},
+            )
+        except TimeoutError as exc:
+            return ProviderResponse.failure(
+                provider_request,
+                ProviderFailureCode.TIMED_OUT,
+                f"datasets logic backend timed out: {exc}",
+                retryable=True,
+                details={
+                    "status": "timed_out",
+                    "backend_kind": self.kind.value,
+                    "proof_success": False,
+                },
+                provider_id=self.provider_id,
+                provider_version=self.provider_version,
+            )
+
+    def reconstruct(
+        self, request: ProviderRequest | Mapping[str, Any]
+    ) -> Mapping[str, Any] | ProviderResponse:
+        if isinstance(request, ProviderRequest):
+            provider_request = request
+        else:
+            provider_request = ProviderRequest(
+                request_id="datasets-logic-reconstruct",
+                operation=ProofProviderOperation.RECONSTRUCT,
+                payload=dict(request) if isinstance(request, Mapping) else {},
+            )
+        if not self.probe.reconstruction_compatible:
+            return self._unsupported(
+                provider_request,
+                "backend is not reconstruction-compatible",
+                reason_code="reconstruction_unsupported",
+            )
+        # Reconstruction authority is owned by trusted validators / kernel
+        # providers.  This facade never promotes a solver candidate.
+        return self._unsupported(
+            provider_request,
+            "solver candidate requires independent trusted reconstruction",
+            reason_code="trusted_reconstruction_required",
+            details={
+                "reconstruction_required": True,
+                "candidate_authoritative": False,
+            },
+        )
+
+    def verify(
+        self, request: ProviderRequest | Mapping[str, Any]
+    ) -> Mapping[str, Any] | ProviderResponse:
+        return self.reconstruct(request)
+
+
+@dataclass
+class DatasetsLogicBackendRegistration:
+    """One registered, capability-probed datasets logic backend."""
+
+    probe: DatasetsLogicBackendProbe
+    provider: DatasetsLogicBackendProvider
+
+    @property
+    def kind(self) -> DatasetsLogicBackendKind:
+        return self.probe.kind
+
+    @property
+    def provider_id(self) -> str:
+        return self.probe.provider_id
+
+    @property
+    def mcp_route(self) -> str | None:
+        return self.probe.mcp_route
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "provider_id": self.provider_id,
+            "kind": self.kind.value,
+            "mcp_route": self.mcp_route,
+            "probe": self.probe.to_dict(),
+        }
+
+
+class DatasetsLogicBackendRegistry:
+    """Register only backends that already passed an exact-module probe.
+
+    Capability labels, fixture doubles, and unprobed module names cannot enter
+    the registry.  Unregistered backends are treated as unsupported.
+    """
+
+    def __init__(self) -> None:
+        self._by_kind: dict[DatasetsLogicBackendKind, DatasetsLogicBackendRegistration] = {}
+        self._by_provider_id: dict[str, DatasetsLogicBackendRegistration] = {}
+
+    def register(
+        self,
+        probe: DatasetsLogicBackendProbe,
+        *,
+        provider: DatasetsLogicBackendProvider | None = None,
+        importer: Callable[[str], Any] | None = None,
+        invocation_hook: Callable[[str, Mapping[str, Any]], None] | None = None,
+        replace: bool = False,
+    ) -> DatasetsLogicBackendRegistration:
+        if not isinstance(probe, DatasetsLogicBackendProbe):
+            raise DatasetsLogicBackendError(
+                "only DatasetsLogicBackendProbe results may be registered",
+                reason_code="probe_required",
+            )
+        if not probe.available:
+            raise DatasetsLogicBackendError(
+                "unavailable backends cannot be registered",
+                reason_code="unavailable_backend_not_registerable",
+                details=probe.to_dict(),
+            )
+        if not probe.symbol_receipts or not all(
+            item.available for item in probe.symbol_receipts
+        ):
+            raise DatasetsLogicBackendError(
+                "capability labels alone cannot register a backend",
+                reason_code="signature_probe_required",
+                details=probe.to_dict(),
+            )
+        if provider is None:
+            provider = DatasetsLogicBackendProvider(
+                probe,
+                importer=importer,
+                invocation_hook=invocation_hook,
+            )
+        elif provider.probe.capability_revision != probe.capability_revision:
+            raise DatasetsLogicBackendError(
+                "provider probe does not match registration probe",
+                reason_code="probe_mismatch",
+            )
+        if probe.kind in self._by_kind and not replace:
+            raise DatasetsLogicBackendError(
+                f"backend {probe.kind.value!r} is already registered",
+                reason_code="duplicate_backend_registration",
+            )
+        registration = DatasetsLogicBackendRegistration(probe=probe, provider=provider)
+        self._by_kind[probe.kind] = registration
+        self._by_provider_id[probe.provider_id] = registration
+        return registration
+
+    def get(
+        self, kind: DatasetsLogicBackendKind | str
+    ) -> DatasetsLogicBackendRegistration | None:
+        if isinstance(kind, DatasetsLogicBackendKind):
+            return self._by_kind.get(kind)
+        key = str(kind).strip().lower()
+        for backend_kind, registration in self._by_kind.items():
+            if backend_kind.value == key or registration.provider_id == key:
+                return registration
+        return None
+
+    def require(
+        self, kind: DatasetsLogicBackendKind | str
+    ) -> DatasetsLogicBackendRegistration:
+        registration = self.get(kind)
+        if registration is None:
+            raise DatasetsLogicBackendError(
+                f"backend {kind!r} is not registered",
+                reason_code="backend_unregistered",
+            )
+        return registration
+
+    @property
+    def registrations(self) -> tuple[DatasetsLogicBackendRegistration, ...]:
+        return tuple(
+            self._by_kind[key] for key in sorted(self._by_kind, key=lambda item: item.value)
+        )
+
+    def mcp_providers(self) -> dict[str, DatasetsLogicBackendProvider]:
+        """Map MCP routes to registered providers only."""
+
+        result: dict[str, DatasetsLogicBackendProvider] = {}
+        for registration in self.registrations:
+            if registration.mcp_route:
+                result[registration.mcp_route] = registration.provider
+        return result
+
+    def provider_ids(self) -> dict[str, str]:
+        result: dict[str, str] = {}
+        for registration in self.registrations:
+            if registration.mcp_route:
+                result[registration.mcp_route] = registration.provider_id
+        return result
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema": DATASETS_LOGIC_BACKEND_SCHEMA,
+            "logic_ir_interface": LOGIC_IR_INTERFACE,
+            "registrations": [item.to_dict() for item in self.registrations],
+        }
+
+
+def build_datasets_logic_backend_registry(
+    *,
+    importer: Callable[[str], Any] | None = None,
+    kinds: Sequence[DatasetsLogicBackendKind | str] | None = None,
+    invocation_hook: Callable[[str, Mapping[str, Any]], None] | None = None,
+    include_unavailable: bool = False,
+) -> tuple[DatasetsLogicBackendRegistry, tuple[DatasetsLogicBackendProbe, ...]]:
+    """Probe exact modules and register only available capability-probed backends."""
+
+    probes = probe_all_datasets_logic_backends(importer=importer, kinds=kinds)
+    registry = DatasetsLogicBackendRegistry()
+    for probe in probes:
+        if probe.available:
+            registry.register(
+                probe,
+                importer=importer,
+                invocation_hook=invocation_hook,
+            )
+        elif include_unavailable:
+            # Explicitly do not register; callers may inspect the probe list.
+            continue
+    return registry, probes
+
+
+def create_datasets_logic_backend_provider(
+    kind: DatasetsLogicBackendKind | str,
+    *,
+    importer: Callable[[str], Any] | None = None,
+    invocation_hook: Callable[[str, Mapping[str, Any]], None] | None = None,
+) -> DatasetsLogicBackendProvider:
+    """Create one provider only after a successful exact-module probe."""
+
+    probe = probe_datasets_logic_backend(kind, importer=importer)
+    if not probe.available:
+        raise DatasetsLogicBackendError(
+            probe.unavailable_reason or "backend unavailable",
+            reason_code=probe.reason_code or "backend_unavailable",
+            details=probe.to_dict(),
+        )
+    return DatasetsLogicBackendProvider(
+        probe,
+        importer=importer,
+        invocation_hook=invocation_hook,
+    )
+
+
 __all__ = [
     "HAMMER_ADAPTER_SCHEMA_VERSION",
     "HAMMER_PROVENANCE_SCHEMA_VERSION",
     "HAMMER_TRANSLATOR_ID",
+    "HAMMER_IMPORT_ISOLATION",
+    "HAMMER_IMPORT_ISOLATION_HARDENED",
+    "HAMMER_IMPORT_ISOLATION_UNSAFE",
     "IPFS_DATASETS_LOGIC_PROVIDER_ID",
     "IPFS_DATASETS_LOGIC_PROVIDER_VERSION",
     "KNOWN_HAMMER_SOLVERS",
@@ -3037,6 +4801,8 @@ __all__ = [
     "EffectiveHammerPolicy",
     "HammerRequestBundle",
     "HammerPortfolioInvocation",
+    "IsolatedHammerLoader",
+    "get_isolated_hammer_loader",
     "IpfsDatasetsLogicProviderConfig",
     "IPFSDatasetsLogicProviderConfig",
     "IpfsDatasetsLogicProvider",
@@ -3051,4 +4817,25 @@ __all__ = [
     "registry_logic_producer_declarations",
     "create_local_registry_logic_producer",
     "create_optional_registry_logic_producer",
+    "LOGIC_IR_INTERFACE",
+    "DATASETS_LOGIC_BACKEND_SCHEMA",
+    "DATASETS_LOGIC_PROBE_SCHEMA",
+    "DATASETS_LOGIC_BINDING_VERSION",
+    "DATASETS_LOGIC_CANDIDATE_ASSURANCE",
+    "DATASETS_LOGIC_BACKEND_SPECS",
+    "DatasetsLogicBackendKind",
+    "DatasetsLogicBackendError",
+    "DatasetsLogicSymbolSpec",
+    "DatasetsLogicBackendSpec",
+    "DatasetsLogicSymbolReceipt",
+    "DatasetsLogicBackendProbe",
+    "DatasetsLogicBackendProvider",
+    "DatasetsLogicBackendRegistration",
+    "DatasetsLogicBackendRegistry",
+    "probe_datasets_logic_backend",
+    "probe_all_datasets_logic_backends",
+    "call_logic_ir_identity",
+    "select_premises_retaining_identities",
+    "build_datasets_logic_backend_registry",
+    "create_datasets_logic_backend_provider",
 ]

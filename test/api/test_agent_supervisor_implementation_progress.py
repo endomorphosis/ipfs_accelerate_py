@@ -1,18 +1,22 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
 
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.core import pid_alive
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     IMPLEMENTATION_CHECKPOINT_DIR_ENV,
     PortalImplementationDaemon,
     PortalTask,
     PortalTaskState,
 )
+from ipfs_accelerate_py.agent_supervisor.todo_daemon import supervisor_runtime
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_runtime import (
     run_process_group_stream,
 )
@@ -195,6 +199,69 @@ def test_silent_process_hits_progress_idle_timeout(tmp_path: Path) -> None:
                 termination_grace_seconds=0.05,
             )
     assert getattr(raised.value, "timeout_reason") == "progress_idle_timeout"
+
+
+@pytest.mark.skipif(
+    os.name != "posix" or not Path("/proc").is_dir(),
+    reason="process-tree interruption regression requires Linux process sessions",
+)
+def test_streamed_runner_fences_child_tree_when_owner_is_interrupted(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    child_pid_path = tmp_path / "provider-child.pid"
+    script = (
+        "import pathlib, subprocess, sys, time; "
+        "child = subprocess.Popen("
+        "[sys.executable, '-c', 'import time; time.sleep(60)'], "
+        "start_new_session=True"
+        "); "
+        f"pathlib.Path({str(child_pid_path)!r}).write_text(str(child.pid)); "
+        "time.sleep(60)"
+    )
+    launched: list[subprocess.Popen[str]] = []
+    real_launch = supervisor_runtime.launch_process_child
+
+    def launch_and_interrupt(*args: object, **kwargs: object) -> subprocess.Popen[str]:
+        process = real_launch(*args, **kwargs)
+        launched.append(process)
+
+        def interrupt_communicate(*_args: object, **_kwargs: object) -> object:
+            deadline = time.monotonic() + 3.0
+            while not child_pid_path.exists() and time.monotonic() < deadline:
+                time.sleep(0.02)
+            raise KeyboardInterrupt
+
+        process.communicate = interrupt_communicate  # type: ignore[method-assign]
+        return process
+
+    monkeypatch.setattr(
+        supervisor_runtime,
+        "launch_process_child",
+        launch_and_interrupt,
+    )
+    log_path = tmp_path / "interrupted.log"
+    child_pid = 0
+    try:
+        with log_path.open("w", encoding="utf-8") as log_fh:
+            with pytest.raises(KeyboardInterrupt):
+                run_process_group_stream(
+                    [sys.executable, "-c", script],
+                    cwd=tmp_path,
+                    stdout=log_fh,
+                    timeout_seconds=60.0,
+                    termination_grace_seconds=0.1,
+                )
+        child_pid = int(child_pid_path.read_text(encoding="utf-8"))
+        assert launched[0].poll() is not None
+        assert not pid_alive(child_pid)
+    finally:
+        if child_pid and pid_alive(child_pid):
+            os.kill(child_pid, 9)
+        for process in launched:
+            if process.poll() is None:
+                process.kill()
+                process.wait(timeout=1.0)
 
 
 def test_progress_observer_refreshes_durable_supervisor_heartbeat(

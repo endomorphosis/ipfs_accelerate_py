@@ -10,6 +10,11 @@ from pathlib import Path
 from setuptools import find_packages, setup
 
 
+CONTRACT_REPAIR_DISTRIBUTIONS = frozenset(
+    {"z3-solver", "cvc5", "mypy", "ruff"}
+)
+
+
 def _run(cmd: list[str]) -> int:
     return subprocess.run(cmd, check=False, stdout=sys.stdout, stderr=sys.stderr).returncode
 
@@ -168,6 +173,23 @@ def _read_requirements(req_path: Path) -> list[str]:
     return requirements
 
 
+def _require_contract_repair_distributions(requirements: list[str]) -> None:
+    """Fail packaging when the supervisor toolchain drifts out of requirements."""
+
+    declared = {
+        re.split(r"[\s\[<>=!~;@]", requirement, maxsplit=1)[0]
+        .replace("_", "-")
+        .lower()
+        for requirement in requirements
+    }
+    missing = sorted(CONTRACT_REPAIR_DISTRIBUTIONS - declared)
+    if missing:
+        raise RuntimeError(
+            "requirements.txt is missing contract-repair distributions: "
+            + ", ".join(missing)
+        )
+
+
 def _read_optional_deps(pyproject_path: Path) -> dict[str, list[str]]:
     if not pyproject_path.exists():
         return {}
@@ -183,6 +205,7 @@ this_directory = Path(__file__).parent
 long_description = (this_directory / "README.md").read_text() if (this_directory / "README.md").exists() else ""
 
 install_requires = _read_requirements(this_directory / "requirements.txt")
+_require_contract_repair_distributions(install_requires)
 extras_require = _read_optional_deps(this_directory / "pyproject.toml")
 
 setup(
@@ -225,6 +248,7 @@ setup(
             "ipfs-accelerate-agent-implementation-supervisor=ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor:main",
             "ipfs-accelerate-agent-merge-resolver=ipfs_accelerate_py.agent_supervisor.merge.merge_resolver:main",
             "ipfs-accelerate-agent-llm-merge-resolver-fallback=ipfs_accelerate_py.agent_supervisor.integrations.llm_merge_resolver_fallback:main",
+            "ipfs-accelerate-contract-repair-deps=ipfs_accelerate_py.agent_supervisor.integrations.contract_repair_dependencies:main",
             "ipfs-accelerate-llama-cpp-serve=ipfs_accelerate_py.utils.llama_cpp:main",
         ]
     },

@@ -3068,6 +3068,8 @@ def test_generate_objective_todos_writes_bundle_shards_and_payloads(tmp_path):
     assert "data/agent_supervisor/discovery" not in outputs_line
     assert "- Evidence inputs: data/agent_supervisor/discovery" in generated_block
     assert "- Discovery evidence:" in generated_block
+    assert "- Context budget tokens: 4096" in generated_block
+    assert "- Provider role: grok-implement, codex-review" in generated_block
 
     shard = bundle_dir / "objective-ops-root.todo.md"
     assert shard.exists()

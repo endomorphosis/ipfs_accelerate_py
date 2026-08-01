@@ -23,6 +23,7 @@ from ..merge.checkout_lock import (
     BACKLOG_REFINERY_AUTHOR_EMAIL,
     CheckoutMutationLease,
     GENERATED_PROTECTED_BOARD_COMMIT_MARKER,
+    PROTECTED_PATH_MAINTENANCE_LOCK_NAME,
     adopt_inactive_checkout_mutation_lease,
     acquire_checkout_mutation_lease as acquire_atomic_checkout_mutation_lease,
     checkout_lock_metadata,
@@ -61,11 +62,14 @@ from .implementation_daemon import (
     IMPLEMENTATION_PROTECTED_ACTIVE_SNAPSHOT_FILENAME,
     IMPLEMENTATION_PROTECTED_INCIDENT_FILENAME,
     IMPLEMENTATION_RUNNER_PROCESS_PATTERN,
+    IMPLEMENTATION_TASK_CLAIM_LOCK_DIRNAME,
+    IMPLEMENTATION_TASK_CLAIM_LOCK_KIND,
     TASK_HEADER_PREFIX,
     PortalImplementationDaemon,
     PortalTask,
     PortalTaskState,
     consume_stale_active_attempt,
+    implementation_task_claim_protected_fence_paths,
     load_json_dict,
     normalize_focus_tracks,
     normalize_implementation_protected_paths,
@@ -80,6 +84,7 @@ from .implementation_daemon import (
     write_text_atomic,
 )
 from .supervisor import (
+    SupervisorStatusContext,
     active_codex_exec_workers,
     descendant_processes,
     worktree_phase_worker_status,
@@ -122,6 +127,68 @@ ATOMIC_CHECKOUT_MUTATION_LEASE_OPERATIONS = frozenset(
         "repair_main_checkout_merge_state",
     }
 )
+
+
+def _managed_daemon_child_environment() -> dict[str, str]:
+    """Keep a source-checkout supervisor's daemon on the same package code."""
+
+    entries: list[str] = []
+    source_root = Path(__file__).resolve().parents[3]
+    if (source_root / "ipfs_accelerate_py").is_dir():
+        entries.append(str(source_root))
+    for raw_entry in sys.path:
+        if not raw_entry:
+            continue
+        try:
+            candidate = Path(raw_entry).resolve()
+        except OSError:
+            continue
+        if (candidate / "ipfs_accelerate_py").is_dir():
+            entries.append(str(candidate))
+    entries.extend(
+        entry
+        for entry in os.environ.get("PYTHONPATH", "").split(os.pathsep)
+        if entry
+    )
+    pythonpath = os.pathsep.join(dict.fromkeys(entries))
+    return {"PYTHONPATH": pythonpath} if pythonpath else {}
+
+
+def _projection_is_quiescent_for_heartbeat_fallback(
+    status: Mapping[str, Any],
+) -> bool:
+    """Recognize an idle content-addressed task projection without masking work."""
+
+    required_fields = {
+        "active_task_id",
+        "implementation_in_progress",
+        "ready_count",
+        "selectable_ready_count",
+        "eligible_ready_count",
+        "blocked_count",
+        "selection_idle_reason",
+    }
+    if not required_fields.issubset(status):
+        return False
+    active_task_id = status["active_task_id"]
+    if not isinstance(active_task_id, str) or active_task_id:
+        return False
+    if status["implementation_in_progress"] is not False:
+        return False
+    if status["selection_idle_reason"] != (
+        "no_shard_selectable_ready_tasks"
+    ):
+        return False
+    for field_name in (
+        "ready_count",
+        "selectable_ready_count",
+        "eligible_ready_count",
+        "blocked_count",
+    ):
+        value = status[field_name]
+        if isinstance(value, bool) or not isinstance(value, int) or value != 0:
+            return False
+    return True
 
 
 class ObjectiveRefillTimeoutError(TimeoutError):
@@ -295,6 +362,7 @@ class PortalSupervisorConfig:
     daemon_merged_worktree_cleanup_max: int | None = None
     task_shard_count: int = 1
     task_shard_index: int = 0
+    strict_task_sharding: bool = False
     retry_budget_guardrail_enabled: bool = True
     retry_budget_discovery_dir: Path | None = None
     retry_budget_discovery_output_path: str = ""
@@ -533,37 +601,66 @@ class PortalImplementationSupervisor:
         stop_signal: int,
         cleanup: Mapping[str, Any],
         interrupted_reconciliation: Mapping[str, Any],
-    ) -> None:
-        """Replace the last running heartbeat with a terminal signal status."""
+    ) -> dict[str, Any]:
+        """Publish a terminal projection after the owned child tree is fenced.
 
-        status_path = self._supervisor_status_path()
-        payload = load_json_dict(status_path) or {}
-        payload.update(
-            {
-                "schema": (
-                    "ipfs_accelerate_py.agent_supervisor."
-                    "todo_implementation_supervisor.supervisor"
+        The inner ``SupervisorLoop`` normally writes this projection.  A
+        process signal raises ``SystemExit`` in the outer loop, so its normal
+        return path is bypassed.  Persisting the terminal state here prevents
+        an orderly window expiry from looking like a live supervisor with a
+        dead PID.  This projection is diagnostic only and grants no task or
+        completion authority.
+        """
+
+        loop_config = self.build_supervisor_loop_config()
+        previous = load_json_dict(self._supervisor_status_path()) or {}
+        context = SupervisorStatusContext(
+            loop_config.spec,
+            static_fields={
+                "restart_backoff_seconds": (
+                    loop_config.restart_policy.restart_backoff_seconds
                 ),
-                "status": "stopped",
-                "updated_at": utc_now(),
-                "supervisor_pid": os.getpid(),
-                "supervisor_pid_alive": False,
-                "daemon_pid": None,
-                "daemon_pid_alive": False,
+                "fast_restart_backoff_seconds": (
+                    loop_config.restart_policy.fast_restart_backoff_seconds
+                ),
+                "supervisor_heartbeat_seconds": loop_config.heartbeat_seconds,
+                "supervisor_poll_seconds": loop_config.poll_seconds,
+                "watchdog_stale_after_seconds": (
+                    loop_config.watchdog_stale_after_seconds
+                ),
+                "watchdog_startup_grace_seconds": (
+                    loop_config.watchdog_startup_grace_seconds
+                ),
+                "stop_grace_seconds": loop_config.stop_grace_seconds,
+                **dict(loop_config.status_static_fields),
+                **dict(loop_config.status_extra_fields),
+            },
+        )
+        return context.write(
+            "stopped",
+            run_id=str(previous.get("run_id") or ""),
+            log_path=str(previous.get("log_path") or ""),
+            daemon_pid=None,
+            restart_count=int(previous.get("restart_count") or 0),
+            last_exit_code=128 + int(stop_signal),
+            extra={
                 "active_worker_count": 0,
                 "active_worker_pids": [],
                 "worker_descendant_count": 0,
                 "stalled_without_active_worker": False,
+                "shutdown_signal": int(stop_signal),
+                "shutdown_signal_name": signal.Signals(stop_signal).name,
                 "stop_signal": int(stop_signal),
-                "last_exit_code": 128 + int(stop_signal),
                 "last_recycle_reason": "supervisor_signal_shutdown",
                 "managed_daemon_cleanup": dict(cleanup),
                 "interrupted_implementation_reconciliation": dict(
                     interrupted_reconciliation
                 ),
-            }
+                "daemon_pid_alive": False,
+                "supervisor_pid_alive": False,
+                "completion_authority": False,
+            },
         )
-        write_json_atomic(status_path, payload)
 
     def _supervisor_maintenance_timeout_seconds(self) -> float:
         return max(
@@ -1221,6 +1318,186 @@ class PortalImplementationSupervisor:
     def _implementation_maintenance_lock_path(self) -> Path:
         return self.config.state_path.parent / "implementation.lock"
 
+    def _protected_path_maintenance_lock_path(self) -> Path:
+        return checkout_mutation_lock_path(
+            self.config.repo_root,
+            lock_name=PROTECTED_PATH_MAINTENANCE_LOCK_NAME,
+        )
+
+    def _protected_path_maintenance_lease_metadata(self) -> dict[str, Any]:
+        metadata = self._implementation_maintenance_lease_metadata()
+        metadata["kind"] = "implementation-protected-maintenance"
+        metadata["lease_role"] = "shared_protected_path_maintenance"
+        return metadata
+
+    def _protected_path_maintenance_owner_is_active(
+        self,
+        metadata: Mapping[str, Any],
+    ) -> bool:
+        return checkout_lock_owner_is_active(
+            dict(metadata),
+            expected_kind="implementation-protected-maintenance",
+            expected_repo_root=self.config.repo_root,
+            process_command_line=process_command_line,
+            process_is_running=process_is_running,
+        )
+
+    def _active_implementation_task_claims_for_maintenance(
+        self,
+    ) -> list[dict[str, Any]]:
+        claim_dir = checkout_mutation_lock_path(
+            self.config.repo_root,
+            lock_name=IMPLEMENTATION_TASK_CLAIM_LOCK_DIRNAME,
+        )
+        try:
+            claim_paths = sorted(claim_dir.glob("*.lock"))
+        except OSError:
+            return [{"claim_path": str(claim_dir), "reason": "claim_scan_failed"}]
+        active: list[dict[str, Any]] = []
+        for claim_path in claim_paths:
+            if claim_path.name.startswith("."):
+                continue
+            metadata = load_json_dict(claim_path)
+            if metadata is None:
+                active.append(
+                    {
+                        "claim_path": str(claim_path),
+                        "reason": "claim_metadata_unreadable",
+                    }
+                )
+                continue
+            kind = str(metadata.get("kind") or "")
+            repo_root = str(metadata.get("repo_root") or "")
+            try:
+                same_repository = (
+                    not repo_root
+                    or Path(repo_root).resolve()
+                    == self.config.repo_root.resolve()
+                )
+                pid = int(metadata.get("pid") or 0)
+            except (OSError, TypeError, ValueError):
+                same_repository = False
+                pid = 0
+            protected_fence_paths = (
+                implementation_task_claim_protected_fence_paths(metadata)
+            )
+            owner_live = process_is_running(pid)
+            # Task claims may be owned through pytest, systemd, or another
+            # wrapper whose argv does not contain the daemon filename. A live
+            # PID on a compatible claim is sufficient to keep maintenance out.
+            # A crash-surviving snapshot or incident must do the same even
+            # after its process exits.
+            if (
+                (not kind or kind == IMPLEMENTATION_TASK_CLAIM_LOCK_KIND)
+                and same_repository
+                and (owner_live or protected_fence_paths)
+            ):
+                active.append(
+                    {
+                        "claim_path": str(claim_path),
+                        "task_id": str(metadata.get("task_id") or ""),
+                        "pid": pid,
+                        "owner_live": owner_live,
+                        "state_dir": str(metadata.get("state_dir") or ""),
+                        "protected_fence_paths": list(
+                            protected_fence_paths
+                        ),
+                    }
+                )
+        return active
+
+    def _acquire_protected_path_maintenance_lease(
+        self,
+    ) -> tuple[dict[str, Any] | None, dict[str, Any]]:
+        lock_path = self._protected_path_maintenance_lock_path()
+        metadata = self._protected_path_maintenance_lease_metadata()
+        lease_published = False
+        try:
+            with serialized_lock_update(lock_path):
+                for _ in range(2):
+                    if self._publish_implementation_maintenance_lease(
+                        lock_path,
+                        metadata,
+                    ):
+                        lease_published = True
+                        break
+                    existing = load_json_dict(lock_path)
+                    if existing is not None and (
+                        self._protected_path_maintenance_owner_is_active(
+                            existing
+                        )
+                    ):
+                        return None, {
+                            "blocked": True,
+                            "reason": "protected_path_maintenance_active",
+                            "lock_path": str(lock_path),
+                            "lock_owner_pid": int(existing.get("pid") or 0),
+                            "lock_owner_state_dir": str(
+                                existing.get("state_dir") or ""
+                            ),
+                        }
+                    lock_path.unlink(missing_ok=True)
+                else:
+                    return None, {
+                        "blocked": True,
+                        "reason": "protected_path_maintenance_unavailable",
+                        "lock_path": str(lock_path),
+                    }
+            active_claims = (
+                self._active_implementation_task_claims_for_maintenance()
+            )
+            if active_claims:
+                self._release_protected_path_maintenance_lease(metadata)
+                lease_published = False
+                return None, {
+                    "blocked": True,
+                    "reason": "shared_implementation_task_claim_active",
+                    "lock_path": str(lock_path),
+                    "active_claims": active_claims,
+                }
+            return metadata, {
+                "blocked": False,
+                "reason": "protected_path_maintenance_lease_acquired",
+                "lock_path": str(lock_path),
+                "lease_id": str(metadata["lease_id"]),
+            }
+        except (OSError, RuntimeError) as exc:
+            if lease_published:
+                self._release_protected_path_maintenance_lease(metadata)
+            return None, {
+                "blocked": True,
+                "reason": "protected_path_maintenance_coordination_failed",
+                "lock_path": str(lock_path),
+                "error": f"{type(exc).__name__}: {exc}",
+            }
+
+    def _release_protected_path_maintenance_lease(
+        self,
+        metadata: Mapping[str, Any],
+    ) -> None:
+        lock_path = self._protected_path_maintenance_lock_path()
+        try:
+            with serialized_lock_update(lock_path):
+                existing = load_json_dict(lock_path)
+                if existing is None:
+                    return
+                if str(existing.get("lease_id") or "") != str(
+                    metadata.get("lease_id") or ""
+                ):
+                    logger.warning(
+                        "Refusing to remove shared protected-path lease no "
+                        "longer owned by this supervisor pass: %s",
+                        lock_path,
+                    )
+                    return
+                lock_path.unlink(missing_ok=True)
+        except (OSError, RuntimeError):
+            logger.warning(
+                "Failed to release shared protected-path maintenance lease %s",
+                lock_path,
+                exc_info=True,
+            )
+
     def _implementation_maintenance_lease_metadata(self) -> dict[str, Any]:
         lease_seed = (
             f"{os.getpid()}:{threading.get_ident()}:{time.time_ns()}:{id(self)}"
@@ -1457,14 +1734,30 @@ class PortalImplementationSupervisor:
                 "reason": str(lease_guard.get("reason") or ""),
                 "protected_path_guard": lease_guard,
             }
+        shared_lease: dict[str, Any] | None = None
         try:
             update_maintenance_phase("implementation_maintenance_lease")
+            shared_lease, shared_guard = (
+                self._acquire_protected_path_maintenance_lease()
+            )
+            if shared_lease is None:
+                return {
+                    "stuck": False,
+                    "maintenance_blocked": True,
+                    "reason": str(shared_guard.get("reason") or ""),
+                    "protected_path_guard": shared_guard,
+                }
+            update_maintenance_phase(
+                "shared_protected_path_maintenance_lease"
+            )
             return self._run_once_with_maintenance_under_lease(
                 update_maintenance_phase,
                 include_refill=include_refill,
                 implementation_maintenance_lease=lease,
             )
         finally:
+            if shared_lease is not None:
+                self._release_protected_path_maintenance_lease(shared_lease)
             self._release_implementation_maintenance_lease(lease)
 
     def _run_once_with_maintenance_under_lease(
@@ -1960,15 +2253,16 @@ class PortalImplementationSupervisor:
                         cleanup=cleanup,
                         interrupted_reconciliation=interrupted_reconciliation,
                     )
-                except OSError:
-                    logger.exception("Could not record terminal supervisor status")
+                except Exception:
+                    logger.exception(
+                        "Could not write terminal supervisor signal status"
+                    )
             if handlers_installed:
                 signal.signal(signal.SIGTERM, previous_term)
                 signal.signal(signal.SIGINT, previous_int)
 
     def _run_forever_loop(self) -> None:
         self.ensure_event_log_file()
-        self.repair_main_checkout_merge_state()
         self.ensure_managed_daemon_pid_file()
         try:
             preflight = self.run_once(include_refill=False)
@@ -2086,6 +2380,7 @@ class PortalImplementationSupervisor:
         return SupervisorLoopConfig(
             spec=spec,
             command=command,
+            child_env=_managed_daemon_child_environment(),
             log_prefix=f"{prefix}_implementation_daemon",
             restart_policy=RestartPolicy(
                 restart_backoff_seconds=max(0.0, float(self.config.check_interval)),
@@ -2099,6 +2394,9 @@ class PortalImplementationSupervisor:
             # each pass and therefore supplies independent child liveness.
             watchdog_log_heartbeat_fallback=True,
             watchdog_startup_grace_seconds=self._watchdog_startup_grace_seconds(),
+            watchdog_quiescent_status_predicate=(
+                _projection_is_quiescent_for_heartbeat_fallback
+            ),
             watchdog_accept_fresh_child_log=True,
             stop_grace_seconds=15.0,
             max_restarts=max(0, int(self.config.max_restarts)),
@@ -4176,6 +4474,7 @@ class PortalImplementationSupervisor:
                 cwd=repo_root,
                 text=True,
                 capture_output=True,
+                env={**os.environ, "GIT_OPTIONAL_LOCKS": "0"},
                 check=False,
             )
         except OSError:
@@ -4668,11 +4967,8 @@ class PortalImplementationSupervisor:
         active_worktree_owners = self._shared_active_worktree_owners(
             worktree_root
         )
-        target_ref = (
-            self.config.merge_target_branch
-            or self._git_current_branch(repo_root)
-            or "HEAD"
-        )
+        current_branch = self._git_current_branch(repo_root)
+        target_ref = self.config.merge_target_branch or current_branch or "HEAD"
         target_signature = self._git_ref_commit(repo_root, target_ref) or target_ref
         main_status_available = True
         main_status_error = ""
@@ -4709,6 +5005,22 @@ class PortalImplementationSupervisor:
             }
             main_status = []
             main_dirty_evidence = dict(raw_main_dirty_evidence)
+        current_checkout_status = list(main_status)
+        main_checkout_is_merge_target = (
+            not self.config.merge_target_branch
+            or current_branch == target_ref
+        )
+        if main_status and not main_checkout_is_merge_target:
+            main_dirty_evidence = {
+                **main_dirty_evidence,
+                "ignored_for_reconciliation": True,
+                "current_branch": current_branch or "HEAD",
+                "configured_merge_target": target_ref,
+            }
+            # Reconciliation mutates a detached target worktree. Dirt in an
+            # unrelated checkout is reported below but does not authorize or
+            # block mutation of the configured target branch.
+            main_status = []
         max_merges = max(0, int(self.config.worktree_reconciliation_max_merges))
         dry_run = bool(self.config.worktree_reconciliation_dry_run)
         try:
@@ -5230,7 +5542,10 @@ class PortalImplementationSupervisor:
                     for line in effective_main_status[:50]
                 ],
             }
-        elif main_status_available:
+        elif (
+            main_status_available
+            and not main_dirty_evidence.get("ignored_for_reconciliation")
+        ):
             main_dirty_evidence = {
                 **main_dirty_evidence,
                 "status_short": [],
@@ -5256,6 +5571,9 @@ class PortalImplementationSupervisor:
                 not main_status_available
                 or bool(raw_main_status)
             ),
+            "main_checkout_is_merge_target": main_checkout_is_merge_target,
+            "current_checkout_dirty": bool(current_checkout_status),
+            "current_checkout_status_short": current_checkout_status[:20],
             "raw_main_status_short": raw_main_status[:20],
             "raw_main_dirty_evidence": raw_main_dirty_evidence,
             "candidate_count": len(candidates),
@@ -7291,6 +7609,32 @@ class PortalImplementationSupervisor:
                 "finished_at": utc_now(),
             }
 
+        stageability = self._existing_rescue_branch_stageability(
+            worktree_path,
+            branch=branch,
+        )
+        if stageability.get("no_stageable_delta"):
+            rescue_commit = self._git_ref_commit(worktree_path, "HEAD")
+            result = {
+                "attempted": True,
+                "preserved": False,
+                "reason": (
+                    "existing_rescue_branch_nested_state_requires_reconciliation"
+                ),
+                "path": str(worktree_path),
+                "branch": branch,
+                "head": head,
+                "target_ref": target_ref,
+                "rescue_branch": branch,
+                "rescue_commit": rescue_commit,
+                "status_short": status_lines[:20],
+                "stageability_proof": stageability,
+                "started_at": started_at,
+                "finished_at": utc_now(),
+            }
+            self._record_event("dirty_worktree_rescue_deferred", result)
+            return result
+
         fingerprint = sha1(
             json.dumps(
                 {
@@ -7303,17 +7647,25 @@ class PortalImplementationSupervisor:
             ).encode("utf-8")
         ).hexdigest()[:12]
         rescue_branch = (
-            f"rescue/worktree/{self._safe_rescue_branch_fragment(branch or worktree_path.name)}-{fingerprint}"
+            branch
+            if branch.startswith("rescue/worktree/")
+            else (
+                f"rescue/worktree/"
+                f"{self._safe_rescue_branch_fragment(branch or worktree_path.name)}-{fingerprint}"
+            )
         )
 
-        checkout = subprocess.run(
-            ["git", "checkout", "-B", rescue_branch],
-            cwd=worktree_path,
-            text=True,
-            capture_output=True,
-            check=False,
-        )
-        if checkout.returncode != 0:
+        current_branch = self._git_current_branch(worktree_path)
+        checkout = None
+        if current_branch != rescue_branch:
+            checkout = subprocess.run(
+                ["git", "checkout", "-B", rescue_branch],
+                cwd=worktree_path,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+        if checkout is not None and checkout.returncode != 0:
             result = {
                 "attempted": True,
                 "preserved": False,
@@ -7369,8 +7721,8 @@ class PortalImplementationSupervisor:
             rescue_commit = self._git_ref_commit(worktree_path, "HEAD")
             result = {
                 "attempted": True,
-                "preserved": True,
-                "reason": "no_staged_rescue_delta",
+                "preserved": False,
+                "reason": "no_staged_rescue_delta_requires_reconciliation",
                 "path": str(worktree_path),
                 "branch": branch,
                 "head": head,
@@ -7381,7 +7733,7 @@ class PortalImplementationSupervisor:
                 "started_at": started_at,
                 "finished_at": utc_now(),
             }
-            self._record_event("dirty_worktree_rescued", result)
+            self._record_event("dirty_worktree_rescue_deferred", result)
             return result
 
         commit = subprocess.run(
@@ -7445,6 +7797,77 @@ class PortalImplementationSupervisor:
         }
         self._record_event("dirty_worktree_rescued", result)
         return result
+
+    def _existing_rescue_branch_stageability(
+        self,
+        worktree_path: Path,
+        *,
+        branch: str,
+    ) -> dict[str, Any]:
+        """Prove whether an existing rescue branch has anything Git can stage.
+
+        Nested-only submodule dirt is intentionally ignored. Gitlink commit
+        changes, ordinary staged/unstaged changes, and untracked paths remain
+        observable and prevent the idempotent short circuit.
+        """
+
+        proof: dict[str, Any] = {
+            "already_rescue_branch": branch.startswith("rescue/worktree/"),
+        }
+        if not proof["already_rescue_branch"]:
+            proof["no_stageable_delta"] = False
+            return proof
+
+        current_branch = self._git_current_branch(worktree_path)
+        proof["current_branch_matches"] = current_branch == branch
+        if current_branch != branch:
+            proof["no_stageable_delta"] = False
+            return proof
+
+        git_env = {**os.environ, "GIT_OPTIONAL_LOCKS": "0"}
+        commands = {
+            "staged_diff_returncode": [
+                "git",
+                "diff",
+                "--cached",
+                "--quiet",
+                "--ignore-submodules=dirty",
+                "--",
+            ],
+            "unstaged_diff_returncode": [
+                "git",
+                "diff",
+                "--quiet",
+                "--ignore-submodules=dirty",
+                "--",
+            ],
+        }
+        for field, command in commands.items():
+            result = subprocess.run(
+                command,
+                cwd=worktree_path,
+                capture_output=True,
+                env=git_env,
+                check=False,
+            )
+            proof[field] = result.returncode
+
+        untracked = subprocess.run(
+            ["git", "ls-files", "--others", "--exclude-standard", "-z"],
+            cwd=worktree_path,
+            capture_output=True,
+            env=git_env,
+            check=False,
+        )
+        proof["untracked_query_returncode"] = untracked.returncode
+        proof["has_untracked_paths"] = bool(untracked.stdout)
+        proof["no_stageable_delta"] = (
+            proof["staged_diff_returncode"] == 0
+            and proof["unstaged_diff_returncode"] == 0
+            and untracked.returncode == 0
+            and not untracked.stdout
+        )
+        return proof
 
     def cleanup_backlogged_worktrees(self) -> dict[str, Any]:
         """Remove inactive implementation worktrees whose branches are already merged."""
@@ -7642,6 +8065,7 @@ class PortalImplementationSupervisor:
                         "status_short": dirty[:20],
                         "dirty_redundancy": redundant_dirty,
                         "dirty_evidence": evidence,
+                        "rescue_result": rescue_result,
                     }
                     skipped.append(skip)
                     self._store_worktree_scan_cache_entry(
@@ -7960,6 +8384,7 @@ class PortalImplementationSupervisor:
 
         checked: list[dict[str, Any]] = []
         configured_submodule_deletion = False
+        configured_submodule_unstaged_deletion = False
         for line in status_lines:
             code = line[:2]
             relative = self._status_line_path(line)
@@ -7970,6 +8395,30 @@ class PortalImplementationSupervisor:
                 checked.append({**detail, "matches_target": True, "configured_submodule_deletion": True})
                 configured_submodule_deletion = True
                 continue
+            if code == " m" and self._is_configured_worktree_submodule_path(relative):
+                verdict = self._configured_submodule_unstaged_deletion_proof(
+                    worktree_path,
+                    relative=relative,
+                    target_ref=target_ref,
+                )
+                checked.append(
+                    {
+                        **detail,
+                        "configured_submodule_unstaged_deletion": bool(
+                            verdict.get("redundant")
+                        ),
+                        "proof_reason": str(verdict.get("reason") or ""),
+                        "proof": dict(verdict.get("proof") or {}),
+                    }
+                )
+                if not verdict.get("redundant"):
+                    return {
+                        "redundant": False,
+                        "reason": "unsupported_status",
+                        "checked": checked,
+                    }
+                configured_submodule_unstaged_deletion = True
+                continue
             if "D" in code or "?" in code.strip(" ?"):
                 return {"redundant": False, "reason": "unsupported_status", "checked": [*checked, detail]}
             if code == "??" or "M" in code or "A" in code:
@@ -7979,11 +8428,22 @@ class PortalImplementationSupervisor:
                 continue
             return {"redundant": False, "reason": "unsupported_status", "checked": [*checked, detail]}
         reason = (
-            "configured_submodule_deletions_match_target"
-            if configured_submodule_deletion
-            else "all_dirty_paths_match_target"
+            "configured_submodule_unstaged_deletions_match_target"
+            if configured_submodule_unstaged_deletion
+            else (
+                "configured_submodule_deletions_match_target"
+                if configured_submodule_deletion
+                else "all_dirty_paths_match_target"
+            )
         )
         return {"redundant": True, "reason": reason, "checked": checked}
+
+    def _is_configured_worktree_submodule_path(self, relative: str) -> bool:
+        normalized = relative.rstrip("/")
+        return any(
+            normalized == path.rstrip("/")
+            for path in self.config.worktree_submodule_paths
+        )
 
     def _status_line_is_configured_submodule_deletion(
         self,
@@ -7993,10 +8453,200 @@ class PortalImplementationSupervisor:
     ) -> bool:
         if code not in {" D", "D "}:
             return False
-        relative = relative.rstrip("/")
-        if not any(relative == path.rstrip("/") for path in self.config.worktree_submodule_paths):
+        normalized = relative.rstrip("/")
+        if not self._is_configured_worktree_submodule_path(normalized):
             return False
-        return self._target_ref_has_path(relative, target_ref)
+        # An uppercase deletion is the disappearance of the configured
+        # gitlink itself. It is redundant only when the integration target
+        # still owns that exact path. Lowercase nested-submodule dirt follows
+        # the stronger gitlink/head proof in
+        # ``_configured_submodule_unstaged_deletion_proof``.
+        return self._target_ref_has_path(normalized, target_ref)
+
+    @staticmethod
+    def _gitlink_tree_entry(
+        cwd: Path,
+        *,
+        treeish: str,
+        relative: str,
+    ) -> dict[str, str] | None:
+        result = subprocess.run(
+            ["git", "ls-tree", "-z", treeish, "--", relative],
+            cwd=cwd,
+            capture_output=True,
+            env={**os.environ, "GIT_OPTIONAL_LOCKS": "0"},
+            check=False,
+        )
+        if result.returncode != 0:
+            return None
+        records = result.stdout.split(b"\0")
+        if records and records[-1] == b"":
+            records.pop()
+        if len(records) != 1:
+            return None
+        metadata, separator, raw_path = records[0].partition(b"\t")
+        fields = metadata.split()
+        if (
+            separator != b"\t"
+            or len(fields) != 3
+            or fields[0] != b"160000"
+            or fields[1] != b"commit"
+            or raw_path != os.fsencode(relative)
+        ):
+            return None
+        return {
+            "mode": fields[0].decode("ascii"),
+            "commit": fields[2].decode("ascii"),
+        }
+
+    def _configured_submodule_unstaged_deletion_proof(
+        self,
+        worktree_path: Path,
+        *,
+        relative: str,
+        target_ref: str,
+    ) -> dict[str, Any]:
+        """Prove lowercase configured-submodule dirt is deletion-only."""
+
+        head_gitlink = self._gitlink_tree_entry(
+            worktree_path,
+            treeish="HEAD",
+            relative=relative,
+        )
+        target_gitlink = self._gitlink_tree_entry(
+            self.config.repo_root,
+            treeish=target_ref,
+            relative=relative,
+        )
+        proof: dict[str, Any] = {
+            "head_gitlink": head_gitlink or {},
+            "target_gitlink": target_gitlink or {},
+        }
+        if head_gitlink is None or target_gitlink is None:
+            return {
+                "redundant": False,
+                "reason": "configured_submodule_gitlink_unavailable",
+                "proof": proof,
+            }
+        if head_gitlink != target_gitlink:
+            return {
+                "redundant": False,
+                "reason": "configured_submodule_gitlink_mismatch",
+                "proof": proof,
+            }
+
+        nested_path = worktree_path / relative
+        try:
+            worktree_root = worktree_path.resolve(strict=True)
+            if nested_path.is_symlink():
+                raise ValueError("nested path is a symlink")
+            nested_root = nested_path.resolve(strict=True)
+            nested_root.relative_to(worktree_root)
+        except (OSError, ValueError):
+            proof["nested_repo_root_matches"] = False
+            return {
+                "redundant": False,
+                "reason": "configured_submodule_nested_repo_unsafe",
+                "proof": proof,
+            }
+
+        git_env = {**os.environ, "GIT_OPTIONAL_LOCKS": "0"}
+        top_level = subprocess.run(
+            ["git", "rev-parse", "--show-toplevel"],
+            cwd=nested_root,
+            text=True,
+            capture_output=True,
+            env=git_env,
+            check=False,
+        )
+        try:
+            reported_root = Path(top_level.stdout.strip()).resolve(strict=True)
+        except OSError:
+            reported_root = Path()
+        proof["nested_repo_root_matches"] = (
+            top_level.returncode == 0 and reported_root == nested_root
+        )
+        if not proof["nested_repo_root_matches"]:
+            return {
+                "redundant": False,
+                "reason": "configured_submodule_nested_repo_mismatch",
+                "proof": proof,
+            }
+
+        nested_head = subprocess.run(
+            ["git", "rev-parse", "--verify", "HEAD^{commit}"],
+            cwd=nested_root,
+            text=True,
+            capture_output=True,
+            env=git_env,
+            check=False,
+        )
+        proof["nested_head"] = (
+            nested_head.stdout.strip() if nested_head.returncode == 0 else ""
+        )
+        if proof["nested_head"] != head_gitlink["commit"]:
+            return {
+                "redundant": False,
+                "reason": "configured_submodule_nested_head_mismatch",
+                "proof": proof,
+            }
+
+        status = subprocess.run(
+            [
+                "git",
+                "status",
+                "--porcelain=v1",
+                "-z",
+                "--untracked-files=all",
+                "--ignore-submodules=none",
+            ],
+            cwd=nested_root,
+            capture_output=True,
+            env=git_env,
+            check=False,
+        )
+        proof["nested_status_returncode"] = status.returncode
+        if status.returncode != 0:
+            return {
+                "redundant": False,
+                "reason": "configured_submodule_nested_status_unavailable",
+                "proof": proof,
+            }
+
+        records = status.stdout.split(b"\0")
+        if records and records[-1] == b"":
+            records.pop()
+        status_codes: dict[str, int] = {}
+        all_unstaged_tracked_deletions = bool(records)
+        for record in records:
+            code = record[:2].decode("ascii", errors="backslashreplace")
+            status_codes[code] = status_codes.get(code, 0) + 1
+            if (
+                len(record) < 4
+                or record[:2] != b" D"
+                or record[2:3] != b" "
+                or not record[3:]
+            ):
+                all_unstaged_tracked_deletions = False
+        proof["nested_status_entry_count"] = len(records)
+        proof["nested_status_codes"] = dict(sorted(status_codes.items()))
+        proof["all_unstaged_tracked_deletions"] = all_unstaged_tracked_deletions
+        if not all_unstaged_tracked_deletions:
+            return {
+                "redundant": False,
+                "reason": (
+                    "configured_submodule_nested_status_not_unstaged_deletions"
+                ),
+                "proof": proof,
+            }
+        proof["mechanically_restorable_from_gitlink"] = True
+        return {
+            "redundant": False,
+            "reason": (
+                "configured_submodule_unstaged_deletions_require_reconciliation"
+            ),
+            "proof": proof,
+        }
 
     def _target_ref_has_path(self, relative: str, target_ref: str) -> bool:
         result = subprocess.run(
@@ -10808,7 +11458,14 @@ class PortalImplementationSupervisor:
     def _start_daemon(self) -> subprocess.Popen[str]:
         self.ensure_managed_daemon_pid_file()
         command = self._build_daemon_command()
-        process = subprocess.Popen(command, cwd=self.config.repo_root, text=True)
+        child_env = dict(os.environ)
+        child_env.update(_managed_daemon_child_environment())
+        process = subprocess.Popen(
+            command,
+            cwd=self.config.repo_root,
+            env=child_env,
+            text=True,
+        )
         write_text_atomic(self._managed_daemon_pid_path(), f"{process.pid}\n")
         return process
 
@@ -10942,6 +11599,8 @@ class PortalImplementationSupervisor:
                 str(int(self.config.task_shard_index)),
             ]
         )
+        if self.config.strict_task_sharding:
+            command.append("--strict-task-sharding")
         for path in self.config.external_reservation_manifest_paths:
             command.extend(["--external-reservation-manifest-path", str(path)])
         for task_id in self.config.assumed_completed_task_ids:
@@ -11188,6 +11847,12 @@ class PortalImplementationSupervisor:
         if self.config.implement != has_implement_flag:
             return False
         tokens = command_line.split()
+        has_strict_task_sharding_flag = "--strict-task-sharding" in tokens
+        if (
+            bool(self.config.strict_task_sharding)
+            != has_strict_task_sharding_flag
+        ):
+            return False
 
         def option_values(option: str) -> set[str]:
             return {
@@ -11196,6 +11861,14 @@ class PortalImplementationSupervisor:
                 if token == option
             }
 
+        if option_values("--task-shard-count") != {
+            str(max(1, int(self.config.task_shard_count)))
+        }:
+            return False
+        if option_values("--task-shard-index") != {
+            str(int(self.config.task_shard_index))
+        }:
+            return False
         if option_values("--execution-slice-task-id") != set(
             self.config.execution_slice_task_ids
         ):
@@ -11496,6 +12169,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         type=int,
         default=0,
         help="Zero-based deterministic task-selection shard index for this supervisor lane.",
+    )
+    parser.add_argument(
+        "--strict-task-sharding",
+        action="store_true",
+        help=(
+            "Keep the managed daemon within its deterministic task shard when that "
+            "shard has no ready work; disables cross-shard ready-task fallback."
+        ),
     )
     parser.add_argument(
         "--external-reservation-manifest-path",
@@ -11989,6 +12670,9 @@ def supervisor_config_from_args(
         daemon_merged_worktree_cleanup_max=args.daemon_merged_worktree_cleanup_max,
         task_shard_count=args.task_shard_count,
         task_shard_index=args.task_shard_index,
+        strict_task_sharding=bool(
+            getattr(args, "strict_task_sharding", False)
+        ),
         external_reservation_manifest_paths=tuple(
             args.external_reservation_manifest_path or ()
         ),

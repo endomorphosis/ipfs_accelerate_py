@@ -35,6 +35,7 @@ from ipfs_accelerate_py.agent_supervisor.validation.validation_runtime import (
     VALIDATION_PYTHON_LAUNCHER_POLICY_SHA256_ENV,
     VALIDATION_PYTHON_LAUNCHER_SHA256_ENV,
     VALIDATION_PYTHONPATH_ENV,
+    VALIDATION_SUPERVISOR_STATE_ROOT_ENV,
     ValidationRuntimeError,
     build_validation_environment,
     build_hermetic_validation_runtime,
@@ -226,6 +227,65 @@ def test_validation_runtime_scrubs_hooks_secrets_and_inherited_path(
     # must still be rejected.
     with pytest.raises(ValidationRuntimeError, match="must not be writable"):
         build_validation_environment({VALIDATION_PATH_ENV: str(replaceable_bin)})
+
+
+def test_validation_runtime_propagates_only_canonical_readonly_supervisor_state_root(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    state_root = tmp_path / "program-state"
+    state_root.mkdir()
+    source = {
+        VALIDATION_SUPERVISOR_STATE_ROOT_ENV: str(state_root),
+    }
+
+    environment = build_validation_environment(source)
+
+    assert environment[VALIDATION_SUPERVISOR_STATE_ROOT_ENV] == str(
+        state_root.resolve()
+    )
+    report = ValidationScheduler().run(
+        [
+            "test \"$LPR_STATE_ROOT\" = "
+            f"{shlex.quote(str(state_root.resolve()))}"
+        ],
+        workspace_path=workspace,
+        changed_files=["pyproject.toml"],
+        target_commit="test-commit",
+        dependency_state="test-dependencies",
+        environment=source,
+    )
+    assert report["passed"] is True
+
+    for command in (
+        "LPR_STATE_ROOT=/tmp python -c 'raise SystemExit(0)'",
+        "env LPR_STATE_ROOT=/tmp python -c 'raise SystemExit(0)'",
+        "export LPR_STATE_ROOT=/tmp; python -c 'raise SystemExit(0)'",
+    ):
+        with pytest.raises(
+            ValidationRuntimeError,
+            match="may not override the supervisor state root",
+        ):
+            validation_shell_command(command)
+    for command in (
+        "env -i python -c 'raise SystemExit(0)'",
+        "env - python -c 'raise SystemExit(0)'",
+        "env -iu LPR_STATE_ROOT python -c 'raise SystemExit(0)'",
+        "env -u LPR_STATE_ROOT python -c 'raise SystemExit(0)'",
+        "env --unset=LPR_STATE_ROOT python -c 'raise SystemExit(0)'",
+        "env -S '-u LPR_STATE_ROOT' python -c 'raise SystemExit(0)'",
+    ):
+        with pytest.raises(
+            ValidationRuntimeError,
+            match="may not use env options inside the protected environment",
+        ):
+            validation_shell_command(command)
+
+    with pytest.raises(ValidationRuntimeError, match="must be an absolute directory"):
+        build_validation_environment(
+            {VALIDATION_SUPERVISOR_STATE_ROOT_ENV: "relative/state"}
+        )
 
 
 def test_real_validation_runner_ignores_profile_bash_env_and_path_injection(
@@ -1563,6 +1623,100 @@ def test_daemon_uses_full_pre_merge_scope_and_preserves_result_contract(tmp_path
     assert report["passed"] is False
     assert report["returncode"] == 6
     assert report["failed_command"] == "git diff --check"
+
+
+def test_daemon_python_validation_imports_configured_worktree_packages(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    _repo(repo)
+    provider_root = repo / "external" / "provider"
+    provider_root.mkdir(parents=True)
+    (provider_root / "sibling_provider.py").write_text(
+        "VALUE = 7\n",
+        encoding="utf-8",
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state.json",
+        strategy_path=repo / "strategy.json",
+        events_path=repo / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=("external/provider",),
+        worktree_pool_enabled=False,
+        validation_cache_dir=repo / "validation-cache",
+        merge_queue_dir=repo / "merge-queue",
+    )
+    task = PortalTask(
+        task_id="REF-044",
+        title="worktree package validation",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="validation",
+        validation=[
+            "python3 -c 'import sibling_provider; "
+            "assert sibling_provider.VALUE == 7'"
+        ],
+    )
+
+    report = daemon._run_validation_commands(
+        repo,
+        task,
+        repo / "validation.log",
+    )
+
+    assert report["passed"] is True
+    assert report["results"][0]["command"].startswith(
+        "PYTHONPATH=external/provider python3 "
+    )
+    assert (
+        "added configured worktree package roots to PYTHONPATH"
+        in (repo / "validation.log").read_text(encoding="utf-8")
+    )
+
+
+def test_daemon_preserves_explicit_validation_pythonpath(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    _repo(repo)
+    (repo / "external" / "provider").mkdir(parents=True)
+    captured: dict[str, object] = {}
+
+    class Scheduler:
+        def run(self, commands, **_kwargs):
+            captured["commands"] = tuple(commands)
+            return {
+                "attempted": True,
+                "passed": True,
+                "returncode": 0,
+                "results": [],
+            }
+
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state.json",
+        strategy_path=repo / "strategy.json",
+        events_path=repo / "events.jsonl",
+        repo_root=repo,
+        validation_scheduler=Scheduler(),  # type: ignore[arg-type]
+        worktree_submodule_paths=("external/provider",),
+    )
+    command = "PYTHONPATH=src python3 -m pytest tests/unit -q"
+    task = PortalTask(
+        task_id="REF-045",
+        title="explicit validation path",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="validation",
+        validation=[command],
+    )
+
+    daemon._run_validation_commands(repo, task, repo / "validation.log")
+
+    assert captured["commands"] == (command,)
 
 
 def test_daemon_binds_task_validation_to_proposal_local_impact_graph(

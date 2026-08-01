@@ -36,6 +36,7 @@ from ipfs_accelerate_py.agent_supervisor.task_sources.taskboard_store import (
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     PortalImplementationDaemon,
+    PortalTaskState,
 )
 
 
@@ -578,6 +579,111 @@ def test_projection_and_taskboard_stores_make_zero_unchanged_writes(
     assert _file_identity(board) == board_identity
 
 
+def test_projection_store_content_addresses_and_quarantines_invalid_checkpoint(
+    tmp_path: Path,
+) -> None:
+    checkpoint_path = tmp_path / "projection-checkpoint.json"
+    store = ProjectionDeltaCheckpointStore(checkpoint_path)
+    cursor = EventCursor.initial(
+        "runtime-events",
+        snapshot_id="runtime-snapshot",
+    )
+    store.materialize({"ready": 2}, cursor)
+    invalid = checkpoint_path.read_bytes().replace(b'"ready":2', b'"ready":3')
+    checkpoint_path.write_bytes(invalid)
+
+    with pytest.raises(
+        ValueError,
+        match="projection checkpoint identity does not match",
+    ):
+        store.load()
+
+    repair = store.quarantine_invalid()
+
+    assert repair["quarantined"] is True
+    assert repair["reason"] == "projection checkpoint identity does not match"
+    assert repair["content_sha256"].startswith("sha256:")
+    assert checkpoint_path.exists() is False
+    quarantine_path = Path(repair["quarantine_path"])
+    assert quarantine_path.read_bytes() == invalid
+    rebuilt = store.materialize({"ready": 3}, cursor)
+    assert rebuilt.write_count == 1
+    assert store.load() == ({"ready": 3}, cursor)
+
+
+def test_daemon_restart_quarantines_invalid_runtime_checkpoint(
+    tmp_path: Path,
+) -> None:
+    daemon = _drained_daemon(tmp_path)
+    first = daemon.run_once()
+    assert first["reason"] == "no_tasks_found"
+    checkpoint_path = daemon.runtime_checkpoint_path
+    invalid = checkpoint_path.read_bytes().replace(
+        b'"task_count":0',
+        b'"task_count":9',
+        1,
+    )
+    checkpoint_path.write_bytes(invalid)
+
+    restarted = _drained_daemon(tmp_path)
+
+    assert restarted._runtime_checkpoint == {}
+    assert restarted._runtime_checkpoint_repair["quarantined"] is True
+    quarantine_path = Path(
+        restarted._runtime_checkpoint_repair["quarantine_path"]
+    )
+    assert quarantine_path.read_bytes() == invalid
+    restarted.todo_path.write_text(
+        """# Task board
+
+## PORTAL-001 Completed task
+
+- Status: completed
+""",
+        encoding="utf-8",
+    )
+    recovered = restarted.run_once()
+    loaded = restarted.runtime_checkpoint_store.load()
+    assert recovered["completed_count"] == 1
+    assert recovered["delta_checkpoint"]["checkpoint_repair"][
+        "quarantined"
+    ] is True
+    assert loaded is not None
+    assert loaded[0]["result"]["completed_count"] == 1
+
+
+def test_running_daemon_repairs_checkpoint_corrupted_between_passes(
+    tmp_path: Path,
+) -> None:
+    daemon = _drained_daemon(tmp_path)
+    daemon.run_once()
+    checkpoint_path = daemon.runtime_checkpoint_path
+    invalid = checkpoint_path.read_bytes().replace(
+        b'"task_count":0',
+        b'"task_count":9',
+        1,
+    )
+    checkpoint_path.write_bytes(invalid)
+    daemon.todo_path.write_text(
+        """# Task board
+
+## PORTAL-001 Completed task
+
+- Status: completed
+""",
+        encoding="utf-8",
+    )
+
+    recovered = daemon.run_once()
+
+    repair = recovered["delta_checkpoint"]["checkpoint_repair"]
+    assert repair["quarantined"] is True
+    assert Path(repair["quarantine_path"]).read_bytes() == invalid
+    loaded = daemon.runtime_checkpoint_store.load()
+    assert loaded is not None
+    assert loaded[0]["result"]["completed_count"] == 1
+
+
 def test_drained_board_ten_minute_logical_fixture_uses_under_two_percent_cpu_and_writes_nothing(
     tmp_path: Path,
 ) -> None:
@@ -676,6 +782,73 @@ def test_idle_populated_board_does_not_rewrite_typed_task_identities(
     assert {path: _file_identity(path) for path in durable_paths} == before
 
 
+def test_expired_ready_task_cooldown_wakes_unchanged_runtime(
+    tmp_path: Path,
+) -> None:
+    board = tmp_path / "tasks.todo.md"
+    board.write_text(
+        """# Retry board
+
+## PORTAL-001 Retry after transient maintenance
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: runtime
+- Depends on:
+- Outputs: src/retry.py
+- Validation:
+- Acceptance: The ready task is selected after its cooldown expires.
+""",
+        encoding="utf-8",
+    )
+    daemon = PortalImplementationDaemon(
+        todo_path=board,
+        state_path=tmp_path / "runtime" / "state.json",
+        strategy_path=tmp_path / "runtime" / "strategy.json",
+        events_path=tmp_path / "runtime" / "events.jsonl",
+        repo_root=tmp_path,
+        task_header_prefix="## PORTAL-",
+        worktree_pool_enabled=False,
+        validation_cache_dir=tmp_path / "runtime" / "validation-cache",
+        merge_queue_dir=tmp_path / "runtime" / "merge-queue",
+    )
+
+    first = daemon.run_once()
+    state = PortalTaskState.load(daemon.state_path)
+    state.active_task_id = ""
+    state.active_task_key = ""
+    state.active_task_cid = ""
+    state.implementation_in_progress = False
+    state.save(daemon.state_path)
+    daemon.task_queue.defer(
+        "PORTAL-001",
+        30,
+        reason="implementation_protected_path_maintenance_active",
+    )
+    daemon.task_queue.save()
+    daemon._runtime_last_source_digest = daemon._runtime_source_head()[0]
+
+    cooling_down = daemon.run_once()
+
+    assert cooling_down["unchanged"] is True
+    assert cooling_down["implementation_result"] is None
+    assert cooling_down["task_selection_retry_task_ids"] == ["PORTAL-001"]
+    assert 0 < cooling_down["next_wake_after_seconds"] <= 30
+
+    queue_key = daemon.task_queue.resolve_key("PORTAL-001")
+    daemon.task_queue.entries[queue_key].cooldown_until = time.time() - 1
+    daemon.task_queue.save()
+    daemon._runtime_last_source_digest = daemon._runtime_source_head()[0]
+
+    retried = daemon.run_once()
+
+    assert first["active_task_id"] == "PORTAL-001"
+    assert retried["unchanged"] is False
+    assert retried["active_task_id"] == "PORTAL-001"
+    assert "task_selection_retry_at" not in retried
+
+
 def test_ephemeral_merge_consumer_lease_is_not_a_runtime_wake_source(
     tmp_path: Path,
 ) -> None:
@@ -685,11 +858,15 @@ def test_ephemeral_merge_consumer_lease_is_not_a_runtime_wake_source(
     shared_claim_dir = (
         tmp_path / ".git" / "implementation-task-claims"
     )
+    protected_maintenance_lock = (
+        tmp_path / ".git" / "implementation-protected-path-maintenance.lock"
+    )
 
     assert daemon.merge_queue.database_path in lease_paths
     assert daemon.merge_queue.pending_dir in lease_paths
     assert daemon.merge_queue.processing_dir in lease_paths
     assert shared_claim_dir in lease_paths
+    assert protected_maintenance_lock in lease_paths
     assert merge_queue_root not in lease_paths
     assert merge_queue_root / "train" not in lease_paths
 
@@ -715,3 +892,37 @@ def test_ephemeral_merge_consumer_lease_is_not_a_runtime_wake_source(
     assert event.kinds == (RuntimeWakeKind.OBSERVATION_WINDOW,)
     assert event.safety_timer is True
     assert clock() == pytest.approx(30.0)
+
+
+def test_shared_protected_maintenance_release_is_a_runtime_wake(
+    tmp_path: Path,
+) -> None:
+    daemon = _drained_daemon(tmp_path)
+    lease_paths = daemon._runtime_source_paths()["lease"]
+    maintenance_lock = daemon._protected_path_maintenance_lock_path()
+    clock = LogicalClock()
+    watcher = LogicalWatcher(clock)
+    coordinator = RuntimeWakeCoordinator(
+        {RuntimeWakeKind.LEASE: lease_paths},
+        safety_interval_seconds=30.0,
+        watcher=watcher,
+        clock=clock,
+    )
+    try:
+        maintenance_lock.parent.mkdir(parents=True, exist_ok=True)
+        maintenance_lock.write_text("active\n", encoding="utf-8")
+        watcher.notify()
+        acquired = coordinator.wait()
+        coordinator.acknowledge(acquired)
+
+        maintenance_lock.unlink()
+        watcher.notify()
+        released = coordinator.wait()
+    finally:
+        coordinator.close()
+
+    assert acquired.kinds == (RuntimeWakeKind.LEASE,)
+    assert acquired.safety_timer is False
+    assert released.kinds == (RuntimeWakeKind.LEASE,)
+    assert released.safety_timer is False
+    assert clock() == 0.0

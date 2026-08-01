@@ -10570,6 +10570,8 @@ def render_task_block(
 - Resource class: {finding.resource_class or "cpu-medium"}
 - Token class: {finding.token_class or "medium"}
 - Estimated tokens: {max(0, _parse_int(finding.estimated_tokens, 0))}
+- Context budget tokens: 4096
+- Provider role: grok-implement, codex-review
 - Resources: {", ".join(finding.resources or [finding.resource_class or "cpu-medium"])}
 - Merge fate: {finding.merge_fate or finding.merge_family or finding.merge_key}
 - Rejection reasons: {", ".join(finding.rejection_reasons) or "none (accepted)"}
@@ -11804,8 +11806,13 @@ def build_bundle_task_payloads(
             "tasks": raw_tasks,
             "source_todo": payload.get("source_todo", ""),
             "objective_bundle_index": str(bundle_index_path),
-            "max_attempts": selected_max_attempts,
         }
+        # The local scheduler uses zero as the "unlimited" sentinel, while
+        # Profile G requires a positive bounded attempt count. Omitting the
+        # field lets the adapter apply its valid Profile-G default without
+        # changing the local scheduler's unlimited-attempt contract.
+        if selected_max_attempts > 0:
+            task_payload["max_attempts"] = selected_max_attempts
         task_payloads.append(task_payload)
 
     flat_tasks = [

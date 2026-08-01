@@ -1144,6 +1144,9 @@ def build_portal_implementation_daemon_from_args(
         merged_worktree_cleanup_max=parsed.merged_worktree_cleanup_max,
         task_shard_count=parsed.task_shard_count,
         task_shard_index=parsed.task_shard_index,
+        strict_task_sharding=bool(
+            getattr(parsed, "strict_task_sharding", False)
+        ),
         maintenance_interval_seconds=getattr(parsed, "maintenance_interval_seconds", None),
     )
     return daemon, ImplementationDaemonRunContext(parsed=parsed, **state_paths)

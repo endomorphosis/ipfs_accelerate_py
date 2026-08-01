@@ -1547,6 +1547,71 @@ class ObjectiveRefinementEventTracker:
             )
 
 
+OBJECTIVE_COMPLETION_RECONCILIATION_RECEIPT_SCHEMA = (
+    "ipfs_accelerate_py/agent-supervisor/"
+    "objective-completion-reconciliation-receipt@1"
+)
+
+
+class ObjectiveCompletionReconciliationOutcome(str, Enum):
+    """Closed outcomes for one objective-completion reconciliation attempt."""
+
+    APPLIED = "applied"
+    STALE_RETRY = "stale_retry"
+
+
+@dataclass(frozen=True)
+class ObjectiveCompletionReconciliationReceipt:
+    """Tree-fenced audit receipt for one completion reconciliation attempt."""
+
+    outcome: ObjectiveCompletionReconciliationOutcome
+    expected_repository_id: str
+    observed_repository_id: str
+    expected_tree_id: str
+    observed_tree_id: str
+    attempted_goal_ids: tuple[str, ...] = ()
+    validation_receipt_cids: tuple[str, ...] = ()
+    discarded_validation_receipt_cids: tuple[str, ...] = ()
+    reason_codes: tuple[str, ...] = ()
+    completion_updates_published: bool = False
+
+    @property
+    def retryable(self) -> bool:
+        return (
+            self.outcome
+            is ObjectiveCompletionReconciliationOutcome.STALE_RETRY
+        )
+
+    def _payload(self) -> dict[str, Any]:
+        return {
+            "schema": OBJECTIVE_COMPLETION_RECONCILIATION_RECEIPT_SCHEMA,
+            "outcome": self.outcome.value,
+            "expected_repository_id": self.expected_repository_id,
+            "observed_repository_id": self.observed_repository_id,
+            "expected_tree_id": self.expected_tree_id,
+            "observed_tree_id": self.observed_tree_id,
+            "attempted_goal_ids": list(self.attempted_goal_ids),
+            "validation_receipt_cids": list(
+                self.validation_receipt_cids
+            ),
+            "discarded_validation_receipt_cids": list(
+                self.discarded_validation_receipt_cids
+            ),
+            "reason_codes": list(self.reason_codes),
+            "retryable": self.retryable,
+            "completion_updates_published": bool(
+                self.completion_updates_published
+            ),
+        }
+
+    @property
+    def receipt_cid(self) -> str:
+        return canonical_content_cid(self._payload())
+
+    def to_dict(self) -> dict[str, Any]:
+        return {**self._payload(), "receipt_cid": self.receipt_cid}
+
+
 @dataclass(frozen=True)
 class ObjectiveCompletionResult:
     """Summary of objective goals reconciled from repository evidence."""
@@ -1566,10 +1631,24 @@ class ObjectiveCompletionResult:
     decisions: dict[str, dict[str, Any]] = field(default_factory=dict)
     migration: dict[str, Any] = field(default_factory=dict)
     external_completion: dict[str, Any] = field(default_factory=dict)
+    reconciliation: ObjectiveCompletionReconciliationReceipt | None = None
+
+    @property
+    def retryable(self) -> bool:
+        return bool(
+            self.reconciliation is not None
+            and self.reconciliation.retryable
+        )
 
     def to_dict(self) -> dict[str, Any]:
         payload = asdict(self)
         payload["objective_path"] = str(self.objective_path)
+        payload["reconciliation"] = (
+            self.reconciliation.to_dict()
+            if self.reconciliation is not None
+            else None
+        )
+        payload["retryable"] = self.retryable
         return payload
 
 
@@ -3276,6 +3355,41 @@ def run_goal_validation(
     payload.update({key: value for key, value in failure.items() if key != "returncode"})
     payload["receipt_cid"] = canonical_content_cid(payload)
     return payload
+
+
+def _quarantine_stale_goal_validation_results(
+    validation_results: Mapping[str, Mapping[str, Any]],
+    *,
+    expected_identity: RepositoryTreeIdentity,
+    observed_identity: RepositoryTreeIdentity,
+) -> dict[str, dict[str, Any]]:
+    """Replace tree-stale validation payloads with bounded retry receipts."""
+
+    quarantined: dict[str, dict[str, Any]] = {}
+    for goal_id in sorted(validation_results):
+        source = validation_results[goal_id]
+        payload: dict[str, Any] = {
+            "schema": (
+                "ipfs_accelerate_py.agent_supervisor."
+                "goal-validation-stale-retry@1"
+            ),
+            "goal_id": str(goal_id),
+            "attempted": bool(source.get("attempted", False)),
+            "passed": False,
+            "returncode": 75,
+            "reason": "stale_repository_tree",
+            "retryable": True,
+            "expected_repository_id": expected_identity.repository_id,
+            "observed_repository_id": observed_identity.repository_id,
+            "expected_tree_id": expected_identity.tree_id,
+            "observed_tree_id": observed_identity.tree_id,
+            "discarded_validation_receipt_cid": str(
+                source.get("receipt_cid") or ""
+            ),
+        }
+        payload["receipt_cid"] = canonical_content_cid(payload)
+        quarantined[str(goal_id)] = payload
+    return quarantined
 
 
 def _git_output(repo_root: Path, *arguments: str, binary: bool = False) -> str | bytes:
@@ -5607,16 +5721,70 @@ def reconcile_objective_goal_completion(
         control_paths=completion_control_paths,
         scan_exclude_paths=scan_exclude_paths,
     )
+    validation_receipt_cids = tuple(
+        sorted(
+            {
+                str(result.get("receipt_cid") or "")
+                for result in validation_results.values()
+                if str(result.get("receipt_cid") or "")
+            }
+        )
+    )
     if final_repository_identity != repository_identity:
-        raise RuntimeError(
-            "repository tree changed while live goal validation commands were "
-            "running; completion reconciliation was aborted"
+        stale_state_counts = {state.value: 0 for state in GoalState}
+        for goal in goals:
+            stale_state_counts[normalize_goal_state(goal.status).value] += 1
+        reason_codes = ["stale_repository_tree"]
+        if (
+            final_repository_identity.repository_id
+            != repository_identity.repository_id
+        ):
+            reason_codes.append("repository_identity_changed")
+        reconciliation = ObjectiveCompletionReconciliationReceipt(
+            outcome=ObjectiveCompletionReconciliationOutcome.STALE_RETRY,
+            expected_repository_id=repository_identity.repository_id,
+            observed_repository_id=final_repository_identity.repository_id,
+            expected_tree_id=repository_identity.tree_id,
+            observed_tree_id=final_repository_identity.tree_id,
+            attempted_goal_ids=tuple(sorted(decisions)),
+            validation_receipt_cids=validation_receipt_cids,
+            discarded_validation_receipt_cids=validation_receipt_cids,
+            reason_codes=tuple(reason_codes),
+            completion_updates_published=False,
+        )
+        return ObjectiveCompletionResult(
+            objective_path=objective_path,
+            completed_goal_ids=[],
+            active_goal_count=sum(
+                1 for goal in goals if goal.is_schedulable
+            ),
+            completed_goal_count=stale_state_counts[
+                GoalState.VERIFIED_COMPLETE.value
+            ],
+            completion_evidence={},
+            validation_results=_quarantine_stale_goal_validation_results(
+                validation_results,
+                expected_identity=repository_identity,
+                observed_identity=final_repository_identity,
+            ),
+            provisional_goal_ids=[],
+            verified_goal_ids=[],
+            reopened_goal_ids=[],
+            analysis_inconclusive_goal_ids=[],
+            blocked_goal_ids=[],
+            state_counts=stale_state_counts,
+            decisions={},
+            migration=migration_result.to_dict(),
+            external_completion={},
+            reconciliation=reconciliation,
         )
 
+    completion_updates_published = False
     if updates:
         rewritten = rewrite_goal_fields(text, updates)
         if rewritten != text:
             _atomic_rewrite(objective_path, rewritten)
+            completion_updates_published = True
         goals = parse_goal_heap(objective_path.read_text(encoding="utf-8"))
 
     state_counts = {state.value: 0 for state in GoalState}
@@ -5659,6 +5827,17 @@ def reconcile_objective_goal_completion(
                     .get("results", [])
                 ],
             }
+        ),
+        reconciliation=ObjectiveCompletionReconciliationReceipt(
+            outcome=ObjectiveCompletionReconciliationOutcome.APPLIED,
+            expected_repository_id=repository_identity.repository_id,
+            observed_repository_id=final_repository_identity.repository_id,
+            expected_tree_id=repository_identity.tree_id,
+            observed_tree_id=final_repository_identity.tree_id,
+            attempted_goal_ids=tuple(sorted(decisions)),
+            validation_receipt_cids=validation_receipt_cids,
+            reason_codes=(),
+            completion_updates_published=completion_updates_published,
         ),
     )
 

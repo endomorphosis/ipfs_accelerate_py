@@ -1,0 +1,476 @@
+{
+  "adapter_registry": {
+    "benchmark": {
+      "factory": "build_symbolic_efficiency_report",
+      "lazy": true,
+      "module": "ipfs_accelerate_py.agent_supervisor.validation.symbolic_efficiency_benchmark",
+      "optional_provider": false
+    },
+    "contracts": {
+      "factory": "ProgramContractProfileCompiler",
+      "lazy": true,
+      "module": "ipfs_accelerate_py.agent_supervisor.analysis.program_contract_profile",
+      "optional_provider": false
+    },
+    "differential": {
+      "factory": "build_canonical_operation_trace",
+      "lazy": true,
+      "module": "ipfs_accelerate_py.agent_supervisor.validation.differential_contract_harness",
+      "optional_provider": false
+    },
+    "inventory": {
+      "factory": "inventory_repository_surfaces",
+      "lazy": true,
+      "module": "ipfs_accelerate_py.agent_supervisor.analysis.repository_surface_inventory",
+      "optional_provider": false
+    },
+    "parity": {
+      "factory": "InterfaceParityReport",
+      "lazy": true,
+      "module": "ipfs_accelerate_py.agent_supervisor.analysis.interface_contract_parity",
+      "optional_provider": false
+    },
+    "pilot": {
+      "factory": "dry_run_pilot",
+      "lazy": true,
+      "module": "ipfs_accelerate_py.agent_supervisor.runtime.symbolic_assurance_pilot",
+      "optional_provider": false
+    },
+    "rollout": {
+      "factory": "run_symbolic_assurance_e2e",
+      "lazy": true,
+      "module": "ipfs_accelerate_py.agent_supervisor.control.symbolic_assurance_rollout",
+      "optional_provider": false
+    },
+    "verify": {
+      "factory": "verify_adversarial_e2e_report",
+      "lazy": true,
+      "module": "ipfs_accelerate_py.agent_supervisor.control.symbolic_assurance_rollout",
+      "optional_provider": false
+    }
+  },
+  "authority_flags": {
+    "authoritative": false,
+    "completion_authoritative": false,
+    "inventory_authorizes_repair": false,
+    "inventory_is_completion_evidence": false,
+    "inventory_is_correctness_evidence": false,
+    "variant_presence_is_defect": false
+  },
+  "automatic_mutation_enabled": false,
+  "behavior_id": "behavior:vfs-symbolic-assurance-rollout@1",
+  "binding_id": "ipfs_kit_vfs_assurance",
+  "cli": {
+    "exit_codes": {
+      "failure": 1,
+      "success": 0,
+      "usage": 2
+    },
+    "subcommands": [
+      "inventory",
+      "contracts",
+      "differential",
+      "parity",
+      "benchmark",
+      "pilot",
+      "rollout",
+      "verify"
+    ]
+  },
+  "config_version": 1,
+  "content_id": "sha256:30b1e2b2cc81ada017028bfec61e1ae848d792eaa2427b1baf721270a52efca1",
+  "default_exclusion_prefixes": [
+    "node_modules/",
+    ".git/",
+    "__pycache__/",
+    ".pytest_cache/",
+    "build/",
+    "archive/"
+  ],
+  "default_fixture_repositories": {
+    "repository:ipfs-accelerate-py@fixture": {
+      ".pytest_cache/v/cache": "stale",
+      "__pycache__/skip.pyc": "bytecode",
+      "ipfs_accelerate_py/agent_supervisor/program_analysis_cache.py": "# cache surface\n",
+      "ipfs_accelerate_py/agent_supervisor/vfs_symbolic_rollout.py": "# fixture surface\n",
+      "tests/test_rollout.py": "def test_ok(): assert True\n"
+    },
+    "repository:ipfs-datasets-py@fixture": {
+      "archive/old/skip.py": "# archive\n",
+      "ipfs_datasets_py/logic/zkp/provekit/circuits/program_contract_trace/src/main.nr": "fn main() {}\n",
+      "ipfs_datasets_py/utils/cid_utils.py": "def cid_for_bytes(b): return b\n"
+    },
+    "repository:ipfs-kit-py@fixture": {
+      "build/lib/generated.py": "# generated\n",
+      "ipfs_kit_py/enhanced_fsspec.py": "class EnhancedFS: pass\n",
+      "ipfs_kit_py/ipfs_fsspec.py": "class IPFSFileSystem: pass\n"
+    },
+    "repository:swissknife@fixture": {
+      ".git/config": "[core]\n",
+      "node_modules/skip/index.js": "module.exports = {};\n",
+      "package.json": "{\"name\":\"swissknife-fixture\",\"version\":\"0.0.1\"}\n",
+      "src/mcp/tools.ts": "export const tools = ['vfs.read', 'vfs.write'];\n",
+      "src/vfs/read.ts": "export function read(path: string): string { return path; }\n"
+    }
+  },
+  "default_mode": "shadow",
+  "gates": [
+    {
+      "evidence_ids": [],
+      "expected_outcome": "identical-fixture-and-repository-cids",
+      "gate_id": "reproducible_cids",
+      "kind": "reproducible_cids",
+      "non_authoritative": true,
+      "reject_on_pass": false
+    },
+    {
+      "evidence_ids": [],
+      "expected_outcome": "exhaustive-included-paths",
+      "gate_id": "complete_inventory",
+      "kind": "complete_inventory",
+      "non_authoritative": true,
+      "reject_on_pass": false
+    },
+    {
+      "evidence_ids": [],
+      "expected_outcome": "policy-bound-exclusions",
+      "gate_id": "inventory_exclusions",
+      "kind": "inventory_exclusions",
+      "non_authoritative": true,
+      "reject_on_pass": false
+    },
+    {
+      "evidence_ids": [],
+      "expected_outcome": "full-digest-reuse-on-warm-scan",
+      "gate_id": "incremental_reuse",
+      "kind": "incremental_reuse",
+      "non_authoritative": true,
+      "reject_on_pass": false
+    },
+    {
+      "evidence_ids": [
+        "cache:stale-probe"
+      ],
+      "expected_outcome": "stale-authoritative-hit-rejected",
+      "gate_id": "stale_cache_rejection",
+      "kind": "stale_cache_rejection",
+      "non_authoritative": true,
+      "reject_on_pass": true
+    },
+    {
+      "evidence_ids": [
+        "cache:corrupt-probe"
+      ],
+      "expected_outcome": "corrupt-cache-entry-rejected",
+      "gate_id": "corrupt_cache_rejection",
+      "kind": "corrupt_cache_rejection",
+      "non_authoritative": true,
+      "reject_on_pass": true
+    },
+    {
+      "evidence_ids": [
+        "contract:seeded-mismatch"
+      ],
+      "expected_outcome": "seeded-mismatch-precision",
+      "gate_id": "contract_precision",
+      "kind": "contract_precision",
+      "non_authoritative": true,
+      "reject_on_pass": false
+    },
+    {
+      "evidence_ids": [
+        "proof:wrong"
+      ],
+      "expected_outcome": "wrong-proof-rejected",
+      "gate_id": "wrong_proof",
+      "kind": "wrong_proof",
+      "non_authoritative": true,
+      "reject_on_pass": true
+    },
+    {
+      "evidence_ids": [
+        "proof:unknown"
+      ],
+      "expected_outcome": "unknown-proof-non-authoritative",
+      "gate_id": "unknown_proof",
+      "kind": "unknown_proof",
+      "non_authoritative": true,
+      "reject_on_pass": false
+    },
+    {
+      "evidence_ids": [
+        "zk:simulated_zk"
+      ],
+      "expected_outcome": "simulated-zk-non-authoritative",
+      "gate_id": "simulated_zk",
+      "kind": "simulated_zk",
+      "non_authoritative": true,
+      "reject_on_pass": false
+    },
+    {
+      "evidence_ids": [
+        "zk:forged_zk"
+      ],
+      "expected_outcome": "forged-zk-rejected",
+      "gate_id": "forged_zk",
+      "kind": "forged_zk",
+      "non_authoritative": true,
+      "reject_on_pass": true
+    },
+    {
+      "evidence_ids": [
+        "zk:tampered_zk"
+      ],
+      "expected_outcome": "tampered-zk-rejected",
+      "gate_id": "tampered_zk",
+      "kind": "tampered_zk",
+      "non_authoritative": true,
+      "reject_on_pass": true
+    },
+    {
+      "evidence_ids": [
+        "mcp:mock-probe"
+      ],
+      "expected_outcome": "mcp-mock-explicit-non-authoritative",
+      "gate_id": "mcp_mock",
+      "kind": "mcp_mock",
+      "non_authoritative": true,
+      "reject_on_pass": false
+    },
+    {
+      "evidence_ids": [
+        "mcp:bypass-probe"
+      ],
+      "expected_outcome": "mcp-local-bypass-reported",
+      "gate_id": "mcp_bypass",
+      "kind": "mcp_bypass",
+      "non_authoritative": true,
+      "reject_on_pass": false
+    },
+    {
+      "evidence_ids": [
+        "vfs:seeded-drift"
+      ],
+      "expected_outcome": "seeded-vfs-drift-detected",
+      "gate_id": "vfs_seeded_drift",
+      "kind": "seeded_drift",
+      "non_authoritative": true,
+      "reject_on_pass": false
+    },
+    {
+      "evidence_ids": [
+        "security:false-positive-seed"
+      ],
+      "expected_outcome": "false-positive-not-emitted-as-vulnerability",
+      "gate_id": "vulnerability_false_positive",
+      "kind": "vulnerability_false_positive",
+      "non_authoritative": true,
+      "reject_on_pass": false
+    },
+    {
+      "evidence_ids": [],
+      "expected_outcome": "stable-task-identity",
+      "gate_id": "task_determinism",
+      "kind": "task_determinism",
+      "non_authoritative": true,
+      "reject_on_pass": false
+    },
+    {
+      "evidence_ids": [
+        "provider:loss-probe"
+      ],
+      "expected_outcome": "provider-loss-degrades-without-authority-expansion",
+      "gate_id": "provider_loss",
+      "kind": "provider_loss",
+      "non_authoritative": true,
+      "reject_on_pass": false
+    },
+    {
+      "evidence_ids": [
+        "runtime:restart-replay"
+      ],
+      "expected_outcome": "restart-replay-byte-identical",
+      "gate_id": "restart_replay",
+      "kind": "restart_replay",
+      "non_authoritative": true,
+      "reject_on_pass": false
+    },
+    {
+      "evidence_ids": [
+        "lease:fence-loss"
+      ],
+      "expected_outcome": "lease-fence-loss-blocks-mutation",
+      "gate_id": "lease_fence_loss",
+      "kind": "lease_fence_loss",
+      "non_authoritative": true,
+      "reject_on_pass": false
+    },
+    {
+      "evidence_ids": [
+        "merge:conflict-probe"
+      ],
+      "expected_outcome": "merge-conflict-serialized-and-reported",
+      "gate_id": "merge_conflict",
+      "kind": "merge_conflict",
+      "non_authoritative": true,
+      "reject_on_pass": false
+    },
+    {
+      "evidence_ids": [
+        "refill:bounded"
+      ],
+      "expected_outcome": "refill-within-admission-ceilings",
+      "gate_id": "bounded_refill",
+      "kind": "bounded_refill",
+      "non_authoritative": true,
+      "reject_on_pass": false
+    },
+    {
+      "evidence_ids": [
+        "refill:exhaustion"
+      ],
+      "expected_outcome": "healthy-exhaustion-no-busywork",
+      "gate_id": "refill_exhaustion",
+      "kind": "refill_exhaustion",
+      "non_authoritative": true,
+      "reject_on_pass": false
+    },
+    {
+      "evidence_ids": [
+        "rollout:rollback"
+      ],
+      "expected_outcome": "regression-returns-effective-mode-to-shadow",
+      "gate_id": "rollback",
+      "kind": "rollback",
+      "non_authoritative": true,
+      "reject_on_pass": false
+    },
+    {
+      "evidence_ids": [
+        "control:parity"
+      ],
+      "expected_outcome": "python-cli-mcp-byte-identical-projections",
+      "gate_id": "control_parity",
+      "kind": "control_parity",
+      "non_authoritative": true,
+      "reject_on_pass": false
+    },
+    {
+      "evidence_ids": [
+        "policy:automatic-mutation"
+      ],
+      "expected_outcome": "automatic-mutation-disabled",
+      "gate_id": "automatic_mutation_disabled",
+      "kind": "automatic_mutation_disabled",
+      "non_authoritative": true,
+      "reject_on_pass": false
+    }
+  ],
+  "identity": {
+    "capability_id": "capability:vfs-symbolic-local@1",
+    "capability_revision": "sha256:frozen-vfs-symbolic-capability",
+    "default_fixture_id": "fixture:vfs-adversarial-e2e@1",
+    "default_fixture_revision": "fixture-revision:1",
+    "inventory_policy_id": "inventory-policy:vfs-adversarial@1",
+    "inventory_policy_revision": "inventory-policy-revision:1",
+    "policy_id": "policy:vfs-symbolic-rollout@1",
+    "policy_revision": "sha256:frozen-vfs-symbolic-policy",
+    "toolchain_id": "toolchain:vfs-symbolic-assurance@1",
+    "toolchain_revision": "toolchain-revision:1"
+  },
+  "objective_id": "VFS-G130",
+  "objective_revision": "VFS-G130@vfs-036",
+  "operation_invariant_error_mappings": {
+    "canonical_vectors": [
+      {
+        "operation": "read",
+        "path": "/empty",
+        "vector_id": "read-empty"
+      },
+      {
+        "operation": "write",
+        "path": "/blob",
+        "vector_id": "write-bytes"
+      },
+      {
+        "operation": "list",
+        "path": "/",
+        "vector_id": "list-root"
+      },
+      {
+        "operation": "stat",
+        "path": "/missing",
+        "vector_id": "stat-missing"
+      }
+    ],
+    "error_codes": [
+      "not-found",
+      "permission-denied",
+      "already-exists",
+      "is-a-directory",
+      "not-a-directory",
+      "invalid-path",
+      "unsupported",
+      "timeout",
+      "unavailable"
+    ],
+    "invariants": [
+      "path-normalized",
+      "bytes-exact",
+      "metadata-consistent",
+      "error-classified",
+      "no-silent-truncation",
+      "authority-checked"
+    ],
+    "operations": [
+      "read",
+      "write",
+      "list",
+      "stat",
+      "mkdir",
+      "rm",
+      "mv",
+      "cp",
+      "open",
+      "close",
+      "flush",
+      "exists",
+      "info",
+      "cat",
+      "put",
+      "get"
+    ]
+  },
+  "profile_id": "profile:ipfs-kit-vfs-symbolic-assurance@1",
+  "requirement_id": "vfs-036:adversarial-e2e-control-parity-recovery-rollback",
+  "safe_relative_roots": [
+    ".",
+    "ipfs_accelerate_py",
+    "ipfs_kit_py",
+    "ipfs_datasets_py",
+    "config",
+    "scripts",
+    "test",
+    "data/agent_supervisor/ipfs_kit_vfs_symbolic_assurance"
+  ],
+  "schema": "ipfs_accelerate_py/agent-supervisor/ipfs-kit-vfs-symbolic-assurance-config@1",
+  "schemas": {
+    "adversarial_e2e_gate": "vfs/adversarial-e2e-gate@1",
+    "benchmark": "symbolic-efficiency-benchmark@1",
+    "bounded_findings": "vfs/symbolic-bounded-findings@1",
+    "bounded_receipts": "vfs/symbolic-bounded-receipts@1",
+    "bounded_status": "vfs/symbolic-bounded-status@1",
+    "contract_pack_version": "vfs-contract-pack/v1",
+    "control_request": "vfs/symbolic-control-request@1",
+    "control_result": "vfs/symbolic-control-result@1",
+    "differential_witness": "differential-contract-witness@1",
+    "drift_inventory": "vfs/drift-inventory@1",
+    "parity_report": "vfs-mcp-parity-report@1",
+    "pilot": "symbolic-assurance-pilot@1",
+    "public_api": "vfs/symbolic-public-api@1",
+    "rollout_decision": "vfs/symbolic-rollout-decision@1",
+    "shadow_rollout_report": "vfs/shadow-rollout-report@1",
+    "surface_inventory": "ipfs_accelerate_py/agent-supervisor/vfs-surface-inventory@1",
+    "version": 1
+  }
+}

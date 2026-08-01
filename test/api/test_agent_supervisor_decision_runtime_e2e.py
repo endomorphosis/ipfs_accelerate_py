@@ -365,6 +365,136 @@ def test_daemon_accepts_bounded_local_sources_when_raw_patch_is_small(
     )
 
 
+def test_daemon_accepts_small_patch_to_source_between_decimal_and_binary_mb(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    source = ("# x\n" * 251_000) + "VALUE = 1\n"
+    assert 1_000_000 < len(source.encode("utf-8"))
+    assert len(source.encode("utf-8")) < DEFAULT_IMPLEMENTATION_PROPOSAL_FILE_BYTES
+    target = repo / "established_runtime.py"
+    target.write_text(source, encoding="utf-8")
+    _git(repo, "init", "-b", "main")
+    _git(repo, "config", "user.email", "supervisor@example.invalid")
+    _git(repo, "config", "user.name", "Supervisor Test")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "baseline")
+    baseline_ref = _git(repo, "rev-parse", "HEAD")
+    target.write_text(
+        source.replace("VALUE = 1", "VALUE = 2"),
+        encoding="utf-8",
+    )
+
+    daemon = PortalImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state.json",
+        strategy_path=repo / "strategy.json",
+        events_path=repo / "events.jsonl",
+        repo_root=repo,
+        worktree_pool_enabled=False,
+    )
+    task = PortalTask(
+        task_id="ASI-141B",
+        title="Repair an established one-megabyte runtime",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="ops",
+        outputs=[target.name],
+        validation=["python -m pytest"],
+        acceptance="Admit the bounded source edit without widening task scope.",
+    )
+
+    result = daemon._validate_implementation_patch(
+        repo,
+        task,
+        baseline_ref=baseline_ref,
+    )
+
+    assert result.accepted
+    assert result.proposal.changed_paths == (target.name,)
+    assert (
+        result.policy.max_file_bytes
+        == DEFAULT_IMPLEMENTATION_PROPOSAL_FILE_BYTES
+    )
+    assert (
+        result.policy.max_patch_bytes
+        > DEFAULT_IMPLEMENTATION_PROPOSAL_PATCH_BYTES
+    )
+    assert (
+        result.policy.max_patch_bytes
+        <= MAX_IMPLEMENTATION_PROPOSAL_MATERIALIZED_BYTES
+    )
+
+
+def test_daemon_accepts_small_patch_to_established_source_above_default_limit(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    source = ("# established host\n" * 56_000) + "VALUE = 1\n"
+    source_bytes = len(source.encode("utf-8"))
+    assert source_bytes > DEFAULT_IMPLEMENTATION_PROPOSAL_FILE_BYTES
+    assert source_bytes < MAX_IMPLEMENTATION_PROPOSAL_MATERIALIZED_BYTES
+    target = repo / "established_runtime.py"
+    companion = repo / "owned_companion.py"
+    target.write_text(source, encoding="utf-8")
+    companion.write_text("VALUE = 1\n", encoding="utf-8")
+    _git(repo, "init", "-b", "main")
+    _git(repo, "config", "user.email", "supervisor@example.invalid")
+    _git(repo, "config", "user.name", "Supervisor Test")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "baseline")
+    baseline_ref = _git(repo, "rev-parse", "HEAD")
+    target.write_text(
+        source.replace("VALUE = 1", "VALUE = 2"),
+        encoding="utf-8",
+    )
+
+    daemon = PortalImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state.json",
+        strategy_path=repo / "strategy.json",
+        events_path=repo / "events.jsonl",
+        repo_root=repo,
+        worktree_pool_enabled=False,
+    )
+    task = PortalTask(
+        task_id="ASI-141C",
+        title="Repair a large established runtime host",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="ops",
+        outputs=[target.name, companion.name],
+        validation=["python -m pytest"],
+        acceptance="Admit a bounded thin-host patch without narrowing scope.",
+    )
+
+    result = daemon._validate_implementation_patch(
+        repo,
+        task,
+        baseline_ref=baseline_ref,
+    )
+
+    assert result.accepted
+    assert result.proposal.changed_paths == (target.name,)
+    assert result.policy.max_file_bytes == source_bytes
+    assert (
+        result.policy.max_patch_bytes
+        > DEFAULT_IMPLEMENTATION_PROPOSAL_PATCH_BYTES
+    )
+    assert (
+        result.policy.max_output_bytes
+        >= DEFAULT_IMPLEMENTATION_PROPOSAL_OUTPUT_BYTES
+    )
+    assert set(result.policy.allowed_paths) == {target.name, companion.name}
+    assert not result.policy.policy_version.endswith(
+        "+declared-artifact-envelope-v1"
+    )
+
+
 def test_daemon_does_not_expand_limits_for_an_oversized_raw_patch() -> None:
     proposal = SimpleNamespace(
         candidate_diff=(),

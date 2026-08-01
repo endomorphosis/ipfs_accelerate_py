@@ -71,6 +71,13 @@ class TaskQueueEntry:
         self.merge_failure_count += 1
         self.selection_penalty += 500
 
+    def defer(self, seconds: float, *, reason: str = "") -> None:
+        """Apply an explicit non-consuming scheduler backoff."""
+
+        duration = max(0.0, float(seconds))
+        self.cooldown_until = max(self.cooldown_until, time.time() + duration)
+        self.notes = reason
+
     def reset_retry_state(self) -> None:
         """Clear scheduling backpressure after an accepted repair."""
 
@@ -289,6 +296,14 @@ class PersistentTaskQueue:
     def record_merge_failure(self, task_id: str) -> None:
         entry = self.get_or_create(task_id)
         entry.record_merge_failure()
+        self._dirty = True
+        self._maybe_save()
+
+    def defer(self, task_id: str, seconds: float, *, reason: str = "") -> None:
+        """Persist a non-consuming deferral for task selection."""
+
+        entry = self.get_or_create(task_id)
+        entry.defer(seconds, reason=reason)
         self._dirty = True
         self._maybe_save()
 

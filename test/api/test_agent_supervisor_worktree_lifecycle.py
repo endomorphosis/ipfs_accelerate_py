@@ -211,6 +211,85 @@ def test_stale_reclamation_requires_expiry_and_advances_fence(tmp_path: Path) ->
     assert decision.record.state is WorkspaceLifecycleState.TERMINAL
 
 
+def test_controlled_restart_reclaims_only_dead_same_lane_owner(
+    tmp_path: Path,
+) -> None:
+    clock = FakeClock(1_000.0)
+    store = _store(
+        tmp_path,
+        lease_seconds=600.0,
+        startup_grace_seconds=0.0,
+        clock=clock,
+    )
+    lane_state = tmp_path / "state" / "lane-1"
+    other_state = tmp_path / "state" / "lane-2"
+    dead_owner = ProcessBirthIdentity(
+        pid=2**30 - 9,
+        start_time_ticks=1,
+        boot_id="dead-boot",
+    )
+    dead_workspace = tmp_path / "dead-same-lane"
+    dead_record = store.begin_preparing(
+        task_id="RESTART-DEAD",
+        canonical_task_cid="cid:restart-dead",
+        attempt=1,
+        lane_id="lane-1",
+        workspace_path=dead_workspace,
+        branch="implementation/restart-dead",
+        merge_target="main",
+        state_dir=str(lane_state),
+        owner=dead_owner,
+    )
+    other_workspace = tmp_path / "dead-other-lane"
+    store.begin_preparing(
+        task_id="RESTART-OTHER",
+        canonical_task_cid="cid:restart-other",
+        attempt=1,
+        lane_id="lane-2",
+        workspace_path=other_workspace,
+        branch="implementation/restart-other",
+        merge_target="main",
+        state_dir=str(other_state),
+        owner=dead_owner,
+    )
+    live_workspace = tmp_path / "live-same-lane"
+    store.begin_preparing(
+        task_id="RESTART-LIVE",
+        canonical_task_cid="cid:restart-live",
+        attempt=1,
+        lane_id="lane-1",
+        workspace_path=live_workspace,
+        branch="implementation/restart-live",
+        merge_target="main",
+        state_dir=str(lane_state),
+    )
+
+    assert store.evaluate_cleanup(
+        workspace_path=dead_workspace
+    ).reason == "owner_dead_lease_unexpired"
+    assert (
+        store.reclaim_dead_owner_for_controlled_restart(
+            dead_workspace,
+            expected_state_dir=other_state,
+        )
+        is None
+    )
+
+    recovered = store.reclaim_dead_owners_for_controlled_restart(
+        expected_state_dir=lane_state,
+    )
+
+    assert [record.task_id for record in recovered] == ["RESTART-DEAD"]
+    terminal = store.load_workspace(dead_workspace)
+    assert terminal is not None
+    assert terminal.state is WorkspaceLifecycleState.TERMINAL
+    assert terminal.fence == dead_record.fence + 1
+    assert terminal.expires_at == clock.now
+    assert terminal.terminal_reason == "controlled_restart_dead_owner"
+    assert store.load_workspace(other_workspace).is_nonterminal
+    assert store.load_workspace(live_workspace).is_nonterminal
+
+
 def test_branch_fallback_reclaims_authoritative_provisional_workspace(
     tmp_path: Path,
 ) -> None:

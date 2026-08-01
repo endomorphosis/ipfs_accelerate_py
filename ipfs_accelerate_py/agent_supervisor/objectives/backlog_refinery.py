@@ -13,6 +13,7 @@ the reusable pieces close to the accelerator daemon runtime:
 from __future__ import annotations
 
 import argparse
+import ast
 import json
 import logging
 import os
@@ -84,6 +85,8 @@ from ..task_sources.task_identity import (
     normalize_board_namespace,
 )
 from ..todo_daemon.implementation_daemon import (
+    RECONCILIATION_GUARDRAIL_SCHEMA,
+    RETRY_BUDGET_REPAIR_SCHEMA,
     is_retry_budget_repair_task,
     parse_task_file,
     retry_budget_repair_source,
@@ -205,7 +208,7 @@ SELF_IMPROVEMENT_SUCCESSOR_RECORD_SCHEMA = (
 SELF_IMPROVEMENT_SUCCESSOR_RECORDS_KEY = (
     "self_improvement_successor_admission_records"
 )
-CODEBASE_SCAN_ANALYZER_VERSION = "codebase-annotation-analyzer/v1"
+CODEBASE_SCAN_ANALYZER_VERSION = "codebase-annotation-analyzer/v2"
 CODEBASE_AUDIT_SCANNER_VERSION = "codebase-audit/v1"
 CODEBASE_SCAN_REASON_SAMPLE_LIMIT = 10
 
@@ -3166,18 +3169,68 @@ def annotation_followup_marker(line: str) -> str:
 
 
 def codebase_parser_path(relative_path: str) -> str:
-    """Return the versioned v1 parser path selected for a relative path."""
+    """Return the current versioned parser path for a relative path."""
 
     return "markdown_fenced" if Path(relative_path).suffix.lower() in {".md", ".rst"} else "line_source"
 
 
+def _python_swallowed_exception_lines(source: str) -> frozenset[int]:
+    """Return real broad handlers whose direct body discards the failure.
+
+    The v1 line matcher treated string literals, comments, and detector
+    fixtures containing ``except Exception`` as executable handlers.  Besides
+    producing false positives, that made autonomous refill scan its own
+    evidence catalogs and generate an unbounded repair loop.  Python sources
+    are now classified from their AST; a syntax error fails closed to no
+    swallowed-exception claims rather than falling back to lexical guessing.
+    """
+
+    try:
+        tree = ast.parse(source)
+    except (SyntaxError, ValueError):
+        return frozenset()
+
+    result: set[int] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.ExceptHandler):
+            continue
+        broad = node.type is None or (
+            isinstance(node.type, ast.Name) and node.type.id == "Exception"
+        )
+        if not broad:
+            continue
+        discards = any(
+            isinstance(statement, ast.Pass)
+            or (
+                isinstance(statement, ast.Return)
+                and (
+                    statement.value is None
+                    or (
+                        isinstance(statement.value, ast.Constant)
+                        and statement.value.value is None
+                    )
+                )
+            )
+            for statement in node.body
+        )
+        if discards:
+            result.add(int(node.lineno))
+    return frozenset(result)
+
+
 def scan_findings_in_source(source: str, *, root_relative: str) -> list[CodebaseFinding]:
-    """Run the real v1 matcher over an in-memory source fixture."""
+    """Run the current semantic matcher over an in-memory source fixture."""
 
     lines = str(source).splitlines()
     findings: list[CodebaseFinding] = []
     in_fenced_block = False
     scan_fences = codebase_parser_path(root_relative) == "markdown_fenced"
+    python_source = Path(root_relative).suffix.lower() == ".py"
+    python_swallowed_lines = (
+        _python_swallowed_exception_lines(source)
+        if python_source
+        else frozenset()
+    )
     for index, line in enumerate(lines, start=1):
         stripped = line.strip()
         if scan_fences and (stripped.startswith("```") or stripped.startswith("~~~")):
@@ -3194,9 +3247,16 @@ def scan_findings_in_source(source: str, *, root_relative: str) -> list[Codebase
             kind = "annotated_followup"
             priority = "P2" if annotation_marker in {"fixme", "hack", "xxx"} else "P3"
             summary = f"Resolve code annotation in {root_relative}:{index}"
-        elif re.search(r"\bexcept\s*:\s*$", stripped) or re.search(r"\bexcept\s+Exception\b", stripped):
+        elif (
+            index in python_swallowed_lines
+            if python_source
+            else (
+                re.search(r"\bexcept\s*:\s*$", stripped) is not None
+                or re.search(r"\bexcept\s+Exception\b", stripped) is not None
+            )
+        ):
             window = "\n".join(lines[index : min(len(lines), index + 3)]).lower()
-            if "pass" in window or "return none" in window:
+            if python_source or "pass" in window or "return none" in window:
                 kind = "swallowed_exception"
                 priority = "P1"
                 summary = f"Review swallowed exception path in {root_relative}:{index}"
@@ -3634,6 +3694,8 @@ def codebase_scan_task_block(
         f"- Evidence subset: {finding.root_relative_path}:{finding.line_number}, {discovery_path}",
         "- Resource class: cpu-small",
         "- Token class: small",
+        "- Context budget tokens: 2048",
+        "- Provider role: grok-implement, codex-review",
         "- Resources: python, focused validation runner",
         f"- Merge fate: {finding.root_relative_path}",
         "- Rejection reasons: none",
@@ -4613,21 +4675,60 @@ def write_reconciliation_guardrail_discovery(
     date = datetime.now(timezone.utc).date().isoformat()
     fingerprint = str(record.get("fingerprint") or "")
     path = discovery_dir / f"{date}-{task_id.lower()}-reconciliation-{fingerprint[:12]}.md"
-    write_reconciliation_guardrail_discovery_path(path=path, task_id=task_id, record=record, date=date)
+    write_reconciliation_guardrail_discovery_path(
+        path=path,
+        task_id=task_id,
+        record=record,
+        date=date,
+        discovery_dir=discovery_dir,
+    )
     return path
 
 
-def preserved_reconciliation_discovery_sections(existing_text: str) -> list[str]:
+def preserved_reconciliation_discovery_sections(
+    existing_text: str,
+    *,
+    reopened: bool = False,
+) -> list[str]:
     """Return manual resolution sections to carry across guardrail refreshes."""
 
     preserved: list[str] = []
     for match in re.finditer(r"^##\s+([^\n]+)\n.*?(?=^##\s+|\Z)", existing_text, flags=re.MULTILINE | re.DOTALL):
         title = " ".join(match.group(1).strip().lower().split())
-        if title == "resolution" or title.startswith("resolution "):
-            section = match.group(0).strip()
-            if section:
-                preserved.append(section)
+        is_resolution = title == "resolution" or title.startswith("resolution ")
+        is_history = title.startswith("historical resolution ")
+        if not is_resolution and not is_history:
+            continue
+        section = match.group(0).strip()
+        if reopened and is_resolution:
+            section = re.sub(
+                r"^##\s+[^\n]+",
+                "## Historical Resolution Evidence (prior occurrence)",
+                section,
+                count=1,
+            )
+        if section and section not in preserved:
+            preserved.append(section)
     return preserved
+
+
+def reconciliation_discovery_path_is_owned(
+    path: Path,
+    *,
+    discovery_dir: Path,
+) -> bool:
+    """Return whether an evidence path is a non-symlinked direct child."""
+
+    try:
+        if discovery_dir.is_symlink() or path.is_symlink():
+            return False
+        return (
+            path.parent.resolve(strict=False)
+            == discovery_dir.resolve(strict=False)
+            and (not path.exists() or path.is_file())
+        )
+    except (OSError, RuntimeError):
+        return False
 
 
 def write_reconciliation_guardrail_discovery_path(
@@ -4635,16 +4736,52 @@ def write_reconciliation_guardrail_discovery_path(
     path: Path,
     task_id: str,
     record: Mapping[str, Any],
+    discovery_dir: Path,
     date: str | None = None,
+    history_source_path: Path | None = None,
+    reopened: bool = False,
 ) -> Path:
+    discovery_dir.mkdir(parents=True, exist_ok=True)
+    if discovery_dir.is_symlink():
+        raise ValueError("reconciliation discovery directory must not be a symlink")
+    if not reconciliation_discovery_path_is_owned(
+        path,
+        discovery_dir=discovery_dir,
+    ):
+        if path.is_symlink():
+            raise ValueError(
+                "reconciliation discovery destination must not be a symlink"
+            )
+        raise ValueError(
+            "reconciliation discovery path must be a regular direct child "
+            "of the configured directory"
+        )
+
     date = date or datetime.now(timezone.utc).date().isoformat()
     fingerprint = str(record.get("fingerprint") or "")
-    path.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        existing_text = path.read_text(encoding="utf-8")
-    except OSError:
-        existing_text = ""
-    preserved_sections = preserved_reconciliation_discovery_sections(existing_text)
+    history_texts: list[str] = []
+    for source_path in (path, history_source_path):
+        if source_path is None:
+            continue
+        if not reconciliation_discovery_path_is_owned(
+            source_path,
+            discovery_dir=discovery_dir,
+        ):
+            continue
+        try:
+            source_text = source_path.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        if source_text not in history_texts:
+            history_texts.append(source_text)
+    preserved_sections: list[str] = []
+    for history_text in history_texts:
+        for section in preserved_reconciliation_discovery_sections(
+            history_text,
+            reopened=reopened,
+        ):
+            if section not in preserved_sections:
+                preserved_sections.append(section)
     status_lines = "\n".join(f"- `{line}`" for line in record.get("status_short", []) or []) or "- none"
     main_checkout_evidence = reconciliation_evidence_markdown(
         record.get("main_dirty_evidence")
@@ -4865,6 +5002,10 @@ def reconciliation_guardrail_task_block(
         (discovery_output_path, todo_output_path),
         repo_root=repo_root or Path.cwd(),
     )
+    provenance = reconciliation_guardrail_provenance_metadata(
+        record=record,
+        discovery_path=discovery_path,
+    )
     profile_lines = _reconciliation_guardrail_profile_lines(board_profile)
     profile_markdown = "\n".join(profile_lines)
     if profile_markdown:
@@ -4878,6 +5019,7 @@ def reconciliation_guardrail_task_block(
 - Blocked reason: operator_reconciliation_required
 - Priority: {record.get("priority") or "P1"}
 - Track: {record.get("track") or "ops"}
+{provenance}
 - Fingerprint: {record.get("fingerprint") or ""}
 - Dedupe key: {record.get("dedupe_key") or ""}
 - Depends on:
@@ -4885,6 +5027,44 @@ def reconciliation_guardrail_task_block(
 - Validation: test -f {shlex.quote(str(discovery_path))}
 - Acceptance: Reconciliation guardrail filed this because {record.get("candidate_count")} branch or worktree cleanup candidates are blocked by {record.get("reason")}. This task is intentionally operator-gated because unknown dirty checkout content must not be committed, stashed, or discarded automatically. Use evidence and the machine-readable reconciliation plan in {discovery_path}, reconcile the dirty checkout or dirty worktree group deliberately, then rerun the supervisor cleanup/reconciliation pass and confirm that the blocked candidate count decreases.
 """
+
+
+def reconciliation_guardrail_provenance_metadata(
+    *,
+    record: Mapping[str, Any],
+    discovery_path: Path,
+) -> str:
+    """Render the explicit provenance required for an operational appendix."""
+
+    return "\n".join(
+        (
+            f"- Generated by: {RECONCILIATION_GUARDRAIL_SCHEMA}",
+            f"- Reconciliation kind: {str(record.get('kind') or '')}",
+            f"- Reconciliation reason: {str(record.get('reason') or '')}",
+            f"- Reconciliation fingerprint: {str(record.get('fingerprint') or '')}",
+            f"- Reconciliation discovery: {discovery_path}",
+            "- Canonical board task: false",
+        )
+    )
+
+
+def reconciliation_guardrail_block_has_provenance(
+    block: str,
+    record: Mapping[str, Any],
+) -> bool:
+    """Return whether an existing block carries exact reconciliation provenance."""
+
+    validation_path = reconciliation_task_validation_path(block)
+    if validation_path is None:
+        return False
+    expected = reconciliation_guardrail_provenance_metadata(
+        record=record,
+        discovery_path=validation_path,
+    )
+    return all(
+        re.search(rf"^{re.escape(line)}$", block, flags=re.MULTILINE)
+        for line in expected.splitlines()
+    )
 
 
 def reconciliation_record_matches_block(block: str, record: Mapping[str, Any]) -> bool:
@@ -4912,6 +5092,8 @@ def reconciliation_record_matches_block(block: str, record: Mapping[str, Any]) -
         # same card so its discovery and strict board metadata are repaired
         # atomically. Other resolved findings remain append-only evidence and
         # a later regression receives a new task.
+        if fingerprint and fingerprint in block:
+            return True
         return bool(
             dedupe_key
             and dedupe_key in block
@@ -5242,6 +5424,8 @@ def _worktree_cleanup_removal_is_conclusive(item: Any) -> bool:
 def reconciliation_guardrail_refresh_is_noise(block: str, record: Mapping[str, Any]) -> bool:
     """Return whether refreshing an existing guardrail would only churn metadata."""
 
+    if re.search(r"^- Status:\s+completed\s*$", block, flags=re.MULTILINE):
+        return False
     kind = str(record.get("kind") or "")
     dedupe_key = str(record.get("dedupe_key") or "")
     stable_dedupe_kinds = {
@@ -5253,14 +5437,53 @@ def reconciliation_guardrail_refresh_is_noise(block: str, record: Mapping[str, A
         return False
     if not dedupe_key or dedupe_key not in block:
         return False
-    return True
+    if not reconciliation_guardrail_block_has_provenance(block, record):
+        return False
+
+    heading = re.search(r"^##\s+\S+\s+(.*?)\s*$", block, flags=re.MULTILINE)
+    if heading is None or heading.group(1) != str(record.get("summary") or ""):
+        return False
+    validation_path = reconciliation_task_validation_path(block)
+    acceptance = re.search(
+        r"^- Acceptance:\s+(.*?)\s*$",
+        block,
+        flags=re.MULTILINE,
+    )
+    if validation_path is None or acceptance is None:
+        return False
+    candidate_count = int(record.get("candidate_count") or 0)
+    reason = str(record.get("reason") or "")
+    acceptance_text = acceptance.group(1)
+    return all(
+        marker in acceptance_text
+        for marker in (
+            (
+                "Reconciliation guardrail filed this because "
+                f"{candidate_count} branch or worktree cleanup candidates"
+            ),
+            f"blocked by {reason}",
+            "machine-readable reconciliation plan",
+            str(validation_path),
+        )
+    )
 
 
-def reconciliation_guardrail_discovery_needs_repair(path: Path | None) -> bool:
+def reconciliation_guardrail_discovery_needs_repair(
+    path: Path | None,
+    record: Mapping[str, Any],
+    *,
+    discovery_dir: Path,
+) -> bool:
     """Return whether a deduplicated guardrail's required evidence is incomplete."""
 
     if path is None:
-        return False
+        return True
+    if not reconciliation_discovery_path_is_owned(
+        path,
+        discovery_dir=discovery_dir,
+    ):
+        # Never read a board-supplied path outside the configured state root.
+        return True
     try:
         text = path.read_text(encoding="utf-8")
     except OSError:
@@ -5276,7 +5499,10 @@ def reconciliation_guardrail_discovery_needs_repair(path: Path | None) -> bool:
         manifest = json.loads(manifest_match.group(1))
     except json.JSONDecodeError:
         return True
-    return not isinstance(manifest, Mapping)
+    return (
+        not isinstance(manifest, Mapping)
+        or dict(manifest) != reconciliation_guardrail_plan(record)
+    )
 
 def task_blocks_with_spans(todo_text: str) -> list[tuple[int, int, str]]:
     starts = [match.start() for match in re.finditer(r"^##\s+\S+", todo_text, flags=re.MULTILINE)]
@@ -5285,6 +5511,16 @@ def task_blocks_with_spans(todo_text: str) -> list[tuple[int, int, str]]:
         end = starts[index + 1] if index + 1 < len(starts) else len(todo_text)
         blocks.append((start, end, todo_text[start:end]))
     return blocks
+
+
+def reconciliation_guardrail_block_is_completed(block: str) -> bool:
+    """Return whether a reconciliation task block is immutable history."""
+
+    match = re.search(r"^- Status:\s*(.*?)\s*$", block, flags=re.MULTILINE)
+    if match is None:
+        return False
+    status = match.group(1).strip().lower().replace("-", "_").replace(" ", "_")
+    return status in {"complete", "completed", "done"}
 
 
 def reconciliation_task_validation_path(block: str) -> Path | None:
@@ -5299,6 +5535,26 @@ def reconciliation_task_validation_path(block: str) -> Path | None:
     if not parts:
         return None
     return Path(parts[0])
+
+
+def reconciliation_refresh_discovery_path(
+    path: Path,
+    *,
+    task_id: str,
+    fingerprint: str,
+    discovery_dir: Path,
+) -> Path:
+    """Return the fingerprint-bound evidence path for a refreshed incident."""
+
+    date_match = re.match(r"^(?P<date>\d{4}-\d{2}-\d{2})-", path.name)
+    date = (
+        date_match.group("date")
+        if date_match is not None
+        else datetime.now(timezone.utc).date().isoformat()
+    )
+    return discovery_dir / (
+        f"{date}-{task_id.lower()}-reconciliation-{fingerprint[:12]}.md"
+    )
 
 
 def _task_block_metadata_value(block: str, label: str) -> str:
@@ -5387,6 +5643,9 @@ def refresh_reconciliation_guardrail_block(
     block: str,
     record: Mapping[str, Any],
     *,
+    discovery_dir: Path,
+    discovery_output_path: str,
+    todo_output_path: str,
     board_profile: ReconciliationGuardrailBoardProfile | None = None,
     output_paths: Sequence[str] = (),
 ) -> tuple[str, str, Path | None, bool]:
@@ -5395,6 +5654,7 @@ def refresh_reconciliation_guardrail_block(
         return block, "", None, False
     task_id = heading_match.group(1)
     changed = False
+    validation_path = reconciliation_task_validation_path(block)
     updated = re.sub(
         r"^##\s+\S+\s+.*$",
         f"## {task_id} {record.get('summary')}",
@@ -5445,6 +5705,77 @@ def refresh_reconciliation_guardrail_block(
         )
         changed = changed or updated != block
         block = updated
+    if validation_path is not None and re.fullmatch(r"[0-9a-f]{40}", fingerprint):
+        refreshed_validation_path = reconciliation_refresh_discovery_path(
+            validation_path,
+            task_id=task_id,
+            fingerprint=fingerprint,
+            discovery_dir=discovery_dir,
+        )
+        if refreshed_validation_path != validation_path:
+            updated = re.sub(
+                r"^- Validation:.*$",
+                f"- Validation: test -f {shlex.quote(str(refreshed_validation_path))}",
+                block,
+                count=1,
+                flags=re.MULTILINE,
+            )
+            changed = changed or updated != block
+            block = updated
+            validation_path = refreshed_validation_path
+    validation_path = reconciliation_task_validation_path(block)
+    if validation_path is not None:
+        provenance_labels = (
+            "Generated by",
+            "Reconciliation kind",
+            "Reconciliation reason",
+            "Reconciliation fingerprint",
+            "Reconciliation discovery",
+            "Resolution receipt digest",
+            "Canonical board task",
+        )
+        updated = block
+        for label in provenance_labels:
+            updated = re.sub(
+                rf"^- {re.escape(label)}:.*\n?",
+                "",
+                updated,
+                flags=re.MULTILINE,
+            )
+        provenance = reconciliation_guardrail_provenance_metadata(
+            record=record,
+            discovery_path=validation_path,
+        )
+        updated = re.sub(
+            r"^- Track:.*$",
+            lambda match: f"{match.group(0)}\n{provenance}",
+            updated,
+            count=1,
+            flags=re.MULTILINE,
+        )
+        changed = changed or updated != block
+        block = updated
+    expected_outputs = (
+        f"- Outputs: {discovery_output_path}, {todo_output_path}"
+    )
+    if re.search(r"^- Outputs:.*$", block, flags=re.MULTILINE):
+        updated = re.sub(
+            r"^- Outputs:.*$",
+            expected_outputs,
+            block,
+            count=1,
+            flags=re.MULTILINE,
+        )
+    else:
+        updated = re.sub(
+            r"^- Validation:.*$",
+            lambda match: f"{expected_outputs}\n{match.group(0)}",
+            block,
+            count=1,
+            flags=re.MULTILINE,
+        )
+    changed = changed or updated != block
+    block = updated
     if output_paths:
         updated, field_changed = _upsert_task_block_metadata(
             block,
@@ -5495,6 +5826,9 @@ def refresh_existing_reconciliation_guardrails(
     *,
     todo_text: str,
     records: Sequence[Mapping[str, Any]],
+    discovery_dir: Path,
+    discovery_output_path: str,
+    todo_output_path: str,
     board_profile: ReconciliationGuardrailBoardProfile | None = None,
     output_paths: Sequence[str] = (),
 ) -> tuple[str, list[dict[str, Any]]]:
@@ -5509,6 +5843,14 @@ def refresh_existing_reconciliation_guardrails(
                 block = replacements[(start, end)]
             if not reconciliation_record_matches_block(block, record):
                 continue
+            if (
+                reconciliation_guardrail_block_is_completed(block)
+                and str(record.get("kind") or "")
+                != "preflight_merge_conflict"
+            ):
+                # A completed operator reconciliation is immutable evidence.
+                # A recurrence must receive a fresh task/discovery identity.
+                continue
             needs_refresh = reconciliation_guardrail_block_needs_refresh(
                 block,
                 board_profile=board_profile,
@@ -5516,25 +5858,53 @@ def refresh_existing_reconciliation_guardrails(
             )
             if reconciliation_guardrail_refresh_is_noise(block, record) and not needs_refresh:
                 validation_path = reconciliation_task_validation_path(block)
-                if not reconciliation_guardrail_discovery_needs_repair(validation_path):
+                if not reconciliation_guardrail_discovery_needs_repair(
+                    validation_path,
+                    record,
+                    discovery_dir=discovery_dir,
+                ):
                     break
-            was_completed = _task_block_metadata_value(block, "Status").lower() == "completed"
+            was_completed = bool(
+                re.search(
+                    r"^- Status:\s+completed\s*$",
+                    block,
+                    flags=re.MULTILINE,
+                )
+            )
+            previous_validation_path = reconciliation_task_validation_path(block)
             refreshed_block, task_id, validation_path, changed = refresh_reconciliation_guardrail_block(
                 block,
                 record,
+                discovery_dir=discovery_dir,
+                discovery_output_path=discovery_output_path,
+                todo_output_path=todo_output_path,
                 board_profile=board_profile,
                 output_paths=output_paths,
             )
             discovery_changed = False
             if validation_path is not None and task_id:
-                try:
-                    before_discovery = validation_path.read_text(encoding="utf-8")
-                except OSError:
-                    before_discovery = ""
+                before_discovery = ""
+                if reconciliation_discovery_path_is_owned(
+                    validation_path,
+                    discovery_dir=discovery_dir,
+                ):
+                    try:
+                        before_discovery = validation_path.read_text(
+                            encoding="utf-8"
+                        )
+                    except OSError:
+                        pass
                 write_reconciliation_guardrail_discovery_path(
                     path=validation_path,
                     task_id=task_id,
                     record=record,
+                    discovery_dir=discovery_dir,
+                    history_source_path=(
+                        previous_validation_path
+                        if previous_validation_path != validation_path
+                        else None
+                    ),
+                    reopened=was_completed,
                 )
                 try:
                     after_discovery = validation_path.read_text(encoding="utf-8")
@@ -6106,6 +6476,12 @@ def validation_retry_task_block(
         if launch_playwright_validation_gate
         else ""
     )
+    execution_metadata = retry_task_execution_metadata(source_task)
+    provenance_metadata = retry_budget_repair_provenance_metadata(
+        source_task_id=source_task.task_id,
+        failure_kind="validation",
+        discovery_path=discovery_path,
+    )
     validation_failure_metadata = (
         "- Validation failure paths: "
         + ", ".join(exact_failure_paths)
@@ -6122,9 +6498,64 @@ def validation_retry_task_block(
 - Depends on: {", ".join(depends_on)}
 - Outputs: {", ".join(outputs)}
 - Validation: {validation_command}
+{execution_metadata}
+{provenance_metadata}
 {validation_failure_metadata.rstrip()}
 - Acceptance: Retry-budget guardrail filed this from repeated validation failures in {source_task.task_id}. Use evidence in {discovery_path} to fix the validation blocker, then mark this repair task completed so the supervisor can release {source_task.task_id} from strategy blocked_tasks.{validation_scope_acceptance}{launch_gate_acceptance}
 """
+
+
+def retry_task_execution_metadata(
+    source_task: Any,
+    *,
+    predicted_files: str | None = None,
+) -> str:
+    """Preserve reviewed execution and write-scope bounds on repair work."""
+
+    raw_metadata = getattr(source_task, "metadata", {}) or {}
+    if not isinstance(raw_metadata, Mapping):
+        return ""
+    metadata = {
+        str(key).strip().lower().replace("_", " "): str(value).strip()
+        for key, value in raw_metadata.items()
+        if str(value).strip()
+    }
+    if predicted_files is not None:
+        metadata["predicted files"] = str(predicted_files).strip()
+    lines: list[str] = []
+    inherited_fields = (
+        ("provider role", "Provider role"),
+        ("context budget tokens", "Context budget tokens"),
+        ("parallel lane", "Parallel lane"),
+        ("predicted files", "Predicted files"),
+        ("allow concurrent with", "Allow concurrent with"),
+        ("conflict policy", "Conflict policy"),
+    )
+    for field, label in inherited_fields:
+        value = metadata.get(field, "")
+        if value:
+            lines.append(f"- {label}: {value}")
+    return "\n".join(lines)
+
+
+def retry_budget_repair_provenance_metadata(
+    *,
+    source_task_id: str,
+    failure_kind: str,
+    discovery_path: Path,
+) -> str:
+    """Render tamper-evident provenance for an operational repair appendix."""
+
+    return "\n".join(
+        (
+            "- Generated by: "
+            f"{RETRY_BUDGET_REPAIR_SCHEMA}",
+            f"- Retry repair source: {source_task_id}",
+            f"- Retry failure kind: {failure_kind}",
+            f"- Retry repair discovery: {discovery_path}",
+            "- Canonical board task: false",
+        )
+    )
 
 
 def safe_retry_validation_command(command: str, *, discovery_path: Path) -> str:
@@ -6201,6 +6632,12 @@ def implementation_retry_task_block(
     if discovery_output_path not in outputs:
         outputs.append(discovery_output_path)
     validation_command = f"test -f {shlex.quote(str(discovery_path))}"
+    execution_metadata = retry_task_execution_metadata(source_task)
+    provenance_metadata = retry_budget_repair_provenance_metadata(
+        source_task_id=source_task.task_id,
+        failure_kind="implementation",
+        discovery_path=discovery_path,
+    )
     return f"""## {task_id} Resolve implementation retry-budget failure for {source_task.task_id}
 
 - Status: todo
@@ -6210,6 +6647,8 @@ def implementation_retry_task_block(
 - Depends on: {", ".join(depends_on)}
 - Outputs: {", ".join(outputs)}
 - Validation: {validation_command}
+{execution_metadata}
+{provenance_metadata}
 - Acceptance: Implementation retry-budget guardrail filed this from repeated implementation failures in {source_task.task_id}. Use evidence in {discovery_path} to fix the setup, runtime, or timeout blocker, then mark this repair task completed so the supervisor can release {source_task.task_id} from strategy blocked_tasks.
 """
 
@@ -6236,6 +6675,19 @@ def merge_retry_task_block(
     if discovery_output_path not in outputs:
         outputs.append(discovery_output_path)
     validation_command = f"test -f {shlex.quote(str(discovery_path))}"
+    # Merge repair work coordinates an already committed implementation. Its
+    # durable write scope is the discovery output; inheriting the source
+    # implementation paths makes strict parallel-board validation treat the
+    # strategy-blocked source and its repair as concurrent writers.
+    execution_metadata = retry_task_execution_metadata(
+        source_task,
+        predicted_files=discovery_output_path,
+    )
+    provenance_metadata = retry_budget_repair_provenance_metadata(
+        source_task_id=source_task.task_id,
+        failure_kind="merge",
+        discovery_path=discovery_path,
+    )
     return f"""## {task_id} Resolve merge retry-budget failure for {source_task.task_id}
 
 - Status: todo
@@ -6245,6 +6697,8 @@ def merge_retry_task_block(
 - Depends on: {", ".join(depends_on)}
 - Outputs: {", ".join(outputs)}
 - Validation: {validation_command}
+{execution_metadata}
+{provenance_metadata}
 - Acceptance: Merge retry-budget guardrail filed this from repeated merge failures in {source_task.task_id}. Use evidence in {discovery_path} to fix the merge blocker, verify the intended implementation changes are committed in their owning repository or submodule, run `ipfs-accelerate-agent-merge-resolver --events-path ... --apply` when the conflict is semantic, then mark this repair task completed so the supervisor can release {source_task.task_id} from strategy blocked_tasks.
 """
 
@@ -6637,10 +7091,29 @@ def record_reconciliation_guardrail_findings(
         )
     ]
 
+    def matching_blocks(record: Mapping[str, Any]) -> list[str]:
+        return [
+            block
+            for _start, _end, block in task_blocks_with_spans(todo_text)
+            if reconciliation_record_matches_block(block, record)
+        ]
+
     def already_present(record: Mapping[str, Any]) -> bool:
         return any(
-            reconciliation_record_matches_block(block, record)
-            for block in active_guardrail_blocks
+            not reconciliation_guardrail_block_is_completed(block)
+            for block in matching_blocks(record)
+        )
+
+    def suppressed_by_seen_history(record: Mapping[str, Any]) -> bool:
+        fingerprint = str(record.get("fingerprint") or "")
+        if not fingerprint or fingerprint not in seen:
+            return False
+        # A completed matching task proves the fingerprint was handled only
+        # for that historical incident.  A currently observed recurrence must
+        # not be hidden by the strategy's append-only seen set.
+        return not any(
+            reconciliation_guardrail_block_is_completed(block)
+            for block in matching_blocks(record)
         )
 
     filter_repo_root = (repo_root or todo_path.parent).resolve()
@@ -6669,9 +7142,18 @@ def record_reconciliation_guardrail_findings(
         generated_status_paths=generated_paths,
         generated_status_prefixes=generated_prefixes,
     )
+    try:
+        todo_output_path = todo_path.resolve().relative_to(
+            (repo_root or todo_path.parent).resolve()
+        ).as_posix()
+    except ValueError:
+        todo_output_path = todo_path.as_posix()
     refreshed_todo_text, refreshes = refresh_existing_reconciliation_guardrails(
         todo_text=todo_text,
         records=all_records,
+        discovery_dir=discovery_dir,
+        discovery_output_path=discovery_output_path,
+        todo_output_path=todo_output_path,
         board_profile=board_profile,
         output_paths=guardrail_output_paths,
     )
@@ -6690,7 +7172,7 @@ def record_reconciliation_guardrail_findings(
     records = [
         record
         for record in all_records
-        if str(record.get("fingerprint") or "") not in seen
+        if not suppressed_by_seen_history(record)
         and not already_present(record)
     ][:max_findings]
     if not records and not refreshes:
