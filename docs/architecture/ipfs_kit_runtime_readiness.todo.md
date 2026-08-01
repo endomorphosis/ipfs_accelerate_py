@@ -830,7 +830,7 @@ or write authority.
 
 ## KITA-026 Define valid replica policy, placement, and lifecycle states
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
