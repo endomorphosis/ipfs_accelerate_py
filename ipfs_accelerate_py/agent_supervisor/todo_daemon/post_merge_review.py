@@ -77,6 +77,16 @@ IMPLEMENTER_LOG_BINDING_SCOPE = "review_time_live_artifact"
 _FULL_OBJECT_ID = re.compile(r"^[0-9a-f]{40}(?:[0-9a-f]{24})?$")
 _SAFE_TASK_ID = re.compile(r"[^a-z0-9._-]+")
 _LIVE_PRODUCTION_REVIEW_SEAL = object()
+_CANONICAL_EVENT_ENVELOPE_FIELDS = frozenset(
+    {
+        "event_id",
+        "previous_event_id",
+        "sequence",
+        "snapshot_id",
+        "stream_id",
+        "timestamp",
+    }
+)
 
 
 class PostMergeReviewError(ValueError):
@@ -86,6 +96,16 @@ class PostMergeReviewError(ValueError):
         super().__init__(detail or reason_code)
         self.reason_code = str(reason_code)
         self.detail = str(detail or reason_code)
+
+
+def _canonical_json_bytes(value: Any) -> bytes:
+    return json.dumps(
+        value,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        allow_nan=False,
+    ).encode("utf-8")
 
 
 @dataclass(frozen=True)
@@ -194,6 +214,53 @@ class PostMergeReviewOutcome:
     )
     _producer_seal: object | None = field(
         default=None,
+        repr=False,
+        compare=False,
+    )
+    _bound_task_id: str = field(default="", repr=False, compare=False)
+    _bound_task_binding_id: str = field(
+        default="",
+        repr=False,
+        compare=False,
+    )
+    _bound_canonical_task_key: str = field(
+        default="",
+        repr=False,
+        compare=False,
+    )
+    _bound_canonical_task_cid: str = field(
+        default="",
+        repr=False,
+        compare=False,
+    )
+    _bound_board_namespace: str = field(
+        default="",
+        repr=False,
+        compare=False,
+    )
+    _bound_implementation_commit: str = field(
+        default="",
+        repr=False,
+        compare=False,
+    )
+    _bound_merge_commit: str = field(default="", repr=False, compare=False)
+    _bound_repository_tree_id: str = field(
+        default="",
+        repr=False,
+        compare=False,
+    )
+    _bound_review_receipt_id: str = field(
+        default="",
+        repr=False,
+        compare=False,
+    )
+    _receipt_canonical: bytes = field(
+        default=b"",
+        repr=False,
+        compare=False,
+    )
+    _event_payload_canonical: bytes = field(
+        default=b"",
         repr=False,
         compare=False,
     )
@@ -809,6 +876,12 @@ def _task_projection(task: Any) -> dict[str, Any]:
     }
 
 
+def post_merge_task_binding_id(task: Any) -> str:
+    """Return the exact task-spec identity used by post-merge review."""
+
+    return content_identity(_task_projection(task))
+
+
 def _path_authorized_by_task(path: str, outputs: Sequence[str]) -> bool:
     for raw in outputs:
         output = str(raw or "").strip()
@@ -1251,7 +1324,7 @@ def _collect_repository_binding(
         "diff_binding_id": content_identity(diff_material),
         "patch_text": patch_text,
         "task_projection": task_projection,
-        "task_binding_id": content_identity(task_projection),
+        "task_binding_id": post_merge_task_binding_id(task),
     }
 
 
@@ -1335,6 +1408,7 @@ def _verify_implementer_provenance(
     *,
     task_id: str,
     implementation_attempt: int,
+    implementation_commit: str,
     provider_id: str,
 ) -> dict[str, Any]:
     if not isinstance(provenance, VerifiedImplementerProvenance):
@@ -1351,13 +1425,15 @@ def _verify_implementer_provenance(
         or material.get("task_id") != task_id
         or int(material.get("implementation_attempt") or 0)
         != int(implementation_attempt)
+        or material.get("implementation_commit") != implementation_commit
         or material.get("provider_id") != provider_id
         or not provenance_id
         or content_identity(material) != provenance_id
     ):
         raise PostMergeReviewError(
             "implementer_provenance_binding_invalid",
-            "implementer provenance is not content/task/attempt/provider bound",
+            "implementer provenance is not content/task/attempt/commit/provider "
+            "bound",
         )
     return payload
 
@@ -1386,6 +1462,7 @@ def _review_request(
         implementer_provenance,
         task_id=str(getattr(task, "task_id", "") or ""),
         implementation_attempt=int(implementation_attempt),
+        implementation_commit=str(binding["implementation_commit"]),
         provider_id=implementer_provider,
     )
     request = {
@@ -1775,6 +1852,7 @@ def verify_post_merge_review_receipt(
             implementer_provenance,  # type: ignore[arg-type]
             task_id=task_projection["task_id"],
             implementation_attempt=implementation_attempt,
+            implementation_commit=implementation_commit,
             provider_id=implementer,
         )
         _verify_implementer_event_membership(
@@ -1832,6 +1910,22 @@ def verify_post_merge_review_receipt(
             merge_commit=merge_commit,
             repository_tree_id=repository_tree_id,
         )
+        if (
+            material.get("task_binding_id") != binding["task_binding_id"]
+            or material.get("changed_paths") != list(binding["changed_paths"])
+            or material.get("content_binding_id")
+            != content_identity(binding["content_bindings"])
+            or material.get("gitlink_binding_id")
+            != content_identity(binding["gitlink_bindings"])
+            or material.get("diff_binding_id") != binding["diff_binding_id"]
+            or material.get("validation_receipt_id")
+            != validation_receipt_id
+        ):
+            raise PostMergeReviewError(
+                "review_receipt_binding_mismatch",
+                "review receipt top-level Git/task/validation bindings do not "
+                "match recomputed evidence",
+            )
         request = material.get("review_request")
         if not isinstance(request, Mapping):
             raise PostMergeReviewError(
@@ -1851,6 +1945,11 @@ def verify_post_merge_review_receipt(
             raise PostMergeReviewError(
                 "review_request_binding_mismatch",
                 "embedded review request does not match recomputed Git evidence",
+            )
+        if material.get("review_request_id") != expected_request["request_id"]:
+            raise PostMergeReviewError(
+                "review_receipt_binding_mismatch",
+                "review receipt request identity does not match its bound request",
             )
 
         response = material.get("review_response")
@@ -2158,6 +2257,10 @@ def perform_post_merge_independent_review(
         event = {
             "type": event_type,
             "task_id": task_projection["task_id"],
+            "task_binding_id": binding["task_binding_id"],
+            "canonical_task_key": task_projection["canonical_task_key"],
+            "canonical_task_cid": task_projection["canonical_task_cid"],
+            "board_namespace": task_projection["board_namespace"],
             "attempt": int(attempt),
             "implementation_attempt": int(implementation_attempt),
             "implementation_commit": implementation_commit,
@@ -2182,6 +2285,10 @@ def perform_post_merge_independent_review(
                 review_presence="independent",
                 provider_result_admitted=True,
                 review_receipt_id=verification.receipt_id,
+                task_binding_id=binding["task_binding_id"],
+                canonical_task_key=task_projection["canonical_task_key"],
+                canonical_task_cid=task_projection["canonical_task_cid"],
+                board_namespace=task_projection["board_namespace"],
             )
         return PostMergeReviewOutcome(
             admitted=verification.admitted,
@@ -2197,6 +2304,21 @@ def perform_post_merge_independent_review(
                 if verification.admitted and production_review_route
                 else None
             ),
+            _bound_task_id=task_projection["task_id"],
+            _bound_task_binding_id=binding["task_binding_id"],
+            _bound_canonical_task_key=task_projection[
+                "canonical_task_key"
+            ],
+            _bound_canonical_task_cid=task_projection[
+                "canonical_task_cid"
+            ],
+            _bound_board_namespace=task_projection["board_namespace"],
+            _bound_implementation_commit=implementation_commit,
+            _bound_merge_commit=merge_commit,
+            _bound_repository_tree_id=repository_tree_id,
+            _bound_review_receipt_id=verification.receipt_id,
+            _receipt_canonical=_canonical_json_bytes(receipt),
+            _event_payload_canonical=_canonical_json_bytes(event),
         )
     except (PostMergeReviewError, OSError, ValueError, RuntimeError) as exc:
         reason_code = str(
@@ -2238,7 +2360,6 @@ def mint_gate_from_live_outcome(
         not isinstance(outcome, PostMergeReviewOutcome)
         or outcome._producer_seal is not _LIVE_PRODUCTION_REVIEW_SEAL
         or not outcome.admitted
-        or not outcome._gate_evidence
         or not isinstance(appended_event, Mapping)
     ):
         return {}
@@ -2247,8 +2368,57 @@ def mint_gate_from_live_outcome(
     except (PostMergeReviewError, OSError, TypeError, ValueError):
         return {}
     try:
+        receipt_snapshot = json.loads(outcome._receipt_canonical)
+        event_snapshot = json.loads(outcome._event_payload_canonical)
+        if (
+            not isinstance(receipt_snapshot, dict)
+            or not isinstance(event_snapshot, dict)
+            or _canonical_json_bytes(receipt_snapshot)
+            != outcome._receipt_canonical
+            or _canonical_json_bytes(event_snapshot)
+            != outcome._event_payload_canonical
+            or _canonical_json_bytes(outcome.receipt)
+            != outcome._receipt_canonical
+            or _canonical_json_bytes(outcome.event)
+            != outcome._event_payload_canonical
+        ):
+            return {}
+        receipt_material = dict(receipt_snapshot)
+        receipt_id = str(receipt_material.pop("receipt_id", "") or "")
+        if (
+            receipt_id != outcome._bound_review_receipt_id
+            or content_identity(receipt_material) != receipt_id
+            or event_snapshot.get("review_receipt") != receipt_snapshot
+            or event_snapshot.get("task_id") != outcome._bound_task_id
+            or event_snapshot.get("task_binding_id")
+            != outcome._bound_task_binding_id
+            or event_snapshot.get("canonical_task_key")
+            != outcome._bound_canonical_task_key
+            or event_snapshot.get("canonical_task_cid")
+            != outcome._bound_canonical_task_cid
+            or event_snapshot.get("board_namespace")
+            != outcome._bound_board_namespace
+            or event_snapshot.get("implementation_commit")
+            != outcome._bound_implementation_commit
+            or event_snapshot.get("merge_commit")
+            != outcome._bound_merge_commit
+            or event_snapshot.get("repository_tree_id")
+            != outcome._bound_repository_tree_id
+            or event_snapshot.get("provider_result_admitted") is not True
+            or event_snapshot.get("repository_write_allowed") is not False
+            or event_snapshot.get("proof_authoritative") is not False
+            or event_snapshot.get("completion_authoritative") is not False
+        ):
+            return {}
         durable_event = dict(appended_event)
         if durable_event not in ledger_events:
+            return {}
+        durable_payload = {
+            key: value
+            for key, value in durable_event.items()
+            if key not in _CANONICAL_EVENT_ENVELOPE_FIELDS
+        }
+        if durable_payload != event_snapshot:
             return {}
         event = dict(durable_event)
         event_id = str(event.pop("event_id", "") or "")
@@ -2261,8 +2431,14 @@ def mint_gate_from_live_outcome(
         ).encode("utf-8")
         sequence = int(appended_event.get("sequence"))
         attempt = int(appended_event.get("attempt"))
-        expected_attempt = int(outcome.event.get("attempt"))
-    except (KeyError, TypeError, ValueError):
+        expected_attempt = int(event_snapshot.get("attempt"))
+    except (
+        json.JSONDecodeError,
+        KeyError,
+        TypeError,
+        UnicodeDecodeError,
+        ValueError,
+    ):
         return {}
     if (
         not event_id
@@ -2272,18 +2448,32 @@ def mint_gate_from_live_outcome(
         or sequence < 1
         or not str(appended_event.get("stream_id") or "")
         or not str(appended_event.get("snapshot_id") or "")
-        or appended_event.get("task_id") != outcome.event.get("task_id")
+        or appended_event.get("task_id") != outcome._bound_task_id
         or attempt != expected_attempt
         or appended_event.get("implementation_commit")
-        != outcome.event.get("implementation_commit")
+        != outcome._bound_implementation_commit
         or appended_event.get("merge_commit")
-        != outcome.event.get("merge_commit")
+        != outcome._bound_merge_commit
         or appended_event.get("repository_tree_id")
-        != outcome.event.get("repository_tree_id")
-        or appended_event.get("review_receipt") != outcome.receipt
+        != outcome._bound_repository_tree_id
+        or appended_event.get("review_receipt") != receipt_snapshot
     ):
         return {}
-    return dict(outcome._gate_evidence)
+    return bound_gate_evidence(
+        "provider_review",
+        task_id=outcome._bound_task_id,
+        implementation_commit=outcome._bound_implementation_commit,
+        merge_commit=outcome._bound_merge_commit,
+        repository_tree_id=outcome._bound_repository_tree_id,
+        satisfied=True,
+        review_presence="independent",
+        provider_result_admitted=True,
+        review_receipt_id=outcome._bound_review_receipt_id,
+        task_binding_id=outcome._bound_task_binding_id,
+        canonical_task_key=outcome._bound_canonical_task_key,
+        canonical_task_cid=outcome._bound_canonical_task_cid,
+        board_namespace=outcome._bound_board_namespace,
+    )
 
 
 __all__ = [
@@ -2305,6 +2495,7 @@ __all__ = [
     "VerifiedImplementerProvenance",
     "perform_post_merge_independent_review",
     "mint_gate_from_live_outcome",
+    "post_merge_task_binding_id",
     "verified_implementer_provenance_from_events",
     "verified_implementer_provenance_from_ledger",
     "verify_post_merge_review_receipt",

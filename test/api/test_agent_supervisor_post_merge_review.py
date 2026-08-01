@@ -66,6 +66,9 @@ def _task() -> PortalTask:
         validation=["python3 -m pytest tests/test_contract.py -q"],
         acceptance="Both exact nested artifacts are complete and coherent.",
         metadata={"Provider role": "grok-implement, codex-review"},
+        canonical_task_key="uiir-test:REV-001",
+        canonical_task_cid="sha256:" + "a" * 64,
+        board_namespace="uiir-test",
     )
 
 
@@ -390,6 +393,12 @@ def test_recursive_submodule_binding_uses_explicit_pre_seed_baseline(
     assert gitlink["path"] == "external/child"
     assert gitlink["implementation"] == gitlink["merged"]
     assert binding["patch_bytes"] > 0
+    assert binding["task_binding_id"] == review.post_merge_task_binding_id(
+        nested_case.task
+    )
+    assert binding["task_binding_id"] != review.post_merge_task_binding_id(
+        replace(nested_case.task, acceptance="Drifted acceptance criteria.")
+    )
 
 
 def test_ledger_native_provenance_is_unique_and_log_bound(
@@ -455,6 +464,32 @@ def test_log_mutation_after_provenance_snapshot_fails_closed(
     assert outcome.reason_code == "implementer_event_provenance_mismatch"
 
 
+def test_provenance_commit_cannot_authorize_a_different_reviewed_commit(
+    nested_case: SimpleNamespace,
+) -> None:
+    child = nested_case.root / "external/child"
+    (child / "docs/contract.md").write_text(
+        "# Contract\n\nSecond implementation.\n",
+        encoding="utf-8",
+    )
+    _commit(child, "different implementation")
+    different_commit = _commit(nested_case.root, "different root candidate")
+    different_tree = _tree(nested_case.root, different_commit)
+    different_case = SimpleNamespace(**vars(nested_case))
+    different_case.implementation = different_commit
+    different_case.merge_commit = different_commit
+    different_case.repository_tree_id = different_tree
+    different_case.validation = _validation(
+        different_case.task,
+        different_commit,
+        different_tree,
+    )
+
+    outcome = _perform(different_case, reviewer=_reviewer("approve"))
+    assert outcome.admitted is False
+    assert outcome.reason_code == "implementer_provenance_binding_invalid"
+
+
 def test_live_production_review_mints_only_after_durable_head_and_admits(
     nested_case: SimpleNamespace,
     monkeypatch: pytest.MonkeyPatch,
@@ -477,6 +512,12 @@ def test_live_production_review_mints_only_after_durable_head_and_admits(
     assert outcome.receipt["implementation_attempt"] == 3
     assert outcome.receipt["baseline_commit"] == nested_case.baseline
     assert outcome.receipt["changed_paths"] == nested_case.task.outputs
+    assert outcome.event["task_binding_id"] == review.post_merge_task_binding_id(
+        nested_case.task
+    )
+    assert outcome.event["canonical_task_key"] == "uiir-test:REV-001"
+    assert outcome.event["canonical_task_cid"] == "sha256:" + "a" * 64
+    assert outcome.event["board_namespace"] == "uiir-test"
     provenance = outcome.receipt["implementer_provenance"]
     assert provenance["log_bytes"] == len(b"grok implementation log\n")
     assert provenance["log_sha256"] == hashlib.sha256(
@@ -538,6 +579,10 @@ def test_live_production_review_mints_only_after_durable_head_and_admits(
     )
     assert gate["gate_kind"] == "provider_review"
     assert gate["review_presence"] == "independent"
+    assert gate["task_binding_id"] == outcome.event["task_binding_id"]
+    assert gate["canonical_task_key"] == outcome.event["canonical_task_key"]
+    assert gate["canonical_task_cid"] == outcome.event["canonical_task_cid"]
+    assert gate["board_namespace"] == outcome.event["board_namespace"]
 
     daemon = TodoImplementationDaemon(
         todo_path=nested_case.todo_path,
@@ -563,6 +608,151 @@ def test_live_production_review_mints_only_after_durable_head_and_admits(
         model_invocation_observed=True,
     )
     assert result["authoritatively_completed"] is True
+
+
+@pytest.mark.parametrize(
+    ("field_name", "replacement"),
+    (
+        ("implementation_attempt", 99),
+        ("review_receipt_path", "/tmp/forged-receipt.json"),
+        ("provider_result_admitted", False),
+        ("repository_write_allowed", True),
+        ("proof_authoritative", True),
+        ("completion_authoritative", True),
+        ("task_binding_id", "sha256:" + "b" * 64),
+        ("canonical_task_key", "forged-task-key"),
+        ("canonical_task_cid", "sha256:" + "c" * 64),
+        ("board_namespace", "forged-board"),
+    ),
+)
+def test_live_mint_requires_the_entire_exact_outcome_event(
+    nested_case: SimpleNamespace,
+    monkeypatch: pytest.MonkeyPatch,
+    field_name: str,
+    replacement: Any,
+) -> None:
+    monkeypatch.setattr(
+        review,
+        "call_llm_router_with_receipt",
+        _fake_codex_child("approve"),
+    )
+    outcome = _perform(nested_case)
+    payload = dict(outcome.event)
+    event_type = str(payload.pop("type"))
+    payload[field_name] = replacement
+    appended = append_jsonl_event(
+        nested_case.events_path,
+        event_type,
+        payload,
+    )
+    assert (
+        review.mint_gate_from_live_outcome(
+            outcome,
+            appended,
+            events_path=nested_case.events_path,
+        )
+        == {}
+    )
+
+
+def test_mutable_gate_preview_cannot_redirect_sealed_authority(
+    nested_case: SimpleNamespace,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        review,
+        "call_llm_router_with_receipt",
+        _fake_codex_child("approve"),
+    )
+    outcome = _perform(nested_case)
+    appended = _append_review_event(nested_case.events_path, outcome)
+    assert isinstance(outcome._gate_evidence, dict)
+    outcome._gate_evidence.update(
+        {
+            "task_id": "forged-task",
+            "implementation_commit": nested_case.baseline,
+            "merge_commit": nested_case.baseline,
+            "repository_tree_id": "git-tree:" + "0" * 40,
+            "review_receipt_id": "sha256:" + "0" * 64,
+        }
+    )
+    gate = review.mint_gate_from_live_outcome(
+        outcome,
+        appended,
+        events_path=nested_case.events_path,
+    )
+    assert gate["task_id"] == nested_case.task.task_id
+    assert gate["implementation_commit"] == nested_case.implementation
+    assert gate["merge_commit"] == nested_case.merge_commit
+    assert gate["repository_tree_id"] == nested_case.repository_tree_id
+    assert (
+        gate["review_receipt_id"]
+        == outcome.receipt["receipt_id"]
+    )
+
+
+@pytest.mark.parametrize("mapping_name", ("receipt", "event"))
+def test_public_outcome_mapping_mutation_after_append_fails_closed(
+    nested_case: SimpleNamespace,
+    monkeypatch: pytest.MonkeyPatch,
+    mapping_name: str,
+) -> None:
+    monkeypatch.setattr(
+        review,
+        "call_llm_router_with_receipt",
+        _fake_codex_child("approve"),
+    )
+    outcome = _perform(nested_case)
+    appended = _append_review_event(nested_case.events_path, outcome)
+    mapping = getattr(outcome, mapping_name)
+    assert isinstance(mapping, dict)
+    if mapping_name == "receipt":
+        response = mapping["review_response"]
+        assert isinstance(response, dict)
+        response["decision"] = "changes_required"
+    else:
+        mapping["merge_commit"] = nested_case.baseline
+    assert (
+        review.mint_gate_from_live_outcome(
+            outcome,
+            appended,
+            events_path=nested_case.events_path,
+        )
+        == {}
+    )
+
+
+def test_nested_outcome_mutation_before_append_fails_closed(
+    nested_case: SimpleNamespace,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        review,
+        "call_llm_router_with_receipt",
+        _fake_codex_child("approve"),
+    )
+    outcome = _perform(nested_case)
+    assert isinstance(outcome.event, dict)
+    embedded_receipt = outcome.event["review_receipt"]
+    assert isinstance(embedded_receipt, dict)
+    embedded_response = embedded_receipt["review_response"]
+    assert isinstance(embedded_response, dict)
+    embedded_response["findings"] = [
+        {
+            "code": "forged",
+            "severity": "low",
+            "summary": "Mutated after the live review.",
+        }
+    ]
+    appended = _append_review_event(nested_case.events_path, outcome)
+    assert (
+        review.mint_gate_from_live_outcome(
+            outcome,
+            appended,
+            events_path=nested_case.events_path,
+        )
+        == {}
+    )
 
 
 def test_injected_and_declined_reviews_remain_pending(
@@ -664,6 +854,54 @@ def test_receipt_tamper_and_unmanifested_forged_ledger_fail_closed(
     outcome = _perform(forged_case, reviewer=_reviewer("approve"))
     assert outcome.admitted is False
     assert outcome.reason_code == "event_ledger_manifest_invalid"
+
+
+@pytest.mark.parametrize(
+    ("field_name", "replacement"),
+    (
+        ("task_binding_id", "sha256:" + "1" * 64),
+        (
+            "changed_paths",
+            [
+                "external/child/tests/vocabulary.json",
+                "external/child/docs/contract.md",
+            ],
+        ),
+        ("content_binding_id", "sha256:" + "2" * 64),
+        ("gitlink_binding_id", "sha256:" + "3" * 64),
+        ("diff_binding_id", "sha256:" + "4" * 64),
+        ("validation_receipt_id", "sha256:" + "5" * 64),
+        ("review_request_id", "sha256:" + "6" * 64),
+    ),
+)
+def test_reidentified_receipt_cannot_forge_top_level_bindings(
+    nested_case: SimpleNamespace,
+    field_name: str,
+    replacement: Any,
+) -> None:
+    structural = _perform(nested_case, reviewer=_reviewer("approve"))
+    tampered = deepcopy(dict(structural.receipt))
+    tampered[field_name] = replacement
+    material = dict(tampered)
+    material.pop("receipt_id")
+    tampered["receipt_id"] = content_identity(material)
+    verification = review.verify_post_merge_review_receipt(
+        tampered,
+        repo_root=nested_case.root,
+        implementation_events_path=nested_case.events_path,
+        task=nested_case.task,
+        validation_result=nested_case.validation,
+        attempt=4,
+        implementation_attempt=3,
+        baseline_commit=nested_case.baseline,
+        implementation_commit=nested_case.implementation,
+        merge_commit=nested_case.merge_commit,
+        repository_tree_id=nested_case.repository_tree_id,
+        expected_changed_paths=nested_case.task.outputs,
+        implementer_provenance=nested_case.provenance,
+    )
+    assert verification.valid is False
+    assert verification.reason_code == "review_receipt_binding_mismatch"
 
 
 def test_live_mint_accepts_exact_member_after_later_event(
