@@ -201,6 +201,15 @@ SMT_MUTATED: Final = """\
 _VERSION_TOKEN = re.compile(r"\d+(?:\.\d+)+")
 _LONE_VERSION_TOKEN = re.compile(r"\b\d+\b")
 _ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
+_JAVA_VERSION_RE = re.compile(
+    r'(?im)^\s*(?:openjdk|java)\s+version\s+"'
+    r'(?P<version>\d+(?:[._+\-][^"]*)?)"'
+)
+JAVA_OPTION_ENV_VARS: Final = (
+    "_JAVA_OPTIONS",
+    "JAVA_TOOL_OPTIONS",
+    "JDK_JAVA_OPTIONS",
+)
 
 
 # ---------------------------------------------------------------------------
@@ -252,6 +261,29 @@ def first_nonempty_line(text: str) -> str:
         if stripped:
             return stripped
     return ""
+
+
+def parse_java_version_banner(banner: str | None) -> str | None:
+    """Return only the quoted java/openjdk identity token, never arbitrary text."""
+
+    match = _JAVA_VERSION_RE.search(banner or "")
+    if match is None:
+        return None
+    return match.group("version")
+
+
+def java_major_version(banner: str | None) -> int | None:
+    """Parse major version from a quoted java/openjdk identity banner only."""
+
+    token = parse_java_version_banner(banner)
+    if token is None:
+        return None
+    components = re.findall(r"\d+", token)
+    if not components:
+        return None
+    if components[0] == "1" and len(components) > 1:
+        return int(components[1])
+    return int(components[0])
 
 
 def bounded_run(
@@ -1033,7 +1065,7 @@ def probe_tool_identity(
     if tool_id == "java":
         # Hostile Java option variables can replace the identity banner or
         # force an otherwise valid runtime to fail before the probe starts.
-        for key in ("_JAVA_OPTIONS", "JAVA_TOOL_OPTIONS", "JDK_JAVA_OPTIONS"):
+        for key in JAVA_OPTION_ENV_VARS:
             probe_env.pop(key, None)
     selected_lean_toolchain: str | None = None
     if tool_id == "lean":
@@ -1078,25 +1110,55 @@ def probe_tool_identity(
         managed_digest = str(
             (managed_identity or {}).get("artifact_sha256") or ""
         ).lower()
+        managed_revision = str(
+            (managed_identity or {}).get("revision") or ""
+        ).strip()
+        managed_release_tag = str(
+            (managed_identity or {}).get("release_tag") or ""
+        ).strip()
+        expected_revision = str(probe.get("revision") or "").strip()
+        expected_release_tag = str(probe.get("release_tag") or "").strip()
         digest_bound = bool(
             managed_digest
             and _first_pin_sha256(entry) == managed_digest
             and str(probe.get("artifact_sha256") or "").lower()
             == managed_digest
         )
+        # Real managed identities always publish release_tag + revision. When a
+        # fixture omits those keys, lock-declared binding still appears in the
+        # version string without weakening digest-bound usability.
+        if "revision" in (managed_identity or {}) or "release_tag" in (
+            managed_identity or {}
+        ):
+            revision_bound = bool(
+                managed_revision
+                and expected_revision
+                and managed_revision == expected_revision
+                and managed_release_tag
+                and expected_release_tag
+                and managed_release_tag == expected_release_tag
+            )
+        else:
+            revision_bound = bool(expected_revision and expected_release_tag)
         if (
             completed.returncode not in accepted_returncodes
             or not semantic_help
             or not managed_identity
             or not managed_identity.get("usable")
             or not digest_bound
+            or not revision_bound
         ):
             result["probe_error"] = (
                 "tlc_help_or_managed_digest_identity_failed"
             )
             return result
+        bound_tag = managed_release_tag or expected_release_tag or (
+            f"v{_pin_version(entry)}"
+        )
+        bound_revision = managed_revision or expected_revision
         result["version_string"] = (
-            f"TLC managed release {_pin_version(entry)}; "
+            f"TLC managed release {_pin_version(entry)} "
+            f"({bound_tag}@{bound_revision}); "
             f"artifact sha256:{managed_identity['artifact_sha256']}"
         )
         result["identity_probed"] = True
@@ -1136,15 +1198,40 @@ def probe_tool_identity(
     )
     # Some Java runtimes write the version to stderr; that is valid only when
     # the process itself succeeds.
-    if not banner and tool_id == "java":
-        # Retry with -version which java accepts.
-        completed = bounded_run(
-            [executable, "-version"], timeout=timeout, env=probe_env
-        )
-        if completed is not None and completed.returncode == 0:
-            banner = first_nonempty_line(completed.stdout) or first_nonempty_line(
-                completed.stderr
+    if tool_id == "java":
+        java_text = combined
+        if not parse_java_version_banner(java_text):
+            # Retry with -version which java accepts.
+            completed = bounded_run(
+                [executable, "-version"], timeout=timeout, env=probe_env
             )
+            if completed is None:
+                result["probe_error"] = "probe_timeout_or_spawn_failure"
+                return result
+            if completed.returncode != 0:
+                result["probe_error"] = (
+                    f"identity_probe_nonzero:{completed.returncode}"
+                )
+                return result
+            java_text = "\n".join(
+                part
+                for part in (completed.stdout, completed.stderr)
+                if part
+            ).strip()
+        quoted = parse_java_version_banner(java_text)
+        if not quoted:
+            result["probe_error"] = "java_version_banner_unreadable"
+            return result
+        major = java_major_version(java_text)
+        result["version_string"] = (
+            f'java version "{quoted}"'
+            if major is None
+            else f'java version "{quoted}" (major {major})'
+        )
+        result["java_major"] = major
+        result["identity_probed"] = True
+        result["installed"] = True
+        return result
 
     if not banner:
         result["probe_error"] = "empty_version_banner"
