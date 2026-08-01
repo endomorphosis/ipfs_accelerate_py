@@ -87,7 +87,15 @@
         "autohyper",
         "mchyper"
       ],
-      "status": "replaced_by_deployment_contract"
+      "status": "replaced_by_deployment_contract",
+      "goal_id": "FVT-G208",
+      "task_id": "FVT-061",
+      "repair_task_id": "FVT-077",
+      "objective_validation_evidence": "objective validation repair",
+      "objective_validation_command": "PYTHONPATH=ipfs_datasets_py python -m pytest test/integration/toolchains/test_hyperproperty_vendor_toolchain_certification.py test/integration/toolchains/test_hyperproperty_toolchain_certification.py -q",
+      "interface": "HyperpropertyVendorToolchainCertification@1",
+      "receipt_path": "docs/architecture/formal_verification_hyperproperty_vendor_install_receipt.json",
+      "notes": "FVT-077 is the objective validation repair that re-proves FVT-G208 and binds the synthetic discovery term objective validation repair. Hermetic engines remain differential-only and never satisfy vendor production evidence."
     },
     "datalog_secpal_external": {
       "tool_ids": [
@@ -2083,5 +2091,24 @@
       "built_types": "dist/src/index.d.ts",
       "interface": "RuntimeMTLMonitor@1"
     }
-  ]
+  ],
+  "hyperproperty_vendor": {
+    "interface": "HyperpropertyVendorToolchainCertification@1",
+    "goal_id": "FVT-G208",
+    "task_id": "FVT-061",
+    "repair_task_id": "FVT-077",
+    "objective_validation_evidence": "objective validation repair",
+    "objective_validation_command": "PYTHONPATH=ipfs_datasets_py python -m pytest test/integration/toolchains/test_hyperproperty_vendor_toolchain_certification.py test/integration/toolchains/test_hyperproperty_toolchain_certification.py -q",
+    "receipt_path": "docs/architecture/formal_verification_hyperproperty_vendor_install_receipt.json",
+    "tool_ids": [
+      "hyperltl",
+      "autohyper",
+      "mchyper"
+    ],
+    "linux_aarch64_supported": true,
+    "hermetic_engines_are_differential_only": true,
+    "never_promote_hermetic_engine_as_vendor": true,
+    "case_oracle_cannot_satisfy_vendor": true,
+    "notes": "Distinguish hermetic differential engines (FVT-G170) from vendor production certification (FVT-G208). FVT-077 is the objective validation repair that re-proves FVT-G208 and binds the synthetic discovery term objective validation repair. linux-aarch64 remains supported only when the complete vendor chain is real."
+  }
 }

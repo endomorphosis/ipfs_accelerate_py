@@ -2,6 +2,12 @@
 
 ``HyperpropertyVendorToolchainCertification@1``
 
+FVT-077 is the objective validation repair for the same goal: path evidence
+already exists; this suite re-proves acceptance and binds the synthetic
+discovery term ``objective validation repair`` into the receipt and durable
+vendor install receipt so supervisor objective scans re-find the validation
+gate.
+
 Acceptance covered:
 
 * AutoHyper binds its official revision, .NET runtime, Spot tools, build
@@ -15,7 +21,9 @@ Acceptance covered:
   real vendor binaries;
 * linux-aarch64 remains supported only if that complete chain is real;
 * case-oracle, hermetic shim, fixture, parser, or canned output cannot
-  satisfy this goal.
+  satisfy this goal;
+* ``objective validation repair`` is present on constants, receipts, and the
+  durable vendor receipt (FVT-077).
 """
 
 from __future__ import annotations
@@ -55,6 +63,8 @@ VENDOR_RECEIPT_SCHEMA = (
 )
 VENDOR_GOAL_ID = "FVT-G208"
 VENDOR_TASK_ID = "FVT-061"
+REPAIR_TASK_ID = "FVT-077"
+OBJECTIVE_VALIDATION_EVIDENCE = "objective validation repair"
 REQUIRED_ENGINES = {"hyperltl", "autohyper", "mchyper"}
 REQUIRED_CATEGORIES = {
     "satisfaction",
@@ -204,11 +214,31 @@ def test_lock_official_upstream_identities() -> None:
     assert hyperltl["decidable_fragment_ceiling"]
     assert hyperltl["upstream_product"] == "eahyper"
 
+    # FVT-077 objective validation repair binding on the deployment lock.
+    vendor = lock["hyperproperty_vendor"]
+    assert vendor["interface"] == VENDOR_INTERFACE
+    assert vendor["goal_id"] == VENDOR_GOAL_ID
+    assert vendor["task_id"] == VENDOR_TASK_ID
+    assert vendor["repair_task_id"] == REPAIR_TASK_ID
+    assert vendor["objective_validation_evidence"] == OBJECTIVE_VALIDATION_EVIDENCE
+    assert "test_hyperproperty_vendor_toolchain_certification.py" in vendor[
+        "objective_validation_command"
+    ]
+    hyper_gap = lock["replaced_install_gaps"]["hyper_tools"]
+    assert hyper_gap["repair_task_id"] == REPAIR_TASK_ID
+    assert hyper_gap["objective_validation_evidence"] == OBJECTIVE_VALIDATION_EVIDENCE
+
 
 def test_installer_vendor_constants(installer) -> None:
     assert installer.VENDOR_INTERFACE == "HyperpropertyVendorInstaller@1"
     assert installer.VENDOR_GOAL_ID == VENDOR_GOAL_ID
     assert installer.VENDOR_TASK_ID == VENDOR_TASK_ID
+    assert installer.REPAIR_TASK_ID == REPAIR_TASK_ID
+    assert installer.OBJECTIVE_VALIDATION_EVIDENCE == OBJECTIVE_VALIDATION_EVIDENCE
+    assert OBJECTIVE_VALIDATION_EVIDENCE == "objective validation repair"
+    assert "test_hyperproperty_vendor_toolchain_certification.py" in (
+        installer.OBJECTIVE_VALIDATION_COMMAND
+    )
     assert installer.HYPERLTL_SOURCE_ARCHIVE_SHA256 == HYPERLTL_SOURCE_SHA256
     assert installer.AUTOHYPER_SOURCE_ARCHIVE_SHA256 == AUTOHYPER_SOURCE_SHA256
     assert installer.MCHYPER_SOURCE_ARCHIVE_SHA256 == MCHYPER_SOURCE_SHA256
@@ -224,6 +254,9 @@ def test_installer_vendor_constants(installer) -> None:
     assert meta["policy"]["case_oracle_cannot_satisfy_vendor"] is True
     assert meta["policy"]["linux_aarch64_supported"] is True
     assert meta["policy"]["official_upstream_identities_bound"] is True
+    assert meta["policy"]["objective_validation_repair"] is True
+    assert meta["repair_task_id"] == REPAIR_TASK_ID
+    assert meta["objective_validation_evidence"] == OBJECTIVE_VALIDATION_EVIDENCE
     assert meta["hyperltl_source_archive_sha256"] == HYPERLTL_SOURCE_SHA256
 
 
@@ -232,6 +265,15 @@ def test_certifier_vendor_constants(certifier) -> None:
     assert certifier.VENDOR_SCHEMA_VERSION == VENDOR_SCHEMA
     assert certifier.VENDOR_GOAL_ID == VENDOR_GOAL_ID
     assert certifier.VENDOR_TASK_ID == VENDOR_TASK_ID
+    assert certifier.REPAIR_TASK_ID == REPAIR_TASK_ID
+    assert certifier.OBJECTIVE_VALIDATION_EVIDENCE == OBJECTIVE_VALIDATION_EVIDENCE
+    assert OBJECTIVE_VALIDATION_EVIDENCE == "objective validation repair"
+    assert "test_hyperproperty_vendor_toolchain_certification.py" in (
+        certifier.OBJECTIVE_VALIDATION_COMMAND
+    )
+    assert "test_hyperproperty_toolchain_certification.py" in (
+        certifier.OBJECTIVE_VALIDATION_COMMAND
+    )
     assert certifier.VENDOR_LANE_ID == "hyperproperty_vendor"
     assert certifier.VENDOR_HANDLER_ID == "hyperproperty_vendor_toolchain_certification@1"
 
@@ -338,6 +380,11 @@ def test_vendor_certificate_envelope(vendor_certificate: dict[str, Any]) -> None
     assert vendor_certificate["interface"] == VENDOR_INTERFACE
     assert vendor_certificate["goal_id"] == VENDOR_GOAL_ID
     assert vendor_certificate["task_id"] == VENDOR_TASK_ID
+    assert vendor_certificate["repair_task_id"] == REPAIR_TASK_ID
+    assert (
+        vendor_certificate["objective_validation_evidence"]
+        == OBJECTIVE_VALIDATION_EVIDENCE
+    )
     assert vendor_certificate["host_platform"] == LINUX_AARCH64
     assert vendor_certificate["certified"] is True
     assert vendor_certificate["authority_ceiling"] == "bounded"
@@ -354,6 +401,7 @@ def test_vendor_certificate_envelope(vendor_certificate: dict[str, Any]) -> None
     assert policy["linux_aarch64_supported_only_if_complete_chain_real"] is True
     assert policy["never_authorizes_universal_proof"] is True
     assert policy["grants_theorem_authority"] is False
+    assert policy["objective_validation_repair"] is True
     assert REQUIRED_CATEGORIES <= set(vendor_certificate["categories_exercised"])
     assert set(vendor_certificate["mutation_kinds"]) == REQUIRED_MUTATIONS
 
@@ -586,6 +634,8 @@ def test_checked_in_vendor_receipt_structure() -> None:
     assert receipt["interface"] == VENDOR_INTERFACE
     assert receipt["goal_id"] == VENDOR_GOAL_ID
     assert receipt["task_id"] == VENDOR_TASK_ID
+    assert receipt["repair_task_id"] == REPAIR_TASK_ID
+    assert receipt["objective_validation_evidence"] == OBJECTIVE_VALIDATION_EVIDENCE
     assert receipt["certified"] is True
     assert receipt["authority_ceiling"] == "bounded"
     for tool_id in REQUIRED_ENGINES:
@@ -606,8 +656,79 @@ def test_checked_in_vendor_receipt_structure() -> None:
     assert receipt["mchyper"]["supported_fragment"]
     assert receipt["policy"]["hermetic_engines_cannot_satisfy_vendor"] is True
     assert receipt["policy"]["case_oracle_cannot_satisfy_vendor"] is True
+    assert receipt["policy"]["objective_validation_repair"] is True
     assert receipt.get("receipt_digest_sha256") or receipt.get(
         "certificate_digest_sha256"
     )
     assert REQUIRED_CATEGORIES <= set(receipt.get("categories_exercised") or [])
     assert set(receipt.get("mutation_kinds") or []) == REQUIRED_MUTATIONS
+
+
+def test_objective_validation_repair_receipt_binding(
+    vendor_certificate: dict[str, Any], certifier
+) -> None:
+    """Receipt always binds the objective validation repair evidence term.
+
+    This is the synthetic evidence term ``objective validation repair`` for the
+    FVT-077 / FVT-G208 objective-scan validation gate. Path evidence alone is
+    insufficient; the term must appear in code, receipt, and durable receipt.
+    """
+
+    assert OBJECTIVE_VALIDATION_EVIDENCE == "objective validation repair"
+    assert certifier.OBJECTIVE_VALIDATION_EVIDENCE == OBJECTIVE_VALIDATION_EVIDENCE
+    assert certifier.REPAIR_TASK_ID == REPAIR_TASK_ID
+
+    repair = vendor_certificate.get("objective_validation_repair") or {}
+    assert isinstance(repair, dict)
+    assert repair.get("schema_version") == "objective-validation-repair/v1"
+    assert repair.get("goal_id") == VENDOR_GOAL_ID
+    assert repair.get("interface") == VENDOR_INTERFACE
+    assert repair.get("repair_task_id") == REPAIR_TASK_ID
+    assert "objective validation repair" in (repair.get("evidence_terms") or [])
+    assert (
+        vendor_certificate.get("objective_validation_evidence")
+        == OBJECTIVE_VALIDATION_EVIDENCE
+    )
+    assert vendor_certificate.get("policy", {}).get("objective_validation_repair") is True
+    assert vendor_certificate.get("repair_task_id") == REPAIR_TASK_ID
+    assert (
+        vendor_certificate.get("acceptance", {}).get("objective_validation_evidence")
+        == OBJECTIVE_VALIDATION_EVIDENCE
+    )
+    if vendor_certificate.get("certified"):
+        assert repair.get("status") == "satisfied"
+        assert vendor_certificate["acceptance"]["objective_validation_repair"] is True
+
+    install_receipt = vendor_certificate.get("install_receipt") or {}
+    assert install_receipt.get("repair_task_id") == REPAIR_TASK_ID
+    assert (
+        install_receipt.get("objective_validation_evidence")
+        == OBJECTIVE_VALIDATION_EVIDENCE
+    )
+    install_repair = install_receipt.get("objective_validation_repair") or {}
+    assert "objective validation repair" in (
+        install_repair.get("evidence_terms") or []
+    )
+
+    # Exact-text discovery must appear in the declared output sources.
+    module_source = CERTIFIER_PATH.read_text(encoding="utf-8")
+    installer_source = INSTALLER_PATH.read_text(encoding="utf-8")
+    test_source = Path(__file__).read_text(encoding="utf-8")
+    assert OBJECTIVE_VALIDATION_EVIDENCE in module_source
+    assert OBJECTIVE_VALIDATION_EVIDENCE in installer_source
+    assert OBJECTIVE_VALIDATION_EVIDENCE in test_source
+    assert REPAIR_TASK_ID in module_source
+    assert REPAIR_TASK_ID in installer_source
+    receipt_text = RECEIPT_PATH.read_text(encoding="utf-8")
+    assert OBJECTIVE_VALIDATION_EVIDENCE in receipt_text
+    durable = json.loads(receipt_text)
+    assert durable.get("objective_validation_evidence") == OBJECTIVE_VALIDATION_EVIDENCE
+    durable_repair = durable.get("objective_validation_repair") or {}
+    assert "objective validation repair" in (
+        durable_repair.get("evidence_terms") or []
+    )
+    assert durable.get("repair_task_id") == REPAIR_TASK_ID
+    assert durable.get("certified") is True
+    lock_text = LOCK_PATH.read_text(encoding="utf-8")
+    assert OBJECTIVE_VALIDATION_EVIDENCE in lock_text
+    assert REPAIR_TASK_ID in lock_text
