@@ -35,6 +35,45 @@ until an accepted rollout decision has been applied:
 IPFS_TEST_PROOF_REUSE_MODE=off python3 -m pytest
 ```
 
+## Bootstrap and lazy dependencies
+
+The accelerator, datasets, and kit repositories discover the same pytest
+plugin through their `pytest11` entry point or a source-checkout root
+`conftest.py` fallback. Direct node selection uses the collected pytest item;
+there is no test-file registry. Importing any package or the plugin does not
+install dependencies, initialize storage, create a cache, probe a prover,
+start a daemon, or modify `sys.path`.
+
+In an enabled mode, automatic item assembly runs for every non-disabled
+collected test. Optional CID, certificate-verifier, cache, and provider modules
+are resolved only after assembly produces an exact lookup request, or after a
+complete pass produces a publication intent. Missing services therefore leave
+ordinary test execution unchanged and are not imported merely because
+`shadow`, `read`, or `write` was configured.
+
+Managed environments can inject capabilities before collection with:
+
+- `set_proof_reuse_dependency_installer(config, installer)` for a controlled
+  installer;
+- `set_proof_reuse_service_resolver(config, resolver)` or
+  `set_proof_reuse_services(...)` for cache and verifier services; and
+- `set_proof_reuse_identity_services(config, services)` for current forest,
+  AST, component, policy, and runtime-evidence providers.
+
+The built-in pip installer is disabled by default. To permit its closed
+allowlist on first actual use, set
+`IPFS_TEST_PROOF_REUSE_AUTO_INSTALL=1`. Override the local store location with
+`IPFS_TEST_PROOF_REUSE_CACHE_DIR`; otherwise the enabled session uses
+`.pytest_cache/proof-reuse` below its pytest root. An install, import, cache,
+provider, verifier, or Groth16 failure always results in `RUN`.
+
+Automatic collection cannot safely claim that a prior runtime trace is current.
+Tests receive a typed `RUN` result unless the identity service supplies fresh
+controlled-preflight evidence bound to the exact node, repository forest,
+static trace, component root, and runtime policy. Even then, identity assembly
+only creates a lookup request; the local verifier remains the sole authority
+that can return `SKIP`.
+
 ## Promotion procedure
 
 Create a new `ProofReusePromotionEvidence` packet for exactly one transition.
