@@ -52,6 +52,10 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.core import pid_alive
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_runtime import (
     run_process_group_stream,
 )
+from ipfs_accelerate_py.agent_supervisor.worktree_lifecycle import (
+    ProcessBirthIdentity,
+    WorkspaceLifecycleState,
+)
 
 
 POLICY_PATH = "implementation_plan/policies/analyzer-approvals.json"
@@ -1166,6 +1170,152 @@ def test_quiesced_shutdown_reconciles_fence_before_operator_board_revision(
         "critical_section_entered": False,
         "scan_outside_lease": True,
     }
+    assert not daemon._implementation_protected_incident_path().exists()
+
+
+def test_quiesced_shutdown_terminalizes_exact_dead_lifecycle_owner_and_unblocks_retry(
+    tmp_path: Path,
+) -> None:
+    daemon, _repo, workspace, _protected = _protected_git_worktree_daemon(
+        tmp_path
+    )
+    task = _task(outputs=["src/example.py"])
+    identity = daemon._identity_for_task(task)
+    daemon._require_implementation_protected_snapshot(
+        task=task,
+        attempt=1,
+        workspace_path=workspace,
+    )
+    _persist_active_attempt_state(
+        daemon,
+        task=task,
+        workspace=workspace,
+    )
+    lifecycle = daemon.worktree_lifecycle.begin_preparing(
+        task_id=task.task_id,
+        canonical_task_cid=identity.canonical_task_cid,
+        attempt=1,
+        lane_id="terminated-lane",
+        workspace_path=workspace,
+        branch="lane",
+        merge_target="main",
+        state_dir=str(daemon.state_path.parent.resolve()),
+        owner=ProcessBirthIdentity(
+            pid=2**30 - 19,
+            start_time_ticks=1,
+            boot_id="provably-dead-owner",
+        ),
+    )
+    lifecycle = daemon.worktree_lifecycle.mark_active(
+        workspace,
+        lease_id=lifecycle.lease_id,
+        expected_fence=lifecycle.fence,
+    )
+    assert lifecycle.expires_at > daemon.worktree_lifecycle.clock()
+
+    result = daemon.reconcile_quiesced_active_attempt()
+
+    assert result["reconciled"] is True
+    assert result["blocked"] is False
+    lifecycle_result = result["worktree_lifecycle_reconciliation"]
+    assert (
+        lifecycle_result["reason"]
+        == "worktree_lifecycle_dead_owner_terminalized"
+    )
+    assert lifecycle_result["terminal_reason"] == (
+        "controlled_shutdown_quiesced_owner"
+    )
+    terminal = daemon.worktree_lifecycle.load_workspace(workspace)
+    assert terminal is not None
+    assert terminal.state is WorkspaceLifecycleState.TERMINAL
+    assert terminal.fence == lifecycle.fence + 1
+    assert PortalTaskState.load(daemon.state_path).implementation_in_progress is False
+
+    # The original six-hour lease remains unexpired, but the terminal task
+    # index must no longer reject the same retry attempt in a replacement
+    # workspace.
+    retry = daemon.worktree_lifecycle.begin_preparing(
+        task_id=task.task_id,
+        canonical_task_cid=identity.canonical_task_cid,
+        attempt=1,
+        lane_id="replacement-lane",
+        workspace_path=workspace.parent / "replacement",
+        branch="implementation/example-retry",
+        merge_target="main",
+        state_dir=str(tmp_path / "replacement-state"),
+    )
+    assert retry.state is WorkspaceLifecycleState.PREPARING
+
+
+@pytest.mark.parametrize(
+    ("ownership_case", "expected_reason"),
+    [
+        ("live", "worktree_lifecycle_owner_still_active"),
+        ("wrong_state", "worktree_lifecycle_state_dir_mismatch"),
+        ("unknown_liveness", "worktree_lifecycle_owner_liveness_unknown"),
+    ],
+)
+def test_quiesced_shutdown_keeps_unproven_lifecycle_ownership_blocked(
+    tmp_path: Path,
+    ownership_case: str,
+    expected_reason: str,
+) -> None:
+    daemon, _repo, workspace, _protected = _protected_git_worktree_daemon(
+        tmp_path
+    )
+    task = _task(outputs=["src/example.py"])
+    identity = daemon._identity_for_task(task)
+    daemon._require_implementation_protected_snapshot(
+        task=task,
+        attempt=1,
+        workspace_path=workspace,
+    )
+    _persist_active_attempt_state(
+        daemon,
+        task=task,
+        workspace=workspace,
+    )
+    dead_owner = ProcessBirthIdentity(
+        pid=2**30 - 23,
+        start_time_ticks=1,
+        boot_id="provably-dead-owner",
+    )
+    lifecycle = daemon.worktree_lifecycle.begin_preparing(
+        task_id=task.task_id,
+        canonical_task_cid=identity.canonical_task_cid,
+        attempt=1,
+        lane_id=f"{ownership_case}-lane",
+        workspace_path=workspace,
+        branch="lane",
+        merge_target="main",
+        state_dir=str(
+            tmp_path / "different-state"
+            if ownership_case == "wrong_state"
+            else daemon.state_path.parent.resolve()
+        ),
+        owner=None if ownership_case == "live" else dead_owner,
+    )
+    lifecycle = daemon.worktree_lifecycle.mark_active(
+        workspace,
+        lease_id=lifecycle.lease_id,
+        expected_fence=lifecycle.fence,
+    )
+    if ownership_case == "unknown_liveness":
+        daemon.worktree_lifecycle.proc_root = tmp_path / "missing-proc"
+
+    result = daemon.reconcile_quiesced_active_attempt()
+
+    assert result["reconciled"] is False
+    assert result["blocked"] is True
+    assert result["reason"] == "worktree_lifecycle_reconciliation_blocked"
+    lifecycle_result = result["worktree_lifecycle_reconciliation"]
+    assert lifecycle_result["reason"] == expected_reason
+    unchanged = daemon.worktree_lifecycle.load_workspace(workspace)
+    assert unchanged is not None
+    assert unchanged.state is WorkspaceLifecycleState.ACTIVE
+    assert unchanged.fence == lifecycle.fence
+    assert PortalTaskState.load(daemon.state_path).implementation_in_progress is True
+    assert daemon._implementation_protected_active_snapshot_path().exists()
     assert not daemon._implementation_protected_incident_path().exists()
 
 
