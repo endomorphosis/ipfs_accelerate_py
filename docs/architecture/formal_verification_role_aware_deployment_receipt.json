@@ -6,7 +6,7 @@
   "goal_id": "FVT-G214",
   "task_id": "FVT-067",
   "program": "formal-verification-tactician/toolchain-release-finalizer",
-  "observed_at": "2026-08-01T06:43:44Z",
+  "observed_at": "2026-08-01T18:40:33Z",
   "binding_mode": "post_merge_external_content_addressed_attestation",
   "publication_mode": "external_content_addressed",
   "status": "role_aware_deployment_blocked",
@@ -14,22 +14,14 @@
   "description": "Fail-closed post-merge deployment attestation (FVT-G214). Binds the FVT-G213 release candidate, its durable terminal supervisor completion receipt, and publishes either an external content-addressed attestation or a receipt commit with a strictly limited generated-artifact diff. Never attests the current task's future event and never claims deployment-ready without terminal evidence.",
   "source": {
     "model": "two_phase_source_then_attestation_publication/v1",
-    "certified_source_commit": "e736c6b95436cb95b11c901288bb291feccfee31",
-    "certified_source_tree": "504dafbeacae7308cfca0eb1b5c81bbf311de91b",
-    "datasets_gitlink": "7415adc5100192ee35676778f1018f6b072378f9",
-    "datasets_embedded_head": "7415adc5100192ee35676778f1018f6b072378f9",
+    "certified_source_commit": "862b533b4429ab2fac38763eaaf2732953df739a",
+    "certified_source_tree": "e3e3c3e8ffbbaa1614088e2a726ed82422a0478d",
+    "datasets_gitlink": "043ed0c15b6ac07e94dcafc247bc51dc62041fdc",
+    "datasets_embedded_head": "043ed0c15b6ac07e94dcafc247bc51dc62041fdc",
     "source_commit_bound": true,
-    "source_candidate_clean": false,
-    "dirty_paths_at_certification": [
-      "docs/architecture/formal_verification_role_aware_deployment_receipt.json",
-      "docs/architecture/formal_verification_role_aware_release_candidate.json",
-      "docs/architecture/formal_verification_runtime_mtl_external_install_receipt.json",
-      "docs/architecture/formal_verification_tactician_readiness_completion_receipt.json",
-      "docs/architecture/formal_verification_toolchain_certificate.json"
-    ],
-    "non_attestation_dirty_paths": [
-      "docs/architecture/formal_verification_runtime_mtl_external_install_receipt.json"
-    ],
+    "source_candidate_clean": true,
+    "dirty_paths_at_certification": [],
+    "non_attestation_dirty_paths": [],
     "attestation_paths": [
       "docs/architecture/formal_verification_role_aware_deployment_receipt.json",
       "docs/architecture/formal_verification_role_aware_release_candidate.json",
@@ -39,7 +31,7 @@
     "attestation_excluded_from_source_tree": true,
     "publication_verification_required": true,
     "publication_rule": "Publish the generated attestation in a descendant commit whose certified-source ancestor is this commit and whose attestation diff is restricted to declared generated receipt/certificate paths.",
-    "valid_for_attestation": false,
+    "valid_for_attestation": true,
     "tree_alignment": {
       "description": "Parent commit, datasets gitlink, embedded HEAD, and origin/main are independent dimensions. Alignment of one never implies the others.",
       "dimensions": [
@@ -52,34 +44,34 @@
       ],
       "parent": {
         "path": ".",
-        "commit": "e736c6b95436cb95b11c901288bb291feccfee31",
-        "tree": "504dafbeacae7308cfca0eb1b5c81bbf311de91b",
-        "origin_main": "0ae5f590e858cfe2618b9a24aa4479e9e8ca619e",
-        "clean": false,
+        "commit": "862b533b4429ab2fac38763eaaf2732953df739a",
+        "tree": "e3e3c3e8ffbbaa1614088e2a726ed82422a0478d",
+        "origin_main": "b0b0489cc7d23f8a103ef59511b3105a9b3dd649",
+        "clean": true,
         "matches_origin_main": false
       },
       "gitlink": {
         "path": "ipfs_datasets_py",
         "mode": "160000",
-        "commit": "7415adc5100192ee35676778f1018f6b072378f9"
+        "commit": "043ed0c15b6ac07e94dcafc247bc51dc62041fdc"
       },
       "embedded_checkout": {
         "path": "ipfs_datasets_py",
-        "head": "7415adc5100192ee35676778f1018f6b072378f9",
+        "head": "043ed0c15b6ac07e94dcafc247bc51dc62041fdc",
         "clean": true,
         "matches_gitlink": true,
-        "origin_main": "7415adc5100192ee35676778f1018f6b072378f9",
-        "matches_origin_main": true
+        "origin_main": "1cd68c2127a3e2d807d55a0e147b928c2f4c05dc",
+        "matches_origin_main": false
       },
       "publication_gates": {
         "parent_publication_lag": true,
-        "datasets_publication_lag": false,
+        "datasets_publication_lag": true,
         "fetches_forbidden": true,
         "note": "origin/main is a local remote-tracking ref only; this receipt never fetches. Publication lag is a separate gate from semantic implementation completion."
       },
-      "aligned_for_implementation": false,
+      "aligned_for_implementation": true,
       "diagnostics": [
-        "parent_working_tree_dirty",
+        "datasets_publication_lag_vs_origin_main",
         "parent_publication_lag_vs_origin_main"
       ]
     }
@@ -91,18 +83,18 @@
     "goal_id": "FVT-G213",
     "task_id": "FVT-066",
     "schema_version": "formal-verification-role-aware-release-candidate/v1",
-    "checked_candidate_identity": "sha256:5a8c95fbf75b98cae0573387da8b0edcd376642cfe2757c23a9c52f77e8cb76c",
-    "live_candidate_identity": "sha256:e3bb254c163252c883f9d84f6d63e0e9fe6c04255f0cf43536728b9efbf85d83",
+    "checked_candidate_identity": "sha256:08199e8156df332a766a3dd8f3b47cd091f52dd8decdeb6abda2db3c2ec8f2e8",
+    "live_candidate_identity": "sha256:6fb2ebd3c02c261be3da970cc531939479ec581524a1a66f066e594b438bcf67",
     "checked_identity_valid": true,
     "matches_live_recompute": false,
     "digest_material_verification": {
-      "valid": true,
-      "digest_material_identity": "sha256:cdb2039bc893524ab5108eef5049cd3202fd2e5eff3144cb404d76f6aebb3125",
+      "valid": false,
+      "digest_material_identity": "sha256:7e0a11644056468839c0fbf7bf5573ce302537116a401c294d839fc72a58ba35",
       "checks": {
         "required_keys_complete": true,
         "certificate_digest_well_formed": true,
         "certificate_digest_matches_projection": true,
-        "certificate_digest_matches_bound_certificate": true,
+        "certificate_digest_matches_bound_certificate": false,
         "tool_ids_unique": true,
         "tool_check_digests_well_formed": true,
         "tool_check_digests_match_projection": true,
@@ -120,22 +112,27 @@
         "specialized_composite_coverage_exact": true,
         "specialized_projection_handler_digests_match": true,
         "specialized_source_handler_digests_match": true,
-        "specialized_projection_matches_live_certificate": true,
-        "specialized_source_binding_matches_live_certificate": true,
+        "specialized_projection_matches_live_certificate": false,
+        "specialized_source_binding_matches_live_certificate": false,
         "specialized_fvt066_independent_audit_bound": true,
         "authority_roles_policy_digest_well_formed": true,
         "authority_roles_policy_digest_matches_projection": true,
         "lock_digest_well_formed": true,
-        "lock_digest_matches_live_certificate": true,
+        "lock_digest_matches_live_certificate": false,
         "quarantine_digest_well_formed": true,
         "quarantine_digest_matches_projection": true,
         "quarantine_digest_matches_live_certificate": true
       },
-      "failures": [],
+      "failures": [
+        "certificate_digest_matches_bound_certificate",
+        "lock_digest_matches_live_certificate",
+        "specialized_projection_matches_live_certificate",
+        "specialized_source_binding_matches_live_certificate"
+      ],
       "live_recompute_required": false,
       "binding_rule": "Checked candidate identity plus independently reproduced compact certificate digest material; host-dependent live recomputation is diagnostic only."
     },
-    "bound": true,
+    "bound": false,
     "readiness_stage": "blocked",
     "status": "role_aware_release_candidate_blocked",
     "claims": {
@@ -146,12 +143,13 @@
       "max_stage": "release_candidate",
       "merge_event_present": false
     },
-    "file_sha256": "sha256:54009745179c5ac501bc4f3dff665d990e3b62f5b1844d8c25d1f33b8a2d7bfe",
+    "file_sha256": "sha256:8c88b750aab3ae62f804749c9f732741bb699c42e4fcf3783d5cac7560cdccfd",
     "live": {
-      "candidate_identity": "sha256:e3bb254c163252c883f9d84f6d63e0e9fe6c04255f0cf43536728b9efbf85d83",
+      "candidate_identity": "sha256:6fb2ebd3c02c261be3da970cc531939479ec581524a1a66f066e594b438bcf67",
       "status": "role_aware_release_candidate_blocked",
       "readiness_stage": "blocked",
       "blockers": [
+        "checked_production_elevation_fanin_matches_live",
         "hyperltl:semantic_lane_not_run",
         "managed:apalache:full_semantic_check_set_missing_or_failed",
         "managed:apalache:launcher_target_artifact_unbound",
@@ -200,20 +198,21 @@
         "managed:proverif:supported_managed_installation_missing_or_shim_only",
         "managed:runtime-mtl-external:semantic_evidence_below_authority_ceiling",
         "managed:runtime-mtl-external:supported_managed_installation_missing_or_shim_only",
-        "managed:souffle:full_semantic_check_set_missing_or_failed",
-        "managed:souffle:locked_version_mismatch"
+        "managed:souffle:full_semantic_check_set_missing_or_failed"
       ]
     },
-    "block_reasons": [],
+    "block_reasons": [
+      "release_candidate_digest_material_invalid"
+    ],
     "projection": {
       "interface": "RoleAwareFormalVerificationReleaseCandidate@1",
       "goal_id": "FVT-G213",
       "task_id": "FVT-066",
-      "candidate_identity": "sha256:5a8c95fbf75b98cae0573387da8b0edcd376642cfe2757c23a9c52f77e8cb76c",
+      "candidate_identity": "sha256:08199e8156df332a766a3dd8f3b47cd091f52dd8decdeb6abda2db3c2ec8f2e8",
       "status": "role_aware_release_candidate_blocked",
       "readiness_stage": "blocked",
       "digest_material": {
-        "certificate_digest_sha256": "297836748751d7b90ed66f129e8a25be72a7f58842655a4522ea2de0cb456316",
+        "certificate_digest_sha256": "b513ae2652703305d18c2751dd0f929feb20465116ae760c9a11c27daeab65d0",
         "tool_check_digests": {
           "apalache": "9b2af65e46a0aed4ca7c9f865d47b753853fb3861d9262a39dbe2a13eeed6f49",
           "autohyper": "8a72dc5c3c5b25cb8c4cbb73402c18c51c1275b71d93f64182125d521bd62ccc",
@@ -221,22 +220,22 @@
           "cvc5": "73d8086cdb0f5ed09d53cca87584b69a3f916ca46a16b1f57634c1ced34e57d8",
           "datalog-authorization": "aedd02270f46bb29ce94c403509c78170bb03950da0a0a84141cf30724f3c713",
           "eprover": "e417b59ebedb015501429db7512d92533d9ee7fa7e03d5ecb5955e158df2c266",
-          "ergoai": "a2d57b0621c1f645bf501fcca269f2ceff159d60c89d9fdbac9862c2aa616be0",
+          "ergoai": "9daa5f10caada464e3595ce2c81601c7dca64c1f713d014661d73313eb31e428",
           "hyperltl": "0b9ad75cfeb0000289beb07a023cc35f8c7993ab292395c814a9e20306e219e5",
           "isabelle": "3082a1c5e4e83dfa431d72ff954bd21b78119afbd2c3b03549529ca2091f5c4e",
           "java": "703f490c6879c4b8f1b5fbfff586accd47ef3f6791a26ec4ea1ec3dbf361bb02",
-          "lean": "e6e1dd54a57eade59a79136c2dd33e100beabd62655cb099330c02d6a1a8dc32",
+          "lean": "0b52287d87d89213b455ece1f1272e028d747261f7bc3a894f7a005fdc91e089",
           "maude": "d54e0592856a6210af425e997b232be03e105d59e728ca0228cdc5c56679b49e",
           "mchyper": "bb2ce0a3596b4085aca49773e4db88487136557b64ea007983b2911b19767e78",
           "opam": "795d1bb6eb93894cf49d6132823c4ed881ef6ffeec106de88893ea63ff88883d",
           "proverif": "88585e2084fb9f094bbf6652ee173c281368a478a0bd72cbc4862b7f79f05488",
           "runtime-mtl": "de491ce69724554c6e59cf44be7f3e2b9104440d747a8e4f8cfd4e6836c84821",
-          "runtime-mtl-external": "cf6c3a50537ba0b42cbf10eb8060dff938004ab871b3a3187dcce7dfbb5a4d5f",
+          "runtime-mtl-external": "7b1c8458a50f370a26f636e00e28d183d1e94f1fda24ce550981f1c3a3f9eb9e",
           "secpal": "ade16d63beaf32d61a42d72686f0b696f2600b0e3ebc1bbc1e9260e8487b7948",
           "secpal-authorization": "9335c3b5c2f73d84b5fa90da9ac9e7f2c4e2bf7d6f03ec5ebf7170fb2735afdf",
           "souffle": "93c4966d901c5dee03fbaafff82a8238989d8af25118320ce80a5bf8c8f72b71",
           "stack": "81999d21e1eb47866a36fc9cda3bdc307abc68c295185aa45c13aee1ca0232fa",
-          "symbolicai": "8c167c5a97189c0a0c3552197a7dd381cfe02759dd2df2d06a5d3492e16141a9",
+          "symbolicai": "4db56f711d1d10b85a447bf882ddcf11a9aa5633c360dd8d6a88c6faea864eba",
           "tamarin": "c9095cfa80db8e3b727ba172e02f92813ca62fd8af70be8e7b98e1c0c3f52103",
           "tlc": "cf7c44a580b3092ad28ecdd887b3e3a39d18375a5611f5efde122295e9c4433f",
           "vampire": "dd6ad8f0e8e7888edb81bf96d45ff96ccfacfe39f119d3fed9dcae52bdb5be46",
@@ -249,14 +248,14 @@
           ],
           "autohyper": [],
           "coq": [
-            "sha256:200e02ae6308968ee401b8998f98b9d797c912a807d5d3a43037538a8e21e404",
-            "sha256:632f5be0def7ed93485d33df4716d88bc21cbb51215c582a01a25b70485e5a22"
+            "sha256:632f5be0def7ed93485d33df4716d88bc21cbb51215c582a01a25b70485e5a22",
+            "sha256:a2dc8d2e013d72d2c3d778071a910aec952d00ede201d6d0851aa367ac4f0f05"
           ],
           "cvc5": [
             "sha256:85827e46576d68570c520a2b2927fe1d260d0bfb2b93919f53f50ed29ee1e419"
           ],
           "datalog-authorization": [
-            "sha256:f8fd4ea76691172f4fbfb2deaca565be4920ebf56cd90e8350c87d0625d4cb6e"
+            "sha256:aa79397c92233eedcab2e16900bf52ecf5fef20a88f4339204ce187b0ebc4437"
           ],
           "eprover": [
             "sha256:da17ca834957a49def615b69bcf36f34f8e8a8417f9043191b15249fabe05748"
@@ -268,13 +267,13 @@
           "hyperltl": [],
           "isabelle": [
             "sha256:0ac87f15bb1b2c966e1818027be762fd5f1fbaaa7a54ac40ce4acc4010661734",
-            "sha256:e9880ebe203029cbaff5e446712a9407c922d4d4a29d3f3b6b304ea18ad2df61"
+            "sha256:0b00dfb70b8975b0dc4cec953d4ea8f6bb227ff939b37edd4ccf9c0c0b510331"
           ],
           "java": [
             "sha256:29cd006b1db6557741e1c5c0a5d43370a25358a3b72780a2c9b1515833af89dc"
           ],
           "lean": [
-            "sha256:a8c016ce2b9add449f49d65d29744b9b9d9f87da1eb0796123ba6ad594e3296d",
+            "sha256:45e07b4147a3ce25b7d1e0e611d8336ecbed08acf5bc13efb3d8dbfecdb0ee88",
             "sha256:b480595a22661f4cb22b37602b0de664ab1aaf815e243c42b7e7eb51c6163b7d"
           ],
           "maude": [
@@ -288,16 +287,16 @@
             "sha256:3a2febf527ff9af3f3270b482d465729a8e6024fe01f2e53aa18aacaaa47dbf4"
           ],
           "runtime-mtl": [
-            "sha256:70e65a44885214daf6ba25756550c1fb3d308d250d62927727ee4012abb8e2b3"
+            "sha256:bf7d34ee854aba2001a254e3ca92262d6b68a5e8b9ac2db402de15f3b6ed4224"
           ],
           "runtime-mtl-external": [
-            "sha256:268286d89b09887be637165f6db67207996687124a8e354acb951ab5f8fef51c",
             "sha256:463c37783df48327cb699770b83dc95f075d8a1d6dd11b52b2663b047dfe34a5",
+            "sha256:ae78ca64ac5f538857fce8ed07890cccaedcaf9b7bb56cefe4acd350951448ab",
             "sha256:d5c16510e7848c284bc69497f68fafb3d7d0f3fdae3282652c5f0a72bae4d5e0"
           ],
           "secpal": [],
           "secpal-authorization": [
-            "sha256:f8fd4ea76691172f4fbfb2deaca565be4920ebf56cd90e8350c87d0625d4cb6e"
+            "sha256:aa79397c92233eedcab2e16900bf52ecf5fef20a88f4339204ce187b0ebc4437"
           ],
           "souffle": [],
           "stack": [
@@ -321,78 +320,80 @@
           "zkp-circuit": []
         },
         "semantic_receipt_digests": {
-          "kernel": "52cb684041a6db3f500d6fafeb59212c4f8f0cc8f150a135b8718ece4951dd5c",
-          "kernel_rocq": "e81cb78ab6b9ef1c35fd078c56399418cbf9500bee30f996372c6df6fa8e7b72",
-          "kernel_isabelle": "962e8fc7773fd47f26cd2f7b8bb302cd3648e378c02643c23f3a0a648d61769a",
-          "runtime_mtl": "bf2a98dd4a2ad60a2659a9a8e07c878b69261437819bc0f97f4d2a31873e570f",
-          "datalog_secpal": "1c56612f1405ed2bb53ea52bb8ebdbeb38147b7fb4c3b83ca2d1cbf07a1be8dd",
-          "state_model": "e07d77ed67ec73928671190b68b07319388d950e3f612c9a7278551ef0147f5b",
-          "protocol_tamarin": "631cfcdbc88b12894eec09eb38de8bed90624891260e1d65bbb05d7844336dc5",
-          "protocol_proverif": "a82d6436f95e2fb36f14cd12a6e82383708cdcea285f3369fe16e800d975230c",
-          "atp": "32638a4b24925ab5c91917fb4c2d856be6662e50bf70b171b1e86c5ee74265cb",
-          "runtime_mtl_external": "1fa6e0bb5a8da68550c83abc9c91b32effeb3aaadd2919ec4b49bac82013676a",
-          "authorization_external": "46773d7f8ab87996007ef7bb1a48a0c857a81dbaa1a87f8fcadcb1358b5a7892",
-          "attestation": "c1a6547dca7f7431fe3f0657a4cd8675af39091bebe866763a423822791de722",
-          "advisors": "781cd5fe254ee3411e39f94d386f734f722cb52fcbdd553f31b134304ed545e9"
+          "kernel": "6df7551f4ce53d1664e5d86cceffcf2b5cf58f581a827d3249e3ae7b34abb225",
+          "kernel_rocq": "d5ed225b1bf42049f207ad6de1d2b3158465b75935e40b39c4413f9001ed22d7",
+          "kernel_isabelle": "bbb19d529311cd0652eddf89635b3a67197937bd1fb6e2cb8a4621f4b1181555",
+          "runtime_mtl": "a1718f9c8895f0160c10082f1cfd5e28216f4f68e967a85d2cf86b16b1827eba",
+          "datalog_secpal": "038b7017befa1c7d34c0d10c0b0c66a77a08abd3840f15039e3bc781f967edd8",
+          "state_model": "7611d8fec7e9cd686d4b630b76da301d43b5f4d3753fbd3e372cbbe1252113d4",
+          "protocol_tamarin": "5d437add1e3d51a08fb104cec34a1efd191af4ee26358af86d91cbe99bb465f1",
+          "protocol_proverif": "affd6b45e48a2a79e7ca7e607f780186e88fc114d4c4e71eb597805a0e484634",
+          "atp": "1a7f9bf2bdc50203dc854bb9c8904c035d4e7a0e5cde9827b399ef95fb4cc6a3",
+          "runtime_mtl_external": "1efe2ad6dfea459191cfd7358c303b8a4d6b8e4b9272f5623a11bef671531d71",
+          "authorization_external": "0c2b371a1a59dd4bb50421df6c56fb23e9b2d6f389ccf0190cdf38327557b5be",
+          "attestation": "b1e50cc7fca223da71a0c57522cc28bea87df0298be3fbc03362fa92b0236548",
+          "advisors": "12ae0d482ffbf47742addd953ca91104b74d39859772db116ed7008b3e9b4752"
         },
-        "specialized_projection_aggregation_digest": "e507ba786e73665bbf0ac95862573729f0f3765302d1fe207cd1883d9c0ae974",
-        "specialized_source_aggregation_digest": "053a6b7d41952c256f48c6c18676850e131dde51155463cb537be6da01d12dd4",
+        "specialized_projection_aggregation_digest": "51ba1b218d852fd4fa1083c27e8dbfa3f11635b37de8568e0b65a349938d63cb",
+        "specialized_source_aggregation_digest": "c9cba81f3641d9128bce5724e4ab4d4fa3b0c39923efbde4234c9c0603259640",
         "specialized_projection_handler_digests": {
-          "atp::eprover": "164fbc0cfdfdb83c2b0c6aa1ee9ca22249b37e324d53560172984e5556660646",
-          "atp::vampire": "1c3ac09200f7b44f9bc85a1f8204c4b2771ee2183061f7344c9f8062427f556d",
-          "attestation::zkp-circuit": "891cb5cc12d10d4616c1602cb3e96397626ef7c28da9ab3af0f3f5a84e8cc1a8",
-          "datalog_secpal::datalog-authorization": "c40b179aa9a2577947bfdee43cb5241f970f6b21852607243a80d3f7eaa65465",
-          "datalog_secpal::secpal": "505479f44a3d697037605f4f9f507690214001416e3c998ad884ef355069fb7a",
-          "datalog_secpal::secpal-authorization": "f449a7adf8e4642e2fadb47a0b4563e7766bbbad1fe21bcc5a8cfe15b9e15ebe",
-          "datalog_secpal::souffle": "01ac5ab797fc3b9df27b20c3c12572a1d03f669043d075f6af2081129f2fc35d",
-          "hammer::ergoai": "be9a44a0cdcefd3118e6eba1d6a0bcb9fb46eeecbfd8ea6f9c9ac5fe76f6d282",
-          "hammer::symbolicai": "fcac1faa0317af63c6021369d1cfae6b7451487781bec4041ec3c869dac22156",
-          "hyperltl::autohyper": "a6643af455c188be9760cbf27c0c33c01e90da776e671b1e9d6c71d147844feb",
-          "hyperltl::hyperltl": "e3a5f7ba0a0ac202edf7771a6d0904c8ec099798d39b12c3123309cef2502d74",
-          "hyperltl::mchyper": "83c188e296a094e4bf9eaa851f5a63007aeb76747f6dd69170cf9157ca67e421",
-          "kernel::coq": "b74ea6ccdaa7247d03f9e5f1110c863b48315318101e9aab113ac0b35b10dad1",
-          "kernel::isabelle": "f038cec9eeedd039474a5c9373df228615ccee02202ffb54814945ea30cc69c2",
-          "kernel::lean": "97a23caed056c0f5757cbad56b533999a0094967bd018d7c146ade92f2323644",
-          "protocol::proverif": "a13fd2e5b2685790f4f66a474496510437152b9e69851f38271cd50d1293ce34",
-          "protocol::tamarin": "2a32d93d34950baf3e90d267a96522806997e25f3d82986d768e12e086c286cc",
-          "runtime_mtl::runtime-mtl": "7cccaa9e5b223ede64d327d081252dde683fd5244781aafe3058777654316107",
-          "runtime_mtl::runtime-mtl-external": "b0827c9ab5d520db488d6bd015254a6ccb6c107ba9b5250e7011fb48d47207e0",
-          "tla::apalache": "94109f3ae3856958e53ed9fbf873a3cc48e37affa976e6a276406d65d4ae18a3",
-          "tla::tlc": "83f277bdf99bf1489bded32cba331ea0b09e563e173e864ed5c1f2e325ac7e82"
+          "atp::eprover": "066bcf9b3056daaf841896eee90a70c2f2e9032aba974e6e3bf8fea6906c2d21",
+          "atp::vampire": "dd199f1a3f1ed18bf33cc5ed90a47906d8c87e27cadfd466832bccfe826635da",
+          "attestation::zkp-circuit": "f6cf988dabf52d4d1d90355d9c02c5736a94f20a0bce3a0fe3c0f1e2bd56031e",
+          "datalog_secpal::datalog-authorization": "d849fbaaa952b6af89112665c1d55691ea6e3bacafbd6da06cab12017ef60f4f",
+          "datalog_secpal::secpal": "33d7aa32ba1f57935ed2d184c6a39a84bc009eb52ec05600b3cb98c74a856d72",
+          "datalog_secpal::secpal-authorization": "8e260d4e6aeaa2c2b7d4545776f30847df37a7e11c3522a99da53ee285509b7f",
+          "datalog_secpal::souffle": "582a69da03db45586ebe054881ac25f5e9d28eae8ac0f47e1e2bce4969157123",
+          "hammer::ergoai": "9f87c65b9589e79fea56934df7410c791ae430bf5e84cfb430896730604fa9e9",
+          "hammer::symbolicai": "e7da57438887e7dad4e892c243d24242f9e2a30a816c6a1614c296a23ec30b35",
+          "hyperltl::autohyper": "da3a323e66012776378636023449e986b59f9e403d7940c72e9f2289398fe48a",
+          "hyperltl::hyperltl": "aa54a3c204a339a64672209753ecb4d03d2c9fd002672b0cc7c7a8d0a577f543",
+          "hyperltl::mchyper": "5d456e371fe0af2bb0760af21947f2ecb49a7073be8dd266cead4b890a3a86dc",
+          "kernel::coq": "c82a1cb1c808cabfaebf8a7a324755786e25553d0edba74766337bc960bba12b",
+          "kernel::isabelle": "0c60d7054cdbcf86dee409c6e28ad29eb41261175c0ee6abf1abf20a9082a00e",
+          "kernel::lean": "fbce11685519fdde65976d5e797d3f40995a99a9b9f75150e9b016b047a17118",
+          "protocol::proverif": "a5313fde381f5f18f9f6b12c330fe4f31e998286eb73ca752339bbc88e3219eb",
+          "protocol::tamarin": "36ad08e0f9ceb18eebbf99d4960f02c5a9c3e2a1e1713f8676f1a95ae635af00",
+          "runtime_mtl::runtime-mtl": "f7043e1117d053d2109c0e614cd403efe659dd9627546f6845677859674fbc6c",
+          "runtime_mtl::runtime-mtl-external": "b068d5f10e6195506d9a5726823c6bdfe9dd6d41fca579cdd8d3d25f08caff77",
+          "tla::apalache": "7687444e69f7f1ea09130e9dec935f2f7e7797688b87cf7ff53824733d2975ed",
+          "tla::tlc": "ca8c8c91b4d1b026c175b06cd835f08b2ae46421fcb1596ba1be46dae754888d"
         },
         "specialized_source_handler_digests": {
-          "atp::eprover": "bc0252978c5f055a7b645dfa9d0e2ded68e4fe732d3bfeaa6fe51073dd5c7d2e",
-          "atp::vampire": "1b8d1fd90c134def59a0240bbd55c98cc4ebf2bf0e4b1c663df981b2e64cf94f",
-          "attestation::zkp-circuit": "d7a42f89258160113883b7b5de702c55d3462951b8cf5dbd950d1963015601d7",
-          "datalog_secpal::datalog-authorization": "14cc3db9473c23b1885ee17fbdcb392c742ee833444a940b35bf86b6f81495f9",
-          "datalog_secpal::secpal": "0a8015f182c6fcf86428a7d76092ca171cad26a05fa7826f40ef5d363b612d19",
-          "datalog_secpal::secpal-authorization": "91ba2f2c6853d66220343beda50e496a8c32767ed271b87c6f0f5df3e63d7a01",
-          "datalog_secpal::souffle": "e516b7af6d24cdb2857710af942e384f8668e03dfb0ecdbb0443aa23ad6d6135",
-          "hammer::ergoai": "b6511de64d67e0cc52125e70b949e099c0757121f9d83234b9cecffd3e92f267",
-          "hammer::symbolicai": "e926c6b303b126eaf94618786071bbf7bf2646b1301f240ca936c8024daf3e1e",
-          "hyperltl::autohyper": "f36139386083a514c8a87d143cd9c059ffd8b70f159863025bd5bcce7b0302fe",
-          "hyperltl::hyperltl": "81ea2a1f2e57f2b1708ea2e66ee62afc85583fe4c081e8889b46ff08443dd28f",
-          "hyperltl::mchyper": "13bbe4ecfccc6a55820720a8618bb0fda31b909e25fb986064f9946aadc67319",
-          "kernel::coq": "8aaaeed1e8582b617f288e9c3852a715bc54c20b1e9069ff9542c30015b41ed4",
-          "kernel::isabelle": "98379170a76d88d5e61e43691714c6081ed3beff486448346c94696a374604b3",
-          "kernel::lean": "926330956966feda135ffb0a193601bcd865a30341f1ad387e62353bfe2be522",
-          "protocol::proverif": "1982c0c97cc1c7cf26a9338b61bd2711fcba08e4993be02a06ab62d8fd79f68e",
-          "protocol::tamarin": "1d41ea1df913909429a0ecd2b6798055e34e68ae4aac8c7d496f31f504648339",
-          "runtime_mtl::runtime-mtl": "d3b63be40ca8df0e0bf319934b5cc5d3c02afb5fc899b3720612e7e58eb548ff",
-          "runtime_mtl::runtime-mtl-external": "755977a6fd507740513dc064dda24794987f4d287f204c4b9a3ae5dd79ac606c",
-          "tla::apalache": "ebcf2610b70784b530f14553b9496f5a900195966e4523bb031c1bd960d95627",
-          "tla::tlc": "881615265ab3fb700ad28275e8cc0a7458bb08ee3536ec8e38b0c283465e49ea"
+          "atp::eprover": "eed217f17c282a9c64ccfa8b302f97c4ec3fb6ef5b29be8e144a9bfa1ea5131e",
+          "atp::vampire": "823711db1c5638222f6bfe07ba4957277752542c428e41ecf630e159b8400a59",
+          "attestation::zkp-circuit": "dedbd7b357bdce21cdb233037a5cc2b13b276b1f6e67d85e667e254917d9a0d5",
+          "datalog_secpal::datalog-authorization": "9d223aadb73917fbf1aa3c7830a6c080a2f5d2843ef5b83409e1cb37d2f16a3c",
+          "datalog_secpal::secpal": "0acb413b9e390006d9185175bc6798e01ea016f83320e49fc9fb0082e8094526",
+          "datalog_secpal::secpal-authorization": "a76e5f3a695d3e93c246fc2eb43a829f9f3673b8414b80673170684cea8bd340",
+          "datalog_secpal::souffle": "5b172d299984f6927cde280176d55c7ed26a2c6bb077b00cba7dce99cfe3f1a6",
+          "hammer::ergoai": "05ebf17998f822c2b5bb8f4627caee646c0d66d80fb2d20b4e256a44bb5dbba2",
+          "hammer::symbolicai": "8c1b64bd7dd74af56ba0b059fc478d9f7f8cd2e7c48eb1d28f69a754adf8d288",
+          "hyperltl::autohyper": "9d76ab0fd1fd3945997803bb6f7a83acc2e001ea096bbac2d20ffa29fbf745dd",
+          "hyperltl::hyperltl": "f2b11e787cdf88441b16459393002f958d759a0052b1a8038541e156f6170571",
+          "hyperltl::mchyper": "49956485d2e1b3368febe85e69169fcfd6886e013c00f1ef706ba9c06257ee6a",
+          "kernel::coq": "75489194f471b67e10ff42ff43c65d716313a022282cb5d0a68d7d14697b4d29",
+          "kernel::isabelle": "23b4895b2959f91dbb4ab3be6be2af34883a96d4405cd400cfb3428487f98815",
+          "kernel::lean": "c28ce72929a0866a66e09d7ae8460760e41ff537ec79f7880b36743bf1b150ce",
+          "protocol::proverif": "8c597af4afebfbbb068538ba159647abd1a0aed539fd9470af1bf34dfab20f09",
+          "protocol::tamarin": "eaa2901433283e9bed1613406d3364759aa6d290244b1a603e98481aa8d12365",
+          "runtime_mtl::runtime-mtl": "dd796777a0658dd004f3fb6e79ea4b987f1dfcf5c06ea1742fd0223737055895",
+          "runtime_mtl::runtime-mtl-external": "ce2f7a7119f5f2e4f54fbe0338e9d6625a9d3a29615bc45333e47d989e5cb320",
+          "tla::apalache": "913bc626247cba56bb996070e19514a4d48a6f0b614b2d46ed7ba1b3a5ad41f9",
+          "tla::tlc": "047a837eacb6fa8db008f6eedaa027da1297629daf805bf098bbe5b93df191be"
         },
-        "authority_roles_policy_digest": "8d7d6054ea356000e1f6bf4de9c58d6b4eab1e6cd5b4171295a1a3e7a748ceec",
-        "lock_digest": "8ec39a0339029f6c89c512f7dfc263b7e64c7960f9bfa1e09dfd8ecc18763228",
-        "quarantine_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        "authority_roles_policy_digest": "6fc4b21f731689f4ab3ab6e37e319978a029ab976a95e404d354d4a6f0ceaf9e",
+        "lock_digest": "a742d3df14bed6f85fdb993305218416a22523f7e318ef312bb6af1ee64f4d39",
+        "quarantine_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "production_elevation_fanin_receipt_digest": "sha256:8b2d1b6caedff7be82e3753b2e480c8e1e54b3ed513cae8f1c9247984417c0d8",
+        "checked_production_elevation_fanin_content_identity": "sha256:33be9bf56864eca17c2c721bc8e757cbef0706d7ec47e7f9a92054d26207eb46"
       }
     },
     "terminal_merge_blob_binding": {
       "bound": false,
       "terminal_evidence_bound": false,
       "merge_commit": null,
-      "current_blob": "d7380a1463021e98fd40f5046fdbef141f1eb319",
+      "current_blob": "fe492217954cc48cb050a41c22fd386c21f4d07d",
       "merged_blob": null,
       "failures": [],
       "binding_rule": "The candidate file bytes must equal the blob published by the verified FVT-066 terminal merge commit."
@@ -447,9 +448,9 @@
     "current_task_id": "FVT-067"
   },
   "acceptance": {
-    "release_candidate_bound": true,
+    "release_candidate_bound": false,
     "candidate_digest_bound": true,
-    "candidate_digest_material_bound": true,
+    "candidate_digest_material_bound": false,
     "release_candidate_merge_blob_bound": false,
     "g213_terminal_receipt_bound": false,
     "event_chain_continuous": false,
@@ -477,9 +478,9 @@
     "circular_tree_identity_forbidden": true
   },
   "readiness_requirements": {
-    "release_candidate_bound": true,
+    "release_candidate_bound": false,
     "candidate_digest_bound": true,
-    "candidate_digest_material_bound": true,
+    "candidate_digest_material_bound": false,
     "release_candidate_merge_blob_bound": false,
     "g213_terminal_receipt_bound": false,
     "event_chain_continuous": false,
@@ -505,6 +506,7 @@
     "never_claims_current_task_future_event": true
   },
   "deployment_blockers": [
+    "candidate_digest_material_bound",
     "event_chain_continuous",
     "g213_expected_outputs_bound",
     "g213_terminal_evidence_missing",
@@ -586,6 +588,8 @@
     "managed:zkp-circuit:supported_managed_installation_missing_or_shim_only",
     "merged_commit_bound",
     "origin_publication_bound",
+    "release_candidate_bound",
+    "release_candidate_digest_material_invalid",
     "release_candidate_merge_blob_bound",
     "supported_capability_closure",
     "validation_result_bound"
@@ -721,7 +725,7 @@
     "schema_version": "formal-verification-toolchain-certificate/v1",
     "goal_id": "FVT-G060",
     "task_id": "FVT-030",
-    "certificate_digest_sha256": "63262a4d322e8ae151f941e5e0a0c2ca75608278849e3de820812bf99d150c5a",
+    "certificate_digest_sha256": "993f242ded0f9829e42111ed5fc9b3fc6fe2c2ce40233c4823ea6a48be6490bf",
     "role_aware": {
       "enabled": true,
       "elevated_tool_ids": []
@@ -745,6 +749,7 @@
         "runtime-mtl-external",
         "secpal-authorization",
         "stack",
+        "symbolicai",
         "tamarin",
         "vampire"
       ],
@@ -756,7 +761,6 @@
         "mchyper",
         "secpal",
         "souffle",
-        "symbolicai",
         "tlc",
         "zkp-circuit"
       ]
@@ -764,7 +768,7 @@
     "authority_roles": {
       "present": true,
       "interface": "RoleAwarePromotionPolicy@1",
-      "policy_digest_sha256": "8d7d6054ea356000e1f6bf4de9c58d6b4eab1e6cd5b4171295a1a3e7a748ceec",
+      "policy_digest_sha256": "6fc4b21f731689f4ab3ab6e37e319978a029ab976a95e404d354d4a6f0ceaf9e",
       "boundary": {
         "support_only": [
           "java",
@@ -812,63 +816,63 @@
       {
         "lane_id": "kernel",
         "status": "ran",
-        "digest_sha256": "f6579cc1602889a7ec9f18e87d336e56193b28975fb79acbfe265b4814f4d092",
+        "digest_sha256": "d466fa07d0f458a02487974a537f334fc08d6c114eba5c10d0b5f1065d676716",
         "receipt_integrity_valid": true,
         "block_reasons": []
       },
       {
         "lane_id": "kernel_rocq",
         "status": "ran",
-        "digest_sha256": "e81cb78ab6b9ef1c35fd078c56399418cbf9500bee30f996372c6df6fa8e7b72",
+        "digest_sha256": "d5ed225b1bf42049f207ad6de1d2b3158465b75935e40b39c4413f9001ed22d7",
         "receipt_integrity_valid": true,
         "block_reasons": []
       },
       {
         "lane_id": "kernel_isabelle",
         "status": "ran",
-        "digest_sha256": "962e8fc7773fd47f26cd2f7b8bb302cd3648e378c02643c23f3a0a648d61769a",
+        "digest_sha256": "bbb19d529311cd0652eddf89635b3a67197937bd1fb6e2cb8a4621f4b1181555",
         "receipt_integrity_valid": true,
         "block_reasons": []
       },
       {
         "lane_id": "runtime_mtl",
         "status": "ran",
-        "digest_sha256": "bf2a98dd4a2ad60a2659a9a8e07c878b69261437819bc0f97f4d2a31873e570f",
+        "digest_sha256": "a1718f9c8895f0160c10082f1cfd5e28216f4f68e967a85d2cf86b16b1827eba",
         "receipt_integrity_valid": true,
         "block_reasons": []
       },
       {
         "lane_id": "datalog_secpal",
         "status": "ran",
-        "digest_sha256": "1c56612f1405ed2bb53ea52bb8ebdbeb38147b7fb4c3b83ca2d1cbf07a1be8dd",
+        "digest_sha256": "038b7017befa1c7d34c0d10c0b0c66a77a08abd3840f15039e3bc781f967edd8",
         "receipt_integrity_valid": true,
         "block_reasons": []
       },
       {
         "lane_id": "state_model",
         "status": "ran",
-        "digest_sha256": "e07d77ed67ec73928671190b68b07319388d950e3f612c9a7278551ef0147f5b",
+        "digest_sha256": "7611d8fec7e9cd686d4b630b76da301d43b5f4d3753fbd3e372cbbe1252113d4",
         "receipt_integrity_valid": true,
         "block_reasons": []
       },
       {
         "lane_id": "protocol_tamarin",
         "status": "ran",
-        "digest_sha256": "631cfcdbc88b12894eec09eb38de8bed90624891260e1d65bbb05d7844336dc5",
+        "digest_sha256": "5d437add1e3d51a08fb104cec34a1efd191af4ee26358af86d91cbe99bb465f1",
         "receipt_integrity_valid": true,
         "block_reasons": []
       },
       {
         "lane_id": "protocol_proverif",
         "status": "ran",
-        "digest_sha256": "a82d6436f95e2fb36f14cd12a6e82383708cdcea285f3369fe16e800d975230c",
+        "digest_sha256": "affd6b45e48a2a79e7ca7e607f780186e88fc114d4c4e71eb597805a0e484634",
         "receipt_integrity_valid": true,
         "block_reasons": []
       },
       {
         "lane_id": "atp",
         "status": "ran",
-        "digest_sha256": "32638a4b24925ab5c91917fb4c2d856be6662e50bf70b171b1e86c5ee74265cb",
+        "digest_sha256": "1a7f9bf2bdc50203dc854bb9c8904c035d4e7a0e5cde9827b399ef95fb4cc6a3",
         "receipt_integrity_valid": true,
         "block_reasons": []
       },
@@ -878,34 +882,34 @@
         "digest_sha256": null,
         "receipt_integrity_valid": null,
         "block_reasons": [
-          "HyperpropertyCertificationError:skip_install requested but hyperltl is not installed under <host-path-redacted>"
+          "HyperpropertyCertificationError:skip_install requested but hyperltl is not installed under <host-path-redacted>/theorem-provers"
         ]
       },
       {
         "lane_id": "runtime_mtl_external",
         "status": "ran",
-        "digest_sha256": "1fa6e0bb5a8da68550c83abc9c91b32effeb3aaadd2919ec4b49bac82013676a",
+        "digest_sha256": "1efe2ad6dfea459191cfd7358c303b8a4d6b8e4b9272f5623a11bef671531d71",
         "receipt_integrity_valid": true,
         "block_reasons": []
       },
       {
         "lane_id": "authorization_external",
         "status": "ran",
-        "digest_sha256": "46773d7f8ab87996007ef7bb1a48a0c857a81dbaa1a87f8fcadcb1358b5a7892",
+        "digest_sha256": "0c2b371a1a59dd4bb50421df6c56fb23e9b2d6f389ccf0190cdf38327557b5be",
         "receipt_integrity_valid": true,
         "block_reasons": []
       },
       {
         "lane_id": "attestation",
         "status": "ran",
-        "digest_sha256": "c1a6547dca7f7431fe3f0657a4cd8675af39091bebe866763a423822791de722",
+        "digest_sha256": "b1e50cc7fca223da71a0c57522cc28bea87df0298be3fbc03362fa92b0236548",
         "receipt_integrity_valid": true,
         "block_reasons": []
       },
       {
         "lane_id": "advisors",
         "status": "ran",
-        "digest_sha256": "781cd5fe254ee3411e39f94d386f734f722cb52fcbdd553f31b134304ed545e9",
+        "digest_sha256": "3f8899a338c49e3d95f072f10958b80146fcf9585c2062bcc8808776df9dd5fa",
         "receipt_integrity_valid": true,
         "block_reasons": []
       }
@@ -917,22 +921,22 @@
       "cvc5": "73d8086cdb0f5ed09d53cca87584b69a3f916ca46a16b1f57634c1ced34e57d8",
       "datalog-authorization": "aedd02270f46bb29ce94c403509c78170bb03950da0a0a84141cf30724f3c713",
       "eprover": "e417b59ebedb015501429db7512d92533d9ee7fa7e03d5ecb5955e158df2c266",
-      "ergoai": "f28f71c5270c94a43934bc5efcbe789d76c81d70ded0eeb4cc26cd0e49eead85",
+      "ergoai": "823815d22352e2d31bfea9c5ce92fc7664c9edb3ace09ae3e90be705fc329781",
       "hyperltl": "0b9ad75cfeb0000289beb07a023cc35f8c7993ab292395c814a9e20306e219e5",
       "isabelle": "3082a1c5e4e83dfa431d72ff954bd21b78119afbd2c3b03549529ca2091f5c4e",
       "java": "703f490c6879c4b8f1b5fbfff586accd47ef3f6791a26ec4ea1ec3dbf361bb02",
-      "lean": "baaf8dd3583d2b6a89e8e2f54ec3676d9c26de48205727b0693e9c4ad10a33c5",
+      "lean": "24fb52bb54d5b1d009cee10184879453de6aa334dac48dad1177c04d9934262e",
       "maude": "d54e0592856a6210af425e997b232be03e105d59e728ca0228cdc5c56679b49e",
       "mchyper": "bb2ce0a3596b4085aca49773e4db88487136557b64ea007983b2911b19767e78",
       "opam": "795d1bb6eb93894cf49d6132823c4ed881ef6ffeec106de88893ea63ff88883d",
       "proverif": "88585e2084fb9f094bbf6652ee173c281368a478a0bd72cbc4862b7f79f05488",
       "runtime-mtl": "de491ce69724554c6e59cf44be7f3e2b9104440d747a8e4f8cfd4e6836c84821",
-      "runtime-mtl-external": "cf6c3a50537ba0b42cbf10eb8060dff938004ab871b3a3187dcce7dfbb5a4d5f",
+      "runtime-mtl-external": "7b1c8458a50f370a26f636e00e28d183d1e94f1fda24ce550981f1c3a3f9eb9e",
       "secpal": "ade16d63beaf32d61a42d72686f0b696f2600b0e3ebc1bbc1e9260e8487b7948",
       "secpal-authorization": "9335c3b5c2f73d84b5fa90da9ac9e7f2c4e2bf7d6f03ec5ebf7170fb2735afdf",
       "souffle": "93c4966d901c5dee03fbaafff82a8238989d8af25118320ce80a5bf8c8f72b71",
       "stack": "81999d21e1eb47866a36fc9cda3bdc307abc68c295185aa45c13aee1ca0232fa",
-      "symbolicai": "f9625ed42328b6e7e415b5c62a26e4163f012ae314ad67c10738301058a14ecb",
+      "symbolicai": "6dd5bc9c9bcd8d2c7681a4338910e1f2f202436deb9bbb645dd460413ebdd2fb",
       "tamarin": "c9095cfa80db8e3b727ba172e02f92813ca62fd8af70be8e7b98e1c0c3f52103",
       "tlc": "cf7c44a580b3092ad28ecdd887b3e3a39d18375a5611f5efde122295e9c4433f",
       "vampire": "dd6ad8f0e8e7888edb81bf96d45ff96ccfacfe39f119d3fed9dcae52bdb5be46",
@@ -1457,10 +1461,10 @@
     "interface": "FormalVerificationTacticianCompletionReceipt@1",
     "completion_goal_id": "FVT-G090",
     "task_id": "FVT-036",
-    "receipt_identity": "sha256:39b5de726b1ac254be7fabb0a155874ca8d7da6b16f99cfba0aa080d229c0d2f",
-    "implementation_status": "incomplete",
+    "receipt_identity": "sha256:0efe182c2c847736dc5d1d8823eb6aa639f1db53429c3c2c6b044814693cb342",
+    "implementation_status": "complete",
     "deployment_status": "not_deployment_certified",
-    "child_goals_bound": 66,
+    "child_goals_bound": 67,
     "child_goal_count": 67
   },
   "elevations": {
@@ -1499,6 +1503,7 @@
       "runtime-mtl-external",
       "secpal-authorization",
       "stack",
+      "symbolicai",
       "tamarin",
       "vampire"
     ]
@@ -1542,24 +1547,24 @@
     "post_merge_test": {
       "path": "test/integration/test_formal_verification_role_aware_post_merge_attestation.py",
       "present": true,
-      "content_identity": "sha256:d13d2292b13d1d9dd91e3125293c7a7a9384102b474686e1ac8a75db259f08eb"
+      "content_identity": "sha256:e7fe26b284115c810fdbd42f8cbd1052e6ff611f0918d299c3ee1f49c13b97d3"
     },
     "release_candidate": {
       "path": "docs/architecture/formal_verification_role_aware_release_candidate.json",
       "present": true,
-      "content_identity": "sha256:5a8c95fbf75b98cae0573387da8b0edcd376642cfe2757c23a9c52f77e8cb76c",
-      "file_sha256": "sha256:54009745179c5ac501bc4f3dff665d990e3b62f5b1844d8c25d1f33b8a2d7bfe"
+      "content_identity": "sha256:08199e8156df332a766a3dd8f3b47cd091f52dd8decdeb6abda2db3c2ec8f2e8",
+      "file_sha256": "sha256:8c88b750aab3ae62f804749c9f732741bb699c42e4fcf3783d5cac7560cdccfd"
     },
     "completion_receipt": {
       "path": "docs/architecture/formal_verification_tactician_readiness_completion_receipt.json",
       "present": true,
-      "content_identity": "sha256:39b5de726b1ac254be7fabb0a155874ca8d7da6b16f99cfba0aa080d229c0d2f"
+      "content_identity": "sha256:0efe182c2c847736dc5d1d8823eb6aa639f1db53429c3c2c6b044814693cb342"
     },
     "toolchain_certificate": {
       "path": "docs/architecture/formal_verification_toolchain_certificate.json",
       "present": true,
       "content_identity": "sha256:eda157484510cd6f4506d659f8a300fbf493a12303c2a8cd096559ee7874c48a",
-      "role_aware_digest": "63262a4d322e8ae151f941e5e0a0c2ca75608278849e3de820812bf99d150c5a"
+      "role_aware_digest": "993f242ded0f9829e42111ed5fc9b3fc6fe2c2ce40233c4823ea6a48be6490bf"
     },
     "deployment_receipt": {
       "path": "docs/architecture/formal_verification_role_aware_deployment_receipt.json",
@@ -1584,7 +1589,6 @@
       "mchyper",
       "secpal",
       "souffle",
-      "symbolicai",
       "tlc",
       "zkp-circuit"
     ],
@@ -1603,6 +1607,7 @@
       "runtime-mtl-external",
       "secpal-authorization",
       "stack",
+      "symbolicai",
       "tamarin",
       "vampire"
     ],
@@ -1937,11 +1942,15 @@
   ],
   "public_evidence_policy": {
     "satisfied": true,
+    "safe": true,
     "failures": [],
+    "violations": [],
+    "violation_count": 0,
     "host_private_paths_forbidden": true,
+    "repo_root_paths_forbidden": true,
     "raw_process_output_forbidden": true,
     "raw_secret_or_witness_forbidden": true,
     "max_public_string_bytes": 8192
   },
-  "receipt_identity": "sha256:355caa46147c7c823e5b8ba5c2ce9f543747cb0f17b6878b57c6321ff93eb77c"
+  "receipt_identity": "sha256:00e898e7ab8c4c875daad5f541623f8cac944789414084f7ff20e2f5b88d22f2"
 }
