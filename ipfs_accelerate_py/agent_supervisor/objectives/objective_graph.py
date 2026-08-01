@@ -11323,6 +11323,8 @@ def generate_objective_todos(
             discovery_dir,
             task_prefix=task_prefix,
         )
+        generated_todo_prefix = todo_text.rstrip()
+        dependency_refs_by_task_id: dict[str, tuple[str, ...]] = {}
         for finding in findings:
             task_id = next_task_id(
                 todo_text,
@@ -11399,6 +11401,13 @@ def generate_objective_todos(
                         task_ids_by_goal.get(dependency) or [dependency]
                     )
             projected_dependencies = _unique_strings(projected_dependencies)
+            dependency_refs_by_task_id[task_id] = tuple(
+                dependency
+                for dependency in _unique_strings(
+                    [*depends_on, *finding.dependencies]
+                )
+                if dependency not in packet_internal_goal_dependencies
+            )
             projected_finding = replace(
                 finding,
                 dependencies=projected_dependencies,
@@ -11432,6 +11441,66 @@ def generate_objective_todos(
                     evidence_outputs=tuple(evidence_outputs),
                     board_namespace=board_namespace,
                 )
+            )
+
+        # Dependency goal projection must not depend on objective-heap scan
+        # order.  The first rendering pass allocates stable task IDs and
+        # records every newly materialized goal.  Re-render those new cards
+        # once against the complete same-cycle goal map so a dependent goal
+        # that happened to sort before its prerequisite binds the new task ID
+        # instead of retaining a stale historical task or an unresolved goal
+        # alias.  Canonical objective task identity intentionally excludes
+        # scheduling dependencies, so this projection does not rotate CIDs.
+        if records:
+            rerendered_records: list[ObjectiveTaskRecord] = []
+            rerendered_blocks: list[str] = []
+            for record in records:
+                projected_dependencies: list[str] = []
+                for dependency in dependency_refs_by_task_id.get(
+                    record.task_id,
+                    (),
+                ):
+                    if dependency in materialized_task_ids:
+                        projected_dependencies.append(dependency)
+                    else:
+                        projected_dependencies.extend(
+                            task_ids_by_goal.get(dependency) or [dependency]
+                        )
+                projected_dependencies = _unique_strings(
+                    projected_dependencies
+                )
+                projected_finding = replace(
+                    record.finding,
+                    dependencies=projected_dependencies,
+                )
+                task_block = render_task_block(
+                    task_id=record.task_id,
+                    finding=projected_finding,
+                    discovery_path=record.discovery_path,
+                    bundle_shard=repo_relative_path(
+                        repo_root,
+                        bundle_path(bundle_dir, projected_finding.bundle_key),
+                    ),
+                    discovery_output_path=discovery_output_path,
+                    evidence_outputs=record.evidence_outputs or (),
+                    board_namespace=board_namespace,
+                    protected_output_paths=protected_output_paths,
+                )
+                rerendered_records.append(
+                    replace(
+                        record,
+                        task_block=task_block,
+                        finding=projected_finding,
+                        depends_on=tuple(projected_dependencies),
+                    )
+                )
+                rerendered_blocks.append(task_block.strip())
+            records[:] = rerendered_records
+            todo_text = (
+                generated_todo_prefix
+                + "\n\n"
+                + "\n\n".join(rerendered_blocks)
+                + "\n"
             )
 
         if records or reprojected_records:
