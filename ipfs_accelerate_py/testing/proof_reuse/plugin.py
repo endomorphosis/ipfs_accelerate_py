@@ -21,7 +21,11 @@ METRICS_ATTRIBUTE = "_ipfs_proof_reuse_metrics"
 COORDINATOR_ATTRIBUTE = "_ipfs_proof_reuse_xdist_coordinator"
 LOOKUP_SERVICE_ATTRIBUTE = "_ipfs_proof_reuse_lookup_service"
 STORE_SERVICE_ATTRIBUTE = "_ipfs_proof_reuse_store_service"
+PROVIDER_SERVICE_ATTRIBUTE = "_ipfs_proof_reuse_provider_service"
 ISSUER_SERVICE_ATTRIBUTE = "_ipfs_proof_reuse_issuer_service"
+DEPENDENCY_INSTALLER_ATTRIBUTE = "_ipfs_proof_reuse_dependency_installer"
+SERVICE_RESOLVER_ATTRIBUTE = "_ipfs_proof_reuse_service_resolver"
+SERVICE_RESOLUTION_ATTRIBUTE = "_ipfs_proof_reuse_service_resolution"
 RUNTIME_PLUGIN_ATTRIBUTE = "_ipfs_proof_reuse_runtime_plugin"
 RUNTIME_TRACE_ATTRIBUTE = "_ipfs_proof_reuse_runtime_trace"
 DEFERRED_REQUEST_ATTRIBUTE = "_ipfs_proof_reuse_deferred_request"
@@ -164,6 +168,7 @@ def pytest_configure(config: Any) -> None:
     else:
         coordinator = ProofReuseXdistCoordinator.standalone(metrics=metrics)
     setattr(config, COORDINATOR_ATTRIBUTE, coordinator)
+    _inject_default_services(config)
     _install_runtime_plugin(config)
 
 
@@ -172,13 +177,132 @@ def set_proof_reuse_services(
     *,
     lookup: Any = None,
     store: Any = None,
+    provider: Any = None,
     issuer: Any = None,
 ) -> None:
     """Inject optional runtime services without probing providers at import."""
 
     setattr(config, LOOKUP_SERVICE_ATTRIBUTE, lookup)
     setattr(config, STORE_SERVICE_ATTRIBUTE, store)
+    setattr(config, PROVIDER_SERVICE_ATTRIBUTE, provider)
     setattr(config, ISSUER_SERVICE_ATTRIBUTE, issuer)
+
+
+def set_proof_reuse_dependency_installer(
+    config: Any,
+    installer: Any,
+) -> None:
+    """Inject a controlled lazy installer before ``pytest_configure``.
+
+    The installer is consulted only for the closed dependency allowlist and
+    only after an enabled proof-reuse mode observes that exact module missing.
+    """
+
+    if installer is not None:
+        install = getattr(installer, "install", None)
+        if not callable(installer) and not callable(install):
+            raise TypeError(
+                "installer must be callable or expose install()"
+            )
+    setattr(config, DEPENDENCY_INSTALLER_ATTRIBUTE, installer)
+
+
+def set_proof_reuse_service_resolver(
+    config: Any,
+    resolver: Any,
+) -> None:
+    """Inject a managed service resolver for hermetic environments/tests."""
+
+    if resolver is not None and not callable(
+        getattr(resolver, "resolve", None)
+    ):
+        raise TypeError("resolver must expose resolve()")
+    setattr(config, SERVICE_RESOLVER_ATTRIBUTE, resolver)
+
+
+def _proof_reuse_cache_root(config: Any) -> str:
+    from .services import PROOF_REUSE_CACHE_DIR_ENV
+
+    configured = os.environ.get(PROOF_REUSE_CACHE_DIR_ENV, "").strip()
+    if configured:
+        return os.path.abspath(os.path.expanduser(configured))
+    root = getattr(config, "rootpath", None)
+    if root is None:
+        root = getattr(config, "rootdir", None)
+    if root is None:
+        root = os.getcwd()
+    return os.path.join(
+        os.path.abspath(os.fspath(root)),
+        ".pytest_cache",
+        "proof-reuse",
+    )
+
+
+def _inject_default_services(config: Any) -> None:
+    """Assemble enabled services once; every failure leaves tests runnable."""
+
+    if all(
+        getattr(config, attribute, None) is not None
+        for attribute in (
+            LOOKUP_SERVICE_ATTRIBUTE,
+            STORE_SERVICE_ATTRIBUTE,
+            PROVIDER_SERVICE_ATTRIBUTE,
+        )
+    ):
+        return
+
+    from .services import (
+        AllowlistedPipInstaller,
+        LazyProofReuseServiceResolver,
+        ProofReuseServiceResolution,
+        automatic_install_enabled,
+    )
+
+    resolver = getattr(config, SERVICE_RESOLVER_ATTRIBUTE, None)
+    if resolver is None:
+        installer = getattr(config, DEPENDENCY_INSTALLER_ATTRIBUTE, None)
+        worker_input = getattr(config, "workerinput", None)
+        if (
+            installer is None
+            and not isinstance(worker_input, Mapping)
+            and automatic_install_enabled(os.environ)
+        ):
+            installer = AllowlistedPipInstaller()
+        try:
+            resolver = LazyProofReuseServiceResolver(installer=installer)
+        except Exception:
+            resolver = None
+        if resolver is not None:
+            setattr(config, SERVICE_RESOLVER_ATTRIBUTE, resolver)
+
+    try:
+        resolution = (
+            resolver.resolve(cache_root=_proof_reuse_cache_root(config))
+            if resolver is not None
+            else ProofReuseServiceResolution.unavailable(
+                "plugin_unavailable"
+            )
+        )
+    except Exception:
+        resolution = ProofReuseServiceResolution.unavailable(
+            "plugin_unavailable"
+        )
+    setattr(config, SERVICE_RESOLUTION_ATTRIBUTE, resolution)
+    if not isinstance(resolution, ProofReuseServiceResolution):
+        return
+    if not resolution.available:
+        metrics = getattr(config, METRICS_ATTRIBUTE, None)
+        if metrics is not None:
+            metrics.degraded(reason_code=resolution.reason_code)
+        return
+
+    for attribute, service in (
+        (LOOKUP_SERVICE_ATTRIBUTE, resolution.lookup),
+        (STORE_SERVICE_ATTRIBUTE, resolution.store),
+        (PROVIDER_SERVICE_ATTRIBUTE, resolution.provider),
+    ):
+        if service is not None and getattr(config, attribute, None) is None:
+            setattr(config, attribute, service)
 
 
 def _install_runtime_plugin(config: Any) -> None:
@@ -579,6 +703,7 @@ def pytest_terminal_summary(
 __all__ = [
     "CONFIG_ATTRIBUTE",
     "COORDINATOR_ATTRIBUTE",
+    "DEPENDENCY_INSTALLER_ATTRIBUTE",
     "DEFERRED_REQUEST_ATTRIBUTE",
     "DISABLED_MARKER",
     "EFFECTS_MARKER",
@@ -588,9 +713,12 @@ __all__ = [
     "LOOKUP_SERVICE_ATTRIBUTE",
     "METRICS_ATTRIBUTE",
     "PLUGIN_NAME",
+    "PROVIDER_SERVICE_ATTRIBUTE",
     "ProofReuseItemMetadata",
     "RUNTIME_PLUGIN_ATTRIBUTE",
     "RUNTIME_TRACE_ATTRIBUTE",
+    "SERVICE_RESOLUTION_ATTRIBUTE",
+    "SERVICE_RESOLVER_ATTRIBUTE",
     "STORE_SERVICE_ATTRIBUTE",
     "collect_item_metadata",
     "get_item_metadata",
@@ -602,5 +730,7 @@ __all__ = [
     "pytest_sessionfinish",
     "pytest_terminal_summary",
     "pytest_testnodedown",
+    "set_proof_reuse_dependency_installer",
+    "set_proof_reuse_service_resolver",
     "set_proof_reuse_services",
 ]
