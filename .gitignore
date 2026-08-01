@@ -162,6 +162,7 @@ Thumbs.db
 *.rej
 
 # Local/ephemeral data under data/ (WAL, ad-hoc DBs; keep intentional fixtures)
+/data/agent_supervisor/ipfs_kit_runtime_readiness/
 data/*.db
 data/*.sqlite
 data/*.sqlite3

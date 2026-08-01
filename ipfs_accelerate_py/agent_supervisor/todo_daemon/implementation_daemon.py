@@ -24712,6 +24712,87 @@ class PortalImplementationDaemon:
         )
         return relative in records
 
+    def _proposal_expected_output_git_location(
+        self,
+        workspace_path: Path,
+        relative: str,
+    ) -> tuple[Path, str, str] | None:
+        """Resolve the verified Git owner for one exact expected output.
+
+        The superproject owns a configured submodule's gitlink, but the child
+        repository owns every strict descendant.  Running ignore or index
+        queries for a child path in the superproject can therefore apply an
+        unrelated parent ignore rule and reject a valid proposal.  Route only
+        explicitly configured, initialized, stage-zero gitlinks to their
+        exact child worktree; an unverifiable managed boundary fails closed.
+        """
+
+        if not self._repo_relative_path_safe(relative):
+            return None
+        configured_paths = tuple(
+            sorted(
+                {
+                    str(path).strip("/")
+                    for path in self.worktree_submodule_paths
+                    if str(path).strip("/")
+                    and self._repo_relative_path_safe(
+                        str(path).strip("/")
+                    )
+                },
+                key=lambda path: (-len(PurePosixPath(path).parts), path),
+            )
+        )
+        submodule_path = next(
+            (
+                path
+                for path in configured_paths
+                if relative.startswith(f"{path}/")
+            ),
+            "",
+        )
+        if not submodule_path:
+            # The parent index owns root files and exact gitlink paths.
+            return workspace_path, relative, ""
+
+        child_relative = relative[len(submodule_path) + 1 :]
+        if (
+            not child_relative
+            or not self._repo_relative_path_safe(child_relative)
+            or self._path_crosses_live_symlink(
+                workspace_path,
+                submodule_path,
+            )
+        ):
+            return None
+        try:
+            # A configured directory is not sufficient authority: it must be
+            # the exact stage-zero gitlink recorded by the superproject.
+            self._proposal_index_gitlink_ref(
+                workspace_path,
+                submodule_path,
+            )
+        except (OSError, RuntimeError, UnicodeError, ValueError):
+            return None
+
+        child_root = workspace_path.joinpath(
+            *PurePosixPath(submodule_path).parts
+        )
+        if child_root.is_symlink() or not self._is_git_worktree(child_root):
+            return None
+        try:
+            workspace_root = workspace_path.resolve(strict=True)
+            resolved_child_root = child_root.resolve(strict=True)
+            resolved_child_root.relative_to(workspace_root)
+            target = child_root.joinpath(
+                *PurePosixPath(child_relative).parts
+            )
+            target.resolve(
+                strict=target.exists() or target.is_symlink()
+            ).relative_to(resolved_child_root)
+        except (OSError, RuntimeError, ValueError):
+            return None
+        return child_root, child_relative, submodule_path
+
     @staticmethod
     def _path_crosses_live_symlink(
         workspace_path: Path,
@@ -24755,6 +24836,7 @@ class PortalImplementationDaemon:
         )
         default_forbidden = (".git", ".git/", ".env", ".ssh/")
         checks: list[dict[str, Any]] = []
+        git_locations: dict[str, tuple[Path, str, str]] = {}
 
         for relative in expected_paths:
             target = workspace_path / relative
@@ -24764,35 +24846,54 @@ class PortalImplementationDaemon:
                 baseline_ref=baseline_ref,
                 relative=relative,
             )
-            indexed = self._exact_path_is_indexed(
+            git_location = self._proposal_expected_output_git_location(
                 workspace_path,
                 relative,
             )
-            ignored_result = subprocess.run(
-                [
-                    "git",
-                    "check-ignore",
-                    "--no-index",
-                    "-z",
-                    "--stdin",
-                ],
-                cwd=workspace_path,
-                input=relative.encode(
-                    "utf-8",
-                    errors="surrogateescape",
+            git_owner_valid = git_location is not None
+            if git_location is None:
+                git_root = workspace_path
+                git_relative = relative
+                git_repository = ""
+                indexed = False
+                ignored = False
+                ignore_check_succeeded = False
+            else:
+                git_root, git_relative, git_repository = git_location
+                git_locations[relative] = git_location
+                indexed = self._exact_path_is_indexed(
+                    git_root,
+                    git_relative,
                 )
-                + b"\0",
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                check=False,
-            )
-            ignored = ignored_result.returncode == 0
+                ignored_result = subprocess.run(
+                    [
+                        "git",
+                        "check-ignore",
+                        "--no-index",
+                        "-z",
+                        "--stdin",
+                    ],
+                    cwd=git_root,
+                    input=git_relative.encode(
+                        "utf-8",
+                        errors="surrogateescape",
+                    )
+                    + b"\0",
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    check=False,
+                )
+                ignored = ignored_result.returncode == 0
+                ignore_check_succeeded = (
+                    ignored_result.returncode in {0, 1}
+                )
             protected = any(
                 self._path_matches_scope(relative, path)
                 for path in protected_paths
             )
             forbidden = any(
                 self._path_matches_scope(relative, path)
+                or self._path_matches_scope(git_relative, path)
                 for path in default_forbidden
             )
             submodule_bound = any(
@@ -24820,11 +24921,14 @@ class PortalImplementationDaemon:
 
             if not exists:
                 issue = EXPECTED_OUTPUT_MISSING
+            elif submodule_bound and not git_owner_valid:
+                issue = EXPECTED_OUTPUT_FORCE_ADD_FORBIDDEN
+            elif not ignore_check_succeeded:
+                issue = EXPECTED_OUTPUT_FORCE_ADD_FAILED
             elif force_stage_required:
                 if (
                     protected
                     or forbidden
-                    or submodule_bound
                     or symlink_bound
                     or not in_scope
                     or not regular_file
@@ -24839,9 +24943,9 @@ class PortalImplementationDaemon:
                             "add",
                             "--force",
                             "--",
-                            relative,
+                            git_relative,
                         ],
-                        cwd=workspace_path,
+                        cwd=git_root,
                         stdout=subprocess.PIPE,
                         stderr=subprocess.PIPE,
                         check=False,
@@ -24849,8 +24953,8 @@ class PortalImplementationDaemon:
                     force_stage_succeeded = bool(
                         staged.returncode == 0
                         and self._exact_path_is_indexed(
-                            workspace_path,
-                            relative,
+                            git_root,
+                            git_relative,
                         )
                     )
                     if not force_stage_succeeded:
@@ -24859,10 +24963,14 @@ class PortalImplementationDaemon:
             checks.append(
                 {
                     "path": relative,
+                    "repository": git_repository or ".",
+                    "tracked_path": git_relative,
                     "exists": exists,
                     "baseline_present": baseline_present,
                     "indexed_before": indexed,
                     "ignored": ignored,
+                    "ignore_check_succeeded": ignore_check_succeeded,
+                    "git_owner_valid": git_owner_valid,
                     "in_scope": in_scope,
                     "protected": protected,
                     "forbidden": forbidden,
@@ -24878,17 +24986,41 @@ class PortalImplementationDaemon:
             )
 
         staged_paths = set(self._staged_worktree_paths(workspace_path))
+        staged_by_git_root: dict[Path, set[str]] = {
+            workspace_path: set(staged_paths)
+        }
+        for git_root, _git_relative, git_repository in git_locations.values():
+            if git_root not in staged_by_git_root:
+                staged_by_git_root[git_root] = set(
+                    self._staged_worktree_paths(git_root)
+                )
+            if git_repository:
+                staged_paths.update(
+                    f"{git_repository}/{path}"
+                    for path in staged_by_git_root[git_root]
+                )
         for check in checks:
             relative = str(check["path"])
-            check["staged"] = relative in staged_paths
+            git_location = git_locations.get(relative)
+            indexed_after = False
+            if git_location is not None:
+                git_root, git_relative, _git_repository = git_location
+                check["staged"] = (
+                    git_relative
+                    in staged_by_git_root.get(git_root, set())
+                )
+                indexed_after = self._exact_path_is_indexed(
+                    git_root,
+                    git_relative,
+                )
+            else:
+                check["staged"] = False
+            check["indexed_after"] = indexed_after
             if (
                 check["force_stage_required"]
                 and (
                     not check["staged"]
-                    or not self._exact_path_is_indexed(
-                        workspace_path,
-                        relative,
-                    )
+                    or not indexed_after
                 )
                 and not check["issue"]
             ):

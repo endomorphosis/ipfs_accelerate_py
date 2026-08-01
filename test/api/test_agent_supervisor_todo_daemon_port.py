@@ -5202,6 +5202,150 @@ def test_implementation_proposal_materializes_untracked_submodule_file(tmp_path:
     )
 
 
+def test_implementation_proposal_uses_child_ignore_rules_for_exact_outputs(
+    tmp_path: Path,
+):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    (repo / ".gitignore").write_text("core\n", encoding="utf-8")
+    _git(repo, "add", ".gitignore")
+    _git(repo, "commit", "-m", "ignore parent core directories")
+    baseline = _git(repo, "rev-parse", "HEAD")
+    operation_contract = submodule / "core" / "operation_contracts.py"
+    operation_contract.parent.mkdir()
+    operation_contract.write_text("CONTRACT_VERSION = 1\n", encoding="utf-8")
+    contract_test = submodule / "tests" / "test_operation_contracts.py"
+    contract_test.parent.mkdir()
+    contract_test.write_text(
+        "def test_contract_version():\n"
+        "    assert 1 == 1\n",
+        encoding="utf-8",
+    )
+
+    parent_ignore = subprocess.run(
+        [
+            "git",
+            "check-ignore",
+            "--no-index",
+            "--quiet",
+            "--",
+            "libs/child/core/operation_contracts.py",
+        ],
+        cwd=repo,
+        check=False,
+    )
+    child_ignore = subprocess.run(
+        [
+            "git",
+            "check-ignore",
+            "--no-index",
+            "--quiet",
+            "--",
+            "core/operation_contracts.py",
+        ],
+        cwd=submodule,
+        check=False,
+    )
+    result = _submodule_proposal_daemon(
+        repo,
+        tmp_path,
+    )._validate_implementation_patch(
+        repo,
+        _submodule_proposal_task(
+            [
+                "libs/child/core/operation_contracts.py",
+                "libs/child/tests/test_operation_contracts.py",
+            ]
+        ),
+        baseline_ref=baseline,
+    )
+
+    assert parent_ignore.returncode == 0
+    assert child_ignore.returncode == 1
+    assert result.accepted is True
+    assert result.proposal.changed_paths == (
+        "libs/child/core/operation_contracts.py",
+        "libs/child/tests/test_operation_contracts.py",
+    )
+    assert _git(submodule, "diff", "--cached", "--name-only") == ""
+
+
+def test_implementation_proposal_force_stages_exact_child_ignored_output(
+    tmp_path: Path,
+):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    (submodule / ".gitignore").write_text(
+        "artifacts/*.json\n",
+        encoding="utf-8",
+    )
+    _git(submodule, "add", ".gitignore")
+    _git(submodule, "commit", "-m", "ignore child artifacts")
+    _git(repo, "add", "libs/child")
+    _git(repo, "commit", "-m", "record child ignore policy")
+    baseline = _git(repo, "rev-parse", "HEAD")
+    deliverable = submodule / "artifacts" / "proof.json"
+    deliverable.parent.mkdir()
+    deliverable.write_text('{"proved": true}\n', encoding="utf-8")
+    unrelated = submodule / "artifacts" / "unrelated.json"
+    unrelated.write_text('{"unrelated": true}\n', encoding="utf-8")
+
+    result = _submodule_proposal_daemon(
+        repo,
+        tmp_path,
+    )._validate_implementation_patch(
+        repo,
+        _submodule_proposal_task("libs/child/artifacts/proof.json"),
+        baseline_ref=baseline,
+    )
+
+    assert result.accepted is True
+    assert result.proposal.changed_paths == (
+        "libs/child/artifacts/proof.json",
+    )
+    assert _git(submodule, "diff", "--cached", "--name-only") == (
+        "artifacts/proof.json"
+    )
+    assert _git(
+        repo,
+        "ls-files",
+        "--",
+        "libs/child/artifacts/proof.json",
+    ) == ""
+
+
+def test_implementation_proposal_does_not_stage_unmanaged_child_output(
+    tmp_path: Path,
+):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    (submodule / ".gitignore").write_text(
+        "artifacts/*.json\n",
+        encoding="utf-8",
+    )
+    _git(submodule, "add", ".gitignore")
+    _git(submodule, "commit", "-m", "ignore child artifacts")
+    _git(repo, "add", "libs/child")
+    _git(repo, "commit", "-m", "record child ignore policy")
+    baseline = _git(repo, "rev-parse", "HEAD")
+    deliverable = submodule / "artifacts" / "proof.json"
+    deliverable.parent.mkdir()
+    deliverable.write_text('{"proved": true}\n', encoding="utf-8")
+
+    result = _submodule_proposal_daemon(
+        repo,
+        tmp_path,
+        configured=False,
+    )._validate_implementation_patch(
+        repo,
+        _submodule_proposal_task("libs/child/artifacts/proof.json"),
+        baseline_ref=baseline,
+    )
+
+    assert result.accepted is False
+    assert "expected_output_ignored_or_unstaged" in {
+        finding.code.value for finding in result.findings
+    }
+    assert _git(submodule, "diff", "--cached", "--name-only") == ""
+
+
 def test_implementation_proposal_materializes_submodule_rename(tmp_path: Path):
     repo, submodule = _seed_parent_with_submodule(tmp_path)
     baseline = _git(repo, "rev-parse", "HEAD")
