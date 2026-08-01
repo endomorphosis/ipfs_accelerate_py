@@ -11448,6 +11448,12 @@ def test_run_once_repairs_exact_completion_receipt_after_state_save_crash(
         for event in first_events
         if event.get("type") == "task_completed"
     ]
+    repair_updates = [
+        event
+        for event in first_events
+        if event.get("type") == "todo_status_updated"
+        and event.get("reason") == "completion_receipt_repair"
+    ]
 
     assert len(first_receipts) == 1
     assert first_receipts[0]["task_id"] == task.task_id
@@ -11460,6 +11466,24 @@ def test_run_once_repairs_exact_completion_receipt_after_state_save_crash(
         == identity.canonical_task_cid
     )
     assert first_receipts[0]["completion_receipt_repair"] is True
+    assert len(repair_updates) == 1
+    assert repair_updates[0]["updated"] is False
+    assert repair_updates[0]["already_completed_task_ids"] == [
+        task.task_id
+    ]
+    assert repair_updates[0]["completion_receipts"] == [
+        {
+            "schema": (
+                "ipfs_accelerate_py.agent_supervisor."
+                "member_completion_receipt@1"
+            ),
+            "task_id": task.task_id,
+            "canonical_task_key": identity.canonical_task_key,
+            "canonical_task_cid": identity.canonical_task_cid,
+            "board_namespace": identity.board_namespace,
+            "status": "succeeded",
+        }
+    ]
     assert first["completion_receipt_writes"] == [
         {
             "task_id": task.task_id,

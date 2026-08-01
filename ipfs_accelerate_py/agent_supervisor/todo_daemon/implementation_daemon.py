@@ -8860,6 +8860,28 @@ class PortalImplementationDaemon:
             # If the process exits on either side of this boundary, strict
             # lifecycle replay makes the next pass idempotently converge.
             self._record_event("task_completed", receipt)
+            if receipt_repair:
+                member_receipts = self._completion_receipts_for_task_ids(
+                    [task.task_id]
+                )
+                if member_receipts:
+                    # Leased lanes consume the same durable completion packet
+                    # shape as a normal board transition.  Publishing it for
+                    # an already-completed task lets a restarted daemon repair
+                    # an exact identity receipt without mutating board bytes
+                    # or weakening the lane's fail-closed CID checks.
+                    self._record_event(
+                        "todo_status_updated",
+                        {
+                            "updated": False,
+                            "reason": "completion_receipt_repair",
+                            "path": str(self.todo_path),
+                            "completion_reason": "completion_receipt_repair",
+                            "updated_task_ids": [],
+                            "already_completed_task_ids": [task.task_id],
+                            "completion_receipts": member_receipts,
+                        },
+                    )
             completion_receipt_bindings.add(receipt_binding)
             completion_receipt_writes.append(receipt)
 
