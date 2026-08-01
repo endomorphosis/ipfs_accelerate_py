@@ -106,6 +106,11 @@ class LlmRouterInvocation:
     trace_dir: Optional[Path] = None
     reject_effective_provider_name: Optional[str] = "local_hf"
     required_effective_providers: Sequence[str] = ()
+    # Force Codex CLI into its read-only sandbox for independent review calls.
+    # This is intentionally an invocation-only control: it is applied to the
+    # isolated child environment and never broadens the generic request
+    # envelope or permits callers to select an arbitrary sandbox profile.
+    codex_read_only: bool = False
     # ASI-166 usage-aware child envelope. Default ``off`` keeps legacy behavior.
     usage_mode: str = LLM_USAGE_MODE_OFF
     request_id: str = ""
@@ -251,6 +256,8 @@ class LlmChildResultEnvelope:
     execution_result_id: str = ""
     effective_provider: str = ""
     text_chars: int = 0
+    text_bytes: int = 0
+    text_sha256: str = ""
     exit_code: int = 0
 
     def to_dict(self) -> dict[str, Any]:
@@ -268,6 +275,8 @@ class LlmChildResultEnvelope:
             "execution_result_id": str(self.execution_result_id or ""),
             "effective_provider": str(self.effective_provider or ""),
             "text_chars": int(self.text_chars or 0),
+            "text_bytes": int(self.text_bytes or 0),
+            "text_sha256": str(self.text_sha256 or ""),
             "exit_code": int(self.exit_code or 0),
         }
         _assert_envelope_safe(payload)
@@ -310,6 +319,8 @@ class LlmChildResultEnvelope:
             execution_result_id=str(payload.get("execution_result_id") or ""),
             effective_provider=str(payload.get("effective_provider") or ""),
             text_chars=int(payload.get("text_chars") or 0),
+            text_bytes=int(payload.get("text_bytes") or 0),
+            text_sha256=str(payload.get("text_sha256") or ""),
             exit_code=int(payload.get("exit_code") or 0),
         )
 
@@ -524,6 +535,7 @@ def _llm_router_child_code(config: LlmRouterInvocation) -> str:
     endpoint_receipt_env = _env_name(config, "ENDPOINT_RECEIPT_ID")
     return f"""
 import inspect
+import hashlib
 import json
 import os
 import pathlib
@@ -576,6 +588,7 @@ if (reject_provider or required_providers):
         )
         raise SystemExit(2)
 text_out = "" if text is None else str(text)
+text_sha256 = hashlib.sha256(text_out.encode("utf-8")).hexdigest()
 usage_mode = (os.environ.get({usage_mode_env!r}) or "off").strip().lower() or "off"
 result_path = os.environ.get({result_file_env!r}) or ""
 envelope_path = os.environ.get({envelope_file_env!r}) or ""
@@ -591,9 +604,25 @@ result_payload = {{
     "reason_codes": [],
     "supervisor_receipt_id": os.environ.get({supervisor_receipt_env!r}) or "",
     "endpoint_receipt_id": os.environ.get({endpoint_receipt_env!r}) or "",
-    "execution_result_id": "",
+    "execution_result_id": "sha256:" + hashlib.sha256(
+        json.dumps(
+            {{
+                "request_id": os.environ.get({request_id_env!r}) or "",
+                "attempt": int(os.environ.get({attempt_env!r}) or "1"),
+                "idempotency_key": os.environ.get({idempotency_env!r}) or "",
+                "effective_provider": effective_provider,
+                "text_chars": len(text_out),
+                "text_bytes": len(text_out.encode("utf-8")),
+                "text_sha256": text_sha256,
+            }},
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest(),
     "effective_provider": effective_provider,
     "text_chars": len(text_out),
+    "text_bytes": len(text_out.encode("utf-8")),
+    "text_sha256": text_sha256,
     "exit_code": 0,
 }}
 if result_path and usage_mode != "off":
@@ -725,6 +754,8 @@ def call_llm_router_with_receipt(
                 _env_name(config, "ENVELOPE_FILE"): str(envelope_file or ""),
             }
         )
+        if config.codex_read_only:
+            env["ipfs_accelerate_py_CODEX_SANDBOX"] = "read-only"
         command = [config.python_executable, "-c", _llm_router_child_code(config)]
         process = subprocess.Popen(
             command,

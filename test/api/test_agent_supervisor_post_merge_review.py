@@ -1,0 +1,700 @@
+from __future__ import annotations
+
+import hashlib
+import json
+import subprocess
+from copy import deepcopy
+from dataclasses import replace
+from pathlib import Path
+from types import SimpleNamespace
+from typing import Any
+
+import pytest
+from ipfs_accelerate_py.agent_supervisor.proof.formal_verification_contracts import (
+    content_identity,
+)
+from ipfs_accelerate_py.agent_supervisor.runtime.event_log import append_jsonl_event
+from ipfs_accelerate_py.agent_supervisor.todo_daemon import post_merge_review as review
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.authoritative_completion import (
+    POST_MERGE_VALIDATION_EVIDENCE_SCHEMA,
+)
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+    PortalTask,
+    TodoImplementationDaemon,
+)
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.llm import (
+    LLM_CHILD_ENVELOPE_VERSION,
+    LlmChildResultEnvelope,
+)
+
+
+def _git(repo: Path, *arguments: str) -> str:
+    return subprocess.run(
+        ["git", *arguments],
+        cwd=repo,
+        text=True,
+        capture_output=True,
+        check=True,
+    ).stdout.strip()
+
+
+def _commit(repo: Path, message: str) -> str:
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", message)
+    return _git(repo, "rev-parse", "HEAD")
+
+
+def _init_repo(path: Path) -> None:
+    path.mkdir(parents=True)
+    _git(path, "init")
+    _git(path, "config", "user.name", "Post Merge Review Test")
+    _git(path, "config", "user.email", "post-merge-review@example.invalid")
+
+
+def _task() -> PortalTask:
+    return PortalTask(
+        task_id="REV-001",
+        title="Review a nested implementation",
+        status="ready",
+        completion="manual",
+        priority="P0",
+        track="review",
+        outputs=[
+            "external/child/docs/contract.md",
+            "external/child/tests/vocabulary.json",
+        ],
+        validation=["python3 -m pytest tests/test_contract.py -q"],
+        acceptance="Both exact nested artifacts are complete and coherent.",
+        metadata={"Provider role": "grok-implement, codex-review"},
+    )
+
+
+def _tree(repo: Path, commit: str) -> str:
+    return f"git-tree:{_git(repo, 'rev-parse', f'{commit}^{{tree}}')}"
+
+
+def _validation(
+    task: PortalTask,
+    merge_commit: str,
+    repository_tree_id: str,
+) -> dict[str, Any]:
+    tree = repository_tree_id.removeprefix("git-tree:")
+    plan_material = {
+        "task_id": task.task_id,
+        "target_commit": merge_commit,
+        "repository_tree_id": repository_tree_id,
+        "validation_scope": "post_merge",
+        "declared_commands": list(task.validation),
+    }
+    material: dict[str, Any] = {
+        "schema": POST_MERGE_VALIDATION_EVIDENCE_SCHEMA,
+        "task_id": task.task_id,
+        "validation_scope": "post_merge",
+        "target_commit": merge_commit,
+        "target_tree": tree,
+        "repository_tree_id": repository_tree_id,
+        "attempted": True,
+        "passed": True,
+        "returncode": 0,
+        "stale": False,
+        "declared_commands": list(task.validation),
+        "validation_plan_id": content_identity(plan_material),
+        "reason": "post_merge_validation_passed",
+        "results": [],
+        "selection": {},
+        "validated_commit": merge_commit,
+        "validated_tree": tree,
+        "validation_dirty_paths": [],
+        "workspace_clean": True,
+        "workspace_status_porcelain": "",
+        "validation_status_returncode": 0,
+        "validation_status_stderr": "",
+        "freshness_authoritative": True,
+    }
+    return {
+        **material,
+        "validation_receipt_id": content_identity(material),
+    }
+
+
+def _response(request: dict[str, Any], decision: str = "approve") -> str:
+    findings = (
+        []
+        if decision == "approve"
+        else [
+            {
+                "code": "review-change",
+                "severity": "high",
+                "summary": "The exact patch requires a correction.",
+            }
+        ]
+    )
+    return json.dumps(
+        {
+            "schema": review.POST_MERGE_INDEPENDENT_REVIEW_RESPONSE_SCHEMA,
+            "decision": decision,
+            "task_id": request["task_id"],
+            "implementation_commit": request["implementation_commit"],
+            "merge_commit": request["merge_commit"],
+            "repository_tree_id": request["repository_tree_id"],
+            "diff_binding_id": request["diff_binding_id"],
+            "review_request_id": request["request_id"],
+            "reviewer_provider": review.CODEX_REVIEWER_PROVIDER,
+            "implementer_provider": request["implementer_provider"],
+            "findings": findings,
+            "repository_write_authorized": False,
+            "proof_authoritative": False,
+            "completion_authoritative": False,
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+
+
+def _transport(
+    request: dict[str, Any],
+    response_text: str,
+    *,
+    attempt: int | None = None,
+    contract_version: int = LLM_CHILD_ENVELOPE_VERSION,
+    execution_result_id: str | None = None,
+    digest_text: str | None = None,
+) -> dict[str, Any]:
+    bound_text = response_text if digest_text is None else digest_text
+    encoded = bound_text.encode("utf-8")
+    selected_attempt = int(
+        request["attempt"] if attempt is None else attempt
+    )
+    execution_material = {
+        "request_id": request["request_id"],
+        "attempt": selected_attempt,
+        "idempotency_key": request["request_id"],
+        "effective_provider": review.CODEX_REVIEWER_PROVIDER,
+        "text_chars": len(bound_text),
+        "text_bytes": len(encoded),
+        "text_sha256": hashlib.sha256(encoded).hexdigest(),
+    }
+    selected_execution_id = execution_result_id
+    if selected_execution_id is None:
+        selected_execution_id = "sha256:" + hashlib.sha256(
+            json.dumps(
+                execution_material,
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode("utf-8")
+        ).hexdigest()
+    payload = LlmChildResultEnvelope(
+        contract_version=contract_version,
+        request_id=request["request_id"],
+        attempt=selected_attempt,
+        idempotency_key=request["request_id"],
+        status="ok",
+        execution_result_id=selected_execution_id,
+        effective_provider=review.CODEX_REVIEWER_PROVIDER,
+        text_chars=len(bound_text),
+        text_bytes=len(encoded),
+        text_sha256=hashlib.sha256(encoded).hexdigest(),
+        exit_code=0,
+    ).to_dict()
+    return payload
+
+
+def _reviewer(decision: str = "approve"):
+    def invoke(_prompt: str, request: dict[str, Any]) -> review.ReviewerInvocation:
+        response_text = _response(request, decision)
+        return review.ReviewerInvocation(
+            provider_id=review.CODEX_REVIEWER_PROVIDER,
+            response_text=response_text,
+            transport_receipt=_transport(request, response_text),
+        )
+
+    return invoke
+
+
+def _request_from_prompt(prompt: str) -> dict[str, Any]:
+    prefix = "Bound review request:\n"
+    suffix = "\n\nExact changed-content Git bindings:"
+    encoded_request = prompt.split(prefix, 1)[1].split(suffix, 1)[0]
+    request = json.loads(encoded_request)
+    assert isinstance(request, dict)
+    return request
+
+
+def _fake_codex_child(decision: str = "approve"):
+    def invoke(prompt: str, invocation: Any):
+        request = _request_from_prompt(prompt)
+        assert invocation.provider == review.CODEX_REVIEWER_PROVIDER
+        assert invocation.codex_read_only is True
+        assert invocation.request_id == request["request_id"]
+        assert invocation.attempt == request["attempt"]
+        response_text = _response(request, decision)
+        child_receipt = LlmChildResultEnvelope.from_dict(
+            _transport(request, response_text)
+        )
+        return response_text, child_receipt
+
+    return invoke
+
+
+def _append_review_event(
+    events_path: Path,
+    outcome: review.PostMergeReviewOutcome,
+) -> dict[str, Any]:
+    payload = dict(outcome.event)
+    event_type = str(payload.pop("type"))
+    return append_jsonl_event(events_path, event_type, payload)
+
+
+@pytest.fixture()
+def nested_case(tmp_path: Path) -> SimpleNamespace:
+    child = tmp_path / "child-source"
+    _init_repo(child)
+    (child / ".gitignore").write_text(".cache/\n", encoding="utf-8")
+    child_baseline = _commit(child, "child baseline")
+    (child / "docs").mkdir()
+    (child / "docs/contract.md").write_text("# Contract\n", encoding="utf-8")
+    child_seed = _commit(child, "seed first output")
+    (child / "tests").mkdir()
+    (child / "tests/vocabulary.json").write_text(
+        '{"version":1}\n',
+        encoding="utf-8",
+    )
+    child_final = _commit(child, "finish second output")
+    _git(child, "checkout", "--detach", child_baseline)
+
+    root = tmp_path / "root"
+    _init_repo(root)
+    todo_path = root / "tasks.todo.md"
+    todo_path.write_text(
+        "# Review tasks\n\n"
+        "## REV-001 Review a nested implementation\n"
+        "- Status: ready\n",
+        encoding="utf-8",
+    )
+    (root / ".gitignore").write_text("state/\n", encoding="utf-8")
+    _git(
+        root,
+        "-c",
+        "protocol.file.allow=always",
+        "submodule",
+        "add",
+        str(child),
+        "external/child",
+    )
+    _git(root / "external/child", "checkout", "--detach", child_baseline)
+    baseline = _commit(root, "root baseline")
+    _git(root / "external/child", "checkout", "--detach", child_seed)
+    seed = _commit(root, "seed prior attempt")
+    _git(root / "external/child", "checkout", "--detach", child_final)
+    implementation = _commit(root, "implementation candidate")
+    assert _git(root, "rev-parse", f"{implementation}^") == seed
+
+    log_path = Path("state/implementation_logs/rev-001-attempt-3.log")
+    (root / log_path).parent.mkdir(parents=True)
+    (root / log_path).write_text("grok implementation log\n", encoding="utf-8")
+    events_path = root / "state/events.jsonl"
+    append_jsonl_event(
+        events_path,
+        "implementation_started",
+        {
+            "task_id": "REV-001",
+            "attempt": 3,
+            "execution_mode": "model-assisted",
+            "branch": "implementation/rev-001-attempt-3",
+            "log_path": str(log_path),
+            "command": [
+                "/usr/bin/python3",
+                "/opt/ipfs_accelerate_py/agent_supervisor/grok_cli_runner.py",
+                "--grok-bin",
+                "/usr/bin/grok",
+                "--model",
+                "grok-4.5",
+            ],
+        },
+    )
+    append_jsonl_event(
+        events_path,
+        "implementation_finished",
+        {
+            "task_id": "REV-001",
+            "attempt": 3,
+            "branch": "implementation/rev-001-attempt-3",
+            "log_path": str(log_path),
+            "implementation_commit": implementation,
+            "returncode": 0,
+        },
+    )
+    provenance = review.verified_implementer_provenance_from_ledger(
+        events_path,
+        repo_root=root,
+        expected_task_id="REV-001",
+        expected_implementation_attempt=3,
+        expected_implementation_commit=implementation,
+    )
+    task = _task()
+    tree = _tree(root, implementation)
+    return SimpleNamespace(
+        root=root,
+        todo_path=todo_path,
+        baseline=baseline,
+        implementation=implementation,
+        merge_commit=implementation,
+        repository_tree_id=tree,
+        task=task,
+        validation=_validation(task, implementation, tree),
+        events_path=events_path,
+        provenance=provenance,
+        receipt_dir=tmp_path / "receipts",
+    )
+
+
+def _perform(
+    case: SimpleNamespace,
+    *,
+    reviewer=None,
+) -> review.PostMergeReviewOutcome:
+    return review.perform_post_merge_independent_review(
+        repo_root=case.root,
+        receipt_dir=case.receipt_dir,
+        implementation_events_path=case.events_path,
+        task=case.task,
+        attempt=4,
+        implementation_attempt=3,
+        baseline_commit=case.baseline,
+        implementation_commit=case.implementation,
+        merge_commit=case.merge_commit,
+        repository_tree_id=case.repository_tree_id,
+        validation_result=case.validation,
+        expected_changed_paths=case.task.outputs,
+        implementer_provider="grok_cli",
+        implementer_provenance=case.provenance,
+        reviewer=reviewer,
+    )
+
+
+def test_recursive_submodule_binding_uses_explicit_pre_seed_baseline(
+    nested_case: SimpleNamespace,
+) -> None:
+    binding = review._collect_repository_binding(
+        repo_root=nested_case.root,
+        task=nested_case.task,
+        baseline_commit=nested_case.baseline,
+        implementation_commit=nested_case.implementation,
+        merge_commit=nested_case.merge_commit,
+        repository_tree_id=nested_case.repository_tree_id,
+        expected_changed_paths=nested_case.task.outputs,
+    )
+    assert binding["changed_paths"] == nested_case.task.outputs
+    assert len(binding["gitlink_bindings"]) == 1
+    gitlink = binding["gitlink_bindings"][0]
+    assert gitlink["path"] == "external/child"
+    assert gitlink["implementation"] == gitlink["merged"]
+    assert binding["patch_bytes"] > 0
+
+
+def test_ledger_native_provenance_is_unique_and_log_bound(
+    nested_case: SimpleNamespace,
+) -> None:
+    selected = review.verified_implementer_provenance_from_ledger(
+        nested_case.events_path,
+        repo_root=nested_case.root,
+        expected_task_id="REV-001",
+        expected_implementation_attempt=3,
+        expected_implementation_commit=nested_case.implementation,
+    )
+    assert selected == nested_case.provenance
+    assert selected.log_binding_scope == review.IMPLEMENTER_LOG_BINDING_SCOPE
+    assert selected.log_event_anchored is False
+
+    with pytest.raises(
+        review.PostMergeReviewError,
+        match="no valid implementation start/finish pair",
+    ):
+        review.verified_implementer_provenance_from_ledger(
+            nested_case.events_path,
+            repo_root=nested_case.root,
+            expected_task_id="REV-001",
+            expected_implementation_attempt=3,
+            expected_implementation_commit=nested_case.baseline,
+        )
+
+    append_jsonl_event(
+        nested_case.events_path,
+        "implementation_finished",
+        {
+            "task_id": "REV-001",
+            "attempt": 3,
+            "branch": selected.branch,
+            "log_path": selected.log_path,
+            "implementation_commit": nested_case.implementation,
+            "returncode": 0,
+        },
+    )
+    with pytest.raises(
+        review.PostMergeReviewError,
+        match="multiple valid implementation event pairs",
+    ):
+        review.verified_implementer_provenance_from_ledger(
+            nested_case.events_path,
+            repo_root=nested_case.root,
+            expected_task_id="REV-001",
+            expected_implementation_attempt=3,
+            expected_implementation_commit=nested_case.implementation,
+        )
+
+
+def test_log_mutation_after_provenance_snapshot_fails_closed(
+    nested_case: SimpleNamespace,
+) -> None:
+    (nested_case.root / nested_case.provenance.log_path).write_text(
+        "mutated implementation log\n",
+        encoding="utf-8",
+    )
+    outcome = _perform(nested_case, reviewer=_reviewer("approve"))
+    assert outcome.admitted is False
+    assert outcome.reason_code == "implementer_event_provenance_mismatch"
+
+
+def test_live_production_review_mints_only_after_durable_head_and_admits(
+    nested_case: SimpleNamespace,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        review,
+        "call_llm_router_with_receipt",
+        _fake_codex_child("approve"),
+    )
+    monkeypatch.setattr(
+        review,
+        "_production_codex_reviewer",
+        lambda *_args, **_kwargs: pytest.fail(
+            "replaceable reviewer symbol crossed the canonical live boundary"
+        ),
+    )
+    outcome = _perform(nested_case)
+    assert outcome.admitted is True
+    assert outcome.receipt["attempt"] == 4
+    assert outcome.receipt["implementation_attempt"] == 3
+    assert outcome.receipt["baseline_commit"] == nested_case.baseline
+    assert outcome.receipt["changed_paths"] == nested_case.task.outputs
+    provenance = outcome.receipt["implementer_provenance"]
+    assert provenance["log_bytes"] == len(b"grok implementation log\n")
+    assert provenance["log_sha256"] == hashlib.sha256(
+        b"grok implementation log\n"
+    ).hexdigest()
+    assert (
+        provenance["log_binding_scope"]
+        == review.IMPLEMENTER_LOG_BINDING_SCOPE
+    )
+    assert provenance["log_event_anchored"] is False
+
+    forged = dict(outcome.event)
+    forged.update(
+        {
+            "sequence": 999,
+            "stream_id": "forged",
+            "snapshot_id": "forged",
+            "previous_event_id": "",
+        }
+    )
+    forged["event_id"] = "sha256:" + hashlib.sha256(
+        json.dumps(
+            forged,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()
+    assert (
+        review.mint_gate_from_live_outcome(
+            outcome,
+            forged,
+            events_path=nested_case.events_path,
+        )
+        == {}
+    )
+
+    malformed_payload = dict(outcome.event)
+    malformed_type = str(malformed_payload.pop("type"))
+    malformed_payload["attempt"] = []
+    malformed = append_jsonl_event(
+        nested_case.events_path,
+        malformed_type,
+        malformed_payload,
+    )
+    assert (
+        review.mint_gate_from_live_outcome(
+            outcome,
+            malformed,
+            events_path=nested_case.events_path,
+        )
+        == {}
+    )
+
+    appended = _append_review_event(nested_case.events_path, outcome)
+    gate = review.mint_gate_from_live_outcome(
+        outcome,
+        appended,
+        events_path=nested_case.events_path,
+    )
+    assert gate["gate_kind"] == "provider_review"
+    assert gate["review_presence"] == "independent"
+
+    daemon = TodoImplementationDaemon(
+        todo_path=nested_case.todo_path,
+        state_path=nested_case.root / "state/acceptance-state.json",
+        strategy_path=nested_case.root / "state/acceptance-strategy.json",
+        events_path=nested_case.root / "state/acceptance-events.jsonl",
+        repo_root=nested_case.root,
+        task_header_prefix="## REV-",
+        implement=False,
+    )
+    monkeypatch.setattr(
+        daemon,
+        "_decision_runtime_completion",
+        lambda *_args, **_kwargs: None,
+    )
+    result = daemon.apply_post_merge_authoritative_acceptance(
+        nested_case.task,
+        implementation_commit=nested_case.implementation,
+        merge_commit=nested_case.merge_commit,
+        repository_tree_id=nested_case.repository_tree_id,
+        validation_result=nested_case.validation,
+        gate_evidence={"provider_review": gate},
+        model_invocation_observed=True,
+    )
+    assert result["authoritatively_completed"] is True
+
+
+def test_injected_and_declined_reviews_remain_pending(
+    nested_case: SimpleNamespace,
+) -> None:
+    injected = _perform(nested_case, reviewer=_reviewer("approve"))
+    assert injected.admitted is False
+    assert injected.receipt["production_review_route"] is False
+    assert injected.receipt["provider_result_admitted"] is False
+    appended = _append_review_event(nested_case.events_path, injected)
+    assert (
+        review.mint_gate_from_live_outcome(
+            injected,
+            appended,
+            events_path=nested_case.events_path,
+        )
+        == {}
+    )
+
+    declined = _perform(nested_case, reviewer=_reviewer("changes_required"))
+    assert declined.admitted is False
+    assert declined.reason_code == "independent_review_changes_required"
+    assert declined.acceptance_pending is True
+    assert declined._gate_evidence == {}
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    ("same_length_swap", "wrong_attempt", "wrong_version", "blank_execution_id"),
+)
+def test_tampered_transport_cannot_receive_live_seal(
+    nested_case: SimpleNamespace,
+    monkeypatch: pytest.MonkeyPatch,
+    mutation: str,
+) -> None:
+    def tampered(
+        prompt: str,
+        invocation: Any,
+    ) -> tuple[str, LlmChildResultEnvelope]:
+        request = _request_from_prompt(prompt)
+        assert invocation.request_id == request["request_id"]
+        response_text = _response(request)
+        kwargs: dict[str, Any] = {}
+        if mutation == "same_length_swap":
+            swapped = response_text.replace("approve", "APPROVE")
+            assert len(swapped) == len(response_text)
+            kwargs["digest_text"] = swapped
+        elif mutation == "wrong_attempt":
+            kwargs["attempt"] = int(request["attempt"]) + 1
+        elif mutation == "blank_execution_id":
+            kwargs["execution_result_id"] = ""
+        child_receipt = LlmChildResultEnvelope.from_dict(
+            _transport(request, response_text, **kwargs)
+        )
+        if mutation == "wrong_version":
+            child_receipt = replace(
+                child_receipt,
+                contract_version=LLM_CHILD_ENVELOPE_VERSION + 1,
+            )
+        return response_text, child_receipt
+
+    monkeypatch.setattr(review, "call_llm_router_with_receipt", tampered)
+    outcome = _perform(nested_case)
+    assert outcome.admitted is False
+    assert outcome.reason_code == "reviewer_execution_receipt_invalid"
+
+
+def test_receipt_tamper_and_unmanifested_forged_ledger_fail_closed(
+    nested_case: SimpleNamespace,
+) -> None:
+    structural = _perform(nested_case, reviewer=_reviewer("approve"))
+    tampered = deepcopy(dict(structural.receipt))
+    tampered["merge_commit"] = nested_case.baseline
+    verification = review.verify_post_merge_review_receipt(
+        tampered,
+        repo_root=nested_case.root,
+        implementation_events_path=nested_case.events_path,
+        task=nested_case.task,
+        validation_result=nested_case.validation,
+        attempt=4,
+        implementation_attempt=3,
+        baseline_commit=nested_case.baseline,
+        implementation_commit=nested_case.implementation,
+        merge_commit=nested_case.merge_commit,
+        repository_tree_id=nested_case.repository_tree_id,
+        expected_changed_paths=nested_case.task.outputs,
+        implementer_provenance=nested_case.provenance,
+    )
+    assert verification.valid is False
+    assert verification.reason_code == "review_receipt_content_identity_invalid"
+
+    forged_path = nested_case.events_path.with_name("forged-events.jsonl")
+    forged_path.write_text(
+        nested_case.events_path.read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    forged_case = SimpleNamespace(**vars(nested_case))
+    forged_case.events_path = forged_path
+    outcome = _perform(forged_case, reviewer=_reviewer("approve"))
+    assert outcome.admitted is False
+    assert outcome.reason_code == "event_ledger_manifest_invalid"
+
+
+def test_live_mint_accepts_exact_member_after_later_event(
+    nested_case: SimpleNamespace,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        review,
+        "call_llm_router_with_receipt",
+        _fake_codex_child("approve"),
+    )
+    outcome = _perform(nested_case)
+    appended = _append_review_event(nested_case.events_path, outcome)
+    append_jsonl_event(
+        nested_case.events_path,
+        "later_unrelated_event",
+        {"task_id": "REV-001"},
+    )
+    gate = review.mint_gate_from_live_outcome(
+        outcome,
+        appended,
+        events_path=nested_case.events_path,
+    )
+    assert gate["gate_kind"] == "provider_review"
+
+
+def test_truncated_ledger_cannot_authenticate_implementer(
+    nested_case: SimpleNamespace,
+) -> None:
+    payload = nested_case.events_path.read_bytes()
+    nested_case.events_path.write_bytes(payload[:-8])
+    outcome = _perform(nested_case, reviewer=_reviewer("approve"))
+    assert outcome.admitted is False
+    assert outcome.reason_code == "event_ledger_manifest_invalid"
