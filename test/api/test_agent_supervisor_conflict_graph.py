@@ -476,6 +476,60 @@ def test_managed_submodule_disjoint_paths_can_opt_in_to_concurrency(
     )
 
 
+def test_implemented_lanes_downgrade_disjoint_submodule_override_to_root_claim(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    payloads = [
+        {
+            "bundle_key": f"bundle/{name}",
+            "todo_path": f"{name}.md",
+            "tasks": [
+                {
+                    "task_id": name.upper(),
+                    "canonical_task_cid": f"task-cid-{name}",
+                    "files": [f"vendor/runtime/src/{name}.py"],
+                    "predicted_files": [f"vendor/runtime/src/{name}.py"],
+                    "submodules": ["vendor/runtime"],
+                    "interfaces": [f"{name.title()}API@1"],
+                }
+            ],
+            "profile_g": {"task_cid": f"cid-{name}"},
+        }
+        for name in ("alpha", "beta")
+    ]
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.objectives.bundle_supervisor.build_bundle_task_payloads",
+        lambda _path: payloads,
+    )
+
+    lanes = plan_bundle_lanes(
+        bundle_index_path=tmp_path / "index.json",
+        repo_root=tmp_path,
+        state_root=tmp_path / "state",
+        worktree_root=tmp_path / "worktrees",
+        log_dir=tmp_path / "logs",
+        implement=True,
+        worktree_submodule_paths=("vendor/runtime",),
+        allow_disjoint_submodule_concurrency=True,
+        optimize_bundles=False,
+    )
+    by_key = {lane.bundle_key: lane for lane in lanes}
+
+    assert "bundle/beta" in by_key["bundle/alpha"].conflicting_task_ids
+    assert "bundle/alpha" in by_key["bundle/beta"].conflicting_task_ids
+    assert (
+        by_key["bundle/alpha"].conflict_color
+        != by_key["bundle/beta"].conflict_color
+    )
+    assert not any(
+        decision["action"] == "concurrent_override"
+        for lane in lanes
+        for decision in lane.conflict_decisions
+    )
+    assert all("--implement" in lane.command for lane in lanes)
+
+
 @pytest.mark.parametrize(
     ("alpha_file", "beta_file", "alpha_interface", "beta_interface"),
     [
