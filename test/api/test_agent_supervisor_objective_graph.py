@@ -4094,8 +4094,23 @@ def test_generate_objective_todos_projects_same_cycle_dependencies_after_scan_or
         for task in bundle["tasks"]
         if task["task_id"] == "ACCEL-002"
     )
+    indexed_prerequisite = next(
+        task
+        for bundle in index["bundles"].values()
+        for task in bundle["tasks"]
+        if task["task_id"] == "ACCEL-003"
+    )
     assert indexed_dependent["depends_on"] == ["ACCEL-003"]
     assert indexed_dependent["dependency_task_ids"] == ["ACCEL-003"]
+    dependency_graph = index["task_dependency_graph"]
+    assert dependency_graph["invalid_task_cids"] == []
+    assert any(
+        edge["source_task_cid"]
+        == indexed_prerequisite["canonical_task_cid"]
+        and edge["target_task_cid"]
+        == indexed_dependent["canonical_task_cid"]
+        for edge in dependency_graph["edges"]
+    )
 
 
 def test_manual_review_finding_without_edit_targets_is_visible_but_not_executable(
