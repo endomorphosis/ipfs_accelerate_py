@@ -706,7 +706,7 @@ or write authority.
 
 ## KITA-022 Extract an ARC core and formalize reference-model invariants
 
-- Status: todo
+- Status: completed
 - Completion: manual
 - Is schedulable: true
 - Review only: false
