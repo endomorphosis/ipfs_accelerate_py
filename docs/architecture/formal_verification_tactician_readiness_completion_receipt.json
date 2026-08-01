@@ -6,23 +6,23 @@
   "completion_goal_id": "FVT-G090",
   "task_id": "FVT-036",
   "program": "formal-verification-tactician/readiness",
-  "observed_at": "2026-08-01T00:38:34Z",
+  "observed_at": "2026-08-01T00:00:00Z",
   "binding_mode": "current_tree_content_identity",
   "source": {
-    "parent_commit": "f82d0f632ad9546519b42a0478c893587e37a8d4",
-    "parent_tree": "f768a1c4ec868b329a2bd724ed1ff6f32b367627",
-    "datasets_gitlink": "4dd46582a81e6eab87bfd9ad761b28a905429a57",
-    "datasets_embedded_head": "4dd46582a81e6eab87bfd9ad761b28a905429a57",
-    "datasets_origin_main": "4dd46582a81e6eab87bfd9ad761b28a905429a57",
-    "parent_origin_main": "f82d0f632ad9546519b42a0478c893587e37a8d4",
+    "parent_commit": "d9fb64bed1b41bed476fd4c15044bfc427cd9aae",
+    "parent_tree": "3938740f0df811df18b4ecbce406a0ca85ba5ff2",
+    "datasets_gitlink": "b7f8ae30ed6061e85b4e5db7cb8ba633ccda0c46",
+    "datasets_embedded_head": "b7f8ae30ed6061e85b4e5db7cb8ba633ccda0c46",
+    "datasets_origin_main": "b7f8ae30ed6061e85b4e5db7cb8ba633ccda0c46",
+    "parent_origin_main": "fa52304868ed9892b23dc3f3d9af4dc88437c4c4",
     "binding_mode": "current_tree_content_identity"
   },
   "acceptance": {
-    "implementation_complete": false,
+    "implementation_complete": true,
     "deployment_section_present": true,
     "implementation_section_present": true,
     "child_goal_count": 67,
-    "child_goals_bound": 53,
+    "child_goals_bound": 67,
     "schemas_corpus_public_ops_metrics_rollout_bound": true,
     "parent_datasets_publication_bound": true,
     "exact_tools_bound": true,
@@ -163,26 +163,11 @@
     }
   },
   "implementation": {
-    "status": "incomplete",
+    "status": "complete",
     "description": "Current-tree implementation completion: child goal evidence, schemas/contracts, golden corpus, public operations, metrics, and rollout policy are bound by content identity. Implementation is not deployment certification.",
     "child_goal_count": 67,
-    "child_goals_bound": 53,
-    "child_goals_unbound": [
-      "FVT-G201",
-      "FVT-G202",
-      "FVT-G203",
-      "FVT-G204",
-      "FVT-G205",
-      "FVT-G206",
-      "FVT-G207",
-      "FVT-G208",
-      "FVT-G209",
-      "FVT-G210",
-      "FVT-G211",
-      "FVT-G212",
-      "FVT-G213",
-      "FVT-G214"
-    ],
+    "child_goals_bound": 67,
+    "child_goals_unbound": [],
     "schemas_bound": true,
     "schema_surfaces": [
       "readiness_baseline",
@@ -220,34 +205,35 @@
       ],
       "parent": {
         "path": ".",
-        "commit": "f82d0f632ad9546519b42a0478c893587e37a8d4",
-        "tree": "f768a1c4ec868b329a2bd724ed1ff6f32b367627",
-        "origin_main": "f82d0f632ad9546519b42a0478c893587e37a8d4",
+        "commit": "d9fb64bed1b41bed476fd4c15044bfc427cd9aae",
+        "tree": "3938740f0df811df18b4ecbce406a0ca85ba5ff2",
+        "origin_main": "fa52304868ed9892b23dc3f3d9af4dc88437c4c4",
         "clean": false,
-        "matches_origin_main": true
+        "matches_origin_main": false
       },
       "gitlink": {
         "path": "ipfs_datasets_py",
         "mode": "160000",
-        "commit": "4dd46582a81e6eab87bfd9ad761b28a905429a57"
+        "commit": "b7f8ae30ed6061e85b4e5db7cb8ba633ccda0c46"
       },
       "embedded_checkout": {
         "path": "ipfs_datasets_py",
-        "head": "4dd46582a81e6eab87bfd9ad761b28a905429a57",
+        "head": "b7f8ae30ed6061e85b4e5db7cb8ba633ccda0c46",
         "clean": true,
         "matches_gitlink": true,
-        "origin_main": "4dd46582a81e6eab87bfd9ad761b28a905429a57",
+        "origin_main": "b7f8ae30ed6061e85b4e5db7cb8ba633ccda0c46",
         "matches_origin_main": true
       },
       "publication_gates": {
-        "parent_publication_lag": false,
+        "parent_publication_lag": true,
         "datasets_publication_lag": false,
         "fetches_forbidden": true,
         "note": "origin/main is a local remote-tracking ref only; this receipt never fetches. Publication lag is a separate gate from semantic implementation completion."
       },
       "aligned_for_implementation": false,
       "diagnostics": [
-        "parent_working_tree_dirty"
+        "parent_working_tree_dirty",
+        "parent_publication_lag_vs_origin_main"
       ]
     },
     "exact_tools": [
@@ -1170,7 +1156,7 @@
     },
     "unsupported_semantics": [],
     "publication_gates": {
-      "parent_publication_lag": false,
+      "parent_publication_lag": true,
       "datasets_publication_lag": false,
       "fetches_forbidden": true,
       "note": "origin/main is a local remote-tracking ref only; this receipt never fetches. Publication lag is a separate gate from semantic implementation completion."
@@ -1185,7 +1171,7 @@
       "production_certified_count": 1,
       "baseline_production_certified_count": 0,
       "machine_certified": false,
-      "publication_aligned": true,
+      "publication_aligned": false,
       "hard_zero_clear": false
     },
     "hardcoded_success_counters": false
@@ -1209,7 +1195,7 @@
     "toolchain_lock": {
       "path": "config/formal_verification_toolchains.lock.json",
       "present": true,
-      "content_identity": "sha256:a78c06be101a48acc0df6020d2a8784e69db12feb0185033afa03b442a612b77"
+      "content_identity": "sha256:4cc3b41ea0071d10ac4a845d073ab2edd0a7605f886e41c79d57988d8b0ff00b"
     },
     "benchmark_report": {
       "path": "docs/architecture/formal_verification_tactician_benchmark.json",
@@ -1269,7 +1255,7 @@
     "receipt_builder": {
       "path": "tools/logic/build_formal_verification_tactician_receipt.py",
       "present": true,
-      "content_identity": "sha256:11337cd1adabb48f49e49bf75bb4c622c24711a5f87235852d430ce87275982e"
+      "content_identity": "sha256:be1f70f674f0e9472b3deda68e70bff8763cb9f7761f1b30ebf6dfd8c27ca154"
     },
     "completion_test": {
       "path": "test/api/test_formal_verification_tactician_readiness_completion.py",
@@ -1279,7 +1265,7 @@
     "role_aware_certifier": {
       "path": "tools/logic/certify_formal_verification_toolchains.py",
       "present": true,
-      "content_identity": "sha256:4966ae12002e244cda381a006e16daa7feebc94a416c504bf30d92497649147c"
+      "content_identity": "sha256:1e3deaedc2d72f11ca051e7ee5a0cb97828cc0d9021d30c062e9d3a893f8af9f"
     },
     "role_aware_completion_test": {
       "path": "test/integration/test_formal_verification_role_aware_completion.py",
@@ -3129,16 +3115,16 @@
       ],
       "validation": "python -m pytest test/integration/toolchains/test_formal_verification_platform_support.py -q",
       "track": "deployment-integrity",
-      "evidence_present": [],
-      "evidence_missing": [
+      "evidence_present": [
         "test/integration/toolchains/test_formal_verification_platform_support.py"
       ],
-      "outputs_present": [],
-      "outputs_missing": [
+      "evidence_missing": [],
+      "outputs_present": [
         "tools/logic/certification/platform_support.py",
         "test/integration/toolchains/test_formal_verification_platform_support.py"
       ],
-      "bound": false
+      "outputs_missing": [],
+      "bound": true
     },
     {
       "goal_id": "FVT-G202",
@@ -3165,19 +3151,18 @@
       ],
       "validation": "PYTHONPATH=ipfs_datasets_py python -m pytest test/integration/toolchains/test_formal_verification_probe_integrity.py test/integration/toolchains/test_state_model_toolchain_certification.py test/integration/test_formal_verification_real_tool_matrix.py -q",
       "track": "dependency-integrity",
-      "evidence_present": [],
-      "evidence_missing": [
+      "evidence_present": [
         "test/integration/toolchains/test_formal_verification_probe_integrity.py"
       ],
+      "evidence_missing": [],
       "outputs_present": [
         "config/formal_verification_toolchains.lock.json",
         "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/state_model.py",
-        "tools/logic/certify_formal_verification_toolchains.py"
-      ],
-      "outputs_missing": [
+        "tools/logic/certify_formal_verification_toolchains.py",
         "test/integration/toolchains/test_formal_verification_probe_integrity.py"
       ],
-      "bound": false
+      "outputs_missing": [],
+      "bound": true
     },
     {
       "goal_id": "FVT-G203",
@@ -3215,18 +3200,17 @@
       ],
       "validation": "PYTHONPATH=ipfs_datasets_py python -m pytest test/integration/toolchains/test_formal_verification_specialized_receipt_aggregation.py test/integration/test_formal_verification_real_tool_matrix.py -q",
       "track": "certification-integrity",
-      "evidence_present": [],
-      "evidence_missing": [
+      "evidence_present": [
         "test/integration/toolchains/test_formal_verification_specialized_receipt_aggregation.py"
       ],
+      "evidence_missing": [],
       "outputs_present": [
         "ipfs_datasets_py/ipfs_datasets_py/logic/backends/toolchain_roles.py",
-        "tools/logic/certify_formal_verification_toolchains.py"
-      ],
-      "outputs_missing": [
+        "tools/logic/certify_formal_verification_toolchains.py",
         "test/integration/toolchains/test_formal_verification_specialized_receipt_aggregation.py"
       ],
-      "bound": false
+      "outputs_missing": [],
+      "bound": true
     },
     {
       "goal_id": "FVT-G204",
@@ -3252,19 +3236,18 @@
       ],
       "validation": "PYTHONPATH=ipfs_datasets_py python -m pytest test/integration/toolchains/test_state_model_live_semantic_certification.py test/integration/toolchains/test_state_model_toolchain_certification.py -q",
       "track": "external-capability",
-      "evidence_present": [],
-      "evidence_missing": [
+      "evidence_present": [
         "test/integration/toolchains/test_state_model_live_semantic_certification.py",
         "docs/architecture/formal_verification_state_model_live_certificate.json"
       ],
+      "evidence_missing": [],
       "outputs_present": [
-        "tools/logic/certification/state_model.py"
-      ],
-      "outputs_missing": [
+        "tools/logic/certification/state_model.py",
         "test/integration/toolchains/test_state_model_live_semantic_certification.py",
         "docs/architecture/formal_verification_state_model_live_certificate.json"
       ],
-      "bound": false
+      "outputs_missing": [],
+      "bound": true
     },
     {
       "goal_id": "FVT-G205",
@@ -3292,20 +3275,19 @@
       ],
       "validation": "python -m pytest test/integration/toolchains/test_protocol_live_semantic_certification.py test/integration/toolchains/test_tamarin_toolchain_certification.py test/integration/toolchains/test_proverif_toolchain_certification.py -q",
       "track": "external-capability",
-      "evidence_present": [],
-      "evidence_missing": [
+      "evidence_present": [
         "test/integration/toolchains/test_protocol_live_semantic_certification.py",
         "docs/architecture/formal_verification_protocol_live_certificate.json"
       ],
+      "evidence_missing": [],
       "outputs_present": [
         "tools/logic/certification/tamarin.py",
-        "tools/logic/certification/proverif.py"
-      ],
-      "outputs_missing": [
+        "tools/logic/certification/proverif.py",
         "test/integration/toolchains/test_protocol_live_semantic_certification.py",
         "docs/architecture/formal_verification_protocol_live_certificate.json"
       ],
-      "bound": false
+      "outputs_missing": [],
+      "bound": true
     },
     {
       "goal_id": "FVT-G206",
@@ -3335,21 +3317,20 @@
       ],
       "validation": "python -m pytest test/integration/toolchains/test_kernel_live_semantic_fanin.py test/integration/toolchains/test_lean_semantic_certification.py test/integration/toolchains/test_rocq_toolchain_certification.py test/integration/toolchains/test_isabelle_toolchain_certification.py -q",
       "track": "external-capability",
-      "evidence_present": [],
-      "evidence_missing": [
+      "evidence_present": [
         "test/integration/toolchains/test_kernel_live_semantic_fanin.py",
         "docs/architecture/formal_verification_kernel_live_certificate.json"
       ],
+      "evidence_missing": [],
       "outputs_present": [
         "tools/logic/certification/lean.py",
         "tools/logic/certification/rocq.py",
-        "tools/logic/certification/isabelle.py"
-      ],
-      "outputs_missing": [
+        "tools/logic/certification/isabelle.py",
         "test/integration/toolchains/test_kernel_live_semantic_fanin.py",
         "docs/architecture/formal_verification_kernel_live_certificate.json"
       ],
-      "bound": false
+      "outputs_missing": [],
+      "bound": true
     },
     {
       "goal_id": "FVT-G207",
@@ -3375,19 +3356,18 @@
       ],
       "validation": "python -m pytest test/integration/toolchains/test_atp_live_semantic_certification.py test/integration/toolchains/test_atp_toolchain_certification.py -q",
       "track": "external-capability",
-      "evidence_present": [],
-      "evidence_missing": [
+      "evidence_present": [
         "test/integration/toolchains/test_atp_live_semantic_certification.py",
         "docs/architecture/formal_verification_atp_live_certificate.json"
       ],
+      "evidence_missing": [],
       "outputs_present": [
-        "tools/logic/certification/atp.py"
-      ],
-      "outputs_missing": [
+        "tools/logic/certification/atp.py",
         "test/integration/toolchains/test_atp_live_semantic_certification.py",
         "docs/architecture/formal_verification_atp_live_certificate.json"
       ],
-      "bound": false
+      "outputs_missing": [],
+      "bound": true
     },
     {
       "goal_id": "FVT-G208",
@@ -3415,21 +3395,20 @@
       ],
       "validation": "PYTHONPATH=ipfs_datasets_py python -m pytest test/integration/toolchains/test_hyperproperty_vendor_toolchain_certification.py test/integration/toolchains/test_hyperproperty_toolchain_certification.py -q",
       "track": "external-capability",
-      "evidence_present": [],
-      "evidence_missing": [
+      "evidence_present": [
         "test/integration/toolchains/test_hyperproperty_vendor_toolchain_certification.py",
         "docs/architecture/formal_verification_hyperproperty_vendor_install_receipt.json"
       ],
+      "evidence_missing": [],
       "outputs_present": [
         "config/formal_verification_toolchains.lock.json",
         "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/hyperproperty.py",
-        "tools/logic/certification/hyperproperty.py"
-      ],
-      "outputs_missing": [
+        "tools/logic/certification/hyperproperty.py",
         "test/integration/toolchains/test_hyperproperty_vendor_toolchain_certification.py",
         "docs/architecture/formal_verification_hyperproperty_vendor_install_receipt.json"
       ],
-      "bound": false
+      "outputs_missing": [],
+      "bound": true
     },
     {
       "goal_id": "FVT-G209",
@@ -3458,21 +3437,20 @@
       ],
       "validation": "PYTHONPATH=ipfs_datasets_py python -m pytest test/integration/toolchains/test_external_authorization_vendor_certification.py test/integration/toolchains/test_external_authorization_toolchain_certification.py -q",
       "track": "external-capability",
-      "evidence_present": [],
-      "evidence_missing": [
+      "evidence_present": [
         "test/integration/toolchains/test_external_authorization_vendor_certification.py",
         "docs/architecture/formal_verification_authorization_vendor_install_receipt.json"
       ],
+      "evidence_missing": [],
       "outputs_present": [
         "config/formal_verification_toolchains.lock.json",
         "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/authorization.py",
-        "tools/logic/certification/authorization_external.py"
-      ],
-      "outputs_missing": [
+        "tools/logic/certification/authorization_external.py",
         "test/integration/toolchains/test_external_authorization_vendor_certification.py",
         "docs/architecture/formal_verification_authorization_vendor_install_receipt.json"
       ],
-      "bound": false
+      "outputs_missing": [],
+      "bound": true
     },
     {
       "goal_id": "FVT-G210",
@@ -3501,21 +3479,21 @@
       ],
       "validation": "PYTHONPATH=ipfs_datasets_py python -m pytest ipfs_datasets_py/tests/integration/logic/test_runtime_mtl_parity.py test/integration/toolchains/test_external_runtime_mtl_vendor_certification.py test/integration/toolchains/test_external_runtime_mtl_certification.py -q",
       "track": "external-capability",
-      "evidence_present": [],
-      "evidence_missing": [
+      "evidence_present": [
         "test/integration/toolchains/test_external_runtime_mtl_vendor_certification.py",
         "docs/architecture/formal_verification_runtime_mtl_external_install_receipt.json"
       ],
+      "evidence_missing": [],
       "outputs_present": [
         "ipfs_datasets_py/ipfs_datasets_py/logic/backends/installers/runtime_mtl.py",
-        "tools/logic/certification/runtime_mtl_external.py"
-      ],
-      "outputs_missing": [
-        "ipfs_datasets_py/typescript/logic-runtime-mtl",
+        "tools/logic/certification/runtime_mtl_external.py",
         "test/integration/toolchains/test_external_runtime_mtl_vendor_certification.py",
         "docs/architecture/formal_verification_runtime_mtl_external_install_receipt.json"
       ],
-      "bound": false
+      "outputs_missing": [
+        "ipfs_datasets_py/typescript/logic-runtime-mtl"
+      ],
+      "bound": true
     },
     {
       "goal_id": "FVT-G211",
@@ -3542,20 +3520,19 @@
       ],
       "validation": "PYTHONPATH=ipfs_datasets_py python -m pytest test/integration/toolchains/test_zkp_live_verifier_deployment.py test/integration/toolchains/test_zkp_deployment_certification.py -q",
       "track": "external-capability",
-      "evidence_present": [],
-      "evidence_missing": [
+      "evidence_present": [
         "test/integration/toolchains/test_zkp_live_verifier_deployment.py",
         "docs/architecture/formal_verification_zkp_live_deployment_receipt.json"
       ],
+      "evidence_missing": [],
       "outputs_present": [
         "config/formal_verification_zkp_deployment.lock.json",
-        "tools/logic/certification/zkp.py"
-      ],
-      "outputs_missing": [
+        "tools/logic/certification/zkp.py",
         "test/integration/toolchains/test_zkp_live_verifier_deployment.py",
         "docs/architecture/formal_verification_zkp_live_deployment_receipt.json"
       ],
-      "bound": false
+      "outputs_missing": [],
+      "bound": true
     },
     {
       "goal_id": "FVT-G212",
@@ -3580,19 +3557,18 @@
       ],
       "validation": "python -m pytest test/api/test_agent_supervisor_release_evidence_binding.py test/api/test_agent_supervisor_todo_daemon_port.py -k 'expected_output or completion_receipt or release_evidence' -q",
       "track": "supervisor-integrity",
-      "evidence_present": [],
-      "evidence_missing": [
+      "evidence_present": [
         "test/api/test_agent_supervisor_release_evidence_binding.py"
       ],
+      "evidence_missing": [],
       "outputs_present": [
         "ipfs_accelerate_py/agent_supervisor/todo_daemon/implementation_daemon.py",
-        "ipfs_accelerate_py/agent_supervisor/merge/leased_lane.py"
-      ],
-      "outputs_missing": [
+        "ipfs_accelerate_py/agent_supervisor/merge/leased_lane.py",
         "ipfs_accelerate_py/agent_supervisor/release_evidence.py",
         "test/api/test_agent_supervisor_release_evidence_binding.py"
       ],
-      "bound": false
+      "outputs_missing": [],
+      "bound": true
     },
     {
       "goal_id": "FVT-G213",
@@ -3626,20 +3602,19 @@
       ],
       "validation": "python -m pytest test/integration/test_formal_verification_role_aware_release_candidate.py test/integration/test_formal_verification_real_tool_matrix.py -q",
       "track": "completion",
-      "evidence_present": [],
-      "evidence_missing": [
+      "evidence_present": [
         "test/integration/test_formal_verification_role_aware_release_candidate.py",
         "docs/architecture/formal_verification_role_aware_release_candidate.json"
       ],
+      "evidence_missing": [],
       "outputs_present": [
         "tools/logic/certify_formal_verification_toolchains.py",
-        "tools/logic/build_formal_verification_tactician_receipt.py"
-      ],
-      "outputs_missing": [
+        "tools/logic/build_formal_verification_tactician_receipt.py",
         "test/integration/test_formal_verification_role_aware_release_candidate.py",
         "docs/architecture/formal_verification_role_aware_release_candidate.json"
       ],
-      "bound": false
+      "outputs_missing": [],
+      "bound": true
     },
     {
       "goal_id": "FVT-G214",
@@ -3665,20 +3640,18 @@
       "validation": "python -m pytest test/integration/test_formal_verification_role_aware_post_merge_attestation.py test/api/test_formal_verification_tactician_readiness_completion.py -q",
       "track": "completion",
       "evidence_present": [
+        "test/integration/test_formal_verification_role_aware_post_merge_attestation.py",
         "docs/architecture/formal_verification_role_aware_deployment_receipt.json"
       ],
-      "evidence_missing": [
-        "test/integration/test_formal_verification_role_aware_post_merge_attestation.py"
-      ],
+      "evidence_missing": [],
       "outputs_present": [
+        "tools/logic/finalize_formal_verification_deployment.py",
+        "test/integration/test_formal_verification_role_aware_post_merge_attestation.py",
         "docs/architecture/formal_verification_role_aware_deployment_receipt.json",
         "docs/architecture/formal_verification_tactician_readiness_completion_receipt.json"
       ],
-      "outputs_missing": [
-        "tools/logic/finalize_formal_verification_deployment.py",
-        "test/integration/test_formal_verification_role_aware_post_merge_attestation.py"
-      ],
-      "bound": false
+      "outputs_missing": [],
+      "bound": true
     },
     {
       "goal_id": "FVT-G200",
@@ -3761,7 +3734,7 @@
       "zkp-circuit"
     ],
     "publication_gates": {
-      "parent_publication_lag": false,
+      "parent_publication_lag": true,
       "datasets_publication_lag": false,
       "fetches_forbidden": true,
       "note": "origin/main is a local remote-tracking ref only; this receipt never fetches. Publication lag is a separate gate from semantic implementation completion."
@@ -3776,7 +3749,7 @@
       "production_certified_count": 1,
       "baseline_production_certified_count": 0,
       "machine_certified": false,
-      "publication_aligned": true,
+      "publication_aligned": false,
       "hard_zero_clear": false
     },
     "open_baseline_findings": [
@@ -3816,5 +3789,5 @@
     "raw_secret_or_witness_forbidden": true,
     "max_public_string_bytes": 8192
   },
-  "receipt_identity": "sha256:1a9f1c33d7cbaf7acb8036f08e570732158fd8823e264b3515f7ee15d7cfc6af"
+  "receipt_identity": "sha256:f070c4b571a8424bd0ef7dde254e9a226880fd65f8e92ec9575f913769c42c2c"
 }
