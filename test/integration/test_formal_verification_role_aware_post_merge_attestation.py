@@ -241,6 +241,19 @@ def test_attestation_identity_is_content_addressed(
         if key != "receipt_identity"
     }
     assert attestation["receipt_identity"] == finalizer.content_digest(body)
+    publication = attestation["post_merge"]["publication"]
+    assert (
+        publication["receipt_identity"]
+        == finalizer.RECEIPT_IDENTITY_SELF_REFERENCE
+    )
+    assert publication["receipt_identity_is_self_reference"] is True
+    assert publication["receipt_identity_resolution"] == (
+        "top_level.receipt_identity"
+    )
+    assert publication["bound"] is True
+    assert publication["output_observation"] == (
+        "deferred_until_after_atomic_write"
+    )
 
 
 def test_release_candidate_digest_is_bound(
@@ -256,9 +269,49 @@ def test_release_candidate_digest_is_bound(
     assert bound["task_id"] == RELEASE_CANDIDATE_TASK_ID
     assert bound["checked_identity_valid"] is True
     assert bound["bound"] is True
+    digest_binding = bound["digest_material_verification"]
+    assert digest_binding["valid"] is True
+    assert digest_binding["failures"] == []
+    assert str(digest_binding["digest_material_identity"]).startswith("sha256:")
     assert attestation["acceptance"]["release_candidate_bound"] is True
     assert attestation["acceptance"]["candidate_digest_bound"] is True
+    assert attestation["acceptance"]["candidate_digest_material_bound"] is True
     assert bound["checked_candidate_identity"] == stored
+
+
+def test_forged_candidate_identity_cannot_conceal_digest_material_drift(
+    finalizer, certificate, completion
+) -> None:
+    forged = json.loads(RELEASE_CANDIDATE_PATH.read_text(encoding="utf-8"))
+    forged["digest_material"]["certificate_digest_sha256"] = "0" * 64
+    forged_body = {
+        key: value for key, value in forged.items() if key != "candidate_identity"
+    }
+    forged["candidate_identity"] = finalizer.content_digest(forged_body)
+
+    receipt = finalizer.build_post_merge_attestation(
+        repo_root=REPO_ROOT,
+        observed_at="2026-08-01T00:00:00Z",
+        role_aware_certificate=certificate,
+        completion_receipt=completion,
+        release_candidate=forged,
+        g213_terminal_evidence=None,
+    )
+    binding = receipt["release_candidate"]
+    assert binding["checked_identity_valid"] is True
+    assert binding["matches_live_recompute"] is False
+    assert binding["digest_material_verification"]["valid"] is False
+    assert (
+        "certificate_digest_matches_projection"
+        in binding["digest_material_verification"]["failures"]
+    )
+    assert binding["bound"] is False
+    assert receipt["acceptance"]["release_candidate_bound"] is False
+    assert receipt["acceptance"]["candidate_digest_material_bound"] is False
+    assert "release_candidate_digest_material_invalid" in (
+        receipt["deployment_blockers"]
+    )
+    assert receipt["claims"]["deployment"] is False
 
 
 def test_checked_in_deployment_receipt_is_content_addressed_and_not_false_ready(
@@ -362,6 +415,10 @@ def test_coherent_g213_terminal_binds_merge_gates_without_false_ready(
     assert receipt["acceptance"]["origin_publication_bound"] is True
     assert receipt["acceptance"]["g213_expected_outputs_bound"] is True
     assert receipt["acceptance"]["publication_bound"] is True
+    assert receipt["acceptance"]["release_candidate_merge_blob_bound"] is True
+    merge_binding = receipt["release_candidate"]["terminal_merge_blob_binding"]
+    assert merge_binding["bound"] is True
+    assert merge_binding["current_blob"] == merge_binding["merged_blob"]
     # Other gates (hard-zero, elevations, managed capabilities) still block.
     assert receipt["status"] == "role_aware_deployment_blocked"
     assert receipt["claims"]["deployment"] is False
@@ -484,11 +541,65 @@ def test_finalize_writes_atomic_external_attestation(
     )
     assert output.is_file()
     on_disk = json.loads(output.read_text(encoding="utf-8"))
+    assert on_disk == receipt
+    assert "publication_write" not in receipt
     assert on_disk["receipt_identity"] == receipt["receipt_identity"]
     assert on_disk["status"] == "role_aware_deployment_blocked"
     assert on_disk["goal_id"] == GOAL_ID
-    stored = on_disk.pop("receipt_identity")
-    assert stored == finalizer.content_digest(on_disk)
+    publication = on_disk["post_merge"]["publication"]
+    assert (
+        publication["receipt_identity"]
+        == finalizer.RECEIPT_IDENTITY_SELF_REFERENCE
+    )
+    assert publication["output_present"] is None
+    verified = finalizer.load_verified_receipt(output, expected=receipt)
+    assert verified == receipt
+    body = {
+        key: value for key, value in on_disk.items() if key != "receipt_identity"
+    }
+    assert on_disk["receipt_identity"] == finalizer.content_digest(body)
+
+
+def test_existing_output_cannot_influence_embedded_publication(
+    finalizer, tmp_path: Path
+) -> None:
+    output = tmp_path / "post_merge_attestation.json"
+    output.write_text('{"prior":"one"}\n', encoding="utf-8")
+    first = finalizer.verify_external_publication(
+        receipt_identity=finalizer.RECEIPT_IDENTITY_SELF_REFERENCE,
+        output_path=output,
+        repo_root=REPO_ROOT,
+    )
+    output.write_text('{"prior":"two"}\n', encoding="utf-8")
+    second = finalizer.verify_external_publication(
+        receipt_identity=finalizer.RECEIPT_IDENTITY_SELF_REFERENCE,
+        output_path=output,
+        repo_root=REPO_ROOT,
+    )
+    assert first == second
+    assert first["output_present"] is None
+    assert first["output_file_sha256"] is None
+
+
+def test_on_disk_identity_verification_rejects_post_write_tampering(
+    finalizer, certificate, completion, tmp_path: Path
+) -> None:
+    output = tmp_path / "post_merge_attestation.json"
+    receipt = finalizer.finalize_deployment(
+        repo_root=REPO_ROOT,
+        output=output,
+        observed_at="2026-08-01T00:00:00Z",
+        publication_mode=finalizer.PUBLICATION_MODE_EXTERNAL,
+        g213_terminal_evidence=None,
+        write=True,
+    )
+    tampered = json.loads(output.read_text(encoding="utf-8"))
+    tampered["status"] = "role_aware_deployment_ready"
+    output.write_text(json.dumps(tampered, indent=2) + "\n", encoding="utf-8")
+    with pytest.raises(RuntimeError, match="on-disk verification"):
+        finalizer.load_verified_receipt(output)
+    with pytest.raises(RuntimeError, match="round trip"):
+        finalizer.load_verified_receipt(output, expected=receipt)
 
 
 def test_source_and_datasets_gitlink_recorded(
