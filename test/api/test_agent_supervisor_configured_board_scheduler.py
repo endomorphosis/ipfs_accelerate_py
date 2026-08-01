@@ -248,6 +248,138 @@ def test_preflight_accepts_exact_committed_binding_then_rejects_drift(
     assert submodule_check["detail"][0]["exact_worktree"] is False
 
 
+def test_preflight_accepts_only_descendant_submodule_progress(
+    tmp_path: Path,
+) -> None:
+    repo, config_path = _seed_configured_repo(tmp_path)
+    child_worktree = repo / "dependency"
+    child_source = Path(
+        _git(child_worktree, "remote", "get-url", "origin").stdout.strip()
+    )
+
+    _write(child_source / "dependency.txt", "advanced dependency\n")
+    _git(child_source, "add", "dependency.txt")
+    _git(child_source, "commit", "-m", "advance dependency")
+    advanced_revision = _git(
+        child_source,
+        "rev-parse",
+        "HEAD",
+    ).stdout.strip()
+    _git(child_worktree, "fetch", "origin")
+    _git(child_worktree, "checkout", advanced_revision)
+    _git(repo, "add", "dependency")
+    _git(repo, "commit", "-m", "record dependency progress")
+
+    board = load_configured_board(config_path, repo_root=repo)
+    advanced_report = preflight_configured_board(board)
+    assert advanced_report["valid"] is True, advanced_report["errors"]
+    advanced_check = next(
+        check
+        for check in advanced_report["checks"]
+        if check["name"] == "configured_submodules"
+    )
+    assert advanced_check["detail"][0][
+        "planning_revision_is_ancestor"
+    ] is True
+
+    _git(child_source, "checkout", "--orphan", "divergent")
+    _write(child_source / "dependency.txt", "divergent dependency\n")
+    _git(child_source, "add", "dependency.txt")
+    _git(child_source, "commit", "-m", "diverge dependency")
+    divergent_revision = _git(
+        child_source,
+        "rev-parse",
+        "HEAD",
+    ).stdout.strip()
+    _git(child_worktree, "fetch", "origin", "divergent")
+    _git(child_worktree, "checkout", divergent_revision)
+    _git(repo, "add", "dependency")
+    _git(repo, "commit", "-m", "record divergent dependency")
+
+    divergent_report = preflight_configured_board(board)
+    assert divergent_report["valid"] is False
+    divergent_check = next(
+        check
+        for check in divergent_report["checks"]
+        if check["name"] == "configured_submodules"
+    )
+    assert divergent_check["passed"] is False
+    assert divergent_check["detail"][0][
+        "planning_revision_is_ancestor"
+    ] is False
+
+
+def test_preflight_rejects_missing_submodule_planning_revision(
+    tmp_path: Path,
+) -> None:
+    repo, config_path = _seed_configured_repo(tmp_path)
+    payload = json.loads(config_path.read_text(encoding="utf-8"))
+    del payload["source_binding"]["dependency_planning_revision"]
+    _write(config_path, json.dumps(payload, indent=2, sort_keys=True) + "\n")
+    _git(repo, "add", "config/scheduler.json")
+    _git(repo, "commit", "-m", "remove dependency planning revision")
+
+    board = load_configured_board(config_path, repo_root=repo)
+    report = preflight_configured_board(board)
+    submodule_check = next(
+        check
+        for check in report["checks"]
+        if check["name"] == "configured_submodules"
+    )
+
+    assert report["valid"] is False
+    assert submodule_check["passed"] is False
+    assert submodule_check["detail"][0]["planning_revision"] == ""
+    assert submodule_check["detail"][0][
+        "planning_revision_is_ancestor"
+    ] is False
+
+
+def test_preflight_rejects_submodule_head_gitlink_mismatch(
+    tmp_path: Path,
+) -> None:
+    repo, config_path = _seed_configured_repo(tmp_path)
+    child_worktree = repo / "dependency"
+    child_source = Path(
+        _git(child_worktree, "remote", "get-url", "origin").stdout.strip()
+    )
+    _write(child_source / "dependency.txt", "unrecorded advance\n")
+    _git(child_source, "add", "dependency.txt")
+    _git(child_source, "commit", "-m", "unrecorded dependency advance")
+    revision = _git(child_source, "rev-parse", "HEAD").stdout.strip()
+    _git(child_worktree, "fetch", "origin")
+    _git(child_worktree, "checkout", revision)
+
+    board = load_configured_board(config_path, repo_root=repo)
+    report = preflight_configured_board(board)
+    submodule = next(
+        check
+        for check in report["checks"]
+        if check["name"] == "configured_submodules"
+    )["detail"][0]
+
+    assert report["valid"] is False
+    assert submodule["valid"] is False
+    assert submodule["head"] != submodule["gitlink"]
+
+
+def test_preflight_rejects_dirty_submodule_worktree(tmp_path: Path) -> None:
+    repo, config_path = _seed_configured_repo(tmp_path)
+    _write(repo / "dependency" / "dependency.txt", "dirty dependency\n")
+
+    board = load_configured_board(config_path, repo_root=repo)
+    report = preflight_configured_board(board)
+    submodule = next(
+        check
+        for check in report["checks"]
+        if check["name"] == "configured_submodules"
+    )["detail"][0]
+
+    assert report["valid"] is False
+    assert submodule["valid"] is False
+    assert submodule["dirty"]
+
+
 def test_loader_rejects_runtime_path_escape(tmp_path: Path) -> None:
     repo, config_path = _seed_configured_repo(tmp_path)
     payload = json.loads(config_path.read_text(encoding="utf-8"))

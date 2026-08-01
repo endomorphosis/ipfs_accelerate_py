@@ -642,14 +642,34 @@ def preflight_configured_board(board: ConfiguredBoard) -> dict[str, Any]:
             timeout=60,
         ) if head is not None and head.returncode == 0 else None
         actual_head = head.stdout.strip() if head is not None else ""
-        expected_planning = planning_revisions.get(relative, gitlink)
+        expected_planning = planning_revisions.get(relative, "")
+        planning_ancestor = (
+            _run(
+                (
+                    "git",
+                    "merge-base",
+                    "--is-ancestor",
+                    expected_planning,
+                    actual_head,
+                ),
+                cwd=target,
+                timeout=60,
+            )
+            if (
+                exact_worktree
+                and re.fullmatch(r"[0-9a-f]{40}", expected_planning)
+                and re.fullmatch(r"[0-9a-f]{40}", actual_head)
+            )
+            else None
+        )
         valid = bool(
             gitlink
             and exact_worktree
             and head is not None
             and head.returncode == 0
             and actual_head == gitlink
-            and actual_head == expected_planning
+            and planning_ancestor is not None
+            and planning_ancestor.returncode == 0
             and clean is not None
             and clean.returncode == 0
             and not clean.stdout.strip()
@@ -662,6 +682,10 @@ def preflight_configured_board(board: ConfiguredBoard) -> dict[str, Any]:
                 "head": actual_head,
                 "exact_worktree": exact_worktree,
                 "planning_revision": expected_planning,
+                "planning_revision_is_ancestor": bool(
+                    planning_ancestor is not None
+                    and planning_ancestor.returncode == 0
+                ),
                 "dirty": (
                     clean.stdout.splitlines()[:50]
                     if clean is not None
