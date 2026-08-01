@@ -7712,12 +7712,16 @@ def test_restart_retains_exact_acceptance_pending_binding_after_review_failure(
     monkeypatch.setattr(
         restarted,
         "_merge_submodule_branches_to_main",
-        lambda *_args, **_kwargs: [],
+        lambda *_args, **_kwargs: pytest.fail(
+            "acceptance restart reopened integrated submodule branches"
+        ),
     )
     monkeypatch.setattr(
         restarted,
         "_cleanup_merged_worktree",
-        lambda *_args, **_kwargs: {"cleaned": True},
+        lambda *_args, **_kwargs: pytest.fail(
+            "acceptance restart repeated completed branch cleanup"
+        ),
     )
     monkeypatch.setattr(
         implementation_daemon_module,
@@ -7805,12 +7809,16 @@ def test_restart_retains_exact_acceptance_pending_binding_after_review_failure(
     monkeypatch.setattr(
         full_pass,
         "_merge_submodule_branches_to_main",
-        lambda *_args, **_kwargs: [],
+        lambda *_args, **_kwargs: pytest.fail(
+            "acceptance restart reopened integrated submodule branches"
+        ),
     )
     monkeypatch.setattr(
         full_pass,
         "_cleanup_merged_worktree",
-        lambda *_args, **_kwargs: {"cleaned": True},
+        lambda *_args, **_kwargs: pytest.fail(
+            "acceptance restart repeated completed branch cleanup"
+        ),
     )
     monkeypatch.setattr(
         full_pass,

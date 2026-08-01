@@ -24967,28 +24967,56 @@ class PortalImplementationDaemon(AuthoritativeCompletionMixin):
                 ),
             }
             if self._git_ref_is_ancestor(implementation_commit, target_branch):
-                # The parent commit can land before its daemon-owned submodule
-                # branches finish merging.  Do not interpret parent ancestry as
-                # proof that nested work is complete: resume the durable
-                # submodule checkpoint first.
-                submodule_merge_results = self._merge_submodule_branches_to_main(
-                    branch,
-                    task=task,
-                    attempt=attempt,
-                    baseline_ref=baseline_ref,
-                    changed_submodule_paths=changed_submodule_paths,
-                    approved_submodule_integration_targets=(
-                        approved_submodule_integration_targets
-                    ),
-                ) if branch else []
+                pending_merge_already_integrated = bool(
+                    pending_acceptance_event
+                    and event.get("merge_integrated") is True
+                )
+                if pending_merge_already_integrated:
+                    # The live merge callback already completed and cleaned
+                    # the branch before recording this durable acceptance
+                    # checkpoint. Resume validation/review without reopening
+                    # the consumed implementation or submodule branches.
+                    submodule_merge_results = []
+                    cleanup_result = {
+                        "cleaned": True,
+                        "reason": (
+                            "acceptance_pending_merge_already_integrated"
+                        ),
+                    }
+                else:
+                    # The parent commit can land before its daemon-owned
+                    # submodule branches finish merging. Do not interpret
+                    # parent ancestry alone as proof that nested work is
+                    # complete: resume the durable submodule checkpoint first.
+                    submodule_merge_results = (
+                        self._merge_submodule_branches_to_main(
+                            branch,
+                            task=task,
+                            attempt=attempt,
+                            baseline_ref=baseline_ref,
+                            changed_submodule_paths=(
+                                changed_submodule_paths
+                            ),
+                            approved_submodule_integration_targets=(
+                                approved_submodule_integration_targets
+                            ),
+                        )
+                        if branch
+                        else []
+                    )
+                    cleanup_result = {}
                 failed_submodules = [
                     item for item in submodule_merge_results if not item.get("merged", False)
                 ]
-                cleanup_result = (
-                    self._cleanup_merged_worktree(worktree_path, branch)
-                    if branch and not failed_submodules
-                    else {}
-                )
+                if (
+                    not pending_merge_already_integrated
+                    and branch
+                    and not failed_submodules
+                ):
+                    cleanup_result = self._cleanup_merged_worktree(
+                        worktree_path,
+                        branch,
+                    )
                 cleanup_cleaned = bool(cleanup_result.get("cleaned", False)) if cleanup_result else True
                 merge_integrated = (
                     not failed_submodules and cleanup_cleaned
