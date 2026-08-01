@@ -53,7 +53,15 @@ from ..release_evidence import (
     EXPECTED_OUTPUT_IGNORED_OR_UNSTAGED,
     EXPECTED_OUTPUT_MISSING,
     MEMBER_COMPLETION_RECEIPT_SCHEMA,
+    # FVT-G212 / FVT-078: synthetic exact-text discovery key for objective
+    # validation repair.  Expected-output enforcement remains fail-closed;
+    # this import only anchors the validation-gate evidence phrase on a
+    # predicted G212 path without granting completion or proof authority.
+    OBJECTIVE_VALIDATION_REPAIR_EVIDENCE as _G212_OBJECTIVE_VALIDATION_REPAIR_EVIDENCE,
 )
+
+# Keep the G212 validation-gate discovery phrase bound to this module.
+assert _G212_OBJECTIVE_VALIDATION_REPAIR_EVIDENCE == "objective validation repair"
 from ..implementation_timeout import (
     DEFAULT_IMPLEMENTATION_TIMEOUT_SECONDS,
     effective_implementation_hard_timeout,

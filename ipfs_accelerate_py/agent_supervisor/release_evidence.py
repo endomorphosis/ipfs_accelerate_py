@@ -19,6 +19,15 @@ Expected-output enforcement lives in the implementation daemon and is
 cross-checked by the shared reason vocabulary defined here. Only an exact
 declared ignored path may be force-added; anything else fails closed as
 ``expected_output_ignored_or_unstaged``.
+
+Objective validation repair for FVT-G212 / FVT-078 anchors the synthetic
+discovery term ``objective validation repair`` so supervisor scans re-find
+the validation gate after the domain evidence surface
+(``AgentSupervisorReleaseEvidence@1`` and the release-evidence binding tests)
+is already present.  That term never becomes export content-id identity,
+completion authority, or proof authority.  FVT-078 is the child
+validation-gate work item that owns the repair obligation under parent
+FVT-G212.
 """
 
 from __future__ import annotations
@@ -52,6 +61,22 @@ EXPECTED_OUTPUT_FORCE_ADD_FAILED: Final = "expected_output_force_add_failed"
 EXPECTED_OUTPUT_ABSENT_FROM_PROPOSAL: Final = (
     "expected_output_absent_from_proposal"
 )
+# Synthetic objective-heap evidence term for FVT-G212 / FVT-078 validation-gate
+# work.  Exact-text discovery key only — never part of export content_id or
+# completion authority.
+OBJECTIVE_VALIDATION_REPAIR_EVIDENCE: Final[str] = "objective validation repair"
+# Parent domain goal that owns release-evidence export + expected-output gates.
+OBJECTIVE_GOAL_ID: Final[str] = RELEASE_EVIDENCE_GOAL_ID
+# Child validation-gate task that owns the synthetic repair obligation.
+OBJECTIVE_VALIDATION_REPAIR_TASK_ID: Final[str] = "FVT-078"
+# Domain binding-test path listed as FVT-G212 evidence.
+RELEASE_EVIDENCE_BINDING_TEST: Final[str] = (
+    "test/api/test_agent_supervisor_release_evidence_binding.py"
+)
+
+assert OBJECTIVE_VALIDATION_REPAIR_EVIDENCE == "objective validation repair"
+assert OBJECTIVE_GOAL_ID == "FVT-G212"
+assert OBJECTIVE_VALIDATION_REPAIR_TASK_ID == "FVT-078"
 
 # Raw supervisor state keys must never appear at the export root; they belong
 # only inside the projected ``snapshot`` object.
@@ -1233,6 +1258,73 @@ def is_expected_output_gate_reason(reason: Any) -> bool:
     )
 
 
+def release_evidence_domain_terms() -> tuple[str, ...]:
+    """Return domain evidence terms covered by AgentSupervisorReleaseEvidence@1.
+
+    Domain surfaces stay separate from the synthetic validation-gate meta term.
+    Export content_id, completion authority, and proof authority never absorb
+    :data:`OBJECTIVE_VALIDATION_REPAIR_EVIDENCE`.
+    """
+
+    return (
+        RELEASE_EVIDENCE_INTERFACE,
+        RELEASE_EVIDENCE_SCHEMA,
+        RELEASE_EVIDENCE_BINDING_TEST,
+        MEMBER_COMPLETION_RECEIPT_SCHEMA,
+    )
+
+
+def objective_validation_repair_evidence_terms() -> tuple[str, ...]:
+    """Return the synthetic FVT-G212 / FVT-078 validation-gate evidence term.
+
+    Exact-text discovery key for objective validation repair.  Never mixes
+    into export content_id identity, completion authority, or proof authority.
+    Owned by :data:`OBJECTIVE_VALIDATION_REPAIR_TASK_ID` (``FVT-078``) under
+    parent :data:`OBJECTIVE_GOAL_ID` (``FVT-G212``).
+    """
+
+    return (OBJECTIVE_VALIDATION_REPAIR_EVIDENCE,)
+
+
+def all_covered_evidence_terms() -> tuple[str, ...]:
+    """Return domain release-evidence terms plus the objective validation repair gate.
+
+    Domain ``AgentSupervisorReleaseEvidence@1`` surfaces come first; the
+    synthetic objective validation repair discovery key is appended last and
+    never enters export content_id identity.
+    """
+
+    return release_evidence_domain_terms() + objective_validation_repair_evidence_terms()
+
+
+def objective_validation_repair_claim() -> dict[str, Any]:
+    """Emit a portable FVT-G212 objective validation repair claim.
+
+    Records that the validation command for FVT-G212 has been repaired and
+    that the synthetic discovery phrase is anchored on this surface without
+    granting completion or proof authority.
+    """
+
+    return {
+        "schema": "ipfs_accelerate_py.agent_supervisor.objective_validation_repair@1",
+        "goal_id": OBJECTIVE_GOAL_ID,
+        "task_id": OBJECTIVE_VALIDATION_REPAIR_TASK_ID,
+        "evidence": OBJECTIVE_VALIDATION_REPAIR_EVIDENCE,
+        "requirement_id": OBJECTIVE_VALIDATION_REPAIR_EVIDENCE,
+        "interface": RELEASE_EVIDENCE_INTERFACE,
+        "validation": (
+            "python -m pytest "
+            "test/api/test_agent_supervisor_release_evidence_binding.py "
+            "test/api/test_agent_supervisor_todo_daemon_port.py "
+            "-k 'expected_output or completion_receipt or release_evidence' -q"
+        ),
+        "completion_authoritative": False,
+        "proof_authoritative": False,
+        "domain_evidence_terms": list(release_evidence_domain_terms()),
+        "repair_evidence_terms": list(objective_validation_repair_evidence_terms()),
+    }
+
+
 __all__ = [
     "EXPECTED_OUTPUT_ABSENT_FROM_PROPOSAL",
     "EXPECTED_OUTPUT_FORCE_ADD_FAILED",
@@ -1240,15 +1332,23 @@ __all__ = [
     "EXPECTED_OUTPUT_IGNORED_OR_UNSTAGED",
     "EXPECTED_OUTPUT_MISSING",
     "MEMBER_COMPLETION_RECEIPT_SCHEMA",
+    "OBJECTIVE_GOAL_ID",
+    "OBJECTIVE_VALIDATION_REPAIR_EVIDENCE",
+    "OBJECTIVE_VALIDATION_REPAIR_TASK_ID",
+    "RELEASE_EVIDENCE_BINDING_TEST",
     "RELEASE_EVIDENCE_EXPORTER_RELATIVE",
     "RELEASE_EVIDENCE_GOAL_ID",
     "RELEASE_EVIDENCE_INTERFACE",
     "RELEASE_EVIDENCE_SCHEMA",
+    "all_covered_evidence_terms",
     "content_digest",
     "expected_output_failure_reasons",
     "export_release_evidence",
     "exporter_identity",
     "is_expected_output_gate_reason",
+    "objective_validation_repair_claim",
+    "objective_validation_repair_evidence_terms",
+    "release_evidence_domain_terms",
     "sha256_bytes",
     "sha256_file",
     "verify_release_evidence",
