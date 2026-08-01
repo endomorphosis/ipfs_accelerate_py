@@ -34516,11 +34516,29 @@ class PortalImplementationDaemon:
                         and event.get(key)
                     ):
                         historical_integration_record[key] = event.get(key)
-                if (
-                    not failed_submodules
+                # A queued merge can land while this daemon is between
+                # reconciliation passes. In that case the target is already
+                # stable when this pass starts, so comparing it only with the
+                # start-of-pass value loses the immutable integration ref.
+                # Reuse the current target only after proving that the exact
+                # landed implementation is in its ancestry; declared-output
+                # checks below still bind the resulting tree.
+                historical_integration_ref = str(
+                    historical_integration_record.get("merge_commit")
+                    or historical_integration_record.get("target_commit")
+                    or ""
+                )
+                target_contains_landed_commit = bool(
+                    not historical_integration_ref
+                    and not failed_submodules
+                    and landed_commit
                     and target_commit
-                    and target_commit != target_before_reconciliation
-                ):
+                    and self._git_ref_is_ancestor(
+                        landed_commit,
+                        target_commit,
+                    )
+                )
+                if target_contains_landed_commit:
                     integration_commit_proof = (
                         self._immutable_integration_commit(
                             {

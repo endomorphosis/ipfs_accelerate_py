@@ -10373,6 +10373,91 @@ def test_implementation_daemon_reconciles_rewritten_branch_already_landed(
     assert daemon._successfully_merged_task_ids() == {"AUTO-117"}
 
 
+def test_implementation_daemon_recovers_landed_merge_after_lock_deferral(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "base.txt").write_text("base\n", encoding="utf-8")
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        "## AUTO-119 Recover a queued merge\n\n"
+        "- Status: todo\n"
+        "- Completion: manual\n"
+        "- Outputs: feature.txt\n",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "base.txt", "todo.md")
+    _git(repo, "commit", "-m", "baseline")
+
+    branch = "implementation/auto-119"
+    _git(repo, "checkout", "-b", branch)
+    (repo / "feature.txt").write_text("feature\n", encoding="utf-8")
+    _git(repo, "add", "feature.txt")
+    _git(repo, "commit", "-m", "AUTO-119: feature")
+    implementation_commit = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "main")
+
+    state_dir = tmp_path / "supervisor-state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="AUTO-",
+        merge_target_branch="main",
+    )
+    task = daemon._load_tasks()[0]
+    daemon._record_event(
+        "implementation_finished",
+        {
+            "task_id": task.task_id,
+            "task_cid": daemon._identity_for_task(
+                task
+            ).canonical_task_cid,
+            "attempt": 1,
+            "branch": branch,
+            "implementation_commit": implementation_commit,
+            "validation_result": {
+                "attempted": True,
+                "passed": True,
+            },
+            "merge_result": {
+                "attempted": False,
+                "merged": False,
+                "reason": "lock_exists",
+                "branch": branch,
+            },
+        },
+    )
+
+    # Simulate the queued merge landing after the lock-deferral event but
+    # before the next reconciliation pass. The target is consequently stable
+    # for the entire recovery invocation and there is no cached merge ref.
+    _git(repo, "merge", "--no-ff", "--no-edit", branch)
+    integration_commit = _git(repo, "rev-parse", "HEAD")
+
+    reconciliation = daemon._reconcile_failed_merges()
+
+    assert reconciliation[-1]["resolved"] is True
+    assert reconciliation[-1]["reason"] == (
+        "implementation_commit_already_merged"
+    )
+    assert reconciliation[-1]["landed_commit"] == implementation_commit
+    assert reconciliation[-1]["merge_commit"] == integration_commit
+    assert reconciliation[-1]["integration_commit_proof"]["passed"] is True
+    assert reconciliation[-1][
+        "post_merge_declared_output_invariant"
+    ]["passed"] is True
+    assert "- Status: completed" in todo_path.read_text(encoding="utf-8")
+    assert daemon._successfully_merged_task_ids() == {"AUTO-119"}
+
+
 def test_implementation_daemon_rejects_rewritten_branch_with_stale_target_commit(
     tmp_path,
 ):
