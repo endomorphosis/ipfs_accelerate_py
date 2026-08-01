@@ -522,7 +522,11 @@ def test_nonzero_error_banner_is_not_an_identity(
     certifier,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(certifier, "resolve_executable", lambda _: "/bin/false")
+    monkeypatch.setattr(
+        certifier,
+        "resolve_executable",
+        lambda _candidates, **_kwargs: "/bin/false",
+    )
     monkeypatch.setattr(
         certifier,
         "bounded_run",
